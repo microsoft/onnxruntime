@@ -117,30 +117,32 @@ class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
 
 class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
  public:
-  FlashAttentionProgram(const std::string& kernel_name, bool has_attention_bias,
-                        int tile_size, int qkv_hidden_size, int qkv_num_heads, int components)
+  FlashAttentionProgram(const std::string& kernel_name,
+                        bool has_attention_bias,
+                        int subgroup_size,
+                        int tile_size,
+                        int qkv_head_size,
+                        int qkv_num_heads)
       : Program{kernel_name},
       has_attention_bias_(has_attention_bias),
+      subgroup_size_(subgroup_size),
       tile_size_(tile_size),
-      qkv_hidden_size_(qkv_hidden_size),
-      qkv_num_heads_(qkv_num_heads),
-      components_(components) {
+      qkv_head_size_(qkv_head_size),
+      qkv_num_heads_(qkv_num_heads) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"attention_scale", ProgramUniformVariableDataType::Float32},
-                                          {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"component_indexes_per_token", ProgramUniformVariableDataType::Uint32});
-
-  WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"new_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"alpha", ProgramUniformVariableDataType::Float32});
 
  private:
   bool has_attention_bias_;
+  int subgroup_size_;
   int tile_size_;
-  int qkv_hidden_size_;
+  int qkv_head_size_;
   int qkv_num_heads_;
-  int components_;
 };
 
 class MultiHeadAttention final : public WebGpuKernel {

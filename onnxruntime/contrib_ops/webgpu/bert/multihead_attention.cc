@@ -467,15 +467,15 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, AttentionParame
 
   program.SetDispatchGroupSize(total_sequence_length, 1, parameters.num_heads)
       .SetWorkgroupSize(1)
+      .CacheHint(std::to_string(components))
       .AddUniformVariables({{static_cast<uint32_t>(past_sequence_length)},
                             {static_cast<uint32_t>(parameters.kv_sequence_length)},
-                            {static_cast<uint32_t>(parameters.head_size/ components)},});
+                            {static_cast<uint32_t>(parameters.head_size/ components)}});
 
   return context.RunProgram(program);
 }
 
 Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  // This shader works only for a limited case of current_seq_len = 1, that is the generation phase of an LLM.
   // Expectations are
   //    qkv have same number of heads and hidden dimension (head size).
   //    qkv are in BSNH format.
@@ -484,141 +484,222 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   //            N - number of heads.
   //            H - head size or hidden dimension for each qkv head.
   //  KV cache is stored as BN(total_sequence_length)H
-  //  Attention bias is in BN(total_sequence_length)
+  //  Attention bias is in BN(new_sequence_length)(total_sequence_length)
   //
   //  Expectation is that present_key, and present_value contain past key and values since
   //  we are out of storage buffers a shader can have and both past/present cant be passed.
+  // The hidden size of each q head should be a multiple of 4 because shader uses vectorized loads.
+  constexpr int vectorization_size = 4;
   shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("k", ShaderUsage::UseUniform);
-  shader.AddInput("v", ShaderUsage::UseUniform);
+  shader.AddInput("present_key", ShaderUsage::UseUniform);
+  shader.AddInput("present_value", ShaderUsage::UseUniform);
   if (has_attention_bias_) {
     shader.AddInput("attention_bias", ShaderUsage::UseUniform);
   }
-  shader.AddOutput("present_key", ShaderUsage::UseUniform);
-  shader.AddOutput("present_value", ShaderUsage::UseUniform);
   shader.AddOutput("output", ShaderUsage::UseUniform);
 
-  uint32_t qkv_hidden_size_in_components = qkv_hidden_size_ / components_;
-  shader.AdditionalImplementation() << "var<workgroup> x: array<q_element_t, " << tile_size_ << ">;\n"
-                                    << "var<workgroup> q_shm: array<q_value_t, " << qkv_hidden_size_in_components << ">;\n"
-                                    << "var<workgroup> subgroup_scratch: array<q_element_t, TILE_SIZE>;\n"
-                                    << "var<workgroup> local_max_x: q_element_t;\n"
-                                    << "var<workgroup> prev_max_x: q_element_t;\n"
-                                    << "var<workgroup> denom_x: q_element_t;\n"
-                                    << "var<workgroup> denom_ratio: q_element_t;\n"
-                                    << "var<workgroup> attention_scale: q_element_t;\n";
+  // SUBGROUP_SIZE has to be the same as sg_size. For intel this will be 8.
+  // TILE_SIZE is the number of groups sharing the k_tile.
+  // TILE_SIZE has to be <= SUBGROUP_SIZE. Ideal perf of computeSoftMax is when
+  // TILE_SIZE == SUBGROUP_SIZE. This is a sperate constant from SUBGROUP_SIZE
+  // because SUBGROUP_SIZE * TILE_SIZE has to be <= 256 as per webgpu
+  // gpu limits. For Intel this TILE_SIZE will be 8.
+  shader.AdditionalImplementation() << "const SUBGROUP_SIZE: u32 = " << subgroup_size_ << ";"
+                                    << "const TILE_SIZE: u32 = " << tile_size_ << ";"
+                                    << "const VECTOR_SIZE: u32 = " << vectorization_size << ";"
+                                    << "const QKV_HEAD_SIZE: u32 = " << qkv_head_size_ << ";"
+                                    << "const QKV_HEAD_VECTORIZED_SIZE: u32 = QKV_HEAD_SIZE / VECTOR_SIZE;"
+                                    << "const NUM_HEADS: u32 = " << qkv_num_heads_ << ";"
+                                    << "const MIN_VALUE : q_element_t = -6504.0h;";
 
-  // First fill the shared memory with the q values
-  shader.MainFunctionBody() << "let qkv_hidden_size_in_components:u32 = " << qkv_hidden_size_in_components << ";\n"
-                            << "let n_qkv_hidden_size_in_components:u32 = " << qkv_num_heads_ * qkv_hidden_size_in_components << ";\n"
-                            << "let total_sequence_length:u32 = uniforms.past_sequence_length +1;\n"
-                            << "let tile_size:u32 = TILE_SIZE;\n"
-                            << "var current_head:u32 = workgroup_id.x;\n"
-                            << "var q_index:u32 = local_id.x;\n"
-                            << "var head_offset:u32 = current_head*qkv_hidden_size_in_components;\n"
-                            << "attention_scale = q_element_t(uniforms.attention_scale);\n"
-                            << "let key_offset = uniforms.past_sequence_length * n_qkv_hidden_size_in_components + current_head * qkv_hidden_size_in_components;\n"
-                            << "let value_offset = uniforms.past_sequence_length * "<< qkv_num_heads_ * qkv_hidden_size_
-                            << "                    + current_head * " << qkv_hidden_size_ << " ;\n"
-                            << "while (q_index < qkv_hidden_size_in_components) {\n"
-                            << "  q_shm[q_index] = q[head_offset + q_index];\n"
-                            << "  output[head_offset + q_index] = 0;\n"
-                            << "  present_key[key_offset + q_index] = k[q_index];\n"
-                            << "  present_value[value_offset + q_index] = v[q_index];\n";
+  // Best to keep SHM usage per workgroup < 8KB. 4KB is the limit on a 48EU tigerlake
+  // GPU afterwhich workgroups will be unscheduled to make space for memory.
+  shader.AdditionalImplementation() << "var<workgroup> q_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 8 * 2 = 1.5KB."
+                                    << "var<workgroup> k_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 8 * 2 = 1.5KB."
+                                    << "var<workgroup> v_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 8 * 2 = 1.5KB."
+                                    << "var<workgroup> o_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 8 * 2 = 1.5KB."
+                                    << "var<workgroup> qk_tile : array<array<q_element_t, TILE_SIZE>, TILE_SIZE>; // 8 * 2 * 8 = 128"
+                                    << "var<workgroup> max_tile : array<q_element_t, TILE_SIZE>; // 2 * 8 = 16"
+                                    << "var<workgroup> denom_tile : array<q_element_t, TILE_SIZE>; // 2 * 8 = 16"
+                                    << "var<workgroup> o_ratio : array<q_element_t, TILE_SIZE>; // 2 * 8 = 16";
 
-  if (components_ == 4) {
-    shader.MainFunctionBody() << "  present_value[value_offset + q_index + 1] = v[q_index+1];\n"
-                              << "  present_value[value_offset + q_index + 2] = v[q_index+2];\n"
-                              << "  present_value[value_offset + q_index + 3] = v[q_index+3];\n";
-  }
-  if (components_ == 2) {
-    shader.MainFunctionBody() << "  present_value[value_offset + q_index + 1] = v[q_index+1];\n";
-  }
+  shader.AdditionalImplementation() << R"HELPER_FN(
+fn loadq(slot: u32, q_idx_global : u32, head_idx: u32, sg_id : u32, sg_size : u32)
+{
+    if (q_idx_global >= uniforms.new_sequence_length) {
+        return;
+    }
+    // Stored as float16[batch_size,sequence_length,3072] the inputs as per onnx MHA
+     // This is the layout if TransferBSDToBNSH has not been run.
+    // let offset = q_idx_global * (QKV_HEAD_VECTORIZED_SIZE) * NUM_HEADS + QKV_HEAD_VECTORIZED_SIZE * head_idx;
+    // Stored as BNSH - which is what webgpu uses after TransferBSDToBNSH has been run.
+    let offset = head_idx * uniforms.new_sequence_length * QKV_HEAD_VECTORIZED_SIZE + q_idx_global * QKV_HEAD_VECTORIZED_SIZE;
+    for (var idx:u32 = sg_id; idx < QKV_HEAD_VECTORIZED_SIZE; idx+= sg_size)
+    {
+        var value = q[idx+offset];
+        q_tile[slot][idx] = value;
+    }
+}
 
-  shader.MainFunctionBody() << "  q_index += tile_size;\n"
-                            << "}\n"
-                            << "if (local_id.x == 0) {\n"
-                            << "  prev_max_x = q_element_t(-65504h);\n"
-                            << "}\n"
-                            << "workgroupBarrier();\n";
+fn debugKTile() -> q_value_t
+{
+    var sum_value = q_value_t(0);
+    for (var qidx:u32 = 0; qidx < TILE_SIZE; qidx++)
+    {
+        for (var idx:u32 = 0; idx < QKV_HEAD_VECTORIZED_SIZE; idx++)
+        {
+            var value = k_tile[qidx][idx];
+            sum_value += value;
+        }
+    }
+    return sum_value;
+}
 
-  // Go through all the tiles
-  shader.MainFunctionBody() << "for (var seq_begin = 0u; seq_begin <= uniforms.past_sequence_length; seq_begin += tile_size) {\n";
+fn loadk(slot: u32, k_idx_global : u32, head_idx: u32)
+{
+    if (k_idx_global >= uniforms.present_sequence_length) {
+        return;
+    }
 
-  // Compute QKt, assumption is that K is stored as transposed.
-  shader.MainFunctionBody() << "  var k_index:u32 = seq_begin + local_id.x;\n"
-                            << "  if (sg_id == 0) {\n"
-                            << "    subgroup_scratch[u32(local_id.x/sg_size)] = q_element_t(-65504h);\n"
-                            << "  }\n"
-                            << "  var x_value_single:q_element_t = 0;"
-                            << "  if (k_index < total_sequence_length) {\n"
-                            << "    var x_value: q_value_t = q_value_t(0);\n"
-                            << "    let key_offset = k_index * n_qkv_hidden_size_in_components + current_head * qkv_hidden_size_in_components;\n"
-                            << "    for (var i = 0u; i < qkv_hidden_size_in_components; i++) {\n"
-                            << "      x_value += q_shm[i] * present_key[i+key_offset];\n"
-                            << "    }\n"
-                            << "    x_value_single = " << (components_ == 4 ? "x_value.x + x_value.y + x_value.z + x_value.w" : (components_ == 2 ? "x_value.x + x_value.y" : "x_value")) << ";\n"
-                            << "    x_value_single = x_value_single * attention_scale;\n";
-  if (has_attention_bias_) {
-    shader.MainFunctionBody() << "  let attention_bias_index = k_index + current_head * (uniforms.past_sequence_length+1);\n"
-                              << "  x_value_single = x_value_single + attention_bias[attention_bias_index];\n";
-  }
-  shader.MainFunctionBody() << "    var sub_group_max_value = subgroupMax(x_value_single);\n"
-                            << "    if (sg_id == 0) {\n"
-                            << "        subgroup_scratch[u32(local_id.x/sg_size)] = sub_group_max_value;\n"
-                            << "    }\n"
-                            << "  }\n";
+    // Stored as float16[batch_size,num_heads,present_sequence_length,96]
+    let offset = head_idx * uniforms.present_sequence_length * QKV_HEAD_VECTORIZED_SIZE + k_idx_global * QKV_HEAD_VECTORIZED_SIZE;
+    for (var idx:u32 = 0; idx < QKV_HEAD_VECTORIZED_SIZE; idx++)
+    {
+        var value = present_key[idx+offset];
+        k_tile[slot][idx] = value;
+    }
+}
 
-  // Update phase to merge with previous tile results.
-  shader.MainFunctionBody() << "  workgroupBarrier();\n"
-                            << "  if (local_id.x == 0) {\n"
-                            << "    local_max_x = prev_max_x;\n"
-                            << "    for(var i = 0u; i < u32(TILE_SIZE/sg_size); i++) {\n"
-                            << "        local_max_x = max(local_max_x, subgroup_scratch[i]);\n"
-                            << "    }\n"
-                            << "  }\n"
-                            << "  workgroupBarrier();\n"
-                            << "  if (k_index < total_sequence_length) {\n"
-                            << "    x_value_single = exp(x_value_single - local_max_x);\n"
-                            << "  }\n"
-                            << "  if (sg_id == 0) {\n"
-                            << "    subgroup_scratch[u32(local_id.x/sg_size)] = 0;\n"
-                            << "  }\n"
-                            << "  workgroupBarrier();\n"
-                            << "  var sub_group_sum_value = subgroupAdd(x_value_single);\n"
-                            << "  if (sg_id == 0) {\n"
-                            << "      subgroup_scratch[u32(local_id.x/sg_size)] = sub_group_sum_value;\n"
-                            << "  }\n"
-                            << "  workgroupBarrier();\n"
-                            << "  if (local_id.x == 0) {\n"
-                            << "    var sum_x:q_element_t = 0;\n"
-                            << "    for(var i = 0u; i < u32(TILE_SIZE/sg_size); i++) {\n"
-                            << "      sum_x = sum_x + subgroup_scratch[i];\n"
-                            << "    }\n"
-                            << "    var new_denom_x_first_term:q_element_t = denom_x * exp(prev_max_x - local_max_x);\n"
-                            << "    denom_x = new_denom_x_first_term + sum_x;\n"
-                            << "    denom_ratio = new_denom_x_first_term / denom_x;\n"
-                            << "    prev_max_x = local_max_x;\n"
-                            << "  }\n"
-                            << "  workgroupBarrier();\n"
-                            << "  x[local_id.x] = x_value_single / denom_x;\n";
+fn loadv(slot: u32, v_idx_global : u32, head_idx: u32)
+{
+    if (v_idx_global >= uniforms.present_sequence_length) {
+        return;
+    }
 
-  // Update O, we are going to switch to parallalism in v_hidden_size dimension, each thread is going to be
-  // responsible for a single hidden dimension of v.
-  shader.MainFunctionBody() << "  workgroupBarrier();\n"
-                            << "  let v_start = seq_begin *" << qkv_hidden_size_ << " + current_head * total_sequence_length *" << qkv_hidden_size_ << ";\n"
-                            << "  for (var i = local_id.x; i < " << qkv_hidden_size_ << "; i+=tile_size) {\n"
-                            << "    var sum:q_element_t = 0.0;\n"
-                            << "    for (var t = 0u; t < tile_size ; t++) {\n"
-                            << "      if (seq_begin + t < total_sequence_length) {\n"
-                            << "        var v_index:u32 = v_start + t * " << qkv_hidden_size_ << " + i;\n"
-                            << "        sum += (x[t] * present_value[v_index]);\n"
-                            << "      }\n"
-                            << "    }\n"
-                            << "    output[i] = output[i] * denom_ratio + sum;\n"
-                            << "  }\n";
+    // Stored as float16[batch_size,num_heads,present_sequence_length,96]
+    let offset = head_idx * uniforms.present_sequence_length * QKV_HEAD_VECTORIZED_SIZE + v_idx_global * QKV_HEAD_VECTORIZED_SIZE;
+    for (var idx:u32 = 0; idx < QKV_HEAD_VECTORIZED_SIZE; idx ++)
+    {
+        v_tile[slot][idx] = present_value[idx+offset];
+    }
+}
 
-  shader.MainFunctionBody() << "}\n";
+fn loadAttentionBias(qtile_row: u32, q_idx_global : u32, k_col: u32, k_idx_global : u32, head_idx: u32)
+{
+    // Stored as float16[batch_size,num_heads,new_seq_length,total_sequence_length]
+    if (q_idx_global >= uniforms.new_sequence_length  || k_idx_global >= uniforms.present_sequence_length) {
+        qk_tile[qtile_row][k_col] = 0.0;
+        return;
+    }
+    let offset = head_idx * uniforms.new_sequence_length * uniforms.present_sequence_length + q_idx_global * uniforms.present_sequence_length + k_idx_global;
+    qk_tile[qtile_row][k_col] = attention_bias[offset];
+}
+
+fn writeo(slot: u32, o_idx_global : u32, head_idx: u32, sg_id : u32, sg_size : u32)
+{
+    if (o_idx_global >= uniforms.new_sequence_length) {
+        return;
+    }
+    // Stored as float16[batch_size,sequence_length,3072]
+    let offset = o_idx_global * NUM_HEADS * QKV_HEAD_VECTORIZED_SIZE + head_idx * QKV_HEAD_VECTORIZED_SIZE;
+    for (var idx:u32 = sg_id; idx < QKV_HEAD_VECTORIZED_SIZE; idx += sg_size)
+    {
+        let value = o_tile[slot][idx];
+        output[offset+idx] = value;
+    }
+}
+
+fn computeDotProduct(q_idx: u32, k_idx: u32, sg_id: u32, sg_size : u32)
+{
+    var sum:vec4<q_element_t> = q_value_t(0, 0, 0, 0);
+    for (var idx = sg_id; idx < QKV_HEAD_VECTORIZED_SIZE; idx+= sg_size)
+    {
+        var result = q_tile[q_idx][idx]*k_tile[k_idx][idx];
+        sum += subgroupAdd(result);
+    }
+    if (sg_id == 0)
+    {
+        let single_sum : q_element_t = sum.x + sum.y + sum.z + sum.w;
+        let sqrt_dk = q_element_t(uniforms.alpha);
+        let value = single_sum * sqrt_dk;
+        qk_tile[q_idx][k_idx] += value;
+    }
+}
+
+fn computeSoftMax(q_idx: u32, sg_id:u32)
+{
+    let x = qk_tile[q_idx][sg_id];
+    var max_value = subgroupMax(x);
+    max_value = max(max_tile[q_idx], max_value);
+    let sub = x - max_value;
+    let value = exp(sub);
+    let sum = subgroupAdd(value);
+
+    // Compute lhs term of update di prime and the compute di prime.
+    let dleft = denom_tile[q_idx] * exp(max_tile[q_idx]-max_value);
+    let d = dleft + sum;
+    qk_tile[q_idx][sg_id] = value / d;
+    if (sg_id == 0)
+    {
+        max_tile[q_idx] = max_value;
+        denom_tile[q_idx] = d;
+        o_ratio[q_idx] = dleft / d;
+    }
+}
+
+fn computeO(q_idx: u32, sg_id:u32)
+{
+    for (var i:u32 = 0; i < QKV_HEAD_VECTORIZED_SIZE; i++)
+    {
+        let attn = qk_tile[q_idx][sg_id];
+        let val = v_tile[sg_id][i];
+        let intermediate = attn * val;
+        let sum = subgroupAdd(intermediate);
+        if (sg_id == 0)
+        {
+            let o_ratio = o_ratio[q_idx];
+            let old_o = o_tile[q_idx][i];
+            let new_o = ( o_ratio * old_o) +  sum;
+            o_tile[q_idx][i] = new_o;
+        }
+    }
+})HELPER_FN";
+
+// Shader is designed to be dispatched as Dispatch(num_heads, present_seq_length / TILE_SIZE, 1)
+// QKV_HEAD_VECTORIZED_SIZE % sg_id == 0 for loadq, loadk and computeDotProduct to work right.
+
+  shader.MainFunctionBody() << R"MAIN_FN(
+let head_idx = workgroup_id.x;
+// Split the composite workgroup id into actual y and subgroup id.
+let q_tile_row = u32(local_idx / sg_size);
+
+let q_idx_global = workgroup_id.y * TILE_SIZE + q_tile_row;
+// Each invocation (q_tile_row) gets x threads (subgroup threads) and is responsible for 1 query.
+loadq(q_tile_row, q_idx_global, head_idx, sg_id, sg_size);
+max_tile[sg_id] = MIN_VALUE;
+
+for(var k_start = 0u; k_start < uniforms.present_sequence_length; k_start+=TILE_SIZE)
+{
+    if (k_start+sg_id < uniforms.present_sequence_length) {
+        loadk(sg_id, k_start+sg_id, head_idx);
+        loadv(sg_id, k_start+sg_id, head_idx);
+        loadAttentionBias(q_tile_row, q_idx_global, sg_id, k_start+sg_id, head_idx);
+    }
+    workgroupBarrier();
+    // Do  k_idx + k_start <= q_idx_global if we want only look past.
+    for (var k_idx = 0u; k_idx < TILE_SIZE && k_idx + k_start <= uniforms.present_sequence_length; k_idx++)
+    {
+        computeDotProduct(q_tile_row, k_idx, sg_id, sg_size);
+    }
+    if (sg_id < TILE_SIZE && sg_id + k_start < uniforms.present_sequence_length)
+    {
+        computeSoftMax(q_tile_row, sg_id);
+        computeO(q_tile_row, sg_id);
+    }
+}
+workgroupBarrier();
+writeo(q_tile_row, q_idx_global, head_idx, sg_id, sg_size);
+)MAIN_FN";
 
   return Status::OK();
 }
@@ -627,8 +708,32 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                       Tensor* output, const Tensor* past_key, Tensor* present_key, const Tensor* past_value, Tensor* present_value,
                       AttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
   ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, parameters.past_sequence_length, parameters.total_sequence_length));
-  return ApplyAttention(Q, K, V, attention_bias, past_key, past_value, output, present_key,
-                          present_value, parameters, context, true);
+  // return ApplyAttention(Q, K, V, attention_bias, past_key, past_value, output, present_key,
+  //                         present_value, parameters, context, true);
+  constexpr int subgroup_size = 32;
+  constexpr int tile_size = 8;
+  bool has_attention_bias = attention_bias != nullptr;
+  FlashAttentionProgram program{"FlashAttention", has_attention_bias, subgroup_size, tile_size, parameters.head_size, parameters.num_heads};
+  program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 4},
+                     {present_key, ProgramTensorMetadataDependency::TypeAndRank, 4},
+                     {present_value, ProgramTensorMetadataDependency::TypeAndRank, 4},
+                     {attention_bias, ProgramTensorMetadataDependency::TypeAndRank}});
+  program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank}});
+
+  std::string cache_hint = std::to_string(has_attention_bias) +
+    std::to_string(subgroup_size) +
+    std::to_string(tile_size) +
+    std::to_string(parameters.head_size) +
+    std::to_string(parameters.num_heads);
+  const uint32_t new_seq_length = parameters.sequence_length - parameters.past_sequence_length;
+  program.SetDispatchGroupSize(parameters.num_heads, (new_seq_length + tile_size - 1) / tile_size, 1)
+    .SetWorkgroupSize(subgroup_size*tile_size)
+    .CacheHint(cache_hint)
+    .AddUniformVariables({{static_cast<uint32_t>(new_seq_length)},
+                          {static_cast<uint32_t>(parameters.sequence_length)},
+                          {static_cast<float>(1.0f / sqrt(parameters.head_size))}});
+
+  return context.RunProgram(program);
 }
 
 MultiHeadAttention::MultiHeadAttention(const OpKernelInfo& info)
@@ -687,7 +792,7 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
 
   if (parameters.sequence_length == 1 && bias == nullptr && parameters.kv_sequence_length == 1 &&
      present_key != nullptr && present_value != nullptr && present_key->SizeInBytes() > 0 &&
-     present_value->SizeInBytes() > 0) {
+     present_value->SizeInBytes() > 0 && parameters.head_size % 4 == 0) {
      return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
                            present_value, parameters, context);
   }
