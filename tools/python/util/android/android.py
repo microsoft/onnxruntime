@@ -310,7 +310,8 @@ def stop_emulator_by_pid(emulator_pid: int, timeout: int = 120):
     while is_emulator_running_by_pid(emulator_pid):
         if datetime.datetime.now() > end_time:
             raise RuntimeError(
-                f"Failed to stop the emulator with PID {emulator_pid} within the specified timeout = {timeout} seconds.")
+                f"Failed to stop the emulator with PID {emulator_pid} within the specified timeout = {timeout} seconds."
+            )
         _log.debug("Emulator still running. Checking again in 5 seconds...")
         time.sleep(interval)
 
