@@ -210,7 +210,7 @@ Status SkipLayerNorm<T, simplified>::Compute(OpKernelContext* p_ctx) const {
       gamma_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
       MlasConvertHalfToFloatBuffer(gamma_data, gamma_fp32.get(), num_elems);
       gamma_data_f = gamma_fp32.get();
-    } else if(prepacked_gamma_fp32_data_) {
+    } else if (prepacked_gamma_fp32_data_) {
       gamma_data_f = prepacked_gamma_fp32_data_.get();
     }
 
