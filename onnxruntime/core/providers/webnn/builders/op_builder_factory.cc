@@ -95,6 +95,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateDynamicQuantizeLinearOpBuilder("DynamicQuantizeLinear", op_registrations);
   }
 
+  {  // Einsum
+    CreateEinsumOpBuilder("Einsum", op_registrations);
+  }
+
   {  // Expand
     CreateExpandOpBuilder("Expand", op_registrations);
   }
