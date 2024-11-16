@@ -254,7 +254,7 @@ def is_emulator_running_by_proc(emulator_proc: subprocess.Popen) -> bool:
     """Check if the emulator process is running based on a Popen instance."""
     return emulator_proc.poll() is None
 
-
+import os
 def is_emulator_running_by_pid(emulator_pid: int) -> bool:
     """Check if the emulator process is running based on PID."""
     try:
