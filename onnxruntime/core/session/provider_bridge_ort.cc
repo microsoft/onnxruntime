@@ -2413,7 +2413,7 @@ ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensor
     delete[] ptr->trt_profile_opt_shapes;
     delete[] ptr->trt_ep_context_file_path;
     delete[] ptr->trt_onnx_model_folder_path;
-    if (ptr->trt_op_types_to_exclude) delete[] ptr->trt_op_types_to_exclude;
+    if (!ptr->trt_op_types_to_exclude && ptr->trt_op_types_to_exclude_str_is_dynamic_allocation) delete[] ptr->trt_op_types_to_exclude;
   }
 
   std::unique_ptr<OrtTensorRTProviderOptionsV2> p(ptr);
