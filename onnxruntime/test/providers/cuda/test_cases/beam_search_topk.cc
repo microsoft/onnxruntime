@@ -68,7 +68,7 @@ void ComputeTopKReference(const std::vector<float>& values,
   }
 }
 
-TEST(TestBeamSearch, TopK) {
+TEST(CudaEpTestBeamSearch, TopK) {
   int32_t batch_size = 4;
   int32_t beam_size = 4;
   int32_t vocab_size = 50257;
