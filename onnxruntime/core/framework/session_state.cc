@@ -13,6 +13,7 @@
 #include "core/framework/node_index_info.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/ort_value_pattern_planner.h"
+#include "core/framework/prepacked_weights_container.h"
 #include "core/framework/session_state_utils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
@@ -386,6 +387,21 @@ static Status KernelUseSharedPrePackedBuffers(OpKernel& kernel, int input_idx,
   return Status::OK();
 }
 
+// Here we use the data that is owned by somebody else
+static void SavePrepackedDataForWriting(const std::string& weight_name,
+                                        const std::string& key,
+                                        const PrePackedWeights& prepacked_weights,
+                                        PrepackedForSerialization::Subgraph& prepacked_subgraph) {
+  PrePackedWeights weights_for_saving;
+  for (const auto& prepacked_buffer : prepacked_weights.buffers_) {
+    // BufferDeleter is nullptr because we do not own the data
+    weights_for_saving.buffers_.emplace_back(prepacked_buffer.get(), BufferDeleter(nullptr));
+  }
+
+  weights_for_saving.buffer_sizes_ = prepacked_weights.buffer_sizes_;
+  prepacked_subgraph.CreateOrOverWrite(weight_name, key, std::move(weights_for_saving));
+}
+
 static std::string GenerateKeyForPrepackedWeightsMap(const std::string& op_type,
                                                      const PrePackedWeights& pre_packed_weights) {
   std::ostringstream ss_1;
@@ -396,10 +412,13 @@ static std::string GenerateKeyForPrepackedWeightsMap(const std::string& op_type,
   return ss_1.str();
 }
 
-Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
-                                                       const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map) {
+Status SessionState::PrepackConstantInitializedTensors(
+    InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
+    const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map) {
   auto prepacked_constant_weights = [this, &constant_initializers_use_count, &initializers_to_share_map](
                                         bool should_cache_prepacked_weights_for_shared_initializers) -> Status {
+    auto& prepacked_subgraph = prepacked_weights_for_serialization_.FindOrCreateSubgraph(graph_);
+
     for (auto& node : GetGraphViewer().Nodes()) {
       auto kernel = GetMutableKernel(node.Index());
       int input_idx = 0;
@@ -452,8 +471,8 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                     // The key for the pre-packed weights container lookup is the op_type + hash of the prepacked-weight
                     // that we just got by invoking PrePack() on this kernel.
 
-                    const std::string& prepacked_weights_container_key = GenerateKeyForPrepackedWeightsMap(op_type,
-                                                                                                           weights_to_be_filled_in);
+                    const std::string prepacked_weights_container_key = GenerateKeyForPrepackedWeightsMap(op_type,
+                                                                                                          weights_to_be_filled_in);
 
                     bool container_contains_packed_weight = prepacked_weights_container_->HasWeight(prepacked_weights_container_key);
 
@@ -461,31 +480,91 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                       LOGS(logger_, INFO) << "Using cached version of pre-packed weight for constant initializer: " << input_name
                                           << " used in the node: " << node.Name() << " which is of op type: " << node.OpType();
 
+                      const auto& prepacked_shared = prepacked_weights_container_->GetWeight(prepacked_weights_container_key);
                       ORT_RETURN_IF_ERROR(KernelUseSharedPrePackedBuffers(*kernel, input_idx,
-                                                                          prepacked_weights_container_->GetWeight(prepacked_weights_container_key),
+                                                                          prepacked_shared,
                                                                           node.Name()));
 
                       ++used_shared_pre_packed_weights_counter_;
+
+                      // In the saving mode we choose to overwrite the pre-packed weight in the container so we
+                      // write out the most recent version of the pre-packed data
+                      if (prepacked_weights_for_serialization_.IsSaveModeOn()) {
+                        // Here we take references to the shared container owned data, so we unmap any entries
+                        // that we are mapping from disk
+                        SavePrepackedDataForWriting(input_name, prepacked_weights_container_key, prepacked_shared,
+                                                    prepacked_subgraph);
+                      }
+
                     } else {  // container doesn't contain the pre-packed weight - so write into it for sharing across kernel instances
+
+                      if (!prepacked_weights_for_serialization_.IsSaveModeOn()) {
+                        // Check if we loaded it from disk, then shared it in the container
+                        // the shared container takes ownership of the memory mapped entries
+                        auto prepacked_from_disk =
+                            prepacked_weights_for_serialization_.TakePrepackedWeights(prepacked_weights_container_key);
+
+                        if (prepacked_from_disk.has_value()) {
+                          weights_to_be_filled_in = std::move(*prepacked_from_disk);
+                        }
+                      }
 
                       if (!prepacked_weights_container_->WriteWeight(prepacked_weights_container_key, std::move(weights_to_be_filled_in))) {
                         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to write the provided PrePackedWeights instance into the container");
                       }
 
+                      const auto& shared_prepacked = prepacked_weights_container_->GetWeight(prepacked_weights_container_key);
                       ORT_RETURN_IF_ERROR(KernelUseSharedPrePackedBuffers(*kernel, input_idx,
-                                                                          prepacked_weights_container_->GetWeight(prepacked_weights_container_key),
+                                                                          shared_prepacked,
                                                                           node.Name()));
+
+                      // In the saving mode we choose to overwrite the pre-packed weight in the container so we
+                      // write out the most recent version of the pre-packed data
+                      if (prepacked_weights_for_serialization_.IsSaveModeOn()) {
+                        // Here we take references to the shared container owned data, so we unmap any entries
+                        // that we are mapping from disk, so we write the most fresh data possible
+                        SavePrepackedDataForWriting(input_name, prepacked_weights_container_key, shared_prepacked,
+                                                    prepacked_subgraph);
+                      }
                     }
                   }
 
                 } else {  // caching of pre-packed weights' turned OFF
+
                   AllocatorPtr session_cpu_alloc = GetAllocator(kernel->Info().GetDevice(OrtMemType::OrtMemTypeDefault));
-                  ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx,
-                                                      session_cpu_alloc,  // use allocator tied to this session
+                  PrePackedWeights weights_to_be_filled_in;
+                  // The reason we invoke PrePack() before looking into the container for any pre-packed weight
+                  // cached by another instance of the same op_type (for the same constant initializer) is because
+                  // to truly know if we can use a cached pre-packed weight, we would have to compare the cached pre-packed
+                  // weight with the pre-packed weight generated by this instance of the same op_type because other static
+                  // properties of the node like node attributes could play a role in the pre-packed weights' contents.
+                  ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, session_cpu_alloc,
                                                       is_packed,
-                                                      nullptr  // no caching required
-                                                      ));
+                                                      &weights_to_be_filled_in));
+
+                  if (is_packed) {
+                    const auto& op_type = node.OpType();
+                    const std::string prepacked_weights_container_key = GenerateKeyForPrepackedWeightsMap(
+                        op_type,
+                        weights_to_be_filled_in);
+
+                    // See if we can use pre-packed data from disk
+                    const auto* weights_to_use = prepacked_subgraph.GetPrepackedWeights(
+                        prepacked_weights_container_key);
+
+                    if (prepacked_subgraph.IsSaveModeOn() || weights_to_use == nullptr) {
+                      // In this case pre-packed container owns the data
+                      prepacked_subgraph.CreateOrOverWrite(input_name, prepacked_weights_container_key,
+                                                           std::move(weights_to_be_filled_in));
+                      weights_to_use = prepacked_subgraph.GetPrepackedWeights(prepacked_weights_container_key);
+                      assert(weights_to_use != nullptr);
+                    }
+                    ORT_RETURN_IF_ERROR(KernelUseSharedPrePackedBuffers(*kernel, input_idx,
+                                                                        *weights_to_use,
+                                                                        node.Name()));
+                  }
                 }
+
                 if (is_packed) {
                   ++number_of_prepacks_counter_;
 
@@ -1068,9 +1147,12 @@ Status SessionState::CreateSubgraphSessionState() {
 
 // Calculate the use count of a constant initialized tensor, including the use in subgraph.
 // Note: This function doesn't handle the case below:
-// The main graph has a constant initializer called X, and the subgraph also has a constant initializer called X, which overrides the X from main graph.
-// For case like this, the current implementation will calculate the use count as 2, but they could contain completely different values so each should have a use count of 1.
-// This is a very rare case. If it happens and X is prepacked, the consequence is that X won't be released and memory usage of X won't be saved. This will be fine.
+// The main graph has a constant initializer called X, and the subgraph also has a constant initializer called X,
+// which overrides the X from main graph.
+// For case like this, the current implementation will calculate the use count as 2, but they could contain completely
+// different values so each should have a use count of 1.
+// This is a very rare case. If it happens and X is prepacked, the consequence is that X won't be released and memory
+// usage of X won't be saved. This will be fine.
 static void ComputeConstantInitializerUseCount(const Graph& graph, InlinedHashMap<std::string, size_t>& constant_initializers_use_count) {
   for (const auto& node : graph.Nodes()) {
     for (const auto* arg : node.InputDefs()) {
@@ -1189,7 +1271,31 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   InlinedHashMap<std::string, size_t> constant_initializers_use_count;
   ComputeConstantInitializerUseCount(graph_, constant_initializers_use_count);
   return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, sess_options_,
-                                  remove_initializers, constant_initializers_use_count);
+                                  remove_initializers,
+                                  constant_initializers_use_count,
+                                  prepacked_weights_for_serialization_.MainGraph());
+}
+
+void SessionState::SetSaveModeForPrepacks(bool saving_model,
+                                          bool saving_ort_format) {
+  bool save_prepacked_constant_initializers =
+      sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsSavePrePackedConstantInitializers,
+                                                      "0") == "1";
+
+  if (save_prepacked_constant_initializers && !saving_model) {
+    save_prepacked_constant_initializers = false;
+    LOGS(logger_, WARNING)
+        << "SavePrePackedConstantInitializers is set to true but the model is not being saved. Ignoring the flag.";
+  }
+
+  if (save_prepacked_constant_initializers && saving_ort_format) {
+    save_prepacked_constant_initializers = false;
+    LOGS(logger_, WARNING)
+        << "Serializing optimized model in ORT format with external pre-packed constant initializers is not supported."
+        << " Ignoring the flag.";
+  }
+
+  prepacked_weights_for_serialization_.SetSaveMode(save_prepacked_constant_initializers);
 }
 
 static Status Index(const OrtValueNameIdxMap& ort_value_name_idx_map,
@@ -1323,6 +1429,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                               const SessionOptions& session_options,
                                               bool remove_initializers,
                                               InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
+                                              PrepackedForSerialization::Subgraph& prepacked_subgraph,
                                               const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map,
                                               bool graph_info_already_created) {
   if (!graph_info_already_created) {
@@ -1489,7 +1596,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
             return Status::OK();
           },
           logger_, data_transfer_mgr_, external_data_loader_mgr_, *p_seq_exec_plan_, session_options,
-          memory_profile_func, name_to_buffered_tensor_));
+          memory_profile_func, prepacked_subgraph, name_to_buffered_tensor_));
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Record Weight allocation info on device
@@ -1544,9 +1651,13 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                                node,
                                                                subgraph_session_state.GetGraphViewer(),
                                                                subgraph_outer_scope_node_arg_to_location_map));
+
+      auto& next_prepacked_subgraph = prepacked_subgraph.GetOrCreateSubgraph(
+          subgraph_session_state.GetGraphViewer().GetGraph());
       ORT_RETURN_IF_ERROR(subgraph_session_state.FinalizeSessionStateImpl(
           graph_location, kernel_registry_manager, &node, subgraph_session_options, remove_initializers,
-          constant_initializers_use_count, subgraph_outer_scope_node_arg_to_location_map, true));
+          constant_initializers_use_count, next_prepacked_subgraph,
+          subgraph_outer_scope_node_arg_to_location_map, true));
 
       // setup all the info for handling the feeds and fetches used in subgraph execution
       auto* p_op_kernel = GetMutableKernel(node.Index());

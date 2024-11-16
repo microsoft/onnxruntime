@@ -689,8 +689,10 @@ Status Module::ExportModelForInferencing(const std::string& inference_model_path
     std::string external_data_name =
         ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(ExternalCheckpointDataPath(ToPathString(inference_model_path)));
     PathString inference_model_pathstring = ToPathString(inference_model_path);
+    ModelSavingOptions model_saving_options{64};
     ORT_THROW_IF_ERROR(
-        Model::SaveWithExternalInitializers(*inference_model, inference_model_pathstring, external_data_name, 64));
+        Model::SaveWithExternalInitializers(*inference_model, inference_model_pathstring, external_data_name,
+                                            model_saving_options));
   } else {
     ORT_THROW_IF_ERROR(Model::Save(*inference_model, ToPathString(inference_model_path)));
   }

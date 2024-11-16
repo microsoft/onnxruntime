@@ -18,6 +18,7 @@
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/framework/tensor_shape.h"
+#include "core/framework/tensor_external_data_info.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/graph/graph_flatbuffers_utils.h"
@@ -25,6 +26,7 @@
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/model.h"
 #include "core/graph/model_load_utils.h"
+#include "core/graph/model_saving_options.h"
 #include "core/graph/node_attr_utils.h"
 #include "core/graph/op.h"
 #include "core/graph/runtime_optimization_record_container.h"
@@ -4084,23 +4086,155 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
   return result;
 }
 
-ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
-                                                                       const std::filesystem::path& model_file_path,
-                                                                       size_t initializer_size_threshold,
-                                                                       const OffsetAlignmentInfo& align_info) const {
+// Create a recursive function that does bottom up with subgraphs
+ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitiallizersImpl(
+    const std::filesystem::path& model_path,
+    const std::filesystem::path& external_file_path,
+    const ModelSavingOptions& model_saving_options,
+    ONNX_NAMESPACE::GraphProto& output_graph_proto,
+    std::ostream& external_stream,
+    int64_t& external_offset) const {
+  // update external_offset for alignment
+  // need to do padding before write actual tensor data as we do offset alignment at the begin of
+  // large tensors (offset need to be page aligned and allocation granularity aligned) like below:
+  // \242\2557\256\023.\031&0000000000000000\332)k+\253\246\342\246(&\006!\347\232\374\236\325\026\032+\36XXXX
+  // |<---small tensor---->|<---padding--->|<------------------large tensor----------------------------->|
+  auto compute_and_pad = [&external_stream](int64_t allocation_granularity, int64_t& external_offset) {
+    // Align to the larger of the page size or the allocation granularity
+    int64_t alignment_factor = std::max(static_cast<int64_t>(4096), allocation_granularity);
+    // Align to the next page or alloc granularity boundary
+    int64_t new_external_offset = static_cast<int64_t>(
+                                      std::floor((external_offset + alignment_factor - 1) / alignment_factor)) *
+                                  alignment_factor;
+
+    // padding tensor with zeros for alignment
+    for (int64_t index = external_offset; index != new_external_offset; ++index) {
+      external_stream << '\0';
+    }
+    external_offset = new_external_offset;
+  };
+
+  // Process subgraphs
+  for (const auto& node : Nodes()) {
+    if (node.ContainsSubgraph()) {
+      // Let find this node in the output_graph_proto
+      auto hit = std::find_if(output_graph_proto.node().begin(),
+                              output_graph_proto.node().end(),
+                              [&node](const ONNX_NAMESPACE::NodeProto& proto) {
+                                return proto.name() == node.Name();
+                              });
+      ORT_ENFORCE(hit != output_graph_proto.node().end(), "Node ", node.Name(),
+                  " not found in output_graph_proto");
+      auto& result_node = *hit;
+      for (const auto& [name, subgraph] : node.GetAttributeNameToSubgraphMap()) {
+        // Lets find this subgraph in the result_node
+        auto sub_hit = std::find_if(result_node.attribute().begin(),
+                                    result_node.attribute().end(),
+                                    [&name](const ONNX_NAMESPACE::AttributeProto& proto) {
+                                      return proto.name() == name;
+                                    });
+        ORT_ENFORCE(sub_hit != result_node.attribute().end(), "Subgraph ", name,
+                    " not found in node ", node.Name());
+      }
+    }
+  }
+
+  // Add the initializers to the result graph.
+  for (const auto& initializer : graph_proto_->initializer()) {
+#if !defined(DISABLE_SPARSE_TENSORS)
+    if (IsSparseInitializer(initializer.name())) {
+      // Sparse tensors are added to the ONNX file.
+      auto& sparse_initializer = *output_graph_proto.add_sparse_initializer();
+      auto status = utils::DenseTensorToSparseTensorProto(initializer, model_path, sparse_initializer);
+      ORT_ENFORCE(status.IsOK(), "Failed to convert dense initializer to sparse");
+    } else {
+#endif
+      // Dense tensors larger than the threshold are added to the external file.
+      TensorProto* output_proto = output_graph_proto.add_initializer();
+
+      std::vector<uint8_t> raw_data;
+      ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, model_path, raw_data));
+      size_t tensor_bytes_size = raw_data.size();
+      if (tensor_bytes_size < model_saving_options.initializer_size_threshold) {
+        *output_proto = initializer;
+        continue;
+      }
+
+      // update external_offset for alignment
+      // need to do padding before write actual tensor data as we do offset alignment at the begin of
+      // large tensors (offset need to be page aligned and allocation granularity aligned) like below:
+      // \242\2557\256\023.\031&0000000000000000\332)k+\253\246\342\246(&\006!\347\232\374\236\325\026\032+\36XXXX
+      // |<---small tensor---->|<---padding--->|<------------------large tensor----------------------------->|
+      if (model_saving_options.align_offset && static_cast<int64_t>(tensor_bytes_size) >
+                                                   model_saving_options.align_threshold) {
+        compute_and_pad(model_saving_options.allocation_granularity, external_offset);
+      }
+
+      if (!external_stream.write(reinterpret_cast<const char*>(raw_data.data()), tensor_bytes_size)) {
+        ORT_THROW("Failed to write external initializers to file: ", modified_external_file_path);
+      }
+
+      ExternalDataInfo::SetExternalLocationToProto(external_file_path, external_offset,
+                                                   tensor_bytes_size, *output_proto);
+
+      output_proto->set_name(initializer.name());
+      output_proto->set_data_type(initializer.data_type());
+      for (int i = 0; i != initializer.dims_size(); ++i) {
+        output_proto->add_dims(initializer.dims(i));
+      }
+      output_proto->set_doc_string(initializer.doc_string());
+
+      external_offset += tensor_bytes_size;
+
+      const PrepackedForSerialization::Subgraph* prepacked_subgraph = nullptr;
+      if (model_saving_options.prepacked_for_save != nullptr) {
+        prepacked_subgraph = *model_saving_options.prepacked_for_save->FindOrCreateSubgraph(*this);
+      }
+
+#if !defined(DISABLE_SPARSE_TENSORS)
+    }
+#endif
+  }
+}
+
+ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(
+    const std::filesystem::path& external_file_path,
+    const std::filesystem::path& model_file_path,
+    const ModelSavingOptions& model_saving_options) const {
   GraphProto result;
   ToGraphProtoInternal(result);
   ORT_ENFORCE(external_file_path.is_relative());
   // If model_file_path is just a file name without a path separator, for example: "model.onnx". Its parent path could
   // be empty. Else, save external data file in same directory as the model.
   const std::filesystem::path modified_external_file_path = model_file_path.parent_path() / external_file_path;
+  const auto& model_path = ModelPath();
 
+  // Create the external file.
   std::ofstream external_stream(modified_external_file_path, std::ofstream::out | std::ofstream::binary);
   ORT_ENFORCE(external_stream.is_open());
   int64_t external_offset = 0;
 
+  // update external_offset for alignment
+  // need to do padding before write actual tensor data as we do offset alignment at the begin of
+  // large tensors (offset need to be page aligned and allocation granularity aligned) like below:
+  // \242\2557\256\023.\031&0000000000000000\332)k+\253\246\342\246(&\006!\347\232\374\236\325\026\032+\36XXXX
+  // |<---small tensor---->|<---padding--->|<------------------large tensor----------------------------->|
+  auto compute_and_pad = [&external_stream](int64_t allocation_granularity, int64_t& external_offset) {
+    // Align to the larger of the page size or the allocation granularity
+    int64_t alignment_factor = std::max(static_cast<int64_t>(4096), allocation_granularity);
+    // Align to the next page or alloc granularity boundary
+    int64_t new_external_offset = static_cast<int64_t>(
+                                      std::floor((external_offset + alignment_factor - 1) / alignment_factor)) *
+                                  alignment_factor;
+
+    // padding tensor with zeros for alignment
+    for (int64_t index = external_offset; index != new_external_offset; ++index) {
+      external_stream << '\0';
+    }
+    external_offset = new_external_offset;
+  };
+
   // Add the initializers to the result graph.
-  const auto& model_path = ModelPath();
 #if !defined(DISABLE_SPARSE_TENSORS)
   const auto sparse_end = sparse_tensor_names_.end();
 #endif
@@ -4120,46 +4254,27 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       std::vector<uint8_t> raw_data;
       ORT_THROW_IF_ERROR(utils::UnpackInitializerData(initializer, model_path, raw_data));
       size_t tensor_bytes_size = raw_data.size();
-      if (tensor_bytes_size < initializer_size_threshold) {
+      if (tensor_bytes_size < model_saving_options.initializer_size_threshold) {
         *output_proto = initializer;
         continue;
       }
 
       // update external_offset for alignment
       // need to do padding before write actual tensor data as we do offset alignment at the begin of
-      // large tensors (offset need to be page aligned and alloction granularity aligned) like below:
+      // large tensors (offset need to be page aligned and allocation granularity aligned) like below:
       // \242\2557\256\023.\031&0000000000000000\332)k+\253\246\342\246(&\006!\347\232\374\236\325\026\032+\36XXXX
       // |<---small tensor---->|<---padding--->|<------------------large tensor----------------------------->|
-      if (align_info.align_offset && static_cast<int64_t>(tensor_bytes_size) > align_info.align_threshold) {
-        // Align to the larger of the page size or the allocation granularity
-        int64_t alignment_factor = std::max(static_cast<int64_t>(4096), align_info.allocation_granularity);
-        // Align to the next page or alloc granularity boundary
-        int64_t new_external_offset = static_cast<int64_t>(
-                                          std::floor((external_offset + alignment_factor - 1) / alignment_factor)) *
-                                      alignment_factor;
-
-        // padding tensor with zeros for alignment
-        for (int64_t index = external_offset; index != new_external_offset; ++index) {
-          external_stream << '0';
-        }
-
-        external_offset = new_external_offset;
+      if (model_saving_options.align_offset && static_cast<int64_t>(tensor_bytes_size) >
+                                                   model_saving_options.align_threshold) {
+        compute_and_pad(model_saving_options.allocation_granularity, external_offset);
       }
 
-      for (size_t index = 0; index != tensor_bytes_size; ++index) {
-        external_stream << raw_data[index];
+      if (!external_stream.write(reinterpret_cast<const char*>(raw_data.data()), tensor_bytes_size)) {
+        ORT_THROW("Failed to write external initializers to file: ", modified_external_file_path);
       }
 
-      output_proto->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
-      ONNX_NAMESPACE::StringStringEntryProto* location = output_proto->add_external_data();
-      location->set_key("location");
-      location->set_value(ToUTF8String(external_file_path.native()));
-      ONNX_NAMESPACE::StringStringEntryProto* offset = output_proto->add_external_data();
-      offset->set_key("offset");
-      offset->set_value(std::to_string(external_offset));
-      ONNX_NAMESPACE::StringStringEntryProto* length = output_proto->add_external_data();
-      length->set_key("length");
-      length->set_value(std::to_string(tensor_bytes_size));
+      ExternalDataInfo::SetExternalLocationToProto(external_file_path, external_offset,
+                                                   tensor_bytes_size, *output_proto);
 
       output_proto->set_name(initializer.name());
       output_proto->set_data_type(initializer.data_type());
@@ -4169,9 +4284,14 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       output_proto->set_doc_string(initializer.doc_string());
 
       external_offset += tensor_bytes_size;
+
 #if !defined(DISABLE_SPARSE_TENSORS)
     }
 #endif
+  }
+
+  if (!external_stream.flush()) {
+    ORT_THROW("Failed to flush file with external initializers: ", modified_external_file_path);
   }
 
   return result;
