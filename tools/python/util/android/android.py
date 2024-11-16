@@ -16,8 +16,8 @@ from ..run import run
 
 _log = get_logger("util.android")
 
-SdkToolPaths = collections.namedtuple("SdkToolPaths",
-                                      ["emulator", "adb", "sdkmanager", "avdmanager"])
+
+SdkToolPaths = collections.namedtuple("SdkToolPaths", ["emulator", "adb", "sdkmanager", "avdmanager"])
 
 
 def get_sdk_tool_paths(sdk_root: str):
@@ -34,18 +34,15 @@ def get_sdk_tool_paths(sdk_root: str):
         emulator=str((sdk_root / "emulator" / filename("emulator", "exe")).resolve(strict=True)),
         adb=str((sdk_root / "platform-tools" / filename("adb", "exe")).resolve(strict=True)),
         sdkmanager=str(
-            (sdk_root / "cmdline-tools" / "latest" / "bin" / filename("sdkmanager", "bat")).resolve(
-                strict=True)
+            (sdk_root / "cmdline-tools" / "latest" / "bin" / filename("sdkmanager", "bat")).resolve(strict=True)
         ),
         avdmanager=str(
-            (sdk_root / "cmdline-tools" / "latest" / "bin" / filename("avdmanager", "bat")).resolve(
-                strict=True)
+            (sdk_root / "cmdline-tools" / "latest" / "bin" / filename("avdmanager", "bat")).resolve(strict=True)
         ),
     )
 
 
-def create_virtual_device(sdk_tool_paths: SdkToolPaths, system_image_package_name: str,
-                          avd_name: str):
+def create_virtual_device(sdk_tool_paths: SdkToolPaths, system_image_package_name: str, avd_name: str):
     run(sdk_tool_paths.sdkmanager, "--install", system_image_package_name, input=b"y")
 
     run(
@@ -108,13 +105,11 @@ def _stop_process_with_pid(pid: int):
 
 
 def start_emulator(
-        sdk_tool_paths: SdkToolPaths, avd_name: str,
-        extra_args: typing.Optional[typing.Sequence[str]] = None
+    sdk_tool_paths: SdkToolPaths, avd_name: str, extra_args: typing.Optional[typing.Sequence[str]] = None
 ) -> subprocess.Popen:
     if is_emulator_running_by_avd(avd_name=avd_name):
         raise RuntimeError(
             f"An emulator with avd_name{avd_name} is already running. Please close it before starting a new one.")
-
     with contextlib.ExitStack() as emulator_stack, contextlib.ExitStack() as waiter_stack:
         emulator_args = [
             sdk_tool_paths.emulator,
@@ -210,19 +205,16 @@ def start_emulator(
             elif datetime.datetime.now() > end_time:
                 raise RuntimeError("Emulator startup timeout. sys.boot_completed was not set.")
 
-            _log.debug(
-                f"sys.boot_completed='{getprop_value}'. Sleeping for {sleep_interval_seconds} before retrying.")
+            _log.debug(f"sys.boot_completed='{getprop_value}'. Sleeping for {sleep_interval_seconds} before retrying.")
             time.sleep(sleep_interval_seconds)
         # Verify if the emulator is now running
         if not is_emulator_running_by_avd(avd_name=avd_name):
             raise RuntimeError("Emulator failed to start.")
         return emulator_process
 
-
 def is_emulator_running_by_avd(avd_name: str) -> bool:
     """
     Check if an emulator is running based on the provided AVD name.
-
     :param avd_name: Name of the Android Virtual Device (AVD) to check.
     :return: True if an emulator with the given AVD name is running, False otherwise.
     """
@@ -270,7 +262,6 @@ def is_emulator_running_by_pid(emulator_pid: int) -> bool:
 def stop_emulator_by_proc(emulator_proc: subprocess.Popen, timeout: int = 120):
     """
     Stops the emulator process using a subprocess.Popen instance.
-
     :param emulator_proc: The emulator process as a subprocess.Popen instance.
     :param timeout: Maximum time (in seconds) to wait for the emulator to stop.
     """
@@ -298,7 +289,6 @@ def stop_emulator_by_proc(emulator_proc: subprocess.Popen, timeout: int = 120):
 def stop_emulator_by_pid(emulator_pid: int, timeout: int = 120):
     """
     Stops the emulator process using a PID.
-
     :param emulator_pid: The emulator process PID.
     :param timeout: Maximum time (in seconds) to wait for the emulator to stop.
     """
@@ -326,7 +316,6 @@ def stop_emulator_by_pid(emulator_pid: int, timeout: int = 120):
 def stop_emulator(emulator_proc_or_pid: typing.Union[subprocess.Popen, int], timeout: int = 120):
     """
     Stops the emulator process, checking its running status before and after stopping.
-
     :param emulator_proc_or_pid: The emulator process (subprocess.Popen) or PID (int).
     :param timeout: Maximum time (in seconds) to wait for the emulator to stop.
     """
