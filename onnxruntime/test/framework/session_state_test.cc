@@ -15,6 +15,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/graph/model_saving_options.h"
 #include "core/graph/op.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -22,11 +23,72 @@
 #include "gtest/gtest.h"
 #include "test/test_environment.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/file_util.h"
 #include "core/optimizer/layout_transformation/layout_transformation.h"
 
 using namespace ONNX_NAMESPACE;
-using namespace std;
 namespace onnxruntime {
+
+struct InspectPrepackedSubgraph {
+};
+
+// This specialization is used by SessionStateTestSharedInitalizersWithPrePacking.TestPrepackedSerialization down below
+// to be called on the main graph
+template <>
+void PrepackedForSerialization::Subgraph::TestHarness<InspectPrepackedSubgraph>(InspectPrepackedSubgraph&) const {
+  auto inspect = [](const PrepackedForSerialization::Subgraph& sub) {
+    const size_t expected_subgraphs = (sub.Parent() == nullptr) ? 2U : 0U;
+    ASSERT_EQ(sub.GetSubgraphNum(), expected_subgraphs);
+
+    const size_t expected_prepacks_for_writing = (sub.Parent() == nullptr) ? 0U : 1U;
+    ASSERT_EQ(expected_prepacks_for_writing, sub.GetNumberOfWeightsForWriting());
+
+    const size_t expected_blobs_for_writing = (sub.Parent() == nullptr) ? 0U : 1U;
+    ASSERT_EQ(expected_blobs_for_writing, sub.GetNumberOfKeyedBlobsForWriting());
+
+    if (sub.Parent() != nullptr) {
+      const auto* blob_keys = sub.GetBlobsForWeight("if_shared");
+      ASSERT_TRUE(blob_keys != nullptr);
+      ASSERT_EQ(blob_keys->size(), 1U);
+      const auto* prepacked_weights = sub.GetPrepackedWeights(*blob_keys->cbegin());
+      ASSERT_TRUE(prepacked_weights != nullptr);
+      ASSERT_EQ(prepacked_weights->buffer_sizes_.size(), 1U);
+      ASSERT_EQ(prepacked_weights->buffer_sizes_[0], sizeof(float) * 2);
+    }
+  };
+
+  inspect(*this);
+  for (const auto& subgraph : subgraph_prepacks_) {
+    inspect(*subgraph.second);
+  }
+}
+
+struct InspectLoadedSharedPrepacked {
+};
+
+template <>
+void PrepackedForSerialization::Subgraph::TestHarness<InspectLoadedSharedPrepacked>(
+    InspectLoadedSharedPrepacked&) const {
+  auto inspect = [this](const PrepackedForSerialization::Subgraph& sub) {
+    const size_t expected_subgraphs = (sub.Parent() == nullptr) ? 2U : 0U;
+    ASSERT_EQ(expected_subgraphs, sub.GetSubgraphNum());
+
+    // We are expecting to load only one shared pre-packed weight
+    // Saving is off, so we should not have any pre-packed weights for writing
+    const size_t expected_prepacks_for_writing = 0U;
+    ASSERT_EQ(expected_prepacks_for_writing, sub.GetNumberOfWeightsForWriting());
+
+    const size_t expected_blobs_for_writing = 0U;
+    ASSERT_EQ(expected_blobs_for_writing, sub.GetNumberOfKeyedBlobsForWriting());
+
+    ASSERT_EQ(0U, key_to_blobs_.size());
+  };
+
+  inspect(*this);
+  for (const auto& subgraph : subgraph_prepacks_) {
+    inspect(*subgraph.second);
+  }
+}
 
 namespace test {
 class TestOpKernel : public OpKernel {
@@ -378,7 +440,7 @@ class PrePackingTestOpKernel : public OpKernel {
     ORT_UNUSED_PARAMETER(tensor);
     ORT_UNUSED_PARAMETER(input_idx);
 
-    size_t weight_packed_len = 8;
+    constexpr const size_t weight_packed_len = sizeof(float) * 2;
     weight_packed_ = IAllocator::MakeUniquePtr<void>(alloc, weight_packed_len, true);
     float* data_weights_packed = reinterpret_cast<float*>(weight_packed_.get());
     data_weights_packed[0] = 1.2345f;
@@ -647,7 +709,8 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
   }
 };
 
-// Pre-packing enabled + no shared initializers = no pre-packed weights caching
+// Pre-packing enabled + no shared initializers, however, we put all the pre-packs
+// in a session_state container for ownership.
 TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test1) {
   SessionOptions sess_options;
   sess_options.enable_mem_pattern = true;
@@ -679,10 +742,11 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test1) {
 
   const auto* kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_1.GetKernel(0));
 
-  // Assert that a pre-pack call was made and that no mechanism to store weight from shared container was invoked
+  // Assert that a pre-pack call was made. However, they sharing call is still made from a serialized container.
   ASSERT_EQ(session_state_1.GetNumberOfPrepacksCounter(), static_cast<size_t>(1));
   ASSERT_EQ(kernel->prepack_calls_count, 1);
-  ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 0);
+  // In this case the sharing comes from the serialized container
+  ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 1);
 
   // Second session/model
   Model model_2("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
@@ -706,10 +770,11 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test1) {
 
   kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_2.GetKernel(0));
 
-  // Assert that a pre-pack call was made and that no mechanism to store weight from shared container was invoked
+  // Assert that a pre-pack call was made. The weights are still shared from the serialized container
+  // either because they are loaded from disk or because the container takes ownership of them.
   ASSERT_EQ(session_state_2.GetNumberOfPrepacksCounter(), static_cast<size_t>(1));
   ASSERT_EQ(kernel->prepack_calls_count, 1);
-  ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 0);
+  ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 1);
 }
 
 // Pre-packing enabled + shared initializers + no pre-packed weights container = no pre-packed weights caching
@@ -754,10 +819,10 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test2) {
 
   const auto* kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_1.GetKernel(0));
 
-  // Assert that a pre-pack call was made and that no mechanism to store weight from shared container was invoked
+  // Assert that a pre-pack call was made, but sharing still takes place from the serialized container
   ASSERT_EQ(session_state_1.GetNumberOfPrepacksCounter(), static_cast<size_t>(1));
   ASSERT_EQ(kernel->prepack_calls_count, 1);
-  ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 0);
+  ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 1);
 
   // Second session/model
   Model model_2("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
@@ -781,10 +846,10 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test2) {
 
   kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_2.GetKernel(0));
 
-  // Assert that a pre-pack call was made and that no mechanism to store weight from shared container was invoked
+  // Assert that a pre-pack call was made, but sharing still takes place from the serialized container
   ASSERT_EQ(session_state_2.GetNumberOfPrepacksCounter(), static_cast<size_t>(1));
   ASSERT_EQ(kernel->prepack_calls_count, 1);
-  ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 0);
+  ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 1);
 }
 
 // Pre-packing enabled + shared initializers + pre-packed weights container = pre-packed weights caching enabled
@@ -997,6 +1062,215 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test4) {
   // We should be seeing 2 shared pre-pack weights calls in the "If" node
   // Both branches will be using the shared version coming from the first model.
   ASSERT_EQ(if_node_branches_shared_prepack_counter_2, static_cast<size_t>(2));
+}
+
+// sharing is on
+TEST_F(SessionStateTestSharedInitalizersWithPrePacking, TestPrepackedSerialization) {
+  const std::filesystem::path model_with_external_initializers =
+      "testdata/test_prepacked_serialization_optimized_model.onnx";
+
+  const std::filesystem::path external_initializers_file =
+      "test_prepacked_serialization_optimized_model.bin";
+
+  {
+    SessionOptions sess_options;
+    sess_options.enable_mem_pattern = true;
+    sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+    sess_options.use_deterministic_compute = false;
+    sess_options.enable_mem_reuse = true;
+    sess_options.optimized_model_filepath = model_with_external_initializers;
+
+    // Enable pre-packing
+    sess_options.config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = "0";
+    // Enable saving model with pre-packed weights
+    sess_options.config_options.configurations[kOrtSessionOptionsSavePrePackedConstantInitializers] = "1";
+
+    // Enable shared initializer
+    OrtMemoryInfo mem_info(CPU, OrtDeviceAllocator);
+    std::vector<float> float_data(1, 1);
+    auto value = std::make_unique<OrtValue>();
+    Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(std::vector<int64_t>{1}),
+                         reinterpret_cast<void*>(float_data.data()), mem_info, *value);
+
+    ASSERT_STATUS_OK(sess_options.AddInitializer("if_shared", value.get()));
+
+    // Enable pre-packed weights container for shared initializers
+    PrepackedWeightsContainer prepacked_weights_container;
+    Model model_1("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                  domain_to_version, std::vector<ONNX_NAMESPACE::FunctionProto>(),
+                  DefaultLoggingManager().DefaultLogger());
+
+    CreateGraphWithSubgraph(model_1.MainGraph());
+    PlaceAllNodesToCPUEP(model_1.MainGraph());
+    SessionState session_state_1(model_1.MainGraph(),
+                                 execution_providers,
+                                 tp.get(),
+                                 nullptr, /*inter_op_thread_pool*/
+                                 dtm,
+                                 edlm,
+                                 DefaultLoggingManager().DefaultLogger(),
+                                 profiler,
+                                 sess_options,
+                                 &prepacked_weights_container);
+
+    constexpr const bool saving_model_true = true;
+    constexpr const bool saving_ort_model_false = false;
+    session_state_1.SetSaveModeForPrepacks(saving_model_true, saving_ort_model_false);
+
+    ASSERT_STATUS_OK(session_state_1.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
+                                                          kernel_registry_manager,
+                                                          !saving_model_true));
+
+    const auto& prepacked_for_serialization = session_state_1.GetPrepackedForSerialization();
+    ASSERT_TRUE(prepacked_for_serialization.IsSaveModeOn());
+    ASSERT_EQ(prepacked_for_serialization.GetNumberOfKeyedBlobs(), 1U);
+    // In this case we have two references to this blob from two subgraphs.
+    // It would save it on disk twice, but we will de-dupe it on load.
+    const auto& main_graph = prepacked_for_serialization.MainGraph();
+    InspectPrepackedSubgraph inspector;
+    main_graph.TestHarness<InspectPrepackedSubgraph>(inspector);
+
+    ModelSavingOptions model_saving_options{4};
+    model_saving_options.align_offset = true;
+    model_saving_options.prepacked_for_save = &session_state_1.GetPrepackedForSerialization();
+
+    ASSERT_STATUS_OK(Model::SaveWithExternalInitializers(model_1, model_with_external_initializers,
+                                                         external_initializers_file,
+                                                         model_saving_options));
+  }
+  ScopedFileDeleter test_model_deleter(model_with_external_initializers);
+  ScopedFileDeleter binary_file_deleter(external_initializers_file);
+
+  // Now let's load the model along with the initializers
+  {
+    SessionOptions sess_options;
+    sess_options.enable_mem_pattern = true;
+    sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+    sess_options.use_deterministic_compute = false;
+    sess_options.enable_mem_reuse = true;
+
+    // Enable pre-packing
+    sess_options.config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = "0";
+
+    // We are expecting this weight to be loaded from disk along
+    // with its pre-packed version
+    // Enable shared initializer
+    OrtMemoryInfo mem_info(CPU, OrtDeviceAllocator);
+    std::vector<float> float_data(1, 1);
+    auto value = std::make_unique<OrtValue>();
+    Tensor::InitOrtValue(DataTypeImpl::GetType<float>(), TensorShape(std::vector<int64_t>{1}),
+                         reinterpret_cast<void*>(float_data.data()), mem_info, *value);
+
+    ASSERT_STATUS_OK(sess_options.AddInitializer("if_shared", value.get()));
+
+    // Enable pre-packed weights container for shared initializers
+    PrepackedWeightsContainer prepacked_weights_container;
+
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_with_external_initializers, model, nullptr,
+                                 DefaultLoggingManager().DefaultLogger()));
+
+    PlaceAllNodesToCPUEP(model->MainGraph());
+    SessionState session_state(model->MainGraph(),
+                               execution_providers,
+                               tp.get(),
+                               nullptr, /*inter_op_thread_pool*/
+                               dtm,
+                               edlm,
+                               DefaultLoggingManager().DefaultLogger(),
+                               profiler,
+                               sess_options,
+                               &prepacked_weights_container);
+
+    ASSERT_STATUS_OK(session_state.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
+                                                        kernel_registry_manager,
+                                                        false));
+
+    const auto& prepacked_for_serialization = session_state.GetPrepackedForSerialization();
+    ASSERT_FALSE(prepacked_for_serialization.IsSaveModeOn());
+    // Everything comes from the shared container
+    ASSERT_EQ(prepacked_for_serialization.GetNumberOfKeyedBlobs(), 0U);
+
+    InspectLoadedSharedPrepacked inspector;
+    const auto& main_graph = prepacked_for_serialization.MainGraph();
+    main_graph.TestHarness<InspectLoadedSharedPrepacked>(inspector);
+  }
+
+  // Load again, this time sharing is enabled, but no shared initializer in the map
+  {
+    SessionOptions sess_options;
+    sess_options.enable_mem_pattern = true;
+    sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+    sess_options.use_deterministic_compute = false;
+    sess_options.enable_mem_reuse = true;
+
+    // Enable pre-packing
+    sess_options.config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = "0";
+
+    // Enable pre-packed weights container for shared initializers
+    PrepackedWeightsContainer prepacked_weights_container;
+
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_with_external_initializers, model, nullptr,
+                                 DefaultLoggingManager().DefaultLogger()));
+
+    PlaceAllNodesToCPUEP(model->MainGraph());
+    SessionState session_state(model->MainGraph(),
+                               execution_providers,
+                               tp.get(),
+                               nullptr, /*inter_op_thread_pool*/
+                               dtm,
+                               edlm,
+                               DefaultLoggingManager().DefaultLogger(),
+                               profiler,
+                               sess_options,
+                               &prepacked_weights_container);
+
+    ASSERT_STATUS_OK(session_state.FinalizeSessionState(model_with_external_initializers,
+                                                        kernel_registry_manager,
+                                                        false));
+
+    const auto& prepacked_for_serialization = session_state.GetPrepackedForSerialization();
+    ASSERT_FALSE(prepacked_for_serialization.IsSaveModeOn());
+    // Everything comes from the shared container
+    ASSERT_EQ(prepacked_for_serialization.GetNumberOfKeyedBlobs(), 1U);
+  }
+  // Load again, sharing is disabled
+  {
+    SessionOptions sess_options;
+    sess_options.enable_mem_pattern = true;
+    sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+    sess_options.use_deterministic_compute = false;
+    sess_options.enable_mem_reuse = true;
+
+    // Enable pre-packing
+    sess_options.config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = "0";
+
+    std::shared_ptr<Model> model;
+    ASSERT_STATUS_OK(Model::Load(model_with_external_initializers, model, nullptr,
+                                 DefaultLoggingManager().DefaultLogger()));
+
+    PlaceAllNodesToCPUEP(model->MainGraph());
+    SessionState session_state(model->MainGraph(),
+                               execution_providers,
+                               tp.get(),
+                               nullptr, /*inter_op_thread_pool*/
+                               dtm,
+                               edlm,
+                               DefaultLoggingManager().DefaultLogger(),
+                               profiler,
+                               sess_options,
+                               nullptr);
+
+    ASSERT_STATUS_OK(session_state.FinalizeSessionState(model_with_external_initializers,
+                                                        kernel_registry_manager,
+                                                        false));
+
+    const auto& prepacked_for_serialization = session_state.GetPrepackedForSerialization();
+    ASSERT_FALSE(prepacked_for_serialization.IsSaveModeOn());
+    // Everything comes from the shared container
+    ASSERT_EQ(prepacked_for_serialization.GetNumberOfKeyedBlobs(), 1U);
+  }
 }
 
 INSTANTIATE_TEST_SUITE_P(SessionStateTests,

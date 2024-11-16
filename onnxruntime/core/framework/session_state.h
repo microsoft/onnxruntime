@@ -364,6 +364,20 @@ class SessionState {
 
   const SessionOptions& GetSessionOptions() const { return sess_options_; }
 
+  /// <summary>
+  /// Deduce the flag whether we need to enable or disable
+  /// saving for serialization mode and create the member container with
+  /// the corresponding argument.
+  /// </summary>
+  /// <param name="saving_model"></param>
+  /// <param name="saving_ort_format"></param>
+  void SetSaveModeForPrepacks(bool saving_model,
+                              bool saving_ort_format);
+
+  const PrepackedForSerialization& GetPrepackedForSerialization() const {
+    return prepacked_weights_for_serialization_;
+  }
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
@@ -381,7 +395,8 @@ class SessionState {
    * Prepack the constant initialized tensors for better performance.
    * The original constant initialized tensors will be removed to save memory.
    */
-  Status PrepackConstantInitializedTensors(InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
+  Status PrepackConstantInitializedTensors(PrepackedForSerialization::Subgraph& prepacked_subgraph,
+                                           InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
                                            const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map);
 
   SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
@@ -400,6 +415,7 @@ class SessionState {
                                   const SessionOptions& session_options,
                                   bool remove_initializers,
                                   InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
+                                  PrepackedForSerialization::Subgraph& prepacked_subgraph,
                                   const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map = {},
                                   bool graph_info_already_created = false);
 
@@ -528,6 +544,9 @@ class SessionState {
   // the cache is valid until any session reliant on it is still in scope.
   // prepacked_weights_container_ can be nullptr if no caching is required for prepacked weights
   PrepackedWeightsContainer* const prepacked_weights_container_{};
+  // This container serves either for reading and using pre-packed weights from disk
+  // of serializing to disk
+  PrepackedForSerialization prepacked_weights_for_serialization_;
 
 #ifdef ENABLE_TRAINING
 // Needed for ORTTrainer. Should be removed along with ORTTrainer code

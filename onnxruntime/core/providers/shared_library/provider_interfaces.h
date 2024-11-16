@@ -42,6 +42,8 @@ using ProviderType = const std::string&;
 class RandomGenerator;
 class IOnnxRuntimeOpSchemaCollection;
 
+struct ModelSavingOptions;
+
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 namespace contrib {
 class PythonOpBase;
@@ -900,7 +902,11 @@ struct ProviderHost {
   virtual void Model__operator_delete(Model* p) = 0;
   virtual Graph& Model__MainGraph(Model* p) = 0;
   virtual std::unique_ptr<ONNX_NAMESPACE::ModelProto> Model__ToProto(Model* p) = 0;
-  virtual std::unique_ptr<ONNX_NAMESPACE::ModelProto> Model__ToGraphProtoWithExternalInitializers(Model* p, const std::filesystem::path& external_file_name, const std::filesystem::path& file_path, size_t initializer_size_threshold) = 0;
+  virtual std::unique_ptr<ONNX_NAMESPACE::ModelProto> Model__ToGraphProtoWithExternalInitializers(
+      Model* p,
+      const std::filesystem::path& external_file_name,
+      const std::filesystem::path& file_path,
+      const ModelSavingOptions&) = 0;
   virtual const ModelMetaData& Model__MetaData(const Model* p) const noexcept = 0;
   virtual Status Model__Load(const PathString& file_path, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) = 0;
 
