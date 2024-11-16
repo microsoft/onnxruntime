@@ -158,9 +158,9 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   if (has_present_key_) {
     if (past_present_share_buffer_) {
-      shader.MainFunctionBody() << "    if (n + local_id.y >= past_sequence_length && n + local_id.y < uniforms.present_sequence_length) {\n";
+      shader.MainFunctionBody() << "    if (n + local_id.y >= past_sequence_length && n + local_id.y < uniforms.kv_sequence_length + past_sequence_length) {\n";
     } else {
-      shader.MainFunctionBody() << "    if (n + local_id.y < uniforms.present_sequence_length) {\n";
+      shader.MainFunctionBody() << "    if (n + local_id.y < uniforms.kv_sequence_length + past_sequence_length) {\n";
     }
     shader.MainFunctionBody() << "      present_key[presentKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x] = tileK[idx];\n"
                               << "    }\n";
@@ -403,9 +403,9 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   if (has_present_value_) {
     if (past_present_share_buffer_) {
-      shader.MainFunctionBody() << "    if (w + local_id.y >= past_sequence_length && w + local_id.y < uniforms.present_sequence_length) {\n";
+      shader.MainFunctionBody() << "    if (w + local_id.y >= past_sequence_length && w + local_id.y < uniforms.kv_sequence_length + past_sequence_length) {\n";
     } else {
-      shader.MainFunctionBody() << "    if (w + local_id.y < uniforms.present_sequence_length) {\n";
+      shader.MainFunctionBody() << "    if (w + local_id.y < uniforms.kv_sequence_length + past_sequence_length) {\n";
     }
     shader.MainFunctionBody() << "      present_value[presentValueOffset + (w + local_id.y) * uniforms.N] = tileK[idx];\n"
                               << "    }\n";
