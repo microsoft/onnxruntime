@@ -155,6 +155,33 @@ public void GenerateNextToken()
 public ReadOnlySpan<int> GetSequence(ulong index)
 ```
 
+### Set active adapter
+
+Sets the active adapter on this Generator instance.
+
+```csharp
+using var model = new Model(modelPath);
+using var genParams = new GeneratorParams(model);
+using var generator = new Generator(model, genParams);
+using var adapters = new Adapters(model);
+string adapterName = "..."
+
+generator.SetActiveAdapter(adapters, adapterName);
+```
+
+#### Parameters
+
+* `adapters`: the previously created `Adapter` object
+* `adapterName`: the name of the adapter to activate
+
+#### Return value
+
+`void`
+
+#### Exception
+
+Throws on error.
+
 ## Sequences class
 
 ### Num sequences member
@@ -168,4 +195,63 @@ public ulong NumSequences { get { return _numSequences; } }
 ```csharp
 public ReadOnlySpan<int> this[ulong sequenceIndex]
 ```
+
+## Adapter class
+
+This API is used to load and switch fine-tuned adapters, such as LoRA adapters.
+
+### Constructor
+
+Construct an instance of an Adapter class.
+
+```csharp
+using var model = new Model(modelPath);
+
+using var adapters = new Adapters(model);
+```
+
+#### Parameters
+
+* `model`: a previously constructed model class
+
+### Load Adapter method
+
+Loads an adapter file from disk.
+
+```csharp
+string adapterPath = Path()
+string adapterName = ...
+
+adapters.LoadAdapter(adapterPath, adapterName);
+```
+
+#### Parameters
+
+* `adapterPath`: the path to the adapter file on disk
+* `adapterName`: a string identifier used to refer to the adapter in subsequent methods
+
+#### Return value
+
+`void`
+
+### Unload Adapter method
+
+Unloads an adapter file from memory.
+
+```csharp
+adapters.UnLoadAdapter(adapterName);
+```
+
+#### Parameters
+
+* `adapterName`: the name of the adapter to unload
+
+#### Return value
+
+`void`
+
+#### Execption
+
+Throws an exception on error.
+
 
