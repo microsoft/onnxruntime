@@ -4,7 +4,7 @@ description: Specification for the .onnx_adapter file format
 has_children: false
 parent: Reference
 grand_parent: Generate API (Preview)
-nav_order: 1
+nav_order: 2
 ---
 
 # Adapter file specification
