@@ -433,6 +433,35 @@ More details on the current runtime options can be found [here](https://github.c
 OGA_EXPORT void OGA_API_CALL OgaGenerator_SetRuntimeOption(OgaGenerator* generator, const char* key, const char* value);
 ```
 
+## Adapter API
+
+This API is used to load and switch fine-tuned adapters, such as LoRA adapters.
+
+### Create adapters
+
+Creates the object that manages the adapters. This object is used to load all the model adapters. It is responsible for reference counting the loaded adapters.
+
+```c
+OGA_EXPORT OgaResult* OGA_API_CALL OgaCreateAdapters(const OgaModel* model, OgaAdapters** out);
+```
+
+#### Parameters
+
+* model: the `OgaModel`, which has previously been created
+
+#### Results
+
+* out: a reference to the list of `OgaAdapters` created
+
+### Load adapter
+
+Loads the model adapter from the given adapter file path and adapter name.
+ * \param[in] adapters The OgaAdapters object to load the adapter.
+ * \param[in] adapter_file_path The file path of the adapter to load.
+ * \param[in] adapter_name A unique identifier for the adapter chosed by the function invoker.
+ *                         This name is used for querying the adapter.
+ */
+### 
 ## Enums and structs
 
 ```c
