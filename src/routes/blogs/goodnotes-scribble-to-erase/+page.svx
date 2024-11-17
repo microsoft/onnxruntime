@@ -65,14 +65,14 @@ For the last three years, the Goodnotes engineering team has been working on a p
 Mistakes are part of note-taking, and scribble to erase lets users delete content simply by scribbling over it. This intuitive gesture replaces the eraser tool and streamlines editing.
 
 <div class="m-auto w50">
-<img src="" alt="">
+<img src="">
 </div>
 <br/>
 
-Any note previously written can be deleted with a simple scribble. While the feature appears simple for users, it’s more complex from an engineering standpoint.
+Any note previously written can be deleted with a simple scribble. While the feature appears simple for users, it's more complex from an engineering standpoint.
 
 <div class="m-auto w50">
-<img src="" alt="">
+<img src="">
 </div>
 <br/>
 
@@ -85,31 +85,31 @@ In Goodnotes, a scribble gesture is simply a stroke in the document with a speci
 - It contains enough points.
 - The AI model evaluated using ONNX Runtime recognizes it as a scribble.
 
-For each new stroke, the team evaluates the stroke’s size and uses the AI model to determine if it qualifies as a scribble. The process follows a typical AI evaluation flow:
+For each new stroke, the team evaluates the stroke's size and uses the AI model to determine if it qualifies as a scribble. The process follows a typical AI evaluation flow:
 
-1. **Feature Extraction**: The team normalizes the note’s points and converts the stylus-generated data into a format the AI model can process.
+1. **Feature Extraction**: The team normalizes the note's points and converts the stylus-generated data into a format the AI model can process.
 2. **AI Model Evaluation**: The LSTM-based model, trained in-house, is deployed across platforms, allowing for on-device evaluation without internet.
 
 After feature extraction, ONNX Runtime evaluates the model output. If the score is above a threshold, the stroke is considered a scribble, and all underlying content is deleted.
 
 <div class="m-auto w50">
-<img src="" alt="">
+<img src="">
 </div>
 <br/>
 
 ## 🤝 Why ONNX Runtime?
 
-The Goodnotes team needed a solution for evaluating the model across platforms, as the existing iOS version used CoreML, which isn’t available outside the Apple ecosystem.
+The Goodnotes team needed a solution for evaluating the model across platforms, as the existing iOS version used CoreML, which isn't available outside the Apple ecosystem.
 
 <div class="m-auto w50">
-<img src="" alt="">
+<img src="">
 </div>
 <br/>
 
-The tech stack for Windows, Web, and Android is based on web technologies, with Goodnotes implemented as a [Progressive Web Application](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps) (PWA) in full-screen native mode. Thus, the model evaluation solution had to be web-compatible and performant, enabling hardware acceleration where possible. After experimentation, the team chose ONNX Runtime. A [prototype](https://github.com/pedrovgs/HWEmoji) confirmed ONNX Runtime’s capabilities for the feature.
+The tech stack for Windows, Web, and Android is based on web technologies, with Goodnotes implemented as a [Progressive Web Application](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps) (PWA) in full-screen native mode. Thus, the model evaluation solution had to be web-compatible and performant, enabling hardware acceleration where possible. After experimentation, the team chose ONNX Runtime. A [prototype](https://github.com/pedrovgs/HWEmoji) confirmed ONNX Runtime's capabilities for the feature.
 
 <div class="m-auto w50">
-<img src="" alt="">
+<img src="">
 </div>
 <br/>
 
@@ -136,11 +136,11 @@ The model loads and runs in a Web Worker to minimize user impact during this cri
 
 <Highlight language={typescript} code={code3} />
 
-The CPU execution provider, powered by WASM, is used for this lightweight model. For future models, we’re considering WebGPU and WebNN execution providers.
+The CPU execution provider, powered by WASM, is used for this lightweight model. For future models, we're considering WebGPU and WebNN execution providers.
 
 ## 🚀 Deployment and Integration
 
-Due to Goodnotes’ web-based tech stack, ONNX Runtime integration required adjustments. Goodnotes uses [Vite](https://vite.dev/), so they configured Vite to distribute both the model and necessary CPU execution resources. As a PWA, the app is usable offline, which necessitated including the model binary and ONNX Runtime resources in the bundle.
+Due to Goodnotes' web-based tech stack, ONNX Runtime integration required adjustments. Goodnotes uses [Vite](https://vite.dev/), so they configured Vite to distribute both the model and necessary CPU execution resources. As a PWA, the app is usable offline, which necessitated including the model binary and ONNX Runtime resources in the bundle.
 
 ## 📈 Results After Production Deployment
 
