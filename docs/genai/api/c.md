@@ -280,7 +280,7 @@ OGA_EXPORT OgaResult* OGA_API_CALL OgaGeneratorParamsSetInputSequences(OgaGenera
 
 ### Set model input
 
-Set an additional model input, aside from the input_ids. For example additional inputs for LoRA adapters.
+Set an additional model input, aside from the input_ids.
 
 ### Parameters
 
@@ -456,12 +456,56 @@ OGA_EXPORT OgaResult* OGA_API_CALL OgaCreateAdapters(const OgaModel* model, OgaA
 ### Load adapter
 
 Loads the model adapter from the given adapter file path and adapter name.
- * \param[in] adapters The OgaAdapters object to load the adapter.
- * \param[in] adapter_file_path The file path of the adapter to load.
- * \param[in] adapter_name A unique identifier for the adapter chosed by the function invoker.
- *                         This name is used for querying the adapter.
- */
-### 
+
+```c
+OGA_EXPORT OgaResult* OGA_API_CALL OgaLoadAdapter(OgaAdapters* adapters, const char* adapter_file_path, const char* adapter_name);
+```
+
+#### Parameters
+
+ * `adapters`: The OgaAdapters object into which to load the adapter.
+ * `adapter_file_path`: The file path of the adapter to load.
+ * `adapter_name`: A unique identifier for the adapter to be used for adapter querying
+
+#### Return value
+
+`OgaResult` containing an error message if the adapter failed to load.
+
+### Unload adapter
+
+Unloads the adapter with the given identifier from the set of previously loaded adapters. If the adapter is not found, or if it cannot be unloaded (when it is in use), an error is returned.
+
+```c
+OGA_EXPORT OgaResult* OGA_API_CALL OgaUnloadAdapter(OgaAdapters* adapters, const char* adapter_name);
+```
+
+#### Parameters
+
+* `adapters`: The OgaAdapters object from which to unload the adapter.
+*  `adapter_name`: The name of the adapter to unload.
+
+#### Return value
+
+`OgaResult` containing an error message if the adapter failed to unload. This can occur if the method is called with an adapter that is not already loaded.
+
+### Set active adapter
+
+Sets the adapter with the given adapter name as active for the given OgaGenerator object.
+
+```c
+OGA_EXPORT OgaResult* OGA_API_CALL OgaSetActiveAdapter(OgaGenerator* generator, OgaAdapters* adapters, const char* adapter_name);
+```
+
+#### Parameters
+
+* `generator`: The OgaGenerator object to set the active adapter.
+* `adapters`: The OgaAdapters object that manages the model adapters.
+* `adapter_name`: The name of the adapter to set as active.
+
+#### Return value
+
+`OgaResult` containing an error message if the adapter failed to be set as active. This can occur if the method is called with an adapter that has not been previously loaded.
+
 ## Enums and structs
 
 ```c
