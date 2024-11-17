@@ -47,6 +47,16 @@
 	}
 	let featuredblog = [
 		{
+			title: 'Scribble to Erase on Goodnotes for Windows, Web, and Android, Powered by ONNX Runtime',
+			date: '17th November, 2024',
+			blurb:
+				"Discover how Goodnotes brings the popular scribble-to-erase feature from iPad to Windows, Web, and Android with the help of ONNX Runtime, enabling seamless, high-performance AI integration across platforms.",
+			link: 'blogs/goodnotes-scribble-to-erase',
+			image: '',
+			imgalt:
+				'Scribble to Erase feature on Goodnotes for Windows, Web, and Android'
+		},
+		{
 			title: 'Enhancing team collaboration during AI model optimization with the Olive Shared Cache',
 			date: 'October 30th, 2024',
 			blurb:
@@ -66,6 +76,9 @@
 			imgalt:
 				'Speedup for ONNX Runtime with TensorRT and CUDA vs. torch.compile for difference batch sizes and sequence lengths.'
 		},
+		
+	];
+	let blogs = [
 		{
 			title: 'High performance on-device real-time ML with NimbleEdge, using ONNX Runtime',
 			date: 'June 17th, 2024',
@@ -76,10 +89,6 @@
 			imgalt:
 				'Image of the different steps of an ML pipeline on a mobile device, running using NimbleEdge and ONNX Runtime.'
 		},
-		
-		
-	];
-	let blogs = [
 		{
 			title: 'Background Removal in the Browser Using ONNX Runtime with WebGPU',
 			date: 'June 12th, 2024',
