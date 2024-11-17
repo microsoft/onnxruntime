@@ -19,6 +19,7 @@
 	import Phi3SmallMediumImage from '../../images/blogs/accelerating-phi-3-medium-thumbnail.png';
 	import LightGlueImage from '../../images/blogs/lightglue-community-blog.png';
 	import OliveSharedCache from '../../images/blogs/olive-shared-cache-user-flow.png';
+	import GoodnotesThumbnail from '../../images/blogs/goodnotes-scribble-to-erase/Thumbnail.png';
 	onMount(() => {
 		anime({
 			targets: '.border-primary',
@@ -52,7 +53,7 @@
 			blurb:
 				"Discover how Goodnotes brings the popular scribble-to-erase feature from iPad to Windows, Web, and Android with the help of ONNX Runtime, enabling seamless, high-performance AI integration across platforms.",
 			link: 'blogs/goodnotes-scribble-to-erase',
-			image: '',
+			image: GoodnotesThumbnail,
 			imgalt:
 				'Scribble to Erase feature on Goodnotes for Windows, Web, and Android'
 		},
