@@ -44,43 +44,6 @@ class WhisperDecoder(torch.nn.Module):
         self.num_heads = self.config.decoder_attention_heads
         self.head_size = self.config.d_model // self.num_heads
 
-    # def forward_for_beam_search_op(self, decoder_input_ids: torch.Tensor, encoder_hidden_states: Optional[torch.Tensor] = None, past_key_values: Optional[List[torch.Tensor]] = None):
-    #     past_kv = past_key_values
-    #     if past_kv is not None:
-    #         # Before: (past_key_self_0, past_value_self_0, past_key_self_1, past_value_self_1), ...,
-    #         #         (past_key_cross_0, past_value_cross_0, past_key_cross_1, past_value_cross_1), ...
-    #         # After:  (past_key_self_0, past_value_self_0, past_key_cross_0, past_value_cross_0),
-    #         #         (past_key_self_1, past_value_self_1, past_key_cross_1, past_value_cross_1),
-    #         past_kv = PastKeyValuesHelper.back_group_by_layer(past_kv)
-    
-    #     outputs = self.decoder(
-    #         encoder_hidden_states=encoder_hidden_states,
-    #         input_ids=decoder_input_ids,
-    #         past_key_values=past_kv,
-    #         use_cache=True,
-    #     )
-    
-    #     logits = self.proj_out(outputs.last_hidden_state)
-    #     present_key_values = outputs.past_key_values
-    #     if present_key_values is not None:
-    #         # Before: (past_key_self_0, past_value_self_0, past_key_cross_0, past_value_cross_0),
-    #         #         (past_key_self_1, past_value_self_1, past_key_cross_1, past_value_cross_1),
-    #         # After:  (past_key_self_0, past_value_self_0, past_key_self_1, past_value_self_1), ...,
-    #         #         (past_key_cross_0, past_value_cross_0, past_key_cross_1, past_value_cross_1), ...
-    #         present_self, present_cross = PastKeyValuesHelper.group_by_self_and_cross(present_key_values) 
-
-    #     if past_key_values is None:
-    #         # Return present_self_* and present_cross_* for decoder-init        
-    #         return logits, present_self, present_cross
-    
-    #     # Return present_self_* for decoder-with-past since past_cross_* and present_cross_* are identical
-    #     return logits, present_self
-
-    # def forward(self, decoder_input_ids: torch.Tensor, encoder_hidden_states: Optional[torch.Tensor] = None, past_key_values: Optional[Union[List[Tuple[torch.Tensor]], List[torch.Tensor]]] = None):
-    #     if self.no_beam_search_op:
-    #         return self.forward_for_no_beam_search_op(decoder_input_ids, encoder_hidden_states, past_key_values)
-    #     return self.forward_for_beam_search_op(decoder_input_ids, encoder_hidden_states, past_key_values)
-
     def forward(self, decoder_input_ids: torch.Tensor, encoder_hidden_states: Optional[torch.Tensor] = None, past_key_values: Optional[List[Tuple[torch.Tensor]]] = None):
         outputs = self.decoder(
             encoder_hidden_states=encoder_hidden_states,
@@ -114,12 +77,6 @@ class WhisperDecoder(torch.nn.Module):
                 *list(
                     chain.from_iterable((f"past_key_self_{i}", f"past_value_self_{i}", f"past_key_cross_{i}", f"past_value_cross_{i}") for i in range(self.config.num_hidden_layers))
                 ),
-                # *list(
-                #     chain.from_iterable((f"past_key_self_{i}", f"past_value_self_{i}") for i in range(self.config.num_hidden_layers))
-                # ),
-                # *list(
-                #     chain.from_iterable((f"past_key_cross_{i}", f"past_value_cross_{i}") for i in range(self.config.num_hidden_layers))
-                # ),
             ]
         return input_names
 
@@ -130,19 +87,10 @@ class WhisperDecoder(torch.nn.Module):
                 *list(
                     chain.from_iterable((f"present_key_self_{i}", f"present_value_self_{i}", f"present_key_cross_{i}", f"present_value_cross_{i}") for i in range(self.config.num_hidden_layers))
                 ),
-                # *list(
-                #     chain.from_iterable((f"present_key_self_{i}", f"present_value_self_{i}") for i in range(self.config.num_hidden_layers))
-                # ),
-                # *list(
-                #     chain.from_iterable((f"present_key_cross_{i}", f"present_value_cross_{i}") for i in range(self.config.num_hidden_layers))
-                # ),
             ]
         else:
             output_names = [
                 "logits",
-                # *list(
-                #     chain.from_iterable((f"present_key_self_{i}", f"present_value_self_{i}", f"present_key_cross_{i}", f"present_value_cross_{i}") for i in range(self.config.num_hidden_layers))
-                # ),
                 *list(
                     chain.from_iterable((f"present_key_self_{i}", f"present_value_self_{i}") for i in range(self.config.num_hidden_layers))
                 ),
@@ -158,7 +106,6 @@ class WhisperDecoder(torch.nn.Module):
             sequence_length=(6 if self.first_pass else 1),
             use_fp16=use_fp16_inputs,
             use_int32=use_int32_inputs,
-            # kv_cache_transform="group" if self.no_beam_search_op else "flatten",
         )
         if return_dict:
             if self.first_pass:
@@ -360,7 +307,6 @@ class WhisperDecoder(torch.nn.Module):
             for i, output_name in enumerate(self.output_names()):
                 diff = np.abs(pt_outputs[i] - ort_outputs[i])
                 logger.warning(f"Comparing {output_name}...")
-                # logger.warning(f"PyTorch outputs vs. ONNX Runtime outputs: {diff}")
                 logger.warning(f"Max diff: {np.max(diff)}")
         except:
             pass

@@ -93,7 +93,6 @@ def get_sample_past_key_values(
         for _ in range(config.num_hidden_layers)
     ]
     return flatten_past_key_values(self_attention_kv_caches, cross_attention_kv_caches)
-    # return flatten_past_key_values(self_attention_kv_caches, cross_attention_kv_caches)
 
 # Flatten KV caches into pairs-of-4 where each pair is defined as:
 # (self_attn_key_cache, self_attn_value_cache, cross_attn_key_cache, cross_attn_value_cache)
@@ -106,22 +105,6 @@ def flatten_past_key_values(
         layer_kv_caches = (self_k_cache, self_v_cache, cross_k_cache, cross_v_cache)
         past_key_values.append(layer_kv_caches)
     return past_key_values
-
-# # Flatten KV caches into a 1D list where the list is defined as:
-# # [past_key_self_0, past_value_self_0, past_key_self_1, past_value_self_1, ...] + 
-# # [past_key_cross_0, past_value_cross_0, past_key_cross_1, past_value_cross_1, ...]
-# def flatten_past_key_values(
-#     self_attn_kv_caches: List[Tuple[torch.Tensor, torch.Tensor]],
-#     cross_attn_kv_caches: List[Tuple[torch.Tensor, torch.Tensor]],
-# ):
-#     past_key_values = []
-#     for (self_k_cache, self_v_cache) in self_attn_kv_caches:
-#         past_key_values.append(self_k_cache)
-#         past_key_values.append(self_v_cache)
-#     for (cross_k_cache, cross_v_cache) in cross_attn_kv_caches:
-#         past_key_values.append(cross_k_cache)
-#         past_key_values.append(cross_v_cache)
-#     return past_key_values
 
 # Group KV caches into two 1D lists where one list contains the self attention KV caches and
 # one list contains the cross attention KV caches
@@ -146,19 +129,6 @@ def get_sample_encoder_inputs(
 ):
     audio_features = get_sample_audio_features(config, device, batch_size, sequence_length, use_fp16)
     return {"audio_features": audio_features}
-
-# # Create inputs for first pass through decoder component of Whisper
-# def get_sample_decoder_init_inputs(
-#     config: WhisperConfig,
-#     device: torch.device,
-#     batch_size: int,
-#     sequence_length: int,
-#     use_int32: bool = True,
-#     use_fp16: bool = False,
-# ):
-#     decoder_input_ids = get_sample_decoder_input_ids(config, device, batch_size, sequence_length, use_int32)
-#     encoder_hidden_states = get_sample_encoder_hidden_states(config, device, batch_size, use_fp16)
-#     return {"decoder_input_ids": decoder_input_ids, "encoder_hidden_states": encoder_hidden_states}
 
 # Create inputs for encoder component + first pass through decoder component of Whisper
 def get_sample_encoder_decoder_init_inputs(

@@ -135,5 +135,4 @@ class WhisperEncoder(torch.nn.Module):
         # Calculate output difference
         diff = np.abs(pt_outputs - ort_outputs)
         logger.warning("Comparing encoder_hidden_states...")
-        # logger.warning(f"PyTorch outputs vs. ONNX Runtime outputs: {diff}")
         logger.warning(f"Max diff: {np.max(diff)}")

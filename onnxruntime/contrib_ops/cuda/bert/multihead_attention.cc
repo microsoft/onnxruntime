@@ -2,9 +2,10 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cuda_common.h"
+#include "contrib_ops/cpu/bert/multihead_attention_helper.h"
+#include "contrib_ops/cpu/utils/dump_tensor.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/multihead_attention.h"
-#include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/cudnn_fmha/cudnn_flash_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
@@ -174,7 +175,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                 (parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING || parameters.mask_type == AttentionMaskType::MASK_NONE) &&
                                                 nullptr != past_sequence_length && nullptr != cache_indirection &&
                                                 has_decoder_masked_multihead_attention(sm, parameters.head_size);
-  std::cout << "Use DMMHA = " << (use_decoder_masked_multihead_attention == true) << std::endl;
+  DUMP_STRING("Use DMMHA = ", (use_decoder_masked_multihead_attention == true));
   if (use_decoder_masked_multihead_attention) {
     // Kernel only works for token generation with beam search
     kernel_type = AttentionKernelType::AttentionKernel_FtCausalAttention;
@@ -193,7 +194,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                               parameters.num_heads,
                                                               parameters.num_heads);
   // When input is packed QKV format, TensorRT kernel might be faster than flash attention when sequence length <= 512.
-  std::cout << "Use flash attn = " << (use_flash_attention == true) << std::endl;
+  DUMP_STRING("Use flash attn = ", (use_flash_attention == true));
   if (use_flash_attention && parameters.qkv_format == AttentionQkvFormat::QKV_BS3NH &&
       parameters.sequence_length < kernel_options_->MinSeqLenForFlashAttentionPackedQkv()) {
     use_flash_attention = false;
@@ -232,7 +233,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                               parameters.sequence_length,        // seq_len_q
                                                               parameters.total_sequence_length,  // seq_len_kv
                                                               is_unidirectional_);
-  std::cout << "Use cuDNN SDPA = " << (use_cudnn_sdpa == true) << std::endl;
+  DUMP_STRING("Use cuDNN SDPA = ", (use_cudnn_sdpa == true));
   if (use_cudnn_sdpa) {
     kernel_type = AttentionKernelType::AttentionKernel_CudnnFlashAttention;
   }
@@ -252,7 +253,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
       parameters.hidden_size == parameters.v_hidden_size &&
       has_fused_cross_attention_kernel(sm, parameters.head_size, parameters.kv_sequence_length);
 
-  std::cout << "Use fused cross attn = " << (use_fused_cross_attention == true) << std::endl;
+  DUMP_STRING("Use fused cross attn = ", (use_fused_cross_attention == true));
   if (use_fused_cross_attention) {
     if (fused_fp16_cross_attention_kernel_ == nullptr) {
       std::call_once(fused_cross_init_once_flag_, [&]() {
@@ -282,7 +283,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
       FusedMHARunnerFP16v2::IsSupported(sm, parameters.head_size, sequence_length,
                                         enable_trt_flash_attention_, is_unidirectional_);
 
-  std::cout << "Use fused runner = " << (use_fused_runner == true) << std::endl;
+  DUMP_STRING("Use fused runner = ", (use_fused_runner == true));
   if (use_fused_runner) {
     // Here we assume that num_heads and head_size does not change for a MultiHeadAttention node.
     if (nullptr == fused_fp16_runner_.get()) {
@@ -317,7 +318,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
       nullptr == past_sequence_length && nullptr == cache_indirection && nullptr == output_qk &&
       has_memory_efficient_attention(sm, std::is_same<T, MLFloat16>::value,
                                      parameters.head_size, parameters.v_head_size);
-  std::cout << "Use memory efficient attention = " << (use_memory_efficient_attention == true) << std::endl;
+  DUMP_STRING("Use memory efficient attention = ", (use_memory_efficient_attention == true));
   if (use_memory_efficient_attention) {
     kernel_type = AttentionKernelType::AttentionKernel_CutlassMemoryEfficientAttention;
   }
@@ -431,7 +432,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   cublasHandle_t cublas = GetCublasHandle(context);
   cudnnHandle_t cudnn = GetCudnnHandle(context);
-  std::cout << "Run QkvToContext from MHA CUDA" << std::endl;
+  DUMP_STRING("Run QkvToContext from MHA CUDA");
   return QkvToContext<CudaT>(
       device_prop, cublas, cudnn, context->GetComputeStream(), parameters, data);
 }

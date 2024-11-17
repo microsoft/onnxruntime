@@ -3,6 +3,7 @@
 
 #include "contrib_ops/cpu/bert/attention_base.h"
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
+#include "contrib_ops/cpu/utils/dump_tensor.h"
 #include "core/providers/common.h"
 
 namespace onnxruntime {
@@ -235,6 +236,21 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     output_parameters->broadcast_attn_bias_dim_1 = attention_bias_dims.size() > 1 && attention_bias_dims[1] == 1;
     output_parameters->qkv_format = Q_K_V_BNSH;
   }
+
+  DUMP_STRING("Batch size = ", static_cast<int>(batch_size));
+  DUMP_STRING("Sequence length = ", static_cast<int>(sequence_length));
+  DUMP_STRING("Past sequence length = ", static_cast<int>(past_sequence_length));
+  DUMP_STRING("KV sequence length = ", static_cast<int>(kv_sequence_length));
+  DUMP_STRING("Total sequence length = ", static_cast<int>(total_sequence_length));
+  DUMP_STRING("Max sequence length = ", static_cast<int>(max_sequence_length));
+  DUMP_STRING("Input hidden size = ", static_cast<int>(input_hidden_size));
+  DUMP_STRING("Q hidden size = ", static_cast<int>(q_hidden_size));
+  DUMP_STRING("V hidden size = ", static_cast<int>(v_hidden_size));
+  DUMP_STRING("Q head size = ", static_cast<int>(q_hidden_size) / num_heads_);
+  DUMP_STRING("V head size = ", static_cast<int>(v_hidden_size) / num_heads_);
+  DUMP_STRING("Num heads = ", num_heads_);
+  DUMP_STRING("Buffer sharing = ", static_cast<int>(past_present_share_buffer_ != 0));
+  DUMP_STRING("QKV format = ", static_cast<int>(Q_K_V_BNSH));
 
   return Status::OK();
 }

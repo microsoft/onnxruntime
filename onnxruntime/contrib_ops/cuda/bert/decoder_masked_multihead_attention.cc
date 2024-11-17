@@ -237,26 +237,6 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
   }
 
   return LaunchDecoderMaskedMultiHeadAttention<T2>(parameters, cuda_stream, parameters.head_size);
-  // switch (parameters.head_size) {
-  //   case 32:
-  //     mmha_launch_kernel<T2, 32>(parameters, cuda_stream);
-  //     break;
-
-  //   case 64:
-  //     mmha_launch_kernel<T2, 64>(parameters, cuda_stream);
-  //     break;
-
-  //   case 128:
-  //     mmha_launch_kernel<T2, 128>(parameters, cuda_stream);
-  //     break;
-
-  //   default:
-  //     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-  //                            "Unsupported head size in DecoderMaskedMultiHeadAttention. "
-  //                            "Got head size: ",
-  //                            parameters.head_size);
-  // }
-  // return Status::OK();
 }
 
 }  // namespace cuda

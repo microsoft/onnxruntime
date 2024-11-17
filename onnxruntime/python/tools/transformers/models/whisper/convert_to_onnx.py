@@ -454,13 +454,6 @@ def export_onnx_models(
         else:
             output_path = onnx_path
 
-        # ort_session = create_onnxruntime_session(
-        #     output_path,
-        #     use_gpu=use_gpu,
-        #     provider=provider,
-        # )
-        # assert ort_session is not None
-
         output_paths.append(output_path)
 
     return output_paths
@@ -552,23 +545,6 @@ def main(argv=None):
             if "_beamsearch" not in fle:
                 os.remove(os.path.join(output_dir, fle))
         output_paths = [args.beam_model_output_dir]
-
-    # elif args.use_gpu and args.precision == Precision.FLOAT16 and args.no_beam_search_op:
-    #     # Replace MultiHeadAttention with DecoderMaskedMultiHeadAttention for CUDA EP inference
-    #     decoder_path = list(filter(lambda path: "decoder" in path and "encoder_decoder" not in path, output_paths))[0]
-
-    #     model = OnnxModel(onnx.load_model(decoder_path, load_external_data=True))
-    #     model = replace_mha_with_dmmha(model)
-
-    #     onnx.save(
-    #         model.model,
-    #         decoder_path,
-    #         save_as_external_data=True,
-    #         all_tensors_to_one_file=True,
-    #         convert_attribute=True,
-    #         location=f"{os.path.basename(decoder_path)}.data",
-    #     )
-    #     onnx.checker.check_model(decoder_path, full_check=True)
 
     logger.info(f"Done! Outputs: {output_paths}")
     return max_diff

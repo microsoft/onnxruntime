@@ -3,16 +3,10 @@
 
 #pragma once
 
-// #include <cuda_fp16.h>
-// #include <cublas_v2.h>
 #include <gsl/gsl>
 #include <iostream>
-// #include <mutex>
-// #include "core/framework/allocator.h"
-// #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
-// #include "contrib_ops/cuda/bert/fastertransformer_decoder_attention/decoder_masked_multihead_attention_impl.h"
 
 namespace onnxruntime {
 namespace contrib {

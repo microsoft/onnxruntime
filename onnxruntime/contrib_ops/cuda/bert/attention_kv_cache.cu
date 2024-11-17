@@ -197,53 +197,6 @@ Status LaunchConcatTensorToTensor(cudaStream_t stream,
   return CUDA_CALL(cudaGetLastError());
 }
 
-// Status LaunchConcatPastToPresent(cudaStream_t stream,
-//                                  const int all_sequence_length,
-//                                  const int sequence_length,
-//                                  const int batch_size,
-//                                  const int head_size,
-//                                  const int num_heads,
-//                                  const int max_threads_per_block,
-//                                  const float* past,
-//                                  const float* k_v,
-//                                  float* present) {
-//   return LaunchConcatTensorToTensor(
-//       stream,
-//       all_sequence_length,
-//       sequence_length,
-//       batch_size,
-//       head_size,
-//       num_heads,
-//       max_threads_per_block,
-//       2,
-//       past,
-//       k_v,
-//       present);
-// }
-
-// Status LaunchConcatPastToPresent(cudaStream_t stream,
-//                                  const int all_sequence_length,
-//                                  const int sequence_length,
-//                                  const int batch_size,
-//                                  const int head_size,
-//                                  const int num_heads,
-//                                  const int max_threads_per_block,
-//                                  const half* past,
-//                                  const half* k_v,
-//                                  half* present) {
-//   return LaunchConcatTensorToTensor(
-//       stream,
-//       all_sequence_length,
-//       sequence_length,
-//       batch_size,
-//       head_size,
-//       num_heads,
-//       max_threads_per_block,
-//       2,
-//       past,
-//       k_v,
-//       present);
-// }
 
 #ifndef USE_ROCM  // exclude the following from hipify since they are not used in ROCM EP
 

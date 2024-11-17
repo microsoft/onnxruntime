@@ -32,8 +32,6 @@ using namespace decoder_masked_self_attention_details;
     T, head_size, THDS_PER_KEY, THDS_PER_VALUE, THDS_PER_BLOCK)                                    \
   size_t dynamic_block_memory = CalcDynamicBlockMemory<T>(params, THDS_PER_VALUE, THDS_PER_BLOCK); \
   dim3 grid(params.num_heads, params.batch_size);                                                  \
-  std::cout << "Grid is: " << params.num_heads << ", " << params.batch_size << std::endl;          \
-  std::cout << "Kernel invoker is: " << sizeof(T) << ", " << head_size << ", " << THDS_PER_KEY << ", " << THDS_PER_VALUE << ", " << THDS_PER_BLOCK << std::endl; \
   masked_multihead_attention_kernel<T,                                                             \
                                     head_size,                                                     \
                                     THDS_PER_KEY,                                                  \
@@ -46,7 +44,6 @@ void mmha_launch_kernel(const DecoderMaskedMultiHeadAttentionParams& params, cud
   constexpr int THREADS_PER_VALUE = ThreadsPerValue<T, head_size>::value;
   int total_sequence_length = params.total_sequence_length;
 
-  std::cout << "Run MMHA_LAUNCH_KERNEL" << std::endl;
   if (total_sequence_length < 32) {
     MMHA_LAUNCH_KERNEL(T, head_size, 4, THREADS_PER_VALUE, 64);
   } else if (total_sequence_length < 2048) {

@@ -1354,21 +1354,6 @@ struct ToCudaTypeWrapper<int32_t> {
 };
 }  // namespace
 
-// // C++17 compatible version of bit_cast for the code below
-// template <typename TTo, typename TFrom>
-// TTo bit_cast(TFrom x) {
-//   return *reinterpret_cast<TTo*>(&x);
-// }
-
-// // IEEE-754 16-bit floating-point format (without infinity): 1-5-10, exp-15, +-131008.0, +-6.1035156E-5, +-5.9604645E-8, 3.311 digits
-// // IEEE 752-2008 binary16 format, 1 sign bit, 5 bit exponent, 10 bit fraction
-// float FastFloat16ToFloat32(const uint16_t x) {
-//   const uint32_t e = (x & 0x7C00) >> 10;  // exponent
-//   const uint32_t m = (x & 0x03FF) << 13;  // mantissa
-
-//   const uint32_t v = bit_cast<uint32_t>((float)m) >> 23;                                                                                                       // log2 bit hack to count leading zeros in denormalized format
-//   return bit_cast<float>((x & 0x8000) << 16 | (e != 0) * ((e + 112) << 23 | m) | ((e == 0) & (m != 0)) * ((v - 37) << 23 | ((m << (150 - v)) & 0x007FE000)));  // sign : normalized : denormalized
-// }
 
 template <typename T>
 Status ExpandBuffer(Stream* ort_stream,
@@ -1381,7 +1366,6 @@ Status ExpandBuffer(Stream* ort_stream,
   // Input shape (batch_size, xxx). The input is required with data type T.
   // Output shape (batch_size * num_beams, xxx)
   const TensorShape& input_shape = input.Get<Tensor>().Shape();
-  // std::cout << "Input shape is " << input_shape[0] << ", " << input_shape[1] << ", " << input_shape[2] << ", " << input_shape[3] << std::endl;
 
   const int64_t& batch_size = input_shape[0];
   int64_t sequence_length = 0;
@@ -1411,27 +1395,6 @@ Status ExpandBuffer(Stream* ort_stream,
 
   using CudaT = typename ToCudaTypeWrapper<T>::MappedType;
 
-  // auto old_size = batch_size * dims[1] * sequence_length * dims[3];
-  // if (old_size > 0) {
-  //   std::cout << "Old size is " << old_size << std::endl;
-  //   std::vector<uint16_t> presents_i(old_size);
-  //   std::vector<float> presents_i_fp32(old_size);
-
-  //   cudaMemcpy(presents_i.data(), input_data, old_size * sizeof(T), cudaMemcpyDeviceToHost);
-  //   for (int j = 0; j < old_size; j++) {
-  //     presents_i_fp32[j] = FastFloat16ToFloat32(presents_i[j]);
-  //   }
-    
-  //   std::cout << "Dumping now" << std::endl;
-  //   for (int j = 0; j < 64 * 10; j++) {
-  //     if (j != 0 && j % 64 == 0) std::cout << std::endl;
-  //     std::cout << presents_i_fp32[j] << ", ";
-  //   }
-  //   std::cout << std::endl;
-
-  //   std::cout << "Finished dumping" << std::endl;
-  // }
-
   if (max_sequence_length == 0) {
     const int64_t& chunk_size = static_cast<int64_t>(input_shape.Size() / batch_size);
 
@@ -1450,7 +1413,6 @@ Status ExpandBuffer(Stream* ort_stream,
   const int64_t& num_heads = input_shape[1];
   const int64_t& head_size = input_shape[3];
 
-  // std::cout << "Running key-cache expansion kernel" << std::endl;
   cuda::KeyCacheExpansionKernelLauncher<CudaT>(reinterpret_cast<const CudaT*>(input_data),
                                                reinterpret_cast<CudaT*>(expanded_data),
                                                static_cast<int>(batch_size),
@@ -1461,28 +1423,6 @@ Status ExpandBuffer(Stream* ort_stream,
                                                static_cast<int>(head_size),
                                                cuda_stream);
 
-  // auto new_size = batch_size * dims[1] * max_sequence_length * dims[3];
-  // std::cout << "Output shape is " << batch_size << ", " << dims[1] << ", " << max_sequence_length << ", " << dims[3] << std::endl;
-  // if (new_size > 0) {
-  //   std::cout << "New size is " << new_size << std::endl;
-  //   std::vector<uint16_t> presents_i(new_size);
-  //   std::vector<float> presents_i_fp32(new_size);
-
-  //   cudaMemcpy(presents_i.data(), expanded_data, new_size * sizeof(T), cudaMemcpyDeviceToHost);
-  //   for (int j = 0; j < new_size; j++) {
-  //     presents_i_fp32[j] = FastFloat16ToFloat32(presents_i[j]);
-  //   }
-    
-  //   std::cout << "Dumping now" << std::endl;
-  //   for (int j = 0; j < 64 * 10; j++) {
-  //     if (j != 0 && j % 64 == 0) std::cout << std::endl;
-  //     std::cout << presents_i_fp32[j] << ", ";
-  //   }
-  //   std::cout << std::endl;
-
-  //   std::cout << "Finished dumping" << std::endl;
-  // }
-  
   return Status::OK();
 }
 

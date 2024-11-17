@@ -242,7 +242,7 @@ class WhisperHelper:
         ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
         input_features_ = []
         if batch_size == 1:
-            input_features = processor([ds[42]["audio"]["array"]], return_tensors="pt").input_features
+            input_features = processor([ds[0]["audio"]["array"]], return_tensors="pt").input_features
         else:
             input_features_ = [
                 processor([ds[3]["audio"]["array"]], return_tensors="pt").input_features,
@@ -401,29 +401,28 @@ class WhisperHelper:
             else:
                 inputs[name] = np.array([inputs[name]], dtype=ort_to_np[dtype])
         ort_outputs = ort_session.run(None, inputs)[0][:, 0, :]
-        print(ort_outputs)
         ort_transcription = processor.batch_decode(ort_outputs, skip_special_tokens=True)
         expected_transcription_options = WhisperHelper.select_transcription_options(batch_size, prompt_mode)
 
-        # parity = 1
-        # for i in range(batch_size):
-        #     parity *= (
-        #         pt_transcription[i] in expected_transcription_options
-        #         and ort_transcription[i] in expected_transcription_options
-        #     )
-        # max_diff = 0
+        parity = 1
+        for i in range(batch_size):
+            parity *= (
+                pt_transcription[i] in expected_transcription_options
+                and ort_transcription[i] in expected_transcription_options
+            )
+        max_diff = 0
 
-        # if not parity:
-        #     for i in range(batch_size):
-        #         if pt_outputs[i].shape != ort_outputs[i].shape:
-        #             diff = pt_outputs[i] - ort_outputs[i][:, : len(pt_outputs[i])]
-        #         else:
-        #             diff = pt_outputs[i] - ort_outputs[i]
-        #         max_diff_i = max(diff.min(), diff.max(), key=abs)
-        #         max_diff = max(max_diff, max_diff_i)
+        if not parity:
+            for i in range(batch_size):
+                if pt_outputs[i].shape != ort_outputs[i].shape:
+                    diff = pt_outputs[i] - ort_outputs[i][:, : len(pt_outputs[i])]
+                else:
+                    diff = pt_outputs[i] - ort_outputs[i]
+                max_diff_i = max(diff.min(), diff.max(), key=abs)
+                max_diff = max(max_diff, max_diff_i)
 
-        # if max_diff != 0:
-        logger.warning(f"PyTorch outputs: {pt_transcription}")
-        logger.warning(f"ONNX Runtime outputs: {ort_transcription}")
+        if max_diff != 0:
+            logger.warning(f"PyTorch outputs: {pt_transcription}")
+            logger.warning(f"ONNX Runtime outputs: {ort_transcription}")
 
         return 0

@@ -90,16 +90,6 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
                 *list(
                     chain.from_iterable((f"present_key_self_{i}", f"present_value_self_{i}", f"present_key_cross_{i}", f"present_value_cross_{i}") for i in range(self.config.num_hidden_layers))
                 ),
-                # *list(
-                #     chain.from_iterable(
-                #         (f"present_key_self_{i}", f"present_value_self_{i}") for i in range(self.config.num_hidden_layers)
-                #     )
-                # ),
-                # *list(
-                #     chain.from_iterable(
-                #         (f"present_key_cross_{i}", f"present_value_cross_{i}") for i in range(self.config.num_hidden_layers)
-                #     )
-                # ),
             ]
         return output_names
 
@@ -291,10 +281,6 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
             (self_attn_kv_caches, cross_attn_kv_caches) = group_past_key_values(out[2])
             pt_outputs.extend([self_attn_kv_cache.detach().cpu().numpy() for self_attn_kv_cache in self_attn_kv_caches])
             pt_outputs.extend([cross_attn_kv_cache.detach().cpu().numpy() for cross_attn_kv_cache in cross_attn_kv_caches])
-            # for present_key_value_layer in out[2]:
-            #     for (self_k_cache, self_v_cache, cross_k_cache, cross_v_cache) in present_key_value_layer:
-            #         print(present_key_value.shape)
-            #         pt_outputs.append(present_key_value.detach().cpu().numpy())
 
         # Run ONNX model
         sess = InferenceSession(onnx_model_path, providers=[provider])
@@ -304,5 +290,4 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         for i, output_name in enumerate(self.output_names()):
             diff = np.abs(pt_outputs[i] - ort_outputs[i])
             logger.warning(f"Comparing {output_name}...")
-            # logger.warning(f"PyTorch outputs vs. ONNX Runtime outputs: {diff}")
             logger.warning(f"Max diff: {np.max(diff)}")

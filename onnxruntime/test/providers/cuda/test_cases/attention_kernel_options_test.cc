@@ -10,7 +10,6 @@
 
 #include <unordered_map>
 #include <string>
-use
 using onnxruntime::AttentionKernelOptions;
 using onnxruntime::contrib::attention::AttentionBackend;
 

@@ -1431,11 +1431,6 @@ def fix_past_sequence_length(model: ModelProto):
     model.model.graph.value_info.extend([squeeze_output, cast_output])
 
     # Add `past_seq_len_int64` as an input name to existing nodes
-    # for node in model.model.graph.node:
-    #     if node.name == left_path[1].name:
-    #         node.input[0] = past_seq_len_int64
-    #     elif node.name == right_path[0].name:
-    #         node.input[0] = past_seq_len_int64
     left_path[1].input[0] = past_seq_len_int64
     right_path[0].input[0] = past_seq_len_int64
 

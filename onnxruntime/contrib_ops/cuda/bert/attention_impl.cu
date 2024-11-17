@@ -457,39 +457,39 @@ Status LaunchDecoderMaskedMultiHeadAttention(
   cudaStream_t stream,
   const int head_size) {
 
-  std::cout << "DMMHA parameters..." << std::endl;
-  std::cout << "is_mha = " << (parameters.is_mha == true) << std::endl;
-  std::cout << "is_cross_attention = " << (parameters.is_cross_attention == true) << std::endl;
-  std::cout << "is_packed_qkv = " << (parameters.is_packed_qkv == true) << std::endl;
-  std::cout << "kv_data_in_flight = " << (parameters.kv_data_in_flight == true) << std::endl;
+  DUMP_STRING("DMMHA parameters...");
+  DUMP_STRING("is_mha = ", (parameters.is_mha == true));
+  DUMP_STRING("is_cross_attention = ", (parameters.is_cross_attention == true));
+  DUMP_STRING("is_packed_qkv = ", (parameters.is_packed_qkv == true));
+  DUMP_STRING("kv_data_in_flight = ", (parameters.kv_data_in_flight == true));
 
-  std::cout << "Batch size = " << parameters.batch_size << std::endl;
-  std::cout << "Sequence length = " << parameters.sequence_length << std::endl;
-  std::cout << "Num heads = " << parameters.num_heads << std::endl;
-  std::cout << "Head size = " << parameters.head_size << std::endl;
-  std::cout << "Hidden size = " << parameters.hidden_size << std::endl;
+  DUMP_STRING("Batch size = ", parameters.batch_size);
+  DUMP_STRING("Sequence length = ", parameters.sequence_length);
+  DUMP_STRING("Num heads = ", parameters.num_heads);
+  DUMP_STRING("Head size = ", parameters.head_size);
+  DUMP_STRING("Hidden size = ", parameters.hidden_size);
 
-  std::cout << "Past sequence length = " << parameters.past_sequence_length << std::endl;
-  std::cout << "KV sequence length = " << parameters.kv_sequence_length << std::endl;
-  std::cout << "Total sequence length = " << parameters.total_sequence_length << std::endl;
-  std::cout << "Max sequence length = " << parameters.max_sequence_length << std::endl;
+  DUMP_STRING("Past sequence length = ", parameters.past_sequence_length);
+  DUMP_STRING("KV sequence length = ", parameters.kv_sequence_length);
+  DUMP_STRING("Total sequence length = ", parameters.total_sequence_length);
+  DUMP_STRING("Max sequence length = ", parameters.max_sequence_length);
 
-  std::cout << "parameters.k is null = " << (parameters.k == nullptr) << std::endl;
-  std::cout << "parameters.v is null = " << (parameters.v == nullptr) << std::endl;
-  std::cout << "parameters.k_cache is null = " << (parameters.k_cache == nullptr) << std::endl;
-  std::cout << "parameters.v_cache is null = " << (parameters.v_cache == nullptr) << std::endl;
+  DUMP_STRING("parameters.k is null = ", (parameters.k == nullptr));
+  DUMP_STRING("parameters.v is null = ", (parameters.v == nullptr));
+  DUMP_STRING("parameters.k_cache is null = ", (parameters.k_cache == nullptr));
+  DUMP_STRING("parameters.v_cache is null = ", (parameters.v_cache == nullptr));
 
-  std::cout << "parameters.q_bias is null = " << (parameters.q_bias == nullptr) << std::endl;
-  std::cout << "parameters.k_bias is null = " << (parameters.k_bias == nullptr) << std::endl;
-  std::cout << "parameters.v_bias is null = " << (parameters.v_bias == nullptr) << std::endl;
+  DUMP_STRING("parameters.q_bias is null = ", (parameters.q_bias == nullptr));
+  DUMP_STRING("parameters.k_bias is null = ", (parameters.k_bias == nullptr));
+  DUMP_STRING("parameters.v_bias is null = ", (parameters.v_bias == nullptr));
 
-  std::cout << "parameters.attention_bias is null = " << (parameters.attention_bias == nullptr) << std::endl;
-  std::cout << "Scale = " << parameters.scale << std::endl;
-  std::cout << "Mask = " << parameters.mask << std::endl;
-  std::cout << "Mask filter value = " << parameters.mask_filter_value << std::endl;
+  DUMP_STRING("parameters.attention_bias is null = ", (parameters.attention_bias == nullptr));
+  DUMP_STRING("Scale = ", parameters.scale);
+  DUMP_STRING("Mask = ", parameters.mask);
+  DUMP_STRING("Mask filter value = ", parameters.mask_filter_value);
 
-  std::cout << "Beam width = " << parameters.beam_width << std::endl;
-  std::cout << "parameters.cache_indir is null = " << (parameters.cache_indir == nullptr) << std::endl;
+  DUMP_STRING("Beam width = ", parameters.beam_width);
+  DUMP_STRING("parameters.cache_indir is null = ", (parameters.cache_indir == nullptr));
 
   switch (head_size) {
     case 32:
@@ -497,7 +497,6 @@ Status LaunchDecoderMaskedMultiHeadAttention(
       break;
 
     case 64:
-      std::cout << "Launch MMHA kernel with head_size = 64" << std::endl;
       mmha_launch_kernel<T2, 64>(parameters, stream);
       break;
 
@@ -569,11 +568,9 @@ Status DecoderMaskedMultiHeadAttention(
   p.out_qk = data.output_qk;
 
   if (std::is_same<T, float>::value) {
-    std::cout << "Launch float32 DMMHA kernel" << std::endl;
     return LaunchDecoderMaskedMultiHeadAttention<float>(p, stream, parameters.head_size);
   }
   if (std::is_same<T, half>::value) {
-    std::cout << "Launch float16 DMMHA kernel" << std::endl;
     return LaunchDecoderMaskedMultiHeadAttention<uint16_t>(p, stream, parameters.head_size);
   }
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DecoderMaskedMultiHeadAttention is only implemented for float and float16.");
@@ -799,8 +796,6 @@ Status PastPresentBufferShare(int batch_size, int num_heads, int qk_head_size, i
   }
 
   if (combined_key_value) { // Attention op
-    // assert(data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH ||
-    //        data.qkv_format == AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH);
     assert(data.gemm_buffer != nullptr);
 
     if (data.present != data.past) {
@@ -813,7 +808,6 @@ Status PastPresentBufferShare(int batch_size, int num_heads, int qk_head_size, i
     const T* bias = (nullptr != fused_runner && parameters.is_unidirectional) ? nullptr : data.bias;
 
     // append last k v to present
-    std::cout << "LaunchAddBiasTransAppendKvToPresent" << std::endl;
     ORT_RETURN_IF_ERROR(LaunchAddBiasTransAppendKvToPresent(
         stream, parameters.max_sequence_length, parameters.past_sequence_length, sequence_length,
         batch_size, qk_head_size, num_heads, max_threads_per_block,
@@ -887,7 +881,7 @@ Status QkvToContext(
           static_cast<int>(data.fused_cross_attention_kernel != nullptr) +
           static_cast<int>(data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention)) <= 1);
 
-  std::cout << "Preparing q, k, v" << std::endl;
+  DUMP_STRING("Preparing Q, K, V");
   ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, stream, max_threads_per_block));
 
   if (!parameters.past_present_share_buffer) {
@@ -903,13 +897,13 @@ Status QkvToContext(
 
   // Q, K and V are ready now
   if (data.fused_cross_attention_kernel != nullptr) {
-    std::cout << "FusedTrtCrossAttention" << std::endl;
+    DUMP_STRING("FusedTrtCrossAttention");
     return FusedTrtCrossAttention(stream, parameters, data);
   }
 
   // Run TRT fused attention.
   if (nullptr != fused_runner) {
-    std::cout << "FusedTrtSelfAttention" << std::endl;
+    DUMP_STRING("FusedTrtSelfAttention");
     return FusedTrtSelfAttention(stream, parameters, data);
   }
 
@@ -919,29 +913,29 @@ Status QkvToContext(
 
 #if USE_FLASH_ATTENTION
   if (data.use_flash_attention) {
-    std::cout << "FlashAttention" << std::endl;
+    DUMP_STRING("FlashAttention");
     return FlashAttention(device_prop, stream, parameters, data, scale);
   }
 #endif
 
   if (data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention) {
-    std::cout << "CudnnFlashAttention" << std::endl;
+    DUMP_STRING("CudnnFlashAttention");
     return CudnnFlashAttention(cudnn, ort_stream, parameters, data, scale);
   }
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
   if (data.use_memory_efficient_attention) {
-    std::cout << "EfficientAttention" << std::endl;
+    DUMP_STRING("EfficientAttention");
     return EfficientAttention(device_prop, stream, parameters, data, scale);
   }
 #endif
 
   if (data.use_decoder_masked_multihead_attention) {
-    std::cout << "DecoderMaskedMHA" << std::endl;
+    DUMP_STRING("DecoderMaskedMHA");
     return DecoderMaskedMultiHeadAttention(stream, parameters, data, scale);
   }
 
-  std::cout << "UnfusedAttention" << std::endl;
+  DUMP_STRING("UnfusedAttention");
   return UnfusedAttention(device_prop, cublas, ort_stream, parameters, data, scale);
 }
 

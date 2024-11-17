@@ -7,6 +7,7 @@
 #include "core/providers/common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
+#include "contrib_ops/cpu/utils/dump_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -389,7 +390,6 @@ Status CheckInputs(const T* query,
 
   int past_sequence_length = 0;
   int max_sequence_length = 0;
-  // bool is_cross_attention = false;
   if (past_key != nullptr && past_value != nullptr) {
     ORT_RETURN_IF_ERROR(CheckPast(past_key, past_value, past_seq_len,
                                   batch_size, num_heads, head_size, past_present_share_buffer,
@@ -398,13 +398,6 @@ Status CheckInputs(const T* query,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'past_key' and 'past_value' shall be both present or both absent");
   }
-  // else if (past_seq_len != nullptr) {
-  //   // Cross attention
-  //   // past_sequence_length = *((*past_seq_len).template Data<int32_t>());
-  //   max_sequence_length = kv_sequence_length;
-  //   is_cross_attention = true;
-  // }
-  // int total_sequence_length = is_cross_attention ? kv_sequence_length : past_sequence_length + kv_sequence_length;
 
   if (operator_type == kMultiHeadAttention) {
     if (qkv_format == AttentionQkvFormat::QKV_BS3NH) {
@@ -482,17 +475,17 @@ Status CheckInputs(const T* query,
     output_parameters->beam_width = num_beams;
   }
 
-  std::cout << "Batch size = " << batch_size << std::endl;
-  std::cout << "Sequence length = " << sequence_length << std::endl;
-  std::cout << "Past sequence length = " << past_sequence_length << std::endl;
-  std::cout << "KV sequence length = " << kv_sequence_length << std::endl;
-  std::cout << "Total sequence length = " << total_sequence_length << std::endl;
-  std::cout << "Max sequence length = " << max_sequence_length << std::endl;
-  std::cout << "Hidden size = " << hidden_size << std::endl;
-  std::cout << "Head size = " << head_size << std::endl;
-  std::cout << "Num heads = " << num_heads << std::endl;
-  std::cout << "Buffer sharing = " << (past_present_share_buffer == true) << std::endl;
-  std::cout << "QKV format = " << qkv_format << std::endl;
+  DUMP_STRING("Batch size = ", batch_size);
+  DUMP_STRING("Sequence length = ", sequence_length);
+  DUMP_STRING("Past sequence length = ", past_sequence_length);
+  DUMP_STRING("KV sequence length = ", kv_sequence_length);
+  DUMP_STRING("Total sequence length = ", total_sequence_length);
+  DUMP_STRING("Max sequence length = ", max_sequence_length);
+  DUMP_STRING("Hidden size = ", hidden_size);
+  DUMP_STRING("Head size = ", head_size);
+  DUMP_STRING("Num heads = ", num_heads);
+  DUMP_STRING("Buffer sharing = ", (past_present_share_buffer == true));
+  DUMP_STRING("QKV format = ", qkv_format);
 
   return Status::OK();
 }
