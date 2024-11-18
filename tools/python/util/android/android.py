@@ -4,6 +4,7 @@
 import collections
 import contextlib
 import datetime
+import os
 import signal
 import subprocess
 import time
@@ -123,11 +124,13 @@ def start_emulator(
             "America/Los_Angeles",
             "-no-snapstorage",
             "-no-audio",
-            "-no-bt", # No bluetooth
+            "-no-snapshot", # No bluetooth
             "-no-boot-anim",
             "-gpu",
             "guest",
             "-delay-adb",
+            "-prop persist.sys.disable_bluetooth=true",
+            "-verbose",
         ]
 
         # For Linux CIs we must use "-no-window" otherwise you'll get
@@ -229,7 +232,7 @@ def is_emulator_running_by_avd(avd_name: str) -> bool:
         running_emulators = [line.split("\t")[0] for line in result.splitlines()[1:] if "emulator" in line]
 
         if not running_emulators:
-            _log.warning("No emulators running.")
+            _log.debug("No emulators running.")
             return False  # No emulators running
 
         # Step 2: Check each running emulator's AVD name
@@ -252,7 +255,7 @@ def is_emulator_running_by_proc(emulator_proc: subprocess.Popen) -> bool:
     """Check if the emulator process is running based on a Popen instance."""
     return emulator_proc.poll() is None
 
-import os
+
 def is_emulator_running_by_pid(emulator_pid: int) -> bool:
     """Check if the emulator process is running based on PID."""
     try:
