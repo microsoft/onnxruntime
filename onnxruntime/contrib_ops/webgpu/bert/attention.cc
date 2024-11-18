@@ -225,7 +225,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
                                (parameters.sequence_length_ + tile_size - 1) / tile_size,
                                parameters.batch_size_ * parameters.num_heads_)
       .SetWorkgroupSize(tile_size, tile_size)
-      .CacheHint(std::to_string(tile_size), parameters.past_present_share_buffer_, past_key != nullptr, seqlen_k != nullptr)
+      .CacheHint(std::to_string(tile_size), parameters.past_present_share_buffer_, feed_past_key, has_present_key, has_attention_bias, seqlen_k != nullptr)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                             {static_cast<uint32_t>(vectorized_head_size)},
                             {static_cast<uint32_t>(total_sequence_length)},
@@ -460,7 +460,7 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
   program.SetDispatchGroupSize((parameters.v_head_size_ + tile_size - 1) / tile_size,
                                (parameters.sequence_length_ + tile_size - 1) / tile_size,
                                parameters.batch_size_ * parameters.num_heads_)
-      .CacheHint(std::to_string(tile_size), parameters.past_present_share_buffer_, past_value != nullptr, seqlen_k != nullptr)
+      .CacheHint(std::to_string(tile_size), parameters.past_present_share_buffer_, feed_past_value, has_present_value, seqlen_k != nullptr)
       .SetWorkgroupSize(tile_size, tile_size)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                             {static_cast<uint32_t>(total_sequence_length)},
@@ -483,7 +483,7 @@ Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const T
                       WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k) {
   const int output_count = std::min({context.OutputCount(), 1 + (past_key != nullptr ? 1 : 0) + (past_value != nullptr ? 1 : 0)});
   const int past_sequence_length = output_count > 1 ? parameters.past_sequence_length_ : 0;
-  const int total_sequence_length = seqlen_k == nullptr ? (past_sequence_length + parameters.kv_sequence_length_) : parameters.seqlen_present_kv_cache_;
+  const int total_sequence_length = past_sequence_length + parameters.kv_sequence_length_;
 
   const TensorShapeVector probs_dims({parameters.batch_size_, parameters.num_heads_,
                                       parameters.sequence_length_, total_sequence_length});
