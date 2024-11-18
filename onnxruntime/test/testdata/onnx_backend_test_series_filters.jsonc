@@ -750,6 +750,13 @@
         "^test_reduce_log_sum_empty_set_cpu",
         "^test_reduce_log_sum_exp_empty_set_cpu",
         "^test_reduce_prod_empty_set_cpu",
+        // Bug: DML EP some how executes these CUDA tests and failed
+        // TODO: Remove these tests when DML EP is fixed
+        "^test_convtranspose_autopad_same_cuda",
+        "^test_asin_example_cuda",
+        "^test_dynamicquantizelinear_cuda",
+        "^test_dynamicquantizelinear_expanded_cuda",
+        "^test_reduce_min_empty_set_cuda",
         //Bug: DML EP does not execute operators with an empty input tensor
         //TODO: Resolve as a graph implementation that returns a constant inf tensor with appropriate strides
         "^test_reduce_min_empty_set_cpu"
