@@ -33,15 +33,16 @@ ONNX Runtime Training is aligned with PyTorch CUDA versions; refer to the Optimi
 
 Because of [Nvidia CUDA Minor Version Compatibility](https://docs.nvidia.com/deploy/cuda-compatibility/#minor-version-compatibility), ONNX Runtime built with CUDA 11.8 are compatible with any CUDA 11.x version; ONNX Runtime built with CUDA 12.x are compatible with any CUDA 12.x version.
 
-ONNX Runtime built with cuDNN 8.x is not compatible with cuDNN 9.x, and vice versa. You can choose the package based on CUDA and cuDNN major versions that match your runtime environment (For example, PyTorch 2.3 uses cuDNN 8.x, while PyTorch 2.4 or later used cuDNN 9.x).
+ONNX Runtime built with cuDNN 8.x is not compatible with cuDNN 9.x, and vice versa. You can choose the package based on CUDA and cuDNN major versions that match your runtime environment (e.g., PyTorch 2.3 uses cuDNN 8.x, while PyTorch 2.4 or later uses cuDNN 9.x).
 
-Note: starting ORT 1.19, **CUDA 12.x** becomes default version when distributing ONNX Runtime GPU packages in pypi.
+Note: Starting with version 1.19, **CUDA 12.x** becomes the default version when distributing [ONNX Runtime GPU packages](https://pypi.org/project/onnxruntime-gpu/) in PyPI.
 
 ### CUDA 12.x
 
 | ONNX Runtime  | CUDA   | cuDNN | Notes                                                                |
 |---------------|--------|-------|----------------------------------------------------------------------|
-| 1.19.x        | 12.x   | 9.x   | Avaiable in pypi. Compatible with PyTorch >= 2.4.0 for cuda 12.x.    | 
+| 1.20.x        | 12.x   | 9.x   | Avaiable in PyPI. Compatible with PyTorch >= 2.4.0 for CUDA 12.x.    | 
+| 1.19.x        | 12.x   | 9.x   | Avaiable in PyPI. Compatible with PyTorch >= 2.4.0 for CUDA 12.x.    | 
 | 1.18.1        | 12.x   | 9.x   | cuDNN 9 is required. No Java package.                                | 
 | 1.18.0        | 12.x   | 8.x   | Java package is added.                                               |
 | 1.17.x        | 12.x   | 8.x   | Only C++/C# Nuget and Python packages are released. No Java package. |
@@ -50,8 +51,9 @@ Note: starting ORT 1.19, **CUDA 12.x** becomes default version when distributing
 
 | ONNX Runtime         | CUDA   | cuDNN                                   | Notes                                                                                                                                       |
 |----------------------|--------|-----------------------------------------|---------------------------------------------------------------------------------------------------------------------------------------------|
-| 1.19.x               | 11.8   | 8.x                                     | Not available in pypi. See [Install ORT](../install) for detail. Compatible with PyTorch <= 2.3.1 for CUDA 11.8.                            |
-| 1.18.x               | 11.8   | 8.x                                     | Available in pypi                                                                                                                           |
+| 1.20.x               | 11.8   | 8.x                                     | Not available in PyPI. See [Install ORT](../install) for details. Compatible with PyTorch <= 2.3.1 for CUDA 11.8.                           |
+| 1.19.x               | 11.8   | 8.x                                     | Not available in PyPI. See [Install ORT](../install) for details. Compatible with PyTorch <= 2.3.1 for CUDA 11.8.                           |
+| 1.18.x               | 11.8   | 8.x                                     | Available in PyPI.                                                                                                                          |
 | 1.17<br>1.16<br>1.15 | 11.8   | 8.2.4 (Linux)<br/>8.5.0.96 (Windows)    | Tested with CUDA versions from 11.6 up to 11.8, and cuDNN from 8.2 up to 8.9                                                                |
 | 1.14<br>1.13         | 11.6   | 8.2.4 (Linux)<br/>8.5.0.96 (Windows)    | libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.5.2<br/>libcublas 11.6.5.2<br/>libcudnn 8.2.4       |
 | 1.12<br>1.11         | 11.4   | 8.2.4 (Linux)<br/>8.2.2.26 (Windows)    | libcudart 11.4.43<br/>libcufft 10.5.2.100<br/>libcurand 10.2.5.120<br/>libcublasLt 11.6.5.2<br/>libcublas 11.6.5.2<br/>libcudnn 8.2.4       |

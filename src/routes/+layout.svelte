@@ -11,6 +11,7 @@
 
 <svelte:head>
 	{@html oneLight}
+	{#if !data.pathname.startsWith('/blogs/')}
 	<title
 		>ONNX Runtime | {data.pathname == '/'
 			? 'Home'
@@ -28,6 +29,8 @@
 	<meta property="twitter:title" content={"ONNX Runtime |" + data.pathname == '/'
 	? 'Home'
 	: data.pathname.substring(1).charAt(0).toUpperCase() + data.pathname.substring(2)} />
+	{/if}
+	
 	<meta property="twitter:url" content={url + data.pathname} />
 	<meta property="og:url" content={url + data.pathname} />
 

@@ -144,6 +144,8 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 
 Dockerfile instructions are available [here](https://github.com/microsoft/onnxruntime/tree/main/dockerfiles#tensorrt)
 
+**Note** Building with `--use_tensorrt_oss_parser` with TensorRT 8.X requires additional flag --cmake_extra_defines onnxruntime_USE_FULL_PROTOBUF=ON
+
 ---
 
 ## NVIDIA Jetson TX1/TX2/Nano/Xavier/Orin

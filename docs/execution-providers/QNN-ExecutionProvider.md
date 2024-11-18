@@ -124,8 +124,13 @@ Alternatively to setting profiling_level at compile time, profiling can be enabl
 
 |`"enable_htp_fp16_precision"`|Description [Example](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/QNN_EP/mobilenetv2_classification)|
 |---|---|
-|'0'|default.|
-|'1'|Enable the float32 model to be inferenced with fp16 precision.|
+|'0'|disabled. Inferenced with fp32 precision if it's fp32 model.|
+|'1'|default. Enable the float32 model to be inferenced with fp16 precision.|
+
+|`"offload_graph_io_quantization"`|Description|
+|---|---|
+|'0'|default. Disabled. QNN EP will handle quantization and dequantization of graph I/O.|
+|'1'|Enabled. Offload quantization and dequantization of graph I/O to CPU EP.|
 
 ## Supported ONNX operators
 
@@ -459,20 +464,20 @@ If user creates the QNN context binary .bin file weight sharing from QNN toolcha
 
 ### Inference with QNN resource sharing workflow
 OnnxRuntime inference session need to have resource sharing enabled (set session option ep.share_ep_contexts to 1) to use the dumped Qnn context model with weight sharing enabled.
-1. Create OnnxRuuntime inference session with ep.share_ep_contexts=1, loads the model1.onnx_ctx.onnx model.
- 1.1 The session loads the model1.onnx_ctx.onnx model.
- 1.2 The shared place is empty.
- 1.3 EPContext node1 in model1.onnx_ctx.onnx specifies that it uses Qnn_graph1
- 1.4 QNN EP loads the qnn_ctx.bin and deserialize the binary to get Qnn graphs (Qnn_graph1, Qnn_graph2).
- 1.5 Uses Qnn_graph1 for this OnnxRuntime session.
- 1.6 Put the Qnn_graph2 into the shared place.
-2. Create OnnxRuuntime inference session with ep.share_ep_contexts=1, loads the model2.onnx_ctx.onnx model.
- 2.1 The session loads the model2.onnx_ctx.onnx model.
- 2.2 The EPContext node2 in model2.onnx_ctx.onnx specifies that it uses Qnn_graph2.
- 2.3 The shared place has Qnn_graph2.
- 2.4 QNN EP skips loading qnn_ctx.bin since it gets what it wants from the shared place.
- 2.5 Uses Qnn_graph2 from the shared place for this session.
-3. To avoid issues while existing execution, user needs to destroy the 2nd session first, then the 1st session.
+- Create OnnxRuntime inference session with ep.share_ep_contexts=1, loads the model1.onnx_ctx.onnx model.
+  - The session loads the model1.onnx_ctx.onnx model.
+  - The shared place is empty.
+  - EPContext node1 in model1.onnx_ctx.onnx specifies that it uses Qnn_graph1
+  - QNN EP loads the qnn_ctx.bin and deserialize the binary to get Qnn graphs (Qnn_graph1, Qnn_graph2).
+  - Uses Qnn_graph1 for this OnnxRuntime session.
+  - Put the Qnn_graph2 into the shared place.
+- Create OnnxRuntime inference session with ep.share_ep_contexts=1, loads the model2.onnx_ctx.onnx model.
+  - The session loads the model2.onnx_ctx.onnx model.
+  - The EPContext node2 in model2.onnx_ctx.onnx specifies that it uses Qnn_graph2.
+  - The shared place has Qnn_graph2.
+  - QNN EP skips loading qnn_ctx.bin since it gets what it wants from the shared place.
+  - Uses Qnn_graph2 from the shared place for this session.
+- To avoid issues while existing execution, user needs to destroy the 2nd session first, then the 1st session.
 
 [Code example](https://github.com/microsoft/onnxruntime/blob/291a5352b27ded5714e5748b381f2efb88f28fb9/onnxruntime/test/providers/qnn/qnn_ep_context_test.cc#L979-L992).
 
@@ -502,3 +507,65 @@ sess = ort.InferenceSession(model_path, providers=['QNNExecutionProvider'], prov
 ## Error handling
 ### HTP SubSystem Restart - [SSR](https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/htp_backend.html#subsystem-restart-ssr-)
 QNN EP returns StatusCode::ENGINE_ERROR regarding QNN HTP SSR issue. Uppper level framework/application should recreate Onnxruntime session if this error detected during session run.
+
+
+## Add new operator support in QNN EP
+To enable new operator support in EP, areas to visit:
+- QDQ script support this Op? [code example](https://github.com/microsoft/onnxruntime/pull/14867/files#diff-b1ea073c326fef46054382117c256f106d39bd7c34539d44c6e6d9e9eacc059c)
+- Onnxruntime QDQ node unit support this Op? [code example](https://github.com/microsoft/onnxruntime/pull/14867/files#diff-ce0281aaf63e03ecadd592240e41f18742bf8eb095b3725c0e55e589c890946f)
+- Is it layout sensitive operator?
+  - Registered in LayoutTransformer?
+    [code example](https://github.com/microsoft/onnxruntime/blob/6d464748ba7fed2275ecba3a7406298cabc93438/onnxruntime/core/optimizer/transpose_optimizer/transpose_optimizer.cc#L2168)
+  - NHWC op schema registered?
+    Example error message: <lambda_acc29b18d21b7c13448c4952cd957a60>::operator ()] Model face_det_qdq failed to load:Fatal error: com.ms.internal.nhwc:BatchNormalization(9) is not a registered function/op
+    [Example PR](https://github.com/microsoft/onnxruntime/pull/15278)
+
+### Example PRs to enable new operators:
+- Non-layout sensitive operator. [Enable Hardsigmoid for QNN EP using SDK support direct support](https://github.com/microsoft/onnxruntime/pull/20956)
+
+- Layout sensitive operator. [Add InstanceNormalization operator to QNN EP](https://github.com/microsoft/onnxruntime/pull/14867)
+
+
+## Mixed precision support
+The following figure demonstrates an example of mixed precision model.
+<p align="center"><img width="100%" src="../../images/quantization_mixed_precision_1.png" alt="mixed precision model"/></p>
+A mixed precision QDQ model consists of regions with different activation/weight quantization data types. The boundary between regions converts between activation quantization data types (e.g., uint8 to uint16) using a DQ to Q sequence.
+
+The ability to specify regions with different quantization data types enables exploring the tradeoffs between accuracy and latency. A higher integer precision may improve accuracy at the expense of latency, so selectively promoting certain regions to a higher precision can aid in achieving a desirable balance in key metrics.
+
+The following figure shows a model with a region that has been promoted to 16-bit from the default 8-bit activation type.
+<p align="center"><img width="60%" src="../../images/quantization_mixed_precision_2.png" alt="mixed precision layers"/></p>
+
+This model is quantized to uint8 precision, but tensor "Op4_out" is quantized to 16-bit. This can be achieved by specifying the following initial tensor quantization overrides:
+
+```
+# Op4_out could be an inaccurate tensor that should be upgraded to 16bit
+initial_overrides = {"Op4_out": [{"quant_type": QuantType.QUInt16}]}
+
+qnn_config = get_qnn_qdq_config(
+    float_model_path,
+    data_reader,
+    activation_type=QuantType.QUInt8,
+    weight_type=QuantType.QUInt8,
+    init_overrides=initial_overrides,  # These initial overrides will be "fixed"
+)
+```
+
+The above snippet generates the following "fixed" overrides (get via qnn_config.extra_options["TensorQuantOverrides"]):
+
+```
+overrides = {
+  “Op2_out”: [{“quant_type”: QUInt8, “convert”: {“quant_type”: QUInt16, “recv_nodes”: {“Op4”}}}],
+  “Op3_out”: [{“quant_type”: QUInt8, “convert”: {“quant_type”: QUInt16, “recv_nodes”: {“Op5”}}}],
+  “Op4_out”: [{“quant_type”: QUInt16}],
+  “Op5_out”: [{“quant_type”: QUInt16, “convert”: {“quant_type”: QUInt8, “recv_nodes”: {“Op6”}}}]
+}
+```
+
+After the override, the model works like this:
+
+- Op2’s output is consumed by Op4, Op7, and Op8. Op4 consumes the converted u16 type, while Op7 and Op8 consume the original u8 type.
+- Op3’s output is converted from u8 to u16. Op5 consumes the converted u16 type.
+- Op4’s output is just u16 (not converted).
+- Op5’s output is converted from u16 to u8. Op6 consumes the u8 type.
+

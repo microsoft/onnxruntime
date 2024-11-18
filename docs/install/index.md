@@ -294,7 +294,7 @@ pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/O
     <!-- TODO (baijumeswani) - Update to Training link once published -->
     <td><a href="https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime">Microsoft.ML.OnnxRuntime.Training</a></td>
     <td>
-      <pre lang="bash">dotnet add package Microsoft.ML.OnnxRuntime.Training</pre>
+      <code>dotnet add package Microsoft.ML.OnnxRuntime.Training</code>
     </td>
   </tr>
   <!-- <tr>
@@ -323,7 +323,7 @@ pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/O
     <td>Python</td>
     <td><a href="https://pypi.org/project/onnxruntime-training/">onnxruntime-training</a></td>
     <td>
-      <pre lang="bash">pip install onnxruntime-training</pre>
+      <code>pip install onnxruntime-training</code>
     </td>
   </tr>
   <tr>
@@ -345,19 +345,19 @@ pip install -i https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/O
     <td><a href="https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android">onnxruntime-training-android</a></td>
     <td>In your Android Studio Project, make the following changes to:
       <ol>
-        <li>build.gradle (Project):
-          <pre lang="gradle">
+        <li>build.gradle (Project): 
+          <code>
 repositories {
     mavenCentral()
 }
-          </pre>
+          </code>
         </li>
-        <li>build.gradle (Module):
-          <pre lang="gradle">
+        <li>build.gradle (Module): 
+          <code>
 dependencies {
     implementation 'com.microsoft.onnxruntime:onnxruntime-training-android:latest.release'
 }
-          </pre>
+          </code>
         </li>
       </ol>
     </td>

@@ -20,18 +20,20 @@ The TensorRT execution provider in the ONNX Runtime makes use of NVIDIA's [Tenso
 {:toc}
 
 ## Install
-Please select the GPU (CUDA/TensorRT) version of OnnxRuntime: https://onnxruntime.ai/docs/install. Pre-built packages and Docker images are available for Jetpack in the [Jetson Zoo](https://elinux.org/Jetson_Zoo#ONNX_Runtime).
+Please select the GPU (CUDA/TensorRT) version of Onnx Runtime: https://onnxruntime.ai/docs/install. Pre-built packages and Docker images are available for Jetpack in the [Jetson Zoo](https://elinux.org/Jetson_Zoo#ONNX_Runtime).
 
 ## Build from source
 See [Build instructions](../build/eps.md#tensorrt).
 
 ## Requirements
 
-Note: starting ORT 1.19, **CUDA 12** becomes default version when distributing ONNX Runtime GPU packages.
+Note: Starting with version 1.19, **CUDA 12** becomes the default version when distributing ONNX Runtime GPU packages.
 
 | ONNX Runtime | TensorRT | CUDA           |
 | :----------- | :------- | :------------- |
-| 1.19-main    | 10.2     | **12.x**, 11.8 |
+| main         | 10.5     | **12.x**, 11.8 |
+| 1.20         | 10.5     | **12.x**, 11.8 |
+| 1.19         | 10.2     | **12.x**, 11.8 |
 | 1.18         | 10.0     | 11.8, 12.x     |
 | 1.17         | 8.6      | 11.8, 12.x     |
 | 1.16         | 8.6      | 11.8           |
@@ -822,3 +824,7 @@ This example shows how to run the Faster R-CNN model on TensorRT execution provi
     ```
 
 Please see [this Notebook](https://github.com/microsoft/onnxruntime/blob/main/docs/python/notebooks/onnx-inference-byoc-gpu-cpu-aks.ipynb) for an example of running a model on GPU using ONNX Runtime through Azure Machine Learning Services.
+
+## Known Issues
+- TensorRT 8.6 built-in parser and TensorRT oss parser behaves differently. Namely built-in parser cannot recognize some custom plugin ops while OSS parser can. See [EfficientNMS_TRT missing attribute class_agnostic w/ TensorRT 8.6
+](https://github.com/microsoft/onnxruntime/issues/16121). 
