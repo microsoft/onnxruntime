@@ -16,7 +16,7 @@ stages:
   - Download_Java_Tools
   variables:
     releaseVersionSuffixCompact: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.releaseVersionSuffixCompact']]
-    onnxruntimeReleaseVersion: $(OnnxRuntimeVersion)${{variables.releaseVersionSuffixCompact}}
+    onnxruntimeReleaseVersion: $(OnnxRuntimeVersion)$(releaseVersionSuffixCompact)
   jobs:
   - job: Jar_Packaging_GPU
     workspace:

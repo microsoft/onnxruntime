@@ -22,8 +22,8 @@ stages:
     - Setup
     - Jar_Packaging
   variables:
-    releaseVersionSuffixCompact: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.releaseVersionSuffixCompact']]
-    onnxruntimeReleaseVersion: $(OnnxRuntimeVersion)${{variables.releaseVersionSuffixCompact}}
+    - releaseVersionSuffixCompact: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.releaseVersionSuffixCompact']]
+    - onnxruntimeReleaseVersion: $(OnnxRuntimeVersion)$(releaseVersionSuffixCompact)
   jobs:
   - job: Final_Jar_Testing_${{parameters.OS}}
     workspace:
