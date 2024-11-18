@@ -24,7 +24,7 @@
 		'C++',
 		'Browser'
 	];
-	let activeWord = 'Cross-Platform';
+	let activeWord = 'Edge';
 	let currentWord = 0;
 	let cycleWord = () => {
 		currentWord = (currentWord + 1) % words.length;
@@ -37,7 +37,7 @@
 	};
 	setTimeout(cycleWord, 2000);
 	let pythonCode = 'pip install onnxruntime';
-	let nugetCode = 'nuget install Microsoft.ML.OnnxRuntime';
+	let gaiCode = 'pip install onnxruntime-genai';
 	let copied = false;
 	let copy = async (code: string) => {
 		try {
@@ -112,11 +112,11 @@
 					</div>
 					<div class="grid grid-cols-6 border-solid border-2 border-secondary">
 						<div class="col-span-5">
-							<Highlight language={bash} code={nugetCode} />
+							<Highlight language={bash} code={gaiCode} />
 						</div>
 						<button
 							aria-label="copy nuget code"
-							on:click={() => copy(nugetCode)}
+							on:click={() => copy(gaiCode)}
 							class="col-span-1 btn rounded-none h-full *:hover:scale-125 *:hover:transition *:hover:duration-200"
 							><span class="min-w-6 h-6"><FaRegClipboard /></span></button
 						>
@@ -127,7 +127,7 @@
 				</p> -->
 				<p class="text-lg mt-2">
 					<a class="text-blue-700 font-medium" href="./getting-started"
-						>Don't see your favorite platform? See the many others we support →</a
+						>Interested in using other languages? See the many others we support →</a
 					>
 				</p>
 			</div>

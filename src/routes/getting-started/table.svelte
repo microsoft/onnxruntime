@@ -77,16 +77,16 @@
 	const TrainingBuildIds = ['ot_stable', 'ot_nightly'];
 	const validCombos = {
 		'windows,C-API,X64,CUDA':
-			"For CUDA 11.X (default): Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>. <br/>For CUDA 12.X: Follow instructions <a class='text-blue-500' href='https://onnxruntime.ai/docs/install/#install-onnx-runtime-gpu-cuda-12x-1' target='_blank'>here</a>. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+			"For CUDA 12.X (default): Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu.Windows' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu.Windows</a>. <br/>For CUDA 11.X: Follow instructions <a class='text-blue-500' href='https://onnxruntime.ai/docs/install/#install-onnx-runtime-gpu-cuda-118' target='_blank'>here</a>. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
 		'windows,C++,X64,CUDA':
-			"For CUDA 11.X (default): Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>. <br/>For CUDA 12.X: Follow instructions <a class='text-blue-500' href='https://onnxruntime.ai/docs/install/#install-onnx-runtime-gpu-cuda-12x-1' target='_blank'>here</a>. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+			"For CUDA 12.X (default): Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu.Windows' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu.Windows</a>. <br/>For CUDA 11.X: Follow instructions <a class='text-blue-500' href='https://onnxruntime.ai/docs/install/#install-onnx-runtime-gpu-cuda-118' target='_blank'>here</a>. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
 		'windows,C#,X64,CUDA':
-			"For CUDA 11.X (default): Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>. <br/>For CUDA 12.X: Follow instructions <a class='text-blue-500' href='https://onnxruntime.ai/docs/install/#install-onnx-runtime-gpu-cuda-12x-1' target='_blank'>here</a>. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+			"For CUDA 12.X (default): Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu.Windows' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu.Windows</a>. <br/>For CUDA 11.X: Follow instructions <a class='text-blue-500' href='https://onnxruntime.ai/docs/install/#install-onnx-runtime-gpu-cuda-118' target='_blank'>here</a>. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
 		'windows,Python,X64,CUDA':
-			"For CUDA 11.X (default): <br/>pip install onnxruntime-gpu <br/>For CUDA 12.X: <br/>pip install onnxruntime-gpu --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/ <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+			"For CUDA 12.X (default): <br/>pip install onnxruntime-gpu <br/>For CUDA 11.X: <br/>pip install onnxruntime-gpu --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/pypi/simple/ <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
 		'linux,Python,ARM64,CUDA':
 			"For Jetpack 4.4+, follow installation instructions from <a class='text-blue-500' href='https://elinux.org/Jetson_Zoo#ONNX_Runtime' target='_blank'>here</a>. <br/>Note: We do not have CUDA 12.X ARM64 support at this time.",
@@ -95,13 +95,13 @@
 			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
 		'linux,C++,X64,CUDA':
-			"For CUDA 11.X (default): Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>. <br/>For CUDA 12.X: Follow instructions <a class='text-blue-500' href='https://onnxruntime.ai/docs/install/#install-onnx-runtime-gpu-cuda-12x-1' target='_blank'>here</a>. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+			"For CUDA 12.X (default): Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu.Linux' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu.Linux</a>. <br/>For CUDA 11.X: Follow instructions <a class='text-blue-500' href='https://onnxruntime.ai/docs/install/#install-onnx-runtime-gpu-cuda-118' target='_blank'>here</a>. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
 		'linux,C#,X64,CUDA':
-			"For CUDA 11.X (default): Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a>. <br/>For CUDA 12.X: Follow instructions <a class='text-blue-500' href='https://onnxruntime.ai/docs/install/#install-onnx-runtime-gpu-cuda-12x-1' target='_blank'>here</a>. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+			"For CUDA 12.X (default): Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu.Linux' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu.Linux</a>. <br/>For CUDA 11.X: Follow instructions <a class='text-blue-500' href='https://onnxruntime.ai/docs/install/#install-onnx-runtime-gpu-cuda-118' target='_blank'>here</a>. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
 		'linux,Python,X64,CUDA':
-			"For CUDA 11.X (default): <br/>pip install onnxruntime-gpu <br/>For CUDA 12.X: <br/>pip install onnxruntime-gpu --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-12/pypi/simple/ <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
+			"For CUDA 12.X (default): <br/>pip install onnxruntime-gpu <br/>For CUDA 11.X: <br/>pip install onnxruntime-gpu --extra-index-url https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/pypi/simple/ <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
 		'linux,C-API,ARM32,DefaultCPU':
 			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-arm' target='_blank'>here</a>",
@@ -119,13 +119,13 @@
 			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
 
 		'windows,C-API,ARM32,DefaultCPU':
-			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-arm' target='_blank'>here</a>",
 
 		'windows,C++,ARM32,DefaultCPU':
-			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-arm' target='_blank'>here</a>",
 
 		'windows,C#,ARM32,DefaultCPU':
-			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+			"Follow build instructions from&nbsp;<a class='text-blue-500' href='https://aka.ms/build-ort-arm' target='_blank'>here</a>",
 
 		'windows,C-API,ARM64,DefaultCPU':
 			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
@@ -157,6 +157,12 @@
 		'linux,C#,X64,DefaultCPU':
 			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
 
+		'linux,C-API,ARM64,DefaultCPU':
+			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+
+		'linux,C#,ARM64,DefaultCPU':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
+
 		'mac,C-API,X64,DefaultCPU':
 			"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
 
@@ -164,12 +170,14 @@
 			"Add 'onnxruntime-c' using CocoaPods or download the .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>.",
 
 		'mac,C#,X64,DefaultCPU':
-			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
 
 		'mac,C#,X64,CoreML':
-			"Download .tgz file from&nbsp;<a class='text-blue-500' href='https://github.com/microsoft/onnxruntime/releases' target='_blank'>Github</a>",
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime</a>",
 
 		'windows,Python,X64,DefaultCPU': 'pip install onnxruntime',
+
+		'windows,Python,X86,DefaultCPU': 'pip install onnxruntime',
 
 		'mac,Python,X64,DefaultCPU': 'pip install onnxruntime',
 
@@ -267,31 +275,28 @@
 		'windows,Python,X64,OpenVINO': 'pip install onnxruntime-openvino',
 
 		'windows,C-API,X64,TensorRT':
-			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu.Windows' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu.Windows</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
 
 		'windows,C++,X64,TensorRT':
-			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu.Windows' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu.Windows</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
 
 		'windows,C#,X64,TensorRT':
-			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu.Windows' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu.Windows</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
 
 		'windows,Python,X64,TensorRT':
 			"pip install onnxruntime-gpu <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
 		'linux,C-API,X64,TensorRT':
-			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu.Linux' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu.Linux</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
 
 		'linux,C++,X64,TensorRT':
-			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu.Linux' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu.Linux</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
 
 		'linux,C#,X64,TensorRT':
-			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.Gpu.Linux' target='_blank'>Microsoft.ML.OnnxRuntime.Gpu.Linux</a> <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
 
 		'linux,Python,X64,TensorRT':
 			"pip install onnxruntime-gpu <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
-
-		'linux,C#,ARM64,DefaultCPU':
-			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime' target='_blank'>Microsoft.ML.OnnxRuntime",
 
 		'linux,Python,ARM64,TensorRT':
 			"pip install onnxruntime-gpu <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
@@ -335,7 +340,7 @@
 			"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
 
 		'linux,Java,X64,CUDA':
-			"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements. <br/>Note: CUDA 12.X is not currently available with the Java GPU package due to low demand.",
+			"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
 		'mac,Java,X64,DefaultCPU':
 			"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
@@ -382,7 +387,7 @@
 			"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime' target='_blank'>com.microsoft.onnxruntime:onnxruntime</a> using Maven/Gradle",
 
 		'windows,Java,X64,CUDA':
-			"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements. <br/>Note: CUDA 12.X is not currently available with the Java GPU package due to low demand.",
+			"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements' target='_blank'>docs</a> for requirements.",
 
 		'windows,Java,X64,TensorRT':
 			"Add a dependency on <a class='text-blue-500' href='https://search.maven.org/artifact/com.microsoft.onnxruntime/onnxruntime_gpu' target='_blank'>com.microsoft.onnxruntime:onnxruntime_gpu</a> using Maven/Gradle. <br/>Refer to <a class='text-blue-500' href='http://www.onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html' target='_blank'>docs</a> for usage details.",
@@ -635,13 +640,22 @@
 
 		//QNN
 		'windows,C-API,ARM64,QNN':
-			"View installation instructions <a class='text-blue-500' href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.QNN' target='_blank'>Microsoft.ML.OnnxRuntime.QNN</a>.",
 
 		'windows,C++,ARM64,QNN':
-			"View installation instructions <a class='text-blue-500' href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.QNN' target='_blank'>Microsoft.ML.OnnxRuntime.QNN</a>.",
 
 		'windows,C#,ARM64,QNN':
-			"View installation instructions <a class='text-blue-500' href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.QNN' target='_blank'>Microsoft.ML.OnnxRuntime.QNN</a>.",
+
+		'windows,C-API,X64,QNN':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.QNN' target='_blank'>Microsoft.ML.OnnxRuntime.QNN</a>.",
+
+		'windows,C++,X64,QNN':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.QNN' target='_blank'>Microsoft.ML.OnnxRuntime.QNN</a>.",
+
+		'windows,C#,X64,QNN':
+			"Install Nuget package&nbsp;<a class='text-blue-500' href='https://www.nuget.org/packages/Microsoft.ML.OnnxRuntime.QNN' target='_blank'>Microsoft.ML.OnnxRuntime.QNN</a>.",
 
 		'linux,C-API,ARM64,QNN':
 			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
@@ -654,6 +668,15 @@
 
 		'android,C++,ARM64,QNN':
 			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
+
+		'windows,Python,ARM64,QNN':
+			"pip install onnxruntime-qnn",
+
+		'windows,Python,X64,QNN':
+			"pip install onnxruntime-qnn",
+
+		'android,Java,ARM64,QNN':
+			"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android-qnn' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android-qnn</a> using Maven/Gradle and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",
 
 		//Xnnpack
 		'ios,C-API,ARM64,XNNPACK':
