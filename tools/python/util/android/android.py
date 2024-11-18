@@ -124,7 +124,7 @@ def start_emulator(
             "America/Los_Angeles",
             "-no-snapstorage",
             "-no-audio",
-            "-no-snapshot", # No bluetooth
+            "-no-snapshot",  # No bluetooth
             "-no-boot-anim",
             "-gpu",
             "guest",
