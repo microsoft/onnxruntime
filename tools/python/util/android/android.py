@@ -106,8 +106,10 @@ def _stop_process_with_pid(pid: int):
 
 
 def start_emulator(
-    sdk_tool_paths: SdkToolPaths, avd_name: str, extra_args: typing.Optional[typing.Sequence[str]] = None,
-        timeout_minutes: int = 20
+    sdk_tool_paths: SdkToolPaths,
+    avd_name: str,
+    extra_args: typing.Optional[typing.Sequence[str]] = None,
+    timeout_minutes: int = 20,
 ) -> subprocess.Popen:
     if is_emulator_running_by_avd(avd_name=avd_name):
         raise RuntimeError(
