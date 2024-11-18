@@ -1,0 +1,162 @@
+---
+title: 'Scribble to Erase on Goodnotes for Windows, Web, and Android, Powered by ONNX Runtime'
+date: '18th November, 2024'
+description: 'Discover how Goodnotes brings the popular scribble-to-erase feature from iPad to Windows, Web, and Android with the help of ONNX Runtime, enabling seamless, high-performance AI integration across platforms.'
+keywords: 'Goodnotes, scribble to erase, ONNX Runtime, AI model inference, cross-platform AI, Web AI, Windows AI, Android AI, web assembly, ONNX model, PWA, AI on device, Edge AI, AI feature integration'
+authors: ['Pedro Gómez', 'Emma Ning']
+authorsLink: ['https://x.com/pedro_g_s', 'https://www.linkedin.com/in/emma-qiong-ning-21b554236/']
+image: 'https://iili.io/2RWIj2t.png'
+imageSquare: 'https://iili.io/2RWIj2t.png'
+url: 'https://onnxruntime.ai/blogs/goodnotes-scribble-to-erase'
+---
+
+<script>
+    import Highlight from 'svelte-highlight';
+    import typescript from 'svelte-highlight/languages/typescript';
+    let code1 = `export class OnnxScribbleToEraseAIModel extends OnnxAIModel<Array<Array<number>>, EvaluationResult>
+
+implements ScribbleToEraseAIModel
+{
+    getModelResource(): OnDemandResource {
+        return OnDemandResource.ScribbleToErase;
+    }
+
+
+    async evaluateModel(input: Array<Array<number>>): Promise<EvaluationResult> {
+        const startTime = performance.now();
+        const { tensor, initializeTensorTime } = this.initializeTensor(input);
+        const { evaluationScore, evaluateModelTime } = await this.runModel(tensor);
+        const result = {
+            score: evaluationScore ?? 0.0,
+            timeToInitializeTensor: initializeTensorTime,
+            timeToEvaluateTheModel: evaluateModelTime,
+            totalExecutionTime: performance.now() - startTime,
+        };
+        return result;
+    }
+…..`
+    let code2 = `private initializeTensor(input: number[][]) {
+       const prepareTensorStartTime = performance.now();
+       const modelInput = new Float32Array(input.flat());
+       const tensor = new Tensor(modelInputTensorType, modelInput, modelInputDimensions);
+       const initializeTensorTime = performance.now() - prepareTensorStartTime;
+       return { tensor, initializeTensorTime };
+   }
+
+
+private async runModel(tensor: Tensor) {
+    const evaluateModelStartTime = performance.now();
+    const inferenceSession = this.session;
+    const outputMap = await inferenceSession.run({ x: tensor });
+    const outputTensor = outputMap[modelOutputName];
+    const evaluationScore = outputTensor?.data[0] as number | undefined;
+    const evaluateModelTime = performance.now() - evaluateModelStartTime;
+    return { evaluationScore, evaluateModelTime };
+}`
+   const code3 = `ort.env.logLevel = 'fatal';
+ort.env.wasm.wasmPaths = '/onnx/providers/wasm/';
+this.session = await InferenceSession.create(modelURL);`
+</script>
+
+<div class="m-auto w50">
+<img src="../../../images/blogs/goodnotes-scribble-to-erase/Thumbnail.png" alt="Scribble to Erase feature on Goodnotes for Windows, Web, and Android">
+</div>
+<br/>
+
+For the last three years, the Goodnotes engineering team has been working on a project to bring the successful iPad notetaking app to other platforms like Windows, Web, and Android. This post covers how the 2022 iPad app of the year implemented one of the top most AI-requested features, scribble to erase, for the three platforms, at the same time, using ONNX Runtime.
+
+## 📝 What is Scribble to Erase?
+
+We are all humans, so we all make mistakes. Scribble to erase is a simple feature that lets the user delete content without using the eraser by just writing a scribble on top of the previously created content.
+
+<div class="m-auto w50">
+<img src="../../../images/blogs/goodnotes-scribble-to-erase/Abracadabra.gif" alt="Stylus scribbling to erase the word Abracadabra, then rabbit ears, then a hat">
+</div>
+<br/>
+
+Any note the user wrote before, no matter what you wrote can be deleted with a simple scribble gesture. This feature may look quite simple for the user, but quite complex from the engineering point of view.
+
+<div class="m-auto w50">
+<img class="m-auto" src="../../../images/blogs/goodnotes-scribble-to-erase/Lorem.jpg" alt="Lorem Ipsum, with the ipsum scribbled out">
+</div>
+<br/>
+
+This was the first feature the Goodnotes engineering team released for Windows, Web, and Android using Artificial Intelligence, thanks to [ONNX Runtime](https://onnxruntime.ai/docs/tutorials/web/), which offers high-performance model inference cross platforms for Edge AI. The team used an in-house trained model for this project and evaluated on-device from three different platforms.
+
+## 🔍 How Is a Scribble Detected?
+
+For Goodnotes, a scribble gesture is nothing more than another stroke added to the document following a special pattern. There are 2 characteristics a stroke must have to be considered a scribble:
+
+- The number of points as part of the stroke should be large enough.
+- The AI model evaluated using ONNX Runtime should recognize the strokes as a scribble.
+
+For the engineering team, this means that for every note the Goodnotes teams add to a document, they have to evaluate the size, and the AI model to determine if this new note added to any specific document is a scribble or not.
+
+Once the pre-processing stage checks if the note size is above a given threshold, it’s time for us to follow a classic AI model evaluation flow like this:
+
+- Extract the notes features from the points.
+- Evaluate the AI model using ONNX Runtime.
+
+For the feature extraction the Goondotes team, normalizes the points contained by the note area and transforms a list of points generated by the user stylus into an array of floats. This process is nothing more than the classic feature extraction all the AI models follow in order to transform the user data into something the AI model is able to understand.
+
+The AI model used for this project is a supervised model based on LSTM the team crafted and deployed it to every platform so all the users can evaluate it on-device even if there is no internet connection.
+
+Once the points are represented as something the AI model can handle, using ONNX Runtime and reading the output model we handle as a score we can determine if the recently added note is a scribble or not. If the stroke is considered a scribble, all the notes below that one will be deleted automatically.
+
+<div class="m-auto w50">
+<img class="m-auto" src="../../../images/blogs/goodnotes-scribble-to-erase/Recognizers.png" alt="Diagram of ONNX Runtime workflow for handwritten note recognition">
+</div>
+<br/>
+
+## 🤝 Why ONNX Runtime?
+
+When the Goodnotes team had to evaluate the implementation of this feature one decision they needed to make was how to evaluate the AI model. This was the first team this project was using AI and the iOS version of this product was using CoreML, which is not compatible with the current project tech stack because this Apple technology is not available outside the iOS/MacOS SDK. So they decided to try something different.
+
+<div class="m-auto w50">
+<img class="dark:bg-primary" src="../../../images/blogs/goodnotes-scribble-to-erase/ORTLogo.png" alt="ONNX Runtime Logo">
+</div>
+<br/>
+
+The Goodnotes tech stack for Windows, Web, and Android is based on web technologies. Under the hood, the application uses a [Progressive Web Application](https://developer.mozilla.org/en-US/docs/Web/Progressive_web_apps). When the app is installed from the Microsoft Store or any other store like Google Play, the app uses a native wrapper, but in the end, this project is a web application running as a full-screen native app. This means the technology the team had to use to evaluate the AI model had to be compatible with a web tech stack, and it also had to be performant enough for their needs, enabling hardware runtimes when possible. So when checking about different alternatives the team found ONNX as a portable format and ONNX Runtime with Web solution and decided to give it a go. After some experimentation and [prototypes](https://github.com/pedrovgs/HWEmoji) created before the feature implementation using ONNX Runtime, the team decided this was the right technology to use!
+
+<div class="m-auto w50">
+<img class="m-auto" src="../../../images/blogs/goodnotes-scribble-to-erase/ORTFlow.jpg" alt="ONNX Runtime web architecture diagram">
+</div>
+<br/>
+
+There were four reasons why the team decided to use ONNX Runtime instead of other technology:
+
+- [The prototype developed](https://github.com/pedrovgs/HWEmoji) demonstrated the ONNX Runtime integration was quite simple for us and gave us all the capabilities we needed.
+- ONNX is a portable format we can use to export our current CoreML models into something we can evaluate from many different operating systems.
+- [Execution providers](https://onnxruntime.ai/docs/execution-providers/) in ONNX Runtime offer hardware-specific acceleration, which enables us to get the best performance possible when evaluating the model. Specific for Web solution, it has WSAM execution provider targeting CPU execution and WebNN andWebGPU execution providers for further acceleration by leveraging GPUs/NPUs which are quite interesting examples for us.
+- Compatibility with the [LSTM](https://en.wikipedia.org/wiki/Long_short-term_memory) design for the AI model.
+
+## 💻 What does our ONNX Runtime code look like?
+
+The Goodnotes team shares most of the business logic code for the Goodnotes application with the iOS/Mac team. This means they compile the original Swift codebase process the strokes, and post-processing the model output from Swift through web assembly. But there is a point on the execution stack where the Goodnotes team has to evaluate the model where the team delegates the execution from Swift into the Web environment using ONNX Runtime.
+
+The typescript ONNX Runtime code evaluating the model is similar to the following snippet:
+
+<Highlight language={typescript} code={code1} />
+
+As you can see, the implementation is the classic code you would expect from any AI feature. The input data is obtained as an array of features we later use to feed the model using a tensor. Once the evaluation is done, we check the score obtained as the model output and consider the input a scribble if the score is above a specific threshold.
+
+As you can see on the code, apart from initializing the tensor and evaluating the model we are also tracking the execution time in order to validate our implementation and better understand the resources needed in production when real users are using this feature.
+
+<Highlight language={typescript} code={code2} />
+
+On top of that, in this case, the Goodnotes team decided to load and evaluate the AI model using ONNX Runtime from a web worker and run the inference session using a Web Worker because this path in our application is inside a critical UX flow and we wanted to minimize the performance impact for the users.
+
+<Highlight language={typescript} code={code3} />
+
+The execution provider configured for this project is the CPU provider according to the model architecture. This is a lightweight model, and we can get quite fast execution times with the default CPU execution provider powered by WASM under the hood. We plan with WebGPU and WebNN execution provides for more advanced models in new AI scenarios.
+
+## 🚀 Deployment and Integration
+
+Due to the technical stack used by the team, the usage of web technologies makes the ONNX Runtime integration and the way we host the AI model worth mentioning. For this project, Goodnotes uses [Vite as frontend tooling](https://vite.dev/) so they had to modify the Vite config a bit to distribute not only our AI model but also the resources needed by the CPU execution provider. It was not a big deal for the team because the ONNX Runtime documentation already covers the usage of bundlers, but it was quite interesting for them because as the app is a PWA that can be used offline this change increased the bundle size including not only the model binary but also all the resources needed by the ONNX runtime.
+
+## 📈 Results after some months in production
+
+Goodnotes released this feature months ago. Since the very first day, all the users started using this scribble to erase the model transparently for them. Some of them proactively started writing scribble gestures to delete content and others discovered this feature as a natural gesture.
+
+Since the release date, the Goodnotes team has evaluated the AI model using ONNX Runtime almost 2000 million times! Using the CPU execution provider, and running the model from a worker, the team got P95 of the evaluation time below 16 milliseconds and P99 below 27 milliseconds! Users all around the world, from different operating systems and platforms have modified their notes already using scribble to erase feature and the team is super proud of the technical achievements done thanks to this amazing ONNX Runtime solution!

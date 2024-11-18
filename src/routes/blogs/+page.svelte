@@ -19,6 +19,7 @@
 	import Phi3SmallMediumImage from '../../images/blogs/accelerating-phi-3-medium-thumbnail.png';
 	import LightGlueImage from '../../images/blogs/lightglue-community-blog.png';
 	import OliveSharedCache from '../../images/blogs/olive-shared-cache-user-flow.png';
+	import GoodnotesThumbnail from '../../images/blogs/goodnotes-scribble-to-erase/Thumbnail.png';
 	import OliveCli from '../../images/blogs/olive-flow.png';
 	onMount(() => {
 		anime({
@@ -48,6 +49,16 @@
 	}
 	let featuredblog = [
 		{
+      title: 'Scribble to Erase on Goodnotes for Windows, Web, and Android, Powered by ONNX Runtime',
+			date: '18th November, 2024',
+			blurb:
+				"Discover how Goodnotes brings the popular scribble-to-erase feature from iPad to Windows, Web, and Android with the help of ONNX Runtime, enabling seamless, high-performance AI integration across platforms.",
+			link: 'blogs/goodnotes-scribble-to-erase',
+			image: GoodnotesThumbnail,
+			imgalt:
+				'Scribble to Erase feature on Goodnotes for Windows, Web, and Android'
+    },
+    {
 			title: 'Democratizing AI Model optimization with the new Olive CLI',
 			date: 'November 11th, 2024',
 			blurb:
@@ -67,6 +78,8 @@
 			imgalt:
 				'Team Flow for Olive shared cache'
 		},
+	];
+	let blogs = [
 		{
 			title: 'Accelerating LightGlue Inference with ONNX Runtime and TensorRT',
 			date: 'July 17th, 2024',
@@ -77,9 +90,7 @@
 			imgalt:
 				'Speedup for ONNX Runtime with TensorRT and CUDA vs. torch.compile for difference batch sizes and sequence lengths.'
 		},
-	];
-	let blogs = [
-		{
+    {
 			title: 'High performance on-device real-time ML with NimbleEdge, using ONNX Runtime',
 			date: 'June 17th, 2024',
 			blurb:
