@@ -129,7 +129,6 @@ def start_emulator(
             "-gpu",
             "guest",
             "-delay-adb",
-            "-prop persist.sys.disable_bluetooth=true",
             "-verbose",
         ]
 
