@@ -18,6 +18,16 @@ load_4blk_4b_packed_blklen32(const std::byte* QuantBDataPtr, __m512i& bv0_64_epi
     bv1_64_epi8 = _mm512_srli_epi16(_mm512_sub_epi8(bv_packed, bv0_64_epi8), 4);  // 64~127
 }
 
+static MLAS_FORCEINLINE
+__m512 load_4blksum_512(const float* BlksumPtr)
+{
+    // Load 128-bit data into __m128 register
+    __m128 blksum4_4_ps = _mm_loadu_ps(BlksumPtr);
+
+    // Insert the __m256 register into the lower 256 bits of the __m512 register
+    return _mm512_insertf32x4(_mm512_setzero_ps(), blksum4_4_ps, 0);
+}
+
 static MLAS_FORCEINLINE void
 accumulate_blklen32_r1c1blk4_avx512(
   const __m512i& av0_64_epi8,
@@ -103,11 +113,13 @@ accumulate_blklen32_r1c1blk4_avx512vnni(
     const std::byte* QuantBDataPtr,
     const float* scale_a,
     const float* scale_b,
+    //const float* blksum_a,
+    //const float* blksum_b,
     __m512& acc0
 )
 {
     __m512i bv0_64_epi8, bv1_64_epi8;
-    load_4blk_4b_packed_blklen32(QuantBDataPtr, bv0_64_epi8, bv1_64_epi8);
+    load_4blk_4b_packed_blklen32(QuantBDataPtr, bv0_64_epi8, bv1_64_epi8);  // 0000111122223333 x 4 (64 unsigned int8)
 
     const __m128 scale_b_ps = _mm_loadu_ps(scale_b);  // 0123
     {
@@ -120,6 +132,10 @@ accumulate_blklen32_r1c1blk4_avx512vnni(
 
         const __m512 sum_16_ps = _mm512_cvtepi32_ps(sum_16_epi32);
         acc0 = _mm512_fmadd_ps(sum_16_ps, scale_a0b_16_ps, acc0);
+
+        //const __m512 blksum_a0_ps = load_4blksum_512(blksum_a);  // 0123000000000000
+        //const __m512 blksum_b0_ps = load_4blksum_512(blksum_b);  // 0123000000000000
+        //acc0 = _mm512_fmadd_ps(blksum_a0_ps, blksum_b0_ps, acc0);
     }
 }
 
@@ -138,7 +154,7 @@ accumulate_blklen32_r2c1blk4_avx512vnni(
 )
 {
     __m512i bv0_64_epi8, bv1_64_epi8;
-    load_4blk_4b_packed_blklen32(QuantBDataPtr, bv0_64_epi8, bv1_64_epi8);  // 0000111122223333 x 4
+    load_4blk_4b_packed_blklen32(QuantBDataPtr, bv0_64_epi8, bv1_64_epi8);  // 0000111122223333 x 4 (64 unsigned int8)
 
     const __m128 scale_b_ps = _mm_loadu_ps(scale_b);  // 0123
     {

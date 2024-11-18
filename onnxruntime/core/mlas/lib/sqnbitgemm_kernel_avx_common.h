@@ -193,10 +193,34 @@ PackQuantB(
             size_t PackBytePairCount = SubBlkBytePairCount;
             size_t PackDataSize = SubBlkDataSize;
 
+            auto pack_4blk_blklen32_512 = [](
+              const std::byte* QuantBData, std::byte* PackedQuantBData,
+              size_t pack_byte_pair_count, size_t pack_data_size) {
+            for (size_t byte_pair_idx = 0; byte_pair_idx < pack_byte_pair_count; ++byte_pair_idx) {
+                // dst: |0~3/16~19|32~35/48~51|64~67/80~83|96~99/112~115|     16 bytes
+                //      |4~7/20~23|36~39/52~55|68~71/84~87|100~103/116~119|   16 bytes
+                //      |8~11/24~27|40~43/56~59|72~75/88~91|104~107/120~123|  16 bytes
+                //      |12~15/28~31|44~47/60~63|76~79/92~95|108~111/124~127| 16 bytes
+                // 64 bytes (512bits) total of 128 4bit weights, unpack to 2 512 registers, each as:
+                // 0000111122223333 0000111122223333 0000111122223333 0000111122223333 (64 unsigned int8)
+                //
+                _mm512_permutexvar_epi
+                const std::byte src0 = QuantBData[byte_pair_idx];
+                const std::byte src1 = QuantBData[byte_pair_idx + pack_data_size / 2];
+
+                std::byte& dst0 = PackedQuantBData[2 * byte_pair_idx];
+                std::byte& dst1 = PackedQuantBData[2 * byte_pair_idx + 1];
+
+                dst0 = (src0 & std::byte{0x0F}) | ((src1 & std::byte{0x0F}) << 4);
+                dst1 = (src0 >> 4) | ((src1 >> 4) << 4);
+            } };
+
             auto pack_subblk = [](
               const std::byte* QuantBData, std::byte* PackedQuantBData,
               size_t pack_byte_pair_count, size_t pack_data_size) {
             for (size_t byte_pair_idx = 0; byte_pair_idx < pack_byte_pair_count; ++byte_pair_idx) {
+                // (avx256)dst: | v0 v32 | v1 v33 | ... | v30 v62 | v31 v63 |
+                // (avx512)dst: | v0 v64 | v1 v65 | ... | v62 v126 | v63 v127 |
                 const std::byte src0 = QuantBData[byte_pair_idx];
                 const std::byte src1 = QuantBData[byte_pair_idx + pack_data_size / 2];
 
