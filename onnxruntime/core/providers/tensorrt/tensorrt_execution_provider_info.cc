@@ -362,7 +362,7 @@ void TensorrtExecutionProviderInfo::UpdateProviderOptions(void* provider_options
   trt_provider_options_v2.trt_onnx_bytestream_size = internal_options.onnx_bytestream_size;
   if (options.find("trt_op_types_to_exclude") != options.end()) {
     trt_provider_options_v2.trt_op_types_to_exclude = copy_string_if_needed(internal_options.op_types_to_exclude);
-    trt_provider_options_v2.trt_op_types_to_exclude_str_is_dynamic_allocation = 1;
+    if (string_copy) trt_provider_options_v2.trt_op_types_to_exclude_str_is_dynamic_allocation = 1;
   }
 }
 }  // namespace onnxruntime
