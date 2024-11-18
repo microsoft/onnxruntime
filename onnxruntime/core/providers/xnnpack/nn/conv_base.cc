@@ -54,8 +54,8 @@ Status CreateXnnpackKernel(const ConvAttributes& conv_attrs,
 
   xnn_status status = xnn_status::xnn_status_uninitialized;
   p = nullptr;
-  float foutput_min = clip_min_max ? clip_min_max->first : -INFINITY;
-  float foutput_max = clip_min_max ? clip_min_max->second : INFINITY;
+  float foutput_min = clip_min_max ? clip_min_max->first : -std::numeric_limits<float>::infinity();
+  float foutput_max = clip_min_max ? clip_min_max->second : std::numeric_limits<float>::infinity();
   // with the following IC and OC number, we can cover depthwise and regular conv at the same time
   // the equation 'IC (group_input_channels) == C ' set up when group_count==1 (regular convolution)
   // and OC (group_output_channels) follows the same rule.

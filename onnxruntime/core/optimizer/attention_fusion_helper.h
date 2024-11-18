@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include <limits>
 #include "onnx/defs/shape_inference.h"
 #include "onnx/defs/tensor_proto_util.h"
 #include "core/framework/tensorprotoutils.h"
@@ -767,7 +768,8 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const No
   }
 
   // check where has X=-Infinity
-  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(where.InputDefs()[1]), -INFINITY, true)) {
+  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(where.InputDefs()[1]),
+                                                       -std::numeric_limits<float>::infinity(), true)) {
     DEBUG_LOG("where const not matched.");
     return false;
   }
