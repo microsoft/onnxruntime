@@ -2476,7 +2476,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     exclude_ops_set.insert("NonMaxSuppression");
     exclude_ops_set.insert("NonZero");
     exclude_ops_set.insert("RoiAlign");
-    LOGS_DEFAULT(VERBOSE) << "There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) in TRT 10. TRT EP automatically excludes DDS ops from running on TRT, if applicable"
+    LOGS_DEFAULT(VERBOSE) << "There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) in TRT 10. TRT EP automatically excludes DDS ops from running on TRT, if applicable";
   }
 
   SubGraphCollection_t parser_nodes_vector, supported_nodes_vector;
