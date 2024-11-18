@@ -16,7 +16,7 @@ LoRA stands for Low Rank Adaptation. It is a popular method of fine-tuning that 
 
 Multi LoRA uses multiple adapters at runtime to run different fine-tunings of the same model. The adapter could be per-scenario, per-tenant/customer, or per-user i.e. there could be just a few adapters to many hundreds or thousands.
 
-Olive generate models and adapters in ONNX format. These models and adapters can then be run with ONNX Runtime.
+Olive generates models and adapters in ONNX format. These models and adapters can then be run with ONNX Runtime.
 
 ## Setup
 
@@ -61,42 +61,42 @@ Olive generate models and adapters in ONNX format. These models and adapters can
 
 ## Generate model and adapters in ONNX format
 
-### If fine-tuning, run Olive to fine-tune your model
+1. If fine-tuning, run Olive to fine-tune your model
 
-Note: this operations requires a system with an NVIDIA GPU, with CUDA installed
+   Note: this operations requires a system with an NVIDIA GPU, with CUDA installed
 
-Use the `olive fine-tune` command: https://microsoft.github.io/Olive/features/cli.html#finetune
+   Use the `olive fine-tune` command: https://microsoft.github.io/Olive/features/cli.html#finetune
 
-Here is an example usage of the command:
+   Here is an example usage of the command:
 
-```bash
-olive finetune --method qlora -m meta-llama/Meta-Llama-3-8B -d nampdn-ai/tiny-codes --train_split "train[:4096]" --eval_split "train[4096:4224]" --text_template "### Language: {programming_language} \n### Question: {prompt} \n### Answer: {response}" --per_device_train_batch_size 16 --per_device_eval_batch_size 16 --max_steps 150 --logging_steps 50 -o adapters\tiny-codes
-```
+   ```bash
+   olive finetune --method qlora -m meta-llama/Meta-Llama-3-8B -d nampdn-ai/tiny-codes --train_split "train[:4096]" --eval_split "train[4096:4224]" --text_template "### Language: {programming_language} \n### Question: {prompt} \n### Answer: {response}" --per_device_train_batch_size 16 --per_device_eval_batch_size 16 --max_steps 150 --logging_steps 50 -o adapters\tiny-codes
+   ```
 
-### Optionally, quantize your model
+2. Optionally, quantize your model
 
-Use the `olive quantize` command: https://microsoft.github.io/Olive/features/cli.html#quantize
+   Use the `olive quantize` command: https://microsoft.github.io/Olive/features/cli.html#quantize
 
 
-### Generate the ONNX model and adapter using the quantized model
+3. Generate the ONNX model and adapter using the quantized model
 
-Use the `olive auto-opt` command for this step: https://microsoft.github.io/Olive/features/cli.html#auto-opt
+   Use the `olive auto-opt` command for this step: https://microsoft.github.io/Olive/features/cli.html#auto-opt
 
-The `--adapter path` can either be a HuggingFace adapter reference, or a path to the adapter you fine-tuned above.
+   The `--adapter path` can either be a HuggingFace adapter reference, or a path to the adapter you fine-tuned above.
 
-The `--provider` argument can be an ONNX Runtime execution provider.
+   The `--provider` argument can be an ONNX Runtime execution provider.
 
-```bash
-olive auto-opt -m <path to your model folder> --adapter_path <path to your adapter> -o <output model folder> --device cpu\|gpu --provider <provider> 
-```
+   ```bash
+   olive auto-opt -m <path to your model folder> --adapter_path <path to your adapter> -o <output model folder> --device cpu\|gpu --provider <provider> 
+   ```
 
-#### Convert adapters to `.onnx_adapter` format
+4. Convert adapters to `.onnx_adapter` format
 
-Run this step once for each adapter that you have generated.
+   Run this step once for each adapter that you have generated.
 
-```bash
-olive convert-adapters --adapter_path <path to your fine-tuned adapter --output_path <path to .onnx_adapter location --dtype float32
-```
+   ```bash
+   olive convert-adapters --adapter_path <path to your fine-tuned adapter --output_path <path to .onnx_adapter location --dtype float32
+   ```
 
 ## Write your application
 
