@@ -100,7 +100,7 @@ stages:
       timeoutParameter: '--test_all_timeout 72000'
     ${{ else }}:
       timeoutParameter: ''
-    ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
+    releaseVersionSuffixCompact: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.releaseVersionSuffixCompact']]
   jobs:
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
     workspace:
