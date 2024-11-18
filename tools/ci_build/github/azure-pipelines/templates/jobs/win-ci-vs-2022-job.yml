@@ -230,13 +230,14 @@ jobs:
           displayName: 'Run tests excluding CUDA tests'
           env:
             NO_CUDA_TEST: '1'
-            GTEST_FILTER: '-CudaEp*:-CudaNhwcTypedTest*' # Exclude CUDA EP tests under providers/cuda/
+            GTEST_FILTER: '-CudaEp*:-CudaNhwcTypedTest*:*cpu*models*' # Exclude CUDA EP tests under providers/cuda/ and cpu models test
         - powershell: |
             python $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022"  --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}
           workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
           displayName: 'Run tests excluding DML tests'
           env:
             NO_DMLTEST: '1'
+            GTEST_FILTER: '*cpu*models*'
       - ${{ else }}:
         - powershell: |
            python $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022"  --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}
