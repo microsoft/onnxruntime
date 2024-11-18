@@ -199,8 +199,8 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
 #endif
  private:
   std::unique_ptr<openvino_ep::GlobalContext> global_context_;
-  openvino_ep::EPCtxHandler ep_ctx_handle_{};
   std::shared_ptr<openvino_ep::BackendManager> backend_manager_;
+  openvino_ep::EPCtxHandler ep_ctx_handle_{};
 };
 
 }  // namespace onnxruntime
