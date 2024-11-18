@@ -378,7 +378,7 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
           if ((it == ort_ov_tensor_map.end()) ||
               (it != ort_ov_tensor_map.end() && (it->second.ort_ptr != tensor.GetTensorRawData()))) {
             ov_tensor_data_t ov_tensor_data;
-            auto input = graph_input_info.at(input_idx);
+            const auto& input = graph_input_info.at(input_idx);
             ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(input.get_element_type(), input.get_shape(),
                                                                      const_cast<void*>(tensor.GetTensorRawData()));
 
