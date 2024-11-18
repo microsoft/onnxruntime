@@ -2521,7 +2521,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     }
 
     // Exclude any ops, if applicable
-    if (exclude_set.find(node->OpType()) != exclude_set.end()) {
+    if (exclude_ops_set.find(node->OpType()) != exclude_ops_set.end()) {
       supported_node = false;
     }
 
