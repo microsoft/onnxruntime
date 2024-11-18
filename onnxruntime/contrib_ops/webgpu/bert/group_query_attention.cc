@@ -65,11 +65,10 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   output_shape[2] = static_cast<int64_t>(parameters.hidden_size_);
   Tensor* output = context.Output(0, output_shape);
   std::vector<int64_t> present_dims{
-    parameters.batch_size_,
-    kv_num_heads_,
-    parameters.seqlen_present_kv_cache_,
-    parameters.head_size_
-  };
+      parameters.batch_size_,
+      kv_num_heads_,
+      parameters.seqlen_present_kv_cache_,
+      parameters.head_size_};
   std::vector<int64_t> present_kv_shape(present_dims);
   Tensor* present_key = context.Output(1, present_kv_shape);
   Tensor* present_value = context.Output(2, present_kv_shape);
