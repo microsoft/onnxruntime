@@ -292,7 +292,7 @@ TEST(CudaEpBlkQ4_GEMM, Sm80RowBlockingTest) {
   onnxruntime::cuda::test::run_blkq4_gemm<64, false, false, true>(256, 1024, 576);
 }
 
-TEST(BlkQ4_GEMM, Sm80ColBlockingTest) {
+TEST(CudaEpBlkQ4_GEMM, Sm80ColBlockingTest) {
   Status status = onnxruntime::cuda::test::sm80_supported();
   if (!status.IsOK()) {
     // skip the test if sm80 is not supported
