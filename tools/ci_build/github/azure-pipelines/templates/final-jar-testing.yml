@@ -24,7 +24,7 @@ stages:
   variables:
     releaseVersionSuffixCompact: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.releaseVersionSuffixCompact']]
     onnxruntimeReleaseVersion: $(OnnxRuntimeVersion)${{variables.releaseVersionSuffixCompact}}
-    jobs:
+  jobs:
   - job: Final_Jar_Testing_${{parameters.OS}}
     workspace:
       clean: all
