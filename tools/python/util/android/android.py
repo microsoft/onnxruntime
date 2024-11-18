@@ -237,7 +237,11 @@ def is_emulator_running_by_avd(avd_name: str) -> bool:
         # Step 2: Check each running emulator's AVD name
         for emulator in running_emulators:
             try:
-                avd_info = subprocess.check_output(["adb", "-s", emulator, "emu", "avd", "name"], text=True).strip().split('\n')[0]
+                avd_info = (
+                    subprocess.check_output(["adb", "-s", emulator, "emu", "avd", "name"], text=True)
+                    .strip()
+                    .split("\n")[0]
+                )
                 _log.debug(f"AVD name for emulator {emulator}: {avd_info}")
                 if avd_info == avd_name:
                     return True
