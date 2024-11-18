@@ -227,7 +227,7 @@ TEST(MatMulIntegerToFloat, HasZeroPoint_HasBias_test_U8S8) {
 }
 
 // DML EP supports Float16 output type and Signed A Matrix and Unsigned B Matric for Float32 output
-#if defined(USE_DML)
+#if defined(USE_DML) && !defined(USE_CUDA)
 
 TEST(MatMulIntegerToFloat, HasZeroPoint_NoBias_test_S8U8) {
   RunMatMulIntegerToFloatTest<int8_t, uint8_t, float, true, false>();

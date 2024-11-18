@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install --yes --no-install-recommends \
   ca-certificates \
   git \
   ninja-build \
-  openjdk-11-jdk-headless \
+  openjdk-17-jdk-headless \
   python3-dev \
   python3-numpy \
   python3-pip \

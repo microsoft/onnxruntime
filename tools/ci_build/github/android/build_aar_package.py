@@ -23,11 +23,11 @@ DEFAULT_BUILD_ABIS = ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"]
 
 # Onnx Runtime native library is built against NDK API 21 by default
 # It is possible to build from source for Android API levels below 21, but it is not guaranteed
-DEFAULT_ANDROID_MIN_SDK_VER = 21
+DEFAULT_ANDROID_MIN_SDK_VER = 24
 
 # Android API 24 is the default target API version for Android builds, based on Microsoft 1CS requirements
 # It is possible to build from source using API level 21 and higher as the target SDK version
-DEFAULT_ANDROID_TARGET_SDK_VER = 24
+DEFAULT_ANDROID_TARGET_SDK_VER = 34
 
 
 def _parse_build_settings(args):

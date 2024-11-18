@@ -21,8 +21,6 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
                     model_builder.GetOpSupportLimits(), logger),
       "Unsupported operator ", node.OpType());
   ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node, logger));
-  LOGS(logger, VERBOSE) << "Operator name: [" << node.Name()
-                        << "] type: [" << node.OpType() << "] was added";
   return Status::OK();
 }
 

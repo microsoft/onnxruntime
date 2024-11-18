@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #include "gemm.h"
+
+#include <limits>
+
 #include "core/framework/transpose_helper.h"
 #include "core/providers/utils.h"
 #include "core/providers/xnnpack/xnnpack_init.h"
@@ -117,7 +120,6 @@ Gemm::Gemm(const OpKernelInfo& info) : GemmBase(info), XnnpackKernel(info, /*ena
 }
 
 Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
-                     bool /*save_prepacked_initializers*/,
                      /*out*/ bool& is_packed,
                      /*out*/ PrePackedWeights*) {
   is_packed = false;
@@ -141,8 +143,8 @@ Status Gemm::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr,
   auto weights_cache = GetWeightsCache();
   xnn_status status = xnn_status::xnn_status_uninitialized;
   struct xnn_operator* p = nullptr;
-  float foutput_min = clip_min_max_ ? clip_min_max_->first : -INFINITY;
-  float foutput_max = clip_min_max_ ? clip_min_max_->second : INFINITY;
+  float foutput_min = clip_min_max_ ? clip_min_max_->first : -std::numeric_limits<float>::infinity();
+  float foutput_max = clip_min_max_ ? clip_min_max_->second : std::numeric_limits<float>::infinity();
   if (op_compute_type_ == OpComputeType::op_compute_type_fp32) {
     const float* bias_data = nullptr;
     if (C_matrix_exists_) {

@@ -288,11 +288,9 @@ const char* GetDeviceName(const OrtDevice& device) {
     case OrtDevice::CPU:
       return CPU;
     case OrtDevice::GPU:
-#ifdef USE_DML
-      return DML;
-#else
       return CUDA;
-#endif
+    case OrtDevice::DML:
+      return DML;
     case OrtDevice::FPGA:
       return "FPGA";
     case OrtDevice::NPU:
@@ -528,7 +526,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       // and TRT EP instance, so it won't be released.)
       std::string calibration_table, cache_path, cache_prefix, timing_cache_path, lib_path, trt_tactic_sources,
           trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile, ep_context_file_path,
-          onnx_model_folder_path;
+          onnx_model_folder_path, trt_op_types_to_exclude{"NonMaxSuppression,NonZero,RoiAlign"};
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         OrtTensorRTProviderOptionsV2 params;
@@ -826,6 +824,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_hw_compatible' should be 'True' or 'False'. Default value is 'False'.\n");
             }
+          } else if (option.first == "trt_op_types_to_exclude") {
+            trt_op_types_to_exclude = option.second;
+            params.trt_op_types_to_exclude = trt_op_types_to_exclude.c_str();
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
           }
@@ -1579,7 +1580,8 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def_static("cann", []() { return OrtDevice::NPU; })
       .def_static("fpga", []() { return OrtDevice::FPGA; })
       .def_static("npu", []() { return OrtDevice::NPU; })
-      .def_static("dml", []() { return OrtDevice::GPU; })
+      .def_static("dml", []() { return OrtDevice::DML; })
+      .def_static("webgpu", []() { return OrtDevice::GPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
