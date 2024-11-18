@@ -1,6 +1,6 @@
 ---
 title: 'Scribble to Erase on Goodnotes for Windows, Web, and Android, Powered by ONNX Runtime'
-date: '17th November, 2024'
+date: '18th November, 2024'
 description: 'Discover how Goodnotes brings the popular scribble-to-erase feature from iPad to Windows, Web, and Android with the help of ONNX Runtime, enabling seamless, high-performance AI integration across platforms.'
 keywords: 'Goodnotes, scribble to erase, ONNX Runtime, AI model inference, cross-platform AI, Web AI, Windows AI, Android AI, web assembly, ONNX model, PWA, AI on device, Edge AI, AI feature integration'
 authors: ['Pedro Gómez', 'Emma Ning']
