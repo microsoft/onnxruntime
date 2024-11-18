@@ -23,20 +23,37 @@ CoreMLOptions ParseProviderOption(const ProviderOptions& options) {
       {"MLProgram", COREML_FLAG_CREATE_MLPROGRAM},
       {"NeuralNetwork", COREML_FLAG_USE_NONE},
   };
-  if (options.count(kCoremlProviderOption_MLComputeUnits)) {
-    coreml_options.coreml_flags |= available_computeunits_options.at(options.at(kCoremlProviderOption_MLComputeUnits));
-  }
-  if (options.count(kCoremlProviderOption_MLModelFormat)) {
-    coreml_options.coreml_flags |= available_modelformat_options.at(options.at(kCoremlProviderOption_MLModelFormat));
-  }
-  if (options.count(kCoremlProviderOption_MLAllowStaticInputShapes)) {
-    coreml_options.coreml_flags |= COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES;
-  }
-  if (options.count(kCoremlProviderOption_MLEnableOnSubgraphs)) {
-    coreml_options.coreml_flags |= COREML_FLAG_ENABLE_ON_SUBGRAPH;
-  }
-  if (options.count(kCoremlProviderOption_MLModelCacheDir)) {
-    coreml_options.cache_path = options.at(kCoremlProviderOption_MLModelCacheDir);
+  std::unordered_set<std::string> valid_options = {
+      kCoremlProviderOption_MLComputeUnits,
+      kCoremlProviderOption_MLModelFormat,
+      kCoremlProviderOption_MLAllowStaticInputShapes,
+      kCoremlProviderOption_MLEnableOnSubgraphs,
+      kCoremlProviderOption_MLModelCacheDir,
+  };
+  // Validate the options
+  for (const auto& option : options) {
+    if (valid_options.find(option.first) == valid_options.end()) {
+      ORT_THROW("Unknown option: ", option.first);
+    }
+    if (kCoremlProviderOption_MLComputeUnits == option.first) {
+      if (available_computeunits_options.find(option.second) == available_computeunits_options.end()) {
+        ORT_THROW("Invalid value for option ", option.first, ": ", option.second);
+      }else {
+        coreml_options.coreml_flags |= available_computeunits_options.at(option.second);
+      }
+    } else if (kCoremlProviderOption_MLModelFormat == option.first) {
+      if (available_modelformat_options.find(option.second) == available_modelformat_options.end()) {
+        ORT_THROW("Invalid value for option ", option.first, ": ", option.second);
+      } else {
+        coreml_options.coreml_flags |= available_modelformat_options.at(option.second);
+      }
+    } else if (okCoremlProviderOption_MLAllowStaticInputShapes == option.first) {
+      coreml_options.coreml_flags |= COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES;
+    } else if (okCoremlProviderOption_MLEnableOnSubgraphs == option.first) {
+      coreml_options.coreml_flags |= COREML_FLAG_ENABLE_ON_SUBGRAPH;
+    } else if (okCoremlProviderOption_MLModelCacheDir == option.first) {
+      coreml_options.cache_path = option.second;
+    }
   }
 
   return coreml_options;
