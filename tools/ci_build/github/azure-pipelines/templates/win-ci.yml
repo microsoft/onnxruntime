@@ -100,7 +100,7 @@ stages:
       timeoutParameter: '--test_all_timeout 72000'
     ${{ else }}:
       timeoutParameter: ''
-    releaseVersion: '${{ parameters.java_artifact_id }}$[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffixCompact']]'
+    releaseVersion: ${{ parameters.java_artifact_id }}$[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffixCompact']]
   jobs:
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
     workspace:
