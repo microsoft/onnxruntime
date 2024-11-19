@@ -161,7 +161,7 @@ stages:
     # Publish the BrowserStack artifacts first so that if the next step fails, the artifacts will still be published
     # so that users can attempt to locally debug
     - publish: "$(Build.ArtifactStagingDirectory)"
-      artifact: "browserstack_test_artifacts"
+      artifact: "browserstack_test_artifacts_${{ lower(parameters.packageVariant) }}"
       displayName: "Publish BrowserStack test artifacts"
 
     - script: |
