@@ -100,7 +100,10 @@ stages:
       timeoutParameter: '--test_all_timeout 72000'
     ${{ else }}:
       timeoutParameter: ''
-    onnxruntimeReleaseVersion: $(OnnxRuntimeVersion)$(PreReleaseVersionSuffixString)$(PreReleaseVersionSuffixNumber)
+    ${{ if eq(parameters['PreReleaseVersionSuffixString'], 'none') }}:
+      onnxruntimeReleaseVersion: '$(OnnxRuntimeVersion)'
+    ${{ else }}:
+      onnxruntimeReleaseVersion: '$(OnnxRuntimeVersion)-${{ parameters.PreReleaseVersionSuffixString }}${{ parameters.PreReleaseVersionSuffixNumber }}'
   jobs:
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
     workspace:
@@ -128,9 +131,9 @@ stages:
           targetType: 'inline'
           script: |
             Write-Host "PreReleaseVersionSuffixString:"
-            Write-Host "$(PreReleaseVersionSuffixString)"
+            Write-Host "${{ parameters.PreReleaseVersionSuffixString }}"
             Write-Host "PreReleaseVersionSuffixNumber:"
-            Write-Host "$(PreReleaseVersionSuffixNumber)"
+            Write-Host "${{ parameters.PreReleaseVersionSuffixNumber }}"
             Write-Host "onnxruntimeReleaseVersion:"
             Write-Host "$(onnxruntimeReleaseVersion)"
             exit 1
