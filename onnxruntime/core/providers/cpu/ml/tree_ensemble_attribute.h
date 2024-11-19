@@ -137,7 +137,7 @@ struct TreeEnsembleAttributesV5 {
   }
 
   void convert_to_v3(TreeEnsembleAttributesV3<ThresholdType>& output) const {
-    // doing all transformation to get the old format
+    // Doing all transformations to get the old format.
     output.n_targets_or_classes = n_targets;
     output.aggregate_function = aggregateFunctionToString();
     output.post_transform = postTransformToString();
@@ -150,7 +150,6 @@ struct TreeEnsembleAttributesV5 {
   std::vector<int64_t> leaf_targetids;
   std::vector<ThresholdType> leaf_weights;
   std::vector<ThresholdType> membership_values;
-  // std::vector<std::vector<ThresholdType>> membership_values_by_id;
   int64_t n_targets;
   std::vector<int64_t> nodes_falseleafs;
   std::vector<int64_t> nodes_falsenodeids;
@@ -166,7 +165,7 @@ struct TreeEnsembleAttributesV5 {
 
  private:
   // `membership_values` are seperated by NAN for different nodes
-  // It is more convinient to preserve the values for each node in a vector
+  // It is more convenient to preserve the values for each node in a vector
   // The vector would be empty for nodes that are not `BRANCH_MEMBER`
   void getMembershipValuesById(std::vector<std::vector<ThresholdType>>& membership_values_by_id) const {
     membership_values_by_id.clear();

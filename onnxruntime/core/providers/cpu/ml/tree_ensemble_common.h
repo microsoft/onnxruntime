@@ -928,7 +928,7 @@ Status TreeEnsembleCommonV5<IOType, ThresholdType>::Init(
     const TreeEnsembleAttributesV5<ThresholdType>& attributes) {
   TreeEnsembleAttributesV3<ThresholdType> attributes_v3;
   attributes.convert_to_v3(attributes_v3);
-  
+
   attributes_v3.base_values.clear();
   attributes_v3.base_values_as_tensor.clear();
   attributes_v3.nodes_hitrates.clear();
