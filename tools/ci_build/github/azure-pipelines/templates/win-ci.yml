@@ -100,7 +100,8 @@ stages:
       timeoutParameter: '--test_all_timeout 72000'
     ${{ else }}:
       timeoutParameter: ''
-    releaseVersionSuffixCompact: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.releaseVersionSuffixCompact']]
+    releaseVersionSuffix: $[replace($[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.releaseVersionSuffix']], '.', '')]
+    onnxruntimeReleaseVersion: $(OnnxRuntimeVersion)$(releaseVersionSuffix)
   jobs:
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
     workspace:
@@ -122,6 +123,17 @@ stages:
       - checkout: self
         clean: true
         submodules: none
+
+      - task: PowerShell@2
+        inputs:
+          targetType: 'inline'
+          script: |
+            Write-Host "releaseVersionSuffix:"
+            Write-Host "$(releaseVersionSuffix)"
+            Write-Host "onnxruntimeReleaseVersion:"
+            Write-Host "$(onnxruntimeReleaseVersion)"
+            exit 1
+        displayName: 'KYLE DEBUG - Powershell'
 
       - task: UsePythonVersion@0
         inputs:
