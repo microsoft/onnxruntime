@@ -210,7 +210,6 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${PROVIDERS_NNAPI}
   ${PROVIDERS_QNN}
   ${PROVIDERS_SNPE}
-  ${PROVIDERS_TVM}
   ${PROVIDERS_RKNPU}
   ${PROVIDERS_VSINPU}
   ${PROVIDERS_XNNPACK}
@@ -221,7 +220,6 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${onnxruntime_winml}
   onnxruntime_optimizer
   onnxruntime_providers
-  ${onnxruntime_tvm_libs}
   onnxruntime_lora
   onnxruntime_framework
   onnxruntime_graph

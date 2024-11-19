@@ -98,7 +98,7 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
       for (int m = 0; m < size<1>(tOgO); ++m) {
         const int row = get<0>(tOcO(0, m, 0));
         if (row < binfo.actual_seqlen_q - m_block * kBlockM && get<1>(tOcO(0, m, 0)) == 0) {
-          gLSE(row) = INFINITY;
+          gLSE(row) = std::numeric_limits<ElementAccum>::infinity();
         }
       }
       return;
@@ -499,7 +499,7 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
     for (int m = 0; m < size<1>(tOgOaccum); ++m) {
       const int row = get<0>(tOcO(0, m, 0));
       if (row < binfo.actual_seqlen_q - m_block * kBlockM && get<1>(tOcO(0, m, 0)) == 0) {
-        gLSEaccum(row) = Split ? -INFINITY : INFINITY;
+        gLSEaccum(row) = Split ? -std::numeric_limits<ElementAccum>::infinity() : std::numeric_limits<ElementAccum>::infinity();
       }
     }
     return;
@@ -1061,7 +1061,7 @@ inline __device__ void combine_attn_seqk_parallel(const Params& params) {
   for (int l = 0; l < kNLsePerThread; ++l) {
     const int row = l * kRowsPerLoadLSE + tidx / kBlockM;
     const int col = tidx % kBlockM;
-    ElementAccum lse = (row < params.num_splits && col < params.b * params.h * params.seqlen_q - bidx * kBlockM) ? gLSEaccum(row, col) : -INFINITY;
+    ElementAccum lse = (row < params.num_splits && col < params.b * params.h * params.seqlen_q - bidx * kBlockM) ? gLSEaccum(row, col) : -std::numeric_limits<ElementAccum>::infinity();
     if (row < kMaxSplits) {
       sLSE[row][col] = lse;
     }
@@ -1082,7 +1082,7 @@ inline __device__ void combine_attn_seqk_parallel(const Params& params) {
   for (int l = 0; l < kNLsePerThread; ++l) {
     const int row = l * kRowsPerLoadTranspose + tidx % kRowsPerLoadTranspose;
     const int col = tidx / kRowsPerLoadTranspose;
-    lse_accum(l) = (row < kMaxSplits && col < kBlockM) ? sLSE[row][col] : -INFINITY;
+    lse_accum(l) = (row < kMaxSplits && col < kBlockM) ? sLSE[row][col] : -std::numeric_limits<ElementAccum>::infinity();
     // if (bidx == 0 && tidx < 32) { printf("tidx = %d, row = %d, col = %d, lse = %f\n", tidx, row, col, lse_accum(l)); }
   }
 
@@ -1094,7 +1094,7 @@ inline __device__ void combine_attn_seqk_parallel(const Params& params) {
   }
   MaxOp<float> max_op;
   lse_max = Allreduce<kRowsPerLoadTranspose>::run(lse_max, max_op);
-  lse_max = lse_max == -INFINITY ? 0.0f : lse_max;  // In case all local LSEs are -inf
+  lse_max = lse_max == -std::numeric_limits<ElementAccum>::infinity() ? 0.0f : lse_max;  // In case all local LSEs are -inf
   float lse_sum = expf(lse_accum(0) - lse_max);
 #pragma unroll
   for (int l = 1; l < kNLsePerThread; ++l) {
@@ -1104,7 +1104,7 @@ inline __device__ void combine_attn_seqk_parallel(const Params& params) {
   lse_sum = Allreduce<kRowsPerLoadTranspose>::run(lse_sum, sum_op);
   // For the case where all local lse == -INFINITY, we want to set lse_logsum to INFINITY. Otherwise
   // lse_logsum is log(0.0) = -INFINITY and we get NaN when we do lse_accum(l) - lse_logsum.
-  ElementAccum lse_logsum = (lse_sum == 0.f || lse_sum != lse_sum) ? INFINITY : logf(lse_sum) + lse_max;
+  ElementAccum lse_logsum = (lse_sum == 0.f || lse_sum != lse_sum) ? std::numeric_limits<ElementAccum>::infinity() : logf(lse_sum) + lse_max;
   // if (bidx == 0 && tidx < 32) { printf("tidx = %d, lse = %f, lse_max = %f, lse_logsum = %f\n", tidx, lse_accum(0), lse_max, lse_logsum); }
   if (tidx % kRowsPerLoadTranspose == 0 && tidx / kRowsPerLoadTranspose < kBlockM) {
     gLSE(tidx / kRowsPerLoadTranspose) = lse_logsum;

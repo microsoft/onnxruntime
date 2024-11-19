@@ -29,6 +29,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Div | ai.onnx(7-12, 13, 14+) | div | ✓ | ✓ | |
 | DequantizeLinear | ai.onnx(10-12, 13-18, 19-20, 21-22, 23+) | dequantizeLinear | ✗ | ✓ | |
 | Dropout | ai.onnx(7-9, 10-11, 12, 13-21, 22+) | identity | ✓ | ✓ | Only supports test mode |
+| Einsum | ai.onnx(12+) | reshape, transpose, matmul, reduceSum, mul, triangular | ✓ | ✓ | |
 | Elu | ai.onnx(7+) | elu | ✓ | ✓ | WebNN CPU backend only supports 'alpha' value is 1.0 |
 | Equal | ai.onnx(7-10, 11-12, 13-18, 19+) | equal | ✓ | ✓ | |
 | Erf | ai.onnx(7-9, 10-12, 13+) | erf | ✓ | ✓ | |

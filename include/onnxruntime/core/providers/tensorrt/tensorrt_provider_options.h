@@ -71,23 +71,21 @@ struct OrtTensorRTProviderOptionsV2 {
    *    directory by means of the "trt_onnx_model_folder_path" option.
    *
    */
-  int trt_dump_ep_context_model{0};                                           // Dump EP context node model
-  const char* trt_ep_context_file_path{nullptr};                              // Specify file name to dump EP context node model. Can be a path or a file name or a file name with path.
-  int trt_ep_context_embed_mode{0};                                           // Specify EP context embed mode. Default 0 = context is engine cache path, 1 = context is engine binary data
-  int trt_weight_stripped_engine_enable{0};                                   // Enable weight-stripped engine build. Default 0 = false,
-                                                                              // nonzero = true
-  const char* trt_onnx_model_folder_path{nullptr};                            // Folder path relative to the current working directory for
-                                                                              // the ONNX model containing the weights (applicable only when
-                                                                              // the "trt_weight_stripped_engine_enable" option is enabled)
-  const void* trt_onnx_bytestream{nullptr};                                   // The byte stream of th original ONNX model containing the weights
-                                                                              // (applicable only when the "trt_weight_stripped_engine_enable"
-                                                                              // option is enabled)
-                                                                              // can be updated using: UpdateTensorRTProviderOptionsWithValue
-  size_t trt_onnx_bytestream_size{0};                                         // size of the byte stream provided as "trt_onnx_bytestream"
-                                                                              // can be updated using: UpdateTensorRTProviderOptionsWithValue
-  const char* trt_engine_cache_prefix{nullptr};                               // specify engine cache prefix
-  int trt_engine_hw_compatible{0};                                            // Enable hardware compatibility. Default 0 = false, nonzero = true
-  const char* trt_op_types_to_exclude{"NonMaxSuppression,NonZero,RoiAlign"};  // Exclude specific ops from running on TRT.
-                                                                              // There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) from TRT versions 10.0 to 10.7.
-                                                                              // TRT EP excludes DDS ops from running on TRT by default, user can override default value with empty string to include all ops.
+  int trt_dump_ep_context_model{0};                 // Dump EP context node model
+  const char* trt_ep_context_file_path{nullptr};    // Specify file name to dump EP context node model. Can be a path or a file name or a file name with path.
+  int trt_ep_context_embed_mode{0};                 // Specify EP context embed mode. Default 0 = context is engine cache path, 1 = context is engine binary data
+  int trt_weight_stripped_engine_enable{0};         // Enable weight-stripped engine build. Default 0 = false,
+                                                    // nonzero = true
+  const char* trt_onnx_model_folder_path{nullptr};  // Folder path relative to the current working directory for
+                                                    // the ONNX model containing the weights (applicable only when
+                                                    // the "trt_weight_stripped_engine_enable" option is enabled)
+  const void* trt_onnx_bytestream{nullptr};         // The byte stream of th original ONNX model containing the weights
+                                                    // (applicable only when the "trt_weight_stripped_engine_enable"
+                                                    // option is enabled)
+                                                    // can be updated using: UpdateTensorRTProviderOptionsWithValue
+  size_t trt_onnx_bytestream_size{0};               // size of the byte stream provided as "trt_onnx_bytestream"
+                                                    // can be updated using: UpdateTensorRTProviderOptionsWithValue
+
+  const char* trt_engine_cache_prefix{nullptr};  // specify engine cache prefix
+  int trt_engine_hw_compatible{0};               // Enable hardware compatibility. Default 0 = false, nonzero = true
 };
