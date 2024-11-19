@@ -7,7 +7,7 @@ parameters:
 - name: build_config
   displayName: Build Configuration
   type: string
-  default: 'Release'
+  default: 'RelWithDebInfo'
 
 - name: IsReleaseBuild
   displayName: Is a release build? Set it to true if you are doing an Onnx Runtime release.
