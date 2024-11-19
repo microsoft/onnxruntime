@@ -100,7 +100,7 @@ stages:
       timeoutParameter: '--test_all_timeout 72000'
     ${{ else }}:
       timeoutParameter: ''
-    releaseVersionCompact: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionCompact']]
+    releaseVersion: '$(OnnxRuntimeVersion)$[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffixCompact']]'
   jobs:
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
     workspace:
@@ -127,8 +127,10 @@ stages:
         inputs:
           targetType: 'inline'
           script: |
-            Write-Host "releaseVersionCompact:"
-            Write-Host "$(releaseVersionCompact)"
+            Write-Host "releaseVersion:"
+            Write-Host "$(releaseVersion)"
+            Write-Host "OnnxRuntimeVersion:"
+            Write-Host "$(OnnxRuntimeVersion)"
             exit 1
         displayName: 'KYLE DEBUG - Powershell'
 
