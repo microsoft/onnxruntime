@@ -2,6 +2,7 @@ parameters:
   IsReleaseBuild: false
   PreReleaseVersionSuffixString: 'none'
   PreReleaseVersionSuffixNumber: 0
+  versionFileDirectory: '$(Build.SourcesDirectory)/onnxruntime'
 stages:
 - stage: Setup
   jobs:
@@ -16,11 +17,11 @@ stages:
     - bash: |
         # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
         set +x
-        _OnnxRuntimeVersion=$(head -1 $(Build.SourcesDirectory)/VERSION_NUMBER)
+        _OnnxRuntimeVersion=$(head -1 ${{parameters.versionFileDirectory}}/VERSION_NUMBER)
         if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
           if [[ "${{ parameters.PreReleaseVersionSuffixNumber }}" -eq 0 ]]; then
             echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}"
-            echo "##vso[task.setvariable variable=ReleaseVersionCompact;isOutput=true]$_OnnxRuntimeVersion-${{ parameters.PreReleaseVersionSuffixString }}
+            echo "##vso[task.setvariable variable=ReleaseVersionCompact;isOutput=true]$_OnnxRuntimeVersion-${{ parameters.PreReleaseVersionSuffixString }}"
           else
             echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
             echo "##vso[task.setvariable variable=ReleaseVersionCompact;isOutput=true]$_OnnxRuntimeVersion-${{ parameters.PreReleaseVersionSuffixString }}${{ parameters.PreReleaseVersionSuffixNumber }}"
