@@ -20,18 +20,17 @@ permissions:
 
 jobs:
   build:
-    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-vs2022-mms"]
     env:
       DOCFXVERSION: 2.62.2
     steps:
     - uses: actions/checkout@v4
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: 8.0.x
     - name: Install DocFX
       run: |
         dotnet tool update -g docfx
+    - name: Update PATH
+      run: |
+        Add-Content -Value "$env:USERPROFILE\.dotnet\tools" -Encoding utf8 -Path $env:GITHUB_PATH
     # NOTE: We need to restore Microsoft.ML.OnnxRuntime.csproj manually to set IncludeMobileTargets=false
     # docfx doesn't seem to be able to do that properly resulting in build errors
     - name: Restore dependencies
@@ -50,10 +49,12 @@ jobs:
     - name: Log source commit
       run: git rev-parse --short HEAD > csharp/ApiDocs/csharp/source-version.txt
     - name: Move C# docs into site
+      shell: pwsh
       run: |
-        mkdir -p _site/docs/api
-        rm -rf _site/docs/api/csharp
-        mv csharp/ApiDocs/csharp _site/docs/api/csharp
+        New-Item -Path _site/docs/api -Force -ItemType "Directory" | Out-Null
+        $OutputDirectory="_site/docs/api/csharp"
+        if (Test-Path $OutputDirectory) { Remove-Item -Recurse -Force $OutputDirectory }
+        Move-Item -Path csharp\ApiDocs\csharp -Destination $OutputDirectory
     - name: Upload docs artifact
       uses: actions/upload-artifact@v4
       with:
