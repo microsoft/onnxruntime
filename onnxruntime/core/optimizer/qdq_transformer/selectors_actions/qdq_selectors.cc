@@ -49,7 +49,7 @@ std::vector<const Node*> FindQDQNodes(const GraphViewer& graph_viewer, const Nod
 }
 }  // namespace
 
-bool NodeGroupSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Node& node,
+bool NodeGroupSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Node& node, const Node* p_activation_node,
                                       const std::vector<const Node*>& dq_nodes,
                                       const std::vector<const Node*>& q_nodes,
                                       int num_dq_inputs,
@@ -63,7 +63,8 @@ bool NodeGroupSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Nod
     return false;
   }
 
-  if (const auto qdq_validation_status = NodeGroup::CanCreateNodeGroup(graph_viewer, node, dq_nodes, q_nodes);
+  if (const auto qdq_validation_status =
+          NodeGroup::CanCreateNodeGroup(graph_viewer, node, p_activation_node, dq_nodes, q_nodes);
       !qdq_validation_status.IsOK()) {
     return false;
   }
@@ -80,8 +81,21 @@ bool NodeGroupSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Nod
 
 std::optional<NodeGroup> NodeGroupSelector::GetQDQSelection(const GraphViewer& graph_viewer, const Node& node) const {
   std::vector<const Node*> dq_nodes = FindQDQNodes(graph_viewer, node, true);
-  std::vector<const Node*> q_nodes = FindQDQNodes(graph_viewer, node, false);
-  if (!Check(graph_viewer, node, dq_nodes, q_nodes)) {
+  const Node* p_activation_node = nullptr;
+  if (node.GetOutputEdgesCount() == 1) {
+    const Node& activation_node = *node.OutputNodesBegin();
+    if (activation_node.OpType() == "Relu" || activation_node.OpType() == "Clip") {
+      p_activation_node = &activation_node;
+    }
+  }
+  std::vector<const Node*> q_nodes = FindQDQNodes(graph_viewer, (p_activation_node ? *p_activation_node : node), false);
+
+  if (p_activation_node &&
+      (q_nodes.size() != 1 || !CanFuseActivationQ(graph_viewer, *p_activation_node, *q_nodes[0]))) {
+    return std::nullopt;
+  }
+
+  if (!Check(graph_viewer, node, p_activation_node, dq_nodes, q_nodes)) {
     return std::nullopt;
   }
 
@@ -89,6 +103,9 @@ std::optional<NodeGroup> NodeGroupSelector::GetQDQSelection(const GraphViewer& g
   node_group.dq_nodes.reserve(dq_nodes.size());
   node_group.q_nodes.reserve(q_nodes.size());
   node_group.target_node = node.Index();
+  if (p_activation_node) {
+    node_group.activation_node = p_activation_node->Index();
+  }
   auto get_node_idx = [&](const Node* n) { return n->Index(); };
   std::transform(dq_nodes.begin(), dq_nodes.end(), std::back_inserter(node_group.dq_nodes), get_node_idx);
   std::transform(q_nodes.begin(), q_nodes.end(), std::back_inserter(node_group.q_nodes), get_node_idx);
@@ -122,9 +139,14 @@ std::optional<NodesToOptimizeIndices> BaseSelector::Select(const GraphViewer& gr
 
 bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                      const Node& node,
+                                     const Node* p_activation_node,
                                      const std::vector<const Node*>& dq_nodes,
                                      const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, 1)) {
+  if (p_activation_node) {
+    return false;
+  }
+
+  if (!CheckQDQNodes(graph_viewer, node, nullptr, dq_nodes, q_nodes, 1)) {
     return false;
   }
 
@@ -162,14 +184,19 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
 
 bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                     const Node& node,
+                                    const Node* p_activation_node,
                                     const std::vector<const Node*>& dq_nodes,
                                     const std::vector<const Node*>& q_nodes) const {
+  if (p_activation_node) {
+    return false;
+  }
+
   constexpr int num_dq_inputs = 1;
   if (num_dq_inputs != gsl::narrow_cast<int>(dq_nodes.size())) {
     return false;
   }
 
-  if (const auto qdq_validation_status = NodeGroup::CanCreateNodeGroup(graph_viewer, node, dq_nodes, q_nodes);
+  if (const auto qdq_validation_status = NodeGroup::CanCreateNodeGroup(graph_viewer, node, nullptr, dq_nodes, q_nodes);
       !qdq_validation_status.IsOK()) {
     return false;
   }
@@ -194,10 +221,14 @@ bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   return IsDQSupported(dq_node, get_const_initializer);
 }
 
-bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
+bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* p_activation_node,
                                    const std::vector<const Node*>& dq_nodes,
                                    const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, 1)) {
+  if (p_activation_node) {
+    return false;
+  }
+
+  if (!CheckQDQNodes(graph_viewer, node, nullptr, dq_nodes, q_nodes, 1)) {
     return false;
   }
 
@@ -222,9 +253,15 @@ bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
 
 bool BinaryNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                     const Node& node,
+                                    const Node* p_activation_node,
                                     const std::vector<const Node*>& dq_nodes,
                                     const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
+  // Support Add+Activation only for now. Can add more binary ops if needed.
+  if (p_activation_node && node.OpType() != "Add") {
+    return false;
+  }
+
+  if (!CheckQDQNodes(graph_viewer, node, p_activation_node, dq_nodes, q_nodes)) {
     return false;
   }
 
@@ -251,9 +288,14 @@ bool BinaryNodeGroupSelector::Check(const GraphViewer& graph_viewer,
 
 bool VariadicNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                       const Node& node,
+                                      const Node* p_activation_node,
                                       const std::vector<const Node*>& dq_nodes,
                                       const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
+  if (p_activation_node) {
+    return false;
+  }
+
+  if (!CheckQDQNodes(graph_viewer, node, nullptr, dq_nodes, q_nodes)) {
     return false;
   }
 
@@ -294,9 +336,14 @@ void InputVariadicSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder
 
 bool SplitNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                    const Node& node,
+                                   const Node* p_activation_node,
                                    const std::vector<const Node*>& dq_nodes,
                                    const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, 1)) {
+  if (p_activation_node) {
+    return false;
+  }
+
+  if (!CheckQDQNodes(graph_viewer, node, nullptr, dq_nodes, q_nodes, 1)) {
     return false;
   }
 
@@ -334,9 +381,10 @@ void SplitSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const 
 
 bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                   const Node& node,
+                                  const Node* p_activation_node,
                                   const std::vector<const Node*>& dq_nodes,
                                   const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
+  if (!CheckQDQNodes(graph_viewer, node, p_activation_node, dq_nodes, q_nodes)) {
     return false;
   }
 
@@ -379,8 +427,13 @@ void ConvSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
 
 bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                     const Node& node,
+                                    const Node* p_activation_node,
                                     const std::vector<const Node*>& dq_nodes,
                                     const std::vector<const Node*>& q_nodes) const {
+  if (p_activation_node) {
+    return false;
+  }
+
   if (dq_nodes.size() != 2) {
     return false;
   }
@@ -409,7 +462,7 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
 
   if (qlinear) {
     // QLinearMatMul
-    if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
+    if (!CheckQDQNodes(graph_viewer, node, nullptr, dq_nodes, q_nodes)) {
       return false;
     }
 
@@ -423,8 +476,13 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
 
 bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                       const Node& node,
+                                      const Node* p_activation_node,
                                       const std::vector<const Node*>& dq_nodes,
                                       const std::vector<const Node*>& q_nodes) const {
+  if (p_activation_node) {
+    return false;
+  }
+
   // Should not have any Q nodes
   if (!q_nodes.empty()) {
     return false;
@@ -508,9 +566,14 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
 
 bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                   const Node& node,
+                                  const Node* p_activation_node,
                                   const std::vector<const Node*>& dq_nodes,
                                   const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes,
+  if (p_activation_node) {
+    return false;
+  }
+
+  if (!CheckQDQNodes(graph_viewer, node, nullptr, dq_nodes, q_nodes,
                      -1 /*num_dq_inputs*/, true /*is_empty_q_nodes_allowed*/)) {
     return false;
   }
@@ -557,11 +620,15 @@ void GemmSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.input_nodes.resize(3, NodesToOptimizeIndices::kEmptyNodeIndex);
 }
 
-bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
+bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* p_activation_node,
                                    const std::vector<const Node*>& dq_nodes,
                                    const std::vector<const Node*>& q_nodes) const {
+  if (p_activation_node) {
+    return false;
+  }
+
   // Where has 1 boolean input and 2 dq inputs
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, 2)) {
+  if (!CheckQDQNodes(graph_viewer, node, nullptr, dq_nodes, q_nodes, 2)) {
     return false;
   }
 
@@ -586,9 +653,13 @@ bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
   return true;
 }
 
-bool PadNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
+bool PadNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* p_activation_node,
                                  const std::vector<const Node*>& dq_nodes,
                                  const std::vector<const Node*>& q_nodes) const {
+  if (p_activation_node) {
+    return false;
+  }
+
   // Pad can have 1 or 2 dq input, the optional input constant_value can be quantized or non-quantized.
   // QNN supports data input quantized with constant_value input non-quantized.
   int num_dq_inputs = static_cast<int>(dq_nodes.size());
@@ -596,7 +667,7 @@ bool PadNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& no
     return false;
   }
 
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, num_dq_inputs)) {
+  if (!CheckQDQNodes(graph_viewer, node, nullptr, dq_nodes, q_nodes, num_dq_inputs)) {
     return false;
   }
 
@@ -613,9 +684,14 @@ bool PadNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& no
 
 bool InstanceAndLayerNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                                            const Node& node,
+                                                           const Node* p_activation_node,
                                                            const std::vector<const Node*>& dq_nodes,
                                                            const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
+  if (p_activation_node) {
+    return false;
+  }
+
+  if (!CheckQDQNodes(graph_viewer, node, nullptr, dq_nodes, q_nodes)) {
     return false;
   }
 
@@ -637,9 +713,14 @@ bool InstanceAndLayerNormalizationNodeGroupSelector::Check(const GraphViewer& gr
 
 bool BatchNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                                 const Node& node,
+                                                const Node* p_activation_node,
                                                 const std::vector<const Node*>& dq_nodes,
                                                 const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, 3)) {
+  if (p_activation_node) {
+    return false;
+  }
+
+  if (!CheckQDQNodes(graph_viewer, node, nullptr, dq_nodes, q_nodes, 3)) {
     return false;
   }
 
@@ -661,9 +742,14 @@ bool BatchNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer,
 
 bool LogicalComparisonNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                                const Node& node,
+                                               const Node* p_activation_node,
                                                const std::vector<const Node*>& dq_nodes,
                                                const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, -1, true)) {
+  if (p_activation_node) {
+    return false;
+  }
+
+  if (!CheckQDQNodes(graph_viewer, node, nullptr, dq_nodes, q_nodes, -1, true)) {
     return false;
   }
 
@@ -674,15 +760,21 @@ bool LogicalComparisonNodeGroupSelector::Check(const GraphViewer& graph_viewer,
 
 bool TopKNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                   const Node& node,
+                                  const Node* p_activation_node,
                                   const std::vector<const Node*>& dq_nodes,
                                   const std::vector<const Node*>& q_nodes) const {
+  if (p_activation_node) {
+    return false;
+  }
+
   constexpr int num_dq_inputs = 1;
   constexpr int num_q_outputs = 1;
   if (num_dq_inputs != gsl::narrow_cast<int>(dq_nodes.size())) {
     return false;
   }
 
-  if (const auto qdq_validation_status = QDQ::NodeGroup::CanCreateNodeGroup(graph_viewer, node, dq_nodes, q_nodes);
+  if (const auto qdq_validation_status =
+          QDQ::NodeGroup::CanCreateNodeGroup(graph_viewer, node, nullptr, dq_nodes, q_nodes);
       !qdq_validation_status.IsOK()) {
     return false;
   }
