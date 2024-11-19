@@ -15,6 +15,7 @@ namespace onnxruntime {
 
 class Node;
 class Path;
+class GraphViewer;
 
 namespace QDQ {
 
@@ -76,5 +77,9 @@ bool MatchQNode(const Node& node);
 // Check DQ node op type, version, and domain.
 bool MatchDQNode(const Node& node);
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+// Check if an activation node can be fused with a Q node.
+bool CanFuseActivationQ(const GraphViewer& graph_viewer, const Node& activation_node, const Node& q_node);
+
 }  // namespace QDQ
 }  // namespace onnxruntime
