@@ -5,6 +5,7 @@
 #include <absl/base/config.h>
 
 #include "asserts.h"
+#include "core/framework/allocator_utils.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/graph_partitioner.h"
 #include "core/framework/kernel_registry.h"
@@ -216,10 +217,12 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
 
 // Test that we allocate memory for an initializer from non-arena memory even if we provide an arena-based allocator
 // if the relevant session option config flag is set
-// For this test we need to enable the arena-based allocator which is not supported on x86 builds, so
-// enable this test only on x64 builds
-#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) && !defined(USE_MIMALLOC) && !defined(ABSL_HAVE_ADDRESS_SANITIZER)
 TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
+  // For this test we need to enable the arena-based allocator.
+  if (!DoesCpuAllocatorSupportArenaUsage()) {
+    GTEST_SKIP() << "CPU allocator does not support arena usage.";
+  }
+
   AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
   // Part 1: Feature turned ON (i.e.) allocate from non-arena memory
   {
@@ -347,8 +350,6 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     ASSERT_EQ(alloc_stats.num_allocs, 1);
   }
 }
-
-#endif
 
 INSTANTIATE_TEST_SUITE_P(SessionStateTests, SessionStateTestP, testing::ValuesIn(param_list));
 
