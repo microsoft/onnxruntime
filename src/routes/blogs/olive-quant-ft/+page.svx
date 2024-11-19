@@ -1,8 +1,8 @@
 ---
 title: 'Is it better to quantize before or after finetuning?'
-date: '18th November, 2024'
-description: 'Learn how to use the shared cache feature in Olive to enhance team collaboration when optimizing AI models'
-keywords: 'GenAI , LLM, ONNXRuntime, ORT, Phi, DirectML, Windows, phi3, phi-3, llama-3.2, ONNX, SLM, edge, gpu'
+date: '19th November, 2024'
+description: 'Learn how Olive helps optimize models for efficient, accurate deployment.'
+keywords: 'quantization, fine-tuning, Olive toolkit, model optimization, ONNX runtime, AI model efficiency, AWQ, GPTQ, model deployment, low-precision, LoRA, language models, quantize before fine-tune, quantization sequence, Phi-3.5, Llama, memory reduction'
 authors:
   [
     'Jambay Kinley',
@@ -13,8 +13,8 @@ authorsLink:
     'https://www.linkedin.com/in/jambayk/',
     'https://www.linkedin.com/in/samuel-kemp-a9253724/'
    ]
-image: ''
-imageSquare: ''
+image: 'https://iili.io/251Z3ts.jpg'
+imageSquare: 'https://iili.io/251Z3ts.jpg'
 url: 'https://onnxruntime.ai/blogs/olive-quant-ft'
 ---
 
