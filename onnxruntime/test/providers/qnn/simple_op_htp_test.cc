@@ -230,6 +230,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Tanh) {
 }
 
 // disabled for QNN 2.28.0.241029 backendValidateOpConfig failed
+// still fails on QNN 2.28.2.
 // QnnDsp <E> [4294967295] has incorrect Value -32768, expected equal to 0.
 // QnnDsp <V> validateNativeOps node_token_6:qti.aisw:Tanh htp op validator failed 3110
 // QnnDsp <V> registered validator failed => 3110
