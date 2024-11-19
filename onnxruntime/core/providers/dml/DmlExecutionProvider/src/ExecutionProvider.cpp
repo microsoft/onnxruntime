@@ -92,12 +92,13 @@ namespace Dml
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
     ExecutionProvider::GetCapability(
         const onnxruntime::GraphViewer& graph,
-        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup) const
+        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+        IResourceAccountant* resource_accountant) const
     {
 #ifdef ENABLE_GRAPH_COMPILATION
-        return m_impl->GetCapability(graph, kernel_lookup);
+        return m_impl->GetCapability(graph, kernel_lookup, resource_accountant);
 #else
-        return onnxruntime::IExecutionProvider::GetCapability(graph, kernel_lookup);
+        return onnxruntime::IExecutionProvider::GetCapability(graph, kernel_lookup, resource_accountant);
 #endif
     }
 
@@ -876,7 +877,8 @@ namespace Dml
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
     ExecutionProviderImpl::GetCapability(
         const onnxruntime::GraphViewer& graph,
-        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup) const
+        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+        IResourceAccountant*) const
     {
         uint32_t deviceDataTypeMask = GetSupportedDeviceDataTypeMask(); // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
 

@@ -58,7 +58,8 @@ CoreMLExecutionProvider::~CoreMLExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                       const IKernelLookup& /*kernel_lookup*/) const {
+                                       const IKernelLookup& /*kernel_lookup*/,
+                                       IResourceAccountant* /* resource_accountant */) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   if (coreml_version_ < MINIMUM_COREML_VERSION) {

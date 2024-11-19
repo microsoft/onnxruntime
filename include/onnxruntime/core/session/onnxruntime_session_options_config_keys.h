@@ -197,6 +197,11 @@ static const char* const kOrtSessionOptionsConfigStrictAllowReleasedOpsetsOnly =
 // The file saves configuration for partitioning node among logic streams
 static const char* const kNodePartitionConfigFile = "session.node_partition_config_file";
 
+/// "number > 0": enables Capacity Aware Partitioning for Cuda EP. The EP will place nodes on device
+/// "0" : disables Capacity Aware Partitioning for Cuda EP. The EP will place nodes on device based on the default policy.
+///  until the device memory usage reaches the specified threshold in Kb. The default value is 0.
+static const char* const kOrtSessionOptionsConfigPartitionSetCudaMemoryLimitKb = "session.node_partition_cuda_memory_limit_kb";
+
 // This Option allows setting affinities for intra op threads.
 // Affinity string follows format:
 // logical_processor_id,logical_processor_id;logical_processor_id,logical_processor_id

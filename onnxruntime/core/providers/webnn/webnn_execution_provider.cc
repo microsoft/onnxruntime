@@ -50,7 +50,8 @@ WebNNExecutionProvider::~WebNNExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                      const IKernelLookup& /*kernel_registries*/) const {
+                                      const IKernelLookup& /*kernel_registries*/,
+                                      IResourceAccountant* /* resource_accountant */) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   // For subgraph which is the attribute of the control flow nodes, part of its initializers are stored in its
