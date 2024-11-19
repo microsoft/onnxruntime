@@ -317,3 +317,56 @@ onnxruntime_genai.Generator.get_sequence(index: int) -> numpy.ndarray[numpy.int3
 ```
 
 - `index`: (Required) The index of the sequence in the batch to return
+
+## Adapter class
+
+### Create
+
+Create an Adapters object, using a model that has been loaded.
+
+```python
+model = ...
+adapters = og.Adapters(model)
+```
+
+#### Parameters
+
+* `model`: the model that the adapters will be used with
+
+#### Return value
+
+An `Adapter` object
+
+### Load
+
+Load an adapter from disk into an Adapter object in memory.
+
+```python
+onnxruntime_genai.Adapters(file: str, name: str) -> None
+```
+
+#### Parameters
+
+* `file`: the location on disk from which to load the adapter
+* `name`: the name of the adapter
+
+#### Return value
+
+None
+
+### Set active adapter
+
+Sets the actove adapter on a `Generator` object.
+
+```python
+onnxruntime_genai.Generator(adapters: Generators::Adapters, adapter: str) -> None
+```
+
+#### Parameters
+
+* `adapters`: the adapters object, which has had the identified adapter loading into it
+* `adapter`: the name of the adapter to set as active
+
+#### Return value
+
+None

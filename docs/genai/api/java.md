@@ -610,3 +610,7 @@ public int[] getSequence(long sequenceIndex)
 
 The sequence as an array of integers.
 
+
+## Adapter class
+
+_Coming very soon!_
