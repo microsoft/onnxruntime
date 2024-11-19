@@ -20,7 +20,9 @@ The file extension is ".onnx_adapter"
 
 ## Schema
 
-The schema for the file is as follows
+Link to live [schema definition](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/lora/adapter_format/adapter_schema.fbs).
+
+The schema definition is as follows
 
 ```
 File:= 
