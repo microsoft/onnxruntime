@@ -86,9 +86,9 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   std::vector<uint32_t> reverse_axes;
   emscripten::val reverse_output = inputs;
   for (size_t i = 0; i < rank; ++i) {
-    if (compute_metadata.steps_[i] == -1) {
+    if (compute_metadata.steps_[i] < 0) {
       reverse_axes.push_back(SafeInt<uint32_t>(i));
-      compute_metadata.steps_[i] = 1;
+      compute_metadata.steps_[i] = -compute_metadata.steps_[i];
       compute_metadata.starts_[i] = input_shape[i] - 1 - compute_metadata.starts_[i];
       compute_metadata.ends_[i] = input_shape[i] - 1 - compute_metadata.ends_[i];
     }
@@ -157,33 +157,6 @@ bool SliceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
       LOGS(logger, VERBOSE) << "Input [" << input_name << "] of " << op_type << " [" << name
                             << "] must be known as initializer";
       return false;
-    }
-  }
-
-  if (input_defs.size() == 5) {  // Check steps.
-    const auto& steps_tensor = *initializers.at(input_defs[4]->Name());
-    std::vector<uint8_t> unpacked_tensor;
-    auto status = onnxruntime::utils::UnpackInitializerData(steps_tensor, unpacked_tensor);
-    if (!status.IsOK()) {
-      LOGS(logger, ERROR) << "Error while unpacking steps_tensor: " << status.ErrorMessage();
-      return false;
-    }
-    const auto data_type = steps_tensor.data_type();
-    // WebNN slice only supports steps >= 1 or steps == -1.
-    if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-      if (std::any_of(reinterpret_cast<int64_t*>(unpacked_tensor.data()),
-                      reinterpret_cast<int64_t*>(unpacked_tensor.data() + unpacked_tensor.size()),
-                      [](int64_t i) { return i < -1 || i == 0; })) {
-        LOGS(logger, VERBOSE) << "WebNN slice only supports steps >= 1 or steps == -1";
-        return false;
-      }
-    } else if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32) {
-      if (std::any_of(reinterpret_cast<int32_t*>(unpacked_tensor.data()),
-                      reinterpret_cast<int32_t*>(unpacked_tensor.data()) + unpacked_tensor.size() / sizeof(int32_t),
-                      [](int32_t i) { return i < -1 || i == 0; })) {
-        LOGS(logger, VERBOSE) << "WebNN slice only supports steps >= 1 or steps == -1";
-        return false;
-      }
     }
   }
 

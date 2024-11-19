@@ -95,7 +95,7 @@ operators and the supported opset domain/versions in **WebNN EP** by ONNX Runtim
 | Softplus | ai.onnx(7+) | softplus | ✓ | ✓ | |
 | Softsign | ai.onnx(7+) | softsign | ✓ | ✓ | |
 | Sin | ai.onnx(7+) | sin | ✓ | ✓ | |
-| Slice | ai.onnx(7-9, 10, 11-12, 13+) | slice, reverse | ✓ | ✓ | Input 'starts', 'ends', 'axes', and 'steps' if present must be a constant, only supports 'steps' value >= 1 or 'steps' value == -1|
+| Slice | ai.onnx(7-9, 10, 11-12, 13+) | slice, reverse | ✓ | ✓ | Input 'starts', 'ends', 'axes', and 'steps' if present must be a constant |
 | Softmax | ai.onnx(7-10, 11-12, 13+) | softmax | ✓ | ✓ | |
 | Split | ai.onnx(7-10, 11-12, 13-17, 18+) | split | ✓ | ✓ | Input 'split' if present should be a constant |
 | Sqrt | ai.onnx(7-12, 13+) | sqrt | ✓ | ✓ | |
