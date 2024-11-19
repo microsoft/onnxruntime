@@ -100,7 +100,8 @@ stages:
       timeoutParameter: '--test_all_timeout 72000'
     ${{ else }}:
       timeoutParameter: ''
-    releaseVersion: ${{ parameters.java_artifact_id }}$[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffixCompact']]
+    releaseVersion1: ${{ parameters.java_artifact_id }}$[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffixCompact']]
+    releaseVersion2: '${{ parameters.java_artifact_id }}$[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffixCompact']]'
   jobs:
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
     workspace:
@@ -127,10 +128,10 @@ stages:
         inputs:
           targetType: 'inline'
           script: |
-            Write-Host "releaseVersion:"
-            Write-Host "$(releaseVersion)"
-            Write-Host "OnnxRuntimeVersion:"
-            Write-Host "$(OnnxRuntimeVersion)"
+            Write-Host "releaseVersion1:"
+            Write-Host "$(releaseVersion1)"
+            Write-Host "releaseVersion2:"
+            Write-Host "$(releaseVersion2)"
             exit 1
         displayName: 'KYLE DEBUG - Powershell'
 
