@@ -77,7 +77,7 @@ AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info) {
   }
 }
 
-bool ShouldCpuAllocatorUseArena([[maybe_unused]] bool is_arena_requested) {
+bool DoesCpuAllocatorSupportArenaUsage() {
 #if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
   // We use these allocators instead of the arena.
   return false;
@@ -89,7 +89,7 @@ bool ShouldCpuAllocatorUseArena([[maybe_unused]] bool is_arena_requested) {
   if constexpr (sizeof(void*) == 4) {
     return false;
   } else {
-    return is_arena_requested;
+    return true;
   }
 #endif
 }

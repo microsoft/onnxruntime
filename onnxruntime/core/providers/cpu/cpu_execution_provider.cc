@@ -31,8 +31,7 @@ CPUExecutionProvider::CPUExecutionProvider(const CPUExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kCpuExecutionProvider}, info_{info} {}
 
 std::vector<AllocatorPtr> CPUExecutionProvider::CreatePreferredAllocators() {
-  const bool is_arena_requested = info_.create_arena;
-  const bool create_arena = ShouldCpuAllocatorUseArena(is_arena_requested);
+  const bool create_arena = DoesCpuAllocatorSupportArenaUsage() ? info_.create_arena : false;
   AllocatorCreationInfo device_info{[](int) { return std::make_unique<CPUAllocator>(); },
                                     DEFAULT_CPU_ALLOCATOR_DEVICE_ID, create_arena};
 
