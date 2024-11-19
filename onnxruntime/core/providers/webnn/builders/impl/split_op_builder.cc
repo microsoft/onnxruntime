@@ -28,6 +28,8 @@ class SplitOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+  bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
+                               const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -161,6 +163,23 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
     }
   }
   return true;
+}
+
+bool SplitOpBuilder::HasSupportedOutputsImpl(const Node& node,
+                                             const emscripten::val& wnn_limits,
+                                             const logging::Logger& logger) const {
+  const auto& output_defs = node.OutputDefs();
+  const auto& op_type = node.OpType();
+  int32_t output_type = 0;
+
+  if (GetType(*output_defs[0], output_type, logger)) {
+    // Chromium has changed the output name of split from 'output' to 'outputs',
+    // to avoid breaking the existing API, we need to check both names.
+    std::string wnn_output_name = wnn_limits["split"]["output"].isUndefined() ? "outputs" : "output";
+    return IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, wnn_output_name, "outputs", logger);
+  }
+
+  return false;
 }
 
 void CreateSplitOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
