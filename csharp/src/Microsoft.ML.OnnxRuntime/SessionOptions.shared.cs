@@ -147,27 +147,6 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// A helper method to construct a SessionOptions object for TVM execution.
-        /// Use only if you have the onnxruntime package specific to this Execution Provider.
-        /// </summary>
-        /// <param name="settings">settings string, comprises of comma separated key:value pairs. default is empty</param>
-        /// <returns>A SessionsOptions() object configured for execution with TVM</returns>
-        public static SessionOptions MakeSessionOptionWithTvmProvider(String settings = "")
-        {
-            SessionOptions options = new SessionOptions();
-            try
-            {
-                options.AppendExecutionProvider_Tvm(settings);
-                return options;
-            }
-            catch (Exception)
-            {
-                options.Dispose();
-                throw;
-            }
-        }
-
-        /// <summary>
         /// A helper method to construct a SessionOptions object for ROCM execution.
         /// Use only if ROCM is installed and you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
@@ -394,20 +373,6 @@ namespace Microsoft.ML.OnnxRuntime
             {
                 throw new NotSupportedException("The CoreML Execution Provider is not supported in this build");
             }
-#endif
-        }
-
-        /// <summary>
-        /// Use only if you have the onnxruntime package specific to this Execution Provider.
-        /// </summary>
-        /// <param name="settings">string with TVM specific settings</param>
-        public void AppendExecutionProvider_Tvm(string settings = "")
-        {
-#if __MOBILE__
-            throw new NotSupportedException("The TVM Execution Provider is not supported in this build");
-#else
-            var utf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(settings);
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Tvm(handle, utf8));
 #endif
         }
 

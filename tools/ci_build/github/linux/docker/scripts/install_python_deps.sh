@@ -3,7 +3,6 @@ set -e -x
 
 INSTALL_DEPS_TRAINING=false
 INSTALL_DEPS_DISTRIBUTED_SETUP=false
-ORTMODULE_BUILD=false
 TARGET_ROCM=false
 CU_VER="11.8"
 TORCH_VERSION='2.0.0'
@@ -18,7 +17,6 @@ d) DEVICE_TYPE=${OPTARG};;
 v) CU_VER=${OPTARG};;
 t) INSTALL_DEPS_TRAINING=true;;
 m) INSTALL_DEPS_DISTRIBUTED_SETUP=true;;
-u) ORTMODULE_BUILD=true;;
 r) TARGET_ROCM=true;;
 c) USE_CONDA=true;;
 esac
@@ -55,17 +53,3 @@ fi
 export ONNX_ML=1
 export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
 ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps\.sh/requirements\.txt}
-if [ $DEVICE_TYPE = "gpu" ]; then
-  if [[ $INSTALL_DEPS_TRAINING = true ]]; then
-    if [[ $ORTMODULE_BUILD = false ]]; then
-      ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/requirements.txt}
-    else
-      if [[ $TARGET_ROCM = false ]]; then
-        ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage1\/requirements_torch${TORCH_VERSION}_cu${CU_VER}\/requirements.txt}
-        ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage2\/requirements.txt}
-      else
-        ${PYTHON_EXE} -m pip install -r ${0/%install_python_deps.sh/training\/ortmodule\/stage1\/requirements_rocm\/requirements.txt}
-      fi
-    fi
-  fi
-fi

@@ -169,7 +169,6 @@ endif()
 target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
-    ${PROVIDERS_TVM}
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_COREML}
@@ -184,7 +183,6 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
-    ${onnxruntime_tvm_libs}
     onnxruntime_lora
     onnxruntime_framework
     onnxruntime_util
@@ -963,37 +961,6 @@ if (onnxruntime_USE_ROCM)
           $<TARGET_FILE:onnxruntime_providers_shared>
           $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
     )
-endif()
-
-if (onnxruntime_USE_TVM)
-  file(GLOB onnxruntime_python_providers_tvm_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/python/providers/tvm/*.py"
-  )
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/tvm
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_providers_tvm_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/tvm
-    COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:onnxruntime_providers_tvm>
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  )
-
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-      WORKING_DIRECTORY ${tvm_SOURCE_DIR}/python
-      COMMAND ${Python_EXECUTABLE} setup.py bdist_wheel
-    )
-
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${Python_EXECUTABLE}
-          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/tvm/extend_python_file.py
-          --target_file $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/_ld_preload.py
-  )
-
 endif()
 
 if (onnxruntime_USE_DML)

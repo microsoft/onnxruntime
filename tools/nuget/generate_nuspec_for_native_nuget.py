@@ -138,7 +138,7 @@ def parse_arguments():
         required=False,
         default="None",
         type=str,
-        choices=["cuda", "dnnl", "openvino", "tensorrt", "snpe", "tvm", "qnn", "None"],
+        choices=["cuda", "dnnl", "openvino", "tensorrt", "snpe", "qnn", "None"],
         help="The selected execution provider for this build.",
     )
     parser.add_argument("--sdk_info", required=False, default="", type=str, help="dependency SDK information.")
@@ -375,13 +375,11 @@ def generate_files(line_list, args):
             "mklml": "mklml.dll",
             "openmp": "libiomp5md.dll",
             "dnnl": "dnnl.dll",
-            "tvm": "tvm.dll",
             "providers_shared_lib": "onnxruntime_providers_shared.dll",
             "dnnl_ep_shared_lib": "onnxruntime_providers_dnnl.dll",
             "tensorrt_ep_shared_lib": "onnxruntime_providers_tensorrt.dll",
             "openvino_ep_shared_lib": "onnxruntime_providers_openvino.dll",
             "cuda_ep_shared_lib": "onnxruntime_providers_cuda.dll",
-            "tvm_ep_shared_lib": "onnxruntime_providers_tvm.lib",
             "onnxruntime_perf_test": "onnxruntime_perf_test.exe",
             "onnx_test_runner": "onnx_test_runner.exe",
         }
@@ -394,7 +392,6 @@ def generate_files(line_list, args):
             "mklml_1": "libmklml_gnu.so",
             "openmp": "libiomp5.so",
             "dnnl": "libdnnl.so.1",
-            "tvm": "libtvm.so.0.5.1",
             "providers_shared_lib": "libonnxruntime_providers_shared.so",
             "dnnl_ep_shared_lib": "libonnxruntime_providers_dnnl.so",
             "tensorrt_ep_shared_lib": "libonnxruntime_providers_tensorrt.so",
@@ -453,14 +450,6 @@ def generate_files(line_list, args):
             + os.path.join(
                 args.sources_path, "orttraining\\orttraining\\training_api\\include\\onnxruntime_training_*.h"
             )
-            + '" target="build\\native\\include" />'
-        )
-
-    if args.execution_provider == "tvm":
-        files_list.append(
-            "<file src="
-            + '"'
-            + os.path.join(args.sources_path, "include\\onnxruntime\\core\\providers\\tvm\\tvm_provider_factory.h")
             + '" target="build\\native\\include" />'
         )
 
@@ -707,38 +696,6 @@ def generate_files(line_list, args):
             + '\\native" />'
         )
 
-    if args.execution_provider == "tvm":
-        files_list.append(
-            "<file src="
-            + '"'
-            + os.path.join(args.native_build_path, nuget_dependencies["providers_shared_lib"])
-            + runtimes_target
-            + args.target_architecture
-            + '\\native" />'
-        )
-        files_list.append(
-            "<file src="
-            + '"'
-            + os.path.join(args.native_build_path, nuget_dependencies["tvm_ep_shared_lib"])
-            + runtimes_target
-            + args.target_architecture
-            + '\\native" />'
-        )
-
-        tvm_build_path = os.path.join(args.ort_build_path, args.build_config, "_deps", "tvm-build")
-        if is_windows():
-            files_list.append(
-                "<file src="
-                + '"'
-                + os.path.join(tvm_build_path, args.build_config, nuget_dependencies["tvm"])
-                + runtimes_target
-                + args.target_architecture
-                + '\\native" />'
-            )
-        else:
-            # TODO(agladyshev): Add support for Linux.
-            raise RuntimeError("Now only Windows is supported for TVM EP.")
-
     if args.execution_provider == "rocm" or is_rocm_gpu_package and not is_ado_packaging_build:
         files_list.append(
             "<file src="
@@ -829,12 +786,6 @@ def generate_files(line_list, args):
                 + os.path.join(args.native_build_path, nuget_dependencies["openmp"])
                 + runtimes
                 + " />"
-            )
-
-        # Process tvm dependency
-        if os.path.exists(os.path.join(args.native_build_path, nuget_dependencies["tvm"])):
-            files_list.append(
-                "<file src=" + '"' + os.path.join(args.native_build_path, nuget_dependencies["tvm"]) + runtimes + " />"
             )
 
         # Some tools to be packaged in nightly debug build only, should not be released
