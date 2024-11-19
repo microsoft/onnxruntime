@@ -1579,6 +1579,7 @@ class SymbolicShapeInference:
     # including ReduceSum, ReduceMean, ReduceMin, ReduceMax, ReduceProd, etc
     def _infer_Reduce(self, node):  # noqa: N802
         keep_dims = get_attribute(node, "keepdims", 1)
+        noop_with_empty_axes = get_attribute(node, "noop_with_empty_axes", 0)
         opset = get_opset(self.out_mp_)
 
         # Fetch axes from inputs if there are two inputs
@@ -1590,15 +1591,26 @@ class SymbolicShapeInference:
 
         vi = self.known_vi_[node.output[0]]
 
-        if axes is None:
+        if axes is None or (isinstance(axes, list) and len(axes) == 0): 
+            # No reduction, output shape is the same as input shape
+            if noop_with_empty_axes == 1:
+                input_shape = self._get_shape(node, 0)
+                assert input_shape, f"{node.op_type} Op: Input shape must be known for noop_with_empty_axes == 1."
+                vi.CopyFrom(
+                    helper.make_tensor_value_info(
+                        node.output[0],
+                        self.known_vi_[node.input[0]].type.tensor_type.elem_type,
+                        input_shape,
+                    )
+                )
+                return
+            # Reduce all axes
             assert keep_dims == 1, f"{node.op_type} Op: Cannot infer shape when axes is unknown and keepdims is not 1."
-            rank = self._get_shape_rank(node, 0)
-            new_shape = self._new_symbolic_shape(rank, node)
             vi.CopyFrom(
                 helper.make_tensor_value_info(
                     node.output[0],
                     self.known_vi_[node.input[0]].type.tensor_type.elem_type,
-                    get_shape_from_sympy_shape(new_shape),
+                    get_shape_from_sympy_shape(self._new_symbolic_shape(self._get_shape_rank(node, 0), node)),
                 )
             )
         else:
@@ -1609,12 +1621,10 @@ class SymbolicShapeInference:
                     self.sympy_data_[node.output[0]] = sympy_reduce_product(data)
                     return
 
-            input_shape = self._get_shape(node, 0)
-            assert input_shape, f"{node.op_type} Op: Reduction over an empty set of values yields undefined"
-            
-            axes = [handle_negative_axis(a, len(input_shape)) for a in axes]
+            shape = self._get_shape(node, 0)
             output_shape = []
-            for i, dim in enumerate(input_shape):
+            axes = [handle_negative_axis(a, len(shape)) for a in axes]
+            for i, dim in enumerate(shape):
                 if i in axes:
                     if keep_dims == 1:
                         output_shape.append(1)
