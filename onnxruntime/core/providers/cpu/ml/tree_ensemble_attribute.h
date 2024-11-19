@@ -39,7 +39,13 @@ struct TreeEnsembleAttributesV3 {
     nodes_falsenodeids = info.GetAttrsOrDefault<int64_t>("nodes_falsenodeids");
     nodes_featureids = info.GetAttrsOrDefault<int64_t>("nodes_featureids");
     nodes_missing_value_tracks_true = info.GetAttrsOrDefault<int64_t>("nodes_missing_value_tracks_true");
-    nodes_modes_string = info.GetAttrsOrDefault<std::string>("nodes_modes");
+
+    std::vector<std::string> nodes_modes_string = info.GetAttrsOrDefault<std::string>("nodes_modes");
+    nodes_modes.reserve(nodes_modes_string.size());
+    for (auto s : nodes_modes_string) {
+      nodes_modes.emplace_back(MakeTreeNodeMode(s));
+    }
+
     nodes_nodeids = info.GetAttrsOrDefault<int64_t>("nodes_nodeids");
     nodes_treeids = info.GetAttrsOrDefault<int64_t>("nodes_treeids");
     nodes_truenodeids = info.GetAttrsOrDefault<int64_t>("nodes_truenodeids");
@@ -90,7 +96,7 @@ struct TreeEnsembleAttributesV3 {
   std::vector<float> nodes_hitrates;
   std::vector<ThresholdType> nodes_hitrates_as_tensor;
   std::vector<int64_t> nodes_missing_value_tracks_true;
-  std::vector<std::string> nodes_modes_string;
+  std::vector<NODE_MODE> nodes_modes;
   std::vector<int64_t> nodes_nodeids;
   std::vector<int64_t> nodes_treeids;
   std::vector<int64_t> nodes_truenodeids;
@@ -174,7 +180,7 @@ struct TreeEnsembleAttributesV5 {
     size_t curr_id = 0;
     for (const auto node_mode : nodes_modes) {
       membership_values_by_id.emplace_back();
-      if (node_mode != static_cast<int64_t>(NODE_MODE_V5::BRANCH_MEMBER)) {
+      if (node_mode != static_cast<int64_t>(NODE_MODE::BRANCH_MEMBER)) {
         continue;
       }
 
@@ -217,29 +223,6 @@ struct TreeEnsembleAttributesV5 {
     }
   }
 
-  std::string nodeModeToString(NODE_MODE_V5 node_mode) const {
-    switch (node_mode) {
-      case NODE_MODE_V5::BRANCH_LEQ:
-        return "BRANCH_LEQ";
-      case NODE_MODE_V5::BRANCH_LT:
-        return "BRANCH_LT";
-      case NODE_MODE_V5::BRANCH_GTE:
-        return "BRANCH_GTE";
-      case NODE_MODE_V5::BRANCH_GT:
-        return "BRANCH_GT";
-      case NODE_MODE_V5::BRANCH_EQ:
-        return "BRANCH_EQ";
-      case NODE_MODE_V5::BRANCH_NEQ:
-        return "BRANCH_NEQ";
-      case NODE_MODE_V5::BRANCH_MEMBER:
-        return "BRANCH_MEMBER";
-      case NODE_MODE_V5::LEAF:
-        return "LEAF";
-      default:
-        ORT_THROW("Unknown value for node_mode.");
-    }
-  }
-
   int64_t transformInputOneTree(
       const size_t curr_id, const int64_t curr_treeid, const int64_t curr_nodeid, const size_t curr_membership_value_id,
       const bool is_leaf, std::vector<std::vector<ThresholdType>>& membership_values_by_id,
@@ -248,7 +231,7 @@ struct TreeEnsembleAttributesV5 {
     output.nodes_treeids.push_back(curr_treeid);
 
     if (is_leaf) {
-      output.nodes_modes_string.push_back(nodeModeToString(NODE_MODE_V5::LEAF));
+      output.nodes_modes.push_back(NODE_MODE::LEAF);
       output.target_class_ids.push_back(leaf_targetids[curr_id]);
       output.target_class_nodeids.push_back(curr_nodeid);
       output.target_class_treeids.push_back(curr_treeid);
@@ -278,11 +261,11 @@ struct TreeEnsembleAttributesV5 {
     }
 
     // unroll `BRANCH_MEMBER` to a chain of `BRANCH_EQ`
-    if (nodes_modes[curr_id] == static_cast<uint8_t>(NODE_MODE_V5::BRANCH_MEMBER)) {
-      output.nodes_modes_string.push_back(nodeModeToString(NODE_MODE_V5::BRANCH_EQ));
+    if (nodes_modes[curr_id] == static_cast<uint8_t>(NODE_MODE::BRANCH_MEMBER)) {
+      output.nodes_modes.push_back(NODE_MODE::BRANCH_EQ);
       output.nodes_values_as_tensor.push_back(membership_values_by_id[curr_id][curr_membership_value_id]);
     } else {
-      output.nodes_modes_string.push_back(nodeModeToString(static_cast<NODE_MODE_V5>(nodes_modes[curr_id])));
+      output.nodes_modes.push_back(static_cast<NODE_MODE>(nodes_modes[curr_id]));
       output.nodes_values_as_tensor.push_back(nodes_splits[curr_id]);
     }
 
@@ -303,7 +286,7 @@ struct TreeEnsembleAttributesV5 {
     // so in that case we are only moving the pointer for `membership_values`
     //
     // otherwise, the `falsenode_id` is pointing to the real falsenode subtree
-    if (nodes_modes[curr_id] == static_cast<uint8_t>(NODE_MODE_V5::BRANCH_MEMBER) &&
+    if (nodes_modes[curr_id] == static_cast<uint8_t>(NODE_MODE::BRANCH_MEMBER) &&
         curr_membership_value_id + 1 < membership_values_by_id[curr_id].size()) {
       false_nodeid = transformInputOneTree(curr_id, curr_treeid, false_nodeid, curr_membership_value_id + 1, false,
                                            membership_values_by_id, output);

@@ -21,17 +21,6 @@ enum class OUTPUT_MODE {
 };
 
 enum NODE_MODE : uint8_t {
-  LEAF = 1,
-  BRANCH_LEQ = 2,
-  BRANCH_LT = 4,
-  BRANCH_GTE = 6,
-  BRANCH_GT = 8,
-  BRANCH_EQ = 10,
-  BRANCH_NEQ = 12,
-  BRANCH_MEMBER = 14,
-};
-
-enum class NODE_MODE_V5 : uint8_t {
   BRANCH_LEQ = 0,
   BRANCH_LT = 1,
   BRANCH_GTE = 2,

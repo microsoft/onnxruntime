@@ -149,11 +149,11 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   size_t limit;
   uint32_t i;
   InlinedVector<NODE_MODE> cmodes;
-  cmodes.reserve(attributes.nodes_modes_string.size());
+  cmodes.reserve(attributes.nodes_modes.size());
   same_mode_ = true;
   int fpos = -1;
-  for (i = 0, limit = attributes.nodes_modes_string.size(); i < limit; ++i) {
-    cmodes.push_back(MakeTreeNodeMode(attributes.nodes_modes_string[i]));
+  for (i = 0, limit = attributes.nodes_modes.size(); i < limit; ++i) {
+    cmodes.push_back(attributes.nodes_modes[i]);
     if (cmodes[i] == NODE_MODE::LEAF) continue;
     if (fpos == -1) {
       fpos = static_cast<int>(i);
@@ -299,7 +299,9 @@ bool TreeEnsembleCommon<InputType, ThresholdType, OutputType>::CheckIfSubtreesAr
     gsl::span<const float> target_class_weights, gsl::span<const ThresholdType> target_class_weights_as_tensor,
     const InlinedVector<TreeNodeElementId>& node_tree_ids, InlinedVector<std::pair<TreeNodeElementId, uint32_t>> indices) {
   // Leaves have values set at 0
-  if (cmodes[left_id] != cmodes[right_id] || nodes_featureids[left_id] != nodes_featureids[right_id] || (!nodes_values_as_tensor.empty() && nodes_values_as_tensor[left_id] != nodes_values_as_tensor[right_id]) || (nodes_values_as_tensor.empty() && node_values[left_id] != node_values[right_id])) {
+  if (cmodes[left_id] != cmodes[right_id] || nodes_featureids[left_id] != nodes_featureids[right_id] ||
+      (!nodes_values_as_tensor.empty() && nodes_values_as_tensor[left_id] != nodes_values_as_tensor[right_id]) ||
+      (nodes_values_as_tensor.empty() && node_values[left_id] != node_values[right_id])) {
     return false;
   }
 
