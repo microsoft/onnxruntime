@@ -38,7 +38,7 @@ CoreMLOptions ParseProviderOption(const ProviderOptions& options) {
     if (kCoremlProviderOption_MLComputeUnits == option.first) {
       if (available_computeunits_options.find(option.second) == available_computeunits_options.end()) {
         ORT_THROW("Invalid value for option ", option.first, ": ", option.second);
-      }else {
+      } else {
         coreml_options.coreml_flags |= available_computeunits_options.at(option.second);
       }
     } else if (kCoremlProviderOption_MLModelFormat == option.first) {

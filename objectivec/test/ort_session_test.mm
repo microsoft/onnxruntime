@@ -223,14 +223,13 @@ NS_ASSUME_NONNULL_BEGIN
   ORTAssertNullableResultSuccessful(session, err);
 }
 
-
 - (void)testAppendCoreMLEP_v2 {
   NSError* err = nil;
   ORTSessionOptions* sessionOptions = [ORTSessionTest makeSessionOptions];
-  NSDictionary* provider_options = @{@"MLEnableOnSubgraphs" : @"1"};// set an arbitrary option
+  NSDictionary* provider_options = @{@"MLEnableOnSubgraphs" : @"1"};  // set an arbitrary option
 
   BOOL appendResult = [sessionOptions appendCoreMLExecutionProviderWithOptions_v2:provider_options
-                                                                         error:&err];
+                                                                            error:&err];
 
   if (!ORTIsCoreMLExecutionProviderAvailable()) {
     ORTAssertBoolResultUnsuccessful(appendResult, err);
