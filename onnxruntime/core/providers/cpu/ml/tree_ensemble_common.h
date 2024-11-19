@@ -390,7 +390,7 @@ size_t TreeEnsembleCommon<InputType, ThresholdType, OutputType>::AddNodes(
     if (nodes_[node_pos].flags == NODE_MODE_ORT::BRANCH_MEMBER) {
       ThresholdType falsenode_threshold = nodes_values_as_tensor.empty() ? static_cast<ThresholdType>(node_values[falsenode_id]) : nodes_values_as_tensor[falsenode_id];
 
-      while (cmodes[falsenode_id] == NODE_MODE_ORT::BRANCH_EQ && nodes_[node_pos].feature_id == nodes_featureids[falsenode_id] &&
+      while (cmodes[falsenode_id] == NODE_MODE_ONNX::BRANCH_EQ && nodes_[node_pos].feature_id == nodes_featureids[falsenode_id] &&
              CANMASK(falsenode_threshold, ThresholdType) &&
              CheckIfSubtreesAreEqual(truenode_ids[i], truenode_ids[falsenode_id], tree_id, cmodes, truenode_ids, falsenode_ids,
                                      nodes_featureids, nodes_values_as_tensor, node_values, target_class_weights, target_class_weights_as_tensor, node_tree_ids, indices)) {
