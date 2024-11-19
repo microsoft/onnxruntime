@@ -400,6 +400,8 @@ Status Execution::LoadModel() {
         config.computeUnits = MLComputeUnitsCPUOnly;
       } else if (coreml_flags_ & COREML_FLAG_USE_CPU_AND_GPU) {
         config.computeUnits = MLComputeUnitsCPUAndGPU;
+      } else if (coreml_flags_ & COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE) {
+        config.computeUnits = MLComputeUnitsCPUAndNeuralEngine;  // Apple Neural Engine
       } else {
         config.computeUnits = MLComputeUnitsAll;
       }
