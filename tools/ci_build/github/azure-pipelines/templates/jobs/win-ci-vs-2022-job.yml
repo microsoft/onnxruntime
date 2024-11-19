@@ -160,7 +160,8 @@ jobs:
       displayName: 'Gradle cmakeCheck'
       inputs:
         script: |
-          call gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\${{ parameters.BuildConfig }} --warning-mode all
+            call gradlew.bat testClasses -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
+            call gradlew.bat cmakeCheck -x test -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo --warning-mode all
         workingDirectory: $(Build.SourcesDirectory)\java
 
   - powershell: |
