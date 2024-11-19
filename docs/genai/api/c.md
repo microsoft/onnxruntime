@@ -486,7 +486,7 @@ OGA_EXPORT OgaResult* OGA_API_CALL OgaUnloadAdapter(OgaAdapters* adapters, const
 
 #### Return value
 
-`OgaResult` containing an error message if the adapter failed to unload. This can occur if the method is called with an adapter that is not already loaded.
+`OgaResult` containing an error message if the adapter failed to unload. This can occur if the method is called with an adapter that is not already loaded or has been marked active by a `OgaGenerator` still in use.
 
 ### Set active adapter
 
