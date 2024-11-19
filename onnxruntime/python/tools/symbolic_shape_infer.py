@@ -1581,7 +1581,9 @@ class SymbolicShapeInference:
         keep_dims = get_attribute(node, "keepdims", 1)
         opset = get_opset(self.out_mp_)
 
-        if opset >= 13 and len(node.input) > 1:
+        # Fetch axes from inputs if there are two inputs
+        # Otherwise, fetch axes from attribute (general pattern when opset <= 13)
+        if len(node.input) > 1:
             axes = self._try_get_value(node, 1)
         else:
             axes = get_attribute(node, "axes")
