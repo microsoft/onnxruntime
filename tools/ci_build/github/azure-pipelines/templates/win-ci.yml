@@ -100,8 +100,7 @@ stages:
       timeoutParameter: '--test_all_timeout 72000'
     ${{ else }}:
       timeoutParameter: ''
-    releaseVersionSuffix: $[replace($[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.releaseVersionSuffix']], '.', '')]
-    onnxruntimeReleaseVersion: $(OnnxRuntimeVersion)$(releaseVersionSuffix)
+    onnxruntimeReleaseVersion: $(OnnxRuntimeVersion)$(PreReleaseVersionSuffixString)$(PreReleaseVersionSuffixNumber)
   jobs:
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
     workspace:
@@ -128,8 +127,10 @@ stages:
         inputs:
           targetType: 'inline'
           script: |
-            Write-Host "releaseVersionSuffix:"
-            Write-Host "$(releaseVersionSuffix)"
+            Write-Host "PreReleaseVersionSuffixString:"
+            Write-Host "$(PreReleaseVersionSuffixString)"
+            Write-Host "PreReleaseVersionSuffixNumber:"
+            Write-Host "$(PreReleaseVersionSuffixNumber)"
             Write-Host "onnxruntimeReleaseVersion:"
             Write-Host "$(onnxruntimeReleaseVersion)"
             exit 1
