@@ -23,12 +23,20 @@ import {
   TimestampQuery,
 } from './webgpu/types';
 
-interface CommandInfo {
+interface ComputeCommand {
   readonly kernelId: number;
   readonly computePipeline: GPUComputePipeline;
   readonly bindGroup: GPUBindGroup;
   readonly dispatchGroup: [number, number, number];
 }
+
+interface MemcpyCommand {
+  readonly source: GPUBuffer;
+  readonly dest: GPUBuffer;
+  readonly size: number;
+}
+
+type Command = ComputeCommand | MemcpyCommand;
 
 interface KernelInfo {
   readonly kernelType: string;
@@ -234,9 +242,9 @@ export class WebGpuBackend {
   env: Env;
   sessionStatus: SessionState = 'default';
   /**
-   * a SessionID -> CommandInfo[] mapping. It's used to record all GPU commands for corresponding session.
+   * a SessionID -> Command[] mapping. It's used to record all GPU commands for corresponding session.
    */
-  capturedCommandList: Map<number, CommandInfo[]> = new Map();
+  capturedCommandList: Map<number, Command[]> = new Map();
 
   /**
    * a SessionID -> PendingKernelInfo[] mapping for profiling.
@@ -837,13 +845,19 @@ export class WebGpuBackend {
     }
     return gpuData.buffer;
   }
+
+  async replayAndDownloadGpuData(gpuBuffer: GPUBuffer, originalSize: number): Promise<Uint8Array> {
+    this.replay();
+    return downloadGpuData(this, gpuBuffer, originalSize);
+  }
+
   createDownloader(
     gpuBuffer: GPUBuffer,
     size: number,
     type: Tensor.GpuBufferDataTypes,
   ): () => Promise<Tensor.DataType> {
     return async () => {
-      const data = await downloadGpuData(this, gpuBuffer, size);
+      const data = await this.replayAndDownloadGpuData(gpuBuffer, size);
       return createView(data.buffer, type);
     };
   }
@@ -909,18 +923,27 @@ export class WebGpuBackend {
     for (let i = 0; i < length; i++) {
       const computePassEncoder = this.getComputePassEncoder();
       const command = sessionCommandList![i];
-      this.writeTimestamp(this.pendingDispatchNumber * 2);
-      computePassEncoder.setPipeline(command.computePipeline);
-      computePassEncoder.setBindGroup(0, command.bindGroup);
-      computePassEncoder.dispatchWorkgroups(...command.dispatchGroup);
-      this.writeTimestamp(this.pendingDispatchNumber * 2 + 1);
-      this.pendingDispatchNumber++;
-      if (this.queryType !== 'none') {
-        this.pendingKernels.push(sessionPendingKernels![i]);
-      }
-      if (this.pendingDispatchNumber >= this.maxDispatchNumber || this.queryType === 'at-passes') {
+      if ('bindGroup' in command) {
+        this.writeTimestamp(this.pendingDispatchNumber * 2);
+        computePassEncoder.setPipeline(command.computePipeline);
+        computePassEncoder.setBindGroup(0, command.bindGroup);
+        computePassEncoder.dispatchWorkgroups(...command.dispatchGroup);
+        this.writeTimestamp(this.pendingDispatchNumber * 2 + 1);
+
+        this.pendingDispatchNumber++;
+        if (this.queryType !== 'none') {
+          this.pendingKernels.push(sessionPendingKernels![i]);
+        }
+        if (this.pendingDispatchNumber >= this.maxDispatchNumber || this.queryType === 'at-passes') {
+          this.endComputePass();
+        }
+      } else {
+        const commandEncoder = this.getCommandEncoder();
+        this.pendingDispatchNumber++;
         this.endComputePass();
+        commandEncoder.copyBufferToBuffer(command.source, 0, command.dest, 0, command.size);
       }
+
       if (this.pendingDispatchNumber >= this.maxDispatchNumber) {
         this.flush();
       }

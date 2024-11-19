@@ -274,16 +274,28 @@ class GpuDataManagerImpl implements GpuDataManager {
 
     const size = calcNormalizedBufferSize(sourceGpuDataCache.originalSize);
 
-    // GPU copy
-    const commandEncoder = this.backend.getCommandEncoder();
-    this.backend.endComputePass();
-    commandEncoder.copyBufferToBuffer(
-      sourceGpuDataCache.gpuData.buffer,
-      0,
-      destinationGpuDataCache.gpuData.buffer,
-      0,
-      size,
-    );
+    if (this.backend.sessionStatus === 'capturing') {
+      const command = {
+        source: sourceGpuDataCache.gpuData.buffer,
+        dest: destinationGpuDataCache.gpuData.buffer,
+        size,
+      };
+      const sessionCommandList = this.backend.capturedCommandList.get(this.backend.currentSessionId!);
+      sessionCommandList!.push(command);
+
+      this.backend.pendingDispatchNumber++;
+    } else {
+      // GPU copy
+      const commandEncoder = this.backend.getCommandEncoder();
+      this.backend.endComputePass();
+      commandEncoder.copyBufferToBuffer(
+        sourceGpuDataCache.gpuData.buffer,
+        0,
+        destinationGpuDataCache.gpuData.buffer,
+        0,
+        size,
+      );
+    }
   }
 
   registerExternalBuffer(buffer: GPUBuffer, originalSize: number, previous?: [GpuDataId, GPUBuffer]): number {
