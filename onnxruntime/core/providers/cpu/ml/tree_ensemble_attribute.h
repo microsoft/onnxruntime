@@ -96,7 +96,7 @@ struct TreeEnsembleAttributesV3 {
   std::vector<float> nodes_hitrates;
   std::vector<ThresholdType> nodes_hitrates_as_tensor;
   std::vector<int64_t> nodes_missing_value_tracks_true;
-  std::vector<NODE_MODE> nodes_modes;
+  std::vector<NODE_MODE_ONNX> nodes_modes;
   std::vector<int64_t> nodes_nodeids;
   std::vector<int64_t> nodes_treeids;
   std::vector<int64_t> nodes_truenodeids;
@@ -118,11 +118,16 @@ struct TreeEnsembleAttributesV5 {
   TreeEnsembleAttributesV5() {}
   TreeEnsembleAttributesV5(const OpKernelInfo& info) {
 #if !defined(ORT_MINIMAL_BUILD)
+    std::vector<uint8_t> nodes_modes_i;
     ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "leaf_weights", leaf_weights));
     ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "membership_values", membership_values));
     ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "nodes_hitrates", nodes_hitrates));
-    ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "nodes_modes", nodes_modes));
+    ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "nodes_modes", nodes_modes_i));
     ORT_THROW_IF_ERROR(GetVectorAttrsOrDefault(info, "nodes_splits", nodes_splits));
+    nodes_modes.reserve(nodes_modes.size());
+    for (auto i : nodes_modes_i) {
+      nodes_modes.push_back(static_cast<NODE_MODE_ONNX>(i));
+    }
 #else
     // GetVectorAttrsOrDefault is not part of the minimal build.
     // As a result, TreeEnsemble v5 cannot be available in this build.
@@ -162,7 +167,7 @@ struct TreeEnsembleAttributesV5 {
   std::vector<int64_t> nodes_featureids;
   std::vector<ThresholdType> nodes_hitrates;
   std::vector<int64_t> nodes_missing_value_tracks_true;
-  std::vector<uint8_t> nodes_modes;
+  std::vector<NODE_MODE_ONNX> nodes_modes;
   std::vector<ThresholdType> nodes_splits;
   std::vector<int64_t> nodes_trueleafs;
   std::vector<int64_t> nodes_truenodeids;
@@ -180,7 +185,7 @@ struct TreeEnsembleAttributesV5 {
     size_t curr_id = 0;
     for (const auto node_mode : nodes_modes) {
       membership_values_by_id.emplace_back();
-      if (node_mode != static_cast<int64_t>(NODE_MODE::BRANCH_MEMBER)) {
+      if (node_mode != NODE_MODE_ONNX::BRANCH_MEMBER) {
         continue;
       }
 
@@ -231,7 +236,7 @@ struct TreeEnsembleAttributesV5 {
     output.nodes_treeids.push_back(curr_treeid);
 
     if (is_leaf) {
-      output.nodes_modes.push_back(NODE_MODE::LEAF);
+      output.nodes_modes.push_back(NODE_MODE_ONNX::LEAF);
       output.target_class_ids.push_back(leaf_targetids[curr_id]);
       output.target_class_nodeids.push_back(curr_nodeid);
       output.target_class_treeids.push_back(curr_treeid);
@@ -261,11 +266,11 @@ struct TreeEnsembleAttributesV5 {
     }
 
     // unroll `BRANCH_MEMBER` to a chain of `BRANCH_EQ`
-    if (nodes_modes[curr_id] == static_cast<uint8_t>(NODE_MODE::BRANCH_MEMBER)) {
-      output.nodes_modes.push_back(NODE_MODE::BRANCH_EQ);
+    if (nodes_modes[curr_id] == NODE_MODE_ONNX::BRANCH_MEMBER) {
+      output.nodes_modes.push_back(NODE_MODE_ONNX::BRANCH_EQ);
       output.nodes_values_as_tensor.push_back(membership_values_by_id[curr_id][curr_membership_value_id]);
     } else {
-      output.nodes_modes.push_back(static_cast<NODE_MODE>(nodes_modes[curr_id]));
+      output.nodes_modes.push_back(nodes_modes[curr_id]);
       output.nodes_values_as_tensor.push_back(nodes_splits[curr_id]);
     }
 
@@ -286,7 +291,7 @@ struct TreeEnsembleAttributesV5 {
     // so in that case we are only moving the pointer for `membership_values`
     //
     // otherwise, the `falsenode_id` is pointing to the real falsenode subtree
-    if (nodes_modes[curr_id] == static_cast<uint8_t>(NODE_MODE::BRANCH_MEMBER) &&
+    if (nodes_modes[curr_id] == NODE_MODE_ONNX::BRANCH_MEMBER &&
         curr_membership_value_id + 1 < membership_values_by_id[curr_id].size()) {
       false_nodeid = transformInputOneTree(curr_id, curr_treeid, false_nodeid, curr_membership_value_id + 1, false,
                                            membership_values_by_id, output);

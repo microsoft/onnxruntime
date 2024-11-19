@@ -20,7 +20,7 @@ enum class OUTPUT_MODE {
   ALL_SCORES
 };
 
-enum NODE_MODE : uint8_t {
+enum NODE_MODE_ONNX : uint8_t {
   BRANCH_LEQ = 0,
   BRANCH_LT = 1,
   BRANCH_GTE = 2,
@@ -31,29 +31,29 @@ enum NODE_MODE : uint8_t {
   LEAF = 7,
 };
 
-static inline NODE_MODE MakeTreeNodeMode(const std::string& input) {
+static inline NODE_MODE_ONNX MakeTreeNodeMode(const std::string& input) {
   if (input == "BRANCH_LEQ") {
-    return NODE_MODE::BRANCH_LEQ;
+    return NODE_MODE_ONNX::BRANCH_LEQ;
   }
   if (input == "LEAF") {
-    return NODE_MODE::LEAF;
+    return NODE_MODE_ONNX::LEAF;
   }
   if (input == "BRANCH_LT") {
-    return NODE_MODE::BRANCH_LT;
+    return NODE_MODE_ONNX::BRANCH_LT;
   }
   if (input == "BRANCH_GTE") {
-    return NODE_MODE::BRANCH_GTE;
+    return NODE_MODE_ONNX::BRANCH_GTE;
   }
   if (input == "BRANCH_GT") {
-    return NODE_MODE::BRANCH_GT;
+    return NODE_MODE_ONNX::BRANCH_GT;
   }
   if (input == "BRANCH_EQ") {
-    return NODE_MODE::BRANCH_EQ;
+    return NODE_MODE_ONNX::BRANCH_EQ;
   }
   if (input == "BRANCH_MEMBER") {
-    return NODE_MODE::BRANCH_MEMBER;
+    return NODE_MODE_ONNX::BRANCH_MEMBER;
   }
-  return NODE_MODE::BRANCH_NEQ;
+  return NODE_MODE_ONNX::BRANCH_NEQ;
 }
 
 enum class POST_EVAL_TRANSFORM : int64_t {
