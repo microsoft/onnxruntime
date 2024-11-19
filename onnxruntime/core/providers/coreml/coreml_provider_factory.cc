@@ -47,11 +47,11 @@ CoreMLOptions ParseProviderOption(const ProviderOptions& options) {
       } else {
         coreml_options.coreml_flags |= available_modelformat_options.at(option.second);
       }
-    } else if (okCoremlProviderOption_MLAllowStaticInputShapes == option.first) {
+    } else if (kCoremlProviderOption_MLAllowStaticInputShapes == option.first) {
       coreml_options.coreml_flags |= COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES;
-    } else if (okCoremlProviderOption_MLEnableOnSubgraphs == option.first) {
+    } else if (kCoremlProviderOption_MLEnableOnSubgraphs == option.first) {
       coreml_options.coreml_flags |= COREML_FLAG_ENABLE_ON_SUBGRAPH;
-    } else if (okCoremlProviderOption_MLModelCacheDir == option.first) {
+    } else if (kCoremlProviderOption_MLModelCacheDir == option.first) {
       coreml_options.cache_path = option.second;
     }
   }

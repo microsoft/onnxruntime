@@ -70,7 +70,17 @@ NS_ASSUME_NONNULL_BEGIN
  */
 - (BOOL)appendCoreMLExecutionProviderWithOptions:(ORTCoreMLExecutionProviderOptions*)options
                                            error:(NSError**)error;
-
+/**
+ * Enables the CoreML execution provider in the session configuration options.
+ * It is appended to the execution provider list which is ordered by
+ * decreasing priority.
+ *
+ * @param provider_options The CoreML execution provider options in dict.
+ * @param error Optional error information set if an error occurs.
+ * @return Whether the provider was enabled successfully.
+ */
+- (BOOL)appendCoreMLExecutionProviderWithOptions_v2:(NSDictionary*)provider_options
+                                              error:(NSError**)error;
 @end
 
 NS_ASSUME_NONNULL_END
