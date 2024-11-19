@@ -95,6 +95,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateDynamicQuantizeLinearOpBuilder("DynamicQuantizeLinear", op_registrations);
   }
 
+  {  // Einsum
+    CreateEinsumOpBuilder("Einsum", op_registrations);
+  }
+
   {  // Expand
     CreateExpandOpBuilder("Expand", op_registrations);
   }
@@ -137,6 +141,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateLogicalOpBuilder("Xor", op_registrations);
   }
 
+  {  // LRN
+    CreateLRNOpBuilder("LRN", op_registrations);
+  }
+
   {  // LSTM
     CreateLstmOpBuilder("LSTM", op_registrations);
   }
@@ -150,6 +158,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateNormalizationOpBuilder("BatchNormalization", op_registrations);
     CreateNormalizationOpBuilder("InstanceNormalization", op_registrations);
     CreateNormalizationOpBuilder("LayerNormalization", op_registrations);
+    CreateNormalizationOpBuilder("SimplifiedLayerNormalization", op_registrations);
   }
 
   {  // Pad

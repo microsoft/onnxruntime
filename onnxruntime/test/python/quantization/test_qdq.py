@@ -20,10 +20,12 @@ from op_test_utils import (
     check_op_type_count,
     check_op_type_order,
     create_clip_node,
+    get_tensor_consumers_and_producers,
 )
 
 from onnxruntime.quantization import QDQQuantizer, QuantFormat, QuantType, quantize_static, write_calibration_table
 from onnxruntime.quantization.calibrate import CalibrationMethod, TensorData, TensorsData
+from onnxruntime.quantization.quant_utils import quantize_nparray
 
 
 class TestQDQFormat(unittest.TestCase):
@@ -1724,6 +1726,480 @@ class TestQDQ4bit(TestQDQFormat):
         td = TensorData(lowest=np.array([0.1], dtype=np.float32), highest=np.array([1.1], dtype=np.float32))
         new_calibrate_tensors_range = TensorsData(CalibrationMethod.MinMax, {"td": td})
         write_calibration_table(new_calibrate_tensors_range)
+
+
+class TestAdjustWeightScaleForInt32Bias(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="ort.qdq.adj_int32_bias_")
+
+        # Note: swap with the commented line if you want to see the models in local test dir.
+        cls._tmp_dir_path = cls._tmp_model_dir.name
+        # cls._tmp_dir_path = "."
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp_model_dir.cleanup()
+
+    def build_conv_test_model(
+        self,
+        input0_shape: list[int],
+        weight_shape: list[int],
+        onnx_float_type: onnx.TensorProto.DataType,
+    ):
+        np_float_type = onnx.helper.tensor_dtype_to_np_dtype(onnx_float_type)
+        input_0 = onnx.helper.make_tensor_value_info("input_0", onnx_float_type, input0_shape)
+        output_0 = onnx.helper.make_tensor_value_info("output_0", onnx_float_type, None)
+
+        tiny_value = 1e-7 if np_float_type == np.float32 else 0.007782
+        # weight_scale = 2*tiny_value / 255.0 = 7.84313725490196e-10
+
+        weight_data = np.full(weight_shape, tiny_value, dtype=np_float_type)
+        with np.nditer(weight_data, op_flags=["readwrite"]) as it:
+            for i, x in enumerate(it):
+                if i % 2 == 0:
+                    x[...] = -x
+
+        weight = onnx.numpy_helper.from_array(weight_data, "weight")
+
+        # if we set input_scale to 0.05, then normally bias_scale would be
+        # (input_scale * weight_scale) => (0.05 * 7.84314e-10) => 3.9215686274509805e-11
+        #
+        # If we quantize the f32 bias with this bias_scale, we get
+        # [5.0/bias_scale, 4.0/bias_scale] = [127500000000, 102000000000]. These quantized bias values exceed the
+        # range of int32.
+        #
+        # The ORT quantization tool will clamp these out-of-bounds values to int32::max(),
+        # which can be very inaccurate.
+        bias_shape = [weight_shape[0]]
+        bias_data = np.ones(bias_shape, dtype=np_float_type)
+        with np.nditer(bias_data, op_flags=["readwrite"]) as it:
+            for i, x in enumerate(it):
+                if i % 2 == 0:
+                    x[...] = 5.0 if np_float_type == np.float32 else 1400
+                else:
+                    x[...] = -4.5 if np_float_type == np.float32 else -1200
+
+        bias = onnx.numpy_helper.from_array(bias_data, "bias")
+
+        conv_node = onnx.helper.make_node("Conv", ["input_0", "weight", "bias"], ["output_0"], name="Conv0")
+        graph = onnx.helper.make_graph(
+            [conv_node],
+            "Convfloat",
+            [input_0],
+            [output_0],
+            initializer=[weight, bias],
+        )
+        opset_imports = [onnx.helper.make_opsetid("", 21)]
+        model = onnx.helper.make_model(graph, opset_imports=opset_imports)
+        model = onnx.shape_inference.infer_shapes(model)
+        onnx.checker.check_model(model, True)
+        return model
+
+    def test_adjust_weight_scale_for_int32_bias(self):
+        """
+        Test adjustment of weight input's scale to ensure int32 bias's scale is not too small.
+        """
+        test_configs = [
+            (onnx.TensorProto.FLOAT, True),
+            (onnx.TensorProto.FLOAT, False),
+            (onnx.TensorProto.FLOAT16, True),
+            (onnx.TensorProto.FLOAT16, False),
+        ]
+
+        for float_type, per_channel in test_configs:
+            with self.subTest(float_type=float_type, per_channel=per_channel):
+                label = f"_f{float_type}_perchannel{per_channel}"
+                float_model_path = os.path.join(self._tmp_dir_path, f"conv{label}.float.onnx")
+                qdq_model_path = os.path.join(self._tmp_dir_path, f"conv{label}.qdq.onnx")
+
+                # Create float model with a Conv that has tiny weight values.
+                # This tiny weight scale would normally create a very small bias scale that will saturate
+                # bias's int32 range. But, the qdq_quantizer adjusts the weight's scale to ensure this doesn't happen.
+                input0_shape = [1, 2, 4, 4]
+                weight_shape = [2, 2, 2, 2]
+                float_model = self.build_conv_test_model(input0_shape, weight_shape, float_type)
+                onnx.save_model(float_model, float_model_path)
+
+                # Create a data reader
+                np_float_type = onnx.helper.tensor_dtype_to_np_dtype(float_type)
+                input0_rmin = 0.0
+                input0_scale = 0.05 if float_type == onnx.TensorProto.FLOAT else 0.01
+                input0_rmax = (input0_scale * 255.0) + input0_rmin
+                input_data_list = [
+                    {"input_0": np.full(input0_shape, input0_rmin, dtype=np_float_type)},
+                    {"input_0": np.full(input0_shape, (input0_rmax - input0_rmin) / 2.0, dtype=np_float_type)},
+                    {"input_0": np.full(input0_shape, input0_rmax, dtype=np_float_type)},
+                ]
+                data_reader = TestDataFeeds(input_data_list)
+
+                # quantize model to QDQ
+                quantize_static(
+                    float_model_path,
+                    qdq_model_path,
+                    data_reader,
+                    activation_type=QuantType.QUInt8,
+                    weight_type=QuantType.QInt8,
+                    per_channel=per_channel,
+                )
+
+                # Check correctness
+                data_reader.rewind()
+                check_model_correctness(self, float_model_path, qdq_model_path, data_reader.get_next())
+
+    def build_model_convs_share_bias(
+        self,
+        input0_shape: list[int],
+        weight_shape: list[int],
+        onnx_float_type: onnx.TensorProto.DataType,
+    ):
+        np_float_type = onnx.helper.tensor_dtype_to_np_dtype(onnx_float_type)
+        input_0 = onnx.helper.make_tensor_value_info("input_0", onnx_float_type, input0_shape)
+        output_0 = onnx.helper.make_tensor_value_info("output_0", onnx_float_type, None)
+        output_1 = onnx.helper.make_tensor_value_info("output_1", onnx_float_type, None)
+
+        weight_0_data = np.ones(weight_shape, dtype=np_float_type)
+        weight_0 = onnx.numpy_helper.from_array(weight_0_data, "weight_0")
+
+        weight_1_data = np.full(weight_shape, 0.5, dtype=np_float_type)
+        weight_1 = onnx.numpy_helper.from_array(weight_1_data, "weight_1")
+
+        bias_shape = [weight_shape[0]]
+        bias_data = np.ones(bias_shape, dtype=np_float_type)
+        bias_shared = onnx.numpy_helper.from_array(bias_data, "bias_shared")
+
+        conv_0_node = onnx.helper.make_node("Conv", ["input_0", "weight_0", "bias_shared"], ["output_0"], name="Conv0")
+        conv_1_node = onnx.helper.make_node("Conv", ["input_0", "weight_1", "bias_shared"], ["output_1"], name="Conv1")
+        graph = onnx.helper.make_graph(
+            [conv_0_node, conv_1_node],
+            "ConvWithSharedBiasToDup",
+            [input_0],
+            [output_0, output_1],
+            initializer=[weight_0, weight_1, bias_shared],
+        )
+        opset_imports = [onnx.helper.make_opsetid("", 21)]
+        model = onnx.helper.make_model(graph, opset_imports=opset_imports)
+        model = onnx.shape_inference.infer_shapes(model)
+        onnx.checker.check_model(model, True)
+        return model
+
+    def test_dup_shared_bias(self):
+        """
+        Test duplicating a bias that is shared by two nodes that want to quantize their bias to int32.
+        """
+        float_model_path = os.path.join(self._tmp_dir_path, "convs_share_bias.float.onnx")
+        qdq_model_path = os.path.join(self._tmp_dir_path, "convs_share_bias.qdq.onnx")
+
+        # Create float model with a Convs that share a bias input. The QDQ quantizer should add a
+        # duplicate bias so that each node has its own.
+        input0_shape = [1, 2, 4, 4]
+        weight_shape = [2, 2, 2, 2]
+        float_model = self.build_model_convs_share_bias(input0_shape, weight_shape, onnx.TensorProto.FLOAT)
+        onnx.save_model(float_model, float_model_path)
+
+        # Create a data reader
+        input0_rmin = 0.0
+        input0_scale = 0.05
+        input0_rmax = (input0_scale * 255.0) + input0_rmin
+        input_data_list = [
+            {"input_0": np.full(input0_shape, input0_rmin, dtype=np.float32)},
+            {"input_0": np.full(input0_shape, (input0_rmax - input0_rmin) / 2.0, dtype=np.float32)},
+            {"input_0": np.full(input0_shape, input0_rmax, dtype=np.float32)},
+        ]
+        data_reader = TestDataFeeds(input_data_list)
+
+        # quantize model to QDQ
+        quantize_static(
+            float_model_path,
+            qdq_model_path,
+            data_reader,
+            activation_type=QuantType.QUInt8,
+            weight_type=QuantType.QInt8,
+        )
+
+        qdq_model = onnx.load_model(qdq_model_path)
+        bias_names = set()
+
+        for node in qdq_model.graph.node:
+            if node.op_type == "DequantizeLinear" and node.input[0].startswith("bias_shared"):
+                bias_names.add(node.input[0])
+
+        self.assertEqual(len(bias_names), 2)
+
+
+class TestQDQPrequantWeights(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls._tmp_model_dir = tempfile.TemporaryDirectory(prefix="ort.qdq.prequant_weight")
+
+        # Note: swap with the commented line if you want to see the models in local test dir.
+        cls._tmp_dir_path = cls._tmp_model_dir.name
+        # cls._tmp_dir_path = "."
+
+    @classmethod
+    def tearDownClass(cls):
+        cls._tmp_model_dir.cleanup()
+
+    def build_conv_model(
+        self,
+        inp_shape: list[int],
+        weight_quant_data: np.ndarray,
+        weight_scale_data: np.ndarray,
+        weight_zp_data: np.ndarray,
+        bias_data: np.ndarray,
+        float_type: onnx.TensorProto.DataType = onnx.TensorProto.FLOAT,
+    ):
+        """
+        Builds a model with a Conv that has a pre-quantized constant weight input.
+        """
+        input_0 = onnx.helper.make_tensor_value_info("input_0", float_type, inp_shape)
+        output_0 = onnx.helper.make_tensor_value_info("output_0", float_type, None)
+        weight_quant = onnx.numpy_helper.from_array(weight_quant_data, "weight_quant")
+        weight_scale = onnx.numpy_helper.from_array(weight_scale_data, "weight_scale")
+        weight_zp = onnx.numpy_helper.from_array(weight_zp_data, "weight_zp")
+        bias = onnx.numpy_helper.from_array(bias_data, "bias")
+
+        dq_node = onnx.helper.make_node(
+            "DequantizeLinear", ["weight_quant", "weight_scale", "weight_zp"], ["weight_dequant"], name="DQ0"
+        )
+        conv_node = onnx.helper.make_node("Conv", ["input_0", "weight_dequant", "bias"], ["output_0"], name="Conv0")
+        graph = onnx.helper.make_graph(
+            [dq_node, conv_node],
+            "ConvPreQuantWeight",
+            [input_0],
+            [output_0],
+            initializer=[weight_quant, weight_scale, weight_zp, bias],
+        )
+        opset_imports = [onnx.helper.make_opsetid("", 21)]
+        model = onnx.helper.make_model(graph, opset_imports=opset_imports)
+
+        return onnx.shape_inference.infer_shapes(model)
+
+    def build_conv_dynamic_weight_model(
+        self,
+        input_quant_data: np.ndarray,
+        input_scale_data: np.ndarray,
+        input_zp_data: np.ndarray,
+        weight_shape: list[int],
+        bias_data: np.ndarray,
+        float_type: onnx.TensorProto.DataType = onnx.TensorProto.FLOAT,
+    ):
+        """
+        Builds a model with a Conv that has a dynamic float weight input, but a constant
+        pre-quantized input[0].
+        """
+        dyn_weight = onnx.helper.make_tensor_value_info("dyn_weight", float_type, weight_shape)
+        output_0 = onnx.helper.make_tensor_value_info("output_0", float_type, None)
+        input_quant = onnx.numpy_helper.from_array(input_quant_data, "input_quant")
+        input_scale = onnx.numpy_helper.from_array(input_scale_data, "input_scale")
+        input_zp = onnx.numpy_helper.from_array(input_zp_data, "input_zp")
+        bias = onnx.numpy_helper.from_array(bias_data, "bias")
+
+        dq_node = onnx.helper.make_node(
+            "DequantizeLinear", ["input_quant", "input_scale", "input_zp"], ["input_dequant"], name="DQ0"
+        )
+        conv_node = onnx.helper.make_node("Conv", ["input_dequant", "dyn_weight", "bias"], ["output_0"], name="Conv0")
+        graph = onnx.helper.make_graph(
+            [dq_node, conv_node],
+            "ConvPreQuantInput_DynamicWeight",
+            [dyn_weight],
+            [output_0],
+            initializer=[input_quant, input_scale, input_zp, bias],
+        )
+        opset_imports = [onnx.helper.make_opsetid("", 21)]
+        model = onnx.helper.make_model(graph, opset_imports=opset_imports)
+
+        return onnx.shape_inference.infer_shapes(model)
+
+    def test_quantize_with_prequantized_weights(self):
+        """
+        Test quantization of Conv with pre-quantized weights.
+        """
+        rng = np.random.default_rng(123)
+        test_configs = [onnx.TensorProto.FLOAT, onnx.TensorProto.FLOAT16]
+
+        for float_type in test_configs:
+            with self.subTest(float_type=float_type):
+                label = f"_{onnx.TensorProto.DataType.Name(float_type)}"
+                float_model_path = os.path.join(self._tmp_dir_path, f"conv.f32.prequant_weight{label}.onnx")
+                qdq_model_path = os.path.join(self._tmp_dir_path, f"conv.prequant_weight{label}.qdq.onnx")
+
+                inp_shape = [1, 2, 100, 100]
+                weight_shape = [2, 2, 20, 20]
+                np_dtype = onnx.helper.tensor_dtype_to_np_dtype(float_type)
+
+                # range = 2.0, scale = 2/254, zp = 0
+                weight_scale_data = np.array(2 / 254, dtype=np_dtype)
+                weight_zp_data = np.array(0, dtype=np.int8)
+                weight_data = np.linspace(-1.0, 1.0, num=1600, dtype=np_dtype).reshape(weight_shape)
+                weight_quant_data = quantize_nparray(
+                    onnx.TensorProto.INT8, weight_data, weight_scale_data, weight_zp_data
+                )
+
+                bias_data = np.array([-10.0, 10.0], dtype=np_dtype)
+                float_model = self.build_conv_model(
+                    inp_shape, weight_quant_data, weight_scale_data, weight_zp_data, bias_data, float_type
+                )
+
+                onnx.checker.check_model(float_model, True)
+                onnx.save_model(float_model, float_model_path)
+
+                # Check that the input model only has a pre-quantized weight and save its scale/zero-point
+                # to check that it doesn't change after quantization.
+                float_node_counts = {"QuantizeLinear": 0, "DequantizeLinear": 1}
+                check_op_type_count(self, float_model_path, **float_node_counts)
+                conv_node_original = next((node for node in float_model.graph.node if node.op_type == "Conv"), None)
+                self.assertNotEqual(conv_node_original, None)
+
+                _, producers_original = get_tensor_consumers_and_producers(float_model)
+                weight_dq_node_original = producers_original.get(conv_node_original.input[1], None)
+                initializers_original = {initializer.name: initializer for initializer in float_model.graph.initializer}
+                scale_name_original = weight_dq_node_original.input[1]
+                scale_val_original = onnx.numpy_helper.to_array(initializers_original[scale_name_original])
+                zp_name_original = weight_dq_node_original.input[2]
+                zp_val_original = onnx.numpy_helper.to_array(initializers_original[zp_name_original])
+
+                input_data_list = [
+                    {"input_0": rng.uniform(-10.0, 10.0, inp_shape).astype(np_dtype)},
+                ]
+                data_reader = TestDataFeeds(input_data_list)
+
+                quantize_static(
+                    float_model_path,
+                    qdq_model_path,
+                    data_reader,
+                    quant_format=QuantFormat.QDQ,
+                    activation_type=QuantType.QUInt8,
+                    weight_type=QuantType.QInt8,
+                    op_types_to_quantize=["Conv"],
+                )
+
+                # The final model should have everything quantized
+                qdq_node_counts = {"QuantizeLinear": 2, "DequantizeLinear": 4}
+                check_op_type_count(self, qdq_model_path, **qdq_node_counts)
+
+                # Check that the pre-quantized weight still has the same scale/zp after quantization
+                qdq_model = onnx.load_model(qdq_model_path)
+                conv_node = next((node for node in qdq_model.graph.node if node.op_type == "Conv"), None)
+                self.assertNotEqual(conv_node, None)
+
+                _, producers = get_tensor_consumers_and_producers(qdq_model)
+                weight_dq_node = producers.get(conv_node.input[1], None)
+                initializers = {initializer.name: initializer for initializer in qdq_model.graph.initializer}
+
+                scale_name = weight_dq_node.input[1]
+                self.assertEqual(scale_name, scale_name_original)
+                scale_val = onnx.numpy_helper.to_array(initializers[scale_name])
+                self.assertEqual(scale_val, scale_val_original)
+
+                zp_name = weight_dq_node.input[2]
+                self.assertEqual(zp_name, zp_name_original)
+                zp_val = onnx.numpy_helper.to_array(initializers[zp_name])
+                self.assertEqual(zp_val, zp_val_original)
+
+    def test_quantize_with_prequantized_input(self):
+        """
+        Test quantization of Conv with pre-quantized input and dynamic weight.
+        """
+        rng = np.random.default_rng(123)
+        test_configs = [
+            (onnx.TensorProto.FLOAT, False),
+            (onnx.TensorProto.FLOAT16, False),
+            (onnx.TensorProto.FLOAT, True),
+            (onnx.TensorProto.FLOAT16, True),
+        ]
+
+        for float_type, convert_weight_qtype in test_configs:
+            with self.subTest(float_type=float_type):
+                convert_label = "_convert_qtype" if convert_weight_qtype else ""
+                label = f"_{onnx.TensorProto.DataType.Name(float_type)}{convert_label}"
+                float_model_path = os.path.join(self._tmp_dir_path, f"conv.f32.prequant_input{label}.onnx")
+                qdq_model_path = os.path.join(self._tmp_dir_path, f"conv.prequant_input{label}.qdq.onnx")
+
+                inp_shape = [1, 2, 40, 40]
+                weight_shape = [2, 2, 20, 20]
+                np_dtype = onnx.helper.tensor_dtype_to_np_dtype(float_type)
+
+                # range = 3.0, scale = 3/255, zp = 127
+                input_scale_data = np.array(3 / 255, dtype=np_dtype)
+                input_zp_data = np.array(127, dtype=np.uint8)
+                input_data = np.linspace(-1.5, 1.5, num=3200, dtype=np_dtype).reshape(inp_shape)
+                input_quant_data = quantize_nparray(onnx.TensorProto.UINT8, input_data, input_scale_data, input_zp_data)
+
+                bias_data = np.array([-10.0, 10.0], dtype=np_dtype)
+                float_model = self.build_conv_dynamic_weight_model(
+                    input_quant_data, input_scale_data, input_zp_data, weight_shape, bias_data, float_type
+                )
+
+                onnx.checker.check_model(float_model, True)
+                onnx.save_model(float_model, float_model_path)
+
+                # Check that the input model only has a pre-quantized input and save its scale/zero-point
+                # to check that it doesn't change after quantization.
+                float_node_counts = {"QuantizeLinear": 0, "DequantizeLinear": 1}
+                check_op_type_count(self, float_model_path, **float_node_counts)
+                conv_node_original = next((node for node in float_model.graph.node if node.op_type == "Conv"), None)
+                self.assertNotEqual(conv_node_original, None)
+
+                _, producers_original = get_tensor_consumers_and_producers(float_model)
+                input_dq_node_original = producers_original.get(conv_node_original.input[0], None)
+                initializers_original = {initializer.name: initializer for initializer in float_model.graph.initializer}
+                scale_name_original = input_dq_node_original.input[1]
+                scale_val_original = onnx.numpy_helper.to_array(initializers_original[scale_name_original])
+                zp_name_original = input_dq_node_original.input[2]
+                zp_val_original = onnx.numpy_helper.to_array(initializers_original[zp_name_original])
+
+                # Create data reader with random input calibration data.
+                dyn_weight_data_list = [
+                    {"dyn_weight": rng.uniform(-10.0, 10.0, weight_shape).astype(np_dtype)},
+                ]
+                data_reader = TestDataFeeds(dyn_weight_data_list)
+
+                extra_options = {}
+                if convert_weight_qtype:
+                    # Test converting the dynamic weight's quantization type, which results in
+                    # dyn_weight -> Q(u16) -> DQ(f32) -> Q(u8) -> DQ(f32) -> Conv
+                    extra_options["TensorQuantOverrides"] = {
+                        "dyn_weight": [{"quant_type": QuantType.QUInt16, "convert": {"quant_type": QuantType.QUInt8}}],
+                    }
+
+                quantize_static(
+                    float_model_path,
+                    qdq_model_path,
+                    data_reader,
+                    quant_format=QuantFormat.QDQ,
+                    activation_type=QuantType.QUInt8,
+                    weight_type=QuantType.QInt8,
+                    op_types_to_quantize=["Conv"],
+                    extra_options=extra_options,
+                )
+
+                # The final model should have everything quantized
+                qdq_node_counts = {"QuantizeLinear": 2, "DequantizeLinear": 4}
+                if convert_weight_qtype:
+                    qdq_node_counts["QuantizeLinear"] += 1
+                    qdq_node_counts["DequantizeLinear"] += 1
+
+                check_op_type_count(self, qdq_model_path, **qdq_node_counts)
+
+                # Check that the pre-quantized input still has the same scale/zp after quantization
+                qdq_model = onnx.load_model(qdq_model_path)
+                conv_node = next((node for node in qdq_model.graph.node if node.op_type == "Conv"), None)
+                self.assertNotEqual(conv_node, None)
+
+                _, producers = get_tensor_consumers_and_producers(qdq_model)
+                input_dq_node = producers.get(conv_node.input[0], None)
+                initializers = {initializer.name: initializer for initializer in qdq_model.graph.initializer}
+
+                scale_name = input_dq_node.input[1]
+                self.assertEqual(scale_name, scale_name_original)
+                scale_val = onnx.numpy_helper.to_array(initializers[scale_name])
+                self.assertEqual(scale_val, scale_val_original)
+
+                zp_name = input_dq_node.input[2]
+                self.assertEqual(zp_name, zp_name_original)
+                zp_val = onnx.numpy_helper.to_array(initializers[zp_name])
+                self.assertEqual(zp_val, zp_val_original)
 
 
 if __name__ == "__main__":

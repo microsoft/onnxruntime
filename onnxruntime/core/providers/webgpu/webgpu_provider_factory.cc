@@ -103,7 +103,7 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
 #ifndef NDEBUG
       webgpu::ValidationMode::Full  // for debug build, enable full validation by default
 #else
-      webgpu::ValidationMode::WGPUOnly  // for release build, only enable WGPU validation.
+      webgpu::ValidationMode::Basic  // for release build, enable basic validation by default
 #endif  // !NDEBUG
       ;
   std::string validation_mode_str;

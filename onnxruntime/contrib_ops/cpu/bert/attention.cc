@@ -30,7 +30,6 @@ class Attention : public OpKernel, public AttentionCPUBase {
   Status Compute(OpKernelContext* context) const override;
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                 bool save_prepacked_initializers,
                  /*out*/ bool& is_packed,
                  /*out*/ PrePackedWeights* prepacked_weights) override;
 
@@ -102,7 +101,6 @@ bool Attention<T>::IsPackWeightsSuccessful(int qkv_index,
 
 template <typename T>
 Status Attention<T>::PrePack(const Tensor& weights, int input_idx, AllocatorPtr alloc,
-                             bool /*save_prepacked_initializers*/,
                              /*out*/ bool& is_packed,
                              /*out*/ PrePackedWeights* prepacked_weights) {
   /* The PrePack() massages the weights to speed up Compute(), there is an option to

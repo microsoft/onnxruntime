@@ -48,11 +48,18 @@ const createExpandProgramInfo = (inputs: readonly TensorView[]): ProgramInfo => 
   const shape = Array.from(inputs[1].getBigInt64Array(), Number);
   const outputShape: number[] = calculateOutputShape(inputShape, shape);
   const dataType = inputs[0].dataType;
-  const components = dataType === DataType.bool ? 4 : 1;
+  const isBoolOrScalar = dataType === DataType.bool || ShapeUtil.size(inputShape) === 1;
+  const iComponents =
+    dataType === DataType.bool ? 4 : inputShape.length > 0 && inputShape[inputShape.length - 1] % 4 === 0 ? 4 : 1;
+  const components = isBoolOrScalar
+    ? 4
+    : outputShape.length > 0 && outputShape[outputShape.length - 1] % 4 === 0
+      ? 4
+      : 1;
   const outputSize = Math.ceil(ShapeUtil.size(outputShape) / components);
 
   const getShaderSource = (shaderHelper: ShaderHelper) => {
-    const input = inputVariable('input', dataType, inputShape.length, components);
+    const input = inputVariable('input', dataType, inputShape.length, iComponents);
     const output = outputVariable('output', dataType, outputShape.length, components);
     let assignment: string;
     if (dataType === DataType.bool) {
@@ -74,9 +81,10 @@ const createExpandProgramInfo = (inputs: readonly TensorView[]): ProgramInfo => 
       }`;
     } else {
       assignment = `
-        let outputIndices = ${output.offsetToIndices('global_idx')};
+        let outputIndices = ${output.offsetToIndices(`global_idx * ${components}`)};
         let inputOffset = ${input.broadcastedIndicesToOffset('outputIndices', output)};
-        ${output.setByOffset('global_idx', input.getByOffset('inputOffset'))}
+        let data = ${output.type.value}(${input.getByOffset(`inputOffset / ${iComponents}`)});
+        ${output.setByOffset('global_idx', 'data')}
       }`;
     }
     return `
@@ -92,7 +100,7 @@ const createExpandProgramInfo = (inputs: readonly TensorView[]): ProgramInfo => 
   ];
   return {
     name: 'Expand',
-    shaderCache: { hint: `${outputShape.length}`, inputDependencies: ['rank'] },
+    shaderCache: { hint: `${outputShape.length};${iComponents}${components}`, inputDependencies: ['rank'] },
     getShaderSource,
     getRunData: () => ({
       outputs: [{ dims: outputShape, dataType: inputs[0].dataType }],

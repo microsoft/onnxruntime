@@ -273,7 +273,7 @@ TEST_F(QnnHTPBackendTests, MatMulOp_PerChannel_A16_WeightUInt4) {
 }
 
 // Test QDQ per-channel MatMul with int8 act, int4 weights (static)
-// QNN 2.27 regression
+// QNN 2.27 regression. Also fails on QNN 2.28.2.
 // Failed to finalize QNN graph. Error code: 1002
 TEST_F(QnnHTPBackendTests, DISABLED_MatMulOp_PerChannel_AS8_WeightInt4) {
   std::vector<float> input0_data = GetFloatDataInRange(-5.0f, 5.0f, 6);

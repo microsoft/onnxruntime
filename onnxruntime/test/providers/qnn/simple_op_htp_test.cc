@@ -229,8 +229,16 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Tanh) {
                         ExpectedEPNodeAssignment::All);
 }
 
+// disabled for QNN 2.28.0.241029 backendValidateOpConfig failed
+// still fails on QNN 2.28.2.
+// QnnDsp <E> [4294967295] has incorrect Value -32768, expected equal to 0.
+// QnnDsp <V> validateNativeOps node_token_6:qti.aisw:Tanh htp op validator failed 3110
+// QnnDsp <V> registered validator failed => 3110
+// QnnDsp <E> QnnBackend_validateOpConfig failed 3110
+// QnnDsp <V> Wake up free backend (id: 1)'s thread(s)
+// QnnDsp <E> Failed to validate op node_token_6 with error 0xc26
 // Tests accuracy of 16-bit QDQ Tanh.
-TEST_F(QnnHTPBackendTests, UnaryOp_Tanh_U16) {
+TEST_F(QnnHTPBackendTests, DISABLED_UnaryOp_Tanh_U16) {
   RunQDQOpTest<uint16_t>("Tanh",
                          {TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRange(-10.0f, 10.0f, 6))},
                          {},

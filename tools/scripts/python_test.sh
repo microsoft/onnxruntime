@@ -7,7 +7,7 @@ export build_dir=$2
 export config=$3
 
 # it's for manylinux image
-export PATH=/opt/python/cp38-cp38/bin:$PATH
+export PATH=/opt/python/cp310-cp310/bin:$PATH
 
 echo Install Python Deps
 cp $src_dir/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt $build_dir/requirements.txt

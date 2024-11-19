@@ -49,6 +49,49 @@ bool HasElementDataType(const NodeArg& node_arg, int32_t data_type) {
   return data_type == actual_data_type;
 }
 
+// Return total mnumber of Elements.
+static uint64_t NumElements(const TensorShapeProto* tensor_shape) {
+  if (nullptr == tensor_shape || tensor_shape->dim_size() < 1) {
+    return 0;
+  }
+  uint64_t num_elements = 1;
+
+  for (int i = 0; i < tensor_shape->dim_size(); i++) {
+    num_elements *= tensor_shape->dim(i).dim_value();
+  }
+  return num_elements;
+}
+
+bool CheckMatMulLargeTensors(const Node& matmulinteger_node, const Node& cast_node) {
+  const auto a_def = matmulinteger_node.InputDefs()[0];
+  const auto b_def = matmulinteger_node.InputDefs()[1];
+  const int a_dim_size = a_def->Shape()->dim_size();
+  const int b_dim_size = b_def->Shape()->dim_size();
+  uint64_t a_num_elements = NumElements(a_def->Shape());
+  uint64_t b_num_elements = NumElements(b_def->Shape());
+
+  if (a_dim_size != b_dim_size) {
+    bool a_is_broadcasted = a_dim_size < b_dim_size;
+    if (a_is_broadcasted) {
+      for (int i = 0; i < b_dim_size - a_dim_size; i++) {
+        a_num_elements *= b_def->Shape()->dim(i).dim_value();
+      }
+    } else {
+      for (int i = 0; i < a_dim_size - b_dim_size; i++) {
+        b_num_elements *= a_def->Shape()->dim(i).dim_value();
+      }
+    }
+  }
+
+  int output_data_type = HasElementDataType(*cast_node.OutputDefs()[0], ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) ? 2 : 4;
+  uint64_t total_bytes = (a_num_elements + b_num_elements) * output_data_type;
+
+  if (total_bytes > UINT32_MAX) {
+    return true;
+  }
+  return false;
+}
+
 /**
 MatMulIntegerToFloatFusion will fuse subgraph like below into MatMulIntegerToFloat:
 
@@ -112,6 +155,17 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
         !optimizer_utils::CheckOutputEdges(graph, matmulinteger_node, 1) ||
         !optimizer_utils::CheckOutputEdges(graph, mul_node_right, 1)) {
       continue;
+    }
+
+    const Node* p_dynamicquantize_node = graph_utils::FirstParentByType(*p_matmulinteger_node, "DynamicQuantizeLinear");
+
+    // Check MatMulInteger Nodes' input is coming from DynamicQuantizeLinear
+    // For larger tensors DynamicQuantizeLinear -> MatMulInteger is used to be resource efficient
+    // And we have better MatMulInteger Metacommand coverage in DML
+    if (is_dml_ep && p_dynamicquantize_node) {
+      if (CheckMatMulLargeTensors(matmulinteger_node, cast_node)) {
+        continue;
+      }
     }
 
     // Find bias node
