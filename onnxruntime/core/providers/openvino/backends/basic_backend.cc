@@ -174,7 +174,7 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
       device_property = std::make_pair("NPU_COMPILER_TYPE", env_npu_compiler_type);
     }
     device_config.emplace(ov::device::properties("NPU", device_property));
-#if (OPENVINO_VERSION_MAJOR >= 2024) && (OPENVINO_VERSION_MINOR > 3)
+#if (((OPENVINO_VERSION_MAJOR == 2024) && (OPENVINO_VERSION_MINOR > 3)) || (OPENVINO_VERSION_MAJOR > 2024))
     if (global_context_.export_ep_ctx_blob) {
       global_context_.ie_core.Get().set_property("NPU", ov::intel_npu::bypass_umd_caching(true));
     }
