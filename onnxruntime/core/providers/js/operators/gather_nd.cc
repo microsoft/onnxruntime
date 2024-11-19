@@ -38,6 +38,5 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("indices", BuildKernelDefConstraintsFromTypeList<TypeList<int64_t>>()),
     GatherND);
 
-
 }  // namespace js
 }  // namespace onnxruntime
