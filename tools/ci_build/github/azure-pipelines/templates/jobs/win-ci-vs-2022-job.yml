@@ -155,6 +155,14 @@ jobs:
       Platform: ${{ parameters.msbuildPlatform }}
       BuildConfig: ${{ parameters.BuildConfig }}
 
+  - ${{ if contains(parameters.additionalBuildFlags, 'build_java') }}:
+    - task: CmdLine@2
+      displayName: 'Gradle cmakeCheck'
+      inputs:
+        script: |
+          call gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\${{ parameters.BuildConfig }} --warning-mode all
+        workingDirectory: $(Build.SourcesDirectory)\java
+
   - powershell: |
       Get-Volume $("$(Build.BinariesDirectory)")[0]
     displayName: check disk size
