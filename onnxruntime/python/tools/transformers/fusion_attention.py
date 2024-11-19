@@ -42,26 +42,26 @@ class AttentionMask:
         assert len(self.mask_indice) > 0
         return next(iter(self.mask_indice))
 
-    def process_mask(self, input: str) -> str:
+    def process_mask(self, mask_2d: str) -> Optional[str]:
         if self.mask_format == AttentionMaskFormat.NoMask:
             return None
 
-        if input in self.mask_indice:
-            return self.mask_indice[input]
+        if mask_2d in self.mask_indice:
+            return self.mask_indice[mask_2d]
 
         # Add cast to convert int64 to int32
-        if self.model.find_graph_input(input):
-            casted, input_name = self.utils.cast_graph_input_to_int32(input)
+        if self.model.find_graph_input(mask_2d):
+            casted, input_name = self.utils.cast_graph_input_to_int32(mask_2d)
         else:
-            input_name, cast_node = self.utils.cast_input_to_int32(input)
+            input_name, _cast_node = self.utils.cast_input_to_int32(mask_2d)
             casted = True
 
         if casted:
-            self.mask_casted[input] = input_name
+            self.mask_casted[mask_2d] = input_name
 
         # Attention supports int32 attention mask (2D) since 1.4.0
         if self.mask_format == AttentionMaskFormat.AttentionMask:
-            self.mask_indice[input] = input_name
+            self.mask_indice[mask_2d] = input_name
             return input_name
 
         # Add a mask processing node to convert attention mask to mask index (1D)
@@ -97,7 +97,7 @@ class AttentionMask:
 
         self.model.add_node(mask_index_node)
 
-        self.mask_indice[input] = output_name
+        self.mask_indice[mask_2d] = output_name
         return output_name
 
 
@@ -178,11 +178,15 @@ class FusionAttention(Fusion):
             concat = self.model.get_parent(reshape_q, 1)
             if concat is not None and concat.op_type == "Concat":
                 return self.get_num_heads_and_hidden_size_from_concat(concat)
-            logger.debug(f"{reshape_q.input[1]} is not initializer.")
+            logger.debug("%s is not initializer.", reshape_q.input[1])
             return self.num_heads, self.hidden_size  # Fall back to user specified value
 
-        if (not isinstance(q_shape_value, np.ndarray)) or len(q_shape_value) != 4 or (q_shape_value[2] <= 0 or q_shape_value[3] <= 0):
-            logger.debug(f"q_shape_value={q_shape_value}. Expected value are like [0, 0, num_heads, head_size].")
+        if (
+            (not isinstance(q_shape_value, np.ndarray))
+            or len(q_shape_value) != 4
+            or (q_shape_value[2] <= 0 or q_shape_value[3] <= 0)
+        ):
+            logger.debug("q_shape_value=%s. Expected value are like [0, 0, num_heads, head_size].", q_shape_value)
             return self.num_heads, self.hidden_size  # Fall back to user specified value
 
         num_heads = q_shape_value[2]
@@ -191,13 +195,15 @@ class FusionAttention(Fusion):
 
         if self.num_heads > 0 and num_heads != self.num_heads:
             if self.num_heads_warning:
-                logger.warning(f"--num_heads is {self.num_heads}. Detected value is {num_heads}. Using detected value.")
+                logger.warning(
+                    "--num_heads is %d. Detected value is %d. Using detected value.", self.num_heads, num_heads
+                )
                 self.num_heads_warning = False  # Do not show the warning more than once
 
         if self.hidden_size > 0 and hidden_size != self.hidden_size:
             if self.hidden_size_warning:
                 logger.warning(
-                    f"--hidden_size is {self.hidden_size}. Detected value is {hidden_size}. Using detected value."
+                    "--hidden_size is %d. Detected value is %d. Using detected value.", self.hidden_size, hidden_size
                 )
                 self.hidden_size_warning = False  # Do not show the warning more than once
 
@@ -215,11 +221,11 @@ class FusionAttention(Fusion):
         input_1_shape = self.shape_infer.get_edge_shape(add_qk.input[1])
 
         if input_0_shape is None or input_1_shape is None:
-            logger.debug(f"one of the inputs of {add_qk} is None")
+            logger.debug("one of the inputs of %s is None", add_qk)
             return None
 
         if input_0_shape != input_1_shape:
-            logger.debug(f"the shape of two inputs of {add_qk} is not same")
+            logger.debug("the shape of two inputs of %s is not same", add_qk)
             return None
 
         return add_qk.input[1]
@@ -303,55 +309,6 @@ class FusionAttention(Fusion):
         self.node_name_to_graph_name[concat_node_name] = self.this_graph_name
 
         return kv_output_name
-
-    def reshape_kv(self, past_k: str, past_v: str) -> (str, str):
-        """Reshape past_k and past_v from 4D to 3D to use as inputs for multihead attention node.
-
-        Args:
-            past_k (str): name of past K value of shape 4D
-            past_v (str): name of past V value of shape 4D
-
-        Returns:
-            k_3d (str): name of past K value of shape 3D
-            v_3d (str): name of past V value of shape 3D
-        """
-        # Reshape past_k and past_v from (B,N,P,H) to (B,P,N*H)
-        # B = batch size, N = num heads, P = past seq len, H = head size
-
-        # Create initializer for reshaping past_k and past_v
-        new_dims_name = "kv_4d_to_3d"
-        new_dims = self.model.get_initializer(new_dims_name)
-        if new_dims is None:
-            new_dims = numpy_helper.from_array(
-                np.array([0, -1, self.model.hidden_size], dtype="int64"), name=new_dims_name
-            )
-            self.model.add_initializer(new_dims, self.this_graph_name)
-
-        reshape_k_name = self.model.create_node_name("Reshape")
-        reshape_v_name = self.model.create_node_name("Reshape")
-        k_3d_name = (past_k + "_3d").replace(".", "_")
-        v_3d_name = (past_v + "_3d").replace(".", "_")
-
-        k_3d = helper.make_node(
-            "Reshape",
-            inputs=[past_k, new_dims_name],
-            outputs=[k_3d_name],
-            name=reshape_k_name,
-        )
-        v_3d = helper.make_node(
-            "Reshape",
-            inputs=[past_v, new_dims_name],
-            outputs=[v_3d_name],
-            name=reshape_v_name,
-        )
-
-        # Add reshape nodes to graph
-        self.nodes_to_add.append(k_3d)
-        self.nodes_to_add.append(v_3d)
-        self.node_name_to_graph_name[reshape_k_name] = self.this_graph_name
-        self.node_name_to_graph_name[reshape_v_name] = self.this_graph_name
-
-        return k_3d_name, v_3d_name
 
     def split_kv(self, present_k_name: str, present_v_name: str, kv_node: str):
         """Split kv_node containing present KV values into separate present K and present V values.
@@ -475,8 +432,7 @@ class FusionAttention(Fusion):
         q_add: NodeProto,
         k_add: Union[NodeProto, None],
         v_add: Union[NodeProto, None],
-        num_heads: int,
-    ) -> Union[NodeProto, None]:
+    ) -> Tuple[NodeProto, NodeProto, NodeProto]:
         """Create packed QKV MatMul node before MultiHeadAttention node.
            This is for the scenario where an Attention node should be created but cannot be created
            because past_key and past_value are separate inputs and not one concatenated input.
@@ -488,10 +444,11 @@ class FusionAttention(Fusion):
             q_add (NodeProto): name of Add from Q path
             k_add (NodeProto): name of Add from K path
             v_add (NodeProto): name of Add from V path
-            num_heads (int): number of heads
 
         Returns:
-            Union[NodeProto, None]: the node created or None if failed.
+             q_output (NodeProto): Slice node for Q
+             k_output (NodeProto): Slice node for K
+             v_output (NodeProto): Slice node for V
         """
         matmul_node_name = self.model.create_node_name("MatMul")
 
@@ -658,7 +615,7 @@ class FusionAttention(Fusion):
         assert num_heads > 0
 
         if hidden_size > 0 and (hidden_size % num_heads) != 0:
-            logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")
+            logger.debug("input hidden size %d is not a multiple of num of heads %d", hidden_size, num_heads)
             return None
 
         graph_input_names = set([node.name for node in self.model.graph().input])
@@ -668,17 +625,22 @@ class FusionAttention(Fusion):
         mha_inputs = []
         if packed_qkv:
             q_slice, k_slice, v_slice = self.create_packed_qkv_matmul_node(
-                q_matmul, k_matmul, v_matmul, q_add, k_add, v_add, num_heads
+                q_matmul,
+                k_matmul,
+                v_matmul,
+                q_add,
+                k_add,
+                v_add,
             )
             mha_inputs.extend([q_slice.output[0], k_slice.output[0], v_slice.output[0]])
-        elif type(k_matmul) is NodeProto and type(v_matmul) is NodeProto:
+        elif isinstance(k_matmul, NodeProto) and isinstance(v_matmul, NodeProto):
             if self.disable_multi_head_attention_bias:
                 mha_inputs.extend([q_add.output[0], k_matmul.output[0], v_add.output[0]])
             else:
                 mha_inputs.extend([q_matmul.output[0], k_matmul.output[0], v_matmul.output[0]])
         elif (
-            type(k_matmul) == str  # noqa: E721
-            and type(v_matmul) == str  # noqa: E721
+            isinstance(k_matmul, str)
+            and isinstance(v_matmul, str)
             and k_matmul in graph_input_names
             and v_matmul in graph_input_names
         ):
@@ -770,7 +732,7 @@ class FusionAttention(Fusion):
         assert num_heads > 0
 
         if hidden_size > 0 and (hidden_size % num_heads) != 0:
-            logger.debug(f"input hidden size {hidden_size} is not a multiple of num of heads {num_heads}")
+            logger.debug("input hidden size %d is not a multiple of num of heads %d", hidden_size, num_heads)
             return None
 
         has_bias = True
@@ -812,8 +774,10 @@ class FusionAttention(Fusion):
 
         if hidden_size > 0 and hidden_size != qw_in_size:
             logger.warning(
-                f"Input hidden size ({hidden_size}) is not same as weight matrix dimension of q,k,v ({qw_in_size}). "
-                "Please provide a correct input hidden size or pass in 0"
+                "Input hidden size (%d) is not same as weight matrix dimension of q,k,v (%d). "
+                "Please provide a correct input hidden size or pass in 0",
+                hidden_size,
+                qw_in_size,
             )
 
         is_qkv_diff_dims = False
@@ -835,6 +799,8 @@ class FusionAttention(Fusion):
             qkv_weight = np.stack((qw, kw, vw), axis=1)
             qkv_weight_dim = 3 * qw_out_size
 
+        qkv_bias_dim = 0
+        qkv_bias: Optional[np.ndarray] = None
         if has_bias:
             qb = NumpyHelper.to_array(q_bias)
             kb = NumpyHelper.to_array(k_bias)
@@ -860,7 +826,7 @@ class FusionAttention(Fusion):
             self.add_initializer(
                 name=attention_node_name + "_qkv_weight",
                 data_type=q_weight.data_type,
-                dims=[qw_in_size, qkv_weight_dim],
+                dims=[qw_in_size, int(qkv_weight_dim)],
                 vals=qkv_weight,
             )
 
@@ -868,7 +834,7 @@ class FusionAttention(Fusion):
             self.add_initializer(
                 name=attention_node_name + "_qkv_bias",
                 data_type=q_bias.data_type,
-                dims=[qkv_bias_dim],
+                dims=[int(qkv_bias_dim)],
                 vals=qkv_bias,
             )
 
@@ -950,9 +916,10 @@ class FusionAttention(Fusion):
 
         return attention_node
 
-    def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
+    def fuse(self, node, input_name_to_nodes, output_name_to_node):
         # Sometimes we can not fuse skiplayernormalization since the add before layernorm has an output that used by nodes outside skiplayernorm
         # Conceptually we treat add before layernorm as skiplayernorm node since they share the same pattern
+        normalize_node = node
         start_node = normalize_node
         if normalize_node.op_type == "LayerNormalization":
             add_before_layernorm = self.model.match_parent(normalize_node, "Add", 0)
@@ -981,25 +948,24 @@ class FusionAttention(Fusion):
                 return
 
         other_inputs = []
-        for _i, input in enumerate(start_node.input):
-            if input not in output_name_to_node:
+        for _i, node_input in enumerate(start_node.input):
+            if node_input not in output_name_to_node:
                 continue
 
-            if input == qkv_nodes[0].output[0]:
+            if node_input == qkv_nodes[0].output[0]:
                 continue
-            other_inputs.append(input)
+            other_inputs.append(node_input)
         if len(other_inputs) != 1:
             return
 
         root_input = other_inputs[0]
-        """
-        Match flaubert                     Mask
-                                            |
-        Mul --> LayerNormalization -->  Attention --> MatMul --> Add
-         |                                                        |
-         |                                                        |
-         +---------------------------------------------------------
-        """
+
+        # Match flaubert                     Mask
+        #                                     |
+        # Mul --> LayerNormalization -->  Attention --> MatMul --> Add
+        #  |                                                        |
+        #  |                                                        |
+        #  +---------------------------------------------------------
         mul_before_layernorm = self.model.match_parent(start_node, "Mul", 0)
         if mul_before_layernorm is not None:
             mul_children = input_name_to_nodes[mul_before_layernorm.output[0]]
@@ -1019,19 +985,15 @@ class FusionAttention(Fusion):
                 if child.op_type == "LayerNormalization":
                     root_input = child.output[0]
 
-        """
-        When Add before the LayerNormalization produces an output
-        that is consumed by some other nodes other than the LayerNormalization itself,
-        fused SkipLayerNormalization will have several outputs.
-        In this case we need to pick the one used in Attention
-
-        For example, this is the case for ViT
-
-        SkipLayerNormalization --> Attention --> MatMul --> Add --> SkipLayerNormalization
-         |                                                                     |
-         |                                                                     |
-         +---------------------------------------------------------------------+
-        """
+        # When Add before the LayerNormalization produces an output
+        # that is consumed by some other nodes other than the LayerNormalization itself,
+        # fused SkipLayerNormalization will have several outputs.
+        # In this case we need to pick the one used in Attention
+        # For example, this is the case for ViT
+        # SkipLayerNormalization --> Attention --> MatMul --> Add --> SkipLayerNormalization
+        #  |                                                                     |
+        #  |                                                                     |
+        #  +---------------------------------------------------------------------+
         parent_node = output_name_to_node[root_input]
         if parent_node.op_type == "SkipLayerNormalization" and len(parent_node.output) == 4:
             root_input = parent_node.output[0]
@@ -1082,7 +1044,7 @@ class FusionAttention(Fusion):
         add_qk = None
         matmul_qk = None
         where_qk = None
-        after_q = matmul_qk
+        after_q = None
         if is_distill:
             (_, where_qk, matmul_qk, _) = qk_nodes
         elif is_distill_add:
@@ -1094,6 +1056,7 @@ class FusionAttention(Fusion):
         else:
             (_, add_qk, _, matmul_qk) = qk_nodes
 
+        after_q = after_q or matmul_qk
         q_nodes = self.model.match_parent_path(after_q, ["Transpose", "Reshape", "Add", "MatMul"], [0, 0, 0, None])
         if q_nodes is None:
             q_nodes = self.model.match_parent_path(
@@ -1116,7 +1079,9 @@ class FusionAttention(Fusion):
                 return
             (after_k, _) = mul_k_nodes
 
-        k_nodes = self.model.match_parent_path(after_k, ["Transpose", "Reshape", "Add", "MatMul"],[0 if is_sdpa else 1, 0, 0, None])
+        k_nodes = self.model.match_parent_path(
+            after_k, ["Transpose", "Reshape", "Add", "MatMul"], [0 if is_sdpa else 1, 0, 0, None]
+        )
         if k_nodes is None:
             k_nodes = self.model.match_parent_path(
                 matmul_qk,
@@ -1154,7 +1119,7 @@ class FusionAttention(Fusion):
             if add_qk is not None:
                 add_qk_str = self.get_add_qk_str(add_qk)
                 if add_qk_str is None:
-                    logger.debug(f"fuse_attention: failed to verify shape inference of {add_qk}")
+                    logger.debug("fuse_attention: failed to verify shape inference of %s", add_qk)
                     return
         elif is_no_mask_attention:
             pass
@@ -1164,6 +1129,7 @@ class FusionAttention(Fusion):
                 [
                     (["Mul", "Sub", "Cast", "Unsqueeze", "Unsqueeze"], [None, 0, 1, 0, 0]),
                     (["Mul", "Sub", "Unsqueeze", "Unsqueeze"], [None, 0, 1, 0]),
+                    (["Where", "Cast", "Sub", "Expand", "Unsqueeze", "Unsqueeze"], [None, 0, 0, 1, 0, 0]),
                     (["Where", "Cast", "Sub", "Cast", "Expand", "Unsqueeze", "Unsqueeze"], [None, 0, 0, 1, 0, 0, 0]),
                 ],
                 output_name_to_node,
@@ -1175,6 +1141,7 @@ class FusionAttention(Fusion):
         if not is_no_mask_attention and len(mask_nodes) > 1:
             _, mul_val = self.model.get_constant_input(mask_nodes[0])
             if mul_val != -10000:
+                assert mul_val < 0
                 self.mask_filter_value = mul_val
 
         if matmul_v.input[0] == root_input and matmul_q.input[0] == root_input and matmul_k.input[0] == root_input:
