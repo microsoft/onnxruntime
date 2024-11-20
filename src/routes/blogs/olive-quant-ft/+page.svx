@@ -75,7 +75,14 @@ olive quantize \
 
 ### 3. 🎚️ Fine-tune
 
-We fine-tune *the quantized models* using the following Olive commands:
+We fine-tune *the quantized models* using the [tiny codes](https://huggingface.co/datasets/nampdn-ai/tiny-codes) dataset from Hugging Face. This is a gated dataset 
+and you'll need to [request for access](https://huggingface.co/docs/hub/main/datasets-gated). Once access has been granted you should login into Hugging Face with 
+your [access token](https://huggingface.co/docs/hub/security-tokens):
+
+<pre><code>huggingface-clu login --token TOKEN
+</code></pre>
+
+Olive can finetune using the following commands:
 
 <pre><code># Finetune AWQ model
 olive finetune \
