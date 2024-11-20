@@ -567,6 +567,7 @@ class FusionAttention(Fusion):
         self.nodes_to_add.extend(qkv_nodes)
         return q_output, k_output, v_output
 
+    # This function is used in child classes for bart or conformer model.
     def create_multihead_attention_node(
         self,
         q_matmul: NodeProto,
@@ -685,7 +686,7 @@ class FusionAttention(Fusion):
 
     def create_attention_node(
         self,
-        mask_index: str,
+        mask_index: Optional[str],
         q_matmul: NodeProto,
         k_matmul: NodeProto,
         v_matmul: NodeProto,
@@ -707,7 +708,7 @@ class FusionAttention(Fusion):
         """Create an Attention node.
 
         Args:
-            mask_index (str): mask input
+            mask_index (str | None): mask input
             q_matmul (NodeProto): MatMul node in fully connection for Q
             k_matmul (NodeProto): MatMul node in fully connection for K
             v_matmul (NodeProto): MatMul node in fully connection for V
@@ -876,7 +877,7 @@ class FusionAttention(Fusion):
                 past_kv = self.concat_kv(past_k, past_v)
                 attention_inputs.append(past_kv)
 
-            if add_qk_str is not None:
+            if add_qk_str:
                 mask_output_name = self.reshape_add_qk(add_qk_str)
 
                 # Add attention mask to attention node
@@ -1096,7 +1097,7 @@ class FusionAttention(Fusion):
 
         # Note that Cast might be removed by OnnxRuntime so we match two patterns here.
         mask_nodes = None
-        add_qk_str = None
+        add_qk_str = ""
         if is_distill:
             _, mask_nodes, _ = self.model.match_parent_paths(
                 where_qk,
@@ -1129,6 +1130,7 @@ class FusionAttention(Fusion):
                 [
                     (["Mul", "Sub", "Cast", "Unsqueeze", "Unsqueeze"], [None, 0, 1, 0, 0]),
                     (["Mul", "Sub", "Unsqueeze", "Unsqueeze"], [None, 0, 1, 0]),
+                    # The following two patterns are for SDPA.
                     (["Where", "Cast", "Sub", "Expand", "Unsqueeze", "Unsqueeze"], [None, 0, 0, 1, 0, 0]),
                     (["Where", "Cast", "Sub", "Cast", "Expand", "Unsqueeze", "Unsqueeze"], [None, 0, 0, 1, 0, 0, 0]),
                 ],
@@ -1166,19 +1168,20 @@ class FusionAttention(Fusion):
             # number of heads are same for all the paths, hence to create attention node, we pass the q_num_heads
             # the input_hidden_size represents the input hidden size, this is used as needed but hidden sizes for Q, K are extracted appropriately
             new_node = self.create_attention_node(
-                mask_index,
-                matmul_q,
-                matmul_k,
-                matmul_v,
-                add_q,
-                add_k,
-                add_v,
-                q_num_heads,
-                q_hidden_size,
-                root_input,
-                attention_last_node.output[0],
-                add_qk_str,
+                mask_index=mask_index,
+                q_matmul=matmul_q,
+                k_matmul=matmul_k,
+                v_matmul=matmul_v,
+                q_add=add_q,
+                k_add=add_k,
+                v_add=add_v,
+                num_heads=q_num_heads,
+                hidden_size=q_hidden_size,
+                input=root_input,
+                output=attention_last_node.output[0],
+                add_qk_str=add_qk_str,
             )
+
             if new_node is None:
                 return
 
@@ -1193,7 +1196,7 @@ class FusionAttention(Fusion):
                     name="shape_modified_tensor" + unique_index,
                     data_type=TensorProto.INT64,
                     dims=[4],
-                    vals=np.int64([0, 0, q_num_heads, int(q_hidden_size / q_num_heads)]),
+                    vals=[0, 0, q_num_heads, int(q_hidden_size / q_num_heads)],
                     raw=False,
                 )
 
