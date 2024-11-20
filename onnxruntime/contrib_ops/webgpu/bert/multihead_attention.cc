@@ -618,7 +618,7 @@ fn computeDotProduct(q_idx: u32, k_idx: u32, sg_id: u32, sg_size : u32)
         var result = q_value_t(0);
         let sg_idx = idx+sg_id;
         // QKV_HEAD_VECTORIZED_SIZE is divisible by the subgroup size this if check is not
-        // required. Hopefully the compiler sees the first half of this if statement and 
+        // required. Hopefully the compiler sees the first half of this if statement and
         // removes this if instruction.
         if (QKV_HEAD_VECTORIZED_SIZE % sg_size == 0 || sg_idx < QKV_HEAD_VECTORIZED_SIZE)
         {
@@ -633,8 +633,8 @@ fn computeDotProduct(q_idx: u32, k_idx: u32, sg_id: u32, sg_size : u32)
         let sqrt_dk = q_element_t(uniforms.alpha);
         let value = single_sum * sqrt_dk;
         qk_tile[q_idx][k_idx] += value;
-        }
     }
+}
 
 fn computeSoftMax(q_idx: u32, sg_id:u32, enabled:bool)
 {
@@ -653,7 +653,11 @@ fn computeSoftMax(q_idx: u32, sg_id:u32, enabled:bool)
 
     // Compute lhs term of update di prime and the compute di prime.
     let dleft = denom_tile[q_idx] * exp(max_tile[q_idx]-max_value);
-    let d = dleft + sum;
+    var d = dleft + sum;
+    if (d == 0)
+    {
+        d = 0.0000001h;
+    }
     qk_tile[q_idx][sg_id] = value / d;
     if (sg_id == 0)
     {
@@ -812,7 +816,8 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
   Tensor* present_key = context.Output(1, present_shape);
   Tensor* present_value = context.Output(2, present_shape);
 
-  if (bias == nullptr &&
+  if (parameters.batch_size == 1 &&
+     bias == nullptr &&
      past_key != nullptr && past_value != nullptr && past_key->SizeInBytes() > 0 && past_value->SizeInBytes() > 0 &&
      present_key != nullptr && present_value != nullptr && present_key->SizeInBytes() > 0 &&
      present_value->SizeInBytes() > 0 && parameters.head_size % 4 == 0) {
