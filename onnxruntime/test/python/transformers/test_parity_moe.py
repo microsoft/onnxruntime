@@ -651,7 +651,6 @@ class SparseMoeBlockORTHelper(nn.Module):
         torch_output = self.forward(hidden_state)
         ort_output = self.ort_forward(hidden_state)
         if ort_output is not None:
-            assert torch.allclose(torch_output, ort_output.to(torch.float32), rtol=THRESHOLD, atol=THRESHOLD)
             print(
                 "name:",
                 self.__class__.__name__,
@@ -661,8 +660,8 @@ class SparseMoeBlockORTHelper(nn.Module):
                 self.sequence_length,
                 " max_diff:",
                 (torch_output - ort_output).abs().max(),
-                " parity: OK",
             )
+            torch.testing.assert_close(ort_output.to(torch.float32), torch_output, rtol=THRESHOLD, atol=THRESHOLD)
 
     def benchmark_ort(self):
         hidden_state = torch.randn(self.batch_size, self.sequence_length, self.hidden_dim)
