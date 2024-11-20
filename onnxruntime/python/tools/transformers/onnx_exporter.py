@@ -392,11 +392,13 @@ def validate_and_optimize_onnx(
             False,
             output_names,
         )
-    if optimize_info == OptimizerInfo.NOOPT:
+    if optimize_info.name == OptimizerInfo.NOOPT.name:
         return onnx_model_path, is_valid_onnx_model, config.vocab_size
 
     if (
-        optimize_info == OptimizerInfo.BYSCRIPT or precision == Precision.FLOAT16 or precision == Precision.INT8
+        optimize_info.name == OptimizerInfo.BYSCRIPT.name
+        or precision == Precision.FLOAT16
+        or precision == Precision.INT8
     ):  # Use script (optimizer.py) to optimize
         optimized_model_path = get_onnx_file_path(
             onnx_dir,
@@ -439,7 +441,7 @@ def validate_and_optimize_onnx(
             QuantizeHelper.quantize_onnx_model(onnx_model_path, onnx_model_path, use_external_data_format)
             logger.info(f"Finished quantizing model: {onnx_model_path}")
 
-    if optimize_info == OptimizerInfo.BYORT:  # Use OnnxRuntime to optimize
+    if optimize_info.name == OptimizerInfo.BYORT.name:  # Use OnnxRuntime to optimize
         if is_valid_onnx_model:
             ort_model_path = add_filename_suffix(onnx_model_path, "_ort")
             optimize_onnx_model_by_ort(
