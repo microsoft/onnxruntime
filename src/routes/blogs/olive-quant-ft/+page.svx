@@ -41,11 +41,15 @@ Also, as part of answering the question of when to quantize we'll show how the f
 
 To answer our question on the right sequencing of quantization and fine-tuning we leveraged Olive (ONNX Live) - an advanced model optimization toolkit designed to streamline the process of optimizing AI models for deployment with the ONNX runtime.
 
+> **Note**: Both quantization and fine-tuning need to run on an Nvidia A10 or A100 GPU machine.
+
 ### 1. 💾 Install Olive
 
 We installed the [Olive CLI](../blogs/olive-cli) using `pip`:
 
 <pre><code>pip install olive-ai[quantize,finetuning]
+pip install autoawq
+pip install auto-gptq
 </code></pre>
 
 ### 2. 🗜️ Quantize
