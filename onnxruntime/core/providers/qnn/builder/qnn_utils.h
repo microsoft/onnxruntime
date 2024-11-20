@@ -74,7 +74,30 @@ static bool ArrayHasString(const std::array<std::string_view, N>& strings, std::
 std::pair<float, float> CheckMinMax(float rmin, float rmax);
 
 template <typename T>
-Status GetQminQmax(const Qnn_DataType_t qnn_data_type, T& qmin, T& qmax, bool symmetric = false);
+Status GetQminQmax(const Qnn_DataType_t qnn_data_type,
+                   T& qmin,
+                   T& qmax,
+                   bool symmetric = false) {
+  if (qnn_data_type == QNN_DATATYPE_SFIXED_POINT_8) {
+    qmin = static_cast<T>(std::numeric_limits<int8_t>::min() + static_cast<int8_t>(symmetric));
+    qmax = static_cast<T>(std::numeric_limits<int8_t>::max());
+  } else if (qnn_data_type == QNN_DATATYPE_UFIXED_POINT_8) {
+    qmin = static_cast<T>(std::numeric_limits<uint8_t>::min());
+    qmax = static_cast<T>(std::numeric_limits<uint8_t>::max());
+  } else if (qnn_data_type == QNN_DATATYPE_SFIXED_POINT_16) {
+    qmin = static_cast<T>(std::numeric_limits<int16_t>::min() + static_cast<int16_t>(symmetric));
+    qmax = static_cast<T>(std::numeric_limits<int16_t>::max());
+  } else if (qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16) {
+    qmin = static_cast<T>(std::numeric_limits<uint16_t>::min());
+    qmax = static_cast<T>(std::numeric_limits<uint16_t>::max());
+  } else if (qnn_data_type == QNN_DATATYPE_SFIXED_POINT_32) {
+    qmin = static_cast<T>(std::numeric_limits<int32_t>::min() + static_cast<int32_t>(symmetric));
+    qmax = static_cast<T>(std::numeric_limits<int32_t>::max());
+  } else {
+    ORT_RETURN_IF(true, "Qnn Data Type: %d not supported yet.", qnn_data_type);
+  }
+  return Status::OK();
+}
 
 template <typename T>
 inline T Saturate(const T qmax,
@@ -106,9 +129,14 @@ Status Quantize(const double double_value,
 
 size_t ShapeSizeCalc(gsl::span<const uint32_t> shape, size_t start, size_t end);
 
+Status GetDataQuantParams(gsl::span<const float> data, gsl::span<const uint32_t> shape,
+                          /*out*/ gsl::span<float> scales, /*out*/ gsl::span<int32_t> offsets,
+                          Qnn_DataType_t data_type, bool symmetric = false,
+                          std::optional<int64_t> axis = std::nullopt);
+
 Status QuantizeData(gsl::span<const float> data, gsl::span<const uint32_t> shape,
-                    gsl::span<float> scales, gsl::span<int32_t> offsets,
-                    gsl::span<uint8_t> quant_bytes, Qnn_DataType_t data_type, bool symmetric = false,
+                    gsl::span<const float> scales, gsl::span<const int32_t> offsets,
+                    /*out*/ gsl::span<uint8_t> quant_bytes, Qnn_DataType_t data_type,
                     std::optional<int64_t> axis = std::nullopt);
 
 }  // namespace utils

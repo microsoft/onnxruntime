@@ -95,6 +95,12 @@ class BaseOpBuilder : public IOpBuilder {
                       const logging::Logger& logger,
                       std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
 
+  Status GetBiasQuantParams(const QnnQuantParamsWrapper& input0_qparams,
+                            const QnnQuantParamsWrapper& weight_qparams,
+                            /*out*/ std::vector<float>& bias_scales,
+                            /*out*/ std::vector<int32_t>& bias_offsets,
+                            const logging::Logger& logger) const ORT_MUST_USE_RESULT;
+
   Status AddZeroBiasInput(QnnModelWrapper& qnn_model_wrapper,
                           const QnnQuantParamsWrapper& input0_qparams,
                           const QnnQuantParamsWrapper& input1_qparams,
