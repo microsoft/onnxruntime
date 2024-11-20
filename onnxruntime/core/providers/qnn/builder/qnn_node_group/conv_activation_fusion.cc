@@ -54,37 +54,28 @@ static bool GetQScalarScaleZeroPoint(const QnnModelWrapper& qnn_model_wrapper,
 }
 
 // Computes the floating point range (rmin, rmax) from a QuantizeLinear node's scale/zero-point.
-static bool GetQRminRmax(const QnnModelWrapper& qnn_model_wrapper,
-                         const NodeUnit& q_node_unit,
-                         /*out*/ float& rmin,
-                         /*out*/ float& rmax) {
-  int32_t zp_data_type = ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_UNDEFINED;
-  int32_t zero_point = 0;
-  float scale = 0.0f;
-
-  if (!GetQScalarScaleZeroPoint(qnn_model_wrapper, q_node_unit, scale, zero_point, zp_data_type)) {
-    return false;
-  }
-
+static bool GetQminQmax(int32_t zp_data_type,
+                        /*out*/ int32_t& qmin,
+                        /*out*/ int32_t& qmax) {
   switch (zp_data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
-      rmin = scale * (std::numeric_limits<int8_t>::lowest() - zero_point);
-      rmax = scale * (std::numeric_limits<int8_t>::max() - zero_point);
+      qmin = std::numeric_limits<int8_t>::lowest();
+      qmax = std::numeric_limits<int8_t>::max();
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
-      rmin = scale * (std::numeric_limits<uint8_t>::lowest() - zero_point);
-      rmax = scale * (std::numeric_limits<uint8_t>::max() - zero_point);
+      qmin = std::numeric_limits<uint8_t>::lowest();
+      qmax = std::numeric_limits<uint8_t>::max();
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
-      rmin = scale * (std::numeric_limits<int16_t>::lowest() - zero_point);
-      rmax = scale * (std::numeric_limits<int16_t>::max() - zero_point);
+      qmin = std::numeric_limits<int16_t>::lowest();
+      qmax = std::numeric_limits<int16_t>::max();
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_UINT16: {
-      rmin = scale * (std::numeric_limits<uint16_t>::lowest() - zero_point);
-      rmax = scale * (std::numeric_limits<uint16_t>::max() - zero_point);
+      qmin = std::numeric_limits<uint16_t>::lowest();
+      qmax = std::numeric_limits<uint16_t>::max();
       break;
     }
     default:
@@ -100,10 +91,11 @@ static bool CanClipBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
                              const NodeUnit& q_node_unit,
                              const logging::Logger& logger) {
   assert(clip_node_unit.OpType() == "Clip" && q_node_unit.OpType() == QUANTIZE_LINEAR);
-  float rmin = 0.0f;
-  float rmax = 0.0f;
+  int32_t zp_data_type = ONNX_NAMESPACE::TensorProto::DataType::TensorProto_DataType_UNDEFINED;
+  int32_t zero_point = 0;
+  float scale = 0.0f;
 
-  if (!GetQRminRmax(qnn_model_wrapper, q_node_unit, rmin, rmax)) {
+  if (!GetQScalarScaleZeroPoint(qnn_model_wrapper, q_node_unit, scale, zero_point, zp_data_type)) {
     return false;
   }
 
@@ -115,15 +107,19 @@ static bool CanClipBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
     return false;
   }
 
-  // The clip range must entirely overlap the quantization range (quantization can be smaller).
-  // Clip range:   [------------------]
-  // Quant range:    [-------------]
-  constexpr float epsilon = std::numeric_limits<float>::epsilon();
-  if ((epsilon < clip_min - rmin) || (epsilon < rmax - clip_max)) {
+  int32_t q_clip_min = static_cast<int32_t>(::rint(clip_min / scale)) + zero_point;
+  int32_t q_clip_max = static_cast<int32_t>(::rint(clip_max / scale)) + zero_point;
+
+  int32_t data_type_min = 0;
+  int32_t data_type_max = 0;
+  if (!GetQminQmax(zp_data_type, data_type_min, data_type_max)) {
     return false;
   }
 
-  return true;
+  // The clip range must entirely overlap the quantization range (quantization can be smaller).
+  // Clip range:   [------------------]
+  // Quant range:    [-------------]
+  return q_clip_min <= data_type_min && q_clip_max >= data_type_max;
 }
 
 // Returns true if the Relu in the sequence (Relu -> Q) can be removed because it is made redundant by the Q.
