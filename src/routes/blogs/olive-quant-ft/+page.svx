@@ -41,11 +41,15 @@ Also, as part of answering the question of when to quantize we'll show how the f
 
 To answer our question on the right sequencing of quantization and fine-tuning we leveraged Olive (ONNX Live) - an advanced model optimization toolkit designed to streamline the process of optimizing AI models for deployment with the ONNX runtime.
 
+> **Note**: Both quantization and fine-tuning need to run on an Nvidia A10 or A100 GPU machine.
+
 ### 1. 💾 Install Olive
 
 We installed the [Olive CLI](../blogs/olive-cli) using `pip`:
 
-<pre><code>pip install olive-ai[quantize,finetuning]
+<pre><code>pip install olive-ai[finetune]
+pip install autoawq
+pip install auto-gptq
 </code></pre>
 
 ### 2. 🗜️ Quantize
@@ -71,7 +75,14 @@ olive quantize \
 
 ### 3. 🎚️ Fine-tune
 
-We fine-tune *the quantized models* using the following Olive commands:
+We fine-tune *the quantized models* using the [tiny codes](https://huggingface.co/datasets/nampdn-ai/tiny-codes) dataset from Hugging Face. This is a gated dataset 
+and you'll need to [request for access](https://huggingface.co/docs/hub/main/datasets-gated). Once access has been granted you should login into Hugging Face with 
+your [access token](https://huggingface.co/docs/hub/security-tokens):
+
+<pre><code>huggingface-clu login --token TOKEN
+</code></pre>
+
+Olive can finetune using the following commands:
 
 <pre><code># Finetune AWQ model
 olive finetune \
@@ -108,8 +119,8 @@ We ran a [perplexity metrics](https://huggingface.co/docs/transformers/perplexit
 
 <pre><code>input_model:
   type: HfModel
-  model_path: models/phi-awq-pt/model
-  adapter_path: models/phi-awq-pt/adapter
+  model_path: models/phi-awq-ft/model
+  adapter_path: models/phi-awq-ft/adapter
 systems:
   local_system:
     type: LocalSystem
