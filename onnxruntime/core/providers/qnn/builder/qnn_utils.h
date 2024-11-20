@@ -74,7 +74,7 @@ static bool ArrayHasString(const std::array<std::string_view, N>& strings, std::
 std::pair<float, float> CheckMinMax(float rmin, float rmax);
 
 template <typename T>
-Status GetQminQmax(const Qnn_DataType_t qnn_data_type, T& qmin, T& qmax);
+Status GetQminQmax(const Qnn_DataType_t qnn_data_type, T& qmin, T& qmax, bool symmetric = false);
 
 template <typename T>
 inline T Saturate(const T qmax,
@@ -103,6 +103,13 @@ Status Quantize(const double double_value,
                 const int32_t zero_point,
                 const Qnn_DataType_t qnn_data_type,
                 int& quant_value);
+
+size_t ShapeSizeCalc(gsl::span<const uint32_t> shape, size_t start, size_t end);
+
+Status QuantizeData(gsl::span<const float> data, gsl::span<const uint32_t> shape,
+                    gsl::span<float> scales, gsl::span<int32_t> offsets,
+                    gsl::span<uint8_t> quant_bytes, Qnn_DataType_t data_type, bool symmetric = false,
+                    std::optional<int64_t> axis = std::nullopt);
 
 }  // namespace utils
 }  // namespace qnn

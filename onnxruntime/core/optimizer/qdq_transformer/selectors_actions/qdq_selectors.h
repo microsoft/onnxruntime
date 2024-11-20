@@ -145,8 +145,12 @@ class SplitNodeGroupSelector : public NodeGroupSelector {
 class ConvNodeGroupSelector : public NodeGroupSelector {
  public:
   // default to 'true'
-  ConvNodeGroupSelector(bool int8_allowed = true, bool allow_16bit = true, bool allow_4bit_weight = true)
-      : int8_allowed_(int8_allowed), allow_16bit_(allow_16bit), allow_4bit_weight_(allow_4bit_weight) {}
+  ConvNodeGroupSelector(bool int8_allowed = true, bool allow_16bit = true, bool allow_4bit_weight = true,
+                        bool allow_float_weight_and_bias = true)
+      : int8_allowed_(int8_allowed),
+        allow_16bit_(allow_16bit),
+        allow_4bit_weight_(allow_4bit_weight),
+        allow_float_weight_and_bias_(allow_float_weight_and_bias) {}
 
  private:
   bool Check(const GraphViewer& graph_viewer, const Node& node,
@@ -156,6 +160,7 @@ class ConvNodeGroupSelector : public NodeGroupSelector {
   bool int8_allowed_;
   bool allow_16bit_;
   bool allow_4bit_weight_;
+  bool allow_float_weight_and_bias_;  // EP will have to quantize the weights if necessary.
 };
 
 class WhereNodeGroupSelector : public NodeGroupSelector {
@@ -360,7 +365,8 @@ class ConvSelector : public BaseSelector {
  public:
   ConvSelector(bool int8_allowed = false, bool allow_16bit = false, bool allow_4bit_weight = false,
                gsl::span<const char*> compatible_providers = {})
-      : BaseSelector(std::make_unique<ConvNodeGroupSelector>(int8_allowed, allow_16bit, allow_4bit_weight),
+      : BaseSelector(std::make_unique<ConvNodeGroupSelector>(int8_allowed, allow_16bit, allow_4bit_weight,
+                                                             /*allow_float_weight_and_bias*/ false),
                      compatible_providers) {}
 
   void UpdateBuilder(NodesToOptimizeIndicesBuilder&) const override;

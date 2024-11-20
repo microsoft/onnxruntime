@@ -500,21 +500,22 @@ std::pair<float, float> CheckMinMax(float rmin, float rmax) {
 template <typename T>
 Status GetQminQmax(const Qnn_DataType_t qnn_data_type,
                    T& qmin,
-                   T& qmax) {
+                   T& qmax,
+                   bool symmetric) {
   if (qnn_data_type == QNN_DATATYPE_SFIXED_POINT_8) {
-    qmin = static_cast<T>(std::numeric_limits<int8_t>::min());
+    qmin = static_cast<T>(std::numeric_limits<int8_t>::min() + static_cast<int8_t>(symmetric));
     qmax = static_cast<T>(std::numeric_limits<int8_t>::max());
   } else if (qnn_data_type == QNN_DATATYPE_UFIXED_POINT_8) {
     qmin = static_cast<T>(std::numeric_limits<uint8_t>::min());
     qmax = static_cast<T>(std::numeric_limits<uint8_t>::max());
   } else if (qnn_data_type == QNN_DATATYPE_SFIXED_POINT_16) {
-    qmin = static_cast<T>(std::numeric_limits<int16_t>::min());
+    qmin = static_cast<T>(std::numeric_limits<int16_t>::min() + static_cast<int16_t>(symmetric));
     qmax = static_cast<T>(std::numeric_limits<int16_t>::max());
   } else if (qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16) {
     qmin = static_cast<T>(std::numeric_limits<uint16_t>::min());
     qmax = static_cast<T>(std::numeric_limits<uint16_t>::max());
   } else if (qnn_data_type == QNN_DATATYPE_SFIXED_POINT_32) {
-    qmin = static_cast<T>(std::numeric_limits<int32_t>::min());
+    qmin = static_cast<T>(std::numeric_limits<int32_t>::min() + static_cast<int32_t>(symmetric));
     qmax = static_cast<T>(std::numeric_limits<int32_t>::max());
   } else {
     ORT_RETURN_IF(true, "Qnn Data Type: %d not supported yet.", qnn_data_type);
@@ -537,7 +538,7 @@ Status GetQuantParams(float rmin,
 
   float qmin = 0.0f;
   float qmax = 255.0f;
-  ORT_RETURN_IF_ERROR(GetQminQmax(qnn_data_type, qmin, qmax));
+  ORT_RETURN_IF_ERROR(GetQminQmax(qnn_data_type, qmin, qmax, symmetric));
 
   scale = (rmax - rmin) / (qmax - qmin);
   float initial_zero_point = 0.0f;
@@ -567,6 +568,130 @@ Status Quantize(const double double_value,
   int qmax = 255;
   ORT_RETURN_IF_ERROR(GetQminQmax(qnn_data_type, qmin, qmax));
   quant_value = Saturate(qmax, qmin, static_cast<int>(std::round((double_value / scale) - zero_point)));
+  return Status::OK();
+}
+
+size_t ShapeSizeCalc(gsl::span<const uint32_t> shape, size_t start, size_t end) {
+  size_t size = 1;
+  for (size_t i = start; i < end; i++) {
+    size *= shape[i];
+  }
+  return size;
+}
+
+static std::vector<std::pair<float, float>> GetDataRange(gsl::span<const float> data, const gsl::span<const uint32_t> shape,
+                                                         std::optional<int64_t> axis) {
+  const size_t num_dims = shape.size();
+  const size_t num_elems = ShapeSizeCalc(shape, 0, num_dims);
+  assert(num_elems == data.size());
+
+  size_t block_count = 1;
+  size_t broadcast_dim = 1;
+  size_t block_size = num_elems;
+
+  if (axis.has_value()) {
+    size_t axis_no_neg = *axis < 0 ? static_cast<size_t>(*axis) + num_dims : static_cast<size_t>(*axis);
+    block_count = ShapeSizeCalc(shape, 0, axis_no_neg);
+    broadcast_dim = shape[axis_no_neg];
+    block_size = ShapeSizeCalc(shape, axis_no_neg + 1, num_dims);
+  }
+
+  std::pair<float, float> init_range(std::numeric_limits<float>::max(), std::numeric_limits<float>::lowest());
+  std::vector<std::pair<float, float>> ranges(broadcast_dim, init_range);
+  size_t i = 0;
+  for (size_t n = 0; n < block_count; n++) {
+    for (size_t r = 0; r < broadcast_dim; r++) {
+      for (size_t j = 0; j < block_size; j++) {
+        std::pair<float, float>& range = ranges[r];
+        range.first = std::min(range.first, data[i]);
+        range.second = std::max(range.second, data[i]);
+        i++;
+      }
+    }
+  }
+  assert(i == data.size());
+
+  return ranges;
+}
+
+Status QuantizeData(gsl::span<const float> data, gsl::span<const uint32_t> shape,
+                    gsl::span<float> scales, gsl::span<int32_t> offsets,
+                    gsl::span<uint8_t> quant_bytes, Qnn_DataType_t data_type, bool symmetric,
+                    std::optional<int64_t> axis) {
+  const size_t num_dims = shape.size();
+  const size_t num_elems = ShapeSizeCalc(shape, 0, num_dims);
+  ORT_RETURN_IF_NOT(num_elems == data.size(), "Shape mismatch with data to quantize");
+  size_t expected_num_quant_bytes = GetElementSizeByType(data_type) * data.size();
+  ORT_RETURN_IF_NOT(quant_bytes.size() == expected_num_quant_bytes,
+                    "Cannot quantize data because output buffer is not the correct size");
+
+  size_t block_count = 1;
+  size_t broadcast_dim = 1;
+  size_t block_size = num_elems;
+
+  if (axis.has_value()) {
+    size_t axis_no_neg = *axis < 0 ? static_cast<size_t>(*axis) + num_dims : static_cast<size_t>(*axis);
+    block_count = ShapeSizeCalc(shape, 0, axis_no_neg);
+    broadcast_dim = shape[axis_no_neg];
+    block_size = ShapeSizeCalc(shape, axis_no_neg + 1, num_dims);
+  }
+
+  ORT_RETURN_IF_NOT(scales.size() != broadcast_dim, "Unexpected size of scales output buffer");
+  ORT_RETURN_IF_NOT(offsets.size() != broadcast_dim, "Unexpected size of offsets output buffer");
+
+  std::vector<std::pair<float, float>> ranges = GetDataRange(data, shape, axis);
+  assert(ranges.size() == broadcast_dim);
+
+  size_t i = 0;
+  for (size_t n = 0; n < block_count; n++) {
+    for (size_t bd = 0; bd < broadcast_dim; bd++) {
+      const auto& rmin_rmax = ranges[bd];
+      scales[bd] = 0.0f;
+      offsets[bd] = 0;
+      ORT_RETURN_IF_ERROR(GetQuantParams(rmin_rmax.first, rmin_rmax.second, data_type, scales[bd], offsets[bd], symmetric));
+
+      switch (data_type) {
+        case QNN_DATATYPE_SFIXED_POINT_8: {
+          int8_t* output = reinterpret_cast<int8_t*>(quant_bytes.data());
+          ParQuantizeLinearStd(&data[i], &output[i], block_size, scales[bd], static_cast<int8_t>(-offsets[bd]), nullptr);
+          break;
+        }
+        case QNN_DATATYPE_UFIXED_POINT_8: {
+          uint8_t* output = reinterpret_cast<uint8_t*>(quant_bytes.data());
+          ParQuantizeLinearStd(&data[i], &output[i], block_size, scales[bd], static_cast<uint8_t>(-offsets[bd]), nullptr);
+          break;
+        }
+        case QNN_DATATYPE_SFIXED_POINT_16: {
+          int16_t* output = reinterpret_cast<int16_t*>(quant_bytes.data());
+          ParQuantizeLinearStd(&data[i], &output[i], block_size, scales[bd], static_cast<int16_t>(-offsets[bd]), nullptr);
+          break;
+        }
+        case QNN_DATATYPE_UFIXED_POINT_16: {
+          uint16_t* output = reinterpret_cast<uint16_t*>(quant_bytes.data());
+          ParQuantizeLinearStd(&data[i], &output[i], block_size, scales[bd], static_cast<uint16_t>(-offsets[bd]), nullptr);
+          break;
+        }
+        case QNN_DATATYPE_SFIXED_POINT_32: {
+          float clip_min = 0.0f;
+          float clip_max = 255.0f;
+          ORT_RETURN_IF_ERROR(GetQminQmax(data_type, clip_min, clip_max, /*symmetric*/ false));
+
+          int32_t* output = reinterpret_cast<int32_t*>(quant_bytes.data());
+          for (size_t e = 0; e < block_size; ++e) {
+            float float_val = std::nearbyintf(data[i + e] / scales[bd]) - static_cast<float>(offsets[bd]);
+            float_val = std::max(float_val, clip_min);
+            float_val = std::min(float_val, clip_max);
+            output[i + e] = static_cast<int32_t>(float_val);
+          }
+          break;
+        }
+        default:
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported quantization data type for QuantizeData");
+      }
+      i += block_size;
+    }
+  }
+
   return Status::OK();
 }
 

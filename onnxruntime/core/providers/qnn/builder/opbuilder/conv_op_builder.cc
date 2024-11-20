@@ -190,6 +190,8 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
 
   assert(num_inputs >= 2);  // Checked by IsOpSupported.
 
+  QnnQuantParamsWrapper weight_qparams;
+
   //
   // Input 0
   //
@@ -229,6 +231,24 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
         ORT_RETURN_IF_ERROR(TransposeFromCnhwToHwcn(qnn_model_wrapper, *input_info.initializer_tensor, unpacked_tensor, is_3d));
       } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unexpected convolution op type: ", node_unit.OpType().c_str());
+      }
+
+      // Quantize float32 weight to int8_t (per-tensor, symmetric) if necessary.
+      if (!input_info.quant_param.IsQuantized()) {
+        ORT_RETURN_IF(input_info.initializer_tensor->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                      "QNN EP only supports unquantized float32 weights");
+
+        Qnn_DataType_t quant_type = QNN_DATATYPE_SFIXED_POINT_8;  // int8_t quantization of input[1] works with input[0] of all types.
+        std::array<float, 1> weight_scales = {0.0f};
+        std::array<int32_t, 1> weight_offsets = {0};
+        gsl::span<float> flt_weight = ReinterpretAsSpan<float, uint8_t>(unpacked_tensor);
+        std::vector<uint8_t> quant_weight(flt_weight.size());
+
+        ORT_RETURN_IF_ERROR(qnn::utils::QuantizeData(flt_weight, actual_shape, weight_scales, weight_offsets, quant_weight,
+                                                     quant_type, /*symmetric*/ true));
+        unpacked_tensor = std::move(quant_weight);
+        input_info.qnn_data_type = quant_type;
+        input_info.quant_param = QnnQuantParamsWrapper(weight_scales[0], weight_offsets[0]);
       }
 
       // Transpose quantization parameter's axis if this is using per-channel quantization.
@@ -279,6 +299,7 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
       }
     }
 
+    weight_qparams = input_info.quant_param.Copy();  // Store a copy of weight quantization params in case we need to quantize float bias.
     Qnn_TensorType_t tensor_type = qnn_model_wrapper.GetTensorType(actual_name);
     QnnTensorWrapper input_tensorwrapper(actual_name, tensor_type, input_info.qnn_data_type,
                                          std::move(input_info.quant_param),
@@ -289,9 +310,70 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
   //
   // Input 2: bias
   //
-  const bool has_bias_input = num_inputs == 3;
+  const bool has_bias_input = num_inputs == 3 && inputs[2].node_arg.Exists();
   if (has_bias_input) {
-    ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[2], logger, input_names));
+    TensorInfo bias_info = {};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[2], bias_info));
+
+    if (!bias_info.quant_param.IsQuantized() && bias_info.is_initializer) {
+      // Quantize float bias with bias_scale = input0_scale * weight_scale, bias_offset = 0. If weight is per-channel,
+      // then the bias will be quantized per-channel (axis 0) as well.
+      ORT_RETURN_IF(bias_info.initializer_tensor->data_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                    "QNN EP only supports unquantized float32 bias");
+
+      TensorInfo input0_info = {};
+      ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[0], input0_info));
+
+      std::vector<float> input0_scales;
+      ORT_RETURN_IF_ERROR(input0_info.quant_param.GetScales(input0_scales));
+      ORT_RETURN_IF_NOT(input0_scales.size() == 1,
+                        "Expect input[0] to have one quantization scale when quantizing bias to int32");
+
+      std::vector<float> weight_scales;
+      ORT_RETURN_IF_ERROR(weight_qparams.GetScales(weight_scales));
+
+      const size_t num_bias_scales_offsets = weight_scales.size();
+      std::vector<float> bias_scales(num_bias_scales_offsets);
+      std::vector<int32_t> bias_offsets(num_bias_scales_offsets, 0);
+      for (size_t i = 0; i < num_bias_scales_offsets; i++) {
+        bias_scales[i] = input0_scales[0] * weight_scales[i];
+      }
+
+      size_t num_bias_elems = qnn::utils::ShapeSizeCalc(bias_info.shape, 0, bias_info.shape.size());
+      assert(num_bias_elems == num_bias_scales_offsets);
+      std::vector<uint8_t> bias_quant_bytes(num_bias_elems * sizeof(int32_t), 0);
+
+      Qnn_DataType_t bias_quant_type = QNN_DATATYPE_SFIXED_POINT_32;
+      std::vector<uint8_t> flt_bias_bytes;
+      ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*bias_info.initializer_tensor, flt_bias_bytes));
+      gsl::span<float> flt_bias = ReinterpretAsSpan<float, uint8_t>(flt_bias_bytes);
+      assert(flt_bias.size() == num_bias_elems);
+
+      std::optional<int64_t> quant_axis;
+      if (weight_qparams.IsPerChannel()) {
+        quant_axis = 0;
+      }
+      ORT_RETURN_IF_ERROR(qnn::utils::QuantizeData(flt_bias, bias_info.shape, bias_scales, bias_offsets, bias_quant_bytes,
+                                                   bias_quant_type, /*symmetric*/ true,
+                                                   /*axis*/ quant_axis));
+      QnnQuantParamsWrapper bias_qparams;
+
+      if (quant_axis.has_value()) {
+        bias_qparams = QnnQuantParamsWrapper(bias_scales, bias_offsets, /*axis*/ static_cast<int32_t>(*quant_axis),
+                                             /*is_int4*/ false);
+      } else {
+        bias_qparams = QnnQuantParamsWrapper(bias_scales[0], bias_offsets[0]);
+      }
+
+      const std::string& bias_name = inputs[2].node_arg.Name();
+      auto bias_tensor_wrapper = QnnTensorWrapper(bias_name, QNN_TENSOR_TYPE_STATIC, bias_quant_type,
+                                                  std::move(bias_qparams), std::move(bias_info.shape), std::move(bias_quant_bytes));
+
+      qnn_model_wrapper.AddTensorWrapper(std::move(bias_tensor_wrapper));
+      input_names.push_back(bias_name);
+    } else {
+      ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[2], logger, input_names));
+    }
   }
 
 #if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 16 && QNN_API_VERSION_MINOR <= 18)
