@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 
 #include <cuda_runtime.h>
-//#include "unary_elementwise_ops_impl.h"
-//#include "core/providers/cuda/cu_inc/common.cuh"
 #include "cu_inc/unary_elementwise_impl.cuh"
 
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
@@ -41,19 +39,9 @@ struct ViaTypeMap<half> {
   typedef float ViaT;
 };
 
-//template <>
-//struct ViaTypeMap<BFloat16> {
-  //typedef float ViaT;
-//};
-
 template <typename InT, typename OutT>
 struct OP_Cast {
   __device__ __inline__ OutT operator()(const InT& a) const {
-    //const bool any_float16 = std::is_same<half, InT>::value || std::is_same<half, OutT>::value;
-    //const bool any_bf16 = std::is_same<BFloat16, InT>::value || std::is_same<BFloat16, OutT>::value;
-    //typedef typename std::conditional<any_bf16, BFloat16, OutT>::type T1;
-    //typedef typename std::conditional<any_float16, half, T1>::type T;
-    //typedef typename ViaTypeMap<T>::ViaT ViaT;
     typedef typename ViaTypeMap<OutT>::ViaT ViaT;
     return (OutT)((ViaT)a);
   }
@@ -98,74 +86,6 @@ IMPL_CAST_IMPL_FROM(uint32_t)
 IMPL_CAST_IMPL_FROM(uint64_t)
 IMPL_CAST_IMPL_FROM(bool)
 //IMPL_CAST_IMPL_FROM(BFloat16)
-
-//template <typename InT, typename OutT>
-//struct OP_CastSat {
-  //__device__ __inline__ OutT operator()(const InT& a) const;
-//};
-
-//template <typename InT, typename OutT>
-//struct OP_CastNoSat {
-  //__device__ __inline__ OutT operator()(const InT& a) const;
-//};
-
-//#if defined(CUDA_VERSION) && CUDA_VERSION >= 11080
-
-//#define OP_CAST(T, NVT)                                                                                     \
-  //template <>                                                                                               \
-  //struct OP_CastSat<half, T> {                                                                              \
-    //__device__ __inline__ T operator()(const half& v) const {                                               \
-      //return T(static_cast<unsigned char>(__nv_cvt_halfraw_to_fp8(v, __NV_SATFINITE, NVT)), T::FromBits()); \
-    //}                                                                                                       \
-  //};                                                                                                        \
-  //template <>                                                                                               \
-  //struct OP_CastNoSat<half, T> {                                                                            \
-    //__device__ __inline__ T operator()(const half& v) const {                                               \
-      //return T(static_cast<unsigned char>(__nv_cvt_halfraw_to_fp8(v, __NV_NOSAT, NVT)), T::FromBits());     \
-    //}                                                                                                       \
-  //};                                                                                                        \
-  //template <>                                                                                               \
-  //struct OP_CastSat<float, T> {                                                                             \
-    //__device__ __inline__ T operator()(const float& v) const {                                              \
-      //return T(static_cast<unsigned char>(__nv_cvt_float_to_fp8(v, __NV_SATFINITE, NVT)), T::FromBits());   \
-    //}                                                                                                       \
-  //};                                                                                                        \
-  //template <>                                                                                               \
-  //struct OP_CastNoSat<float, T> {                                                                           \
-    //__device__ __inline__ T operator()(const float& v) const {                                              \
-      //return T(static_cast<unsigned char>(__nv_cvt_float_to_fp8(v, __NV_NOSAT, NVT)), T::FromBits());       \
-    //}                                                                                                       \
-  //};
-
-//#else
-
-//#define OP_CAST(T, NVT)                                        \
-  //template <>                                                  \
-  //struct OP_CastSat<half, T> {                                 \
-    //__device__ __inline__ T operator()(const half& v) const {  \
-      //return T(__half2float(v), true);                         \
-    //}                                                          \
-  //};                                                           \
-  //template <>                                                  \
-  //struct OP_CastNoSat<half, T> {                               \
-    //__device__ __inline__ T operator()(const half& v) const {  \
-      //return T(__half2float(v), false);                        \
-    //}                                                          \
-  //};                                                           \
-  //template <>                                                  \
-  //struct OP_CastSat<float, T> {                                \
-    //__device__ __inline__ T operator()(const float& v) const { \
-      //return T(v, true);                                       \
-    //}                                                          \
-  //};                                                           \
-  //template <>                                                  \
-  //struct OP_CastNoSat<float, T> {                              \
-    //__device__ __inline__ T operator()(const float& v) const { \
-      //return T(v, false);                                      \
-    //}                                                          \
-  //};
-
-//#endif
 
 }  // namespace cuda
 }  // namespace onnxruntime
