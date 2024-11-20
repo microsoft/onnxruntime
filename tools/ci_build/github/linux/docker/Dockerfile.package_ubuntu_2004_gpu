@@ -26,7 +26,7 @@ RUN apt-get install -y --no-install-recommends \
     python3-wheel
 
 RUN pip install --upgrade pip
-RUN pip install cmake==3.27
+RUN pip install cmake>=3.27
 
 # Install TensorRT
 RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2004/x86_64/7fa2af80.pub &&\
