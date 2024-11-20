@@ -48,7 +48,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   auto rank = input_shape.size();
   NodeAttrHelper helper(node);
 
-  emscripten::val inputs = model_builder.GetOperand(input_defs[0]->Name());
+  emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
 
   // Copy the data from the starts/ends/axes/steps initializers.
   std::vector<int64_t> input_starts;
@@ -84,7 +84,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
   // Check if reverse op is needed.
   std::vector<uint32_t> reverse_axes;
-  emscripten::val reverse_output = inputs;
+  emscripten::val reverse_output = input;
   for (size_t i = 0; i < rank; ++i) {
     if (compute_metadata.steps_[i] < 0) {
       reverse_axes.push_back(SafeInt<uint32_t>(i));
@@ -97,7 +97,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     emscripten::val reverse_options = emscripten::val::object();
     reverse_options.set("axes", emscripten::val::array(reverse_axes));
     reverse_options.set("label", node.Name() + "_reverse");
-    reverse_output = model_builder.GetBuilder().call<emscripten::val>("reverse", inputs, reverse_options);
+    reverse_output = model_builder.GetBuilder().call<emscripten::val>("reverse", input, reverse_options);
   }
 
   // Check if slice op is needed.
@@ -125,7 +125,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     emscripten::val options = emscripten::val::object();
     options.set("strides", emscripten::val::array(steps));
     options.set("label", node.Name());
-    output = model_builder.GetBuilder().call<emscripten::val>("slice", inputs, emscripten::val::array(starts),
+    output = model_builder.GetBuilder().call<emscripten::val>("slice", reverse_output, emscripten::val::array(starts),
                                                               emscripten::val::array(sizes), options);
   }
 
