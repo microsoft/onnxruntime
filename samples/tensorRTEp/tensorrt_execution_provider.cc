@@ -10,6 +10,7 @@
 #include "tensorrt_cuda_allocator.h"
 #include "onnx_ctx_model_helper.h"
 #include "onnx/onnx_pb.h"
+#include "cuda/unary_elementwise_ops_impl.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -671,19 +672,19 @@ OrtStatusPtr ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptim
     break;                                                                                  \
   }
 
-//#define CASE_GET_CAST_INPUT_TENSOR(DATA_TYPE, SrcT, DstT)                                                         \
-//  case DATA_TYPE: {                                                                                               \
-//    auto input_tensor_ptr = input_tensor.GetTensorData<SrcT>();                                                   \
-//    if (input_tensor_ptr != nullptr && elem_cnt > 0) {                                                            \
-//      scratch_buffers.push_back(MakeUniquePtrFromOrtAllocator<void>(alloc, elem_cnt * sizeof(DstT))); \
-//      data = scratch_buffers.back().get();                                                                        \
-//      cuda::Impl_Cast<SrcT, DstT>(stream, input_tensor_ptr, reinterpret_cast<DstT*>(data), elem_cnt);             \
-//    } else {                                                                                                      \
-//      scratch_buffers.push_back(MakeUniquePtrFromOrtAllocator<void>(alloc, 1));                       \
-//      data = scratch_buffers.back().get();                                                                        \
-//    }                                                                                                             \
-//    break;                                                                                                        \
-//  }
+#define CASE_GET_CAST_INPUT_TENSOR(DATA_TYPE, SrcT, DstT)                                                         \
+  case DATA_TYPE: {                                                                                               \
+    auto input_tensor_ptr = input_tensor.GetTensorData<SrcT>();                                                   \
+    if (input_tensor_ptr != nullptr && elem_cnt > 0) {                                                            \
+      scratch_buffers.push_back(MakeUniquePtrFromOrtAllocator<void>(alloc, elem_cnt * sizeof(DstT))); \
+      data = scratch_buffers.back().get();                                                                        \
+      cuda::Impl_Cast<SrcT, DstT>(stream, input_tensor_ptr, reinterpret_cast<DstT*>(data), elem_cnt);             \
+    } else {                                                                                                      \
+      scratch_buffers.push_back(MakeUniquePtrFromOrtAllocator<void>(alloc, 1));                       \
+      data = scratch_buffers.back().get();                                                                        \
+    }                                                                                                             \
+    break;                                                                                                        \
+  }
 
 #define CASE_GET_OUTPUT_TENSOR(DATA_TYPE, SrcT)                                             \
   case DATA_TYPE: {                                                                         \
@@ -721,14 +722,14 @@ OrtStatusPtr ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptim
     break;                                                                                                                                         \
   }
 
-//#define CASE_CAST_TENSOR(DATA_TYPE, SrcT, DstT)                                                                                                   \
-//  case DATA_TYPE: {                                                                                                                               \
-//    auto output_tensor_ptr = output_tensor.GetTensorMutableData<DstT>();                                                                          \
-//    if (output_tensor_ptr != nullptr && elem_cnt > 0) {                                                                                           \
-//      cuda::Impl_Cast<SrcT, DstT>(stream, reinterpret_cast<SrcT*>(allocator->getBuffer()), reinterpret_cast<DstT*>(output_tensor_ptr), elem_cnt); \
-//    }                                                                                                                                             \
-//    break;                                                                                                                                        \
-//  }
+#define CASE_CAST_TENSOR(DATA_TYPE, SrcT, DstT)                                                                                                   \
+  case DATA_TYPE: {                                                                                                                               \
+    auto output_tensor_ptr = output_tensor.GetTensorMutableData<DstT>();                                                                          \
+    if (output_tensor_ptr != nullptr && elem_cnt > 0) {                                                                                           \
+      cuda::Impl_Cast<SrcT, DstT>(stream, reinterpret_cast<SrcT*>(allocator->getBuffer()), reinterpret_cast<DstT*>(output_tensor_ptr), elem_cnt); \
+    }                                                                                                                                             \
+    break;                                                                                                                                        \
+  }
 
 OrtStatusPtr BindContextInput(Ort::KernelContext& ctx,
                         nvinfer1::ICudaEngine* trt_engine,
@@ -836,10 +837,10 @@ OrtStatusPtr BindContextInput(Ort::KernelContext& ctx,
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int64_t)
 #else
       // Cast int64 input to int32 input because TensorRT < 10 doesn't support int64
-//      CASE_GET_CAST_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int64_t, int32_t)
+      CASE_GET_CAST_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, int64_t, int32_t)
 #endif
       // Cast double input to float because TensorRT doesn't support double
-//      CASE_GET_CAST_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, double, float)
+      CASE_GET_CAST_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, double, float)
       default: {
         return TensorrtExecutionProvider::api_->CreateStatus(ORT_EP_FAIL, std::string("TensorRT EP input onnx tensor data type: " + std::to_string(tensor_type) + " not supported.").c_str());
       }
@@ -3334,20 +3335,20 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
         }
       } else {
         auto& output_tensor = output_tensors[i];
-//#if NV_TENSORRT_MAJOR < 10
-//        if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
-//          auto output_tensor_ptr = output_tensor.GetTensorMutableData<int64_t>();
-//          if (output_tensor_ptr != nullptr) {
-//            cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
-//          }
-//        }
-//#endif
-//        if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
-//          auto output_tensor_ptr = output_tensor.GetTensorMutableData<double>();
-//          if (output_tensor_ptr != nullptr) {
-//            cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
-//          }
-//        }
+#if NV_TENSORRT_MAJOR < 10
+        if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
+          auto output_tensor_ptr = output_tensor.GetTensorMutableData<int64_t>();
+          if (output_tensor_ptr != nullptr) {
+            cuda::Impl_Cast<int32_t, int64_t>(stream, reinterpret_cast<int32_t*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
+          }
+        }
+#endif
+        if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
+          auto output_tensor_ptr = output_tensor.GetTensorMutableData<double>();
+          if (output_tensor_ptr != nullptr) {
+            cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
+          }
+        }
       }
     }
 
@@ -3499,6 +3500,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngi
     const std::unordered_map<std::string, size_t>& output_indexes = (trt_state->output_info)[0];
     const std::unordered_map<std::string, size_t>& output_types = (trt_state->output_info)[1];
     auto fused_node_name = trt_state->fused_node_name;
+    std::cout << fused_node_name << std::endl;
     auto& dds_output_allocator_map = this_->dds_output_allocator_maps_[fused_node_name];
     auto trt_engine = trt_state->engine->get();
     auto trt_context = trt_state->context->get();
@@ -3664,10 +3666,10 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngi
         }
 #endif
         if (output_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE) {
-//          auto output_tensor_ptr = output_tensor.GetTensorMutableData<double>();
-//          if (output_tensor_ptr != nullptr) {
-//            cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
-//          }
+          auto output_tensor_ptr = output_tensor.GetTensorMutableData<double>();
+          if (output_tensor_ptr != nullptr) {
+            cuda::Impl_Cast<float, double>(stream, reinterpret_cast<float*>(buffers[output_name]), output_tensor_ptr, output_dim_sizes[i]);
+          }
         }
       }
     }
