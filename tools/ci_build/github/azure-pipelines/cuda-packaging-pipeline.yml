@@ -98,7 +98,6 @@ stages:
     jobs:
     - template: templates/c-api-linux-cpu.yml
       parameters:
-        BaseImage: 'registry.access.redhat.com/ubi8/ubi'
         OnnxruntimeArch: 'x64'
         OnnxruntimeNodejsBindingArch: 'x64'
         PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
