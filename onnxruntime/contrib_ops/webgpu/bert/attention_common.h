@@ -15,7 +15,7 @@ namespace contrib {
 namespace webgpu {
 
 struct WebgpuAttentionParameters {
-  WebgpuAttentionParameters(AttentionParameters parameters) : is_gqa_parameters_(false),
+  WebgpuAttentionParameters(AttentionParameters parameters) : is_gqa_(false),
                                                               batch_size_(parameters.batch_size),
                                                               sequence_length_(parameters.sequence_length),
                                                               kv_sequence_length_(parameters.kv_sequence_length),
@@ -39,7 +39,7 @@ struct WebgpuAttentionParameters {
                                                               qkv_format_(parameters.qkv_format) {
   }
 
-  WebgpuAttentionParameters(onnxruntime::contrib::GroupQueryAttentionParameters parameters) : is_gqa_parameters_(true),
+  WebgpuAttentionParameters(onnxruntime::contrib::GroupQueryAttentionParameters parameters) : is_gqa_(true),
                                                                                               batch_size_(parameters.batch_size),
                                                                                               sequence_length_(parameters.sequence_length),
                                                                                               kv_sequence_length_(parameters.sequence_length),
@@ -69,7 +69,7 @@ struct WebgpuAttentionParameters {
                                                                                               qkv_format_(parameters.qkv_format) {
   }
 
-  bool is_gqa_parameters_;
+  bool is_gqa_;
   int batch_size_ = 0;
   int sequence_length_ = 0;
   int kv_sequence_length_ = 0;     // input sequence length of K or V
