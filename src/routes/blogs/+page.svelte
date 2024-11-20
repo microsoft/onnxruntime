@@ -23,6 +23,7 @@
 	import OliveCli from '../../images/blogs/olive-flow.png';
 	import QuantizeFinetune from '../../images/blogs/Quantize-finetune.jpg';
 	import MultiLoraThumbnail from '../../images/blogs/multilora.png';
+	import ORTLogo from '../../images/ONNX-Icon.svg';
 	onMount(() => {
 		anime({
 			targets: '.border-primary',
@@ -52,6 +53,16 @@
 	let featuredblog = [
 		{
 			title:
+				'Cross-Platform Edge AI Made Easy with ONNX Runtime',
+			date: '19th November, 2024',
+			blurb:
+				"Driven by the growing demand for user privacy, real-time performance, and cost efficiency, edge AI is transforming the AI landscape. At Ignite, we're excited to announce four new features in the ONNX Runtime ecosystem designed to make edge AI more accessible.",
+			link: 'https://techcommunity.microsoft.com/blog/aiplatformblog/cross-platform-edge-ai-made-easy-with-onnx-runtime/4303521',
+			image: ORTLogo,
+			imgalt: 'ONNX Runtime Logo'
+		},	
+		{
+			title:
 				'Announcing MultiLoRA with ONNX Runtime: Revolutionizing AI Customization',
 			date: '20th November, 2024',
 			blurb:
@@ -70,6 +81,8 @@
 			image: QuantizeFinetune,
 			imgalt: 'Quantize or finetune first for better model performance?'
 		},
+	];
+	let blogs = [
 		{
 			title:
 				'Scribble to Erase on Goodnotes for Windows, Web, and Android, Powered by ONNX Runtime',
@@ -80,8 +93,6 @@
 			image: GoodnotesThumbnail,
 			imgalt: 'Scribble to Erase feature on Goodnotes for Windows, Web, and Android'
 		},
-	];
-	let blogs = [
 		{
 			title: 'Democratizing AI Model optimization with the new Olive CLI',
 			date: 'November 11th, 2024',
