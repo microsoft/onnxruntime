@@ -203,11 +203,13 @@ static GetTestQDQModelFn<ActivationQType> BuildQDQPerChannelConvTestCase(
     std::optional<int64_t> group,
     const std::string& auto_pad = "NOTSET",
     bool use_contrib_qdq = false,
-    std::optional<OutputActivationInfo> output_activation = std::nullopt) {
+    std::optional<OutputActivationInfo> output_activation = std::nullopt,
+    bool quantize_bias = true) {
   return [conv_op_type, input_def, weights_def, bias_def, strides, pads,
           dilations, group, auto_pad, use_contrib_qdq,
-          weight_quant_axis, output_activation](ModelTestBuilder& builder,
-                                                std::vector<QuantParams<ActivationQType>>& output_qparams) {
+          weight_quant_axis, output_activation,
+          quantize_bias](ModelTestBuilder& builder,
+                         std::vector<QuantParams<ActivationQType>>& output_qparams) {
     std::vector<NodeArg*> conv_inputs;
 
     // input -> Q/DQ ->
@@ -248,28 +250,32 @@ static GetTestQDQModelFn<ActivationQType> BuildQDQPerChannelConvTestCase(
 
     // Quantized(bias) -> DQ ->
     if (!bias_def.GetShape().empty()) {
-      // Bias requirement taken from python quantization tool: onnx_quantizer.py::quantize_bias_static()
-      // bias_scale = input_scale * weight_scale
-      // bias_zero_point = 0
-      ORT_ENFORCE(bias_def.IsInitializer() && bias_def.IsRawData());
-      std::vector<float> bias_scales = weight_scales;
-      std::vector<int32_t> bias_zero_points(weight_scales.size(), 0);
-      for (size_t i = 0; i < bias_scales.size(); i++) {
-        bias_scales[i] *= input_qparams.scale;
+      if (quantize_bias) {
+        // Bias requirement taken from python quantization tool: onnx_quantizer.py::quantize_bias_static()
+        // bias_scale = input_scale * weight_scale
+        // bias_zero_point = 0
+        ORT_ENFORCE(bias_def.IsInitializer() && bias_def.IsRawData());
+        std::vector<float> bias_scales = weight_scales;
+        std::vector<int32_t> bias_zero_points(weight_scales.size(), 0);
+        for (size_t i = 0; i < bias_scales.size(); i++) {
+          bias_scales[i] *= input_qparams.scale;
+        }
+
+        TensorShape bias_shape = bias_def.GetTensorShape();
+        std::vector<int32_t> quantized_biases(bias_shape.Size());
+        QuantizeValues<float, int32_t>(bias_def.GetRawData(), quantized_biases, bias_shape, bias_scales,
+                                       bias_zero_points, 0);
+
+        NodeArg* bias_initializer = builder.MakeInitializer<int32_t>(bias_def.GetShape(), quantized_biases);
+        NodeArg* bias_dq = builder.MakeIntermediate();
+        Node& bias_dq_node = builder.AddDequantizeLinearNode<int32_t>(bias_initializer, bias_scales, bias_zero_points,
+                                                                      bias_dq, nullptr, use_contrib_qdq);
+
+        bias_dq_node.AddAttribute("axis", static_cast<int64_t>(0));
+        conv_inputs.push_back(bias_dq);
+      } else {
+        conv_inputs.push_back(MakeTestInput(builder, bias_def));
       }
-
-      TensorShape bias_shape = bias_def.GetTensorShape();
-      std::vector<int32_t> quantized_biases(bias_shape.Size());
-      QuantizeValues<float, int32_t>(bias_def.GetRawData(), quantized_biases, bias_shape, bias_scales,
-                                     bias_zero_points, 0);
-
-      NodeArg* bias_initializer = builder.MakeInitializer<int32_t>(bias_def.GetShape(), quantized_biases);
-      NodeArg* bias_dq = builder.MakeIntermediate();
-      Node& bias_dq_node = builder.AddDequantizeLinearNode<int32_t>(bias_initializer, bias_scales, bias_zero_points,
-                                                                    bias_dq, nullptr, use_contrib_qdq);
-
-      bias_dq_node.AddAttribute("axis", static_cast<int64_t>(0));
-      conv_inputs.push_back(bias_dq);
     }
 
     auto* conv_output = builder.MakeIntermediate();
@@ -361,7 +367,8 @@ static void RunHTPConvOpPerChannelTest(const std::string& conv_op_type, const Te
                                        bool use_contrib_qdq = false,
                                        int opset = 13,
                                        QDQTolerance tolerance = QDQTolerance(),
-                                       std::optional<OutputActivationInfo> output_activation = std::nullopt) {
+                                       std::optional<OutputActivationInfo> output_activation = std::nullopt,
+                                       bool quantize_bias = true) {
   ProviderOptions provider_options;
 
 #if defined(_WIN32)
@@ -375,7 +382,8 @@ static void RunHTPConvOpPerChannelTest(const std::string& conv_op_type, const Te
   auto qdq_fn = BuildQDQPerChannelConvTestCase<ActivationQType, WeightQType>(conv_op_type, input_def, weights_def,
                                                                              bias_def, weight_quant_axis, strides,
                                                                              pads, dilations, group, auto_pad,
-                                                                             use_contrib_qdq, output_activation);
+                                                                             use_contrib_qdq, output_activation,
+                                                                             quantize_bias);
   TestQDQModelAccuracy(f32_fn, qdq_fn, provider_options, opset, expected_ep_assignment, tolerance);
 }
 
@@ -855,6 +863,50 @@ TEST_F(QnnHTPBackendTests, Conv1D_U16Input0_FloatWeightBias) {
                                      /*quantize_bias*/ false);
 }
 
+TEST_F(QnnHTPBackendTests, Conv2D_U8Input0_S8Weight_FloatBias) {
+  std::vector<float> input_data = GetFloatDataInRange(0.0f, 10.0f, 25);
+  std::vector<float> weight_data = GetFloatDataInRange(-1.0f, 1.0f, 9);
+  std::vector<float> bias_data = {2.0f};
+  RunHTPConvOpTest<uint8_t, int8_t>("Conv",
+                                    TestInputDef<float>({1, 1, 5, 5}, false, input_data),  // dynamic input
+                                    TestInputDef<float>({1, 1, 3, 3}, true, weight_data),  // static input
+                                    TestInputDef<float>({1}, true, bias_data),             // bias
+                                    {1, 1},                                                // Strides
+                                    {0, 0, 0, 0},                                          // Pads
+                                    {1, 1},                                                // Dilations
+                                    1,                                                     // default group
+                                    "NOTSET",
+                                    ExpectedEPNodeAssignment::All,
+                                    false,  // use_qdq_contrib_ops
+                                    21,     // opset
+                                    QDQTolerance(),
+                                    std::nullopt,
+                                    /*quantize_weights*/ true,
+                                    /*quantize_bias*/ false);
+}
+
+TEST_F(QnnHTPBackendTests, Conv1D_U8Input0_S8Weight_FloatBias) {
+  std::vector<float> input_data = GetFloatDataInRange(0.0f, 10.0f, 5);
+  std::vector<float> weight_data = GetFloatDataInRange(-1.0f, 1.0f, 3);
+  std::vector<float> bias_data = {2.0f};
+  RunHTPConvOpTest<uint8_t, int8_t>("Conv",
+                                    TestInputDef<float>({1, 1, 5}, false, input_data),  // dynamic input
+                                    TestInputDef<float>({1, 1, 3}, true, weight_data),  // static input
+                                    TestInputDef<float>({1}, true, bias_data),          // bias
+                                    {1},                                                // Strides
+                                    {0, 0},                                             // Pads
+                                    {1},                                                // Dilations
+                                    1,                                                  // default group
+                                    "NOTSET",
+                                    ExpectedEPNodeAssignment::All,
+                                    false,  // use_qdq_contrib_ops
+                                    21,     // opset
+                                    QDQTolerance(),
+                                    std::nullopt,
+                                    /*quantize_weights*/ true,
+                                    /*quantize_bias*/ false);
+}
+
 // Test per-channel QDQ Conv. in0: u8, in1 (weight): s8, in2 (bias): s32, out: u8
 TEST_F(QnnHTPBackendTests, ConvU8S8S32_PerChannel) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
@@ -881,6 +933,66 @@ TEST_F(QnnHTPBackendTests, ConvU8S8S32_PerChannel) {
                                               ExpectedEPNodeAssignment::All,
                                               false,  // use_qdq_contrib_ops
                                               13);    // opset
+}
+
+TEST_F(QnnHTPBackendTests, Conv2D_U8Input0_S8PerChannelWeight_FloatBias) {
+  std::vector<int64_t> input_shape = {1, 2, 4, 4};
+  std::vector<int64_t> weight_shape = {3, 2, 2, 2};
+  std::vector<int64_t> bias_shape = {3};
+
+  TestInputDef<float> input_def(input_shape, false,
+                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+  TestInputDef<float> bias_def(bias_shape, true,
+                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+
+  RunHTPConvOpPerChannelTest<uint8_t, int8_t>("Conv",
+                                              input_def,
+                                              weight_def,
+                                              bias_def,
+                                              0,             // weight quant axis
+                                              {1, 1},        // Strides
+                                              {0, 0, 0, 0},  // Pads
+                                              {1, 1},        // Dilations
+                                              1,             // default group
+                                              "NOTSET",
+                                              ExpectedEPNodeAssignment::All,
+                                              false,  // use_qdq_contrib_ops
+                                              19,     // opset
+                                              QDQTolerance(),
+                                              std::nullopt,
+                                              /*quantize_bias*/ false);
+}
+
+TEST_F(QnnHTPBackendTests, Conv2D_U16Input0_S8PerChannelWeight_FloatBias) {
+  std::vector<int64_t> input_shape = {1, 2, 4, 4};
+  std::vector<int64_t> weight_shape = {3, 2, 2, 2};
+  std::vector<int64_t> bias_shape = {3};
+
+  TestInputDef<float> input_def(input_shape, false,
+                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+  TestInputDef<float> bias_def(bias_shape, true,
+                               GetFloatDataInRange(-10.0f, 10.0f, TensorShape(bias_shape).Size()));
+
+  RunHTPConvOpPerChannelTest<uint16_t, int8_t>("Conv",
+                                               input_def,
+                                               weight_def,
+                                               bias_def,
+                                               0,             // weight quant axis
+                                               {1, 1},        // Strides
+                                               {0, 0, 0, 0},  // Pads
+                                               {1, 1},        // Dilations
+                                               1,             // default group
+                                               "NOTSET",
+                                               ExpectedEPNodeAssignment::All,
+                                               false,  // use_qdq_contrib_ops
+                                               21,     // opset
+                                               QDQTolerance(),
+                                               std::nullopt,
+                                               /*quantize_bias*/ false);
 }
 
 // Test per-channel QDQ Conv with INT4 weights. in0: u16, in1 (weight): s4, in2 (bias): s32, out: u8
