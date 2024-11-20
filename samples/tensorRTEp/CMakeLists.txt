@@ -12,7 +12,7 @@ find_package(CUDAToolkit REQUIRED)
 add_definitions(-DONNX_NAMESPACE=onnx)
 add_definitions(-DONNX_ML)
 add_definitions(-DNV_TENSORRT_MAJOR=10)
-file(GLOB tensorrt_src CONFIGURE_DEPENDS "./*.cc" "../utils/status.cc" "./cuda/unary_elementwise_ops_impl.cu")
+file(GLOB tensorrt_src "./*.cc" "../utils/status.cc" "./cuda/unary_elementwise_ops_impl.cu")
 add_library(TensorRTEp SHARED ${tensorrt_src})
 target_include_directories(TensorRTEp PUBLIC "../../include/onnxruntime"
                                              "../utils"
