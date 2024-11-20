@@ -47,7 +47,7 @@ To answer our question on the right sequencing of quantization and fine-tuning w
 
 We installed the [Olive CLI](../blogs/olive-cli) using `pip`:
 
-<pre><code>pip install olive-ai[quantize,finetuning]
+<pre><code>pip install olive-ai[finetune]
 pip install autoawq
 pip install auto-gptq
 </code></pre>
