@@ -1,6 +1,6 @@
 ---
-title: 'Announcing MultiLoRA with ONNX Runtime: Revolutionizing AI Customization '
-date: '19th November, 2024'
+title: 'Announcing MultiLoRA with ONNX Runtime: Revolutionizing AI Customization'
+date: '20th November, 2024'
 description: 'MultiLoRA with ONNX Runtime brings flexible, efficient AI customization by enabling easy integration of LoRA adapters for dynamic, personalized models with minimal resource demands.'
 keywords: 'MultiLoRA, LoRA, ONNX Runtime, AI customization, LoRA adapters, Olive toolchain, large language models, model personalization, model optimization, Hugging Face, AI deployment, AI performance'
 authors: ['Dmitri Smirnov', 'Jambay Kinley', 'Natalie Kershaw', 'Parinita Rahi', 'Pranav Sharma', 'Devang Patel', 'Samuel Kemp']
