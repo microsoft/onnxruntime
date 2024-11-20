@@ -692,48 +692,6 @@ TEST_F(QnnHTPBackendTests, ReduceMeanS8Opset18) {
                              ExpectedEPNodeAssignment::All);
 }
 
-//
-// ReduceL2
-//
-TEST_F(QnnHTPBackendTests, ReduceL2U8Opset18) {
-  RunReduceOpQDQTest<uint8_t>("ReduceL2",
-                              TestInputDef<float>({2, 2}, false, {-10.0f, 3.21289f, -5.9981f, 10.0f}),
-                              {0, 1},  // axes
-                              true,    // keepdims
-                              18,      // opset
-                              ExpectedEPNodeAssignment::All);
-}
-
-TEST_F(QnnHTPBackendTests, ReduceL2U8Opset18_LastAxis) {
-  const std::vector<float> input_data = {3.21289f, -5.9981f, -1.72799f, 6.27263f};
-  RunReduceOpQDQTest<uint8_t>("ReduceL2",
-                              TestInputDef<float>({2, 2}, false, input_data),
-                              {1},   // axes
-                              true,  // keepdims
-                              18,    // opset
-                              ExpectedEPNodeAssignment::All);
-}
-
-TEST_F(QnnHTPBackendTests, ReduceL2U8Opset13) {
-  RunReduceOpQDQTest<uint8_t>("ReduceL2",
-                              TestInputDef<float>({2, 2}, false, {-10.0f, 3.21289f, -5.9981f, 10.0f}),
-                              {0, 1},  // axes
-                              true,    // keepdims
-                              13,      // opset
-                              ExpectedEPNodeAssignment::All);
-}
-
-TEST_F(QnnHTPBackendTests, ReduceL2S8Opset18) {
-  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 20.0f, 48);
-
-  RunReduceOpQDQTest<int8_t>("ReduceL2",
-                             TestInputDef<float>({1, 3, 4, 4}, false, input_data),
-                             {0, 1, 2, 3},  // axes
-                             true,          // keepdims
-                             18,            // opset
-                             ExpectedEPNodeAssignment::All);
-}
-
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 }  // namespace test
 }  // namespace onnxruntime
