@@ -10,6 +10,7 @@
 
 import shutil
 import unittest
+from pathlib import Path
 
 import torch
 from parity_utilities import find_transformers_source
@@ -36,7 +37,10 @@ class TestHuggingfaceBertModelOptimization(unittest.TestCase):
         use_external_data_format=False,
         model_type="bert",
     ):
-        shutil.rmtree("./onnx_models", ignore_errors=True)
+        onnx_dir = Path(".") / "onnx_models" / model_name
+        shutil.rmtree(onnx_dir, ignore_errors=True)
+
+        Path(onnx_dir).mkdir(parents=True, exist_ok=True)
 
         model_fusion_statistics = {}
 
@@ -54,7 +58,7 @@ class TestHuggingfaceBertModelOptimization(unittest.TestCase):
                 model_class=model_class,
                 config_modifier=config_modifier,
                 cache_dir=default_cache_path,
-                onnx_dir="./onnx_models",
+                onnx_dir=str(onnx_dir),
                 input_names=input_names[:inputs_count],
                 use_gpu=False,
                 precision=Precision.FLOAT32,
@@ -79,8 +83,10 @@ class TestHuggingfaceBertModelOptimization(unittest.TestCase):
             "SkipLayerNormalization": expected_fusion_result_list[6],
         }
 
+        node_count = None
         for value in model_fusion_statistics.values():
             node_count = value
+        self.assertIsNotNone(node_count)
 
         actual_node_count = {}
         for op_type in expected_node_count:
@@ -125,6 +131,7 @@ class TestHuggingfaceBertModelOptimization(unittest.TestCase):
 
     def test_roberta(self):
         model_name = "hf-internal-testing/tiny-random-roberta"
+        # TODO: EmbedLayerNormalization fusion.
         self.run_optimizer_on_model(model_name, [0, 5, 0, 0, 5, 1, 10], inputs_count=1)
         self.run_optimizer_on_model(model_name, [0, 5, 0, 0, 5, 1, 10], inputs_count=2)
 
@@ -132,6 +139,12 @@ class TestHuggingfaceBertModelOptimization(unittest.TestCase):
         model_name = "hf-internal-testing/tiny-random-distilbert"
         self.run_optimizer_on_model(model_name, [1, 5, 0, 0, 5, 0, 10], inputs_count=1)
         self.run_optimizer_on_model(model_name, [1, 5, 0, 0, 5, 0, 10], inputs_count=2)
+
+    def test_xlm_roberta(self):
+        model_name = "hf-internal-testing/tiny-xlm-roberta"
+        # TODO: EmbedLayerNormalization fusion.
+        self.run_optimizer_on_model(model_name, [0, 2, 0, 0, 2, 1, 4], inputs_count=1)
+        self.run_optimizer_on_model(model_name, [0, 2, 0, 0, 2, 1, 4], inputs_count=2)
 
 
 if __name__ == "__main__":
