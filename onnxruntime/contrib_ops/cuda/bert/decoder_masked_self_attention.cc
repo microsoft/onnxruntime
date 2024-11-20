@@ -199,15 +199,15 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
 
   switch (parameters.head_size) {
     case 32:
-      mmha_launch_kernel<T2, 32>(parameters, cuda_stream);
+      mmha_launch_kernel<T2, CudaT, 32>(parameters, cuda_stream);
       break;
 
     case 64:
-      mmha_launch_kernel<T2, 64>(parameters, cuda_stream);
+      mmha_launch_kernel<T2, CudaT, 64>(parameters, cuda_stream);
       break;
 
     case 128:
-      mmha_launch_kernel<T2, 128>(parameters, cuda_stream);
+      mmha_launch_kernel<T2, CudaT, 128>(parameters, cuda_stream);
       break;
 
     default:

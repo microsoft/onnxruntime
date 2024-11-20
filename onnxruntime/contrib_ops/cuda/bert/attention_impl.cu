@@ -451,7 +451,7 @@ Status EfficientAttention(
 }
 #endif
 
-template <typename T2>
+template <typename T2, typename CudaT>
 Status LaunchDecoderMaskedMultiHeadAttention(
   const DecoderMaskedMultiHeadAttentionParams& parameters,
   cudaStream_t stream,
@@ -495,15 +495,15 @@ Status LaunchDecoderMaskedMultiHeadAttention(
 
   switch (head_size) {
     case 32:
-      mmha_launch_kernel<T2, 32>(parameters, stream);
+      mmha_launch_kernel<T2, CudaT, 32>(parameters, stream);
       break;
 
     case 64:
-      mmha_launch_kernel<T2, 64>(parameters, stream);
+      mmha_launch_kernel<T2, CudaT, 64>(parameters, stream);
       break;
 
     case 128:
-      mmha_launch_kernel<T2, 128>(parameters, stream);
+      mmha_launch_kernel<T2, CudaT, 128>(parameters, stream);
       break;
 
     default:
@@ -532,7 +532,7 @@ Status DecoderMaskedMultiHeadAttention(
   p.is_cross_attention = (data.past_key == nullptr && data.present_key == nullptr);
   p.is_packed_qkv = false;
   p.kv_data_in_flight = ParseEnvironmentVariableWithDefault<bool>(attention::kDecoderMaskedAttentionLoadKVDataInFlight, false);
-  
+
   p.batch_size = parameters.batch_size;
   p.sequence_length = parameters.sequence_length;
   p.num_heads = parameters.num_heads;
@@ -553,7 +553,7 @@ Status DecoderMaskedMultiHeadAttention(
   p.q_bias = data.q_bias;
   p.k_bias = data.k_bias;
   p.v_bias = data.v_bias;
-  
+
   p.attention_bias = const_cast<T*>(data.attention_bias);
   p.broadcast_attn_bias_dim_0 = parameters.broadcast_attn_bias_dim_0;
   p.broadcast_attn_bias_dim_1 = parameters.broadcast_attn_bias_dim_1;
@@ -570,10 +570,10 @@ Status DecoderMaskedMultiHeadAttention(
   p.out_qk = reinterpret_cast<T*>(data.output_qk);
 
   if (std::is_same<T, float>::value) {
-    return LaunchDecoderMaskedMultiHeadAttention<float>(p, stream, parameters.head_size);
+    return LaunchDecoderMaskedMultiHeadAttention<float, float>(p, stream, parameters.head_size);
   }
   if (std::is_same<T, half>::value) {
-    return LaunchDecoderMaskedMultiHeadAttention<uint16_t>(p, stream, parameters.head_size);
+    return LaunchDecoderMaskedMultiHeadAttention<uint16_t, half>(p, stream, parameters.head_size);
   }
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DecoderMaskedMultiHeadAttention is only implemented for float and float16.");
 }
@@ -963,12 +963,12 @@ template Status QkvToContext<half>(
     contrib::AttentionParameters& parameters,
     AttentionData<half>& data);
 
-template Status LaunchDecoderMaskedMultiHeadAttention<float>(
+template Status LaunchDecoderMaskedMultiHeadAttention<float, float>(
   const DecoderMaskedMultiHeadAttentionParams& parameters,
   cudaStream_t stream,
   const int head_size);
 
-template Status LaunchDecoderMaskedMultiHeadAttention<uint16_t>(
+template Status LaunchDecoderMaskedMultiHeadAttention<uint16_t, half>(
   const DecoderMaskedMultiHeadAttentionParams& parameters,
   cudaStream_t stream,
   const int head_size);

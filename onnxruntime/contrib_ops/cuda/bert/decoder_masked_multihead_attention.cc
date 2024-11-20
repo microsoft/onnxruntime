@@ -57,6 +57,7 @@ DecoderMaskedMultiHeadAttention<T1, T2>::DecoderMaskedMultiHeadAttention(const O
 
 template <typename T1, typename T2>
 Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext* context) const {
+  typedef typename ToCudaType<T1>::MappedType CudaT;
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
@@ -236,7 +237,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     parameters.cache_indir = cache_indir->Data<int32_t>();
   }
 
-  return LaunchDecoderMaskedMultiHeadAttention<T2>(parameters, cuda_stream, parameters.head_size);
+  return LaunchDecoderMaskedMultiHeadAttention<T2, CudaT>(parameters, cuda_stream, parameters.head_size);
 }
 
 }  // namespace cuda

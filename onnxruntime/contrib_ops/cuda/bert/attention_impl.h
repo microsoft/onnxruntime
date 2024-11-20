@@ -81,7 +81,7 @@ Status QkvToContext(
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data);
 
-template <typename T2>
+template <typename T2, typename CudaT>
 Status LaunchDecoderMaskedMultiHeadAttention(
     const DecoderMaskedMultiHeadAttentionParams& parameters,
     cudaStream_t stream,
