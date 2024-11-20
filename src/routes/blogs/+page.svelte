@@ -22,6 +22,7 @@
 	import GoodnotesThumbnail from '../../images/blogs/goodnotes-scribble-to-erase/Thumbnail.png';
 	import OliveCli from '../../images/blogs/olive-flow.png';
 	import QuantizeFinetune from '../../images/blogs/Quantize-finetune.jpg';
+	import MultiLoraThumbnail from '../../images/blogs/multilora.png';
 	onMount(() => {
 		anime({
 			targets: '.border-primary',
@@ -51,6 +52,16 @@
 	let featuredblog = [
 		{
 			title:
+				'Announcing MultiLoRA with ONNX Runtime: Revolutionizing AI Customization',
+			date: '20th November, 2024',
+			blurb:
+				'MultiLoRA with ONNX Runtime brings flexible, efficient AI customization by enabling easy integration of LoRA adapters for dynamic, personalized models with minimal resource demands.',
+			link: 'blogs/multilora',
+			image: MultiLoraThumbnail,
+			imgalt: 'Serving LoRA models separately vs with MultiLoRA'
+		},
+		{
+			title:
 				'Is it better to quantize before or after finetuning?',
 			date: '19th November, 2024',
 			blurb:
@@ -69,6 +80,8 @@
 			image: GoodnotesThumbnail,
 			imgalt: 'Scribble to Erase feature on Goodnotes for Windows, Web, and Android'
 		},
+	];
+	let blogs = [
 		{
 			title: 'Democratizing AI Model optimization with the new Olive CLI',
 			date: 'November 11th, 2024',
@@ -77,9 +90,7 @@
 			link: 'blogs/olive-cli',
 			image: OliveCli,
 			imgalt: 'Olive Flow'
-		}
-	];
-	let blogs = [
+		},
 		{
 			title:
 				'Enhancing team collaboration during AI model optimization with the Olive Shared Cache',

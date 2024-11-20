@@ -1,0 +1,123 @@
+---
+title: 'Announcing MultiLoRA with ONNX Runtime: Revolutionizing AI Customization'
+date: '20th November, 2024'
+description: 'MultiLoRA with ONNX Runtime brings flexible, efficient AI customization by enabling easy integration of LoRA adapters for dynamic, personalized models with minimal resource demands.'
+keywords: 'MultiLoRA, LoRA, ONNX Runtime, AI customization, LoRA adapters, Olive toolchain, large language models, model personalization, model optimization, Hugging Face, AI deployment, AI performance'
+authors: ['Dmitri Smirnov', 'Jambay Kinley', 'Natalie Kershaw', 'Parinita Rahi', 'Pranav Sharma', 'Devang Patel', 'Samuel Kemp']
+authorsLink: ['https://www.linkedin.com/in/yuslepukhinlinkedin/', 'https://www.linkedin.com/in/jambayk/', 'https://www.linkedin.com/in/natkershaw/', 'https://www.linkedin.com/in/parinitaparinita/', 'https://www.linkedin.com/in/pranavli/', 'https://www.linkedin.com/in/devangpatel/', 'https://www.linkedin.com/in/samuel-kemp-a9253724/' ]
+image: 'https://iili.io/25Mlea9.png'
+imageSquare: 'https://iili.io/25Mlea9.png'
+url: 'https://onnxruntime.ai/blogs/multilora'
+---
+<script>
+    import Highlight from 'svelte-highlight';
+    import typescript from 'svelte-highlight/languages/typescript';
+    import python from 'svelte-highlight/languages/python';
+    import bash from 'svelte-highlight/languages/bash';
+    let resultsCode = `Results = Run(RunOptions, input_names[], input_data[], output_names[]); `
+    let autoOptCode = `olive auto-opt -m <path to model> -a <example adapter> -o <output folder> --device cpu|gpu --provider <execution provider>`
+    let convertAdaptersCode = `olive convert-adapters -a <adapter> -o <output>`
+    let personalAdapterCode = `# Step 1: finetune (output a PyTorch model and PEFT adapter) 
+olive fine-tune --method qlora -m <model> -d <dataset> -o models/ft 
+# Step 2 : Optimize base model and adapter into ONNX format 
+olive auto-opt -m models/ft/model -a models/ft/adapter -o <output folder> --device cpu|gpu --provider <execution provider> `
+    let loadAdaptersCode = `adapters = oga.Adapters(model) 
+adapters.load("file", "name")`
+    let setAdatersCode = `generator.set_active_adapter(adapters, "name") `
+</script>
+<style>
+  ol{
+    list-style-type: decimal;
+  }
+</style>
+
+## A New Era of AI Customization
+
+Today's AI services must cater to a vast range of users—each with unique requirements and preferences. Customizing large language models for individual customers or speakers has traditionally been a resource-intensive and time-consuming task.
+
+LoRA adapters have proven transformative in customizing large AI models for specific tasks without requiring resource-intensive fine-tuning. MultiLoRA changes the game by enabling seamless integration of lightweight adapters, allowing models to adapt dynamically to different contexts and customers. With ONNX Runtime as its foundation, MultiLoRA offers unparalleled performance, ensuring efficient memory usage.
+
+
+## Streamlined Integration with Olive
+
+MultiLoRA relies on the existing Olive toolchain to generate adapted ONNX models.
+
+This ensures:
+- A unified pipeline for creating LoRA-adapted models.
+- Consistent handling of versioning and metadata across models and adapters.
+
+By standardizing around Olive, MultiLoRA simplifies workflows and eliminates compatibility concerns with third-party sources.
+
+
+## ONNX Runtime Adaptations
+
+### Simplified Adapter Activation and Loading
+- **Dynamic Activation API:** A single API, `SetActiveAdapters(string[] adapters)`, allows activating or deactivating adapters at runtime.
+  - **Empty Input:** Resets the model to its base state, running without any adapters.
+  - **Multi-Adapter Support:** Simultaneously activate multiple adapters to meet complex customer requirements.
+
+- **Generative Loop Support:** 
+  - Active adapters remain loaded as long as the `GeneratorParams` instance persists, ensuring efficient memory use.
+  - References are automatically released when the instance is destroyed, avoiding resource leaks.
+
+### Adapter Management Without Generative Loops
+For models not tied to user prompts or generative processes, a new `Run()` API is introduced:
+
+<Highlight language={python} code={resultsCode} />
+
+- **RunOptions Class:** Facilitates seamless execution of base models or adapter-enhanced variants.
+- **Shared Adapter Loading:** Adapters are stored within the model instance, allowing efficient reuse across multiple sessions.
+
+### Language Bindings Expansion
+The current MultiLoRA implementation offers bindings for Python, C, C++, C#, and Java.
+
+### Memory Management
+Our implementation memory maps LoRA parameters from disk, which improves memory management.
+
+## How MultiLoRA Works
+
+### Generate the ONNX Models and Adapters
+If you have an existing base model and adapter in Hugging Face PEFT format, you can automatically create optimized ONNX models that will run efficiently on the ONNX runtime using the MultiLoRA paradigm by leveraging the following command:
+
+<Highlight language={bash} code={autoOptCode} />
+
+You can then add additional adapters that exist on Hugging Face (or local disk) for the same base model by converting them into the ONNX adapter format using:
+
+<Highlight language={bash} code={convertAdaptersCode} />
+
+Alternatively, you can fine-tune your own adapter using:
+
+<Highlight language={bash} code={personalAdapterCode} />
+
+## Run the ONNX Models and Switch Adapters
+
+1. **Load Adapters:** Dynamically load adapters for the base model:
+
+    <Highlight language={python} code={loadAdaptersCode} />
+
+2. **Set Active Adapter:** Switch adapters on the fly based on customer requests:
+
+    <Highlight language={python} code={setAdatersCode} />
+
+
+## Looking Ahead
+
+**In Development:**
+- **Batching Support:** Enhancing ONNX Runtime kernels for adapter-aware batching.
+- **Expanded Bindings:** Introducing language bindings for broader adoption.
+- **Memory Features:** Additional memory management improvements.
+
+## Your Feedback Matters
+As MultiLoRA evolves, we invite developers to test the feature, provide insights, and shape its roadmap. By working together, we aim to create a flexible, powerful foundation for AI adaptation.
+
+
+## Conclusion
+MultiLoRA is more than an enhancement to ONNX Runtime—it's a step forward in making AI systems modular, adaptable, and accessible. By addressing technical challenges like memory management, batching, and data format inefficiencies, MultiLoRA lays the groundwork for a new era of AI deployment.
+
+Let's build the future of adaptable AI together. Join us in exploring MultiLoRA with ONNX Runtime!
+
+
+## Resources
+- **ONNX Runtime Tutorial:** [Run with LoRA adapters](https://onnxruntime.ai/docs/genai/tutorials/finetune.html)
+- **Python API docs:** [Python API](https://onnxruntime.ai/docs/genai/api/python.html#adapter-class)
+- **Olive Example:** [Finetune and Deploy](https://github.com/microsoft/Olive/blob/main/examples/llama2/llama2_multilora.ipynb)
