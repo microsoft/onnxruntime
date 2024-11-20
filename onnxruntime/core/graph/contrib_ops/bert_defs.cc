@@ -855,7 +855,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(1,
                "key",
                "Key with shape (batch_size, 1, hidden_size) for self attention "
-               "or past_key with shape (batch_size, num_heads, kv_sequence_length, head_size) for cross attention",
+               "or past_key with shape (batch_size, num_heads, kv_sequence_length, head_size) for cross attention. "
+               "For cross attention on CUDA EP, this input is already re-ordered to "
+               "(batch_size, num_head, head_size / x, kv_sequence_length, x), where `x = 16 / sizeof(T)`.",
                "T",
                OpSchema::Optional)
         .Input(2,
@@ -940,9 +942,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(3,
                 "qk",
                 "normalized Q * K, of shape (batch_size, num_heads, 1, total_sequence_length). ",
-                "V",
+                "T",
                 OpSchema::Optional)
-        .TypeConstraint("V", {"tensor(float)"}, "Constrain qk output types to float32 tensors.")
         .TypeConstraint("T",
                         {"tensor(float)", "tensor(float16)"},
                         "Constrain input and output types to float tensors.")

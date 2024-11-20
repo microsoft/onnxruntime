@@ -40,6 +40,7 @@ REGISTER_KERNEL_TYPED(MLFloat16, uint16_t)
 
 template <typename T1, typename T2>
 Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* context) const {
+  typedef typename ToCudaType<T1>::MappedType CudaT;
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* weights = context->Input<Tensor>(1);
   const Tensor* bias = context->Input<Tensor>(2);
@@ -199,15 +200,15 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
 
   switch (parameters.head_size) {
     case 32:
-      mmha_launch_kernel<T2, 32>(parameters, cuda_stream);
+      mmha_launch_kernel<T2, CudaT, 32>(parameters, cuda_stream);
       break;
 
     case 64:
-      mmha_launch_kernel<T2, 64>(parameters, cuda_stream);
+      mmha_launch_kernel<T2, CudaT, 64>(parameters, cuda_stream);
       break;
 
     case 128:
-      mmha_launch_kernel<T2, 128>(parameters, cuda_stream);
+      mmha_launch_kernel<T2, CudaT, 128>(parameters, cuda_stream);
       break;
 
     default:

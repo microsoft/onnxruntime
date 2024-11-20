@@ -56,6 +56,7 @@ DecoderMaskedMultiHeadAttention<T1, T2>::DecoderMaskedMultiHeadAttention(const O
 
 template <typename T1, typename T2>
 Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext* context) const {
+  typedef typename ToCudaType<T1>::MappedType CudaT;
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
@@ -205,7 +206,7 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
     int64_t qk_dims[] = {parameters.batch_size, parameters.num_heads, 1, parameters.total_sequence_length};
     TensorShape qk_shape(&qk_dims[0], sizeof(qk_dims) / sizeof(qk_dims[0]));
     cross_qk = context->Output(kQKOutputIndex, qk_shape);
-    parameters.out_qk = cross_qk->MutableData<float>();
+    parameters.out_qk = cross_qk->MutableData<T1>();
   }
 
   parameters.out = output->MutableDataRaw();
@@ -239,15 +240,15 @@ Status DecoderMaskedMultiHeadAttention<T1, T2>::ComputeInternal(OpKernelContext*
 
   switch (parameters.head_size) {
     case 32:
-      mmha_launch_kernel<T2, 32>(parameters, cuda_stream);
+      mmha_launch_kernel<T2, CudaT, 32>(parameters, cuda_stream);
       break;
 
     case 64:
-      mmha_launch_kernel<T2, 64>(parameters, cuda_stream);
+      mmha_launch_kernel<T2, CudaT, 64>(parameters, cuda_stream);
       break;
 
     case 128:
-      mmha_launch_kernel<T2, 128>(parameters, cuda_stream);
+      mmha_launch_kernel<T2, CudaT, 128>(parameters, cuda_stream);
       break;
 
     default:

@@ -789,10 +789,6 @@ static void TestDecoderMaskedMultiHeadAttention(bool is_cross_attn = true, bool 
     std::vector<T> empty_attention_bias;
     auto output_qk = CalculateOutputQK(query, key, mask_index, empty_attention_bias, batch_size, num_heads,
                                        kv_sequence_length, kv_sequence_length, head_size);
-    std::vector<float> output_qk_float(output_qk.size());
-    for (size_t i = 0; i < output_qk.size(); ++i) {
-      output_qk_float[i] = static_cast<float>(output_qk[i]);
-    }
     auto softmax = Softmax_QK_Transpose<T>(output_qk.data(), batch_size, num_heads, 1, kv_sequence_length);
     auto output = CalculateOutput<T>(softmax, value, batch_size, num_heads,
                                      kv_sequence_length, kv_sequence_length, head_size);
@@ -800,7 +796,7 @@ static void TestDecoderMaskedMultiHeadAttention(bool is_cross_attn = true, bool 
     tester.AddOutput<T>("output", {batch_size, 1, hidden_size}, output);
     tester.AddOptionalOutputEdge<T>();  // optional present_key
     tester.AddOptionalOutputEdge<T>();  // optional present_value
-    tester.AddOutput<float>("qk", {batch_size, num_heads, 1, kv_sequence_length}, output_qk_float);
+    tester.AddOutput<T>("qk", {batch_size, num_heads, 1, kv_sequence_length}, output_qk);
   } else {
     int max_sequence_length = past_sequence_length + 10;
     int total_sequence_length = past_sequence_length + 1;

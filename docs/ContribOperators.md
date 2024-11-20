@@ -1161,7 +1161,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>query</tt> : T</dt>
 <dd>Query with shape (batch_size, 1, hidden_size) or packed QKV with shape (batch_size, 1, 2 * hidden_size + v_hidden_size)</dd>
 <dt><tt>key</tt> (optional) : T</dt>
-<dd>Key with shape (batch_size, 1, hidden_size) for self attention or past_key with shape (batch_size, num_heads, kv_sequence_length, head_size) for cross attention</dd>
+<dd>Key with shape (batch_size, 1, hidden_size) for self attention or past_key with shape (batch_size, num_heads, kv_sequence_length, head_size) for cross attention. For cross attention on CUDA EP, this input is already re-ordered to (batch_size, num_head, head_size / x, kv_sequence_length, x), where `x = 16 / sizeof(T)`.</dd>
 <dt><tt>value</tt> (optional) : T</dt>
 <dd>Value with shape (batch_size, 1, v_hidden_size) for self attention or past_value with shape (batch_size, num_heads, kv_sequence_length, head_size) for cross attention</dd>
 <dt><tt>mask_index</tt> (optional) : M</dt>
@@ -1191,15 +1191,13 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>present state for key with shape (batch_size, num_heads, total_sequence_length, head_size). If past_present_share_buffer is set, its shape is (batch_size, num_heads, max_sequence_length, head_size), while effective_seq_length = (past_sequence_length + kv_sequence_length).</dd>
 <dt><tt>present_value</tt> (optional) : T</dt>
 <dd>present state for value with shape (batch_size, num_heads, total_sequence_length, head_size). If past_present_share_buffer is set, its shape is (batch_size, num_heads, max_sequence_length, head_size), while effective_seq_length = (past_sequence_length + kv_sequence_length).</dd>
-<dt><tt>qk</tt> (optional) : V</dt>
+<dt><tt>qk</tt> (optional) : T</dt>
 <dd>normalized Q * K, of shape (batch_size, num_heads, 1, total_sequence_length). </dd>
 </dl>
 
 #### Type Constraints
 
 <dl>
-<dt><tt>V</tt> : tensor(float)</dt>
-<dd>Constrain qk output types to float32 tensors.</dd>
 <dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
 <dt><tt>M</tt> : tensor(int32)</dt>
