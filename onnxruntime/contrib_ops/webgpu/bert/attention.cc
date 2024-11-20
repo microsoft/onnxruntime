@@ -402,7 +402,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
     } else {
       shader.MainFunctionBody() << "    if (w + local_id.y < uniforms.kv_sequence_length + past_sequence_length) {\n";
     }
-    shader.MainFunctionBody() << "      present_value[presentValueOffset + (w + local_id.y) * uniforms.present_sequence_length] = tileK[idx];\n"
+    shader.MainFunctionBody() << "      present_value[presentValueOffset + (w + local_id.y) * uniforms.N] = tileK[idx];\n"
                               << "    }\n";
   }
 
