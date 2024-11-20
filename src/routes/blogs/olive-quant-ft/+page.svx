@@ -1,7 +1,7 @@
 ---
 title: 'Is it better to quantize before or after finetuning?'
 date: '19th November, 2024'
-description: 'Learn how Olive helps optimize models for efficient, accurate deployment.'
+description: 'Learn how to quickly and easily experiment in your model optimization workflow using Olive.'
 keywords: 'quantization, fine-tuning, Olive toolkit, model optimization, ONNX runtime, AI model efficiency, AWQ, GPTQ, model deployment, low-precision, LoRA, language models, quantize before fine-tune, quantization sequence, Phi-3.5, Llama, memory reduction'
 authors:
   [

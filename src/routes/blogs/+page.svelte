@@ -54,7 +54,7 @@
 				'Is it better to quantize before or after finetuning?',
 			date: '19th November, 2024',
 			blurb:
-				'Learn how Olive helps optimize models for efficient, accurate deployment.',
+				'Learn how to quickly and easily experiment in your model optimization workflow using Olive.',
 			link: 'blogs/olive-quant-ft',
 			image: QuantizeFinetune,
 			imgalt: 'Quantize or finetune first for better model performance?'
