@@ -695,7 +695,7 @@ class FusionAttention(Fusion):
         v_add: NodeProto,
         num_heads: int,
         hidden_size: int,
-        input: str,
+        first_input: str,
         output: str,
         add_qk_str: str = "",
         past_k: str = "",
@@ -717,7 +717,7 @@ class FusionAttention(Fusion):
             v_add (NodeProto): Add bias node in fully connection for V
             num_heads (int): number of attention heads. If a model is pruned, it is the number of heads after pruning.
             hidden_size (int): hidden dimension. If a model is pruned, it is the hidden dimension after pruning.
-            input (str): input name
+            first_input (str): first input name
             output (str): output name
             add_qk_str (str): name of Add node after Q x K'
             past_k (str): name of input for past K value
@@ -863,7 +863,7 @@ class FusionAttention(Fusion):
             )
         else:
             attention_inputs = [
-                input,
+                first_input,
                 attention_node_name + "_qkv_weight",
                 attention_node_name + "_qkv_bias" if has_bias else "",
             ]
@@ -1177,7 +1177,7 @@ class FusionAttention(Fusion):
                 v_add=add_v,
                 num_heads=q_num_heads,
                 hidden_size=q_hidden_size,
-                input=root_input,
+                first_input=root_input,
                 output=attention_last_node.output[0],
                 add_qk_str=add_qk_str,
             )

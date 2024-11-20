@@ -586,19 +586,20 @@ class FusionBartAttention(FusionAttention):
                 # Temporarily set multihead attention flag to false
                 use_multi_head_attention_ground_truth = self.use_multi_head_attention
                 self.use_multi_head_attention = False
+                add_qk_str = mask_index if decoder_attention and mask_index else ""
                 new_node = self.create_attention_node(
-                    None,
-                    matmul_q,
-                    matmul_k,
-                    matmul_v,
-                    add_q,
-                    add_k,
-                    add_v,
-                    num_heads,
-                    hidden_size,
-                    root_input,
-                    attention_last_node.output[0],
-                    add_qk_str=mask_index if decoder_attention else None,
+                    mask_index=None,
+                    q_matmul=matmul_q,
+                    k_matmul=matmul_k,
+                    v_matmul=matmul_v,
+                    q_add=add_q,
+                    k_add=add_k,
+                    v_add=add_v,
+                    num_heads=num_heads,
+                    hidden_size=hidden_size,
+                    first_input=root_input,
+                    output=attention_last_node.output[0],
+                    add_qk_str=add_qk_str,
                     past_k=past_k,
                     past_v=past_v,
                     present_k=present_k,
