@@ -119,8 +119,8 @@ We ran a [perplexity metrics](https://huggingface.co/docs/transformers/perplexit
 
 <pre><code>input_model:
   type: HfModel
-  model_path: models/phi-awq-pt/model
-  adapter_path: models/phi-awq-pt/adapter
+  model_path: models/phi-awq-ft/model
+  adapter_path: models/phi-awq-ft/adapter
 systems:
   local_system:
     type: LocalSystem
