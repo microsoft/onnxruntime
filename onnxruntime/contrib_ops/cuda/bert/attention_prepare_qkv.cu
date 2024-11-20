@@ -663,6 +663,7 @@ Status PrepareQkv_MultiHeadAttention(contrib::AttentionParameters& parameters,
                                      AttentionData<T>& data,
                                      cudaStream_t stream,
                                      int max_threads_per_block) {
+  DUMP_STRING_INIT();
   switch (parameters.qkv_format) {
     case AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH:
       DUMP_STRING("PrepareQkv_MHA_Cross");
@@ -747,6 +748,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
   }
 
 #if DUMP_TENSOR_LEVEL > 1
+  DUMP_STRING_INIT();
   DUMP_STRING("DumpInputs...");
   DumpInputs(parameters, data);
 #endif

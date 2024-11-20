@@ -89,6 +89,18 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                                                                       is_unidirectional_,
                                                                       past_present_share_buffer,
                                                                       kMultiHeadAttention));
+  DUMP_CPU_STRING_INIT();
+  DUMP_CPU_STRING("Batch size = ", parameters.batch_size);
+  DUMP_CPU_STRING("Sequence length = ", parameters.sequence_length);
+  DUMP_CPU_STRING("Past sequence length = ", parameters.past_sequence_length);
+  DUMP_CPU_STRING("KV sequence length = ", parameters.kv_sequence_length);
+  DUMP_CPU_STRING("Total sequence length = ", parameters.total_sequence_length);
+  DUMP_CPU_STRING("Max sequence length = ", parameters.max_sequence_length);
+  DUMP_CPU_STRING("Hidden size = ", parameters.hidden_size);
+  DUMP_CPU_STRING("Head size = ", parameters.head_size);
+  DUMP_CPU_STRING("Num heads = ", parameters.num_heads);
+  DUMP_CPU_STRING("Buffer sharing = ", (parameters.past_present_share_buffer == true));
+  DUMP_CPU_STRING("QKV format = ", parameters.qkv_format);
 
   const int batch_size = parameters.batch_size;
   const int q_sequence_length = parameters.sequence_length;

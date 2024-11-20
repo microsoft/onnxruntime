@@ -109,6 +109,19 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                       past_present_share_buffer,
                                                                       kMultiHeadAttention,
                                                                       device_prop.maxThreadsPerBlock));
+  DUMP_STRING_INIT();
+  DUMP_STRING("Batch size = ", parameters.batch_size);
+  DUMP_STRING("Sequence length = ", parameters.sequence_length);
+  DUMP_STRING("Past sequence length = ", parameters.past_sequence_length);
+  DUMP_STRING("KV sequence length = ", parameters.kv_sequence_length);
+  DUMP_STRING("Total sequence length = ", parameters.total_sequence_length);
+  DUMP_STRING("Max sequence length = ", parameters.max_sequence_length);
+  DUMP_STRING("Hidden size = ", parameters.hidden_size);
+  DUMP_STRING("Head size = ", parameters.head_size);
+  DUMP_STRING("Num heads = ", parameters.num_heads);
+  DUMP_STRING("Buffer sharing = ", (parameters.past_present_share_buffer == true));
+  DUMP_STRING("QKV format = ", parameters.qkv_format);
+
   int sequence_length = parameters.sequence_length;
 
   TensorShapeVector output_shape(3);

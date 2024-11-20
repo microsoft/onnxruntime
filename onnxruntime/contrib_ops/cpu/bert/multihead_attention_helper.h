@@ -475,18 +475,6 @@ Status CheckInputs(const T* query,
     output_parameters->beam_width = num_beams;
   }
 
-  DUMP_STRING("Batch size = ", batch_size);
-  DUMP_STRING("Sequence length = ", sequence_length);
-  DUMP_STRING("Past sequence length = ", past_sequence_length);
-  DUMP_STRING("KV sequence length = ", kv_sequence_length);
-  DUMP_STRING("Total sequence length = ", total_sequence_length);
-  DUMP_STRING("Max sequence length = ", max_sequence_length);
-  DUMP_STRING("Hidden size = ", hidden_size);
-  DUMP_STRING("Head size = ", head_size);
-  DUMP_STRING("Num heads = ", num_heads);
-  DUMP_STRING("Buffer sharing = ", (past_present_share_buffer == true));
-  DUMP_STRING("QKV format = ", qkv_format);
-
   return Status::OK();
 }
 

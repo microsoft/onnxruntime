@@ -457,6 +457,7 @@ Status LaunchDecoderMaskedMultiHeadAttention(
   cudaStream_t stream,
   const int head_size) {
 
+  DUMP_STRING_INIT();
   DUMP_STRING("DMMHA parameters...");
   DUMP_STRING("is_mha = ", (parameters.is_mha == true));
   DUMP_STRING("is_cross_attention = ", (parameters.is_cross_attention == true));
@@ -490,6 +491,7 @@ Status LaunchDecoderMaskedMultiHeadAttention(
 
   DUMP_STRING("Beam width = ", parameters.beam_width);
   DUMP_STRING("parameters.cache_indir is null = ", (parameters.cache_indir == nullptr));
+  DUMP_STRING("parameters.out_qk is null = ", (parameters.out_qk == nullptr));
 
   switch (head_size) {
     case 32:
@@ -565,7 +567,7 @@ Status DecoderMaskedMultiHeadAttention(
   // p.cache_indir = (parameters.beam_width > 1) ? data.cache_indirection : nullptr;
 
   p.out = data.output;
-  p.out_qk = data.output_qk;
+  p.out_qk = reinterpret_cast<T*>(data.output_qk);
 
   if (std::is_same<T, float>::value) {
     return LaunchDecoderMaskedMultiHeadAttention<float>(p, stream, parameters.head_size);
@@ -881,6 +883,7 @@ Status QkvToContext(
           static_cast<int>(data.fused_cross_attention_kernel != nullptr) +
           static_cast<int>(data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention)) <= 1);
 
+  DUMP_STRING_INIT();
   DUMP_STRING("Preparing Q, K, V");
   ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, stream, max_threads_per_block));
 
