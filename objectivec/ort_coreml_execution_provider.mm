@@ -44,7 +44,7 @@ BOOL ORTIsCoreMLExecutionProviderAvailable() {
 }
 
 - (BOOL)appendCoreMLExecutionProviderWithOptionsV2:(NSDictionary*)provider_options
-                                              error:(NSError**)error {
+                                             error:(NSError**)error {
 #if ORT_OBJC_API_COREML_EP_AVAILABLE
   try {
     return [self appendExecutionProvider:@"CoreML" providerOptions:provider_options error:error];
