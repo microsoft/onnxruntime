@@ -62,7 +62,9 @@ bool CheckIfBothInputShapesMatch(const Node& node, const logging::Logger& logger
 // the conversion is doing the following:
 // max(x, y, z, ...) -> max(max(x, y), z, ...)
 #if defined(COREML_ENABLE_MLPROGRAM)
-static void AddVariadicInputsToMB(std::unique_ptr<CoreML::Specification::MILSpec::Operation>* op, ModelBuilder& model_builder, const Node& node,
+static void AddVariadicInputs(std::unique_ptr<CoreML::Specification::MILSpec::Operation>* op,
+                                  ModelBuilder& model_builder,
+                                  const Node& node,
                                   const logging::Logger& logger) {
   using namespace CoreML::Specification::MILSpec;
   const auto& input_defs(node.InputDefs());
@@ -75,6 +77,8 @@ static void AddVariadicInputsToMB(std::unique_ptr<CoreML::Specification::MILSpec
   if (x0_shape.size() < x1_shape.size()) {
     std::swap(x0_shape, x1_shape);
   }
+  // fill x0_shape with -1 to make this dimension as dynamic
+  // Coreml supports dynamic shape when the shape value is -1
   std::fill(x0_shape.begin(), x0_shape.end(), -1);
   std::unique_ptr<Operation> op_prev = std::move(*op);
   for (size_t i = 2; i < input_defs.size(); i++) {
@@ -129,7 +133,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     AddOperationInput(*op, "y", input_defs[1]->Name());
     if (input_defs.size() > 2) {
       // "max" node may have variadic inputs
-      AddVariadicInputsToMB(&op, model_builder, node, logger);
+      AddVariadicInputs(&op, model_builder, node, logger);
     }
     AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
