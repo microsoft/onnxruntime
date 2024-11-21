@@ -214,6 +214,7 @@ def start_emulator(
 
             _log.debug(f"sys.boot_completed='{getprop_value}'. Sleeping for {sleep_interval_seconds} before retrying.")
             time.sleep(sleep_interval_seconds)
+
         # Verify if the emulator is now running
         if not is_emulator_running_by_avd(avd_name=avd_name):
             raise RuntimeError("Emulator failed to start.")
