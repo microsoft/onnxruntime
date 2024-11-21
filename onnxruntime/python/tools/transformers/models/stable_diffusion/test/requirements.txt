@@ -2,3 +2,4 @@ git+https://github.com/openai/CLIP.git
 open_clip_torch
 sentence_transformers
 pillow
+numpy==1.22.2
