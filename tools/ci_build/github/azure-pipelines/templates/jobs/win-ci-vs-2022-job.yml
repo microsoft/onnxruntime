@@ -83,6 +83,10 @@ jobs:
     clean: true
     submodules: none
 
+  - script:
+       echo '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }};$(PATH)'
+    displayName: 'Print PATH'
+
   - template: win-ci-prebuild-steps.yml
     parameters:
       EnvSetupScript: ${{parameters.EnvSetupScript}}
