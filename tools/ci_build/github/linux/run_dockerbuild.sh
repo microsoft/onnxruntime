@@ -15,10 +15,6 @@ BUILD_DIR=$BUILD_BINARIESDIRECTORY
 YOCTO_VERSION="4.19"
 #Training only
 INSTALL_DEPS_DISTRIBUTED_SETUP=false
-#Training only
-ORTMODULE_BUILD=false
-#Training only
-USE_CONDA=false
 ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV="ALLOW_RELEASED_ONNX_OPSET_ONLY="$ALLOW_RELEASED_ONNX_OPSET_ONLY
 echo "ALLOW_RELEASED_ONNX_OPSET_ONLY environment variable is set as $ALLOW_RELEASED_ONNX_OPSET_ONLY_ENV"
 
@@ -44,10 +40,6 @@ t) EXTRA_IMAGE_TAG=${OPTARG};;
 i) IMAGE_CACHE_CONTAINER_REGISTRY_NAME=${OPTARG};;
 # install distributed setup dependencies
 m) INSTALL_DEPS_DISTRIBUTED_SETUP=true;;
-# install ortmodule specific dependencies
-u) ORTMODULE_BUILD=true;;
-# install and use conda
-e) USE_CONDA=true;;
 *) echo "Invalid option";;
 esac
 done
@@ -82,24 +74,6 @@ if [ $BUILD_OS = "yocto" ]; then
     $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
         --docker-build-args="--build-arg TOOL_CHAIN=$TOOL_CHAIN_SCRIPT --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER}" \
         --dockerfile $DOCKER_FILE --context .
-elif [ $BUILD_DEVICE = "gpu" ]; then
-        # This code path is only for training. Inferecing pipeline uses CentOS
-        IMAGE="$BUILD_OS-gpu_training"
-        # Current build script doesn't support building shared lib with Python dependency. To enable building with PythonOp,
-        # We need to avoid `--no-undefined` when building shared lib (Otherwise, CIs will report `undefined symbols`), but removing that would bring some other concerns.
-        # Plus the fact training did not need build shared library, we disable the --build_shared_lib for training CIs.
-        NEED_BUILD_SHARED_LIB=false
-        INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -t"
-        if [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]]; then
-            INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -m"
-        fi
-        if [[ $ORTMODULE_BUILD = true ]]; then
-            INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -u"
-        fi
-        INSTALL_DEPS_EXTRA_ARGS="${INSTALL_DEPS_EXTRA_ARGS} -v 11.8"
-        $GET_DOCKER_IMAGE_CMD --repository "onnxruntime-$IMAGE" \
-            --docker-build-args="--build-arg BASEIMAGE=nvcr.io/nvidia/cuda:11.8.0-cudnn8-devel-${BUILD_OS} --build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg INSTALL_DEPS_EXTRA_ARGS=\"${INSTALL_DEPS_EXTRA_ARGS}\" --build-arg USE_CONDA=${USE_CONDA} --network=host" \
-            --dockerfile Dockerfile.ubuntu_gpu_training --context .
 elif [[ $BUILD_DEVICE = "openvino"* ]]; then
         BUILD_ARGS="--build-arg BUILD_USER=onnxruntimedev --build-arg BUILD_UID=$(id -u) --build-arg PYTHON_VERSION=${PYTHON_VER} --build-arg OPENVINO_VERSION=${OPENVINO_VERSION} --build-arg UBUNTU_VERSION=${UBUNTU_VERSION}"
         IMAGE="$BUILD_OS-openvino"

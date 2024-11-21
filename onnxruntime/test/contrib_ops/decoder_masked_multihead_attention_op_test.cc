@@ -757,7 +757,7 @@ static void TestDecoderMaskedMultiHeadAttention(bool is_cross_attn = true, bool 
 
   OpTester tester("DecoderMaskedMultiHeadAttention", 1, onnxruntime::kMSDomain);
   FixedPatternValueGenerator generator{};
-  RandomValueGenerator random{};
+  RandomValueGenerator random{123};
 
   // Attributes
   tester.AddAttribute<int64_t>("num_heads", static_cast<int64_t>(num_heads));
