@@ -1061,7 +1061,7 @@ Return Value:
 
         size_t RowsHandled;
 
-#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_LARCH64)
+#if (defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER) || defined(MLAS_TARGET_LARCH64)) && !defined(FORCE_GENERIC_ALGORITHMS)
         RowsHandled = GetMlasPlatform().GemmFloatKernel(A, B, C, CountK, CountM, CountN, lda, ldc, alpha, ZeroMode);
 #else
         if (ZeroMode) {
@@ -1158,6 +1158,7 @@ Return Value:
 
     if (M == 1 && TransA == CblasNoTrans && alpha == 1.0f && (beta == 0.0f || beta == 1.0f)) {
 
+#if !defined(FORCE_GENERIC_ALGORITHMS)
 #if defined(MLAS_TARGET_AMD64)
 
         MLAS_SGEMM_KERNEL_M1_ROUTINE* SgemmKernelM1Routine;
@@ -1181,6 +1182,7 @@ Return Value:
         }
 
 #endif
+#endif // !defined(FORCE_GENERIC_ALGORITHMS)
 
     }
 
@@ -1193,7 +1195,7 @@ Return Value:
 
     if (N == 1 && ldb == 1 && ldc == 1 && alpha == 1.0f && (beta == 0.0f || beta == 1.0f)) {
 
-#if defined(MLAS_TARGET_AMD64)
+#if defined(MLAS_TARGET_AMD64) && !defined(FORCE_GENERIC_ALGORITHMS)
 
         MLAS_SGEMM_KERNEL_M1_ROUTINE* SgemmKernelM1Routine;
 

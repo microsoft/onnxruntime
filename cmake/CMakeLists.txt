@@ -252,6 +252,7 @@ cmake_dependent_option(MSVC_Z7_OVERRIDE "replacing /Zi and /ZI with /Z7 when usi
 
 option(onnxruntime_USE_AZURE "Build with azure inferencing support" OFF)
 option(onnxruntime_USE_LOCK_FREE_QUEUE "Build with lock-free task queue for threadpool." OFF)
+option(onnxruntime_FORCE_GENERIC_ALGORITHMS "Disable optimized arch-specific algorithms. Use only for testing and debugging generic algorithms." OFF)
 
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
@@ -969,6 +970,10 @@ if (onnxruntime_USE_AZURE)
 endif()
 if (onnxruntime_USE_LOCK_FREE_QUEUE)
     add_compile_definitions(USE_LOCK_FREE_QUEUE)
+endif()
+
+if (onnxruntime_FORCE_GENERIC_ALGORITHMS)
+    add_compile_definitions(FORCE_GENERIC_ALGORITHMS)
 endif()
 
 if (onnxruntime_ENABLE_LAZY_TENSOR)
