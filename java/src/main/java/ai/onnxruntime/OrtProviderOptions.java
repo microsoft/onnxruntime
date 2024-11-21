@@ -136,6 +136,12 @@ public abstract class OrtProviderOptions implements AutoCloseable {
               OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find TensorRT shared provider");
         }
         break;
+      case DIRECT_ML:
+        if (!OnnxRuntime.extractDirectML()) {
+          throw new OrtException(
+              OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find DirectML shared provider");
+        }
+        break;
     }
 
     return createFunction.create();
