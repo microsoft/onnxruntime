@@ -43,7 +43,7 @@ BOOL ORTIsCoreMLExecutionProviderAvailable() {
 #endif
 }
 
-- (BOOL)appendCoreMLExecutionProviderWithOptions_v2:(NSDictionary*)provider_options
+- (BOOL)appendCoreMLExecutionProviderWithOptionsV2:(NSDictionary*)provider_options
                                               error:(NSError**)error {
 #if ORT_OBJC_API_COREML_EP_AVAILABLE
   try {

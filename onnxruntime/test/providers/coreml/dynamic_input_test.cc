@@ -57,7 +57,6 @@ TEST(CoreMLExecutionProviderDynamicInputShapeTest, MobileNetExcerpt) {
     SCOPED_TRACE(MakeString("batch_size=", batch_size));
     std::unordered_map<std::string, std::string> options;
     auto coreml_ep = CoreMLProviderFactoryCreator::Create(options)->CreateProvider();
-    ;
 
     const auto ep_verification_params = EPVerificationParams{
         ExpectedEPNodeAssignment::All,
