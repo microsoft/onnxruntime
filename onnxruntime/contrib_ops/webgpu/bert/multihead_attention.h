@@ -101,8 +101,8 @@ class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
 
 class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
  public:
-  CopyKVCacheProgram(const std::string& kernel_name, int components)
-      : Program{kernel_name}, components_(components) {
+  CopyKVCacheProgram(const std::string& kernel_name, int components, bool has_past)
+      : Program{kernel_name}, components_(components), has_past_(has_past) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -113,6 +113,7 @@ class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
 
  private:
   int components_;
+  bool has_past_;
 };
 
 class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
