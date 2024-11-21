@@ -129,7 +129,7 @@ bool SqueezeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
 
     std::vector<int64_t> input_shape;
     if (!GetShape(*input_defs[0], input_shape, logger) || input_shape.size() + num_of_new_dims > 5) {
-      LOGS(logger, VERBOSE) << "Unsqueeze with num_of_new_dims > 5 is not supported";
+      LOGS(logger, VERBOSE) << "Unsqueeze to output shape with > 5 dimensions is not supported";
       return false;
     }
   }
