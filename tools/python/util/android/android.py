@@ -250,6 +250,7 @@ def is_emulator_running_by_avd(avd_name: str) -> bool:
             except subprocess.SubprocessError:
                 _log.warning(f"Error checking AVD name for emulator: {emulator}")
                 continue  # Skip if there's an issue querying a specific emulator
+
         _log.warning(f"No emulator running with AVD name: {avd_name}")
         return False  # No matching AVD name found
     except subprocess.SubprocessError as e:
