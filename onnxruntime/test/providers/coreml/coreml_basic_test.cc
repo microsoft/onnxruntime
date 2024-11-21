@@ -31,9 +31,9 @@ namespace onnxruntime {
 namespace test {
 
 static std::unique_ptr<IExecutionProvider> MakeCoreMLExecutionProvider(
-    std::string ModelFormat = "NeuralNetwork", std::string ComputeUnits = "MLComputeUnitsCPUOnly") {
+    std::string ModelFormat = "NeuralNetwork", std::string ComputeUnits = "CPUOnly") {
   std::unordered_map<std::string, std::string> provider_options = {{kCoremlProviderOption_MLComputeUnits, ComputeUnits},
-                                                                   {kCoremlProviderOption_MLModelFormat, ModelFormat}};
+                                                                   {kCoremlProviderOption_ModelFormat, ModelFormat}};
   return CoreMLProviderFactoryCreator::Create(provider_options)->CreateProvider();
 }
 

@@ -7,12 +7,14 @@
 #include <sstream>
 
 #include "strings_helper.h"
+#include "core/common/common.h"
 
 namespace onnxruntime {
 namespace perftest {
 
 bool ParseSessionConfigs(const std::string& configs_string,
-                         std::unordered_map<std::string, std::string>& session_configs) {
+                         std::unordered_map<std::string, std::string>& session_configs,
+                         const std::unordered_set<std::string>& available_keys) {
   std::istringstream ss(configs_string);
   std::string token;
 
@@ -25,17 +27,27 @@ bool ParseSessionConfigs(const std::string& configs_string,
 
     auto pos = token_sv.find("|");
     if (pos == std::string_view::npos || pos == 0 || pos == token_sv.length()) {
-      // Error: must use a '|' to separate the key and value for session configuration entries.
-      return false;
+      ORT_THROW("Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
     }
 
     std::string key(token_sv.substr(0, pos));
     std::string value(token_sv.substr(pos + 1));
 
+    if (available_keys.empty() == false && available_keys.count(key) == 0) {
+      // Error: unknown option: {key}
+      std::string available_keys_str;
+      for (const auto& key : available_keys) {
+        available_keys_str += key;
+        available_keys_str += ", ";
+      }
+      ORT_THROW("[ERROR] wrong key type entered.: ", key,
+                " Choose from the following runtime key options that are available. ", available_keys_str);
+    }
+
     auto it = session_configs.find(key);
     if (it != session_configs.end()) {
       // Error: specified duplicate session configuration entry: {key}
-      return false;
+      ORT_THROW("Specified duplicate session configuration entry: ", key);
     }
 
     session_configs.insert(std::make_pair(std::move(key), std::move(value)));

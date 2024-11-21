@@ -254,10 +254,10 @@ std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider(bool use_mlpr
 #if defined(USE_COREML) && defined(__APPLE__)
   // We want to run UT on CPU only to get output value without losing precision
   auto option = ProviderOptions();
-  option[kCoremlProviderOption_MLComputeUnits] = "MLComputeUnitsCPUOnly";
+  option[kCoremlProviderOption_MLComputeUnits] = "CPUOnly";
 
   if (use_mlprogram) {
-    option[kCoremlProviderOption_MLModelFormat] = "MLProgram";
+    option[kCoremlProviderOption_ModelFormat] = "MLProgram";
   }
 
   return CoreMLProviderFactoryCreator::Create(option)->CreateProvider();

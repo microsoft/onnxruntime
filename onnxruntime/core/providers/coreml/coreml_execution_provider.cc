@@ -23,9 +23,52 @@ namespace onnxruntime {
 
 constexpr const char* COREML = "CoreML";
 
+void CoreMLOptions::ValidateAndParseProviderOption(const ProviderOptions& options) {
+  const std::unordered_map<std::string, COREMLFlags> available_computeunits_options = {
+      {"CPUAndNeuralEngine", COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE},
+      {"CPUAndGPU", COREML_FLAG_USE_CPU_AND_GPU},
+      {"CPUOnly", COREML_FLAG_USE_CPU_ONLY},
+      {"ALL", COREML_FLAG_USE_NONE},
+  };
+  const std::unordered_map<std::string, COREMLFlags> available_modelformat_options = {
+      {"MLProgram", COREML_FLAG_CREATE_MLPROGRAM},
+      {"NeuralNetwork", COREML_FLAG_USE_NONE},
+  };
+  std::unordered_set<std::string> valid_options = {
+      kCoremlProviderOption_MLComputeUnits,
+      kCoremlProviderOption_ModelFormat,
+      kCoremlProviderOption_RequireStaticInputShapes,
+      kCoremlProviderOption_EnableOnSubgraphs,
+      kCoremlProviderOption_ModelCacheDir,
+  };
+  // Validate the options
+  for (const auto& option : options) {
+    if (valid_options.find(option.first) == valid_options.end()) {
+      ORT_THROW("Unknown option: ", option.first);
+    }
+    if (kCoremlProviderOption_MLComputeUnits == option.first) {
+      if (available_computeunits_options.find(option.second) == available_computeunits_options.end()) {
+        ORT_THROW("Invalid value for option ", option.first, ": ", option.second);
+      } else {
+        coreml_flags_ |= available_computeunits_options.at(option.second);
+      }
+    } else if (kCoremlProviderOption_ModelFormat == option.first) {
+      if (available_modelformat_options.find(option.second) == available_modelformat_options.end()) {
+        ORT_THROW("Invalid value for option ", option.first, ": ", option.second);
+      } else {
+        coreml_flags_ |= available_modelformat_options.at(option.second);
+      }
+    } else if (kCoremlProviderOption_RequireStaticInputShapes == option.first) {
+      coreml_flags_ |= COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES;
+    } else if (kCoremlProviderOption_EnableOnSubgraphs == option.first) {
+      coreml_flags_ |= COREML_FLAG_ENABLE_ON_SUBGRAPH;
+    }
+  }
+}
+
 CoreMLExecutionProvider::CoreMLExecutionProvider(const CoreMLOptions& options)
     : IExecutionProvider{onnxruntime::kCoreMLExecutionProvider},
-      coreml_flags_(options.coreml_flags),
+      coreml_flags_(options.CoreMLFlags()),
       coreml_version_(coreml::util::CoreMLVersion()) {
   LOGS_DEFAULT(VERBOSE) << "CoreML version: " << coreml_version_;
   if (coreml_version_ < MINIMUM_COREML_VERSION) {

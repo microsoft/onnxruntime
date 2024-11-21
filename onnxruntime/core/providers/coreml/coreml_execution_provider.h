@@ -12,9 +12,18 @@ namespace coreml {
 class Model;
 }
 
-struct CoreMLOptions {
-  uint32_t coreml_flags = 0;
-  std::string cache_path;
+class CoreMLOptions {
+  uint32_t coreml_flags_ = 0;
+
+ public:
+  CoreMLOptions(uint32_t coreml_flags) : coreml_flags_(coreml_flags) {}
+  CoreMLOptions(const ProviderOptions& options) {
+    ValidateAndParseProviderOption(options);
+  }
+  uint32_t CoreMLFlags() const { return coreml_flags_; }
+
+ private:
+  void ValidateAndParseProviderOption(const ProviderOptions& options);
 };
 
 class CoreMLExecutionProvider : public IExecutionProvider {

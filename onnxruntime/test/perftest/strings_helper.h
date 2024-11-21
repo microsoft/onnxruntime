@@ -4,11 +4,13 @@
 // Licensed under the MIT License.
 #include <string_view>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace onnxruntime {
 namespace perftest {
 
 bool ParseSessionConfigs(const std::string& configs_string,
-                         std::unordered_map<std::string, std::string>& session_configs);
+                         std::unordered_map<std::string, std::string>& session_configs,
+                         const std::unordered_set<std::string>& available_keys = {});
 }  // namespace perftest
 }  // namespace onnxruntime

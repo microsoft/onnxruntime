@@ -102,7 +102,7 @@ TEST(CoreMLExecutionProviderDynamicInputShapeTest, EmptyInputFails) {
 
 TEST(CoreMLExecutionProviderDynamicInputShapeTest, OnlyAllowStaticInputShapes) {
   constexpr auto model_path = ORT_TSTR("testdata/matmul_with_dynamic_input_shape.onnx");
-  std::unordered_map<std::string, std::string> options = {{kCoremlProviderOption_MLAllowStaticInputShapes, "1"}};
+  std::unordered_map<std::string, std::string> options = {{kCoremlProviderOption_RequireStaticInputShapes, "1"}};
   auto coreml_ep = CoreMLProviderFactoryCreator::Create(options)->CreateProvider();
   ;
 

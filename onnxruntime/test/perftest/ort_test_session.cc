@@ -74,7 +74,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif  // defined(_MSC_VER)
     int num_threads = 0;
-    if (!ParseSessionConfigs(ov_string, provider_options)) {
+    if (!ParseSessionConfigs(ov_string, provider_options, {"num_of_threads"})) {
       ORT_THROW(
           "[ERROR] Use a '|' to separate the key and value for the "
           "run-time option you are trying to use.\n");
@@ -89,10 +89,6 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
               " set number of threads or use '0' for default\n");
           // If the user doesnt define num_threads, auto detect threads later
         }
-      } else {
-        ORT_THROW(
-            "[ERROR] [OneDNN] wrong key type entered. "
-            "Choose from the following runtime key options that are available for OneDNN. ['num_of_threads']\n");
       }
     }
     dnnl_options.threadpool_args = static_cast<void*>(&num_threads);
@@ -214,7 +210,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
-    if (!ParseSessionConfigs(option_string, provider_options)) {
+    if (!ParseSessionConfigs(option_string, provider_options, {"backend_path", "profiling_file_path", "profiling_level", "rpc_control_latency", "vtcm_mb", "soc_model", "device_id", "htp_performance_mode", "qnn_saver_path", "htp_graph_finalization_optimization_mode", "qnn_context_priority", "htp_arch", "enable_htp_fp16_precision", "offload_graph_io_quantization"})) {
       ORT_THROW(
           "[ERROR] Use a '|' to separate the key and value for the "
           "run-time option you are trying to use.\n");
@@ -278,11 +274,6 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           std::string str = str_stream.str();
           ORT_THROW("Wrong value for ", key, ". select from: ", str);
         }
-      } else {
-        ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
-'profiling_level', 'profiling_file_path', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
-'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority', 'soc_model',
-'htp_arch', 'device_id', 'enable_htp_fp16_precision', 'offload_graph_io_quantization'])");
       }
     }
     session_options.AppendExecutionProvider("QNN", provider_options);
@@ -296,7 +287,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
-    if (!ParseSessionConfigs(option_string, provider_options)) {
+    if (!ParseSessionConfigs(option_string, provider_options, {"runtime", "priority", "buffer_type", "enable_init_cache"})) {
       ORT_THROW(
           "[ERROR] Use a '|' to separate the key and value for the "
           "run-time option you are trying to use.\n");
@@ -320,8 +311,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         if (value != "1") {
           ORT_THROW("Set to 1 to enable_init_cache.");
         }
-      } else {
-        ORT_THROW("Wrong key type entered. Choose from options: ['runtime', 'priority', 'buffer_type', 'enable_init_cache'] \n");
       }
     }
 
@@ -370,32 +359,27 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #ifdef __APPLE__
 #ifdef USE_COREML
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
-    if (!ParseSessionConfigs(ov_string, provider_options)) {
+    if (!ParseSessionConfigs(ov_string, provider_options, {kCoremlProviderOption_MLComputeUnits, kCoremlProviderOption_ModelFormat, kCoremlProviderOption_RequireStaticInputShapes, kCoremlProviderOption_EnableOnSubgraphs})) {
       ORT_THROW(
           "[ERROR] Use a '|' to separate the key and value for the "
           "run-time option you are trying to use.\n");
     }
 
     std::unordered_map<std::string, std::string> available_options = {
-        {"MLComputeUnitsCPUAndNeuralEngine", "1"},
-        {"MLComputeUnitsCPUAndGPU", "1"},
-        {"MLComputeUnitsCPUOnly", "1"},
-        {"MLComputeUnitsAll", "1"},
+        {"CPUAndNeuralEngine", "1"},
+        {"CPUAndGPU", "1"},
+        {"CPUOnly", "1"},
+        {"ALL", "1"},
     };
     for (const auto& provider_option : provider_options) {
       if (provider_option.first == kCoremlProviderOption_MLComputeUnits &&
           available_options.find(provider_option.second) != available_options.end()) {
-      } else if (provider_option.first == kCoremlProviderOption_MLModelFormat &&
+      } else if (provider_option.first == kCoremlProviderOption_ModelFormat &&
                  (provider_option.second == "MLProgram" || provider_option.second == "NeuralNetwork")) {
-      } else if (provider_option.first == kCoremlProviderOption_MLAllowStaticInputShapes &&
+      } else if (provider_option.first == kCoremlProviderOption_RequireStaticInputShapes &&
                  (provider_option.second == "1" || provider_option.second == "0")) {
-      } else if (provider_option.first == kCoremlProviderOption_MLEnableOnSubgraphs &&
+      } else if (provider_option.first == kCoremlProviderOption_EnableOnSubgraphs &&
                  (provider_option.second == "0" || provider_option.second == "1")) {
-      } else {
-        ORT_THROW(
-            "[ERROR] [CoreML] wrong key type entered. Choose from the following runtime key options "
-            "that are available for CoreML. "
-            "['MLComputeUnits', 'ModelFormat', 'AllowStaticInputShapes', 'EnableOnSubgraphs'] \n");
       }
     }
     // COREML_FLAG_CREATE_MLPROGRAM
@@ -413,7 +397,9 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
-    if (!ParseSessionConfigs(ov_string, provider_options)) {
+    if (!ParseSessionConfigs(ov_string, provider_options,
+                             {"device_filter", "performance_preference", "disable_metacommands",
+                              "enable_graph_capture", "enable_graph_serialization"})) {
       ORT_THROW(
           "[ERROR] Use a '|' to separate the key and value for the "
           "run-time option you are trying to use.\n");
@@ -488,7 +474,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif  // defined(_MSC_VER)
     bool enable_fast_math = false;
-    if (!ParseSessionConfigs(ov_string, provider_options)) {
+    if (!ParseSessionConfigs(ov_string, provider_options, {"enable_fast_math"})) {
       ORT_THROW(
           "[ERROR] Use a '|' to separate the key and value for the "
           "run-time option you are trying to use.\n");
@@ -503,9 +489,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
               "[ERROR] [ACL] You have selcted an invalid value for the key 'enable_fast_math'. "
               "Select from 'true' or 'false' \n");
         }
-      } else {
-        ORT_THROW(
-            "[ERROR] [ACL] Unrecognized option: ", key);
       }
     }
     Ort::ThrowOnError(

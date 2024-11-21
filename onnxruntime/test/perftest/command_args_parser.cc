@@ -131,7 +131,7 @@ namespace perftest {
       "\t    [Example] [For NNAPI EP] -e nnapi -i \"NNAPI_FLAG_USE_FP16 NNAPI_FLAG_USE_NCHW NNAPI_FLAG_CPU_DISABLED\"\n"
       "\n"
       "\t    [CoreML only] [ModelFormat]:[MLProgram, NeuralNetwork] Create an ML Program model or Neural Network. Default is NeuralNetwork.\n"
-      "\t    [CoreML only] [MLComputeUnits]:[CPUAndNeuralEngine CPUAndGPU CPUAndGPU CPUOnly] Specify to limit the backend device/s used to run the model.\n"
+      "\t    [CoreML only] [MLComputeUnits]:[CPUAndNeuralEngine CPUAndGPU ALL CPUOnly] Specify to limit the backend device used to run the model.\n"
       "\t    [CoreML only] [AllowStaticInputShapes]:[0 1].\n"
       "\t    [CoreML only] [EnableOnSubgraphs]:[0 1].\n"
       "\t    [CoreML only] [ModelCacheDir]: a path to cached compiled coreml model.\n"
