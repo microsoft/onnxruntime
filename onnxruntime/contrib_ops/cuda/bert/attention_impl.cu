@@ -567,7 +567,7 @@ Status DecoderMaskedMultiHeadAttention(
   // p.cache_indir = (parameters.beam_width > 1) ? data.cache_indirection : nullptr;
 
   p.out = data.output;
-  p.out_qk = reinterpret_cast<T*>(data.output_qk);
+  p.out_qk = data.output_qk;
 
   if (std::is_same<T, float>::value) {
     return LaunchDecoderMaskedMultiHeadAttention<float, float>(p, stream, parameters.head_size);
