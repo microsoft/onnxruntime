@@ -82,7 +82,7 @@ inline std::string GetTensorName(const ConstPointerContainer<std::vector<NodeArg
   return (input_defs.size() > index) ? std::string(input_defs[index]->Name()) : "";
 }
 
-inline std::vector<uint32_t> GetVecUint32FromVecInt64(const std::vector<int64_t>& int64_vec) {
+inline std::vector<uint32_t> GetVecUint32FromVecInt64(gsl::span<const int64_t> int64_vec) {
   std::vector<uint32_t> uint32_vec;
   uint32_vec.reserve(int64_vec.size());
   std::transform(int64_vec.begin(), int64_vec.end(),
