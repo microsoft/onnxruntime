@@ -65,6 +65,12 @@ ELEMENTWISE_OP_BUILDER(Floor, Floor);
 ELEMENTWISE_OP_BUILDER(Log, Log);
 ELEMENTWISE_OP_BUILDER(Sin, Sin);
 ELEMENTWISE_OP_BUILDER(HardSwish, HardSwish);
+ELEMENTWISE_OP_BUILDER(Neg, Neg);
+ELEMENTWISE_OP_BUILDER(Not, LogicalNot);
+ELEMENTWISE_OP_BUILDER(Ceil, Ceil);
+ELEMENTWISE_OP_BUILDER(Round, Round);
+ELEMENTWISE_OP_BUILDER(Min, Minimum);
+ELEMENTWISE_OP_BUILDER(Max, Maximum);
 
 class PowOpBuilder : public BaseOpBuilder {
   bool IsOpSupported(const onnxruntime::GraphViewer& graph_viewer,
