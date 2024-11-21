@@ -239,9 +239,9 @@ class FusionAttentionClip(FusionAttention):
             v_add=add_v,
             num_heads=num_heads,
             hidden_size=hidden_size,
-            input=root_input,
+            first_input=root_input,
             output=attention_last_node.output[0],
-            add_qk_str=None,
+            add_qk_str="",
             scale=None,
             causal=(add_mask is not None),
         )

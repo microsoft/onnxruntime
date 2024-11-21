@@ -250,6 +250,7 @@ def generate_test_data(
     average_sequence_length: int,
     random_sequence_length: bool,
     mask_type: int,
+    dictionary_size: int = 10000,
 ):
     """Create given number of input data for testing
 
@@ -270,7 +271,6 @@ def generate_test_data(
         List[Dict[str,numpy.ndarray]]: list of test cases, where each test case is a dictionary
                                        with input name as key and a tensor as value
     """
-    dictionary_size = 10000
     all_inputs = fake_test_data(
         batch_size,
         sequence_length,
