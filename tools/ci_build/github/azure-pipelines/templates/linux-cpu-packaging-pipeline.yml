@@ -29,7 +29,6 @@ stages:
   - template: c-api-linux-cpu.yml
     parameters:
       AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
-      BaseImage: 'registry.access.redhat.com/ubi8/ubi'
       OnnxruntimeArch: 'x64'
       OnnxruntimeNodejsBindingArch: 'x64'
       PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
@@ -40,7 +39,6 @@ stages:
   - template: c-api-linux-cpu.yml
     parameters:
       AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
-      BaseImage: 'arm64v8/almalinux:8'
       OnnxruntimeArch: 'aarch64'
       OnnxruntimeNodejsBindingArch: 'arm64'
       PoolName: 'onnxruntime-linux-ARM64-CPU-2019'
