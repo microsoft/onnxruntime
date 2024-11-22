@@ -18,7 +18,6 @@ version = rootProject.file('../VERSION_NUMBER').text.trim()
 def releaseVersionSuffix = "${System.getenv('releaseVersionSuffix')}"
 if (releaseVersionSuffix != null && releaseVersionSuffix != "" && releaseVersionSuffix != "null") {
 	println "releaseVersionSuffix is not null: ${releaseVersionSuffix}"
-	releaseVersionSuffix = releaseVersionSuffix.replace(".", "")
 	version = "${version}${releaseVersionSuffix}"
 	println "Appended releaseVersionSuffix to version: ${version}"
 }
