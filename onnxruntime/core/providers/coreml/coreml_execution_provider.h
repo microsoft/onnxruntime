@@ -13,14 +13,22 @@ class Model;
 }
 
 class CoreMLOptions {
-  uint32_t coreml_flags_ = 0;
+ private:
+  bool require_static_shape_{false};
+  bool create_mlprogram_{false};
+  bool enable_on_subgraph_{false};
+  uint32_t compute_units_{0};
 
  public:
-  CoreMLOptions(uint32_t coreml_flags) : coreml_flags_(coreml_flags) {}
+  explicit CoreMLOptions(uint32_t coreml_flags);
+
   CoreMLOptions(const ProviderOptions& options) {
     ValidateAndParseProviderOption(options);
   }
-  uint32_t CoreMLFlags() const { return coreml_flags_; }
+  bool RequireStaticShape() const { return require_static_shape_; }
+  bool CreateMLProgram() const { return create_mlprogram_; }
+  bool EnableOnSubgraph() const { return enable_on_subgraph_; }
+  uint32_t ComputeUnits(uint32_t specfic_flag=0xffffffff) const { return compute_units_&specfic_flag; }
 
  private:
   void ValidateAndParseProviderOption(const ProviderOptions& options);
@@ -43,7 +51,7 @@ class CoreMLExecutionProvider : public IExecutionProvider {
  private:
   // The bit flags which define bool options for COREML EP, bits are defined as
   // COREMLFlags in include/onnxruntime/core/providers/coreml/coreml_provider_factory.h
-  uint32_t coreml_flags_;
+  CoreMLOptions coreml_options_;
   const int32_t coreml_version_;
   ModelMetadefIdGenerator metadef_id_generator_;
 

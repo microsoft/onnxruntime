@@ -22,6 +22,8 @@ class StorageWriter;
 #endif
 
 namespace onnxruntime {
+class CoreMLOptions;
+
 namespace coreml {
 
 class IOpBuilder;
@@ -29,14 +31,14 @@ class IOpBuilder;
 class ModelBuilder {
  private:
   ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger,
-               int32_t coreml_version, uint32_t coreml_flags,
+               int32_t coreml_version, const CoreMLOptions& coreml_options,
                std::vector<std::string>&& onnx_input_names,
                std::vector<std::string>&& onnx_output_names);
 
  public:
   // Create the CoreML model, serialize to disk, load and compile using the CoreML API and return in `model`
   static Status Build(const GraphViewer& graph_viewer, const logging::Logger& logger,
-                      int32_t coreml_version, uint32_t coreml_flags,
+                      int32_t coreml_version, const CoreMLOptions& coreml_options,
                       std::vector<std::string>&& onnx_input_names,
                       std::vector<std::string>&& onnx_output_names,
                       std::unique_ptr<Model>& model);
@@ -216,7 +218,7 @@ class ModelBuilder {
   const GraphViewer& graph_viewer_;
   const logging::Logger& logger_;
   const int32_t coreml_version_;
-  const uint32_t coreml_flags_;
+  const uint32_t coreml_compute_unit_;
   const bool create_ml_program_;         // ML Program (CoreML5, iOS 15+, macOS 12+) or NeuralNetwork (old)
   const std::string model_output_path_;  // create_ml_program_ ? dir for mlpackage : filename for mlmodel
 
