@@ -311,12 +311,12 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     if (input_defs.size() >= 3) {
       x_zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
     } else {
-      x_zero_point = model_builder.GetZeroConstant(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+      x_zero_point = model_builder.CreateOrGetConstant<uint8_t>(ONNX_NAMESPACE::TensorProto_DataType_UINT8, 0);
     }
     if (input_defs.size() >= 4) {
       w_zero_point = model_builder.GetOperand(node.InputDefs()[3]->Name());
     } else {
-      w_zero_point = model_builder.GetZeroConstant(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+      w_zero_point = model_builder.CreateOrGetConstant<uint8_t>(ONNX_NAMESPACE::TensorProto_DataType_UINT8, 0);
     }
     output = model_builder.GetBuilder().call<emscripten::val>("conv2dInteger",
                                                               input, x_zero_point, filter, w_zero_point, options);

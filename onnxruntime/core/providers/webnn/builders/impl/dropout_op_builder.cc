@@ -59,22 +59,14 @@ Status DropoutOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     std::vector<int64_t> mask_shape;
     ORT_RETURN_IF_NOT(GetShape(*output_defs[1], mask_shape, logger), "Cannot get mask output's shape");
     std::vector<uint32_t> dims = GetVecUint32FromVecInt64(mask_shape);
-
-    emscripten::val desc = emscripten::val::object();
-    desc.set("dataType", "uint8");
-    desc.set("dimensions", emscripten::val::array(dims));
-    desc.set("shape", emscripten::val::array(dims));
-    const auto num_elements = narrow<uint32_t>(Product(mask_shape));
-    emscripten::val ones_buffer = emscripten::val::global("Uint8Array").new_(num_elements);
-    ones_buffer.call<void>("fill", 1);
-
-    emscripten::val mask_output = model_builder.GetBuilder().call<emscripten::val>("constant", desc, ones_buffer);
+    emscripten::val one_constant = model_builder.CreateOrGetConstant<uint8_t>(
+        ONNX_NAMESPACE::TensorProto_DataType_BOOL, 1, dims);
 
     emscripten::val options = emscripten::val::object();
     options.set("label", output_defs[1]->Name() + "_identity");
     // Add additional identity op in case the mask is the output of a WebNN graph,
     // beacuse WebNN does not support a constant operand as output.
-    mask_output = model_builder.GetBuilder().call<emscripten::val>("identity", mask_output, options);
+    emscripten::val mask_output = model_builder.GetBuilder().call<emscripten::val>("identity", one_constant, options);
     model_builder.AddOperand(output_defs[1]->Name(), std::move(mask_output));
   }
   return Status::OK();

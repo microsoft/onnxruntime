@@ -100,7 +100,10 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       // zero_point has the same shape as the scale tensor.
       zero_point_shape = GetVecUint32FromVecInt64(scale_shape);
     }
-    zero_point = model_builder.GetZeroConstant(zero_point_type, zero_point_shape);
+    // Create a zero constant with the same shape as the scale tensor.
+    // The zero value has been pre-processed in the CreateOrGetConstant function,
+    // so the type of T is not relevant here.
+    zero_point = model_builder.CreateOrGetConstant<uint8_t>(zero_point_type, 0, zero_point_shape);
   }
 
   emscripten::val options = emscripten::val::object();
