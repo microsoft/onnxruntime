@@ -12,7 +12,7 @@
 namespace onnxruntime {
 namespace perftest {
 
-bool ParseSessionConfigs(const std::string& configs_string,
+void ParseSessionConfigs(const std::string& configs_string,
                          std::unordered_map<std::string, std::string>& session_configs,
                          const std::unordered_set<std::string>& available_keys) {
   std::istringstream ss(configs_string);
@@ -52,8 +52,6 @@ bool ParseSessionConfigs(const std::string& configs_string,
 
     session_configs.insert(std::make_pair(std::move(key), std::move(value)));
   }
-
-  return true;
 }
 }  // namespace perftest
 }  // namespace onnxruntime

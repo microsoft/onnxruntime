@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace perftest {
 
-bool ParseSessionConfigs(const std::string& configs_string,
+void ParseSessionConfigs(const std::string& configs_string,
                          std::unordered_map<std::string, std::string>& session_configs,
                          const std::unordered_set<std::string>& available_keys = {});
 }  // namespace perftest

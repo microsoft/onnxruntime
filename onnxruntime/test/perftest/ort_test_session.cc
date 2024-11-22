@@ -74,11 +74,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif  // defined(_MSC_VER)
     int num_threads = 0;
-    if (!ParseSessionConfigs(ov_string, provider_options, {"num_of_threads"})) {
-      ORT_THROW(
-          "[ERROR] Use a '|' to separate the key and value for the "
-          "run-time option you are trying to use.\n");
-    }
+    ParseSessionConfigs(ov_string, provider_options, {"num_of_threads"});
     for (const auto& provider_option : provider_options) {
       if (provider_option.first == "num_of_threads") {
         std::stringstream sstream(provider_option.second);
@@ -132,11 +128,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
-    if (!ParseSessionConfigs(ov_string, provider_options)) {
-      ORT_THROW(
-          "[ERROR] Use a '|' to separate the key and value for the "
-          "run-time option you are trying to use.\n");
-    }
+    ParseSessionConfigs(ov_string, provider_options);
     for (const auto& provider_option : provider_options) {
       option_keys.push_back(provider_option.first.c_str());
       option_values.push_back(provider_option.second.c_str());
@@ -172,11 +164,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
-    if (!ParseSessionConfigs(ov_string, provider_options)) {
-      ORT_THROW(
-          "[ERROR] Use a '|' to separate the key and value for the "
-          "run-time option you are trying to use.\n");
-    }
+    ParseSessionConfigs(ov_string, provider_options);
     for (const auto& provider_option : provider_options) {
       option_keys.push_back(provider_option.first.c_str());
       option_values.push_back(provider_option.second.c_str());
@@ -210,11 +198,11 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
-    if (!ParseSessionConfigs(option_string, provider_options, {"backend_path", "profiling_file_path", "profiling_level", "rpc_control_latency", "vtcm_mb", "soc_model", "device_id", "htp_performance_mode", "qnn_saver_path", "htp_graph_finalization_optimization_mode", "qnn_context_priority", "htp_arch", "enable_htp_fp16_precision", "offload_graph_io_quantization"})) {
-      ORT_THROW(
-          "[ERROR] Use a '|' to separate the key and value for the "
-          "run-time option you are trying to use.\n");
-    }
+    ParseSessionConfigs(option_string, provider_options,
+                        {"backend_path", "profiling_file_path", "profiling_level", "rpc_control_latency",
+                         "vtcm_mb", "soc_model", "device_id", "htp_performance_mode", "qnn_saver_path",
+                         "htp_graph_finalization_optimization_mode", "qnn_context_priority", "htp_arch",
+                         "enable_htp_fp16_precision", "offload_graph_io_quantization"});
     for (const auto& provider_option : provider_options) {
       const std::string& key = provider_option.first;
       const std::string& value = provider_option.second;
@@ -287,11 +275,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
-    if (!ParseSessionConfigs(option_string, provider_options, {"runtime", "priority", "buffer_type", "enable_init_cache"})) {
-      ORT_THROW(
-          "[ERROR] Use a '|' to separate the key and value for the "
-          "run-time option you are trying to use.\n");
-    }
+    ParseSessionConfigs(option_string, provider_options, {"runtime", "priority", "buffer_type", "enable_init_cache"});
     for (const auto& provider_option : provider_options) {
       if (key == "runtime") {
         std::set<std::string> supported_runtime = {"CPU", "GPU_FP32", "GPU", "GPU_FLOAT16", "DSP", "AIP_FIXED_TF"};
@@ -363,11 +347,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
                                                                    kCoremlProviderOption_ModelFormat,
                                                                    kCoremlProviderOption_RequireStaticInputShapes,
                                                                    kCoremlProviderOption_EnableOnSubgraphs};
-    if (!ParseSessionConfigs(ov_string, provider_options, available_keys)) {
-      ORT_THROW(
-          "[ERROR] Use a '|' to separate the key and value for the "
-          "run-time option you are trying to use.\n");
-    }
+    ParseSessionConfigs(ov_string, provider_options, available_keys);
 
     std::unordered_map<std::string, std::string> available_options = {
         {"CPUAndNeuralEngine", "1"},
@@ -403,13 +383,9 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
-    if (!ParseSessionConfigs(ov_string, provider_options,
-                             {"device_filter", "performance_preference", "disable_metacommands",
-                              "enable_graph_capture", "enable_graph_serialization"})) {
-      ORT_THROW(
-          "[ERROR] Use a '|' to separate the key and value for the "
-          "run-time option you are trying to use.\n");
-    }
+    ParseSessionConfigs(ov_string, provider_options,
+                        {"device_filter", "performance_preference", "disable_metacommands",
+                         "enable_graph_capture", "enable_graph_serialization"});
     for (const auto& provider_option : provider_options) {
       const std::string& key = provider_option.first;
       const std::string& value = provider_option.second;
@@ -480,11 +456,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif  // defined(_MSC_VER)
     bool enable_fast_math = false;
-    if (!ParseSessionConfigs(ov_string, provider_options, {"enable_fast_math"})) {
-      ORT_THROW(
-          "[ERROR] Use a '|' to separate the key and value for the "
-          "run-time option you are trying to use.\n");
-    }
+    ParseSessionConfigs(ov_string, provider_options, {"enable_fast_math"});
     for (const auto& provider_option : provider_options) {
       if (key == "enable_fast_math") {
         std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
@@ -550,11 +522,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #else
     std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
-    if (!ParseSessionConfigs(option_string, provider_options)) {
-      ORT_THROW(
-          "[ERROR] Use a '|' to separate the key and value for the "
-          "run-time option you are trying to use.\n");
-    }
+    ParseSessionConfigs(option_string, provider_options);
 
     session_options.AppendExecutionProvider_VitisAI(provider_options);
 #else

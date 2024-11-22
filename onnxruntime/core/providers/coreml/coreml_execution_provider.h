@@ -28,7 +28,7 @@ class CoreMLOptions {
   bool RequireStaticShape() const { return require_static_shape_; }
   bool CreateMLProgram() const { return create_mlprogram_; }
   bool EnableOnSubgraph() const { return enable_on_subgraph_; }
-  uint32_t ComputeUnits(uint32_t specfic_flag=0xffffffff) const { return compute_units_&specfic_flag; }
+  uint32_t ComputeUnits(uint32_t specfic_flag = 0xffffffff) const { return compute_units_ & specfic_flag; }
 
  private:
   void ValidateAndParseProviderOption(const ProviderOptions& options);
