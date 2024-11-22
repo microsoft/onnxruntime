@@ -679,6 +679,90 @@ TEST(MLOpTest, TreeRegressorSingleTargetSum_as_tensor_precision) {
   GenTreeAndRunTest1_as_tensor_precision(3);
 }
 
+TEST(MLOpTest, TreeRegressorCategoricals) {
+  OpTester test("TreeEnsembleRegressor", 3, onnxruntime::kMLDomain);
+
+  // tree
+  int64_t n_targets = 1;
+  std::vector<int64_t> nodes_featureids = {0, 0, 0, 0, 1, 0, 0};
+  std::vector<std::string> nodes_modes = {"BRANCH_EQ", "BRANCH_EQ", "BRANCH_EQ", "LEAF", "BRANCH_LEQ", "LEAF", "LEAF"};
+  std::vector<float> nodes_values = {1, 3, 4, 0, 5.5, 0, 0};
+
+  std::vector<int64_t> nodes_treeids = {0, 0, 0, 0, 0, 0, 0};
+  std::vector<int64_t> nodes_nodeids = {0, 1, 2, 3, 4, 5, 6};
+  std::vector<int64_t> nodes_falsenodeids = {1, 2, 3, 0, 5, 0, 0};
+  std::vector<int64_t> nodes_truenodeids = {4, 4, 4, 0, 6, 0, 0};
+
+  std::string post_transform = "NONE";
+  std::vector<int64_t> target_ids = {0, 0, 0};
+  std::vector<int64_t> target_nodeids = {3, 5, 6};
+  std::vector<int64_t> target_treeids = {0, 0, 0};
+  std::vector<float> target_weights = {-4.699999809265137, 17.700000762939453, 11.100000381469727};
+
+  // add attributes
+  test.AddAttribute("nodes_truenodeids", nodes_truenodeids);
+  test.AddAttribute("nodes_falsenodeids", nodes_falsenodeids);
+  test.AddAttribute("nodes_treeids", nodes_treeids);
+  test.AddAttribute("nodes_nodeids", nodes_nodeids);
+  test.AddAttribute("nodes_featureids", nodes_featureids);
+  test.AddAttribute("nodes_values", nodes_values);
+  test.AddAttribute("nodes_modes", nodes_modes);
+  test.AddAttribute("target_treeids", target_treeids);
+  test.AddAttribute("target_nodeids", target_nodeids);
+  test.AddAttribute("target_ids", target_ids);
+  test.AddAttribute("target_weights", target_weights);
+  test.AddAttribute("n_targets", n_targets);
+
+  // fill input data
+  std::vector<float> X = {3.0f, 6.6f, 1.0f, 5.0f, 5.0f, 5.5f};
+  std::vector<float> Y = {17.700000762939453, 11.100000381469727, -4.699999809265137};
+  test.AddInput<float>("X", {3, 2}, X);
+  test.AddOutput<float>("Y", {3, 1}, Y);
+  test.Run();
+}
+
+TEST(MLOpTest, TreeRegressorCategoricalsFolding) {
+  OpTester test("TreeEnsembleRegressor", 3, onnxruntime::kMLDomain);
+
+  // tree
+  int64_t n_targets = 1;
+  std::vector<int64_t> nodes_featureids = {0, 0, 1, 1, 0, 0, 0};
+  std::vector<std::string> nodes_modes = {"BRANCH_EQ", "BRANCH_EQ", "BRANCH_EQ", "BRANCH_EQ", "LEAF", "LEAF", "LEAF"};
+  std::vector<float> nodes_values = {1, 3, 2, 3, 0, 0, 0};
+
+  std::vector<int64_t> nodes_treeids = {0, 0, 0, 0, 0, 0, 0};
+  std::vector<int64_t> nodes_nodeids = {0, 1, 2, 3, 4, 5, 6};
+  std::vector<int64_t> nodes_falsenodeids = {1, 2, 3, 4, 0, 0, 0};
+  std::vector<int64_t> nodes_truenodeids = {5, 5, 6, 6, 0, 0, 0};
+
+  std::string post_transform = "NONE";
+  std::vector<int64_t> target_ids = {0, 0, 0};
+  std::vector<int64_t> target_nodeids = {4, 5, 6};
+  std::vector<int64_t> target_treeids = {0, 0, 0};
+  std::vector<float> target_weights = {17.700000762939453, 11.100000381469727, -4.699999809265137};
+
+  // add attributes
+  test.AddAttribute("nodes_truenodeids", nodes_truenodeids);
+  test.AddAttribute("nodes_falsenodeids", nodes_falsenodeids);
+  test.AddAttribute("nodes_treeids", nodes_treeids);
+  test.AddAttribute("nodes_nodeids", nodes_nodeids);
+  test.AddAttribute("nodes_featureids", nodes_featureids);
+  test.AddAttribute("nodes_values", nodes_values);
+  test.AddAttribute("nodes_modes", nodes_modes);
+  test.AddAttribute("target_treeids", target_treeids);
+  test.AddAttribute("target_nodeids", target_nodeids);
+  test.AddAttribute("target_ids", target_ids);
+  test.AddAttribute("target_weights", target_weights);
+  test.AddAttribute("n_targets", n_targets);
+
+  // fill input data
+  std::vector<float> X = {1.0f, 2.0f, 3.0f, 1.0f, 2.0f, 3.0f, 2.0f, 1.0f};
+  std::vector<float> Y = {11.100000381469727, 11.100000381469727, -4.699999809265137, 17.700000762939453};
+  test.AddInput<float>("X", {4, 2}, X);
+  test.AddOutput<float>("Y", {4, 1}, Y);
+  test.Run();
+}
+
 TEST(MLOpTest, TreeRegressorTrueNodeBeforeNode) {
   OpTester test("TreeEnsembleRegressor", 3, onnxruntime::kMLDomain);
 
