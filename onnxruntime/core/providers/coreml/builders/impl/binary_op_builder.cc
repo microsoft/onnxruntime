@@ -71,15 +71,13 @@ static void AddVariadicInputs(std::unique_ptr<CoreML::Specification::MILSpec::Op
   std::string_view layer_input_name_x = model_builder.GetUniqueName(node, "variadic");
   auto input_dtype = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
   const int32_t elem_type = static_cast<int32_t>(input_dtype);
-  std::vector<int64_t> x0_shape, x1_shape;
-  GetShape(*input_defs[0], x0_shape, logger);
-  GetShape(*input_defs[1], x1_shape, logger);
-  if (x0_shape.size() < x1_shape.size()) {
-    std::swap(x0_shape, x1_shape);
-  }
+  std::vector<int64_t> x0_shape;
+  auto x0_dim_size = input_defs[0]->Shape()->dim_size();
+  auto x1_dim_size = input_defs[1]->Shape()->dim_size();
+  x0_dim_size = std::max(x0_dim_size, x1_dim_size);
   // fill x0_shape with -1 to make this dimension as dynamic
   // Coreml supports dynamic shape when the shape value is -1
-  std::fill(x0_shape.begin(), x0_shape.end(), -1);
+  x0_shape.resize(x0_dim_size, -1);
   std::unique_ptr<Operation> op_prev = std::move(*op);
   for (size_t i = 2; i < input_defs.size(); i++) {
     AddIntermediateOperationOutput(*op_prev, layer_input_name_x, elem_type, x0_shape);
@@ -89,9 +87,10 @@ static void AddVariadicInputs(std::unique_ptr<CoreML::Specification::MILSpec::Op
     model_builder.AddOperation(std::move(op_prev));
     op_prev = std::move(op_cur);
     layer_input_name_x = model_builder.GetUniqueName(node, "variadic");
-    GetShape(*input_defs[i], x1_shape, logger);
-    if (x0_shape.size() < x1_shape.size()) {
-      x0_shape.resize(x1_shape.size(), -1);
+    x1_dim_size = input_defs[i]->Shape()->dim_size();
+    if (x0_dim_size < x1_dim_size) {
+      x0_dim_size = x1_dim_size;
+      x0_shape.resize(x0_dim_size, -1);
     }
   }
   *op = std::move(op_prev);
