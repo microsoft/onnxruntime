@@ -63,9 +63,9 @@ bool CheckIfBothInputShapesMatch(const Node& node, const logging::Logger& logger
 // max(x, y, z, ...) -> max(max(x, y), z, ...)
 #if defined(COREML_ENABLE_MLPROGRAM)
 static void AddVariadicInputs(std::unique_ptr<CoreML::Specification::MILSpec::Operation>* op,
-                                  ModelBuilder& model_builder,
-                                  const Node& node,
-                                  const logging::Logger& logger) {
+                              ModelBuilder& model_builder,
+                              const Node& node,
+                              const logging::Logger& logger) {
   using namespace CoreML::Specification::MILSpec;
   const auto& input_defs(node.InputDefs());
   std::string_view layer_input_name_x = model_builder.GetUniqueName(node, "variadic");
