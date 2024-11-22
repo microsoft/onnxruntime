@@ -2074,6 +2074,17 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             if is_windows():
                 cwd = os.path.join(cwd, config)
 
+            if args.enable_transformers_tool_test and not args.disable_contrib_ops and not args.use_rocm:
+                # PyTorch is required for transformers tests, and optional for some python tests.
+                # Install cpu only version of torch when cuda is not enabled in Linux.
+                extra = [] if args.use_cuda and is_linux() else ["--index-url", "https://download.pytorch.org/whl/cpu"]
+                run_subprocess(
+                    [sys.executable, "-m", "pip", "install", "torch", *extra],
+                    cwd=cwd,
+                    dll_path=dll_path,
+                    python_path=python_path,
+                )
+
             run_subprocess(
                 [sys.executable, "onnxruntime_test_python.py"], cwd=cwd, dll_path=dll_path, python_path=python_path
             )
@@ -2128,6 +2139,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     dll_path=dll_path,
                     python_path=python_path,
                 )
+
                 if not args.disable_contrib_ops:
                     run_subprocess(
                         [sys.executable, "-m", "unittest", "discover", "-s", "quantization"], cwd=cwd, dll_path=dll_path
