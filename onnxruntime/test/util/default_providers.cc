@@ -188,14 +188,6 @@ std::unique_ptr<IExecutionProvider> DnnlExecutionProviderWithOptions(const OrtDn
   return nullptr;
 }
 
-// std::unique_ptr<IExecutionProvider> DefaultTvmExecutionProvider() {
-// #ifdef USE_TVM
-//   return TVMProviderFactoryCreator::Create("")->CreateProvider();
-// #else
-//   return nullptr;
-// #endif
-// }
-
 std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider() {
 // The NNAPI EP uses a stub implementation on non-Android platforms so cannot be used to execute a model.
 // Manually append an NNAPI EP instance to the session to unit test the GetCapability and Compile implementation.

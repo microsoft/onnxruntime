@@ -14,7 +14,7 @@
       "disableDefaultFilter": false,
       "noRestore": true,
       "properties": {
-        "AllowUnsafeBlocks": true,
+        "AllowUnsafeBlocks": "true",
         "TargetFramework": "net8.0",
         "Nullable": "enable",
         "LangVersion": "8.0",

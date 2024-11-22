@@ -1379,8 +1379,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     profile_opt_shapes = info.profile_opt_shapes;
     cuda_graph_enable_ = info.cuda_graph_enable;
     engine_hw_compatible_ = info.engine_hw_compatible;
-    op_types_to_exclude_ = info.op_types_to_exclude;
-
   } else {
     try {
       const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
@@ -1565,11 +1563,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       const std::string cuda_graph_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kCudaGraphEnable);
       if (!cuda_graph_enable_env.empty()) {
         cuda_graph_enable_ = (std::stoi(cuda_graph_enable_env) == 0 ? false : true);
-      }
-
-      const std::string op_types_to_exclude_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kOpTypesToExclude);
-      if (!op_types_to_exclude_env.empty()) {
-        op_types_to_exclude_ = op_types_to_exclude_env;
       }
 
     } catch (const std::invalid_argument& ex) {
@@ -1773,8 +1766,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_ep_context_embed_mode: " << ep_context_embed_mode_
                         << ", trt_cache_prefix: " << cache_prefix_
                         << ", trt_engine_hw_compatible: " << engine_hw_compatible_
-                        << ", trt_onnx_model_bytestream_size_: " << onnx_model_bytestream_size_
-                        << ", trt_op_types_to_exclude: " << op_types_to_exclude_;
+                        << ", trt_onnx_model_bytestream_size_: " << onnx_model_bytestream_size_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -2442,18 +2434,6 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
   return cycle_detected;
 }
 
-std::set<std::string> GetExcludedNodeSet(std::string node_list_to_exclude) {
-  std::set<std::string> set;
-  if (!node_list_to_exclude.empty()) {
-    std::stringstream node_list(node_list_to_exclude);
-    std::string node;
-    while (std::getline(node_list, node, ',')) {
-      set.insert(node);
-    }
-  }
-  return set;
-}
-
 std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
                                          const IKernelLookup& /*kernel_lookup*/) const {
@@ -2486,14 +2466,17 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
 
-  std::set<std::string> exclude_set = GetExcludedNodeSet(op_types_to_exclude_);
+  std::set<std::string> exclude_ops_set;
 
-  // Print excluded nodes, if any.
-  std::set<std::string>::iterator it;
-  for (it = exclude_set.begin(); it != exclude_set.end(); ++it) {
-    std::string op = *it;
-    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Exclude \"" << op << "\" from running on TRT, if any.";
-    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Remove \"" << op << "\" from trt_op_types_to_exclude or specify trt_op_types_to_exclude with empty string to include the op in the input to TRT parser. However, it still depends on TRT parser to determine the eligibility of this op for TRT.";
+  /*
+   * There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) in TRT 10.
+   * TRT EP automatically excludes DDS ops from running on TRT.
+   */
+  if (trt_version_ >= 100000 && trt_version_ < 110000) {
+    exclude_ops_set.insert("NonMaxSuppression");
+    exclude_ops_set.insert("NonZero");
+    exclude_ops_set.insert("RoiAlign");
+    LOGS_DEFAULT(VERBOSE) << "There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) in TRT 10. TRT EP automatically excludes DDS ops from running on TRT, if applicable";
   }
 
   SubGraphCollection_t parser_nodes_vector, supported_nodes_vector;
@@ -2502,7 +2485,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 
   /* Iterate all the nodes and exclude the node if:
    *   1. It's a control flow op and its subgraph(s) is not fully TRT eligible.
-   *   2. It's in the exlucded set which specified by trt_op_types_to_exclude.
+   *   2. It's a DDS op.
    */
   for (const auto& index : nodes_vector) {
     const auto& node = graph.GetNode(node_index[index]);
@@ -2538,7 +2521,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     }
 
     // Exclude any ops, if applicable
-    if (exclude_set.find(node->OpType()) != exclude_set.end()) {
+    if (exclude_ops_set.find(node->OpType()) != exclude_ops_set.end()) {
       supported_node = false;
     }
 

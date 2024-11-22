@@ -36,7 +36,7 @@ namespace perftest {
       "\t\tProvide 'duration' to run the test for a fix duration, and 'times' to repeated for a certain times. \n"
       "\t-M: Disable memory pattern.\n"
       "\t-A: Disable memory arena\n"
-      "\t-I: Generate tensor input binding (Free dimensions are treated as 1.)\n"
+      "\t-I: Generate tensor input binding. Free dimensions are treated as 1 unless overridden using -f.\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
       "\t-e [cpu|cuda|dnnl|tensorrt|openvino|dml|acl|nnapi|coreml|qnn|snpe|rocm|migraphx|xnnpack|vitisai|webgpu]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
       "'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'rocm', 'migraphx', 'xnnpack', 'vitisai' or 'webgpu'. "
