@@ -64,7 +64,7 @@ stages:
         WITH_CACHE: true
         MachinePool: onnxruntime-Win2022-GPU-A10
 
-- stage: cuda+dml
+- stage: cuda_dml
   dependsOn: []
   jobs:
     - template: templates/jobs/win-ci-vs-2022-job.yml
