@@ -114,7 +114,7 @@ stages:
       timeoutInMinutes: 1200
     ${{ else }}:
       timeoutInMinutes: 360
-    onnxRuntimeReleaseVersion: '$(OnnxRuntimeVersion)${{ replace($(releaseVersionSuffix),'.','') }}
+    onnxRuntimeReleaseVersion: '$(OnnxRuntimeVersion)${{ replace($(releaseVersionSuffix),'.','') }}'
 
     steps:
       - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
