@@ -77,12 +77,10 @@ NS_ASSUME_NONNULL_BEGIN
  *
  * @param provider_options The CoreML execution provider options in dict.
  *  available keys-values: more detail in core/providers/coreml/coreml_execution_provider.h
- *      kCoremlProviderOption_MLComputeUnits: one of "CPUAndNeuralEngine",
- *         "CPUAndGPU", "CPUOnly", "All"
+ *      kCoremlProviderOption_MLComputeUnits: one of "CPUAndNeuralEngine", "CPUAndGPU", "CPUOnly", "All"
  *      kCoremlProviderOption_ModelFormat: one of "MLProgram", "NeuralNetwork"
  *      kCoremlProviderOption_RequireStaticInputShapes: "1" or "0"
  *      kCoremlProviderOption_EnableOnSubgraphs: "1" or "0"
- *      kCoremlProviderOption_ModelCacheDir: path to the model cache directory
  * @param error Optional error information set if an error occurs.
  * @return Whether the provider was enabled successfully.
  */
