@@ -353,7 +353,10 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
         test_config.run_config.intra_op_thread_affinities = ToUTF8String(optarg);
         break;
       case 'C': {
-        if (!ParseSessionConfigs(ToUTF8String(optarg), test_config.run_config.session_config_entries)) {
+        ORT_TRY {
+          ParseSessionConfigs(ToUTF8String(optarg), test_config.run_config.session_config_entries);
+        }
+        ORT_CATCH(...) {
           return false;
         }
         break;
