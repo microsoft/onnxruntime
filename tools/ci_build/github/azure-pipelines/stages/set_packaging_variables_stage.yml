@@ -20,10 +20,8 @@ stages:
         if [[ "${{ parameters.IsReleaseBuild }}" = True && "${{ parameters.PreReleaseVersionSuffixString }}" != "none"  ]]; then
           if [[ "${{ parameters.PreReleaseVersionSuffixNumber }}" -eq 0 ]]; then
             echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}"
-            echo "##vso[task.setvariable variable=ReleaseVersionSuffixCompact;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}"
           else
             echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}.${{ parameters.PreReleaseVersionSuffixNumber }}"
-            echo "##vso[task.setvariable variable=ReleaseVersionSuffixCompact;isOutput=true]-${{ parameters.PreReleaseVersionSuffixString }}${{ parameters.PreReleaseVersionSuffixNumber }}"
           fi
         else
           echo "##vso[task.setvariable variable=ReleaseVersionSuffix;isOutput=true]"

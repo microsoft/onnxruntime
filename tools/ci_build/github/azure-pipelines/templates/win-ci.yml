@@ -100,7 +100,8 @@ stages:
       timeoutParameter: '--test_all_timeout 72000'
     ${{ else }}:
       timeoutParameter: ''
-    releaseVersion1: ${{ parameters.java_artifact_id }}$[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffixCompact']]
+    releaseVersionSuffix: ${{ parameters.java_artifact_id }}$[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
+    OnnxRuntimeVersion : '1.21.0'
   jobs:
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
     workspace:
@@ -113,6 +114,7 @@ stages:
       timeoutInMinutes: 1200
     ${{ else }}:
       timeoutInMinutes: 360
+    onnxRuntimeReleaseVersion: '$(OnnxRuntimeVersion)${{ replace($(releaseVersionSuffix),'.','') }}
 
     steps:
       - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -127,8 +129,10 @@ stages:
         inputs:
           targetType: 'inline'
           script: |
-            Write-Host "releaseVersion1:"
-            Write-Host "$(releaseVersion1)"
+            Write-Host "releaseVersionSuffix: $(releaseVersionSuffix)"
+            $releaseVersion = $(OnnxRuntimeVersion) + ($(releaseVersionSuffix) -replace "\.", "")
+            Write-Host "releaseVersion: $releaseVersion"
+            Write-Host "onnxRuntimeReleaseVersion: $(onnxRuntimeReleaseVersion)"
             exit 1
         displayName: 'KYLE DEBUG - Powershell'
 
