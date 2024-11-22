@@ -2,7 +2,6 @@ parameters:
   IsReleaseBuild: false
   PreReleaseVersionSuffixString: 'none'
   PreReleaseVersionSuffixNumber: 0
-  versionFileDirectory: '$(Build.SourcesDirectory)/onnxruntime'
 stages:
 - stage: Setup
   jobs:
