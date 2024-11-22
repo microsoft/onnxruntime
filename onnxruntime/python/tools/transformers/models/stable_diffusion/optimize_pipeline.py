@@ -27,6 +27,7 @@ import __init__  # noqa: F401. Walk-around to run this script directly
 import coloredlogs
 import onnx
 from fusion_options import FusionOptions
+from onnx_model_bert import BertOnnxModel
 from onnx_model_clip import ClipOnnxModel
 from onnx_model_unet import UnetOnnxModel
 from onnx_model_vae import VaeOnnxModel
@@ -46,9 +47,20 @@ def has_external_data(onnx_model_path):
     return False
 
 
+def _get_model_list(source_dir: Path):
+    is_xl = (source_dir / "text_encoder_2").exists()
+    is_sd3 = (source_dir / "text_encoder_3").exists()
+    model_list_sd3 = ["text_encoder", "text_encoder_2", "text_encoder_3", "transformer", "vae_encoder", "vae_decoder"]
+    model_list_sdxl = ["text_encoder", "text_encoder_2", "unet", "vae_encoder", "vae_decoder"]
+    model_list_sd = ["text_encoder", "unet", "vae_encoder", "vae_decoder"]
+    model_list = model_list_sd3 if is_sd3 else (model_list_sdxl if is_xl else model_list_sd)
+    return model_list
+
+
 def _optimize_sd_pipeline(
     source_dir: Path,
     target_dir: Path,
+    model_list: List[str],
     use_external_data_format: Optional[bool],
     float16: bool,
     force_fp32_ops: List[str],
@@ -60,6 +72,7 @@ def _optimize_sd_pipeline(
     Args:
         source_dir (Path): Root of input directory of stable diffusion onnx pipeline with float32 models.
         target_dir (Path): Root of output directory of stable diffusion onnx pipeline with optimized models.
+        model_list (List[str]): list of directory names with onnx model.
         use_external_data_format (Optional[bool]): use external data format.
         float16 (bool): use half precision
         force_fp32_ops(List[str]): operators that are forced to run in float32.
@@ -70,18 +83,21 @@ def _optimize_sd_pipeline(
         RuntimeError: output onnx model path existed
     """
     model_type_mapping = {
+        "transformer": "mmdit",
         "unet": "unet",
         "vae_encoder": "vae",
         "vae_decoder": "vae",
         "text_encoder": "clip",
         "text_encoder_2": "clip",
         "safety_checker": "unet",
+        "text_encoder_3": "clip",
     }
 
     model_type_class_mapping = {
         "unet": UnetOnnxModel,
         "vae": VaeOnnxModel,
         "clip": ClipOnnxModel,
+        "mmdit": BertOnnxModel,  # TODO: have a new class for DiT
     }
 
     force_fp32_operators = {
@@ -91,9 +107,9 @@ def _optimize_sd_pipeline(
         "text_encoder": [],
         "text_encoder_2": [],
         "safety_checker": [],
+        "text_encoder_3": [],
+        "transformer": [],
     }
-
-    is_xl = (source_dir / "text_encoder_2").exists()
 
     if force_fp32_ops:
         for fp32_operator in force_fp32_ops:
@@ -108,8 +124,8 @@ def _optimize_sd_pipeline(
     for name, model_type in model_type_mapping.items():
         onnx_model_path = source_dir / name / "model.onnx"
         if not os.path.exists(onnx_model_path):
-            if name != "safety_checker":
-                logger.info("input onnx model does not exist: %s", onnx_model_path)
+            if name != "safety_checker" and name in model_list:
+                logger.warning("input onnx model does not exist: %s", onnx_model_path)
             # some model are optional so we do not raise error here.
             continue
 
@@ -122,7 +138,7 @@ def _optimize_sd_pipeline(
             use_external_data_format = has_external_data(onnx_model_path)
 
         # Graph fusion before fp16 conversion, otherwise they cannot be fused later.
-        logger.info(f"Optimize {onnx_model_path}...")
+        logger.info("Optimize %s ...", onnx_model_path)
 
         args.model_type = model_type
         fusion_options = FusionOptions.parse(args)
@@ -147,6 +163,7 @@ def _optimize_sd_pipeline(
 
         if float16:
             # For SD-XL, use FP16 in VAE decoder will cause NaN and black image so we keep it in FP32.
+            is_xl = (source_dir / "text_encoder_2").exists()
             if is_xl and name == "vae_decoder":
                 logger.info("Skip converting %s to float16 to avoid NaN", name)
             else:
@@ -181,17 +198,18 @@ def _optimize_sd_pipeline(
         logger.info("*" * 20)
 
 
-def _copy_extra_directory(source_dir: Path, target_dir: Path):
+def _copy_extra_directory(source_dir: Path, target_dir: Path, model_list: List[str]):
     """Copy extra directory that does not have onnx model
 
     Args:
         source_dir (Path): source directory
         target_dir (Path): target directory
+        model_list (List[str]): list of directory names with onnx model.
 
     Raises:
         RuntimeError: source path does not exist
     """
-    extra_dirs = ["scheduler", "tokenizer", "tokenizer_2", "feature_extractor"]
+    extra_dirs = ["scheduler", "tokenizer", "tokenizer_2", "tokenizer_3", "feature_extractor"]
 
     for name in extra_dirs:
         source_path = source_dir / name
@@ -213,8 +231,7 @@ def _copy_extra_directory(source_dir: Path, target_dir: Path):
         logger.info("%s => %s", source_path, target_path)
 
     # Some directory are optional
-    onnx_model_dirs = ["text_encoder", "text_encoder_2", "unet", "vae_encoder", "vae_decoder", "safety_checker"]
-    for onnx_model_dir in onnx_model_dirs:
+    for onnx_model_dir in model_list:
         source_path = source_dir / onnx_model_dir / "config.json"
         target_path = target_dir / onnx_model_dir / "config.json"
         if source_path.exists():
@@ -236,17 +253,20 @@ def optimize_stable_diffusion_pipeline(
         if overwrite:
             shutil.rmtree(output_dir, ignore_errors=True)
         else:
-            raise RuntimeError("output directory existed:{output_dir}. Add --overwrite to empty the directory.")
+            raise RuntimeError(f"output directory existed:{output_dir}. Add --overwrite to empty the directory.")
 
     source_dir = Path(input_dir)
     target_dir = Path(output_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    _copy_extra_directory(source_dir, target_dir)
+    model_list = _get_model_list(source_dir)
+
+    _copy_extra_directory(source_dir, target_dir, model_list)
 
     _optimize_sd_pipeline(
         source_dir,
         target_dir,
+        model_list,
         use_external_data_format,
         float16,
         args.force_fp32_ops,

@@ -212,6 +212,14 @@ pip install optimum diffusers onnx onnxruntime-gpu
 optimum-cli export onnx --model stabilityai/stable-diffusion-xl-base-1.0 --task stable-diffusion-xl ./sd_xl_base_onnx
 ```
 
+SD3 and Flux requires transformers >= 4.45, and optimum > 1.23.3:
+```
+git clone https://github.com/huggingface/optimum
+pip install -e .
+optimum-cli export onnx --model stabilityai/stable-diffusion-3-medium-diffusers sd3_onnx_fp32
+optimum-cli export onnx --model stabilityai/stable-diffusion-3.5-medium-diffusers sd3.5_onnx_fp32
+```
+
 ### Optimize ONNX Pipeline
 
 Example to optimize the exported float32 ONNX models, and save to float16 models:
@@ -230,6 +238,10 @@ For SDXL model, it is recommended to use a machine with 48 GB or more memory to 
 python optimize_pipeline.py -i ./sd_xl_base_onnx -o ./sd_xl_base_fp16 --float16
 ```
 
+For SD3 model:
+```
+python optimize_pipeline.py -i sd3_onnx_fp32 -o sd3_onnx_fp16 --float16
+```
 ### Run Benchmark
 
 The benchmark.py script will run a warm-up prompt twice, and measure the peak GPU memory usage in these two runs, then record them as first_run_memory_MB and second_run_memory_MB. Then it will run 5 runs to get average latency (in seconds), and output the results to benchmark_result.csv.
