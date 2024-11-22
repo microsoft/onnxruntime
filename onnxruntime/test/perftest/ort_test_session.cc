@@ -380,6 +380,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
                  (provider_option.second == "1" || provider_option.second == "0")) {
       } else if (provider_option.first == kCoremlProviderOption_EnableOnSubgraphs &&
                  (provider_option.second == "0" || provider_option.second == "1")) {
+      } else {
+        ORT_THROW("Invalid value for option ", provider_option.first, ": ", provider_option.second);
       }
     }
     // COREML_FLAG_CREATE_MLPROGRAM

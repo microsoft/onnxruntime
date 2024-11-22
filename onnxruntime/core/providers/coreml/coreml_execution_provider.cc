@@ -39,7 +39,6 @@ void CoreMLOptions::ValidateAndParseProviderOption(const ProviderOptions& option
       kCoremlProviderOption_ModelFormat,
       kCoremlProviderOption_RequireStaticInputShapes,
       kCoremlProviderOption_EnableOnSubgraphs,
-      kCoremlProviderOption_ModelCacheDir,
   };
   // Validate the options
   for (const auto& option : options) {
@@ -48,7 +47,7 @@ void CoreMLOptions::ValidateAndParseProviderOption(const ProviderOptions& option
     }
     if (kCoremlProviderOption_MLComputeUnits == option.first) {
       if (available_computeunits_options.find(option.second) == available_computeunits_options.end()) {
-        ORT_THROW("Invalid value for option ", option.first, ": ", option.second);
+        ORT_THROW("Invalid value for option `", option.first, "`: ", option.second);
       } else {
         coreml_flags_ |= available_computeunits_options.at(option.second);
       }

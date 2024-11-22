@@ -134,7 +134,6 @@ namespace perftest {
       "\t    [CoreML only] [MLComputeUnits]:[CPUAndNeuralEngine CPUAndGPU ALL CPUOnly] Specify to limit the backend device used to run the model.\n"
       "\t    [CoreML only] [AllowStaticInputShapes]:[0 1].\n"
       "\t    [CoreML only] [EnableOnSubgraphs]:[0 1].\n"
-      "\t    [CoreML only] [ModelCacheDir]: a path to cached compiled coreml model.\n"
       "\t    [Example] [For CoreML EP] -e coreml -i \"ModelFormat|MLProgram MLComputeUnits|CPUAndGPU\"\n"
       "\n"
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
