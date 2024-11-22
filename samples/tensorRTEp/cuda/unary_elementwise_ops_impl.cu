@@ -42,7 +42,9 @@ struct ViaTypeMap<half> {
 template <typename InT, typename OutT>
 struct OP_Cast {
   __device__ __inline__ OutT operator()(const InT& a) const {
-    typedef typename ViaTypeMap<OutT>::ViaT ViaT;
+    const bool any_float16 = std::is_same<half, InT>::value || std::is_same<half, OutT>::value;
+    typedef typename std::conditional<any_float16, half, OutT>::type T;
+    typedef typename ViaTypeMap<T>::ViaT ViaT;
     return (OutT)((ViaT)a);
   }
 };
