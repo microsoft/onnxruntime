@@ -29,13 +29,6 @@ pr:
 #### end trigger ####
 
 parameters:
-- name: CudaVersion
-  displayName: CUDA version
-  type: string
-  default: '12.2'
-  values:
-    - 11.8
-    - 12.2
 - name: RunOnnxRuntimeTests
   displayName: Run Tests?
   type: boolean
@@ -50,8 +43,7 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env.bat
         buildArch: x64
-        additionalBuildFlags: >-
-          --enable_pybind --use_dml --enable_wcos --use_winml
+        additionalBuildFlags: --enable_pybind --use_dml --enable_wcos --use_winml
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
