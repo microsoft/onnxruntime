@@ -62,7 +62,7 @@ CoreMLOptions::CoreMLOptions(uint32_t coreml_flags) {
   }
 
   const bool has_neural_engine = coreml::HasNeuralEngine();
-  if ((compute_units_ & COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE) && !has_neural_engine) {
+  if (ComputeUnits(COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE) && !has_neural_engine) {
     ORT_THROW("The current system does not have Apple Neural Engine.");
   }
 }
