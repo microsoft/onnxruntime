@@ -359,7 +359,11 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #ifdef __APPLE__
 #ifdef USE_COREML
     std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
-    if (!ParseSessionConfigs(ov_string, provider_options, {kCoremlProviderOption_MLComputeUnits, kCoremlProviderOption_ModelFormat, kCoremlProviderOption_RequireStaticInputShapes, kCoremlProviderOption_EnableOnSubgraphs})) {
+    static const std::unordered_set<std::string> available_keys = {kCoremlProviderOption_MLComputeUnits,
+                                                                   kCoremlProviderOption_ModelFormat,
+                                                                   kCoremlProviderOption_RequireStaticInputShapes,
+                                                                   kCoremlProviderOption_EnableOnSubgraphs};
+    if (!ParseSessionConfigs(ov_string, provider_options, available_keys)) {
       ORT_THROW(
           "[ERROR] Use a '|' to separate the key and value for the "
           "run-time option you are trying to use.\n");
