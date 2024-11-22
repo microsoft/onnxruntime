@@ -19,7 +19,10 @@ parameters:
 stages:
 - stage: Final_Jar_Testing_${{parameters.OS}}
   dependsOn:
-    Jar_Packaging
+  - Setup
+  - Jar_Packaging
+  variables:
+    ReleaseVersionSuffix: $[replace(stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix'],'.','')]
   jobs:
   - job: Final_Jar_Testing_${{parameters.OS}}
     workspace:
@@ -61,7 +64,7 @@ stages:
             pushd test
             jar xf $(Build.BinariesDirectory)\final-jar\testing.jar
             popd
-            java -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.21.7.jar;onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
+            java -jar junit-platform-console-standalone-1.6.2.jar -cp .;.\test;protobuf-java-3.21.7.jar;onnxruntime-$(OnnxRuntimeVersion)$(ReleaseVersionSuffix).jar --scan-class-path --fail-if-no-tests --disable-banner
           workingDirectory: '$(Build.BinariesDirectory)\final-jar'
     - ${{ else }}:
       - task: Bash@3
@@ -75,8 +78,8 @@ stages:
             pushd test
             jar xf '$(Build.BinariesDirectory)/final-jar/testing.jar'
             popd
-            # if you want to run the tests in the power shell, you need to replace ':' to ';', that is,  "-cp .;.\test;protobuf-java-3.21.7.jar;onnxruntime-$(OnnxRuntimeVersion).jar"
-            java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.21.7.jar:./onnxruntime-$(OnnxRuntimeVersion).jar --scan-class-path --fail-if-no-tests --disable-banner
+            # if you want to run the tests in the power shell, you need to replace ':' to ';', that is,  "-cp .;.\test;protobuf-java-3.21.7.jar;onnxruntime-$(OnnxRuntimeVersion)$(ReleaseVersionSuffix).jar"
+            java -jar ./junit-platform-console-standalone-1.6.2.jar -cp .:./test:./protobuf-java-3.21.7.jar:./onnxruntime-$(OnnxRuntimeVersion)$(ReleaseVersionSuffix).jar --scan-class-path --fail-if-no-tests --disable-banner
           workingDirectory: '$(Build.BinariesDirectory)/final-jar'
         env:
           ${{ if eq(parameters.OS, 'MacOS') }}:
