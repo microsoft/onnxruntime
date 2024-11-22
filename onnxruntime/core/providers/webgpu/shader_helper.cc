@@ -62,7 +62,9 @@ Status ShaderHelper::Init() {
               "fn main(@builtin(global_invocation_id) global_id : vec3<u32>,\n"
               "        @builtin(workgroup_id) workgroup_id : vec3<u32>,\n"
               "        @builtin(local_invocation_index) local_idx : u32,\n"
-              "        @builtin(local_invocation_id) local_id : vec3<u32>";
+              "        @builtin(local_invocation_id) local_id : vec3<u32>,\n"
+              "        @builtin(subgroup_invocation_id) sg_id : u32,\n"
+              "        @builtin(subgroup_size) sg_size : u32";
   if (!is_1d_dispatch) {
     body_ss_ << ",\n"
                 "        @builtin(num_workgroups) num_workgroups : vec3<u32>";

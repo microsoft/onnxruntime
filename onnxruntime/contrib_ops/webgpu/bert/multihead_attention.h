@@ -98,6 +98,53 @@ class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
   int tile_size_;
 };
 
+class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
+ public:
+  CopyKVCacheProgram(const std::string& kernel_name, int components, bool has_past)
+      : Program{kernel_name}, components_(components), has_past_(has_past) {
+  }
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"past_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"vectorized_head_size", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  int components_;
+  bool has_past_;
+};
+
+class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
+ public:
+  FlashAttentionProgram(const std::string& kernel_name,
+                        bool has_attention_bias,
+                        int subgroup_size,
+                        int tile_size,
+                        int qkv_head_size,
+                        int qkv_num_heads)
+      : Program{kernel_name},
+      has_attention_bias_(has_attention_bias),
+      subgroup_size_(subgroup_size),
+      tile_size_(tile_size),
+      qkv_head_size_(qkv_head_size),
+      qkv_num_heads_(qkv_num_heads) {
+  }
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"new_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"alpha", ProgramUniformVariableDataType::Float32});
+
+ private:
+  bool has_attention_bias_;
+  int subgroup_size_;
+  int tile_size_;
+  int qkv_head_size_;
+  int qkv_num_heads_;
+};
+
 class MultiHeadAttention final : public WebGpuKernel {
  public:
   MultiHeadAttention(const OpKernelInfo& info);
