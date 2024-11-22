@@ -85,6 +85,10 @@ parameters:
   type: string
   default: '0'
 
+- name: OnnxRuntimeVersion
+  type: string
+  default : '1.21.0'
+
 stages:
 - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}
   dependsOn: Setup
@@ -100,8 +104,7 @@ stages:
       timeoutParameter: '--test_all_timeout 72000'
     ${{ else }}:
       timeoutParameter: ''
-    releaseVersionSuffix: ${{ replace(${{ parameters.java_artifact_id }}$[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]), '.','') }}
-    OnnxRuntimeVersion : '1.21.0'
+    onnxRuntimeReleaseVersion: $(OnnxRuntimeVersion)${{ replace($[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]), '.','') }}
   jobs:
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
     workspace:
@@ -114,8 +117,6 @@ stages:
       timeoutInMinutes: 1200
     ${{ else }}:
       timeoutInMinutes: 360
-    variables:
-      onnxRuntimeReleaseVersion: $(OnnxRuntimeVersion)$(releaseVersionSuffix)
 
     steps:
       - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
@@ -130,7 +131,7 @@ stages:
         inputs:
           targetType: 'inline'
           script: |
-            Write-Host "releaseVersionSuffix: $(releaseVersionSuffix)"
+            #Write-Host "releaseVersionSuffix: $(releaseVersionSuffix)"
             #$releaseVersion = $(OnnxRuntimeVersion) + ($(releaseVersionSuffix) -replace "\.", "")
             #Write-Host "releaseVersion: $releaseVersion"
             Write-Host "onnxRuntimeReleaseVersion: $(onnxRuntimeReleaseVersion)"
