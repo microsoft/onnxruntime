@@ -314,13 +314,20 @@ for(var k_start = 0u; k_start < uniforms.present_sequence_length; k_start+=TILE_
     }
     workgroupBarrier();
 
-    if (q_idx_global_using_wave_valid)
+    if (k_idx_global_using_wave_valid)
     {
-      for (var k_idx = 0u; k_idx < TILE_SIZE && k_idx + k_start < uniforms.present_sequence_length; k_idx++)
+      for (var q_idx = 0u; q_idx < TILE_SIZE && q_idx_start + q_idx < uniforms.new_sequence_length; q_idx++)
       {
-          computeDotProduct(wave_id, k_idx, sg_id, sg_size);
+          // Leveraging the subgroups for parallelism, compute dot product of QK.
+          // Because for the case of new_seq 1, there is a single query and context length of K
+          // we iterate over q and use the waves for K so that this step can use all the waves in
+          // in the workgroup.
+          // We validate q_idx,wave_id to be less than TILE_SIZE, computeDotProduct only needs to
+          // validate sg_id as being less than QKV_HEAD_VECTORIZED_SIZE.
+          computeDotProduct(q_idx, wave_id, sg_id, sg_size);
       }
     }
+    workgroupBarrier();
 
     let wave_lane_valid:bool = q_idx_global_using_wave_valid && sg_id < TILE_SIZE && sg_id + k_start < uniforms.present_sequence_length;
     computeSoftMax(wave_id, sg_id, wave_lane_valid);
