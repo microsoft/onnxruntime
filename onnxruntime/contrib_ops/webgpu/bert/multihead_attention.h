@@ -33,8 +33,8 @@ class TransferBSDToBNSHProgram final : public Program<TransferBSDToBNSHProgram> 
 class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
  public:
   AttentionProbsProgram(const std::string& kernel_name, bool feed_past_key, bool has_present_key,
-                        bool has_attention_bias, int tile_size, int components, bool fa_variant = false)
-      : Program{kernel_name}, feed_past_key_(feed_past_key), has_present_key_(has_present_key), has_attention_bias_(has_attention_bias), tile_size_(tile_size), components_(components), fa_variant_(fa_variant) {
+                        bool has_attention_bias, int tile_size, int components)
+      : Program{kernel_name}, feed_past_key_(feed_past_key), has_present_key_(has_present_key), has_attention_bias_(has_attention_bias), tile_size_(tile_size), components_(components) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -55,7 +55,6 @@ class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
   bool has_attention_bias_;
   int tile_size_;
   int components_;
-  bool fa_variant_;
 };
 
 class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
@@ -97,53 +96,6 @@ class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
   bool has_present_value_;
   int tile_size_;
   bool fa_variant_;
-};
-
-class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
- public:
-  CopyKVCacheProgram(const std::string& kernel_name, int components, bool has_past)
-      : Program{kernel_name}, components_(components), has_past_(has_past) {
-  }
-
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"past_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"vectorized_head_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  int components_;
-  bool has_past_;
-};
-
-class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
- public:
-  FlashAttentionProgram(const std::string& kernel_name,
-                        bool has_attention_bias,
-                        int subgroup_size,
-                        int tile_size,
-                        int qkv_head_size,
-                        int qkv_num_heads)
-      : Program{kernel_name},
-      has_attention_bias_(has_attention_bias),
-      subgroup_size_(subgroup_size),
-      tile_size_(tile_size),
-      qkv_head_size_(qkv_head_size),
-      qkv_num_heads_(qkv_num_heads) {
-  }
-
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"new_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"alpha", ProgramUniformVariableDataType::Float32});
-
- private:
-  bool has_attention_bias_;
-  int subgroup_size_;
-  int tile_size_;
-  int qkv_head_size_;
-  int qkv_num_heads_;
 };
 
 class MultiHeadAttention final : public WebGpuKernel {
