@@ -462,7 +462,7 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
                             {static_cast<uint32_t>(parameters.v_head_size_)},
                             {static_cast<uint32_t>(parameters.num_heads_)},
                             {static_cast<uint32_t>(parameters.head_size_)},
-                            {static_cast<uint32_t>(parameters.v_hidden_size_)},
+                            {static_cast<uint32_t>(parameters.v_hidden_size_ * parameters.n_reps)},
                             {static_cast<uint32_t>(past_sequence_length)},
                             {static_cast<uint32_t>(parameters.kv_sequence_length_)},
                             {static_cast<uint32_t>(seqlen_k == nullptr ? total_sequence_length : parameters.seqlen_present_kv_cache_)},
