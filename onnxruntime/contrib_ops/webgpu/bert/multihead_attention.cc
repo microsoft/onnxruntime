@@ -710,11 +710,11 @@ fn computeO(q_idx: u32, sg_id:u32, enabled:bool)
   shader.MainFunctionBody() << R"MAIN_FN(
 let head_idx = workgroup_id.x;
 // Split the composite workgroup id into actual y and subgroup id.
-let q_tile_row = u32(local_idx / sg_size);
+let wave_id = u32(local_idx / sg_size);
 
-let q_idx_global = workgroup_id.y * TILE_SIZE + q_tile_row;
-// Each invocation (q_tile_row) gets x threads (subgroup threads) and is responsible for 1 query.
-loadq(q_tile_row, q_idx_global, head_idx, sg_id, sg_size);
+let q_idx_global = workgroup_id.y * TILE_SIZE + wave_id;
+// Each invocation (wave_id) gets sg_size lanes (subgroup threads) and is responsible for 1 query.
+loadq(wave_id, q_idx_global, head_idx, sg_id, sg_size);
 max_tile[sg_id] = MIN_VALUE;
 
 for(var k_start = 0u; k_start < uniforms.present_sequence_length; k_start+=TILE_SIZE)
@@ -722,20 +722,20 @@ for(var k_start = 0u; k_start < uniforms.present_sequence_length; k_start+=TILE_
     if (sg_id < TILE_SIZE && k_start+sg_id < uniforms.present_sequence_length) {
         loadk(sg_id, k_start+sg_id, head_idx);
         loadv(sg_id, k_start+sg_id, head_idx);
-        loadAttentionBias(q_tile_row, q_idx_global, sg_id, k_start+sg_id, head_idx);
+        loadAttentionBias(wave_id, q_idx_global, sg_id, k_start+sg_id, head_idx);
     }
     workgroupBarrier();
     // Do  k_idx + k_start <= q_idx_global if we want only look past.
     for (var k_idx = 0u; k_idx < TILE_SIZE && k_idx + k_start < uniforms.present_sequence_length; k_idx++)
     {
-        computeDotProduct(q_tile_row, k_idx, sg_id, sg_size);
+        computeDotProduct(wave_id, k_idx, sg_id, sg_size);
     }
     let enabled:bool = sg_id < TILE_SIZE && sg_id + k_start < uniforms.present_sequence_length;
-    computeSoftMax(q_tile_row, sg_id, enabled);
-    computeO(q_tile_row, sg_id, enabled);
+    computeSoftMax(wave_id, sg_id, enabled);
+    computeO(wave_id, sg_id, enabled);
 }
 workgroupBarrier();
-writeo(q_tile_row, q_idx_global, head_idx, sg_id, sg_size);
+writeo(wave_id, q_idx_global, head_idx, sg_id, sg_size);
 
 )MAIN_FN";
 
@@ -747,33 +747,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                       AttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
   ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, parameters.past_sequence_length, parameters.total_sequence_length));
 
-  // // Uncomment to test CopyKVCache independent of FlashAttentionProgram.
-  // TensorShapeVector q_new_dims({parameters.batch_size, parameters.num_heads,
-  //                               parameters.sequence_length, parameters.head_size});
-  // TensorShape q_new_shape(q_new_dims);
-  // Tensor Qn = context.CreateGPUTensor(Q->DataType(), q_new_shape);
-  // ORT_RETURN_IF_ERROR(TransferBSDToBNSH(
-  //     context, parameters.num_heads, parameters.sequence_length, parameters.head_size, Q, nullptr, 0, &Qn));
-
-  // TensorShapeVector k_new_dims({parameters.batch_size, parameters.num_heads,
-  //                               parameters.kv_sequence_length, parameters.head_size});
-  // TensorShape k_new_shape(k_new_dims);
-  // Tensor Kn = context.CreateGPUTensor(K->DataType(), k_new_shape);
-  // ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.num_heads, parameters.kv_sequence_length,
-  //                                       parameters.head_size, K, nullptr, parameters.hidden_size, &Kn));
-
-  // TensorShapeVector v_new_dims({parameters.batch_size, parameters.num_heads,
-  //                               parameters.kv_sequence_length, parameters.v_head_size});
-  // TensorShape v_new_shape(v_new_dims);
-  // Tensor Vn = context.CreateGPUTensor(V->DataType(), v_new_shape);
-  // ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.num_heads, parameters.kv_sequence_length,
-  //                                       parameters.v_head_size, V, nullptr, 2 * parameters.hidden_size, &Vn));
-
-  // return ApplyAttention(&Qn, &Kn, &Vn, attention_bias, past_key, past_value, output, present_key,
-  //                         present_value, parameters, context, true);
-
-  constexpr int subgroup_size = 8;
-  constexpr int tile_size = 8;
+  constexpr int subgroup_size = 16;
+  constexpr int tile_size = 16;
   bool has_attention_bias = attention_bias != nullptr;
   FlashAttentionProgram program{"FlashAttention", has_attention_bias, subgroup_size, tile_size, parameters.head_size, parameters.num_heads};
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 4},
@@ -789,7 +764,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     std::to_string(parameters.head_size) +
     std::to_string(parameters.num_heads);
   program.SetDispatchGroupSize(parameters.num_heads, (parameters.sequence_length + tile_size - 1) / tile_size, 1)
-    .SetWorkgroupSize(subgroup_size*tile_size)
+    .SetWorkgroupSize(subgroup_size*subgroup_size)
     .CacheHint(cache_hint)
     .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length)},
                           {static_cast<uint32_t>(parameters.total_sequence_length)},
