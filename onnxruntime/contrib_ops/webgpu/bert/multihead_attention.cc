@@ -585,9 +585,6 @@ fn loadAttentionBias(q_row: u32, q_idx_global : u32, k_col: u32, k_idx_global : 
 
 fn writeo(slot: u32, o_idx_global : u32, head_idx: u32, sg_id : u32, sg_size : u32)
 {
-    if (o_idx_global >= uniforms.new_sequence_length) {
-        return;
-    }
     // Stored as float16[batch_size,sequence_length,3072]
     let offset = o_idx_global * NUM_HEADS * QKV_HEAD_VECTORIZED_SIZE + head_idx * QKV_HEAD_VECTORIZED_SIZE;
     for (var idx:u32 = sg_id; idx < QKV_HEAD_VECTORIZED_SIZE; idx += sg_size)
@@ -600,6 +597,8 @@ fn writeo(slot: u32, o_idx_global : u32, head_idx: u32, sg_id : u32, sg_size : u
 fn computeDotProduct(q_idx: u32, k_idx: u32, sg_id: u32, sg_size : u32)
 {
     var sum:vec4<q_element_t> = q_value_t(0, 0, 0, 0);
+    // idx is not initialized to sg_id to ensure uniformity because the loop uses
+    // subgroupAdd and unused lanes need to be initialized with 0 for correctness.
     for (var idx:u32 = 0; idx < QKV_HEAD_VECTORIZED_SIZE; idx+= sg_size)
     {
         var result = q_value_t(0);
@@ -613,7 +612,6 @@ fn computeDotProduct(q_idx: u32, k_idx: u32, sg_id: u32, sg_size : u32)
         }
         sum += subgroupAdd(result);
     }
-
     if (sg_id == 0)
     {
         let single_sum : q_element_t = sum.x + sum.y + sum.z + sum.w;
@@ -637,12 +635,12 @@ fn computeSoftMax(q_idx: u32, sg_id:u32, enabled:bool)
         value = exp(sub);
     }
     let sum = subgroupAdd(value);
-
     // Compute lhs term of update di prime and the compute di prime.
     let dleft = denom_tile[q_idx] * exp(max_tile[q_idx]-max_value);
     var d = dleft + sum;
     if (d == 0)
     {
+        // Avoid division by zero by setting d to a really small value.
         d = 0.0000001h;
     }
     qk_tile[q_idx][sg_id] = value / d;
@@ -714,18 +712,31 @@ for(var k_start = 0u; k_start < uniforms.present_sequence_length; k_start+=TILE_
         loadAttentionBias(wave_id, q_idx_global, sg_id, k_start+sg_id, head_idx);
     }
     workgroupBarrier();
-    // Do  k_idx + k_start <= q_idx_global if we want only look past.
-    for (var k_idx = 0u; k_idx < TILE_SIZE && k_idx + k_start < uniforms.present_sequence_length; k_idx++)
+
+    if (k_idx_global_using_wave_valid)
     {
-        computeDotProduct(wave_id, k_idx, sg_id, sg_size);
+      for (var q_idx = 0u; q_idx < TILE_SIZE && q_idx_start + q_idx < uniforms.new_sequence_length; q_idx++)
+      {
+          // Leveraging the subgroups for parallelism, compute dot product of QK.
+          // Because for the case of new_seq 1, there is a single query and context length of K
+          // we iterate over q and use the waves for K so that this step can use all the waves in
+          // in the workgroup.
+          // We validate q_idx,wave_id to be less than TILE_SIZE, computeDotProduct only needs to
+          // validate sg_id as being less than QKV_HEAD_VECTORIZED_SIZE.
+          computeDotProduct(q_idx, wave_id, sg_id, sg_size);
+      }
     }
-    let enabled:bool = sg_id < TILE_SIZE && sg_id + k_start < uniforms.present_sequence_length;
-    computeSoftMax(wave_id, sg_id, enabled);
-    computeO(wave_id, sg_id, enabled);
+    workgroupBarrier();
+
+    let wave_lane_valid:bool = q_idx_global_using_wave_valid && sg_id < TILE_SIZE && sg_id + k_start < uniforms.present_sequence_length;
+    computeSoftMax(wave_id, sg_id, wave_lane_valid);
+    computeO(wave_id, sg_id, wave_lane_valid);
 }
 workgroupBarrier();
-writeo(wave_id, q_idx_global, head_idx, sg_id, sg_size);
-
+if (q_idx_global_using_wave_valid)
+{
+  writeo(wave_id, q_idx_global, head_idx, sg_id, sg_size);
+}
 )MAIN_FN";
 
   return Status::OK();
