@@ -704,18 +704,25 @@ fn computeO(q_idx: u32, sg_id:u32, enabled:bool)
 
 )HELPER_FN";
 
-// Shader is designed to be dispatched as Dispatch(num_heads, present_seq_length / TILE_SIZE, 1)
-// QKV_HEAD_VECTORIZED_SIZE % sg_id == 0 for loadq, loadk and computeDotProduct to work right.
+// Shader is designed to be dispatched as Dispatch(num_heads, new_seq_length / TILE_SIZE, 1)
 
   shader.MainFunctionBody() << R"MAIN_FN(
 let head_idx = workgroup_id.x;
-// Split the composite workgroup id into actual y and subgroup id.
+// It is always the case that 0 <= wave_id < TILE_SIZE
+// Each wave has sg_size lanes (subgroup threads).
 let wave_id = u32(local_idx / sg_size);
 
-let q_idx_global = workgroup_id.y * TILE_SIZE + wave_id;
-// Each invocation (wave_id) gets sg_size lanes (subgroup threads) and is responsible for 1 query.
-loadq(wave_id, q_idx_global, head_idx, sg_id, sg_size);
-max_tile[sg_id] = MIN_VALUE;
+let q_idx_start = workgroup_id.y * TILE_SIZE;
+let q_idx_global = q_idx_start + wave_id;
+let q_idx_global_using_wave_valid = q_idx_global < uniforms.new_sequence_length;
+if (q_idx_global_using_wave_valid)
+{
+  loadq(wave_id, q_idx_global, head_idx, sg_id, sg_size);
+}
+if (sg_id == 0)
+{
+  max_tile[wave_id] = MIN_VALUE;
+}
 
 for(var k_start = 0u; k_start < uniforms.present_sequence_length; k_start+=TILE_SIZE)
 {
