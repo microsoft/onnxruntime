@@ -550,7 +550,6 @@ fn loadq(slot: u32, q_idx_global : u32, head_idx: u32, sg_id : u32, sg_size : u3
         q_tile[slot][idx] = value;
     }
 }
-
 fn loadk(slot: u32, k_idx_global : u32, head_idx: u32, sg_id: u32, sg_size: u32)
 {
     // Stored as float16[batch_size,num_heads,present_sequence_length,96]
@@ -561,7 +560,6 @@ fn loadk(slot: u32, k_idx_global : u32, head_idx: u32, sg_id: u32, sg_size: u32)
         k_tile[slot][idx] = value;
     }
 }
-
 fn loadv(slot: u32, v_idx_global : u32, head_idx: u32, sg_id: u32, sg_size: u32)
 {
     // Stored as float16[batch_size,num_heads,present_sequence_length,96]
@@ -571,7 +569,6 @@ fn loadv(slot: u32, v_idx_global : u32, head_idx: u32, sg_id: u32, sg_size: u32)
         v_tile[slot][idx] = present_value[idx+offset];
     }
 }
-
 fn loadAttentionBias(q_row: u32, q_idx_global : u32, k_col: u32, k_idx_global : u32, head_idx: u32)
 {
     // Stored as float16[batch_size,num_heads,new_seq_length,total_sequence_length]
@@ -582,7 +579,6 @@ fn loadAttentionBias(q_row: u32, q_idx_global : u32, k_col: u32, k_idx_global : 
     let offset = head_idx * uniforms.new_sequence_length * uniforms.present_sequence_length + q_idx_global * uniforms.present_sequence_length + k_idx_global;
     qk_tile[q_row][k_col] = attention_bias[offset];
 }
-
 fn writeo(slot: u32, o_idx_global : u32, head_idx: u32, sg_id : u32, sg_size : u32)
 {
     // Stored as float16[batch_size,sequence_length,3072]
@@ -593,7 +589,6 @@ fn writeo(slot: u32, o_idx_global : u32, head_idx: u32, sg_id : u32, sg_size : u
         output[offset+idx] = value;
     }
 }
-
 fn computeDotProduct(q_idx: u32, k_idx: u32, sg_id: u32, sg_size : u32)
 {
     var sum:vec4<q_element_t> = q_value_t(0, 0, 0, 0);
@@ -620,7 +615,6 @@ fn computeDotProduct(q_idx: u32, k_idx: u32, sg_id: u32, sg_size : u32)
         qk_tile[q_idx][k_idx] += value;
     }
 }
-
 fn computeSoftMax(q_idx: u32, sg_id:u32, enabled:bool)
 {
     var x = MIN_VALUE;
@@ -651,7 +645,6 @@ fn computeSoftMax(q_idx: u32, sg_id:u32, enabled:bool)
         o_ratio[q_idx] = dleft / d;
     }
 }
-
 fn computeO(q_idx: u32, sg_id:u32, enabled:bool)
 {
     var attn = q_element_t(0);
@@ -673,7 +666,6 @@ fn computeO(q_idx: u32, sg_id:u32, enabled:bool)
         }
     }
 }
-
 )HELPER_FN";
 
 // Shader is designed to be dispatched as Dispatch(num_heads, new_sequence_length / TILE_SIZE, 1)
@@ -696,7 +688,6 @@ if (sg_id == 0)
 {
   max_tile[wave_id] = MIN_VALUE;
 }
-
 for(var k_start = 0u; k_start < uniforms.present_sequence_length; k_start+=TILE_SIZE)
 {
     let k_idx_global = k_start+wave_id;
@@ -712,7 +703,6 @@ for(var k_start = 0u; k_start < uniforms.present_sequence_length; k_start+=TILE_
         loadAttentionBias(wave_id, q_idx_global, sg_id, k_start+sg_id, head_idx);
     }
     workgroupBarrier();
-
     if (k_idx_global_using_wave_valid)
     {
       for (var q_idx = 0u; q_idx < TILE_SIZE && q_idx_start + q_idx < uniforms.new_sequence_length; q_idx++)
