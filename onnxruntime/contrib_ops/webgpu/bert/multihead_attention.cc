@@ -537,12 +537,8 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                     << "var<workgroup> o_ratio : array<q_element_t, TILE_SIZE>; // 2 * 8 = 16\n";
 
   shader.AdditionalImplementation() << R"HELPER_FN(
-
 fn loadq(slot: u32, q_idx_global : u32, head_idx: u32, sg_id : u32, sg_size : u32)
 {
-    if (q_idx_global >= uniforms.new_sequence_length) {
-        return;
-    }
     // Stored as float16[batch_size,sequence_length,3072] the inputs as per onnx MHA
     // This is the layout if TransferBSDToBNSH has not been run.
     let offset = q_idx_global * (QKV_HEAD_VECTORIZED_SIZE) * NUM_HEADS + QKV_HEAD_VECTORIZED_SIZE * head_idx;
@@ -555,58 +551,36 @@ fn loadq(slot: u32, q_idx_global : u32, head_idx: u32, sg_id : u32, sg_size : u3
     }
 }
 
-fn debugKTile() -> q_value_t
+fn loadk(slot: u32, k_idx_global : u32, head_idx: u32, sg_id: u32, sg_size: u32)
 {
-    var sum_value = q_value_t(0);
-    for (var qidx:u32 = 0; qidx < TILE_SIZE; qidx++)
-    {
-        for (var idx:u32 = 0; idx < QKV_HEAD_VECTORIZED_SIZE; idx++)
-        {
-            var value = k_tile[qidx][idx];
-            sum_value += value;
-        }
-    }
-    return sum_value;
-}
-
-fn loadk(slot: u32, k_idx_global : u32, head_idx: u32)
-{
-    if (k_idx_global >= uniforms.present_sequence_length) {
-        return;
-    }
-
     // Stored as float16[batch_size,num_heads,present_sequence_length,96]
     let offset = head_idx * uniforms.present_sequence_length * QKV_HEAD_VECTORIZED_SIZE + k_idx_global * QKV_HEAD_VECTORIZED_SIZE;
-    for (var idx:u32 = 0; idx < QKV_HEAD_VECTORIZED_SIZE; idx++)
+    for (var idx:u32 = sg_id; idx < QKV_HEAD_VECTORIZED_SIZE; idx+=sg_size)
     {
         var value = present_key[idx+offset];
         k_tile[slot][idx] = value;
     }
 }
 
-fn loadv(slot: u32, v_idx_global : u32, head_idx: u32)
+fn loadv(slot: u32, v_idx_global : u32, head_idx: u32, sg_id: u32, sg_size: u32)
 {
-    if (v_idx_global >= uniforms.present_sequence_length) {
-        return;
-    }
-
     // Stored as float16[batch_size,num_heads,present_sequence_length,96]
     let offset = head_idx * uniforms.present_sequence_length * QKV_HEAD_VECTORIZED_SIZE + v_idx_global * QKV_HEAD_VECTORIZED_SIZE;
-    for (var idx:u32 = 0; idx < QKV_HEAD_VECTORIZED_SIZE; idx ++)
+    for (var idx:u32 = sg_id; idx < QKV_HEAD_VECTORIZED_SIZE; idx+=sg_size)
     {
         v_tile[slot][idx] = present_value[idx+offset];
     }
 }
 
-fn loadAttentionBias(qtile_row: u32, q_idx_global : u32, k_col: u32, k_idx_global : u32, head_idx: u32)
+fn loadAttentionBias(q_row: u32, q_idx_global : u32, k_col: u32, k_idx_global : u32, head_idx: u32)
 {
     // Stored as float16[batch_size,num_heads,new_seq_length,total_sequence_length]
-    if (q_idx_global >= uniforms.new_sequence_length  || k_idx_global >= uniforms.present_sequence_length) {
-        qk_tile[qtile_row][k_col] = 0.0;
+    if (q_idx_global >= uniforms.new_sequence_length  || k_idx_global >= uniforms.present_sequence_length || k_col >= TILE_SIZE) {
+        qk_tile[q_row][k_col] = 0.0;
         return;
     }
     let offset = head_idx * uniforms.new_sequence_length * uniforms.present_sequence_length + q_idx_global * uniforms.present_sequence_length + k_idx_global;
-    qk_tile[qtile_row][k_col] = attention_bias[offset];
+    qk_tile[q_row][k_col] = attention_bias[offset];
 }
 
 fn writeo(slot: u32, o_idx_global : u32, head_idx: u32, sg_id : u32, sg_size : u32)
@@ -704,8 +678,8 @@ fn computeO(q_idx: u32, sg_id:u32, enabled:bool)
 
 )HELPER_FN";
 
-// Shader is designed to be dispatched as Dispatch(num_heads, new_seq_length / TILE_SIZE, 1)
-
+// Shader is designed to be dispatched as Dispatch(num_heads, new_sequence_length / TILE_SIZE, 1)
+// Each workgroup is responsible for a range of q values (TILE_SIZE) and visits all Ks for those q's.
   shader.MainFunctionBody() << R"MAIN_FN(
 let head_idx = workgroup_id.x;
 // It is always the case that 0 <= wave_id < TILE_SIZE
@@ -717,6 +691,7 @@ let q_idx_global = q_idx_start + wave_id;
 let q_idx_global_using_wave_valid = q_idx_global < uniforms.new_sequence_length;
 if (q_idx_global_using_wave_valid)
 {
+  // Each invocation (wave_id) gets lane threads (subgroup threads) and is responsible for 1 query.
   loadq(wave_id, q_idx_global, head_idx, sg_id, sg_size);
 }
 if (sg_id == 0)
@@ -726,9 +701,16 @@ if (sg_id == 0)
 
 for(var k_start = 0u; k_start < uniforms.present_sequence_length; k_start+=TILE_SIZE)
 {
-    if (sg_id < TILE_SIZE && k_start+sg_id < uniforms.present_sequence_length) {
-        loadk(sg_id, k_start+sg_id, head_idx);
-        loadv(sg_id, k_start+sg_id, head_idx);
+    let k_idx_global = k_start+wave_id;
+    let k_idx_global_using_wave_valid = k_idx_global < uniforms.present_sequence_length;
+    if (k_idx_global_using_wave_valid) {
+        // Leveraging the subgroup lanes for parallelism, load into slot wave_id
+        // K/V values from k_start+wave_id.
+        loadk(wave_id, k_idx_global, head_idx, sg_id, sg_size);
+        loadv(wave_id, k_idx_global, head_idx, sg_id, sg_size);
+        // Next, we want for every q row (wave_id) to populate bias for new sequence length
+        // (k_start+sg_id). loadAttentionBias handles range checking q_idx_global,
+        // and sg_id, (k_start+sg_id).
         loadAttentionBias(wave_id, q_idx_global, sg_id, k_start+sg_id, head_idx);
     }
     workgroupBarrier();
