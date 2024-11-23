@@ -819,7 +819,6 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
 
   if (parameters.batch_size == 1 &&
     bias == nullptr &&
-    past_key != nullptr && past_value != nullptr && past_key->SizeInBytes() > 0 && past_value->SizeInBytes() > 0 &&
     present_key != nullptr && present_value != nullptr && present_key->SizeInBytes() > 0 &&
     present_value->SizeInBytes() > 0 && parameters.head_size % 4 == 0) {
     return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
