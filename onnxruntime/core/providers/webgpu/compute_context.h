@@ -41,6 +41,9 @@ class ComputeContext {
   inline const wgpu::Limits& DeviceLimits() const {
     return webgpu_context_.DeviceLimits();
   }
+  inline const uint32_t MinSubgroupSize() const {
+    return webgpu_context_.MinSubgroupSize();
+  }
 
   //
   // Get the kernel context.

@@ -55,6 +55,7 @@ class WebGpuContext final {
 
   const wgpu::AdapterInfo& AdapterInfo() const { return adapter_info_; }
   const wgpu::Limits& DeviceLimits() const { return device_limits_; }
+  uint32_t MinSubgroupSize() const { return min_subgroup_size_; }
 
   const wgpu::CommandEncoder& GetCommandEncoder() {
     if (!current_command_encoder_) {
@@ -161,6 +162,7 @@ class WebGpuContext final {
 
   wgpu::AdapterInfo adapter_info_;
   wgpu::Limits device_limits_;
+  uint32_t min_subgroup_size_ = 0;
 
   wgpu::CommandEncoder current_command_encoder_;
   wgpu::ComputePassEncoder current_compute_pass_encoder_;

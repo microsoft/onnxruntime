@@ -341,8 +341,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                       AttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
   ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, parameters.past_sequence_length, parameters.total_sequence_length));
 
-  constexpr int subgroup_size = 16;
-  constexpr int tile_size = 16;
+  const uint32_t subgroup_size = context.MinSubgroupSize();
+  const uint32_t tile_size = subgroup_size;
   bool has_attention_bias = attention_bias != nullptr;
   FlashAttentionProgram program{"FlashAttention", has_attention_bias, subgroup_size, tile_size, parameters.head_size, parameters.num_heads};
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 4},
