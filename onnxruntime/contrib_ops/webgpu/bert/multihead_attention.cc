@@ -598,10 +598,7 @@ fn computeDotProduct(q_idx: u32, k_idx: u32, sg_id: u32, sg_size : u32)
     {
         var result = q_value_t(0);
         let sg_idx = idx+sg_id;
-        // QKV_HEAD_VECTORIZED_SIZE is divisible by the subgroup size this if check is not
-        // required. Hopefully the compiler sees the first half of this if statement and
-        // removes this if instruction.
-        if (QKV_HEAD_VECTORIZED_SIZE % sg_size == 0 || sg_idx < QKV_HEAD_VECTORIZED_SIZE)
+        if (sg_idx < QKV_HEAD_VECTORIZED_SIZE)
         {
             result = q_tile[q_idx][sg_idx]*k_tile[k_idx][sg_idx];
         }
@@ -690,6 +687,7 @@ if (sg_id == 0)
 }
 for(var k_start = 0u; k_start < uniforms.present_sequence_length; k_start+=TILE_SIZE)
 {
+    workgroupBarrier();
     let k_idx_global = k_start+wave_id;
     let k_idx_global_using_wave_valid = k_idx_global < uniforms.present_sequence_length;
     if (k_idx_global_using_wave_valid) {
@@ -703,20 +701,14 @@ for(var k_start = 0u; k_start < uniforms.present_sequence_length; k_start+=TILE_
         loadAttentionBias(wave_id, q_idx_global, sg_id, k_start+sg_id, head_idx);
     }
     workgroupBarrier();
-    if (k_idx_global_using_wave_valid)
+
+    if (q_idx_global_using_wave_valid)
     {
-      for (var q_idx = 0u; q_idx < TILE_SIZE && q_idx_start + q_idx < uniforms.new_sequence_length; q_idx++)
+      for (var k_idx = 0u; k_idx < TILE_SIZE && k_idx + k_start < uniforms.present_sequence_length; k_idx++)
       {
-          // Leveraging the subgroups for parallelism, compute dot product of QK.
-          // Because for the case of new_seq 1, there is a single query and context length of K
-          // we iterate over q and use the waves for K so that this step can use all the waves in
-          // in the workgroup.
-          // We validate q_idx,wave_id to be less than TILE_SIZE, computeDotProduct only needs to
-          // validate sg_id as being less than QKV_HEAD_VECTORIZED_SIZE.
-          computeDotProduct(q_idx, wave_id, sg_id, sg_size);
+          computeDotProduct(wave_id, k_idx, sg_id, sg_size);
       }
     }
-    workgroupBarrier();
 
     let wave_lane_valid:bool = q_idx_global_using_wave_valid && sg_id < TILE_SIZE && sg_id + k_start < uniforms.present_sequence_length;
     computeSoftMax(wave_id, sg_id, wave_lane_valid);
