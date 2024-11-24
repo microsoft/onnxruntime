@@ -120,12 +120,12 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
   shader.AddOutput("output", ShaderUsage::UseUniform);
 
-  // SUBGROUP_SIZE has to be the same as sg_size. For intel this will be 8.
+  // SUBGROUP_SIZE has to be the same as sg_size. For intel this will be 16.
   // TILE_SIZE is the number of groups sharing the k_tile.
   // TILE_SIZE has to be <= SUBGROUP_SIZE. Ideal perf of computeSoftMax is when
   // TILE_SIZE == SUBGROUP_SIZE. This is a sperate constant from SUBGROUP_SIZE
   // because SUBGROUP_SIZE * TILE_SIZE has to be <= 256 as per webgpu
-  // gpu limits. For Intel this TILE_SIZE will be 8.
+  // gpu limits. For Intel this TILE_SIZE will be 16.
   // Change precision_t to be f32 below to run dotproduct/ softmax in fp32 precision.
   shader.AdditionalImplementation() << "const SUBGROUP_SIZE: u32 = " << subgroup_size_ << ";\n"
                                     << "const TILE_SIZE: u32 = " << tile_size_ << ";\n"
