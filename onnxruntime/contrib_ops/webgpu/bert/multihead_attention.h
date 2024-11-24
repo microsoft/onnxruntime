@@ -73,10 +73,11 @@ class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
   int work_group_size_;
   int components_;
 };
+
 class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
  public:
-  VxAttentionScoreProgram(const std::string& kernel_name, bool feed_past_value, bool has_present_value, int tile_size, bool fa_variant = false)
-      : Program{kernel_name}, feed_past_value_(feed_past_value), has_present_value_(has_present_value), tile_size_(tile_size), fa_variant_(fa_variant) {
+  VxAttentionScoreProgram(const std::string& kernel_name, bool feed_past_value, bool has_present_value, int tile_size)
+      : Program{kernel_name}, feed_past_value_(feed_past_value), has_present_value_(has_present_value), tile_size_(tile_size) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -95,7 +96,6 @@ class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
   bool feed_past_value_;
   bool has_present_value_;
   int tile_size_;
-  bool fa_variant_;
 };
 
 class MultiHeadAttention final : public WebGpuKernel {
