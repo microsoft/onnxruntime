@@ -129,13 +129,15 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // TILE_SIZE == SUBGROUP_SIZE. This is a sperate constant from SUBGROUP_SIZE
   // because SUBGROUP_SIZE * TILE_SIZE has to be <= 256 as per webgpu
   // gpu limits. For Intel this TILE_SIZE will be 8.
+  // Change precision_t to be f32 below to run dotproduct/ softmax in fp32 precision.
   shader.AdditionalImplementation() << "const SUBGROUP_SIZE: u32 = " << subgroup_size_ << ";\n"
                                     << "const TILE_SIZE: u32 = " << tile_size_ << ";\n"
                                     << "const VECTOR_SIZE: u32 = " << vectorization_size << ";\n"
                                     << "const QKV_HEAD_SIZE: u32 = " << qkv_head_size_ << ";\n"
                                     << "const QKV_HEAD_VECTORIZED_SIZE: u32 = QKV_HEAD_SIZE / VECTOR_SIZE;\n"
                                     << "const NUM_HEADS: u32 = " << qkv_num_heads_ << ";\n"
-                                    << "const MIN_VALUE : q_element_t = -6504.0h;\n";
+                                    << "alias precision_t = q_element_t;\n"
+                                    << "const MIN_VALUE : precision_t = precision_t(-6504.0h);\n";
 
   // Best to keep SHM usage per workgroup < 8KB. 4KB is the limit on a 48EU tigerlake
   // GPU afterwhich workgroups will be unscheduled to make space for memory.
@@ -143,10 +145,10 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                     << "var<workgroup> k_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 8 * 2 = 1.5KB.\n"
                                     << "var<workgroup> v_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 8 * 2 = 1.5KB.\n"
                                     << "var<workgroup> o_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 8 * 2 = 1.5KB.\n"
-                                    << "var<workgroup> qk_tile : array<array<q_element_t, TILE_SIZE>, TILE_SIZE>; // 8 * 2 * 8 = 128\n"
-                                    << "var<workgroup> max_tile : array<q_element_t, TILE_SIZE>; // 2 * 8 = 16\n"
-                                    << "var<workgroup> denom_tile : array<q_element_t, TILE_SIZE>; // 2 * 8 = 16\n"
-                                    << "var<workgroup> o_ratio : array<q_element_t, TILE_SIZE>; // 2 * 8 = 16\n";
+                                    << "var<workgroup> qk_tile : array<array<precision_t, TILE_SIZE>, TILE_SIZE>; // 8 * 2 * 8 = 128\n"
+                                    << "var<workgroup> max_tile : array<precision_t, TILE_SIZE>; // 2 * 8 = 16\n"
+                                    << "var<workgroup> denom_tile : array<precision_t, TILE_SIZE>; // 2 * 8 = 16\n"
+                                    << "var<workgroup> o_ratio : array<precision_t, TILE_SIZE>; // 2 * 8 = 16\n";
 
   shader.AdditionalImplementation() << R"HELPER_FN(
 fn loadq(slot: u32, q_idx_global : u32, head_idx: u32, sg_id : u32, sg_size : u32)
@@ -189,7 +191,7 @@ fn loadAttentionBias(q_row: u32, q_idx_global : u32, k_col: u32, k_idx_global : 
         return;
     }
     let offset = head_idx * uniforms.new_sequence_length * uniforms.present_sequence_length + q_idx_global * uniforms.present_sequence_length + k_idx_global;
-    qk_tile[q_row][k_col] = attention_bias[offset];
+    qk_tile[q_row][k_col] = precision_t(attention_bias[offset]);
 }
 fn writeo(slot: u32, o_idx_global : u32, head_idx: u32, sg_id : u32, sg_size : u32)
 {
@@ -203,37 +205,37 @@ fn writeo(slot: u32, o_idx_global : u32, head_idx: u32, sg_id : u32, sg_size : u
 }
 fn computeDotProduct(q_idx: u32, k_idx: u32, sg_id: u32, sg_size : u32)
 {
-    var sum:vec4<q_element_t> = q_value_t(0, 0, 0, 0);
+    var sum:vec4<precision_t> = vec4<precision_t>(0, 0, 0, 0);
     // idx is not initialized to sg_id to ensure uniformity because the loop uses
     // subgroupAdd and unused lanes need to be initialized with 0 for correctness.
     for (var idx:u32 = 0; idx < QKV_HEAD_VECTORIZED_SIZE; idx+= sg_size)
     {
-        var result = q_value_t(0);
+        var result = vec4<precision_t>(0);
         let sg_idx = idx+sg_id;
         if (sg_idx < QKV_HEAD_VECTORIZED_SIZE)
         {
-            result = q_tile[q_idx][sg_idx]*k_tile[k_idx][sg_idx];
+            result = vec4<precision_t>(q_tile[q_idx][sg_idx])*vec4<precision_t>(k_tile[k_idx][sg_idx]);
         }
         sum += subgroupAdd(result);
     }
     if (sg_id == 0)
     {
-        let single_sum : q_element_t = sum.x + sum.y + sum.z + sum.w;
-        let sqrt_dk = q_element_t(uniforms.alpha);
+        let single_sum : precision_t = sum.x + sum.y + sum.z + sum.w;
+        let sqrt_dk = precision_t(uniforms.alpha);
         let value = single_sum * sqrt_dk;
         qk_tile[q_idx][k_idx] += value;
     }
 }
 fn computeSoftMax(q_idx: u32, sg_id:u32, enabled:bool)
 {
-    var x = MIN_VALUE;
+    var x : precision_t = MIN_VALUE;
     if (enabled){
         x = qk_tile[q_idx][sg_id];
     }
     var max_value = subgroupMax(x);
     max_value = max(max_tile[q_idx], max_value);
     let sub = x - max_value;
-    var value:q_element_t = 0;
+    var value:precision_t = 0;
     if (enabled) {
         value = exp(sub);
     }
@@ -244,7 +246,7 @@ fn computeSoftMax(q_idx: u32, sg_id:u32, enabled:bool)
     if (d == 0)
     {
         // Avoid division by zero by setting d to a really small value.
-        d = 0.0000001h;
+        d = precision_t(0.0000001h);
     }
     qk_tile[q_idx][sg_id] = value / d;
     if (sg_id == 0)
@@ -256,22 +258,22 @@ fn computeSoftMax(q_idx: u32, sg_id:u32, enabled:bool)
 }
 fn computeO(q_idx: u32, sg_id:u32, enabled:bool)
 {
-    var attn = q_element_t(0);
+    var attn = precision_t(0);
     if (enabled)
     {
       attn = qk_tile[q_idx][sg_id];
     }
     for (var i:u32 = 0; i < QKV_HEAD_VECTORIZED_SIZE; i++)
     {
-        let val = v_tile[sg_id][i];
+        let val = vec4<precision_t>(v_tile[sg_id][i]);
         var intermediate = attn * val;
         let sum = subgroupAdd(intermediate);
         if (sg_id == 0)
         {
             let o_ratio = o_ratio[q_idx];
-            let old_o = o_tile[q_idx][i];
+            let old_o = vec4<precision_t>(o_tile[q_idx][i]);
             let new_o = ( o_ratio * old_o) +  sum;
-            o_tile[q_idx][i] = new_o;
+            o_tile[q_idx][i] = q_value_t(new_o);
         }
     }
 }
