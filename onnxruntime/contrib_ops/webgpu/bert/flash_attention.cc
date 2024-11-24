@@ -1,11 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <stdio.h>
-#include <cstdint>
-#include <functional>
-#include <future>
-
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 #include "contrib_ops/webgpu/bert/flash_attention.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
@@ -22,23 +17,23 @@ namespace contrib {
 namespace webgpu {
 
 Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
-   // Expectations are
-   //    qkv have same number of heads and hidden dimension (head size).
-   //    qkv are in BSNH format.
-   //            B - batch size but shader only supports batch_size 1.
-   //            S - current sequence length but shader supports only S = 1.
-   //            N - number of heads.
-   //            H - head size or hidden dimension for each qkv head.
-   //  KV cache is stored as BN(total_sequence_length)H
-   //  Attention bias is in BN(total_sequence_length)
-   shader.AddInput("key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-   shader.AddInput("value", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-   if (has_past_) {
-     shader.AddInput("past_key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-     shader.AddInput("past_value", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-   }
-   shader.AddOutput("present_key", ShaderUsage::UseUniform);
-   shader.AddOutput("present_value", ShaderUsage::UseUniform);
+  // Expectations are
+  //    qkv have same number of heads and hidden dimension (head size).
+  //    qkv are in BSNH format.
+  //            B - batch size but shader only supports batch_size 1.
+  //            S - current sequence length but shader supports only S = 1.
+  //            N - number of heads.
+  //            H - head size or hidden dimension for each qkv head.
+  //  KV cache is stored as BN(total_sequence_length)H
+  //  Attention bias is in BN(total_sequence_length)
+  shader.AddInput("key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  shader.AddInput("value", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  if (has_past_) {
+    shader.AddInput("past_key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+    shader.AddInput("past_value", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  }
+  shader.AddOutput("present_key", ShaderUsage::UseUniform);
+  shader.AddOutput("present_value", ShaderUsage::UseUniform);
 
   shader.MainFunctionBody() << "let headIdx = workgroup_id.z;\n"
                 << "let kIdx = workgroup_id.x;\n"
@@ -73,7 +68,9 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, AttentionParame
                              const Tensor* K, const Tensor* past_key, Tensor* present_key,
                              const Tensor* V, const Tensor* past_value, Tensor* present_value,
                              int past_sequence_length, int total_sequence_length) {
-
+  // CopyKVCache takes past key/value and current key/value and copies them to present key and value.
+  // This makes it so that FlashAttention only needs to look at present key and value, and saves
+  // number of input buffers in the shader, which we run out of (<=8) without this optimization.
   const int components = parameters.head_size % 4 == 0 ? 4 : (parameters.head_size % 2 == 0 ? 2 : 1);
   bool has_past = (past_sequence_length != 0);
   CopyKVCacheProgram program{"CopyKVCache", components, has_past};
@@ -141,14 +138,15 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   // Best to keep SHM usage per workgroup < 8KB. 4KB is the limit on a 48EU tigerlake
   // GPU afterwhich workgroups will be unscheduled to make space for memory.
-  shader.AdditionalImplementation() << "var<workgroup> q_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 8 * 2 = 1.5KB.\n"
-                                    << "var<workgroup> k_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 8 * 2 = 1.5KB.\n"
-                                    << "var<workgroup> v_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 8 * 2 = 1.5KB.\n"
-                                    << "var<workgroup> o_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 8 * 2 = 1.5KB.\n"
-                                    << "var<workgroup> qk_tile : array<array<precision_t, TILE_SIZE>, TILE_SIZE>; // 8 * 2 * 8 = 128\n"
-                                    << "var<workgroup> max_tile : array<precision_t, TILE_SIZE>; // 2 * 8 = 16\n"
-                                    << "var<workgroup> denom_tile : array<precision_t, TILE_SIZE>; // 2 * 8 = 16\n"
-                                    << "var<workgroup> o_ratio : array<precision_t, TILE_SIZE>; // 2 * 8 = 16\n";
+  shader.AdditionalImplementation() << ""
+    << "var<workgroup> q_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 8 * 2 = 1.5KB.\n"
+    << "var<workgroup> k_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 8 * 2 = 1.5KB.\n"
+    << "var<workgroup> v_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 8 * 2 = 1.5KB.\n"
+    << "var<workgroup> o_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 8 * 2 = 1.5KB.\n"
+    << "var<workgroup> qk_tile : array<array<precision_t, TILE_SIZE>, TILE_SIZE>; // 8 * 2 * 8 = 128\n"
+    << "var<workgroup> max_tile : array<precision_t, TILE_SIZE>; // 2 * 8 = 16\n"
+    << "var<workgroup> denom_tile : array<precision_t, TILE_SIZE>; // 2 * 8 = 16\n"
+    << "var<workgroup> o_ratio : array<precision_t, TILE_SIZE>; // 2 * 8 = 16\n";
 
   shader.AdditionalImplementation() << R"HELPER_FN(
 fn loadq(slot: u32, q_idx_global : u32, head_idx: u32, sg_id : u32, sg_size : u32)
@@ -246,6 +244,8 @@ fn computeSoftMax(q_idx: u32, sg_id:u32, enabled:bool)
     if (d == 0)
     {
         // Avoid division by zero by setting d to a really small value.
+        // Removing this protection has had no negative effect on any
+        // of the prompts tried so far. This is a safety net.
         d = precision_t(0.0000001h);
     }
     qk_tile[q_idx][sg_id] = value / d;
@@ -281,6 +281,9 @@ fn computeO(q_idx: u32, sg_id:u32, enabled:bool)
 
 // Shader is designed to be dispatched as Dispatch(num_heads, new_sequence_length / TILE_SIZE, 1)
 // Each workgroup is responsible for a range of q values (TILE_SIZE) and visits all Ks for those q's.
+// Each workgroup has TILE_SIZE waves, with each wave having subgroup size number of lanes (threads).
+// Synchronization between lanes in a wave is free, with various subgroup* functions, and this shader
+// uses that. Synchronization beween waves requires calling workgroupBarrier.
   shader.MainFunctionBody() << R"MAIN_FN(
 let head_idx = workgroup_id.x;
 // It is always the case that 0 <= wave_id < TILE_SIZE
@@ -301,6 +304,7 @@ if (sg_id == 0)
 }
 for(var k_start = 0u; k_start < uniforms.present_sequence_length; k_start+=TILE_SIZE)
 {
+    // Insert barrier before updating shared memory the workgroup shares.
     workgroupBarrier();
     let k_idx_global = k_start+wave_id;
     let k_idx_global_using_wave_valid = k_idx_global < uniforms.present_sequence_length;
@@ -314,21 +318,23 @@ for(var k_start = 0u; k_start < uniforms.present_sequence_length; k_start+=TILE_
         // and sg_id, (k_start+sg_id).
         loadAttentionBias(wave_id, q_idx_global, sg_id, k_start+sg_id, head_idx);
     }
+    // Insert barrier before workgroup starts reading the shared memory.
     workgroupBarrier();
 
     if (k_idx_global_using_wave_valid)
     {
+      // Iterate over Q rather than K because for the case of new_seq 1, there is a single query
+      // and context length of K by iterating over Q using the waves for K, this step can use all
+      // the waves in the workgroup, instead of leaving them idle.
       for (var q_idx = 0u; q_idx < TILE_SIZE && q_idx_start + q_idx < uniforms.new_sequence_length; q_idx++)
       {
           // Leveraging the subgroups for parallelism, compute dot product of QK.
-          // Because for the case of new_seq 1, there is a single query and context length of K
-          // we iterate over q and use the waves for K so that this step can use all the waves in
-          // in the workgroup.
           // We validate q_idx,wave_id to be less than TILE_SIZE, computeDotProduct only needs to
           // validate sg_id as being less than QKV_HEAD_VECTORIZED_SIZE.
           computeDotProduct(q_idx, wave_id, sg_id, sg_size);
       }
     }
+    // Insert barrier before SoftMax reads the dot product values across K.
     workgroupBarrier();
 
     let wave_lane_valid:bool = q_idx_global_using_wave_valid && sg_id < TILE_SIZE && sg_id + k_start < uniforms.present_sequence_length;

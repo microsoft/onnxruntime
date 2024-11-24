@@ -1,11 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <stdio.h>
-#include <cstdint>
-#include <functional>
-#include <future>
-
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 #include "contrib_ops/webgpu/bert/flash_attention.h"
 #include "contrib_ops/webgpu/bert/multihead_attention.h"
@@ -178,7 +173,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
   const int components = parameters.head_size % 4 == 0 ? 4 : (parameters.head_size % 2 == 0 ? 2 : 1);
 
   AttentionProbsProgram program{"AttentionProbs", feed_past_key, has_present_key, has_attention_bias, tile_size,
-                              components};
+                                components};
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, components},
                      {K, ProgramTensorMetadataDependency::TypeAndRank, components}});
   if (feed_past_key) {
