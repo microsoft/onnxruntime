@@ -114,7 +114,7 @@ int TEST_MAIN(int argc, char** argv) {
   }
 
   // TODO: Fix the C API issue
-  ortenv_teardown(); // If we don't do this, it will crash
+  ortenv_teardown();  // If we don't do this, it will crash
 
 #ifndef USE_ONNXRUNTIME_DLL
   // make memory leak checker happy
