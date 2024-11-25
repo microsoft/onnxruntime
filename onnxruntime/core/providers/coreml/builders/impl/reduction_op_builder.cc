@@ -10,6 +10,10 @@
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/shared/utils/utils.h"
 
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
+
 namespace onnxruntime {
 namespace coreml {
 
@@ -128,6 +132,17 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInpu
       (node.OpType() == "ReduceMax" || node.OpType() == "ReduceMin" || node.OpType() == "ReduceProd")) {
     return false;
   }
+
+#if defined(TARGET_OS_IOS) && defined(TARGET_CPU_X86_64)
+  // to pass https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=1563483&view=logs&j=f7cc61a9-cc70-56e7-b06c-4668ca17e426
+  // ReductionOpTest.ReduceSum_half_bert
+  int32_t input_type;
+  GetType(input, input_type, logger);
+  if (node.OpType() == "ReduceSum" && input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16){
+    return false;
+  }
+#endif
+
   NodeAttrHelper helper(node);
 
   // noop_with_empty_axes defaults to false and is only available in newer opsets where 'axes' is an optional input
