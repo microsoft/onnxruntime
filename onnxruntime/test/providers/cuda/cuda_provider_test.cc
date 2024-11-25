@@ -11,7 +11,7 @@ ProviderInfo_CUDA& GetProviderInfo_CUDA_Test();
 
 namespace test {
 namespace cuda {
-TEST(CUDA_EP_Unittest, All) {
+TEST(CudaEpUnittest, All) {
   onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::GetProviderInfo_CUDA_Test();
   ep.TestAll();
 }

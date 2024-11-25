@@ -230,7 +230,7 @@ void testPrepack(int rows, int columns) {
 }
 
 // TODO: code runs on CPU, but this is for sm80 only, maybe enable only when test on sm80
-TEST(BlkQ4_GEMM, PrepackSm80Test) {
+TEST(CudaEpBlkQ4_GEMM, PrepackSm80Test) {
   Status status = onnxruntime::cuda::test::sm80_supported();
   if (!status.IsOK()) {
     // skip the test if sm80 is not supported
@@ -263,7 +263,7 @@ TEST(BlkQ4_GEMM, PrepackSm80Test) {
   testPrepack<true, false>(256, 256);
 }
 
-TEST(BlkQ4_GEMM, Sm80RowBlockingTest) {
+TEST(CudaEpBlkQ4_GEMM, Sm80RowBlockingTest) {
   Status status = onnxruntime::cuda::test::sm80_supported();
   if (!status.IsOK()) {
     // skip the test if sm80 is not supported
@@ -292,7 +292,7 @@ TEST(BlkQ4_GEMM, Sm80RowBlockingTest) {
   onnxruntime::cuda::test::run_blkq4_gemm<64, false, false, true>(256, 1024, 576);
 }
 
-TEST(BlkQ4_GEMM, Sm80ColBlockingTest) {
+TEST(CudaEpBlkQ4_GEMM, Sm80ColBlockingTest) {
   Status status = onnxruntime::cuda::test::sm80_supported();
   if (!status.IsOK()) {
     // skip the test if sm80 is not supported
@@ -305,7 +305,7 @@ TEST(BlkQ4_GEMM, Sm80ColBlockingTest) {
   onnxruntime::cuda::test::run_blkq4_gemm<64, true, false, true>(256, 1024, 576);
 }
 
-TEST(BlkQ4_GEMM, Sm80SmallMTest) {
+TEST(CudaEpBlkQ4_GEMM, Sm80SmallMTest) {
   Status status = onnxruntime::cuda::test::sm80_supported();
   if (!status.IsOK()) {
     // skip the test if sm80 is not supported
@@ -326,7 +326,7 @@ TEST(BlkQ4_GEMM, Sm80SmallMTest) {
   onnxruntime::cuda::test::run_blkq4_gemm<64, true, true, true>(16, 1024, 576);
 }
 
-TEST(BlkQ4_GEMM, Sm80SmallTileKernelTest) {
+TEST(CudaEpBlkQ4_GEMM, Sm80SmallTileKernelTest) {
   Status status = onnxruntime::cuda::test::sm80_supported();
   if (!status.IsOK()) {
     // skip the test if sm80 is not supported

@@ -11,7 +11,7 @@
 namespace onnxruntime {
 namespace test {
 
-TEST(AllocatorTest, CUDAAllocatorTest) {
+TEST(CudaEpAllocatorTest, CUDAAllocatorTest) {
   OrtDevice::DeviceId cuda_device_id = 0;
 
   // ensure CUDA device is available.
@@ -77,7 +77,7 @@ TEST(AllocatorTest, CUDAAllocatorTest) {
 }
 
 // test that we fallback to smaller allocations if the growth of the arena exceeds the available memory
-TEST(AllocatorTest, CUDAAllocatorFallbackTest) {
+TEST(CudaEpAllocatorTest, CUDAAllocatorFallbackTest) {
   OrtDevice::DeviceId cuda_device_id = 0;
 
   size_t free = 0;

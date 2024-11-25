@@ -41,7 +41,7 @@ void ComputeTop1Reference(const std::vector<float>& values,
   }
 }
 
-TEST(TestGreedySearch, TopOne) {
+TEST(CudaEpTestGreedySearch, TopOne) {
   int32_t batch_size = 4;
   int32_t vocab_size = 50257;
   int32_t batch_x_vocab = batch_size * vocab_size;
