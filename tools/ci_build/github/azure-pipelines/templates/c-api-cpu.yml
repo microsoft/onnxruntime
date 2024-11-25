@@ -201,6 +201,7 @@ stages:
 
 - stage: Jar_Packaging
   dependsOn:
+  - Setup
   - Linux_C_API_Packaging_CPU
   - MacOS_C_API_Package_Publish
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
@@ -267,6 +268,8 @@ stages:
         failOnStderr: true
         showWarnings: true
         workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
+      env:
+        ReleaseVersionSuffix: $(ReleaseVersionSuffix)
 
     - template: jar-esrp-dll.yml
       parameters:
