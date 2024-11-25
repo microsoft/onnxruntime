@@ -6,10 +6,4 @@
     xmlns:local="clr-namespace:Microsoft.ML.OnnxRuntime.Tests.MAUI"
     Shell.FlyoutBehavior="Disabled"
     Title="Microsoft.ML.OnnxRuntime.Tests.MAUI">
-
-    <ShellContent
-        Title="Home"
-        ContentTemplate="{DataTemplate local:MainPage}"
-        Route="MainPage" />
-
 </Shell>
