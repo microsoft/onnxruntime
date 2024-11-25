@@ -19,6 +19,9 @@ namespace webnn {
 class CumSumOpBuilder : public BaseOpBuilder {
   // Add operator related.
 
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
@@ -30,6 +33,12 @@ class CumSumOpBuilder : public BaseOpBuilder {
 };
 
 // Add operator related.
+
+void CumSumOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  // Skip axis.
+  model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
+}
+
 Status CumSumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                               const Node& node,
                                               const logging::Logger& logger) const {
@@ -39,10 +48,15 @@ Status CumSumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get input shape");
   const auto input_rank = input_shape.size();
 
-  NodeAttrHelper helper(node);
-  int64_t axis = helper.Get("axis", 0);
+  const auto& initializers = model_builder.GetInitializerTensors();
+  const std::string axis_name = GetTensorName(input_defs, 1);
+  const auto axis_tensor = *initializers.at(axis_name);
+  std::vector<uint8_t> unpacked_tensor;
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(axis_tensor, unpacked_tensor));
+  auto axis = *reinterpret_cast<int64_t*>(unpacked_tensor.data());
   axis = HandleNegativeAxis(axis, input_rank);
 
+  NodeAttrHelper helper(node);
   const auto exclusive = helper.Get("exclusive", 0);
   const auto reverse = helper.Get("reverse", 0);
 
@@ -58,7 +72,7 @@ Status CumSumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related.
-bool CumSumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
+bool CumSumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
                                         const Node& node,
                                         WebnnDeviceType /* device_type */,
                                         const logging::Logger& logger) const {
@@ -67,6 +81,13 @@ bool CumSumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger))
     return false;
+
+  const std::string axis_name = GetTensorName(input_defs, 1);
+  // Inputs contain optional 'axis' input.
+  if (!Contains(initializers, axis_name)) {
+    LOGS(logger, VERBOSE) << "The axis must be a constant initializer.";
+    return false;
+  }
 
   return true;
 }
