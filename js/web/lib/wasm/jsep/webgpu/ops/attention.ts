@@ -1038,6 +1038,7 @@ const createFlashAttentionV2ProgramInfo = (
     { type: DataType.uint32, data: v.dims[1] },
     { type: DataType.uint32, data: v.dims[3] },
     { type: DataType.uint32, data: d },
+    { type: DataType.uint32, data: tC },
     { type: DataType.float, data: alpha },
   ];
 
@@ -1061,6 +1062,7 @@ const createFlashAttentionV2ProgramInfo = (
       { name: 'headNum', type: 'u32' },
       { name: 'headSize', type: 'u32' },
       { name: 'd', type: 'u32' },
+      { name: 'tC', type: 'u32' },
       { name: 'alpha', type: 'f32' as UniformDataElementType },
     ];
 
@@ -1076,27 +1078,27 @@ const createFlashAttentionV2ProgramInfo = (
     var l_i_j = ${type}(0);
     var m_i_j = ${type === 'f32' ? 'f32(-3.402823e+38f)' : 'f16(-65504)'};
 
-    for (var tile = 0; tile < ${numTiles}; tile++) {
-      Q_i[local_id.y][u32(${workgroupSize[0]} * tile) + local_id.x] = Q[offset + local_id.y * uniforms.d + u32(${workgroupSize[0]} * tile) + local_id.x];
+    for (var tile: u32 = 0; tile < ${numTiles}; tile++) {
+      Q_i[local_id.y][${workgroupSize[0]} * tile + local_id.x] = Q[offset + local_id.y * uniforms.d + ${workgroupSize[0]} * tile + local_id.x];
     }
 
-    for (var j = 0; j < ${tC}; j++) {
+    for (var j: u32 = 0; j < uniforms.tC; j++) {
       var acc : array<${type}, ${colsPerThread}>;
 
-      let kvOffset = (workgroup_id.z * uniforms.batchOffset + workgroup_id.y * uniforms.headOffset) / ${components} + u32(j * ${bC}) * uniforms.d;
-      for (var tile = 0; tile < ${numTiles}; tile++) {
-        KV_j[local_id.y][local_id.x] = K[kvOffset + local_id.y * uniforms.d + local_id.x + u32(tile * 8)];
+      let kvOffset = (workgroup_id.z * uniforms.batchOffset + workgroup_id.y * uniforms.headOffset) / ${components} + j * ${bC} * uniforms.d;
+      for (var tile: u32 = 0; tile < ${numTiles}; tile++) {
+        KV_j[local_id.y][local_id.x] = K[kvOffset + local_id.y * uniforms.d + local_id.x + tile * ${workgroupSize[0]}];
         workgroupBarrier();
-        for (var col = 0; col < ${colsPerThread}; col++) {
-          for (var k = 0; k < ${workgroupSize[0]}; k++) {
-            acc[col] += dot(Q_i[local_id.y][k + tile * 8], KV_j[local_id.x + u32(col * 8)][k]);
+        for (var col: u32 = 0; col < ${colsPerThread}; col++) {
+          for (var k: u32 = 0; k < ${workgroupSize[0]}; k++) {
+            acc[col] += dot(Q_i[local_id.y][k + tile * ${workgroupSize[0]}], KV_j[local_id.x + col * ${workgroupSize[0]}][k]);
           }
         }
         workgroupBarrier();
       }
 
-      for (var col = 0; col < ${colsPerThread}; col++) {
-        S_i_j[local_id.y][u32(col * 8) + local_id.x] = acc[col] *  ${type}(uniforms.alpha);
+      for (var col: u32 = 0; col < ${colsPerThread}; col++) {
+        S_i_j[local_id.y][col * ${workgroupSize[0]} + local_id.x] = acc[col] *  ${type}(uniforms.alpha);
       }
 
       workgroupBarrier();
@@ -1111,18 +1113,18 @@ const createFlashAttentionV2ProgramInfo = (
         O_i[o] *= exp_j_j_1;
       }
 
-      for (var tile = 0; tile < ${numTiles}; tile++) {
-        KV_j[local_id.y][local_id.x] = V[kvOffset + local_id.y * uniforms.d + local_id.x + u32(tile * 8)];
+      for (var tile: u32 = 0; tile < ${numTiles}; tile++) {
+        KV_j[local_id.y][local_id.x] = V[kvOffset + local_id.y * uniforms.d + local_id.x + tile * ${workgroupSize[0]}];
         workgroupBarrier();
 
-        for (var d = 0; d < ${bC}; d++) {
+        for (var d: u32 = 0; d < ${bC}; d++) {
           let p_i_j = exp(S_i_j[local_id.y][d] - m_i_j);
           if (tile == 0) {
             l_i_j += p_i_j;
           }
 
-          for (var col = 0; col < ${colsPerThread}; col++) {
-            let v_i_j = KV_j[d][(u32(8 * col) + local_id.x) / 4][(u32(8 * col) + local_id.x) % 4];
+          for (var col: u32 = 0; col < ${colsPerThread}; col++) {
+            let v_i_j = KV_j[d][(${workgroupSize[0]} * col + local_id.x) / 4][(${workgroupSize[0]} * col + local_id.x) % 4];
             O_i[col * ${numTiles} + tile] += p_i_j * v_i_j;
           }
         }
@@ -1130,11 +1132,11 @@ const createFlashAttentionV2ProgramInfo = (
       }
     }
 
-    let outputOffset = workgroup_id.z * uniforms.batchOffset + (workgroup_id.x * 32 + local_id.y) * uniforms.headNum
+    let outputOffset = workgroup_id.z * uniforms.batchOffset + (workgroup_id.x * ${bR} + local_id.y) * uniforms.headNum
                        * uniforms.headSize + workgroup_id.y * uniforms.headSize + local_id.x;
-    for (var tile = 0; tile < ${numTiles}; tile++) {
-      for (var col = 0; col < ${colsPerThread}; col++) {
-        let outputIndx = outputOffset + u32(tile * ${bC}) + u32(col * 8);
+    for (var tile: u32 = 0; tile < ${numTiles}; tile++) {
+      for (var col: u32 = 0; col < ${colsPerThread}; col++) {
+        let outputIndx = outputOffset + tile * ${bC} + col * ${workgroupSize[0]};
         output[outputIndx] = O_i[col * ${numTiles} + tile] / l_i_j;
       }
     }
