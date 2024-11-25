@@ -32,9 +32,9 @@ const NodeUnit* GetReshapeNodeUnit(
     return nullptr;
   }
 
-  for (auto it = gemm_node.InputEdgesBegin(); it != gemm_node.InputEdgesEnd(); it++) {
-    if (it->GetDstArgIndex() == 0) {
-      const Node& reshape_node = it->GetNode();
+  for (auto edge = gemm_node.InputEdgesBegin(); edge != gemm_node.InputEdgesEnd(); edge++) {
+    if (edge->GetDstArgIndex() == 0) {
+      const Node& reshape_node = edge->GetNode();
       if (reshape_node.OpType() == "Reshape" && !graph_viewer.NodeProducesGraphOutput(reshape_node) &&
           reshape_node.GetOutputEdgesCount() == 1) {
         const auto it = node_to_node_unit.find(&reshape_node);
