@@ -51,7 +51,8 @@ Status ParseArguments(int argc, char* argv[], MnistParameters& params) {
         cxxopts::value<std::string>()->default_value("mnist_data"))
       ("log_dir", "The directory to write tensorboard events.",
         cxxopts::value<std::string>()->default_value(""))
-      ("use_profiler", "Collect runtime profile data during this training run.", cxxopts::value<bool>()->default_value("false"))
+      ("use_profiler", "Collect runtime profile data during this training run.",
+       cxxopts::value<bool>()->default_value("false"))
       ("use_gist", "Whether to use GIST encoding/decoding.")
       ("gist_op", "Opearator type(s) to which GIST is applied.", cxxopts::value<int>()->default_value("0"))
       ("gist_compr", "Compression type used for GIST", cxxopts::value<std::string>()->default_value("GistPack8"))
@@ -66,11 +67,12 @@ Status ParseArguments(int argc, char* argv[], MnistParameters& params) {
       ("data_parallel_size", "Data parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("horizontal_parallel_size", "Horizontal model parallel group size.", cxxopts::value<int>()->default_value("1"))
       ("pipeline_parallel_size", "Number of pipeline stages.", cxxopts::value<int>()->default_value("1"))
-      ("cut_group_info", "Specify the cutting info for graph partition (pipeline only). An example of a cut_group_info of "
-      "size two is: 1393:407-1463/1585/1707,2369:407-2439/2561/2683. Here, the cut info is split by ',', with the first "
-      "cut_info equal to 1393:407-1463/1585/1707, and second cut_info equal to 2369:407-2439/2561/2683. Each CutEdge is "
-      "seperated by ':'. If consumer nodes need to be specified, specify them after producer node with a '-' delimiter and "
-      "separate each consumer node with a '/'. ", cxxopts::value<std::vector<std::string>>()->default_value(""))
+      ("cut_group_info", "Specify the cutting info for graph partition (pipeline only). An example of a cut_group_info "
+      "of size two is: 1393:407-1463/1585/1707,2369:407-2439/2561/2683. Here, the cut info is split by ',', with the "
+      "first cut_info equal to 1393:407-1463/1585/1707, and second cut_info equal to 2369:407-2439/2561/2683. Each "
+      "CutEdge is separated by ':'. If consumer nodes need to be specified, specify them after producer node with a "
+      "'-' delimiter and separate each consumer node with a '/'. ",
+      cxxopts::value<std::vector<std::string>>()->default_value(""))
       ("evaluation_period", "How many training steps to make before making an evaluation.",
         cxxopts::value<size_t>()->default_value("1"));
   // clang-format on
@@ -301,7 +303,7 @@ int main(int argc, char* args[]) {
   }
 
   if (testData->NumSamples() == 0) {
-    printf("Warning: No data loaded - run cancelled.\n");
+    printf("Warning: No data loaded - run canceled.\n");
     return -1;
   }
 

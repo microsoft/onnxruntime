@@ -33,7 +33,7 @@ struct OpDef {
   OpDef(const std::string& type, const std::string& domain = kOnnxDomain, const int opset_version = 9)
       : type(type),
         domain(domain),
-        opset_version(opset_version){};
+        opset_version(opset_version) {};
 
   std::string type;
   std::string domain;
@@ -52,7 +52,7 @@ struct NodeDef {
                               output_args(output_args),
                               attributes(attributes),
                               name(name),
-                              priority(priority){};
+                              priority(priority) {};
 
   NodeDef(const std::string& op_type,
           const std::vector<ArgDef>& input_args,
@@ -64,7 +64,7 @@ struct NodeDef {
                               output_args(output_args),
                               attributes(attributes),
                               name(name),
-                              priority(priority){};
+                              priority(priority) {};
 
   NodeDef(const OpDef& op_def,
           const std::vector<ArgDef>& input_args,

@@ -107,11 +107,12 @@ class ModelBuilder {
   std::string_view AddConstant(std::string_view op_type, std::string_view value_type, gsl::span<const T> value,
                                std::optional<gsl::span<const int64_t>> shape = std::nullopt) {
     static_assert(std::is_same_v<T, float> ||
+                      std::is_same_v<T, MLFloat16> ||
                       std::is_same_v<T, int64_t> ||
                       std::is_same_v<T, std::string> ||
                       std::is_same_v<T, bool>,
                   // add specialization in AddConstantImpl for new types if needed
-                  "AddConstant currently supports float, int64_t, std::string and bool.");
+                  "AddConstant currently supports float, MLFloat16, int64_t, std::string and bool.");
     return AddConstantImpl(op_type, value_type, value, shape);
   }
 
@@ -120,6 +121,19 @@ class ModelBuilder {
                                std::optional<gsl::span<const int64_t>> shape = std::nullopt) {
     return AddConstant(op_type, value_type, AsSpan(value), shape);
   }
+
+  // helper to convert a span of non-const data to const
+  template <typename T>
+  std::string_view AddConstant(std::string_view op_type, std::string_view value_type, gsl::span<T> value,
+                               std::optional<gsl::span<const int64_t>> shape = std::nullopt) {
+    return AddConstant(op_type, value_type, gsl::span<const T>(value), shape);
+  }
+
+  // helper to convert a initializer to a constant
+  // by default, shape is inferred from the tensor.dims(), but can be provided to override if needed
+  std::string_view AddConstant(std::string_view op_type, std::string_view value_type,
+                               const ONNX_NAMESPACE::TensorProto& tensor,
+                               std::optional<gsl::span<const int64_t>> shape = std::nullopt);
 
   /// <summary>
   /// Add a scalar value as a 'const' operation. See AddConstant for details.
@@ -141,8 +155,17 @@ class ModelBuilder {
   // so we don't do a copy of the original initializer into the model.
   void AddInitializerToSkip(const std::string& tensor_name);
 
-  // There are some input which will not be used, add it to a list which will not
-  // be added to CoreML model, since CoreML does not like input unused
+  /// <summary>
+  /// Skip a non-initializer value, that is not used in the CoreML model, but was an input to a supported node.
+  ///
+  /// This is for a rare edge case where a value is an input to a node but is empty/unused, as the
+  /// CoreML model requires all model inputs to be consumed.
+  /// </summary>
+  /// <remarks>
+  /// The only known use case for this currently is Resize, and that is largely due to how the unit tests are
+  /// setup rather than something you'd expect to see in a real model.
+  /// See ResizeOpBuilder::AddInitializersToSkip for more details.
+  /// </remarks>
   void AddInputToSkip(const std::string& input_name);
 
   const std::string& GetUniqueName(const std::string& base_name);

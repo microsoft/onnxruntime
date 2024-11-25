@@ -67,11 +67,17 @@ endif()
 if (onnxruntime_USE_DML)
     set(NODEJS_BINDING_USE_DML "--use_dml")
 endif()
+if (onnxruntime_USE_WEBGPU)
+    set(NODEJS_BINDING_USE_WEBGPU "--use_webgpu")
+endif()
 if (onnxruntime_USE_TENSORRT)
     set(NODEJS_BINDING_USE_TENSORRT "--use_tensorrt")
 endif()
 if (onnxruntime_USE_COREML)
     set(NODEJS_BINDING_USE_COREML "--use_coreml")
+endif()
+if (onnxruntime_USE_QNN)
+    set(NODEJS_BINDING_USE_QNN "--use_qnn")
 endif()
 
 if(NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
@@ -89,8 +95,8 @@ add_custom_target(js_common_npm_ci ALL
 add_custom_target(nodejs_binding_wrapper ALL
     COMMAND ${NPM_CLI} ci
     COMMAND ${NPM_CLI} run build -- --onnxruntime-build-dir=${CMAKE_CURRENT_BINARY_DIR} --config=${CMAKE_BUILD_TYPE} --onnxruntime-generator=${CMAKE_GENERATOR}
-        --arch=${NODEJS_BINDING_ARCH} ${NODEJS_BINDING_USE_CUDA} ${NODEJS_BINDING_USE_DML} ${NODEJS_BINDING_USE_TENSORRT}
-        ${NODEJS_BINDING_USE_COREML}
+        --arch=${NODEJS_BINDING_ARCH} ${NODEJS_BINDING_USE_CUDA} ${NODEJS_BINDING_USE_DML} ${NODEJS_BINDING_USE_WEBGPU} ${NODEJS_BINDING_USE_TENSORRT}
+        ${NODEJS_BINDING_USE_COREML} ${NODEJS_BINDING_USE_QNN}
     WORKING_DIRECTORY ${JS_NODE_ROOT}
     COMMENT "Using cmake-js to build OnnxRuntime Node.js binding")
 

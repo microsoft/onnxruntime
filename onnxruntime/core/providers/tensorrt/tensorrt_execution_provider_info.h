@@ -22,7 +22,7 @@ struct TensorrtExecutionProviderInfo {
   bool has_trt_options{false};
   int max_partition_iterations{1000};
   int min_subgraph_size{1};
-  size_t max_workspace_size{1 << 30};
+  size_t max_workspace_size{0};
   bool fp16_enable{false};
   bool int8_enable{false};
   std::string int8_calibration_table_name{""};
@@ -32,6 +32,10 @@ struct TensorrtExecutionProviderInfo {
   bool dump_subgraphs{false};
   bool engine_cache_enable{false};
   std::string engine_cache_path{""};
+  bool weight_stripped_engine_enable{false};
+  std::string onnx_model_folder_path{""};
+  const void* onnx_bytestream{nullptr};
+  size_t onnx_bytestream_size{0};
   bool engine_decryption_enable{false};
   std::string engine_decryption_lib_path{""};
   bool force_sequential_engine_build{false};
@@ -55,6 +59,10 @@ struct TensorrtExecutionProviderInfo {
   std::string ep_context_file_path{""};
   int ep_context_embed_mode{0};
   std::string engine_cache_prefix{""};
+  bool engine_hw_compatible{false};
+  // There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) from TRT versions 10.0 to 10.7.
+  // TRT EP excludes DDS ops from running on TRT by default, user can override default value of trt_op_types_to_exclude with empty string to include all ops.
+  std::string op_types_to_exclude{"NonMaxSuppression,NonZero,RoiAlign"};
 
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);

@@ -73,7 +73,7 @@ void BaseTester::AddInitializers(onnxruntime::Graph& graph) {
       }
     } else {
       auto buffer_size = tensor.DataType()->Size() * shape.Size();
-      tensor_proto.set_raw_data(tensor.DataRaw(), buffer_size);
+      utils::SetRawDataInTensorProto(tensor_proto, tensor.DataRaw(), buffer_size);
     }
 
     // 4. name
@@ -428,6 +428,7 @@ bool SetEpsForAllNodes(Graph& graph,
       if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
           provider_type == onnxruntime::kTensorrtExecutionProvider ||
           provider_type == onnxruntime::kNnapiExecutionProvider ||
+          provider_type == onnxruntime::kVSINPUExecutionProvider ||
           provider_type == onnxruntime::kCoreMLExecutionProvider ||
           provider_type == onnxruntime::kDnnlExecutionProvider ||
           provider_type == onnxruntime::kQnnExecutionProvider ||
@@ -527,6 +528,17 @@ void BaseTester::Run(ExpectResult expect_result, const std::string& expected_fai
   so.execution_mode = execution_mode;
   so.use_deterministic_compute = use_determinism_;
   so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
+
+  // remove nullptr in execution_providers.
+  // it's a little ugly but we need to do this because DefaultXXXExecutionProvider() can return nullptr in Runtime.
+  // And there're many places adding DefaultXXXExecutionProvider() to execution_providers directly.
+  if (execution_providers != nullptr) {
+    execution_providers->erase(std::remove(execution_providers->begin(), execution_providers->end(), nullptr), execution_providers->end());
+    if (execution_providers->size() == 0) {
+      // In fact, no ep is needed to run
+      return;
+    }
+  }
 
   Run(so, expect_result, expected_failure_string, excluded_provider_types, run_options, execution_providers, options);
 }
@@ -649,12 +661,14 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           kAclExecutionProvider,
           kArmNNExecutionProvider,
           kNnapiExecutionProvider,
+          kVSINPUExecutionProvider,
           kRocmExecutionProvider,
           kCoreMLExecutionProvider,
           kCoreMLExecutionProviderMLProgram,
           kQnnExecutionProvider,
           kSnpeExecutionProvider,
           kXnnpackExecutionProvider,
+          kWebGpuExecutionProvider,
       };
 
       // need to special case any synthetic EP names in the exclude list
@@ -688,6 +702,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultTensorrtExecutionProvider();
         else if (provider_type == onnxruntime::kNnapiExecutionProvider)
           execution_provider = DefaultNnapiExecutionProvider();
+        else if (provider_type == onnxruntime::kVSINPUExecutionProvider)
+          execution_provider = DefaultVSINPUExecutionProvider();
         else if (provider_type == onnxruntime::kRknpuExecutionProvider)
           execution_provider = DefaultRknpuExecutionProvider();
         else if (provider_type == onnxruntime::kAclExecutionProvider)
@@ -708,6 +724,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultXnnpackExecutionProvider();
         else if (provider_type == onnxruntime::kDmlExecutionProvider)
           execution_provider = DefaultDmlExecutionProvider();
+        else if (provider_type == onnxruntime::kWebGpuExecutionProvider)
+          execution_provider = DefaultWebGpuExecutionProvider();
 
         // skip if execution provider is disabled
         if (execution_provider == nullptr)

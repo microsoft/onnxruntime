@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install --yes --no-install-recommends \
   ca-certificates \
   git \
   ninja-build \
-  openjdk-11-jdk-headless \
+  openjdk-17-jdk-headless \
   python3-dev \
   python3-numpy \
   python3-pip \
@@ -24,9 +24,9 @@ RUN apt-get update && apt-get install --yes --no-install-recommends \
   unzip lsb-release
 
 # cmake
-RUN CMAKE_VERSION=3.27.3 && \
+RUN CMAKE_VERSION=3.30.1 && \
   aria2c -q -d /tmp -o cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz \
-  --checksum=sha-256=62e7819fe0867658b6ea765a711686d637dce76cdf6eb0a6b0f1b879e0344fa7 \
+  --checksum=sha-256=ac31f077ef3378641fa25a3cb980d21b2f083982d3149a8f2eb9154f2b53696b \
   https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz && \
   tar -zxf /tmp/cmake-${CMAKE_VERSION}-linux-x86_64.tar.gz --strip=1 -C /usr
 
@@ -55,7 +55,7 @@ WORKDIR /workspace
 
 # install Android SDK and tools
 ENV ANDROID_HOME=~/android-sdk
-ENV NDK_VERSION=26.1.10909125
+ENV NDK_VERSION=27.0.12077973
 ENV ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}
 
 RUN aria2c -q -d /tmp -o cmdline-tools.zip \

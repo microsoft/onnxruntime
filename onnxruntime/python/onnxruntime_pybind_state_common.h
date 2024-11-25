@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #pragma once
@@ -23,7 +24,7 @@ struct OrtStatus {
   char msg[1];  // a null-terminated string
 };
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_TVM BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML BACKEND_CANN
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_TVM BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML BACKEND_CANN BACKEND_WEBGPU
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/provider_factory_creators.h"
@@ -65,7 +66,11 @@ struct OrtStatus {
 
 #elif OPENVINO_CONFIG_HETERO
 #define BACKEND_OPENVINO "-OPENVINO_HETERO"
+
+#elif OPENVINO_DISABLE_NPU_FALLBACK
+#define BACKEND_OPENVINO "-OPENVINO_DISABLE_NPU_FALLBACK"
 #endif
+
 #else
 #define BACKEND_OPENVINO ""
 #endif
@@ -104,6 +109,12 @@ struct OrtStatus {
 #define BACKEND_CANN "-CANN"
 #else
 #define BACKEND_CANN ""
+#endif
+
+#if USE_WEBGPU
+#define BACKEND_WEBGPU "-WEBGPU"
+#else
+#define BACKEND_WEBGPU ""
 #endif
 
 #ifdef USE_CUDA
@@ -390,6 +401,8 @@ void addIoBindingMethods(pybind11::module& m);
 
 void addSparseTensorMethods(pybind11::module& m);
 
+void addAdapterFormatMethods(pybind11::module& m);
+
 void addGlobalSchemaFunctions(pybind11::module& m);
 
 void addOpKernelSubmodule(pybind11::module& m);
@@ -435,7 +448,7 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(c
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const tvm::TvmEPOptions& info);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const char* params);
 #endif
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(bool enable_fast_math);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(

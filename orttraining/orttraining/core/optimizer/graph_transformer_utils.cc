@@ -44,7 +44,6 @@
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
-#include "core/optimizer/shape_input_merge.h"
 #include "core/optimizer/skip_layer_norm_fusion.h"
 #include "core/optimizer/slice_elimination.h"
 #include "core/optimizer/unsqueeze_elimination.h"
@@ -117,13 +116,12 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<PythonOpRewriter>()));
 #endif
 
-      // Put ConstantSharing and ShapeInputMerge before CommonSubexpressionElimination by intention as it can create
-      // more opportunities for CSE. For example, if A and B nodes consume same different args but produce same output
-      // or consume different initializers with same value, by default, CSE will not merge them.
+      // Put ConstantSharing before CommonSubexpressionElimination by intention as it can create more opportunities for
+      // CSE. For example, if A and B nodes consume different initializers with same value, by default,
+      // CSE will not merge them.
       transformers.emplace_back(std::make_unique<ConstantSharing>(compatible_eps));
-      transformers.emplace_back(std::make_unique<ShapeInputMerge>(compatible_eps));
       // LayerNormFusion must be applied before CommonSubexpressionElimination as the latter will break the pattern when 2 LayerNormFusion share the same input.
-      transformers.emplace_back(std::make_unique<LayerNormFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<LayerNormFusion>(compatible_eps, level, true));
       // Remove duplicate nodes. Must be applied before any recompute transformations.
       if (config.gelu_recompute || config.attn_dropout_recompute || config.transformer_layer_recompute) {
         transformers.emplace_back(std::make_unique<CommonSubexpressionEliminationApplyOnce>(compatible_eps));
@@ -131,7 +129,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
         transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>(compatible_eps));
       }
 
-      transformers.emplace_back(std::make_unique<GeluFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<GeluFusion>(compatible_eps, level, true));
 #if defined(USE_CUDA) || defined(USE_ROCM)
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps,
                                                                             true /* skip_device_check*/));
@@ -195,11 +193,12 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
         transformers.emplace_back(std::make_unique<UpStreamGatherGraphTransformer>(compatible_eps));
         transformers.emplace_back(std::make_unique<UpStreamReshapeGraphTransformer>(compatible_eps));
         transformers.emplace_back(std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps,
-                                                                              config.sparse_label_input_names));
+                                                                              config.print_input_density));
 #if defined(USE_CUDA) || defined(USE_ROCM)
         // Put this under CUDA/ROCM guard as it depends on PadAndUnflatten CUDA/ROCM kernel.
         // Once we have a CPU kernel for PadAndUnflatten, we can remove the guard.
-        transformers.emplace_back(std::make_unique<PaddingElimination>(compatible_eps));
+        transformers.emplace_back(std::make_unique<PaddingElimination>(compatible_eps,
+                                                                       config.print_input_density));
         transformers.emplace_back(std::make_unique<Conv1dReplacement>(compatible_eps));
 #endif
       }

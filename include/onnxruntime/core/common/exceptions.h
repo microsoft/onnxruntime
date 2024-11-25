@@ -17,13 +17,13 @@ namespace onnxruntime {
 
 class NotImplementedException : public std::logic_error {
  public:
-  explicit NotImplementedException(const char* _Message = "Function not yet implemented") noexcept : std::logic_error(_Message){};
-  explicit NotImplementedException(const std::string& _Message = "Function not yet implemented") noexcept : std::logic_error(_Message){};
+  explicit NotImplementedException(const char* _Message = "Function not yet implemented") noexcept : std::logic_error(_Message) {};
+  explicit NotImplementedException(const std::string& _Message = "Function not yet implemented") noexcept : std::logic_error(_Message) {};
 };
 
 class TypeMismatchException : public std::logic_error {
  public:
-  TypeMismatchException() noexcept : logic_error("Type mismatch"){};
+  TypeMismatchException() noexcept : logic_error("Type mismatch") {};
 };
 
 class OnnxRuntimeException : public std::exception {

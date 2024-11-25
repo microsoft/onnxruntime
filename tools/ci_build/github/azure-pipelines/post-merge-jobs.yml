@@ -1,3 +1,20 @@
+parameters:
+- name: CudaVersion
+  displayName: CUDA version
+  type: string
+  default: '12.2'
+  values:
+    - 11.8
+    - 12.2
+
+variables:
+  - template: templates/common-variables.yml
+  - name: win_trt_folder
+    ${{ if eq(parameters.CudaVersion, '11.8') }}:
+      value: ${{ variables.win_trt_folder_cuda11 }}
+    ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      value: ${{ variables.win_trt_folder_cuda12 }}
+
 stages:
 - ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
   - template: templates/web-ci.yml
@@ -206,7 +223,7 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda.bat
         buildArch: x64
-        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}" --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
@@ -226,7 +243,7 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_trt.bat
         buildArch: x64
-        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --enable_cuda_profiling --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.0.1.6.Windows10.x86_64.cuda-11.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}" --enable_cuda_profiling --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
@@ -377,7 +394,7 @@ stages:
 
     - task: UsePythonVersion@0
       inputs:
-        versionSpec: '3.8'
+        versionSpec: '3.12'
         addToPath: true
         architecture: x64
 
@@ -387,6 +404,7 @@ stages:
         script: |
           "$(Build.SourcesDirectory)/tools/android_custom_build/build_custom_android_package.py" \
             --docker_image_tag=$(dockerImageTag) \
+            --build_settings="$(Build.SourcesDirectory)/tools/ci_build/github/android/default_full_aar_build_settings.json" \
             "$(Build.BinariesDirectory)/custom_android_package"
         workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -405,35 +423,34 @@ stages:
   - job: IosDynamicFramework
     timeoutInMinutes: 120
     pool:
-      vmImage: "macOS-latest"
+      vmImage: "macOS-13"
 
     steps:
     - task: UsePythonVersion@0
       inputs:
-        versionSpec: "3.9"
+        versionSpec: "3.12"
         addToPath: true
         architecture: "x64"
 
     - template: templates/use-xcode-version.yml
-      parameters:
-        xcodeVersion: 14.2
 
     - script: |
-        pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
+        pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
       displayName: "Install Python requirements"
 
     - script: |
         python tools/ci_build/github/apple/build_apple_framework.py \
           --build_dir "$(Build.BinariesDirectory)/ios_framework" \
           --build_dynamic_framework \
-          tools/ci_build/github/apple/default_mobile_ios_framework_build_settings.json
+          tools/ci_build/github/apple/test_ios_framework_build_settings.json
       displayName: "Build iOS dynamic framework"
 
     - script: |
         python tools/ci_build/github/apple/test_apple_packages.py \
           --framework_info_file "$(Build.BinariesDirectory)/ios_framework/xcframework_info.json" \
           --c_framework_dir "$(Build.BinariesDirectory)/ios_framework/framework_out" \
-          --variant Mobile
+          --variant Full \
+          --skip_macos_test
       displayName: "Test pod with iOS framework"
 
 - stage: IosMinimalTrainingBuild
@@ -442,21 +459,19 @@ stages:
   - job: IosMinimalTrainingBuild
     timeoutInMinutes: 120
     pool:
-      vmImage: "macOS-latest"
+      vmImage: "macOS-13"
 
     steps:
     - task: UsePythonVersion@0
       inputs:
-        versionSpec: "3.9"
+        versionSpec: "3.12"
         addToPath: true
         architecture: "x64"
 
     - template: templates/use-xcode-version.yml
-      parameters:
-        xcodeVersion: 14.2
 
     - script: |
-        pip install -r tools/ci_build/github/apple/ios_packaging.requirements.txt
+        pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
       displayName: "Install Python requirements"
 
     - script: |

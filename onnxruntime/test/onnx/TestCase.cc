@@ -25,7 +25,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/common.h"
 #include "core/platform/env.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/platform/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/allocator.h"
@@ -288,12 +288,12 @@ class OnnxTestCase : public ITestCase {
  private:
   std::string test_case_name_;
   mutable std::vector<std::string> debuginfo_strings_;
-  mutable onnxruntime::OrtMutex m_;
+  mutable std::mutex m_;
 
   std::vector<std::filesystem::path> test_data_dirs_;
 
   std::string GetDatasetDebugInfoString(size_t dataset_id) const override {
-    std::lock_guard<OrtMutex> l(m_);
+    std::lock_guard<std::mutex> l(m_);
     if (dataset_id < debuginfo_strings_.size()) {
       return debuginfo_strings_[dataset_id];
     }
@@ -488,7 +488,7 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
   if (st.IsOK()) {  // has an all-in-one input file
     std::ostringstream oss;
     {
-      std::lock_guard<OrtMutex> l(m_);
+      std::lock_guard<std::mutex> l(m_);
       oss << debuginfo_strings_[id];
     }
     ORT_TRY {
@@ -503,7 +503,7 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
     }
 
     {
-      std::lock_guard<OrtMutex> l(m_);
+      std::lock_guard<std::mutex> l(m_);
       debuginfo_strings_[id] = oss.str();
     }
     return;
@@ -796,7 +796,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
       auto test_case_dir = model_info->GetDir();
       auto test_case_name_in_log = test_case_name + ORT_TSTR(" in ") + test_case_dir.native();
 
-#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_QNN)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_QNN) && !defined(USE_VSINPU)
       // to skip some models like *-int8 or *-qdq
       if ((reinterpret_cast<OnnxModelInfo*>(model_info.get()))->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
           (reinterpret_cast<OnnxModelInfo*>(model_info.get()))->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
@@ -1021,7 +1021,18 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
        {}},
       {"dequantizelinear_blocked", "blocked quantization (onnx 1.16.0) not supported", {}},
       {"quantizelinear_blocked_asymmetric", "blocked quantization (onnx 1.16.0) not supported", {}},
-      {"quantizelinear_blocked_symmetric", "blocked quantization (onnx 1.16.0) not supported", {}}});
+      {"quantizelinear_blocked_symmetric", "blocked quantization (onnx 1.16.0) not supported", {}},
+      // See PR that fixes int4 q/dq tests: https://github.com/onnx/onnx/pull/6122
+      {"dequantizelinear_int4", "Bug with model input name 'zero_point' not matching node's input name", {}},
+      {"dequantizelinear_uint4", "Bug with model input name 'zero_point' not matching node's input name", {}},
+      {"quantizelinear_int4", "Bug with model input name 'zero_point' not matching node's input name", {}},
+      {"quantizelinear_uint4", "Bug with model input name 'zero_point' not matching node's input name", {}},
+      {"qlinearmatmul_2D_int8_float16", "fp16 type ont supported by CPU EP", {}},
+      {"qlinearmatmul_2D_int8_float32", "result diff", {}},
+      {"qlinearmatmul_2D_uint8_float16", "fp16 type ont supported by CPU EP", {}},
+      {"qlinearmatmul_3D_int8_float16", "fp16 type ont supported by CPU EP", {}},
+      {"qlinearmatmul_3D_int8_float32", "result diff", {}},
+      {"qlinearmatmul_3D_uint8_float16", "fp16 type ont supported by CPU EP", {}}});
 
   // Some EPs may fail to pass some specific testcases.
   // For example TenosrRT EP may fail on FLOAT16 related testcases if GPU doesn't support float16.
@@ -1030,6 +1041,10 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
   // std::set<std::string> broken_tests_keyword_set = {};
 
   if (provider_name == "cuda") {
+#ifdef ENABLE_TRAINING_CORE
+    // cudnn frontend exception in orttraining-linux-gpu-ci-pipeline.
+    broken_tests->insert({"keras_lotus_resnet3D", "Temporarily disabled pending investigation", {}});
+#endif
 #ifdef _WIN32
     broken_tests->insert({"LSTM_Seq_lens_unpacked", "this test fails with new image since Aug 25."});
     broken_tests->insert({"bidaf", "this test fails with new image since Aug 25."});
@@ -1376,6 +1391,11 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     // expected 13.5 (41580000), got 0 (0), diff: 13.5, tol=0.0145 idx=3. 3 of 4 differ
     broken_tests->insert({"averagepool_2d_ceil", "result differs"});
 #endif
+    // These next 3 Resize tests fail on CPU backend with QNN SDK 2.22.0 due to inaccuracy.
+    // output=Y:expected 1 (3f800000), got 3 (40400000), diff: 2, tol=0.002 idx=24. 8 of 56 differ
+    broken_tests->insert({"resize_upsample_sizes_nearest", "result differs"});
+    broken_tests->insert({"resize_upsample_sizes_nearest_axes_2_3", "result differs"});
+    broken_tests->insert({"resize_upsample_sizes_nearest_axes_3_2", "result differs"});
   }
 
 #ifdef DISABLE_CONTRIB_OPS

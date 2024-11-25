@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-
+#include <filesystem>
 #include "core/common/common.h"
 #include "core/framework/op_kernel.h"
 #include "core/providers/cpu/ml/ml_common.h"
@@ -123,7 +123,7 @@ std::vector<T> GetAttribute(const OpKernelInfo& info, const std::string& name, c
   }
   const SafeInt<size_t> tensor_size(element_count);
   std::vector<T> out(tensor_size);
-  result = utils::UnpackTensor<T>(attr_tensor_proto, Path(), out.data(), tensor_size);
+  result = utils::UnpackTensor<T>(attr_tensor_proto, std::filesystem::path(), out.data(), tensor_size);
   ORT_ENFORCE(result.IsOK(), "LabelEncoder could not unpack tensor attribute ", name);
   return out;
 }
@@ -134,7 +134,7 @@ T GetDefault(const OpKernelInfo& info, const std::string& attr_name, const T& ba
   auto result = info.GetAttr("default_tensor", &attr_tensor_proto);
   if (result.IsOK() && utils::HasDataType(attr_tensor_proto)) {
     T default_value;
-    result = utils::UnpackTensor<T>(attr_tensor_proto, Path(), &default_value, 1);
+    result = utils::UnpackTensor<T>(attr_tensor_proto, std::filesystem::path(), &default_value, 1);
     ORT_ENFORCE(result.IsOK(), "LabelEncoder could not unpack default tensor ", attr_name);
     return default_value;
   } else if constexpr (std::is_same_v<T, std::string> || std::is_same_v<T, float> || std::is_same_v<T, int64_t>) {

@@ -49,7 +49,7 @@ Refer to the following links for development information:
 - \[2]: WebGPU requires Chromium v113 or later on Windows. Float16 support requires Chrome v121 or later, and Edge v122 or later.
 - \[3]: WebGPU requires Chromium v121 or later on Windows.
 - \[4]: WebGL support is in maintenance mode. It is recommended to use WebGPU for better performance.
-- \[5]: Requires to launch browser with commandline flag `--enable-experimental-web-platform-features`.
+- \[5]: Requires to launch browser with commandline flag `--enable-features=WebMachineLearningNeuralNetwork`.
 
 ### Operators
 
@@ -64,6 +64,10 @@ ONNX Runtime Web currently supports a subset of operators in [ai.onnx](https://g
 #### WebGPU backend
 
 WebGPU backend is still an experimental feature. See [webgpu-operators.md](./docs/webgpu-operators.md) for a detailed list of which ONNX operators are supported by WebGPU backend.
+
+#### WebNN backend
+
+WebNN backend is still an experimental feature. See [webnn-operators.md](./docs/webnn-operators.md) for a detailed list of which ONNX operators are supported by WebNN backend.
 
 ## License
 

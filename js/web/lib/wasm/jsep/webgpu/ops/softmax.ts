@@ -5,13 +5,21 @@
 // performance limitations when the reduced axis is long. Need to add
 // a optimized codepath for this.
 
-import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor-view';
-import {ShapeUtil} from '../../util';
-import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, ProgramInfo} from '../types';
+import { DataType } from '../../../wasm-common';
+import { TensorView } from '../../tensor-view';
+import { ShapeUtil } from '../../util';
+import { AttributeWithCacheKey, createAttributeWithCacheKey } from '../attribute-with-cache-key';
+import { ComputeContext } from '../types';
+import { createTransposeProgramInfo } from './transpose';
 
-import {getMaxComponents, inputVariable, outputVariable, ShaderHelper, sumVector, tensorTypeToWsglStorageType} from './common';
+import {
+  getMaxComponents,
+  inputVariable,
+  outputVariable,
+  ShaderHelper,
+  sumVector,
+  tensorTypeToWsglStorageType,
+} from './common';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length !== 1) {
@@ -23,23 +31,39 @@ export interface SoftmaxAttributes extends AttributeWithCacheKey {
   readonly axis: number;
 }
 
-const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttributes): ProgramInfo => {
-  const shape = input.dims;
-  const outputSize = ShapeUtil.size(shape);
-  const WG = 64;
-  let axis = attributes.axis;
-  if (axis < 0) {
-    axis = shape.length + axis;
-  }
-  if (axis < shape.length - 1) {
-    throw new Error('softmax only supports last axis for now.');
+const createSoftmaxProgramInfo = (context: ComputeContext, attributes: SoftmaxAttributes) => {
+  const input = context.inputs[0];
+  const inputShape = input.dims;
+  const outputSize = ShapeUtil.size(inputShape);
+  const inputRank = inputShape.length;
+  const axis = ShapeUtil.normalizeAxis(attributes.axis, inputRank);
+  const isTransposeRequired = axis < inputShape.length - 1;
+  let transposedInput: TensorView;
+  let perm: number[] = [];
+
+  if (isTransposeRequired) {
+    perm = Array.from({ length: inputRank }, (_, i) => i);
+    perm[axis] = inputRank - 1;
+    perm[inputRank - 1] = axis;
+
+    transposedInput = context.compute(createTransposeProgramInfo(input, perm), {
+      inputs: [input],
+      outputs: [-1],
+    })[0];
+  } else {
+    transposedInput = input;
   }
 
-  const cols = shape[axis];
+  const transposedInputShape = transposedInput.dims;
+  const cols = transposedInputShape[inputRank - 1];
   const rows = outputSize / cols;
   const components = getMaxComponents(cols);
   const packedCols = cols / components;
-
+  let WG = 64;
+  // If only one workgroup is dispatched, increase workgroupSize to improve parallelism.
+  if (rows === 1) {
+    WG = 256;
+  }
   const maxVector = (name: string, components: number) => {
     if (components === 4) {
       return `max(max(${name}.x, ${name}.y), max(${name}.z, ${name}.w))`;
@@ -51,13 +75,14 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
 
     return name;
   };
-  const x = inputVariable('x', input.dataType, input.dims, components);
-  const output = outputVariable('result', input.dataType, input.dims, components);
+  const x = inputVariable('x', transposedInput.dataType, transposedInput.dims, components);
+  const output = outputVariable('result', transposedInput.dataType, transposedInput.dims, components);
   const valueType = x.type.value;
   // 6.2.4 in wgsl spec
-  const threadMaxDecl = tensorTypeToWsglStorageType(input.dataType) === 'f32' ?
-      `var threadMax = ${valueType}(-3.402823e+38f);` :
-      `var threadMax = ${valueType}(-65504.0h);`;
+  const threadMaxDecl =
+    tensorTypeToWsglStorageType(transposedInput.dataType) === 'f32'
+      ? `var threadMax = ${valueType}(-3.402823e+38f);`
+      : `var threadMax = ${valueType}(-65504.0h);`;
   const getShaderSource = (shaderHelper: ShaderHelper) => `
       var<workgroup> rowMaxShared : ${valueType};
       var<workgroup> rowSumShared : ${valueType};
@@ -73,7 +98,7 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
         result[index] = value;
       }
       ${shaderHelper.registerUniform('packedCols', 'i32').declareVariables(x, output)}
-      ${shaderHelper.mainStart()}
+      ${shaderHelper.mainStart(WG)}
         let gindex = i32(global_idx);
         let lindex = i32(local_idx);
         const wg = ${WG};
@@ -131,22 +156,35 @@ const createSoftmaxProgramInfo = (input: TensorView, attributes: SoftmaxAttribut
           setValue(row, col, row_stride, value);
         }
       }`;
-  return {
-    name: 'Softmax',
-    shaderCache: {hint: `${components}`, inputDependencies: ['type']},
-    getRunData: () => ({
-      outputs: [{dims: shape, dataType: input.dataType}],
-      dispatchGroup: {x: rows},
-      programUniforms: [{type: DataType.int32, data: packedCols}]
-    }),
-    getShaderSource,
-  };
+  const result = context.compute(
+    {
+      name: 'Softmax',
+      // Note that in JSEP, WG size is not included in cache by default, but WebGPU EP it is.
+      shaderCache: { hint: `${components};${WG}`, inputDependencies: ['type'] },
+      getRunData: () => ({
+        outputs: [{ dims: transposedInputShape, dataType: transposedInput.dataType }],
+        dispatchGroup: { x: rows },
+        programUniforms: [{ type: DataType.int32, data: packedCols }],
+      }),
+      getShaderSource,
+    },
+    {
+      inputs: [transposedInput],
+      outputs: [isTransposeRequired ? -1 : 0],
+    },
+  )[0];
+
+  if (isTransposeRequired) {
+    context.compute(createTransposeProgramInfo(result, perm), {
+      inputs: [result],
+    });
+  }
 };
 
 export const softmax = (context: ComputeContext, attributes: SoftmaxAttributes): void => {
   validateInputs(context.inputs);
-  context.compute(createSoftmaxProgramInfo(context.inputs[0], attributes));
+  createSoftmaxProgramInfo(context, attributes);
 };
 
 export const parseSoftmaxAttributes = (attributes: Record<string, unknown>): SoftmaxAttributes =>
-    createAttributeWithCacheKey({axis: attributes.axis as number});
+  createAttributeWithCacheKey({ axis: attributes.axis as number });

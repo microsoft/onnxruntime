@@ -60,7 +60,7 @@ TrainingAgent::TrainingAgent(InferenceSession& session,
 
 TrainingAgent::~TrainingAgent() = default;
 
-common::Status TrainingAgent::RunForward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+common::Status TrainingAgent::RunForward(std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                          PartialGraphExecutionState& state, const OrtValueCachePtr& cache) {
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   inference_session_.GetMemoryProfiler().GetMemoryInfo().SetIteration(profile_step_);
@@ -74,7 +74,7 @@ common::Status TrainingAgent::RunForward(const std::vector<OrtValue>& feeds, std
   return RunCore(feeds, fetches, state, *fw_feeds_fetches_manager_, cache, partial_graph_index);
 }
 
-common::Status TrainingAgent::RunBackward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+common::Status TrainingAgent::RunBackward(std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                           PartialGraphExecutionState& state) {
   state.SetProgramCounterStart(fw_program_counter_end_);
   state.SetProgramCounterEnd(bw_program_counter_end_);
@@ -82,7 +82,7 @@ common::Status TrainingAgent::RunBackward(const std::vector<OrtValue>& feeds, st
   return RunCore(feeds, fetches, state, *bw_feeds_fetches_manager_, nullptr, partial_graph_index);
 }
 
-common::Status TrainingAgent::RunCore(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+common::Status TrainingAgent::RunCore(std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                       PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager,
                                       const OrtValueCachePtr& cache, int32_t partial_graph_index) {
   auto fetches_size = feeds_fetches_manager.GetFeedsFetchesInfo().output_names.size();
@@ -110,6 +110,7 @@ void TrainingAgent::CreateAndInitializeFeedsFetchesManager(const SessionState& s
 
 std::string TrainingAgent::GetSerializedORTModuleMemoryStat(std::string_view memory_optimization_config,
                                                             std::string_view recompute_probe_level,
+                                                            const bool return_opportunity_table,
                                                             std::map<std::string, std::pair<std::string, int>>&
                                                                 cluster_id_combinations_to_saved_symbolic_byte_map)
     const {
@@ -120,6 +121,7 @@ std::string TrainingAgent::GetSerializedORTModuleMemoryStat(std::string_view mem
       session_state.GetGraphViewer(),
       memory_optimization_config,
       recompute_probe_level,
+      return_opportunity_table,
       *inference_session_.GetLogger(),
       cluster_id_combinations_to_saved_symbolic_byte_map,
       &ortvalue_name_to_idx_map,

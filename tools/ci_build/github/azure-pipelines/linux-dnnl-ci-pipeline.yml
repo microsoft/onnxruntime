@@ -1,4 +1,5 @@
 ##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
 trigger:
   branches:
     include:
@@ -27,14 +28,6 @@ pr:
     - 'onnxruntime/core/providers/js'
 #### end trigger ####
 
-resources:
-  repositories:
-  - repository: manylinux
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
-
 jobs:
 - job: Linux_py_Wheels
   timeoutInMinutes: 180
@@ -56,6 +49,7 @@ jobs:
       Repository: onnxruntimecpubuild
 
   - task: CmdLine@2
+    displayName: 'Build and test'
     inputs:
       script: |
         mkdir -p $HOME/.onnx
@@ -68,7 +62,7 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
-            /opt/python/cp38-cp38/bin/python3.8 /onnxruntime_src/tools/ci_build/build.py \
+            /opt/python/cp310-cp310/bin/python3.10 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build \
               --config Debug Release \
               --skip_submodule_sync \

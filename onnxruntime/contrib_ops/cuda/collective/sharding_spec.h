@@ -37,7 +37,7 @@ class DeviceMesh {
   //     corresponding sharding spec is a string "S[1]S[0]".
   //     If that 2-D tensor's value is np.array([[5, 6], [7, 8]]),
   //     GPU 0/1/2/3 owns 5/7/6/8.  Below is a visualization the sharding
-  //     proccess.
+  //     process.
   //     - Start with a 2-D device mesh [[0, 1], [2, 3]] and
   //       a 2-D tensor [[5, 6], [7, 8]]
   //       - GPU: [[0, 1], [2, 3]], Tensor: [[5, 6], [7, 8]]

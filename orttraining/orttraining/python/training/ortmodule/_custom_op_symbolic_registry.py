@@ -3,13 +3,13 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import os
 from typing import Callable
 
 import torch
 import torch.onnx.symbolic_helper as sym_help
 from packaging import version
 from packaging.version import Version
-from torch.onnx import register_custom_op_symbolic
 from torch.onnx.symbolic_helper import parse_args
 
 from onnxruntime.training.utils import pytorch_type_to_onnx_dtype
@@ -69,6 +69,8 @@ class CustomOpSymbolicRegistry:
 
     @classmethod
     def register_all(cls, onnx_opset_version):
+        from torch.onnx import register_custom_op_symbolic
+
         for name, fn in cls._SYMBOLICS.items():
             # Symbolic name is in format: domain::name
             register_custom_op_symbolic(
@@ -437,7 +439,7 @@ def permute_and_reshape_tensor(
     shape_tensor,
 ):
     # If matmul_output_axes and contraction_axes are contiguous in input tensor,
-    # we can move Reshape to before Transpose, so it's possible that the Transpoase is fused to MatMul.
+    # we can move Reshape to before Transpose, so it's possible that the Transpose is fused to MatMul.
     # Otherwise, we have to Transpose first to move those axes together and then Reshape.
     is_matmul_output_axes_contiguous = is_axes_contiguous(matmul_output_axes)
     is_contraction_axes_contiguous = is_axes_contiguous(contraction_axes)
@@ -525,7 +527,7 @@ def permute_and_reshape_tensor(
 
 @register_symbolic("einsum", torch_version_end="1.13.0")
 @parse_args("s", "v")
-def einsum_pre_troch_113(g, equation, tensor_list):
+def einsum_pre_torch_113(g, equation, tensor_list):
     return einsum_internal(g, equation, tensor_list)
 
 
@@ -540,12 +542,12 @@ def einsum_internal(g, equation, tensor_list):
     num_ops = len(tensors)
     assert num_ops > 0
 
-    # Doesn't support implicit output is ellipsis or more than 2 oprands for now.
-    # Doesn't support ellipsis ('...') for now as not easy to get sizes of oprands.
+    # Doesn't support implicit output is ellipsis or more than 2 operands for now.
+    # Doesn't support ellipsis ('...') for now as not easy to get sizes of operands.
     if num_ops != 2 or equation.find("->") == -1 or "." in equation:
         return g.op("Einsum", *tensors, equation_s=equation)
 
-    # Take "ks,ksm->sm" as example. After prcoess inputs,
+    # Take "ks,ksm->sm" as example. After process inputs,
     # lhs_labels = [k,s], rhs_labels = [k,s,m], result_labels = [s,m].
     lhs_labels, rhs_labels, result_labels = parse_equation(equation)
 
@@ -969,3 +971,26 @@ def softmax(g, input, dim, dtype=None):
     softmax = g.op("Softmax", casted_input, axis_i=dim)
 
     return softmax
+
+
+ATEN_SDPA_FALLBACK = os.getenv("ORTMODULE_ATEN_SDPA_FALLBACK", None)
+if ATEN_SDPA_FALLBACK:
+    # based on the following internal PyTorch kernel for efficient attention:
+    # https://github.com/pytorch/pytorch/blob/c12a4f2e65ad41b739aab1a261e2336b4a79fcfb/aten/src/ATen/native/native_functions.yaml#L14778
+    @register_symbolic("scaled_dot_product_attention")
+    def scaled_dot_product_attention(g, query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None):
+        dropout_p_f = g.op("Cast", dropout_p, to_i=torch.onnx.TensorProtoDataType.FLOAT)
+        compute_logsumexp = g.op("Constant", value_t=torch.tensor([1], dtype=torch.bool))
+        return g.op(
+            "org.pytorch.aten::ATen",
+            query,
+            key,
+            value,
+            attn_mask,
+            compute_logsumexp,
+            dropout_p_f,
+            is_causal,
+            scale,
+            operator_s="_scaled_dot_product_efficient_attention",
+            outputs=4,
+        )[0]

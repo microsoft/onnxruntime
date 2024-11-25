@@ -20,7 +20,7 @@
 #endif
 #include "core/util/protobuf_parsing_utils.h"
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #include "core/platform/env.h"
 
@@ -81,7 +81,7 @@ Model::Model(const std::string& graph_name,
              const std::vector<ONNX_NAMESPACE::FunctionProto>& model_local_functions,
              const logging::Logger& logger,
              const ModelOptions& options)
-    : model_path_(Path::Parse(model_path)) {
+    : model_path_(model_path) {
   model_proto_.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   model_proto_.mutable_graph()->set_name(graph_name);
   model_metadata_ = model_metadata;
@@ -140,12 +140,13 @@ Model::Model(const std::string& graph_name,
     auto func_template_ptr = std::make_unique<FunctionTemplate>();
     func_template_ptr->op_schema_ = std::move(func_schema_ptr);
     func_template_ptr->onnx_func_proto_ = &func;
-    model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name()),
+    model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(),
+                                                                                                func.name()),
                                                           std::move(func_template_ptr));
   }
 
   // need to call private ctor so can't use make_shared
-  GSL_SUPPRESS(r.11)
+  GSL_SUPPRESS(r .11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), *p_domain_to_version, IrVersion(), schema_registry,
                          logger, options.strict_shape_type_inference));
 }
@@ -159,7 +160,7 @@ Model::Model(const ModelProto& model_proto, const PathString& model_path,
 Model::Model(ModelProto&& model_proto, const PathString& model_path,
              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
              const logging::Logger& logger, const ModelOptions& options)
-    : model_path_(Path::Parse(model_path)) {
+    : model_path_(model_path) {
   if (!utils::HasGraph(model_proto)) {
     ORT_THROW("ModelProto does not have a graph.");
   }
@@ -269,11 +270,13 @@ Model::Model(ModelProto&& model_proto, const PathString& model_path,
     auto func_template_ptr = std::make_unique<FunctionTemplate>();
     func_template_ptr->op_schema_ = std::move(func_schema_ptr);
     func_template_ptr->onnx_func_proto_ = &func;
-    model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(), func.name()), std::move(func_template_ptr));
+    model_local_function_templates_maps_.insert_or_assign(function_utils::GetFunctionIdentifier(func.domain(),
+                                                                                                func.name()),
+                                                          std::move(func_template_ptr));
   }
 
   // create instance. need to call private ctor so can't use make_unique
-  GSL_SUPPRESS(r.11)
+  GSL_SUPPRESS(r .11)
   graph_.reset(new Graph(*this, model_proto_.mutable_graph(), domain_to_version, IrVersion(), schema_registry,
                          logger, options.strict_shape_type_inference));
 }
@@ -378,14 +381,16 @@ ModelProto Model::ToProto() const {
   return result;
 }
 
-ModelProto Model::ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
-                                                       const PathString& file_path,
-                                                       size_t initializer_size_threshold) const {
+ModelProto Model::ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name,
+                                                       const std::filesystem::path& file_path,
+                                                       size_t initializer_size_threshold,
+                                                       const Graph::OffsetAlignmentInfo& align_info) const {
   ModelProto result(model_proto_);
   const auto& graph = *graph_;
   *(result.mutable_graph()) = graph.ToGraphProtoWithExternalInitializers(external_file_name,
                                                                          file_path,
-                                                                         initializer_size_threshold);
+                                                                         initializer_size_threshold,
+                                                                         align_info);
   return result;
 }
 
@@ -425,7 +430,7 @@ Status Model::Load(const ModelProto& model_proto,
   }
 
   // need to call private ctor so can't use make_shared
-  GSL_SUPPRESS(r.11)
+  GSL_SUPPRESS(r .11)
 
   auto status = Status::OK();
   ORT_TRY {
@@ -465,7 +470,7 @@ Status Model::Load(ModelProto&& model_proto,
   }
 
   // need to call private ctor so can't use make_shared
-  GSL_SUPPRESS(r.11)
+  GSL_SUPPRESS(r .11)
   auto status = Status::OK();
   ORT_TRY {
     model = std::make_unique<Model>(std::move(model_proto), model_path, local_registries, logger, options);
@@ -512,7 +517,7 @@ static Status LoadModelHelper(const T& file_path, Loader loader) {
   }
 
   if (!status.IsOK()) {
-    GSL_SUPPRESS(es.84)
+    GSL_SUPPRESS(es .84)
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
     return status;
   }
@@ -549,12 +554,13 @@ static Status SaveModel(Model& model, const T& file_path) {
   model_proto.SerializeToArray(buffer, buffer_size);
 
   EM_ASM(({
-           const buffer = $0;
-           const buffer_size = $1;
+           const buffer = Number($0);
+           const buffer_size = Number($1);
            const file_path = UTF8ToString($2);
            const bytes = new Uint8Array(buffer_size);
            bytes.set(HEAPU8.subarray(buffer, buffer + buffer_size));
-           if (typeof process == 'object' && typeof process.versions == 'object' && typeof process.versions.node == 'string') {
+           if (typeof process == 'object' && typeof process.versions == 'object' &&
+               typeof process.versions.node == 'string') {
              // Node.js
              require('fs').writeFileSync(file_path, bytes);
            } else {
@@ -564,9 +570,9 @@ static Status SaveModel(Model& model, const T& file_path) {
              window.open(url, '_blank');
            }
          }),
-         reinterpret_cast<int32_t>(buffer),
-         static_cast<int32_t>(buffer_size),
-         reinterpret_cast<int32_t>(file_path.c_str()));
+         buffer,
+         buffer_size,
+         file_path.c_str());
 
   free(buffer);
   return Status::OK();
@@ -585,7 +591,7 @@ static Status SaveModel(Model& model, const T& file_path) {
     });
   }
   if (!status.IsOK()) {
-    GSL_SUPPRESS(es.84)
+    GSL_SUPPRESS(es .84)
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
     return status;
   }
@@ -593,24 +599,24 @@ static Status SaveModel(Model& model, const T& file_path) {
 #endif
 }
 
-#ifdef _WIN32
-Status Model::Save(Model& model, const std::wstring& file_path) {
+Status Model::Save(Model& model, const PathString& file_path) {
   return SaveModel(model, file_path);
 }
-#endif
 
 template <typename T>
 static Status SaveModelWithExternalInitializers(Model& model,
                                                 const T& file_path,
-                                                const std::string& external_file_name,
-                                                size_t initializer_size_threshold) {
+                                                const std::filesystem::path& external_file_name,
+                                                size_t initializer_size_threshold,
+                                                const Graph::OffsetAlignmentInfo& align_info) {
   int fd = 0;
   Status status = Env::Default().FileOpenWr(file_path, fd);
   ORT_RETURN_IF_ERROR(status);
 
   ORT_TRY {
     status = Model::SaveWithExternalInitializers(model, fd, file_path, external_file_name,
-                                                 initializer_size_threshold);
+                                                 initializer_size_threshold,
+                                                 align_info);
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -618,7 +624,7 @@ static Status SaveModelWithExternalInitializers(Model& model,
     });
   }
   if (!status.IsOK()) {
-    GSL_SUPPRESS(es.84)
+    GSL_SUPPRESS(es .84)
     ORT_IGNORE_RETURN_VALUE(Env::Default().FileClose(fd));
     return status;
   }
@@ -630,25 +636,23 @@ Status Model::Load(const PathString& file_path,
   return LoadModel(file_path, model_proto);
 }
 
-GSL_SUPPRESS(r.30)  // spurious warnings. p_model is potentially reset in the internal call to Load
-GSL_SUPPRESS(r.35)
+GSL_SUPPRESS(r .30)  // spurious warnings. p_model is potentially reset in the internal call to Load
+GSL_SUPPRESS(r .35)
 Status Model::Load(const PathString& file_path, std::shared_ptr<Model>& p_model,
                    const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                    const logging::Logger& logger, const ModelOptions& options) {
   return LoadModel(file_path, p_model, local_registries, logger, options);
 }
 
-Status Model::Save(Model& model, const std::string& file_path) {
-  return SaveModel(model, file_path);
+Status Model::SaveWithExternalInitializers(Model& model, const std::filesystem::path& file_path,
+                                           const std::filesystem::path& external_file_name,
+                                           size_t initializer_size_threshold,
+                                           const Graph::OffsetAlignmentInfo& align_info) {
+  return SaveModelWithExternalInitializers(model, file_path, external_file_name, initializer_size_threshold,
+                                           align_info);
 }
 
-Status Model::SaveWithExternalInitializers(Model& model, const PathString& file_path,
-                                           const std::string& external_file_name,
-                                           size_t initializer_size_threshold) {
-  return SaveModelWithExternalInitializers(model, file_path, external_file_name, initializer_size_threshold);
-}
-
-Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) {
+Status Model::LoadFromBytes(int count, const void* p_bytes, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) {
   const bool result = model_proto.ParseFromArray(p_bytes, count);
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
@@ -759,16 +763,19 @@ Status Model::Save(Model& model, int p_fd) {
 
 Status Model::SaveWithExternalInitializers(Model& model,
                                            int fd,
-                                           const PathString& file_path,
-                                           const std::string& external_file_name,
-                                           size_t initializer_size_threshold) {
+                                           const std::filesystem::path& file_path,
+                                           const std::filesystem::path& external_file_name,
+                                           size_t initializer_size_threshold,
+                                           const Graph::OffsetAlignmentInfo& align_info) {
   if (fd < 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<fd> is less than 0.");
   }
 
   ORT_RETURN_IF_ERROR(model.MainGraph().Resolve());
 
-  auto model_proto = model.ToGraphProtoWithExternalInitializers(external_file_name, file_path, initializer_size_threshold);
+  auto model_proto = model.ToGraphProtoWithExternalInitializers(external_file_name, file_path,
+                                                                initializer_size_threshold,
+                                                                align_info);
   google::protobuf::io::FileOutputStream output(fd);
   const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
   if (result) {

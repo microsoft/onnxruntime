@@ -193,7 +193,7 @@ std::vector<int> PipelineScheduler::FindForwardComputeTime(const std::vector<int
       }
 
       if (s > 0 && t <= forward_time.at(s - 1)) {
-        // Foward of the s-th stage must happen after forward of (s-1)-th stage.
+        // Forward of the s-th stage must happen after forward of (s-1)-th stage.
         // Note that forward_time[s] is the time slot of the s-th stage.
         continue;
       }

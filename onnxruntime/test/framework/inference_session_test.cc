@@ -34,6 +34,7 @@
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
+#include "test/common/cuda_op_test_utils.h"
 #endif
 #ifdef USE_TENSORRT
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
@@ -635,6 +636,9 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions) {
 
   InferenceSession session_object(so, GetEnvironment());
 #ifdef USE_CUDA
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #endif
 #ifdef USE_ROCM
@@ -689,10 +693,16 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
 
   InferenceSession session_object(so, GetEnvironment());
 #ifdef USE_CUDA
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #endif
 #ifdef USE_ROCM
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
+#endif
+#ifdef USE_WEBGPU
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultWebGpuExecutionProvider()));
 #endif
   ASSERT_STATUS_OK(session_object.Load(MODEL_URI));
   ASSERT_STATUS_OK(session_object.Initialize());
@@ -719,7 +729,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
   ASSERT_TRUE(lines[size - 1].find("]") != string::npos);
   std::vector<std::string> tags = {"pid", "dur", "ts", "ph", "X", "name", "args"};
 
-  bool has_api_info = false;
+  [[maybe_unused]] bool has_api_info = false;
   for (size_t i = 1; i < size - 1; ++i) {
     for (auto& s : tags) {
       ASSERT_TRUE(lines[i].find(s) != string::npos);
@@ -731,13 +741,15 @@ TEST(InferenceSessionTests, CheckRunProfilerWithSessionOptions2) {
       has_api_info = has_api_info || lines[i].find("Api") != string::npos &&
                                          lines[i].find("hipLaunch") != string::npos;
 #endif
+#ifdef USE_WEBGPU
+      has_api_info = has_api_info || lines[i].find("Api") != string::npos;
+#endif
     }
   }
 
-#if defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)
+// Note that the apple device is a paravirtual device which may not support webgpu timestamp query. So skip the check on it.
+#if (defined(USE_ROCM) && defined(ENABLE_ROCM_PROFILING)) || (defined(USE_WEBGPU) && !defined(__APPLE__))
   ASSERT_TRUE(has_api_info);
-#else
-  ASSERT_TRUE(has_api_info || true);
 #endif
 }
 
@@ -765,7 +777,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
   while (std::getline(profile, line)) {
     if (count == 0) {
       ASSERT_TRUE(line.find("[") != string::npos);
-    } else if (count <= 5) {
+    } else if (count <= 3) {
       for (auto& s : tags) {
         ASSERT_TRUE(line.find(s) != string::npos);
       }
@@ -774,7 +786,7 @@ TEST(InferenceSessionTests, CheckRunProfilerWithStartProfile) {
     }
 
     if (count == 1) {
-      ASSERT_TRUE(line.find("mul_1_fence_before") != string::npos);
+      ASSERT_TRUE(line.find("mul_1_kernel_time") != string::npos);
     }
     count++;
   }
@@ -996,6 +1008,9 @@ static void TestBindHelper(const std::string& log_str,
   if (bind_provider_type == kCudaExecutionProvider || bind_provider_type == kRocmExecutionProvider) {
 #ifdef USE_CUDA
     auto provider = DefaultCudaExecutionProvider();
+    if (provider == nullptr) {
+      return;
+    }
     gpu_provider = provider.get();
     ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
 #endif
@@ -1278,7 +1293,7 @@ TEST(InferenceSessionTests, TestOptionalInputs) {
   }
 }
 
-static void CreateFuseOpModel(const std::string& model_file_name) {
+static void CreateFuseOpModel(const PathString& model_file_name) {
   onnxruntime::Model model("graph_1", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
                            {{kOnnxDomain, 12}}, {}, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
@@ -1312,7 +1327,7 @@ static void CreateFuseOpModel(const std::string& model_file_name) {
 }
 
 TEST(ExecutionProviderTest, FunctionTest) {
-  std::string model_file_name = "execution_provider_test_graph.onnx";
+  PathString model_file_name = ORT_TSTR("execution_provider_test_graph.onnx");
   CreateFuseOpModel(model_file_name);
 
   SessionOptions so;
@@ -1365,7 +1380,7 @@ TEST(ExecutionProviderTest, FunctionTest) {
 }
 
 TEST(ExecutionProviderTest, ShapeInferenceForFusedFunctionTest) {
-  std::string model_file_name = "fused_node_shape_inference_test_graph.onnx";
+  PathString model_file_name = ORT_TSTR("fused_node_shape_inference_test_graph.onnx");
 
   CreateFuseOpModel(model_file_name);
 
@@ -1393,14 +1408,14 @@ TEST(ExecutionProviderTest, ShapeInferenceForFusedFunctionTest) {
 }
 
 TEST(ExecutionProviderTest, OpKernelInfoCanReadConfigOptions) {
-  std::string model_file_name = "OpKernelInfoCanReadConfigOptions.onnx";
+  PathString model_file_name = ORT_TSTR("OpKernelInfoCanReadConfigOptions.onnx");
   CreateFuseOpModel(model_file_name);
 
   SessionOptions so;
   so.session_logid = "ExecutionProviderTest.OpKernelInfoCanReadConfigOptions";
 
   // add a config key that if read causes the Fuse op kernel to throw in the ctor. this is just to test the value is passed
-  // through in the simplest way, as the kernel is constructed in InferenceSession::Intialize so we don't need to
+  // through in the simplest way, as the kernel is constructed in InferenceSession::Initialize so we don't need to
   // actually run the model.
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry("ThrowInKernelCtor", "1"));
 
@@ -1580,7 +1595,7 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
-  std::string model_file_name = "3-layer-nested-subgraph-test.onnx";
+  PathString model_file_name = ORT_TSTR("3-layer-nested-subgraph-test.onnx");
   status = onnxruntime::Model::Save(model, model_file_name);
   ASSERT_TRUE(status.IsOK());
 
@@ -1591,6 +1606,9 @@ TEST(InferenceSessionTests, Test3LayerNestedSubgraph) {
 #if USE_TENSORRT
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
 #elif USE_CUDA
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
@@ -1732,7 +1750,7 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
 
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
-  std::string model_file_name = "2-layer-nested-subgraph-test.onnx";
+  PathString model_file_name = ORT_TSTR("2-layer-nested-subgraph-test.onnx");
   status = onnxruntime::Model::Save(model, model_file_name);
   ASSERT_TRUE(status.IsOK());
 
@@ -1743,6 +1761,9 @@ TEST(InferenceSessionTests, Test2LayerNestedSubgraph) {
 #if USE_TENSORRT
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultTensorrtExecutionProvider()));
 #elif USE_CUDA
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
 #elif USE_ROCM
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(DefaultRocmExecutionProvider()));
@@ -2098,6 +2119,9 @@ TEST(InferenceSessionTests, TestStrictShapeInference) {
 #ifdef USE_CUDA
 // disable it, since we are going to enable parallel execution with cuda ep
 TEST(InferenceSessionTests, DISABLED_TestParallelExecutionWithCudaProvider) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  SKIP_CUDA_TEST_WITH_DML;
+#endif
   string model_uri = "testdata/transform/fusion/fuse-conv-bn-mul-add-unsqueeze.onnx";
 
   SessionOptions so;
@@ -2121,6 +2145,10 @@ TEST(InferenceSessionTests, DISABLED_TestParallelExecutionWithCudaProvider) {
 }
 
 TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  SKIP_CUDA_TEST_WITH_DML;
+#endif
+
   OrtArenaCfg arena_cfg;
   arena_cfg.arena_extend_strategy = 1;  // kSameAsRequested
 

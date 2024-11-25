@@ -2098,7 +2098,7 @@ struct NnApi {
    * @param executionCallback The execution callback to set.
    * @param callbackContext The context to be passed to the callbacks when they
    * are invoked. The context object may be used by multiple threads
-   * simulatenously, so it must be thread-safe.
+   * simultaneously, so it must be thread-safe.
    */
   void (*SL_ANeuralNetworksDiagnostic_registerCallbacks)(
       ANeuralNetworksDiagnosticCompilationFinishedCallback compilationCallback,

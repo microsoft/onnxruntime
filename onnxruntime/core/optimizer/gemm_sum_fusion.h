@@ -12,14 +12,14 @@ namespace onnxruntime {
 
 Rewrite rule that fuses Gemm and Sum nodes to a single Gemm node.
 This fusion can be applied in the following scenario:
-1) Sum at output of Gemm: when the output of a Gemm is immedietly summed with
+1) Sum at output of Gemm: when the output of a Gemm is immediately summed with
     exactly one other element, we can fuse this Sum with Gemm by using the other
     Sum input as C, provided that the C input to the Gemm is missing.
     This is supported for opset >= 11, as this is when Gemm input C became optional.
 
 TODO: Support the Add use case: Sum(x, y) ~= Add.
 
-This patterm is attempted to be triggered only on nodes with op type "Gemm".
+This pattern is attempted to be triggered only on nodes with op type "Gemm".
 
 A --> Gemm --> D --> Sum --> E
        ^              ^

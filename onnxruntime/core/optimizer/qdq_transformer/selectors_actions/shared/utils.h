@@ -5,7 +5,7 @@
 
 #include <string>
 #include "core/common/common.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/inlined_containers.h"
 #include "core/framework/node_unit.h"
 #include "core/graph/basic_types.h"

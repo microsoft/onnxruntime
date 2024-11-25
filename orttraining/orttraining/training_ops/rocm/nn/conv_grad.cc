@@ -7,7 +7,7 @@
 
 #include "core/providers/common.h"
 #include "core/providers/rocm/shared_inc/fpgeneric.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 
 namespace onnxruntime {
 namespace rocm {
@@ -71,8 +71,8 @@ std::vector<T_Perf> GetValidAlgorithms(const T_Perf* perf_results, int n_algo) {
 }
 
 struct ConvParamsHash {
-  // ConvParams must be a POD because we read out its memory constant as char* when hashing.
-  static_assert(std::is_pod<ConvParams>::value, "ConvParams is not POD");
+  // ConvParams must be a trivial type because we read out its memory contents as char* when hashing.
+  static_assert(std::is_trivial<ConvParams>::value, "ConvParams is not a trivial type");
   size_t operator()(const ConvParams& conv_params) const {
     auto ptr = reinterpret_cast<const uint8_t*>(&conv_params);
     uint32_t value = 0x811C9DC5;
@@ -85,8 +85,8 @@ struct ConvParamsHash {
 };
 
 struct ConvParamsEqual {
-  // ConvParams must be a POD because we read out its memory constant as char* when hashing.
-  static_assert(std::is_pod<ConvParams>::value, "ConvParams is not POD");
+  // ConvParams must be a trivial type because we read out its memory contents as char* when hashing.
+  static_assert(std::is_trivial<ConvParams>::value, "ConvParams is not a trivial type");
   bool operator()(const ConvParams& a, const ConvParams& b) const {
     auto ptr1 = reinterpret_cast<const uint8_t*>(&a);
     auto ptr2 = reinterpret_cast<const uint8_t*>(&b);
@@ -96,11 +96,11 @@ struct ConvParamsEqual {
 
 template <typename T_Perf>
 struct AlgoPerfCache {
-  mutable OrtMutex mutex;
+  mutable std::mutex mutex;
   std::unordered_map<ConvParams, T_Perf, ConvParamsHash, ConvParamsEqual> map;
 
   bool Find(const ConvParams& params, T_Perf* result) {
-    std::lock_guard<OrtMutex> guard(mutex);
+    std::lock_guard<std::mutex> guard(mutex);
     auto it = map.find(params);
     if (it == map.end()) {
       return false;
@@ -110,7 +110,7 @@ struct AlgoPerfCache {
   }
 
   void Insert(const ConvParams& params, const T_Perf& algo_perf) {
-    std::lock_guard<OrtMutex> guard(mutex);
+    std::lock_guard<std::mutex> guard(mutex);
     map[params] = algo_perf;
   }
 };

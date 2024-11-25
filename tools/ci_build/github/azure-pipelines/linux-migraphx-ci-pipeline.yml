@@ -1,4 +1,5 @@
 ##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
 trigger:
   branches:
     include:
@@ -36,7 +37,7 @@ variables:
   - name: render
     value: 109
   - name: RocmVersion
-    value: 6.0
+    value: 6.2.3
 
 jobs:
 - job: Linux_Build
@@ -47,7 +48,7 @@ jobs:
   workspace:
     clean: all
   pool: onnxruntime-Ubuntu2204-AMD-CPU
-  timeoutInMinutes: 120
+  timeoutInMinutes: 240
 
   steps:
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3

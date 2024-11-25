@@ -25,6 +25,20 @@ try:
 except ImportError:
     float8e4m3fn = None
 
+# INT4 np.dtypes added in ONNX 1.16. These map to np.int8/np.uint8 because numpy
+# does not support sub-byte types.
+try:
+    from onnx.reference.custom_element_types import int4, uint4
+except ImportError:
+    int4 = None
+    uint4 = None
+
+try:
+    from onnx.reference.op_run import to_array_extended
+except ImportError:
+    # old version of onnx.
+    to_array_extended = None
+
 
 __producer__ = "onnx.quantize"
 __version__ = "0.1.0"
@@ -35,6 +49,7 @@ QUANT_INPUT_SUFFIX = "_QuantizeLinear_Input"
 DEQUANT_OP_NAME = "DequantizeLinear"
 DEQUANT_OUTPUT_SUFFIX = "_DequantizeLinear_Output"
 TENSOR_NAME_QUANT_SUFFIX = "_quantized"
+MODEL_SIZE_THRESHOLD = 2147483648  # Quant model should use external data if >= 2GB
 
 FLOAT8_DISTRIBUTIONS = {}
 
@@ -81,6 +96,8 @@ class QuantType(Enum):
     QFLOAT8E4M3FN = 2
     QInt16 = 3
     QUInt16 = 4
+    QInt4 = 5
+    QUInt4 = 6
 
     def __str__(self):
         return self.name
@@ -104,6 +121,10 @@ class QuantType(Enum):
             return TensorProto.INT16
         if self == QuantType.QFLOAT8E4M3FN:
             return TensorProto.FLOAT8E4M3FN
+        if self == QuantType.QUInt4:
+            return TensorProto.UINT4
+        if self == QuantType.QInt4:
+            return TensorProto.INT4
         raise ValueError(f"Unexpected value qtype={self!r}.")
 
 
@@ -128,6 +149,8 @@ ONNX_TYPE_TO_NP_TYPE = {
     onnx_proto.TensorProto.INT16: numpy.dtype("int16"),
     onnx_proto.TensorProto.UINT16: numpy.dtype("uint16"),
     onnx_proto.TensorProto.FLOAT8E4M3FN: float8e4m3fn,
+    onnx_proto.TensorProto.INT4: int4,  # base_dtype is np.int8
+    onnx_proto.TensorProto.UINT4: uint4,  # base_dtype is np.uint8
 }
 
 ONNX_INT_TYPE_RANGE = {
@@ -135,10 +158,14 @@ ONNX_INT_TYPE_RANGE = {
     onnx_proto.TensorProto.INT8: (numpy.array(-128, dtype=numpy.int8), numpy.array(127, dtype=numpy.int8)),
     onnx_proto.TensorProto.UINT16: (numpy.array(0, dtype=numpy.uint16), numpy.array(65535, dtype=numpy.uint16)),
     onnx_proto.TensorProto.INT16: (numpy.array(-32768, dtype=numpy.int16), numpy.array(32767, dtype=numpy.int16)),
+    onnx_proto.TensorProto.UINT4: (numpy.array(0, dtype=uint4), numpy.array(15, dtype=uint4)),
+    onnx_proto.TensorProto.INT4: (numpy.array(-8, dtype=int4), numpy.array(7, dtype=int4)),
 }
 
 ONNX_INT_TYPE_SYMMETRIC_RANGE = {
+    onnx_proto.TensorProto.UINT8: (numpy.array(0, dtype=numpy.uint8), numpy.array(254, dtype=numpy.uint8)),
     onnx_proto.TensorProto.INT8: (numpy.array(-127, dtype=numpy.int8), numpy.array(127, dtype=numpy.int8)),
+    onnx_proto.TensorProto.UINT16: (numpy.array(0, dtype=numpy.uint16), numpy.array(65534, dtype=numpy.uint16)),
     onnx_proto.TensorProto.INT16: (numpy.array(-32767, dtype=numpy.int16), numpy.array(32767, dtype=numpy.int16)),
 }
 
@@ -147,6 +174,8 @@ ONNX_INT_TYPE_REDUCED_RANGE = {
     onnx_proto.TensorProto.INT8: (numpy.array(-64, dtype=numpy.int8), numpy.array(64, dtype=numpy.int8)),
     onnx_proto.TensorProto.UINT16: (numpy.array(0, dtype=numpy.uint16), numpy.array(32767, dtype=numpy.uint16)),
     onnx_proto.TensorProto.INT16: (numpy.array(-16384, dtype=numpy.int16), numpy.array(16384, dtype=numpy.int16)),
+    onnx_proto.TensorProto.UINT4: (numpy.array(0, dtype=int4), numpy.array(7, dtype=int4)),
+    onnx_proto.TensorProto.INT4: (numpy.array(-4, dtype=int4), numpy.array(3, dtype=int4)),
 }
 
 
@@ -203,8 +232,13 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
         ref = ReferenceEvaluator(onnx_model)
         return _check_type(ref.run(None, {"X": arr, "scale": scale})[0])
     else:
+        # Quantizes data for all integer types.
+        #
+        # For int4 types, the quantized data is returned as either np.int8 or np.uint8,
+        # which matches the python reference ONNX implementation of QuantizeLinear.
+        # This data can be packed into 4-bit elements by using pack_bytes_to_4bit().
         dtype = ONNX_TYPE_TO_NP_TYPE[qType]
-        (qmin, qmax) = get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=True)
+        qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False)
 
         cliplow = max(qmin, low) if low is not None else qmin
         cliphigh = min(qmax, high) if high is not None else qmax
@@ -244,7 +278,7 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_real_range=Non
 
     # Ensure a minimum float-point range if specified.
     if min_real_range is not None:
-        rmax = max(rmax, rmin + min_real_range)
+        rmax = max(rmax, rmin + numpy.asarray(min_real_range, dtype=rmin.dtype))
 
     if symmetric:
         absmax = numpy.maximum(numpy.abs(rmin), numpy.abs(rmax))
@@ -313,33 +347,26 @@ def compute_scale_zp_float8(element_type, std):
     return [zero, scale]
 
 
-def quantize_data(
-    data, qType, symmetric, reduce_range=False, min_real_range=None, rmin_override=None, rmax_override=None
-):
+def compute_data_quant_params(
+    data: numpy.ndarray,
+    quant_type: onnx.TensorProto.DataType,
+    symmetric: bool,
+    reduce_range: bool = False,
+    min_real_range: float | None = None,
+    rmin_override: float | None = None,
+    rmax_override: float | None = None,
+) -> tuple[numpy.ndarray, numpy.ndarray]:
     """
-    :param data: data to quantize
-    :param qType: data type to quantize to. Supported types UINT8 and INT8
-    :param symmetric: whether symmetric quantization is used or not. This is applied to INT8.
+    Returns the zero_point and scale for the given data.
+
+    :param data: The data for which to compute quantization parameters.
+    :param quant_type: The quantization data type.
+    :param symmetric: whether symmetric quantization is used or not.
     :parameter reduce_range: True if the quantization range should be reduced. Defaults to False.
     :parameter min_real_range: Minimum floating-point range (i.e., rmax - rmin) to enforce. Defaults to None.
     :parameter rmin_override: The value of rmin to use if not None. Otherwise, uses min(data).
     :parameter rmax_override: The value of rmax to use if not None. Otherwise, uses max(data).
-    :return: minimum, maximum, zero point, scale, and quantized weights
-
-    To pack weights, we compute a linear transformation
-
-    - when data `type == uint8` mode, from `[rmin, rmax]` -> :math:`[0, 2^{b-1}]` and
-    - when data `type == int8`, from `[-m , m]` -> :math:`[-(2^{b-1}-1), 2^{b-1}-1]` where
-        `m = max(abs(rmin), abs(rmax))`
-
-    and add necessary intermediate nodes to trasnform quantized weight to full weight using the equation
-
-    :math:`r = S(q-z)`, where
-
-    - *r*: real original value
-    - *q*: quantized value
-    - *S*: scale
-    - *z*: zero point
+    :return: zero point and scale
     """
     if not isinstance(data, numpy.ndarray):
         raise TypeError(f"Weight must be given as an array not {type(data)}.")
@@ -355,14 +382,71 @@ def quantize_data(
 
     rmin = numpy.array(rmin, dtype=data.dtype)
     rmax = numpy.array(rmax, dtype=data.dtype)
-    zero_point = 0
     scale = numpy.array(1.0, dtype=data.dtype)
 
-    if qType == TensorProto.FLOAT8E4M3FN:
+    if quant_type == TensorProto.FLOAT8E4M3FN:
         if reduce_range:
             raise RuntimeError("Unsupported option reduce_range=True for float 8.")
         std = numpy.std(data)
-        zero_point, scale = compute_scale_zp_float8(qType, std)
+        zero_point, scale = compute_scale_zp_float8(quant_type, std)
+        return _check_type(zero_point, scale, zero_point_index=0)
+
+    if quant_type in (
+        TensorProto.INT8,
+        TensorProto.UINT8,
+        TensorProto.INT16,
+        TensorProto.UINT16,
+        TensorProto.INT4,
+        TensorProto.UINT4,
+    ):
+        qmin, qmax = get_qmin_qmax_for_qType(quant_type, reduce_range, symmetric=symmetric)
+        if len(data):
+            zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric, min_real_range)
+        else:
+            zero_point = numpy.array(0, dtype=qmin.dtype)
+        return _check_type(zero_point, scale, zero_point_index=0)
+
+    raise ValueError(f"Unexpected value for quant_type={quant_type}.")
+
+
+def quantize_data(
+    data, qType, symmetric, reduce_range=False, min_real_range=None, rmin_override=None, rmax_override=None
+) -> tuple[numpy.ndarray, numpy.ndarray, numpy.ndarray]:
+    """
+    :param data: data to quantize
+    :param qType: data type to quantize to.
+    :param symmetric: whether symmetric quantization is used or not.
+    :parameter reduce_range: True if the quantization range should be reduced. Defaults to False.
+    :parameter min_real_range: Minimum floating-point range (i.e., rmax - rmin) to enforce. Defaults to None.
+    :parameter rmin_override: The value of rmin to use if not None. Otherwise, uses min(data).
+    :parameter rmax_override: The value of rmax to use if not None. Otherwise, uses max(data).
+    :return: minimum, maximum, zero point, scale, and quantized weights
+
+    To pack weights, we compute a linear transformation
+
+    - when data `type == uint8` mode, from `[rmin, rmax]` -> :math:`[0, 2^{b-1}]` and
+    - when data `type == int8`, from `[-m , m]` -> :math:`[-(2^{b-1}-1), 2^{b-1}-1]` where
+        `m = max(abs(rmin), abs(rmax))`
+
+    and add necessary intermediate nodes to transform quantized weight to full weight using the equation
+
+    :math:`r = S(q-z)`, where
+
+    - *r*: real original value
+    - *q*: quantized value
+    - *S*: scale
+    - *z*: zero point
+    """
+    zero_point, scale = compute_data_quant_params(
+        data,
+        qType,
+        symmetric,
+        reduce_range,
+        min_real_range,
+        rmin_override,
+        rmax_override,
+    )
+    if qType == TensorProto.FLOAT8E4M3FN:
         quantized_data = quantize_nparray(qType, data, scale, zero_point)
         if any((quantized_data.astype(numpy.uint8).ravel() & 127) == 127):
             np_data = numpy.asarray(data)
@@ -370,16 +454,99 @@ def quantize_data(
                 f"One of the quantized value is NaN data in [{np_data.min()}, {np_data.max()}], "
                 f"quantized_data in [{quantized_data.min()}, {quantized_data.max()}]."
             )
-        return _check_type(rmin, rmax, zero_point, scale, quantized_data, zero_point_index=2)
+        return zero_point, scale, quantized_data
 
-    if qType in (TensorProto.INT8, TensorProto.UINT8, TensorProto.INT16, TensorProto.UINT16):
-        if len(data):
-            qmin, qmax = get_qmin_qmax_for_qType(qType, reduce_range, symmetric=symmetric)
-            zero_point, scale = compute_scale_zp(rmin, rmax, qmin, qmax, symmetric, min_real_range)
+    if qType in (
+        TensorProto.INT8,
+        TensorProto.UINT8,
+        TensorProto.INT16,
+        TensorProto.UINT16,
+        TensorProto.INT4,
+        TensorProto.UINT4,
+    ):
         quantized_data = quantize_nparray(qType, data, scale, zero_point)
-        return _check_type(rmin, rmax, zero_point, scale, quantized_data, zero_point_index=2)
+        return zero_point, scale, quantized_data
 
     raise ValueError(f"Unexpected value for qType={qType}.")
+
+
+def quantize_onnx_initializer(
+    weight: onnx.TensorProto,
+    quant_type: onnx.TensorProto.DataType,
+    zero_point: numpy.ndarray,
+    scale: numpy.ndarray,
+    axis: int | None = None,
+    quant_weight_name: str | None = None,
+) -> onnx.TensorProto:
+    """
+    Returns a quantized version of the given ONNX initializer.
+
+    :param weight: The ONNX initializer to quantize.
+    :param quant_type: The final quantized data type.
+    :param zero_point: The zero-point value to use for quantization.
+    :param scale: The scale value to use for quantization.
+    :param axis: The quantization axis if quantizing per-channel. Defaults to None.
+    :param quant_weight_name: The name of the quantized initializer.
+                              If not specified, the quantized name is generated.
+    :return: The quantized ONNX initializer.
+    """
+    weight_data = tensor_proto_to_array(weight)
+    q_weight_data: numpy.ndarray | None = None
+
+    if axis is None:  # Per-tensor quantization
+        q_weight_data = quantize_nparray(quant_type, weight_data.ravel(), scale, zero_point)
+    else:  # Per-channel quantization
+        channel_count = weight_data.shape[axis]
+        channel_dims = list(weight_data.shape)  # deep copy
+        channel_dims[axis] = 1  # only one per channel for reshape
+        quantized_channel_data_list = []
+
+        for i in range(channel_count):
+            channel_data = weight_data.take(i, axis)
+            channel_scale = scale[i]
+            channel_zero_point = zero_point[i]
+            quantized_channel_data = quantize_nparray(
+                quant_type, channel_data.ravel(), channel_scale, channel_zero_point
+            )
+            quantized_channel_data_list.append(numpy.asarray(quantized_channel_data).reshape(channel_dims))
+
+        q_weight_data = numpy.concatenate(quantized_channel_data_list, axis)
+
+    q_weight_name = quant_weight_name if quant_weight_name else f"{weight.name}{TENSOR_NAME_QUANT_SUFFIX}"
+
+    if quant_type == onnx.TensorProto.FLOAT8E4M3FN:
+        q_weight_initializer = onnx.TensorProto()
+        q_weight_initializer.data_type = quant_type
+        q_weight_initializer.dims.extend(weight.dims)
+        q_weight_initializer.name = q_weight_name
+        # Do not remove .flatten().copy() numpy is not clear about data persistence.
+        q_weight_initializer.raw_data = q_weight_data.flatten().copy().tobytes()
+        if to_array_extended is not None:
+            # This test should not be needed but it helped catch some issues
+            # with data persistence and tobytes.
+            check = to_array_extended(q_weight_initializer)
+            if check.shape != weight_data.shape or check.tobytes() != q_weight_data.tobytes():
+                raise RuntimeError(
+                    f"The initializer of shape {weight_data.shape} could not be created, expecting "
+                    f"{q_weight_data.tobytes()[:10]}, got {check.tobytes()[:10]} and shape={weight.shape}"
+                    f"\nraw={str(q_weight_initializer)[:200]}."
+                )
+    elif quant_type in (onnx.TensorProto.INT4, onnx.TensorProto.UINT4):
+        if q_weight_data.dtype not in (numpy.int8, numpy.uint8):
+            raise RuntimeError(f"Quantized weights for {q_weight_name} must be 8-bit before packing as 4-bit values.")
+
+        # We do not use onnx.helper.pack_float32_to_4bit() due to performance.
+        # This can be the difference between a large model taking 30 minutes to quantize vs 5 minutes.
+        packed_data = bytes(pack_bytes_to_4bit(q_weight_data.tobytes()))
+
+        # We only use onnx.helper.make_tensor with raw data due to bug: https://github.com/onnx/onnx/pull/6161
+        q_weight_initializer = onnx.helper.make_tensor(q_weight_name, quant_type, weight.dims, packed_data, raw=True)
+    else:
+        quant_np_dtype = onnx.helper.tensor_dtype_to_np_dtype(quant_type)
+        q_weight_data = numpy.asarray(q_weight_data, dtype=quant_np_dtype).reshape(weight.dims)
+        q_weight_initializer = onnx.numpy_helper.from_array(q_weight_data, q_weight_name)
+
+    return q_weight_initializer
 
 
 def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):  # noqa: N802
@@ -434,6 +601,36 @@ def normalize_axis(axis: int, rank: int) -> tuple[bool, int]:
     axis_norm = axis + rank if axis < 0 else axis
     is_valid = axis_norm >= 0 and axis_norm < rank
     return is_valid, axis_norm
+
+
+def pack_bytes_to_4bit(src_8bit: bytes) -> bytearray:
+    """
+    Copies a source array of 8-bit values into a destination bytearray of packed 4-bit values.
+    Assumes that the source values are already in the appropriate int4 range.
+    :parameter src_8bit: The 8-bit element values to pack.
+    :return A bytearray with every two 8-bit src elements packed into a single byte.
+    """
+    num_elems = len(src_8bit)
+    if num_elems == 0:
+        return bytearray()
+
+    dst_size = (num_elems + 1) // 2  # Ex: 5 8-bit elems packed into 3 bytes
+    dst = bytearray(dst_size)
+
+    src_i: int = 0
+    dst_i: int = 0
+
+    # Pack two 8-bit elements into a single byte in each iteration.
+    while src_i < num_elems - 1:
+        dst[dst_i] = ((src_8bit[src_i + 1] & 0xF) << 4) | (src_8bit[src_i] & 0xF)
+        dst_i += 1
+        src_i += 2
+
+    if src_i < num_elems:
+        # Odd number of elements.
+        dst[dst_i] = src_8bit[src_i] & 0xF
+
+    return dst
 
 
 class QuantizedInitializer:
@@ -609,21 +806,41 @@ def write_calibration_table(calibration_cache, dir="."):
     import json
 
     import flatbuffers
+    import numpy as np
 
     import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue
     import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable
+    from onnxruntime.quantization.calibrate import CalibrationMethod, TensorData, TensorsData
 
     logging.info(f"calibration cache: {calibration_cache}")
 
+    class MyEncoder(json.JSONEncoder):
+        def default(self, obj):
+            if isinstance(obj, (TensorData, TensorsData)):
+                return obj.to_dict()
+            if isinstance(obj, np.ndarray):
+                return {"data": obj.tolist(), "dtype": str(obj.dtype), "CLS": "numpy.array"}
+            if isinstance(obj, CalibrationMethod):
+                return {"CLS": obj.__class__.__name__, "value": str(obj)}
+            return json.JSONEncoder.default(self, obj)
+
+    json_data = json.dumps(calibration_cache, cls=MyEncoder)
+
     with open(os.path.join(dir, "calibration.json"), "w") as file:
-        file.write(json.dumps(calibration_cache))  # use `json.loads` to do the reverse
+        file.write(json_data)  # use `json.loads` to do the reverse
 
     # Serialize data using FlatBuffers
+    zero = np.array(0)
     builder = flatbuffers.Builder(1024)
     key_value_list = []
     for key in sorted(calibration_cache.keys()):
         values = calibration_cache[key]
-        value = str(max(abs(values[0]), abs(values[1])))
+        d_values = values.to_dict()
+        floats = [
+            float(d_values.get("highest", zero).item()),
+            float(d_values.get("lowest", zero).item()),
+        ]
+        value = str(max(floats))
 
         flat_key = builder.CreateString(key)
         flat_value = builder.CreateString(value)
@@ -662,9 +879,14 @@ def write_calibration_table(calibration_cache, dir="."):
     # write plain text
     with open(os.path.join(dir, "calibration.cache"), "w") as file:
         for key in sorted(calibration_cache.keys()):
-            value = calibration_cache[key]
-            s = key + " " + str(max(abs(value[0]), abs(value[1])))
-            file.write(s)
+            values = calibration_cache[key]
+            d_values = values.to_dict()
+            floats = [
+                float(d_values.get("highest", zero).item()),
+                float(d_values.get("lowest", zero).item()),
+            ]
+            value = key + " " + str(max(floats))
+            file.write(value)
             file.write("\n")
 
 

@@ -5,7 +5,7 @@
 
 #include <string>
 #include <vector>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include <tvm/tvm.h>
 #include "core/codegen/mti/common.h"
 

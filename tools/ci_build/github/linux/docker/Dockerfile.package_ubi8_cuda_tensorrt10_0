@@ -2,26 +2,17 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------
-# Dockerfile to Test ONNX Runtime on UBI8 with TensorRT 10.0 and CUDA 11.8 by default
+# Dockerfile to Test ONNX Runtime on UBI8 with TensorRT 10 and CUDA 12 by default
 
 # Build base image with required system packages
-ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8
-ARG TRT_VERSION=10.0.1.6-1.cuda11.8
+ARG BASEIMAGE=nvidia/cuda:12.5.1-cudnn-devel-ubi8
+ARG TRT_VERSION=10.6.0.26-1.cuda12.6
 FROM $BASEIMAGE AS base
 ARG TRT_VERSION
-ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${PATH}
+ENV PATH=/opt/python/cp310-cp310/bin:/usr/local/nvidia/bin:/usr/local/cuda/bin:/usr/src/tensorrt/bin:${PATH}
 
 RUN dnf install -y bash wget &&\
     dnf clean dbcache
-
-# Install python3
-RUN dnf install -y \
-    python3.8 \
-    python38-pip \
-    python38-wheel &&\
-    cd /usr/local/bin &&\
-    ln -s /usr/bin/python3 python3.8 &&\
-    ln -s /usr/bin/pip3 pip3.8;
 
 RUN pip3 install --upgrade pip
 RUN pip3 install setuptools>=68.2.2

@@ -17,6 +17,47 @@ namespace onnxruntime {
 namespace contrib {
 
 template <typename T>
+void ComputeSmoothSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
+  ThreadPool::TryParallelFor(tp, N, D * 2.0, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+    for (std::ptrdiff_t j = begin; j != end; ++j) {
+      float* x = reinterpret_cast<T*>(score) + j * D;
+      float* y = x;
+
+      float max = -std::numeric_limits<float>::infinity();
+      for (int i = 0; i < D; i++) {
+        if (max < x[i])
+          max = x[i];
+      }
+
+      if (max < 0.0f) {
+        max = 0.0f;
+      }
+
+      for (int i = 0; i < D; i++) {
+        y[i] = expf(x[i] - max);
+      }
+
+      double sum = 0.0;
+
+      for (int i = 0; i < D; i++) {
+        sum += x[i];
+      }
+
+      sum += exp(static_cast<double>(-max));
+
+      for (int i = 0; i < D; i++) {
+        y[i] = x[i] / (float)sum;
+      }
+    }
+  });
+}
+
+template <>
+inline void ComputeSmoothSoftmaxInplace(float* score, int N, int D, ThreadPool* tp) {
+  MlasComputeSoftmax(score, score, N, D, false, true, tp);
+}
+
+template <typename T>
 void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
   ThreadPool::TryParallelFor(tp, N, D * 2.0, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
     for (std::ptrdiff_t j = begin; j != end; ++j) {
@@ -58,8 +99,19 @@ void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
 
 template <>
 inline void ComputeAttentionSoftmaxInplace(float* score, int N, int D, ThreadPool* tp) {
-  MlasComputeSoftmax(score, score, N, D, false, tp);
+  MlasComputeSoftmax(score, score, N, D, false, false, tp);
 }
+
+template <typename T>
+void ComputeAttentionSoftcapInplace(T* scores, int sequence_length, float softcap) {
+  for (int i = 0; i < sequence_length; i++) {
+    scores[i] = scores[i] / softcap;
+    scores[i] = std::tanh(scores[i]);
+    scores[i] = scores[i] * softcap;
+  }
+}
+
+template void ComputeAttentionSoftcapInplace<float>(float* scores, int sequence_length, float softcap);
 
 template <typename T>
 void PrepareMask(const int32_t* mask_index,
@@ -68,9 +120,10 @@ void PrepareMask(const int32_t* mask_index,
                  bool causal,
                  int batch_size,
                  int sequence_length,
+                 int kv_sequence_length,
                  int past_sequence_length,
                  float mask_filter_value) {
-  const int all_sequence_length = past_sequence_length + sequence_length;
+  const int all_sequence_length = past_sequence_length + kv_sequence_length;
 
   // mask_data has been filled with 0, and its shape is BxSxT
   T* p_mask = mask_data;
@@ -153,49 +206,6 @@ void PrepareMask(const int32_t* mask_index,
   }
 }
 
-// Applies causal mask and past seqlens right pad to the mask_data buffer.
-template <typename T>
-void PrepareMaskGQA(T* mask_data,
-                    int batch_size,
-                    int sequence_length,
-                    int buffer_sequence_length,
-                    int local_window_size,
-                    const int32_t* seqlens_k) {
-  // mask_data has been filled with 0, and its shape is BxSxT
-  T* p_mask = mask_data;
-  // TODO: parallelize this
-  for (int b_i = 0; b_i < batch_size; b_i++) {
-    if (sequence_length > 1) {
-      // Apply causal/local mask for prompt case.
-      for (int s_i = 0; s_i < sequence_length; s_i++) {
-        for (int m_i = s_i + 1; m_i < buffer_sequence_length; m_i++) {
-          p_mask[s_i * buffer_sequence_length + m_i] = std::numeric_limits<T>::lowest();
-        }
-        // Apply local mask.
-        if (local_window_size > 0) {
-          for (int m_i = 0; m_i < s_i - local_window_size; m_i++) {
-            p_mask[s_i * buffer_sequence_length + m_i] = std::numeric_limits<T>::lowest();
-          }
-        }
-      }
-    } else if (sequence_length == 1) {
-      // Apply right padding to mask for token gen case.
-      int total_seqlen = seqlens_k[b_i] + 1;
-      for (int m_i = total_seqlen; m_i < buffer_sequence_length; m_i++) {
-        p_mask[m_i] = std::numeric_limits<T>::lowest();
-      }
-      // Apply local mask.
-      if (local_window_size > 0) {
-        for (int m_i = 0; m_i < total_seqlen - local_window_size - 1; m_i++) {
-          p_mask[m_i] = std::numeric_limits<T>::lowest();
-        }
-      }
-    }
-    ptrdiff_t mask_to_advance = SafeInt<ptrdiff_t>(sequence_length) * buffer_sequence_length;
-    p_mask += mask_to_advance;
-  }
-}
-
 // Concatenate a past state chunk PxH with input state chunk LxH into present state chunk TxH
 // Returns a pointer to the start of present state chunk.
 template <typename T>
@@ -227,19 +237,16 @@ T* ConcatStateChunkGQA(const T* past,
                        size_t past_buff_chunk_length,
                        size_t past_chunk_length,
                        size_t new_chunk_length,
-                       bool is_prompt,
                        bool past_present_share_buffer,
                        std::ptrdiff_t i) {
   T* start = present + i * present_buff_chunk_length;
 
   T* p = start;
-  if (!is_prompt) {
-    if (!past_present_share_buffer) {
-      const T* src_past = past + i * past_buff_chunk_length;
-      memcpy(p, src_past, past_chunk_length * sizeof(T));
-    }
-    p += past_chunk_length;
+  if (!past_present_share_buffer && past_chunk_length > 0) {
+    const T* src_past = past + i * past_buff_chunk_length;
+    memcpy(p, src_past, past_chunk_length * sizeof(T));
   }
+  p += past_chunk_length;
 
   memcpy(p, chunk, new_chunk_length * sizeof(T));
   return start;

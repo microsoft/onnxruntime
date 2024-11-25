@@ -60,9 +60,9 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Extracts single precision number bit representation as uint
         /// so its bits can be manipulated.
-        /// 
+        ///
         /// This API is the reverse of UInt32BitsToSingle().
-        /// 
+        ///
         /// </summary>
         /// <param name="single">float value</param>
         /// <returns></returns>
@@ -79,11 +79,11 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Needed because BitConverter impl is not available until
         /// later versions. This API is the reverse of SingleToUInt32Bits().
-        /// 
+        ///
         /// For the exact bit representation of float see IEEE 754 standard for single precision.
-        /// 
+        ///
         /// </summary>
-        /// <param name="singleBits">bit representation of float either obtained from 
+        /// <param name="singleBits">bit representation of float either obtained from
         /// SingleToUInt32Bits or assembled using bitwise operators</param>
         /// <returns></returns>
         internal static float UInt32BitsToSingle(uint singleBits)
@@ -99,7 +99,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Converts single precision bits representation which can be obtained using
         /// SingleToUInt32Bits() or manually constructed according to IEEE 754 standard.
-        /// 
+        ///
         /// </summary>
         /// <param name="singleBits">bits representation of a single precision number (float)</param>
         /// <returns></returns>
@@ -134,11 +134,11 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// Creates float NaN with the given sign and fp16 significand shifted << 54
+        /// Creates float NaN with the given sign and fp16 significand shifted &lt;&lt; 54
         /// </summary>
         /// <param name="sign">true for negative</param>
         /// <param name="significand">should be shifted 54 bits left before calling the function
-        /// so only 8 bits of signidicand remains</param>
+        /// so only 8 bits of significand remains</param>
         /// <returns></returns>
         internal static float CreateSingleNaN(bool sign, ulong significand)
         {
@@ -177,8 +177,8 @@ namespace Microsoft.ML.OnnxRuntime
     /// do not have to be copied to be passed to native memory but simply pinned and read by native code. Thus,
     /// one can create a Tensor on top of an array of these structures and feed it directly to Onnxruntime library.
     /// Binary wise, it is the same as ushort[] (uint16_t in C++). However, we would like a separate type for type dispatching.
-    /// 
-    /// The implementation is derived from 
+    ///
+    /// The implementation is derived from
     /// https://source.dot.net/#System.Private.CoreLib/src/libraries/System.Private.CoreLib/src/System/Half.cs,7895d5942d33f974
     /// </summary>
     [StructLayout(LayoutKind.Sequential)]
@@ -215,6 +215,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         private const ushort OneBits = 0x3C00;
 
+        // Minimum positive normalized value. It is corresponding to numeric_limits<float16>::min() in C++.
         private const ushort EpsilonBits = 0x0400;
 
         private const ushort PositiveInfinityBits = 0x7C00;
@@ -238,7 +239,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Float16 Epsilon value
         /// </summary>
-        public static Float16 Epsilon => new Float16(EpsilonBits);                        //  5.9604645E-08
+        public static Float16 Epsilon => new Float16(EpsilonBits);                        //  0.00006103515625
 
         /// <summary>
         /// Float16 Pi value
@@ -248,17 +249,17 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Float16 Positive Infinity value
         /// </summary>
-        public static Float16 PositiveInfinity => new Float16(PositiveInfinityBits);      //  1.0 / 0.0;
+        public static Float16 PositiveInfinity => new Float16(PositiveInfinityBits);
 
         /// <summary>
         /// Float16 Negative Infinity value
         /// </summary>
-        public static Float16 NegativeInfinity => new Float16(NegativeInfinityBits);      // -1.0 / 0.0
+        public static Float16 NegativeInfinity => new Float16(NegativeInfinityBits);
 
         /// <summary>
         /// Float16 NaN
         /// </summary>
-        public static Float16 NaN => new Float16(NegativeQNaNBits);                       //  0.0 / 0.0
+        public static Float16 NaN => new Float16(NegativeQNaNBits);                       // Same as System.Half.NaN
 
         /// <summary>
         /// Float16 Zero value
@@ -276,14 +277,14 @@ namespace Microsoft.ML.OnnxRuntime
         public static Float16 NegativeZero => new Float16(NegativeZeroBits);              // -0.0
 
         /// <summary>
-        /// Float16 Min value
+        /// Float16 Lowest value
         /// </summary>
-        public static Float16 MinValue => new Float16(MinValueBits);                      // 64,511
+        public static Float16 MinValue => new Float16(MinValueBits);                      // -65504.0
 
         /// <summary>
         /// Float16 Max value
         /// </summary>
-        public static Float16 MaxValue => new Float16(MaxValueBits);                      //  31,743
+        public static Float16 MaxValue => new Float16(MaxValueBits);                      // 65504.0
 
         /// <summary>
         /// float16 representation bits
@@ -348,7 +349,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Compares values of two Float16
-        /// 
+        ///
         /// </summary>
         /// <param name="left">left hand side</param>
         /// <param name="right">right hand side</param>
@@ -376,7 +377,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Compares values of two Float16
-        /// 
+        ///
         /// </summary>
         /// <param name="left">left hand side</param>
         /// <param name="right">right hand side</param>
@@ -388,7 +389,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Compares values of two Float16
-        /// 
+        ///
         /// </summary>
         /// <param name="left">left hand side</param>
         /// <param name="right">right hand side</param>
@@ -416,12 +417,11 @@ namespace Microsoft.ML.OnnxRuntime
 
         /// <summary>
         /// Compares values of two Float16
-        /// 
         /// </summary>
         /// <param name="left">left hand side</param>
         /// <param name="right">right hand side</param>
         /// <returns>returns true if left is greater or equal than right according to IEEE</returns>
-        /// <inheritdoc cref="IComparisonOperators{TSelf, TOther, TResult}.op_GreaterThanOrEqual(TSelf, TOther)" />
+        /// <inheritdoc />
         public static bool operator >=(Float16 left, Float16 right)
         {
             return right <= left;
@@ -430,7 +430,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Compares values of two Float16 for binary equality.
         /// If either of the values is NaN, this will return false.
-        /// 
+        ///
         /// </summary>
         /// <param name="left">left hand side</param>
         /// <param name="right">right hand side</param>
@@ -480,7 +480,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Determines whether the specified value is NaN.
         /// </summary>
-        /// 
+        ///
         /// <param name="value">Float16 instance</param>
         /// <returns>true if the value is not a number</returns>
         public static bool IsNaN(Float16 value)
@@ -492,7 +492,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Determines whether the specified value is negative.
         /// </summary>
         /// <param name="value">Float16 instance</param>
-        /// <returns>true if the value is negative</returns></returns>
+        /// <returns>true if the value is negative</returns>
         public static bool IsNegative(Float16 value)
         {
             return (short)(value.value) < 0;
@@ -501,7 +501,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Determines whether the specified value is negative infinity.
         /// </summary>
-        /// 
+        ///
         /// <param name="value">Float16 instance</param>
         /// <returns>true if the value is negative infinity</returns>
         public static bool IsNegativeInfinity(Float16 value)
@@ -550,7 +550,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Compares this object to another object, returning an integer that indicates the relationship.
         /// </summary>
-        /// 
+        ///
         /// <param name="obj">Object to compare to</param>
         /// <returns>A value less than zero if this is less than <paramref name="obj"/>,
         /// zero if this is equal to <paramref name="obj"/>, or a value greater than zero
@@ -571,7 +571,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="other">Object to compare to</param>
         /// <returns>A value less than zero if this is less than <paramref name="other"/>,
-        /// zero if this is equal to <paramref name="other"/>, 
+        /// zero if this is equal to <paramref name="other"/>,
         /// or a value greater than zero if this is greater than <paramref name="other"/>.</returns>
         public int CompareTo(Float16 other)
         {
@@ -865,10 +865,13 @@ namespace Microsoft.ML.OnnxRuntime
         private const ushort PositiveQNaNBits = 0x7FC1;
         private const ushort NegativeQNaNBits = 0xFFC1;
 
+        // Lowest finite value. It is corresponding to numeric_limits<BFloat16>::lowest() in C++.
         private const ushort MinValueBits = 0xFF7F; // 1b0_11111110_1111111
+
         private const ushort MaxValueBits = 0x7F7F; // 0b0_11111110_1111111
 
-        private const ushort EpsilonBits = 0x0080; // the smallest positive normal value
+        // Minimum positive normalized value. It is corresponding to numeric_limits<BFloat16>::min() in C++.
+        private const ushort EpsilonBits = 0x0080;
 
         private const ushort PiBits = 0x4049; // 0b0_10000000_1001001
 
@@ -900,7 +903,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// BFloat16 NaN
         /// </summary>
-        public static BFloat16 NaN => new BFloat16(NegativeQNaNBits);
+        public static BFloat16 NaN => new BFloat16(NegativeQNaNBits); // .Net has no BFloat16. Follow Float16 style.
 
         /// <summary>
         /// BFloat16 Positive Zero
@@ -920,13 +923,13 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// BFloat16 Min value
         /// </summary>
-        public static BFloat16 MinValue => new BFloat16(MinValueBits);  // 65,407
+        public static BFloat16 MinValue => new BFloat16(MinValueBits);  // -3.38953139e38
 
         /// <summary>
         /// BFloat16 Max value
         /// </summary>
 
-        public static BFloat16 MaxValue => new BFloat16(MaxValueBits); // 32,639
+        public static BFloat16 MaxValue => new BFloat16(MaxValueBits); // 3.38953139e38
 
         /// <summary>
         /// bfloat16 representation bits
@@ -1052,7 +1055,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Compares values of two BFloat16 for binary equality.
         /// If either of the values is NaN, this will return false.
-        /// 
+        ///
         /// </summary>
         /// <param name="left">left hand side</param>
         /// <param name="right">right hand side</param>
@@ -1103,7 +1106,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Determines whether the specified value is NaN.
         /// </summary>
-        /// 
+        ///
         /// <param name="value">BFloat16 instance</param>
         /// <returns>true if the value is not a number</returns>
         public static bool IsNaN(BFloat16 value)
@@ -1115,7 +1118,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Determines whether the specified value is negative.
         /// </summary>
         /// <param name="value">BFloat16 instance</param>
-        /// <returns>true if the value is negative</returns></returns>
+        /// <returns>true if the value is negative</returns>
         public static bool IsNegative(BFloat16 value)
         {
             return (short)(value.value) < 0;
@@ -1124,7 +1127,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Determines whether the specified value is negative infinity.
         /// </summary>
-        /// 
+        ///
         /// <param name="value">BFloat16 instance</param>
         /// <returns>true if the value is negative infinity</returns>
         public static bool IsNegativeInfinity(BFloat16 value)
@@ -1171,7 +1174,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Compares this object to another object, returning an integer that indicates the relationship.
         /// </summary>
-        /// 
+        ///
         /// <param name="obj">Object to compare to</param>
         /// <returns>A value less than zero if this is less than <paramref name="obj"/>,
         /// zero if this is equal to <paramref name="obj"/>, or a value greater than zero
@@ -1192,7 +1195,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// </summary>
         /// <param name="other">Object to compare to</param>
         /// <returns>A value less than zero if this is less than <paramref name="other"/>,
-        /// zero if this is equal to <paramref name="other"/>, 
+        /// zero if this is equal to <paramref name="other"/>,
         /// or a value greater than zero if this is greater than <paramref name="other"/>.</returns>
         public int CompareTo(BFloat16 other)
         {

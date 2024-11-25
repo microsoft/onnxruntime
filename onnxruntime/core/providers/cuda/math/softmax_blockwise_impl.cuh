@@ -30,7 +30,7 @@ dim3 SoftMax_getBlockSize(int ILP, uint64_t dim_size) {
   uint64_t max_block_size = std::min(dim_size / ILP, static_cast<uint64_t>(max_threads));
 
   // In the vectorized case we want to trade off allowing more of the buffers to be accessed
-  // in a vectorized way against wanting a larger block size to get better utilisation.
+  // in a vectorized way against wanting a larger block size to get better utilization.
   // In general with ILP you can have (ILP-1)/ILP of the buffer accessed vectorised, at the risk
   // of having a very small block size. We choose to keep >= 1/2 of the buffer vectorised while
   // allowing a larger block size.

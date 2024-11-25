@@ -120,15 +120,24 @@ Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   if (is_npu_backend) {
     const auto& input_1 = inputs[1];  // weight
     bool is_per_axis_quant = false;
-    ORT_RETURN_IF_ERROR(qnn_model_wrapper.IsPerChannelQuantized(input_1, is_per_axis_quant));
+    int64_t quant_axis = 0;
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.IsPerChannelQuantized(input_1, is_per_axis_quant, quant_axis));
 
     if (is_per_axis_quant) {
       int32_t elem_data_type = 0;
       ORT_RETURN_IF_ERROR(utils::GetOnnxTensorElemDataType(input_1.node_arg, elem_data_type));
 
-      const bool is_signed_type = (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT8) ||
+      const bool is_signed_type = (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT4) ||
+                                  (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT8) ||
                                   (elem_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT16);
       ORT_RETURN_IF_NOT(is_signed_type, "Conv weights must be of a signed quantized type if quantized per-channel");
+
+      if (conv_type == OnnxConvType::kConvTranspose) {
+        ORT_RETURN_IF_NOT(quant_axis == 1,
+                          "ConvTranspose's input[1] must be use axis == 1 for per-channel quantization");
+      } else {
+        ORT_RETURN_IF_NOT(quant_axis == 0, "Conv's input[1] must be use axis == 0 for per-channel quantization");
+      }
     }
   }
 
@@ -280,9 +289,29 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
   //
   // Input 2: bias
   //
-  if (num_inputs == 3) {
+  const bool has_bias_input = num_inputs == 3;
+  if (has_bias_input) {
     ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[2], logger, input_names));
   }
+
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 16 && QNN_API_VERSION_MINOR <= 18)
+  if (!has_bias_input && IsNpuBackend(qnn_model_wrapper.GetQnnBackendType())) {
+    // Bias is implicit. QNN SDK 2.23/2.24/2.25 (QNN API version 2.16/2.17/2.18) has a validation bug for
+    // implicit bias inputs, so provide an explicit bias of all 0 (quantized int32).
+    TensorInfo input0_info = {};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[0], input0_info));
+
+    TensorInfo input1_info = {};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[1], input1_info));
+
+    if (input0_info.quant_param.IsPerTensor(/*include_bw*/ true) && input1_info.quant_param.IsQuantized()) {
+      const std::string bias_name = qnn::utils::GetNodeName(node_unit) + "_implicit_bias_ort_qnn_ep";
+      std::vector<uint32_t> bias_shape = {input1_info.shape[0]};
+      ORT_RETURN_IF_ERROR(AddZeroBiasInput(qnn_model_wrapper, input0_info.quant_param, input1_info.quant_param,
+                                           std::move(bias_shape), bias_name, logger, input_names));
+    }
+  }
+#endif
 
   return Status::OK();
 }

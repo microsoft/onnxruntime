@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.11)
 
 project (onnxruntime-node)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 
 add_compile_definitions(NAPI_VERSION=${napi_build_version})
 add_compile_definitions(ORT_API_MANUAL_INIT)
@@ -34,12 +34,17 @@ include_directories(${CMAKE_SOURCE_DIR}/node_modules/node-addon-api)
 
 # optional providers
 option(USE_DML "Build with DirectML support" OFF)
+option(USE_WEBGPU "Build with WebGPU support" OFF)
 option(USE_CUDA "Build with CUDA support" OFF)
 option(USE_TENSORRT "Build with TensorRT support" OFF)
 option(USE_COREML "Build with CoreML support" OFF)
+option(USE_QNN "Build with QNN support" OFF)
 
 if(USE_DML)
   add_compile_definitions(USE_DML=1)
+endif()
+if(USE_WEBGPU)
+  add_compile_definitions(USE_WEBGPU=1)
 endif()
 if(USE_CUDA)
   add_compile_definitions(USE_CUDA=1)
@@ -50,13 +55,26 @@ endif()
 if(USE_COREML)
   add_compile_definitions(USE_COREML=1)
 endif()
+if(USE_QNN)
+  add_compile_definitions(USE_QNN=1)
+endif()
 
 # source files
 file(GLOB ORT_NODEJS_BINDING_SOURCE_FILES ${CMAKE_SOURCE_DIR}/src/*.cc)
 
 add_library(onnxruntime_binding SHARED ${ORT_NODEJS_BINDING_SOURCE_FILES} ${CMAKE_JS_SRC})
+file(MAKE_DIRECTORY ${dist_folder})
+
 set_target_properties(onnxruntime_binding PROPERTIES
   PREFIX "" SUFFIX ".node"
+  RUNTIME_OUTPUT_DIRECTORY ${dist_folder}
+  RUNTIME_OUTPUT_DIRECTORY_DEBUG ${dist_folder}
+  RUNTIME_OUTPUT_DIRECTORY_RELEASE ${dist_folder}
+  RUNTIME_OUTPUT_DIRECTORY_RELWITHDEBINFO ${dist_folder}
+  LIBRARY_OUTPUT_DIRECTORY ${dist_folder}
+  LIBRARY_OUTPUT_DIRECTORY_DEBUG ${dist_folder}
+  LIBRARY_OUTPUT_DIRECTORY_RELEASE ${dist_folder}
+  LIBRARY_OUTPUT_DIRECTORY_RELWITHDEBINFO ${dist_folder}
   BUILD_WITH_INSTALL_RPATH TRUE
   INSTALL_RPATH_USE_LINK_PATH FALSE)
 target_link_libraries(onnxruntime_binding PRIVATE ${CMAKE_JS_LIB})
@@ -82,61 +100,29 @@ else()
 endif()
 
 if (WIN32)
-  target_link_libraries(onnxruntime_binding PRIVATE onnxruntime.lib)
+  target_link_libraries(onnxruntime_binding PRIVATE onnxruntime)
 elseif (APPLE)
   target_link_libraries(onnxruntime_binding PRIVATE libonnxruntime.${ort_version}.dylib)
   set_target_properties(onnxruntime_binding PROPERTIES INSTALL_RPATH "@loader_path")
 else()
-  target_link_libraries(onnxruntime_binding PRIVATE libonnxruntime.so.${ort_version})
+  target_link_libraries(onnxruntime_binding PRIVATE onnxruntime)
   set_target_properties(onnxruntime_binding PROPERTIES INSTALL_RPATH "$ORIGIN/")
 endif()
 
-# post build
-
-add_custom_command(
-  TARGET onnxruntime_binding POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory ${dist_folder}
-    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:onnxruntime_binding> ${dist_folder}
-)
 
 if (WIN32)
-  add_custom_command(
-    TARGET onnxruntime_binding POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-      ${ONNXRUNTIME_WIN_BIN_DIR}/onnxruntime.dll
-      ${dist_folder}
-  )
+  file(COPY ${ONNXRUNTIME_WIN_BIN_DIR}/onnxruntime.dll
+      DESTINATION ${dist_folder})
   if (USE_DML)
-    add_custom_command(
-      TARGET onnxruntime_binding POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy
-      ${ONNXRUNTIME_WIN_BIN_DIR}/DirectML.dll
-      ${dist_folder}
-    )
+    file(COPY ${ONNXRUNTIME_WIN_BIN_DIR}/DirectML.dll
+      DESTINATION ${dist_folder})
   endif ()
-  if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    add_custom_command(
-      TARGET onnxruntime_binding POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy
-        ${ONNXRUNTIME_WIN_BIN_DIR}/onnxruntime.pdb
-        ${dist_folder}
-      COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE_DIR:onnxruntime_binding>/onnxruntime_binding.pdb ${dist_folder}
-    )
-  endif()
 elseif (APPLE)
-  add_custom_command(
-    TARGET onnxruntime_binding POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-      ${ONNXRUNTIME_BUILD_DIR}/libonnxruntime.${ort_version}.dylib
-      ${dist_folder}
-  )
+  file(COPY ${ONNXRUNTIME_BUILD_DIR}/libonnxruntime.dylib
+      DESTINATION ${dist_folder} FOLLOW_SYMLINK_CHAIN)
 elseif (UNIX)
-  add_custom_command(
-    TARGET onnxruntime_binding POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-      ${ONNXRUNTIME_BUILD_DIR}/libonnxruntime.so.${ort_version}
-      ${dist_folder}
-  )
+  file(COPY ${ONNXRUNTIME_BUILD_DIR}/libonnxruntime.so
+      DESTINATION ${dist_folder} FOLLOW_SYMLINK_CHAIN)
 else()
   message(FATAL_ERROR "Platform not supported.")
 endif()

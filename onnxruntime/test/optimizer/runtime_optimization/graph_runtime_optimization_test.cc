@@ -318,6 +318,20 @@ TEST(GraphRuntimeOptimizationTest, ConvActivation) {
       });
 }
 
+TEST(GraphRuntimeOptimizationTest, FuseMatMulNBitsAndAdd) {
+  SaveAndLoadRuntimeOptimizationsForModel(
+      ORT_TSTR("testdata/transform/runtime_optimization/matmulnbits_add.onnx"),
+      ORT_TSTR("testdata/transform/runtime_optimization/matmulnbits_add.runtime_optimizations.ort"),
+      [](const OpCountMap& loaded_ops, const OpCountMap& initialized_ops) {
+        EXPECT_EQ(loaded_ops,
+                  (OpCountMap{{"com.microsoft.MatMulNBits", 1},
+                              {"Add", 1}}));
+
+        EXPECT_EQ(initialized_ops,
+                  (OpCountMap{{"com.microsoft.MatMulNBits", 1}}));
+      });
+}
+
 TEST(GraphRuntimeOptimizationTest, TestNhwcTransformer) {
   CheckNhwcTransformerIsApplied(
       ORT_TSTR("testdata/transform/runtime_optimization/qdq_convs.runtime_optimizations.ort"),

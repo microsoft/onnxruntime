@@ -13,16 +13,11 @@ namespace onnxruntime {
 namespace qnn {
 
 // ArgMax/ArgMin support limitations:
-//  - HTP only: cannot generate a graph output
 //  - HTP only: max input rank is 4.
 //  - All backends: ONNX select_last_index attribute must be 0.
 class ArgMaxMinOpBuilder : public BaseOpBuilder {
  public:
   ArgMaxMinOpBuilder() : BaseOpBuilder("ArgMaxMinOpBuilder") {}
-
-  Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
-                       const NodeUnit& node_unit,
-                       const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
  protected:
   Qnn_DataType_t GetSupportedOutputDataType(size_t index,
@@ -35,31 +30,18 @@ class ArgMaxMinOpBuilder : public BaseOpBuilder {
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 };
 
-Status ArgMaxMinOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
-                                         const NodeUnit& node_unit,
-                                         const logging::Logger& logger) const {
-  // ONNX ArgMax/ArgMin ops output int64 indices, but the equivalent QNN ops output uint32 indices.
-  // The QNN HTP backend does not generally support the int64 type, but QNN EP can just use the uint32 type
-  // for ArgMax/ArgMin ops within the graph. However, if the ArgMin/ArgMax op **generates** a graph output,
-  // then we cannot support it on the HTP backend.
-  bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
-  if (is_npu_backend) {
-    const std::string& output_name = node_unit.Outputs()[0].node_arg.Name();
-    ORT_RETURN_IF(qnn_model_wrapper.IsGraphOutput(output_name),
-                  "QNN EP does not support ArgMin/ArgMax ops that generate a graph output.");
+Qnn_DataType_t ArgMaxMinOpBuilder::GetSupportedOutputDataType(size_t index, Qnn_DataType_t qnn_data_type) const {
+  // ONNX ArgMxx ops have int64 output, but QNN requires uint32 or int32.
+  // If this node produces a graph output, BaseOpBuilder::ProcessOutputs() adds a Cast node after the ArgMxx op.
+  // Otherwise, it just set the output type to unit32 or int32.
+  ORT_UNUSED_PARAMETER(index);
+  if (qnn_data_type == QNN_DATATYPE_INT_64) {
+    return QNN_DATATYPE_INT_32;
+  } else if (qnn_data_type == QNN_DATATYPE_UINT_64) {
+    return QNN_DATATYPE_UINT_32;
   }
 
-  return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
-}
-
-Qnn_DataType_t ArgMaxMinOpBuilder::GetSupportedOutputDataType(size_t index, Qnn_DataType_t qnn_data_type) const {
-  // ONNX ArgMxx ops have int64 output, but QNN requires uint32.
-  // If this node produces a graph output, BaseOpBuilder::ProcessOutputs() adds a Cast node after the ArgMxx op.
-  // Otherwise, it just set the output type to unit32. This only works for the QNN CPU backend, since the HTP backend
-  // does not generally support int64.
-  ORT_UNUSED_PARAMETER(index);
-  ORT_UNUSED_PARAMETER(qnn_data_type);
-  return QNN_DATATYPE_UINT_32;
+  return qnn_data_type;
 }
 
 Status ArgMaxMinOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,

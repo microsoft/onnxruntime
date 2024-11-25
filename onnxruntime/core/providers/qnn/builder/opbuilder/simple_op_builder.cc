@@ -41,7 +41,7 @@ class SimpleOpBuilder : public BaseOpBuilder {
                                   QnnQuantParamsWrapper& quant_param) const override ORT_MUST_USE_RESULT;
 
  private:
-  Status ExplicitOpCheck(const NodeUnit& node_unit) const;
+  Status ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit) const;
   Status ProcessSigmoidOrTanhOutput(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     std::vector<std::string>&& input_names,
@@ -138,7 +138,8 @@ Status SimpleOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   return Status::OK();
 }
 
-Status SimpleOpBuilder::ExplicitOpCheck(const NodeUnit& node_unit) const {
+Status SimpleOpBuilder::ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper,
+                                        const NodeUnit& node_unit) const {
   const std::string& op_type = node_unit.OpType();
 
   if (op_type == "GridSample") {
@@ -158,19 +159,47 @@ Status SimpleOpBuilder::ExplicitOpCheck(const NodeUnit& node_unit) const {
                       "QNN EP only supports Min and Max operators with exactly 2 inputs.");
   }
 
+  if (op_type == "DequantizeLinear") {
+    bool is_per_chan_quant = false;
+    int64_t quant_axis = 0;
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.IsPerChannelQuantized(node_unit.Inputs()[0], is_per_chan_quant, quant_axis));
+    ORT_RETURN_IF(is_per_chan_quant, "QNN EP does not support a standalone DQ op with per-channel quantization");
+
+    if (qnn_model_wrapper.GetModelSettings().offload_graph_io_quantization) {
+      ORT_RETURN_IF(qnn_model_wrapper.IsGraphOutput(node_unit.Outputs()[0].node_arg.Name()),
+                    "QNN EP is configured to not take DQ nodes that generate a graph output.");
+    }
+  }
+
+  if (op_type == "QuantizeLinear") {
+    bool is_per_chan_quant = false;
+    int64_t quant_axis = 0;
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.IsPerChannelQuantized(node_unit.Outputs()[0], is_per_chan_quant, quant_axis));
+    ORT_RETURN_IF(is_per_chan_quant, "QNN EP does not support a standalone Q op with per-channel quantization");
+
+    if (qnn_model_wrapper.GetModelSettings().offload_graph_io_quantization) {
+      ORT_RETURN_IF(qnn_model_wrapper.IsGraphInput(node_unit.Inputs()[0].node_arg.Name()),
+                    "QNN EP is configured to not take Q nodes that consume a graph input.");
+    }
+  }
+
   return Status::OK();
 }
 
-Status ProcessAlphaAttribute(QnnModelWrapper& qnn_model_wrapper,
-                             const NodeUnit& node_unit,
-                             std::vector<std::string>& param_tensor_names) {
+// Limit to float type for now
+Status ProcessNodeAttribute(QnnModelWrapper& qnn_model_wrapper,
+                            const NodeUnit& node_unit,
+                            const std::string& onnx_attr_key,
+                            const std::string& qnn_param_key,
+                            std::vector<std::string>& param_tensor_names,
+                            const float default_value = 1.0f) {
   NodeAttrHelper node_helper(node_unit);
-  float alpha = node_helper.Get("alpha", 1.0f);
-  Qnn_Scalar_t alpha_qnn_scalar = QNN_SCALAR_INIT;
-  alpha_qnn_scalar.dataType = QNN_DATATYPE_FLOAT_32;
-  alpha_qnn_scalar.floatValue = alpha;
+  float attr_value = node_helper.Get(onnx_attr_key, default_value);
+  Qnn_Scalar_t attr_qnn_scalar = QNN_SCALAR_INIT;
+  attr_qnn_scalar.dataType = QNN_DATATYPE_FLOAT_32;
+  attr_qnn_scalar.floatValue = attr_value;
 
-  QnnParamWrapper alpha_param(node_unit.Index(), node_unit.Name(), QNN_OP_ELU_PARAM_ALPHA, alpha_qnn_scalar);
+  QnnParamWrapper alpha_param(node_unit.Index(), node_unit.Name(), qnn_param_key, attr_qnn_scalar);
   param_tensor_names.push_back(alpha_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(alpha_param));
 
@@ -318,7 +347,7 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   const std::string& op_type = node_unit.OpType();
 
   if (do_op_validation) {
-    ORT_RETURN_IF_ERROR(ExplicitOpCheck(node_unit));
+    ORT_RETURN_IF_ERROR(ExplicitOpCheck(qnn_model_wrapper, node_unit));
     // Skip the op validation for DepthToSpace & SpaceToDepth if it's not NHWC data layout
     if (node_unit.Domain() != kMSInternalNHWCDomain && (op_type == "DepthToSpace" || op_type == "SpaceToDepth" || op_type == "GridSample")) {
       return Status::OK();
@@ -369,7 +398,29 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   }
 
   if (op_type == "Elu") {
-    ORT_RETURN_IF_ERROR(ProcessAlphaAttribute(qnn_model_wrapper, node_unit, param_tensor_names));
+    ORT_RETURN_IF_ERROR(ProcessNodeAttribute(qnn_model_wrapper, node_unit, "alpha",
+                                             QNN_OP_ELU_PARAM_ALPHA, param_tensor_names));
+  }
+
+  if (op_type == "HardSigmoid") {
+    int32_t onnx_data_type = 0;
+    ORT_RETURN_IF_ERROR(utils::GetOnnxTensorElemDataType(node_unit.Inputs()[0].node_arg, onnx_data_type));
+
+    ORT_RETURN_IF_ERROR(ProcessNodeAttribute(qnn_model_wrapper, node_unit, "alpha",
+                                             QNN_OP_ELEMENT_WISE_NEURON_PARAM_ALPHA,
+                                             param_tensor_names, 0.2f));
+    ORT_RETURN_IF_ERROR(ProcessNodeAttribute(qnn_model_wrapper, node_unit, "beta",
+                                             QNN_OP_ELEMENT_WISE_NEURON_PARAM_BETA,
+                                             param_tensor_names, 0.5f));
+    Qnn_Scalar_t neuron_operation = QNN_SCALAR_INIT;
+    neuron_operation.dataType = QNN_DATATYPE_UINT_32;
+    neuron_operation.uint32Value = QNN_OP_ELEMENT_WISE_NEURON_OPERATION_HARD_SIGMOID;
+
+    QnnParamWrapper operation_param(node_unit.Index(), node_unit.Name(),
+                                    QNN_OP_ELEMENT_WISE_NEURON_PARAM_OPERATION,
+                                    neuron_operation);
+    param_tensor_names.push_back(operation_param.GetParamTensorName());
+    qnn_model_wrapper.AddParamWrapper(std::move(operation_param));
   }
 
   if (op_type == "DepthToSpace") {

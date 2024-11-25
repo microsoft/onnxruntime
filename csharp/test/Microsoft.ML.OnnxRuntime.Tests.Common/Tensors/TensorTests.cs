@@ -2180,10 +2180,13 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
         {22,23}
     }
 }";
+            // remove \r so the newlines are just \n on all platforms
+            expected = expected.Replace("\r", "");
+            var actual= tensor.GetArrayString().Replace("\r", "");
 
-            Assert.Equal(expected, tensor.GetArrayString());
+            Assert.Equal(expected, actual);
 
-            var expectedNoSpace = expected.Replace(Environment.NewLine, "").Replace(" ", "");
+            var expectedNoSpace = expected.Replace("\n", "").Replace(" ", "");
             Assert.Equal(expectedNoSpace, tensor.GetArrayString(false));
         }
 
@@ -2220,7 +2223,9 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
                 new[] { 0, 0, 1, 2, 3, 4, 5, 6 };
             Assert.Equal(expected, actual);
 
+#pragma warning disable CS8625 // Cannot convert null literal to non-nullable reference type.
             Assert.Throws<ArgumentNullException>(() => tensorCollection.CopyTo(null, 0));
+#pragma warning restore CS8625 // Cannot convert null literal to non-nullable reference type.
             Assert.Throws<ArgumentException>(() => tensorCollection.CopyTo(new int[3, 4], 0));
             Assert.Throws<ArgumentException>(() => tensorCollection.CopyTo(new int[5], 0));
             Assert.Throws<ArgumentException>(() => tensorCollection.CopyTo(new int[6], 1));
@@ -2311,7 +2316,9 @@ namespace Microsoft.ML.OnnxRuntime.Tensors.Tests
                 new[] { 0, 0, 1, 2, 3, 4, 5, 6 };
             Assert.Equal(expected, actual);
 
+#pragma warning disable CS8625 // Cannot convert null literal to non-nullable reference type.
             Assert.Throws<ArgumentNullException>(() => tensorCollection.CopyTo(null, 0));
+#pragma warning restore CS8625 // Cannot convert null literal to non-nullable reference type.
             Assert.Throws<ArgumentException>(() => tensorCollection.CopyTo(new int[5], 0));
             Assert.Throws<ArgumentException>(() => tensorCollection.CopyTo(new int[6], 1));
 

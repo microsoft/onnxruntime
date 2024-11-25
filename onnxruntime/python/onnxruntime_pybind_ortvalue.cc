@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
 #include "python/onnxruntime_pybind_exceptions.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 #include "python/onnxruntime_pybind_state_common.h"
@@ -8,7 +7,6 @@
 #define NO_IMPORT_ARRAY
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
-#include <numpy/arrayobject.h>
 #include "python/numpy_helper.h"
 
 #include "core/framework/ort_value.h"
@@ -18,11 +16,46 @@
 #ifdef ENABLE_TRAINING
 #include "core/dlpack/dlpack_converter.h"
 #endif
-
 namespace onnxruntime {
 namespace python {
 
 namespace py = pybind11;
+
+namespace {
+std::unique_ptr<OrtValue> OrtValueFromShapeAndType(const std::vector<int64_t>& shape,
+                                                   MLDataType element_type,
+                                                   const OrtDevice& device) {
+  AllocatorPtr allocator;
+  if (strcmp(GetDeviceName(device), CPU) == 0) {
+    allocator = GetAllocator();
+  } else if (strcmp(GetDeviceName(device), CUDA) == 0) {
+#ifdef USE_CUDA
+    if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+      throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+    }
+    allocator = GetCudaAllocator(device.Id());
+#else
+    throw std::runtime_error(
+        "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
+        "Please use the CUDA package of OnnxRuntime to use this feature.");
+#endif
+  } else if (strcmp(GetDeviceName(device), DML) == 0) {
+#if USE_DML
+    allocator = GetDmlAllocator(device.Id());
+#else
+    throw std::runtime_error(
+        "Can't allocate memory on the DirectML device using this package of OnnxRuntime. "
+        "Please use the DirectML package of OnnxRuntime to use this feature.");
+#endif
+  } else {
+    throw std::runtime_error("Unsupported device: Cannot place the OrtValue on this device");
+  }
+
+  auto ml_value = std::make_unique<OrtValue>();
+  Tensor::InitOrtValue(element_type, gsl::make_span(shape), std::move(allocator), *ml_value);
+  return ml_value;
+}
+}  // namespace
 
 void addOrtValueMethods(pybind11::module& m) {
   py::class_<OrtValue> ortvalue_binding(m, "OrtValue");
@@ -63,16 +96,22 @@ void addOrtValueMethods(pybind11::module& m) {
       // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
       // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in CUDA
       CreateGenericMLValue(nullptr, GetRocmAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToRocmMemCpy);
-#elif USE_DML
-      // InputDeflist is null because OrtValue creation is not tied to a specific model
-      // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
-      // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in DML
-      CreateGenericMLValue(
-        nullptr, GetDmlAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToDmlMemCpy);
 #else
-      throw std::runtime_error(
-          "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
-          "Please use the CUDA package of OnnxRuntime to use this feature.");
+          throw std::runtime_error(
+              "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
+              "Please use the CUDA package of OnnxRuntime to use this feature.");
+#endif
+        } else if (device.Type() == OrtDevice::DML) {
+#if USE_DML
+          // InputDeflist is null because OrtValue creation is not tied to a specific model
+          // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
+          // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in DML
+          CreateGenericMLValue(
+              nullptr, GetDmlAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToDmlMemCpy);
+#else
+          throw std::runtime_error(
+              "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
+              "Please use the CUDA package of OnnxRuntime to use this feature.");
 #endif
         } else if (device.Type() == OrtDevice::NPU) {
 #ifdef USE_CANN
@@ -83,9 +122,9 @@ void addOrtValueMethods(pybind11::module& m) {
           CreateGenericMLValue(nullptr, GetCannAllocator(device.Id()), "", array_on_cpu, ml_value.get(),
                                true, false, CpuToCannMemCpy);
 #else
-      throw std::runtime_error(
-          "Can't allocate memory on the CANN device using this package of OnnxRuntime. "
-          "Please use the CANN package of OnnxRuntime to use this feature.");
+          throw std::runtime_error(
+              "Can't allocate memory on the CANN device using this package of OnnxRuntime. "
+              "Please use the CANN package of OnnxRuntime to use this feature.");
 #endif
         } else {
           throw std::runtime_error("Unsupported device: Cannot place the OrtValue on this device");
@@ -127,29 +166,55 @@ void addOrtValueMethods(pybind11::module& m) {
           }
 
           onnxruntime::python::CopyDataToTensor(
-            py_values,
-            values_type,
-            *(ml_value->GetMutable<Tensor>()),
-            CpuToRocmMemCpy);
-#elif USE_DML
-          onnxruntime::python::CopyDataToTensor(
-            py_values,
-            values_type,
-            *(ml_value->GetMutable<Tensor>()),
-            CpuToDmlMemCpy);
+              py_values,
+              values_type,
+              *(ml_value->GetMutable<Tensor>()),
+              CpuToRocmMemCpy);
 #else
-        throw std::runtime_error(
-            "Unsupported GPU device: Cannot find the supported GPU device.");
+          throw std::runtime_error(
+              "Unsupported GPU device: Cannot find the supported GPU device.");
+#endif
+        } else if (device.Type() == OrtDevice::DML) {
+#if USE_DML
+          onnxruntime::python::CopyDataToTensor(
+              py_values,
+              values_type,
+              *(ml_value->GetMutable<Tensor>()),
+              CpuToDmlMemCpy);
+#else
+          throw std::runtime_error(
+              "Unsupported GPU device: Cannot find the supported GPU device.");
 #endif
         } else {
           throw std::runtime_error("Unsupported device: Cannot update the OrtValue on this device");
         }
       })
-      // Factory method to create an OrtValue (Tensor) from the given shape and element type with memory on the specified device
+      // Create an ortvalue value on top of the numpy array, but interpret the data
+      // as a different type with the same element size.
+      .def_static("ortvalue_from_numpy_with_onnx_type", [](py::array& data, int32_t onnx_element_type) -> std::unique_ptr<OrtValue> {
+        if (!ONNX_NAMESPACE::TensorProto_DataType_IsValid(onnx_element_type)) {
+          ORT_THROW("Not a valid ONNX Tensor data type: ", onnx_element_type);
+        }
+
+        const auto element_type = OnnxTypeToOnnxRuntimeTensorType(onnx_element_type);
+
+        const auto element_size = element_type->Size();
+        if (narrow<size_t>(data.itemsize()) != element_size) {
+          ORT_THROW("Items size in the incoming array: ", data.itemsize(),
+                    " specified by onnxtype: ", element_size);
+        }
+
+        auto cpu_allocator = GetAllocator();
+        auto ort_value = std::make_unique<OrtValue>();
+        Tensor::InitOrtValue(element_type, GetShape(data),
+                             const_cast<void*>(data.data()), cpu_allocator->Info(), *ort_value);
+        return ort_value;
+      })
+      // Factory method to create an OrtValue from the given shape and numpy element type on the specified device.
       // The memory is left uninitialized
-      .def_static("ortvalue_from_shape_and_type", [](const std::vector<int64_t>& shape, py::object& element_type, const OrtDevice& device) {
+      .def_static("ortvalue_from_shape_and_type", [](const std::vector<int64_t>& shape, py::object& numpy_element_type, const OrtDevice& device) -> std::unique_ptr<OrtValue> {
         PyArray_Descr* dtype;
-        if (!PyArray_DescrConverter(element_type.ptr(), &dtype)) {
+        if (!PyArray_DescrConverter(numpy_element_type.ptr(), &dtype)) {
           throw std::runtime_error("Not a valid numpy type");
         }
 
@@ -160,36 +225,18 @@ void addOrtValueMethods(pybind11::module& m) {
           throw std::runtime_error("Creation of OrtValues is currently only supported from non-string numpy arrays");
         }
 
-        AllocatorPtr allocator;
-        if (strcmp(GetDeviceName(device), CPU) == 0) {
-          allocator = GetAllocator();
-        } else if (strcmp(GetDeviceName(device), CUDA) == 0) {
-#ifdef USE_CUDA
-          if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-            throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
-          }
-          allocator = GetCudaAllocator(device.Id());
-#else
-      throw std::runtime_error(
-          "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
-          "Please use the CUDA package of OnnxRuntime to use this feature.");
-#endif
-        } else if (strcmp(GetDeviceName(device), DML) == 0) {
-#if USE_DML
-          allocator = GetDmlAllocator(device.Id());
-#else
-          throw std::runtime_error(
-              "Can't allocate memory on the DirectML device using this package of OnnxRuntime. "
-              "Please use the DirectML package of OnnxRuntime to use this feature.");
-#endif
-        } else {
-          throw std::runtime_error("Unsupported device: Cannot place the OrtValue on this device");
+        auto element_type = NumpyTypeToOnnxRuntimeTensorType(type_num);
+        return OrtValueFromShapeAndType(shape, element_type, device);
+      })
+      // Factory method to create an OrtValue from the given shape and onnx element type on the specified device.
+      // The memory is left uninitialized
+      .def_static("ortvalue_from_shape_and_onnx_type", [](const std::vector<int64_t>& shape, int32_t onnx_element_type, const OrtDevice& device) -> std::unique_ptr<OrtValue> {
+        if (onnx_element_type == onnx::TensorProto_DataType::TensorProto_DataType_STRING) {
+          throw std::runtime_error("Creation of OrtValues is currently only supported from non-string numpy arrays");
         }
 
-        auto ml_value = std::make_unique<OrtValue>();
-        auto ml_type = NumpyTypeToOnnxRuntimeTensorType(type_num);
-        Tensor::InitOrtValue(ml_type, gsl::make_span(shape), std::move(allocator), *ml_value);
-        return ml_value;
+        auto element_type = OnnxTypeToOnnxRuntimeTensorType(onnx_element_type);
+        return OrtValueFromShapeAndType(shape, element_type, device);
       })
 
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -229,24 +276,24 @@ void addOrtValueMethods(pybind11::module& m) {
 
         ORT_THROW("Only OrtValues that are Tensors/SparseTensors are currently supported");
 #else
-            ORT_THROW("Only OrtValues that are Tensors are supported in this build");
+        ORT_THROW("Only OrtValues that are Tensors are supported in this build");
 #endif
       })
       .def("shape", [](const OrtValue* ort_value) -> py::list {
-        py::list shape_arr;
 #if !defined(DISABLE_SPARSE_TENSORS)
         // OrtValue can only be a Tensor/SparseTensor, make this generic to handle non-Tensors
         ORT_ENFORCE(ort_value->IsTensor() || ort_value->IsSparseTensor(),
                     "Only OrtValues that are Tensors/SpareTensors are currently supported");
 
-        const auto& dims = (ort_value->IsTensor())
-                               ? ort_value->Get<Tensor>().Shape().GetDims()
-                               : ort_value->Get<SparseTensor>().DenseShape().GetDims();
+        const auto dims = (ort_value->IsTensor())
+                              ? ort_value->Get<Tensor>().Shape().GetDims()
+                              : ort_value->Get<SparseTensor>().DenseShape().GetDims();
 #else
         ORT_ENFORCE(ort_value->IsTensor(), "Only OrtValues that are Tensors are supported in this build");
-        const auto& dims = ort_value->Get<Tensor>().Shape().GetDims();
+        const auto dims = ort_value->Get<Tensor>().Shape().GetDims();
 #endif
 
+        py::list shape_arr;
         for (auto dim : dims) {
           // For sequence tensors - we would append a list of dims to the outermost list
           // For now only tensors are supported in OrtValue
@@ -278,74 +325,46 @@ void addOrtValueMethods(pybind11::module& m) {
 
         return *ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(*type_proto);
       })
-      .def(
-          "element_type", [](const OrtValue* ort_value) -> int32_t {
-            return GetTensorProtoType(*ort_value);
-          },
-          "Returns an integer equal to the ONNX tensor proto type of the tensor or sequence. "
-          "This integer is one type defined by ONNX TensorProto_DataType "
-          "(such as onnx.TensorProto.FLOAT)."
-          "Raises an exception in any other case.")
-      .def("has_value", [](const OrtValue* ort_value) -> bool {
-        return ort_value->IsAllocated();
-      })
-      .def("is_tensor", [](const OrtValue* ort_value) -> bool {
-        return ort_value->IsTensor();
-      })
-      .def("is_sparse_tensor", [](const OrtValue* ort_value) -> bool {
-        return ort_value->IsSparseTensor();
-      })
-      .def("is_tensor_sequence", [](const OrtValue* ort_value) -> bool {
-        return ort_value->IsTensorSequence();
-      })
+      .def("element_type", [](const OrtValue* ort_value) -> int32_t { return GetTensorProtoType(*ort_value); },
+           "Returns an integer equal to the ONNX tensor proto type of the tensor or sequence. "
+           "This integer is one type defined by ONNX TensorProto_DataType "
+           "(such as onnx.TensorProto.FLOAT)."
+           "Raises an exception in any other case.")
+      .def("has_value", [](const OrtValue* ort_value) -> bool { return ort_value->IsAllocated(); })
+      .def("is_tensor", [](const OrtValue* ort_value) -> bool { return ort_value->IsTensor(); })
+      .def("is_sparse_tensor", [](const OrtValue* ort_value) -> bool { return ort_value->IsSparseTensor(); })
+      .def("is_tensor_sequence", [](const OrtValue* ort_value) -> bool { return ort_value->IsTensorSequence(); })
       // Converts Tensor into a numpy array
       .def("numpy", [](const OrtValue* ml_value) -> py::object {
         ORT_ENFORCE(ml_value->IsTensor(), "Only OrtValues that are Tensors are convertible to Numpy objects");
 
-        py::object obj;
-
 #ifdef USE_CUDA
-        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetCudaToHostMemCpyFunction());
+        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetCudaToHostMemCpyFunction());
 #elif USE_ROCM
-        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetRocmToHostMemCpyFunction());
+        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetRocmToHostMemCpyFunction());
 #elif USE_CANN
-        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetCannToHostMemCpyFunction());
+        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetCannToHostMemCpyFunction());
 #elif USE_DML
-        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, GetDmlToHostMemCpyFunction());
+        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetDmlToHostMemCpyFunction());
 #else
-        GetPyObjFromTensor(ml_value->Get<Tensor>(), obj, nullptr, nullptr);
+        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, nullptr);
 #endif
-        return obj;
-      })
+        return obj; })
 #ifdef ENABLE_TRAINING
-      .def(
-          "to_dlpack", [](OrtValue* ort_value) -> py::object {
-            return py::reinterpret_steal<py::object>(ToDlpack(*ort_value));
-          },
-          "Returns a DLPack representing the tensor. This method does not copy the pointer shape, "
-          "instead, it copies the pointer value. The OrtValue must be persist until the dlpack structure "
-          "is consumed.")
-      .def_static(
-          "from_dlpack", [](py::object data, bool is_bool_tensor) {
-            return FromDlpack(data.ptr(), is_bool_tensor);
-          },
-          py::arg("data"), py::arg("is_bool_tensor") = false, "Converts a tensor from a external library into an OrtValue by means of the __dlpack__ protocol.")
-      .def(
-          "__dlpack__", [](OrtValue* ort_value, py::object /* stream */) -> py::object {
-            return py::reinterpret_steal<py::object>(ToDlpack(*ort_value));
-          },
-          py::arg("stream") = py::none(),
-          "Returns a DLPack representing the tensor (part of __dlpack__ protocol). "
-          "This method does not copy the pointer shape, instead, it copies the pointer value. "
-          "The OrtValue must persist until the dlpack structure is consumed.")
-      .def(
-          "__dlpack_device__", [](const OrtValue* ort_value) -> py::tuple {
+      .def("to_dlpack", [](OrtValue* ort_value) -> py::object { return py::reinterpret_steal<py::object>(ToDlpack(*ort_value)); },
+           "Returns a DLPack representing the tensor. This method does not copy the pointer shape, "
+           "instead, it copies the pointer value. The OrtValue must be persist until the dlpack structure "
+           "is consumed.")
+      .def_static("from_dlpack", [](py::object data, bool is_bool_tensor) { return FromDlpack(data.ptr(), is_bool_tensor); }, py::arg("data"), py::arg("is_bool_tensor") = false, "Converts a tensor from a external library into an OrtValue by means of the __dlpack__ protocol.")
+      .def("__dlpack__", [](OrtValue* ort_value, py::object /* stream */) -> py::object { return py::reinterpret_steal<py::object>(ToDlpack(*ort_value)); }, py::arg("stream") = py::none(),
+           "Returns a DLPack representing the tensor (part of __dlpack__ protocol). "
+           "This method does not copy the pointer shape, instead, it copies the pointer value. "
+           "The OrtValue must persist until the dlpack structure is consumed.")
+      .def("__dlpack_device__", [](const OrtValue* ort_value) -> py::tuple {
             ORT_ENFORCE(ort_value->IsTensor(), "Only tensor type OrtValues are supported");
             const onnxruntime::Tensor& tensor = ort_value->Get<Tensor>();
             DLDevice device = onnxruntime::dlpack::GetDlpackDevice(*ort_value, tensor.Location().device.Id());
-            return py::make_tuple(static_cast<int>(device.device_type), device.device_id);
-          },
-          "Returns a tuple of integers, (device, device index) (part of __dlpack__ protocol).")
+            return py::make_tuple(static_cast<int>(device.device_type), device.device_id); }, "Returns a tuple of integers, (device, device index) (part of __dlpack__ protocol).")
 #endif
       ;
 
@@ -355,13 +374,8 @@ void addOrtValueMethods(pybind11::module& m) {
         v->push_back(ortvalue);
       })
 #ifdef ENABLE_TRAINING
-      .def(
-          "push_back", [](std::vector<OrtValue>* v, py::object dlpack_tensor, const bool is_bool_tensor) {
-            v->push_back(FromDlpack(dlpack_tensor.ptr(), is_bool_tensor));
-          },
-          "Add a new OrtValue after being ownership was transferred from the DLPack structure.", py::arg("dlpack_tensor"), py::arg("is_bool_tensor") = false)
-      .def(
-          "push_back_batch", [](std::vector<OrtValue>* v, std::vector<py::object>& torch_tensors, std::vector<int64_t>& data_ptrs, std::vector<py::object>& element_types, const std::vector<std::vector<int64_t>>& shapes, const std::vector<OrtDevice>& devices) {
+      .def("push_back", [](std::vector<OrtValue>* v, py::object dlpack_tensor, const bool is_bool_tensor) { v->push_back(FromDlpack(dlpack_tensor.ptr(), is_bool_tensor)); }, "Add a new OrtValue after being ownership was transferred from the DLPack structure.", py::arg("dlpack_tensor"), py::arg("is_bool_tensor") = false)
+      .def("push_back_batch", [](std::vector<OrtValue>* v, std::vector<py::object>& torch_tensors, std::vector<int64_t>& data_ptrs, std::vector<py::object>& element_types, const std::vector<std::vector<int64_t>>& shapes, const std::vector<OrtDevice>& devices) {
             for (size_t i = 0; i < torch_tensors.size(); ++i) {
               py::object& element_type = element_types.at(i);
               const std::vector<int64_t>& shape = shapes.at(i);
@@ -382,52 +396,36 @@ void addOrtValueMethods(pybind11::module& m) {
               OrtValue ml_value;
               Tensor::InitOrtValue(ml_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), info, ml_value);
               v->push_back(ml_value);
-            }
-          },
-          "Add a batch of OrtValue's by wrapping PyTorch tensors.")
+            } }, "Add a batch of OrtValue's by wrapping PyTorch tensors.")
 #endif
       .def("reserve", [](std::vector<OrtValue>* v, const size_t len) { v->reserve(len); })
       .def("shrink_to_fit", [](std::vector<OrtValue>* v) { v->shrink_to_fit(); })
       .def("__len__", [](const std::vector<OrtValue>& v) { return v.size(); })
-      .def(
-          "__iter__", [](const std::vector<OrtValue>& v) {
-            return py::make_iterator(v.cbegin(), v.cend());
-          },
-          py::keep_alive<0, 1>())
-      .def("__getitem__", [](const std::vector<OrtValue>& v, const size_t idx) {
-        return v.at(idx);
-      })
-      .def(
-          "bool_tensor_indices", [](std::vector<OrtValue>* v) -> std::vector<int64_t> {
+      .def("__iter__", [](const std::vector<OrtValue>& v) { return py::make_iterator(v.cbegin(), v.cend()); }, py::keep_alive<0, 1>())
+      .def("__getitem__", [](const std::vector<OrtValue>& v, const size_t idx) { return v.at(idx); })
+      .def("bool_tensor_indices", [](std::vector<OrtValue>* v) -> std::vector<int64_t> {
             std::vector<int64_t> indices;
             for (size_t i = 0; i < v->size(); ++i) {
               if (GetTensorProtoType((*v)[i]) == ONNX_NAMESPACE::TensorProto_DataType_BOOL) {
                 indices.push_back(static_cast<int64_t>(i));
               }
             }
-            return indices;
-          },
-          "Returns the indices of every boolean tensor in this vector of OrtValue. "
-          "In case of a boolean tensor, method to_dlpacks returns a uint8 tensor instead of a boolean tensor. "
-          "If torch consumes the dlpack structure, `.to(torch.bool)` must be applied to the torch tensor "
-          "to get a boolean tensor.")
+            return indices; },
+           "Returns the indices of every boolean tensor in this vector of OrtValue. "
+           "In case of a boolean tensor, method to_dlpacks returns a uint8 tensor instead of a boolean tensor. "
+           "If torch consumes the dlpack structure, `.to(torch.bool)` must be applied to the torch tensor "
+           "to get a boolean tensor.")
 #ifdef ENABLE_TRAINING
-      .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) {
-        return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx)));
-      })
+      .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) { return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx))); })
 #endif
-      .def(
-          "element_type_at", [](std::vector<OrtValue>* v, const size_t idx) -> int32_t {
-            return GetTensorProtoType(v->at(idx));
-          },
-          "Returns an integer equal to the ONNX proto type of the tensor at position i. "
-          "This integer is one type defined by ONNX TensorProto_DataType "
-          "(such as onnx.TensorProto.FLOAT)."
-          "Raises an exception in any other case.",
-          py::arg("idx"))
+      .def("element_type_at", [](std::vector<OrtValue>* v, const size_t idx) -> int32_t { return GetTensorProtoType(v->at(idx)); },
+           "Returns an integer equal to the ONNX proto type of the tensor at position i. "
+           "This integer is one type defined by ONNX TensorProto_DataType "
+           "(such as onnx.TensorProto.FLOAT)."
+           "Raises an exception in any other case.",
+           py::arg("idx"))
 #ifdef ENABLE_TRAINING
-      .def(
-          "to_dlpacks", [](const std::vector<OrtValue>& v, py::object to_tensor) -> py::list {
+      .def("to_dlpacks", [](const std::vector<OrtValue>& v, py::object to_tensor) -> py::list {
             if (v.size() == 0)
               return py::list();
 
@@ -474,9 +472,8 @@ void addOrtValueMethods(pybind11::module& m) {
                 Py_DECREF(capsule);
               }
             }
-            return list_dlpacks;
-          },
-          R"pbdoc(Converts all OrtValue into tensors through DLPack protocol, the method creates
+            return list_dlpacks; },
+           R"pbdoc(Converts all OrtValue into tensors through DLPack protocol, the method creates
 a DLPack structure for every tensors, then calls python function `to_tensor` to a new object
 consuming the DLPack structure or return a list of capsule if this function is None.
 
@@ -493,7 +490,7 @@ It creates many tensors acquiring ownership of existing OrtValue.
 This method saves one object creation and an C++ allocation
 for every transferred tensor.
 )pbdoc",
-          py::arg("to_tensor"))
+           py::arg("to_tensor"))
 #endif
       ;
 

@@ -39,7 +39,8 @@ class CpuTensorizer {
 
     auto nominalRangeConverter = NominalRangeConverter(pixelRange);
 
-    if (formatFrom == kImageTensorChannelTypeBGR8 && formatTo == kImageTensorChannelTypeBGR8 || formatFrom == kImageTensorChannelTypeRGB8 && formatTo == kImageTensorChannelTypeRGB8) {
+    if (formatFrom == kImageTensorChannelTypeBGR8 && formatTo == kImageTensorChannelTypeBGR8 ||
+        formatFrom == kImageTensorChannelTypeRGB8 && formatTo == kImageTensorChannelTypeRGB8) {
       // Convert BGR8 -> BGR8 or RGB8 -> RGB8
       for (uint64_t y = 0; y < yElements; y++) {
         DeinterleaveRowByteToFloat(
@@ -52,7 +53,8 @@ class CpuTensorizer {
           nominalRangeConverter
         );
       }
-    } else if (formatFrom == kImageTensorChannelTypeBGR8 && formatTo == kImageTensorChannelTypeRGB8 || formatFrom == kImageTensorChannelTypeRGB8 && formatTo == kImageTensorChannelTypeBGR8) {
+    } else if (formatFrom == kImageTensorChannelTypeBGR8 && formatTo == kImageTensorChannelTypeRGB8 ||
+               formatFrom == kImageTensorChannelTypeRGB8 && formatTo == kImageTensorChannelTypeBGR8) {
       // Convert RGB8 -> BGR8 or BGR8 -> RGB8
       for (uint32_t y = 0; y < yElements; y++) {
         DeinterleaveRowByteToFloat(
@@ -65,7 +67,8 @@ class CpuTensorizer {
           nominalRangeConverter
         );
       }
-    } else if (formatTo == kImageTensorChannelTypeGRAY8 && (formatFrom == kImageTensorChannelTypeBGR8 || formatFrom == kImageTensorChannelTypeRGB8)) {
+    } else if (formatTo == kImageTensorChannelTypeGRAY8 &&
+               (formatFrom == kImageTensorChannelTypeBGR8 || formatFrom == kImageTensorChannelTypeRGB8)) {
       // Convert BGR8 -> GRAY8 or RGB8 -> GRAY8
       uint32_t blueIncrement = formatFrom == kImageTensorChannelTypeBGR8 ? 0 : 2;
       uint32_t redIncrement = formatFrom == kImageTensorChannelTypeBGR8 ? 2 : 0;
@@ -80,7 +83,8 @@ class CpuTensorizer {
           pixelInd++;
         }
       }
-    } else if (formatFrom == kImageTensorChannelTypeGRAY8 && (formatTo == kImageTensorChannelTypeBGR8 || formatTo == kImageTensorChannelTypeRGB8)) {
+    } else if (formatFrom == kImageTensorChannelTypeGRAY8 &&
+               (formatTo == kImageTensorChannelTypeBGR8 || formatTo == kImageTensorChannelTypeRGB8)) {
       // Convert GRAY8 -> BGR8 or GRAY8 -> RGB8
       for (UINT32 i = start; i < end; i += bufferWidth) {
         for (UINT32 j = i; j < i + bytesPerRow; j += bytesPerPixel) {

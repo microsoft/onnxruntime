@@ -40,7 +40,7 @@ ConvGrad: (According to OnnxRuntime discovered using code inspection and Onnx do
 
 Attributes (auto_pad, dilations, group, kernel_shap, pads, and strides) should be the same as the forward pass Conv operator
 
-To acheive Everything specified in the OnnxRuntime ConvGrad we must use both:
+To achieve Everything specified in the OnnxRuntime ConvGrad we must use both:
 1) dnnl::convolution_backward_data - used to calculate (dX) diff_src
 2) dnnl::convolution_backward_weights - used to calculate (dW) diff_weights and (dB) diff_bias
 */

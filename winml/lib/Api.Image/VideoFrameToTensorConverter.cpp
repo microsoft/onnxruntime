@@ -138,14 +138,19 @@ void VideoFrameToTensorConverter::VideoFrameToSoftwareTensor(
   wgdx::Direct3D11::IDirect3DSurface spInputSurface = inputVideoFrame.Direct3DSurface();
 
   // only one of softwarebitmap or direct3Dsurface should be non-null
-  if ((spInputSoftwareBitmap == nullptr && spInputSurface == nullptr) || (spInputSoftwareBitmap != nullptr && spInputSurface != nullptr)) {
+  if ((spInputSoftwareBitmap == nullptr && spInputSurface == nullptr) ||
+      (spInputSoftwareBitmap != nullptr && spInputSurface != nullptr)) {
     WINML_THROW_IF_FAILED(E_INVALIDARG);
   }
 
   UINT32 tensorHeight = static_cast<UINT32>(tensorDesc.sizes[2]);
   UINT32 tensorWidth = static_cast<UINT32>(tensorDesc.sizes[3]);
-  if (spInputSurface || _winmli::NeedsVideoFrameConversion(inputVideoFrame, {}, inputBounds, tensorWidth, tensorHeight)) {
-    if (converted_video_frame_ == nullptr || _winmli::NeedsVideoFrameConversion(converted_video_frame_, {}, {0, 0, (UINT32)tensorWidth, (UINT32)tensorHeight}, tensorWidth, tensorHeight)) {
+  if (spInputSurface ||
+      _winmli::NeedsVideoFrameConversion(inputVideoFrame, {}, inputBounds, tensorWidth, tensorHeight)) {
+    if (converted_video_frame_ == nullptr ||
+        _winmli::NeedsVideoFrameConversion(
+          converted_video_frame_, {}, {0, 0, (UINT32)tensorWidth, (UINT32)tensorHeight}, tensorWidth, tensorHeight
+        )) {
       converted_video_frame_ = wm::VideoFrame::CreateWithSoftwareBitmap(
         wgi::SoftwareBitmap(wgi::BitmapPixelFormat::Bgra8, tensorWidth, tensorHeight)
       );
@@ -236,8 +241,8 @@ void VideoFrameToTensorConverter::VideoFrameToDX12Tensor(
 
     // TODO: Scale during the tensorization phase instead of using the video frame pipeline when the input bounds are not the same size as the tensor
     if (!_winmli::DirectXPixelFormatSupported(spDirect3DSurface.Description().Format) ||
-            static_cast<UINT>(inputBounds.Width) != tensorDesc.sizes[3] ||
-            static_cast<UINT>(inputBounds.Height) != tensorDesc.sizes[2]) {
+        static_cast<UINT>(inputBounds.Width) != tensorDesc.sizes[3] ||
+        static_cast<UINT>(inputBounds.Height) != tensorDesc.sizes[2]) {
       // Force the VideoFrame to not do a conversion if the format is supported since we do it during the tensorization anyway
       wgdx::DirectXPixelFormat newFormat = _winmli::DirectXPixelFormatSupported(spDirect3DSurface.Description().Format)
         ? spDirect3DSurface.Description().Format
@@ -269,7 +274,7 @@ void VideoFrameToTensorConverter::VideoFrameToDX12Tensor(
         D3D11_cached_texture_->GetDesc(&cachedTextureDesc);
 
         if (cachedTextureDesc.Width != scaledBounds.Width || cachedTextureDesc.Height != scaledBounds.Height ||
-                    cachedTextureDesc.Format != videoFrameTextureDesc.Format) {
+            cachedTextureDesc.Format != videoFrameTextureDesc.Format) {
           // The dimensions or format don't match, so we need to re-create our texture
           WINML_THROW_IF_FAILED(
             pDeviceCache->GetD3D11Device()->CreateTexture2D(&videoFrameTextureDesc, nullptr, &D3D11_cached_texture_)
@@ -289,12 +294,12 @@ void VideoFrameToTensorConverter::VideoFrameToDX12Tensor(
       UINT comPtrSize = static_cast<UINT>(sizeof(spSharedD3D11Texture.GetAddressOf()));
       UINT handleSize = static_cast<UINT>(sizeof(sharedHandle));
 
-      if ((FAILED(spVideoFrameTexture->GetPrivateData(
-                     d3d11_texture_GUID_, &comPtrSize, spSharedD3D11Texture.GetAddressOf()
-                 )) ||
-                 !spSharedD3D11Texture.Get()) ||
-                (FAILED(spVideoFrameTexture->GetPrivateData(handle_GUID_, &handleSize, &sharedHandle)) ||
-                 sharedHandle != shared_handle_)) {
+      if ((FAILED(
+             spVideoFrameTexture->GetPrivateData(d3d11_texture_GUID_, &comPtrSize, spSharedD3D11Texture.GetAddressOf())
+           ) ||
+           !spSharedD3D11Texture.Get()) ||
+          (FAILED(spVideoFrameTexture->GetPrivateData(handle_GUID_, &handleSize, &sharedHandle)) ||
+           sharedHandle != shared_handle_)) {
         // Create a new shared texture that we cache on the video frame texture
         WINML_THROW_IF_FAILED(spTextureDevice->CreateTexture2D(&videoFrameTextureDesc, nullptr, &spSharedD3D11Texture));
 
@@ -423,9 +428,9 @@ void VideoFrameToTensorConverter::ConvertDX12TextureToGPUTensor(
     WINML_THROW_IF_FAILED(ULongLongMult(ullNumElementsTensor, uiTensorElementSize, &ullTensorSize));
 
     if (outputDesc.Width < ullTensorSize || outputDesc.Height != 1 ||
-            outputDesc.Dimension != D3D12_RESOURCE_DIMENSION_BUFFER ||
-            !(outputDesc.Flags & D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS) ||
-            outputHeapProperties.Type != D3D12_HEAP_TYPE_DEFAULT) {
+        outputDesc.Dimension != D3D12_RESOURCE_DIMENSION_BUFFER ||
+        !(outputDesc.Flags & D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS) ||
+        outputHeapProperties.Type != D3D12_HEAP_TYPE_DEFAULT) {
       WINML_THROW_IF_FAILED(E_INVALIDARG);
     }
   }
@@ -565,7 +570,8 @@ void VideoFrameToTensorConverter::ConvertSoftwareBitmapToGPUTensor(
   wgi::BitmapBounds scaledBounds = inputBounds;
 
   // TODO: Scale during the tensorization phase instead of using the video frame pipeline when the input bounds are not the same size as the tensor
-  if (static_cast<UINT>(inputBounds.Width) != tensorDesc.sizes[3] || static_cast<UINT>(inputBounds.Height) != tensorDesc.sizes[2]) {
+  if (static_cast<UINT>(inputBounds.Width) != tensorDesc.sizes[3] ||
+      static_cast<UINT>(inputBounds.Height) != tensorDesc.sizes[2]) {
     scaledBounds = {0, 0, static_cast<uint32_t>(tensorDesc.sizes[3]), static_cast<uint32_t>(tensorDesc.sizes[2])};
 
     // Force the VideoFrame to not do a conversion if the format is supported since we do it during the tensorization anyway

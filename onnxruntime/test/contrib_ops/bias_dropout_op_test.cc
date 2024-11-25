@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 // BiasDropout kernel is only implemented for CUDA/ROCM
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if (defined(USE_CUDA) && !defined(USE_CUDA_MINIMAL)) || defined(USE_ROCM)
 
 #ifdef _MSC_VER
 #pragma warning(disable : 4389)
@@ -181,6 +181,9 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
   t.SetCustomOutputVerifier(output_verifier);
   std::vector<std::unique_ptr<IExecutionProvider>> t_eps;
 #ifdef USE_CUDA
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   t_eps.emplace_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   t_eps.emplace_back(DefaultRocmExecutionProvider());

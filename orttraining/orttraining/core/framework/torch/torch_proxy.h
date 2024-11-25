@@ -22,7 +22,7 @@ namespace torch {
 // For handling temporary PyObject pointer newly created with Py_XXX APIs, here is our practice:
 // Convention:
 //     Wrap those PyObject* in format of "PythonObjectPtr(Py_XXX(), PythonObjectDeleter)".
-// Explaination:
+// Explanation:
 //     That means, for the PyObject* created by Py_XXX(), its refcnt will be decreased by one
 //     in the PythonObjectDeleter which is triggered once lifetime of PythonObjectPtr instance
 //     ends.
@@ -95,8 +95,8 @@ class TorchProxy {
       std::vector<int64_t>& bw_output_to_input_alias_map);
 
  private:
-  TorchProxy(){};
-  ~TorchProxy(){};
+  TorchProxy() {};
+  ~TorchProxy() {};
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TorchProxy);
 

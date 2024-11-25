@@ -55,19 +55,19 @@
 #include "cutlass/util/device_dump.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
-namespace{
+namespace {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 /// Utilities for printing layout for the prepacked weights and quantization parameters
 ///
-template<
+template <
     /// Data type of the prepacked weights
     typename ElementWeight,
     /// Data type of the quant scales
     typename ElementQScale,
     /// Data type of the quant offsets
     typename ElementQOffset>
-struct QuantBLayoutDebug{
+struct QuantBLayoutDebug {
   static constexpr bool debug_smem = true;
   static constexpr bool debug_fragment = true;
   ElementWeight* smem_b_ptr_;
@@ -77,15 +77,14 @@ struct QuantBLayoutDebug{
   int lane_id_;
   int block_id_;
 
-  template<typename Element, int Size>
-  CUTLASS_DEVICE
-  static void print_fragment(cutlass::Array<Element, Size> const& frag, char label, int block_id, int warp_id, int lane_id){
+  template <typename Element, int Size>
+  CUTLASS_DEVICE static void print_fragment(cutlass::Array<Element, Size> const& frag, char label, int block_id, int warp_id, int lane_id) {
     static_assert(Size % 4 == 0, "Size must be multiple of 4");
-    if constexpr (debug_fragment){
-      if (block_id == 1 && warp_id == 0){
+    if constexpr (debug_fragment) {
+      if (block_id == 1 && warp_id == 0) {
         const Element* ptr = reinterpret_cast<const Element*>(&frag);
-        for (int i = 0; i < Size/4; i++, ptr+=4){
-          if constexpr(std::is_integral<Element>::value){
+        for (int i = 0; i < Size / 4; i++, ptr += 4) {
+          if constexpr (std::is_integral<Element>::value) {
             printf("T%.2d%c%d, %3d, %3d, %3d, %3d\n",
                    threadIdx.x, label, i,
                    ptr[0], ptr[1], ptr[2], ptr[3]);
@@ -99,21 +98,19 @@ struct QuantBLayoutDebug{
     }
   }
 
-  template<typename Element, int Size>
-  CUTLASS_DEVICE
-  static void print_as_int4(cutlass::Array<Element, Size> const& frag, char label, int block_id, int warp_id, int lane_id){
+  template <typename Element, int Size>
+  CUTLASS_DEVICE static void print_as_int4(cutlass::Array<Element, Size> const& frag, char label, int block_id, int warp_id, int lane_id) {
     constexpr int I8Size = Size * cutlass::sizeof_bits<Element>::value / 8;
     static_assert(I8Size % 2 == 0, "Size must be multiple of 4");
-    if constexpr (debug_fragment){
-      if (block_id == 1 && warp_id == 0){
+    if constexpr (debug_fragment) {
+      if (block_id == 1 && warp_id == 0) {
         const uint8_t* ptr = reinterpret_cast<const uint8_t*>(&frag);
-        for (int i = 0; i < I8Size/2; i++, ptr+=2){
+        for (int i = 0; i < I8Size / 2; i++, ptr += 2) {
           printf("T%.2dW%d, %d, %d, %d, %d\n", threadIdx.x, i, ptr[0] & 0x0f, ptr[0] >> 4, ptr[1] & 0x0f, ptr[1] >> 4);
         }
       }
     }
   }
-
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -121,8 +118,9 @@ struct QuantBLayoutDebug{
 /// Dummy type when quant offset is not used, to avoid compilation error,
 /// and reduce runtime footprint
 ///
-struct DummyType{
+struct DummyType {
   std::monostate dummy_;
+
  public:
   DummyType() = default;
 
@@ -137,7 +135,7 @@ struct DummyType{
   }
 };
 
-}
+}  // namespace
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -239,8 +237,9 @@ class QuantBMmaBase {
                     Shape::kN / QuantBlocking::kColumn>;
 
     using BufTypeQOffset = std::conditional_t<kHasQOffset,
-          AlignedBuffer<typename Operator::ElementQOffset, ShapeQScale::kCount>,
-          DummyType>;
+                                              AlignedBuffer<typename Operator::ElementQOffset, ShapeQScale::kCount>,
+                                              DummyType>;
+
    public:
     //
     // Data members
@@ -259,7 +258,6 @@ class QuantBMmaBase {
     BufTypeQOffset operand_QOffset;
 
    public:
-
     //
     // Methods
     //
@@ -306,7 +304,7 @@ class QuantBMmaBase {
 
     CUTLASS_HOST_DEVICE
     TensorRefQOffset operand_QOffset_ref() {
-      if constexpr (!kHasQOffset){
+      if constexpr (!kHasQOffset) {
         return TensorRefQOffset();
       } else {
         return TensorRefQOffset{operand_QOffset.data(), LayoutQOffset()};
@@ -315,7 +313,6 @@ class QuantBMmaBase {
   };
 
  protected:
-
   //
   // Data members
   //
@@ -329,25 +326,21 @@ class QuantBMmaBase {
   /// Iterator to load a warp-scoped tile of quant scales from shared memory
   typename Operator::IteratorQMeta warp_tile_iterator_QScale_;
 
-public:
-
+ public:
   /// Construct from tensor references
   CUTLASS_DEVICE
   QuantBMmaBase(
       ///< Shared storage needed for internal use by threadblock-scoped GEMM
-      SharedStorage &shared_storage,
+      SharedStorage& shared_storage,
       ///< ID within the threadblock
       int thread_idx,
       ///< ID of warp
       int warp_idx,
       ///< ID of each thread within a warp
-      int lane_idx
-    ):
-      warp_tile_iterator_A_(shared_storage.operand_A_ref(), lane_idx),
-      warp_tile_iterator_B_(shared_storage.operand_B_ref(), lane_idx),
-      warp_tile_iterator_QScale_(shared_storage.operand_QScale_ref(),
-             shared_storage.operand_QOffset_ref(), lane_idx)
-  {}
+      int lane_idx) : warp_tile_iterator_A_(shared_storage.operand_A_ref(), lane_idx),
+                      warp_tile_iterator_B_(shared_storage.operand_B_ref(), lane_idx),
+                      warp_tile_iterator_QScale_(shared_storage.operand_QScale_ref(),
+                                                 shared_storage.operand_QOffset_ref(), lane_idx) {}
 };
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
@@ -397,9 +390,8 @@ template <
     int Stages,
     /// Used for partial specialization
     typename Enable = bool>
-class QuantBMmaMultistage :
-  public QuantBMmaBase<Shape_, Policy_, Stages> {
-public:
+class QuantBMmaMultistage : public QuantBMmaBase<Shape_, Policy_, Stages> {
+ public:
   ///< Base class
   using Base = QuantBMmaBase<Shape_, Policy_, Stages>;
   ///< Size of the Gemm problem - concept: gemm::GemmShape<>
@@ -452,7 +444,6 @@ public:
 
   /// Internal structure exposed for introspection.
   struct Detail {
-
     /// Number of cp.async instructions to load one stage of operand A
     static int const AsyncCopyIterationsPerStageA =
         IteratorA::ThreadMap::Iterations::kCount;
@@ -490,15 +481,15 @@ public:
     // accuracy, where each mainloop iteration first accumulates into a temporary
     // set of freshly-cleared accumulators, which are subsequently added to the
     // final accumulator set.
-    static bool const kStagedAccumulation = arch::UseStagedAccumulation<typename Operator::MathOperator>::value;
+
+    // Change the following to avoid build error: class "cutlass::arch::OpMultiplyAdd" has no member "ElementA".
+    //     kStagedAccumulation = arch::detail::UseStagedAccumulation<typename Operator::MathOperator>::value;
+    static bool const kStagedAccumulation = false;
   };
 
  private:
-
-
   // Structure encapsulating pipeline state live from one iteration to the next
   struct PipeState {
-
     using WarpLoadedFragmentA = typename Operator::FragmentA;
     using WarpLoadedFragmentB = typename Operator::FragmentB;
     using WarpTransformedFragmentA = typename Operator::TransformedFragmentA;
@@ -518,14 +509,12 @@ public:
     WarpLoadedFragmentQScale warp_loaded_frag_QScale_;
 
     using WarpLoadedFragmentQOffset = typename std::conditional<kHasQOffset,
-            typename Operator::FragmentQOffset,
-            std::monostate>::type;
+                                                                typename Operator::FragmentQOffset,
+                                                                std::monostate>::type;
     WarpLoadedFragmentQOffset warp_loaded_frag_QOffset_;
   };
 
-
  private:
-
   //
   // Data members
   //
@@ -556,43 +545,39 @@ public:
   /// Shared memory pointers for debug dumping
   static constexpr bool debug_layout = false;
   using LayoutDebugType = typename std::conditional<debug_layout,
-      QuantBLayoutDebug<typename IteratorB::Element, typename IteratorQScale::Element, typename IteratorQOffset::Element>,
-      std::monostate>::type;
+                                                    QuantBLayoutDebug<typename IteratorB::Element, typename IteratorQScale::Element, typename IteratorQOffset::Element>,
+                                                    std::monostate>::type;
   LayoutDebugType layout_debug_;
 
-public:
-
+ public:
   /// Construct from tensor references
   CUTLASS_DEVICE
   QuantBMmaMultistage(
       ///< Shared storage needed for internal use by threadblock-scoped GEMM
-      typename Base::SharedStorage &shared_storage,
+      typename Base::SharedStorage& shared_storage,
       ///< ID within the threadblock
       int thread_idx,
       ///< ID of warp
       int warp_idx,
       ///< ID of each thread within a warp
-      int lane_idx
-    ):
-      Base(shared_storage, thread_idx, warp_idx, lane_idx),
-      smem_iterator_A_(shared_storage.operand_A_ref(), thread_idx),
-      smem_iterator_B_(shared_storage.operand_B_ref(), thread_idx),
-      smem_iterator_QScale_(shared_storage.operand_QScale_ref(), thread_idx),
-      smem_iterator_QOffset_(shared_storage.operand_QOffset_ref(), thread_idx),
-      should_load_qscale_(thread_idx < IteratorQScale::ThreadMap::kThreads),
-      should_load_qoffset_(thread_idx >= IteratorQOffset::kThreadblockSize - IteratorQOffset::ThreadMap::kThreads),
-      smem_write_stage_idx_(0),
-      smem_read_stage_idx_(0)
-  {
+      int lane_idx) : Base(shared_storage, thread_idx, warp_idx, lane_idx),
+                      smem_iterator_A_(shared_storage.operand_A_ref(), thread_idx),
+                      smem_iterator_B_(shared_storage.operand_B_ref(), thread_idx),
+                      smem_iterator_QScale_(shared_storage.operand_QScale_ref(), thread_idx),
+                      smem_iterator_QOffset_(shared_storage.operand_QOffset_ref(), thread_idx),
+                      should_load_qscale_(thread_idx < IteratorQScale::ThreadMap::kThreads),
+                      should_load_qoffset_(thread_idx >= IteratorQOffset::kThreadblockSize - IteratorQOffset::ThreadMap::kThreads),
+                      smem_write_stage_idx_(0),
+                      smem_read_stage_idx_(0) {
     // Compute warp location within threadblock tile by mapping the warp_id to
     // three coordinates:
     //   _m: the warp's position within the threadblock along the M dimension
     //   _n: the warp's position within the threadblock along the N dimension
     //   _k: the warp's position within the threadblock along the K dimension
-    if constexpr(debug_layout){
+    if constexpr (debug_layout) {
       layout_debug_.smem_b_ptr_ = shared_storage.operand_B_ref().data();
       layout_debug_.smem_qscale_ptr_ = shared_storage.operand_QScale_ref().data();
-      if constexpr(kHasQOffset){
+      if constexpr (kHasQOffset) {
         layout_debug_.smem_qoffset_ptr_ = shared_storage.operand_QOffset_ref().data();
       } else {
         layout_debug_.smem_qoffset_ptr_ = nullptr;
@@ -619,8 +604,7 @@ public:
 
   /// Advance shared memory read-iterators to the next stage
   CUTLASS_DEVICE
-  void advance_smem_read_stage()
-  {
+  void advance_smem_read_stage() {
     ++smem_read_stage_idx_;
 
     if (smem_read_stage_idx_ == Base::kStages) {
@@ -636,11 +620,10 @@ public:
   /// Advance global memory read-iterators and shared memory write-iterators to the stage
   CUTLASS_DEVICE
   void advance_smem_write_stage(
-    IteratorA &iterator_A,
-    IteratorB &iterator_B,
-    IteratorQScale &iterator_QScale,
-    IteratorQOffset &iterator_QOffset)
-  {
+      IteratorA& iterator_A,
+      IteratorB& iterator_B,
+      IteratorQScale& iterator_QScale,
+      IteratorQOffset& iterator_QOffset) {
     // Advance global iterators
     iterator_A.add_tile_offset({0, 1});
     iterator_B.add_tile_offset({1, 0});
@@ -672,7 +655,7 @@ public:
   }
 
   CUTLASS_DEVICE
-  void copy_qscale_tiles(IteratorQScale &iterator_QScale){
+  void copy_qscale_tiles(IteratorQScale& iterator_QScale) {
     // Quant scale matrix is 1/block_size of the B matrix, for a 64x64 warp tile,
     // it's only 64x64/block_size elements. For blocking size 16 ~ 64, it only
     // takes 4 ~ 16 cp.async instructions to load. One warp has 32 threads, so
@@ -684,41 +667,41 @@ public:
                   "Quant scale should 1 access per vector!");
 
     // Async Copy for quantization scale
-    typename IteratorQScale::AccessType *dst_ptr =
-        reinterpret_cast<typename IteratorQScale::AccessType *>(
+    typename IteratorQScale::AccessType* dst_ptr =
+        reinterpret_cast<typename IteratorQScale::AccessType*>(
             this->smem_iterator_QScale_.get());
 
     constexpr int kSrcBytes =
         sizeof_bits<typename IteratorQScale::Element>::value *
-            IteratorQScale::ThreadMap::kElementsPerAccess / 8;
+        IteratorQScale::ThreadMap::kElementsPerAccess / 8;
 
     cutlass::arch::cp_async<kSrcBytes, kCacheOpQScale>(
         dst_ptr, iterator_QScale.get(), iterator_QScale.valid());
   }
 
   CUTLASS_DEVICE
-  void copy_qoffset_tiles(IteratorQOffset & iterator_QOffset) {
+  void copy_qoffset_tiles(IteratorQOffset& iterator_QOffset) {
     static_assert(Detail::AsyncCopyIterationsPerStageQOffset == 1,
                   "Quant offset should be loaded in one shot!");
     static_assert(IteratorQOffset::kAccessesPerVector == 1,
                   "Quant offset should 1 access per vector!");
 
-    if constexpr(kHasQOffset) {
+    if constexpr (kHasQOffset) {
       // Async Copy for quantization offset
-      typename IteratorQOffset::AccessType *dst_ptr =
-          reinterpret_cast<typename IteratorQOffset::AccessType *>(
+      typename IteratorQOffset::AccessType* dst_ptr =
+          reinterpret_cast<typename IteratorQOffset::AccessType*>(
               this->smem_iterator_QOffset_.get());
 
       constexpr int kSrcBytes = sizeof_bits<typename IteratorQOffset::Element>::value *
                                 IteratorQOffset::ThreadMap::kElementsPerAccess / 8;
 
       cutlass::arch::cp_async<kSrcBytes, kCacheOpQOffset>(
-            dst_ptr, iterator_QOffset.get(), iterator_QOffset.valid());
+          dst_ptr, iterator_QOffset.get(), iterator_QOffset.valid());
     }
   }
 
   CUTLASS_DEVICE
-  void copy_tiles_and_advance(IteratorA &iterator_A, IteratorB &iterator_B,
+  void copy_tiles_and_advance(IteratorA& iterator_A, IteratorB& iterator_B,
                               int group_start = 0) {
     auto group_start_A = group_start * Detail::kAccessesPerGroupA;
     iterator_A.set_iteration_index(group_start_A *
@@ -729,8 +712,8 @@ public:
     CUTLASS_PRAGMA_UNROLL
     for (int j = 0; j < Detail::kAccessesPerGroupA; ++j) {
       if (group_start_A + j < Detail::AsyncCopyIterationsPerStageA) {
-        typename IteratorA::AccessType *dst_ptr =
-            reinterpret_cast<typename IteratorA::AccessType *>(
+        typename IteratorA::AccessType* dst_ptr =
+            reinterpret_cast<typename IteratorA::AccessType*>(
                 this->smem_iterator_A_.get());
 
         int const kSrcBytes = sizeof_bits<typename IteratorA::Element>::value *
@@ -760,8 +743,8 @@ public:
     CUTLASS_PRAGMA_UNROLL
     for (int j = 0; j < Detail::kAccessesPerGroupB; ++j) {
       if (group_start_B + j < Detail::AsyncCopyIterationsPerStageB) {
-        typename IteratorB::AccessType *dst_ptr =
-            reinterpret_cast<typename IteratorB::AccessType *>(
+        typename IteratorB::AccessType* dst_ptr =
+            reinterpret_cast<typename IteratorB::AccessType*>(
                 this->smem_iterator_B_.get());
 
         int const kSrcBytes = sizeof_bits<typename IteratorB::Element>::value *
@@ -786,16 +769,15 @@ public:
   /// the global fragments needed by the first kStages-1 threadblock mainloop iterations
   CUTLASS_DEVICE
   void prologue(
-    IteratorA &iterator_A,      ///< [in|out] iterator over A operand in global memory
-    IteratorB &iterator_B,      ///< [in|out] iterator over B operand in global memory
-    IteratorQScale &iterator_QScale, ///< [in|out] iterator over quant scales in global memory
-    IteratorQOffset &iterator_QOffset, ///< [in|out] iterator over quant offsets in global memory
-    int &gemm_k_iterations)     ///< [in|out] number of threadblock mainloop iterations remaining
+      IteratorA& iterator_A,              ///< [in|out] iterator over A operand in global memory
+      IteratorB& iterator_B,              ///< [in|out] iterator over B operand in global memory
+      IteratorQScale& iterator_QScale,    ///< [in|out] iterator over quant scales in global memory
+      IteratorQOffset& iterator_QOffset,  ///< [in|out] iterator over quant offsets in global memory
+      int& gemm_k_iterations)             ///< [in|out] number of threadblock mainloop iterations remaining
   {
     // Issue several complete stages
     CUTLASS_PRAGMA_UNROLL
     for (int stage = 0; stage < Base::kStages - 1; ++stage, --gemm_k_iterations) {
-
       // Disable global fetching if done with global fetch iterations
       iterator_A.clear_mask(gemm_k_iterations == 0);
       iterator_B.clear_mask(gemm_k_iterations == 0);
@@ -807,8 +789,8 @@ public:
       // Async Copy for operand A
       CUTLASS_PRAGMA_UNROLL
       for (int j = 0; j < Detail::AsyncCopyIterationsPerStageA; ++j) {
-        typename IteratorA::AccessType *dst_ptr =
-            reinterpret_cast<typename IteratorA::AccessType *>(
+        typename IteratorA::AccessType* dst_ptr =
+            reinterpret_cast<typename IteratorA::AccessType*>(
                 this->smem_iterator_A_.get());
 
         CUTLASS_PRAGMA_UNROLL
@@ -835,8 +817,8 @@ public:
       // Async Copy for operand B
       CUTLASS_PRAGMA_UNROLL
       for (int j = 0; j < Detail::AsyncCopyIterationsPerStageB; ++j) {
-        typename IteratorB::AccessType *dst_ptr =
-            reinterpret_cast<typename IteratorB::AccessType *>(
+        typename IteratorB::AccessType* dst_ptr =
+            reinterpret_cast<typename IteratorB::AccessType*>(
                 this->smem_iterator_B_.get());
 
         CUTLASS_PRAGMA_UNROLL
@@ -859,8 +841,8 @@ public:
       static_assert(Detail::AsyncCopyIterationsPerStageQScale == 1, "Quant scale should be loaded in one shot!");
       static_assert(IteratorQScale::kAccessesPerVector == 1, "Quant scale should 1 access per vector!");
 
-      typename IteratorQScale::AccessType *dst_ptr =
-          reinterpret_cast<typename IteratorQScale::AccessType *>(
+      typename IteratorQScale::AccessType* dst_ptr =
+          reinterpret_cast<typename IteratorQScale::AccessType*>(
               this->smem_iterator_QScale_.get());
 
       constexpr int kSrcBytes =
@@ -878,13 +860,13 @@ public:
         // Async Copy for quantization offset
         static_assert(Detail::AsyncCopyIterationsPerStageQOffset == 1, "Quant offset should be loaded in one shot!");
         static_assert(IteratorQOffset::kAccessesPerVector == 1, "Quant offset should 1 access per vector!");
-        typename IteratorQOffset::AccessType *dst_ptr =
-            reinterpret_cast<typename IteratorQOffset::AccessType *>(
+        typename IteratorQOffset::AccessType* dst_ptr =
+            reinterpret_cast<typename IteratorQOffset::AccessType*>(
                 this->smem_iterator_QOffset_.get());
 
         constexpr int kSrcBytes =
             sizeof_bits<typename IteratorQOffset::Element>::value *
-                IteratorQOffset::ThreadMap::kElementsPerAccess / 8;
+            IteratorQOffset::ThreadMap::kElementsPerAccess / 8;
 
         cutlass::arch::cp_async<kSrcBytes, kCacheOpQOffset>(
             dst_ptr, iterator_QOffset.get(), iterator_QOffset.valid());
@@ -898,22 +880,20 @@ public:
     }
   }
 
-
   /// Wait until we have at least one completed global fetch stage
   CUTLASS_DEVICE
-  void gmem_wait()
-  {
+  void gmem_wait() {
     // Wait until we have at least one committed global fetch stage. (#uncommitted = Base::kStages - 1 - #committed)
     cutlass::arch::cp_async_wait<Base::kStages - 2>();
     __syncthreads();
 
-    if constexpr(debug_layout) {
+    if constexpr (debug_layout) {
       if (LayoutDebugType::debug_smem && layout_debug_.block_id_ == 1) {
-        if (threadIdx.x == 0){
+        if (threadIdx.x == 0) {
           printf("stage: %d\n", smem_write_stage_idx_);
         }
         cutlass::debug::dump_shmem(layout_debug_.smem_qscale_ptr_, Base::SharedStorage::ShapeQScale::kCount);
-        if constexpr(kHasQOffset){
+        if constexpr (kHasQOffset) {
           cutlass::debug::dump_shmem(layout_debug_.smem_qoffset_ptr_, Base::SharedStorage::ShapeQScale::kCount);
         }
       }
@@ -923,13 +903,13 @@ public:
   /// Perform a threadblock mainloop iteration of matrix multiply-accumulate
   CUTLASS_DEVICE
   void mac_loop_iter(
-    PipeState &pipe_state,          ///< [in|out] loop-carried pipeline state
-    FragmentC &accum,               ///< [in|out] destination accumulator tile
-    IteratorA &iterator_A,          ///< [in|out] iterator over A operand in global memory
-    IteratorB &iterator_B,          ///< [in|out] iterator over B operand in global memory
-    IteratorQScale &iterator_QScale, ///< [in|out] iterator over quant scales in global memory
-    IteratorQOffset &iterator_QOffset, ///< [in|out] iterator over quant offsets in global memory
-    int &gemm_k_iterations)         ///< [in|out] number of threadblock mainloop iterations remaining
+      PipeState& pipe_state,              ///< [in|out] loop-carried pipeline state
+      FragmentC& accum,                   ///< [in|out] destination accumulator tile
+      IteratorA& iterator_A,              ///< [in|out] iterator over A operand in global memory
+      IteratorB& iterator_B,              ///< [in|out] iterator over B operand in global memory
+      IteratorQScale& iterator_QScale,    ///< [in|out] iterator over quant scales in global memory
+      IteratorQOffset& iterator_QOffset,  ///< [in|out] iterator over quant offsets in global memory
+      int& gemm_k_iterations)             ///< [in|out] number of threadblock mainloop iterations remaining
   {
     // Unroll the warp-level MMA tiles of a threadblock's mainloop iteration
     CUTLASS_PRAGMA_UNROLL
@@ -957,35 +937,34 @@ public:
           iterator_B,
           (warp_mma_k + 1) % Base::kWarpGemmIterations);
 
-      if constexpr(debug_layout) {
-        if (LayoutDebugType::debug_fragment && layout_debug_.block_id_ == 1 && layout_debug_.warp_id_ == 0 && layout_debug_.lane_id_ == 0){
+      if constexpr (debug_layout) {
+        if (LayoutDebugType::debug_fragment && layout_debug_.block_id_ == 1 && layout_debug_.warp_id_ == 0 && layout_debug_.lane_id_ == 0) {
           printf("LINE %d, warp_tile_B kgroup %d\n", __LINE__, warp_mma_k % Base::kWarpGemmIterations);
         }
         LayoutDebugType::print_as_int4(pipe_state.warp_loaded_frag_B_, 'W', layout_debug_.block_id_, layout_debug_.warp_id_, layout_debug_.lane_id_);
         LayoutDebugType::print_fragment(Operator::IteratorQScale::debug_expand(pipe_state.warp_loaded_frag_QScale_), 'Q', layout_debug_.block_id_, layout_debug_.warp_id_, layout_debug_.lane_id_);
-        if constexpr(kHasQOffset){
+        if constexpr (kHasQOffset) {
           LayoutDebugType::print_fragment(Operator::IteratorQScale::debug_expand(pipe_state.warp_loaded_frag_QOffset_), 'O', layout_debug_.block_id_, layout_debug_.warp_id_, layout_debug_.lane_id_);
         }
       }
 
       warp_mma_.transform(
-        pipe_state.warp_transformed_frag_B_[(warp_mma_k + 1) % 2],
-        pipe_state.warp_loaded_frag_B_,
-        pipe_state.warp_loaded_frag_QScale_,
-        pipe_state.warp_loaded_frag_QOffset_);
+          pipe_state.warp_transformed_frag_B_[(warp_mma_k + 1) % 2],
+          pipe_state.warp_loaded_frag_B_,
+          pipe_state.warp_loaded_frag_QScale_,
+          pipe_state.warp_loaded_frag_QOffset_);
 
-      if constexpr(debug_layout) {
+      if constexpr (debug_layout) {
         LayoutDebugType::print_fragment(pipe_state.warp_transformed_frag_B_[(warp_mma_k + 1) % 2], 'B', layout_debug_.block_id_, layout_debug_.warp_id_, layout_debug_.lane_id_);
       }
 
       // Execute the current warp-tile of MMA operations
       if (Detail::kStagedAccumulation) {
         warp_mma_(
-          pipe_state.tmp_accum_,
-          pipe_state.warp_loaded_frag_A_[warp_mma_k % 2],
-          pipe_state.warp_transformed_frag_B_[warp_mma_k % 2],
-          pipe_state.tmp_accum_
-        );
+            pipe_state.tmp_accum_,
+            pipe_state.warp_loaded_frag_A_[warp_mma_k % 2],
+            pipe_state.warp_transformed_frag_B_[warp_mma_k % 2],
+            pipe_state.tmp_accum_);
 
         if (warp_mma_k == 0) {
           plus<FragmentC> plus_accum;
@@ -994,11 +973,10 @@ public:
         }
       } else {
         warp_mma_(
-          accum,
-          pipe_state.warp_loaded_frag_A_[warp_mma_k % 2],
-          pipe_state.warp_transformed_frag_B_[warp_mma_k % 2],
-          accum
-        );
+            accum,
+            pipe_state.warp_loaded_frag_A_[warp_mma_k % 2],
+            pipe_state.warp_transformed_frag_B_[warp_mma_k % 2],
+            accum);
       }
 
       if (warp_mma_k == 0) {
@@ -1022,51 +1000,50 @@ public:
         iterator_A.clear_mask(gemm_k_iterations == 0);
         iterator_B.clear_mask(gemm_k_iterations == 0);
         iterator_QScale.clear_mask(gemm_k_iterations == 0 || !should_load_qscale_);
-        if constexpr(kHasQOffset){
+        if constexpr (kHasQOffset) {
           iterator_QOffset.clear_mask(gemm_k_iterations == 0 || !should_load_qoffset_);
         }
 
         // Wait until we have at least one completed global fetch stage
         gmem_wait();
       }
-
     }
   }
 
   /// Specialized mainloop iteration of matrix multiply-accumulate, for small M
   CUTLASS_DEVICE
   void mac_loop_iter_small_m(
-    PipeState &pipe_state,          ///< [in|out] loop-carried pipeline state
-    FragmentC &accum,               ///< [in|out] destination accumulator tile
-    IteratorA &iterator_A,          ///< [in|out] iterator over A operand in global memory
-    IteratorB &iterator_B,          ///< [in|out] iterator over B operand in global memory
-    IteratorQScale &iterator_QScale, ///< [in|out] iterator over quant scales in global memory
-    IteratorQOffset &iterator_QOffset, ///< [in|out] iterator over quant offsets in global memory
-    int &gemm_k_iterations)         ///< [in|out] number of threadblock mainloop iterations remaining
+      PipeState& pipe_state,              ///< [in|out] loop-carried pipeline state
+      FragmentC& accum,                   ///< [in|out] destination accumulator tile
+      IteratorA& iterator_A,              ///< [in|out] iterator over A operand in global memory
+      IteratorB& iterator_B,              ///< [in|out] iterator over B operand in global memory
+      IteratorQScale& iterator_QScale,    ///< [in|out] iterator over quant scales in global memory
+      IteratorQOffset& iterator_QOffset,  ///< [in|out] iterator over quant offsets in global memory
+      int& gemm_k_iterations)             ///< [in|out] number of threadblock mainloop iterations remaining
   {
     // Unroll the warp-level MMA tiles of a threadblock's mainloop iteration
     CUTLASS_PRAGMA_UNROLL
     for (int warp_mma_k = 0; warp_mma_k < Base::kWarpGemmIterations; ++warp_mma_k) {
       // In the case of small M, memory latency dominates. We try to move uses far
       // from their definitions to hide latency.
-      if constexpr(debug_layout) {
-        if (LayoutDebugType::debug_fragment && layout_debug_.block_id_ == 1 && layout_debug_.warp_id_ == 0 && layout_debug_.lane_id_ == 0){
+      if constexpr (debug_layout) {
+        if (LayoutDebugType::debug_fragment && layout_debug_.block_id_ == 1 && layout_debug_.warp_id_ == 0 && layout_debug_.lane_id_ == 0) {
           printf("LINE %d, warp_tile_B kgroup %d\n", __LINE__, warp_mma_k % Base::kWarpGemmIterations);
         }
         LayoutDebugType::print_as_int4(pipe_state.warp_loaded_frag_B_, 'W', layout_debug_.block_id_, layout_debug_.warp_id_, layout_debug_.lane_id_);
         LayoutDebugType::print_fragment(Operator::IteratorQScale::debug_expand(pipe_state.warp_loaded_frag_QScale_), 'Q', layout_debug_.block_id_, layout_debug_.warp_id_, layout_debug_.lane_id_);
-        if constexpr(kHasQOffset){
+        if constexpr (kHasQOffset) {
           LayoutDebugType::print_fragment(Operator::IteratorQScale::debug_expand(pipe_state.warp_loaded_frag_QOffset_), 'O', layout_debug_.block_id_, layout_debug_.warp_id_, layout_debug_.lane_id_);
         }
       }
 
       warp_mma_.transform(
-        pipe_state.warp_transformed_frag_B_[(warp_mma_k) % 2],
-        pipe_state.warp_loaded_frag_B_,
-        pipe_state.warp_loaded_frag_QScale_,
-        pipe_state.warp_loaded_frag_QOffset_);
+          pipe_state.warp_transformed_frag_B_[(warp_mma_k) % 2],
+          pipe_state.warp_loaded_frag_B_,
+          pipe_state.warp_loaded_frag_QScale_,
+          pipe_state.warp_loaded_frag_QOffset_);
 
-      if constexpr(debug_layout) {
+      if constexpr (debug_layout) {
         LayoutDebugType::print_fragment(pipe_state.warp_transformed_frag_B_[(warp_mma_k) % 2], 'B', layout_debug_.block_id_, layout_debug_.warp_id_, layout_debug_.lane_id_);
       }
 
@@ -1093,11 +1070,10 @@ public:
       // Execute the current warp-tile of MMA operations
       if (Detail::kStagedAccumulation) {
         warp_mma_(
-          pipe_state.tmp_accum_,
-          pipe_state.warp_loaded_frag_A_[warp_mma_k % 2],
-          pipe_state.warp_transformed_frag_B_[warp_mma_k % 2],
-          pipe_state.tmp_accum_
-        );
+            pipe_state.tmp_accum_,
+            pipe_state.warp_loaded_frag_A_[warp_mma_k % 2],
+            pipe_state.warp_transformed_frag_B_[warp_mma_k % 2],
+            pipe_state.tmp_accum_);
 
         if (warp_mma_k == 0) {
           plus<FragmentC> plus_accum;
@@ -1106,11 +1082,10 @@ public:
         }
       } else {
         warp_mma_(
-          accum,
-          pipe_state.warp_loaded_frag_A_[warp_mma_k % 2],
-          pipe_state.warp_transformed_frag_B_[warp_mma_k % 2],
-          accum
-        );
+            accum,
+            pipe_state.warp_loaded_frag_A_[warp_mma_k % 2],
+            pipe_state.warp_transformed_frag_B_[warp_mma_k % 2],
+            accum);
       }
 
       // The second-to-last warp-tile also moves to the next global fetch stage
@@ -1127,7 +1102,7 @@ public:
         iterator_A.clear_mask(gemm_k_iterations == 0);
         iterator_B.clear_mask(gemm_k_iterations == 0);
         iterator_QScale.clear_mask(gemm_k_iterations == 0 || !should_load_qscale_);
-        if constexpr(kHasQOffset){
+        if constexpr (kHasQOffset) {
           iterator_QOffset.clear_mask(gemm_k_iterations == 0 || !should_load_qoffset_);
         }
 
@@ -1137,21 +1112,19 @@ public:
         // Wait until we have at least one completed global fetch stage
         gmem_wait();
       }
-
     }
   }
-
 
   /// Perform the specified number of threadblock mainloop iterations of matrix
   /// multiply-accumulate.  Assumes prologue has been initiated.
   CUTLASS_DEVICE
   void gemm_iters(
-      int gemm_k_iterations,        ///< number of threadblock mainloop iterations
-      FragmentC &accum,             ///< [in|out] accumulator tile
-      IteratorA &iterator_A,        ///< [in|out] iterator over A operand in global memory
-      IteratorB &iterator_B,        ///< [in|out] iterator over B operand in global memory
-      IteratorQScale &iterator_QScale, ///< [in|out] iterator over QScale operand in global memory
-      IteratorQOffset &iterator_QOffset) ///< [in|out] iterator over QOffset operand in global memory
+      int gemm_k_iterations,              ///< number of threadblock mainloop iterations
+      FragmentC& accum,                   ///< [in|out] accumulator tile
+      IteratorA& iterator_A,              ///< [in|out] iterator over A operand in global memory
+      IteratorB& iterator_B,              ///< [in|out] iterator over B operand in global memory
+      IteratorQScale& iterator_QScale,    ///< [in|out] iterator over QScale operand in global memory
+      IteratorQOffset& iterator_QOffset)  ///< [in|out] iterator over QOffset operand in global memory
   {
     PipeState pipe_state;
 
@@ -1159,7 +1132,7 @@ public:
     iterator_A.clear_mask(gemm_k_iterations == 0);
     iterator_B.clear_mask(gemm_k_iterations == 0);
     iterator_QScale.clear_mask(gemm_k_iterations == 0 || !should_load_qscale_);
-    if constexpr(kHasQOffset) {
+    if constexpr (kHasQOffset) {
       iterator_QOffset.clear_mask(gemm_k_iterations == 0 || !should_load_qoffset_);
     }
 
@@ -1180,26 +1153,26 @@ public:
 
     copy_tiles_and_advance(iterator_A, iterator_B, 0);
 
-    if constexpr(Shape::kM > 32) {
+    if constexpr (Shape::kM > 32) {
       // the case of bigger m
-      if constexpr(debug_layout) {
-        if (LayoutDebugType::debug_fragment && layout_debug_.block_id_ == 1 && layout_debug_.warp_id_ == 0 && layout_debug_.lane_id_ == 0){
+      if constexpr (debug_layout) {
+        if (LayoutDebugType::debug_fragment && layout_debug_.block_id_ == 1 && layout_debug_.warp_id_ == 0 && layout_debug_.lane_id_ == 0) {
           printf("LINE %d, warp_tile_B kgroup %d\n", __LINE__, 0);
         }
         LayoutDebugType::print_as_int4(pipe_state.warp_loaded_frag_B_, 'W', layout_debug_.block_id_, layout_debug_.warp_id_, layout_debug_.lane_id_);
         LayoutDebugType::print_fragment(Operator::IteratorQScale::debug_expand(pipe_state.warp_loaded_frag_QScale_), 'Q', layout_debug_.block_id_, layout_debug_.warp_id_, layout_debug_.lane_id_);
-        if constexpr(kHasQOffset){
+        if constexpr (kHasQOffset) {
           LayoutDebugType::print_fragment(Operator::IteratorQScale::debug_expand(pipe_state.warp_loaded_frag_QOffset_), 'O', layout_debug_.block_id_, layout_debug_.warp_id_, layout_debug_.lane_id_);
         }
       }
 
       warp_mma_.transform(
-        pipe_state.warp_transformed_frag_B_[0],
-        pipe_state.warp_loaded_frag_B_,
-        pipe_state.warp_loaded_frag_QScale_,
-        pipe_state.warp_loaded_frag_QOffset_);
+          pipe_state.warp_transformed_frag_B_[0],
+          pipe_state.warp_loaded_frag_B_,
+          pipe_state.warp_loaded_frag_QScale_,
+          pipe_state.warp_loaded_frag_QOffset_);
 
-      if constexpr(debug_layout) {
+      if constexpr (debug_layout) {
         LayoutDebugType::print_fragment(pipe_state.warp_transformed_frag_B_[0], 'B', layout_debug_.block_id_, layout_debug_.warp_id_, layout_debug_.lane_id_);
       }
     } else {
@@ -1215,24 +1188,24 @@ public:
     // Mainloop
     CUTLASS_GEMM_LOOP
     for (; gemm_k_iterations > (-Base::kStages + 1);) {
-      if constexpr(Shape::kM > 32) {
+      if constexpr (Shape::kM > 32) {
         mac_loop_iter(
-          pipe_state,
-          accum,
-          iterator_A,
-          iterator_B,
-          iterator_QScale,
-          iterator_QOffset,
-          gemm_k_iterations);
+            pipe_state,
+            accum,
+            iterator_A,
+            iterator_B,
+            iterator_QScale,
+            iterator_QOffset,
+            gemm_k_iterations);
       } else {
         mac_loop_iter_small_m(
-          pipe_state,
-          accum,
-          iterator_A,
-          iterator_B,
-          iterator_QScale,
-          iterator_QOffset,
-          gemm_k_iterations);
+            pipe_state,
+            accum,
+            iterator_A,
+            iterator_B,
+            iterator_QScale,
+            iterator_QOffset,
+            gemm_k_iterations);
       }
     }
 
@@ -1245,9 +1218,7 @@ public:
     cutlass::arch::cp_async_fence();
     cutlass::arch::cp_async_wait<0>();
     __syncthreads();
-
   }
-
 
   /// Perform a threadblock-scoped matrix multiply-accumulate
   CUTLASS_DEVICE
@@ -1255,7 +1226,7 @@ public:
       ///< problem size of GEMM
       int gemm_k_iterations,
       ///< destination accumulator tile
-      FragmentC &accum,
+      FragmentC& accum,
       ///< iterator over A operand in global memory
       IteratorA iterator_A,
       ///< iterator over B operand in global memory
@@ -1265,8 +1236,7 @@ public:
       ///< Iterator over quant offsets in global memory
       IteratorQOffset iterator_QOffset,
       ///< initial value of accumulator
-      FragmentC const &src_accum) {
-
+      FragmentC const& src_accum) {
     // Prologue (start fetching iterations of global fragments into shared memory)
     prologue(iterator_A, iterator_B, iterator_QScale, iterator_QOffset, gemm_k_iterations);
 

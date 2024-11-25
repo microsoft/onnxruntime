@@ -201,7 +201,7 @@ def main():
         # Set log level
         numeric_level = getattr(logging, args.log_level.upper(), None)
         if not isinstance(numeric_level, int):
-            raise ValueError("Invalid log level: %s" % args.log_level)
+            raise ValueError(f"Invalid log level: {args.log_level}")
         logging.basicConfig(level=numeric_level)
     else:
         print("Training MNIST on vanilla PyTorch....")

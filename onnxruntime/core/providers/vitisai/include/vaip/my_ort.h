@@ -20,6 +20,7 @@ struct NodeAttributes;
 namespace ONNX_NAMESPACE {
 struct AttributeProto;
 struct TensorProto;
+struct ModelProto;
 #ifndef USE_VITISAI
 enum TensorProto_DataType : int {
   TensorProto_DataType_UNDEFINED = 0,
@@ -38,7 +39,13 @@ enum TensorProto_DataType : int {
   TensorProto_DataType_UINT64 = 13,
   TensorProto_DataType_COMPLEX64 = 14,
   TensorProto_DataType_COMPLEX128 = 15,
-  TensorProto_DataType_BFLOAT16 = 16
+  TensorProto_DataType_BFLOAT16 = 16,
+  TensorProto_DataType_FLOAT8E4M3FN = 17,
+  TensorProto_DataType_FLOAT8E4M3FNUZ = 18,
+  TensorProto_DataType_FLOAT8E5M2 = 19,
+  TensorProto_DataType_FLOAT8E5M2FNUZ = 20,
+  TensorProto_DataType_UINT4 = 21,
+  TensorProto_DataType_INT4 = 22
 };
 enum AttributeProto_AttributeType : int {
   AttributeProto_AttributeType_UNDEFINED = 0,
@@ -64,6 +71,7 @@ enum AttributeProto_AttributeType : int {
 namespace vaip_core {
 class GraphHolder;
 using ONNX_NAMESPACE::AttributeProto;
+using ONNX_NAMESPACE::ModelProto;
 using ONNX_NAMESPACE::TensorProto;
 using onnxruntime::Graph;
 using onnxruntime::GraphViewer;

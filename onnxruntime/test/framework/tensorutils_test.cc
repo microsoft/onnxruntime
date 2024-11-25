@@ -21,7 +21,7 @@ namespace test {
 
 // T must be float for double, and it must match with the 'type' argument
 template <typename T>
-void TestUnpackFloatTensor(TensorProto_DataType type, const Path& model_path) {
+void TestUnpackFloatTensor(TensorProto_DataType type, const std::filesystem::path& model_path) {
   TensorProto float_tensor_proto;
   float_tensor_proto.set_data_type(type);
   T f[4] = {1.1f, 2.2f, 3.3f, 4.4f};
@@ -30,7 +30,7 @@ void TestUnpackFloatTensor(TensorProto_DataType type, const Path& model_path) {
   for (int i = 0; i < 4; ++i) {
     memcpy(rawdata + i * sizeof(T), &(f[i]), sizeof(T));
   }
-  float_tensor_proto.set_raw_data(rawdata, len);
+  utils::SetRawDataInTensorProto(float_tensor_proto, rawdata, len);
   T float_data2[4];
   auto status = UnpackTensor(float_tensor_proto, model_path, float_data2, 4);
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
@@ -45,7 +45,7 @@ TEST(TensorProtoUtilsTest, UnpackTensor) {
   // Path is required for loading external data.
   // Using empty path here since this test does not test
   // external data utils
-  Path model_path;
+  std::filesystem::path model_path;
   bool_tensor_proto.set_data_type(TensorProto_DataType_BOOL);
   bool_tensor_proto.add_int32_data(1);
 
@@ -103,7 +103,24 @@ std::vector<BFloat16> CreateValues<BFloat16>() {
 }
 
 template <typename T>
+void ConvertEndianessForVector(const std::vector<T>& test_data) {
+  const size_t element_size = sizeof(T);
+  const size_t num_elements = test_data.size();
+  char* bytes = reinterpret_cast<char*>(const_cast<T*>(test_data.data()));
+  for (size_t i = 0; i < num_elements; ++i) {
+    char* start_byte = bytes + i * element_size;
+    char* end_byte = start_byte + element_size - 1;
+    for (size_t count = 0; count < element_size / 2; ++count) {
+      std::swap(*start_byte++, *end_byte--);
+    }
+  }
+}
+
+template <typename T>
 void WriteDataToFile(FILE* fp, const std::vector<T>& test_data) {
+  if constexpr (endian::native != endian::little) {
+    ConvertEndianessForVector(test_data);
+  }
   size_t size_in_bytes = test_data.size() * sizeof(T);
   ASSERT_EQ(size_in_bytes, fwrite(test_data.data(), 1, size_in_bytes, fp));
 }
@@ -142,11 +159,14 @@ void CreateTensorWithExternalData(TensorProto_DataType type, const std::vector<T
 }
 
 template <typename T>
-void UnpackAndValidate(const TensorProto& tensor_proto, const Path& model_path, const std::vector<T>& test_data) {
+void UnpackAndValidate(const TensorProto& tensor_proto, const std::filesystem::path& model_path, const std::vector<T>& test_data) {
   // Unpack tensor with external data
   std::vector<T> val(test_data.size());
   auto st = utils::UnpackTensor(tensor_proto, model_path, val.data(), test_data.size());
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
+  if constexpr (endian::native != endian::little) {
+    ConvertEndianessForVector(val);
+  }
 
   // Validate data
   for (size_t i = 0; i < test_data.size(); i++) {
@@ -155,7 +175,7 @@ void UnpackAndValidate(const TensorProto& tensor_proto, const Path& model_path, 
 }
 
 template <>
-void UnpackAndValidate<bool>(const TensorProto& tensor_proto, const Path& model_path,
+void UnpackAndValidate<bool>(const TensorProto& tensor_proto, const std::filesystem::path& model_path,
                              const std::vector<bool>& test_data) {
   // Unpack tensor with external data
   auto arr = std::make_unique<bool[]>(test_data.size());
@@ -169,7 +189,7 @@ void UnpackAndValidate<bool>(const TensorProto& tensor_proto, const Path& model_
 }
 
 template <typename T>
-void TestUnpackExternalTensor(TensorProto_DataType type, const Path& model_path) {
+void TestUnpackExternalTensor(TensorProto_DataType type, const std::filesystem::path& model_path) {
   // Create external data
   std::basic_string<ORTCHAR_T> filename(ORT_TSTR("tensor_XXXXXX"));
   TensorProto tensor_proto;
@@ -181,7 +201,7 @@ void TestUnpackExternalTensor(TensorProto_DataType type, const Path& model_path)
 }
 }  // namespace
 TEST(TensorProtoUtilsTest, UnpackTensorWithExternalData) {
-  Path model_path;
+  std::filesystem::path model_path;
   TestUnpackExternalTensor<float>(TensorProto_DataType_FLOAT, model_path);
   TestUnpackExternalTensor<double>(TensorProto_DataType_DOUBLE, model_path);
   TestUnpackExternalTensor<int32_t>(TensorProto_DataType_INT32, model_path);
@@ -225,7 +245,7 @@ static void TestConstantNodeConversion(const std::string& attrib_name,
       [&input, &add_data](AttributeProto& attrib) { add_data(attrib, input); });
 
   TensorProto tp;
-  Path model_path;
+  std::filesystem::path model_path;
   EXPECT_STATUS_OK(utils::ConstantNodeProtoToTensorProto(c, model_path, tp));
 
   EXPECT_THAT(get_data(tp), ::testing::ContainerEq(input));
@@ -311,7 +331,7 @@ template <typename T>
 static void TestConstantNodeConversionWithExternalData(TensorProto_DataType type) {
   // Create a constant node with external data
   auto test_data = CreateValues<T>();
-  Path model_path;
+  std::filesystem::path model_path;
   PathString tensor_filename(ORT_TSTR("tensor_XXXXXX"));
   auto c = CreateConstantNodeWithExternalData<T>(type, tensor_filename, test_data);
   std::unique_ptr<ORTCHAR_T, decltype(&DeleteFileFromDisk)> file_deleter(const_cast<ORTCHAR_T*>(tensor_filename.c_str()),
@@ -325,6 +345,9 @@ static void TestConstantNodeConversionWithExternalData(TensorProto_DataType type
   std::vector<T> val(test_data.size());
   auto st = utils::UnpackTensor(tp, model_path, val.data(), test_data.size());
   ASSERT_TRUE(st.IsOK()) << st.ErrorMessage();
+  if constexpr (endian::native != endian::little) {
+    ConvertEndianessForVector(val);
+  }
   for (size_t i = 0; i < test_data.size(); i++) {
     ASSERT_EQ(val[i], test_data[i]);
   }

@@ -11,7 +11,9 @@ public:
     DmlOperatorMatMulNBits(const MLOperatorKernelCreationContext& kernelInfo)
     :   DmlOperator(kernelInfo)
     {
-        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() >= 3 && kernelInfo.GetInputCount() <= 4);
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() >= 3 && kernelInfo.GetInputCount() <= 6);
+        // Optional g_idx (4) and bias (5) inputs are not supported.
+        ML_CHECK_VALID_ARGUMENT(!kernelInfo.IsInputValid(4) && !kernelInfo.IsInputValid(5));
         ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
         DmlOperator::Initialize(kernelInfo);
 

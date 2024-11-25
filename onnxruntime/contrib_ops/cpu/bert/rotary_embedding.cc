@@ -13,16 +13,20 @@ namespace onnxruntime {
 namespace contrib {
 
 // These ops are internal-only, so register outside of onnx
-ONNX_OPERATOR_TYPED_KERNEL_EX(
-    RotaryEmbedding,
-    kMSDomain,
-    1,
-    float,
-    kCpuExecutionProvider,
-    KernelDefBuilder()
-        .TypeConstraint("T", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("M", DataTypeImpl::GetTensorType<int64_t>()),
-    RotaryEmbedding<float>);
+#define REGISTER_KERNEL_TYPED(T)                                        \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
+      RotaryEmbedding,                                                  \
+      kMSDomain,                                                        \
+      1,                                                                \
+      T,                                                                \
+      kCpuExecutionProvider,                                            \
+      KernelDefBuilder()                                                \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
+          .TypeConstraint("M", DataTypeImpl::GetTensorType<int64_t>()), \
+      RotaryEmbedding<T>);
+
+REGISTER_KERNEL_TYPED(float)
+REGISTER_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
 RotaryEmbedding<T>::RotaryEmbedding(const OpKernelInfo& info) : OpKernel(info) {
@@ -30,6 +34,7 @@ RotaryEmbedding<T>::RotaryEmbedding(const OpKernelInfo& info) : OpKernel(info) {
   rotary_embedding_dim = static_cast<int>(info.GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0));
   num_heads = static_cast<int>(info.GetAttrOrDefault<int64_t>("num_heads", 0));
   interleaved = (info.GetAttrOrDefault<int64_t>("interleaved", 0) == 1);
+  is_packed_batching = (info.GetAttrOrDefault<int64_t>("is_packed_batching", 0) == 1);
 
   if (rotary_embedding_dim > 0) {
     ORT_ENFORCE(num_heads > 0, "num_heads must be provided if rotary_embedding_dim is specified");
@@ -74,19 +79,27 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
       const T* sin_data = sin_cache + cache_offset;
 
       int cache_idx = 0;
-      T sign = 0;
+      bool sign = false;
       int j = 0;
       for (int i = 0; i < rotary_emb_dim; i++) {
         if (interleaved) {
           cache_idx = (i / 2) % half_rotary_emb_dim;
-          sign = (i % 2 == 0) ? static_cast<T>(-1) : static_cast<T>(1);
-          j = (i % 2 == 0) ? i + 1 : i - 1;  // i - sign
+          sign = i & 1;
+          j = sign ? i - 1 : i + 1;  // i - sign
         } else {
           cache_idx = i % half_rotary_emb_dim;
-          sign = (i < half_rotary_emb_dim) ? static_cast<T>(-1) : static_cast<T>(1);
+          sign = (i >= half_rotary_emb_dim);
           j = (i + half_rotary_emb_dim) % rotary_emb_dim;
         }
-        output_data[i] = input_data[i] * cos_data[cache_idx] + sign * input_data[j] * sin_data[cache_idx];
+        float output_data_i = static_cast<float>(input_data[i]) * static_cast<float>(cos_data[cache_idx]);
+        float input_data_j = static_cast<float>(input_data[j]);
+        float sin_data_cache_idx = static_cast<float>(sin_data[cache_idx]);
+        if (sign) {
+          output_data_i += input_data_j * sin_data_cache_idx;
+        } else {
+          output_data_i -= input_data_j * sin_data_cache_idx;
+        }
+        output_data[i] = static_cast<T>(output_data_i);
       }
       for (int i = rotary_emb_dim; i < head_size; i++) {
         output_data[i] = input_data[i];
@@ -100,6 +113,10 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
 template Status RunRotaryEmbedding<float>(concurrency::ThreadPool* tp, RotaryParameters parameters, const float* input,
                                           const int64_t* position_ids, const float* cos_cache, const float* sin_cache, float* output,
                                           bool interleaved);
+
+template Status RunRotaryEmbedding<MLFloat16>(concurrency::ThreadPool* tp, RotaryParameters parameters, const MLFloat16* input,
+                                              const int64_t* position_ids, const MLFloat16* cos_cache, const MLFloat16* sin_cache,
+                                              MLFloat16* output, bool interleaved);
 
 template <typename T>
 Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
@@ -119,7 +136,7 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
 
   Tensor* output = context->Output(0, input->Shape());
 
-  if (parameters.sequence_length > parameters.max_sequence_length) {
+  if (is_packed_batching == false && parameters.sequence_length > parameters.max_sequence_length) {
     // Launch update_cos_sin_cache kernel with scale
     ORT_NOT_IMPLEMENTED("Updating cos_cache and sin_cache in RotaryEmbedding is not currently supported");
   }

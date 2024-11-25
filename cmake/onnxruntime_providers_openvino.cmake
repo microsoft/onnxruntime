@@ -17,8 +17,12 @@
 
   # Header paths
   find_package(OpenVINO REQUIRED COMPONENTS Runtime ONNX)
-  if(OpenVINO_VERSION VERSION_LESS 2023.0)
-    message(FATAL_ERROR "OpenVINO 2023.0 and newer are supported. Please, latest OpenVINO release")
+  if(OpenVINO_VERSION VERSION_LESS 2024.0)
+    message(FATAL_ERROR "OpenVINO 2024.0 and newer are supported. Please, use latest OpenVINO release")
+  endif()
+
+  if(OpenVINO_VERSION VERSION_GREATER_EQUAL 2024.4)
+    add_definitions(-DUSE_OVEP_NPU_MEMORY=1)
   endif()
 
   if (WIN32)
@@ -33,9 +37,10 @@
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_openvino_cc_srcs})
   onnxruntime_add_shared_library_module(onnxruntime_providers_openvino ${onnxruntime_providers_openvino_cc_srcs} "${ONNXRUNTIME_ROOT}/core/dll/onnxruntime.rc")
-  onnxruntime_add_include_to_target(onnxruntime_providers_openvino onnxruntime_common onnx)
+  onnxruntime_add_include_to_target(onnxruntime_providers_openvino onnxruntime_common onnx nlohmann_json::nlohmann_json)
   install(FILES ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/providers/openvino/openvino_provider_factory.h
     DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/)
+  set_target_properties(onnxruntime_providers_openvino PROPERTIES CXX_STANDARD 20)
   set_target_properties(onnxruntime_providers_openvino PROPERTIES LINKER_LANGUAGE CXX)
   set_target_properties(onnxruntime_providers_openvino PROPERTIES FOLDER "ONNXRuntime")
   if(NOT MSVC)
@@ -45,11 +50,6 @@
   target_include_directories(onnxruntime_providers_openvino SYSTEM PUBLIC ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS} ${OpenVINO_INCLUDE_DIR} ${OPENVINO_INCLUDE_DIR_LIST} ${PYTHON_INCLUDE_DIRS} $ENV{OPENCL_INCS} $ENV{OPENCL_INCS}/../../cl_headers/)
   target_link_libraries(onnxruntime_providers_openvino ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 ${OPENVINO_LIB_LIST} ${ABSEIL_LIBS})
 
-  target_compile_definitions(onnxruntime_providers_openvino PRIVATE VER_MAJOR=${VERSION_MAJOR_PART})
-  target_compile_definitions(onnxruntime_providers_openvino PRIVATE VER_MINOR=${VERSION_MINOR_PART})
-  target_compile_definitions(onnxruntime_providers_openvino PRIVATE VER_BUILD=${VERSION_BUILD_PART})
-  target_compile_definitions(onnxruntime_providers_openvino PRIVATE VER_PRIVATE=${VERSION_PRIVATE_PART})
-  target_compile_definitions(onnxruntime_providers_openvino PRIVATE VER_STRING=\"${VERSION_STRING}\")
   target_compile_definitions(onnxruntime_providers_openvino PRIVATE FILE_NAME=\"onnxruntime_providers_openvino.dll\")
 
   if(MSVC)

@@ -60,7 +60,7 @@ void* CUDAExternalAllocator::Alloc(size_t size) {
   if (size > 0) {
     p = alloc_(size);
 
-    // review(codemzs): ORT_ENFORCE does not seem appropiate.
+    // review(codemzs): ORT_ENFORCE does not seem appropriate.
     ORT_ENFORCE(p != nullptr);
   }
 
@@ -69,7 +69,7 @@ void* CUDAExternalAllocator::Alloc(size_t size) {
 
 void CUDAExternalAllocator::Free(void* p) {
   free_(p);
-  std::lock_guard<OrtMutex> lock(lock_);
+  std::lock_guard<std::mutex> lock(lock_);
   auto it = reserved_.find(p);
   if (it != reserved_.end()) {
     reserved_.erase(it);
@@ -80,7 +80,7 @@ void CUDAExternalAllocator::Free(void* p) {
 void* CUDAExternalAllocator::Reserve(size_t size) {
   void* p = Alloc(size);
   if (!p) return nullptr;
-  std::lock_guard<OrtMutex> lock(lock_);
+  std::lock_guard<std::mutex> lock(lock_);
   ORT_ENFORCE(reserved_.find(p) == reserved_.end());
   reserved_.insert(p);
   return p;

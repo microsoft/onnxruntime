@@ -339,12 +339,6 @@ class KernelScope {
     if (session_state_.Profiler().IsEnabled()) {
       auto& node = kernel.Node();
       node_name_ = node.Name().empty() ? MakeString(node.OpType(), "_", node.Index()) : node.Name();
-      auto& profiler = session_state_.Profiler();
-      auto sync_time_begin = profiler.Start();
-      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                     node_name_ + "_fence_before",
-                                     sync_time_begin,
-                                     {{"op_name", kernel_.KernelDef().OpName()}});
       concurrency::ThreadPool::StartProfiling(session_state_.GetThreadPool());
       VLOGS(session_state_.Logger(), 1) << "Computing kernel: " << node_name_;
       kernel_begin_time_ = session_state_.Profiler().Start();
@@ -381,11 +375,6 @@ class KernelScope {
                                          {"thread_scheduling_stats",
                                           concurrency::ThreadPool::StopProfiling(session_state_.GetThreadPool())},
                                      });
-      auto sync_time_begin = profiler.Start();
-      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                     node_name_ + "_fence_after",
-                                     sync_time_begin,
-                                     {{"op_name", kernel_.KernelDef().OpName()}});
     }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
@@ -442,7 +431,7 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
   if (p_kernel->KernelDef().OpName() == "YieldOp") {
     // Do not execute YieldOp (it is an no-op anyways).
     // Decrement the reference count of tensors that are not needed beyond this point.
-    // REVEIW(codemzs): The current model assumes the intermediate tensors that are exported
+    // REVIEW(codemzs): The current model assumes the intermediate tensors that are exported
     // as graph outputs are owned by ORT, the risk of caller freeing the tensor or manipulating tensor
     // memory lingers while the tensor is used downstream after the export.
     ctx.RecycleNodeInputs(idx);
@@ -615,7 +604,8 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 
 #ifdef ENABLE_TRAINING
 onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
-                                          gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
+                                          std::vector<OrtValue>& feeds,
+                                          gsl::span<const int> fetch_mlvalue_idxs,
                                           std::vector<OrtValue>& fetches,
                                           const std::unordered_map<size_t, IExecutor::CustomAllocator>&
                                               fetch_allocators,
@@ -626,8 +616,10 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
                                           PartialGraphExecutionState& state,
                                           const OrtValueCachePtr& cache,
                                           int32_t partial_graph_index) {
+  // Be noted: feeds will be std::move to ctx, so it will be empty after this function.
   auto& ctx = state.GetExecutionContext(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
                                         fetch_allocators, session_state, logger, device_streams);
+
   auto* plan = session_state.GetExecutionPlan();
 
   ctx.SetCurrentRange(&state.GetProgramRegions(session_state));

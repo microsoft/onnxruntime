@@ -185,7 +185,8 @@ bool HasValidBinaryOpQuantizedInputTypes(const NodeUnit& node_unit) {
 }
 
 common::Status GetQuantizationScaleAndZeroPoint(const GraphViewer& graph_viewer, const NodeUnitIODef& io_def,
-                                                const Path& model_path, float& scale, int32_t& zero_point) {
+                                                const std::filesystem::path& model_path, float& scale,
+                                                int32_t& zero_point) {
   scale = 0.0f;
   zero_point = 0;
 

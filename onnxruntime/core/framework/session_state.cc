@@ -5,7 +5,7 @@
 
 #include <sstream>
 
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/common/logging/logging.h"
 #include "core/common/safeint.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
@@ -22,9 +22,9 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 #ifdef ORT_ENABLE_STREAM
-static inline std::string GetWaitKey(const OrtDevice::DeviceType notificaiton_device_type,
+static inline std::string GetWaitKey(const OrtDevice::DeviceType notification_device_type,
                                      const OrtDevice::DeviceType executor_device_type) {
-  return std::to_string(notificaiton_device_type) + ":" + std::to_string(executor_device_type);
+  return std::to_string(notification_device_type) + ":" + std::to_string(executor_device_type);
 }
 
 class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
@@ -66,6 +66,7 @@ SessionState::SessionState(Graph& graph,
                            concurrency::ThreadPool* thread_pool,
                            concurrency::ThreadPool* inter_op_thread_pool,
                            const DataTransferManager& data_transfer_mgr,
+                           const ExternalDataLoaderManager& external_data_loader_mgr,
                            const logging::Logger& logger,
                            profiling::Profiler& profiler,
                            const SessionOptions& sess_options,
@@ -78,6 +79,7 @@ SessionState::SessionState(Graph& graph,
       thread_pool_(thread_pool),
       inter_op_thread_pool_(inter_op_thread_pool),
       data_transfer_mgr_(data_transfer_mgr),
+      external_data_loader_mgr_(external_data_loader_mgr),
       sess_options_(sess_options),
       prepacked_weights_container_(prepacked_weights_container)
 #ifdef ORT_ENABLE_STREAM
@@ -516,7 +518,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
   if (should_cache_prepacked_weights_for_shared_initializers) {
     // serialize calls to the method that looks up the container, calls UseCachedPrePackedWeight/PrePack
     // and writes pre-packed weights to the container
-    std::lock_guard<onnxruntime::OrtMutex> l(prepacked_weights_container_->mutex_);
+    std::lock_guard<std::mutex> l(prepacked_weights_container_->mutex_);
     return prepacked_constant_weights(true);
   } else {
     return prepacked_constant_weights(false);
@@ -773,7 +775,7 @@ const MemoryPatternGroup* SessionState::GetMemoryPatternGroup(
     const InlinedHashMap<int, TensorShape>*& out_inferred_shapes) const {
   out_inferred_shapes = nullptr;
   int64_t key = CalculateMemoryPatternsKey(tensor_inputs);
-  std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
+  std::lock_guard<std::mutex> lock(mem_patterns_lock_);
   auto it = mem_patterns_.find(key);
   if (it == mem_patterns_.end()) {
 #ifdef ENABLE_TRAINING
@@ -849,7 +851,7 @@ Status SessionState::UpdateMemoryPatternGroupCache(gsl::span<const OrtValue> ten
                                                    MemoryPatternGroup mem_patterns) const {
   int64_t key = CalculateMemoryPatternsKey(tensor_inputs);
 
-  std::lock_guard<OrtMutex> lock(mem_patterns_lock_);
+  std::lock_guard<std::mutex> lock(mem_patterns_lock_);
   // Do not update if present, as the pointer to the existing one is cached
   mem_patterns_.emplace(key, std::move(mem_patterns));
   return Status::OK();
@@ -1046,7 +1048,7 @@ Status SessionState::CreateSubgraphSessionState() {
       auto subgraph_session_state =
           std::make_unique<SessionState>(*subgraph, execution_providers_,
                                          thread_pool_, inter_op_thread_pool_, data_transfer_mgr_,
-                                         logger_, profiler_, sess_options_,
+                                         external_data_loader_mgr_, logger_, profiler_, sess_options_,
                                          prepacked_weights_container_, allocators_);
 
       // Pass fused function manager to subgraph
@@ -1410,7 +1412,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // Record the allocation plan
 
   // Uncomment the below to dump the allocation plan to std::cout
-  // LOGS(logger_, VERBOSE) << std::make_pair(p_seq_exec_plan_.get(), this);
+  // std::cout << std::make_pair(&*p_seq_exec_plan_, this);
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   GetMemoryProfiler()->Init(GetExecutionPlan(), GetOrtValueNameIdxMap());
@@ -1486,7 +1488,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
             }
             return Status::OK();
           },
-          logger_, data_transfer_mgr_, *p_seq_exec_plan_, session_options, memory_profile_func));
+          logger_, data_transfer_mgr_, external_data_loader_mgr_, *p_seq_exec_plan_, session_options,
+          memory_profile_func, name_to_buffered_tensor_));
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Record Weight allocation info on device
@@ -1585,7 +1588,7 @@ static void BindToDeviceStream(const SequentialExecutionPlan& execution_plan,
 
 std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollection() const {
   if (has_device_stream_enabled_ep_) {
-    std::lock_guard<onnxruntime::OrtMutex> lock(device_stream_pool_mutex_);
+    std::lock_guard<std::mutex> lock(device_stream_pool_mutex_);
     if (!device_stream_pool_.empty()) {
       auto device_stream = std::move(device_stream_pool_.back());
       device_stream_pool_.pop_back();
@@ -1604,7 +1607,7 @@ std::unique_ptr<DeviceStreamCollection> SessionState::AcquireDeviceStreamCollect
 void SessionState::RecycleDeviceStreamCollection(std::unique_ptr<DeviceStreamCollection> device_stream_collection) const {
   // if no need to reuse the device stream, don't perform the recycle
   if (has_device_stream_enabled_ep_) {
-    std::lock_guard<onnxruntime::OrtMutex> lock(device_stream_pool_mutex_);
+    std::lock_guard<std::mutex> lock(device_stream_pool_mutex_);
     device_stream_pool_.push_back(std::move(device_stream_collection));
   } else {
     device_stream_collection.reset(nullptr);

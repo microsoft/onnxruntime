@@ -7,12 +7,12 @@
 #include <variant>
 #include <unordered_map>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/inlined_containers.h"
 #include "core/common/status.h"
 #include "core/framework/kernel_type_str_resolver.h"
 #include "core/graph/graph_viewer.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 
 namespace onnxruntime {
 struct KernelCreateInfo;

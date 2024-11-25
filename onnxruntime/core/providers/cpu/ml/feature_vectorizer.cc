@@ -3,7 +3,7 @@
 
 #include "core/providers/cpu/ml/feature_vectorizer.h"
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 namespace onnxruntime {
 namespace ml {

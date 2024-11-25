@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 #
 # This converter is an internal util to upgrade existing bert/gpt-2 models,
-# which were previously transformed/optimized from orginal model, to Opset 12
+# which were previously transformed/optimized from original model, to Opset 12
 # version as well as replacing deprecated node, i.e., TrainableDropout with
 # the "Dropout" node matching the Opset 12 Spec. Typically, a model to
 # be run by this scripts would have "_optimized" substring in its model name,

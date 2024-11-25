@@ -164,6 +164,10 @@ namespace Dml
                     m_reusedCommandLists.push_front(std::move(reusableCommandList));
                 }
 
+                // We don't need to keep a reference on the temporary resource once we have recorded into the command list, so the
+                // memory can be reused by the allocator
+                constexpr bool keepTemporaryResourceAlive = false;
+
                 DmlGraphFusionHelper::ExecuteReusableCommandList(
                     kernelContext,
                     *m_reusedCommandLists.front(),
@@ -175,7 +179,8 @@ namespace Dml
                     m_outputShapes,
                     m_winmlProvider.Get(),
                     m_provider.Get(),
-                    m_persistentResourceAllocatorUnknown.Get());
+                    m_persistentResourceAllocatorUnknown.Get(),
+                    keepTemporaryResourceAlive);
 
                 m_reusedCommandLists.push_back(std::move(m_reusedCommandLists.front()));
                 m_reusedCommandLists.pop_front();
@@ -245,7 +250,7 @@ namespace Dml
                 persistentResourceBinding,
                 inputBindings,
                 outputBindings));
-            }
+        }
 
     private:
         ComPtr<IDMLCompiledOperator> m_compiledExecutionPlanOperator;

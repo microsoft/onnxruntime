@@ -2,11 +2,13 @@
 // Licensed under the MIT License.
 
 #include "core/graph/graph_utils.h"
-
-#include <queue>
-
 #include "core/graph/graph.h"
 #include "core/common/logging/logging.h"
+
+#include <algorithm>
+#include <queue>
+#include <string>
+#include <vector>
 
 namespace onnxruntime {
 
@@ -56,7 +58,8 @@ static bool CanUpdateImplicitInputNameInSubgraph(const Node& node,
     }
 
     for (auto& subgraph_node : subgraph->Nodes()) {
-      // recurse if this node also consumes removed_output_name as an implicit input (i.e. there are multiple levels of nested
+      // recurse if this node also consumes removed_output_name as an implicit input (i.e. there are multiple levels
+      // of nested
       // subgraphs, and at least one level lower uses removed_output_name as an implicit input
       const auto subgraph_node_implicit_inputs = subgraph_node.ImplicitInputDefs();
       if (!subgraph_node_implicit_inputs.empty()) {
@@ -224,8 +227,7 @@ bool IsSupportedOptypeVersionAndDomain(const Node& node,
                                        std::string_view op_type,
                                        std::initializer_list<ONNX_NAMESPACE::OperatorSetVersion> versions,
                                        std::string_view domain) {
-  std::vector<ONNX_NAMESPACE::OperatorSetVersion> versions_vec(versions);
-  return IsSupportedOptypeVersionAndDomain(node, op_type, versions_vec, domain);
+  return IsSupportedOptypeVersionAndDomain(node, op_type, gsl::span{versions.begin(), versions.size()}, domain);
 }
 
 bool IsSupportedOptypeVersionAndDomain(const Node& node, std::string_view op_type,
@@ -428,18 +430,18 @@ void GraphEdge::RemoveGraphEdges(Graph& graph, const std::vector<GraphEdge>& edg
   }
 }
 
+bool IsSupportedProvider(const Node& node,
+                         const InlinedHashSet<std::string_view>& compatible_providers) {
+  return !(!compatible_providers.empty() &&
+           compatible_providers.find(node.GetExecutionProviderType()) == compatible_providers.end());
+}
+
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
 
 int GetNodeInputIndexFromInputName(const Node& node, const std::string& input_name) {
   return GetIndexFromName(node, input_name, true);
-}
-
-bool IsSupportedProvider(const Node& node,
-                         const InlinedHashSet<std::string_view>& compatible_providers) {
-  return !(!compatible_providers.empty() &&
-           compatible_providers.find(node.GetExecutionProviderType()) == compatible_providers.end());
 }
 
 /** Checks for nodes with >= 1 outputs, if only one of the outputs is input to downstream Operators.
@@ -465,13 +467,13 @@ static bool IsOnlyOneOutputUsed(const Graph& graph, const Node& node, const std:
   // a) there's only 1, and b) it's the same as any output consumed by another node
   auto output_indexes = graph.GetNodeOutputsInGraphOutputs(node);
   auto num_graph_outputs = output_indexes.size();
-  if (num_graph_outputs > 1)
+  if (num_graph_outputs > 1) {
     return false;
-  else if (num_graph_outputs == 1) {
-    if (first_output != unassigned)
+  } else if (num_graph_outputs == 1) {
+    if (first_output != unassigned) {
       // an output is consumed by other nodes, so make sure the same output is providing the graph output
       return output_indexes.front() == first_output;
-    else {
+    } else {
       // graph output only as no other nodes are consuming the output, so just update the output_name
       output_name = &node.OutputDefs()[output_indexes.front()]->Name();
     }
@@ -679,7 +681,8 @@ const Node* FirstParentByType(const Node& node, const std::string& parent_type) 
   return nullptr;
 }
 
-void ReplaceDownstreamNodeInput(Graph& graph, Node& node, int output_idx, Node& replacement, int replacement_output_idx) {
+void ReplaceDownstreamNodeInput(Graph& graph, Node& node, int output_idx, Node& replacement,
+                                int replacement_output_idx) {
   // get the output edges from node for output_idx
   std::vector<GraphEdge> output_edges = GraphEdge::GetNodeOutputEdges(node, output_idx);
 
@@ -727,7 +730,9 @@ void AddNodeInput(Node& target, int target_input_idx, NodeArg& new_input) {
               "Can only add a new input at the end of the current ones.");
 
   target.MutableInputDefs().push_back(&new_input);
-  assert(target.MutableInputArgsCount().size() > static_cast<size_t>(target_input_idx));  // expect existing entry for all possible inputs
+
+  // expect existing entry for all possible inputs
+  assert(target.MutableInputArgsCount().size() > static_cast<size_t>(target_input_idx));
   target.MutableInputArgsCount()[target_input_idx] = 1;
 }
 
@@ -799,7 +804,8 @@ bool FindPath(const Node& node, bool is_input_edge, gsl::span<const EdgeEndToMat
         // For output edge, there could be multiple edges matched.
         // This function will return failure in such case by design.
         if (nullptr != edge_found) {
-          LOGS(logger, WARNING) << "Failed since multiple edges matched:" << current_node->OpType() << "->" << edge.op_type;
+          LOGS(logger, WARNING) << "Failed since multiple edges matched:" << current_node->OpType() << "->"
+                                << edge.op_type;
           return false;
         }
         edge_found = &(*it);
@@ -822,7 +828,8 @@ bool FindPath(const Node& node, bool is_input_edge, gsl::span<const EdgeEndToMat
   return true;
 }
 
-bool FindPath(Graph& graph, const Node& node, bool is_input_edge, gsl::span<const EdgeEndToMatch> edges_to_match, std::vector<std::reference_wrapper<Node>>& result, const logging::Logger& logger) {
+bool FindPath(Graph& graph, const Node& node, bool is_input_edge, gsl::span<const EdgeEndToMatch> edges_to_match,
+              std::vector<std::reference_wrapper<Node>>& result, const logging::Logger& logger) {
   result.clear();
 
   std::vector<const Node::EdgeEnd*> edge_ends;
@@ -831,9 +838,10 @@ bool FindPath(Graph& graph, const Node& node, bool is_input_edge, gsl::span<cons
   }
 
   result.reserve(edges_to_match.size());
-  std::transform(edge_ends.begin(), edge_ends.end(), std::back_inserter(result), [&graph](const Node::EdgeEnd* edge_end) -> Node& {
-    return *graph.GetNode(edge_end->GetNode().Index());
-  });
+  std::transform(edge_ends.begin(), edge_ends.end(), std::back_inserter(result),
+                 [&graph](const Node::EdgeEnd* edge_end) -> Node& {
+                   return *graph.GetNode(edge_end->GetNode().Index());
+                 });
 
   return true;
 }

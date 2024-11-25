@@ -1099,3 +1099,92 @@ def test_custom_optimizer_block():
                 for attr in node.attribute:
                     if attr.name == "weight_decay":
                         assert attr.f == weight_decay
+
+
+def test_generate_artifacts_path():
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        _, simple_net = _get_models("cpu", 32, 28, 10, 10)
+
+        requires_grad_params = ["fc1.weight", "fc1.bias", "fc2.weight", "fc2.bias"]
+
+        onnx.save_model(
+            simple_net,
+            os.path.join(temp_dir, "simple_net.onnx"),
+        )
+
+        artifacts.generate_artifacts(
+            os.path.join(temp_dir, "simple_net.onnx"),
+            requires_grad=requires_grad_params,
+            loss=artifacts.LossType.CrossEntropyLoss,
+            optimizer=artifacts.OptimType.AdamW,
+            artifact_directory=temp_dir,
+        )
+
+        # generate_artifacts should have thrown if it didn't complete successfully.
+        # Below is a sanity check to validate that all the expected files were created.
+        assert os.path.exists(os.path.join(temp_dir, "training_model.onnx"))
+        assert os.path.exists(os.path.join(temp_dir, "eval_model.onnx"))
+        assert os.path.exists(os.path.join(temp_dir, "optimizer_model.onnx"))
+        assert os.path.exists(os.path.join(temp_dir, "checkpoint"))
+
+
+def test_generate_artifacts_external_data_one_file():
+    with tempfile.TemporaryDirectory() as temp_dir:
+        _, simple_net = _get_models("cpu", 32, 28, 10, 10)
+
+        requires_grad_params = ["fc1.weight", "fc1.bias", "fc2.weight", "fc2.bias"]
+
+        onnx.save_model(
+            simple_net,
+            os.path.join(temp_dir, "simple_net.onnx"),
+            save_as_external_data=True,
+            all_tensors_to_one_file=True,
+            size_threshold=0,
+        )
+
+        artifacts.generate_artifacts(
+            os.path.join(temp_dir, "simple_net.onnx"),
+            requires_grad=requires_grad_params,
+            loss=artifacts.LossType.CrossEntropyLoss,
+            optimizer=artifacts.OptimType.AdamW,
+            artifact_directory=temp_dir,
+        )
+
+        # generate_artifacts should have thrown if it didn't complete successfully.
+        # Below is a sanity check to validate that all the expected files were created.
+        assert os.path.exists(os.path.join(temp_dir, "training_model.onnx"))
+        assert os.path.exists(os.path.join(temp_dir, "eval_model.onnx"))
+        assert os.path.exists(os.path.join(temp_dir, "optimizer_model.onnx"))
+        assert os.path.exists(os.path.join(temp_dir, "checkpoint"))
+
+
+@pytest.mark.parametrize("loss", [loss_t for loss_t in artifacts.LossType])
+def test_generate_artifacts_external_data_separate_files(loss):
+    with tempfile.TemporaryDirectory() as temp_dir:
+        _, simple_net = _get_models("cpu", 32, 28, 10, 10)
+
+        requires_grad_params = ["fc1.weight", "fc1.bias", "fc2.weight", "fc2.bias"]
+
+        onnx.save_model(
+            simple_net,
+            os.path.join(temp_dir, "simple_net.onnx"),
+            save_as_external_data=True,
+            all_tensors_to_one_file=False,
+            size_threshold=0,
+        )
+
+        artifacts.generate_artifacts(
+            os.path.join(temp_dir, "simple_net.onnx"),
+            requires_grad=requires_grad_params,
+            loss=loss,
+            optimizer=artifacts.OptimType.AdamW,
+            artifact_directory=temp_dir,
+        )
+
+        # generate_artifacts should have thrown if it didn't complete successfully.
+        # Below is a sanity check to validate that all the expected files were created.
+        assert os.path.exists(os.path.join(temp_dir, "training_model.onnx"))
+        assert os.path.exists(os.path.join(temp_dir, "eval_model.onnx"))
+        assert os.path.exists(os.path.join(temp_dir, "optimizer_model.onnx"))
+        assert os.path.exists(os.path.join(temp_dir, "checkpoint"))

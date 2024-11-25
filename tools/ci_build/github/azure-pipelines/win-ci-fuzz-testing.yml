@@ -36,12 +36,12 @@ jobs:
 
   - task: NodeTool@0
     inputs:
-      versionSpec: '18.x'
+      versionSpec: '20.x'
 
   - task: NuGetToolInstaller@0
-    displayName: Use Nuget 5.7.0
+    displayName: Use Nuget 6.10.x
     inputs:
-      versionSpec: 5.7.0
+      versionSpec: 6.10.x
 
   - task: PythonScript@0
     displayName: 'Generate cmake config'

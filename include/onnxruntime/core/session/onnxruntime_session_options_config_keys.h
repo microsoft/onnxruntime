@@ -78,15 +78,20 @@ static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimizati
 static const char* const kOrtSessionOptionsDisableAheadOfTimeFunctionInlining = "session.disable_aot_function_inlining";
 
 #ifdef ENABLE_TRAINING
-// Specifies a list of op types for memory footprint reduction.
-// The value should be a ","-delimited list of pair of
-// <subgraph string: optimization strategy: number of subgraph to apply>.
-// For example, "Gelu+Cast+:1:0,Dropout+:1:1".
-//   A valid "subgraph string" should be one subgraph representation output by ORT graph transformations.
-//   "optimization strategy" currently has valid values: 0 - disabled, 1 - recompute.
-//   "number of subgraph to apply" is used to control how many subgraphs to apply optimization, to avoid "oversaving"
-//   the memory.
-static const char* const kOrtSessionOptionsMemoryOptimizerEnabler = "optimization.memory_optimizer_config";
+// Specifies a path of the file containing a list of memory optimization configurations.
+// The value should be a string indicating the file path of the config file.
+// The content of the config file is a JSON struct like this:
+// [
+//   "Gelu+Cast+:1:0",
+//   "Dropout+:1:1"
+// ]
+// Taking the example of "Gelu+Cast+:1:0",
+// > "Gelu+Cast+" is the subgraph string, a valid "subgraph string" should be one subgraph representation
+//    output by ORT graph transformations.
+// > "1" is "optimization strategy", valid values: 0 - disabled, 1 - recompute.
+// > "0" is "number of subgraph to apply" which is used to control how many subgraphs to apply optimization,
+//    to avoid "oversaving" the memory.
+static const char* const kOrtSessionOptionsMemoryOptimizerApplyConfig = "optimization.memory_optimizer_config";
 
 // Specifies the config for detecting subgraphs for memory footprint reduction.
 // The value should be a string contains int separated using commas. The default value is "0:0".
@@ -260,8 +265,27 @@ static const char* const kOrtSessionOptionEpContextFilePath = "ep.context_file_p
 // "1": dump the EP context into the Onnx model. (default).
 static const char* const kOrtSessionOptionEpContextEmbedMode = "ep.context_embed_mode";
 
+// Specify the EPContext node name prefix to make it unique
+// in case user need to merge/connect multiple EPContext nodes in one model
+static const char* const kOrtSessionOptionEpContextNodeNamePrefix = "ep.context_node_name_prefix";
+
+// Share EP related resources across EPs
+static const char* const kOrtSessionOptionShareEpContexts = "ep.share_ep_contexts";
+
 // Gemm fastmath mode provides fp32 gemm acceleration with bfloat16 based matmul.
 // Option values:
 // - "0": Gemm FastMath mode is not enabled. [DEFAULT]
 // - "1": Gemm FastMath mode is enabled.
 static const char* const kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16 = "mlas.enable_gemm_fastmath_arm64_bfloat16";
+
+// When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
+// Refer to MatMulNBits op schema for more details.
+// If not provided, default is 4.
+static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "session.qdq_matmulnbits_accuracy_level";
+
+// THIS OPTION IS NOT A REGULAR SESSION OPTION SINCE IT CAN BE MODIFIED AT ANY TIME
+// Meant to be used with SetEpDynamicOptions
+// Specify the type of workload for this session.
+// “Default”: OS determines the scheduling priority and processor performance to service this workload. [Default]
+// “Efficient”: OS treats this workload is efficiency oriented with low scheduling priority and efficient processor performance.
+static const char* const kOrtEpDynamicOptionsWorkloadType = "ep.dynamic.workload_type";

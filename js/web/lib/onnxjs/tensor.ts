@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Guid} from 'guid-typescript';
+import { Guid } from 'guid-typescript';
 import Long from 'long';
 
-import {onnxruntime} from './ort-schema/flatbuffers/ort-generated';
-import {onnx} from './ort-schema/protobuf/onnx';
-import {decodeUtf8String, ProtoUtil, ShapeUtil} from './util';
+import { onnxruntime } from './ort-schema/flatbuffers/ort-generated';
+import { onnx } from './ort-schema/protobuf/onnx';
+import { decodeUtf8String, ProtoUtil, ShapeUtil } from './util';
 
 import ortFbs = onnxruntime.experimental.fbs;
 
@@ -29,10 +29,15 @@ export declare namespace Tensor {
 
   export type StringType = Tensor.DataTypeMap['string'];
   export type BooleanType = Tensor.DataTypeMap['bool'];
-  export type IntegerType = Tensor.DataTypeMap['int8']|Tensor.DataTypeMap['uint8']|Tensor.DataTypeMap['int16']|
-                            Tensor.DataTypeMap['uint16']|Tensor.DataTypeMap['int32']|Tensor.DataTypeMap['uint32'];
-  export type FloatType = Tensor.DataTypeMap['float32']|Tensor.DataTypeMap['float64'];
-  export type NumberType = BooleanType|IntegerType|FloatType;
+  export type IntegerType =
+    | Tensor.DataTypeMap['int8']
+    | Tensor.DataTypeMap['uint8']
+    | Tensor.DataTypeMap['int16']
+    | Tensor.DataTypeMap['uint16']
+    | Tensor.DataTypeMap['int32']
+    | Tensor.DataTypeMap['uint32'];
+  export type FloatType = Tensor.DataTypeMap['float32'] | Tensor.DataTypeMap['float64'];
+  export type NumberType = BooleanType | IntegerType | FloatType;
 
   export type Id = Guid;
 }
@@ -154,31 +159,34 @@ export class Tensor {
   }
 
   constructor(
-      /**
-       * get the dimensions of the tensor
-       */
-      public readonly dims: readonly number[],
-      /**
-       * get the type of the tensor
-       */
-      public readonly type: Tensor.DataType, private dataProvider?: DataProvider,
-      private asyncDataProvider?: AsyncDataProvider, private cache?: TensorData,
-      /**
-       * get the data ID that used to map to a tensor data
-       */
-      public readonly dataId: Guid = Guid.create()) {
+    /**
+     * get the dimensions of the tensor
+     */
+    public readonly dims: readonly number[],
+    /**
+     * get the type of the tensor
+     */
+    public readonly type: Tensor.DataType,
+    private dataProvider?: DataProvider,
+    private asyncDataProvider?: AsyncDataProvider,
+    private cache?: TensorData,
+    /**
+     * get the data ID that used to map to a tensor data
+     */
+    public readonly dataId: Guid = Guid.create(),
+  ) {
     this.size = ShapeUtil.validateDimsAndCalcSize(dims);
     const size = this.size;
-    const empty = (dataProvider === undefined && asyncDataProvider === undefined && cache === undefined);
+    const empty = dataProvider === undefined && asyncDataProvider === undefined && cache === undefined;
 
     if (cache !== undefined) {
       if (cache.length !== size) {
-        throw new RangeError('Input dims doesn\'t match data length.');
+        throw new RangeError("Input dims doesn't match data length.");
       }
     }
 
     if (type === 'string') {
-      if (cache !== undefined && (!Array.isArray(cache) || !cache.every(i => typeof i === 'string'))) {
+      if (cache !== undefined && (!Array.isArray(cache) || !cache.every((i) => typeof i === 'string'))) {
         throw new TypeError('cache should be a string array');
       }
 
@@ -219,16 +227,20 @@ export class Tensor {
       tensorProto.stringData!.forEach((str, i) => {
         value.data[i] = decodeUtf8String(str);
       });
-
     } else if (
-        tensorProto.rawData && typeof tensorProto.rawData.byteLength === 'number' &&
-        tensorProto.rawData.byteLength > 0) {
+      tensorProto.rawData &&
+      typeof tensorProto.rawData.byteLength === 'number' &&
+      tensorProto.rawData.byteLength > 0
+    ) {
       // NOT considering segment for now (IMPORTANT)
 
       // populate value from rawData
       const dataDest = value.data;
-      const dataSource =
-          new DataView(tensorProto.rawData.buffer, tensorProto.rawData.byteOffset, tensorProto.rawData.byteLength);
+      const dataSource = new DataView(
+        tensorProto.rawData.buffer,
+        tensorProto.rawData.byteOffset,
+        tensorProto.rawData.byteLength,
+      );
       const elementSize = sizeofProto(tensorProto.dataType!);
       const length = tensorProto.rawData.byteLength / elementSize;
 
@@ -245,7 +257,7 @@ export class Tensor {
       }
     } else {
       // populate value from array
-      let array: Array<number|Long>;
+      let array: Array<number | Long>;
       switch (tensorProto.dataType) {
         case onnx.TensorProto.DataType.FLOAT:
           array = tensorProto.floatData!;
@@ -321,15 +333,20 @@ export class Tensor {
       for (let i = 0; i < ortTensor.stringDataLength(); i++) {
         value.data[i] = ortTensor.stringData(i);
       }
-
     } else if (
-        ortTensor.rawDataArray() && typeof ortTensor.rawDataLength() === 'number' && ortTensor.rawDataLength() > 0) {
+      ortTensor.rawDataArray() &&
+      typeof ortTensor.rawDataLength() === 'number' &&
+      ortTensor.rawDataLength() > 0
+    ) {
       // NOT considering segment for now (IMPORTANT)
 
       // populate value from rawData
       const dataDest = value.data;
       const dataSource = new DataView(
-          ortTensor.rawDataArray()!.buffer, ortTensor.rawDataArray()!.byteOffset, ortTensor.rawDataLength());
+        ortTensor.rawDataArray()!.buffer,
+        ortTensor.rawDataArray()!.byteOffset,
+        ortTensor.rawDataLength(),
+      );
       const elementSize = sizeofProto(ortTensor.dataType());
       const length = ortTensor.rawDataLength() / elementSize;
 
@@ -369,7 +386,7 @@ function sizeof(type: Tensor.DataType): number {
   }
 }
 
-function sizeofProto(type: onnx.TensorProto.DataType|ortFbs.TensorDataType): number {
+function sizeofProto(type: onnx.TensorProto.DataType | ortFbs.TensorDataType): number {
   switch (type) {
     case onnx.TensorProto.DataType.UINT8:
     case onnx.TensorProto.DataType.INT8:
@@ -423,15 +440,18 @@ function dataviewConstructor(type: Tensor.DataType) {
 }
 
 // convert a long number to a 32-bit integer (cast-down)
-function longToNumber(i: Long, type: onnx.TensorProto.DataType|ortFbs.TensorDataType): number {
+function longToNumber(i: Long, type: onnx.TensorProto.DataType | ortFbs.TensorDataType): number {
   // INT64, UINT32, UINT64
   if (type === onnx.TensorProto.DataType.INT64 || type === ortFbs.TensorDataType.INT64) {
     if (i.greaterThanOrEqual(2147483648) || i.lessThan(-2147483648)) {
       throw new TypeError('int64 is not supported');
     }
   } else if (
-      type === onnx.TensorProto.DataType.UINT32 || type === ortFbs.TensorDataType.UINT32 ||
-      type === onnx.TensorProto.DataType.UINT64 || type === ortFbs.TensorDataType.UINT64) {
+    type === onnx.TensorProto.DataType.UINT32 ||
+    type === ortFbs.TensorDataType.UINT32 ||
+    type === onnx.TensorProto.DataType.UINT64 ||
+    type === ortFbs.TensorDataType.UINT64
+  ) {
     if (i.greaterThanOrEqual(4294967296) || i.lessThan(0)) {
       throw new TypeError('uint64 is not supported');
     }
@@ -443,7 +463,11 @@ function longToNumber(i: Long, type: onnx.TensorProto.DataType|ortFbs.TensorData
 }
 
 // read one value from TensorProto
-function readProto(view: DataView, type: onnx.TensorProto.DataType|ortFbs.TensorDataType, byteOffset: number): number {
+function readProto(
+  view: DataView,
+  type: onnx.TensorProto.DataType | ortFbs.TensorDataType,
+  byteOffset: number,
+): number {
   switch (type) {
     case onnx.TensorProto.DataType.BOOL:
     case onnx.TensorProto.DataType.UINT8:
@@ -462,12 +486,16 @@ function readProto(view: DataView, type: onnx.TensorProto.DataType|ortFbs.Tensor
       return view.getUint32(byteOffset, true);
     case onnx.TensorProto.DataType.INT64:
       return longToNumber(
-          Long.fromBits(view.getUint32(byteOffset, true), view.getUint32(byteOffset + 4, true), false), type);
+        Long.fromBits(view.getUint32(byteOffset, true), view.getUint32(byteOffset + 4, true), false),
+        type,
+      );
     case onnx.TensorProto.DataType.DOUBLE:
       return view.getFloat64(byteOffset, true);
     case onnx.TensorProto.DataType.UINT64:
       return longToNumber(
-          Long.fromBits(view.getUint32(byteOffset, true), view.getUint32(byteOffset + 4, true), true), type);
+        Long.fromBits(view.getUint32(byteOffset, true), view.getUint32(byteOffset + 4, true), true),
+        type,
+      );
     default:
       throw new Error(`cannot read from DataView for type ${onnx.TensorProto.DataType[type]}`);
   }

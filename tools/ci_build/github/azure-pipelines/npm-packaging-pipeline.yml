@@ -10,10 +10,10 @@ parameters:
   default: 'nightly (@dev)'
 
 variables:
-  # pipeline should define the following varaibles
+  # pipeline should define the following variables
   #   ExtraBuildArgs
   #   VersionSuffix
-
+  ComponentDetection.Timeout: 1800
   ${{ if eq(parameters.NpmPublish, 'nightly (@dev)') }}:
     NpmPackagingMode: 'dev'
   ${{ if eq(parameters.NpmPublish, 'release candidate (@rc)') }}:
@@ -56,7 +56,8 @@ stages:
     BuildConfig: 'Release'
     PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
     PackageName: 'onnxruntime-react-native'
-    BuildAndroidAARStageDependsOn: 'Precheck_and_extract_commit'
+    InitialStageDependsOn: 'Precheck_and_extract_commit'
+    enable_code_sign: false
 
 - stage: Download_Node_Package_And_Publish_Validation_Script
   dependsOn:

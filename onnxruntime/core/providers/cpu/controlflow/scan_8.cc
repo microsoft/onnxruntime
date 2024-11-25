@@ -246,9 +246,9 @@ Status Scan8Impl::ValidateSubgraphInput(int start_input, int end_input, bool is_
 
     auto this_batch_size = input_shape[0];
 
-    if (batch_size_ < 0)
+    if (batch_size_ < 0) {
       batch_size_ = this_batch_size;
-    else {
+    } else {
       if (batch_size_ != this_batch_size) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Scan inputs have inconsistent batch size. Previous value was ",
                                batch_size_, " but ", graph_inputs[i]->Name(), " has batch size of ",
@@ -263,7 +263,8 @@ Status Scan8Impl::ValidateSubgraphInput(int start_input, int end_input, bool is_
         max_sequence_len_ = this_seq_len;
       } else {
         if (max_sequence_len_ != this_seq_len) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Scan inputs have inconsistent sequence lengths. Previous value was ",
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                 "Scan inputs have inconsistent sequence lengths. Previous value was ",
                                  max_sequence_len_, " but ", graph_inputs[i]->Name(),
                                  " has length of ", this_seq_len);
         }
@@ -396,13 +397,15 @@ Status Scan8Impl::Execute(const FeedsFetchesManager& ffm) {
 
     // Setup input OrtValue streams
     std::vector<OrtValueTensorSlicer<const OrtValue>::Iterator> scan_input_stream_iterators;
-    scan_input_stream_iterators.reserve(static_cast<size_t>(info_.num_variadic_inputs) - info_.num_loop_state_variables);
+    scan_input_stream_iterators.reserve(static_cast<size_t>(info_.num_variadic_inputs) -
+                                        info_.num_loop_state_variables);
 
     for (int i = info_.num_loop_state_variables, end = info_.num_variadic_inputs; i < end; ++i) {
       const auto& ort_value = GetSubgraphInputMLValue(context_, i);
 
       // forward
-      if (directions_[static_cast<ptrdiff_t>(i) - info_.num_loop_state_variables] == static_cast<int64_t>(ScanDirection::kForward)) {
+      if (directions_[static_cast<ptrdiff_t>(i) - info_.num_loop_state_variables] ==
+          static_cast<int64_t>(ScanDirection::kForward)) {
         // the iterator is self contained, so we don't need to keep the OrtValueTensorSlicer instance around
         scan_input_stream_iterators.push_back(device_helpers_.create_const_slicer_func(ort_value, 1, b).begin());
       } else {  // reverse
@@ -417,8 +420,10 @@ Status Scan8Impl::Execute(const FeedsFetchesManager& ffm) {
     }
 
     // Call the subgraph for each item in the sequence
-    status = IterateSequence(context_, session_state_, batch_loop_state_variables[onnxruntime::narrow<size_t>(b)], scan_input_stream_iterators,
-                             sequence_len, info_.num_loop_state_variables, info_.num_variadic_inputs, info_.num_outputs,
+    status = IterateSequence(context_, session_state_, batch_loop_state_variables[onnxruntime::narrow<size_t>(b)],
+                             scan_input_stream_iterators,
+                             sequence_len, info_.num_loop_state_variables, info_.num_variadic_inputs,
+                             info_.num_outputs,
                              implicit_inputs_, output_iterators_, ffm);
 
     // zero out any remaining values in the sequence

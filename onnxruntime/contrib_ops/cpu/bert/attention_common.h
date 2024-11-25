@@ -2,9 +2,16 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <gsl/gsl>
 
 namespace onnxruntime {
 namespace contrib {
+
+enum AttentionType {
+  kAttention,
+  kMultiHeadAttention,
+  kDecoderMaskedMultiHeadAttention,
+};
 
 enum AttentionMaskType {
   MASK_NONE,                  // No mask
@@ -24,10 +31,12 @@ enum AttentionQkvFormat {
   UNKNOWN,               // enum value not set, or depends on qkv projection implementation details
   Q_K_V_BNSH,            // for non-packed qkv, permuted
   Q_K_V_BSNH,            // for non-packed qkv, not permuted, used by memory efficient attention or MultiHeadAttention
-  QKV_BSN3H,             // for TRT fused attention, qkv are packed
+  Q_K_V_BSNH_BNSH_BNSH,  // for cross attention, k and v are permuted
   Q_K_V_BNSH_QKV_BS3NH,  // for TRT fused causal attention, data has two formats (qkv is 3BNSH, gemm_buffer is BS3NH)
-  Q_KV_BSNH_BSN2H,       // for TRT fused cross attention, kv are packed
   Q_K_V_TNH,             // for memory efficient attention, qkv are not packed, and paddings are removed.
+  Q_KV_BSNH_BSN2H,       // for TRT fused cross attention, kv are packed
+  QKV_BSN3H,             // for TRT fused attention, qkv are packed
+  QKV_BS3NH,             // for DecoderMaskedMultiHeadAttention, qkv are packed
   QKV_TN3H,              // for TRT fused attention, qkv are packed and paddings are removed
 };
 
@@ -38,6 +47,8 @@ enum AttentionKernelType {
   AttentionKernel_TrtFusedCrossAttention,
   AttentionKernel_CutlassMemoryEfficientAttention,
   AttentionKernel_FlashAttention,
+  AttentionKernel_CudnnFlashAttention,
+  AttentionKernel_LeanAttention,
   AttentionKernel_Default
 };
 
@@ -55,18 +66,56 @@ struct AttentionParameters {
   int v_hidden_size;          // hidden size of V
   int v_head_size;            // hidden size per head of V
   int num_heads;
-  int num_splits;
   int rotary_embedding;
   bool is_unidirectional;
   bool past_present_share_buffer;
   bool do_rotary;
-  bool broadcast_res_pos_bias;
-  bool pass_past_in_kv;
+  bool broadcast_attn_bias_dim_0;
+  bool broadcast_attn_bias_dim_1;
   float mask_filter_value;
   float scale;
   bool use_tf32;
   AttentionMaskType mask_type;
   AttentionQkvFormat qkv_format;
+};
+
+struct DecoderMaskedMultiHeadAttentionParams : AttentionParameters {
+  int beam_width = 1;
+
+  // Only NeoX style rotary embedding is supported
+  int rotary_embedding_dim = 0;
+  int t_step = 0;
+
+  // Whether to use multihead attention(excludes matmul and bias)
+  bool is_mha = false;
+  bool is_cross_attention = false;
+  bool is_packed_qkv = false;
+
+  // Useful to better use global memory bandwidth on certain CUDA architectures.
+  // Turned off by default for now until we fully understand performance implications
+  // for all types of workloads.
+  // Can be turned on by appropriate environment variable (see attention_common.h).
+  bool kv_data_in_flight = false;
+
+  void* q = nullptr;
+  void* q_bias = nullptr;
+
+  void* k = nullptr;
+  void* k_bias = nullptr;
+
+  void* v = nullptr;
+  void* v_bias = nullptr;
+
+  void* attention_bias = nullptr;
+
+  void* k_cache = nullptr;
+  void* v_cache = nullptr;
+
+  void* out = nullptr;
+  void* out_qk = nullptr;
+
+  const int32_t* cache_indir = nullptr;
+  const int32_t* mask = nullptr;  // [B, total_sequence_length]
 };
 
 // Parameters deduced from node attributes and inputs/outputs.
@@ -81,8 +130,8 @@ struct PackedAttentionParameters {
   int num_heads;
   float scale;
   int token_count;
-  bool has_relative_position_bias;
-  bool broadcast_res_pos_bias;
+  bool broadcast_attn_bias_dim_0;
+  bool broadcast_attn_bias_dim_1;
   bool use_tf32;
 };
 
@@ -92,6 +141,7 @@ struct GroupQueryAttentionParameters {
   int sequence_length;          // sequence length of input query, key, value
   int seqlen_past_kv_cache;     // sequence length of past kv tensor
   int seqlen_present_kv_cache;  // sequence length of present kv tensor
+  int total_sequence_length;    // maximum total sequence length (past_sequence_length + sequence_length) among keys
   int hidden_size;
   int num_heads;
   int head_size;
@@ -103,10 +153,13 @@ struct GroupQueryAttentionParameters {
   int local_window_size;
   bool kv_share_buffer;
   bool is_packed_qkv;
-  bool is_prompt;  // determines if seqlens_k is past or kv sequence length tensor
+  bool is_subsequent_prompt;  // indicates whether we have past context and seqlen > 1
+  bool is_first_prompt;       // indicates whether this is first decoding step
   bool do_rotary;
   bool rotary_interleaved;
+  bool use_smooth_softmax;
   float scale;
+  float softcap;
   AttentionQkvFormat qkv_format;
   AttentionQkvFormat past_kv_format;
   int zeros_count;
@@ -126,11 +179,15 @@ struct SparseAttentionParameters {
   bool rotary_interleaved;         // whether to use interleaved rotary embedding
   int rotary_dim;                  // rotary embedding dimension
   int sparse_block_size;           // block size for sparse attention
-  int num_sparse_layout;           // number of sparse layout, or the first dimension of block_mask
+  int num_sparse_layout;           // number of sparse layout
+  int stride_col_indices;          // shape of block_col_indices is [num_sparse_layout, stride_col_indices]
+  int stride_row_indices;          // shape of block_row_indices is [num_sparse_layout, stride_row_indices]
   float scale;                     // scaling factor applied prior to softmax
   bool is_packed_qkv;              // whether qkv is packed
   int total_sequence_length;       // maximum total sequence length (past_sequence_length + sequence_length) among keys
-  int max_sequence_length;         // max sequence length allowed
+  int max_sequence_length;         // max sequence length for sparse layout
+  int max_rotary_sequence_length;  // max sequence length for rotary cos/sin cache
+  int max_cache_sequence_length;   // max sequence length for kv cache buffer
   bool past_present_share_buffer;  // whether past_key and present_key share buffer, so is past_value and present_value
 };
 
@@ -143,6 +200,26 @@ constexpr const char* kDisableSparseAttentionV1 = "ORT_DISABLE_SPARSE_ATTENTION_
 }  // namespace sparse_attention
 
 namespace attention {
+
+enum class AttentionBackend : int {
+  FLASH_ATTENTION = 1,
+  EFFICIENT_ATTENTION = 2,
+  TRT_FUSED_ATTENTION = 4,
+  CUDNN_FLASH_ATTENTION = 8,  // reserved for cuDNN flash attention.
+  MATH = 16,                  // unfused kernel cannot be disabled right now.
+
+  // The following TRT kernels might be deprecated in the future.
+  TRT_FLASH_ATTENTION = 32,
+  TRT_CROSS_ATTENTION = 64,
+  TRT_CAUSAL_ATTENTION = 128,
+
+  // Experimental kernels
+  LEAN_ATTENTION = 256,
+};
+
+// Environment variable to enable debug information of attention kernel to be printed. Default is 0 (disabled).
+constexpr const char* kEnableAttentionKernelDebugInfo = "ORT_ENABLE_ATTENTION_KERNEL_DEBUG_INFO";
+
 // Environment variable to enable or disable TRT fused self attention kernel. Default is 0 (enabled).
 constexpr const char* kDisableFusedSelfAttention = "ORT_DISABLE_FUSED_ATTENTION";
 
@@ -153,6 +230,9 @@ constexpr const char* kDisableFusedCrossAttention = "ORT_DISABLE_FUSED_CROSS_ATT
 // Note that those causal attention kernels use fp16 accumulation. There is potential accuracy drop using those kernels.
 constexpr const char* kEnableFusedCausalAttention = "ORT_ENABLE_FUSED_CAUSAL_ATTENTION";
 
+// Environment variable to enable or disable cuDNN flash attention.
+constexpr const char* kEnableCudnnFlashAttention = "ORT_ENABLE_CUDNN_FLASH_ATTENTION";
+
 // Environment variable to enable or disable TRT flash attention. This applies to both self and causal attention. Default is 0 (enabled).
 constexpr const char* kDisableTrtFlashAttention = "ORT_DISABLE_TRT_FLASH_ATTENTION";
 
@@ -162,11 +242,18 @@ constexpr const char* kDisableMemoryEfficientAttention = "ORT_DISABLE_MEMORY_EFF
 // Environment variable to enable or disable flash attention. Default is 0 (enabled).
 constexpr const char* kDisableFlashAttention = "ORT_DISABLE_FLASH_ATTENTION";
 
-// Minimum sequence length to enable memory efficient attention in FP32.
-constexpr int kMinSeqLenForMemoryEfficientAttentionFp32 = 256;
+// Environment variable to enable or disable lean attention. Default is 0 (disabled).
+constexpr const char* kEnableLeanAttention = "ORT_ENABLE_LEAN_ATTENTION";
+
+// Minimum sequence length to perfer memory efficient attention when data type is float32
+constexpr const char* kMinSeqLenForEfficientAttentionFp32 = "ORT_MIN_SEQ_LEN_EFFICIENT_ATTENTION_FP32";
+
+// Default value for minimum sequence length to enable memory efficient attention in FP32.
+constexpr int kDefaultMinSeqLenForEfficientAttentionFp32 = 256;
 
 // Minimum sequence length to prefer flash attention when input format is packed QKV for MultiHeadAttention
 constexpr const char* kMinSeqLenForFlashAttentionPackedQKV = "ORT_MIN_SEQ_LEN_FLASH_ATTENTION_PACKED_QKV";
+
 // Default value for the above setting.
 constexpr int kDefaultMinSeqLenForFlashAttentionPackedQKV = 513;
 

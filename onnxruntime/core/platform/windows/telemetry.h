@@ -8,7 +8,7 @@
 #include "core/platform/telemetry.h"
 #include <Windows.h>
 #include <TraceLoggingProvider.h>
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/platform/windows/TraceLoggingConfig.h"
 
 namespace onnxruntime {
@@ -51,7 +51,7 @@ class WindowsTelemetry : public Telemetry {
                           const std::string& model_graph_name,
                           const std::unordered_map<std::string, std::string>& model_metadata,
                           const std::string& loadedFrom, const std::vector<std::string>& execution_provider_ids,
-                          bool use_fp16) const override;
+                          bool use_fp16, bool captureState) const override;
 
   void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
                        const char* function, uint32_t line) const override;
@@ -66,15 +66,17 @@ class WindowsTelemetry : public Telemetry {
 
   static void RegisterInternalCallback(const EtwInternalCallback& callback);
 
+  static void UnregisterInternalCallback(const EtwInternalCallback& callback);
+
  private:
-  static OrtMutex mutex_;
+  static std::mutex mutex_;
   static uint32_t global_register_count_;
   static bool enabled_;
   static uint32_t projection_;
 
-  static std::vector<EtwInternalCallback> callbacks_;
-  static OrtMutex callbacks_mutex_;
-  static OrtMutex provider_change_mutex_;
+  static std::vector<const EtwInternalCallback*> callbacks_;
+  static std::mutex callbacks_mutex_;
+  static std::mutex provider_change_mutex_;
   static UCHAR level_;
   static ULONGLONG keyword_;
 

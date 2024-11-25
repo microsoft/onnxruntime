@@ -3,8 +3,7 @@
 
 #pragma once
 #include "migraphx_inc.h"
-
-#pragma once
+#include "core/common/common.h"
 
 namespace onnxruntime {
 
@@ -18,5 +17,6 @@ std::conditional_t<THRW, void, Status> RocmCall(
 
 #define HIP_CALL(expr) (RocmCall<hipError_t, false>((expr), #expr, "HIP", hipSuccess, "", __FILE__, __LINE__))
 #define HIP_CALL_THROW(expr) (RocmCall<hipError_t, true>((expr), #expr, "HIP", hipSuccess, "", __FILE__, __LINE__))
+#define HIP_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(HIP_CALL(expr))
 
 }  // namespace onnxruntime

@@ -100,6 +100,8 @@ stages:
       job_name_suffix: 'Training_Full'
       publish_executables: '1'
       packageName: onnxruntime-training-android
+      enable_code_sign: true
+
   - template: android-java-api-aar-test.yml
     parameters:
       artifactName: 'onnxruntime-training-android-full-aar'
@@ -116,11 +118,11 @@ stages:
   - Android_Java_API_AAR_Packaging_Training_Full
   condition: succeeded()
   jobs:
-  - job:
+  - job: NuGet_Packaging_Training_CPU
     workspace:
       clean: all
-    # we need to use the 2022 pool to create the nuget package with both pre-net6+Xamarin and net6 targets.
-    # VS2019 has no support for net6 and we need to use msbuild (from the VS install) to do the packing
+    # we need to use a 2022 pool to create the nuget package with MAUI targets.
+    # VS2019 has no support for net6/MAUI and we need to use msbuild (from the VS install) to do the packing
     pool: 'Onnxruntime-Win-CPU-2022'
     variables:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
@@ -191,9 +193,9 @@ stages:
       displayName: 'Create models link'
 
     - task: NuGetToolInstaller@0
-      displayName: Use Nuget 6.2.1
+      displayName: Use Nuget 6.10.x
       inputs:
-        versionSpec: 6.2.1
+        versionSpec: 6.10.x
 
     - task: PowerShell@2
       displayName: Install mobile workloads
@@ -227,6 +229,11 @@ stages:
           FolderPath: '$(Build.SourcesDirectory)\csharp\src\Microsoft.ML.OnnxRuntime\bin\RelWithDebInfo'
           DisplayName: 'ESRP - Sign C# dlls'
           DoEsrp: ${{ parameters.DoEsrp }}
+
+    - task: UsePythonVersion@0
+      displayName: 'Use Python'
+      inputs:
+        versionSpec: 3.12
 
     - task: MSBuild@1
       displayName: 'Build Nuget Packages'
@@ -288,13 +295,6 @@ stages:
         msbuildArguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-    - task: RoslynAnalyzers@2
-      displayName: 'Run Roslyn Analyzers'
-      inputs:
-        userProvideBuildInfo: msBuildInfo
-        msBuildCommandline: '"C:\Program Files\Microsoft Visual Studio\2022\Enterprise\MSBuild\Current\Bin\msbuild.exe" $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.sln -p:configuration="RelWithDebInfo" -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
-      condition: and(succeeded(), eq('${{ parameters.DoCompliance }}', true))
-
     - template: component-governance-component-detection-steps.yml
       parameters :
         condition : 'succeeded'
@@ -319,3 +319,4 @@ stages:
     ArtifactSuffix: 'Training-CPU'
     StageSuffix: 'Training_CPU'
     NativePackagePrefix: 'onnxruntime-training'
+    CustomOpArtifactName: 'onnxruntime-training-linux-x64'

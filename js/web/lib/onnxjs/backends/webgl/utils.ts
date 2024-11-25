@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {assert} from '../../util';
+import { assert } from '../../util';
 /**
  * Given a non RGBA shape calculate the R version
  * It is assumed that the dimensions are multiples of given channels
@@ -14,7 +14,10 @@ export function getPackedShape(unpackedShape: readonly number[]): readonly numbe
 }
 
 export async function repeatedTry(
-    checkFn: () => boolean, delayFn = (_counter: number) => 0, maxCounter?: number): Promise<void> {
+  checkFn: () => boolean,
+  delayFn = (_counter: number) => 0,
+  maxCounter?: number,
+): Promise<void> {
   return new Promise<void>((resolve, reject) => {
     let tryCount = 0;
 
@@ -67,7 +70,7 @@ export function squeezeInputShape(inputShape: readonly number[], squeezedShape: 
 
 /** Returns a list of squeezed parameters for shader functions */
 export function getSqueezedParams(params: string[], keptDims: number[]): string {
-  return keptDims.map(d => params[d]).join(', ');
+  return keptDims.map((d) => params[d]).join(', ');
 }
 
 /** Returns the data type for different ranks. */

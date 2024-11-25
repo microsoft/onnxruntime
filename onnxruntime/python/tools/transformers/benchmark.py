@@ -348,7 +348,7 @@ def run_pytorch(
         else:
             tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 
-            max_input_size = tokenizer.max_model_input_sizes.get(model_name, 1024)
+            max_input_size = tokenizer.model_max_length
 
         logger.debug(f"Model {model}")
         logger.debug(f"Number of parameters {model.num_parameters()}")
@@ -500,7 +500,7 @@ def run_tensorflow(
 
         tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
 
-        max_input_size = tokenizer.max_model_input_sizes.get(model_name, 1024)
+        max_input_size = tokenizer.model_max_length
 
         for batch_size in batch_sizes:
             if batch_size <= 0:
@@ -787,7 +787,7 @@ def main():
         logger.error("fp16 is for GPU only")
         return
 
-    if args.precision == Precision.INT8 and args.use_gpu and args.provider != "migraphx":
+    if args.precision == Precision.INT8 and args.use_gpu and args.provider not in ["migraphx", "rocm"]:
         logger.error("int8 is for CPU only")
         return
 
@@ -802,7 +802,7 @@ def main():
         try:
             os.mkdir(args.cache_dir)
         except OSError:
-            logger.error("Creation of the directory %s failed" % args.cache_dir)  # noqa: G002
+            logger.error("Creation of the directory %s failed", args.cache_dir)
 
     enable_torch = "torch" in args.engines
     enable_torch2 = "torch2" in args.engines
@@ -930,7 +930,7 @@ def main():
 
     if len(results) == 0:
         if args.batch_sizes != [0]:
-            logger.warning("No any result avaiable.")
+            logger.warning("No any result available.")
         return
 
     csv_filename = args.detail_csv or f"benchmark_detail_{time_stamp}.csv"

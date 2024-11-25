@@ -627,7 +627,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank0) {
       TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
-  auto model_uri2 = "mlp_megatron_basic_test_partition_rank0.onnx";
+  PathString model_uri2 = ORT_TSTR("mlp_megatron_basic_test_partition_rank0.onnx");
   ASSERT_STATUS_OK(Model::Save(*p_model, model_uri2));
 
   {
@@ -705,7 +705,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank1) {
                                                      TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
-  auto model_uri2 = "mlp_megatron_basic_test_partition_rank1.onnx";
+  PathString model_uri2 = ORT_TSTR("mlp_megatron_basic_test_partition_rank1.onnx");
   ASSERT_STATUS_OK(Model::Save(*p_model, model_uri2));
 
   {
@@ -765,7 +765,7 @@ TEST_F(GraphTransformationTests, MegatronMLPPartitionRank1) {
 }
 
 TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank0) {
-  auto model_uri = MODEL_FOLDER "model_parallel/self_attention_megatron_basic_test.onnx";
+  PathString model_uri = MODEL_FOLDER "model_parallel/self_attention_megatron_basic_test.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
@@ -781,7 +781,7 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank0) {
       TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
-  auto model_uri2 = "self_attention_megatron_basic_test_partition_rank0.onnx";
+  PathString model_uri2 = ORT_TSTR("self_attention_megatron_basic_test_partition_rank0.onnx");
   ASSERT_STATUS_OK(Model::Save(*p_model, model_uri2));
 
   {
@@ -838,7 +838,7 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank0) {
 }
 
 TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank1) {
-  auto model_uri = MODEL_FOLDER "model_parallel/self_attention_megatron_basic_test.onnx";
+  PathString model_uri = MODEL_FOLDER "model_parallel/self_attention_megatron_basic_test.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
@@ -856,7 +856,7 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank1) {
                                                      TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
-  auto model_uri2 = "self_attention_megatron_basic_test_partition_rank1.onnx";
+  PathString model_uri2 = ORT_TSTR("self_attention_megatron_basic_test_partition_rank1.onnx");
   ASSERT_STATUS_OK(Model::Save(*p_model, model_uri2));
 
   {
@@ -913,15 +913,19 @@ TEST_F(GraphTransformationTests, MegatronSelfAttentionPartitionRank1) {
 }
 
 TEST_F(GraphTransformationTests, BiasGeluRecomputeTest) {
-  auto model_uri = MODEL_FOLDER "fusion/bias_gelu_fusion_recompute.onnx";
+  PathString model_uri = MODEL_FOLDER "fusion/bias_gelu_fusion_recompute.onnx";
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
   Graph& graph = p_model->MainGraph();
 
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GeluFusion>(), TransformerLevel::Level2));
+  const InlinedHashSet<std::string_view> no_limit_empty_ep_list = {};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GeluFusion>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<GeluFusion>(no_limit_empty_ep_list, TransformerLevel::Level2), TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<BiasGeluFusion>(), TransformerLevel::Level2));
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<GeluRecompute>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
@@ -1397,7 +1401,7 @@ static void RunPartitionCorrectnessTest(std::string model_path,
         TransformerLevel::Level1));
     ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, logger));
     graphs.push_back(&graph);
-    auto model_uri2 = ToPathString(model_path) + ORT_TSTR("_partition_rank_") + ToPathString(std::to_string(i)) + ORT_TSTR(".onnx");
+    PathString model_uri2 = ToPathString(model_path) + ORT_TSTR("_partition_rank_") + ToPathString(std::to_string(i)) + ORT_TSTR(".onnx");
     ASSERT_STATUS_OK(Model::Save(*p_models[i], model_uri2));
   }
 
@@ -1405,7 +1409,7 @@ static void RunPartitionCorrectnessTest(std::string model_path,
   auto& combine_graph = combine_model.MainGraph();
   auto ret = horizontal_parallel_test_utils::MergeGraphsOnAllWorkers(graphs, combine_graph);
   ORT_ENFORCE(ret.IsOK());
-  auto model_uri2 = ToPathString(model_path) + ORT_TSTR("_partition_combine.onnx");
+  PathString model_uri2 = ToPathString(model_path) + ORT_TSTR("_partition_combine.onnx");
   ASSERT_STATUS_OK(Model::Save(combine_model, model_uri2));
 
   float scale = 1.f;
@@ -1790,7 +1794,7 @@ TEST_F(GraphTransformationTests, ScaledSumFusionTwoInputs) {
 
 #ifdef ENABLE_TRITON
 TEST_F(GraphTransformationTests, TritonFusion) {
-  auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
+  PathString model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
   Graph& graph = model->MainGraph();
@@ -1805,7 +1809,7 @@ TEST_F(GraphTransformationTests, TritonFusion) {
   ASSERT_TRUE(op_to_count["LayerNormalization"] == 4);
 
   {
-    auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
+    PathString model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
     std::shared_ptr<Model> model;
     ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
     Graph& graph = model->MainGraph();
@@ -1845,7 +1849,7 @@ TEST_F(GraphTransformationTests, TritonFusion) {
 
   // No Dropout.
   {
-    auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
+    PathString model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
     std::shared_ptr<Model> model;
     ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
     Graph& graph = model->MainGraph();
@@ -1884,7 +1888,7 @@ TEST_F(GraphTransformationTests, TritonFusion) {
 
   // Ignore min nodes.
   {
-    auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
+    PathString model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
     std::shared_ptr<Model> model;
     ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
     Graph& graph = model->MainGraph();
@@ -1924,7 +1928,7 @@ TEST_F(GraphTransformationTests, TritonFusion) {
 
   // Exclude Softmax using axis attribute.
   {
-    auto model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
+    PathString model_uri = MODEL_FOLDER "bert_toy_opset14.onnx";
     std::shared_ptr<Model> model;
     ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
     Graph& graph = model->MainGraph();

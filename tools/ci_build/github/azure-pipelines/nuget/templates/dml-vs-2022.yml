@@ -24,9 +24,9 @@ parameters:
   IsReleaseBuild: false
 stages:
 - stage: ${{ parameters.StageName }}
-  dependsOn: []
+  dependsOn: Setup
   jobs:
-  - job:
+  - job: ${{ parameters.StageName }}
     timeoutInMinutes: 200
     strategy:
       maxParallel: 2
@@ -43,10 +43,11 @@ stages:
       buildDirectory: '$(Build.BinariesDirectory)'
       BuildCommand: ${{ parameters.BuildCommand }}
       OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
-      DotNetExe: 'dotnet.exe'
       runCodesignValidationInjection: and(${{ parameters.DoNodejsPack }},${{ parameters. DoEsrp}}) #For the others, code sign is in a separated job
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
       ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
+      BuildDate : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Date.BuildDate']]
+      BuildTime : $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
       ${{ if eq(parameters.EnableLto, true) }}:
         build_py_lto_flag: --enable_lto
 
@@ -74,7 +75,7 @@ stages:
 
       - task: NodeTool@0
         inputs:
-          versionSpec: '18.x'
+          versionSpec: '20.x'
 
       - task: onebranch.pipeline.tsaoptions@1
         displayName: 'OneBranch TSAOptions'
@@ -84,7 +85,7 @@ stages:
 
       - task: UsePythonVersion@0
         inputs:
-          versionSpec: '3.8'
+          versionSpec: '3.12'
           addToPath: true
           architecture: ${{ parameters.BuildArch }}
 
@@ -94,6 +95,13 @@ stages:
           filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.EnvSetupScript }}'
           modifyEnvironment: true
           workingFolder: '$(Build.BinariesDirectory)'
+
+      # need to set PROCESSOR_ARCHITECTURE so the x86 SDK is installed correctly
+      - task: UseDotNet@2
+        inputs:
+          version: 8.x
+        env:
+          PROCESSOR_ARCHITECTURE: ${{ parameters.BuildArch }}
 
       - task: PowerShell@2
         displayName: 'Install ONNX'
@@ -133,9 +141,9 @@ stages:
 
 
       - task: NuGetToolInstaller@0
-        displayName: Use Nuget 5.7.0
+        displayName: Use Nuget 6.10.x
         inputs:
-          versionSpec: 5.7.0
+          versionSpec: 6.10.x
 
       - task: MSBuild@1
         displayName: 'Restore NuGet Packages'
@@ -200,7 +208,14 @@ stages:
             filename: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
             arguments: ${{ parameters.BuildArch }}
             modifyEnvironment: true
-        # Esrp signing
+
+        # Esrp signing. Requires older .net SDK currently (ESRP v5.1.1)
+        - task: UseDotNet@2
+          inputs:
+            version: 6.x
+          env:
+            PROCESSOR_ARCHITECTURE: ${{ parameters.BuildArch }}
+
         - template: ../../templates/win-esrp-dll.yml
           parameters:
             FolderPath: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
@@ -226,15 +241,14 @@ stages:
             artifactName: ${{ parameters.ArtifactName }}
             targetPath: '$(Build.ArtifactStagingDirectory)'
 
-        - ${{ if eq(parameters['IsReleaseBuild'], 'true') }}:
-          - task: PublishSymbols@2
-            displayName: 'Publish Build Symbols'
-            inputs:
-              symbolsFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-              searchPattern: '**/*.pdb'
-              symbolServerType: teamServices
-
-
+        - task: PublishSymbols@2
+          displayName: 'Publish Build Symbols'
+          condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
+          inputs:
+            SymbolsFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+            SearchPattern: 'onnxruntime.pdb'
+            SymbolServerType: teamServices
+            SymbolExpirationInDays: 365
 
       # Node.js Publish
       - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:

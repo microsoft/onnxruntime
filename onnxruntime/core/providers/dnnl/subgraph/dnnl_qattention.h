@@ -20,7 +20,7 @@ class DnnlQAttention {
     MASK_INDEX = 5,
     INPUT_ZP = 6,
     WEIGHTS_ZP = 7,
-    PAST = 8  // not suppoted
+    PAST = 8  // not supported
   };
 
   enum OutputTensors : int {

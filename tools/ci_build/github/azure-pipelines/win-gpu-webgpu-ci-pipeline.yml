@@ -1,0 +1,108 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+#### end trigger ####
+
+parameters:
+- name: RunOnnxRuntimeTests
+  displayName: Run Tests?
+  type: boolean
+  default: true
+
+stages:
+- stage: webgpu
+  dependsOn: []
+  jobs:
+    - template: templates/jobs/win-ci-vs-2022-job.yml
+      parameters:
+        BuildConfig: 'RelWithDebInfo'
+        EnvSetupScript: setup_env.bat
+        buildArch: x64
+        # add --build_java if necessary
+        additionalBuildFlags: >-
+          --enable_pybind
+          --build_nodejs
+          --use_webgpu
+          --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON
+        msbuildPlatform: x64
+        isX86: false
+        job_name_suffix: x64_RelWithDebInfo
+        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+        ORT_EP_NAME: WebGPU
+        EnablePython: false
+        WITH_CACHE: true
+        MachinePool: onnxruntime-Win2022-VS2022-webgpu-A10
+
+- stage: webgpu_external_dawn
+  dependsOn: []
+  jobs:
+    - job: build_x64_RelWithDebInfo
+      variables:
+        DEPS_CACHE_DIR: $(Agent.TempDirectory)/deps_ccache
+        ORT_CACHE_DIR: $(Agent.TempDirectory)/ort_ccache
+        TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+      workspace:
+        clean: all
+      pool: onnxruntime-Win2022-VS2022-webgpu-A10
+      timeoutInMinutes:  300
+      steps:
+        - checkout: self
+          clean: true
+          submodules: none
+
+        - template: templates/jobs/win-ci-prebuild-steps.yml
+          parameters:
+            EnvSetupScript: setup_env.bat
+            DownloadCUDA: false
+            DownloadTRT: false
+            BuildArch: x64
+            BuildConfig: RelWithDebInfo
+            MachinePool: onnxruntime-Win2022-VS2022-webgpu-A10
+            WithCache: true
+            Today: $(Today)
+
+        - template: templates/jobs/win-ci-build-steps.yml
+          parameters:
+            WithCache: true
+            Today: $(TODAY)
+            CacheDir: $(ORT_CACHE_DIR)
+            AdditionalKey: " $(System.StageName) | RelWithDebInfo "
+            BuildPyArguments: '--config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --update --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --skip_tests --target onnxruntime_webgpu_external_dawn_test'
+            MsbuildArguments: '-maxcpucount'
+            BuildArch: x64
+            Platform: x64
+            BuildConfig: RelWithDebInfo
+
+        - script: |
+            onnxruntime_webgpu_external_dawn_test.exe
+          displayName: Run tests (onnxruntime_webgpu_external_dawn_test)
+          workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+        - script: |
+            onnxruntime_webgpu_external_dawn_test.exe --no_proc_table
+          displayName: Run tests (onnxruntime_webgpu_external_dawn_test)
+          workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'

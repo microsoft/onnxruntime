@@ -65,7 +65,7 @@ class ProcessRotCacheFunc:
         return x
 
 
-# TODO: move to a seperate file
+# TODO: move to a separate file
 class Fission(Fusion):
     def __init__(
         self,

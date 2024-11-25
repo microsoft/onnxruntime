@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #include "core/optimizer/graph_transformer.h"
 #include "orttraining/core/optimizer/graph_transformer_config.h"

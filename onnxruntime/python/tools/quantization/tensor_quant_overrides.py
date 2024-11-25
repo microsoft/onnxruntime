@@ -12,7 +12,7 @@ from typing import Any
 
 import onnx
 
-from .quant_utils import QuantType, tensor_proto_to_array
+from .quant_utils import QuantType
 
 
 @dataclass
@@ -77,6 +77,10 @@ class TensorQuantOverridesHelper(MutableMapping):
     def has_per_channel_overrides(self, tensor_name: str) -> bool:
         overrides_list = self.overrides.get(tensor_name)
         return overrides_list and "axis" in overrides_list[0]
+
+    def overrides_scale_zp(self, tensor_name: str) -> bool:
+        overrides_list = self.overrides.get(tensor_name)
+        return overrides_list and ("scale" in overrides_list[0]) and ("zero_point" in overrides_list[0])
 
     def get_per_tensor_overrides(
         self,
@@ -235,7 +239,7 @@ class TensorQuantOverridesHelper(MutableMapping):
                 "the first channel dictionary.",
             )
 
-        weight_shape = tensor_proto_to_array(initializers[tensor_name]).shape
+        weight_shape = list(initializers[tensor_name].dims)
         weight_rank = len(weight_shape)
         norm_axis = axis
         if norm_axis < 0:

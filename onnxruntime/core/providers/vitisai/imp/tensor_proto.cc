@@ -8,12 +8,49 @@
 #include "./vai_assert.h"
 #include "core/providers/shared_library/provider_api.h"
 namespace vaip {
-gsl::span<const char> tensor_proto_as_raw(const ONNX_NAMESPACE::TensorProto& tensor) {
+using namespace onnxruntime;
+
+static gsl::span<const char> process_ext_address(const ONNX_NAMESPACE::TensorProto& tensor) {
+  auto tensor_proto = const_cast<ONNX_NAMESPACE::TensorProto*>(&tensor);
+  auto file = std::string();
+  uintptr_t offset = 0;
+  size_t size = 0;
+  if (tensor_proto->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL) {
+    auto external_data = tensor_proto->mutable_external_data();
+    auto external_data_size = external_data->size();
+    for (auto i = 0; i < external_data_size; ++i) {
+      auto& data = external_data->at(i);
+      char* end = nullptr;
+      if (*data.mutable_key() == "location") {
+        file = *data.mutable_value();
+      } else if (*data.mutable_key() == "offset") {
+        offset = (uintptr_t)std::strtoull(data.mutable_value()->data(), &end, 10);
+      } else if (*data.mutable_key() == "length") {
+        size = (size_t)std::strtoull(data.mutable_value()->data(), &end, 10);
+      } else if (*data.mutable_key() == "checksum") {
+        // checksum = (size_t)std::strtoull(data.mutable_value()->data(), &end, 10);
+      }
+    }
+    if (file == "*/_ORT_MEM_ADDR_/*") {
+      auto addr = reinterpret_cast<const char*>(offset);
+      return {addr, size};
+    }
+  }
+  return {};
+}
+
+gsl::span<const char> tensor_proto_as_raw(const onnxruntime::Graph& graph, const ONNX_NAMESPACE::TensorProto& tensor) {
   auto& mut_tensor = const_cast<ONNX_NAMESPACE::TensorProto&>(tensor);
   if (!tensor.has_raw_data()) {
+    auto maybe_external_memory_address = process_ext_address(tensor);
+    if (!maybe_external_memory_address.empty()) {
+      return maybe_external_memory_address;
+    }
+
     std::vector<uint8_t> unpacked_tensor;
-    auto path = onnxruntime::Path::Create();
-    auto s = onnxruntime::utils::UnpackInitializerData(tensor, *path, unpacked_tensor);
+    auto path = graph.ModelPath();
+    auto s = onnxruntime::utils::UnpackInitializerData(tensor, path, unpacked_tensor);
+    vai_assert(s.IsOK(), s.ErrorMessage());
     mut_tensor.mutable_raw_data()->resize(unpacked_tensor.size());
     mut_tensor.clear_float_data();
     mut_tensor.clear_int32_data();
@@ -50,28 +87,67 @@ static ONNX_NAMESPACE::TensorProto* tensor_proto_new(const std::string& name, co
   return tensor_proto.release();
 }
 
-ONNX_NAMESPACE::TensorProto* tensor_proto_new_i32(const std::string& name, const std::vector<int64_t>& shape,
-                                                  const std::vector<int32_t>& data) {
-  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_INT32,
-                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(int32_t));
-}
-
-ONNX_NAMESPACE::TensorProto* tensor_proto_new_i64(const std::string& name, const std::vector<int64_t>& shape,
-                                                  const std::vector<int64_t>& data) {
-  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_INT64,
-                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(int64_t));
-}
-
 ONNX_NAMESPACE::TensorProto* tensor_proto_new_i8(const std::string& name, const std::vector<int64_t>& shape,
                                                  const std::vector<int8_t>& data) {
   return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_INT8,
-                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(int8_t));
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
+}
+
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_i16(const std::string& name, const std::vector<int64_t>& shape,
+                                                  const std::vector<int16_t>& data) {
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_INT16,
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
+}
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_i32(const std::string& name, const std::vector<int64_t>& shape,
+                                                  const std::vector<int32_t>& data) {
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_INT32,
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
+}
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_i64(const std::string& name, const std::vector<int64_t>& shape,
+                                                  const std::vector<int64_t>& data) {
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_INT64,
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
+}
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_u8(const std::string& name, const std::vector<int64_t>& shape,
+                                                 const std::vector<uint8_t>& data) {
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
+}
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_u16(const std::string& name, const std::vector<int64_t>& shape,
+                                                  const std::vector<uint16_t>& data) {
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_UINT16,
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
+}
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_u32(const std::string& name, const std::vector<int64_t>& shape,
+                                                  const std::vector<uint32_t>& data) {
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_UINT32,
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
+}
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_u64(const std::string& name, const std::vector<int64_t>& shape,
+                                                  const std::vector<uint64_t>& data) {
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_UINT64,
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
 }
 
 ONNX_NAMESPACE::TensorProto* tensor_proto_new_floats(const std::string& name, const std::vector<int64_t>& shape,
                                                      const std::vector<float>& data) {
   return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(float));
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
+}
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_doubles(const std::string& name, const std::vector<int64_t>& shape,
+                                                      const std::vector<double>& data) {
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_DOUBLE,
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
 }
 
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_bf16(const std::string& name, const std::vector<int64_t>& shape,
+                                                   const std::vector<int16_t>& data) {
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16,
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
+}
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_fp16(const std::string& name, const std::vector<int64_t>& shape,
+                                                   const std::vector<int16_t>& data) {
+  return tensor_proto_new(name, shape, ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                          reinterpret_cast<const char*>(&data[0]), data.size() * sizeof(data[0]));
+}
 }  // namespace vaip

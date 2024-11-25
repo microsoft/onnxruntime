@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "miopen_common.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/rocm/shared_inc/rocm_call.h"
 

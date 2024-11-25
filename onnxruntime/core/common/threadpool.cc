@@ -21,9 +21,10 @@ limitations under the License.
 #include "core/common/cpuid_info.h"
 #include "core/common/eigen_common_wrapper.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #if !defined(ORT_MINIMAL_BUILD)
 #ifdef _WIN32
+#include <Windows.h>
 #include "processthreadsapi.h"
 #include <codecvt>
 #include <locale>
@@ -636,7 +637,7 @@ bool ThreadPool::ShouldParallelize(const concurrency::ThreadPool* tp) {
 }
 
 int ThreadPool::DegreeOfParallelism(const concurrency::ThreadPool* tp) {
-  // When not using OpenMP, we parallelise over the N threads created by the pool
+  // When not using OpenMP, we parallelize over the N threads created by the pool
   // tp, plus 1 for the thread entering a loop.
   if (tp) {
     if (tp->force_hybrid_ || CPUIDInfo::GetCPUIDInfo().IsHybrid()) {

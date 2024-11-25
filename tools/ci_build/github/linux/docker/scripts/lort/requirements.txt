@@ -1,0 +1,28 @@
+transformers
+beartype==0.15.0
+flatbuffers
+cerberus
+h5py
+onnx==1.16.1
+# Python dependencies required for pytorch development
+astunparse
+expecttest!=0.2.0
+hypothesis
+numpy==1.21.6 ; python_version < '3.9'
+numpy==2.1.2 ; python_version >= '3.9'
+psutil
+pyyaml
+requests
+setuptools
+types-dataclasses
+typing-extensions>=4.8.0
+sympy
+filelock
+networkx
+jinja2
+fsspec
+lintrunner
+# setuptools was removed from default python install
+setuptools ; python_version >= "3.12"
+packaging
+optree>=0.11.0

@@ -27,7 +27,7 @@ TEST(DummyCxaDemangleTest, Alloc) {
   ASSERT_STREQ(output_buffer, input);
   std::free(output_buffer);
 
-  // verify status can be omited
+  // verify status can be omitted
   char* output_buffer2 = __cxa_demangle(input, nullptr, nullptr, nullptr);
   ASSERT_STREQ(output_buffer2, input);
   std::free(output_buffer2);

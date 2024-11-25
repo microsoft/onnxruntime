@@ -3,13 +3,26 @@
 
 'use strict';
 
-it('Browser E2E testing - WebAssembly backend (path override filename)', async function() {
-  // disable SIMD and multi-thread
-  ort.env.wasm.numThreads = 1;
-  ort.env.wasm.simd = false;
+it('Browser E2E testing - WebAssembly backend (path override filename)', async function () {
+  // check base URL port from test args
+  if (typeof __ort_arg_port === 'undefined') {
+    throw new Error('test flag --port=<PORT> is required');
+  }
+  const base = `http://localhost:${__ort_arg_port}/`;
 
-  // override .wasm file path for 'ort-wasm.wasm'
-  ort.env.wasm.wasmPaths = {'ort-wasm.wasm': new URL('./test-wasm-path-override/renamed.wasm', document.baseURI).href};
+  ort.env.wasm.wasmPaths = {};
 
-  await testFunction(ort, {executionProviders: ['wasm']});
+  if (typeof __ort_arg_files === 'string' && __ort_arg_files.includes('wasm')) {
+    const overrideWasmUrl = new URL('./test-wasm-path-override/renamed.wasm', base).href;
+    console.log(`ort.env.wasm.wasmPaths['wasm'] = ${JSON.stringify(overrideWasmUrl)};`);
+    ort.env.wasm.wasmPaths.wasm = overrideWasmUrl;
+  }
+
+  if (typeof __ort_arg_files === 'string' && __ort_arg_files.includes('mjs')) {
+    const overrideMjsUrl = new URL('./test-wasm-path-override/renamed.mjs', base).href;
+    console.log(`ort.env.wasm.wasmPaths['mjs'] = ${JSON.stringify(overrideMjsUrl)};`);
+    ort.env.wasm.wasmPaths.mjs = overrideMjsUrl;
+  }
+
+  await testFunction(ort, { executionProviders: ['wasm'] });
 });

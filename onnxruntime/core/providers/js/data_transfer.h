@@ -11,8 +11,8 @@ namespace js {
 
 class DataTransfer : public IDataTransfer {
  public:
-  DataTransfer(){};
-  ~DataTransfer(){};
+  DataTransfer() {};
+  ~DataTransfer() {};
 
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
 

@@ -140,8 +140,8 @@ Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const Nod
       std::vector<uint8_t> axes_bytes;
 
       ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*axes_tensor, axes_bytes));
-      ORT_ENFORCE(input_rank * sizeof(AxesOnnxIntType) >= axes_bytes.size(),
-                  "Expect QNN Reduce* operator to have at most rank(input[0]) axes elements.");
+      ORT_RETURN_IF_NOT(input_rank * sizeof(AxesOnnxIntType) >= axes_bytes.size(),
+                        "Expect QNN Reduce* operator to have at most rank(input[0]) axes elements.");
       reduce_axes.resize(axes_bytes.size() / sizeof(AxesOnnxIntType));
 
       auto src_span = gsl::make_span(axes_bytes.data(), axes_bytes.size());

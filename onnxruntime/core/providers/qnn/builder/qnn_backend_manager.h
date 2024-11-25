@@ -12,9 +12,11 @@
 #endif
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
 #include "HTP/QnnHtpDevice.h"
 #include "QnnLog.h"
 #include "QnnTypes.h"
@@ -39,7 +41,8 @@ class QnnBackendManager {
                     std::string&& qnn_saver_path,
                     uint32_t device_id,
                     QnnHtpDevice_Arch_t htp_arch,
-                    uint32_t soc_model)
+                    uint32_t soc_model,
+                    bool enable_htp_weight_sharing)
       : backend_path_(backend_path),
         profiling_level_etw_(profiling_level_etw),
         profiling_level_(profiling_level),
@@ -48,7 +51,8 @@ class QnnBackendManager {
         qnn_saver_path_(qnn_saver_path),
         device_id_(device_id),
         htp_arch_(htp_arch),
-        soc_model_(soc_model) {
+        soc_model_(soc_model),
+        enable_htp_weight_sharing_(enable_htp_weight_sharing) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
 
@@ -88,6 +92,7 @@ class QnnBackendManager {
   std::unique_ptr<unsigned char[]> GetContextBinaryBuffer(uint64_t& written_buffer_size);
 
   Status LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length,
+                                        std::string node_name,
                                         std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models);
 
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context);
@@ -102,7 +107,10 @@ class QnnBackendManager {
 
   const QNN_INTERFACE_VER_TYPE& GetQnnInterface() { return qnn_interface_; }
 
-  const Qnn_ContextHandle_t& GetQnnContext() { return context_; }
+  const Qnn_ContextHandle_t& GetQnnContext(int index = 0) {
+    ORT_ENFORCE((contexts_.size() > 0) && (static_cast<size_t>(index) < contexts_.size()), "No valid QNN context!");
+    return contexts_[index];
+  }
 
   const Qnn_BackendHandle_t& GetQnnBackendHandle() { return backend_handle_; }
 
@@ -111,11 +119,15 @@ class QnnBackendManager {
   void SetLogger(const logging::Logger* logger) {
     if (logger_ == nullptr) {
       logger_ = logger;
-      InitializeQnnLog();
+      (void)InitializeQnnLog();
     }
   }
 
-  void InitializeQnnLog();
+  Status InitializeQnnLog();
+
+  Status UpdateQnnLogLevel(logging::Severity ort_log_level);
+
+  Status ResetQnnLogLevel();
 
   // Terminate logging in the backend
   Status TerminateQnnLog() {
@@ -141,6 +153,8 @@ class QnnBackendManager {
   Status ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
                                std::ofstream& outfile, bool backendSupportsExtendedEventData,
                                bool tracelogging_provider_ep_enabled);
+
+  Status SetProfilingLevelETW(ProfilingLevel profiling_level_etw_param);
 
   void SetQnnBackendType(uint32_t backend_id);
   QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
@@ -206,6 +220,8 @@ class QnnBackendManager {
   static const std::string GetEventTypeString(QnnProfile_EventType_t eventType);
   static const std::string ExtractQnnScalarValue(const Qnn_Scalar_t& scalar);
   const char* QnnProfileErrorToString(QnnProfile_Error_t error);
+  const char* QnnErrorHandleToString(Qnn_ErrorHandle_t error);
+  QnnLog_Level_t MapOrtSeverityToQNNLogLevel(logging::Severity ort_log_level);
 #ifdef _WIN32
   void LogQnnProfileEventAsTraceLogging(
       uint64_t timestamp,
@@ -219,6 +235,7 @@ class QnnBackendManager {
 
  private:
   const std::string backend_path_;
+  std::mutex logger_mutex_;
   const logging::Logger* logger_ = nullptr;
   QNN_INTERFACE_VER_TYPE qnn_interface_ = QNN_INTERFACE_VER_TYPE_INIT;
   QNN_SYSTEM_INTERFACE_VER_TYPE qnn_sys_interface_ = QNN_SYSTEM_INTERFACE_VER_TYPE_INIT;
@@ -228,7 +245,7 @@ class QnnBackendManager {
   QnnBackend_Config_t** backend_config_ = nullptr;
   Qnn_LogHandle_t log_handle_ = nullptr;
   Qnn_DeviceHandle_t device_handle_ = nullptr;
-  Qnn_ContextHandle_t context_ = nullptr;
+  std::vector<Qnn_ContextHandle_t> contexts_;
   ProfilingLevel profiling_level_etw_;
   ProfilingLevel profiling_level_;
   ProfilingLevel profiling_level_merge_;
@@ -250,6 +267,7 @@ class QnnBackendManager {
   uint32_t device_id_ = 0;
   QnnHtpDevice_Arch_t htp_arch_ = QNN_HTP_DEVICE_ARCH_NONE;
   uint32_t soc_model_ = QNN_SOC_MODEL_UNKNOWN;
+  bool enable_htp_weight_sharing_ = false;
 };
 
 }  // namespace qnn

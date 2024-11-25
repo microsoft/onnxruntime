@@ -29,7 +29,7 @@ jobs:
 
   - task: NodeTool@0
     inputs:
-      versionSpec: '18.x'
+      versionSpec: '20.x'
   - task: DownloadPipelineArtifact@2
     inputs:
       patterns: 'Release_*/**/*'
@@ -39,18 +39,10 @@ jobs:
     inputs:
       sourceFolder: $(Pipeline.Workspace)/artifacts
       contents: |
-        **/*.wasm
+        **/*.*
       targetFolder: $(Build.SourcesDirectory)/js/web/dist
       flattenFolders: true
     displayName: 'Binplace dist files'
-  - task: CopyFiles@2
-    inputs:
-      sourceFolder: $(Pipeline.Workspace)/artifacts
-      contents: |
-        **/*.js
-      targetFolder: $(Build.SourcesDirectory)/js/web/lib/wasm/binding
-      flattenFolders: true
-    displayName: 'Binplace js files'
   - script: |
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)/js'

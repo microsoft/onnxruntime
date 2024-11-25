@@ -57,7 +57,7 @@ def create_t5_mha_graph(
                 "value" if use_present or is_static_kv else "",
                 "",  # bias
                 "key_padding_mask" if use_mask else "",
-                "relative_position_bias" if use_rpb else "",
+                "attention_bias" if use_rpb else "",
                 "past_key" if use_past and not is_static_kv else "",
                 "past_value" if use_past and not is_static_kv else "",
             ],
@@ -93,9 +93,7 @@ def create_t5_mha_graph(
 
     if use_rpb:
         graph_inputs.append(
-            helper.make_tensor_value_info(
-                "relative_position_bias", TensorProto.FLOAT, [1, num_heads, seq_len, rpb_length]
-            )
+            helper.make_tensor_value_info("attention_bias", TensorProto.FLOAT, [1, num_heads, seq_len, rpb_length])
         )
 
     if use_past and not is_static_kv:
@@ -161,6 +159,7 @@ def create_t5_decoder_masked_mha_graph(
     head_size,
     num_heads,
     is_cross_attention,
+    beam_width=1,
 ):
     nodes = [
         helper.make_node(
@@ -170,10 +169,12 @@ def create_t5_decoder_masked_mha_graph(
                 "key",
                 "value",
                 "mask_index" if is_cross_attention else "",
-                "relative_position_bias" if not is_cross_attention else "",
+                "attention_bias" if not is_cross_attention else "",
                 "past_key" if not is_cross_attention else "",
                 "past_value" if not is_cross_attention else "",
                 "past_sequence_length" if not is_cross_attention else "",
+                "beam_width" if beam_width > 1 else "",
+                "cache_indirection" if beam_width > 1 else "",
             ],
             [
                 "output",
@@ -220,7 +221,7 @@ def create_t5_decoder_masked_mha_graph(
         graph_inputs.append(helper.make_tensor_value_info("value", TensorProto.FLOAT, [batch_size, 1, hidden_size]))
         graph_inputs.append(
             helper.make_tensor_value_info(
-                "relative_position_bias", TensorProto.FLOAT, [1, num_heads, 1, past_sequence_length + 1]
+                "attention_bias", TensorProto.FLOAT, [1, num_heads, 1, past_sequence_length + 1]
             )
         )
         # use past_sequence_length + 1 to simulate max_sequence_length
@@ -235,6 +236,15 @@ def create_t5_decoder_masked_mha_graph(
             )
         )
         graph_inputs.append(helper.make_tensor_value_info("past_sequence_length", TensorProto.INT32, [1]))
+
+        if beam_width > 1:
+            graph_inputs.append(helper.make_tensor_value_info("beam_width", TensorProto.INT32, [1]))
+            graph_inputs.append(
+                helper.make_tensor_value_info(
+                    "cache_indirection", TensorProto.INT32, [batch_size, beam_width, past_sequence_length + 1]
+                )
+            )
+
         graph_outputs.append(
             helper.make_tensor_value_info(
                 "present_key", TensorProto.FLOAT, [batch_size, num_heads, past_sequence_length + 1, head_size]
@@ -277,7 +287,7 @@ class T5Config:
 
 
 class T5Attention(nn.Module):
-    def __init__(self, config: T5Config, is_static_kv, use_decoder_masked_kernel: bool = False):
+    def __init__(self, config: T5Config, is_static_kv, use_decoder_masked_kernel: bool = False, beam_width=1):
         super().__init__()
         self.is_decoder = config.is_decoder
         self.is_static_kv = is_static_kv
@@ -286,6 +296,7 @@ class T5Attention(nn.Module):
         self.key_value_proj_dim = config.head_size
         self.n_heads = config.num_heads
         self.inner_dim = self.n_heads * self.key_value_proj_dim
+        self.beam_width = beam_width
 
         # Mesh TensorFlow initialization to avoid scaling before softmax
         self.q = nn.Linear(self.d_model, self.inner_dim, bias=False)
@@ -314,6 +325,7 @@ class T5Attention(nn.Module):
                 self.head_size,
                 self.num_heads,
                 is_static_kv,
+                beam_width=self.beam_width,
             )
         else:
             self.onnx_graph = create_t5_mha_graph(
@@ -373,7 +385,17 @@ class T5Attention(nn.Module):
             position_bias = torch.normal(mean=5, std=0.1, size=(1, self.num_heads, 1, position_bias_length)).to(
                 torch.float32
             )
-        return hidden_states, key_value_states, past_key_value, attention_mask, position_bias
+
+        inputs = [hidden_states, key_value_states, past_key_value, attention_mask, position_bias]
+        if self.beam_width > 1:
+            # Treat total_sequence_length as max_sequence_length here.
+            max_sequence_length = self.kv_sequence_length + self.seq_len
+            # Use random generated values here, which may not be valid in real case.
+            cache_indirection = torch.randint(
+                0, self.beam_width, (self.batch_size, self.beam_width, max_sequence_length)
+            ).to(torch.int32)
+            inputs.append(cache_indirection)
+        return inputs
 
     def torch_forward(
         self,
@@ -499,16 +521,17 @@ class T5Attention(nn.Module):
         past_key_value=None,
         mask=None,
         position_bias=None,
-        use_cache=False,
+        use_cuda=True,
         query_length=None,
+        cache_indirection=None,
     ):
         import onnxruntime
 
         sess_options = onnxruntime.SessionOptions()
-        cuda_providers = ["CUDAExecutionProvider"]
-        if cuda_providers[0] not in onnxruntime.get_available_providers():
-            return None
-        ort_session = onnxruntime.InferenceSession(self.onnx_graph, sess_options, providers=cuda_providers)
+        execution_providers = ["CUDAExecutionProvider"] if use_cuda else ["CPUExecutionProvider"]
+        if execution_providers[0] not in onnxruntime.get_available_providers():
+            return
+        ort_session = onnxruntime.InferenceSession(self.onnx_graph, sess_options, providers=execution_providers)
 
         batch_size, seq_length = hidden_states.shape[:2]
 
@@ -558,7 +581,7 @@ class T5Attention(nn.Module):
             if torch_key_padding_mask is not None:
                 ort_inputs["key_padding_mask"] = np.ascontiguousarray(torch_key_padding_mask.detach().numpy())
             if torch_position_bias is not None:
-                ort_inputs["relative_position_bias"] = np.ascontiguousarray(torch_position_bias.detach().numpy())
+                ort_inputs["attention_bias"] = np.ascontiguousarray(torch_position_bias.detach().numpy())
         else:
             torch_past_key = past_key_value[0]
             torch_past_value = past_key_value[1]
@@ -580,13 +603,17 @@ class T5Attention(nn.Module):
             torch_past_value_padded[:, :, : torch_past_value.shape[2], :] = torch_past_value
             if self.is_static_kv:
                 if self.use_decoder_masked_kernel:
-                    reordered_past_key = self.reorder_key_cache(
-                        torch_past_key.flatten(),
-                        batch_size=batch_size,
-                        num_heads=self.num_heads,
-                        sequence_length=self.kv_sequence_length,
-                        head_size=self.head_size,
-                        max_sequence_length=self.kv_sequence_length,
+                    reordered_past_key = (
+                        self.reorder_key_cache(
+                            torch_past_key.flatten(),
+                            batch_size=batch_size,
+                            num_heads=self.num_heads,
+                            sequence_length=self.kv_sequence_length,
+                            head_size=self.head_size,
+                            max_sequence_length=self.kv_sequence_length,
+                        )
+                        if use_cuda
+                        else torch_past_key
                     )
                     ort_inputs["key"] = reordered_past_key.reshape(torch_past_key.shape)
                     ort_inputs["value"] = torch_past_value
@@ -597,13 +624,17 @@ class T5Attention(nn.Module):
                 ort_inputs["key"] = np.ascontiguousarray(key_states.detach().numpy())
                 ort_inputs["value"] = np.ascontiguousarray(value_states.detach().numpy())
                 if self.use_decoder_masked_kernel:
-                    reordered_past_key = self.reorder_key_cache(
-                        torch_past_key_padded.flatten(),
-                        batch_size=batch_size,
-                        num_heads=self.num_heads,
-                        sequence_length=self.kv_sequence_length,
-                        head_size=self.head_size,
-                        max_sequence_length=max_seq_len,
+                    reordered_past_key = (
+                        self.reorder_key_cache(
+                            torch_past_key_padded.flatten(),
+                            batch_size=batch_size,
+                            num_heads=self.num_heads,
+                            sequence_length=self.kv_sequence_length,
+                            head_size=self.head_size,
+                            max_sequence_length=max_seq_len,
+                        )
+                        if use_cuda
+                        else torch_past_key_padded
                     )
                     ort_inputs["past_key"] = reordered_past_key.reshape(torch_past_value_padded.shape)
                     ort_inputs["past_value"] = torch_past_value_padded
@@ -617,7 +648,11 @@ class T5Attention(nn.Module):
                 else:
                     ort_inputs["key_padding_mask"] = np.ascontiguousarray(torch_key_padding_mask.detach().numpy())
             if torch_position_bias is not None:
-                ort_inputs["relative_position_bias"] = np.ascontiguousarray(torch_position_bias.detach().numpy())
+                ort_inputs["attention_bias"] = np.ascontiguousarray(torch_position_bias.detach().numpy())
+
+        if self.beam_width > 1:
+            ort_inputs["beam_width"] = np.ascontiguousarray(np.array([self.beam_width], dtype=np.int32))
+            ort_inputs["cache_indirection"] = np.ascontiguousarray(cache_indirection.detach().numpy())
 
         ort_output = ort_session.run(None, ort_inputs)
 
@@ -630,7 +665,9 @@ class T5Attention(nn.Module):
         return output
 
 
-def compare_t5_cross_attention_decoder(batch_size, seq_len, num_heads, head_size, kv_sequence_length, use_dmmha=False):
+def compare_t5_cross_attention_decoder(
+    batch_size, seq_len, num_heads, head_size, kv_sequence_length, use_dmmha=False, use_cuda=True
+):
     config = T5Config(
         is_decoder=True,
         batch_size=batch_size,
@@ -648,7 +685,7 @@ def compare_t5_cross_attention_decoder(batch_size, seq_len, num_heads, head_size
         hidden_states, key_value_states, past_key_value, attention_mask, position_bias=None, use_cache=False
     )
     ort_output = T5CrossAttention.ort_forward(
-        hidden_states, key_value_states, past_key_value, attention_mask, position_bias=None, use_cache=False
+        hidden_states, key_value_states, past_key_value, attention_mask, position_bias=None, use_cuda=use_cuda
     )
 
     if ort_output is not None:
@@ -671,9 +708,7 @@ def compare_t5_cross_attention_decoder_init(batch_size, seq_len, num_heads, head
     torch_output = T5CrossAttention.torch_forward(
         hidden_states, key_value_states, None, attention_mask, position_bias=None, use_cache=True
     )
-    ort_output = T5CrossAttention.ort_forward(
-        hidden_states, key_value_states, None, attention_mask, position_bias=None, use_cache=True
-    )
+    ort_output = T5CrossAttention.ort_forward(hidden_states, key_value_states, None, attention_mask, position_bias=None)
 
     if ort_output is not None:
         assert torch.allclose(torch_output[0], ort_output[0], atol=1e-4)
@@ -697,9 +732,7 @@ def compare_t5_self_attention_decoder_init(batch_size, seq_len, num_heads, head_
     torch_output = T5CrossAttention.torch_forward(
         hidden_states, None, None, mask=None, position_bias=position_bias, use_cache=True
     )
-    ort_output = T5CrossAttention.ort_forward(
-        hidden_states, None, None, mask=None, position_bias=position_bias, use_cache=True
-    )
+    ort_output = T5CrossAttention.ort_forward(hidden_states, None, None, mask=None, position_bias=position_bias)
 
     if ort_output is not None:
         assert torch.allclose(torch_output[0], ort_output[0], atol=1e-4)
@@ -707,7 +740,9 @@ def compare_t5_self_attention_decoder_init(batch_size, seq_len, num_heads, head_
         assert torch.allclose(torch_output[1][1], ort_output[1][1], atol=1e-4)
 
 
-def compare_t5_self_attention_decoder(batch_size, seq_len, num_heads, head_size, kv_sequence_length, use_dmmha=False):
+def compare_t5_self_attention_decoder(
+    batch_size, seq_len, num_heads, head_size, kv_sequence_length, use_dmmha=False, use_cuda=True, beam_width=1
+):
     config = T5Config(
         is_decoder=True,
         batch_size=batch_size,
@@ -718,21 +753,45 @@ def compare_t5_self_attention_decoder(batch_size, seq_len, num_heads, head_size,
         use_past=True,
     )
 
-    T5CrossAttention = T5Attention(config, is_static_kv=False, use_decoder_masked_kernel=use_dmmha)  # noqa: N806
-
-    hidden_states, _, past_key_value, _, position_bias = T5CrossAttention.create_inputs()
-    torch_output = T5CrossAttention.torch_forward(
-        hidden_states, None, past_key_value, mask=None, position_bias=position_bias, use_cache=True
+    T5CrossAttention = T5Attention(  # noqa: N806
+        config, is_static_kv=False, use_decoder_masked_kernel=use_dmmha, beam_width=beam_width
     )
+
+    hidden_states, _, past_key_value, _, position_bias, *maybe_cache_indirection = T5CrossAttention.create_inputs()
+    cache_indirection = maybe_cache_indirection[0] if beam_width > 1 else None
+    if beam_width > 1:
+        # When beam_width > 1, use ORT CUDA result as reference
+        ref_output = T5CrossAttention.ort_forward(
+            hidden_states,
+            None,
+            past_key_value,
+            mask=None,
+            position_bias=position_bias,
+            cache_indirection=cache_indirection,
+            use_cuda=True,
+        )
+        if ref_output is None:
+            # Return directly if CUDA EP is not available
+            return
+    else:
+        ref_output = T5CrossAttention.torch_forward(
+            hidden_states, None, past_key_value, mask=None, position_bias=position_bias, use_cache=True
+        )
     ort_output = T5CrossAttention.ort_forward(
-        hidden_states, None, past_key_value, mask=None, position_bias=position_bias, use_cache=True
+        hidden_states,
+        None,
+        past_key_value,
+        mask=None,
+        position_bias=position_bias,
+        cache_indirection=cache_indirection,
+        use_cuda=use_cuda,
     )
 
     if ort_output is not None:
-        assert torch.allclose(torch_output[0], ort_output[0], atol=1e-4)
+        assert torch.allclose(ref_output[0], ort_output[0], atol=1e-4)
         if not use_dmmha:
-            assert torch.allclose(torch_output[1][0], ort_output[1][0], atol=1e-4)
-            assert torch.allclose(torch_output[1][1], ort_output[1][1], atol=1e-4)
+            assert torch.allclose(ref_output[1][0], ort_output[1][0], atol=1e-4)
+            assert torch.allclose(ref_output[1][1], ort_output[1][1], atol=1e-4)
 
 
 class TestT5MHAParity(unittest.TestCase):
@@ -763,23 +822,53 @@ class TestT5MHAParity(unittest.TestCase):
             self.batch_size, self.seq_len, self.num_heads, self.head_size, self.kv_sequence_length
         )
 
-    def test_t5_cross_attention_decoder_masked_mha(self):
+    def test_t5_cross_attention_decoder_masked_mha(self, use_cuda=True):
         batch_size = 2
         seq_len = 1
         num_heads = 2
         head_size = 32
         kv_sequence_length = 2
         compare_t5_cross_attention_decoder(
-            batch_size, seq_len, num_heads, head_size, kv_sequence_length, use_dmmha=True
+            batch_size, seq_len, num_heads, head_size, kv_sequence_length, use_dmmha=True, use_cuda=use_cuda
         )
 
-    def test_t5_self_attention_decoder_masked_mha(self):
+    def test_t5_self_attention_decoder_masked_mha(self, use_cuda=True):
         batch_size = 2
         seq_len = 1
         num_heads = 2
         head_size = 32
         kv_sequence_length = 2
-        compare_t5_self_attention_decoder(batch_size, seq_len, num_heads, head_size, kv_sequence_length, use_dmmha=True)
+        compare_t5_self_attention_decoder(
+            batch_size, seq_len, num_heads, head_size, kv_sequence_length, use_dmmha=True, use_cuda=use_cuda
+        )
+
+    def test_t5_cross_attention_decoder_masked_mha_cpu(self):
+        return self.test_t5_cross_attention_decoder_masked_mha(use_cuda=False)
+
+    def test_t5_self_attention_decoder_masked_mha_cpu(self):
+        return self.test_t5_self_attention_decoder_masked_mha(use_cuda=False)
+
+    def test_t5_self_attention_decoder_masked_mha_with_beams(self):
+        """
+        Test DecoderMaskedMultiHeadAttention self-attention case with beam_width > 1.
+        Compare the results on CUDA and CPU EPs.
+        """
+        batch_size = 4
+        seq_len = 1
+        num_heads = 2
+        head_size = 32
+        kv_sequence_length = 2
+        beam_width = 2
+        compare_t5_self_attention_decoder(
+            batch_size,
+            seq_len,
+            num_heads,
+            head_size,
+            kv_sequence_length,
+            use_dmmha=True,
+            use_cuda=False,
+            beam_width=beam_width,
+        )
 
 
 if __name__ == "__main__":

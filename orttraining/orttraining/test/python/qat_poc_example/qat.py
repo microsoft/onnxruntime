@@ -24,7 +24,7 @@ if __name__ == "__main__":
     onnx.save(onnx_model, os.path.join(model_dir, f"{model_name}.onnx"))
 
     logging.info(
-        "Begining Quantization process for model saved at: %s",
+        "Beginning Quantization process for model saved at: %s",
         os.path.join(model_dir, f"{model_name}.onnx"),
     )
     logging.info("Skipping model preprocessing step. As QAT requires a un preprocessed model.")

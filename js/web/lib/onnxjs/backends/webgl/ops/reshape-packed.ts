@@ -1,44 +1,51 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor} from '../../../tensor';
-import {ShapeUtil} from '../../../util';
-import {getGlsl} from '../glsl-source';
-import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
+import { Tensor } from '../../../tensor';
+import { ShapeUtil } from '../../../util';
+import { getGlsl } from '../glsl-source';
+import { WebGLInferenceHandler } from '../inference-handler';
+import { ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType } from '../types';
 
-import {unpackFromChannel} from './packing-utils';
+import { unpackFromChannel } from './packing-utils';
 
-const createPackedReshape3DProgramMetadata = (outputShape3D: readonly number[]) =>
-    ({name: 'Reshape (packed)', inputTypes: [TextureType.packed], inputNames: ['A'], cacheHint: `${outputShape3D}`});
+const createPackedReshape3DProgramMetadata = (outputShape3D: readonly number[]) => ({
+  name: 'Reshape (packed)',
+  inputTypes: [TextureType.packed],
+  inputNames: ['A'],
+  cacheHint: `${outputShape3D}`,
+});
 
-const createPackedReshape3DProgramInfo =
-    (handler: WebGLInferenceHandler, input3D: Tensor, metadata: ProgramMetadata, outputShape3D: readonly number[]):
-        ProgramInfo => {
-          const inputShape3D = input3D.dims as [number, number, number];
-          const squeezedOutputShape = outputShape3D as [number, number, number];
+const createPackedReshape3DProgramInfo = (
+  handler: WebGLInferenceHandler,
+  input3D: Tensor,
+  metadata: ProgramMetadata,
+  outputShape3D: readonly number[],
+): ProgramInfo => {
+  const inputShape3D = input3D.dims as [number, number, number];
+  const squeezedOutputShape = outputShape3D as [number, number, number];
 
-          let mainLoop = '';
-          for (let i = 0; i < 4; i++) {
-            let outputCoords = '';
-            switch (i) {
-              case 0:
-                outputCoords = 'outputCoords = rc;';
-                break;
-              case 1:
-                outputCoords = 'outputCoords = ivec3(rc.x, rc.y+1, rc.z);';
-                break;
-              case 2:
-                outputCoords = 'outputCoords = ivec3(rc.x, rc.y, rc.z+1);';
-                break;
-              case 3:
-                outputCoords = 'outputCoords = ivec3(rc.x, rc.y+1, rc.z+1);';
-                break;
-              default:
-                throw new Error();
-            }
+  let mainLoop = '';
+  for (let i = 0; i < 4; i++) {
+    let outputCoords = '';
+    switch (i) {
+      case 0:
+        outputCoords = 'outputCoords = rc;';
+        break;
+      case 1:
+        outputCoords = 'outputCoords = ivec3(rc.x, rc.y+1, rc.z);';
+        break;
+      case 2:
+        outputCoords = 'outputCoords = ivec3(rc.x, rc.y, rc.z+1);';
+        break;
+      case 3:
+        outputCoords = 'outputCoords = ivec3(rc.x, rc.y+1, rc.z+1);';
+        break;
+      default:
+        throw new Error();
+    }
 
-            mainLoop += `
+    mainLoop += `
         ${outputCoords}
         ${i > 0 ? 'if(outputCoords.y < rows && outputCoords.z < cols){' : ''}
           int flattenedIndex = getFlattenedIndex(outputCoords);
@@ -50,10 +57,10 @@ const createPackedReshape3DProgramInfo =
 
         ${i > 0 ? '}' : ''}
       `;
-          }
-          const glsl = getGlsl(handler.session.backend.glContext.version);
+  }
+  const glsl = getGlsl(handler.session.backend.glContext.version);
 
-          const shaderSource = `
+  const shaderSource = `
       ${getReshapedInputCoords(inputShape3D)}
       ${getFlattenedIndexFrom3D(squeezedOutputShape)}
       ${unpackFromChannel()}
@@ -72,19 +79,22 @@ const createPackedReshape3DProgramInfo =
       }
     `;
 
-          return {
-            ...metadata,
-            output: {dims: squeezedOutputShape, type: input3D.type, textureType: TextureType.packed},
-            shaderSource,
-            hasMain: true
-          };
-        };
+  return {
+    ...metadata,
+    output: { dims: squeezedOutputShape, type: input3D.type, textureType: TextureType.packed },
+    shaderSource,
+    hasMain: true,
+  };
+};
 
-export const createPackedReshape3DProgramInfoLoader =
-    (handler: WebGLInferenceHandler, input3D: Tensor, outputShape3D: readonly number[]): ProgramInfoLoader => {
-      const metadata = createPackedReshape3DProgramMetadata(outputShape3D);
-      return {...metadata, get: () => createPackedReshape3DProgramInfo(handler, input3D, metadata, outputShape3D)};
-    };
+export const createPackedReshape3DProgramInfoLoader = (
+  handler: WebGLInferenceHandler,
+  input3D: Tensor,
+  outputShape3D: readonly number[],
+): ProgramInfoLoader => {
+  const metadata = createPackedReshape3DProgramMetadata(outputShape3D);
+  return { ...metadata, get: () => createPackedReshape3DProgramInfo(handler, input3D, metadata, outputShape3D) };
+};
 
 export function processDims3D(shape: ArrayLike<number>): [number, number, number] {
   if (shape.length === 0) {
@@ -111,13 +121,17 @@ export function processDims3D(shape: ArrayLike<number>): [number, number, number
 // treated as no-op.
 export function isReshapeCheap(dims: readonly number[], reshapedDims: readonly number[]) {
   let isCheapReshape = false;
-  if (dims.length === 0 || reshapedDims.length === 0) {  // scalar
+  if (dims.length === 0 || reshapedDims.length === 0) {
+    // scalar
     isCheapReshape = true;
-  } else if (dims.length < 2 || reshapedDims.length < 2) {  // 1D
+  } else if (dims.length < 2 || reshapedDims.length < 2) {
+    // 1D
     isCheapReshape = dims[dims.length - 1] === reshapedDims[reshapedDims.length - 1];
-  } else {  // 2D +
-    isCheapReshape = dims[dims.length - 1] === reshapedDims[reshapedDims.length - 1] &&
-        dims[dims.length - 2] === reshapedDims[reshapedDims.length - 2];
+  } else {
+    // 2D +
+    isCheapReshape =
+      dims[dims.length - 1] === reshapedDims[reshapedDims.length - 1] &&
+      dims[dims.length - 2] === reshapedDims[reshapedDims.length - 2];
   }
 
   return isCheapReshape;
@@ -128,14 +142,15 @@ function getReshapedInputCoords(shape: [number, number, number]): string {
   const coords = ['b', 'r', 'c'];
   const index = 'index';
   const coordsFromIndexSnippet = strides
-                                     .map((stride, i) => {
-                                       const line1 = `int ${coords[i]} = ${index} / ${stride}`;
-                                       const line2 = i === strides.length - 1 ?
-                                           `int ${coords[i + 1]} = ${index} - ${coords[i]} * ${stride}` :
-                                           `index -= ${coords[i]} * ${stride}`;
-                                       return `${line1}; ${line2};`;
-                                     })
-                                     .join('');
+    .map((stride, i) => {
+      const line1 = `int ${coords[i]} = ${index} / ${stride}`;
+      const line2 =
+        i === strides.length - 1
+          ? `int ${coords[i + 1]} = ${index} - ${coords[i]} * ${stride}`
+          : `index -= ${coords[i]} * ${stride}`;
+      return `${line1}; ${line2};`;
+    })
+    .join('');
 
   return `
     ivec3 inputCoordsFromReshapedOutCoords(int index) {

@@ -1,18 +1,35 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {env as envImpl} from './env-impl.js';
+import { env as envImpl } from './env-impl.js';
 
 export declare namespace Env {
-  export type WasmPrefixOrFilePaths = string|{
-    /* eslint-disable @typescript-eslint/naming-convention */
-    'ort-wasm.wasm'?: string;
-    'ort-wasm-threaded.wasm'?: string;
-    'ort-wasm-simd.wasm'?: string;
-    'ort-training-wasm-simd.wasm'?: string;
-    'ort-wasm-simd-threaded.wasm'?: string;
-    /* eslint-enable @typescript-eslint/naming-convention */
-  };
+  export type WasmPathPrefix = string;
+  export interface WasmFilePaths {
+    /**
+     * Specify the override path for the main .wasm file.
+     *
+     * This path should be an absolute path.
+     *
+     * If not modified, the filename of the .wasm file is:
+     * - `ort-wasm-simd-threaded.wasm` for default build
+     * - `ort-wasm-simd-threaded.jsep.wasm` for JSEP build (with WebGPU and WebNN)
+     * - `ort-training-wasm-simd-threaded.wasm` for training build
+     */
+    wasm?: URL | string;
+    /**
+     * Specify the override path for the main .mjs file.
+     *
+     * This path should be an absolute path.
+     *
+     * If not modified, the filename of the .mjs file is:
+     * - `ort-wasm-simd-threaded.mjs` for default build
+     * - `ort-wasm-simd-threaded.jsep.mjs` for JSEP build (with WebGPU and WebNN)
+     * - `ort-training-wasm-simd-threaded.mjs` for training build
+     */
+    mjs?: URL | string;
+  }
+  export type WasmPrefixOrFilePaths = WasmPathPrefix | WasmFilePaths;
   export interface WebAssemblyFlags {
     /**
      * set or get number of thread(s). If omitted or set to 0, number of thread(s) will be determined by system. If set
@@ -29,6 +46,8 @@ export declare namespace Env {
      *
      * This setting is available only when WebAssembly SIMD feature is available in current context.
      *
+     * @deprecated This property is deprecated. Since SIMD is supported by all major JavaScript engines, non-SIMD
+     * build is no longer provided. This property will be removed in future release.
      * @defaultValue `true`
      */
     simd?: boolean;
@@ -50,10 +69,16 @@ export declare namespace Env {
     initTimeout?: number;
 
     /**
-     * Set a custom URL prefix to the .wasm files or a set of overrides for each .wasm file. The override path should be
-     * an absolute path.
+     * Set a custom URL prefix to the .wasm/.mjs files, or an object of overrides for both .wasm/.mjs file. The override
+     * path should be an absolute path.
      */
     wasmPaths?: WasmPrefixOrFilePaths;
+
+    /**
+     * Set a custom buffer which contains the WebAssembly binary. If this property is set, the `wasmPaths` property will
+     * be ignored.
+     */
+    wasmBinary?: ArrayBufferLike | Uint8Array;
 
     /**
      * Set or get a boolean value indicating whether to proxy the execution of main thread to a worker thread.
@@ -69,7 +94,7 @@ export declare namespace Env {
      *
      * @defaultValue `'webgl2'`
      */
-    contextId?: 'webgl'|'webgl2';
+    contextId?: 'webgl' | 'webgl2';
     /**
      * Get the WebGL rendering context.
      */
@@ -85,7 +110,7 @@ export declare namespace Env {
      *
      * @defaultValue `'full'`
      */
-    textureCacheMode?: 'initializerOnly'|'full';
+    textureCacheMode?: 'initializerOnly' | 'full';
     /**
      * Set or get the packed texture mode
      *
@@ -125,7 +150,7 @@ export declare namespace Env {
      * @deprecated Use `env.webgpu.profiling.mode` instead. If `env.webgpu.profiling.mode` is set, this property will be
      * ignored.
      */
-    profilingMode?: 'off'|'default';
+    profilingMode?: 'off' | 'default';
     /**
      * Set or get the profiling configuration.
      */
@@ -135,7 +160,7 @@ export declare namespace Env {
        *
        * @defaultValue `'off'`
        */
-      mode?: 'off'|'default';
+      mode?: 'off' | 'default';
 
       /**
        * Set or get a callback function when a profiling data is received. If not set, the profiling data will be
@@ -153,7 +178,7 @@ export declare namespace Env {
      *
      * @defaultValue `undefined`
      */
-    powerPreference?: 'low-power'|'high-performance';
+    powerPreference?: 'low-power' | 'high-performance';
     /**
      * Set or get the force fallback adapter flag.
      *
@@ -206,7 +231,7 @@ export interface Env {
    *
    * @defaultValue `'warning'`
    */
-  logLevel?: 'verbose'|'info'|'warning'|'error'|'fatal';
+  logLevel?: 'verbose' | 'info' | 'warning' | 'error' | 'fatal';
 
   /**
    * Indicate whether run in debug mode.

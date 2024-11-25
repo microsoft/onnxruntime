@@ -76,12 +76,12 @@ jobs:
     displayName: 'Checkout submodules'
   - task: UsePythonVersion@0
     inputs:
-      versionSpec: '3.8'
+      versionSpec: '3.12'
       addToPath: true
       architecture: $(buildArch)
   - task: NodeTool@0
     inputs:
-      versionSpec: '18.x'
+      versionSpec: '20.x'
   - template: download-deps.yml
 
   - task: PythonScript@0
@@ -143,17 +143,13 @@ jobs:
         copy $(Build.BinariesDirectory)\wasm_simd_threads\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
         copy $(Build.BinariesDirectory)\wasm_simd\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
         if exist $(Build.BinariesDirectory)\wasm_simd_jsep (
-          copy $(Build.BinariesDirectory)\wasm_simd_jsep\${{ parameters.BuildConfig }}\ort-wasm-simd.wasm $(Build.ArtifactStagingDirectory)\ort-wasm-simd.jsep.wasm
-          copy $(Build.BinariesDirectory)\wasm_simd_jsep\${{ parameters.BuildConfig }}\ort-wasm-simd.js $(Build.ArtifactStagingDirectory)\ort-wasm-simd.jsep.js
+          copy $(Build.BinariesDirectory)\wasm_simd_jsep\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
         )
         if exist $(Build.BinariesDirectory)\wasm_simd_threads_jsep (
-          copy $(Build.BinariesDirectory)\wasm_simd_threads_jsep\${{ parameters.BuildConfig }}\ort-wasm-simd-threaded.wasm $(Build.ArtifactStagingDirectory)\ort-wasm-simd-threaded.jsep.wasm
-          copy $(Build.BinariesDirectory)\wasm_simd_threads_jsep\${{ parameters.BuildConfig }}\ort-wasm-simd-threaded.js $(Build.ArtifactStagingDirectory)\ort-wasm-simd-threaded.jsep.js
-          copy $(Build.BinariesDirectory)\wasm_simd_threads_jsep\${{ parameters.BuildConfig }}\ort-wasm-simd-threaded.worker.js $(Build.ArtifactStagingDirectory)\ort-wasm-simd-threaded.jsep.worker.js
+          copy $(Build.BinariesDirectory)\wasm_simd_threads_jsep\${{ parameters.BuildConfig }}\ort-wasm*.* $(Build.ArtifactStagingDirectory)
         )
         if exist $(Build.BinariesDirectory)\training_wasm_simd (
-          copy $(Build.BinariesDirectory)\training_wasm_simd\${{ parameters.BuildConfig }}\ort-training-wasm-simd.wasm $(Build.ArtifactStagingDirectory)\ort-training-wasm-simd.wasm
-          copy $(Build.BinariesDirectory)\training_wasm_simd\${{ parameters.BuildConfig }}\ort-training-wasm-simd.js $(Build.ArtifactStagingDirectory)\ort-training-wasm-simd.js
+          copy $(Build.BinariesDirectory)\training_wasm_simd\${{ parameters.BuildConfig }}\ort-training-wasm*.* $(Build.ArtifactStagingDirectory)
         )
       displayName: 'Create Artifacts'
   - ${{ if eq(parameters.SkipPublish, false) }}:

@@ -27,8 +27,17 @@ CoreMLExecutionProvider::CoreMLExecutionProvider(uint32_t coreml_flags)
     : IExecutionProvider{onnxruntime::kCoreMLExecutionProvider},
       coreml_flags_(coreml_flags),
       coreml_version_(coreml::util::CoreMLVersion()) {
+  LOGS_DEFAULT(VERBOSE) << "CoreML version: " << coreml_version_;
   if (coreml_version_ < MINIMUM_COREML_VERSION) {
     LOGS_DEFAULT(ERROR) << "CoreML EP is not supported on this platform.";
+  }
+
+  // check if only one flag is set
+  if ((coreml_flags & COREML_FLAG_USE_CPU_ONLY) && (coreml_flags & COREML_FLAG_USE_CPU_AND_GPU)) {
+    // multiple device options selected
+    ORT_THROW(
+        "Multiple device options selected, you should use at most one of the following options:"
+        "COREML_FLAG_USE_CPU_ONLY or COREML_FLAG_USE_CPU_AND_GPU or not set");
   }
 
 #if defined(COREML_ENABLE_MLPROGRAM)
@@ -82,7 +91,9 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       };
 
   result = utils::CreateSupportedPartitions(graph_viewer, supported_nodes, {},
-                                            gen_metadef_name, COREML, kCoreMLExecutionProvider);
+                                            gen_metadef_name, COREML, kCoreMLExecutionProvider,
+                                            nullptr,
+                                            /*drop_constant_initializers*/ true);
 
   const auto num_of_partitions = result.size();
   const auto num_of_supported_nodes = std::transform_reduce(
@@ -207,7 +218,7 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       // performed, to block other threads to perform Predict on the same model
       // TODO, investigate concurrent runs for different executions from the same model
       {
-        std::unique_lock<OrtMutex> lock(model->GetMutex());
+        std::unique_lock<std::mutex> lock(model->GetMutex());
         std::unordered_map<std::string, coreml::OnnxTensorInfo> outputs;
         outputs.reserve(model_outputs.size());
 

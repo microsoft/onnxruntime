@@ -2,12 +2,6 @@ parameters:
 - name: arch
   type: string
 
-- name: device
-  type: string
-  values:
-   - CPU
-   - GPU
-
 - name: machine_pool
   type: string
 
@@ -19,6 +13,15 @@ parameters:
   type: string
   default: ''
 
+- name: docker_base_image
+  type: string
+
+- name: cuda_version
+  type: string
+  default: '11.8'
+  values:
+   - 11.8
+   - 12.2
 
 # TODO: Ideally it should fetch information from the build that triggers it
 - name: cmake_build_type
@@ -38,7 +41,14 @@ jobs:
 - job: Linux_Test_GPU${{ parameters.extra_job_id }}_${{ parameters.arch }}
   timeoutInMinutes: ${{ parameters.timeout }}
   variables:
-    skipComponentGovernanceDetection: true
+  - template: common-variables.yml
+  - name: skipComponentGovernanceDetection
+    value: true
+  - name: trt_version
+    ${{ if eq(parameters.cuda_version, '11.8') }}:
+      value: ${{ variables.linux_trt_version_cuda11 }}
+    ${{ if eq(parameters.cuda_version, '12.2') }}:
+      value: ${{ variables.linux_trt_version_cuda12 }}
   workspace:
     clean: all
   pool: ${{ parameters.machine_pool }}
@@ -52,7 +62,7 @@ jobs:
   # The private ADO project
   - ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
     - download: build   # pipeline resource identifier.
-      artifact: 'drop-linux-gpu-${{ parameters.arch }}'
+      artifact: 'linux_gpu_wheel_${{ parameters.arch }}'
 
     - download: build   # pipeline resource identifier.
       artifact: 'onnxruntime${{ parameters.python_wheel_suffix }}'
@@ -60,7 +70,7 @@ jobs:
     - bash: |
         set -e -x
         ls $(Pipeline.Workspace)/build
-        mv "$(Pipeline.Workspace)/build/drop-linux-gpu-${{ parameters.arch }}" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
+        mv "$(Pipeline.Workspace)/build/linux_gpu_wheel_${{ parameters.arch }}" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
         mv "$(Pipeline.Workspace)/build/onnxruntime${{ parameters.python_wheel_suffix }}" "$(Build.BinariesDirectory)/whl"
         cp -r "$(Build.BinariesDirectory)/whl" $(Build.BinariesDirectory)/tmp
         find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -d "${1%.*}" "$1"' _ {} \;
@@ -79,25 +89,19 @@ jobs:
     #    GdnBreakPolicy: M365
     #    GdnBreakPolicyMinSev: Error
 
-  - template: get-docker-image-steps.yml
-    parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
-      Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "
-      --network=host 
-      --build-arg BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8 
-      --build-arg TRT_VERSION=10.0.1.6-1.cuda11.8 
-      --build-arg BUILD_UID=$( id -u )
-      --build-arg PLATFORM=${{ parameters.arch }}
-      "
-      Repository: onnxruntimecuda118xtrt86build${{ parameters.arch }}
+    - template: get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda
+        DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg TRT_VERSION=${{ variables.trt_version }} --build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
 
   - task: Bash@3
     displayName: 'Bash Script'
     inputs:
       targetType: filePath
       filePath: tools/ci_build/github/linux/run_python_dockertest.sh
-      arguments: -d GPU -c ${{parameters.cmake_build_type}} -i onnxruntimecuda118xtrt86build${{ parameters.arch }}
+      arguments: -d GPU -c ${{parameters.cmake_build_type}} -i onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
 
   - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
     displayName: 'Clean Agent Directories'
