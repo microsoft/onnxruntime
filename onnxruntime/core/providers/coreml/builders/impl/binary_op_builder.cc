@@ -96,7 +96,7 @@ static void AddVariadicInputs(std::unique_ptr<CoreML::Specification::MILSpec::Op
   const int32_t elem_type = static_cast<int32_t>(input_dtype);
   std::vector<int64_t> x0_shape, x1_shape;
   GetShape(*input_defs[0], x0_shape, logger);
-  GetShape(*input_defs[1], x0_shape, logger);
+  GetShape(*input_defs[1], x1_shape, logger);
   x0_shape = InferOutputShape(x0_shape, x1_shape);
   std::unique_ptr<Operation> op_prev = std::move(*op);
   for (size_t i = 2; i < input_defs.size(); i++) {
