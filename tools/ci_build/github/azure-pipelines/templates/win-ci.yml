@@ -87,7 +87,7 @@ parameters:
 
 stages:
 - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}
-  dependsOn: []
+  dependsOn: Setup
   variables:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
@@ -100,6 +100,7 @@ stages:
       timeoutParameter: '--test_all_timeout 72000'
     ${{ else }}:
       timeoutParameter: ''
+    ReleaseVersionSuffix: $[replace(stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix'],'.','')]
   jobs:
   - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
     workspace:
