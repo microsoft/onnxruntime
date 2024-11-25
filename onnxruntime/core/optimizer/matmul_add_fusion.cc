@@ -15,6 +15,10 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
 
+  // These two sets are used to skip Attention pattern, which will be handled by AttentionFusion.
+  // There are 4 MatMul-Add pairs in Attention pattern, 3 of them are following LayerNormalization, the other one
+  // produces output which is added with LayerNormalization's output, we can skip them directly if we see same
+  // processed nodes again which are stored in these two sets.
   std::unordered_set<const Node*> attn_ln_nodes;
   std::unordered_set<const Node*> attn_add_nodes;
 
@@ -74,15 +78,16 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
     bool need_reshape = matmul_a_shape->dim_size() != 2;
     const auto& dim_n = matmul_b_shape->dim(1);
-    std::vector<int64_t> shape_values;
+    InlinedVector<int64_t> shape_values;
     int64_t m = 0, k = 0, n = 0;
     if (need_reshape) {
       // Skip Attention pattern, AttentionFusion will handle it. In such case, there are 4 MatMul-Add pairs,
-      // 3 of them are following LN, the other one produces output which is added by LN's output.
+      // 3 of them are following LN, the other one produces output which is added with LN's output.
       const Node* parent_node = graph.GetProducerNode(matmul_input_defs[0]->Name());
       if (attn_ln_nodes.count(parent_node) > 0 || attn_add_nodes.count(&next_node) > 0) {
         continue;
       }
+
       if (parent_node && parent_node->OpType() == "LayerNormalization") {
         unsigned int add_count = 0;
         unsigned int matmul_count = 0;
@@ -99,6 +104,7 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
             shape_count++;
           }
         }
+
         if (add_count == 1 && matmul_count == 3 && shape_count == parent_node->GetOutputEdgesCount() - 4) {
           size_t index = ln_add_node->InputDefs()[0]->Name() == parent_node->OutputDefs()[0]->Name() ? 1 : 0;
           const Node* attn_add_node = graph.GetProducerNode(ln_add_node->InputDefs()[index]->Name());
@@ -112,39 +118,29 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
       // Logically we can use Shape-Concat to produce shape input for Reshape, to keep it simple, we require
       // both inputs have concrete shape for now, we can add dynamic shape support in future.
-      bool is_concrete_shape = true;
-      for (int i = 0; i < matmul_a_shape->dim_size(); ++i) {
-        const auto& dim = matmul_a_shape->dim(i);
-        if (!utils::HasDimValue(dim)) {
-          is_concrete_shape = false;
-          break;
-        }
-        shape_values.emplace_back(dim.dim_value());
-      }
-      if (!is_concrete_shape) {
+      auto a_shape = utils::GetTensorShapeFromTensorShapeProto(*matmul_a_shape);
+      if (a_shape.Size() == -1) {
         continue;
       }
+
       const auto& dim_k = matmul_b_shape->dim(0);
       if (!utils::HasDimValue(dim_k) || !utils::HasDimValue(dim_n)) {
         continue;
       }
+
+      shape_values = a_shape.AsShapeVector();
+      // If a_shape is 1D, m is 1 from SizeToDimension() with empty dimension interval.
+      m = a_shape.SizeToDimension(a_shape.NumDimensions() - 1);
       k = dim_k.dim_value();
       n = dim_n.dim_value();
-      m = std::accumulate(shape_values.begin(), shape_values.end() - 1, static_cast<int64_t>(1),
-                          std::multiplies<int64_t>());
     }
 
     const auto& matmul_output = *matmul_node.OutputDefs()[0];
 
     auto matmul_output_name = matmul_output.Name();
     auto gemm_input_defs = matmul_input_defs;
-    if (matmul_output_name == add_input_defs[0]->Name()) {
-      // matmul output as Add_A, should use Add_B as input C for gemm
-      gemm_input_defs.push_back(add_input_defs[1]);
-    } else {
-      // matmul output as Add_B, should use Add_A as input C for gemm
-      gemm_input_defs.push_back(add_input_defs[0]);
-    }
+    int bias_idx = matmul_output_name == add_input_defs[0]->Name() ? 1 : 0;
+    gemm_input_defs.push_back(add_input_defs[bias_idx]);
 
     // valid bias_shapes are (N) or (1, N) or (M, 1) or (M, N) as
     // GEMM only supports unidirectional broadcast on the bias input C
@@ -169,7 +165,7 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     Node* input_node = nullptr;
     Node* output_node = nullptr;
     if (need_reshape) {
-      auto add_reshape = [&](const std::vector<int64_t>& shape, Graph& graph, bool is_input) -> Node* {
+      auto add_reshape = [&](const InlinedVector<int64_t>& shape, Graph& graph, bool is_input) -> Node* {
         const std::string name = is_input ? "gemm_input" : "gemm_output";
         ONNX_NAMESPACE::TensorProto shape_initializer_proto;
         shape_initializer_proto.set_name(graph.GenerateNodeName(name + "_shape"));
@@ -198,7 +194,7 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
       gemm_output_defs[0] = output_node->MutableInputDefs()[0];
     }
 
-    Node& gemm_node = graph.AddNode(graph.GenerateNodeName(matmul_node.Name() + "/MatMulAddFusion/"), "Gemm",
+    Node& gemm_node = graph.AddNode(graph.GenerateNodeName(matmul_node.Name() + "/MatMulAddFusion"), "Gemm",
                                     "fused Matmul and Add", gemm_input_defs, gemm_output_defs);
     gemm_node.SetExecutionProviderType(matmul_node.GetExecutionProviderType());
 
@@ -218,13 +214,16 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         graph.AddEdge(cur->src_node, gemm_node.Index(), cur->src_arg_index, 1);
       }
     }
+
     graph_utils::GraphEdge::RemoveGraphEdges(graph, matmul_input_edges);
     auto add_input_edges = graph_utils::GraphEdge::GetNodeInputEdges(add_node);
     for (auto cur = add_input_edges.cbegin(), end = add_input_edges.cend(); cur != end; ++cur) {
-      if (cur->dst_arg_index == 1) {
+      if (cur->dst_arg_index == bias_idx) {
         graph.AddEdge(cur->src_node, gemm_node.Index(), cur->src_arg_index, 2);
+        break;
       }
     }
+
     graph_utils::GraphEdge::RemoveGraphEdges(graph, add_input_edges);
     graph_utils::RemoveNodeOutputEdges(graph, matmul_node);
     graph_utils::ReplaceDownstreamNodeInput(graph, add_node, 0, *output_node, 0);

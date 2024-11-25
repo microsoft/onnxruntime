@@ -493,7 +493,7 @@ Status QnnModelWrapper::GetTensorInfo(const NodeUnitIODef& input, TensorInfo& te
   // Fill in initializer info.
   tensor_info.is_initializer = IsInitializerInput(name);
   if (tensor_info.is_initializer) {
-    tensor_info.initializer_tensor = GetInitializerTensors().at(name);
+    tensor_info.initializer_tensor = GetInitializerTensor(name);
   }
 
   return Status::OK();

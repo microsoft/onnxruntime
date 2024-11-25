@@ -22,13 +22,16 @@
 namespace onnxruntime {
 namespace qnn {
 
-static const NodeUnit* GetReshapeNodeUnit(
+namespace {
+
+const NodeUnit* GetReshapeNodeUnit(
     const GraphViewer& graph_viewer, const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
     const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
     const Node& gemm_node) {
   if (gemm_node.OpType() != "Gemm") {
     return nullptr;
   }
+
   for (auto it = gemm_node.InputEdgesBegin(); it != gemm_node.InputEdgesEnd(); it++) {
     if (it->GetDstArgIndex() == 0) {
       const Node& reshape_node = it->GetNode();
@@ -45,55 +48,35 @@ static const NodeUnit* GetReshapeNodeUnit(
       }
     }
   }
+
   return nullptr;
 }
 
-static bool CheckShape(const GraphViewer& graph_viewer, const Node& reshape_node) {
-  auto tensor_shape = reshape_node.InputDefs()[0]->Shape();
-  if (!tensor_shape) return false;
-  InlinedVector<int64_t> input_shape;
-  for (const auto& dim : tensor_shape->dim()) {
-    if (dim.value_case() != ONNX_NAMESPACE::TensorShapeProto_Dimension::kDimValue) return false;
-    input_shape.emplace_back(dim.dim_value());
-  }
-
-  const ONNX_NAMESPACE::TensorProto* shape_proto =
-      graph_viewer.GetConstantInitializer(reshape_node.InputDefs()[1]->Name());
-  if (!shape_proto) return false;
-  const auto* dtype = DataTypeImpl::TensorTypeFromONNXEnum(shape_proto->data_type())->GetElementType();
-  TensorShape shape = onnxruntime::utils::GetTensorShapeFromTensorProto(*shape_proto);
-  Tensor tensor(dtype, shape, std::make_shared<CPUAllocator>());
-  if (onnxruntime::utils::TensorProtoToTensor(onnxruntime::Env::Default(), graph_viewer.ModelPath(), *shape_proto,
-                                              tensor) != Status::OK()) {
+// Reshape from [x0, x1, ..., xn, k] to [x0 * x1 * ... * xn, k].
+bool CheckShape(const Node& reshape_node) {
+  auto input_shape_proto = reshape_node.InputDefs()[0]->Shape();
+  auto output_shape_proto = reshape_node.OutputDefs()[0]->Shape();
+  if (!input_shape_proto || !output_shape_proto) {
     return false;
   }
 
-  InlinedVector<int64_t> output_shape;
-  if (tensor.IsDataType<int64_t>()) {
-    gsl::span<const int64_t> tensor_elems = tensor.DataAsSpan<int64_t>();
-    output_shape.insert(output_shape.end(), tensor_elems.begin(), tensor_elems.end());
-  } else if (tensor.IsDataType<int32_t>()) {
-    gsl::span<const int32_t> tensor_elems = tensor.DataAsSpan<int32_t>();
-    for (int32_t elem : tensor_elems) {
-      output_shape.emplace_back(static_cast<int64_t>(elem));
-    }
-  }
-
-  return !input_shape.empty() && output_shape.size() == 2 && input_shape.back() == output_shape.back();
+  auto input_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*input_shape_proto);
+  auto output_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*output_shape_proto);
+  auto input_rank = input_shape.NumDimensions();
+  auto output_rank = output_shape.NumDimensions();
+  return input_shape.Size() != -1 && output_shape.Size() != -1 && output_rank == 2 &&
+         input_shape.SizeToDimension(input_rank - 1) == output_shape[0] &&
+         input_shape[input_rank - 1] == output_shape[1];
 }
 
-#define ValidateOnQnn(qnn_model_wrapper, reshape_node_unit, gemm_node_unit) \
-  CreateOrValidateOnQnn((qnn_model_wrapper), (reshape_node_unit), (gemm_node_unit), true)
-#define CreateOnQnn(qnn_model_wrapper, reshape_node_unit, gemm_node_unit) \
-  CreateOrValidateOnQnn((qnn_model_wrapper), (reshape_node_unit), (gemm_node_unit), false)
-static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& reshape_node_unit,
-                                    const NodeUnit& gemm_node_unit, bool validate) {
+Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& reshape_node_unit,
+                             const NodeUnit& gemm_node_unit, bool validate) {
   assert(reshape_node_unit.OpType() == "Reshape" && gemm_node_unit.OpType() == "Gemm");
   const auto& node_name = utils::GetNodeName(gemm_node_unit);
   const NodeUnitIODef& input_def = reshape_node_unit.Inputs()[0];
   const NodeUnitIODef& weight_def = gemm_node_unit.Inputs()[1];
   const NodeUnitIODef* bias_def_ptr = nullptr;
-  bool has_bias = gemm_node_unit.Inputs().size() == 3;
+  bool has_bias = gemm_node_unit.Inputs().size() == 3 && gemm_node_unit.Inputs()[2].node_arg.Exists();
   if (has_bias) {
     bias_def_ptr = &gemm_node_unit.Inputs()[2];
   }
@@ -110,7 +93,7 @@ static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper, const No
   Qnn_TensorType_t tensor_type = qnn_model_wrapper.GetTensorType(weight_tensor_name);
   Qnn_DataType_t data_type = QNN_DATATYPE_FLOAT_32;
   ORT_RETURN_IF_ERROR(utils::GetQnnDataType(false, weight_def.node_arg.TypeAsProto(), data_type));
-  const auto& weight_tensor_proto = qnn_model_wrapper.GetInitializerTensors().at(weight_tensor_name);
+  const auto& weight_tensor_proto = qnn_model_wrapper.GetInitializerTensor(weight_tensor_name);
   ORT_RETURN_IF_ERROR(
       utils::TwoDimensionTranspose(qnn_model_wrapper, weight_shape, *weight_tensor_proto, unpacked_tensor));
   QnnTensorWrapper weight_tensor(weight_tensor_name, tensor_type, data_type, QnnQuantParamsWrapper(),
@@ -144,15 +127,17 @@ static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper, const No
                                         std::move(input_names), {output_def.node_arg.Name()}, {}, validate),
         "Failed to add fused Gemm node.");
   }
+
   return Status::OK();
 }
+
+}  // namespace
 
 std::unique_ptr<IQnnNodeGroup> ReshapeGemmFusion::TryFusion(
     QnnModelWrapper& qnn_model_wrapper, const NodeUnit& gemm_node_unit,
     const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
     const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
-    const logging::Logger& logger) {
-  ORT_UNUSED_PARAMETER(logger);
+    [[maybe_unused]] const logging::Logger& logger) {
   if (gemm_node_unit.OpType() != "Gemm" || gemm_node_unit.UnitType() != NodeUnit::Type::SingleNode) {
     return nullptr;
   }
@@ -175,7 +160,7 @@ std::unique_ptr<IQnnNodeGroup> ReshapeGemmFusion::TryFusion(
     return nullptr;
   }
 
-  if (!CheckShape(graph_viewer, reshape_node_unit->GetNode())) {
+  if (!CheckShape(reshape_node_unit->GetNode())) {
     return nullptr;
   }
 
@@ -190,12 +175,12 @@ ReshapeGemmFusion::ReshapeGemmFusion(const NodeUnit& reshape_node_unit, const No
 
 Status ReshapeGemmFusion::IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const {
   ORT_UNUSED_PARAMETER(logger);
-  return ValidateOnQnn(qmw, *node_units_[0], *node_units_[1]);
+  return CreateOrValidateOnQnn(qmw, *node_units_[0], *node_units_[1], true);
 }
 
 Status ReshapeGemmFusion::AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const {
   ORT_UNUSED_PARAMETER(logger);
-  return CreateOnQnn(qmw, *node_units_[0], *node_units_[1]);
+  return CreateOrValidateOnQnn(qmw, *node_units_[0], *node_units_[1], false);
 }
 
 gsl::span<const NodeUnit* const> ReshapeGemmFusion::GetNodeUnits() const {
