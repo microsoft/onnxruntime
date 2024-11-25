@@ -1126,16 +1126,6 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       }
     }
 #endif
-  } else if (type == kTvmExecutionProvider) {
-#if USE_TVM
-    onnxruntime::tvm::TvmEPOptions info{};
-    const auto it = provider_options_map.find(type);
-    if (it != provider_options_map.end()) {
-      info = onnxruntime::tvm::TvmEPOptionsHelper::FromProviderOptions(it->second);
-    }
-
-    return onnxruntime::TVMProviderFactoryCreator::Create(info)->CreateProvider();
-#endif
   } else if (type == kVitisAIExecutionProvider) {
 #ifdef USE_VITISAI
     ProviderOptions info{};

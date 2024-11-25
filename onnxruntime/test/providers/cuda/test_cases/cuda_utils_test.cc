@@ -40,7 +40,7 @@ void TestFillCorrectness(size_t num_elements, TElement value) {
 }
 }  // namespace
 
-TEST(CudaUtilsTest, FillCorrectness) {
+TEST(CudaEpUnittest, FillCorrectness) {
   TestFillCorrectness<int8_t>(1 << 20, 1);
   TestFillCorrectness<int16_t>(1 << 20, 2);
   TestFillCorrectness<int32_t>(1 << 20, 3);

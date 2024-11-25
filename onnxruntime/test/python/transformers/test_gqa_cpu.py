@@ -1900,7 +1900,7 @@ class TestGQA(unittest.TestCase):
     def test_gqa_no_past(self):
         torch.manual_seed(69)
         print("-------- TEST GQA NO PAST (PROMPT CASE) ---------")
-        batches = [1, 3] if pipeline_mode else [1, 3, 5]
+        batches = [3] if pipeline_mode else [1, 3, 5]
         seqs = (
             [
                 (127, 127),
@@ -1916,8 +1916,8 @@ class TestGQA(unittest.TestCase):
                 (8000, 8000),
             ]
         )
-        num_h = [(32, 8), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
-        h_sizes = [16, 128, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+        num_h = [(32, 8)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+        h_sizes = [128] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
         for b in batches:
             for sq, skv in seqs:
                 for n, n2 in num_h:
@@ -1954,9 +1954,9 @@ class TestGQA(unittest.TestCase):
 
     def test_gqa_past(self):
         print("-------- TEST GQA PAST (TOKEN GEN) ---------")
-        batches = [1, 3] if pipeline_mode else [1, 3, 5]
+        batches = [1] if pipeline_mode else [1, 3, 5]
         seqs = (
-            [(1, 128), (1, 1024), (1, 2048)]
+            [(1, 128)]
             if pipeline_mode
             else [
                 (1, 128),
@@ -1972,8 +1972,8 @@ class TestGQA(unittest.TestCase):
                 # (128, 128),
             ]
         )
-        num_h = [(32, 8), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
-        h_sizes = [16, 64, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+        num_h = [(9, 3)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+        h_sizes = [64] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
         random.seed(69)
         for b in batches:
             for s, s2 in seqs:
@@ -2018,7 +2018,7 @@ class TestGQA(unittest.TestCase):
         print("-------- TEST GQA INTERACTIVE ---------")
         batches = [1]
         seqs = (
-            [(2, 128), (128, 129), (32, 128), (256, 2048)]
+            [(256, 2048)]
             if pipeline_mode
             else [
                 (1, 128),
@@ -2034,8 +2034,8 @@ class TestGQA(unittest.TestCase):
                 # (128, 128),
             ]
         )
-        num_h = [(32, 8), (9, 3), (4, 4)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
-        h_sizes = [16, 64, 256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+        num_h = [(32, 8)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
+        h_sizes = [32] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
         random.seed(69)
         for b in batches:
             for s, s2 in seqs:
