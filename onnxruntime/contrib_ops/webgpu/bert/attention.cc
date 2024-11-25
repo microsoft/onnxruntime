@@ -107,30 +107,9 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::ostringstream oss;
   InitVarStub(oss, seqlen_k_, is_first_prompt_);
   shader.MainFunctionBody() << oss.str();
-  if (n_reps_ > 1) {
-    shader.MainFunctionBody() << "let head_idx = workgroup_id.z % uniforms.num_heads;\n"
-                              << "let kv_head_idx = head_idx / uniforms.n_reps;\n"
-                              << "let kv_num_heads = uniforms.num_heads / uniforms.n_reps;\n"
-                              << "let abs_kv_head_idx = batch_idx * kv_num_heads + kv_head_idx;\n"
-                              << "let kOffset = abs_kv_head_idx * uniforms.kv_sequence_length * uniforms.K;\n";
-    if (feed_past_key_ && has_present_key_) {
-      shader.MainFunctionBody() << "let pastKeyOffset = abs_kv_head_idx * uniforms.past_sequence_length * uniforms.K;\n";
-    } else if (past_present_share_buffer_) {
-      shader.MainFunctionBody() << "let pastKeyOffset = abs_kv_head_idx * uniforms.present_sequence_length * uniforms.K;\n";
-    }
-    if (has_present_key_) {
-      shader.MainFunctionBody() << "let presentKeyOffset = abs_kv_head_idx * uniforms.present_sequence_length * uniforms.K;\n";
-    }
-  } else {
-    shader.MainFunctionBody() << "let kOffset = workgroup_id.z * uniforms.kv_sequence_length * uniforms.K;\n";
-    if (feed_past_key_ && has_present_key_) {
-      shader.MainFunctionBody() << "let pastKeyOffset = workgroup_id.z * uniforms.past_sequence_length * uniforms.K;\n";
-    } else if (past_present_share_buffer_) {
-      shader.MainFunctionBody() << "let pastKeyOffset = workgroup_id.z * uniforms.present_sequence_length * uniforms.K;\n";
-    }
-    if (has_present_key_) {
-      shader.MainFunctionBody() << "let presentKeyOffset = workgroup_id.z * uniforms.present_sequence_length * uniforms.K;\n";
-    }
+  shader.MainFunctionBody() << "let kOffset = (workgroup_id.z / " << n_reps_ << ") * uniforms.kv_sequence_length * uniforms.K;\n";
+  if (has_present_key_) {
+    shader.MainFunctionBody() << "let presentKeyOffset = (workgroup_id.z / " << n_reps_ << ") * uniforms.present_sequence_length * uniforms.K;\n";
   }
 
   shader.MainFunctionBody() << "var value = f32_val_t(0);\n"
@@ -143,6 +122,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   if ((feed_past_key_ && has_present_key_) || past_present_share_buffer_) {
     shader.MainFunctionBody() << "    if (n + local_id.y < past_sequence_length) {\n"
+                              << "      let pastKeyOffset = (workgroup_id.z / " << n_reps_ << ") * uniforms.past_sequence_length * uniforms.K;\n"
                               << "      tileK[idx] = " << (past_present_share_buffer_ ? "present_key" : "past_key") << "[pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x];\n"
                               << "    } else  if (n + local_id.y - past_sequence_length < uniforms.kv_sequence_length) {\n"
                               << "      tileK[idx] = key[kOffset + (n + local_id.y - past_sequence_length) * uniforms.K + w + local_id.x];\n"
@@ -247,7 +227,6 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                     << "var<workgroup> thread_sum: array<f32, " << work_group_size_ << ">;\n"
                                     << "alias f32_val_t = " << (components_ == 4 ? "vec4<f32>" : (components_ == 2 ? "vec2<f32>" : "f32")) << ";\n";
   shader.MainFunctionBody() << "let batch_idx = workgroup_id.z / uniforms.num_heads;\n"
-                            << "let head_idx = workgroup_id.z % uniforms.num_heads;\n"
                             << "let sequence_length = uniforms.sequence_length;\n"
                             << "var total_sequence_length = uniforms.total_sequence_length_comp * " << components_ << ";\n";
   std::ostringstream oss;
@@ -350,31 +329,9 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::ostringstream oss;
   InitVarStub(oss, seqlen_k_, is_first_prompt_);
   shader.MainFunctionBody() << oss.str();
-  if (n_reps_ > 1) {
-    shader.MainFunctionBody() << "let kv_head_idx = head_idx / uniforms.n_reps;\n"
-                              << "let kv_num_heads = uniforms.num_heads / uniforms.n_reps;\n"
-                              << "let abs_kv_head_idx = batch_idx * kv_num_heads + kv_head_idx;\n"
-                              << "let vOffset = abs_kv_head_idx * uniforms.N * uniforms.kv_sequence_length + n;\n";
-    if (feed_past_value_ && has_present_value_) {
-      shader.MainFunctionBody() << "let pastValueOffset = abs_kv_head_idx * uniforms.N * uniforms.past_sequence_length + n;\n";
-    } else if (past_present_share_buffer_) {
-      shader.MainFunctionBody() << "let pastValueOffset = abs_kv_head_idx * uniforms.N * uniforms.present_sequence_length + n;\n";
-    }
-
-    if (has_present_value_) {
-      shader.MainFunctionBody() << "let presentValueOffset = abs_kv_head_idx * uniforms.N * uniforms.present_sequence_length + n;\n";
-    }
-  } else {
-    shader.MainFunctionBody() << "let vOffset = workgroup_id.z * uniforms.N * uniforms.kv_sequence_length + n;\n";
-    if (feed_past_value_ && has_present_value_) {
-      shader.MainFunctionBody() << "let pastValueOffset = workgroup_id.z * uniforms.N * uniforms.past_sequence_length + n;\n";
-    } else if (past_present_share_buffer_) {
-      shader.MainFunctionBody() << "let pastValueOffset = workgroup_id.z * uniforms.N * uniforms.present_sequence_length + n;\n";
-    }
-
-    if (has_present_value_) {
-      shader.MainFunctionBody() << "let presentValueOffset = workgroup_id.z * uniforms.N * uniforms.present_sequence_length + n;\n";
-    }
+  shader.MainFunctionBody() << "let vOffset = (workgroup_id.z / " << n_reps_ << ") * uniforms.N * uniforms.kv_sequence_length + n;\n";
+  if (has_present_value_) {
+    shader.MainFunctionBody() << "let presentValueOffset = (workgroup_id.z / " << n_reps_ << ") * uniforms.N * uniforms.present_sequence_length + n;\n";
   }
 
   shader.MainFunctionBody() << "var value = probs_element_t(0);\n"
@@ -387,6 +344,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   if ((feed_past_value_ && has_present_value_) || past_present_share_buffer_) {
     shader.MainFunctionBody() << "    if (w + local_id.y < past_sequence_length) {\n"
+                              << "      let pastValueOffset = (workgroup_id.z / " << n_reps_ << ") * uniforms.N * uniforms.past_sequence_length + n;\n"
                               << "      tileK[idx] = " << (past_present_share_buffer_ ? "present_value" : "past_value") << "[pastValueOffset + (w + local_id.y) * uniforms.N];\n"
                               << "    } else if (w + local_id.y - past_sequence_length < uniforms.kv_sequence_length) {\n"
                               << "      tileK[idx] = v[vOffset + (w + local_id.y - uniforms.past_sequence_length) * uniforms.N];\n"
