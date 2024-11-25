@@ -94,7 +94,7 @@ Status TopKOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   bool is_initializer_input = qnn_model_wrapper.IsInitializerInput(input_name);
   if (is_initializer_input) {
     std::vector<uint8_t> unpacked_tensor;
-    const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
+    const auto& input_tensor = qnn_model_wrapper.GetInitializerTensor(input_name);
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));
     const int64_t* tensor_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
     k = static_cast<uint32_t>(*tensor_data);

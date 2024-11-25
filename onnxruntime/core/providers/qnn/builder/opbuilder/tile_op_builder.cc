@@ -69,7 +69,7 @@ Status TileOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   const auto& repeats_input_name = node_unit.Inputs()[1].node_arg.Name();
 
   std::vector<uint8_t> unpacked_tensor;
-  const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(repeats_input_name);
+  const auto& input_tensor = qnn_model_wrapper.GetInitializerTensor(repeats_input_name);
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));
   // Onnx repeats are int64, Qnn use uint32
   const int64_t* tensor_data = reinterpret_cast<const int64_t*>(unpacked_tensor.data());

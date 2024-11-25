@@ -110,7 +110,7 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     std::vector<uint8_t> unpacked_tensor;
     bool is_initializer_input = qnn_model_wrapper.IsInitializerInput(input_name);
     if (is_initializer_input) {
-      const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
+      const auto& input_tensor = qnn_model_wrapper.GetInitializerTensor(input_name);
       if (1 == input_trans_flag.at(input_i)) {
         ORT_RETURN_IF_ERROR(quantize_param.HandleTranspose<size_t>(std::vector<size_t>({1, 0})));
         ORT_RETURN_IF_ERROR(

@@ -63,7 +63,7 @@ Status ExpandOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[1].node_arg, shape), "Cannot get shape");
   uint32_t shape_rank = shape[0];
   std::vector<uint8_t> unpacked_tensor;
-  const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
+  const auto& input_tensor = qnn_model_wrapper.GetInitializerTensor(input_name);
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));
   const int64_t* shape_data_int64 = reinterpret_cast<const int64_t*>(unpacked_tensor.data());
   std::vector<uint32_t> input_shape(shape_rank, 0);
