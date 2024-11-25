@@ -104,6 +104,7 @@ stages:
       artifactName: 'onnxruntime-android-qnn-aar'
       job_name_suffix: 'QNN'
       packageName: 'onnxruntime-android-qnn'
+      ReleaseVersionSuffix: $(ReleaseVersionSuffix)
 
 - stage: iOS_Full_xcframework
   dependsOn: []
