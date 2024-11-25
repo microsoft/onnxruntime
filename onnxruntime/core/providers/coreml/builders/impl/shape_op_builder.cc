@@ -29,13 +29,17 @@ Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
     NodeAttrHelper node_attr_helper{node};
-    int64_t num_dims = input_defs[0]->Shape()->dim_size();
-    int64_t start = HandleNegativeAxis(node_attr_helper.Get("start", 0), num_dims);
-
     int64_t size = -1;
-    if (node_attr_helper.HasAttr("end")) {
-      int64_t end = HandleNegativeAxis(node_attr_helper.Get("end", -1), num_dims);
-      size = end - start;
+    int64_t num_dims = 0;
+    int64_t start = node_attr_helper.Get("start", 0);
+    // If the input shape is not available, size is -1 and start is 0
+    if (input_defs[0]->Shape()) {
+      num_dims = input_defs[0]->Shape()->dim_size();
+      start = HandleNegativeAxis(start, num_dims);
+      if (node_attr_helper.HasAttr("end")) {
+        int64_t end = HandleNegativeAxis(node_attr_helper.Get("end", -1), num_dims);
+        size = end - start;
+      }
     }
 
     int32_t output_datatype = ONNX_NAMESPACE::TensorProto_DataType_INT32;
@@ -87,16 +91,24 @@ bool ShapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
       return false;
     }
   } else {
+    int64_t end = node_attr_helper.HasAttr("end")
+                      ? node_attr_helper.Get("end", -1)
+                      : std::numeric_limits<int64_t>::max();
+    int64_t start = node_attr_helper.Get("start", 0);
+    // no need to slice if start is 0 and end is max
+    if (end == std::numeric_limits<int64_t>::max() && start == 0) {
+    } else if (tensor_shape == nullptr) {
+      LOGS(logger, VERBOSE) << "Shape does not support slicing when tensor_shape is not available";
+      return false;
+    }
+    int64_t dim_size = tensor_shape->dim_size();
     int64_t size = node_attr_helper.HasAttr("end")
-                       ? HandleNegativeAxis(node_attr_helper.Get("end", 0), tensor_shape->dim_size())
-                       : tensor_shape->dim_size();
-    int64_t start = HandleNegativeAxis(node_attr_helper.Get("start", 0), tensor_shape->dim_size());
+                       ? HandleNegativeAxis(node_attr_helper.Get("end", -1), dim_size)
+                       : dim_size;
+    start = HandleNegativeAxis(start, dim_size);
     size = size - start;
     if (size == 0) {
       LOGS(logger, VERBOSE) << "Shape does not support slicing when size is 0";
-      return false;
-    } else if (size != tensor_shape->dim_size() && tensor_shape == nullptr) {
-      LOGS(logger, VERBOSE) << "Shape does not support slicing when tensor_shape is not available";
       return false;
     }
   }

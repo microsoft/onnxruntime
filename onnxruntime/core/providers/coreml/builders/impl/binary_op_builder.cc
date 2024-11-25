@@ -56,12 +56,35 @@ bool CheckIfBothInputShapesMatch(const Node& node, const logging::Logger& logger
 }
 }  // namespace
 
+#if defined(COREML_ENABLE_MLPROGRAM)
+static std::vector<int64_t> InferOutputShape(const std::vector<int64_t>& a, const std::vector<int64_t>& b) {
+  std::vector<int64_t> output_shape;
+  int64_t i_a = 0, j_b = 0;
+  if (a.size() >= b.size()) {
+    output_shape = a;
+    j_b -= a.size() - b.size();
+  } else {
+    output_shape = b;
+    i_a -= b.size() - a.size();
+  }
+
+  for (size_t i = 0; i < output_shape.size(); i++, i_a++, j_b++) {
+    const int64_t a_dim = (i_a>=0) ? a[i_a] : 1;
+    const int64_t b_dim = (j_b>=0) ? b[j_b] : 1;
+    if (a_dim == -1 || b_dim == -1) {
+      output_shape[i] = -1;
+    } else {
+      output_shape[i] = std::max(a_dim, b_dim);
+    }
+  }
+  return output_shape;
+}
+
 // Add variadic inputs to the model builder
 // in onnx spec, some node allows variadic inputs, such as max(x, y, z, ...)
 // while in coreml, maximum op only allows two inputs maximum(x, y)
 // the conversion is doing the following:
 // max(x, y, z, ...) -> max(max(x, y), z, ...)
-#if defined(COREML_ENABLE_MLPROGRAM)
 static void AddVariadicInputs(std::unique_ptr<CoreML::Specification::MILSpec::Operation>* op,
                               ModelBuilder& model_builder,
                               const Node& node,
@@ -71,13 +94,10 @@ static void AddVariadicInputs(std::unique_ptr<CoreML::Specification::MILSpec::Op
   std::string_view layer_input_name_x = model_builder.GetUniqueName(node, "variadic");
   auto input_dtype = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
   const int32_t elem_type = static_cast<int32_t>(input_dtype);
-  std::vector<int64_t> x0_shape;
-  auto x0_dim_size = input_defs[0]->Shape()->dim_size();
-  auto x1_dim_size = input_defs[1]->Shape()->dim_size();
-  x0_dim_size = std::max(x0_dim_size, x1_dim_size);
-  // fill x0_shape with -1 to make this dimension as dynamic
-  // Coreml supports dynamic shape when the shape value is -1
-  x0_shape.resize(x0_dim_size, -1);
+  std::vector<int64_t> x0_shape, x1_shape;
+  GetShape(*input_defs[0], x0_shape, logger);
+  GetShape(*input_defs[1], x0_shape, logger);
+  x0_shape = InferOutputShape(x0_shape, x1_shape);
   std::unique_ptr<Operation> op_prev = std::move(*op);
   for (size_t i = 2; i < input_defs.size(); i++) {
     AddIntermediateOperationOutput(*op_prev, layer_input_name_x, elem_type, x0_shape);
@@ -87,11 +107,8 @@ static void AddVariadicInputs(std::unique_ptr<CoreML::Specification::MILSpec::Op
     model_builder.AddOperation(std::move(op_prev));
     op_prev = std::move(op_cur);
     layer_input_name_x = model_builder.GetUniqueName(node, "variadic");
-    x1_dim_size = input_defs[i]->Shape()->dim_size();
-    if (x0_dim_size < x1_dim_size) {
-      x0_dim_size = x1_dim_size;
-      x0_shape.resize(x0_dim_size, -1);
-    }
+    GetShape(*input_defs[i], x1_shape, logger);
+    x0_shape = InferOutputShape(x0_shape, x1_shape);
   }
   *op = std::move(op_prev);
 }
