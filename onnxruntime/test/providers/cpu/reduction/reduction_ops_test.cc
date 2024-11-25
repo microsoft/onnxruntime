@@ -2438,13 +2438,9 @@ void test_half_reduce_sum(
 }
 
 TEST(ReductionOpTest, ReduceSum_half_bert) {
-  std::cout << "111111111111111111111111111111\n";
   test_half_reduce_sum(6 * 128, 128);
-  std::cout << "2222222222222222222222222222\n";
   test_half_reduce_sum(8 * 128, 128);
-  std::cout << "3333333333333333333333333333333333\n";
   test_half_reduce_sum(6 * 384, 128);
-  std::cout << "444444444444444444444444444444\n";
   test_half_reduce_sum(8 * 384, 128);
 }
 
