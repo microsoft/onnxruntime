@@ -69,8 +69,8 @@ static std::vector<int64_t> InferOutputShape(const std::vector<int64_t>& a, cons
   }
 
   for (size_t i = 0; i < output_shape.size(); i++, i_a++, j_b++) {
-    const int64_t a_dim = (i_a>=0) ? a[i_a] : 1;
-    const int64_t b_dim = (j_b>=0) ? b[j_b] : 1;
+    const int64_t a_dim = (i_a >= 0) ? a[i_a] : 1;
+    const int64_t b_dim = (j_b >= 0) ? b[j_b] : 1;
     if (a_dim == -1 || b_dim == -1) {
       output_shape[i] = -1;
     } else {
