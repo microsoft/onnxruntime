@@ -39,8 +39,7 @@ void CumSumOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const N
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
 }
 
-Status CumSumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
-                                              const Node& node,
+Status CumSumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                               const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
@@ -51,10 +50,9 @@ Status CumSumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& initializers = model_builder.GetInitializerTensors();
   const std::string axis_name = GetTensorName(input_defs, 1);
   const auto axis_tensor = *initializers.at(axis_name);
-  std::vector<uint8_t> unpacked_tensor;
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(axis_tensor, unpacked_tensor));
-  auto axis = *reinterpret_cast<int64_t*>(unpacked_tensor.data());
-  axis = HandleNegativeAxis(axis, input_rank);
+  emscripten::val axis = emscripten::val::undefined();
+  ORT_RETURN_IF_NOT(ReadScalarTensorData(axis_tensor, axis, logger), "Cannot get axis value");
+  int64_t webnn_axis = HandleNegativeAxis(axis.as<int64_t>(), input_rank);
 
   NodeAttrHelper helper(node);
   const auto exclusive = helper.Get("exclusive", 0);
@@ -66,7 +64,8 @@ Status CumSumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   options.set("label", node.Name());
 
   emscripten::val output = emscripten::val::object();
-  output = model_builder.GetBuilder().call<emscripten::val>("cumulativeSum", input, gsl::narrow<uint32_t>(axis), options);
+  output = model_builder.GetBuilder().call<emscripten::val>("cumulativeSum", input, gsl::narrow<uint32_t>(webnn_axis),
+                                                            options);
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
 }
