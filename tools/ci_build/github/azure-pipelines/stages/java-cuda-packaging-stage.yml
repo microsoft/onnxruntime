@@ -60,6 +60,8 @@ stages:
         failOnStderr: true
         showWarnings: true
         workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
+      env:
+        ReleaseVersionSuffix: $(ReleaseVersionSuffix)
 
     - template: ../templates/jar-esrp-dll.yml
       parameters:

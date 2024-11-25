@@ -206,6 +206,8 @@ stages:
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
   - Download_Java_Tools
   condition: succeeded()
+  variables:
+    ReleaseVersionSuffix: $[replace(stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix'],'.','')]
   jobs:
   - job: Jar_Packaging
     workspace:
@@ -269,7 +271,7 @@ stages:
     - template: jar-esrp-dll.yml
       parameters:
         JarFileDirectory: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
-        JarFileName: 'onnxruntime-$(OnnxRuntimeVersion).jar'
+        JarFileName: 'onnxruntime-$(OnnxRuntimeVersion)$(ReleaseVersionSuffix).jar'
 
     - template: jar-maven-signing-win.yml
       parameters:
