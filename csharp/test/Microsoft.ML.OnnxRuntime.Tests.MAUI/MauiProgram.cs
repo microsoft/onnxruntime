@@ -30,30 +30,47 @@ public class XunitTestRunnerWithAppium : ITestRunner
     public Task RunTestsAsync(IEnumerable<ITestAssemblyInfo> testAssemblies, 
                               CancellationToken cancellationToken = default(CancellationToken))
     {
-        return RunTests(runner.RunTestsAsync(testAssemblies, cancellationToken));
+        return RunTests(() => runner.RunTestsAsync(testAssemblies, cancellationToken));
     }
 
     public Task RunTestsAsync(IEnumerable<ITestCaseInfo> testCases, 
                               CancellationToken cancellationToken = default(CancellationToken))
     {
-        return RunTests(runner.RunTestsAsync(testCases, cancellationToken));
+        return RunTests(() => runner.RunTestsAsync(testCases, cancellationToken));
     }
 
     private static async Task StartAppiumServer()
     {
-        await Task.Run(() => System.Console.WriteLine("Starting Appium Server"));
+        await Task.Run(() => 
+        {
+            System.Console.WriteLine("Starting Appium Server...");
+            AppiumHelper.Start();
+            System.Console.WriteLine("done.");
+        });
     }
 
     private static async Task StopAppiumServer()
     {
-        await Task.Run(() => System.Console.WriteLine("Stopping Appium Server"));
+        await Task.Run(() =>
+        {
+            System.Console.WriteLine("Stopping Appium Server...");
+            AppiumHelper.Stop();
+            System.Console.WriteLine("done.");
+        });
     }
 
-    private static async Task RunTests(Task testTask)
+    private static async Task RunTests(Func<Task> runTests)
     {
-        await StartAppiumServer();
-        await testTask;
-        await StopAppiumServer();
+        try
+        {
+            await StartAppiumServer();
+            await runTests();
+            await StopAppiumServer();
+        }
+        catch (Exception ex)
+        {
+            System.Console.WriteLine($"Error running tests: {ex.Message}");
+        }
     }
 }
 

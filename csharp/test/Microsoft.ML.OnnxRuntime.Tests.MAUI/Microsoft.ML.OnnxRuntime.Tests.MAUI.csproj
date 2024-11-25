@@ -97,6 +97,7 @@
     </ItemGroup>
 
     <ItemGroup>
+        <PackageReference Include="Appium.WebDriver" Version="6.0.1" />
         <PackageReference Include="DeviceRunners.VisualRunners.Maui" Version="0.1.0-preview.2" />
         <PackageReference Include="DeviceRunners.VisualRunners.Xunit" Version="0.1.0-preview.2" />
         <PackageReference Include="DeviceRunners.XHarness.Maui" Version="0.1.0-preview.2" />
