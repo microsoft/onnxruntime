@@ -137,7 +137,7 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInpu
   // to pass https://dev.azure.com/onnxruntime/onnxruntime/_build/results?buildId=1563483&view=logs&j=f7cc61a9-cc70-56e7-b06c-4668ca17e426
   // ReductionOpTest.ReduceSum_half_bert
   int32_t input_type;
-  GetType(input, input_type, logger);
+  GetType(*input_defs[0], input_type, logger);
   if (node.OpType() == "ReduceSum" && input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
     return false;
   }
