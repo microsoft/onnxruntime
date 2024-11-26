@@ -151,6 +151,13 @@ struct OrtDmlApi {
    * (high power, low power, or default) and a device filter (None, GPU, or NPU).
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_DML2, _In_ OrtSessionOptions* options, OrtDmlDeviceOptions* device_opts);
+
+  /**
+   * GetDMLDevice
+   * returns the DML device attched to the DML execution provider
+   */
+  ORT_API2_STATUS(GetDMLDevice, _In_ OrtSessionOptions* options, _Out_ IDMLDevice** dmlDevice);
+
 };
 
 #ifdef __cplusplus

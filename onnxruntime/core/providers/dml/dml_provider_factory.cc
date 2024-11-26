@@ -65,6 +65,8 @@ struct DMLProviderFactory : IExecutionProviderFactory {
 
   void SetMetacommandsEnabled(bool metacommands_enabled);
 
+  IDMLDevice* GetDMLDevice();
+
  private:
   ComPtr<IDMLDevice> dml_device_{};
   ComPtr<ID3D12CommandQueue> cmd_queue_{};
@@ -99,6 +101,10 @@ std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProvider() {
 
 void DMLProviderFactory::SetMetacommandsEnabled(bool metacommands_enabled) {
   metacommands_enabled_ = metacommands_enabled;
+}
+
+IDMLDevice* DMLProviderFactory::GetDMLDevice() {
+  return dml_device_.Get();
 }
 
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(const ConfigOptions& config_options,
@@ -694,6 +700,23 @@ ORT_API_STATUS_IMPL(GetD3D12ResourceFromAllocation, _In_ OrtAllocator* ort_alloc
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(GetDMLDevice, _In_ OrtSessionOptions* options, _Out_ IDMLDevice** dmlDevice) {
+  API_IMPL_BEGIN
+
+  *dmlDevice = nullptr;
+#ifdef USE_DML 
+  if (options) {
+    for (auto& factory : options->provider_factories) {
+      if (auto dml_provider_factory = static_cast<onnxruntime::DMLProviderFactory*>(factory.get())) {
+        *dmlDevice = dml_provider_factory->GetDMLDevice();
+      }
+    }
+  }
+#endif  // USE_DML
+  return nullptr;
+API_IMPL_END
+}
+
 static constexpr OrtDmlApi ort_dml_api_10_to_x = {
   &OrtSessionOptionsAppendExecutionProvider_DML,
   &OrtSessionOptionsAppendExecutionProviderEx_DML,
@@ -701,6 +724,7 @@ static constexpr OrtDmlApi ort_dml_api_10_to_x = {
   &FreeGPUAllocation,
   &GetD3D12ResourceFromAllocation,
   &OrtSessionOptionsAppendExecutionProvider_DML2,
+  & GetDMLDevice,
 };
 
 const OrtDmlApi* GetOrtDmlApi(_In_ uint32_t /*version*/) NO_EXCEPTION {
