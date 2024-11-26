@@ -4910,7 +4910,7 @@ TEST(QDQTransformerTests, BiasQuantization_Gemm) {
 
       builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.001f, static_cast<uint8_t>(0), input_dq_arg,
                                                use_contrib_qdq);
-      builder.AddDequantizeLinearNode<uint8_t>(weight_arg, 0.26, static_cast<uint8_t>(0), weight_dq_arg,
+      builder.AddDequantizeLinearNode<uint8_t>(weight_arg, 0.26f, static_cast<uint8_t>(0), weight_dq_arg,
                                                use_contrib_qdq);
       auto& gemm_node = builder.AddNode("Gemm", {input_dq_arg, weight_dq_arg, bias_arg}, {gemm_dq_arg});
       gemm_node.AddAttribute("transB", static_cast<int64_t>(1));
