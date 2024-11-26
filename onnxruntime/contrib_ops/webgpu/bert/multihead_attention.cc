@@ -458,10 +458,7 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
   Tensor* present_key = context.Output(1, present_shape);
   Tensor* present_value = context.Output(2, present_shape);
 
-  if (parameters.batch_size == 1 &&
-      bias == nullptr &&
-      present_key != nullptr && present_value != nullptr && present_key->SizeInBytes() > 0 &&
-      present_value->SizeInBytes() > 0 && parameters.head_size % 4 == 0) {
+  if (CanApplyFlashAttention(bias, present_key, present_value, parameters, context)) {
     return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
                                present_value, parameters, context);
   }

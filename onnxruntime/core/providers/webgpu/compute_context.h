@@ -44,6 +44,9 @@ class ComputeContext {
   inline const uint32_t MinSubgroupSize() const {
     return webgpu_context_.MinSubgroupSize();
   }
+  inline const bool IsFlashAttentionEnabled() const {
+    return webgpu_context_.IsFlashAttentionEnabled();
+  }
 
   //
   // Get the kernel context.

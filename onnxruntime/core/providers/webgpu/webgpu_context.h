@@ -56,6 +56,7 @@ class WebGpuContext final {
   const wgpu::AdapterInfo& AdapterInfo() const { return adapter_info_; }
   const wgpu::Limits& DeviceLimits() const { return device_limits_; }
   uint32_t MinSubgroupSize() const { return min_subgroup_size_; }
+  const bool IsFlashAttentionEnabled() const { return is_flash_attention_enabled_; }
 
   const wgpu::CommandEncoder& GetCommandEncoder() {
     if (!current_command_encoder_) {
@@ -185,6 +186,7 @@ class WebGpuContext final {
 
   uint64_t gpu_timestamp_offset_ = 0;
   bool is_profiling_ = false;
+  bool is_flash_attention_enabled_ = false;
 };
 
 }  // namespace webgpu

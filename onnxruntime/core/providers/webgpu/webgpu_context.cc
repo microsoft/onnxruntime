@@ -138,6 +138,7 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
     } else {
       query_type_ = TimestampQueryType::None;
     }
+    is_flash_attention_enabled_ = webgpu_ep_info.enable_flash_attention;
   });
 }
 

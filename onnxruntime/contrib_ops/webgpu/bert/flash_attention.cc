@@ -64,7 +64,7 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, AttentionParameters& parameters,
+Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const AttentionParameters& parameters,
                    const Tensor* K, const Tensor* past_key, Tensor* present_key,
                    const Tensor* V, const Tensor* past_value, Tensor* present_value,
                    int past_sequence_length, int total_sequence_length) {
@@ -300,7 +300,7 @@ fn computeO(q_idx: u32, sg_id:u32, enabled:bool)
   // Each workgroup is responsible for a range of q values (TILE_SIZE) and visits all Ks for those q's.
   // Each workgroup has TILE_SIZE waves, with each wave having subgroup size number of lanes (threads).
   // Synchronization between lanes in a wave is free, with various subgroup* functions, and this shader
-  // uses that. Synchronization beween waves requires calling workgroupBarrier.
+  // uses that. Synchronization between waves requires calling workgroupBarrier.
   shader.MainFunctionBody() << R"MAIN_FN(
 let head_idx = workgroup_id.x;
 // It is always the case that 0 <= wave_id < TILE_SIZE
@@ -370,7 +370,7 @@ if (q_idx_global_using_wave_valid)
 
 Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
                            Tensor* output, const Tensor* past_key, Tensor* present_key, const Tensor* past_value, Tensor* present_value,
-                           AttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
+                           const AttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
   ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, parameters.past_sequence_length, parameters.total_sequence_length));
 
   const uint32_t subgroup_size = context.MinSubgroupSize();
@@ -397,6 +397,26 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                             {alpha}});
 
   return context.RunProgram(program);
+}
+
+bool CanApplyFlashAttention(const Tensor* bias, const Tensor* present_key, const Tensor* present_value,
+                            const AttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
+  // The min subgroup size affects the block size while going through the sequence length.
+  // 16 is the smallest size tested, smaller sized would impact performance.
+  // Checking for this also ensures that we dont run flash attention where subgroup is not supported.
+  constexpr int kMinSupportedSubgroupSize = 16;
+  // Workgroup size is set to be (subgroup_size * subgroup_size), check that it is allowed.
+  // Flash attention is written only to support batch_size of 1, algorithm can be extended to support
+  // batch_size > 1. What bias is used for is not clear, so it is not implemented in the shader.
+  // The Flash attention implementation is vectorized, to keep things simple, only vec4 is implemented -
+  // this implies that head_size has to be a multiple of 4.
+  return context.IsFlashAttentionEnabled() &&
+         context.MinSubgroupSize() >= kMinSupportedSubgroupSize &&
+         context.DeviceLimits().maxComputeWorkgroupSizeX >= (context.MinSubgroupSize() * context.MinSubgroupSize()) &&
+         parameters.batch_size == 1 &&
+         bias == nullptr &&
+         present_key != nullptr && present_value != nullptr && present_key->SizeInBytes() > 0 &&
+         present_value->SizeInBytes() > 0 && parameters.head_size % 4 == 0;
 }
 
 }  // namespace webgpu

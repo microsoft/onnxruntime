@@ -40,6 +40,8 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
       DataLayout::NHWC,
       // graph capture feature is disabled by default
       false,
+      // flash attention feature is disabled by default
+      false,
   };
 
   std::string preferred_layout_str;
@@ -66,6 +68,18 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
     }
   }
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP graph capture enable: " << webgpu_ep_info.enable_graph_capture;
+
+  std::string enable_flash_attention_str;
+  if (config_options.TryGetConfigEntry(kEnableFlashAttention, enable_flash_attention_str)) {
+    if (enable_flash_attention_str == kEnableFlashAttention_ON) {
+      webgpu_ep_info.enable_flash_attention = true;
+    } else if (enable_flash_attention_str == kEnableFlashAttention_OFF) {
+      webgpu_ep_info.enable_flash_attention = false;
+    } else {
+      ORT_THROW("Invalid enable flash attention: ", enable_flash_attention_str);
+    }
+  }
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP flash attention enabled: " << webgpu_ep_info.enable_flash_attention;
 
   auto parse_buffer_cache_mode = [&config_options](const std::string& config_entry_str,
                                                    webgpu::BufferCacheMode default_value) -> webgpu::BufferCacheMode {
