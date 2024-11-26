@@ -68,7 +68,7 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
   int output_count = op_kernel_context->OutputCount();
   for (auto i = 0; i < output_count; i++) {
     const OrtValue* p_output = op_kernel_context->GetOutputMLValue(i);
-    if (p_output != nullptr && p_output->IsTensor()) {
+    if (p_output != nullptr && p_output->IsTensor() && p_output->IsAllocated()) {
       const auto& tensor = p_output->Get<Tensor>();
       size_t tensor_size = tensor.SizeInBytes();
 #if defined(TRACE_EXECUTION)
@@ -104,7 +104,7 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
   const int input_count = op_kernel_context->InputCount();
   for (auto i = 0; i < input_count; i++) {
     const OrtValue* p_input = op_kernel_context->GetInputMLValue(i);
-    if (p_input != nullptr && p_input->IsTensor()) {
+    if (p_input != nullptr && p_input->IsTensor() && p_input->IsAllocated()) {
       const OpKernelInfo& op_kernel_info = p_op_kernel->Info();
       const Tensor* p_tensor = nullptr;
       bool is_param = op_kernel_info.TryGetConstantInput(i, &p_tensor);

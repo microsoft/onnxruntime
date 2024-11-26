@@ -818,6 +818,47 @@ TEST(InferenceSessionTests, CheckRunProfilerStartTime) {
   ASSERT_TRUE(before_start_time <= profiling_start_time && profiling_start_time <= after_start_time);
 }
 
+TEST(InferenceSessionTests, CheckRunProfilerWithOptionalValues) {
+  // Test whether the profiler can work on model with optional values
+  SessionOptions so;
+
+  so.session_logid = "CheckRunProfiler";
+  so.enable_profiling = true;
+  so.profile_file_prefix = ORT_TSTR("onnxprofile_profile_test");
+
+  InferenceSession session_object(so, GetEnvironment());
+  ASSERT_STATUS_OK(session_object.Load(ORT_TSTR("testdata/relu_with_optional.onnx")));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  RunOptions run_options;
+  run_options.run_tag = "RunTag";
+
+  // prepare inputs
+  std::vector<int64_t> dims_x = {1};
+  std::vector<int> values_x = {-4};
+  OrtValue ml_value;
+  CreateMLValue<int>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x, &ml_value);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("input", ml_value));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("output");
+  std::vector<OrtValue> fetches;
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {1};
+  std::vector<int> expected_values_y = {0};
+
+  // Now run
+  common::Status st = session_object.Run(run_options, feeds, output_names, &fetches);
+  if (!st.IsOK()) {
+    std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
+  }
+  ASSERT_TRUE(st.IsOK());
+  VerifyOutputs<int>(fetches.at(0).Get<Tensor>(), expected_dims_y, expected_values_y);
+}
+
 TEST(InferenceSessionTests, MultipleSessionsNoTimeout) {
   SessionOptions session_options;
 
