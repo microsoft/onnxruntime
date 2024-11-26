@@ -37,9 +37,9 @@ These instructions assume you are in the `onnxruntime-genai` folder.
 These instruction use `win-x64`. Replace this if you are using a different architecture.
 
 ```bash
-curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.20.0/onnxruntime-win-x64-1.20.0.zip -o onnxruntime-win-x64-1.20.0.zip
-tar xvf onnxruntime-win-x64-1.20.0.zip
-move onnxruntime-win-x64-1.20.0 ort 
+curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-win-x64-1.20.1.zip -o onnxruntime-win-x64-1.20.1.zip
+tar xvf onnxruntime-win-x64-1.20.1.zip
+move onnxruntime-win-x64-1.20.1 ort 
 ```
 
 #### Linux and Mac
@@ -47,9 +47,9 @@ move onnxruntime-win-x64-1.20.0 ort
 These instruction use `linux-x64-gpu`. Replace this if you are using a different architecture.
 
 ```bash
-curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.20.0/onnxruntime-linux-x64-gpu-1.20.0.tgz -o onnxruntime-linux-x64-gpu-1.20.0.tgz
-tar xvzf onnxruntime-linux-x64-gpu-1.20.0.tgz
-mv onnxruntime-linux-x64-gpu-1.20.0 ort 
+curl -L https://github.com/microsoft/onnxruntime/releases/download/v1.20.1/onnxruntime-linux-x64-gpu-1.20.1.tgz -o onnxruntime-linux-x64-gpu-1.20.1.tgz
+tar xvzf onnxruntime-linux-x64-gpu-1.20.1.tgz
+mv onnxruntime-linux-x64-gpu-1.20.1 ort 
 ```
 
 #### Android
@@ -61,9 +61,9 @@ mkdir ort
 ```
 
 ```bash
-curl -L https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.20.0/onnxruntime-android-1.20.0.aar -o ort/onnxruntime-android-1.20.0.aar
+curl -L https://repo1.maven.org/maven2/com/microsoft/onnxruntime/onnxruntime-android/1.20.1/onnxruntime-android-1.20.1.aar -o ort/onnxruntime-android-1.20.1.aar
 cd ort
-tar xvf onnxruntime-android-1.20.0.aar
+tar xvf onnxruntime-android-1.20.1.aar
 cd ..
 ```
 
