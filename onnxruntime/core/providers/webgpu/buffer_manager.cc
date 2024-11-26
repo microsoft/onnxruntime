@@ -114,7 +114,7 @@ constexpr std::initializer_list<std::pair<const size_t, size_t>> BUCKET_DEFAULT_
     {4194304, 20},
     {8388608, 10},
     {12582912, 10},
-    {16777216, 10},
+    {16777216, 20},
     {26214400, 15},
     {33554432, 22},
     {44236800, 2},
@@ -256,15 +256,14 @@ void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) {
   desc.usage = wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::MapWrite;
   desc.mappedAtCreation = true;
 
-  auto staging_buffer = context_.Device().CreateBuffer(&desc);
+  wgpu::Buffer staging_buffer = context_.Device().CreateBuffer(&desc);
   auto mapped_data = staging_buffer.GetMappedRange();
   memcpy(mapped_data, src, size);
   staging_buffer.Unmap();
 
   auto& command_encoder = context_.GetCommandEncoder();
-  context_.EndComputePass();
   command_encoder.CopyBufferToBuffer(staging_buffer, 0, dst, 0, buffer_size);
-  pending_staging_buffers_.push_back(staging_buffer);
+  context_.Flush();
 }
 
 void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) {
@@ -330,7 +329,6 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) {
 }
 
 void BufferManager::RefreshPendingBuffers() {
-  pending_staging_buffers_.clear();
   storage_cache_->OnRefresh();
   uniform_cache_->OnRefresh();
   query_resolve_cache_->OnRefresh();
