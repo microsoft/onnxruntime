@@ -396,7 +396,7 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
                                const Tensor* seqlen_k) {
   const bool feed_past_value = present_value != nullptr && past_value != nullptr && past_value->SizeInBytes() > 0 && !parameters.past_present_share_buffer_;
   const bool has_present_value = output_count > 1 && past_value != nullptr;
-  const int tile_size = 12;
+  constexpr int tile_size = 12;
 
   VxAttentionScoreProgram program{"VxAttentionScore", feed_past_value, has_present_value, tile_size, parameters.is_first_prompt_, parameters.n_reps, seqlen_k, parameters.past_present_share_buffer_, parameters.is_gqa_};
   program.AddInputs({{probs, ProgramTensorMetadataDependency::TypeAndRank},
