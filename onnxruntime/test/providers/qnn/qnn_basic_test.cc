@@ -1023,6 +1023,27 @@ TEST_F(QnnHTPBackendTests, EPRejectsDynamicShapesF32) {
                   &ep_graph_checker);
 }
 
+TEST_F(QnnHTPBackendTests, DumpQNNJsonGraph) {
+  Ort::SessionOptions so;
+  onnxruntime::ProviderOptions options;
+#if defined(_WIN32)
+  options["backend_path"] = "QnnHtp.dll";
+#else
+  options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  options["enable_qnn_graph_dump"] = "1";
+
+  so.AppendExecutionProvider("QNN", options);
+
+  Ort::Status status(OrtSessionOptionsAppendExecutionProvider_CPU(so, 1));
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
+
+  Ort::Session session(*ort_env, ort_model_path, so);
+  // TODO(adrianlizarraga): Check that output json files were generated.
+}
+
 // Test option for offloading quantization of graph inputs and dequantization of graph outputs to the CPU EP.
 TEST_F(QnnHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
   // Returns a function that checks that the Q/DQ ops at the graph IO boundary are offloaded to CPU

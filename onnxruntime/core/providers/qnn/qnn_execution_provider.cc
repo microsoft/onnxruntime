@@ -377,6 +377,29 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_weight_sharing: " << enable_htp_weight_sharing_;
   }
 
+  static const std::string ENABLE_QNN_GRAPH_DUMP = "enable_qnn_graph_dump";
+  auto enable_json_graphs_dump_pos = provider_options_map.find(ENABLE_QNN_GRAPH_DUMP);
+
+  if (enable_json_graphs_dump_pos != provider_options_map.end()) {
+    enable_qnn_graph_dump_ = enable_json_graphs_dump_pos->second == "1";
+    if (enable_qnn_graph_dump_) {
+      LOGS_DEFAULT(INFO) << "Enabled QNN JSON graph dump.";
+    }
+  }
+
+  static const std::string QNN_GRAPH_DUMP_DIR = "qnn_graph_dump_dir";
+  auto json_graphs_dir_pos = provider_options_map.find(QNN_GRAPH_DUMP_DIR);
+
+  if (json_graphs_dir_pos != provider_options_map.end()) {
+    qnn_graph_dump_dir_ = json_graphs_dir_pos->second;
+    if (enable_qnn_graph_dump_) {
+      LOGS_DEFAULT(INFO) << "JSON graphs directory: " << qnn_graph_dump_dir_;
+    } else {
+      LOGS_DEFAULT(WARNING) << "Provided a directory for dumping QNN JSON graphs, "
+                            << "but did not enable dumping of QNN JSON graphs.";
+    }
+  }
+
   model_settings_.offload_graph_io_quantization = ParseBoolOption("offload_graph_io_quantization", false,
                                                                   provider_options_map);
 
@@ -544,7 +567,7 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
     Status status = qnn_node_group->IsSupported(qnn_model_wrapper, logger);
     const bool supported = status.IsOK();
 
-    constexpr auto log_severity = logging::Severity::kVERBOSE;
+    constexpr auto log_severity = logging::Severity::kINFO;
     constexpr auto log_data_type = logging::DataType::SYSTEM;
     if (logger.OutputIsEnabled(log_severity, log_data_type)) {
       LogNodeSupport(logger, log_severity, log_data_type, ORT_WHERE, *qnn_node_group, status);
@@ -874,8 +897,16 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
                                                                                                 QNN_HTP_GRAPH_CUSTOM_CONFIG_INIT);
     InitQnnGraphConfigs(graph_configs_builder);
 
+    std::string json_graph_filepath;
+
+    if (enable_qnn_graph_dump_) {
+      namespace fs = std::filesystem;
+      fs::path path = fs::path(qnn_graph_dump_dir_) / fs::path(fused_node.Name() + ".json");
+      json_graph_filepath = path.string();
+    }
+
     ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, model_settings_, logger,
-                                                graph_configs_builder.GetQnnConfigs()));
+                                                graph_configs_builder.GetQnnConfigs(), json_graph_filepath));
     ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs(logger));
     ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput(logger));
 

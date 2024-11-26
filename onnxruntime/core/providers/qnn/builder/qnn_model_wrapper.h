@@ -9,7 +9,8 @@
 
 #include "core/common/status.h"
 #include "QnnInterface.h"
-#include "qnn_def.h"
+#include "core/providers/qnn/builder/qnn_def.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/node_unit.h"
 #include "core/graph/graph_viewer.h"
@@ -91,7 +92,7 @@ class QnnModelWrapper {
                      std::vector<std::string>&& param_tensor_names,
                      bool do_op_validation = false);
 
-  bool ComposeQnnGraph();
+  bool ComposeQnnGraph(bool build_debug_json_graph = false);
 
   Qnn_GraphHandle_t GetQnnGraph() { return graph_; }
 
@@ -125,6 +126,10 @@ class QnnModelWrapper {
 
   bool IsGraphInput(const std::string& tensor_name) const {
     return input_index_map_.find(tensor_name) != input_index_map_.end();
+  }
+
+  const nlohmann::json& GetQnnJSONGraph() {
+    return debug_json_graph_.Finalize();
   }
 
   Qnn_TensorType_t GetTensorType(const std::string& tensor_name) const {
@@ -270,6 +275,7 @@ class QnnModelWrapper {
   const Qnn_BackendHandle_t& backend_handle_;
   Qnn_GraphHandle_t graph_ = nullptr;
   std::string graph_name_ = "";
+  utils::QnnJSONGraph debug_json_graph_;
 
   std::vector<std::string> model_input_names_;
   std::vector<std::string> model_output_names_;
