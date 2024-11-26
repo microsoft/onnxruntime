@@ -225,6 +225,22 @@ fn computeDotProduct(q_idx: u32, k_idx: u32, sg_id: u32, sg_size : u32)
         qk_tile[q_idx][k_idx] += value;
     }
 }
+//
+// Crux of Flash Attention is here, that allows for partial softmax computation,
+// direct update of output and merging with previous results.
+// https://courses.cs.washington.edu/courses/cse599m/23sp/notes/flashattn.pdf
+// Where b is the block size of the tile. Xi is storing QKtranspose for the ith tile.
+// mi_local is the max of Xi. Note: _ in this notation means what follows is a
+// subscript. max_j=1:b (Xi[j]) is the max of Xi[j] for j=1 to b.
+//
+// for i = 1, #tiles do
+//  Xi = Q[k,:] Kt[:, (i-1) b : i b]
+//  mi_local= max_j=1:b (Xi[j])
+//  Mi = max(M_(i-1), mi_local)
+//  d'_i = d'_(i-1) * e^(M_(i-1)-M_i) + Σ_j=1:b e^(Xi[j]-Mi)
+//  o'_i = o'_(i-1) * d'_(i-1) * e^(M_(i-1)-M_i) / d'_i + Σ_j=1:b (e^(Xi[j]-Mi) / d'_i) V[j + (i - 1)b,:]
+// end
+//
 fn computeSoftMax(q_idx: u32, sg_id:u32, enabled:bool)
 {
     var x : precision_t = MIN_VALUE;
@@ -245,7 +261,7 @@ fn computeSoftMax(q_idx: u32, sg_id:u32, enabled:bool)
     if (d == 0)
     {
         // Avoid division by zero by setting d to a really small value.
-        // Removing this protection has had no negative effect on any
+        // Note: Removing this protection has had no negative effect on any
         // of the prompts tried so far. This is a safety net.
         d = precision_t(0.0000001h);
     }
