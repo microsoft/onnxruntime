@@ -28,6 +28,57 @@ pip install onnxruntime-genai
 import onnxruntime_genai
 ```
 
+## Config class
+
+If the config needs to be modified at runtime to change providers/set provider options, this object can be first created and used, then a model can be created from this config object.
+
+### Load a config
+
+```python
+onnxruntime_genai.Config(model_folder: str) -> onnxruntime_genai.Config
+```
+#### Parameters
+
+- `model_folder`: Location of model and configuration on disk
+
+#### Returns
+
+`onnxruntime_genai.Config`
+
+### Add a provider to the list
+
+If the provider isn't already in the list of providers, this adds it to the end of the list.
+
+```python
+onnxruntime_genai.Config.append_provider(provider_name: str)
+```
+
+#### Parameters
+
+- `provider_name`: (Required) The provider to set the option on (for example, "dml" or "cuda")
+
+### Clear list of providers
+
+Clears the list of providers. This is the only way to remove existing providers to enforce using only a specific provider.
+
+```python
+onnxruntime_genai.Config.clear_providers()
+```
+
+### Set an option for a provider
+
+Set an option for a provider. If the provider is not already in the list, it will be added at the end (automatically calls append_provider internally).
+
+```python
+onnxruntime_genai.Config.set_provider_option(provider_name: str, option_name: str, option_value: str)
+```
+
+#### Parameters
+
+- `provider_name`: (Required) The provider to set the option on (for example, "dml" or "cuda")
+- `option_name`: (Required) Name of the option
+- `option_value`: (Required) Value of the option
+
 ## Model class
 
 ### Load a model
@@ -45,6 +96,18 @@ onnxruntime_genai.Model(model_folder: str) -> onnxruntime_genai.Model
 #### Returns
 
 `onnxruntime_genai.Model`
+
+### Load a model from a config
+
+Loads the ONNX model(s) from a config object
+
+```python
+onnxruntime_genai.Model(config: config) -> onnxruntime_genai.Model
+```
+
+#### Parameters
+
+- `config`: Config object previously created through onnxruntime_genai.Config
 
 ### Generate method
 
