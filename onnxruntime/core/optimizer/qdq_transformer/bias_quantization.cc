@@ -129,16 +129,16 @@ Status BiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph_level
     // Bias DQ node produces output to Conv/Gemm node's input_2, with scale = input_scale_0 * input_scale_1, zp = 0.
     NodeArg& bias_dq_node_arg =
         graph.GetOrCreateNodeArg(graph.GenerateNodeArgName(node.Name() + "_bias_dq"), &bias_dq_type);
-    Node& dp_node = graph.AddNode(graph.GenerateNodeName(node.Name() + "_bias_dq"), QDQ::DQOpName, "Bias DQ node",
+    Node& dq_node = graph.AddNode(graph.GenerateNodeName(node.Name() + "_bias_dq"), QDQ::DQOpName, "Bias DQ node",
                                   {&bias_int32_node_arg, &scale_node_arg}, {&bias_dq_node_arg}, nullptr, node.Domain());
     if (!is_per_tensor_scale) {
-      dp_node.AddAttribute("axis", static_cast<int64_t>(0));
+      dq_node.AddAttribute("axis", static_cast<int64_t>(0));
     }
 
-    graph.AddEdge(cast_node.Index(), dp_node.Index(), 0, 0);
-    graph.AddEdge(mul_node.Index(), dp_node.Index(), 0, 1);
+    graph.AddEdge(cast_node.Index(), dq_node.Index(), 0, 0);
+    graph.AddEdge(mul_node.Index(), dq_node.Index(), 0, 1);
     node.MutableInputDefs()[2] = &bias_dq_node_arg;
-    graph.AddEdge(dp_node.Index(), node.Index(), 0, 2);
+    graph.AddEdge(dq_node.Index(), node.Index(), 0, 2);
 
     modified = true;
   }
