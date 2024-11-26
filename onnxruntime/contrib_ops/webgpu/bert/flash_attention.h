@@ -40,11 +40,11 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
                         int qkv_head_size,
                         int qkv_num_heads)
       : Program{kernel_name},
-      has_attention_bias_(has_attention_bias),
-      subgroup_size_(subgroup_size),
-      tile_size_(tile_size),
-      qkv_head_size_(qkv_head_size),
-      qkv_num_heads_(qkv_num_heads) {
+        has_attention_bias_(has_attention_bias),
+        subgroup_size_(subgroup_size),
+        tile_size_(tile_size),
+        qkv_head_size_(qkv_head_size),
+        qkv_num_heads_(qkv_num_heads) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -62,8 +62,8 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
 };
 
 Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
-                      Tensor* output, const Tensor* past_key, Tensor* present_key, const Tensor* past_value, Tensor* present_value,
-                      AttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context);
+                           Tensor* output, const Tensor* past_key, Tensor* present_key, const Tensor* past_value, Tensor* present_value,
+                           AttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context);
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime

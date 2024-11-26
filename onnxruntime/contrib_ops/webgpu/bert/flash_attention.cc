@@ -36,8 +36,8 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddOutput("present_value", ShaderUsage::UseUniform);
 
   shader.MainFunctionBody() << "let headIdx = workgroup_id.z;\n"
-                << "let kIdx = workgroup_id.x;\n"
-                << "let presentKeyOffset = headIdx * num_workgroups.x * uniforms.vectorized_head_size + (kIdx)*uniforms.vectorized_head_size;\n";
+                            << "let kIdx = workgroup_id.x;\n"
+                            << "let presentKeyOffset = headIdx * num_workgroups.x * uniforms.vectorized_head_size + (kIdx)*uniforms.vectorized_head_size;\n";
   if (has_past_) {
     shader.MainFunctionBody() << "if (kIdx < uniforms.past_sequence_length) {\n"
                               << "  let pastKeyOffset = headIdx * uniforms.past_sequence_length * uniforms.vectorized_head_size + (kIdx)*uniforms.vectorized_head_size;\n"
@@ -51,23 +51,23 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.MainFunctionBody() << "if (kIdx >= uniforms.past_sequence_length) {\n";
   }
   shader.MainFunctionBody() << "  let nkIdx = kIdx - uniforms.past_sequence_length;\n"
-                << "  // Assumes kv have BSNH layout. num_workgroups.z is the num_head as per the dispatch requirement.\n"
-                << "  let nOffset = nkIdx * uniforms.vectorized_head_size * num_workgroups.z + headIdx*uniforms.vectorized_head_size;\n"
-                << "  // Assumes kv have BNSH layout.\n"
-                << "  // let nOffset = headIdx * uniforms.kv_sequence_length * uniforms.vectorized_head_size + nkIdx * uniforms.vectorized_head_size;\n"
-                << "  for (var w: u32 = 0u; w < uniforms.vectorized_head_size; w ++) {\n"
-                << "    present_key[presentKeyOffset+w] = key[nOffset+w];\n"
-                << "    present_value[presentKeyOffset+w] = value[nOffset+w];\n"
-                << "  }\n"
-                << "}\n";
+                            << "  // Assumes kv have BSNH layout. num_workgroups.z is the num_head as per the dispatch requirement.\n"
+                            << "  let nOffset = nkIdx * uniforms.vectorized_head_size * num_workgroups.z + headIdx*uniforms.vectorized_head_size;\n"
+                            << "  // Assumes kv have BNSH layout.\n"
+                            << "  // let nOffset = headIdx * uniforms.kv_sequence_length * uniforms.vectorized_head_size + nkIdx * uniforms.vectorized_head_size;\n"
+                            << "  for (var w: u32 = 0u; w < uniforms.vectorized_head_size; w ++) {\n"
+                            << "    present_key[presentKeyOffset+w] = key[nOffset+w];\n"
+                            << "    present_value[presentKeyOffset+w] = value[nOffset+w];\n"
+                            << "  }\n"
+                            << "}\n";
 
-   return Status::OK();
+  return Status::OK();
 }
 
 Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, AttentionParameters& parameters,
-                             const Tensor* K, const Tensor* past_key, Tensor* present_key,
-                             const Tensor* V, const Tensor* past_value, Tensor* present_value,
-                             int past_sequence_length, int total_sequence_length) {
+                   const Tensor* K, const Tensor* past_key, Tensor* present_key,
+                   const Tensor* V, const Tensor* past_value, Tensor* present_value,
+                   int past_sequence_length, int total_sequence_length) {
   // CopyKVCache takes past key/value and current key/value and copies them to present key and value.
   // This makes it so that FlashAttention only needs to look at present key and value, and saves
   // number of input buffers in the shader, which we run out of (<=8) without this optimization.
@@ -92,7 +92,7 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, AttentionParame
       .CacheHint(std::to_string(components) + std::to_string(has_past))
       .AddUniformVariables({{static_cast<uint32_t>(past_sequence_length)},
                             {static_cast<uint32_t>(parameters.kv_sequence_length)},
-                            {static_cast<uint32_t>(parameters.head_size/ components)}});
+                            {static_cast<uint32_t>(parameters.head_size / components)}});
 
   return context.RunProgram(program);
 }
@@ -140,14 +140,14 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // "The SLM is a 128KB High Bandwidth Memory (HBM) accessible from the EUs in the subslice"
   // GPU afterwhich workgroups will be unscheduled to make space for memory.
   shader.AdditionalImplementation() << ""
-    << "var<workgroup> q_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 2 * 16 = 3KB.\n"
-    << "var<workgroup> k_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 2 * 16 = 3KB.\n"
-    << "var<workgroup> v_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 2 * 16 = 3KB.\n"
-    << "var<workgroup> o_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 2 * 16 = 3KB.\n"
-    << "var<workgroup> qk_tile : array<array<precision_t, TILE_SIZE>, TILE_SIZE>; // 16 * 2 * 16 = 512\n"
-    << "var<workgroup> max_tile : array<precision_t, TILE_SIZE>; // 2 * 16 = 32\n"
-    << "var<workgroup> denom_tile : array<precision_t, TILE_SIZE>; // 2 * 16 = 32\n"
-    << "var<workgroup> o_ratio : array<precision_t, TILE_SIZE>; // 2 * 16 = 32\n";
+                                    << "var<workgroup> q_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 2 * 16 = 3KB.\n"
+                                    << "var<workgroup> k_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 2 * 16 = 3KB.\n"
+                                    << "var<workgroup> v_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 2 * 16 = 3KB.\n"
+                                    << "var<workgroup> o_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 2 * 16 = 3KB.\n"
+                                    << "var<workgroup> qk_tile : array<array<precision_t, TILE_SIZE>, TILE_SIZE>; // 16 * 2 * 16 = 512\n"
+                                    << "var<workgroup> max_tile : array<precision_t, TILE_SIZE>; // 2 * 16 = 32\n"
+                                    << "var<workgroup> denom_tile : array<precision_t, TILE_SIZE>; // 2 * 16 = 32\n"
+                                    << "var<workgroup> o_ratio : array<precision_t, TILE_SIZE>; // 2 * 16 = 32\n";
 
   shader.AdditionalImplementation() << R"HELPER_FN(
 fn loadq(slot: u32, q_idx_global : u32, head_idx: u32, sg_id : u32, sg_size : u32)
@@ -296,11 +296,11 @@ fn computeO(q_idx: u32, sg_id:u32, enabled:bool)
 }
 )HELPER_FN";
 
-// Shader is designed to be dispatched as Dispatch(num_heads, new_sequence_length / TILE_SIZE, 1)
-// Each workgroup is responsible for a range of q values (TILE_SIZE) and visits all Ks for those q's.
-// Each workgroup has TILE_SIZE waves, with each wave having subgroup size number of lanes (threads).
-// Synchronization between lanes in a wave is free, with various subgroup* functions, and this shader
-// uses that. Synchronization beween waves requires calling workgroupBarrier.
+  // Shader is designed to be dispatched as Dispatch(num_heads, new_sequence_length / TILE_SIZE, 1)
+  // Each workgroup is responsible for a range of q values (TILE_SIZE) and visits all Ks for those q's.
+  // Each workgroup has TILE_SIZE waves, with each wave having subgroup size number of lanes (threads).
+  // Synchronization between lanes in a wave is free, with various subgroup* functions, and this shader
+  // uses that. Synchronization beween waves requires calling workgroupBarrier.
   shader.MainFunctionBody() << R"MAIN_FN(
 let head_idx = workgroup_id.x;
 // It is always the case that 0 <= wave_id < TILE_SIZE
@@ -369,8 +369,8 @@ if (q_idx_global_using_wave_valid)
 }
 
 Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
-                      Tensor* output, const Tensor* past_key, Tensor* present_key, const Tensor* past_value, Tensor* present_value,
-                      AttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
+                           Tensor* output, const Tensor* past_key, Tensor* present_key, const Tensor* past_value, Tensor* present_value,
+                           AttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
   ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, parameters.past_sequence_length, parameters.total_sequence_length));
 
   const uint32_t subgroup_size = context.MinSubgroupSize();
@@ -385,16 +385,16 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   const float alpha = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size))
                                                : parameters.scale;
   std::string cache_hint = std::to_string(has_attention_bias) +
-    std::to_string(subgroup_size) +
-    std::to_string(tile_size) +
-    std::to_string(parameters.head_size) +
-    std::to_string(parameters.num_heads);
+                           std::to_string(subgroup_size) +
+                           std::to_string(tile_size) +
+                           std::to_string(parameters.head_size) +
+                           std::to_string(parameters.num_heads);
   program.SetDispatchGroupSize(parameters.num_heads, (parameters.sequence_length + tile_size - 1) / tile_size, 1)
-    .SetWorkgroupSize(subgroup_size*subgroup_size)
-    .CacheHint(cache_hint)
-    .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length)},
-                          {static_cast<uint32_t>(parameters.total_sequence_length)},
-                          {alpha}});
+      .SetWorkgroupSize(subgroup_size * subgroup_size)
+      .CacheHint(cache_hint)
+      .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length)},
+                            {static_cast<uint32_t>(parameters.total_sequence_length)},
+                            {alpha}});
 
   return context.RunProgram(program);
 }
