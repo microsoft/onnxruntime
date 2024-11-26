@@ -197,6 +197,9 @@
       target_compile_definitions(${target} PRIVATE USE_CUDA_MINIMAL)
       target_link_libraries(${target} PRIVATE ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface CUDA::cudart)
     else()
+      if (UNIX)
+        target_compile_definitions(${target} PUBLIC NV_CUDNN_FRONTEND_USE_DYNAMIC_LOADING CUDNN_FRONTEND_SKIP_JSON_LIB)
+      endif()
       include(cudnn_frontend) # also defines CUDNN::*
       if (onnxruntime_USE_CUDA_NHWC_OPS)
         if(CUDNN_MAJOR_VERSION GREATER 8)
