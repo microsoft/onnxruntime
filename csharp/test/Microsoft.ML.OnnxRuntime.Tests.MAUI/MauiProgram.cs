@@ -19,14 +19,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests.MAUI;
 public class XunitTestRunnerWithAppium : ITestRunner
 {
     private readonly XunitTestRunner runner;
-    private readonly AppiumHelper appiumHelper;
 
     public XunitTestRunnerWithAppium(IVisualTestRunnerConfiguration options, 
                                      IResultChannelManager? resultChannelManager = null, 
                                      IDiagnosticsManager? diagnosticsManager = null)
     {
         runner = new XunitTestRunner(options, resultChannelManager, diagnosticsManager);
-        appiumHelper = new AppiumHelper();
     }
 
     public Task RunTestsAsync(IEnumerable<ITestAssemblyInfo> testAssemblies, 
@@ -41,38 +39,22 @@ public class XunitTestRunnerWithAppium : ITestRunner
         return RunTests(() => runner.RunTestsAsync(testCases, cancellationToken));
     }
 
-    private async Task StartAppiumServer()
-    {
-        await Task.Run(() => 
-        {
-            System.Console.WriteLine("Starting Appium Server...");
-            appiumHelper.Start();
-            System.Console.WriteLine("done.");
-        });
-    }
-
-    private async Task StopAppiumServer()
-    {
-        await Task.Run(() =>
-        {
-            System.Console.WriteLine("Stopping Appium Server...");
-            appiumHelper.Stop();
-            System.Console.WriteLine("done.");
-        });
-    }
-
     private async Task RunTests(Func<Task> runTests)
     {
         try
         {
-            await StartAppiumServer();
-            await runTests();
-            await StopAppiumServer();
+            using (var appiumHelper = new AppiumHelper())
+            {
+                appiumHelper.Start();
+                await runTests();
+                // this seems to close the app. not sure if there's a higher up place we could/should do that or not.
+                // the IResultChannel is still open, so we could potentially do it there. 
+                appiumHelper.Stop(); 
+            }
         }
         catch (Exception ex)
         {
             System.Console.WriteLine($"Error running tests: {ex.Message}");
-            appiumHelper.Stop(); // cleanup
         }
     }
 }
@@ -199,7 +181,14 @@ public static class MauiProgram
                 .AddInternalCaptureResultChannel()
                 .AddTestAssembly(typeof(MauiProgram).Assembly)
                 .AddXunitWithAppium()
-                // .EnableAutoStart()
+                // autostart and autoterminate.
+                // autostart seems to have flaws and doesn't consistently wait for the main window to be available,
+                // which causes errors with appium when it tries to find the window. 
+                // pass true for autoterminate. that may be a more graceful option than having the Appium driver kill
+                // things violently. raises the question that if we can start the test automatically, and stop the app
+                // automatically when they're done, what role is appium playing? possibly differs by platforma and 
+                // testing on Windows isn't the most relevant.
+                .EnableAutoStart(true)  
                 );
 
 #if DEBUG

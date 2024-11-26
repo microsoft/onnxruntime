@@ -31,12 +31,14 @@ internal partial class AppiumHelper : IDisposable
 
     public void Stop()
     {
-        driver?.Quit();
-        driver = null;
-
-        // If an Appium server was started locally above, make sure we clean it up here
         server?.Dispose();
         server = null;
+
+        // this seems to kills the app if everything works correctly but isn't as consistent if it fails due to a
+        // zombie process. trying using autoterminate in MauiProgram.cs for a more graceful way, but not sure if
+        // BrowserStack will require Quit to be explicitly called. 
+        // driver?.Quit(); 
+        // driver = null;
     }
 
     protected virtual void Dispose(bool disposing)
@@ -45,7 +47,7 @@ internal partial class AppiumHelper : IDisposable
         {
             if (disposing)
             {
-                server?.Dispose();
+                Stop();
             }
 
             disposedValue = true;
