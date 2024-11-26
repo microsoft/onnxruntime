@@ -356,7 +356,10 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
         ORT_TRY {
           ParseSessionConfigs(ToUTF8String(optarg), test_config.run_config.session_config_entries);
         }
-        ORT_CATCH(...) {
+        ORT_CATCH(const std::exception& ex) {
+          ORT_HANDLE_EXCEPTION([&]() {
+            fprintf(stderr, "Error parsing session configuration entries: %s\n", ex.what());
+          });
           return false;
         }
         break;
