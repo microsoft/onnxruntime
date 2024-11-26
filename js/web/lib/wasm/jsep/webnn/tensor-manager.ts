@@ -78,7 +78,7 @@ const calculateByteLength = (dataType: MLOperandDataType, shape: readonly number
   if (!size) {
     throw new Error('Unsupported data type.');
   }
-  return Math.ceil((shape.reduce((a, b) => a * b) * size) / 8);
+  return shape.length > 0 ? Math.ceil((shape.reduce((a, b) => a * b) * size) / 8) : 0;
 };
 
 /**
