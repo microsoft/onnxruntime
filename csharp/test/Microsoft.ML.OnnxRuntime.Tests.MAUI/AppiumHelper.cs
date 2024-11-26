@@ -7,10 +7,11 @@ namespace Microsoft.ML.OnnxRuntime.Tests.MAUI;
 /// <summary>
 /// Helper to start/stop Appium. The platform specific code provides the createFunc to create the AppiumDriver.
 /// </summary>
-internal partial class AppiumHelper
+internal partial class AppiumHelper : IDisposable
 {
     private AppiumLocalServer? server;
     private AppiumDriver? driver;
+    private bool disposedValue;
 
     public const string DefaultHostAddress = "127.0.0.1";
     public const int DefaultHostPort = 4723;
@@ -24,7 +25,7 @@ internal partial class AppiumHelper
             throw new InvalidOperationException("AppiumDriver is already started.");
         }
 
-        server = new AppiumLocalServer();
+        server = new AppiumLocalServer(DefaultHostAddress, DefaultHostPort);
         driver = CreateDriver(); // this function is implemented in the platform specific code
     }
 
@@ -38,57 +39,72 @@ internal partial class AppiumHelper
         server = null;
     }
 
-    class AppiumLocalServer : IDisposable
+    protected virtual void Dispose(bool disposing)
     {
-        private AppiumLocalService? service;
-        private bool disposedValue;
-
-        internal AppiumLocalServer(string host = DefaultHostAddress, int port = DefaultHostPort)
+        if (!disposedValue)
         {
-            if (service is not null)
+            if (disposing)
             {
-                return;
+                server?.Dispose();
             }
 
-            // this is needed on windows
-            var options = new OptionCollector();
-            options.AddArguments(new KeyValuePair<string, string>("--base-path", "/wd/hub"));
-            options.AddArguments(new KeyValuePair<string, string>("--log-level", "debug"));
-
-            var builder = new AppiumServiceBuilder()
-                .WithIPAddress(host)
-                .WithArguments(options)
-                .WithLogFile(new FileInfo(@"D:\temp\appium_helper.log"))
-                .UsingPort(port);
-
-            // TODO: Only set this if unset and valid. 
-            Environment.SetEnvironmentVariable("NODE_BINARY_PATH", @"C:\Users\scmckay\AppData\Local\fnm_multishells\147872_1732254096669\node.exe");
-
-            // Start the server with the builder
-            service = builder.Build();
-            service.Start();
-            Console.WriteLine(service.ServiceUrl);
+            disposedValue = true;
         }
+    }
 
-        protected virtual void Dispose(bool disposing)
+    public void Dispose()
+    {
+        // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
+    }
+}
+
+class AppiumLocalServer : IDisposable
+{
+    private AppiumLocalService? service;
+
+    internal AppiumLocalServer(string host , int port)
+    {
+        if (service is not null)
         {
-            if (service != null)
-            {
-                service?.Dispose();
-                service = null;
-            }
+            return;
         }
 
-        ~AppiumLocalServer()
-        {
-            Dispose(disposing: false);
-        }
+        // this is needed on windows
+        var options = new OptionCollector();
+        options.AddArguments(new KeyValuePair<string, string>("--base-path", "/wd/hub"));
+        options.AddArguments(new KeyValuePair<string, string>("--log-level", "debug"));
 
-        public void Dispose()
-        {
-            // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
-            Dispose(disposing: true);
-            GC.SuppressFinalize(this);
-        }
+        var builder = new AppiumServiceBuilder()
+            .WithIPAddress(host)
+            .WithArguments(options)
+            .WithLogFile(new FileInfo(@"D:\temp\appium_helper.log"))
+            .UsingPort(port);
+
+        // TODO: User should make sure node.exe is in the path, or NODE_BINARY_PATH
+        // Environment.SetEnvironmentVariable("NODE_BINARY_PATH", @"C:\path\to\node.exe");
+
+        // Start the server with the builder
+        service = builder.Build();
+        service.Start();
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        service?.Dispose();
+        service = null;
+    }
+
+    ~AppiumLocalServer()
+    {
+        Dispose(disposing: false);
+    }
+
+    public void Dispose()
+    {
+        // Do not change this code. Put cleanup code in 'Dispose(bool disposing)' method
+        Dispose(disposing: true);
+        GC.SuppressFinalize(this);
     }
 }
