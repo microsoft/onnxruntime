@@ -48,6 +48,11 @@ parameters:
   type: string
   default: ''
 
+- name: QnnSDKVersion
+  displayName: QNN SDK Version
+  type: string
+  default: '2.28.0.241029'
+
 jobs:
 - job: Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}
   timeoutInMinutes: 120
@@ -85,6 +90,8 @@ jobs:
 
   - ${{ if contains(parameters.packageName, 'qnn') }}:
     - template: jobs/download_linux_qnn_sdk.yml
+      parameters:
+        QnnSDKVersion: '${{parameters.QnnSDKVersion}}'
 
   - task: CmdLine@2
     displayName: Build Android AAR Packages
