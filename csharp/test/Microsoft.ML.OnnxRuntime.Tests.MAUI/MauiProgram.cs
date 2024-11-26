@@ -19,12 +19,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests.MAUI;
 public class XunitTestRunnerWithAppium : ITestRunner
 {
     private readonly XunitTestRunner runner;
+    private readonly AppiumHelper appiumHelper;
 
     public XunitTestRunnerWithAppium(IVisualTestRunnerConfiguration options, 
                                      IResultChannelManager? resultChannelManager = null, 
                                      IDiagnosticsManager? diagnosticsManager = null)
     {
         runner = new XunitTestRunner(options, resultChannelManager, diagnosticsManager);
+        appiumHelper = new AppiumHelper();
     }
 
     public Task RunTestsAsync(IEnumerable<ITestAssemblyInfo> testAssemblies, 
@@ -39,27 +41,27 @@ public class XunitTestRunnerWithAppium : ITestRunner
         return RunTests(() => runner.RunTestsAsync(testCases, cancellationToken));
     }
 
-    private static async Task StartAppiumServer()
+    private async Task StartAppiumServer()
     {
         await Task.Run(() => 
         {
             System.Console.WriteLine("Starting Appium Server...");
-            AppiumHelper.Start();
+            appiumHelper.Start();
             System.Console.WriteLine("done.");
         });
     }
 
-    private static async Task StopAppiumServer()
+    private async Task StopAppiumServer()
     {
         await Task.Run(() =>
         {
             System.Console.WriteLine("Stopping Appium Server...");
-            AppiumHelper.Stop();
+            appiumHelper.Stop();
             System.Console.WriteLine("done.");
         });
     }
 
-    private static async Task RunTests(Func<Task> runTests)
+    private async Task RunTests(Func<Task> runTests)
     {
         try
         {
@@ -70,6 +72,7 @@ public class XunitTestRunnerWithAppium : ITestRunner
         catch (Exception ex)
         {
             System.Console.WriteLine($"Error running tests: {ex.Message}");
+            appiumHelper.Stop(); // cleanup
         }
     }
 }
@@ -196,7 +199,7 @@ public static class MauiProgram
                 .AddInternalCaptureResultChannel()
                 .AddTestAssembly(typeof(MauiProgram).Assembly)
                 .AddXunitWithAppium()
-                .EnableAutoStart()
+                // .EnableAutoStart()
                 );
 
 #if DEBUG

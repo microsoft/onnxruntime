@@ -7,7 +7,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests.MAUI;
 /// <summary>
 /// Extension of shared class to provide platform specific CreateDriver method
 /// </summary>
-internal static partial class AppiumHelper
+internal partial class AppiumHelper
 {
     internal static AppiumDriver CreateDriver() {
         var androidOptions = new AppiumOptions
