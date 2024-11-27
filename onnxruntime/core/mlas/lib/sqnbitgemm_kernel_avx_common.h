@@ -145,6 +145,40 @@ GetContinueLayoutOffsetBlkInSubBlk(size_t N, const size_t n, const size_t BlockC
 }
 
 static void
+pack_4b_4blk_blklen32_avx512(const std::byte* QuantBData, std::byte* PackedQuantBData)
+{
+    // dst: |0~3/16~19|32~35/48~51|64~67/80~83|96~99/112~115|     16 bytes
+    //      |4~7/20~23|36~39/52~55|68~71/84~87|100~103/116~119|   16 bytes
+    //      |8~11/24~27|40~43/56~59|72~75/88~91|104~107/120~123|  16 bytes
+    //      |12~15/28~31|44~47/60~63|76~79/92~95|108~111/124~127| 16 bytes
+    // where |0~3/16~19| means |0 16|1 17|2 18|3 19| so that it is unpacked
+    // by load_4blk_4b_packed_blklen32 to:
+    // reg512_0: 0 1 2 3 32 33,,, and reg512_1: 16 17 18 19 48 49,,,
+    // 64 bytes (512bits) total of 128 4bit weights, unpack to 2 512 registers, each as:
+    // 0000111122223333 0000111122223333 0000111122223333 0000111122223333 (64 unsigned int8)
+    //
+    for (int g0 = 0; g0 < 4; g0++) {
+        for (int g1 = 0; g1 < 4; g1++) {
+            int src_byte_idx_lo = (g0 * 4 + g1 * 32) / 2;
+            int src_byte_idx_hi = (g0 * 4 + g1 * 32 + 16) / 2;
+            int dst_byte_idx = g0 * 16 + g1 * 4;
+            const std::byte* src_lo = &QuantBData[src_byte_idx_lo];
+            const std::byte* src_hi = &QuantBData[src_byte_idx_hi];
+
+            std::byte* dst = &PackedQuantBData[dst_byte_idx];
+            for (int w = 0; w < 2; w++) {
+                *dst = (*src_lo & std::byte{0x0F}) | ((*src_hi & std::byte{0x0F}) << 4);
+                dst++;
+                *dst = ((*src_lo & std::byte{0xF0}) >> 4) | (*src_hi & std::byte{0xF0});
+                dst++;
+                src_lo++;
+                src_hi++;
+            }
+        }
+    }
+}
+
+static void
 PackQuantB(
   const std::byte* QuantBDataBegin,
   std::byte* PackedQuantBDataBegin,
@@ -192,28 +226,6 @@ PackQuantB(
 
             size_t PackBytePairCount = SubBlkBytePairCount;
             size_t PackDataSize = SubBlkDataSize;
-
-            auto pack_4blk_blklen32_512 = [](
-              const std::byte* QuantBData, std::byte* PackedQuantBData,
-              size_t pack_byte_pair_count, size_t pack_data_size) {
-            for (size_t byte_pair_idx = 0; byte_pair_idx < pack_byte_pair_count; ++byte_pair_idx) {
-                // dst: |0~3/16~19|32~35/48~51|64~67/80~83|96~99/112~115|     16 bytes
-                //      |4~7/20~23|36~39/52~55|68~71/84~87|100~103/116~119|   16 bytes
-                //      |8~11/24~27|40~43/56~59|72~75/88~91|104~107/120~123|  16 bytes
-                //      |12~15/28~31|44~47/60~63|76~79/92~95|108~111/124~127| 16 bytes
-                // 64 bytes (512bits) total of 128 4bit weights, unpack to 2 512 registers, each as:
-                // 0000111122223333 0000111122223333 0000111122223333 0000111122223333 (64 unsigned int8)
-                //
-                _mm512_permutexvar_epi
-                const std::byte src0 = QuantBData[byte_pair_idx];
-                const std::byte src1 = QuantBData[byte_pair_idx + pack_data_size / 2];
-
-                std::byte& dst0 = PackedQuantBData[2 * byte_pair_idx];
-                std::byte& dst1 = PackedQuantBData[2 * byte_pair_idx + 1];
-
-                dst0 = (src0 & std::byte{0x0F}) | ((src1 & std::byte{0x0F}) << 4);
-                dst1 = (src0 >> 4) | ((src1 >> 4) << 4);
-            } };
 
             auto pack_subblk = [](
               const std::byte* QuantBData, std::byte* PackedQuantBData,
@@ -269,7 +281,13 @@ PackQuantB(
                     const size_t k_blk = k_subblk * blks_per_sub;
                     const size_t dst_data_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk, blks_per_sub);
                     std::byte* PackedQuantBData = PackedQuantBDataBegin + dst_data_offset * BlkLen / 2;
-                    pack_subblk(QuantBData, PackedQuantBData, PackBytePairCount, PackDataSize);
+                    if (BlkLen == 32 && SubBlkLen == 128)
+                    {
+                        // this is avx512
+                        pack_4b_4blk_blklen32_avx512(QuantBData, PackedQuantBData);
+                    } else {
+                        pack_subblk(QuantBData, PackedQuantBData, PackBytePairCount, PackDataSize);
+                    }
                 }
             }
         }
