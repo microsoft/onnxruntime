@@ -193,7 +193,7 @@ static Status BindQnnTensorMemoryToOrtValue(const logging::Logger& logger,
                                             void* ort_value_data, uint32_t ort_value_data_size,
                                             Qnn_Tensor_t& qnn_tensor) {
   // either set qnn_tensor memHandle or clientBuf
-  const bool uses_shared_memory = ort_value_memory_info == RpcMemAllocator::MemoryInfo();
+  const bool uses_shared_memory = ort_value_memory_info == HtpSharedMemoryAllocator::MemoryInfo();
 
   if (!uses_shared_memory) {
     LOGS(logger, VERBOSE) << "Setting Qnn_Tensor_t clientBuf to ORT tensor memory.";

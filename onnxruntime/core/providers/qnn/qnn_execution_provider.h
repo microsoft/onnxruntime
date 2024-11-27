@@ -79,7 +79,7 @@ class QNNExecutionProvider : public IExecutionProvider {
 
  private:
   qnn::HtpGraphFinalizationOptimizationMode htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
-  // This is potentially shared with RpcMemAllocator which may be returned by CreatePreferredAllocators().
+  // This is potentially shared with HtpSharedMemoryAllocator which may be returned by CreatePreferredAllocators().
   std::shared_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
   std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models_;
   bool context_cache_enabled_ = false;
@@ -102,7 +102,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   qnn::ModelSettings model_settings_ = {};
 
   // Whether this is set depends on a session option enabling it and if the RPCMEM dynamic library is available.
-  // This is potentially shared with RpcMemAllocator which may be returned by CreatePreferredAllocators().
+  // This is potentially shared with HtpSharedMemoryAllocator which may be returned by CreatePreferredAllocators().
   std::shared_ptr<qnn::RpcMemLibrary> rpcmem_library_ = nullptr;
 
   class PerThreadContext final {

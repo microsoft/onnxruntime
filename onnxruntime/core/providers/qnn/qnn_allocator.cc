@@ -78,14 +78,14 @@ RpcMemUniquePtr WrapSharedMemoryWithUniquePtr(void* shared_memory_raw, const Rpc
 
 }  // namespace
 
-OrtMemoryInfo RpcMemAllocator::MemoryInfo() {
+OrtMemoryInfo HtpSharedMemoryAllocator::MemoryInfo() {
   return OrtMemoryInfo{QNN_HTP_SHARED, OrtAllocatorType::OrtDeviceAllocator,
                        OrtDevice{OrtDevice::CPU, OrtDevice::MemType::QNN_HTP_SHARED, /* device_id */ 0},
                        /* id */ 0, OrtMemTypeDefault};
 }
 
-RpcMemAllocator::RpcMemAllocator(std::shared_ptr<RpcMemLibrary> rpcmem_lib,
-                                 std::shared_ptr<QnnBackendManager> qnn_backend_manager)
+HtpSharedMemoryAllocator::HtpSharedMemoryAllocator(std::shared_ptr<RpcMemLibrary> rpcmem_lib,
+                                                   std::shared_ptr<QnnBackendManager> qnn_backend_manager)
     : IAllocator{MemoryInfo()},
       rpcmem_lib_{std::move(rpcmem_lib)},
       qnn_backend_manager_{std::move(qnn_backend_manager)} {
@@ -93,13 +93,13 @@ RpcMemAllocator::RpcMemAllocator(std::shared_ptr<RpcMemLibrary> rpcmem_lib,
   ORT_ENFORCE(qnn_backend_manager_ != nullptr);
 }
 
-void* RpcMemAllocator::Alloc(size_t /* size */) {
+void* HtpSharedMemoryAllocator::Alloc(size_t /* size */) {
   LOGS_DEFAULT(ERROR) << "hey this ain't right";
   std::exit(1);
-  ORT_THROW("RpcMemAllocator::Alloc() is not implemented. Use RpcMemAllocator::TensorAlloc() instead.");
+  ORT_THROW("HtpSharedMemoryAllocator::Alloc() is not implemented. Use HtpSharedMemoryAllocator::TensorAlloc() instead.");
 }
 
-void* RpcMemAllocator::TensorAlloc(MLDataType element_data_type, const TensorShape& shape) {
+void* HtpSharedMemoryAllocator::TensorAlloc(MLDataType element_data_type, const TensorShape& shape) {
   const auto size_in_bytes = Tensor::CalculateTensorStorageSize(element_data_type, shape);
 
   if (size_in_bytes == 0) {
@@ -134,7 +134,7 @@ void* RpcMemAllocator::TensorAlloc(MLDataType element_data_type, const TensorSha
   return shared_memory.release();
 }
 
-void RpcMemAllocator::Free(void* p) {
+void HtpSharedMemoryAllocator::Free(void* p) {
   // take ownership of shared memory and free at end of scope
   auto shared_memory = WrapSharedMemoryWithUniquePtr(p, rpcmem_lib_->Api());
 

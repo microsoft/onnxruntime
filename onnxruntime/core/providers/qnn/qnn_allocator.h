@@ -15,13 +15,13 @@ namespace onnxruntime::qnn {
 class QnnBackendManager;
 class RpcMemLibrary;
 
-class RpcMemAllocator : public IAllocator {
+class HtpSharedMemoryAllocator : public IAllocator {
  public:
   // Gets the single OrtMemoryInfo value that is associated with this allocator type.
   static OrtMemoryInfo MemoryInfo();
 
-  RpcMemAllocator(std::shared_ptr<RpcMemLibrary> rpcmem_lib,
-                  std::shared_ptr<QnnBackendManager> qnn_backend_manager);
+  HtpSharedMemoryAllocator(std::shared_ptr<RpcMemLibrary> rpcmem_lib,
+                           std::shared_ptr<QnnBackendManager> qnn_backend_manager);
 
   void* Alloc(size_t size) override;
   void* TensorAlloc(MLDataType element_data_type, const TensorShape& shape) override;
