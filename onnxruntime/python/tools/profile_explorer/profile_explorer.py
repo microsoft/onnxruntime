@@ -89,6 +89,23 @@ def _shape_to_string(shape):
         res += f'{key}({"x".join(str(v) for v in value)})'
     return res
 
+def _webgpu_cleanup(data):
+    first_webgpu_entry = next((item for item in data if lambda item: item.get("cat") == 'Api'), None)
+    if first_webgpu_entry is None:
+        return data
+
+    node_name_and_op = first_webgpu_entry.get("name")
+    node_name = node_name_and_op.rsplit('_', 1)
+    cpu_compute_name = f"{node_name}_kernel_time"
+
+    first_cpu_entry = next((item for item in data if lambda item: item.get("name") == cpu_compute_name), None)
+    if first_cpu_entry is None:
+        raise ValueError(f"Could not find corresponding CPU compute entry for {node_name_and_op}. Looked for {cpu_compute_name}")
+
+    timestamp = int(first_webgpu_entry.get("ts"))
+
+    # add offset to the
+
 
 def _json_to_df(data, filter_matcher):
     cpu_entries = []
@@ -102,6 +119,10 @@ def _json_to_df(data, filter_matcher):
         cat = item.get("cat")
         if cat is None:
             continue
+
+        if cat == 'Api':
+            cat = 'Kernel'
+
         dur = item.get("dur")
         if dur is None:
             continue
@@ -117,6 +138,7 @@ def _json_to_df(data, filter_matcher):
 
         if cat != "Kernel" and not name.endswith("kernel_time"):
             continue
+
         if name.endswith("kernel_time"):
             most_recent_kernel_launch_event = item
 
@@ -126,6 +148,8 @@ def _json_to_df(data, filter_matcher):
         grid_x = arg.get("grid_x", -1)
         grid_y = arg.get("grid_y", -1)
         grid_z = arg.get("grid_z", -1)
+
+        provider = item["args"]["provider"]
 
         if cat == "Kernel":
             gpu_entries.append(
@@ -145,14 +169,15 @@ def _json_to_df(data, filter_matcher):
             if gpu_entries[-1]["input_type_shape"] == "unknown" and "hipMem" not in gpu_entries[-1]["name"]:
                 num_missing_kernel_launch_events += 1
         else:
-            cpu_entries.append(
-                {
-                    "name": item["args"]["op_name"],
-                    "duration": dur,
-                    "input_type_shape": _shape_to_string(item["args"]["input_type_shape"]),
-                    "output_type_shape": _shape_to_string(item["args"]["output_type_shape"]),
-                }
-            )
+            if provider != "WebGpuExecutionProvider":
+                cpu_entries.append(
+                    {
+                        "name": item["args"]["op_name"],
+                        "duration": dur,
+                        "input_type_shape": _shape_to_string(item["args"]["input_type_shape"]),
+                        "output_type_shape": _shape_to_string(item["args"]["output_type_shape"]),
+                    }
+                )
 
     if num_missing_kernel_launch_events > 0:
         print(
