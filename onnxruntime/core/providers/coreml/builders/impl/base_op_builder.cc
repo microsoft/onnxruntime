@@ -56,20 +56,27 @@ bool BaseOpBuilder::IsOpSupported(const Node& node, const OpBuilderInputParams& 
   }
 
   if (!HasSupportedOpSet(node, logger)) {
+    LOGS(logger, VERBOSE) << "Operator [" << node.OpType() << "] does not support this opset";
     return false;
   }
 
   if (!HasSupportedInputs(node, input_params, logger)) {
+    LOGS(logger, VERBOSE) << "Operator [" << node.OpType() << "] has unsupported inputs";
     return false;
   }
 
   // We do not support external initializers for now
   const auto& initializers = input_params.graph_viewer.GetAllInitializedTensors();
   if (HasExternalInitializer(initializers, node, logger)) {
+    LOGS(logger, VERBOSE) << "Operator [" << node.OpType() << "] has external initializers";
     return false;
   }
 
-  return IsOpSupportedImpl(node, input_params, logger);
+  if (!IsOpSupportedImpl(node, input_params, logger)) {
+    LOGS(logger, VERBOSE) << "Operator [" << node.OpType() << "] is not supported by the impl";
+    return false;
+  }
+  return true;
 }
 
 bool BaseOpBuilder::HasSupportedInputs(const Node& node, const OpBuilderInputParams& input_params,
@@ -107,8 +114,8 @@ bool BaseOpBuilder::IsInputDtypeSupport(const Node& node, size_t idx,
   }
 
   // only MLProgram support FP16
-  if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-    return input_params.create_mlprogram;
+  if (input_params.create_mlprogram && input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    return true;
   }
 
   LOGS(logger, VERBOSE) << "[" << node.OpType() << "] Input type: [" << input_type << "] is not currently supported";
