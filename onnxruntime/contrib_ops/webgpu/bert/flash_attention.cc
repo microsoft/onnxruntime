@@ -134,7 +134,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                     << "const QKV_HEAD_VECTORIZED_SIZE: u32 = QKV_HEAD_SIZE / VECTOR_SIZE;\n"
                                     << "const NUM_HEADS: u32 = " << qkv_num_heads_ << ";\n"
                                     << "alias precision_t = q_element_t;\n"
-                                    << "const MIN_VALUE : precision_t = precision_t(-6504.0h);\n";
+                                    << "const MIN_VALUE : precision_t = precision_t(-65504.0h);\n";
 
   // Best to keep SHM usage per workgroup < 128KB, from intel docs for Intel Iris Xe GPU.
   // "The SLM is a 128KB High Bandwidth Memory (HBM) accessible from the EUs in the subslice"
