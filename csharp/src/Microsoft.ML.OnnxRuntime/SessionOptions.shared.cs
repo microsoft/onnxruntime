@@ -395,16 +395,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Append QNN, SNPE or XNNPACK execution provider
         /// </summary>
-        /// <param name="providerName">Execution provider to add. 'QNN', 'SNPE' or 'XNNPACK' are currently supported.</param>
+        /// <param name="providerName">Execution provider to add. 'QNN', 'SNPE' 'XNNPACK', 'CoreML and 'AZURE are currently supported.</param>
         /// <param name="providerOptions">Optional key/value pairs to specify execution provider options.</param>
         public void AppendExecutionProvider(string providerName, Dictionary<string, string> providerOptions = null)
         {
-            if (providerName != "SNPE" && providerName != "XNNPACK" && providerName != "QNN" && providerName != "AZURE")
-            {
-                throw new NotSupportedException(
-                    "Only QNN, SNPE, XNNPACK and AZURE execution providers can be enabled by this method.");
-            }
-
             if (providerOptions == null)
             {
                 providerOptions = new Dictionary<string, string>();

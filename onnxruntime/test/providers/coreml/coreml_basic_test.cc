@@ -4,7 +4,7 @@
 #include "core/common/logging/logging.h"
 #include "core/graph/graph.h"
 #include "core/graph/graph_viewer.h"
-#include "core/providers/coreml/coreml_execution_provider.h"
+#include "core/providers/coreml/coreml_provider_factory_creator.h"
 #include "core/providers/coreml/coreml_provider_factory.h"
 #include "core/session/inference_session.h"
 #include "test/common/tensor_op_test_utils.h"
@@ -30,11 +30,11 @@ using namespace ::onnxruntime::logging;
 namespace onnxruntime {
 namespace test {
 
-// We want to run UT on CPU only to get output value without losing precision to pass the verification
-static constexpr uint32_t s_coreml_flags = COREML_FLAG_USE_CPU_ONLY;
-
-static std::unique_ptr<IExecutionProvider> MakeCoreMLExecutionProvider(uint32_t flags = s_coreml_flags) {
-  return std::make_unique<CoreMLExecutionProvider>(flags);
+static std::unique_ptr<IExecutionProvider> MakeCoreMLExecutionProvider(
+    std::string ModelFormat = "NeuralNetwork", std::string ComputeUnits = "CPUOnly") {
+  std::unordered_map<std::string, std::string> provider_options = {{kCoremlProviderOption_MLComputeUnits, ComputeUnits},
+                                                                   {kCoremlProviderOption_ModelFormat, ModelFormat}};
+  return CoreMLProviderFactoryCreator::Create(provider_options)->CreateProvider();
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -128,7 +128,7 @@ TEST(CoreMLExecutionProviderTest, ArgMaxCastTest) {
                             feeds,
                             verification_params);
   RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
-                            MakeCoreMLExecutionProvider(COREML_FLAG_CREATE_MLPROGRAM),
+                            MakeCoreMLExecutionProvider("MLProgram"),
                             feeds,
                             verification_params);
 #else
@@ -170,7 +170,7 @@ TEST(CoreMLExecutionProviderTest, ArgMaxUnsupportedCastTest) {
                             verification_params);
 
   RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
-                            MakeCoreMLExecutionProvider(COREML_FLAG_CREATE_MLPROGRAM),
+                            MakeCoreMLExecutionProvider("MLProgram"),
                             feeds,
                             verification_params);
 #else

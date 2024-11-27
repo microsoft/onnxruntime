@@ -41,6 +41,15 @@ enum COREMLFlags {
   COREML_FLAG_LAST = COREML_FLAG_USE_CPU_AND_GPU,
 };
 
+// MLComputeUnits can be one of the following values:
+// 'MLComputeUnitsCPUAndNeuralEngine|MLComputeUnitsCPUAndGPU|MLComputeUnitsCPUOnly|MLComputeUnitsAll'
+// these values are intended to be used with Ort::SessionOptions::AppendExecutionProvider (C++ API)
+// and SessionOptionsAppendExecutionProvider (C API). For the old API, use COREMLFlags instead.
+static const char* const kCoremlProviderOption_MLComputeUnits = "MLComputeUnits";
+static const char* const kCoremlProviderOption_ModelFormat = "ModelFormat";
+static const char* const kCoremlProviderOption_RequireStaticInputShapes = "RequireStaticInputShapes";
+static const char* const kCoremlProviderOption_EnableOnSubgraphs = "EnableOnSubgraphs";
+
 #ifdef __cplusplus
 extern "C" {
 #endif

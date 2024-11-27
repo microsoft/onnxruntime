@@ -24,11 +24,12 @@ namespace coreml {
 
 OpBuilderInputParams MakeOpBuilderParams(const GraphViewer& graph_viewer,
                                          int32_t coreml_version,
-                                         uint32_t coreml_flags) {
+                                         bool only_allow_static_input_shapes,
+                                         bool create_mlprogram) {
   return OpBuilderInputParams{graph_viewer,
                               coreml_version,
-                              (coreml_flags & COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES) != 0,
-                              (coreml_flags & COREML_FLAG_CREATE_MLPROGRAM) != 0};
+                              only_allow_static_input_shapes,
+                              create_mlprogram};
 }
 
 const IOpBuilder* GetOpBuilder(const Node& node) {
@@ -133,13 +134,13 @@ bool CheckIsConstantInitializer(const NodeArg& node_arg, const GraphViewer& grap
   return true;
 }
 
-bool HasNeuralEngine(const logging::Logger& logger) {
+bool HasNeuralEngine() {
   bool has_neural_engine = false;
 
 #ifdef __APPLE__
   struct utsname system_info;
   uname(&system_info);
-  LOGS(logger, VERBOSE) << "Current Apple hardware info: " << system_info.machine;
+  LOGS_DEFAULT(VERBOSE) << "Current Apple hardware info: " << system_info.machine;
 
 #if TARGET_OS_IPHONE
   // utsname.machine has device identifier. For example, identifier for iPhone Xs is "iPhone11,2".
@@ -163,7 +164,7 @@ bool HasNeuralEngine(const logging::Logger& logger) {
 #else
   // In this case, we are running the EP on non-apple platform, which means we are running the model
   // conversion with CoreML EP enabled, for this we always assume the target system has Neural Engine
-  LOGS(logger, INFO) << "HasNeuralEngine running on non-Apple hardware. "
+  LOGS_DEFAULT(INFO) << "HasNeuralEngine running on non-Apple hardware. "
                         "Returning true to enable model conversion and local testing of CoreML EP implementation. "
                         "No CoreML model will be compiled or run.";
   has_neural_engine = true;

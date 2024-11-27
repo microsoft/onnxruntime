@@ -631,7 +631,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
     }
     if (enable_coreml) {
 #ifdef USE_COREML
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(sf, 0));
+      sf.AppendExecutionProvider("CoreML", {});
 #else
       fprintf(stderr, "CoreML is not supported in this build");
       return -1;
