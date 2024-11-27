@@ -109,8 +109,6 @@ class ModelBuilder {
 // For scalar constant, it is workaround for builer.constant(type, value) method since
 // it has not been implemented now.
 // https://webmachinelearning.github.io/webnn/#api-mlgraphbuilder-constant-type-value
-// BTW, the spec is discussing if the builder.constant(type, value) should be dropped at
-// https://github.com/webmachinelearning/webnn/issues/475. Fix me according to the spec decision.
 //
 // This function enforces a mapping between the data_type and the value types:
 // - TensorProto_DataType_INT4    <-> int8_t
