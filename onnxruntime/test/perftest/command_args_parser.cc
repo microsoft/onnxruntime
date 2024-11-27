@@ -24,6 +24,7 @@
 #include <core/optimizer/graph_transformer_level.h>
 
 #include "test_configuration.h"
+#include "strings_helper.h"
 
 namespace onnxruntime {
 namespace perftest {
@@ -129,8 +130,11 @@ namespace perftest {
       "\t    [NNAPI only] [NNAPI_FLAG_CPU_ONLY]: Using CPU only in NNAPI EP.\n"
       "\t    [Example] [For NNAPI EP] -e nnapi -i \"NNAPI_FLAG_USE_FP16 NNAPI_FLAG_USE_NCHW NNAPI_FLAG_CPU_DISABLED\"\n"
       "\n"
-      "\t    [CoreML only] [COREML_FLAG_CREATE_MLPROGRAM COREML_FLAG_USE_CPU_ONLY COREML_FLAG_USE_CPU_AND_GPU]: Create an ML Program model instead of Neural Network.\n"
-      "\t    [Example] [For CoreML EP] -e coreml -i \"COREML_FLAG_CREATE_MLPROGRAM\"\n"
+      "\t    [CoreML only] [ModelFormat]:[MLProgram, NeuralNetwork] Create an ML Program model or Neural Network. Default is NeuralNetwork.\n"
+      "\t    [CoreML only] [MLComputeUnits]:[CPUAndNeuralEngine CPUAndGPU ALL CPUOnly] Specify to limit the backend device used to run the model.\n"
+      "\t    [CoreML only] [AllowStaticInputShapes]:[0 1].\n"
+      "\t    [CoreML only] [EnableOnSubgraphs]:[0 1].\n"
+      "\t    [Example] [For CoreML EP] -e coreml -i \"ModelFormat|MLProgram MLComputeUnits|CPUAndGPU\"\n"
       "\n"
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
       "\t    [SNPE only] [priority]: execution priority, options: 'low', 'normal'. \n"
@@ -172,39 +176,6 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
   ORT_CATCH(...) {
     return false;
   }
-  return true;
-}
-
-static bool ParseSessionConfigs(const std::string& configs_string,
-                                std::unordered_map<std::string, std::string>& session_configs) {
-  std::istringstream ss(configs_string);
-  std::string token;
-
-  while (ss >> token) {
-    if (token == "") {
-      continue;
-    }
-
-    std::string_view token_sv(token);
-
-    auto pos = token_sv.find("|");
-    if (pos == std::string_view::npos || pos == 0 || pos == token_sv.length()) {
-      // Error: must use a '|' to separate the key and value for session configuration entries.
-      return false;
-    }
-
-    std::string key(token_sv.substr(0, pos));
-    std::string value(token_sv.substr(pos + 1));
-
-    auto it = session_configs.find(key);
-    if (it != session_configs.end()) {
-      // Error: specified duplicate session configuration entry: {key}
-      return false;
-    }
-
-    session_configs.insert(std::make_pair(std::move(key), std::move(value)));
-  }
-
   return true;
 }
 
@@ -382,7 +353,13 @@ static bool ParseSessionConfigs(const std::string& configs_string,
         test_config.run_config.intra_op_thread_affinities = ToUTF8String(optarg);
         break;
       case 'C': {
-        if (!ParseSessionConfigs(ToUTF8String(optarg), test_config.run_config.session_config_entries)) {
+        ORT_TRY {
+          ParseSessionConfigs(ToUTF8String(optarg), test_config.run_config.session_config_entries);
+        }
+        ORT_CATCH(const std::exception& ex) {
+          ORT_HANDLE_EXCEPTION([&]() {
+            fprintf(stderr, "Error parsing session configuration entries: %s\n", ex.what());
+          });
           return false;
         }
         break;
