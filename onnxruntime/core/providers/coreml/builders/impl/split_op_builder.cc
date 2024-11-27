@@ -162,7 +162,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
     }
 
     const auto split_shape = *input_defs[1]->Shape();
-    if (!input_params.create_mlprogram && split_shape.dim(0).dim_value() < 2) {
+    if (split_shape.dim(0).dim_value() < 2) {
       LOGS(logger, VERBOSE) << "CoreML Split must produce at least 2 outputs.";
       return false;
     }
