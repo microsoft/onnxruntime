@@ -65,7 +65,7 @@ There are several run time options available for the CoreML EP.
 To use the CoreML EP run time options, create an unsigned integer representing the options, and set each individual option by using the bitwise OR operator.
 
 ProviderOptions can be set by passing the unsigned integer to the `AppendExecutionProvider` method.
-```
+```c++
 std::unordered_map<std::string, std::string> provider_options = 
 {{"MLComputeUnits", std::to_string("MLProgram")}};
 ```
