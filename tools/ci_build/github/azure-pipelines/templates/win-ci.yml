@@ -138,7 +138,7 @@ stages:
       - ${{ if eq(parameters['buildJava'], 'true') }}:
         - task: JavaToolInstaller@0
           inputs:
-            versionSpec: "11"
+            versionSpec: "17"
             jdkArchitectureOption: ${{ parameters.buildArch }}
             jdkSourceOption: 'PreInstalled'
 
@@ -368,7 +368,7 @@ stages:
         - ${{ if eq(parameters['buildJava'], 'true') }}:
           - task: JavaToolInstaller@0
             inputs:
-              versionSpec: "11"
+              versionSpec: "17"
               jdkArchitectureOption: ${{ parameters.buildArch }}
               jdkSourceOption: 'PreInstalled'
 
@@ -413,6 +413,7 @@ stages:
               workingDirectory: '$(Build.BinariesDirectory)'
             env:
               NO_CUDA_TEST: '1'
+              GTEST_FILTER: '-CudaEp*:CudaNhwcTypedTest*' # Exclude CUDA EP tests under providers/cuda/
           - task: PythonScript@0
             displayName: 'test excludes DML'
             condition: and(succeeded(), eq('${{ parameters.runTests}}', true))

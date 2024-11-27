@@ -109,7 +109,7 @@ jobs:
   - ${{ if eq(parameters.buildArch, 'x64') }}:
       - task: JavaToolInstaller@0
         inputs:
-          versionSpec: '11'
+          versionSpec: '17'
           jdkArchitectureOption: ${{ parameters.buildArch }}
           jdkSourceOption: 'PreInstalled'
 
@@ -218,16 +218,32 @@ jobs:
       - powershell: |
          python3 -m pip uninstall -y onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml -qq
          Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-
         workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
         displayName: 'Install onnxruntime wheel'
 
   - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
-      - powershell: |
-         python $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022"  --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}
-
-        workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
-        displayName: 'Run tests'
+      - ${{ if and(contains(parameters.additionalBuildFlags, 'use_cuda'), contains(parameters.additionalBuildFlags, 'use_dml')) }}:
+        - powershell: |
+           python $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022" --enable_onnx_tests ${{ parameters.additionalBuildFlags }}
+          workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
+          displayName: 'Run tests excluding CUDA tests'
+          env:
+            NO_CUDA_TEST: '1'
+            GTEST_FILTER: '-CudaEp*:CudaNhwcTypedTest*:*cpu_*models*' # Exclude CUDA EP tests under providers/cuda/ and cpu models test
+            PATH: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }};$(PATH)' # For onnxruntime4j_test to find dependent dlls
+        - powershell: |
+            python $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022" --enable_onnx_tests ${{ parameters.additionalBuildFlags }}
+          workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
+          displayName: 'Run tests excluding DML tests'
+          env:
+            NO_DML_TEST: '1'
+            GTEST_FILTER: '-*cpu_*models*'
+            PATH: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }};$(PATH)'
+      - ${{ else }}:
+        - powershell: |
+           python $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022" --enable_onnx_tests ${{ parameters.additionalBuildFlags }}
+          workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
+          displayName: 'Run tests'
 
   - ${{ if eq(parameters.GenerateDocumentation, true) }}:
     - task: PythonScript@0

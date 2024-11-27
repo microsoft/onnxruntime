@@ -93,6 +93,7 @@ class TestGetQDQConfig(unittest.TestCase):
             activation_type=QuantType.QUInt16,
             weight_type=QuantType.QInt16,
             per_channel=True,
+            reduce_range=True,
             nodes_to_exclude=["Mul"],
             # Other options converted to extra_options:
             min_real_range=0.0001,
@@ -104,6 +105,7 @@ class TestGetQDQConfig(unittest.TestCase):
         self.assertEqual(qdq_config.activation_type, QuantType.QUInt16)
         self.assertEqual(qdq_config.weight_type, QuantType.QInt16)
         self.assertTrue(qdq_config.per_channel)
+        self.assertTrue(qdq_config.reduce_range)
         self.assertEqual(set(qdq_config.nodes_to_exclude), {"Mul"})
         self.assertEqual(set(qdq_config.op_types_to_quantize), {"Add"})
 

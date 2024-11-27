@@ -48,6 +48,11 @@ parameters:
   type: string
   default: '0'
 
+- name: QnnSDKVersion
+  displayName: QNN SDK Version
+  type: string
+  default: 2.28.0.241029
+
 stages:
 - template: linux-cpu-packaging-pipeline.yml
   parameters:
@@ -98,7 +103,14 @@ stages:
       enable_code_sign: ${{ parameters.DoEsrp }}
       packageName: 'onnxruntime-android-qnn'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
-  #TODO: Add test job for QNN Android AAR
+      QnnSDKVersion: ${{ parameters.QnnSDKVersion }}
+
+  - template: android-java-api-aar-test.yml
+    parameters:
+      artifactName: 'onnxruntime-android-qnn-aar'
+      job_name_suffix: 'QNN'
+      packageName: 'onnxruntime-android-qnn'
+      QnnSDKVersion: ${{ parameters.QnnSDKVersion }}
 
 - stage: iOS_Full_xcframework
   dependsOn: []

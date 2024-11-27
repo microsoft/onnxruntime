@@ -1,6 +1,6 @@
-FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_ubi8_gcc12:20241020.1
+FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64_ubi8_gcc12:20241120.3
 
-ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-11
+ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-17
 
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh

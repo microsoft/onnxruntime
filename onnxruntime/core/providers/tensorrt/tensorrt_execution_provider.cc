@@ -1725,6 +1725,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger(detailed_build_log_)));
   }
 
+  trt_version_ = getInferLibVersion();
+
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT version is " << trt_version_;
+
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT provider options: "
                         << "device_id: " << device_id_
                         << ", trt_max_partition_iterations: " << max_partition_iterations_
@@ -2462,10 +2466,30 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
 
-  std::vector<size_t> filtered_nodes_vector;
+  std::set<std::string> exclude_ops_set;
+
+  /*
+   * There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) in TRT 10.
+   * TRT EP automatically excludes DDS ops from running on TRT.
+   */
+  if (trt_version_ >= 100000 && trt_version_ < 110000) {
+    exclude_ops_set.insert("NonMaxSuppression");
+    exclude_ops_set.insert("NonZero");
+    exclude_ops_set.insert("RoiAlign");
+    LOGS_DEFAULT(VERBOSE) << "There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) in TRT 10. TRT EP automatically excludes DDS ops from running on TRT, if applicable";
+  }
+
+  SubGraphCollection_t parser_nodes_vector, supported_nodes_vector;
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);
+  bool new_subgraph = true;
+
+  /* Iterate all the nodes and exclude the node if:
+   *   1. It's a control flow op and its subgraph(s) is not fully TRT eligible.
+   *   2. It's a DDS op.
+   */
   for (const auto& index : nodes_vector) {
     const auto& node = graph.GetNode(node_index[index]);
+    bool supported_node = true;
 
     /* If current node is control flow op, we take different approach based on following four cases:
      *
@@ -2477,29 +2501,43 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
      * For cases 2, 3, 4, even though the control flow op is not assigned to TRT, any portion of its subgraphs that can run in TRT will be still fused and assigned to TRT EP.
      */
     if (control_flow_op_set_.find(node->OpType()) != control_flow_op_set_.end()) {
-      auto sub_graphs = node->GetSubgraphs();
-      if (sub_graphs.size() != 0) {
-        bool all_subgraphs_are_supported = true;
-        for (auto sub_graph : sub_graphs) {
-          // TRT EP should consider the empty subgraph is fully supported by TRT.
-          if (sub_graph->CreateGraphViewer()->NumberOfNodes() == 0) {
-            continue;
-          }
-          if (!AllNodesAssignedToSpecificEP(*(sub_graph->CreateGraphViewer()), kTensorrtExecutionProvider)) {
-            all_subgraphs_are_supported = false;
-            break;
+      auto supported_control_flow_op = [&](const Node* node) {
+        auto sub_graphs = node->GetSubgraphs();
+        if (sub_graphs.size() != 0) {
+          for (auto sub_graph : sub_graphs) {
+            // TRT EP should consider the empty subgraph is fully supported by TRT.
+            if (sub_graph->CreateGraphViewer()->NumberOfNodes() == 0) {
+              continue;
+            }
+            if (!AllNodesAssignedToSpecificEP(*(sub_graph->CreateGraphViewer()), kTensorrtExecutionProvider)) {
+              // if not all its subgraphs are supported, we need to exclude this control flow op
+              return false;
+            }
           }
         }
-        if (!all_subgraphs_are_supported) {
-          // if not all its subgraphs are supported, we need to exclude this control flow op
-          continue;
-        }
-      }
+        return true;
+      };
+      supported_node = supported_control_flow_op(node);
     }
-    filtered_nodes_vector.push_back(index);
+
+    // Exclude any ops, if applicable
+    if (exclude_ops_set.find(node->OpType()) != exclude_ops_set.end()) {
+      supported_node = false;
+    }
+
+    if (supported_node) {
+      if (new_subgraph) {
+        parser_nodes_vector.emplace_back();
+        // Mark all new graphs as "UnKnown" which will later be parsed by TRT parser
+        parser_nodes_vector.back().second = false;
+        new_subgraph = false;
+      }
+      parser_nodes_vector.back().first.emplace_back(index);
+    } else {
+      new_subgraph = true;
+    }
   }
 
-  SubGraphCollection_t supported_nodes_vector, parser_nodes_vector = {{filtered_nodes_vector, false}};
   bool early_termination = false;
   supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
   if (early_termination) {

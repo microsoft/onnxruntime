@@ -188,6 +188,9 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
   Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
                  std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
+  Status SetEpDynamicOptions(gsl::span<const char* const> /*keys*/,
+                             gsl::span<const char* const> /*values*/) override;
+
   const void* GetExecutionHandle() const noexcept override {
     return nullptr;
   }
@@ -196,6 +199,7 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
 #endif
  private:
   std::unique_ptr<openvino_ep::GlobalContext> global_context_;
+  std::shared_ptr<openvino_ep::BackendManager> backend_manager_;
   openvino_ep::EPCtxHandler ep_ctx_handle_{};
 };
 

@@ -548,14 +548,15 @@ class TestQDQPad(unittest.TestCase):
         opset: int = 21,
         float_type: onnx.TensorProto.DataType = onnx.TensorProto.FLOAT,
     ) -> onnx.ModelProto:
+        num_pads_start = 1
         input_0 = onnx.helper.make_tensor_value_info("input_0", float_type, (3, 2))
-        output_0 = onnx.helper.make_tensor_value_info("output_0", float_type, (3, 4))
+        output_0 = onnx.helper.make_tensor_value_info("output_0", float_type, (3, 2 + num_pads_start))
 
         initializers = []
         pad_input_names = ["input_0"]
         attrs = {"mode": mode}
 
-        pads_data = np.array([0, 2, 0, 0], dtype=np.int64)  # Pad two vals at beginning of axis 1.
+        pads_data = np.array([0, num_pads_start, 0, 0], dtype=np.int64)  # Pad one val at beginning of axis 1.
         if opset >= 11:
             initializers.append(onnx.numpy_helper.from_array(pads_data, "pads"))
             pad_input_names.append("pads")

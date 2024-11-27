@@ -82,7 +82,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   }
 
   {  // CumSum
-    CreateConcatOpBuilder("CumSum", op_registrations);
+    CreateCumSumOpBuilder("CumSum", op_registrations);
   }
 
   {  // Dropout
@@ -93,6 +93,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateQDQOpBuilder("DequantizeLinear", op_registrations);
     CreateQDQOpBuilder("QuantizeLinear", op_registrations);
     CreateDynamicQuantizeLinearOpBuilder("DynamicQuantizeLinear", op_registrations);
+  }
+
+  {  // Einsum
+    CreateEinsumOpBuilder("Einsum", op_registrations);
   }
 
   {  // Expand
@@ -135,6 +139,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateLogicalOpBuilder("Not", op_registrations);
     CreateLogicalOpBuilder("Or", op_registrations);
     CreateLogicalOpBuilder("Xor", op_registrations);
+  }
+
+  {  // LRN
+    CreateLRNOpBuilder("LRN", op_registrations);
   }
 
   {  // LSTM

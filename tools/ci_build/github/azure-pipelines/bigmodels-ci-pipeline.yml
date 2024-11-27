@@ -41,7 +41,7 @@ parameters:
 
 variables:
   - name: docker_base_image
-    value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241020.1
+    value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241120.3
   - name: linux_trt_version
     value: 10.3.0.26-1.cuda11.8
   - name: Repository
@@ -115,7 +115,7 @@ stages:
               set -ex; \
               env; \
               ccache -s; \
-              /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              /opt/python/cp310-cp310/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                 --build_dir /build --cmake_generator Ninja \
                 --config Release --update --build \
                 --skip_submodule_sync \
@@ -180,6 +180,17 @@ stages:
         TargetPath: '$(Build.BinariesDirectory)/Release'
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
+    - template: templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_2204_gpu_opencv
+        Context: tools/ci_build/github/linux/docker/
+        ScriptName: tools/ci_build/get_docker_image.py
+        DockerBuildArgs: "
+        --build-arg BUILD_UID=$( id -u )
+        "
+        Repository: onnxruntimeubuntupackagestest_cuda11
+        UseImageCacheContainerRegistry: false
+        UpdateDepsTxt: false
 
     - task: Cache@2
       inputs:
@@ -196,18 +207,15 @@ stages:
           -v $(Build.BinariesDirectory)/Release:/Release \
           -v $(STABLE_DIFFUSION_MODEL_CACHE):/model_cache:rw \
           -v $(GenerateImage_DIR):/images:rw \
-          nvcr.io/nvidia/pytorch:22.11-py3 \
+          onnxruntimeubuntupackagestest_cuda11 \
           bash -c ' \
             set -ex; \
-            pip uninstall -y $(pip list --format=freeze | grep opencv); \
-            rm -rf /usr/local/lib/python3.8/dist-packages/cv2/; \
-            apt-get update; \
-            DEBIAN_FRONTEND="noninteractive" apt-get install --yes python3-opencv; \
             python3 --version; \
             python3 -m pip install --upgrade pip; \
             python3 -m pip install /Release/*.whl; \
             pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion; \
             python3 -m pip install -r requirements/cuda11/requirements.txt; \
+            python3 -m pip install numpy==1.22.2; \
             python3 -m pip install --upgrade polygraphy onnx-graphsurgeon ; \
             echo Generate an image guided by a text prompt; \
             python3 demo_txt2img.py --framework-model-dir /model_cache --seed 1 --deterministic "astronaut riding a horse on mars" ; \
@@ -238,7 +246,7 @@ stages:
     - script: |
         docker run --rm --gpus all -v $PWD:/workspace \
           -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
-          nvcr.io/nvidia/pytorch:22.11-py3 \
+          onnxruntimeubuntupackagestest_cuda11 \
           bash -c '
             set -x; \
             python3 --version; \
@@ -265,7 +273,7 @@ stages:
     - script: |
         docker run --rm --gpus all -v $PWD:/workspace \
           -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
-          nvcr.io/nvidia/pytorch:22.11-py3 \
+          onnxruntimeubuntupackagestest_cuda11 \
           bash -c '
             set -ex; \
             python3 --version; \
@@ -273,6 +281,7 @@ stages:
             pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion/; \
             image2=$(find $(pwd) -name "astronaut_riding_a_h*.png") ; \
             pushd test; \
+            python3 -m pip install numpy==1.22.2; \
             python3 -m pip install -r requirements.txt; \
             echo check demo_txt2image.py generate image; \
             python3 -u check_image.py --image1 astronaut_riding_txt2image-DDIM-50.png --image2 $image2 --cache_dir /model_cache ; \
@@ -438,7 +447,7 @@ stages:
 
     - template: templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_2004_gpu_ffmpeg
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_2204_gpu_ffmpeg
         Context: tools/ci_build/github/linux/docker/
         ScriptName: tools/ci_build/get_docker_image.py
         DockerBuildArgs: '--build-arg BUILD_UID=$( id -u )'

@@ -23,13 +23,14 @@ namespace Dml
             ID3D12Device* d3d12Device,
             IDMLDevice* dmlDevice,
             ID3D12CommandQueue* queue,
-            bool cpuSyncSpinningEnabled);
+            bool cpuSyncSpinningEnabled,
+            bool keepOpen);
 
         void SetAllocator(std::weak_ptr<BucketizedBufferAllocator> allocator);
 
         // Waits for flushed work, discards unflushed work, and discards associated references to
-        // prevent circular references.
-        void WaitForSignalAndClearQueue();
+        // prevent circular references.  Must be the last call on the object before destruction.
+        void Close();
 
         // Queues a CopyBufferRegion (see ID3D12GraphicsCommandList::CopyBufferRegion) for execution. Transition
         // barriers are automatically inserted to transition the source and destination resources to COPY_SOURCE and
@@ -86,6 +87,7 @@ namespace Dml
 
         D3D12_COMMAND_LIST_TYPE GetCommandListTypeForQueue() const;
         bool CpuSyncSpinningEnabled() const { return m_cpuSyncSpinningEnabled; }
+        bool IsClosed() const { return m_closed; }
 
     private:
         Microsoft::WRL::ComPtr<ID3D12Device> m_d3dDevice;
@@ -101,6 +103,10 @@ namespace Dml
 
         bool m_closed = false;
         bool m_cpuSyncSpinningEnabled = false;
+
+        // The python API has a global state used for I/O binding where the execution context is shared between session,
+        // so we don't want to close the context when one of the sessions is destroyed
+        bool m_keepOpen = false;
     };
 
 } // namespace Dml

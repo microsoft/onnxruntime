@@ -400,7 +400,8 @@ declare const MLTensorUsage: {
 };
 
 interface MLTensorDescriptor extends MLOperandDescriptor {
-  usage: MLTensorUsageFlags;
+  /** @deprecated Use readable/writeable instead of usage */
+  usage: MLTensorUsageFlags | undefined;
   importableToWebGPU?: boolean;
   readable?: boolean;
   writable?: boolean;
