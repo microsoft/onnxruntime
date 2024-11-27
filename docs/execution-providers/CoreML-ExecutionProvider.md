@@ -44,23 +44,61 @@ The CoreML EP must be explicitly registered when creating the inference session.
 ```C++
 Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
 Ort::SessionOptions so;
+so.AppendExecutionProvider("CoreML", {{"MLComputeUnits", std::to_string("MLProgram")}});
+Ort::Session session(env, model_path, so);
+```
+
+> [!WARNING]  
+> Deprecated APIs `OrtSessionOptionsAppendExecutionProvider_CoreML` in ONNX Runtime 1.20.0. Please use `OrtSessionOptionsAppendExecutionProvider` instead.
+```C++
+Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
+Ort::SessionOptions so;
 uint32_t coreml_flags = 0;
 Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(so, coreml_flags));
 Ort::Session session(env, model_path, so);
 ```
 
-## Configuration Options
+## Configuration Options (NEW API)
 
 There are several run time options available for the CoreML EP.
 
 To use the CoreML EP run time options, create an unsigned integer representing the options, and set each individual option by using the bitwise OR operator.
 
+ProviderOptions can be set by passing the unsigned integer to the `AppendExecutionProvider` method.
+```
+std::unordered_map<std::string, std::string> provider_options = 
+{{"MLComputeUnits", std::to_string("MLProgram")}};
+```
+### Available Options (New API)
+`ModelFormat` can be one of the following values:
+- `MLProgram`: Create an MLProgram format model. Requires Core ML 5 or later (iOS 15+ or macOS 12+).
+- `NeuralNetwork`: Create a NeuralNetwork format model. Requires Core ML 3 or later (iOS 13+ or macOS 10.15+).
+
+`MLComputeUnits` can be one of the following values:
+- `CPUOnly`: Limit CoreML to running on CPU only.
+- `CPUAndNeuralEngine`: Enable CoreML EP for Apple devices with a compatible Apple Neural Engine (ANE).
+- `CPUAndGPU`: Enable CoreML EP for Apple devices with a compatible GPU.
+- `ALL`: Enable CoreML EP for all compatible Apple devices.
+
+`RequireStaticInputShapes` can be one of the following values:
+- `0`: Allow the CoreML EP to take nodes with inputs that have dynamic shapes.
+- `1`: Only allow the CoreML EP to take nodes with inputs that have static shapes.
+
+
+`EnableOnSubgraphs` can be one of the following values:
+- `0`: Disable CoreML EP to run on a subgraph in the body of a control flow operator.
+- `1`: Enable CoreML EP to run on a subgraph in the body of a control flow operator.
+
+
+## Configuration Options (Old API)
+> [!WARNING]
+> It's deprecated
 ```
 uint32_t coreml_flags = 0;
 coreml_flags |= COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE;
 ```
 
-### Available Options
+### Available Options (Deprecated API)
 
 ##### COREML_FLAG_USE_CPU_ONLY
 
@@ -147,28 +185,47 @@ Operators that are supported by the CoreML Execution Provider when a MLProgram m
 |Operator|Note|
 |--------|------|
 |ai.onnx:Add||
+|ai.onnx:Argmax||
 |ai.onnx:AveragePool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
+|ai.onnx:Cast||
 |ai.onnx:Clip||
 |ai.onnx:Concat||
 |ai.onnx:Conv|Only 1D/2D Conv is supported.<br/>Bias if provided must be constant.|
 |ai.onnx:ConvTranspose|Weight and bias must be constant.<br/>padding_type of SAME_UPPER/SAME_LOWER is not supported.<br/>kernel_shape must have default values.<br/>output_shape is not supported.<br/>output_padding must have default values.|
-|ai.onnx.DepthToSpace|If 'mode' is 'CRD' the input must have a fixed shape.|
+|ai.onnx:DepthToSpace|If 'mode' is 'CRD' the input must have a fixed shape.|
 |ai.onnx:Div||
+|ai.onnx:Erf||
 |ai.onnx:Gemm|Input B must be constant.|
+|ai.onnx:Gelu||
 |ai.onnx:GlobalAveragePool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
 |ai.onnx:GlobalMaxPool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
 |ai.onnx:GridSample|4D input.<br/>'mode' of 'linear' or 'zeros'.<br/>(mode==linear && padding_mode==reflection && align_corners==0) is not supported.|
-|ai.onnx.LeakyRelu||
+|ai.onnx:GroupNormalization||
+|ai.onnx:InstanceNormalization||
+|ai.onnx:LayerNormalization||
+|ai.onnx:LeakyRelu||
 |ai.onnx:MatMul|Only support for transA == 0, alpha == 1.0 and beta == 1.0 is currently implemented.|
 |ai.onnx:MaxPool|Only 2D Pool is supported currently. 3D and 5D support can be added if needed.|
+|ai.onnx:Max||
 |ai.onnx:Mul||
 |ai.onnx:Pow|Only supports cases when both inputs are fp32.|
+|ai.onnx:PRelu||
+|ai.onnx:Reciprocal|this ask for a `epislon` (default 1e-4) where onnx don't provide|
+|ai.onnx:ReduceSum||
+|ai.onnx:ReduceMean||
+|ai.onnx:ReduceMax||
 |ai.onnx:Relu||
 |ai.onnx:Reshape||
 |ai.onnx:Resize|See [resize_op_builder.cc](https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/providers/coreml/builders/impl/resize_op_builder.cc) implementation. There are too many permutations to describe the valid combinations.|
-|ai.onnx.Slice|starts/ends/axes/steps must be constant initializers.|
-|ai.onnx.Split|If provided, `splits` must be constant.|
+|ai.onnx:Round||
+|ai.onnx:Shape||
+|ai.onnx:Slice|starts/ends/axes/steps must be constant initializers.|
+|ai.onnx:Split|If provided, `splits` must be constant.|
 |ai.onnx:Sub||
 |ai.onnx:Sigmoid||
+|ai.onnx:Softmax||
+|ai.onnx:Sqrt||
+|ai.onnx:Squeeze||
 |ai.onnx:Tanh||
 |ai.onnx:Transpose||
+|ai.onnx:Unsqueeze||
