@@ -44,12 +44,14 @@ The CoreML EP must be explicitly registered when creating the inference session.
 ```C++
 Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
 Ort::SessionOptions so;
-so.AppendExecutionProvider("CoreML", {{"MLComputeUnits", std::to_string("MLProgram")}});
+std::unordered_map<std::string, std::string> provider_options;
+provider_options["ModelFormat"]  = std::to_string("MLProgram");
+so.AppendExecutionProvider("CoreML", provider_options);
 Ort::Session session(env, model_path, so);
 ```
 
-> [!WARNING]  
-> Deprecated APIs `OrtSessionOptionsAppendExecutionProvider_CoreML` in ONNX Runtime 1.20.0. Please use `OrtSessionOptionsAppendExecutionProvider` instead.
+
+**Deprecated** APIs `OrtSessionOptionsAppendExecutionProvider_CoreML` in ONNX Runtime 1.20.0. Please use `OrtSessionOptionsAppendExecutionProvider` instead.
 ```C++
 Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
 Ort::SessionOptions so;
@@ -66,8 +68,11 @@ To use the CoreML EP run time options, create an unsigned integer representing t
 
 ProviderOptions can be set by passing the unsigned integer to the `AppendExecutionProvider` method.
 ```c++
-std::unordered_map<std::string, std::string> provider_options = 
-{{"MLComputeUnits", std::to_string("MLProgram")}};
+std::unordered_map<std::string, std::string> provider_options;
+provider_options["ModelFormat"] = std::to_string("MLProgram");
+provider_options["MLComputeUnits"] = std::to_string("ALL");
+provider_options["RequireStaticInputShapes"] = std::to_string("0");
+provider_options["EnableOnSubgraphs"] = std::to_string("0");
 ```
 ### Available Options (New API)
 `ModelFormat` can be one of the following values:
@@ -91,8 +96,6 @@ std::unordered_map<std::string, std::string> provider_options =
 
 
 ## Configuration Options (Old API)
-> [!WARNING]
-> It's deprecated
 ```
 uint32_t coreml_flags = 0;
 coreml_flags |= COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE;
