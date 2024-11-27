@@ -1212,6 +1212,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         if (flags_str.find("COREML_FLAG_CREATE_MLPROGRAM") != std::string::npos) {
           coreml_flags |= COREMLFlags::COREML_FLAG_CREATE_MLPROGRAM;
         }
+      } else {
+        // read from provider_options
+        return onnxruntime::CoreMLProviderFactoryCreator::Create(options)->CreateProvider();
       }
     }
 
