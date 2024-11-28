@@ -6,6 +6,7 @@
 #include "core/providers/coreml/builders/helper.h"
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
 #include "core/providers/coreml/builders/impl/builder_utils.h"
+#include "core/providers/coreml/shape_utils.h"
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/shared/utils/utils.h"
@@ -55,6 +56,64 @@ bool CheckIfBothInputShapesMatch(const Node& node, const logging::Logger& logger
 }
 }  // namespace
 
+#if defined(COREML_ENABLE_MLPROGRAM)
+static std::vector<int64_t> InferOutputShape(const std::vector<int64_t>& a, const std::vector<int64_t>& b) {
+  std::vector<int64_t> output_shape;
+  int64_t i_a = 0, j_b = 0;
+  if (a.size() >= b.size()) {
+    output_shape = a;
+    j_b -= a.size() - b.size();
+  } else {
+    output_shape = b;
+    i_a -= b.size() - a.size();
+  }
+
+  for (size_t i = 0; i < output_shape.size(); i++, i_a++, j_b++) {
+    const int64_t a_dim = (i_a >= 0) ? a[i_a] : 1;
+    const int64_t b_dim = (j_b >= 0) ? b[j_b] : 1;
+    if (a_dim == -1 || b_dim == -1) {
+      output_shape[i] = -1;
+    } else {
+      output_shape[i] = std::max(a_dim, b_dim);
+    }
+  }
+  return output_shape;
+}
+
+// Add variadic inputs to the model builder
+// in onnx spec, some node allows variadic inputs, such as max(x, y, z, ...)
+// while in coreml, maximum op only allows two inputs maximum(x, y)
+// the conversion is doing the following:
+// max(x, y, z, ...) -> max(max(x, y), z, ...)
+static void AddVariadicInputs(std::unique_ptr<CoreML::Specification::MILSpec::Operation>* op,
+                              ModelBuilder& model_builder,
+                              const Node& node,
+                              const logging::Logger& logger) {
+  using namespace CoreML::Specification::MILSpec;
+  const auto& input_defs(node.InputDefs());
+  std::string_view layer_input_name_x = model_builder.GetUniqueName(node, "variadic");
+  auto input_dtype = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
+  const int32_t elem_type = static_cast<int32_t>(input_dtype);
+  std::vector<int64_t> x0_shape, x1_shape;
+  GetShape(*input_defs[0], x0_shape, logger);
+  GetShape(*input_defs[1], x1_shape, logger);
+  x0_shape = InferOutputShape(x0_shape, x1_shape);
+  std::unique_ptr<Operation> op_prev = std::move(*op);
+  for (size_t i = 2; i < input_defs.size(); i++) {
+    AddIntermediateOperationOutput(*op_prev, layer_input_name_x, elem_type, x0_shape);
+    std::unique_ptr<Operation> op_cur = model_builder.CreateOperation(node, op_prev->type());
+    AddOperationInput(*op_cur, "x", layer_input_name_x);
+    AddOperationInput(*op_cur, "y", input_defs[i]->Name());
+    model_builder.AddOperation(std::move(op_prev));
+    op_prev = std::move(op_cur);
+    layer_input_name_x = model_builder.GetUniqueName(node, "variadic");
+    GetShape(*input_defs[i], x1_shape, logger);
+    x0_shape = InferOutputShape(x0_shape, x1_shape);
+  }
+  *op = std::move(op_prev);
+}
+#endif
+
 Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                               const logging::Logger& logger) const {
   const auto& op_type(node.OpType());
@@ -70,6 +129,8 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
       coreml_op_type = "add";
     } else if (op_type == "Mul") {
       coreml_op_type = "mul";
+    } else if (op_type == "Max") {
+      coreml_op_type = "maximum";
     } else if (op_type == "Sub") {
       coreml_op_type = "sub";
     } else if (op_type == "Div") {
@@ -86,8 +147,11 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, coreml_op_type);
     AddOperationInput(*op, "x", input_defs[0]->Name());
     AddOperationInput(*op, "y", input_defs[1]->Name());
+    if (input_defs.size() > 2) {
+      // "max" node may have variadic inputs
+      AddVariadicInputs(&op, model_builder, node, logger);
+    }
     AddOperationOutput(*op, *node.OutputDefs()[0]);
-
     model_builder.AddOperation(std::move(op));
   } else
 #endif  // defined (COREML_ENABLE_MLPROGRAM)
@@ -154,6 +218,10 @@ bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderIn
   }
 
   if (!IsInputDtypeSupport(node, 0, input_params, logger)) {
+    return false;
+  }
+
+  if (node.OpType() == "Max" && !input_params.create_mlprogram) {
     return false;
   }
 

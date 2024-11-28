@@ -20,15 +20,6 @@ class UnsqueezeBase {
   };
 
   Status PrepareCompute(OpKernelContext* context, Prepare& p) const;
-
- protected:
-  UnsqueezeBase(const OpKernelInfo& info) {
-    size_t num_inputs = info.GetInputCount();
-    if (num_inputs == 1) {  // axes must be a valid attribute
-      ORT_ENFORCE(info.GetAttrs("axes", axes_).IsOK(), "Missing/Invalid 'axes' attribute value");
-    }
-  }
-
   static TensorShapeVector ComputeOutputShape(
       const TensorShape& input_shape,
       const TensorShapeVector& axes) {
@@ -57,6 +48,14 @@ class UnsqueezeBase {
       output_shape.push_back(input_shape[i - corr]);
     }
     return output_shape;
+  }
+
+ protected:
+  UnsqueezeBase(const OpKernelInfo& info) {
+    size_t num_inputs = info.GetInputCount();
+    if (num_inputs == 1) {  // axes must be a valid attribute
+      ORT_ENFORCE(info.GetAttrs("axes", axes_).IsOK(), "Missing/Invalid 'axes' attribute value");
+    }
   }
 
   TensorShapeVector axes_;
