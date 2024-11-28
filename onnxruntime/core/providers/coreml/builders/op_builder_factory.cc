@@ -24,13 +24,16 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateActivationOpBuilder("Gelu", op_registrations);
 
   // Unary ops
+  CreateUnaryOpBuilder("Erf", op_registrations);
   CreateUnaryOpBuilder("Reciprocal", op_registrations);
+  CreateUnaryOpBuilder("Round", op_registrations);
   CreateUnaryOpBuilder("Sqrt", op_registrations);
 
   // Binary elementwise ops
   CreateBinaryOpBuilder("Add", op_registrations);
   CreateBinaryOpBuilder("Div", op_registrations);
   CreateBinaryOpBuilder("Mul", op_registrations);
+  CreateBinaryOpBuilder("Max", op_registrations);
   CreateBinaryOpBuilder("Pow", op_registrations);
   CreateBinaryOpBuilder("Sub", op_registrations);
 
@@ -42,6 +45,9 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
 
   // Reduction ops
   CreateReductionOpBuilder("ReduceMean", op_registrations);
+  CreateReductionOpBuilder("ReduceMin", op_registrations);
+  CreateReductionOpBuilder("ReduceMax", op_registrations);
+  CreateReductionOpBuilder("ReduceProd", op_registrations);
   CreateReductionOpBuilder("ReduceSum", op_registrations);
 
   // Normalization ops
@@ -72,6 +78,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateSoftmaxOpBuilder("Softmax", op_registrations);
   CreateSqueezeOpBuilder("Squeeze", op_registrations);
   CreateTransposeOpBuilder("Transpose", op_registrations);
+  CreateSqueezeOpBuilder("Unsqueeze", op_registrations);
 
   return op_registrations;
 }
