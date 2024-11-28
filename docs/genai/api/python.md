@@ -30,7 +30,7 @@ import onnxruntime_genai
 
 ## Config class
 
-If the config needs to be modified at runtime to change providers/set provider options, this object can be first created and used, then a model can be created from this config object.
+If the config needs to be modified at runtime to change providers/set provider options, this object can be first created and used, then a model can be created from this config object. If no runtime config changes are needed, a model can be directly created from the model_folder.
 
 ### Load a config
 
@@ -47,7 +47,7 @@ onnxruntime_genai.Config(model_folder: str) -> onnxruntime_genai.Config
 
 ### Add a provider to the list
 
-If the provider isn't already in the list of providers, this adds it to the end of the list.
+If the provider isn't already in the list of providers, this adds it to the end of the onnxruntime provider priority list.
 
 ```python
 onnxruntime_genai.Config.append_provider(provider_name: str)
@@ -63,6 +63,14 @@ Clears the list of providers. This is the only way to remove existing providers 
 
 ```python
 onnxruntime_genai.Config.clear_providers()
+```
+
+Example to override the config and only use the dml provider:
+```python
+config=onnxruntime_genai.Config("model_path")
+config.clear_providers()
+config.append_provider("dml")
+model=onnxruntime_genai.Model(config)
 ```
 
 ### Set an option for a provider
