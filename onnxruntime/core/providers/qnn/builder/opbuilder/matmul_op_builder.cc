@@ -56,7 +56,7 @@ Status CheckInputs(const QnnModelWrapper& qnn_model_wrapper, const NodeUnitIODef
 
 Status MatMulOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
                                       const logging::Logger& logger, std::vector<std::string>& input_names,
-                                      [[maybe_unused]] bool do_op_validation) const {
+                                      bool do_op_validation) const {
   const auto& inputs = node_unit.Inputs();
   TensorInfo input_info_0{};
   TensorInfo input_info_1{};
@@ -161,8 +161,7 @@ Status MatMulOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper, const 
 
 Status MatMulOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
                                                     std::vector<std::string>&& input_names,
-                                                    [[maybe_unused]] const logging::Logger& logger,
-                                                    bool do_op_validation) const {
+                                                    const logging::Logger& /*logger*/, bool do_op_validation) const {
   const auto& inputs = node_unit.Inputs();
   TensorInfo input_info_0{};
   TensorInfo input_info_1{};
@@ -171,8 +170,7 @@ Status MatMulOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
       CheckInputs(qnn_model_wrapper, inputs[0], inputs[1], input_info_0, input_info_1, use_fully_connected));
   bool reshape_input_0 = input_info_0.shape.size() == 1;
   bool reshape_input_1 = input_info_1.shape.size() == 1;
-  bool reshape_output = input_info_0.shape.size() == 1 || input_info_1.shape.size() == 1 ||
-                        (use_fully_connected && input_info_0.shape.size() > 2);
+  bool reshape_output = reshape_input_0 || reshape_input_1 || (use_fully_connected && input_info_0.shape.size() > 2);
 
   const std::string& org_output_name = node_unit.Outputs()[0].node_arg.Name();
   std::string op_output_name = org_output_name;
@@ -188,7 +186,8 @@ Status MatMulOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                          reshape_input_1 ? 1 : input_info_1.shape.back()};
       ORT_ENFORCE(!op_output_quant_param.IsPerChannel());
     } else {
-      // If both inputs are 1D tensors, the output shape is [1] instead of scalar.
+      // If both inputs are 1D tensors, the output shape is [1] instead of scalar. So if both inputs are 1D tensors,
+      // we only need to add one "1" to the op_output_shape.
       if (reshape_input_1) {
         op_output_shape.emplace_back(1);
       } else if (reshape_input_0) {
