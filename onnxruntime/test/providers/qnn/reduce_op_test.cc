@@ -309,6 +309,27 @@ TEST_F(QnnCPUBackendTests, ReduceMeanOpset13) {
                        ExpectedEPNodeAssignment::All);
 }
 
+//
+// ReduceL2
+//
+TEST_F(QnnCPUBackendTests, ReduceL2Opset18) {
+  RunReduceTest<float>("ReduceL2",
+                       TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                       std::vector<int64_t>{0, 1},
+                       true,  // keepdims
+                       18,
+                       ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnCPUBackendTests, ReduceL2Opset13) {
+  RunReduceTest<float>("ReduceL2",
+                       TestInputDef<float>({2, 2}, false, -10.0f, 10.0f),
+                       std::vector<int64_t>{0, 1},
+                       true,  // keepdims
+                       13,
+                       ExpectedEPNodeAssignment::All);
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Test creates a graph with a ReduceSum node, and checks that all nodes are supported by the QNN EP
