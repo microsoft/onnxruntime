@@ -74,6 +74,22 @@ provider_options["MLComputeUnits"] = std::to_string("ALL");
 provider_options["RequireStaticInputShapes"] = std::to_string("0");
 provider_options["EnableOnSubgraphs"] = std::to_string("0");
 ```
+
+Python inference example code to use the CoreML EP run time options:
+```python
+import onnxruntime as ort
+model_path = "model.onnx"
+providers = [
+    ('CoreMLExecutionProvider', {
+        "ModelFormat": "MLProgram", "MLComputeUnits": "ALL", 
+        "RequireStaticInputShapes": "0", "EnableOnSubgraphs": "0"
+    }),
+]
+
+session = ort.InferenceSession(model_path, providers=providers)
+outputs = ort_sess.run(None, input_feed)
+```
+
 ### Available Options (New API)
 `ModelFormat` can be one of the following values:
 - `MLProgram`: Create an MLProgram format model. Requires Core ML 5 or later (iOS 15+ or macOS 12+).
