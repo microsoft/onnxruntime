@@ -628,7 +628,7 @@ typedef struct OrtMIGraphXProviderOptions {
 /** \brief OpenVINO Provider Options
  *  \brief This Struct is frozen since ORT 1.13.0. Its maintained part of Legacy API for compatibility.
  *  \brief For latest OpenVINO Provider Options update to the ProviderOptions map.
- *  \brief Latest OpenVINO Provider Options are listed in the 
+ *  \brief Latest OpenVINO Provider Options are listed in the
  *  \htmlonly
  *  <a href="https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#summary-of-options">onnxruntime document.</a>
  *  \endhtmlonly
