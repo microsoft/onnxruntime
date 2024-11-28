@@ -33,6 +33,7 @@ constexpr size_t A = 0,
 };
 
 typedef enum {
+  Level0, /*!< input fp32, accumulator fp32 */
   Level1, /*!< input fp32, accumulator fp32 */
   Level2, /*!< input fp16, accumulator fp16 */
   Level3, /*!< input bf16, accumulator fp32 */
