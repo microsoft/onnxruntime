@@ -358,6 +358,22 @@ size_t
     bool ZeroMode
     );
 
+#ifdef FORCE_GENERIC_ALGORITHMS
+typedef
+size_t
+(MLASCALL MLAS_GEMM_FLOAT_KERNEL_GENERIC)(
+    const float* A,
+    const float* B,
+    float* C,
+    size_t CountK,
+    size_t CountM,
+    size_t CountN,
+    size_t lda,
+    size_t ldc,
+    float alpha
+    );
+#endif
+
 #else
 
 #if defined(__aarch64__) && defined(__linux__)
@@ -733,6 +749,10 @@ extern "C" {
 #if defined(MLAS_TARGET_AMD64_IX86)
     MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelSse;
     MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelAvx;
+#ifdef FORCE_GENERIC_ALGORITHMS
+    MLAS_GEMM_FLOAT_KERNEL_GENERIC MlasSgemmKernelZero;
+    MLAS_GEMM_FLOAT_KERNEL_GENERIC MlasSgemmKernelAdd;
+#endif
 #if defined(MLAS_TARGET_AMD64)
     MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelFma3;
     MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelAvx512F;

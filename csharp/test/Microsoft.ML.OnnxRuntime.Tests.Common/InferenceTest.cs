@@ -175,6 +175,12 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AppendExecutionProvider("QNN"); });
                 Assert.Contains("QNN execution provider is not supported in this build", ex.Message);
 #endif
+#if USE_COREML
+                opt.AppendExecutionProvider("CoreML");
+#else
+                ex = Assert.Throws<OnnxRuntimeException>(() => { opt.AppendExecutionProvider("CoreML"); });
+                Assert.Contains("CoreML execution provider is not supported in this build", ex.Message);
+#endif
 
                 opt.AppendExecutionProvider_CPU(1);
             }
@@ -2037,7 +2043,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         }
 
         // Test hangs on mobile.
-#if !(ANDROID || IOS)  
+#if !(ANDROID || IOS)
         [Fact(DisplayName = "TestModelRunAsyncTask")]
         private async Task TestModelRunAsyncTask()
         {
