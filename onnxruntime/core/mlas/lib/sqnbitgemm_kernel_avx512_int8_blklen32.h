@@ -18,7 +18,15 @@ load_4blk_4b_packed_blklen32(const std::byte* QuantBDataPtr, __m512i& bv0_64_epi
     bv1_64_epi8 = _mm512_srli_epi16(_mm512_sub_epi8(bv_packed, bv0_64_epi8), 4);  // 64~127
 }
 
-static const uint32_t index_array[16] = {0, 0, 2, 2, 0, 0, 2, 2, 1, 1, 3, 3, 1, 1, 3, 3};
+static MLAS_FORCEINLINE
+__m512 load_4blksum_512(const float* BlksumPtr)
+{
+    // Load 128-bit data into __m128 register
+    __m128 blksum4_4_ps = _mm_loadu_ps(BlksumPtr);
+
+    // Insert the __m256 register into the lower 256 bits of the __m512 register
+    return _mm512_insertf32x4(_mm512_setzero_ps(), blksum4_4_ps, 0);
+}
 
 static MLAS_FORCEINLINE void
 accumulate_blklen32_r1c1blk4_avx512(
@@ -36,20 +44,13 @@ accumulate_blklen32_r1c1blk4_avx512(
     {
         const __m128 scale_a0_ps = _mm_loadu_ps(scale_a);  // 0123
         const __m128 scale_a0b_ps = _mm_mul_ps(scale_b_ps, scale_a0_ps);
-        __m512 scale_a0b_16_ps = _mm512_broadcast_f32x4(scale_a0b_ps);  // 0123012301230123
+        __m512 scale_a0b_16_ps = _mm512_broadcast_f32x4(scale_a0b_ps);
 
-        __m512i idx = _mm512_set_epi32(3, 3, 1, 1, 3, 3, 1, 1, 2, 2, 0, 0, 2, 2, 0, 0);
-        // __m512i idx = _mm512_loadu_epi8(&index_array[0]);
-        scale_a0b_16_ps = _mm512_permutexvar_ps(idx, scale_a0b_16_ps);  // 0022002211331133
-
-        const __m512i dot0_32_epi16 = _mm512_maddubs_epi16(bv0_64_epi8, av0_64_epi8);  // 0~0,1~1
-        const __m512i dot1_32_epi16 = _mm512_maddubs_epi16(bv1_64_epi8, av1_64_epi8);  // 2~2,3~3
-
-        const __m512i t1 = _mm512_unpacklo_epi64(dot0_32_epi16, dot1_32_epi16);  // 00002222000022221111333311113333
-        const __m512i t2 = _mm512_unpackhi_epi64(dot0_32_epi16, dot1_32_epi16);  // 00002222000022221111333311113333
-        const __m512i sum_32_epi16 = _mm512_add_epi16(t1, t2);                   // 00002222000022221111333311113333
+        const __m512i dot0_32_epi16 = _mm512_maddubs_epi16(bv0_64_epi8, av0_64_epi8);
+        const __m512i dot1_32_epi16 = _mm512_maddubs_epi16(bv1_64_epi8, av1_64_epi8);
+        const __m512i sum_32_epi16 = _mm512_add_epi16(dot0_32_epi16, dot1_32_epi16);
         const __m512i one_32_epi16 = generate_ones_32_epi16();
-        const __m512i sum_16_epi32 = _mm512_madd_epi16(one_32_epi16, sum_32_epi16);  // 0022002211331133
+        const __m512i sum_16_epi32 = _mm512_madd_epi16(one_32_epi16, sum_32_epi16);
         const __m512 sum_16_ps = _mm512_cvtepi32_ps(sum_16_epi32);
         acc0 = _mm512_fmadd_ps(sum_16_ps, scale_a0b_16_ps, acc0);
     }
@@ -70,47 +71,37 @@ accumulate_blklen32_r2c1blk4_avx512(
 )
 {
     __m512i bv0_64_epi8, bv1_64_epi8;
-    load_2blk_4b_packed_blklen64(QuantBDataPtr, bv0_64_epi8, bv1_64_epi8);
+    load_4blk_4b_packed_blklen32(QuantBDataPtr, bv0_64_epi8, bv1_64_epi8);
 
     const __m128 scale_b_ps = _mm_loadu_ps(scale_b); // 0123
     {
+        const __m512i dot0_32_epi16 = _mm512_maddubs_epi16(bv0_64_epi8, av00_64_epi8);  // 00112233 x 4 epi16s
+        const __m512i dot1_32_epi16 = _mm512_maddubs_epi16(bv1_64_epi8, av01_64_epi8);  // 00112233 x 4 epi16s
+        const __m512i sum_32_epi16 = _mm512_add_epi16(dot0_32_epi16, dot1_32_epi16);
+
+        const __m512i one_32_epi16 = generate_ones_32_epi16();
+        const __m512i sum_16_epi32 = _mm512_madd_epi16(one_32_epi16, sum_32_epi16);  // 0123 x 4 epi32s
+        const __m512 sum_16_ps = _mm512_cvtepi32_ps(sum_16_epi32);
+
         const __m128 scale_a0_ps = _mm_loadu_ps(scale_a0);  // 0123
         const __m128 scale_a0b_ps = _mm_mul_ps(scale_b_ps, scale_a0_ps);
-        __m512 scale_a0b_16_ps = _mm512_broadcast_f32x4(scale_a0b_ps);  // 0123012301230123
+        const __m512 scale_a0b_16_ps = _mm512_broadcast_f32x4(scale_a0b_ps);  // 0123012301230123
 
-        __m512i idx = _mm512_set_epi32(3, 3, 1, 1, 3, 3, 1, 1, 2, 2, 0, 0, 2, 2, 0, 0);
-        // __m512i idx = _mm512_loadu_epi8(&index_array[0]);
-        scale_a0b_16_ps = _mm512_permutexvar_ps(idx, scale_a0b_16_ps);  // 0022002211331133
-
-        const __m512i dot0_32_epi16 = _mm512_maddubs_epi16(bv0_64_epi8, av00_64_epi8);  // 0~0,1~1
-        const __m512i dot1_32_epi16 = _mm512_maddubs_epi16(bv1_64_epi8, av01_64_epi8);  // 2~2,3~3
-
-        const __m512i t1 = _mm512_unpacklo_epi64(dot0_32_epi16, dot1_32_epi16);  // 00002222000022221111333311113333
-        const __m512i t2 = _mm512_unpackhi_epi64(dot0_32_epi16, dot1_32_epi16);  // 00002222000022221111333311113333
-        const __m512i sum_32_epi16 = _mm512_add_epi16(t1, t2);                   // 00002222000022221111333311113333
-        const __m512i one_32_epi16 = generate_ones_32_epi16();
-        const __m512i sum_16_epi32 = _mm512_madd_epi16(one_32_epi16, sum_32_epi16);  // 0022002211331133
-        const __m512 sum_16_ps = _mm512_cvtepi32_ps(sum_16_epi32);
         acc0 = _mm512_fmadd_ps(sum_16_ps, scale_a0b_16_ps, acc0);
     }
     {
+        const __m512i dot0_32_epi16 = _mm512_maddubs_epi16(bv0_64_epi8, av10_64_epi8);
+        const __m512i dot1_32_epi16 = _mm512_maddubs_epi16(bv1_64_epi8, av11_64_epi8);
+        const __m512i sum_32_epi16 = _mm512_add_epi16(dot0_32_epi16, dot1_32_epi16);
+
+        const __m512i one_32_epi16 = generate_ones_32_epi16();
+        const __m512i sum_16_epi32 = _mm512_madd_epi16(one_32_epi16, sum_32_epi16);
+        const __m512 sum_16_ps = _mm512_cvtepi32_ps(sum_16_epi32);
+
         const __m128 scale_a1_ps = _mm_loadu_ps(scale_a1);  // 0123
         const __m128 scale_a1b_ps = _mm_mul_ps(scale_b_ps, scale_a1_ps);
-        __m512 scale_a1b_16_ps = _mm512_broadcast_f32x4(scale_a1b_ps);  // 0123012301230123
+        __m512 scale_a1b_16_ps = _mm512_broadcast_f32x4(scale_a1b_ps);
 
-        __m512i idx = _mm512_set_epi32(3, 3, 1, 1, 3, 3, 1, 1, 2, 2, 0, 0, 2, 2, 0, 0);
-        // __m512i idx = _mm512_loadu_epi8(&index_array[0]);
-        scale_a1b_16_ps = _mm512_permutexvar_ps(idx, scale_a1b_16_ps);  // 0022002211331133
-
-        const __m512i dot0_32_epi16 = _mm512_maddubs_epi16(bv0_64_epi8, av10_64_epi8);  // 0~0,1~1
-        const __m512i dot1_32_epi16 = _mm512_maddubs_epi16(bv1_64_epi8, av11_64_epi8);  // 2~2,3~3
-
-        const __m512i t1 = _mm512_unpacklo_epi64(dot0_32_epi16, dot1_32_epi16);  // 00002222000022221111333311113333
-        const __m512i t2 = _mm512_unpackhi_epi64(dot0_32_epi16, dot1_32_epi16);  // 00002222000022221111333311113333
-        const __m512i sum_32_epi16 = _mm512_add_epi16(t1, t2);                   // 00002222000022221111333311113333
-        const __m512i one_32_epi16 = generate_ones_32_epi16();
-        const __m512i sum_16_epi32 = _mm512_madd_epi16(one_32_epi16, sum_32_epi16);  // 0022002211331133
-        const __m512 sum_16_ps = _mm512_cvtepi32_ps(sum_16_epi32);
         acc1 = _mm512_fmadd_ps(sum_16_ps, scale_a1b_16_ps, acc1);
     }
 }
@@ -122,30 +113,29 @@ accumulate_blklen32_r1c1blk4_avx512vnni(
     const std::byte* QuantBDataPtr,
     const float* scale_a,
     const float* scale_b,
+    //const float* blksum_a,
+    //const float* blksum_b,
     __m512& acc0
 )
 {
     __m512i bv0_64_epi8, bv1_64_epi8;
-    load_4blk_4b_packed_blklen32(QuantBDataPtr, bv0_64_epi8, bv1_64_epi8);
+    load_4blk_4b_packed_blklen32(QuantBDataPtr, bv0_64_epi8, bv1_64_epi8);  // 0000111122223333 x 4 (64 unsigned int8)
 
     const __m128 scale_b_ps = _mm_loadu_ps(scale_b);  // 0123
     {
         const __m128 scale_a0_ps = _mm_loadu_ps(scale_a);  // 0123
         const __m128 scale_a0b_ps = _mm_mul_ps(scale_b_ps, scale_a0_ps);
-        __m512 scale_a0b_16_ps = _mm512_broadcast_f32x4(scale_a0b_ps);  // 0123012301230123
+        const __m512 scale_a0b_16_ps = _mm512_broadcast_f32x4(scale_a0b_ps);  // 0123012301230123
 
-        __m512i idx = _mm512_set_epi32(3, 3, 1, 1, 3, 3, 1, 1, 2, 2, 0, 0, 2, 2, 0, 0);
-        //__m512i idx = _mm512_loadu_epi8(&index_array[0]);
-        scale_a0b_16_ps = _mm512_permutexvar_ps(idx, scale_a0b_16_ps);  // 0022002211331133
+        __m512i sum_16_epi32 = _mm512_dpbusd_epi32(_mm512_setzero_epi32(), bv0_64_epi8, av0_64_epi8);
+        sum_16_epi32 = _mm512_dpbusd_epi32(sum_16_epi32, bv1_64_epi8, av1_64_epi8);                    // 0123012301230123
 
-        const __m512i dot0_16_epi32 = _mm512_dpbusd_epi32(_mm512_setzero_epi32(), bv0_64_epi8, av0_64_epi8);  // 0000000011111111
-        const __m512i dot1_16_epi32 = _mm512_dpbusd_epi32(_mm512_setzero_epi32(), bv1_64_epi8, av1_64_epi8);  // 2222222233333333
-
-        const __m512i t1_16_epi32 = _mm512_unpacklo_epi64(dot0_16_epi32, dot1_16_epi32);  // 0022002211331133
-        const __m512i t2_16_epi32 = _mm512_unpackhi_epi64(dot0_16_epi32, dot1_16_epi32);  // 0022002211331133
-        const __m512i sum_16_epi32 = _mm512_add_epi32(t1_16_epi32, t2_16_epi32);          // 0022002211331133
         const __m512 sum_16_ps = _mm512_cvtepi32_ps(sum_16_epi32);
         acc0 = _mm512_fmadd_ps(sum_16_ps, scale_a0b_16_ps, acc0);
+
+        //const __m512 blksum_a0_ps = load_4blksum_512(blksum_a);  // 0123000000000000
+        //const __m512 blksum_b0_ps = load_4blksum_512(blksum_b);  // 0123000000000000
+        //acc0 = _mm512_fmadd_ps(blksum_a0_ps, blksum_b0_ps, acc0);
     }
 }
 
@@ -164,9 +154,7 @@ accumulate_blklen32_r2c1blk4_avx512vnni(
 )
 {
     __m512i bv0_64_epi8, bv1_64_epi8;
-    load_2blk_4b_packed_blklen64(QuantBDataPtr, bv0_64_epi8, bv1_64_epi8);
-    __m512i idx = _mm512_set_epi32(3, 3, 1, 1, 3, 3, 1, 1, 2, 2, 0, 0, 2, 2, 0, 0);
-    //__m512i idx = _mm512_loadu_epi8(&index_array[0]);
+    load_4blk_4b_packed_blklen32(QuantBDataPtr, bv0_64_epi8, bv1_64_epi8);  // 0000111122223333 x 4 (64 unsigned int8)
 
     const __m128 scale_b_ps = _mm_loadu_ps(scale_b);  // 0123
     {
@@ -174,14 +162,9 @@ accumulate_blklen32_r2c1blk4_avx512vnni(
         const __m128 scale_a0b_ps = _mm_mul_ps(scale_b_ps, scale_a0_ps);
         __m512 scale_a0b_16_ps = _mm512_broadcast_f32x4(scale_a0b_ps);  // 0123012301230123
 
-        scale_a0b_16_ps = _mm512_permutexvar_ps(idx, scale_a0b_16_ps);  // 0022002211331133
+        __m512i sum_16_epi32 = _mm512_dpbusd_epi32(_mm512_setzero_epi32(), bv0_64_epi8, av00_64_epi8);
+        sum_16_epi32 = _mm512_dpbusd_epi32(sum_16_epi32, bv1_64_epi8, av01_64_epi8);            // 0123012301230123
 
-        const __m512i dot0_16_epi32 = _mm512_dpbusd_epi32(_mm512_setzero_epi32(), bv0_64_epi8, av00_64_epi8);  // 0000000011111111
-        const __m512i dot1_16_epi32 = _mm512_dpbusd_epi32(_mm512_setzero_epi32(), bv1_64_epi8, av01_64_epi8);  // 2222222233333333
-
-        const __m512i t1_16_epi32 = _mm512_unpacklo_epi64(dot0_16_epi32, dot1_16_epi32);  // 0022002211331133
-        const __m512i t2_16_epi32 = _mm512_unpackhi_epi64(dot0_16_epi32, dot1_16_epi32);  // 0022002211331133
-        const __m512i sum_16_epi32 = _mm512_add_epi32(t1_16_epi32, t2_16_epi32);          // 0022002211331133
         const __m512 sum_16_ps = _mm512_cvtepi32_ps(sum_16_epi32);
         acc0 = _mm512_fmadd_ps(sum_16_ps, scale_a0b_16_ps, acc0);
     }
@@ -190,14 +173,9 @@ accumulate_blklen32_r2c1blk4_avx512vnni(
         const __m128 scale_a1b_ps = _mm_mul_ps(scale_b_ps, scale_a1_ps);
         __m512 scale_a1b_16_ps = _mm512_broadcast_f32x4(scale_a1b_ps);  // 0123012301230123
 
-        scale_a1b_16_ps = _mm512_permutexvar_ps(idx, scale_a1b_16_ps);  // 0022002211331133
+        __m512i sum_16_epi32 = _mm512_dpbusd_epi32(_mm512_setzero_epi32(), bv0_64_epi8, av10_64_epi8);
+        sum_16_epi32 = _mm512_dpbusd_epi32(sum_16_epi32, bv1_64_epi8, av11_64_epi8);            // 0123012301230123
 
-        const __m512i dot0_32_epi16 = _mm512_dpbusd_epi32(_mm512_setzero_epi32(), bv0_64_epi8, av10_64_epi8);  // 0000000011111111
-        const __m512i dot1_32_epi16 = _mm512_dpbusd_epi32(_mm512_setzero_epi32(), bv1_64_epi8, av11_64_epi8);  // 2222222233333333
-
-        const __m512i t1_16_epi32 = _mm512_unpacklo_epi64(dot0_32_epi16, dot1_32_epi16);  // 0022002211331133
-        const __m512i t2_16_epi32 = _mm512_unpackhi_epi64(dot0_32_epi16, dot1_32_epi16);  // 0022002211331133
-        const __m512i sum_16_epi32 = _mm512_add_epi32(t1_16_epi32, t2_16_epi32);          // 0022002211331133
         const __m512 sum_16_ps = _mm512_cvtepi32_ps(sum_16_epi32);
         acc1 = _mm512_fmadd_ps(sum_16_ps, scale_a1b_16_ps, acc1);
     }
@@ -208,6 +186,8 @@ accumulate_1blk_dot_avx512vnni(const __m256i& av_32_epi8, const __m256i& bv_32_e
 {
     __m256i sum_8_epi32 = _mm256_dpbusd_epi32(_mm256_setzero_si256(), bv_32_epi8, av_32_epi8);
     const __m256 sum_ps = _mm256_cvtepi32_ps(sum_8_epi32);
+    // TODO: to compare with:
+    // acc = _mm256_fmadd_ps(sum_ps, _mm256_broadcast_ps((__m128 const*)(&combined_scale)), acc);
     acc = _mm256_fmadd_ps(sum_ps, _mm256_set1_ps(combined_scale), acc);
 }
 
