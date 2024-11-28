@@ -200,6 +200,7 @@ static void RunQDQPerChannelMatMulOpTest(
 // CPU tests:
 //
 TEST_F(QnnCPUBackendTests, MatMulOp) {
+  // RunMatMulOpTest(is_htp_backend, shape_0, shape_1, is_initializer_0, is_initializer_1)
   RunMatMulOpTest(false, {2, 3}, {3, 2}, false, false);
   RunMatMulOpTest(false, {2, 3}, {3, 2}, false, true);
   RunMatMulOpTest(false, {2, 3}, {3, 2}, true, false);
@@ -233,6 +234,8 @@ TEST_F(QnnCPUBackendTests, MatMulOp) {
 // HTP tests:
 //
 TEST_F(QnnHTPBackendTests, MatMulOp) {
+  // RunMatMulOpTest(is_htp_backend, shape_0, shape_1, is_initializer_0, is_initializer_1, expected_ep_assignment,
+  // opset, f32_abs_err)
   RunMatMulOpTest(true, {2, 3}, {3, 2}, false, false, ExpectedEPNodeAssignment::All, 18, 1e-2f);
   RunMatMulOpTest(true, {2, 3}, {3, 2}, false, true, ExpectedEPNodeAssignment::All, 18, 1e-2f);
   RunMatMulOpTest(true, {2, 3}, {3, 2}, true, false, ExpectedEPNodeAssignment::All, 18, 1e-2f);
@@ -262,6 +265,8 @@ TEST_F(QnnHTPBackendTests, MatMulOp) {
 
 TEST_F(QnnHTPBackendTests, MatMulOp_QDQ) {
   // UINT8
+  // RunQDQMatMulOpTest(shape_0, shape_1, is_initializer_0, is_initializer_1, expected_ep_assignment, opset,
+  // use_contrib_qdq)
   RunQDQMatMulOpTest<uint8_t, uint8_t, uint8_t>({2, 3}, {3, 2}, false, false);
   RunQDQMatMulOpTest<uint8_t, uint8_t, uint8_t>({2, 3}, {3, 2}, false, true);
   RunQDQMatMulOpTest<uint8_t, uint8_t, uint8_t>({2, 2, 3}, {3, 2}, true, false, ExpectedEPNodeAssignment::All, 18,
@@ -278,6 +283,8 @@ TEST_F(QnnHTPBackendTests, MatMulOp_QDQ) {
   RunQDQMatMulOpTest<uint16_t, uint8_t, uint16_t>({2, 3, 3, 3}, {3}, false, false);
 
   // UINT16, per-channel signed 4-bit weight
+  // RunQDQPerChannelMatMulOpTest(shape_input, shape_weight, weight_quant_axis, tolerance, expected_ep_assignment,
+  // opset, use_contrib_qdq, enable_fp16_precision)
   RunQDQPerChannelMatMulOpTest<uint16_t, Int4x2, uint16_t>({2, 3}, {3, 2}, 1);
   RunQDQPerChannelMatMulOpTest<uint16_t, Int4x2, uint16_t>({2, 3, 3, 3}, {3, 2}, -1, QDQTolerance(),
                                                            ExpectedEPNodeAssignment::All, 18, true);
