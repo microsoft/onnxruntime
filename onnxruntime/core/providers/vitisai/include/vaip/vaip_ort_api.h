@@ -234,6 +234,7 @@ struct OrtApiForVaip {
   ModelProto* (*model_to_proto)(Model& model);                                                                                                        // [95]
   DllSafe<std::string> (*model_proto_serialize_as_string)(ModelProto& model_proto);                                                                   // [96]
   void (*model_proto_delete)(ModelProto* p);                                                                                                          // [97]
+  DllSafe<std::string> (*attr_proto_release_string)(AttributeProto* attr);  // [98]
 };
 
 #ifndef USE_VITISAI
