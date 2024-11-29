@@ -286,7 +286,7 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx512vnni(
         );
     }
 
-    if (BlkLen != 32 && BlkLen != 128) {
+    if (BlkLen != 32 && BlkLen != 128 && BlkLen != 256) {
       float* c_blk = C;
       const float* b_blk_sum = QuantBBlkSum;
 

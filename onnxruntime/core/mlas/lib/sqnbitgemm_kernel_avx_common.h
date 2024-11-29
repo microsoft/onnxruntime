@@ -334,7 +334,7 @@ ComputePackBlkSum(
                 *(QuantBScaleBegin + dst_offset) = QuantBScale;
                 *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
                 return;
-            } else if (BlkLen == 128) {
+            } else if (BlkLen >= 128) {
                 const size_t dst_offset = GetContinueLayoutOffsetSubBlk(N, n, BlockCountK, k_blk);
                 *(QuantBScaleBegin + dst_offset) = QuantBScale;
                 *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
