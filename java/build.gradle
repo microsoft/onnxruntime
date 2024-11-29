@@ -15,17 +15,13 @@ allprojects {
 
 project.group = "com.microsoft.onnxruntime"
 
-//KYLE DEBUG START
-version = "1.21.1-rc-111"
-//KYLE DEBUG END
-
-//version = rootProject.file('../VERSION_NUMBER').text.trim()
-//def releaseVersionSuffix = "${System.getenv('ReleaseVersionSuffix')}"
-//if (releaseVersionSuffix != null && releaseVersionSuffix != "" && releaseVersionSuffix != "null") {
-//	println "releaseVersionSuffix is not null: ${releaseVersionSuffix}"
-//	version = "${version}${releaseVersionSuffix}"
-//	println "Appended releaseVersionSuffix to version: ${version}"
-//}
+version = rootProject.file('../VERSION_NUMBER').text.trim()
+def releaseVersionSuffix = "${System.getenv('ReleaseVersionSuffix')}"
+if (releaseVersionSuffix != null && releaseVersionSuffix != "" && releaseVersionSuffix != "null") {
+	println "releaseVersionSuffix is not null: ${releaseVersionSuffix}"
+	version = "${version}${releaseVersionSuffix}"
+	println "Appended releaseVersionSuffix to version: ${version}"
+}
 
 // cmake runs will inform us of the build directory of the current run
 def cmakeBuildDir = System.properties['cmakeBuildDir']
