@@ -11,7 +11,6 @@
 #include "core/providers/coreml/shape_utils.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/optimizer/initializer.h"
-#include "core/providers/cpu/tensor/unsqueeze.h"
 
 namespace onnxruntime {
 namespace coreml {
@@ -68,18 +67,14 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
 
-    std::string_view coreml_op_type = node.OpType() == "Squeeze" ? "squeeze" : "reshape";
+    std::string_view coreml_op_type = node.OpType() == "Squeeze" ? "squeeze" : "expand_dims";
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, coreml_op_type);
     AddOperationInput(*op, "x", input_defs[0]->Name());
 
-    if (coreml_op_type == "squeeze") {
-      if (!axes.empty()) {
-        // coreml squeeze op does support negative axes
-        AddOperationInput(*op, "axes", model_builder.AddConstant(op->type(), "axes", AsSpan(axes)));
-      }
-    } else {
-      TensorShapeVector output_shape = UnsqueezeBase::ComputeOutputShape(TensorShape(input_shape), axes);
-      AddOperationInput(*op, "shape", model_builder.AddConstant(op->type(), "shape", AsSpan(output_shape)));
+    // it's impossible to have empty exes input for unsqueeze
+    if (!axes.empty()) {
+      // coreml squeeze op does support negative axes
+      AddOperationInput(*op, "axes", model_builder.AddConstant(op->type(), "axes", AsSpan(axes)));
     }
     AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));

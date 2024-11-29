@@ -49,6 +49,9 @@ static const char* const kCoremlProviderOption_MLComputeUnits = "MLComputeUnits"
 static const char* const kCoremlProviderOption_ModelFormat = "ModelFormat";
 static const char* const kCoremlProviderOption_RequireStaticInputShapes = "RequireStaticInputShapes";
 static const char* const kCoremlProviderOption_EnableOnSubgraphs = "EnableOnSubgraphs";
+static const char* const kCoremlProviderOption_SpecializationStrategy = "SpecializationStrategy";
+static const char* const kCoremlProviderOption_ProfileComputePlan = "ProfileComputePlan";
+static const char* const kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU = "AllowLowPrecisionAccumulationOnGPU";
 
 #ifdef __cplusplus
 extern "C" {
