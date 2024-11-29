@@ -179,7 +179,7 @@ void TestReduceColumnsToColumn(int m, int n, float relative_error_tolerance = 1e
 }
 }  // namespace
 
-TEST(ReductionFunctionsTest, ReduceRowToScalar) {
+TEST(CudaEpReductionFunctionsTest, ReduceRowToScalar) {
   TestReduceRowToScalarApis(3);
   TestReduceRowToScalarApis(19);
   TestReduceRowToScalarApis(123);
@@ -188,7 +188,7 @@ TEST(ReductionFunctionsTest, ReduceRowToScalar) {
   TestReduceRowToScalarApis(941736, 2e-4f);
 }
 
-TEST(ReductionFunctionsTest, ReduceRowsToRow) {
+TEST(CudaEpReductionFunctionsTest, ReduceRowsToRow) {
   for (int m : {3, 193, 2945}) {
     for (int n : {3, 193, 2945}) {
       TestReduceRowsToRow(m, n, true);
@@ -197,7 +197,7 @@ TEST(ReductionFunctionsTest, ReduceRowsToRow) {
   }
 }
 
-TEST(ReductionFunctionsTest, ReduceColumnsToColumn) {
+TEST(CudaEpReductionFunctionsTest, ReduceColumnsToColumn) {
   for (int m : {3, 193, 2945}) {
     for (int n : {3, 193, 2945}) {
       TestReduceColumnsToColumn(m, n);
@@ -205,7 +205,7 @@ TEST(ReductionFunctionsTest, ReduceColumnsToColumn) {
   }
 }
 
-TEST(ReductionFunctionsTest, BufferOffsets) {
+TEST(CudaEpReductionFunctionsTest, BufferOffsets) {
   const int m = 2048;
   const int n = 1024;
   const TensorShape shape{m, n};
@@ -240,7 +240,7 @@ TEST(ReductionFunctionsTest, BufferOffsets) {
   }
 }
 
-TEST(ReductionFunctionsTest, InvalidBufferSize) {
+TEST(CudaEpReductionFunctionsTest, InvalidBufferSize) {
   const int m = 2048;
   const int n = 1024;
   const TensorShape shape{m, n};
@@ -262,7 +262,7 @@ TEST(ReductionFunctionsTest, InvalidBufferSize) {
   ASSERT_FALSE(status.IsOK());
 }
 
-TEST(ReductionFunctionsTest, GetApplicableMatrixReduction) {
+TEST(CudaEpReductionFunctionsTest, GetApplicableMatrixReduction) {
   auto test_get_applicable_matrix_reduction =
       [](cudnnReduceTensorOp_t cudnn_op,
          const std::vector<int64_t>& dims, const std::vector<int64_t>& axes,

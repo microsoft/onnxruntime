@@ -679,6 +679,13 @@ endif()
     if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH AND MLAS_SOURCE_IS_NOT_SET)
         file(GLOB_RECURSE mlas_platform_srcs
           "${MLAS_SRC_DIR}/scalar/*.cpp")
+    elseif (onnxruntime_FORCE_GENERIC_ALGORITHMS)
+        file(GLOB_RECURSE mlas_platform_srcs_generic
+          "${MLAS_SRC_DIR}/scalar/*.cpp")
+        set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+            ${mlas_platform_srcs_generic}
+            )
     endif()
     target_sources(onnxruntime_mlas PRIVATE ${mlas_platform_srcs})
 endif()

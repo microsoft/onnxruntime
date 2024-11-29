@@ -1,11 +1,12 @@
-# packages used by transformers python unittest (only enabled in Linux CPU CI Pipeline)
+# packages used by transformers python unittest
 packaging
-protobuf==3.20.2
-numpy==1.24.0 ; python_version < '3.12'
-numpy==1.26.0 ; python_version >= '3.12'
+# protobuf and numpy is same as tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt
+protobuf==4.21.12
+numpy==1.21.6 ; python_version < '3.9'
+numpy==2.0.0 ; python_version >= '3.9'
 torch
 coloredlogs==15.0
-transformers==4.38.0
+transformers==4.46.3
 parameterized>=0.8.1
 psutil
 einops

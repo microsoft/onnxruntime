@@ -63,3 +63,27 @@ stages:
         ORT_EP_NAME: CUDA
         WITH_CACHE: true
         MachinePool: onnxruntime-Win2022-GPU-A10
+
+- stage: cuda_dml
+  dependsOn: []
+  jobs:
+    - template: templates/jobs/win-ci-vs-2022-job.yml
+      parameters:
+        BuildConfig: 'RelWithDebInfo'
+        EnvSetupScript: setup_env_cuda.bat
+        buildArch: x64
+        additionalBuildFlags: >-
+          --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}"
+          --enable_cuda_profiling --enable_transformers_tool_test
+          --use_dml
+          --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON
+          --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
+        msbuildPlatform: x64
+        isX86: false
+        job_name_suffix: x64_RelWithDebInfo
+        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+        ORT_EP_NAME: CUDA
+        EnablePython: false
+        WITH_CACHE: true
+        MachinePool: onnxruntime-Win2022-GPU-A10

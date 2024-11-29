@@ -526,7 +526,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       // and TRT EP instance, so it won't be released.)
       std::string calibration_table, cache_path, cache_prefix, timing_cache_path, lib_path, trt_tactic_sources,
           trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile, ep_context_file_path,
-          onnx_model_folder_path, trt_op_types_to_exclude{"NonMaxSuppression,NonZero,RoiAlign"};
+          onnx_model_folder_path;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         OrtTensorRTProviderOptionsV2 params;
@@ -824,9 +824,6 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_hw_compatible' should be 'True' or 'False'. Default value is 'False'.\n");
             }
-          } else if (option.first == "trt_op_types_to_exclude") {
-            trt_op_types_to_exclude = option.second;
-            params.trt_op_types_to_exclude = trt_op_types_to_exclude.c_str();
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
           }
@@ -1129,16 +1126,6 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       }
     }
 #endif
-  } else if (type == kTvmExecutionProvider) {
-#if USE_TVM
-    onnxruntime::tvm::TvmEPOptions info{};
-    const auto it = provider_options_map.find(type);
-    if (it != provider_options_map.end()) {
-      info = onnxruntime::tvm::TvmEPOptionsHelper::FromProviderOptions(it->second);
-    }
-
-    return onnxruntime::TVMProviderFactoryCreator::Create(info)->CreateProvider();
-#endif
   } else if (type == kVitisAIExecutionProvider) {
 #ifdef USE_VITISAI
     ProviderOptions info{};
@@ -1225,6 +1212,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         if (flags_str.find("COREML_FLAG_CREATE_MLPROGRAM") != std::string::npos) {
           coreml_flags |= COREMLFlags::COREML_FLAG_CREATE_MLPROGRAM;
         }
+      } else {
+        // read from provider_options
+        return onnxruntime::CoreMLProviderFactoryCreator::Create(options)->CreateProvider();
       }
     }
 
