@@ -78,7 +78,6 @@ MlasIsQNBitGemmAvailable(
     }
 
     const auto Variant = GetQNBitGemmVariant(BlkBitWidth, BlkLen, ComputeType);
-
     switch (Variant) {
         case SQNBitGemmVariant_BitWidth4_CompFp32: {
             return Dispatch->SQ4BitGemmM1Kernel_CompFp32 != nullptr &&
@@ -569,7 +568,6 @@ SQ4BitGemm_CompInt8(
 
     const float* Bias = (DataParams->Bias == nullptr) ? nullptr : DataParams->Bias + RangeStartN;
 #endif
-
     size_t CountN;
     for (size_t n = 0; n < RangeCountN; n += CountN) {
         CountN = std::min(RangeCountN - n, size_t{128});

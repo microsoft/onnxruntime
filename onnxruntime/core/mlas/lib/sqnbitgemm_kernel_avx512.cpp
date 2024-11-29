@@ -198,7 +198,9 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx512(
             CountN,
             BlockCountK,
             Bias,
-            ldc
+            ldc,
+            ABlockSum,
+            QuantBBlkSum
         );
     } else if (BlkLen == 64) {
         MlasQ4Int8GemmKernelBlkLen64Avx512<false>(
@@ -230,19 +232,21 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx512(
         );
     }
 
-    float* c_blk = C;
-    const float* b_blk_sum = QuantBBlkSum;
+    if (BlkLen != 32) {
+        float* c_blk = C;
+        const float* b_blk_sum = QuantBBlkSum;
 
-    size_t RowsRemaining = CountM;
-    const float* a_blksum_row = ABlockSum;
-    while (RowsRemaining > 0) {
-        auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
-            a_blksum_row, b_blk_sum, c_blk, BlockCountK, RowsRemaining, CountN, BlockCountK, ldc, 1.f, false
-        );
+        size_t RowsRemaining = CountM;
+        const float* a_blksum_row = ABlockSum;
+        while (RowsRemaining > 0) {
+            auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
+                a_blksum_row, b_blk_sum, c_blk, BlockCountK, RowsRemaining, CountN, BlockCountK, ldc, 1.f, false
+            );
 
-        c_blk += ldc * RowsHandled;
-        a_blksum_row += BlockCountK * RowsHandled;
-        RowsRemaining -= RowsHandled;
+            c_blk += ldc * RowsHandled;
+            a_blksum_row += BlockCountK * RowsHandled;
+            RowsRemaining -= RowsHandled;
+        }
     }
     return CountM;
 }

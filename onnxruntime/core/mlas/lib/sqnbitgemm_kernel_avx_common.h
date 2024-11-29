@@ -325,8 +325,17 @@ ComputePackBlkSum(
             zp = (uint8_t)(low_zp ? ((*QuantBZP) & low_mask) : ((*QuantBZP) >> 4));
         }
 
-          // BlockSum is a width 16 row major matrix
-          const size_t dst_offset = ((n / 16) * BlockCountK + k_blk) * 16 + n % 16;
+        if (BlkLen == 32 && SubBlkLen == 128) {
+          // not to use sgemm so blksum has the same layout as scale
+            int blks_per_sub = (int)(SubBlkLen / BlkLen);
+            size_t dst_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk, blks_per_sub);
+            *(QuantBScaleBegin + dst_offset) = QuantBScale;
+            *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
+            return;
+        }
+
+        // BlockSum is a width 16 row major matrix
+        const size_t dst_offset = ((n / 16) * BlockCountK + k_blk) * 16 + n % 16;
         *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
         if (BlkLen == 16) {  // TODO
 

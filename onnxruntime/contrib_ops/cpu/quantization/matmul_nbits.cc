@@ -33,10 +33,10 @@ constexpr size_t A = 0,
 };
 
 typedef enum {
-  Level1, /*!< input fp32, accumulator fp32 */
-  Level2, /*!< input fp16, accumulator fp16 */
-  Level3, /*!< input bf16, accumulator fp32 */
-  Level4, /*!< input int8, accumulator int32 */
+  Level1 = 1, /*!< input fp32, accumulator fp32 */
+  Level2 = 2, /*!< input fp16, accumulator fp16 */
+  Level3 = 3, /*!< input bf16, accumulator fp32 */
+  Level4 = 4, /*!< input int8, accumulator int32 */
 } ACCURACY_LEVEL;
 
 // T: A data type.

@@ -470,7 +470,6 @@ Return Value:
                         this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Core;
                         this->FpQ4GemmDispatch = &MlasFpQ4GemmDispatchAvx512;
                         this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512;
-
                         //
                         // Check if the processor supports AVX512VNNI.
                         //
