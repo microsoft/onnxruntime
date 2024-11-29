@@ -5026,15 +5026,15 @@ TEST(QDQTransformerTests, WeightBiasQuantization_Gemm_Weight) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       NodeArg* input_arg =
           builder.MakeInput<uint8_t>({1, 32}, std::numeric_limits<uint8_t>::min(), std::numeric_limits<uint8_t>::max());
-      NodeArg* weight_arg = builder.MakeInitializer<float>({32, 16}, -1.0f, 1.0f);
+      NodeArg* weight_arg = builder.MakeInitializer<float>({32, 16}, -0.1f, 0.1f);
       NodeArg* input_dq_arg = builder.MakeIntermediate();
       NodeArg* gemm_dq_arg = builder.MakeIntermediate();
       NodeArg* output_arg = builder.MakeOutput();
 
-      builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.014f, static_cast<uint8_t>(127), input_dq_arg,
+      builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.001f, static_cast<uint8_t>(127), input_dq_arg,
                                                use_contrib_qdq);
       builder.AddNode("Gemm", {input_dq_arg, weight_arg}, {gemm_dq_arg});
-      builder.AddQuantizeLinearNode<uint8_t>(gemm_dq_arg, 0.014f, static_cast<uint8_t>(127), output_arg,
+      builder.AddQuantizeLinearNode<uint8_t>(gemm_dq_arg, 0.144f, static_cast<uint8_t>(127), output_arg,
                                              use_contrib_qdq);
     };
 
@@ -5060,17 +5060,17 @@ TEST(QDQTransformerTests, WeightBiasQuantization_Gemm_Weight_Bias) {
     auto build_test_case = [&](ModelTestBuilder& builder) {
       NodeArg* input_arg =
           builder.MakeInput<uint8_t>({1, 32}, std::numeric_limits<uint8_t>::min(), std::numeric_limits<uint8_t>::max());
-      NodeArg* weight_arg = builder.MakeInitializer<float>({16, 32}, -1.0f, 1.0f);
+      NodeArg* weight_arg = builder.MakeInitializer<float>({16, 32}, -0.1f, 0.1f);
       NodeArg* bias_arg = builder.MakeInitializer<float>({16}, -0.1f, 0.1f);
       NodeArg* input_dq_arg = builder.MakeIntermediate();
       NodeArg* gemm_dq_arg = builder.MakeIntermediate();
       NodeArg* output_arg = builder.MakeOutput();
 
-      builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.014f, static_cast<uint8_t>(127), input_dq_arg,
+      builder.AddDequantizeLinearNode<uint8_t>(input_arg, 0.001f, static_cast<uint8_t>(127), input_dq_arg,
                                                use_contrib_qdq);
       auto& gemm_node = builder.AddNode("Gemm", {input_dq_arg, weight_arg, bias_arg}, {gemm_dq_arg});
       gemm_node.AddAttribute("transB", static_cast<int64_t>(1));
-      builder.AddQuantizeLinearNode<uint8_t>(gemm_dq_arg, 0.014f, static_cast<uint8_t>(127), output_arg,
+      builder.AddQuantizeLinearNode<uint8_t>(gemm_dq_arg, 0.144f, static_cast<uint8_t>(127), output_arg,
                                              use_contrib_qdq);
     };
 
