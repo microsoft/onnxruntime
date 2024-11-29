@@ -325,18 +325,27 @@ ComputePackBlkSum(
             zp = (uint8_t)(low_zp ? ((*QuantBZP) & low_mask) : ((*QuantBZP) >> 4));
         }
 
-        if (BlkLen == 32 && SubBlkLen == 128) {
-          // not to use sgemm so blksum has the same layout as scale
-            int blks_per_sub = (int)(SubBlkLen / BlkLen);
-            size_t dst_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk, blks_per_sub);
-            *(QuantBScaleBegin + dst_offset) = QuantBScale;
-            *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
-            return;
+        bool is_avx512 = SubBlkLen == 128;
+        if (is_avx512) {
+            // not to use sgemm so blksum has the same layout as scale
+            if (BlkLen == 32) {
+                int blks_per_sub = (int)(SubBlkLen / BlkLen);
+                size_t dst_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk, blks_per_sub);
+                *(QuantBScaleBegin + dst_offset) = QuantBScale;
+                *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
+                return;
+            } else if (BlkLen == 128) {
+                const size_t dst_offset = GetContinueLayoutOffsetSubBlk(N, n, BlockCountK, k_blk);
+                *(QuantBScaleBegin + dst_offset) = QuantBScale;
+                *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
+                return;
+            }
         }
 
-        // BlockSum is a width 16 row major matrix
+        // to use sgemm BlockSum is a width 16 row major matrix
         const size_t dst_offset = ((n / 16) * BlockCountK + k_blk) * 16 + n % 16;
         *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
+
         if (BlkLen == 16) {  // TODO
 
         } else if (BlkLen >= SubBlkLen) {
