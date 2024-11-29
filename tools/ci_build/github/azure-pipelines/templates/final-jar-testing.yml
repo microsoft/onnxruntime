@@ -23,7 +23,8 @@ stages:
   - Jar_Packaging
   variables:
     #ReleaseVersionSuffix: $[replace(stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix'],'.','')]
-    ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
+    ReleaseVersionSuffix: $[replace(stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix'],'.','-')]
+    #ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
   jobs:
   - job: Final_Jar_Testing_${{parameters.OS}}
     workspace:
