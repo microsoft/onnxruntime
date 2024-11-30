@@ -185,7 +185,9 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx512(
             CountN,
             BlockCountK,
             Bias,
-            ldc
+            ldc,
+            ABlkSum,
+            BBlkSum
         );
     } else if (BlkLen == 32) {
         MlasQ4Int8GemmKernelBlkLen32Avx512<false>(

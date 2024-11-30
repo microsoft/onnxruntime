@@ -237,7 +237,9 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx512vnni(
             CountN,
             BlockCountK,
             Bias,
-            ldc
+            ldc,
+            ABlockSum,
+            QuantBBlkSum
         );
     } else if (BlkLen == 32) {
         MlasQ4Int8GemmKernelBlkLen32Avx512<true>(
@@ -288,22 +290,6 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx512vnni(
         );
     }
 
-    if (BlkLen != 32 && BlkLen != 64 && BlkLen != 128 && BlkLen != 256) {
-      float* c_blk = C;
-      const float* b_blk_sum = QuantBBlkSum;
-
-      size_t RowsRemaining = CountM;
-      const float* a_blksum_row = ABlockSum;
-      while (RowsRemaining > 0) {
-          auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
-              a_blksum_row, b_blk_sum, c_blk, BlockCountK, RowsRemaining, CountN, BlockCountK, ldc, 1.f, false
-          );
-
-          c_blk += ldc * RowsHandled;
-          a_blksum_row += BlockCountK * RowsHandled;
-          RowsRemaining -= RowsHandled;
-      }
-    }
     return CountM;
 }
 
