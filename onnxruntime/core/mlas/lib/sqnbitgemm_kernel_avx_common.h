@@ -334,16 +334,10 @@ ComputePackBlkSum(
                 *(QuantBScaleBegin + dst_offset) = QuantBScale;
                 *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
                 return;
-            } else if (BlkLen >= 128)
-            {
-                const size_t dst_offset = GetContinueLayoutOffsetSubBlk(N, n, BlockCountK, k_blk);
-                *(QuantBScaleBegin + dst_offset) = QuantBScale;
-                *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
-                return;
             }
         }
 
-        if (is_avx512 && BlkLen == 64) {
+        if (is_avx512 && (BlkLen == 64 || BlkLen == 128 || BlkLen == 256)) {
             const size_t dst_offset = n * BlockCountK + k_blk;
             *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
         } else {
