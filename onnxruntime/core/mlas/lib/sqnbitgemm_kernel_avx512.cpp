@@ -214,7 +214,9 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx512(
             CountN,
             BlockCountK,
             Bias,
-            ldc
+            ldc,
+            ABlkSum,
+            BBlkSum
         );
     } else {
         MlasQ4Int8GemmKernelBlkLen128Avx512<false>(
@@ -234,7 +236,7 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx512(
         );
     }
 
-    if (BlkLen != 32) {
+    if (BlkLen != 32 && BlkLen != 64 && BlkLen != 128 && BlkLen != 256) {
         float* c_blk = C;
         const float* b_blk_sum = BBlkSum;
 

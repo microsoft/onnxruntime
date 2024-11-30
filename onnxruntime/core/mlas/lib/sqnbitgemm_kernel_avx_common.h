@@ -334,7 +334,8 @@ ComputePackBlkSum(
                 *(QuantBScaleBegin + dst_offset) = QuantBScale;
                 *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
                 return;
-            } else if (BlkLen >= 128) {
+            } else if (BlkLen >= 128)
+            {
                 const size_t dst_offset = GetContinueLayoutOffsetSubBlk(N, n, BlockCountK, k_blk);
                 *(QuantBScaleBegin + dst_offset) = QuantBScale;
                 *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
@@ -342,9 +343,14 @@ ComputePackBlkSum(
             }
         }
 
-        // to use sgemm BlockSum is a width 16 row major matrix
-        const size_t dst_offset = ((n / 16) * BlockCountK + k_blk) * 16 + n % 16;
-        *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
+        if (is_avx512 && BlkLen == 64) {
+            const size_t dst_offset = n * BlockCountK + k_blk;
+            *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
+        } else {
+            // to use sgemm BlockSum is a width 16 row major matrix
+            const size_t dst_offset = ((n / 16) * BlockCountK + k_blk) * 16 + n % 16;
+            *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
+        }
 
         if (BlkLen == 16) {  // TODO
 

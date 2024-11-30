@@ -35,21 +35,6 @@
 //    bv1_64_epi8 = _mm512_inserti64x4(_mm512_castsi256_si512(bv0_higher), bv1_higher, 1);
 //}
 
-static MLAS_FORCEINLINE
-__m512 load_broadcast_512(const float& combined_scale) {
-    const __mmask16 mask = 00000001;  // Binary: 0000 0000 0000 0001, to set all elements
-
-    // Convert the float value to an int representation
-    const int& int_value = reinterpret_cast<const int&>(combined_scale);
-
-    // Use the mask to set all elements to the int_value
-    __m512 result = _mm512_castsi512_ps(
-        _mm512_mask_set1_epi32(_mm512_setzero_si512(), mask, const_cast<int&>(int_value))
-    );
-
-    return result;
-}
-
 static MLAS_FORCEINLINE void
 dot_accumulate_1blk(
     const __m512i& bv0_64_epi8,
