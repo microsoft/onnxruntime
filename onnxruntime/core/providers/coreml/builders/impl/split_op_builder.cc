@@ -51,8 +51,8 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   auto calculate_remainder_and_chunk_size = [&](int32_t num_outputs) {
     // note: checked in IsOpSupportedImpl that ensures the dim value at splitting axis exists
     auto split_dim_size = data_shape[HandleNegativeAxis(axis, data_shape.size())];
-    uint64_t chunk_size = (split_dim_size + num_outputs - 1) / num_outputs;
-    uint64_t remainder = split_dim_size % chunk_size;
+    int64_t chunk_size = (split_dim_size + num_outputs - 1) / num_outputs;
+    int64_t remainder = split_dim_size % chunk_size;
     return std::make_tuple(remainder, chunk_size);
   };
 
@@ -106,20 +106,20 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       // if "split" is explicitly provided as an input
       // const auto& split_tensor = *model_builder.GetInitializerTensors().at(input_defs[1]->Name());
       Initializer unpacked_tensor(*model_builder.GetConstantInitializer(input_defs[1]->Name()));
-      auto split_span = unpacked_tensor.DataAsSpan<uint64_t>();
+      auto split_span = unpacked_tensor.DataAsSpan<int64_t>();
       for (const auto& split_size : split_span) {
         coreml_splitnd->add_splitsizes(split_size);
       }
     } else if (node.SinceVersion() < 18) {
-      uint64_t num_outputs = narrow<uint64_t>(node.OutputDefs().size());
+      int64_t num_outputs = narrow<int64_t>(node.OutputDefs().size());
       coreml_splitnd->set_numsplits(num_outputs);
     } else {
       // note: for opset 18+ 'num_outputs' is a required attribute
-      uint64_t num_outputs = narrow<uint64_t>(helper.GetInt64("num_outputs").value());
+      int64_t num_outputs = narrow<int64_t>(helper.GetInt64("num_outputs").value());
       auto [remainder, chunk_size] = calculate_remainder_and_chunk_size(static_cast<int32_t>(num_outputs));
       if (remainder) {
         // uneven
-        auto split_sizes = InlinedVector<uint64_t>(num_outputs, chunk_size);
+        auto split_sizes = InlinedVector<int64_t>(num_outputs, chunk_size);
         split_sizes.back() = remainder;
         for (size_t i = 0; i < split_sizes.size(); i++) {
           coreml_splitnd->add_splitsizes(split_sizes[i]);
@@ -162,7 +162,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPar
     }
 
     const auto split_shape = *input_defs[1]->Shape();
-    if (split_shape.dim_size() < 2) {
+    if (split_shape.dim(0).dim_value() < 2) {
       LOGS(logger, VERBOSE) << "CoreML Split must produce at least 2 outputs.";
       return false;
     }

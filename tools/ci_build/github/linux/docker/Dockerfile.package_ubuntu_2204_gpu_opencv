@@ -5,7 +5,7 @@
 # Dockerfile to run ONNXRuntime with TensorRT integration
 
 # Build base image with required system packages
-ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubuntu20.04
+ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04
 ARG TRT_VERSION=10.6.0.26-1+cuda11.8
 ARG LD_LIBRARY_PATH_ARG=/usr/local/lib64:/usr/local/cuda/lib64
 FROM $BASEIMAGE AS base
@@ -17,6 +17,8 @@ ENV LD_LIBRARY_PATH=${LD_LIBRARY_PATH_ARG}:${LD_LIBRARY_PATH}
 
 RUN apt-get update &&\
     apt-get install -y git bash wget diffutils
+
+RUN DEBIAN_FRONTEND="noninteractive" apt-get install --yes python3-opencv
 
 # Install python3
 RUN apt-get install -y --no-install-recommends \
@@ -46,16 +48,12 @@ RUN apt-key adv --fetch-keys https://developer.download.nvidia.com/compute/cuda/
     libnvonnxparsers-dev=${TRT_VERSION} \
     libnvonnxparsers10=${TRT_VERSION} \
     tensorrt-dev=${TRT_VERSION} \
-    libnvinfer-bin=${TRT_VERSION}
+    libnvinfer-bin=${TRT_VERSION} &&\
+    if [ $(echo $CUDA_VERSION | cut -d"." -f1) -ge 12 ]; then apt-get install -y cudnn9-cuda-12 ; fi
+#   ^^^^^^^^^^^If cuda version is 12 or higher, install cudnn 9 for cuda 12
 
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/install_dotnet.sh && rm -rf /tmp/scripts
-
-COPY ompffmpeg /tmp/ompffmpeg/
-RUN if [ -n "/tmp/ompffmpeg" ]; then \
-        chmod +x /tmp/ompffmpeg/ffmpeg && chmod +x /tmp/ompffmpeg/ffprobe; \
-        ln -s /tmp/ompffmpeg/ffmpeg /usr/local/bin/ffmpeg; ln -s /tmp/ompffmpeg/ffprobe /usr/local/bin/ffprobe; \
-    fi
 
 # Build final image from base.
 FROM base as final

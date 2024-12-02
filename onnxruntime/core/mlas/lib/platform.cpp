@@ -286,7 +286,11 @@ Return Value:
     this->QuantizeLinearS4Kernel = MlasQuantizeLinearS4Kernel;
     this->QuantizeLinearU4Kernel = MlasQuantizeLinearU4Kernel;
 #ifndef __APPLE__
+#ifndef FORCE_GENERIC_ALGORITHMS
     this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelSse;
+#else  // FORCE_GENERIC_ALGORITHMS
+    this->CastF16ToF32Kernel = nullptr;
+#endif  // FORCE_GENERIC_ALGORITHMS
 #endif  // __APPLE__
 
     this->NchwcBlockSize = 8;
@@ -308,8 +312,11 @@ Return Value:
     //
     // Check if the processor supports SSE 4.1 instructions.
     //
-
+#ifndef FORCE_GENERIC_ALGORITHMS
     if ((Cpuid1[2] & 0x80000) != 0) {
+#else  // FORCE_GENERIC_ALGORITHMS
+    if (false) {
+#endif  // FORCE_GENERIC_ALGORITHMS
         this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchSse41;
     }
 
@@ -319,7 +326,11 @@ Return Value:
     // Check if the processor supports the AVX and OSXSAVE features.
     //
 
+#ifndef FORCE_GENERIC_ALGORITHMS
     if ((Cpuid1[2] & 0x18000000) == 0x18000000) {
+#else  // FORCE_GENERIC_ALGORITHMS
+    if (false) {
+#endif  // FORCE_GENERIC_ALGORITHMS
 
         //
         // Check if the operating system supports saving SSE and AVX states.

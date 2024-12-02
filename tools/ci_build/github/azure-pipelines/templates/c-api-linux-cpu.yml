@@ -5,9 +5,6 @@ parameters:
   type: string
   default: ''
 
-- name: BaseImage
-  type: string
-
 - name: OnnxruntimeArch
   type: string
 
@@ -50,7 +47,7 @@ jobs:
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
           Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu
-          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=${{parameters.BaseImage}}"
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
           Repository: onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging
 
     - ${{ if eq(parameters.OnnxruntimeArch, 'aarch64') }}:
@@ -58,7 +55,7 @@ jobs:
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/inference/aarch64/default/cpu/Dockerfile
           Context: tools/ci_build/github/linux/docker/inference/aarch64/default/cpu
-          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=${{parameters.BaseImage}}"
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
           Repository: onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging
           UpdateDepsTxt: false
 

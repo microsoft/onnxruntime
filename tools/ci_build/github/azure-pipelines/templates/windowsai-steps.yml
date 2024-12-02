@@ -11,6 +11,7 @@ parameters:
 
 jobs:
 - job: Windows_Packaging_${{ parameters.BuildArch }}_${{ parameters.Runtime }}
+  timeoutInMinutes: 180
   templateContext:
     outputs:
     - output: pipelineArtifact
