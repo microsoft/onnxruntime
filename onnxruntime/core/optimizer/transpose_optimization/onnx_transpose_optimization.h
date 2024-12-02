@@ -71,6 +71,9 @@ bool HandleSimpleNodeBroadcast(HandlerArgs& args);
 // Transposes all inputs and all outputs. Updates axis attribute.
 bool HandleSimpleNodeWithAxis(HandlerArgs& args, std::optional<int64_t> default_axis = std::nullopt);
 
+bool HandleConcat(HandlerArgs& args);
+bool HandleSoftHardMax(HandlerArgs& args);
+
 // base handlers that are used by extended handlers. add from transpose_optimizer.cc as needed.
 bool HandleReduceOps(HandlerArgs& args);
 bool HandleResize([[maybe_unused]] HandlerArgs& args);

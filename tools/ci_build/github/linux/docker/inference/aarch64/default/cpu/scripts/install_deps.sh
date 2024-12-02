@@ -39,9 +39,6 @@ mkdir -p /tmp/src
 cd /tmp/src
 
 CPU_ARCH=$(uname -m)
-echo "Installing cmake"
-GetFile "https://github.com/Kitware/CMake/releases/download/v3.31.0-rc2/cmake-3.31.0-rc2-linux-$CPU_ARCH.tar.gz" "/tmp/src/cmake.tar.gz"
-tar -zxf /tmp/src/cmake.tar.gz --strip=1 -C /usr
 
 echo "Installing Ninja"
 GetFile https://github.com/ninja-build/ninja/archive/v1.10.0.tar.gz /tmp/src/ninja-linux.tar.gz

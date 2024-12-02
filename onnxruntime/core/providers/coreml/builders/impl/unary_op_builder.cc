@@ -16,6 +16,8 @@ class UnaryOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override;
   bool SupportsMLProgram() const override { return true; }
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
+                         const logging::Logger& logger) const override;
 };
 
 Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
@@ -32,6 +34,10 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
       coreml_op_type = "sqrt";
     } else if (op_type == "Reciprocal") {
       coreml_op_type = "inverse";
+    } else if (op_type == "Erf") {
+      coreml_op_type = "erf";
+    } else if (op_type == "Round") {
+      coreml_op_type = "round";
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "UnaryOpBuilder::AddToModelBuilderImpl, unexpected op: ", op_type);
@@ -72,6 +78,14 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     model_builder.AddLayer(std::move(layer));
   }
   return Status::OK();
+}
+
+bool UnaryOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
+                                       const logging::Logger& /*logger*/) const {
+  if (!input_params.create_mlprogram && (node.OpType() == "Erf" || node.OpType() == "Round")) {
+    return false;
+  }
+  return true;
 }
 
 void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
