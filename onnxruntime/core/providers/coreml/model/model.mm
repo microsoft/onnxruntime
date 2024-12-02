@@ -302,45 +302,43 @@ Status GetMLMultiArrayCopyInfo(const MLMultiArray* _Nonnull array,
 }
 
 void ProfileComputePlan(NSURL* compileUrl, MLModelConfiguration* config) {
-  [MLComputePlan loadContentsOfURL:compileUrl
-                     configuration:config
-                 completionHandler:^(MLComputePlan* _Nullable computePlan, NSError* _Nullable error) {
-                   if (@available(macOS 14.4, iOS 17.4, *)) {
-                   } else {
-                     NSLog(@"iOS 17.4+/macOS 14.4+ or later is required to use the compute plan API");
-                     return;
-                   }
-
-                   if (!computePlan) {
-                     NSLog(@"Error loading compute plan: %@", error);
-                     // Handle error.
-                     return;
-                   }
-                   MLModelStructureProgram* program = computePlan.modelStructure.program;
-                   if (!program) {
-                     NSLog(@"Error loading program from compute plan., this is not a mlprogram model");
-                     return;
-                   }
-
-                   MLModelStructureProgramFunction* mainFunction = program.functions[@"main"];
-                   if (!mainFunction) {
-                     NSLog(@"Error loading main function from program");
-                     return;
-                   }
-
-                   NSArray<MLModelStructureProgramOperation*>* operations = mainFunction.block.operations;
-                   NSLog(@"Number of operations, 'const' node is included. : %lu", operations.count);
-                   for (MLModelStructureProgramOperation* operation in operations) {
-                     // Get the compute device usage for the operation.
-                     MLComputePlanDeviceUsage* computeDeviceUsage = [computePlan computeDeviceUsageForMLProgramOperation:operation];
-                     id<MLComputeDeviceProtocol> preferredDevice = computeDeviceUsage.preferredComputeDevice;
-                     // Get the estimated cost of executing the operation.
-                     MLComputePlanCost* estimatedCost = [computePlan estimatedCostOfMLProgramOperation:operation];
-                     if (![operation.operatorName isEqualToString:@"const"]) {
-                       NSLog(@"Operation: %@, Device Usage: %@, Estimated Cost: %f", operation.operatorName, preferredDevice, estimatedCost.weight);
+  if (@available(macOS 14.4, iOS 17.4, *)) {
+    [MLComputePlan loadContentsOfURL:compileUrl
+                       configuration:config
+                   completionHandler:^(MLComputePlan* _Nullable computePlan, NSError* _Nullable error) {
+                     if (!computePlan) {
+                       NSLog(@"Error loading compute plan: %@", error);
+                       // Handle error.
+                       return;
                      }
-                   }
-                 }];
+                     MLModelStructureProgram* program = computePlan.modelStructure.program;
+                     if (!program) {
+                       NSLog(@"Error loading program from compute plan., this is not a mlprogram model");
+                       return;
+                     }
+
+                     MLModelStructureProgramFunction* mainFunction = program.functions[@"main"];
+                     if (!mainFunction) {
+                       NSLog(@"Error loading main function from program");
+                       return;
+                     }
+
+                     NSArray<MLModelStructureProgramOperation*>* operations = mainFunction.block.operations;
+                     NSLog(@"Number of operations, 'const' node is included. : %lu", operations.count);
+                     for (MLModelStructureProgramOperation* operation in operations) {
+                       // Get the compute device usage for the operation.
+                       MLComputePlanDeviceUsage* computeDeviceUsage = [computePlan computeDeviceUsageForMLProgramOperation:operation];
+                       id<MLComputeDeviceProtocol> preferredDevice = computeDeviceUsage.preferredComputeDevice;
+                       // Get the estimated cost of executing the operation.
+                       MLComputePlanCost* estimatedCost = [computePlan estimatedCostOfMLProgramOperation:operation];
+                       if (![operation.operatorName isEqualToString:@"const"]) {
+                         NSLog(@"Operation: %@, Device Usage: %@, Estimated Cost: %f", operation.operatorName, preferredDevice, estimatedCost.weight);
+                       }
+                     }
+                   }];
+  } else {
+    NSLog(@"iOS 17.4+/macOS 14.4+ or later is required to use the compute plan API");
+  }
 }
 
 // Internal Execution class
