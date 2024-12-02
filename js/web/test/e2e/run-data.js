@@ -41,22 +41,22 @@ const BROWSER_TEST_CASES = [
 
   // path override:
   // wasm, path override filenames for both mjs and wasm, same origin
-  [true, false, './browser-test-wasm-path-override-filename.js', 'ort.min.js', ['port=9876', 'files=mjs,wasm']],
+  [true, false, './browser-test-wasm-path-override-filename-jsep.js', 'ort.min.js', ['port=9876', 'files=mjs,wasm']],
   [true, false, './browser-test-wasm-path-override-filename.js', 'ort.wasm.min.js', ['port=9876', 'files=mjs,wasm']],
   // wasm, path override filenames for both mjs and wasm, cross origin
-  [false, true, './browser-test-wasm-path-override-filename.js', 'ort.min.js', ['port=8081', 'files=mjs,wasm']],
+  [false, true, './browser-test-wasm-path-override-filename-jsep.js', 'ort.min.js', ['port=8081', 'files=mjs,wasm']],
   [false, true, './browser-test-wasm-path-override-filename.js', 'ort.wasm.min.js', ['port=8081', 'files=mjs,wasm']],
   // wasm, path override filename for wasm, same origin
-  [true, false, './browser-test-wasm-path-override-filename.js', 'ort.min.js', ['port=9876', 'files=wasm']],
+  [true, false, './browser-test-wasm-path-override-filename-jsep.js', 'ort.min.js', ['port=9876', 'files=wasm']],
   [true, false, './browser-test-wasm-path-override-filename.js', 'ort.wasm.min.js', ['port=9876', 'files=wasm']],
   // wasm, path override filename for wasm, cross origin
-  [false, true, './browser-test-wasm-path-override-filename.js', 'ort.min.js', ['port=8081', 'files=wasm']],
+  [false, true, './browser-test-wasm-path-override-filename-jsep.js', 'ort.min.js', ['port=8081', 'files=wasm']],
   [false, true, './browser-test-wasm-path-override-filename.js', 'ort.wasm.min.js', ['port=8081', 'files=wasm']],
   // wasm, path override filename for mjs, same origin
-  [true, false, './browser-test-wasm-path-override-filename.js', 'ort.min.js', ['port=9876', 'files=mjs']],
+  [true, false, './browser-test-wasm-path-override-filename-jsep.js', 'ort.min.js', ['port=9876', 'files=mjs']],
   [true, false, './browser-test-wasm-path-override-filename.js', 'ort.wasm.min.js', ['port=9876', 'files=mjs']],
   // wasm, path override filename for mjs, cross origin
-  [false, true, './browser-test-wasm-path-override-filename.js', 'ort.min.js', ['port=8081', 'files=mjs']],
+  [false, true, './browser-test-wasm-path-override-filename-jsep.js', 'ort.min.js', ['port=8081', 'files=mjs']],
   [false, true, './browser-test-wasm-path-override-filename.js', 'ort.wasm.min.js', ['port=8081', 'files=mjs']],
   // wasm, path override prefix, same origin
   [true, false, './browser-test-wasm-path-override-prefix.js', 'ort.min.js', ['port=9876']],

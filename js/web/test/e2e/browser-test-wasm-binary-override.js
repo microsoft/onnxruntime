@@ -7,7 +7,7 @@ const documentUrl = document.currentScript.src;
 
 it('Browser E2E testing - WebAssembly backend', async function () {
   // preload .wasm file binary
-  const wasmUrl = new URL('./node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm', documentUrl).href;
+  const wasmUrl = new URL('./node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm', documentUrl).href;
   const response = await fetch(wasmUrl);
 
   // make sure the .wasm file is loaded successfully
