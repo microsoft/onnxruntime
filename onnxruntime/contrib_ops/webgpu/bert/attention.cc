@@ -154,7 +154,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   shader.MainFunctionBody() << "if (global_id.y < uniforms.M && global_id.x < total_sequence_length) {\n"
                             << "  let headOffset = workgroup_id.z * uniforms.M * " << (is_gqa_ ? "uniforms.present_sequence_length" : "uniforms.N") << ";\n"
-                            << "  let outputIdx = headOffset + global_id.y * " << (is_gqa_ ? "uniforms.present_sequence_length" : "uniforms.N") << " + global_id.x;\n"
+                            << "  let outputIdx = headOffset + global_id.y * uniforms.N + global_id.x;\n"
                             << "  var sum: f32 = " << (components_ == 4 ? "value.x + value.y + value.z + value.w" : (components_ == 2 ? "value.x + value.y" : "value")) << ";\n";
 
   shader.MainFunctionBody() << "  output[outputIdx] = output_value_t(sum * uniforms.alpha)";
@@ -323,8 +323,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let batch_idx = workgroup_id.z / uniforms.num_heads;\n"
                             << "let m = global_id.y;\n"
                             << "let n = global_id.x;\n"
-                            << "  let tmp = " << (is_gqa_ ? "uniforms.present_sequence_length" : "uniforms.K") << ";\n"
-                            << "let offsetA = workgroup_id.z * (uniforms.M * tmp) + m * tmp;\n"
+                            << "let offsetA = workgroup_id.z * (uniforms.M * uniforms.K) + m * uniforms.K;\n"
                             << "let sequence_length = uniforms.M;\n"
                             << "var total_sequence_length = uniforms.K;\n";
   std::ostringstream oss;
@@ -376,8 +375,9 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   shader.MainFunctionBody() << "// we need to transpose output from BNSH_v to BSND_v\n"
                             << "if (m < uniforms.M && n < uniforms.N) {\n"
-                            << "  let outputIdx = batch_idx * uniforms.M * uniforms.v_hidden_size + "
-                            << "  m * uniforms.v_hidden_size + head_idx * uniforms.N + n;\n"
+                            << "  let tmp = " << (is_gqa_ ? "uniforms.num_heads * uniforms.present_sequence_length" : "uniforms.v_hidden_size") << ";\n"
+                            << "  let outputIdx = batch_idx * uniforms.M * tmp + "
+                            << "  m * tmp + head_idx * uniforms.N + n;\n"
                             << "  output[outputIdx] = value;\n"
                             << "}\n";
 
