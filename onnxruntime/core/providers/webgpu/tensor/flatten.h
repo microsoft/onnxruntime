@@ -30,6 +30,10 @@ class Flatten final : public OpKernel {
       axis += input_rank;
     }
 
+    if (axis > input_rank) {
+      return Status(common::ONNXRUNTIME, common::FAIL, "Invalid value for axis, must be less than or equal to input_rank");
+    }
+
     std::initializer_list<int64_t> output_dims;
 
     int64_t first_dim = 1;
@@ -56,8 +60,8 @@ class Flatten final : public OpKernel {
     return Status::OK();
   }
 
-  private:
-    int64_t axis_;
+ private:
+  int64_t axis_;
 };
 
 }  // namespace webgpu

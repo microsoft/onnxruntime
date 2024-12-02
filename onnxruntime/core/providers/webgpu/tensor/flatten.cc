@@ -32,10 +32,18 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()).InputMemoryType(OrtMemTypeCPU, 1),
     Flatten);
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Flatten,
+    kOnnxDomain,
+    13, 20,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()).InputMemoryType(OrtMemTypeCPU, 1),
+    Flatten);
+
 ONNX_OPERATOR_KERNEL_EX(
     Flatten,
     kOnnxDomain,
-    13,
+    21,
     kWebGpuExecutionProvider,
     (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()).InputMemoryType(OrtMemTypeCPU, 1),
     Flatten);
