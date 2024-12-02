@@ -1423,9 +1423,12 @@ def generate_build_tree(
         cmake_args.append("-Donnxruntime_DNNL_ACL_ROOT=" + args.dnnl_acl_root)
     if args.build_wasm:
         cmake_args.append("-Donnxruntime_ENABLE_WEBASSEMBLY_SIMD=" + ("ON" if args.enable_wasm_simd else "OFF"))
-        cmake_args.append(
-            "-Donnxruntime_ENABLE_WEBASSEMBLY_RELAXED_SIMD=" + ("ON" if args.enable_wasm_relaxed_simd else "OFF")
-        )
+        if args.enable_wasm_relaxed_simd:
+            if not args.enable_wasm_simd:
+                raise BuildError(
+                    "Wasm Relaxed SIMD (--enable_wasm_relaxed_simd) is only available with Wasm SIMD (--enable_wasm_simd)."
+                )
+            cmake_args += ["-Donnxruntime_ENABLE_WEBASSEMBLY_RELAXED_SIMD=ON"]
     if args.use_migraphx:
         cmake_args.append("-Donnxruntime_MIGRAPHX_HOME=" + migraphx_home)
     if args.use_rocm:
