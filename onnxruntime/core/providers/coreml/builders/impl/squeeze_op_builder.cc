@@ -80,11 +80,11 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                const Node& node,
                                                [[maybe_unused]] const logging::Logger& logger) const {
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
-  const auto& input_defs(node.InputDefs());
   auto* coreml_squeeze = layer->mutable_squeeze();
   TensorShapeVector axes;
   GetAxes(model_builder, node, axes);
 #if defined(COREML_ENABLE_MLPROGRAM)
+  const auto& input_defs(node.InputDefs());
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
 
