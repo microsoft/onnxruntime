@@ -57,11 +57,13 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                const Node& node,
                                                [[maybe_unused]] const logging::Logger& logger) const {
   std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
+  const auto& input_defs(node.InputDefs());
   auto* coreml_squeeze = layer->mutable_squeeze();
   TensorShapeVector axes;
   GetAxes(model_builder, node, axes);
+  std::vector<int64_t> input_shape;
+  GetShape(*input_defs[0], input_shape, logger);
 #if defined(COREML_ENABLE_MLPROGRAM)
-  const auto& input_defs(node.InputDefs());
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
 
@@ -74,13 +76,6 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       // coreml squeeze op does support negative axes
       AddOperationInput(*op, "axes", model_builder.AddConstant(op->type(), "axes", AsSpan(axes)));
     }
-    std::vector<int64_t> input_shape;
-    std::cout << "========================\n";
-    GetShape(*node.OutputDefs()[0], input_shape, logger);
-    for (size_t i = 0; i < input_shape.size(); ++i) {
-      std::cout << input_shape[i] << " ";
-    }
-    std::cout << std::endl;
     AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
   } else  // NOLINT
