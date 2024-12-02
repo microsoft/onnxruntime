@@ -11,6 +11,7 @@ namespace options {
 
 constexpr const char* kPreferredLayout = "WebGPU:preferredLayout";
 constexpr const char* kEnableGraphCapture = "WebGPU:enableGraphCapture";
+constexpr const char* kEnableFlashAttention = "WebGPU:enableFlashAttention";
 
 constexpr const char* kDawnProcTable = "WebGPU:dawnProcTable";
 
@@ -35,6 +36,9 @@ constexpr const char* kPreferredLayout_NHWC = "NHWC";
 
 constexpr const char* kEnableGraphCapture_ON = "1";
 constexpr const char* kEnableGraphCapture_OFF = "0";
+
+constexpr const char* kEnableFlashAttention_ON = "1";
+constexpr const char* kEnableFlashAttention_OFF = "0";
 
 constexpr const char* kBufferCacheMode_Disabled = "disabled";
 constexpr const char* kBufferCacheMode_LazyRelease = "lazyRelease";
