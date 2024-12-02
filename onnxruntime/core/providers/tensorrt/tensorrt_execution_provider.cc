@@ -1727,6 +1727,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 
   trt_version_ = getInferLibVersion();
   CUDA_CALL_THROW(cudaRuntimeGetVersion(&cuda_version_));
+  InitProviderOrtApi();
   ort_version_ = Ort::GetVersionString();
 
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT version is " << trt_version_;
