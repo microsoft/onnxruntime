@@ -6,11 +6,11 @@ Licensed under the MIT License.
 
 Module Name:
 
-    qgemm_kernel_wasmsimd.cpp
+    qgemm_kernel_wasmrelaxedsimd.cpp
 
 Abstract:
 
-    This module implements QGEMM kernel for WebAssembly SIMD128.
+    This module implements QGEMM kernel for WebAssembly Relaxed SIMD128.
 
 --*/
 
