@@ -11,6 +11,11 @@
 #include "core/providers/coreml/shape_utils.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/optimizer/initializer.h"
+#include "core/providers/cpu/tensor/unsqueeze.h"
+
+#ifdef __APPLE__
+#include <TargetConditionals.h>
+#endif
 
 namespace onnxruntime {
 namespace coreml {
@@ -53,6 +58,24 @@ void SqueezeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   }
 }
 
+#if defined(COREML_ENABLE_MLPROGRAM)
+void HandleX86ArchUnsqueezeScalarInput(ModelBuilder& model_builder,
+                                       const Node& node, const logging::Logger& logger) {
+  const auto& input_defs(node.InputDefs());
+  TensorShapeVector axes;
+  GetAxes(model_builder, node, axes);
+
+  std::vector<int64_t> input_shape;
+  GetShape(*input_defs[0], input_shape, logger);
+  auto op = model_builder.CreateOperation(node, "reshape");
+  AddOperationInput(*op, "x", input_defs[0]->Name());
+  TensorShapeVector output_shape = UnsqueezeBase::ComputeOutputShape(TensorShape(input_shape), axes);
+  AddOperationInput(*op, "shape", model_builder.AddConstant(op->type(), "shape", AsSpan(output_shape)));
+  AddOperationOutput(*op, *node.OutputDefs()[0]);
+  model_builder.AddOperation(std::move(op));
+}
+#endif
+
 Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                const Node& node,
                                                [[maybe_unused]] const logging::Logger& logger) const {
@@ -61,12 +84,17 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   auto* coreml_squeeze = layer->mutable_squeeze();
   TensorShapeVector axes;
   GetAxes(model_builder, node, axes);
-  std::vector<int64_t> input_shape;
-  GetShape(*input_defs[0], input_shape, logger);
 #if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
 
+#if defined(TARGET_CPU_X86_64) && TARGET_CPU_X86_64
+    // expand_dims has limited requirements for static shape, however, X86_64 has a bug that it can't handle scalar input
+    if (node.OpType() == "Unsqueeze" && input_defs[0]->Shape()->dim_size() < 2) {
+      HandleX86ArchUnsqueezeScalarInput(model_builder, node, logger);
+      return Status::OK();
+    }
+#endif
     std::string_view coreml_op_type = node.OpType() == "Squeeze" ? "squeeze" : "expand_dims";
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, coreml_op_type);
     AddOperationInput(*op, "x", input_defs[0]->Name());

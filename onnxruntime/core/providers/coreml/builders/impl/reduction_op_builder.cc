@@ -133,7 +133,7 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInpu
     return false;
   }
 
-#if defined(TARGET_OS_IOS) && defined(TARGET_CPU_X86_64)
+#if defined(TARGET_OS_IOS) && defined(TARGET_CPU_X86_64) && TARGET_OS_IOS && TARGET_CPU_X86_64
   // skip ReductionOpTest.ReduceSum_half_bert because reduce_sum will output all zeros
   int32_t input_type;
   GetType(*input_defs[0], input_type, logger);
