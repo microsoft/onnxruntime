@@ -76,13 +76,15 @@ const isRelaxedSimdSupported = (): boolean => {
     //      i8x16.splat
     //      i32.const 2
     //      i8x16.splat
-    //      i8x16.relaxed_swizzle
+    //      i32.const 3
+    //      i8x16.splat
+    //      i32x4.relaxed_dot_i8x16_i7x16_add_s
     //   )
     //  )
     return WebAssembly.validate(
       new Uint8Array([
-        0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 15, 1, 13, 0, 65, 1, 253, 15, 65, 2, 253,
-        15, 253, 128, 2, 11,
+        0, 97, 115, 109, 1, 0, 0, 0, 1, 5, 1, 96, 0, 1, 123, 3, 2, 1, 0, 10, 19, 1, 17, 0, 65, 1, 253, 15, 65, 2, 253,
+        15, 65, 3, 253, 15, 253, 147, 2, 11,
       ]),
     );
   } catch (e) {
