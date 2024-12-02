@@ -79,3 +79,111 @@ index 0037d83276..6372c4ee77 100644
    tint_lang_wgsl_program
    tint_lang_wgsl_sem
    tint_lang_wgsl_writer_ir_to_program
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index bcb91ba106..4e54940c50 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -188,6 +188,8 @@ option(DAWN_ENABLE_PIC "Build with Position-Independent-Code enabled" OFF)
+ option(DAWN_EMIT_COVERAGE "Emit code coverage information" OFF)
+ set_if_not_defined(LLVM_SOURCE_DIR "${Dawn_LLVM_SOURCE_DIR}" "Directory to an LLVM source checkout. Required to build turbo-cov")
+
++option(DAWN_CROSSCOMPILING_WIN "Support windows platform crosscompiling, mainly for build arm/aarch64 target on x64 platform" OFF)
++
+ message(STATUS "Dawn build with asserts in all configurations: ${DAWN_ALWAYS_ASSERT}")
+ message(STATUS "Dawn build Wayland support: ${DAWN_USE_WAYLAND}")
+ message(STATUS "Dawn build X11 support: ${DAWN_USE_X11}")
+@@ -377,6 +380,11 @@ target_include_directories(dawn_internal_config INTERFACE
+ )
+ target_link_libraries(dawn_internal_config INTERFACE dawn_public_config)
+
++# Disable CMAKE_CROSSCOMPING because we don't have full support
++if(CMAKE_CROSSCOMPILING)
++  set(CMAKE_CROSSCOMPILING OFF)
++endif()
++
+ ################################################################################
+ # Include utility CMake modules
+ ################################################################################
+diff --git a/third_party/CMakeLists.txt b/third_party/CMakeLists.txt
+index bcb91ba106..4e54940c50 100644
+--- a/third_party/CMakeLists.txt
++++ b/third_party/CMakeLists.txt
+@@ -194,6 +194,38 @@ function(get_all_targets_recursive targets dir)
+ endfunction()
+
+ function(AddSubdirectoryDXC)
++    if (DAWN_CROSSCOMPILING_WIN)
++        set(FOLDER_TO_CHECK ${CMAKE_BINARY_DIR}/native-tools)
++        if(EXISTS "${FOLDER_TO_CHECK}")
++             # Find llvm-tblgen and clang-tblgen executable file in the folder
++            find_program(CLANG_TBLGEN NAMES clang-tblgen clang-tblgen.exe)
++            find_program(LLVM_TBLGEN NAMES llvm_tblgen llvm-tblgen.exe)
++        endif()
++
++        # Config clang-tblgen and llvm-tblgen tools with host cpu arch and build them during cmake configuration progress to support future crosscompiling.
++        if (NOT EXISTS "${FOLDER_TO_CHECK}")
++            file(MAKE_DIRECTORY ${CMAKE_BINARY_DIR}/native-tools)
++        endif()
++
++        if (NOT CLANG_TBLGEN OR NOT LLVM_TBLGEN)
++            execute_process(
++                COMMAND ${CMAKE_COMMAND} -B ${CMAKE_BINARY_DIR}/native-tools -S . -C ${CMAKE_BINARY_DIR}/_deps/dawn-src/third_party/cmake/caches/PredefinedParams.cmake -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE} -DHLSL_OPTIONAL_PROJS_IN_DEFAULT=OFF -DHLSL_ENABLE_ANALYZE=OFF -DHLSL_OFFICIAL_BUILD=OFF -DHLSL_ENABLE_FIXED_VER=OFF -DHLSL_BUILD_DXILCONV=OFF -DHLSL_INCLUDE_TESTS=OFF -DHLSL_ENABLE_DEBUG_ITERATORS=ON -DENABLE_SPIRV_CODEGEN=OFF -DSPIRV_BUILD_TESTS=OFF -DLLVM_BUILD_RUNTIME=ON -DLLVM_BUILD_EXAMPLES=OFF -DLLVM_BUILD_TESTS=OFF -DLLVM_INCLUDE_TESTS=OFF -DLLVM_INCLUDE_DOCS=OFF -DLLVM_INCLUDE_EXAMPLES=OFF -DLLVM_OPTIMIZED_TABLEGEN=OFF -DLLVM_APPEND_VC_REV=OFF -DLLVM_ENABLE_RTTI=ON -DLLVM_ENABLE_EH=ON -DCLANG_CL=OFF
++                WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/_deps/dawn-src/third_party/dxc
++            )
++
++            execute_process(
++                COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}/native-tools --config=${CMAKE_BUILD_TYPE} --target=llvm-tblgen
++            )
++
++            execute_process(
++                COMMAND ${CMAKE_COMMAND} --build ${CMAKE_BINARY_DIR}/native-tools --config=${CMAKE_BUILD_TYPE} --target=clang-tblgen
++            )
++        endif()
++        set(LLVM_TABLEGEN ${CMAKE_BINARY_DIR}/native-tools/${CMAKE_BUILD_TYPE}/bin/llvm-tblgen.exe CACHE STRING "" FORCE)
++        set(CLANG_TABLEGEN ${CMAKE_BINARY_DIR}/native-tools/${CMAKE_BUILD_TYPE}/bin/clang-tblgen.exe CACHE STRING "" FORCE)
++    endif()
++
++
+     # We use a CMake function so that all these (non-cache) variables are scoped
+     # only to this function.
+     set(HLSL_OPTIONAL_PROJS_IN_DEFAULT OFF)
+@@ -345,8 +377,17 @@ function(AddSubdirectoryDXC)
+             unset(sdk_dirs)
+             message(STATUS "Windows SDK version not found from CMake variable 'CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION', attempted to find from SDK path: ${WIN10_SDK_VERSION}")
+         endif()
++        if(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "AMD64" OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "IA64" OR ${CMAKE_SYSTEM_PROCESSOR} STREQUAL "EM64T")
++            set(DXIL_DLL_ARCH "x64")
++        elseif(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "X86")
++            set(DXIL_DLL_ARCH "x86")
++        elseif(${CMAKE_SYSTEM_PROCESSOR} STREQUAL "ARM64")
++            set(DXIL_DLL_ARCH "arm64")
++        else()
++            set(DXIL_DLL_ARCH "")
++        endif()
+
+-        set(DXIL_DLL_PATH "${WIN10_SDK_PATH}/bin/${WIN10_SDK_VERSION}/x64/dxil.dll")
++        set(DXIL_DLL_PATH "${WIN10_SDK_PATH}/bin/${WIN10_SDK_VERSION}/${DXIL_DLL_ARCH}/dxil.dll")
+         add_custom_target(copy_dxil_dll)
+         add_custom_command(
+             TARGET copy_dxil_dll
+diff --git a/third_party/cmake/caches/PredefinedParams.cmake b/third_party/cmake/caches/PredefinedParams.cmake
+new file mode 100644
+index 0000000000..4e54940c50
+--- /dev/null
++++ b/third_party/cmake/caches/PredefinedParams.cmake
+@@ -0,0 +1,15 @@
++# This file contains the basic options required for building DXC using CMake on
++# *nix platforms. It is passed to CMake using the `-C` flag and gets processed
++# before the root CMakeLists.txt file. Only cached variables persist after this
++# file executes, so all state must be saved into the cache. These variables also
++# will not override explicit command line parameters, and can only read
++# parameters that are specified before the `-C` flag.
++
++set(LLVM_TARGETS_TO_BUILD "None" CACHE STRING "" FORCE)
++set(LLVM_DEFAULT_TARGET_TRIPLE "dxil-ms-dx" CACHE STRING "" FORCE)
++set(CLANG_ENABLE_STATIC_ANALYZER OFF CACHE BOOL "" FORCE)
++set(CLANG_ENABLE_ARCMT OFF CACHE BOOL "" FORCE)
++set(CLANG_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
++set(CLANG_INCLUDE_TESTS OFF CACHE BOOL "" FORCE)
++set(LLVM_ENABLE_TERMINFO OFF CACHE BOOL "" FORCE)
++set(CLANG_FORMAT_EXE "" CACHE STRING "" FORCE)
