@@ -22,11 +22,11 @@ SD_MODELS = {
     "2.0": "stabilityai/stable-diffusion-2",
     "2.1": "stabilityai/stable-diffusion-2-1",
     "xl-1.0": "stabilityai/stable-diffusion-xl-refiner-1.0",
-    "3.0": "stabilityai/stable-diffusion-3-medium-diffusers",
-    # "3.5": "stabilityai/stable-diffusion-3.5-medium",
-    # "3.5-large": "stabilityai/stable-diffusion-3.5-large",
-    # "flux.1-schnell": "black-forest-labs/FLUX.1-schnell",
-    # "flux.1-dev": "black-forest-labs/FLUX.1-dev",
+    "3.0M": "stabilityai/stable-diffusion-3-medium-diffusers",
+    "3.5M": "stabilityai/stable-diffusion-3.5-medium",
+    "3.5L": "stabilityai/stable-diffusion-3.5-large",
+    "Flux.1S": "black-forest-labs/FLUX.1-schnell",
+    "Flux.1D": "black-forest-labs/FLUX.1-dev",
 }
 
 PROVIDERS = {
@@ -327,21 +327,12 @@ def get_optimum_ort_pipeline(
     disable_safety_checker: bool = True,
     use_io_binding: bool = False,
 ):
-    from optimum.onnxruntime import ORTPipelineForText2Image, ORTStableDiffusionPipeline, ORTStableDiffusionXLPipeline
+    from optimum.onnxruntime import ORTPipelineForText2Image
 
     if directory is not None and os.path.exists(directory):
         pipeline = ORTPipelineForText2Image.from_pretrained(directory, provider=provider, use_io_binding=use_io_binding)
-    elif "xl" in model_name:
-        pipeline = ORTStableDiffusionXLPipeline.from_pretrained(
-            model_name,
-            export=True,
-            provider=provider,
-            session_options=None,
-            use_io_binding=False,  # Not supported by Optimum version 1.17.1 at the time of verification.
-        )
-        pipeline.save_pretrained(directory)
     else:
-        pipeline = ORTStableDiffusionPipeline.from_pretrained(
+        pipeline = ORTPipelineForText2Image.from_pretrained(
             model_name,
             export=True,
             provider=provider,
@@ -369,10 +360,7 @@ def run_optimum_ort_pipeline(
     memory_monitor_type,
     use_num_images_per_prompt=False,
 ):
-    from optimum.onnxruntime import ORTStableDiffusionPipeline, ORTStableDiffusionXLPipeline
-
-    assert isinstance(pipe, (ORTStableDiffusionPipeline, ORTStableDiffusionXLPipeline))
-
+    print("Pipeline type", type(pipe))
     prompts, negative_prompt = example_prompts()
 
     def warmup():

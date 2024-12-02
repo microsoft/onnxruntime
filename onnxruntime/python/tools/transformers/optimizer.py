@@ -41,6 +41,8 @@ from onnx_model_t5 import T5OnnxModel
 from onnx_model_tnlr import TnlrOnnxModel
 from onnx_model_unet import UnetOnnxModel
 from onnx_model_vae import VaeOnnxModel
+from onnx_model_mmdit import MmditOnnxModel
+
 from onnx_utils import extract_raw_data_from_model, has_external_data
 
 import onnxruntime
@@ -66,6 +68,7 @@ MODEL_TYPES = {
     "unet": (UnetOnnxModel, "pytorch", 1),  # UNet in Stable Diffusion
     "vae": (VaeOnnxModel, "pytorch", 1),  # UAE in Stable Diffusion
     "vit": (BertOnnxModel, "pytorch", 1),
+    "mmdit": (MmditOnnxModel, "pytorch", 1),
 }
 
 

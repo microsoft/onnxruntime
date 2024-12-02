@@ -27,7 +27,7 @@ import __init__  # noqa: F401. Walk-around to run this script directly
 import coloredlogs
 import onnx
 from fusion_options import FusionOptions
-from onnx_model_bert import BertOnnxModel
+from onnx_model_mmdit import MmditOnnxModel
 from onnx_model_clip import ClipOnnxModel
 from onnx_model_unet import UnetOnnxModel
 from onnx_model_vae import VaeOnnxModel
@@ -97,7 +97,7 @@ def _optimize_sd_pipeline(
         "unet": UnetOnnxModel,
         "vae": VaeOnnxModel,
         "clip": ClipOnnxModel,
-        "mmdit": BertOnnxModel,  # TODO: have a new class for DiT
+        "mmdit": MmditOnnxModel,
     }
 
     force_fp32_operators = {
