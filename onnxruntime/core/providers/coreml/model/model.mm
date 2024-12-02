@@ -302,6 +302,7 @@ Status GetMLMultiArrayCopyInfo(const MLMultiArray* _Nonnull array,
 }
 
 void ProfileComputePlan(NSURL* compileUrl, MLModelConfiguration* config) {
+#if defined(__APPLE__) && defined(__clang__) && __clang_major__ >= 15
   if (@available(macOS 14.4, iOS 17.4, *)) {
     [MLComputePlan loadContentsOfURL:compileUrl
                        configuration:config
@@ -339,6 +340,7 @@ void ProfileComputePlan(NSURL* compileUrl, MLModelConfiguration* config) {
   } else {
     NSLog(@"iOS 17.4+/macOS 14.4+ or later is required to use the compute plan API");
   }
+#endif
 }
 
 // Internal Execution class
@@ -452,14 +454,16 @@ Status Execution::LoadModel() {
       }
 
 // Set the specialization strategy to FastPrediction  for macOS 10.15+
-#if !(TARGET_OS_OSX && (!defined(__MAC_15_0) || __MAC_OS_X_VERSION_MAX_ALLOWED < __MAC_15_0))
-      MLOptimizationHints* optimizationHints = [[MLOptimizationHints alloc] init];
-      if (coreml_options_.UseStrategy("FastPrediction")) {
-        optimizationHints.specializationStrategy = MLSpecializationStrategyFastPrediction;
-        config.optimizationHints = optimizationHints;
-      } else if (coreml_options_.UseStrategy("Default")) {
-        optimizationHints.specializationStrategy = MLSpecializationStrategyDefault;
-        config.optimizationHints = optimizationHints;
+#if defined(__APPLE__) && defined(__clang__) && __clang_major__ >= 15
+      if (HAS_COREML8_OR_LATER) {
+        MLOptimizationHints* optimizationHints = [[MLOptimizationHints alloc] init];
+        if (coreml_options_.UseStrategy("FastPrediction")) {
+          optimizationHints.specializationStrategy = MLSpecializationStrategyFastPrediction;
+          config.optimizationHints = optimizationHints;
+        } else if (coreml_options_.UseStrategy("Default")) {
+          optimizationHints.specializationStrategy = MLSpecializationStrategyDefault;
+          config.optimizationHints = optimizationHints;
+        }
       }
 #endif
       if (coreml_options_.ProfileComputePlan()) {
