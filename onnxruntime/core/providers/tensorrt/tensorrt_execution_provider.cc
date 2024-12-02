@@ -1732,7 +1732,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT version is " << trt_version_;
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] CUDA version is " << cuda_version_;
-  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] ORT version is " << cuda_version_;
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] ORT version is " << ort_version_;
 
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT provider options: "
                         << "device_id: " << device_id_
