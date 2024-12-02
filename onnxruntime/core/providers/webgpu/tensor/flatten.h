@@ -13,28 +13,23 @@ namespace webgpu {
 class Flatten final : public OpKernel {
  public:
   explicit Flatten(const OpKernelInfo& info) : OpKernel{info} {
-    ORT_ENFORCE(info.GetAttr<int64_t>("axis", &axis_).IsOK());
+    axis_ = info.GetAttrOrDefault<int64_t>("axis", 1);
   }
 
   Status Compute(OpKernelContext* context) const override {
     const Tensor* input_tensor = context->Input<Tensor>(0);
-    if (input_tensor == nullptr) {
-      return Status(common::ONNXRUNTIME, common::FAIL, "Input tensor is not set");
-    }
     const TensorShape& input_shape = input_tensor->Shape();
     int64_t input_rank = input_shape.NumDimensions();
 
     // Handle negative axis
     int64_t axis = axis_;
-    if (axis_ < 0) {
+    if (axis < 0) {
       axis += input_rank;
     }
 
     if (axis > input_rank) {
       return Status(common::ONNXRUNTIME, common::FAIL, "Invalid value for axis, must be less than or equal to input_rank");
     }
-
-    std::initializer_list<int64_t> output_dims;
 
     int64_t first_dim = 1;
     for (int64_t i = 0; i < axis; i++) {
@@ -45,9 +40,8 @@ class Flatten final : public OpKernel {
     for (int64_t i = axis; i < input_rank; i++) {
       second_dim *= input_shape[i];
     }
-    output_dims = {first_dim, second_dim};
 
-    TensorShape output_shape(output_dims);
+    TensorShape output_shape({first_dim, second_dim});
     Tensor* output_tensor = context->Output(0, output_shape);
 
     const void* source = input_tensor->DataRaw();
