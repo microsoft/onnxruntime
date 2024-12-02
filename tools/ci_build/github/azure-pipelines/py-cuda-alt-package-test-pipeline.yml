@@ -18,7 +18,7 @@ stages:
           machine_pool: 'Onnxruntime-Linux-GPU'
           python_wheel_suffix: '_gpu'
           timeout: 480
-          docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241020.1
+          docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241120.3
           trt_version: '10.6.0.26-1.cuda11.8'
           cuda_version: '11.8'
 

@@ -246,12 +246,6 @@ static const char* const kOrtSessionOptionsDisableCPUEPFallback = "session.disab
 static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersFileName =
     "session.optimized_model_external_initializers_file_name";
 
-// Use this config when save prepacked constant initializers to onnx external data file.
-// Default is not save prepacked initializers to onnx data file.
-// Sample usage: sess_options.add_session_config_entry('session.save_prepacked_constant_initializers',  "1")
-static const char* const kOrtSessionOptionsSavePrePackedConstantInitializers =
-    "session.save_prepacked_constant_initializers";
-
 // Use this config to control the minimum size of the initializer when externalizing it during serialization
 static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes =
     "session.optimized_model_external_initializers_min_size_in_bytes";

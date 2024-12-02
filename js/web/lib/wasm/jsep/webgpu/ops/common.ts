@@ -195,7 +195,7 @@ export interface IndicesHelper {
   /**
    * whether the helper is for an input, an output or an internal variable.
    */
-  readonly usage: 'input' | 'output' | 'internal';
+  readonly usage: 'input' | 'output' | 'atomicOutput' | 'internal';
 
   /**
    * the rank of the input or output.
@@ -734,6 +734,20 @@ export const outputVariable = (
 ): IndicesHelper => createIndicesHelper(name, type, shapeOrRank, 'output', components);
 
 /**
+ * Create a IndicesHelper for an atomic output.
+ *
+ * @param name - the name of the output.
+ * @param type - the tensor type of the output.
+ * @param shapeOrRank - the tensor shape or the rank of the output.
+ * @returns an IndicesHelper for the output.
+ */
+export const atomicOutputVariable = (
+  name: string,
+  type: number,
+  shapeOrRank: number | readonly number[],
+): IndicesHelper => createIndicesHelper(name, type, shapeOrRank, 'atomicOutput', 1);
+
+/**
  * Create a IndicesHelper for an internal variable.
  *
  * @param name - the name of the variable.
@@ -905,9 +919,8 @@ class ShaderHelperImpl implements ShaderHelper {
     }
     this.variables.push(variable);
     this.appendVariableUniforms(variable);
-
     const access = variable.usage === 'input' ? 'read' : 'read_write';
-    const storageType = variable.type.storage;
+    const storageType = variable.usage === 'atomicOutput' ? `atomic<i32>` : variable.type.storage;
     return `@group(0) @binding(${bindingIndex}) var<storage, ${access}> ${variable.name}: array<${storageType}>;`;
   }
 
@@ -996,27 +1009,3 @@ class ShaderHelperImpl implements ShaderHelper {
 
 export const createShaderHelper = (dispatchGroup: [number, number, number], limits: GPUSupportedLimits) =>
   new ShaderHelperImpl(dispatchGroup, limits);
-
-/**
- * This function comes from https://github.com/tensorflow/tfjs/blob/master/tfjs-core/src/ops/broadcast_util.ts#L18-L40
- * Returns the dimensions in the input shape that are broadcasted to
- * produce the provided output shape.
- *
- * The returned dimensions are 0-indexed and sorted. An example:
- * inShape = [4, 1, 3]
- * outShape = [5, 4, 3, 3]
- * result = [1]. Dimension 1 (2nd dimension of input) gets broadcasted 1 => 3.
- */
-export const getBroadcastDims = (inShape: readonly number[], outShape: readonly number[]): number[] => {
-  const inRank = inShape.length;
-  const dims: number[] = [];
-  for (let i = 0; i < inRank; i++) {
-    const dim = inRank - 1 - i;
-    const a = inShape[dim] || 1;
-    const b = outShape[outShape.length - 1 - i] || 1;
-    if (b > 1 && a === 1) {
-      dims.unshift(dim);
-    }
-  }
-  return dims;
-};

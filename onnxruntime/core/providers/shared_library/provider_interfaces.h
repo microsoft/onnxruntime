@@ -960,7 +960,7 @@ struct ProviderHost {
 
   // GraphViewer
   virtual void GraphViewer__operator_delete(GraphViewer* p) = 0;
-  virtual std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* p, const logging::Logger& logger) = 0;
+  virtual std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* p, const logging::Logger& logger, const ModelMetaData&) = 0;
 
   virtual const std::string& GraphViewer__Name(const GraphViewer* p) noexcept = 0;
   virtual const std::filesystem::path& GraphViewer__ModelPath(const GraphViewer* p) noexcept = 0;
@@ -996,6 +996,7 @@ struct ProviderHost {
                                     bool include_outer_scope_args,
                                     int execution_order) noexcept = 0;
   virtual const Node* GraphViewer__GetProducerNode(const GraphViewer* p, const std::string& node_arg_name) const = 0;
+  virtual IOnnxRuntimeOpSchemaCollectionPtr GraphViewer__GetSchemaRegistry(const GraphViewer* p) const = 0;
 
   // OpKernel
   virtual const Node& OpKernel__Node(const OpKernel* p) = 0;

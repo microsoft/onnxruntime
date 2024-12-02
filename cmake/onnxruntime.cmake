@@ -123,7 +123,11 @@ else()
     onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c )
   endif()
   if(NOT APPLE)
-    target_link_options(onnxruntime PRIVATE "LINKER:-rpath=\$ORIGIN")
+    include(CheckLinkerFlag)
+    check_linker_flag(CXX "LINKER:-rpath=\$ORIGIN" LINKER_SUPPORT_RPATH)
+    if(LINKER_SUPPORT_RPATH)
+      target_link_options(onnxruntime PRIVATE "LINKER:-rpath=\$ORIGIN")
+    endif()
   endif()
 endif()
 
@@ -206,7 +210,6 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${PROVIDERS_NNAPI}
   ${PROVIDERS_QNN}
   ${PROVIDERS_SNPE}
-  ${PROVIDERS_TVM}
   ${PROVIDERS_RKNPU}
   ${PROVIDERS_VSINPU}
   ${PROVIDERS_XNNPACK}
@@ -217,7 +220,6 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${onnxruntime_winml}
   onnxruntime_optimizer
   onnxruntime_providers
-  ${onnxruntime_tvm_libs}
   onnxruntime_lora
   onnxruntime_framework
   onnxruntime_graph

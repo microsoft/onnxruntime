@@ -1022,11 +1022,13 @@ struct Graph final {
   PROVIDER_DISALLOW_ALL(Graph)
 };
 
+using ModelMetaData = std::unordered_map<std::string, std::string>;
+
 class GraphViewer final {
  public:
   static void operator delete(void* p) { g_host->GraphViewer__operator_delete(reinterpret_cast<GraphViewer*>(p)); }
 
-  std::unique_ptr<Model> CreateModel(const logging::Logger& logger) const { return g_host->GraphViewer__CreateModel(this, logger); }
+  std::unique_ptr<Model> CreateModel(const logging::Logger& logger, const ModelMetaData& metadata = ModelMetaData()) const { return g_host->GraphViewer__CreateModel(this, logger, metadata); }
 
   const std::string& Name() const noexcept { return g_host->GraphViewer__Name(this); }
   const std::filesystem::path& ModelPath() const noexcept { return g_host->GraphViewer__ModelPath(this); }
@@ -1068,6 +1070,7 @@ class GraphViewer final {
     g_host->GraphViewer__ToProto(this, graph_proto, include_initializers, include_outer_scope_args, execution_order);
   }
   const Node* GetProducerNode(const std::string& node_arg_name) const { return g_host->GraphViewer__GetProducerNode(this, node_arg_name); }
+  IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const { return g_host->GraphViewer__GetSchemaRegistry(this); }
 
   GraphViewer() = delete;
   GraphViewer(const GraphViewer&) = delete;

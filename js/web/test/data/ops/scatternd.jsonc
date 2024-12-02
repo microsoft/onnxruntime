@@ -1,0 +1,472 @@
+[
+  {
+    "name": "ScatterND int32",
+    "operator": "ScatterND",
+    "attributes": [],
+    "opset": { "domain": "", "version": 13 },
+    "cases": [
+      {
+        "name": "int32",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [8],
+            "type": "int32"
+          },
+          {
+            "data": [4, 3, 1, 7],
+            "dims": [1, 4, 1],
+            "type": "int64"
+          },
+          {
+            "data": [9, 10, 11, 12],
+            "dims": [1, 4],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1, 11, 3, 10, 9, 6, 7, 12],
+            "dims": [8],
+            "type": "int32"
+          }
+        ]
+      },
+      {
+        "name": "int32",
+        "inputs": [
+          {
+            "data": [
+              1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29,
+              30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55,
+              56, 57, 58, 59, 60, 61, 62, 63, 64
+            ],
+            "dims": [4, 4, 4],
+            "type": "int32"
+          },
+          {
+            "data": [1, 2],
+            "dims": [2, 1],
+            "type": "int64"
+          },
+          {
+            "data": [
+              100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120,
+              121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131
+            ],
+            "dims": [2, 4, 4],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [
+              1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109,
+              110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130,
+              131, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64
+            ],
+            "dims": [4, 4, 4],
+            "type": "int32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ScatterND float32",
+    "operator": "ScatterND",
+    "attributes": [],
+    "opset": { "domain": "", "version": 13 },
+    "cases": [
+      {
+        "name": "float32",
+        "inputs": [
+          {
+            "data": [1.1, 2.2, 3.1, 4.5, 5.3, 6.1, 7.8, 8.9],
+            "dims": [8],
+            "type": "float32"
+          },
+          {
+            "data": [4, 3, 1, 7],
+            "dims": [1, 4, 1],
+            "type": "int64"
+          },
+          {
+            "data": [9.1, 10.2, 11.3, 12.5],
+            "dims": [1, 4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1.1, 11.3, 3.1, 10.2, 9.1, 6.1, 7.8, 12.5],
+            "dims": [8],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ScatterND add int32",
+    "operator": "ScatterND",
+    "attributes": [{ "name": "reduction", "data": "add", "type": "string" }],
+    "opset": { "domain": "", "version": 16 },
+    "cases": [
+      {
+        "name": "int32",
+        "inputs": [
+          {
+            "data": [1, 2, 3, 4, 5, 6, 7, 8],
+            "dims": [8],
+            "type": "int32"
+          },
+          {
+            "data": [4, 3, 1, 7],
+            "dims": [1, 4, 1],
+            "type": "int64"
+          },
+          {
+            "data": [9, 10, 11, 12],
+            "dims": [1, 4],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1, 13, 3, 14, 14, 6, 7, 20],
+            "dims": [8],
+            "type": "int32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ScatterND add float32",
+    "operator": "ScatterND",
+    "attributes": [{ "name": "reduction", "data": "add", "type": "string" }],
+    "opset": { "domain": "", "version": 16 },
+    "cases": [
+      {
+        "name": "float32",
+        "inputs": [
+          {
+            "data": [1.1, 2.2, 3.1, 4.5, 5.3, 6.1, 7.8, 8.9],
+            "dims": [8],
+            "type": "float32"
+          },
+          {
+            "data": [4, 3, 1, 7],
+            "dims": [1, 4, 1],
+            "type": "int64"
+          },
+          {
+            "data": [9.1, 10.2, 11.3, 12.5],
+            "dims": [1, 4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [
+              1.100000023841858, 13.5, 3.0999999046325684, 14.699999809265137, 14.40000057220459, 6.099999904632568,
+              7.800000190734863, 21.399999618530273
+            ],
+            "dims": [8],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ScatterND mul int32",
+    "operator": "ScatterND",
+    "attributes": [{ "name": "reduction", "data": "mul", "type": "string" }],
+    "opset": { "domain": "", "version": 16 },
+    "cases": [
+      {
+        "name": "int32",
+        "inputs": [
+          {
+            "data": [11, 22, 31, 45, 53, 61, 78, 89],
+            "dims": [8],
+            "type": "int32"
+          },
+          {
+            "data": [4, 3, 1, 7],
+            "dims": [1, 4, 1],
+            "type": "int64"
+          },
+          {
+            "data": [91, 102, 113, 125],
+            "dims": [1, 4],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [11, 2486, 31, 4590, 4823, 61, 78, 11125],
+            "dims": [8],
+            "type": "int32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ScatterND min int32",
+    "operator": "ScatterND",
+    "attributes": [{ "name": "reduction", "data": "min", "type": "string" }],
+    "opset": { "domain": "", "version": 16 },
+    "cases": [
+      {
+        "name": "int32",
+        "inputs": [
+          {
+            "data": [11, 22, 31, 45, 53, 61, 78, 89],
+            "dims": [8],
+            "type": "int32"
+          },
+          {
+            "data": [4, 3, 1, 7],
+            "dims": [1, 4, 1],
+            "type": "int64"
+          },
+          {
+            "data": [91, 102, 113, 125],
+            "dims": [1, 4],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [11, 22, 31, 45, 53, 61, 78, 89],
+            "dims": [8],
+            "type": "int32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ScatterND max int32",
+    "operator": "ScatterND",
+    "attributes": [{ "name": "reduction", "data": "max", "type": "string" }],
+    "opset": { "domain": "", "version": 16 },
+    "cases": [
+      {
+        "name": "int32",
+        "inputs": [
+          {
+            "data": [11, 22, 31, 45, 53, 61, 78, 89],
+            "dims": [8],
+            "type": "int32"
+          },
+          {
+            "data": [4, 3, 1, 7],
+            "dims": [1, 4, 1],
+            "type": "int64"
+          },
+          {
+            "data": [91, 102, 113, 125],
+            "dims": [1, 4],
+            "type": "int32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [11, 113, 31, 102, 91, 61, 78, 125],
+            "dims": [8],
+            "type": "int32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ScatterND mul float32",
+    "operator": "ScatterND",
+    "attributes": [{ "name": "reduction", "data": "mul", "type": "string" }],
+    "opset": { "domain": "", "version": 16 },
+    "cases": [
+      {
+        "name": "float32",
+        "inputs": [
+          {
+            "data": [1.1, 2.2, 3.1, 4.5, 5.3, 6.1, 7.8, 8.9],
+            "dims": [8],
+            "type": "float32"
+          },
+          {
+            "data": [4, 3, 1, 7],
+            "dims": [1, 4, 1],
+            "type": "int64"
+          },
+          {
+            "data": [9.1, 10.2, 11.3, 12.5],
+            "dims": [1, 4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [
+              1.100000023841858, 24.860000610351562, 3.0999999046325684, 45.89999771118164, 48.230003356933594,
+              6.099999904632568, 7.800000190734863, 111.24999237060547
+            ],
+            "dims": [8],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ScatterND min float32",
+    "operator": "ScatterND",
+    "attributes": [{ "name": "reduction", "data": "min", "type": "string" }],
+    "opset": { "domain": "", "version": 16 },
+    "cases": [
+      {
+        "name": "float32",
+        "inputs": [
+          {
+            "data": [1.1, 2.2, 3.1, 4.5, 5.3, 6.1, 7.8, 8.9],
+            "dims": [8],
+            "type": "float32"
+          },
+          {
+            "data": [4, 3, 1, 7],
+            "dims": [1, 4, 1],
+            "type": "int64"
+          },
+          {
+            "data": [9.1, 10.2, 11.3, 12.5],
+            "dims": [1, 4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [
+              1.100000023841858, 2.200000047683716, 3.0999999046325684, 4.5, 5.300000190734863, 6.099999904632568,
+              7.800000190734863, 8.899999618530273
+            ],
+            "dims": [8],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ScatterND max float32",
+    "operator": "ScatterND",
+    "attributes": [{ "name": "reduction", "data": "max", "type": "string" }],
+    "opset": { "domain": "", "version": 16 },
+    "cases": [
+      {
+        "name": "float32",
+        "inputs": [
+          {
+            "data": [1.1, 2.2, 3.1, 4.5, 5.3, 6.1, 7.8, 8.9],
+            "dims": [8],
+            "type": "float32"
+          },
+          {
+            "data": [4, 3, 1, 7],
+            "dims": [1, 4, 1],
+            "type": "int64"
+          },
+          {
+            "data": [9.1, 10.2, 11.3, 12.5],
+            "dims": [1, 4],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [
+              1.100000023841858, 11.300000190734863, 3.0999999046325684, 10.199999809265137, 9.100000381469727,
+              6.099999904632568, 7.800000190734863, 12.5
+            ],
+            "dims": [8],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ScatterND float16",
+    "operator": "ScatterND",
+    "attributes": [],
+    "opset": { "domain": "", "version": 11 },
+    "cases": [
+      {
+        "name": "float16",
+        "inputs": [
+          {
+            "data": [1.1, 2.2, 3.1, 4.5, 5.3, 6.1, 7.8, 8.9],
+            "dims": [8],
+            "type": "float16"
+          },
+          {
+            "data": [4, 3, 1, 7],
+            "dims": [1, 4, 1],
+            "type": "int64"
+          },
+          {
+            "data": [9.1, 10.2, 11.3, 12.5],
+            "dims": [1, 4],
+            "type": "float16"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1.1, 11.3, 3.1, 10.2, 9.1, 6.1, 7.8, 12.5],
+            "dims": [8],
+            "type": "float16"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "ScatterND mul uint32",
+    "operator": "ScatterND",
+    "attributes": [{ "name": "reduction", "data": "mul", "type": "string" }],
+    "opset": { "domain": "", "version": 16 },
+    "cases": [
+      {
+        "name": "uint32",
+        "inputs": [
+          {
+            "data": [11, 22, 31, 45, 53, 61, 78, 89],
+            "dims": [8],
+            "type": "uint32"
+          },
+          {
+            "data": [4, 3, 1, 7],
+            "dims": [1, 4, 1],
+            "type": "int64"
+          },
+          {
+            "data": [91, 102, 113, 125],
+            "dims": [1, 4],
+            "type": "uint32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [11, 2486, 31, 4590, 4823, 61, 78, 11125],
+            "dims": [8],
+            "type": "uint32"
+          }
+        ]
+      }
+    ]
+  }
+]
