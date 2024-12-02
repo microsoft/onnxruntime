@@ -240,34 +240,35 @@ bool GetDataTypeMinMax(int32_t data_type, int32_t& min, int32_t& max) {
   }
   return true;
 }
-bool GetQSalarScaleZp(const GraphViewer& graph_viewer, const Node& q_node, float& scale, int32_t& zp,
-                      int32_t& data_type) {
+bool GetQScalarScaleZp(const Graph& graph, const Node& q_node, float& scale, int32_t& zp, int32_t& data_type) {
   assert(q_node.OpType() == QOpName);
   const auto& q_input_defs = q_node.InputDefs();
-  if (q_input_defs.size() != 3 || !q_input_defs[2]->Exists()) {
-    return false;
-  }
 
-  const ONNX_NAMESPACE::TensorProto* scale_tensor_proto =
-      graph_viewer.GetConstantInitializer(q_input_defs[1]->Name(), true);
+  const ONNX_NAMESPACE::TensorProto* scale_tensor_proto = graph.GetConstantInitializer(q_input_defs[1]->Name(), true);
   if (!scale_tensor_proto) {
     return false;
   }
 
   // Support scalar float scale only for now. Need to extend to other float types if needed.
-  Initializer scale_initializer(*scale_tensor_proto, graph_viewer.ModelPath());
+  Initializer scale_initializer(*scale_tensor_proto, graph.ModelPath());
   if (scale_initializer.dims().size() != 0 || scale_initializer.data_type() != ONNX_NAMESPACE::TensorProto::FLOAT) {
     return false;
   }
+
   scale = *scale_initializer.data<float>();
 
-  const ONNX_NAMESPACE::TensorProto* zp_tensor_proto =
-      graph_viewer.GetConstantInitializer(q_input_defs[2]->Name(), true);
+  if (q_input_defs.size() != 3 || !q_input_defs[2]->Exists()) {
+    data_type = ONNX_NAMESPACE::TensorProto::UINT8;
+    zp = 0;
+    return true;
+  }
+
+  const ONNX_NAMESPACE::TensorProto* zp_tensor_proto = graph.GetConstantInitializer(q_input_defs[2]->Name(), true);
   if (!zp_tensor_proto) {
     return false;
   }
 
-  Initializer zp_initializer(*zp_tensor_proto, graph_viewer.ModelPath());
+  Initializer zp_initializer(*zp_tensor_proto, graph.ModelPath());
   if (zp_initializer.dims().size() != 0) {
     return false;
   }
@@ -293,62 +294,43 @@ bool GetQSalarScaleZp(const GraphViewer& graph_viewer, const Node& q_node, float
   return true;
 }
 
-bool CanRemoveRelu(const GraphViewer& graph_viewer, const Node& q_node) {
-  float scale = 0.0f;
-  int32_t zp = 0;
-  int32_t data_type = 0;
-  if (!GetQSalarScaleZp(graph_viewer, q_node, scale, zp, data_type)) {
-    return false;
-  }
-
-  int32_t data_type_min = 0;
-  int32_t data_type_max = 0;
-  if (!GetDataTypeMinMax(data_type, data_type_min, data_type_max)) {
-    return false;
-  }
-
-  // Relu can be removed if the zero-point is set to the smallest quantized value.
-  return zp == data_type_min;
-}
-
-bool CanRemoveClip(const GraphViewer& graph_viewer, const Node& clip_node, const Node& q_node) {
-  float scale = 0.0f;
-  int32_t zp = 0;
-  int32_t data_type = 0;
-  if (!GetQSalarScaleZp(graph_viewer, q_node, scale, zp, data_type)) {
-    return false;
-  }
-
-  float min = 0.0f;
-  float max = 0.0f;
-  if (!optimizer_utils::GetClipConstantMinMax(graph_viewer.GetGraph(), clip_node, min, max)) {
-    return false;
-  }
-
-  int32_t q_clip_min = static_cast<int32_t>(::rint(min / scale)) + zp;
-  int32_t q_clip_max = static_cast<int32_t>(::rint(max / scale)) + zp;
-
-  int32_t data_type_min = 0;
-  int32_t data_type_max = 0;
-  if (!GetDataTypeMinMax(data_type, data_type_min, data_type_max)) {
-    return false;
-  }
-
-  // The Clip can be removed if its range entirely overlaps the quantization range.
-  // QClip range:    [------------------]
-  // Quant range:      [-------------]
-  return q_clip_min <= data_type_min && q_clip_max >= data_type_max;
-}
-
 }  // namespace
 
-bool CanFuseActivationQ(const GraphViewer& graph_viewer, const Node& activation_node, const Node& q_node) {
-  const std::string& activation_op_type = activation_node.OpType();
-  if (activation_op_type == "Relu") {
-    return CanRemoveRelu(graph_viewer, q_node);
-  } else if (activation_op_type == "Clip") {
-    return CanRemoveClip(graph_viewer, activation_node, q_node);
+bool IsClipMadeRedundantByQ(const Graph& graph, const Node& clip_node, const Node& q_node) {
+  float scale = 0.0f;
+  int32_t zp = 0;
+  int32_t data_type = 0;
+  if (!GetQScalarScaleZp(graph, q_node, scale, zp, data_type)) {
+    return false;
   }
+
+  int32_t data_type_min = 0;
+  int32_t data_type_max = 0;
+  if (!GetDataTypeMinMax(data_type, data_type_min, data_type_max)) {
+    return false;
+  }
+
+  const std::string& clip_op_type = clip_node.OpType();
+  if (clip_op_type == "Relu") {
+    return zp == data_type_min;
+  }
+
+  if (clip_op_type == "Clip") {
+    float clip_min = 0.0f;
+    float clip_max = 0.0f;
+    if (!optimizer_utils::GetClipConstantMinMax(graph, clip_node, clip_min, clip_max)) {
+      return false;
+    }
+
+    int32_t q_clip_min = static_cast<int32_t>(::rint(clip_min / scale)) + zp;
+    int32_t q_clip_max = static_cast<int32_t>(::rint(clip_max / scale)) + zp;
+
+    // The Clip can be removed if its range entirely overlaps the quantization range.
+    // QClip range:    [------------------]
+    // Quant range:      [-------------]
+    return q_clip_min <= data_type_min && q_clip_max >= data_type_max;
+  }
+
   return false;
 }
 

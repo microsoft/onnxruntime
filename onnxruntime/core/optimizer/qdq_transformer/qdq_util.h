@@ -15,7 +15,7 @@ namespace onnxruntime {
 
 class Node;
 class Path;
-class GraphViewer;
+class Graph;
 
 namespace QDQ {
 
@@ -78,8 +78,8 @@ bool MatchQNode(const Node& node);
 bool MatchDQNode(const Node& node);
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-// Check if an activation node can be fused with a Q node.
-bool CanFuseActivationQ(const GraphViewer& graph_viewer, const Node& activation_node, const Node& q_node);
+// Check if an clip node is made redundant by Q node.
+bool IsClipMadeRedundantByQ(const Graph& graph, const Node& clip_node, const Node& q_node);
 
 }  // namespace QDQ
 }  // namespace onnxruntime
