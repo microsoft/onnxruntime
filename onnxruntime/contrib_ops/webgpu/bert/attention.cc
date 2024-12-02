@@ -153,7 +153,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "}\n";
 
   shader.MainFunctionBody() << "if (global_id.y < uniforms.M && global_id.x < total_sequence_length) {\n"
-                            << "  let headOffset = workgroup_id.z * uniforms.M * " << (is_gqa_ ? "uniforms.present_sequence_length" : "uniforms.N") << ";\n"
+                            << "  let headOffset = workgroup_id.z * uniforms.M * uniforms.N;\n"
                             << "  let outputIdx = headOffset + global_id.y * uniforms.N + global_id.x;\n"
                             << "  var sum: f32 = " << (components_ == 4 ? "value.x + value.y + value.z + value.w" : (components_ == 2 ? "value.x + value.y" : "value")) << ";\n";
 
@@ -181,7 +181,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
   const int components = parameters.head_size_ % 4 == 0 ? 4 : (parameters.head_size_ % 2 == 0 ? 2 : 1);
 
   AttentionProbsProgram program{"AttentionProbs", feed_past_key, has_present_key, has_attention_bias, tile_size,
-                                components, parameters.is_first_prompt_, parameters.n_reps, seqlen_k, parameters.past_present_share_buffer_, parameters.is_gqa_};
+                                components, parameters.is_first_prompt_, parameters.n_reps, seqlen_k, parameters.past_present_share_buffer_};
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, components},
                      {K, ProgramTensorMetadataDependency::TypeAndRank, components}});
   if (feed_past_key) {
@@ -375,9 +375,8 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   shader.MainFunctionBody() << "// we need to transpose output from BNSH_v to BSND_v\n"
                             << "if (m < uniforms.M && n < uniforms.N) {\n"
-                            << "  let tmp = " << (is_gqa_ ? "uniforms.num_heads * uniforms.present_sequence_length" : "uniforms.v_hidden_size") << ";\n"
-                            << "  let outputIdx = batch_idx * uniforms.M * tmp + "
-                            << "  m * tmp + head_idx * uniforms.N + n;\n"
+                            << "  let outputIdx = batch_idx * uniforms.M * uniforms.v_hidden_size + "
+                            << "  m * uniforms.v_hidden_size + head_idx * uniforms.N + n;\n"
                             << "  output[outputIdx] = value;\n"
                             << "}\n";
 
@@ -398,7 +397,7 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
   const bool has_present_value = output_count > 1 && past_value != nullptr;
   constexpr int tile_size = 12;
 
-  VxAttentionScoreProgram program{"VxAttentionScore", feed_past_value, has_present_value, tile_size, parameters.is_first_prompt_, parameters.n_reps, seqlen_k, parameters.past_present_share_buffer_, parameters.is_gqa_};
+  VxAttentionScoreProgram program{"VxAttentionScore", feed_past_value, has_present_value, tile_size, parameters.is_first_prompt_, parameters.n_reps, seqlen_k, parameters.past_present_share_buffer_};
   program.AddInputs({{probs, ProgramTensorMetadataDependency::TypeAndRank},
                      {V, ProgramTensorMetadataDependency::TypeAndRank}});
   if (feed_past_value) {
