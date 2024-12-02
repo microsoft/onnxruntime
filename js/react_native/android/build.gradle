@@ -7,7 +7,7 @@ buildscript {
   }
 
   dependencies {
-    classpath 'com.android.tools.build:gradle:4.1.2'
+    classpath 'com.android.tools.build:gradle:7.4.2'
     // noinspection DifferentKotlinGradleVersion
   }
 }
@@ -221,9 +221,8 @@ dependencies {
   api "com.facebook.react:react-native:" + REACT_NATIVE_VERSION
   api "org.mockito:mockito-core:2.28.2"
 
-  androidTestImplementation "androidx.test:runner:1.1.0"
-  androidTestImplementation "androidx.test:rules:1.1.0"
-
+  androidTestImplementation "androidx.test:runner:1.5.2"
+  androidTestImplementation "androidx.test:rules:1.5.0"
   implementation "junit:junit:4.12"
 
   androidTestImplementation "com.linkedin.dexmaker:dexmaker-mockito-inline-extended:2.28.1"
