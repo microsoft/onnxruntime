@@ -523,11 +523,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                                    bool single_thread_mode) {
   auto* execution_plan = session_state.GetExecutionPlan();
   VLOGS(logger, 0) << "Number of streams: " << execution_plan->execution_plan.size();
-  int32_t valid_streams = 0;
-  for (auto& stream : execution_plan->execution_plan) {
-    if (stream && stream->steps_.size() > 0)
-      valid_streams++;
-  }
+  int32_t valid_streams = execution_plan->NumberOfValidStreams();
 
   // prepare the execution context, notifications got initialized.
 #ifdef ORT_ENABLE_STREAM

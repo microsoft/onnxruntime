@@ -195,8 +195,8 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
     return locations;
   }
 
-  size_t NumberOfValidStreams() const {
-    size_t count = 0;
+  int32_t NumberOfValidStreams() const {
+    int32_t count = 0;
     for (auto& stream : execution_plan) {
       if (!stream->steps_.empty())
         count++;
