@@ -220,20 +220,9 @@ repositories {
 dependencies {
   api "com.facebook.react:react-native:" + REACT_NATIVE_VERSION
   api "org.mockito:mockito-core:2.28.2"
-  // Core testing libraries
-  androidTestImplementation "androidx.test:core:1.5.0"
+
   androidTestImplementation "androidx.test:runner:1.5.2"
   androidTestImplementation "androidx.test:rules:1.5.0"
-
-  // Espresso libraries
-  androidTestImplementation "androidx.test.espresso:espresso-core:3.5.0"
-  androidTestImplementation "androidx.test.espresso:espresso-contrib:3.5.0"
-  androidTestImplementation "androidx.test.espresso:espresso-intents:3.5.0"
-
-  // JUnit extensions
-  androidTestImplementation "androidx.test.ext:junit:1.1.5"
-  androidTestImplementation "androidx.test.ext:truth:1.5.0"
-
   implementation "junit:junit:4.12"
 
   androidTestImplementation "com.linkedin.dexmaker:dexmaker-mockito-inline-extended:2.28.1"

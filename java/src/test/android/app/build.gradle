@@ -69,21 +69,11 @@ dependencies {
 	implementation 'com.google.android.material:material:1.3.0'
 	implementation 'androidx.constraintlayout:constraintlayout:2.0.4'
 	testImplementation 'junit:junit:4.+'
+    androidTestImplementation "androidx.test.ext:junit:1.1.5"
+    androidTestImplementation "androidx.test.espresso:espresso-core:3.5.0"
 
-    // Core testing libraries
-    androidTestImplementation "androidx.test:core:1.5.0"
     androidTestImplementation "androidx.test:runner:1.5.2"
     androidTestImplementation "androidx.test:rules:1.5.0"
-
-    // Espresso libraries
-    androidTestImplementation "androidx.test.espresso:espresso-core:3.5.0"
-    androidTestImplementation "androidx.test.espresso:espresso-contrib:3.5.0"
-    androidTestImplementation "androidx.test.espresso:espresso-intents:3.5.0"
-
-    // JUnit extensions
-    androidTestImplementation "androidx.test.ext:junit:1.1.5"
-    androidTestImplementation "androidx.test.ext:truth:1.5.0"
-
 	androidTestImplementation 'com.microsoft.appcenter:espresso-test-extension:1.4'
 
 	// dependencies for onnxruntime-android-qnn
