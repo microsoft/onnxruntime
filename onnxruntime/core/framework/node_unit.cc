@@ -250,6 +250,7 @@ Status QDQ::NodeGroup::CanCreateNodeGroup(const GraphViewer& graph_viewer,
 
 NodeUnit::NodeUnit(const Node& node)
     : target_node_(node),
+      redundant_clip_node_(nullptr),
       type_(Type::SingleNode),
       input_edge_count_(node.GetInputEdgesCount()) {
   InitForSingleNode();
