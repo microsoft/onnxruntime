@@ -1952,7 +1952,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
 
   // Find inputs and outputs of the subgraph
   std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::IndexedSubGraph::Create();
-  std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add, graph_outputs_to_add;
+  std::unordered_map<const NodeArg*, int> original_inputs, fused_inputs, fused_outputs, fused_outputs_to_add, graph_outputs_to_add;
   std::unordered_set<const NodeArg*> erased;
   int input_order = 0;
   int output_order = 0;
@@ -2044,12 +2044,25 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   fused_outputs.insert(fused_outputs_to_add.begin(), fused_outputs_to_add.end());
   fused_outputs.insert(graph_outputs_to_add.begin(), graph_outputs_to_add.end());
 
-  // Sort inputs and outputs by the order they were added
   std::multimap<int, const NodeArg*> inputs, outputs;
-  for (auto it = fused_inputs.begin(), end = fused_inputs.end(); it != end; ++it) {
-    inputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
+
+  // Get the input order of the original graph
+  int order = 0;
+  for (const auto* input : graph.GetInputs()) {
+    original_inputs[input] = order++;
   }
 
+  // input order needs to be consistent with original graph's input order
+  for (auto it = fused_inputs.begin(), end = fused_inputs.end(); it != end; ++it) {
+    const auto& iter = original_inputs.find(it->first);
+    if (iter != original_inputs.end()) {
+      inputs.insert(std::pair<int, const NodeArg*>(iter->second, iter->first));
+    } else {
+      inputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
+    }
+  }
+
+  // Sort outputs by the order they were added
   for (auto it = fused_outputs.begin(), end = fused_outputs.end(); it != end; ++it) {
     outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
   }
