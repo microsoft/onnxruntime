@@ -334,7 +334,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   // The format is as for TENSORRT_VERSION: (MAJOR * 100 + MINOR) * 100 + PATCH
   int32_t trt_version_;
   int32_t cuda_version_;
-  std::string ort_version_;
 
   // The OrtAllocator object will be get during ep compute time
   // and should be kept for the lifetime of TRT EP object.
