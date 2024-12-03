@@ -55,7 +55,6 @@ To use WebNN EP, you just need to make 3 small changes:
      WebNN EP also offers a set of options for creating diverse types of WebNN MLContext.
      - `deviceType`: `'cpu'|'gpu'|'npu'`(default value is `'cpu'`), specifies the preferred type of device to be used for the MLContext.
      - `powerPreference`: `'default'|'low-power'|'high-performance'`(default value is `'default'`), specifies the preferred type of power consumption to be used for the MLContext.
-     - `numThreads`: type of number, allows users to specify the number of multi-threads for `'cpu'` device type.
      - `context`: type of `MLContext`, allows users to pass a pre-created `MLContext` to WebNN EP, it is required in IO binding feature. If this option is provided, the other options will be ignored.
 
      Example of using WebNN EP options:
@@ -76,7 +75,7 @@ WebNN API and WebNN EP are in actively development, you might consider installin
 
 ## Keep tensor data on WebNN MLTensor (IO binding)
 
-By default, a model's inputs and outputs are tensors that hold data in CPU memory. When you run a session with WebNN EP with 'gpu' or 'npu' device type, the data is copied to GPU or NPU memory, and the results are copied back to CPU memory. Memory copy between different devices as well as different sessions will bring much overhead to the inference time, WebNN provides a new opaque device-specific storage type MLTensor to address this issue.
+By default, a model's inputs and outputs are tensors that hold data in CPU memory. When you run a session with WebNN EP with 'gpu' or 'npu' device type, the data is copied to GPU or NPU memory, and the results are copied back to CPU memory. Memory copy between different devices as well as different sessions will bring much overhead to the inference time, WebNN provides a new opaque device-specific storage type [MLTensor](https://webmachinelearning.github.io/webnn/#api-mltensor) to address this issue.
 If you get your input data from a MLTensor, or you want to keep the output data on MLTensor for further processing, you can use IO binding to keep the data on MLTensor. This will be especially helpful when running transformer based models, which usually runs a single model multiple times with previous output as the next input.
 
 For model input, if your input data is a WebNN storage MLTensor, you can [create a MLTensor tensor and use it as input tensor](#create-input-tensor-from-a-mltensor).
@@ -95,17 +94,22 @@ Please also check the following topic:
 If your input data is a WebNN storage MLTensor, you can create a MLTensor tensor and use it as input tensor:
 
 ```js
+// Create WebNN MLContext
 const mlContext = await navigator.ml.createContext({deviceType, ...});
+// Create a WebNN MLTensor
 const inputMLTensor = await mlContext.createTensor({
   dataType: 'float32',
-  dimensions: [1, 3, 224, 224],
-  usage: MLTensorUsage.WRITE,
+  shape: [1, 3, 224, 224],
+  writable: true,
 });
-
+// Write data to the MLTensor
+const inputArrayBuffer = new Float32Array(1 * 3 * 224 * 224).fill(1.0);
 mlContext.writeTensor(inputMLTensor, inputArrayBuffer);
+
+// Create an ORT tensor from the MLTensor
 const inputTensor = ort.Tensor.fromMLTensor(inputMLTensor, {
   dataType: 'float32',
-  dims: [1, 3, 224, 224]
+  dims: [1, 3, 224, 224],
 });
 
 ```
@@ -120,24 +124,27 @@ If you know the output shape in advance, you can create a MLTensor tensor and us
 
 // Create a pre-allocated MLTensor and the corresponding ORT tensor. Assuming that the output shape is [10, 1000].
 const mlContext = await navigator.ml.createContext({deviceType, ...});
-const myPreAllocatedMLTensor = await mlContext.createTensor({
+const preallocatedMLTensor = await mlContext.createTensor({
   dataType: 'float32',
-  dimensions: [10, 1000],
-  usage: MLTensorUsage.READ,
+  shape: [10, 1000],
+  readable: true,
 });
 
-const myPreAllocatedOutputTensor = ort.Tensor.fromMLTensor(myPreAllocatedMLTensor, {
+const preallocatedOutputTensor = ort.Tensor.fromMLTensor(preallocatedMLTensor, {
   dataType: 'float32',
-  dims: [10, 1000]
+  dims: [10, 1000],
 });
 
 // ...
 
 // Run the session with fetches
-const feeds = { 'input_0': myInputTensor };
-const fetches = { 'output_0': myPreAllocatedOutputTensor };
-const results = await mySession.run(feeds, fetches);
+const feeds = { 'input_0': inputTensor };
+const fetches = { 'output_0': preallocatedOutputTensor };
+await session.run(feeds, fetches);
 
+// Read output_0 data from preallocatedMLTensor if need
+const output_0 = await mlContext.readTensor(preallocatedMLTensor);
+console.log('output_0 value:', new Float32Array(output_0));
 ```
 
 By specifying the output tensor in the fetches, ONNX Runtime Web will use the pre-allocated MLTensor as the output tensor. If there is a shape mismatch, the `run()` call will fail.
@@ -147,13 +154,13 @@ By specifying the output tensor in the fetches, ONNX Runtime Web will use the pr
 If you don't want to use pre-allocated MLTensor tensors for outputs, you can also specify the output data location in the session options:
 
 ```js
-const mySessionOptions1 = {
+const sessionOptions1 = {
   ...,
   // keep all output data on MLTensor
   preferredOutputLocation: 'ml-tensor'
 };
 
-const mySessionOptions2 = {
+const sessionOptions2 = {
   ...,
   // alternatively, you can specify the output location for each output tensor
   preferredOutputLocation: {
@@ -161,6 +168,16 @@ const mySessionOptions2 = {
     'output_1': 'ml-tensor'   // keep output_1 on MLTensor tensor
   }
 };
+
+// ...
+
+// Run the session
+const feeds = { 'input_0': inputTensor };
+const results = await session.run(feeds);
+
+// Read output_1 data
+const output_1 = await results['output_1'].getData();
+console.log('output_1 value:', new Float32Array(output_1));
 ```
 
 By specifying the config `preferredOutputLocation`, ONNX Runtime Web will keep the output data on the specified device.
