@@ -1,7 +1,7 @@
 parameters:
-  IsReleaseBuild: true
-  PreReleaseVersionSuffixString: '11'
-  PreReleaseVersionSuffixNumber: 22
+  IsReleaseBuild: false
+  PreReleaseVersionSuffixString: 'none'
+  PreReleaseVersionSuffixNumber: 0
 stages:
 - stage: Setup
   jobs:
