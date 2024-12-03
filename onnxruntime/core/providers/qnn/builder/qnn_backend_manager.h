@@ -94,9 +94,9 @@ class QnnBackendManager {
   Status LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length,
                                         std::string node_name,
                                         std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models,
-                                        uint32_t total_context_size);
+                                        int64_t max_spill_fill_size);
 
-  Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context);
+  Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context, bool gen_context_cache_enabled);
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
 
@@ -165,6 +165,10 @@ class QnnBackendManager {
   const std::string& GetSdkVersion() { return sdk_build_version_; }
 
   Status DestroyHTPPowerConfigID(uint32_t htp_power_config_id);
+
+  Status GetMaxSpillFillBufferSize(unsigned char* buffer,
+                                   uint64_t buffer_length,
+                                   uint64_t& max_spill_fill_buffer_size);
 
  private:
   void* LoadLib(const char* file_name, int flags, std::string& error_msg);
@@ -271,7 +275,6 @@ class QnnBackendManager {
   QnnHtpDevice_Arch_t htp_arch_ = QNN_HTP_DEVICE_ARCH_NONE;
   uint32_t soc_model_ = QNN_SOC_MODEL_UNKNOWN;
   bool enable_htp_weight_sharing_ = false;
-  uint64_t max_spill_fill_buffer_ = 0;
 };
 
 }  // namespace qnn
