@@ -3926,6 +3926,7 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward_SliceMultipleConsumers) {
   run_test_case(/*slice_has_graph_output*/ true);
 }
 
+#if defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
 static void VerifyIODef(const NodeUnitIODef& io_def, const Node& node) {
   const auto& op_type = node.OpType();
   const bool is_dq = op_type == "DequantizeLinear";
@@ -3947,6 +3948,7 @@ static void VerifyIODef(const NodeUnitIODef& io_def, const Node& node) {
     ASSERT_EQ(io_def.quant_param->zero_point, input_defs[2]);
   }
 }
+#endif  // defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
 
 TEST(QDQTransformerTests, QDQ_Selector_Test) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/transform/qdq_conv.onnx");
