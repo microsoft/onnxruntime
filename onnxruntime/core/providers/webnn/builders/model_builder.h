@@ -42,7 +42,7 @@ class ModelBuilder {
 
   template <typename T>
   const emscripten::val& CreateOrGetConstant(const int32_t& data_type, T value,
-                                                   const std::vector<uint32_t>& shape = {});
+                                             const std::vector<uint32_t>& shape = {});
 
   // Use the buffers to persist WebNN allocated data like transposed weight.
   // It ensures the validity during inference session.
