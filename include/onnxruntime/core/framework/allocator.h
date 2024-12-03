@@ -7,12 +7,10 @@
 
 #include "core/common/common.h"
 #include "core/framework/allocator_stats.h"
-#include "core/framework/data_types.h"
 // some enums are defined in session/onnxruntime_c_api.h but used in ortdevice.h/ortmemory.h
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/ortdevice.h"
 #include "core/framework/ortmemoryinfo.h"
-#include "core/framework/tensor_shape.h"
 
 // This configures the arena based allocator used by ORT
 // See docs/C_API.md for details on what these mean and how to choose these values
@@ -70,6 +68,12 @@ void* AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_res
 
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
+
+// Note: Re-declare these from core/framework/data_types.h to avoid including the ONNX protobuf header.
+class DataTypeImpl;
+using MLDataType = const DataTypeImpl*;
+
+class TensorShape;
 
 class IAllocator {
  public:
@@ -269,6 +273,7 @@ class CPUAllocator : public IAllocator {
   CPUAllocator() : IAllocator(OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)) {}
 
   void* Alloc(size_t size) override;
+  void* TensorAlloc(MLDataType element_data_type, const TensorShape& shape) override;
   void Free(void* p) override;
 };
 

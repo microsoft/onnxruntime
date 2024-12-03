@@ -13,6 +13,7 @@
 #include <mimalloc.h>
 #endif
 
+#include "core/framework/data_types.h"
 #include "core/framework/bfc_arena.h"
 #include "core/framework/tensor.h"
 

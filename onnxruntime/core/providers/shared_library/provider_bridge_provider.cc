@@ -114,6 +114,7 @@ struct OnUnload {
 
 } g_on_unload;
 
+void* IAllocator::TensorAlloc(MLDataType element_data_type, const TensorShape& shape) { return g_host->IAllocator__TensorAlloc(this, element_data_type, shape); }
 void* CPUAllocator::Alloc(size_t size) { return g_host->CPUAllocator__Alloc(this, size); }
 void CPUAllocator::Free(void* p) { g_host->CPUAllocator__Free(this, p); }
 
