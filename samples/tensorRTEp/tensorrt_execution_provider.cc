@@ -1115,10 +1115,8 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
 
 // Check the graph is the subgraph of control flow op
 bool TensorrtExecutionProvider::IsSubGraphOfControlFlowOp(const OrtGraphViewer* graph) const {
-  const OrtGraph* cur_graph = nullptr;
-  graph_api_->OrtGraph_GetOrtGraph(graph, &cur_graph);
   bool is_subgraph = false;
-  graph_api_->OrtGraph_IsSubgraph(cur_graph, &is_subgraph);
+  graph_api_->OrtGraph_IsSubgraph(graph, &is_subgraph);
   if (is_subgraph) {
     const OrtNode* node = nullptr;
     graph_api_->OrtGraph_GetParenNode(graph, &node);
@@ -1289,10 +1287,8 @@ std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGr
 
   // Generate unique kernel name for TRT subgraph
   std::string subgraph_id = std::to_string(model_hash) + "_" + std::to_string(subgraph_index);
-  const OrtGraph* cur_graph = nullptr;
-  graph_api_->OrtGraph_GetOrtGraph(graph, &cur_graph);
   bool is_subgraph = false;
-  graph_api_->OrtGraph_IsSubgraph(cur_graph, &is_subgraph);
+  graph_api_->OrtGraph_IsSubgraph(graph, &is_subgraph);
   const std::string graph_type = is_subgraph ? "subgraph" : "graph";
   const char* graph_name = nullptr;
   graph_api_->OrtGraph_GetName(graph, &graph_name);
@@ -1465,12 +1461,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
                 const OrtGraphViewer** subgraphs = nullptr;
                 size_t subgraph_count = 0;
                 graph_api_->OrtNode_GetSubgraphs(parent_node, &subgraphs, &subgraph_count);
-                const OrtGraph* origin_graph = nullptr;
-                graph_api_->OrtGraph_GetOrtGraph(graph, &origin_graph);
                 for (size_t i = 0; i < subgraph_count; i++) {
-                    const OrtGraph* subgraph = nullptr;
-                    graph_api_->OrtGraph_GetOrtGraph(subgraphs[i], &subgraph);
-                    if (subgraph == origin_graph) {
+                    bool same_graph = false;
+                    graph_api_->OrtGraph_IsSameGraph(graph, subgraphs[i], &same_graph);
+                    if (same_graph) {
                         continue;
                     }
                     int number_of_ort_subgraph_nodes = 0;
@@ -2700,7 +2694,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
         if (dump_ep_context_model_) {
           create_ep_context_model(graph_body_viewer, engine_cache_path, engine_cache_relative_path_to_context_model_dir, node_name, reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
           graph_api_->OrtGraph_DumpOnnxModel(ep_ctx_graph_, ctx_model_path_.c_str());
-          graph_api_->OrtGraph_ReleaseGraph(ep_ctx_graph_);
+          graph_api_->OrtGraph_ReleaseGraphViewer(ep_ctx_graph_);
         }
       }
     }
@@ -2785,7 +2779,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
     create_ep_context_model(graph_body_viewer, engine_cache_path, engine_cache_relative_path_to_context_model_dir, node_name, nullptr, 0);
     if (ep_context_embed_mode_ == 0) {
       graph_api_->OrtGraph_DumpOnnxModel(ep_ctx_graph_, ctx_model_path_.c_str());
-      graph_api_->OrtGraph_ReleaseGraph(ep_ctx_graph_);
+      graph_api_->OrtGraph_ReleaseGraphViewer(ep_ctx_graph_);
     }
   }
 
@@ -3158,7 +3152,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
                                                         this_->extra_attr_keys_.size(),
                                                         &this_->ep_ctx_graph_);
           graph_api_->OrtGraph_DumpOnnxModel(this_->ep_ctx_graph_, this_->ctx_model_path_.c_str());
-          graph_api_->OrtGraph_ReleaseGraph(this_->ep_ctx_graph_);
+          graph_api_->OrtGraph_ReleaseGraphViewer(this_->ep_ctx_graph_);
       }
       context_update = true;
 

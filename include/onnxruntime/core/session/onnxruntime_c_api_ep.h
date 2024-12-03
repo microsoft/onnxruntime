@@ -124,24 +124,7 @@ ORT_API2_STATUS(OrtGraph_GetNodesIndexInTopologicalOrder, const OrtGraphViewer* 
  * \param[out] out True if the graph is a subgraph
  *
  */
-ORT_API2_STATUS(OrtGraph_IsSubgraph, const OrtGraph* graph, _Out_ bool* out);
-
-/** \brief Get the parent graph of the graph
- *
- * \param[in] graph The graph to query
- * \param[out] parent_graph The parent graph of the graph
- *
- */
-ORT_API2_STATUS(OrtGraph_GetParentGraph, const OrtGraph* graph, _Outptr_ const OrtGraph** parent_graph);
-
-/** \brief Check if the graph is a subgraph
- * TODO(leca): maybe deprecate OrtGraph_IsSubgraph?
- *
- * \param[in] graph The graph to query
- * \param[out] out True if the graph is a subgraph
- *
- */
-ORT_API2_STATUS(OrtGraph_IsSubgraph2, const OrtGraphViewer* graph, _Out_ bool* out);
+ORT_API2_STATUS(OrtGraph_IsSubgraph, const OrtGraphViewer* graph, _Out_ bool* out);
 
 /** \brief Get the parent node of the graph
  *
@@ -158,14 +141,6 @@ ORT_API2_STATUS(OrtGraph_GetParenNode, const OrtGraphViewer* graph, _Outptr_ con
  *
  */
 ORT_API2_STATUS(OrtGraph_GetModelPath, const OrtGraphViewer* graph, _Outptr_ const void** model_path);
-
-/** \brief Get the internal graph in the graph viewer
- *
- * \param[in] graph_viewer The graph viewer to query
- * \param[out] graph The internal graph in the graph viewer
- *
- */
-ORT_API2_STATUS(OrtGraph_GetOrtGraph, const OrtGraphViewer* graph_viewer, _Outptr_ const OrtGraph** graph);
 
 /** \brief Gets the Graph inputs with no matching initializers, in the same order as defined in the GraphProto.
  *
@@ -333,39 +308,39 @@ ORT_API2_STATUS(OrtGraph_ReleaseValueInfo, OrtValueInfoRef* value_info);
  *
  */
 ORT_API2_STATUS(OrtGraph_SerializeToArray, const OrtGraphViewer* graph, _Out_ void** data, _Out_ size_t* data_size);  // TODO(leca): review and discuss
- 
+
 /** \brief Serialize the graph(model) to disk.
  *
  * \param[in] graph The graph to be serialized
  * \param[in] onnx_model_path The file path to save to
  *
  */
-ORT_API2_STATUS(OrtGraph_DumpOnnxModel, const OrtGraph* graph, const char* onnx_model_path);
+ORT_API2_STATUS(OrtGraph_DumpOnnxModel, const OrtGraphViewer* graph, const char* onnx_model_path);
 
-/** \brief  Construct an "EP Context" graph if the given ep_context_graph graph is empty, otherwise: 
+/** \brief  Construct an "EP Context" graph if the given ep_context_graph graph is empty, otherwise:
  *            1. if the given node name can't be found in the graph, add an new "EP Context" node to the existing graph
  *            2. if the node being found with the givne node name, update the node attributes only
  *
  * Please see https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html for more details about EP Context design
  *
  * \param[in] graph The graph to create or add
- * \param[in] node_name The node to be added or updated 
- * \param[in] main_context The attribute of EP Context op 
- * \param[in] embed_mode The attribute of EP Context op 
+ * \param[in] node_name The node to be added or updated
+ * \param[in] main_context The attribute of EP Context op
+ * \param[in] embed_mode The attribute of EP Context op
  * \param[in] cache_path The cache or binary file path. It's for setting the ep_cache_context attribute if embed_mode is 0
  * \param[in] cache_data The cache or binary data. It's for setting the ep_cache_context attribute if embed_mode is 1
  * \param[in] size The size of cache data.
  * \param[in] extra_attr_keys The other attribute names
  * \param[in] extra_attr_values The other attribute value in string
- * \param[in] extra_attr_num Number of other attributes 
+ * \param[in] extra_attr_num Number of other attributes
  * \param[out] ep_context_graph The constructed or updated ep context graph
  *
- * \remarks The caller is responsible for releasing the ep_context_graph using OrtGraph_ReleaseGraph.
+ * \remarks The caller is responsible for releasing the ep_context_graph using OrtGraph_ReleaseGraphViewer.
  *
  */
 ORT_API2_STATUS(OrtGraph_CreateOrUpdateEpCtxGraph,
                     const OrtGraphViewer* graph,
-                    const char* node_name, 
+                    const char* node_name,
                     const int64_t main_context,
                     const int64_t embed_mode,
                     const char* cache_path,
@@ -374,7 +349,7 @@ ORT_API2_STATUS(OrtGraph_CreateOrUpdateEpCtxGraph,
                     const char* const* extra_attr_keys,
                     const char* const* extra_attr_values,
                     size_t extra_attr_num,
-                    _Outptr_ OrtGraph** ep_context_graph);
+                    _Outptr_ OrtGraphViewer** ep_context_graph);
 
 /** \brief Construct a subgraph from the Graph with the given node indices.
  *
@@ -383,21 +358,10 @@ ORT_API2_STATUS(OrtGraph_CreateOrUpdateEpCtxGraph,
  * \param[in] node_indices The indices of the nodes to include in the subgraph
  * \param[out] subgraph The constructed subgraph
  *
- * \remarks The caller is responsible for releasing the subgraph using OrtGraph_ReleaseGraph.
+ * \remarks The caller is responsible for releasing the subgraph using OrtGraph_ReleaseGraphViewer.
  *
  */
 ORT_API2_STATUS(OrtGraph_GetSubGraph, const OrtGraphViewer* graph, const int node_num, const size_t* node_indices, _Outptr_ const OrtGraphViewer** subgraph); // TODO(yang): review and discuss
-                                                                                                                                                              
-/** \brief Release the graph instance.
- *
- * NOTE!!: Invoke this function after the use of OrtGraph_CreateOrUpdateEpCtxGraph. As OrtGraph_CreateOrUpdateEpCtxGraph allocates model instead of
- * graph, this API releases graph's owning_model explicitly which in turn will release the graph
- * (because graph is hosted in an unique_ptr in Model class)
- *
- * \param[in] graph The graph to release
- *
- */
-ORT_API2_STATUS(OrtGraph_ReleaseGraph, const OrtGraph* graph);
 
 /** \brief Release the graph viewer instance.
  *
@@ -409,6 +373,15 @@ ORT_API2_STATUS(OrtGraph_ReleaseGraph, const OrtGraph* graph);
  *
  */
 ORT_API2_STATUS(OrtGraph_ReleaseGraphViewer, const OrtGraphViewer* graph);
+
+/** \brief Check are two graph actually pointing to the same graph.
+ *
+ * \param[in] graph1 The 1st graph
+ * \param[in] graph2 The 2nd graph
+ * \param[out] is_same Is graph1 and graph2 pointing to the same graph
+ *
+ */
+ORT_API2_STATUS(OrtGraph_IsSameGraph, const OrtGraphViewer* graph1, const OrtGraphViewer* graph2, _Out_ bool* is_same);
 
 /** \brief Gets the name of the node
  *
@@ -634,7 +607,7 @@ ORT_API2_STATUS(OrtNode_GetAttributeStr, const OrtNode* node, const char* key, _
  * \param[in] node The node to query
  * \param[in] key The attribute key
  * \param[out] out The string value of the attribute
- * \param[out] size The length of the string 
+ * \param[out] size The length of the string
  *
  */
 ORT_API2_STATUS(OrtNode_GetAttributeStrWithSize, const OrtNode* node, const char* key,  _Outptr_ const char** out, _Outptr_ size_t* size);

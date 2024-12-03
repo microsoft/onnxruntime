@@ -54,7 +54,7 @@ GetCapability::GetCapability(const OrtGraphViewer* graph_viewer_param,
 size_t GetCapability::Execute(OrtIndexedSubGraph*** indexed_sub_graph) {
   // Check if it is a subgraph
   bool is_subgraph = false;
-  graph_api_->OrtGraph_IsSubgraph2(graph_viewer_, &is_subgraph);
+  graph_api_->OrtGraph_IsSubgraph(graph_viewer_, &is_subgraph);
   const char* graph_name = nullptr;
   graph_api_->OrtGraph_GetName(graph_viewer_, &graph_name);
   if (is_subgraph && !strcmp(graph_name, "tf2onnx")) return 0;

@@ -9,17 +9,11 @@ ORT_API_STATUS_IMPL(OrtGraph_IsConstantInitializer, const OrtGraphViewer* graph,
 
 ORT_API_STATUS_IMPL(OrtGraph_GetNodesIndexInTopologicalOrder, const OrtGraphViewer* graph, int execution_order, _Out_ const size_t** nodes_index_in_topological_order, _Out_ size_t* num_nodes);
 
-ORT_API_STATUS_IMPL(OrtGraph_IsSubgraph, const OrtGraph* graph, _Out_ bool* out);
-
-ORT_API_STATUS_IMPL(OrtGraph_GetParentGraph, const OrtGraph* graph, _Outptr_ const OrtGraph** parent_graph);
-
-ORT_API_STATUS_IMPL(OrtGraph_IsSubgraph2, const OrtGraphViewer* graph, _Out_ bool* out);
+ORT_API_STATUS_IMPL(OrtGraph_IsSubgraph, const OrtGraphViewer* graph, _Out_ bool* out);
 
 ORT_API_STATUS_IMPL(OrtGraph_GetParenNode, const OrtGraphViewer* graph, _Outptr_ const OrtNode** parent_node);
 
 ORT_API_STATUS_IMPL(OrtGraph_GetModelPath, const OrtGraphViewer* graph, _Outptr_ const void** model_path);
-
-ORT_API_STATUS_IMPL(OrtGraph_GetOrtGraph, const OrtGraphViewer* graph_viewer, _Outptr_ const OrtGraph** graph);
 
 ORT_API_STATUS_IMPL(OrtGraph_GetRequiredInputs, const OrtGraphViewer* graph, _Outptr_ const char*** input_names, _Out_ size_t* input_len);
 
@@ -55,11 +49,11 @@ ORT_API_STATUS_IMPL(OrtGraph_ReleaseValueInfo, OrtValueInfoRef* value_info);
 
 ORT_API_STATUS_IMPL(OrtGraph_SerializeToArray, const OrtGraphViewer* graph, _Out_ void** data, _Out_ size_t* data_size);
 
-ORT_API_STATUS_IMPL(OrtGraph_DumpOnnxModel, const OrtGraph* graph, const char* onnx_model_path);
+ORT_API_STATUS_IMPL(OrtGraph_DumpOnnxModel, const OrtGraphViewer* graph, const char* onnx_model_path);
 
 ORT_API_STATUS_IMPL(OrtGraph_CreateOrUpdateEpCtxGraph,
                     const OrtGraphViewer* graph,
-                    const char* node_name, 
+                    const char* node_name,
                     const int64_t main_context,
                     const int64_t embed_mode,
                     const char* cache_path,
@@ -68,13 +62,13 @@ ORT_API_STATUS_IMPL(OrtGraph_CreateOrUpdateEpCtxGraph,
                     const char* const* extra_attr_keys,
                     const char* const* extra_attr_values,
                     size_t extra_attr_num,
-                    _Outptr_ OrtGraph** ep_context_graph); 
+                    _Outptr_ OrtGraphViewer** ep_context_graph);
 
 ORT_API_STATUS_IMPL(OrtGraph_GetSubGraph, const OrtGraphViewer* graph, const int node_num, const size_t* node_indices, _Outptr_ const OrtGraphViewer** subgraph);
 
-ORT_API_STATUS_IMPL(OrtGraph_ReleaseGraph, const OrtGraph* graph);
-
 ORT_API_STATUS_IMPL(OrtGraph_ReleaseGraphViewer, const OrtGraphViewer* graph);
+
+ORT_API_STATUS_IMPL(OrtGraph_IsSameGraph, const OrtGraphViewer* graph1, const OrtGraphViewer* graph2, _Out_ bool* is_same);
 
 ORT_API_STATUS_IMPL(OrtNode_GetName, const OrtNode* node, _Outptr_ const char** out);
 

@@ -272,17 +272,12 @@ HashValue TRTGenerateId(const OrtGraphViewer* graph_viewer) {
   HashValue model_hash = 0;
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
   const OrtGraphApi* graph_api = api->GetGraphApi(ORT_API_VERSION);
-  const OrtGraph* cur_graph = nullptr;
-  graph_api->OrtGraph_GetOrtGraph(graph_viewer, &cur_graph);
-  bool is_subgraph = false;
-  graph_api->OrtGraph_IsSubgraph(cur_graph, &is_subgraph);
-  while (is_subgraph) {
-    graph_api->OrtGraph_GetParentGraph(cur_graph, &cur_graph);
-    is_subgraph = false;
-    graph_api->OrtGraph_IsSubgraph(cur_graph, &is_subgraph);
-  }
+  // TODO(leca): omit the logic to get the parent graph, as we don't want to expose both OrtGraph and OrtGraphViewer
+  // To add this logic back, either:
+  // 1. Change the ORT code to add new function (GetParentGraph) on GraphViewer, or
+  // 2. In Graph API, allocate space for GraphViewer object wrapping Graph object in the corresponding API function, but
+  //    the GraphViewer object needs to be released in a separate Graph API
 
-  const OrtGraph* main_graph = cur_graph;
   uint32_t hash[4] = {0, 0, 0, 0};
 
   auto hash_str = [&hash](const std::string& str) {

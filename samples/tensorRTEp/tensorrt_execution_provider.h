@@ -314,7 +314,7 @@ private:
   std::string ep_cache_context_attr_;
   std::string engine_cache_relative_path_to_context_model_dir;
 
-  OrtGraph* ep_ctx_graph_ = nullptr;
+  OrtGraphViewer* ep_ctx_graph_ = nullptr;
   std::vector<const char*> extra_attr_keys_;
   std::vector<const char*> extra_attr_values_;
 
