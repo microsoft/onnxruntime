@@ -187,7 +187,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
     if (use_cuda) {
       auto sequences_buffer = sequences.GetCurrentDeviceSequences();
       for (int i = 0; i < batch_beam_size; i++) {
-        long long batch_beam_stride = (long long)i * sequences.GetMaxLength();
+        size_t batch_beam_stride = (size_t)i * sequences.GetMaxLength();
         int seq_size = sequences.GetSequenceLength();
         gsl::span<const int32_t> sequence = sequences_buffer.subspan(batch_beam_stride, seq_size);
         gsl::span<int> temp_input(input_ids_data + i * seq_size, seq_size);
