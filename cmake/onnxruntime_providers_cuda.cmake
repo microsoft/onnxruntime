@@ -209,6 +209,8 @@
               ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
     endif()
 
+    target_compile_definitions(${target} PRIVATE NV_CUDNN_FRONTEND_USE_DYNAMIC_LOADING CUDNN_FRONTEND_SKIP_JSON_LIB)
+
     if (onnxruntime_USE_TRITON_KERNEL)
       # compile triton kernel, generate .a and .h files
       include(onnxruntime_compile_triton_kernel.cmake)
