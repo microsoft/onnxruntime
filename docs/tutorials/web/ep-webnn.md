@@ -103,10 +103,10 @@ const inputMLTensor = await mlContext.createTensor({
   writable: true,
 });
 // Write data to the MLTensor
-const inputArrayBuffer = new Float32Array(3*224*224).fill(1.0);
+const inputArrayBuffer = new Float32Array(1 * 3 * 224 * 224).fill(1.0);
 mlContext.writeTensor(inputMLTensor, inputArrayBuffer);
 
-//Create an ORT tensor from the MLTensor
+// Create an ORT tensor from the MLTensor
 const inputTensor = ort.Tensor.fromMLTensor(inputMLTensor, {
   dataType: 'float32',
   dims: [1, 3, 224, 224],
@@ -124,13 +124,13 @@ If you know the output shape in advance, you can create a MLTensor tensor and us
 
 // Create a pre-allocated MLTensor and the corresponding ORT tensor. Assuming that the output shape is [10, 1000].
 const mlContext = await navigator.ml.createContext({deviceType, ...});
-const preAllocatedMLTensor = await mlContext.createTensor({
+const preallocatedMLTensor = await mlContext.createTensor({
   dataType: 'float32',
   shape: [10, 1000],
   readable: true,
 });
 
-const preAllocatedOutputTensor = ort.Tensor.fromMLTensor(preAllocatedMLTensor, {
+const preallocatedOutputTensor = ort.Tensor.fromMLTensor(preallocatedMLTensor, {
   dataType: 'float32',
   dims: [10, 1000],
 });
@@ -139,11 +139,11 @@ const preAllocatedOutputTensor = ort.Tensor.fromMLTensor(preAllocatedMLTensor, {
 
 // Run the session with fetches
 const feeds = { 'input_0': inputTensor };
-const fetches = { 'output_0': preAllocatedOutputTensor };
+const fetches = { 'output_0': preallocatedOutputTensor };
 await session.run(feeds, fetches);
 
-// Read output_0 data from preAllocatedMLTensor if need
-const output_0 = await mlContext.readTensor(preAllocatedMLTensor);
+// Read output_0 data from preallocatedMLTensor if need
+const output_0 = await mlContext.readTensor(preallocatedMLTensor);
 console.log('output_0 value:', new Float32Array(output_0));
 ```
 
