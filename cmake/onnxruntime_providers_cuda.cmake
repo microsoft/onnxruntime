@@ -208,6 +208,7 @@
       target_link_libraries(${target} PRIVATE CUDA::cublasLt CUDA::cublas CUDNN::cudnn_all cudnn_frontend CUDA::curand CUDA::cufft CUDA::cudart
               ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
       target_compile_definitions(${target} PRIVATE NV_CUDNN_FRONTEND_USE_DYNAMIC_LOADING CUDNN_FRONTEND_SKIP_JSON_LIB)
+      target_compile_options(${target} PRIVATE "-Wno-unused-function")
     endif()
 
     if (onnxruntime_USE_TRITON_KERNEL)
