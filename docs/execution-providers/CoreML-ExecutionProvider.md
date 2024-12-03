@@ -90,23 +90,29 @@ session = ort.InferenceSession(model_path, providers=providers)
 outputs = ort_sess.run(None, input_feed)
 ```
 
-### Available Options (New API)
-`ModelFormat` can be one of the following values:
+### Available Options (NEW API)
+`ModelFormat` can be one of the following values: (`NeuralNetwork` by default )
 - `MLProgram`: Create an MLProgram format model. Requires Core ML 5 or later (iOS 15+ or macOS 12+).
 - `NeuralNetwork`: Create a NeuralNetwork format model. Requires Core ML 3 or later (iOS 13+ or macOS 10.15+).
 
-`MLComputeUnits` can be one of the following values:
+`MLComputeUnits` can be one of the following values: (`ALL` by default )
 - `CPUOnly`: Limit CoreML to running on CPU only.
 - `CPUAndNeuralEngine`: Enable CoreML EP for Apple devices with a compatible Apple Neural Engine (ANE).
 - `CPUAndGPU`: Enable CoreML EP for Apple devices with a compatible GPU.
 - `ALL`: Enable CoreML EP for all compatible Apple devices.
 
-`RequireStaticInputShapes` can be one of the following values:
+`RequireStaticInputShapes` can be one of the following values: (`0` by default )
+
+Only allow the CoreML EP to take nodes with inputs that have static shapes.
+By default the CoreML EP will also allow inputs with dynamic shapes, however performance may be negatively impacted by inputs with dynamic shapes.
+
 - `0`: Allow the CoreML EP to take nodes with inputs that have dynamic shapes.
 - `1`: Only allow the CoreML EP to take nodes with inputs that have static shapes.
 
 
-`EnableOnSubgraphs` can be one of the following values:
+`EnableOnSubgraphs` can be one of the following values: (`0` by default )
+
+Enable CoreML EP to run on a subgraph in the body of a control flow operator (i.e. a [Loop](https://github.com/onnx/onnx/blob/master/docs/Operators.md#loop), [Scan](https://github.com/onnx/onnx/blob/master/docs/Operators.md#scan) or [If](https://github.com/onnx/onnx/blob/master/docs/Operators.md#if) operator).
 - `0`: Disable CoreML EP to run on a subgraph in the body of a control flow operator.
 - `1`: Enable CoreML EP to run on a subgraph in the body of a control flow operator.
 
