@@ -383,7 +383,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                      {attention_bias, ProgramTensorMetadataDependency::TypeAndRank}});
   program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, 4}});
   const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
-                                               : parameters.scale_;
+                                                : parameters.scale_;
   std::string cache_hint = std::to_string(has_attention_bias) +
                            std::to_string(subgroup_size) +
                            std::to_string(tile_size) +
