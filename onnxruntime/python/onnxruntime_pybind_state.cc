@@ -1181,6 +1181,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         kOrtSessionOptionsConfigNnapiEpPartitioningStopOps);
     return onnxruntime::NnapiProviderFactoryCreator::Create(0, partitioning_stop_ops_list)->CreateProvider();
 #endif
+  } else if (type == kVSINPUExecutionProvider) {
+#ifdef USE_VSINPU
+    return onnxruntime::VSINPUProviderFactoryCreator::Create()->CreateProvider();
+#endif
   } else if (type == kRknpuExecutionProvider) {
 #ifdef USE_RKNPU
     return onnxruntime::RknpuProviderFactoryCreator::Create()->CreateProvider();
