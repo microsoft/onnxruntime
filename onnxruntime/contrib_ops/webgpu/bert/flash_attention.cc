@@ -64,14 +64,14 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const AttentionParameters& parameters,
+Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
                    const Tensor* K, const Tensor* past_key, Tensor* present_key,
                    const Tensor* V, const Tensor* past_value, Tensor* present_value,
                    int past_sequence_length, int total_sequence_length) {
   // CopyKVCache takes past key/value and current key/value and copies them to present key and value.
   // This makes it so that FlashAttention only needs to look at present key and value, and saves
   // number of input buffers in the shader, which we run out of (<=8) without this optimization.
-  const int components = parameters.head_size % 4 == 0 ? 4 : (parameters.head_size % 2 == 0 ? 2 : 1);
+  const int components = parameters.head_size_ % 4 == 0 ? 4 : (parameters.head_size_ % 2 == 0 ? 2 : 1);
   bool has_past = (past_sequence_length != 0);
   CopyKVCacheProgram program{"CopyKVCache", components, has_past};
   if (has_past) {
@@ -87,12 +87,12 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const Attention
   program.AddOutputs({{present_key, ProgramTensorMetadataDependency::Rank, components},
                       {present_value, ProgramTensorMetadataDependency::Rank, components}});
 
-  program.SetDispatchGroupSize(total_sequence_length, 1, parameters.num_heads)
+  program.SetDispatchGroupSize(total_sequence_length, 1, parameters.num_heads_)
       .SetWorkgroupSize(1)
       .CacheHint(std::to_string(components) + std::to_string(has_past))
       .AddUniformVariables({{static_cast<uint32_t>(past_sequence_length)},
-                            {static_cast<uint32_t>(parameters.kv_sequence_length)},
-                            {static_cast<uint32_t>(parameters.head_size / components)}});
+                            {static_cast<uint32_t>(parameters.kv_sequence_length_)},
+                            {static_cast<uint32_t>(parameters.head_size_ / components)}});
 
   return context.RunProgram(program);
 }
@@ -370,37 +370,37 @@ if (q_idx_global_using_wave_valid)
 
 Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
                            Tensor* output, const Tensor* past_key, Tensor* present_key, const Tensor* past_value, Tensor* present_value,
-                           const AttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
-  ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, parameters.past_sequence_length, parameters.total_sequence_length));
+                           const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
+  ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, parameters.past_sequence_length_, parameters.total_sequence_length_));
 
   const uint32_t subgroup_size = context.MinSubgroupSize();
   const uint32_t tile_size = subgroup_size;
   bool has_attention_bias = attention_bias != nullptr;
-  FlashAttentionProgram program{"FlashAttention", has_attention_bias, subgroup_size, tile_size, parameters.head_size, parameters.num_heads};
+  FlashAttentionProgram program{"FlashAttention", has_attention_bias, subgroup_size, tile_size, parameters.head_size_, parameters.num_heads_};
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 4},
                      {present_key, ProgramTensorMetadataDependency::TypeAndRank, 4},
                      {present_value, ProgramTensorMetadataDependency::TypeAndRank, 4},
                      {attention_bias, ProgramTensorMetadataDependency::TypeAndRank}});
   program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, 4}});
-  const float alpha = parameters.scale == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size))
-                                               : parameters.scale;
+  const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
+                                               : parameters.scale_;
   std::string cache_hint = std::to_string(has_attention_bias) +
                            std::to_string(subgroup_size) +
                            std::to_string(tile_size) +
-                           std::to_string(parameters.head_size) +
-                           std::to_string(parameters.num_heads);
-  program.SetDispatchGroupSize(parameters.num_heads, (parameters.sequence_length + tile_size - 1) / tile_size, 1)
+                           std::to_string(parameters.head_size_) +
+                           std::to_string(parameters.num_heads_);
+  program.SetDispatchGroupSize(parameters.num_heads_, (parameters.sequence_length_ + tile_size - 1) / tile_size, 1)
       .SetWorkgroupSize(subgroup_size * subgroup_size)
       .CacheHint(cache_hint)
-      .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length)},
-                            {static_cast<uint32_t>(parameters.total_sequence_length)},
+      .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
+                            {static_cast<uint32_t>(parameters.total_sequence_length_)},
                             {alpha}});
 
   return context.RunProgram(program);
 }
 
 bool CanApplyFlashAttention(const Tensor* bias, const Tensor* present_key, const Tensor* present_value,
-                            const AttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
+                            const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
   // The min subgroup size affects the block size while going through the sequence length.
   // 16 is the smallest size tested, smaller sized would impact performance.
   // Checking for this also ensures that we dont run flash attention where subgroup is not supported.
@@ -413,10 +413,10 @@ bool CanApplyFlashAttention(const Tensor* bias, const Tensor* present_key, const
   return context.IsFlashAttentionEnabled() &&
          context.MinSubgroupSize() >= kMinSupportedSubgroupSize &&
          context.DeviceLimits().maxComputeWorkgroupSizeX >= (context.MinSubgroupSize() * context.MinSubgroupSize()) &&
-         parameters.batch_size == 1 &&
+         parameters.batch_size_ == 1 &&
          bias == nullptr &&
          present_key != nullptr && present_value != nullptr && present_key->SizeInBytes() > 0 &&
-         present_value->SizeInBytes() > 0 && parameters.head_size % 4 == 0;
+         present_value->SizeInBytes() > 0 && parameters.head_size_ % 4 == 0;
 }
 
 }  // namespace webgpu

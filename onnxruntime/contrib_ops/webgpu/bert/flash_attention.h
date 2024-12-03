@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "contrib_ops/webgpu/bert/attention_common.h"
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/shader_helper.h"
@@ -63,10 +64,10 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
 
 Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
                            Tensor* output, const Tensor* past_key, Tensor* present_key, const Tensor* past_value, Tensor* present_value,
-                           const AttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context);
+                           const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context);
 
 bool CanApplyFlashAttention(const Tensor* bias, const Tensor* present_key, const Tensor* present_value,
-                            const AttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context);
+                            const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context);
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime
