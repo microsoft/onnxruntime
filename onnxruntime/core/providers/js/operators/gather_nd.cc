@@ -14,8 +14,7 @@ ONNX_OPERATOR_KERNEL_EX(
     13,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", JsepSupportedDataTypes())
-        .TypeConstraint("indices", BuildKernelDefConstraintsFromTypeList<TypeList<int64_t>>()),
+        .TypeConstraint("T", JsepSupportedDataTypes()),
     GatherND);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -24,8 +23,7 @@ ONNX_OPERATOR_KERNEL_EX(
     12,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", JsepSupportedDataTypes())
-        .TypeConstraint("indices", BuildKernelDefConstraintsFromTypeList<TypeList<int64_t>>()),
+        .TypeConstraint("T", JsepSupportedDataTypes()),
     GatherND);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -34,8 +32,7 @@ ONNX_OPERATOR_KERNEL_EX(
     11,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
-        .TypeConstraint("T", JsepSupportedDataTypes())
-        .TypeConstraint("indices", BuildKernelDefConstraintsFromTypeList<TypeList<int64_t>>()),
+        .TypeConstraint("T", JsepSupportedDataTypes()),
     GatherND);
 
 }  // namespace js

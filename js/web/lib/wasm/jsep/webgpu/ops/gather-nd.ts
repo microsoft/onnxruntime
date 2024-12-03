@@ -39,7 +39,7 @@ const computeSliceOffsets = (
 
   const getShaderSource = (shaderHelper: ShaderHelper) => {
     const indices = inputVariable('indices_data', indicesData.dataType, indicesData.dims.length);
-    const output = outputVariable('input_slice_offsets_data', indicesData.dataType, 1, 1);
+    const output = outputVariable('input_slice_offsets_data', DataType.uint32, 1, 1);
     const variables = [indices, output];
     const uniforms: UniformsArrayType = [
       { name: 'output_size', type: 'u32' },
@@ -174,6 +174,6 @@ export const parseGatherNDAttributes = (attributes: Record<string, unknown>): Ga
   const batchDims = attributes.batch_dims as number;
   return {
     batchDims,
-    cacheKey: ``,
+    cacheKey: '',
   };
 };
