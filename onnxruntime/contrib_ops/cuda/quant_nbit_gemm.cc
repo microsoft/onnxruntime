@@ -59,7 +59,7 @@ void DequantWeightNbit(
 
 template <typename T>
 static Status Fp16GemmHelper(OpKernelContext* ctx, const Tensor* weight, const cudaDeviceProp& device_prop,
-                             const cublasHandle_t cublas_handle) {
+                             const cublasHandle_t cublas_handle, bool UseTF32) {
   typedef typename ::onnxruntime::cuda::ToCudaType<T>::MappedType CudaT;
 
   const Tensor* left_X = ctx->Input<Tensor>(0);
@@ -105,7 +105,7 @@ static Status Fp16GemmHelper(OpKernelContext* ctx, const Tensor* weight, const c
         &zero,
         reinterpret_cast<CudaT*>(Y->MutableData<T>()),
         ldc,
-        device_prop));
+        device_prop, UseTF32));
     return Status::OK();
   }
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "this type of gemm is not supported");
@@ -149,7 +149,7 @@ Status QuantNbitsGemm::ComputeInternal(OpKernelContext* ctx) const {
                       input_zeros->Data<int32_t>(),
                       temp_fp16_weight->MutableData<MLFloat16>(),
                       weight_shape[0], weight_shape[1], bits_, groupsize_);
-    return Fp16GemmHelper<MLFloat16>(ctx, temp_fp16_weight.get(), GetDeviceProp(), GetCublasHandle(ctx));
+    return Fp16GemmHelper<MLFloat16>(ctx, temp_fp16_weight.get(), GetDeviceProp(), GetCublasHandle(ctx), UseTF32());
   }
 }
 
