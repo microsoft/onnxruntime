@@ -261,8 +261,6 @@ stages:
             publishJUnitResults: true
             testResultsFiles: '**/TEST-*.xml'
             testRunTitle: 'React Native Android Instrumented Test results'
-            javaHomeOption: 'path'
-            jdkDirectory: '$(JAVA_HOME_11_X64)'
             sonarQubeRunAnalysis: false
             spotBugsAnalysis: false
           displayName: Run React Native Android Instrumented Tests
