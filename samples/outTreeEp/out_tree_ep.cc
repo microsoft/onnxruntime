@@ -2,6 +2,7 @@
 #include <memory>
 #include <vector>
 #include <iostream>
+#include "core/session/onnxruntime_cxx_api_ep.h"
 namespace onnxruntime {
 
 OutTreeEp::OutTreeEp(const char* ep_type, const OutTreeEpInfo& ep_info) : OrtExecutionProvider(), info(ep_info) {
@@ -9,6 +10,10 @@ OutTreeEp::OutTreeEp(const char* ep_type, const OutTreeEpInfo& ep_info) : OrtExe
     OrtExecutionProvider::GetCapability = [](const OrtExecutionProvider* this_, const OrtGraphViewer* graph, size_t* cnt, OrtIndexedSubGraph*** indexed_sub_graph) {
         const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
         const OrtGraphApi* ort_graph_api = api->GetGraphApi(ORT_API_VERSION);
+
+        // Test Graph C++ API
+        Ort::PluginEP::Graph graph_cxx(graph);
+        std::cout<<"Test Graph C++ API Graph::GetName:"<<graph_cxx.GetName()<<"\n";
         std::vector<OrtIndexedSubGraph*> cache;
         const size_t* nodes_index = nullptr;
         size_t nodes_count = 0;
@@ -16,6 +21,8 @@ OutTreeEp::OutTreeEp(const char* ep_type, const OutTreeEpInfo& ep_info) : OrtExe
         for (size_t i = 0; i < nodes_count; i++) {
             const OrtNode* node = nullptr;
             ort_graph_api->OrtGraph_GetOrtNode(graph, nodes_index[i], &node);
+            Ort::PluginEP::Node node_cxx(node);
+            std::cout<<"Test Graph C++ API Node::GetName:"<<node_cxx.GetName()<<"\n";
             const char* node_op_type = nullptr;
             ort_graph_api->OrtNode_GetOpType(node, &node_op_type);
             if (!strcmp(node_op_type, "Relu")) {
