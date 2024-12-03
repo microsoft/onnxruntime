@@ -258,7 +258,14 @@ bool GetQScalarScaleZp(const Graph& graph, const Node& q_node, float& scale, int
   scale = *scale_initializer.data<float>();
 
   if (q_input_defs.size() != 3 || !q_input_defs[2]->Exists()) {
-    data_type = ONNX_NAMESPACE::TensorProto::UINT8;
+    int32_t output_dtype = ONNX_NAMESPACE::TensorProto::UNDEFINED;
+    const auto& q_attrs = q_node.GetAttributes();
+    if (q_attrs.find("output_dtype") != q_attrs.end()) {
+      output_dtype = static_cast<int32_t>(q_attrs.at("output_dtype").i());
+    }
+
+    data_type =
+        output_dtype == ONNX_NAMESPACE::TensorProto::UNDEFINED ? ONNX_NAMESPACE::TensorProto::UINT8 : output_dtype;
     zp = 0;
     return true;
   }
