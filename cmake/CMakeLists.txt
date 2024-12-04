@@ -102,7 +102,6 @@ option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
 option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to provide eigen_SOURCE_PATH if turn this on." OFF)
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
-option(onnxruntime_USE_LLVM "Build TVM with LLVM" OFF)
 option(onnxruntime_USE_VSINPU "Build with VSINPU support" OFF)
 
 cmake_dependent_option(onnxruntime_USE_FLASH_ATTENTION "Build flash attention kernel for scaled dot product attention" ON "onnxruntime_USE_CUDA" OFF)
@@ -145,14 +144,11 @@ option(onnxruntime_USE_TELEMETRY "Build with Telemetry" OFF)
 cmake_dependent_option(onnxruntime_USE_MIMALLOC "Override new/delete and arena allocator with mimalloc" OFF "WIN32;NOT onnxruntime_USE_CUDA;NOT onnxruntime_USE_OPENVINO" OFF)
 option(onnxruntime_USE_CANN "Build with CANN support" OFF)
 option(onnxruntime_USE_ROCM "Build with AMD GPU support" OFF)
-option(onnxruntime_USE_TVM "Build with TVM support" OFF)
-option(onnxruntime_TVM_CUDA_RUNTIME "Build TVM with CUDA support" OFF)
-option(onnxruntime_TVM_USE_LLVM "Build TVM with LLVM. Set customized path to llvm-config.exe here if need" OFF)
-option(onnxruntime_TVM_USE_HASH "Build ipp-crypto library for support hash algorithm. It is defined for TVM only")
 option(onnxruntime_USE_XNNPACK "Build with XNNPACK support. Provides an alternative math library on ARM, WebAssembly and x86." OFF)
 option(onnxruntime_USE_WEBNN "Build with WebNN support. Enable hardware acceleration in web browsers." OFF)
 option(onnxruntime_USE_WEBGPU "Build with WebGPU support. Enable WebGPU via C/C++ interface." OFF)
 option(onnxruntime_USE_EXTERNAL_DAWN "Build with treating Dawn as external dependency. Will not link Dawn at build time." OFF)
+option(onnxruntime_CUSTOM_DAWN_SRC_PATH "Path to custom Dawn src dir.")
 
 # Options related to reducing the binary size produced by the build
 # XNNPACK EP requires the internal NHWC contrib ops to be available, so this option must be OFF when onnxruntime_USE_XNNPACK is ON
@@ -257,6 +253,7 @@ cmake_dependent_option(MSVC_Z7_OVERRIDE "replacing /Zi and /ZI with /Z7 when usi
 
 option(onnxruntime_USE_AZURE "Build with azure inferencing support" OFF)
 option(onnxruntime_USE_LOCK_FREE_QUEUE "Build with lock-free task queue for threadpool." OFF)
+option(onnxruntime_FORCE_GENERIC_ALGORITHMS "Disable optimized arch-specific algorithms. Use only for testing and debugging generic algorithms." OFF)
 
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
@@ -906,11 +903,6 @@ if (onnxruntime_USE_SNPE)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES snpe)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_SNPE=1)
 endif()
-if (onnxruntime_USE_TVM)
-    list(APPEND ORT_PROVIDER_FLAGS  -DUSE_TVM=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_TVM=1)
-    list(APPEND ONNXRUNTIME_PROVIDER_NAMES tvm)
-endif()
 if (onnxruntime_USE_WINML)
   list(APPEND ORT_PROVIDER_FLAGS  -DUSE_WINML=1)
   list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_WINML=1)
@@ -979,6 +971,10 @@ if (onnxruntime_USE_AZURE)
 endif()
 if (onnxruntime_USE_LOCK_FREE_QUEUE)
     add_compile_definitions(USE_LOCK_FREE_QUEUE)
+endif()
+
+if (onnxruntime_FORCE_GENERIC_ALGORITHMS)
+    add_compile_definitions(FORCE_GENERIC_ALGORITHMS)
 endif()
 
 if (onnxruntime_ENABLE_LAZY_TENSOR)
@@ -1311,50 +1307,6 @@ endif()
 if (onnxruntime_USE_DNNL)
   include(dnnl)
   add_compile_definitions(DNNL_OPENMP)
-endif()
-
-# TVM EP
-if (onnxruntime_USE_TVM)
-  if (NOT TARGET tvm)
-    message(STATUS "Include TVM(*).")
-    include(tvm)
-  endif()
-
-  # ipp-crypto
-  if (onnxruntime_TVM_USE_HASH)
-    message(STATUS "Include ipp-crypto(*).")
-    include(ipp-crypto)
-  endif()
-
-  # TVM
-  if (onnxruntime_TVM_USE_LLVM)
-    set(USE_LLVM "${onnxruntime_TVM_USE_LLVM}" CACHE STRING "Path to LLVM for correct TVM build")
-  elseif(onnxruntime_USE_LLVM)
-    set(USE_LLVM ON CACHE BOOL "Only defined for TVM")
-  endif()
-
-  if (onnxruntime_TVM_CUDA_RUNTIME)
-    set(USE_CUDA ON CACHE BOOL "Only defined for TVM" FORCE)
-  endif()
-
-  # TODO(vvchernov): customized tvm logger is hidden due to the issue on TVM side (https://github.com/apache/tvm/issues/10139)
-  # add_compile_definitions(TVM_LOG_CUSTOMIZE=1)
-  # add_library(tvm_custom_logger STATIC ${ONNXRUNTIME_ROOT}/core/providers/tvm/custom_logging.cc)
-
-  set(USE_OPENMP gnu CACHE STRING "Only defined for TVM")
-  add_subdirectory(${tvm_SOURCE_DIR} ${tvm_BINARY_DIR} EXCLUDE_FROM_ALL)
-
-  set_target_properties(tvm PROPERTIES FOLDER ${tvm_SOURCE_DIR})
-  # target_link_libraries(tvm PUBLIC tvm_custom_logger)
-
-  set(TVM_INCLUDES ${tvm_SOURCE_DIR}/include
-    ${tvm_SOURCE_DIR}/3rdparty/dmlc-core/include
-    ${tvm_SOURCE_DIR}/3rdparty/dlpack/include
-    $<TARGET_PROPERTY:tvm,INTERFACE_INCLUDE_DIRECTORIES>)
-
-  set(onnxruntime_tvm_libs onnxruntime_providers_tvm)
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES tvm)
-  list(APPEND onnxruntime_EXTERNAL_DEPENDENCIES tvm)
 endif()
 
 # onnxruntime-extensions

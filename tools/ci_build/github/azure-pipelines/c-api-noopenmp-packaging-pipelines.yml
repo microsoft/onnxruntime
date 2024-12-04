@@ -112,6 +112,7 @@ stages:
     BuildVariant: 'default'
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
     BuildId: ${{ parameters.BuildId }}
+    QnnSDKVersion: ${{ parameters.QnnSdk }}
 
 - template: stages/java-cuda-packaging-stage.yml
   parameters:

@@ -84,8 +84,8 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
         ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
-        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.h
-        ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.cpp
+        ${MLAS_SRC_DIR}/qnbitgemm_kernel_neon.h
+        ${MLAS_SRC_DIR}/qnbitgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_fp32.cpp
         ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
         ${MLAS_SRC_DIR}/fp16_neon_common.cpp
@@ -363,8 +363,8 @@ else()
           ${MLAS_SRC_DIR}/qgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_udot.cpp
           ${MLAS_SRC_DIR}/qgemm_kernel_sdot.cpp
-          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.h
-          ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.cpp
+          ${MLAS_SRC_DIR}/qnbitgemm_kernel_neon.h
+          ${MLAS_SRC_DIR}/qnbitgemm_kernel_neon.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_fp32.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
         )
@@ -679,6 +679,13 @@ endif()
     if(NOT ONNXRUNTIME_MLAS_MULTI_ARCH AND MLAS_SOURCE_IS_NOT_SET)
         file(GLOB_RECURSE mlas_platform_srcs
           "${MLAS_SRC_DIR}/scalar/*.cpp")
+    elseif (onnxruntime_FORCE_GENERIC_ALGORITHMS)
+        file(GLOB_RECURSE mlas_platform_srcs_generic
+          "${MLAS_SRC_DIR}/scalar/*.cpp")
+        set(mlas_platform_srcs
+            ${mlas_platform_srcs}
+            ${mlas_platform_srcs_generic}
+            )
     endif()
     target_sources(onnxruntime_mlas PRIVATE ${mlas_platform_srcs})
 endif()
