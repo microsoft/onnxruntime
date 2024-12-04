@@ -53,7 +53,7 @@ class Model {
         std::unordered_map<std::string, OnnxTensorInfo>&& input_output_info,
         std::unordered_set<std::string>&& scalar_outputs,
         std::unordered_set<std::string>&& int64_outputs,
-        const logging::Logger& logger, uint32_t coreml_flags);
+        const logging::Logger& logger, uint32_t coreml_compute_unit);
 
   ~Model();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Model);
