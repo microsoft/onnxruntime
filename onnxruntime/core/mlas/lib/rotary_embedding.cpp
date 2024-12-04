@@ -22,14 +22,37 @@ template <typename T>
 void
 MLASCALL
 MlasRotaryEmbedOneRow_FallBack(
-    const T* input,
-    const T* sin,
-    const T* cos,
-    size_t dim,
+    const T* input_data,
+    const T* sin_data,
+    const T* cos_data,
+    size_t rotary_emb_dim,
     bool interleaved,
-    T* output
+    T* output_data
 ) {
-
+    const int half_rotary_emb_dim = rotary_emb_dim / 2;
+    int cache_idx = 0;
+    bool sign = false;
+    int j = 0;
+    for (int i = 0; i < rotary_emb_dim; i++) {
+        if (interleaved) {
+            cache_idx = (i / 2) % half_rotary_emb_dim;
+            sign = i & 1;
+            j = sign ? i - 1 : i + 1;  // i - sign
+        } else {
+            cache_idx = i % half_rotary_emb_dim;
+            sign = (i >= half_rotary_emb_dim);
+            j = (i + half_rotary_emb_dim) % rotary_emb_dim;
+        }
+        float output_data_i = static_cast<float>(input_data[i]) * static_cast<float>(cos_data[cache_idx]);
+        float input_data_j = static_cast<float>(input_data[j]);
+        float sin_data_cache_idx = static_cast<float>(sin_data[cache_idx]);
+        if (sign) {
+            output_data_i += input_data_j * sin_data_cache_idx;
+        } else {
+            output_data_i -= input_data_j * sin_data_cache_idx;
+        }
+        output_data[i] = static_cast<T>(output_data_i);
+    }
 }
 
 }  // namespace
@@ -49,7 +72,7 @@ MlasRotaryEmbedOneRow<float>(
     const auto* dispatch = GetMlasPlatform().RopeDispatch;
 
     if (dispatch == nullptr || dispatch->SRope == nullptr) {
-        MlasRotaryEmbedOneRow_FallBack(input, sin, cos, dim, interleaved, output);
+        MlasRotaryEmbedOneRow_FallBack<float>(input, sin, cos, dim, interleaved, output);
         return;
     }
 
@@ -70,7 +93,7 @@ MlasRotaryEmbedOneRow<MLAS_FP16>(
     const auto* dispatch = GetMlasPlatform().RopeDispatch;
 
     if (dispatch == nullptr || dispatch->HRope == nullptr) {
-        MlasRotaryEmbedOneRow_FallBack(input, sin, cos, dim, interleaved, output);
+        MlasRotaryEmbedOneRow_FallBack<MLAS_FP16>(input, sin, cos, dim, interleaved, output);
         return;
     }
 
