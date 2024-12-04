@@ -27,6 +27,7 @@ for arg in "$@"; do
   case $arg in
     --cuda_minimal=ON)
       BUILD_ARGS+=("onnxruntime_CUDA_MINIMAL=ON")
+      BUILD_ARGS+=("onnxruntime_DISABLE_CONTRIB_OPS=ON")
       ;;
   esac
 done
