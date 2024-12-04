@@ -237,22 +237,6 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     output_parameters->qkv_format = Q_K_V_BNSH;
   }
 
-  // DUMP_CPU_STRING_INIT();
-  // DUMP_CPU_STRING("Batch size = ", static_cast<int>(batch_size));
-  // DUMP_CPU_STRING("Sequence length = ", static_cast<int>(sequence_length));
-  // DUMP_CPU_STRING("Past sequence length = ", static_cast<int>(past_sequence_length));
-  // DUMP_CPU_STRING("KV sequence length = ", static_cast<int>(kv_sequence_length));
-  // DUMP_CPU_STRING("Total sequence length = ", static_cast<int>(total_sequence_length));
-  // DUMP_CPU_STRING("Max sequence length = ", static_cast<int>(max_sequence_length));
-  // DUMP_CPU_STRING("Input hidden size = ", static_cast<int>(input_hidden_size));
-  // DUMP_CPU_STRING("Q hidden size = ", static_cast<int>(q_hidden_size));
-  // DUMP_CPU_STRING("V hidden size = ", static_cast<int>(v_hidden_size));
-  // DUMP_CPU_STRING("Q head size = ", static_cast<int>(q_hidden_size) / num_heads_);
-  // DUMP_CPU_STRING("V head size = ", static_cast<int>(v_hidden_size) / num_heads_);
-  // DUMP_CPU_STRING("Num heads = ", num_heads_);
-  // DUMP_CPU_STRING("Buffer sharing = ", static_cast<int>(past_present_share_buffer_ != 0));
-  // DUMP_CPU_STRING("QKV format = ", static_cast<int>(Q_K_V_BNSH));
-
   return Status::OK();
 }
 

@@ -1,7 +1,7 @@
 #pragma once
 #include "core/common/make_string.h"
 
-#define DEBUG_GENERATION 1  // uncomment it for debugging generation (like beam search etc)
+// #define DEBUG_GENERATION 1  // uncomment it for debugging generation (like beam search etc)
 
 #ifdef DEBUG_GENERATION
 #define DUMP_TENSOR_LEVEL 2
@@ -18,8 +18,9 @@
 #define DUMP_CPU_STRING_INIT() DUMP_CPU_TENSOR_INIT()
 #define DUMP_CPU_STRING(...) cpu_dumper.Print(::onnxruntime::MakeString(__VA_ARGS__))
 #else
-#define DUMP_CPU_TENSOR_INIT()
+#define DUMP_CPU_TENSOR_INIT(...)
 #define DUMP_CPU_TENSOR(...)
+#define DUMP_CPU_STRING_INIT(...)
 #define DUMP_CPU_STRING(...)
 #endif
 
@@ -36,8 +37,9 @@
 #define DUMP_STRING_INIT() DUMP_TENSOR_INIT()
 #define DUMP_STRING(...) dumper.Print(::onnxruntime::MakeString(__VA_ARGS__))
 #else
-#define DUMP_TENSOR_INIT()
+#define DUMP_TENSOR_INIT(...)
 #define DUMP_TENSOR(...)
+#define DUMP_STRING_INIT(...)
 #define DUMP_STRING(...)
 #endif
 
