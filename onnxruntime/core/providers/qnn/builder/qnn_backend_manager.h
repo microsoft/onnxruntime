@@ -96,7 +96,7 @@ class QnnBackendManager {
                                         std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models,
                                         int64_t max_spill_fill_size);
 
-  Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context, bool gen_context_cache_enabled);
+  Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context, bool need_load_system_lib);
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
 

@@ -149,6 +149,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   uint32_t default_rpc_control_latency_ = 0;
   bool enable_HTP_FP16_precision_ = true;
   bool share_ep_contexts_ = false;
+  bool enable_spill_fill_buffer_ = false;
 #ifdef _WIN32
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;
 #endif

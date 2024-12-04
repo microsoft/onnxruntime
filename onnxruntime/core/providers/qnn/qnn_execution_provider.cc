@@ -378,6 +378,9 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_weight_sharing: " << enable_htp_weight_sharing;
   }
 
+  // Add this option because this feature requires QnnSystem lib and it's no supported for Windows x86_64 platform
+  enable_spill_fill_buffer_ = ParseBoolOption("enable_htp_spill_fill_buffer", false, provider_options_map);
+
   model_settings_.offload_graph_io_quantization = ParseBoolOption("offload_graph_io_quantization", false,
                                                                   provider_options_map);
 
@@ -688,7 +691,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   // It will load the QnnSystem lib if is_qnn_ctx_model=true, and
   // delay the Qnn context creation to Compile() using the cached context binary
   // or generate context cache enable, need to use use QnnSystem lib to parse the binary to get the max spill fill buffer size
-  auto rt = qnn_backend_manager_->SetupBackend(logger, is_qnn_ctx_model, context_cache_enabled_);
+  auto rt = qnn_backend_manager_->SetupBackend(logger, is_qnn_ctx_model, context_cache_enabled_ && enable_spill_fill_buffer_);
   if (Status::OK() != rt) {
     LOGS(logger, ERROR) << "QNN SetupBackend failed " << rt.ErrorMessage();
     return result;
@@ -939,6 +942,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     uint32_t total_context_size = SafeInt<uint32_t>(main_context_pos_list.size());
 
     int64_t max_spill_fill_size = 0;
+
     // Adjust the main_context_pos_list, move the one with max spill fill buffer to the beginning
     // HTP spill fill buffer only works for multiple QNN contexts generated after QNN v2.28
     if (total_context_size > 1) {

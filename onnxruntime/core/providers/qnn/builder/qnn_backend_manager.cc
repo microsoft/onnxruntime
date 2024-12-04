@@ -781,7 +781,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 // or generate Qnn context binary is enabled -- to get the max spill fill buffer size
 Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
                                        bool load_from_cached_context,
-                                       bool gen_context_cache_enabled) {
+                                       bool need_load_system_lib) {
   std::lock_guard<std::mutex> lock(logger_mutex_);
   if (backend_setup_completed_) {
     LOGS(logger, VERBOSE) << "Backend setup already!";
@@ -796,7 +796,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
 
   LOGS(logger, VERBOSE) << "LoadBackend succeed.";
 
-  if (load_from_cached_context || gen_context_cache_enabled) {
+  if (load_from_cached_context || need_load_system_lib) {
     ORT_RETURN_IF_ERROR(LoadQnnSystemLib());
   }
 
