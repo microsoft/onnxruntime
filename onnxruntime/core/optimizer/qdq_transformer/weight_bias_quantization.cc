@@ -86,15 +86,16 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
       }
 
       int64_t axis = 1;
-      if (dq_attrs.find("axis") != dq_attrs.end()) {
-        axis = dq_attrs.at("axis").i();
+      if (const auto& axis_iter = dq_attrs.find("axis"); axis_iter != dq_attrs.end()) {
+        axis = axis_iter->second.i();
       }
 
       int64_t expected_axis = 0;
       if (node.OpType() == "Gemm") {
         int64_t transB = 0;
-        if (const auto& attr = node.GetAttributes().find("transB"); attr != node.GetAttributes().end()) {
-          transB = attr->second.i();
+        const auto& gemm_attrs = node.GetAttributes();
+        if (const auto& trans_b_iter = gemm_attrs.find("transB"); trans_b_iter != gemm_attrs.end()) {
+          transB = trans_b_iter->second.i();
         }
         expected_axis = transB == 0 ? 1 : 0;
       }
