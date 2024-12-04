@@ -175,7 +175,7 @@ static void RunTests(const std::vector<float>& input_data,
             interleaved,
             is_packed_batching,
             TensorType::kFloat16,
-            false,  /* disable_cpu */
+            false, /* disable_cpu */
             false, /* disable_cuda*/
             false /* disable_dml */);
   }
