@@ -23,6 +23,15 @@ Abstract:
 
 namespace rope_neon {
 
-
+// Rotary embedding kernel for fp16. Embed one hidden state vector.
+void
+RopeKernel_Fp16(
+    const MLAS_FP16* input,
+    const MLAS_FP16* sin,
+    const MLAS_FP16* cos,
+    size_t dim,
+    bool interleaved,
+    MLAS_FP16* output
+);
 
 }  // namespace rope_neon

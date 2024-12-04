@@ -17,13 +17,6 @@ Abstract:
 #include "rotary_embedding.h"
 #include "rotary_embedding_kernel_neon.h"
 
-namespace rope_neon {
-
-
-
-}  // namespace rope_neon
-
-
 //
 // Kernel dispatch structure definition.
 //
@@ -31,7 +24,7 @@ const MLAS_ROPE_DISPATCH MlasRopeDispatchNeon = []() {
     MLAS_ROPE_DISPATCH d;
 
     if (MlasFp16AccelerationSupported()) {
-        d.HRope = nullptr;  // TODO
+        d.HRope = rope_neon::RopeKernel_Fp16;
     }
 
     return d;
