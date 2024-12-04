@@ -305,6 +305,7 @@ DEPENDENCIES
   jekyll-redirect-from
   jekyll-toc
   just-the-docs
+  elementary
   kramdown-parser-gfm
   rake
   tzinfo (~> 1.2)

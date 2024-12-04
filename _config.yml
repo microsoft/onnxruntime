@@ -1,4 +1,4 @@
-remote_theme: pmarsceill/just-the-docs
+remote_theme: abhn/Elementary
 color_scheme: onnxruntime
 search_enabled: true
 # Split pages into sections that can be searched individually
