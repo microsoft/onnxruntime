@@ -198,8 +198,10 @@ bool IsDataTypeSupportedByWebNNOp(const std::string& onnx_op_type,
     return false;
   }
   if (!IsSupportedDataType(onnx_data_type, wnn_limits[webnn_op_type][webnn_input_output_name]["dataTypes"])) {
-    LOGS(logger, VERBOSE) << "[" << onnx_op_type << "] WebNN op [" << webnn_op_type << "] " << onnx_input_output_name
-                          << " data type: [" << onnx_data_type << "] is not supported by WebNN for now";
+    LOGS(logger, VERBOSE) << "[" << onnx_op_type << "] " << onnx_input_output_name
+                          << "'s data type: [" << onnx_data_type 
+                          << "] is not supported by WebNN op ["
+                          << webnn_op_type << "] for now";
     return false;
   }
   return true;
