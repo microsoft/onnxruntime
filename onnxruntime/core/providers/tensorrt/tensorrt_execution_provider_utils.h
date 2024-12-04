@@ -520,7 +520,7 @@ void RemoveCachesByType(const std::string& root, std::string file_extension) {
  * compiled kernels, so the name must be unique and deterministic across models and sessions.
  * </remarks>
  */
-HashValue TRTGenerateId(const GraphViewer& graph_viewer) {
+HashValue TRTGenerateId(const GraphViewer& graph_viewer, std::string trt_version, std::string cuda_version) {
   HashValue model_hash = 0;
 
   // find the top level graph
@@ -583,12 +583,11 @@ HashValue TRTGenerateId(const GraphViewer& graph_viewer) {
 #endif
 
 #ifdef CUDA_VERSION
-  hash_str(std::to_string(CUDA_VERSION));
+  hash_str(cuda_version);
 #endif
 
 #if defined(NV_TENSORRT_MAJOR) && defined(NV_TENSORRT_MINOR)
-  std::string TRT_VERSION = std::to_string(NV_TENSORRT_MAJOR) + "." + std::to_string(NV_TENSORRT_MINOR);
-  hash_str(TRT_VERSION);
+  hash_str(trt_version);
 #endif
 
   model_hash = hash[0] | (uint64_t(hash[1]) << 32);
