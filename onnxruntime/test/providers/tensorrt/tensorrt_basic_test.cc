@@ -342,8 +342,12 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   Graph& graph = model->MainGraph();
   GraphViewer viewer(graph);
 
+  std::string trt_version = std::to_string(NV_TENSORRT_MAJOR) + "." + std::to_string(NV_TENSORRT_MINOR);
+  std::string cuda_version = std::to_string(CUDA_VERSION);
+  std::string ort_version = ORT_VERSION;
+
   // get the hash for the model when loaded from file
-  HashValue model_hash = TRTGenerateId(viewer);
+  HashValue model_hash = TRTGenerateId(viewer, trt_version, cuda_version);
   ASSERT_NE(model_hash, 0);
 
   // now load the model from bytes and check the hash differs
@@ -358,7 +362,7 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   // Test loading same model from file and byte steam. Hash values should be different
   Graph& graph2 = model2->MainGraph();
   GraphViewer viewer2(graph2);
-  HashValue model_hash2 = TRTGenerateId(viewer2);
+  HashValue model_hash2 = TRTGenerateId(viewer2, trt_version, cuda_version);
   ASSERT_NE(model_hash, model_hash2);
 
   // Test loading same model from different path, see if hash values are same as well
@@ -367,7 +371,7 @@ TEST(TensorrtExecutionProviderTest, TRTModelIdGeneratorUsingModelHashing) {
   ASSERT_TRUE(Model::Load(model_path, model3, nullptr, DefaultLoggingManager().DefaultLogger()).IsOK());
   Graph& graph3 = model3->MainGraph();
   GraphViewer viewer3(graph3);
-  HashValue model_hash3 = TRTGenerateId(viewer3);
+  HashValue model_hash3 = TRTGenerateId(viewer3, trt_version, cuda_version);
   ASSERT_EQ(model_hash, model_hash3) << "model 1&3 are same models and they have same hash, no matter where they are loaded";
 }
 

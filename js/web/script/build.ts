@@ -591,14 +591,14 @@ async function main() {
     // ort[.min].[m]js
     await addAllWebBuildTasks({
       outputName: 'ort',
-      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true' },
+      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true' },
     });
     // ort.bundle.min.mjs
     await buildOrt({
       isProduction: true,
       outputName: 'ort.bundle',
       format: 'esm',
-      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true', 'BUILD_DEFS.DISABLE_DYNAMIC_IMPORT': 'true' },
+      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true', 'BUILD_DEFS.DISABLE_DYNAMIC_IMPORT': 'true' },
     });
 
     // ort.webgpu[.min].[m]js
@@ -617,6 +617,13 @@ async function main() {
     // ort.wasm[.min].[m]js
     await addAllWebBuildTasks({
       outputName: 'ort.wasm',
+      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true', 'BUILD_DEFS.DISABLE_WEBGL': 'true' },
+    });
+    // ort.wasm.bundle.min.mjs
+    await buildOrt({
+      isProduction: true,
+      outputName: 'ort.wasm.bundle',
+      format: 'esm',
       define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true', 'BUILD_DEFS.DISABLE_WEBGL': 'true' },
     });
     // ort.webgl[.min].[m]js

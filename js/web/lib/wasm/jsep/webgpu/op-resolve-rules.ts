@@ -16,6 +16,7 @@ import { einsum, parseEinsumAttributes } from './ops/einsum';
 import { expand } from './ops/expand';
 import { fastGelu } from './ops/fast-gelu';
 import { gather, parseGatherAttributes } from './ops/gather';
+import { gatherND, parseGatherNDAttributes } from './ops/gather-nd';
 import { gatherBlockQuantized, parseGatherBlockQuantizedAttributes } from './ops/gather-block-quantized';
 import { gatherElements, parseGatherElementsAttributes } from './ops/gather-elements';
 import { gemm, parseGemmAttributes } from './ops/gemm';
@@ -100,6 +101,7 @@ export const WEBGPU_OP_RESOLVE_RULES: Map<string, OperatorImplementation> = new 
   ['Gather', [gather, parseGatherAttributes]],
   ['GatherElements', [gatherElements, parseGatherElementsAttributes]],
   ['GatherBlockQuantized', [gatherBlockQuantized, parseGatherBlockQuantizedAttributes]],
+  ['GatherND', [gatherND, parseGatherNDAttributes]],
   ['Gelu', [unaryOps.gelu]],
   ['Gemm', [gemm, parseGemmAttributes]],
   ['GlobalAveragePool', [pool.globalAveragePool, pool.parseGlobalAveragePoolAttributes]],

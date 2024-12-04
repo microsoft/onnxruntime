@@ -346,7 +346,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "511eb80847afe6bded34ec491a38d5d78ba2d604",
+          "commitHash": "12a3b24c456cebd9fd11f23ac0164f78129b00c6",
           "repositoryUrl": "https://github.com/google/dawn.git"
         },
         "comments": "dawn"
