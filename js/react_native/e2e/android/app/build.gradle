@@ -84,12 +84,12 @@ project.ext.react = [
 
 apply from: "../../node_modules/react-native/react.gradle"
 
-def architectures = ["arm64-v8a", "arm64-v7a", "x86", "x86_64"]
-
 afterEvaluate {
-    tasks.named("bundleReleaseJsAndAssets") {
+    def architectures = ["arm64-v8a", "arm64-v7a", "x86", "x86_64"]
+
+    tasks.matching { it.name == "bundleReleaseJsAndAssets" }.all { task ->
         architectures.each { arch ->
-            dependsOn(":onnxruntime-react-native:buildCMakeRelWithDebInfo[${arch}]")
+            task.dependsOn(":onnxruntime-react-native:buildCMakeRelWithDebInfo[${arch}]")
         }
     }
 }
