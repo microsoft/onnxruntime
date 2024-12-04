@@ -21,6 +21,16 @@ BUILD_ARGS=('--config' 'Release'
 	      "CMAKE_CUDA_ARCHITECTURES=75"
 	      "onnxruntime_BUILD_UNIT_TESTS=ON"
 	      "onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON")
+
+# Parse external args
+for arg in "$@"; do
+  case $arg in
+    --cuda_minimal=ON)
+      BUILD_ARGS+=("onnxruntime_CUDA_MINIMAL=ON")
+      ;;
+  esac
+done
+
 if [ -x "$(command -v ninja)" ]; then
     BUILD_ARGS+=('--cmake_generator' 'Ninja')
 fi
