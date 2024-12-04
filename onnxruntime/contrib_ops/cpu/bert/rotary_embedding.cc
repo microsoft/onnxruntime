@@ -82,7 +82,9 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
       MlasRotaryEmbedOneRow<T>(input_data, sin_data, cos_data, rotary_emb_dim, interleaved, output_data);
 
       if (rotary_emb_dim < head_size) {
-        std::memcpy(output_data, input_data, (head_size - rotary_emb_dim) * sizeof(T));
+        std::memcpy(output_data + rotary_emb_dim,
+                    input_data + rotary_emb_dim,
+                    (head_size - rotary_emb_dim) * sizeof(T));
       }
     }
   });
