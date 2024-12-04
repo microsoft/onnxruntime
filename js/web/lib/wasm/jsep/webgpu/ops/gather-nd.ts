@@ -38,8 +38,8 @@ const computeSliceOffsets = (
   programUniforms.push(...createTensorShapeVariables(indicesData.dims, outputShape));
 
   const getShaderSource = (shaderHelper: ShaderHelper) => {
-    const indices = inputVariable('indices_data', indicesData.dataType, indicesData.dims.length);
-    const output = outputVariable('input_slice_offsets_data', DataType.int64, 1, 1);
+    const indices = inputVariable('indices_data', DataType.uint32, indicesData.dims.length);
+    const output = outputVariable('input_slice_offsets_data', DataType.uint32, 1, 1);
     const variables = [indices, output];
     const uniforms: UniformsArrayType = [
       { name: 'output_size', type: 'u32' },
@@ -60,7 +60,7 @@ const computeSliceOffsets = (
     let slice_indices_base_offset = global_idx * uniforms.num_slice_dims;
     var relative_slice_offset = 0;
     for (var dim_idx = 0u; dim_idx < uniforms.num_slice_dims; dim_idx ++) {
-      var index = i32(indices_data[dim_idx + slice_indices_base_offset].x);
+      var index = i32(indices_data[(dim_idx + slice_indices_base_offset) * 2]);
       let input_dim_idx = uniforms.batch_dims + dim_idx;
       if (index < 0) {
         ${
@@ -76,7 +76,7 @@ const computeSliceOffsets = (
       }
     }
 
-    input_slice_offsets_data[global_idx].x =  base_offset + u32(relative_slice_offset);
+    input_slice_offsets_data[global_idx] =  base_offset + u32(relative_slice_offset);
   }`;
   };
 
@@ -141,7 +141,7 @@ export const gatherND = (context: ComputeContext, attributes: GatherNDAttributes
 
   const getShaderSource = (shaderHelper: ShaderHelper) => {
     const input = inputVariable('data', inputs[0].dataType, inputs[0].dims.length);
-    const indices = inputVariable('slice_offsets', inputSliceOffsets.dataType, inputSliceOffsets.dims.length);
+    const indices = inputVariable('slice_offsets', DataType.uint32, inputSliceOffsets.dims.length);
 
     const output = outputVariable('output', inputs[0].dataType, outputShape.length);
     return `
@@ -151,7 +151,7 @@ export const gatherND = (context: ComputeContext, attributes: GatherNDAttributes
             .declareVariables(input, indices, output)}
             ${shaderHelper.mainStart()}
             ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.output_size')}
-          let slice_offset = slice_offsets[global_idx / uniforms.slice_size].x;
+          let slice_offset = slice_offsets[global_idx / uniforms.slice_size];
           output[global_idx] = data[u32(slice_offset) + global_idx % uniforms.slice_size];
         }`;
   };
