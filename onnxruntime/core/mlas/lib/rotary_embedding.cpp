@@ -29,11 +29,11 @@ MlasRotaryEmbedOneRow_FallBack(
     bool interleaved,
     T* output_data
 ) {
-    const int half_rotary_emb_dim = rotary_emb_dim / 2;
-    int cache_idx = 0;
+    const size_t half_rotary_emb_dim = rotary_emb_dim / 2;
+    size_t cache_idx = 0;
     bool sign = false;
-    int j = 0;
-    for (int i = 0; i < rotary_emb_dim; i++) {
+    size_t j = 0;
+    for (size_t i = 0; i < rotary_emb_dim; i++) {
         if (interleaved) {
             cache_idx = (i / 2) % half_rotary_emb_dim;
             sign = i & 1;
