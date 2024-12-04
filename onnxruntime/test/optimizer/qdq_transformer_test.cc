@@ -3942,7 +3942,7 @@ static void VerifyIODef(const NodeUnitIODef& io_def, const Node& node) {
   ASSERT_EQ(&io_def.quant_param->scale, input_defs[1]);
 
   // [optional] zero point should be consistent between NodeUnitIODef and Input/OutputDefs
-  ASSERT_EQ(input_defs.size() == 3, !!io_def.quant_param->zero_point);
+  ASSERT_EQ(input_defs.size() == 3, io_def.quant_param->zero_point != nullptr);
   if (input_defs.size() == 3) {
     // we have zero point
     ASSERT_EQ(io_def.quant_param->zero_point, input_defs[2]);
