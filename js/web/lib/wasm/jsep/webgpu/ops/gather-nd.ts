@@ -38,7 +38,7 @@ const computeSliceOffsets = (
   programUniforms.push(...createTensorShapeVariables(indicesData.dims, outputShape));
 
   const getShaderSource = (shaderHelper: ShaderHelper) => {
-    const indices = inputVariable('indices_data', DataType.uint32, indicesData.dims.length);
+    const indices = inputVariable('indices_data', indicesData.dataType, indicesData.dims.length);
     const output = outputVariable('input_slice_offsets_data', DataType.uint32, 1, 1);
     const variables = [indices, output];
     const uniforms: UniformsArrayType = [
@@ -60,7 +60,7 @@ const computeSliceOffsets = (
     let slice_indices_base_offset = global_idx * uniforms.num_slice_dims;
     var relative_slice_offset = 0;
     for (var dim_idx = 0u; dim_idx < uniforms.num_slice_dims; dim_idx ++) {
-      var index = i32(indices_data[(dim_idx + slice_indices_base_offset) * 2]);
+      var index = i32(indices_data[dim_idx + slice_indices_base_offset].x);
       let input_dim_idx = uniforms.batch_dims + dim_idx;
       if (index < 0) {
         ${
