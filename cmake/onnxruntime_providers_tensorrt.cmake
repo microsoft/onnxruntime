@@ -204,8 +204,7 @@
     endif()
   endif()
 
-  target_compile_definitions(onnxruntime_providers_tensorrt PRIVATE NV_CUDNN_FRONTEND_USE_DYNAMIC_LOADING CUDNN_FRONTEND_SKIP_JSON_LIB)
-  target_compile_options(onnxruntime_providers_tensorrt PRIVATE "-Wno-unused-function")
+  target_compile_definitions(onnxruntime_providers_tensorrt PRIVATE NV_CUDNN_FRONTEND_USE_DYNAMIC_LOADING)
 
   if(APPLE)
     set_property(TARGET onnxruntime_providers_tensorrt APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/core/providers/tensorrt/exported_symbols.lst")
