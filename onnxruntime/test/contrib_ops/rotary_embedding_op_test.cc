@@ -159,7 +159,7 @@ static void RunTests(const std::vector<float>& input_data,
           false, /* disable_cuda */
           false /* disable_dml */);
 
-  // FP16 test for CUDA and DML
+  // FP16 test for CPU, CUDA and DML
   if (use_float16) {
     RunTest(input_data,
             position_ids,

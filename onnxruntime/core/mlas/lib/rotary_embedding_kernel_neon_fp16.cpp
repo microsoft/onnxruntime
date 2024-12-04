@@ -86,11 +86,11 @@ RopeKernel_Fp16_Impl<false>(
         float16x4_t real_out = vfms_f16(vmul_f16(real, cos_val), imag, sin_val);
         float16x4_t imag_out = vfma_f16(vmul_f16(real, sin_val), imag, cos_val);
         MlasStoreLaneFloat16x4<0>(output + i, real_out);
-        MlasStoreLaneFloat16x4<1>(output + i, real_out);
-        MlasStoreLaneFloat16x4<2>(output + i, real_out);
+        MlasStoreLaneFloat16x4<1>(output + i + 1, real_out);
+        MlasStoreLaneFloat16x4<2>(output + i + 2, real_out);
         MlasStoreLaneFloat16x4<0>(output + j, imag_out);
-        MlasStoreLaneFloat16x4<1>(output + j, imag_out);
-        MlasStoreLaneFloat16x4<2>(output + j, imag_out);
+        MlasStoreLaneFloat16x4<1>(output + j + 1, imag_out);
+        MlasStoreLaneFloat16x4<2>(output + j + 2, imag_out);
     } else if (half_dim - i == 2) {
         float16x4_t real = MlasZeroFloat16x4();
         float16x4_t imag = MlasZeroFloat16x4();
@@ -107,9 +107,9 @@ RopeKernel_Fp16_Impl<false>(
         float16x4_t real_out = vfms_f16(vmul_f16(real, cos_val), imag, sin_val);
         float16x4_t imag_out = vfma_f16(vmul_f16(real, sin_val), imag, cos_val);
         MlasStoreLaneFloat16x4<0>(output + i, real_out);
-        MlasStoreLaneFloat16x4<1>(output + i, real_out);
+        MlasStoreLaneFloat16x4<1>(output + i + 1, real_out);
         MlasStoreLaneFloat16x4<0>(output + j, imag_out);
-        MlasStoreLaneFloat16x4<1>(output + j, imag_out);
+        MlasStoreLaneFloat16x4<1>(output + j + 1, imag_out);
     } else if (half_dim - i == 1) {
         float16x4_t real = MlasZeroFloat16x4();
         float16x4_t imag = MlasZeroFloat16x4();
