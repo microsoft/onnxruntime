@@ -17,18 +17,20 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", JsepSupportedDataTypes()),
     GatherND);
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     GatherND,
     kOnnxDomain,
+    12,
     12,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", JsepSupportedDataTypes()),
     GatherND);
 
-ONNX_OPERATOR_KERNEL_EX(
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     GatherND,
     kOnnxDomain,
+    11,
     11,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
