@@ -315,7 +315,7 @@ ORT_API2_STATUS(OrtGraph_SerializeToArray, const OrtGraphViewer* graph, _Out_ vo
  * \param[in] onnx_model_path The file path to save to
  *
  */
-ORT_API2_STATUS(OrtGraph_DumpOnnxModel, const OrtGraphViewer* graph, const char* onnx_model_path);
+ORT_API2_STATUS(OrtGraph_DumpOnnxModel, const OrtGraph* graph, const char* onnx_model_path);
 
 /** \brief  Construct an "EP Context" graph if the given ep_context_graph graph is empty, otherwise:
  *            1. if the given node name can't be found in the graph, add an new "EP Context" node to the existing graph
@@ -335,7 +335,7 @@ ORT_API2_STATUS(OrtGraph_DumpOnnxModel, const OrtGraphViewer* graph, const char*
  * \param[in] extra_attr_num Number of other attributes
  * \param[out] ep_context_graph The constructed or updated ep context graph
  *
- * \remarks The caller is responsible for releasing the ep_context_graph using OrtGraph_ReleaseGraphViewer.
+ * \remarks The caller is responsible for releasing the ep_context_graph using OrtGraph_ReleaseGraph.
  *
  */
 ORT_API2_STATUS(OrtGraph_CreateOrUpdateEpCtxGraph,
@@ -349,7 +349,7 @@ ORT_API2_STATUS(OrtGraph_CreateOrUpdateEpCtxGraph,
                     const char* const* extra_attr_keys,
                     const char* const* extra_attr_values,
                     size_t extra_attr_num,
-                    _Outptr_ OrtGraphViewer** ep_context_graph);
+                    _Outptr_ OrtGraph** ep_context_graph);
 
 /** \brief Construct a subgraph from the Graph with the given node indices.
  *
@@ -362,6 +362,17 @@ ORT_API2_STATUS(OrtGraph_CreateOrUpdateEpCtxGraph,
  *
  */
 ORT_API2_STATUS(OrtGraph_GetSubGraph, const OrtGraphViewer* graph, const int node_num, const size_t* node_indices, _Outptr_ const OrtGraphViewer** subgraph); // TODO(yang): review and discuss
+
+/** \brief Release the graph instance.
+ *
+ * NOTE!!: Invoke this function after the use of OrtGraph_CreateOrUpdateEpCtxGraph. As OrtGraph_CreateOrUpdateEpCtxGraph allocates model instead of
+ * graph, this API releases graph's owning_model explicitly which in turn will release the graph
+ * (because graph is hosted in an unique_ptr in Model class)
+ *
+ * \param[in] graph The graph to release
+ *
+ */
+ORT_API2_STATUS(OrtGraph_ReleaseGraph, const OrtGraph* graph);
 
 /** \brief Release the graph viewer instance.
  *

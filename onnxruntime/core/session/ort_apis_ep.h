@@ -49,7 +49,7 @@ ORT_API_STATUS_IMPL(OrtGraph_ReleaseValueInfo, OrtValueInfoRef* value_info);
 
 ORT_API_STATUS_IMPL(OrtGraph_SerializeToArray, const OrtGraphViewer* graph, _Out_ void** data, _Out_ size_t* data_size);
 
-ORT_API_STATUS_IMPL(OrtGraph_DumpOnnxModel, const OrtGraphViewer* graph, const char* onnx_model_path);
+ORT_API_STATUS_IMPL(OrtGraph_DumpOnnxModel, const OrtGraph* graph, const char* onnx_model_path);
 
 ORT_API_STATUS_IMPL(OrtGraph_CreateOrUpdateEpCtxGraph,
                     const OrtGraphViewer* graph,
@@ -62,9 +62,11 @@ ORT_API_STATUS_IMPL(OrtGraph_CreateOrUpdateEpCtxGraph,
                     const char* const* extra_attr_keys,
                     const char* const* extra_attr_values,
                     size_t extra_attr_num,
-                    _Outptr_ OrtGraphViewer** ep_context_graph);
+                    _Outptr_ OrtGraph** ep_context_graph);
 
 ORT_API_STATUS_IMPL(OrtGraph_GetSubGraph, const OrtGraphViewer* graph, const int node_num, const size_t* node_indices, _Outptr_ const OrtGraphViewer** subgraph);
+
+ORT_API_STATUS_IMPL(OrtGraph_ReleaseGraph, const OrtGraph* graph);
 
 ORT_API_STATUS_IMPL(OrtGraph_ReleaseGraphViewer, const OrtGraphViewer* graph);
 

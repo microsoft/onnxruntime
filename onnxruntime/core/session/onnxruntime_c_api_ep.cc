@@ -466,10 +466,9 @@ static void SetAllGraphInputs(Graph& graph, std::unordered_map<std::string, std:
  * Given a graph, get the corresponding model and serialize it to disk.
  */
 ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_DumpOnnxModel,
-                    const OrtGraphViewer* graph,
+                    const OrtGraph* graph,
                     const char* onnx_model_path) {
-  const GraphViewer* graph_viewer = reinterpret_cast<const GraphViewer*>(graph);
-  const ::onnxruntime::Graph* internal_graph = &(graph_viewer->GetGraph());
+  const ::onnxruntime::Graph* internal_graph = reinterpret_cast<const ::onnxruntime::Graph*>(graph);
   auto model = &(internal_graph->GetModel());
 
   // Two options to generate model proto:
@@ -507,7 +506,7 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_CreateOrUpdateEpCtxGraph,
                     const char* const* extra_attr_keys,
                     const char* const* extra_attr_values,
                     size_t extra_attr_num,
-                    _Outptr_ OrtGraphViewer** ep_context_graph) {
+                    _Outptr_ OrtGraph** ep_context_graph) {
 
   const std::string EPCONTEXT_OP = "EPContext";
   const std::string MAIN_CONTEXT = "main_context";
@@ -540,11 +539,9 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_CreateOrUpdateEpCtxGraph,
 #endif  // ORT_MINIMAL_BUILD
                                    std::vector<ONNX_NAMESPACE::FunctionProto>(), graph_viewer->GetGraph().GetLogger());
     graph_build = &(model_build->MainGraph());
-    auto graph_build_viewer = std::make_unique<GraphViewer>(*graph_build);
-    *ep_context_graph = reinterpret_cast<OrtGraphViewer*>(graph_build_viewer.release());
+    *ep_context_graph = reinterpret_cast<OrtGraph*>(graph_build);
   } else {
-    ::onnxruntime::GraphViewer* content_graph_viewer = reinterpret_cast<::onnxruntime::GraphViewer*>(*ep_context_graph);
-    graph_build = const_cast<::onnxruntime::Graph*>(&(content_graph_viewer->GetGraph()));
+    graph_build = reinterpret_cast<::onnxruntime::Graph*>(*ep_context_graph);
   }
 
   // Get graph inputs and outputs
@@ -756,8 +753,17 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetSubGraph, const OrtGraphViewer* gr
   status = graph_build.Resolve();
   if (status != Status::OK()) return onnxruntime::ToOrtStatus(status);
 
+  // TODO(leca): Maybe we should just return graph_build in the form of OrtGraph, so that we can reuse OrtGraph_ReleaseGraph
   auto sub_graph_viewer = std::make_unique<GraphViewer>(graph_build);
   *subgraph = reinterpret_cast<const OrtGraphViewer*>(sub_graph_viewer.release());
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_ReleaseGraph, const OrtGraph* ort_graph) {
+  if (ort_graph) {
+    const ::onnxruntime::Graph* graph = reinterpret_cast<const ::onnxruntime::Graph*>(ort_graph);
+    delete &(graph->GetModel());
+  }
   return nullptr;
 }
 
@@ -1004,6 +1010,7 @@ static constexpr OrtGraphApi ort_graph_api = {
     &OrtGraphApis::OrtGraph_DumpOnnxModel,
     &OrtGraphApis::OrtGraph_CreateOrUpdateEpCtxGraph,
     &OrtGraphApis::OrtGraph_GetSubGraph,
+    &OrtGraphApis::OrtGraph_ReleaseGraph,
     &OrtGraphApis::OrtGraph_ReleaseGraphViewer,
     &OrtGraphApis::OrtGraph_IsSameGraph,
     &OrtGraphApis::OrtNode_GetName,

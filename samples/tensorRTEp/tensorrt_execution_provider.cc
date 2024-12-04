@@ -2694,7 +2694,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
         if (dump_ep_context_model_) {
           create_ep_context_model(graph_body_viewer, engine_cache_path, engine_cache_relative_path_to_context_model_dir, node_name, reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
           graph_api_->OrtGraph_DumpOnnxModel(ep_ctx_graph_, ctx_model_path_.c_str());
-          graph_api_->OrtGraph_ReleaseGraphViewer(ep_ctx_graph_);
+          graph_api_->OrtGraph_ReleaseGraph(ep_ctx_graph_);
         }
       }
     }
@@ -2779,7 +2779,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
     create_ep_context_model(graph_body_viewer, engine_cache_path, engine_cache_relative_path_to_context_model_dir, node_name, nullptr, 0);
     if (ep_context_embed_mode_ == 0) {
       graph_api_->OrtGraph_DumpOnnxModel(ep_ctx_graph_, ctx_model_path_.c_str());
-      graph_api_->OrtGraph_ReleaseGraphViewer(ep_ctx_graph_);
+      graph_api_->OrtGraph_ReleaseGraph(ep_ctx_graph_);
     }
   }
 
@@ -3152,7 +3152,7 @@ OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const Ort
                                                         this_->extra_attr_keys_.size(),
                                                         &this_->ep_ctx_graph_);
           graph_api_->OrtGraph_DumpOnnxModel(this_->ep_ctx_graph_, this_->ctx_model_path_.c_str());
-          graph_api_->OrtGraph_ReleaseGraphViewer(this_->ep_ctx_graph_);
+          graph_api_->OrtGraph_ReleaseGraph(this_->ep_ctx_graph_);
       }
       context_update = true;
 
