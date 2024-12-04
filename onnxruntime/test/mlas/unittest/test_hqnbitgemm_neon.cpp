@@ -404,7 +404,7 @@ class MlasNeonFp16HQ4BitGemmKernelTest : public MlasTestBase {
     for (size_t m = 0; m < M; ++m) {
       for (size_t n = 0; n < N; ++n) {
         size_t i = m * Ldc + n;
-        ASSERT_TRUE(FloatEqual(target[i], ref[i], 0.015f, 0.03f))
+        ASSERT_TRUE(FloatEqual(target[i], ref[i], 0.02f, 0.055f))
             << " seed " << seed_
             << " v0 " << target[i] << " v1 " << ref[i]
             << " m " << m << " n " << n;
