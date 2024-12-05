@@ -100,7 +100,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       X --> Pow --> ReduceMean --> Add --> Sqrt --> Div -> Mul
             ^          ^           ^                ^      ^
             |          |           |                |      |
-            Y:2        axis     B:epsilon           A:X  A:scale
+           Y:2        axis     B:epsilon           A:X  A:scale
       */
 
       int32_t input_type;
@@ -108,13 +108,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       emscripten::val common_options = emscripten::val::object();
 
       // Pow
-      emscripten::val pow_constant_desc = emscripten::val::object();
-      ORT_RETURN_IF_NOT(SetWebnnDataType(pow_constant_desc, input_type), "Unsupported data type");
-      pow_constant_desc.set("shape", emscripten::val::array());
-      emscripten::val pow_buffer = emscripten::val::global("Float32Array").new_(1);
-      pow_buffer.set(0, 2);
-      emscripten::val pow_constant =
-          model_builder.GetBuilder().call<emscripten::val>("constant", pow_constant_desc, pow_buffer);
+      emscripten::val pow_constant = model_builder.CreateOrGetConstant<float>(input_type, 2);
       common_options.set("label", node.Name() + "_pow");
       emscripten::val pow =
           model_builder.GetBuilder().call<emscripten::val>("pow", input, pow_constant, common_options);
@@ -127,13 +121,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       emscripten::val reduce_mean = model_builder.GetBuilder().call<emscripten::val>("reduceMean", pow, reduce_options);
 
       // Add
-      emscripten::val add_constant_desc = emscripten::val::object();
-      ORT_RETURN_IF_NOT(SetWebnnDataType(add_constant_desc, input_type), "Unsupported data type");
-      add_constant_desc.set("shape", emscripten::val::array());
-      emscripten::val add_buffer = emscripten::val::global("Float32Array").new_(1);
-      add_buffer.set(0, epsilon);
-      emscripten::val add_constant =
-          model_builder.GetBuilder().call<emscripten::val>("constant", add_constant_desc, add_buffer);
+      emscripten::val add_constant = model_builder.CreateOrGetConstant<float>(input_type, epsilon);
       common_options.set("label", node.Name() + "_add");
       emscripten::val add =
           model_builder.GetBuilder().call<emscripten::val>("add", reduce_mean, add_constant, common_options);

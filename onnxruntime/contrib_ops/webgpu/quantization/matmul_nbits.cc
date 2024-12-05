@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <string_view>
+
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
 #include "core/providers/cpu/math/matmul_helper.h"
@@ -352,8 +354,11 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const uint32_t components_a = GetMaxComponents(K);
   const uint32_t components_b = GetMaxComponents(blob_size_in_words);
   uint32_t components = GetMaxComponents(N);
-  const bool is_intel = !std::strcmp(context.AdapterInfo().vendor, "intel") && !std::strcmp(context.AdapterInfo().architecture, "gen-12lp");
-  const bool use_block32 = is_intel && block_size == 32;
+
+  // Use block32 for Intel Gen12LP architecture.
+  const bool use_block32 = context.AdapterInfo().vendor == std::string_view{"intel"} &&
+                           context.AdapterInfo().architecture == std::string_view{"gen-12lp"} &&
+                           block_size == 32;
   const bool has_zero_points = zero_points != nullptr;
   // TODO: Support output_number > 1. Some cases are failed when output_number > 1.
   // const uint32_t output_number = M > 1 && (N / components) % 2 == 0 ? 2 : 1;

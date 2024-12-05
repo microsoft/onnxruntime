@@ -1269,7 +1269,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Append an execution provider instance to the native OrtSessionOptions instance.
         ///
-        /// 'SNPE' and 'XNNPACK' are currently supported as providerName values.
+        /// 'SNPE', 'XNNPACK' and 'CoreML' are currently supported as providerName values.
         ///
         /// The number of providerOptionsKeys must match the number of providerOptionsValues and equal numKeys.
         /// </summary>

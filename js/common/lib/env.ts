@@ -14,7 +14,6 @@ export declare namespace Env {
      * If not modified, the filename of the .wasm file is:
      * - `ort-wasm-simd-threaded.wasm` for default build
      * - `ort-wasm-simd-threaded.jsep.wasm` for JSEP build (with WebGPU and WebNN)
-     * - `ort-training-wasm-simd-threaded.wasm` for training build
      */
     wasm?: URL | string;
     /**
@@ -25,7 +24,6 @@ export declare namespace Env {
      * If not modified, the filename of the .mjs file is:
      * - `ort-wasm-simd-threaded.mjs` for default build
      * - `ort-wasm-simd-threaded.jsep.mjs` for JSEP build (with WebGPU and WebNN)
-     * - `ort-training-wasm-simd-threaded.mjs` for training build
      */
     mjs?: URL | string;
   }

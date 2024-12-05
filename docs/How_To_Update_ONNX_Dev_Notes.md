@@ -21,7 +21,7 @@ This file should be generated. See [cgmanifests/README](/cgmanifests/README.md) 
 - [onnxruntime/test/python/requirements.txt](/onnxruntime/test/python/requirements.txt)
 - [tools/ci_build/github/linux/docker/scripts/requirements.txt](/tools/ci_build/github/linux/docker/scripts/requirements.txt)
 - [tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt](/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt)
-- [tools/ci_build/github/linux/docker/inference/x86_64/python/cpu/scripts/requirements.txt](/tools/ci_build/github/linux/docker/inference/x86_64/python/cpu/scripts/requirements.txt)
+- [tools/ci_build/github/linux/python/requirements.txt](/tools/ci_build/github/linux/python/requirements.txt)
 - Run `git grep -rn "onnx==1" .` to find other locations and update this document if necessary.
 
 1. If there is any change to `cmake/external/onnx/onnx/*.in.proto`, you need to regenerate OnnxMl.cs.
