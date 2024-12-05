@@ -52,6 +52,15 @@ export declare namespace Env {
     simd?: boolean;
 
     /**
+     * set or get a boolean value indicating whether to enable Relaxed SIMD. If set to false, Relaxed SIMD will be forcely disabled.
+     *
+     * This setting is available only when WebAssembly Relaxed SIMD feature is available in current context.
+     *
+     * @defaultValue `false`
+     */
+    relaxedSimd?: boolean;
+
+    /**
      * set or get a boolean value indicating whether to enable trace.
      *
      * @deprecated Use `env.trace` instead. If `env.trace` is set, this property will be ignored.
