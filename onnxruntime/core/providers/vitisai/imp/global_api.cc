@@ -59,8 +59,8 @@ struct OrtVitisAIEpAPI {
       const char* const* keys,
       const char* const* values, size_t kv_len) = nullptr;
   void (*profiler_collect)(
-      std::vector<std::tuple<std::string, int, int, long long, long long>>& api_events,
-      std::vector<std::tuple<std::string, int, int, long long, long long>>& kernel_events);
+      std::vector<EventInfo>& api_events,
+      std::vector<EventInfo>& kernel_events);
   void Ensure() {
     if (handle_)
       return;
@@ -102,8 +102,8 @@ std::shared_ptr<KernelRegistry> get_kernel_registry_vitisaiep() { return s_kerne
 const std::vector<OrtCustomOpDomain*>& get_domains_vitisaiep() { return s_domains_vitisaiep; }
 
 void profiler_collect(
-    std::vector<std::tuple<std::string, int, int, long long, long long>>& api_events,
-    std::vector<std::tuple<std::string, int, int, long long, long long>>& kernel_events) {
+    std::vector<EventInfo>& api_events,
+    std::vector<EventInfo>& kernel_events) {
   if (s_library_vitisaiep.profiler_collect) {
     s_library_vitisaiep.profiler_collect(api_events, kernel_events);
   }
