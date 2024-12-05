@@ -40,15 +40,14 @@ jobs:
       - name: Install dependencies
         run: npm install
         
-      - name: Install missing gems
-        run: bundle install
-        
-      - name: Build with Jekyll
-        uses: actions/jekyll-build-pages@v1
-        with:
-          source: ./
-          destination: ./_site
+      - name: Install Ruby and Bundler
+        run: |
+            gem install bundler
+            bundle install
 
+      - name: Build with Jekyll
+        run: bundle exec jekyll build --source ./ --destination ./_site
+  
       - name: Download C apidocs artifact
         uses: dawidd6/action-download-artifact@v2
         with:
