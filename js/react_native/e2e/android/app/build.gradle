@@ -84,15 +84,6 @@ project.ext.react = [
 
 apply from: "../../node_modules/react-native/react.gradle"
 
-// Fix a error was introduced in new version of gradle
-afterEvaluate {
-    def architectures = ["arm64-v8a", "arm64-v7a", "x86", "x86_64"]
-    tasks.matching { it.name.startsWith("buildCMakeRelWithDebInfo") && it.name.contains(arch) }.all { task ->
-        tasks.named("bundleReleaseJsAndAssets") {
-            dependsOn(task)
-        }
-    }
-}
 /**
  * Set this to true to create two separate APKs instead of one:
  *   - An APK that only works on ARM devices
