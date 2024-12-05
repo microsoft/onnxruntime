@@ -881,7 +881,7 @@ TEST_F(QnnHTPBackendTests, QnnContextPriorityHigh) {
                      "high");  // qnn_context_priority
 }
 
-// Create a model with Case + Add (quantized)
+// Create a model with Cast + Add (quantized)
 // cast_input -> Cast -> Q -> DQ ----
 //                                   |
 //             input2 -> Q -> DQ -> Add -> Q -> DQ -> output

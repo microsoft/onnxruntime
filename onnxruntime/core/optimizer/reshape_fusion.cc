@@ -48,7 +48,7 @@ Status ReshapeFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level, c
       fused_count++;
       LOGS(logger, INFO) << "Fused reshape node: " << reshape.OutputDefs()[0]->Name();
       modified = true;
-    } else if (ReshapeFusion::FuseContiguousReshapes(reshape, graph, logger)) {
+    } else if (ReshapeFusion::FuseContiguousReshapes(reshape, graph)) {
       modified = true;
     }
   }
@@ -454,8 +454,7 @@ bool ReshapeFusion::Fuse_Subgraph(Node& reshape, Graph& graph, const logging::Lo
   return true;
 }
 
-bool ReshapeFusion::FuseContiguousReshapes(Node& reshape, Graph& graph, const logging::Logger& logger) {
-  ORT_UNUSED_PARAMETER(logger);
+bool ReshapeFusion::FuseContiguousReshapes(Node& reshape, Graph& graph) {
   InlinedVector<std::reference_wrapper<Node>> contiguous_reshapes{reshape};
   InlinedVector<int64_t> shape_value;
   while (true) {
@@ -474,19 +473,12 @@ bool ReshapeFusion::FuseContiguousReshapes(Node& reshape, Graph& graph, const lo
       break;
     }
 
-    bool is_concrete_shape = true;
-    shape_value.clear();
-    for (const auto& dim : shape->dim()) {
-      if (dim.has_dim_value()) {
-        shape_value.emplace_back(dim.dim_value());
-      } else {
-        is_concrete_shape = false;
-      }
-    }
-    if (!is_concrete_shape) {
+    auto tensor_shape = utils::GetTensorShapeFromTensorShapeProto(*shape);
+    if (tensor_shape.Size() == -1) {
       break;
     }
 
+    shape_value = tensor_shape.AsShapeVector();
     contiguous_reshapes.emplace_back(*next_node);
   }
 
