@@ -647,7 +647,8 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
   }
 };
 
-// Pre-packing enabled + no shared initializers = no pre-packed weights caching
+// Pre-packing enabled + no shared initializers, however, we put all the pre-packs
+// in a session_state container for onwership.
 TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test1) {
   SessionOptions sess_options;
   sess_options.enable_mem_pattern = true;
@@ -679,10 +680,11 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test1) {
 
   const auto* kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_1.GetKernel(0));
 
-  // Assert that a pre-pack call was made and that no mechanism to store weight from shared container was invoked
+  // Assert that a pre-pack call was made. However, they sharing call is still made from a serialized container.
   ASSERT_EQ(session_state_1.GetNumberOfPrepacksCounter(), static_cast<size_t>(1));
   ASSERT_EQ(kernel->prepack_calls_count, 1);
-  ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 0);
+  // In this case the sharing comes from the serialized container
+  ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 1);
 
   // Second session/model
   Model model_2("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
@@ -706,10 +708,11 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test1) {
 
   kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_2.GetKernel(0));
 
-  // Assert that a pre-pack call was made and that no mechanism to store weight from shared container was invoked
+  // Assert that a pre-pack call was made. The weights are still shared from the serialized container
+  // either because they are loaded from disk or because we share it from there.
   ASSERT_EQ(session_state_2.GetNumberOfPrepacksCounter(), static_cast<size_t>(1));
   ASSERT_EQ(kernel->prepack_calls_count, 1);
-  ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 0);
+  ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 1);
 }
 
 // Pre-packing enabled + shared initializers + no pre-packed weights container = no pre-packed weights caching
@@ -754,10 +757,10 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test2) {
 
   const auto* kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_1.GetKernel(0));
 
-  // Assert that a pre-pack call was made and that no mechanism to store weight from shared container was invoked
+  // Assert that a pre-pack call was made, but sharing still takes place from the serialized container
   ASSERT_EQ(session_state_1.GetNumberOfPrepacksCounter(), static_cast<size_t>(1));
   ASSERT_EQ(kernel->prepack_calls_count, 1);
-  ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 0);
+  ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 1);
 
   // Second session/model
   Model model_2("graph_main", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
@@ -781,10 +784,10 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test2) {
 
   kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_2.GetKernel(0));
 
-  // Assert that a pre-pack call was made and that no mechanism to store weight from shared container was invoked
+  // Assert that a pre-pack call was made, but sharing still takes place from the serialized container
   ASSERT_EQ(session_state_2.GetNumberOfPrepacksCounter(), static_cast<size_t>(1));
   ASSERT_EQ(kernel->prepack_calls_count, 1);
-  ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 0);
+  ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 1);
 }
 
 // Pre-packing enabled + shared initializers + pre-packed weights container = pre-packed weights caching enabled

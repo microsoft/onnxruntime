@@ -489,8 +489,8 @@ Status SessionState::PrepackConstantInitializedTensors(
                       // In the saving mode we choose to overwrite the pre-packed weight in the container so we
                       // write out the most recent version of the pre-packed data
                       if (prepacked_weights_for_serialization_.IsSaveModeOn()) {
-                        // Here we take references to the shared container owned data, so we unmap any entries
-                        // that we are mapping from disk
+                        // Here we take references to the shared container owned data, so we unmap this entry
+                        // if it came from disk in thise session.
                         WritePrepackedForSaving(input_name, prepacked_weights_container_key, prepacked_shared,
                                                 prepacked_subgraph);
                       }
@@ -498,7 +498,7 @@ Status SessionState::PrepackConstantInitializedTensors(
                     } else {  // container doesn't contain the pre-packed weight - so write into it for sharing across kernel instances
 
                       if (!prepacked_weights_for_serialization_.IsSaveModeOn()) {
-                        // Check if we loaded it from disk, then shared it in the container
+                        // Check if we loaded it from disk, then put it into the shared container
                         // the shared container takes ownership of the memory mapped entries
                         auto prepacked_from_disk =
                             prepacked_weights_for_serialization_.TakePrepackedWeights(prepacked_weights_container_key);
@@ -520,8 +520,6 @@ Status SessionState::PrepackConstantInitializedTensors(
                       // In the saving mode we choose to overwrite the pre-packed weight in the container so we
                       // write out the most recent version of the pre-packed data
                       if (prepacked_weights_for_serialization_.IsSaveModeOn()) {
-                        // Here we take references to the shared container owned data, so we unmap any entries
-                        // that we are mapping from disk, so we write the most fresh data possible
                         WritePrepackedForSaving(input_name, prepacked_weights_container_key, shared_prepacked,
                                                 prepacked_subgraph);
                       }
@@ -541,7 +539,10 @@ Status SessionState::PrepackConstantInitializedTensors(
                                                       is_packed,
                                                       &weights_to_be_filled_in));
 
-                  if (is_packed) {
+                  // Some kernels (matmul_nbits)  do not share their pre-packed results even though
+                  // they set is_packed = true
+                  // so we leave it up to them.
+                  if (is_packed && !weights_to_be_filled_in.buffers_.empty()) {
                     const auto& op_type = node.OpType();
                     const std::string prepacked_weights_container_key = GenerateKeyForPrepackedWeightsMap(
                         op_type,
@@ -551,6 +552,8 @@ Status SessionState::PrepackConstantInitializedTensors(
                     const auto* weights_to_use = prepacked_subgraph.GetPrepackedWeights(
                         prepacked_weights_container_key);
 
+                    // In both saving mode and none-saving, we use serialization container to own the data
+                    // and share it.
                     if (prepacked_subgraph.IsSaveModeOn() || weights_to_use == nullptr) {
                       // In this case pre-packed container owns the data
                       prepacked_subgraph.WritePackedForSaving(input_name, prepacked_weights_container_key,
@@ -558,6 +561,7 @@ Status SessionState::PrepackConstantInitializedTensors(
                       weights_to_use = prepacked_subgraph.GetPrepackedWeights(prepacked_weights_container_key);
                       assert(weights_to_use != nullptr);
                     }
+
                     ORT_RETURN_IF_ERROR(KernelUseSharedPrePackedBuffers(*kernel, input_idx,
                                                                         *weights_to_use,
                                                                         node.Name()));
@@ -603,7 +607,8 @@ Status SessionState::PrepackConstantInitializedTensors(
   }
 }
 
-static int64_t CalculateMemoryPatternsKey(const gsl::span<const OrtValue>& tensor_inputs) {
+static int64_t
+CalculateMemoryPatternsKey(const gsl::span<const OrtValue>& tensor_inputs) {
   int64_t key = 0;
   for (const auto& input : tensor_inputs) {
     for (auto dim : input.Get<Tensor>().Shape().GetDims()) key ^= dim;
