@@ -279,8 +279,9 @@ struct ProviderHostImpl : ProviderHost {
 
   std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                      const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                                     gsl::span<const NodeIndex> tentative_nodes) override {
-    return onnxruntime::GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes);
+                                                     gsl::span<const NodeIndex> tentative_nodes,
+                                                     const logging::Logger& logger) override {
+    return onnxruntime::GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes, logger);
   }
 
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ bool* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
@@ -1057,8 +1058,8 @@ struct ProviderHostImpl : ProviderHost {
   }
 
   std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
-  QDQ__GetAllNodeUnits(const GraphViewer* graph_viewer) override {
-    return QDQ::GetAllNodeUnits(*graph_viewer);
+  QDQ__GetAllNodeUnits(const GraphViewer* graph_viewer, const logging::Logger& logger) override {
+    return QDQ::GetAllNodeUnits(*graph_viewer, logger);
   }
 
   // Model (wrapped)

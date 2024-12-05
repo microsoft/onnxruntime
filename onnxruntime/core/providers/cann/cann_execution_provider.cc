@@ -1288,7 +1288,7 @@ CANNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewe
 
       const KernelCreateInfo* cann_kernel_def = kernel_lookup.LookUpKernel(node);
       if (cann_kernel_def == nullptr) {
-        LOGS_DEFAULT(INFO) << "CANN kernel not found in registries for Op type: " << node.OpType()
+        LOGS(*GetLogger(), INFO) << "CANN kernel not found in registries for Op type: " << node.OpType()
                            << " node name: " << node.Name();
         continue;
       }
@@ -1296,7 +1296,7 @@ CANNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewe
       candidates.push_back(node.Index());
     }
 
-    auto cpu_nodes = GetCpuPreferredNodes(graph_viewer, kernel_lookup, candidates);
+    auto cpu_nodes = GetCpuPreferredNodes(graph_viewer, kernel_lookup, candidates, *GetLogger());
     for (auto& node_index : candidates) {
       if (cpu_nodes.count(node_index) > 0)
         continue;

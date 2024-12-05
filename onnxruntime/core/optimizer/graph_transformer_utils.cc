@@ -190,6 +190,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     TransformerLevel level,
     const SessionOptions& session_options,
     const IExecutionProvider& cpu_execution_provider, /*required by constant folding*/
+    const logging::Logger& logger,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable,
     [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool,
     std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors) {
@@ -404,7 +405,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 
       auto cpu_registry = cpu_execution_provider.GetKernelRegistry();
-      auto nhwc_transformer = std::make_unique<NhwcTransformer>(std::move(cpu_allocator), std::move(cpu_registry));
+      auto nhwc_transformer = std::make_unique<NhwcTransformer>(std::move(cpu_allocator), std::move(cpu_registry),
+                                                                logger);
       if (nhwc_transformer->IsActive()) {
         transformers.emplace_back(std::move(nhwc_transformer));
       }
@@ -437,6 +439,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
     const SessionOptions& session_options,
     const SatApplyContextVariant& apply_context,
     const IExecutionProvider& cpu_execution_provider,
+    const logging::Logger& logger,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable,
     [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool,
     std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors) {
@@ -490,7 +493,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
 #ifndef DISABLE_CONTRIB_OPS
         AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
         auto cpu_registry = cpu_execution_provider.GetKernelRegistry();
-        auto nhwc_transformer = std::make_unique<NhwcTransformer>(std::move(cpu_allocator), std::move(cpu_registry));
+        auto nhwc_transformer = std::make_unique<NhwcTransformer>(std::move(cpu_allocator), std::move(cpu_registry),
+                                                                  logger);
         if (nhwc_transformer->IsActive()) {
           transformers.emplace_back(std::move(nhwc_transformer));
         }
