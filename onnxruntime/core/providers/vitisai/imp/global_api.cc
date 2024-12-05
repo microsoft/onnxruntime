@@ -82,12 +82,9 @@ struct OrtVitisAIEpAPI {
       ::onnxruntime::LogRuntimeError(0, status, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__);
       ORT_THROW(status);
     }
-    auto status2 = env.GetSymbolFromLibrary(handle_, "profiler_collect", (void**)&profiler_collect);
-    if (!status2.IsOK() ) {
-      ::onnxruntime::LogRuntimeError(0, status, __FILE__, static_cast<const char*>(__FUNCTION__), __LINE__);
-    }
     std::ignore = env.GetSymbolFromLibrary(handle_, "vaip_get_version",
                                            (void**)&vaip_get_version);
+    std::ignore = env.GetSymbolFromLibrary(handle_, "profiler_collect", (void**)&profiler_collect);
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "create_ep_context_nodes", (void**)&create_ep_context_nodes));
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "vitisai_ep_on_run_start", (void**)&vitisai_ep_on_run_start));
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(handle_, "vitisai_ep_set_ep_dynamic_options", (void**)&vitisai_ep_set_ep_dynamic_options));
