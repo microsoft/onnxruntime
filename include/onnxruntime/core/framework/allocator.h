@@ -273,7 +273,6 @@ class CPUAllocator : public IAllocator {
   CPUAllocator() : IAllocator(OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)) {}
 
   void* Alloc(size_t size) override;
-  void* TensorAlloc(MLDataType element_data_type, const TensorShape& shape) override;
   void Free(void* p) override;
 };
 
