@@ -23,9 +23,10 @@ Abstract:
 const MLAS_ROPE_DISPATCH MlasRopeDispatchNeon = []() {
     MLAS_ROPE_DISPATCH d;
 
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
     if (MlasFp16AccelerationSupported()) {
         d.HRope = rope_neon::RopeKernel_Fp16;
     }
-
+#endif
     return d;
 }();
