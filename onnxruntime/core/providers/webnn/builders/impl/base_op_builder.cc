@@ -29,7 +29,7 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
 bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
                                   const WebnnDeviceType device_type, const emscripten::val& wnn_limits,
                                   const logging::Logger& logger) const {
-  if (!HasSupportedInputs(initializers, node, wnn_limits, logger))
+  if (!HasSupportedInputs(node, wnn_limits, logger))
     return false;
 
   if (!HasSupportedOutputs(node, wnn_limits, logger))
@@ -41,12 +41,11 @@ bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, cons
   return IsOpSupportedImpl(initializers, node, device_type, logger);
 }
 
-bool BaseOpBuilder::HasSupportedInputs(const InitializedTensorSet& initializers, const Node& node,
-                                       const emscripten::val& wnn_limits, const logging::Logger& logger) const {
+bool BaseOpBuilder::HasSupportedInputs(const Node& node, const emscripten::val& wnn_limits,
+                                       const logging::Logger& logger) const {
   const auto node_name = MakeString("Node [", node.Name(), "] type [", node.OpType(), "]");
   for (const auto* input : node.InputDefs()) {
-    // ONNX initializers should have shape information, skip the shape check if the input is an initializer.
-    if (!Contains(initializers, input->Name()) && !IsTensorShapeSupported(*input, node_name, logger)) {
+    if (!IsTensorShapeSupported(*input, node_name, logger, allow_empty_tensor_as_input_)) {
       return false;
     }
   }
