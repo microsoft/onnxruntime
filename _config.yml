@@ -1,5 +1,5 @@
-remote_theme: pmarsceill/just-the-docs
-color_scheme: onnxruntime
+theme: just-the-docs
+# color_scheme: onnxruntime
 search_enabled: true
 # Split pages into sections that can be searched individually
 # Supports 1 - 6, default: 2
