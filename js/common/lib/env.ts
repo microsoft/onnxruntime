@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 import { env as envImpl } from './env-impl.js';
+import { TryGetGlobalType } from './type-helper.js';
 
 export declare namespace Env {
   export type WasmPathPrefix = string;
@@ -198,22 +199,16 @@ export declare namespace Env {
      * value will be the GPU adapter that created by the underlying WebGPU backend.
      *
      * When use with TypeScript, the type of this property is `GPUAdapter` defined in "@webgpu/types".
-     * Use `const adapter = env.webgpu.adapter as GPUAdapter;` in TypeScript to access this property with correct type.
-     *
-     * see comments on {@link Tensor.GpuBufferType}
      */
-    adapter: unknown;
+    adapter: TryGetGlobalType<'GPUAdapter'>;
     /**
      * Get the device for WebGPU.
      *
      * This property is only available after the first WebGPU inference session is created.
      *
      * When use with TypeScript, the type of this property is `GPUDevice` defined in "@webgpu/types".
-     * Use `const device = env.webgpu.device as GPUDevice;` in TypeScript to access this property with correct type.
-     *
-     * see comments on {@link Tensor.GpuBufferType} for more details about why not use types defined in "@webgpu/types".
      */
-    readonly device: unknown;
+    readonly device: TryGetGlobalType<'GPUDevice'>;
     /**
      * Set or get whether validate input content.
      *
