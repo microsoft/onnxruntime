@@ -31,7 +31,7 @@ class ReshapeFusion : public GraphTransformer {
   // Remove contiguous Reshape/Squeeze/Unsqueeze if the shape info is concrete.
   // For some EP, such reshape Ops are not no-op, such as QNN EP, memory is allocated for each output,
   // so this fusion can help to reduce memory usage on such devices.
-  static bool FuseContiguousReshapes(Node& reshape, Graph& graph, const logging::Logger& logger);
+  static bool FuseContiguousReshapes(Node& reshape, Graph& graph);
 };
 
 }  // namespace onnxruntime

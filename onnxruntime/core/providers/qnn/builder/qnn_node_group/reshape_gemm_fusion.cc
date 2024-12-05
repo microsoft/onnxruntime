@@ -137,7 +137,7 @@ std::unique_ptr<IQnnNodeGroup> ReshapeGemmFusion::TryFusion(
     QnnModelWrapper& qnn_model_wrapper, const NodeUnit& gemm_node_unit,
     const std::unordered_map<const Node*, const NodeUnit*>& node_to_node_unit,
     const std::unordered_map<const NodeUnit*, const IQnnNodeGroup*>& node_unit_to_qnn_node_group,
-    [[maybe_unused]] const logging::Logger& logger) {
+    const logging::Logger& /*logger*/) {
   if (gemm_node_unit.OpType() != "Gemm" || gemm_node_unit.UnitType() != NodeUnit::Type::SingleNode) {
     return nullptr;
   }
@@ -173,13 +173,11 @@ ReshapeGemmFusion::ReshapeGemmFusion(const NodeUnit& reshape_node_unit, const No
   node_units_[1] = &gemm_node_unit;
 }
 
-Status ReshapeGemmFusion::IsSupported(QnnModelWrapper& qmw, const logging::Logger& logger) const {
-  ORT_UNUSED_PARAMETER(logger);
+Status ReshapeGemmFusion::IsSupported(QnnModelWrapper& qmw, const logging::Logger& /*logger*/) const {
   return CreateOrValidateOnQnn(qmw, *node_units_[0], *node_units_[1], true);
 }
 
-Status ReshapeGemmFusion::AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& logger) const {
-  ORT_UNUSED_PARAMETER(logger);
+Status ReshapeGemmFusion::AddToModelBuilder(QnnModelWrapper& qmw, const logging::Logger& /*logger*/) const {
   return CreateOrValidateOnQnn(qmw, *node_units_[0], *node_units_[1], false);
 }
 
