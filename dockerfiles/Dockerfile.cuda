@@ -48,7 +48,7 @@ RUN cd /code \
     && python3 -m venv /code/env \
     && . /code/env/bin/activate \
     && pip install --upgrade psutil setuptools wheel packaging \
-    && pip install -r tools/ci_build/github/linux/docker/inference/x86_64/python/cpu/scripts/requirements.txt \
+    && pip install -r /code/tools/ci_build/github/linux/python/requirements.txt \
     && python /code/tools/ci_build/build.py --build_dir /code/build/Linux \
     --allow_running_as_root --skip_submodule_sync \
     --use_cuda --cuda_home /usr/local/cuda \

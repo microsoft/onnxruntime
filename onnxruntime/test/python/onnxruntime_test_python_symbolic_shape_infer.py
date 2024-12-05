@@ -39,27 +39,27 @@ skipped_models = ["SSD-MobilenetV1", "SSD-int8", "Inception-1-int8"]
 
 
 class TestSymbolicShapeInference(unittest.TestCase):
-    # TODO: investigate why symbolic shape infer test failed for Python 3.10
-    # def test_symbolic_shape_infer(self):
-    #     from pathlib import Path
-    #     cwd = os.getcwd()
-    #     test_model_dir = os.path.join(cwd, "..", "models")
-    #     for filename in Path(test_model_dir).rglob("*.onnx"):
-    #         if filename.name.startswith("."):
-    #             continue  # skip some bad model files
-    #
-    #         # https://github.com/onnx/models/issues/562
-    #         if any(model_name in str(filename) for model_name in skipped_models):
-    #             print(f"Skip symbolic shape inference on : {filename!s}")
-    #             continue
-    #
-    #         print("Running symbolic shape inference on : " + str(filename))
-    #         SymbolicShapeInference.infer_shapes(
-    #             in_mp=onnx.load(str(filename)),
-    #             auto_merge=True,
-    #             int_max=100000,
-    #             guess_output_rank=True,
-    #         )
+    def test_symbolic_shape_infer(self):
+        from pathlib import Path
+
+        cwd = os.getcwd()
+        test_model_dir = os.path.join(cwd, "..", "models")
+        for filename in Path(test_model_dir).rglob("*.onnx"):
+            if filename.name.startswith("."):
+                continue  # skip some bad model files
+
+            # https://github.com/onnx/models/issues/562
+            if any(model_name in str(filename) for model_name in skipped_models):
+                print(f"Skip symbolic shape inference on : {filename!s}")
+                continue
+
+            print("Running symbolic shape inference on : " + str(filename))
+            SymbolicShapeInference.infer_shapes(
+                in_mp=onnx.load(str(filename)),
+                auto_merge=True,
+                int_max=100000,
+                guess_output_rank=True,
+            )
 
     def test_mismatched_types(self):
         graph = helper.make_graph(
@@ -343,56 +343,55 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
     def test_einsum_transpose(self):
         self._test_einsum_one_input_impl(["a", "b"], ["b", "a"], "ij -> ji")
 
-    # TODO: investigate why symbolic shape infer test failed for Python 3.10
-    # def test_mul_precision(self):
-    #     graph_input = onnx.helper.make_tensor_value_info("input", TensorProto.FLOAT, [1024])
-    #     graph_output = onnx.helper.make_tensor_value_info("output", TensorProto.FLOAT, None)
-    #
-    #     # initializers
-    #     value = numpy.array([0.5], dtype=numpy.float32)
-    #     constant = numpy_helper.from_array(value, name="constant")
-    #
-    #     nodes = [
-    #         # Get the shape of the input tensor: `input_tensor_shape = [1024]`.
-    #         onnx.helper.make_node("Shape", ["input"], ["input_shape"]),
-    #         # mul(1024, 0.5) => 512
-    #         onnx.helper.make_node("Mul", ["input_shape", "constant"], ["output_shape"]),
-    #         # Resize input
-    #         onnx.helper.make_node(
-    #             "Resize", inputs=["input", "", "", "output_shape"], outputs=["output"], mode="nearest"
-    #         ),
-    #     ]
-    #
-    #     graph_def = onnx.helper.make_graph(nodes, "TestMulPrecision", [graph_input], [graph_output], [constant])
-    #     model = SymbolicShapeInference.infer_shapes(onnx.helper.make_model(graph_def))
-    #     output_dims = unique_element(model.graph.output).type.tensor_type.shape.dim
-    #     self.assertEqual(len(output_dims), 1)
-    #     self.assertEqual(output_dims[0].dim_value, 512)
+    def test_mul_precision(self):
+        graph_input = onnx.helper.make_tensor_value_info("input", TensorProto.FLOAT, [1024])
+        graph_output = onnx.helper.make_tensor_value_info("output", TensorProto.FLOAT, None)
 
-    # def test_div_precision(self):
-    #     graph_input = onnx.helper.make_tensor_value_info("input", TensorProto.FLOAT, [768])
-    #     graph_output = onnx.helper.make_tensor_value_info("output", TensorProto.FLOAT, None)
-    #
-    #     # initializers
-    #     value = numpy.array([1.5], dtype=numpy.float32)
-    #     constant = numpy_helper.from_array(value, name="constant")
-    #
-    #     nodes = [
-    #         # Get the shape of the input tensor: `input_tensor_shape = [768]`.
-    #         onnx.helper.make_node("Shape", ["input"], ["input_shape"]),
-    #         # div(768, 1.5) => 512
-    #         onnx.helper.make_node("Div", ["input_shape", "constant"], ["output_shape"]),
-    #         # Resize input
-    #         onnx.helper.make_node(
-    #             "Resize", inputs=["input", "", "", "output_shape"], outputs=["output"], mode="nearest"
-    #         ),
-    #     ]
-    #
-    #     graph_def = onnx.helper.make_graph(nodes, "TestDivPrecision", [graph_input], [graph_output], [constant])
-    #     model = SymbolicShapeInference.infer_shapes(onnx.helper.make_model(graph_def))
-    #     output_dims = unique_element(model.graph.output).type.tensor_type.shape.dim
-    #     self.assertEqual(len(output_dims), 1)
-    #     self.assertEqual(output_dims[0].dim_value, 512)
+        # initializers
+        value = numpy.array([0.5], dtype=numpy.float32)
+        constant = numpy_helper.from_array(value, name="constant")
+
+        nodes = [
+            # Get the shape of the input tensor: `input_tensor_shape = [1024]`.
+            onnx.helper.make_node("Shape", ["input"], ["input_shape"]),
+            # mul(1024, 0.5) => 512
+            onnx.helper.make_node("Mul", ["input_shape", "constant"], ["output_shape"]),
+            # Resize input
+            onnx.helper.make_node(
+                "Resize", inputs=["input", "", "", "output_shape"], outputs=["output"], mode="nearest"
+            ),
+        ]
+
+        graph_def = onnx.helper.make_graph(nodes, "TestMulPrecision", [graph_input], [graph_output], [constant])
+        model = SymbolicShapeInference.infer_shapes(onnx.helper.make_model(graph_def))
+        output_dims = unique_element(model.graph.output).type.tensor_type.shape.dim
+        self.assertEqual(len(output_dims), 1)
+        self.assertEqual(output_dims[0].dim_value, 512)
+
+    def test_div_precision(self):
+        graph_input = onnx.helper.make_tensor_value_info("input", TensorProto.FLOAT, [768])
+        graph_output = onnx.helper.make_tensor_value_info("output", TensorProto.FLOAT, None)
+
+        # initializers
+        value = numpy.array([1.5], dtype=numpy.float32)
+        constant = numpy_helper.from_array(value, name="constant")
+
+        nodes = [
+            # Get the shape of the input tensor: `input_tensor_shape = [768]`.
+            onnx.helper.make_node("Shape", ["input"], ["input_shape"]),
+            # div(768, 1.5) => 512
+            onnx.helper.make_node("Div", ["input_shape", "constant"], ["output_shape"]),
+            # Resize input
+            onnx.helper.make_node(
+                "Resize", inputs=["input", "", "", "output_shape"], outputs=["output"], mode="nearest"
+            ),
+        ]
+
+        graph_def = onnx.helper.make_graph(nodes, "TestDivPrecision", [graph_input], [graph_output], [constant])
+        model = SymbolicShapeInference.infer_shapes(onnx.helper.make_model(graph_def))
+        output_dims = unique_element(model.graph.output).type.tensor_type.shape.dim
+        self.assertEqual(len(output_dims), 1)
+        self.assertEqual(output_dims[0].dim_value, 512)
 
     def test_quantize_linear(self):
         """

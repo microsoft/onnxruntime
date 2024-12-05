@@ -21,7 +21,8 @@ Status EPCtxHandler::ExportEPCtxModel(const GraphViewer& graph_viewer,
                                       const bool& ep_context_embed_mode,
                                       std::string&& model_blob_str,
                                       const std::string& openvino_sdk_version) const {
-  auto model_build = graph_viewer.CreateModel(logger);
+  auto& metadata = graph_viewer.GetGraph().GetModel().MetaData();
+  auto model_build = graph_viewer.CreateModel(logger, metadata);
   auto& graph_build = model_build->MainGraph();
 
   // Get graph inputs and outputs
