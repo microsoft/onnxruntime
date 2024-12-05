@@ -142,6 +142,12 @@ export declare namespace JSEP {
      */
     jsepOnRunStart: (sessionId: number) => void;
     /**
+     * [exported from pre-jsep.js] Called when InferenceSession.run finished. This function will be called after
+     * _OrtRun[WithBinding]() is called.
+     * @param sessionId - specify the session ID.
+     */
+    jsepOnRunEnd: (sessionId: number) => void;
+    /**
      * [exported from pre-jsep.js] Create a session. This function will be called after _OrtCreateSession() is
      * called.
      * @returns
@@ -249,6 +255,25 @@ export declare namespace JSEP {
       builder: MLGraphBuilder,
       desc: MLOperandDescriptor,
     ): MLOperand;
+
+    /**
+     * [exported from pre-jsep.js] Register a WebNN graph input.
+     * @param inputName - specify the input name.
+     */
+    jsepRegisterGraphInput(inputName: string): void;
+    /**
+     * [exported from pre-jsep.js] Check if a graph input is a WebNN graph input.
+     * @param inputName - specify the input name.
+     * @returns whether the input is a WebNN graph input.
+     */
+    jsepIsGraphInput(inputName: string): boolean;
+    /**
+     * [exported from pre-jsep.js] Create a temporary MLTensor for a session.
+     * @param dataType - specify the data type.
+     * @param shape - specify the shape.
+     * @returns the MLTensor ID for the temporary MLTensor.
+     */
+    jsepCreateTemporaryTensor: (dataType: DataType, shape: readonly number[]) => Promise<number>;
   }
 }
 

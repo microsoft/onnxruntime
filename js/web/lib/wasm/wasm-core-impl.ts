@@ -453,14 +453,14 @@ export const releaseSession = (sessionId: number): void => {
   activeSessions.delete(sessionId);
 };
 
-export const prepareInputOutputTensor = (
+export const prepareInputOutputTensor = async (
   tensor: TensorMetadata | null,
   tensorHandles: number[],
   allocs: number[],
   sessionId: number,
   index: number,
   enableGraphCapture = false,
-): void => {
+): Promise<void> => {
   if (!tensor) {
     tensorHandles.push(0);
     return;
@@ -472,6 +472,7 @@ export const prepareInputOutputTensor = (
   const dataType = tensor[0];
   const dims = tensor[1];
   const location = tensor[3];
+  let actualLocation = location;
 
   let rawData: number;
   let dataByteLength: number;
@@ -519,10 +520,35 @@ export const prepareInputOutputTensor = (
         wasm.setValue(rawData + i * ptrSize, allocWasmString(data[i], allocs), '*');
       }
     } else {
-      dataByteLength = data.byteLength;
-      rawData = wasm._malloc(dataByteLength);
-      allocs.push(rawData);
-      wasm.HEAPU8.set(new Uint8Array(data.buffer, data.byteOffset, dataByteLength), rawData);
+      const isGraphInput = wasm.jsepIsGraphInput;
+      if (dataType !== 'string' && isGraphInput) {
+        const tensorNameUTF8 = wasm._OrtGetInputName(sessionId, index);
+        const tensorName = wasm.UTF8ToString(tensorNameUTF8);
+        // Promote the tensor to 'ml-tensor' if it is a graph input.
+        if (isGraphInput(tensorName)) {
+          const dataTypeEnum = tensorDataTypeStringToEnum(dataType);
+          dataByteLength = calculateTensorSizeInBytes(dataTypeEnum, dims)!;
+          actualLocation = 'ml-tensor';
+          const createTemporaryTensor = wasm.jsepCreateTemporaryTensor;
+          const uploadTensor = wasm.jsepUploadTensor;
+          if (!createTemporaryTensor || !uploadTensor) {
+            throw new Error('Tensor location "ml-tensor" is not supported without using WebNN.');
+          }
+          const tensorId = await createTemporaryTensor(dataTypeEnum, dims as number[]);
+          uploadTensor(tensorId, new Uint8Array(data.buffer, data.byteOffset, data.byteLength));
+          rawData = tensorId;
+        } else {
+          dataByteLength = data.byteLength;
+          rawData = wasm._malloc(dataByteLength);
+          allocs.push(rawData);
+          wasm.HEAPU8.set(new Uint8Array(data.buffer, data.byteOffset, dataByteLength), rawData);
+        }
+      } else {
+        dataByteLength = data.byteLength;
+        rawData = wasm._malloc(dataByteLength);
+        allocs.push(rawData);
+        wasm.HEAPU8.set(new Uint8Array(data.buffer, data.byteOffset, dataByteLength), rawData);
+      }
     }
   }
 
@@ -536,7 +562,7 @@ export const prepareInputOutputTensor = (
       dataByteLength,
       dimsOffset,
       dims.length,
-      dataLocationStringToEnum(location),
+      dataLocationStringToEnum(actualLocation),
     );
     if (tensor === 0) {
       checkLastError(`Can't create tensor for input/output. session=${sessionId}, index=${index}.`);
@@ -595,7 +621,7 @@ export const run = async (
 
     // create input tensors
     for (let i = 0; i < inputCount; i++) {
-      prepareInputOutputTensor(
+      await prepareInputOutputTensor(
         inputTensors[i],
         inputTensorHandles,
         inputOutputAllocs,
@@ -607,7 +633,7 @@ export const run = async (
 
     // create output tensors
     for (let i = 0; i < outputCount; i++) {
-      prepareInputOutputTensor(
+      await prepareInputOutputTensor(
         outputTensors[i],
         outputTensorHandles,
         inputOutputAllocs,
@@ -841,6 +867,7 @@ export const run = async (
         if (!keepOutputTensor) {
           wasm._OrtReleaseTensor(tensor);
         }
+        wasm.jsepOnRunEnd?.(sessionHandle);
       }
     }
 
