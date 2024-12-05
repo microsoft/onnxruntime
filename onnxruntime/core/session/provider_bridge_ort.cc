@@ -1532,24 +1532,33 @@ struct ProviderLibrary {
 
   Provider& Get() {
     std::lock_guard<std::mutex> lock{mutex_};
-    try {
-      if (!provider_) {
-        s_library_shared.Ensure();
+    if (!provider_) {
+      auto is_exception = 0;
+      std::runtime_error new_e("unknown");  // for rethrow
+      {
+        try {
+          s_library_shared.Ensure();
 
-        auto full_path = Env::Default().GetRuntimePath() + filename_;
-        ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
+          auto full_path = Env::Default().GetRuntimePath() + filename_;
+          ORT_THROW_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
 
-        Provider* (*PGetProvider)();
-        ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
+          Provider* (*PGetProvider)();
+          ORT_THROW_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
 
-        provider_ = PGetProvider();
-        provider_->Initialize();
+          provider_ = PGetProvider();
+          provider_->Initialize();
+        } catch (const std::exception& e) {
+          // e is constructed in handle_'s dll and needs to be destroyed before unload
+          new_e = std::runtime_error(e.what());
+          is_exception = 1;
+        }
       }
-      return *provider_;
-    } catch (const std::exception&) {
-      Unload();  // If anything fails we unload the library and rethrow
-      throw;
+      if (is_exception) {
+        Unload();  // If anything fails we unload the library and rethrow
+        throw new_e;
+      }
     }
+    return *provider_;
   }
 
   void Unload() {
