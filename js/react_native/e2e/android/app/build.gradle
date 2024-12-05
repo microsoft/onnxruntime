@@ -84,12 +84,12 @@ project.ext.react = [
 
 apply from: "../../node_modules/react-native/react.gradle"
 
+// Fix a error was introduced in new version of gradle
 afterEvaluate {
     def architectures = ["arm64-v8a", "arm64-v7a", "x86", "x86_64"]
-
-    tasks.matching { it.name == "bundleReleaseJsAndAssets" }.all { task ->
-        architectures.each { arch ->
-            task.dependsOn(":onnxruntime-react-native:buildCMakeRelWithDebInfo[${arch}]")
+    tasks.matching { it.name.startsWith("buildCMakeRelWithDebInfo") && it.name.contains(arch) }.all { task ->
+        tasks.named("bundleReleaseJsAndAssets") {
+            dependsOn(task)
         }
     }
 }
