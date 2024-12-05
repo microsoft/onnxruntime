@@ -1,4 +1,4 @@
-remote_theme: mmistakes/minimal-mistakes
+remote_theme: just-the-docs/just-the-docs
 color_scheme: onnxruntime
 search_enabled: true
 # Split pages into sections that can be searched individually
@@ -8,7 +8,6 @@ search.button: true
 plugins:
   - jekyll-toc
   - jekyll-redirect-from
-  - jekyll-include-cache
 kramdown:
   parse_block_html: true
   toc_levels: '2'
