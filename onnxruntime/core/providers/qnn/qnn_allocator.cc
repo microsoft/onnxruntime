@@ -135,6 +135,10 @@ void* HtpSharedMemoryAllocator::TensorAlloc(MLDataType element_data_type, const 
 }
 
 void HtpSharedMemoryAllocator::Free(void* p) {
+  if (!p) {
+    return;
+  }
+
   // take ownership of shared memory and free at end of scope
   auto shared_memory = WrapSharedMemoryWithUniquePtr(p, rpcmem_lib_->Api());
 
