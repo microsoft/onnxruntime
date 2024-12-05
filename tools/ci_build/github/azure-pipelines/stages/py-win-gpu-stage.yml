@@ -33,7 +33,7 @@ parameters:
    - Release
    - RelWithDebInfo
    - MinSizeRel
-   
+
 - name: use_tensorrt
   type: boolean
   default: false
@@ -134,7 +134,7 @@ stages:
                 --cmake_generator "$(VSGenerator)"
                 --enable_pybind
                 --enable_onnx_tests
-                --parallel --use_binskim_compliant_compile_flags --update --build
+                --parallel 4 --use_binskim_compliant_compile_flags --update --build
                 $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }} ${{ variables.trt_build_flag }}
               workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -206,19 +206,20 @@ stages:
             DownloadTRT: ${{ parameters.use_tensorrt }}
 
         - task: PowerShell@2
-          displayName: 'Install ONNX'
+          displayName: 'Install Third Party Dependencies'
           inputs:
             filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
             workingDirectory: '$(Build.BinariesDirectory)'
             arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\installed -build_config ${{ parameters.cmake_build_type }}
 
-        - powershell: |
-            python -m pip uninstall -y onnxruntime onnxruntime-gpu -qq
-            Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*cp${{ replace(parameters.PYTHON_VERSION,'.','') }}*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
-            mkdir -p $(Agent.TempDirectory)\ort_test_data
-            Copy-Item -Path $(Build.sourcesDirectory)/onnxruntime/test/python/onnx_backend_test_series.py -Destination $(Agent.TempDirectory)\ort_test_data
-            Copy-Item -Recurse -Path $(Build.sourcesDirectory)/onnxruntime/test/testdata -Destination $(Agent.TempDirectory)\ort_test_data
-            cd $(Agent.TempDirectory)\ort_test_data
-            python onnx_backend_test_series.py
-          workingDirectory: '$(Build.sourcesDirectory)'
-          displayName: 'Run Python Tests'
+        - template: jobs/steps/py_packaging_test_step.yml
+          parameters:
+            EP_NAME: DML
+            PYTHON_VERSION: ${{ parameters.PYTHON_VERSION }}
+
+        - template: jobs/steps/py_packaging_test_step.yml
+          parameters:
+            EP_NAME: CUDA
+            PYTHON_VERSION: ${{ parameters.PYTHON_VERSION }}
+
+
