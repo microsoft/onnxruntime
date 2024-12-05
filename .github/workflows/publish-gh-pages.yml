@@ -39,7 +39,10 @@ jobs:
 
       - name: Install dependencies
         run: npm install
-
+        
+      - name: Install missing gems
+        run: bundle install
+        
       - name: Build with Jekyll
         uses: actions/jekyll-build-pages@v1
         with:
