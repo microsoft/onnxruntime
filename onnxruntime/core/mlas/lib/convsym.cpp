@@ -163,6 +163,7 @@ struct MLAS_CONV_SYM_DISPATCH {
 
 #if defined(MLAS_TARGET_AMD64)
 
+#if !defined(ORT_DISABLE_AVX2)
 const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx2 = {
     MlasConvSymKernelAvx2,
     MlasConvSymDepthwiseKernelAvx2,
@@ -194,8 +195,9 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvxVnni = {
     4,                                      // KernelDepthwiseOutputCount
     false,                                  // FixupInputZeroPoint
 };
+#endif  // !defined(ORT_DISABLE_AVX2)
 
-#if !defined(ORT_MINIMAL_BUILD)
+#if !defined(ORT_MINIMAL_BUILD) && !defined(ORT_DISABLE_AVX512)
 
 const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Core = {
     MlasConvSymKernelAvx512Core,
@@ -229,7 +231,7 @@ const MLAS_CONV_SYM_DISPATCH MlasConvSymDispatchAvx512Vnni = {
     false,                                  // FixupInputZeroPoint
 };
 
-#endif // ORT_MINIMAL_BUILD
+#endif // !defined(ORT_MINIMAL_BUILD) && !defined(ORT_DISABLE_AVX512)
 
 #elif defined(MLAS_TARGET_ARM64)
 const MLAS_CONV_SYM_DISPATCH MlasConvSymU8DispatchNeon = {
