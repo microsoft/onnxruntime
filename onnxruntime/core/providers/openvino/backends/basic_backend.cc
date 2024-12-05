@@ -81,7 +81,6 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                                            device_config,
                                                            global_context_.ep_context_embed_mode,
                                                            subgraph_context_.subgraph_name);
-        ie_cnn_network_ = exe_network_.Get().get_runtime_model();
       } else if (global_context_.export_ep_ctx_blob &&
                  hw_target.find("NPU") != std::string::npos &&
                  !global_context_.has_external_weights) {
@@ -106,15 +105,15 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                                             device_config,
                                                             subgraph_context_.subgraph_name);
       } else {  // For all other types use ov::Model Type
-        ie_cnn_network_ = CreateOVModel(*model_proto, global_context_, const_outputs_map_);
+        auto ov_model = CreateOVModel(*model_proto, global_context_, const_outputs_map_);
         exe_network_ = global_context_.ie_core.CompileModel(
-            ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
+            ov_model, hw_target, device_config, subgraph_context_.subgraph_name);
       }
 #endif
     } else {  // Full graph is not supported
-      ie_cnn_network_ = CreateOVModel(*model_proto, global_context_, const_outputs_map_);
+      auto ov_model = CreateOVModel(*model_proto, global_context_, const_outputs_map_);
       exe_network_ = global_context_.ie_core.CompileModel(
-          ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
+          ov_model, hw_target, device_config, subgraph_context_.subgraph_name);
     }
     LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
   } catch (const char* msg) {
