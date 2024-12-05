@@ -1002,9 +1002,11 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     auto context_buffer = qnn_backend_manager_->GetContextBinaryBuffer(buffer_size);
     // Get max spill fill buffer size
     uint64_t max_spill_fill_buffer_size = 0;
-    ORT_RETURN_IF_ERROR(qnn_backend_manager_->GetMaxSpillFillBufferSize(context_buffer.get(),
-                                                                        buffer_size,
-                                                                        max_spill_fill_buffer_size));
+    if (enable_spill_fill_buffer_) {
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->GetMaxSpillFillBufferSize(context_buffer.get(),
+                                                                          buffer_size,
+                                                                          max_spill_fill_buffer_size));
+    }
     qnn_ep_context_model_ = std::make_unique<Model>("qnn_ep_context_model", false, logger);
     ORT_RETURN_IF_ERROR(qnn::CreateEPContextNodes(qnn_ep_context_model_.get(),
                                                   context_buffer.get(),
