@@ -29,7 +29,6 @@ for arg in "$@"; do
       # Replace onnxruntime_BUILD_UNIT_TESTS=ON with OFF
       BUILD_ARGS=("${BUILD_ARGS[@]/onnxruntime_BUILD_UNIT_TESTS=ON/onnxruntime_BUILD_UNIT_TESTS=OFF}")
       BUILD_ARGS+=("onnxruntime_CUDA_MINIMAL=ON")
-      BUILD_ARGS+=("onnxruntime_DISABLE_CONTRIB_OPS=ON")
       BUILD_ARGS+=("--skip_tests")
       ;;
   esac
