@@ -387,19 +387,18 @@ static Status KernelUseSharedPrePackedBuffers(OpKernel& kernel, int input_idx,
   return Status::OK();
 }
 
-// Here we use the data that is owned by somebody else
-static void SavePrepackedDataForWriting(const std::string& weight_name,
-                                        const std::string& key,
-                                        const PrePackedWeights& prepacked_weights,
-                                        PrepackedForSerialization::Subgraph& prepacked_subgraph) {
+static void WritePrepackedForSaving(const std::string& weight_name,
+                                    const std::string& key,
+                                    const PrePackedWeights& prepacked_weights,
+                                    PrepackedForSerialization::Subgraph& prepacked_subgraph) {
   PrePackedWeights weights_for_saving;
   for (const auto& prepacked_buffer : prepacked_weights.buffers_) {
-    // BufferDeleter is nullptr because we do not own the data
+    // BufferDeleter is nullptr because we do not own the data in this case
     weights_for_saving.buffers_.emplace_back(prepacked_buffer.get(), BufferDeleter(nullptr));
   }
 
   weights_for_saving.buffer_sizes_ = prepacked_weights.buffer_sizes_;
-  prepacked_subgraph.CreateOrOverWrite(weight_name, key, std::move(weights_for_saving));
+  prepacked_subgraph.WritePackedForSaving(weight_name, key, std::move(weights_for_saving));
 }
 
 static std::string GenerateKeyForPrepackedWeightsMap(const std::string& op_type,
@@ -417,7 +416,7 @@ Status SessionState::PrepackConstantInitializedTensors(
     const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map) {
   auto prepacked_constant_weights = [this, &constant_initializers_use_count, &initializers_to_share_map](
                                         bool should_cache_prepacked_weights_for_shared_initializers) -> Status {
-    auto& prepacked_subgraph = prepacked_weights_for_serialization_.FindOrCreateSubgraph(graph_);
+    auto& prepacked_subgraph = prepacked_weights_for_serialization_.FindOrCreatePrepackedGraph(graph_);
 
     for (auto& node : GetGraphViewer().Nodes()) {
       auto kernel = GetMutableKernel(node.Index());
@@ -492,8 +491,8 @@ Status SessionState::PrepackConstantInitializedTensors(
                       if (prepacked_weights_for_serialization_.IsSaveModeOn()) {
                         // Here we take references to the shared container owned data, so we unmap any entries
                         // that we are mapping from disk
-                        SavePrepackedDataForWriting(input_name, prepacked_weights_container_key, prepacked_shared,
-                                                    prepacked_subgraph);
+                        WritePrepackedForSaving(input_name, prepacked_weights_container_key, prepacked_shared,
+                                                prepacked_subgraph);
                       }
 
                     } else {  // container doesn't contain the pre-packed weight - so write into it for sharing across kernel instances
@@ -523,8 +522,8 @@ Status SessionState::PrepackConstantInitializedTensors(
                       if (prepacked_weights_for_serialization_.IsSaveModeOn()) {
                         // Here we take references to the shared container owned data, so we unmap any entries
                         // that we are mapping from disk, so we write the most fresh data possible
-                        SavePrepackedDataForWriting(input_name, prepacked_weights_container_key, shared_prepacked,
-                                                    prepacked_subgraph);
+                        WritePrepackedForSaving(input_name, prepacked_weights_container_key, shared_prepacked,
+                                                prepacked_subgraph);
                       }
                     }
                   }
@@ -554,8 +553,8 @@ Status SessionState::PrepackConstantInitializedTensors(
 
                     if (prepacked_subgraph.IsSaveModeOn() || weights_to_use == nullptr) {
                       // In this case pre-packed container owns the data
-                      prepacked_subgraph.CreateOrOverWrite(input_name, prepacked_weights_container_key,
-                                                           std::move(weights_to_be_filled_in));
+                      prepacked_subgraph.WritePackedForSaving(input_name, prepacked_weights_container_key,
+                                                              std::move(weights_to_be_filled_in));
                       weights_to_use = prepacked_subgraph.GetPrepackedWeights(prepacked_weights_container_key);
                       assert(weights_to_use != nullptr);
                     }

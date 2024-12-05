@@ -41,4 +41,4 @@ struct ModelSavingOptions {
   const PrepackedForSerialization* prepacked_for_save = nullptr;
 };
 
-}
+}  // namespace onnxruntime

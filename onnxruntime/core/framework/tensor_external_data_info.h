@@ -3,6 +3,7 @@
 #pragma once
 
 #include <filesystem>
+#include <ostream>
 #include <string>
 #include <tuple>
 
@@ -39,8 +40,33 @@ class ExternalDataInfo {
                                          size_t tensor_bytes_size,
                                          ::ONNX_NAMESPACE::TensorProto& proto);
 
-  static void AddPrepackedEntriesToProto(const PrepackedForSerialization::BlobsInderect& prepacked_for_write,
-                                         ::ONNX_NAMESPACE::TensorProto& proto);
+  // Pads the output with zeros according to the specified allocation_granularity
+  // It updates external_offset for alignment.
+  // need to do padding before write actual tensor data as we do offset alignment at the begin of
+  // large tensors (offset need to be page aligned and allocation granularity aligned) like below:
+  // \242\2557\256\023.\031&0000000000000000\332)k+\253\246\342\246(&\006!\347\232\374\236\325\026\032+\36XXXX
+  // |<---smaller tensor---->|<---padding--->|<------------------large tensor----------------------------->|
+  static std::ostream& AlignAndPad(std::ostream& stream, int64_t allocation_granularity, int64_t& external_offset) {
+    // Align to the larger of the page size or the allocation granularity
+    int64_t alignment_factor = std::max(static_cast<int64_t>(4096), allocation_granularity);
+    // Align to the next page or alloc granularity boundary
+    int64_t new_external_offset = static_cast<int64_t>(
+                                      std::floor((external_offset + alignment_factor - 1) / alignment_factor)) *
+                                  alignment_factor;
+
+    // padding tensor with zeros for alignment
+    for (int64_t index = external_offset; index != new_external_offset; ++index) {
+      stream << '\0';
+    }
+    external_offset = new_external_offset;
+    return stream;
+  }
+
+  static std::ostream& AddPrepackedEntriesToProto(const PrepackedForSerialization::BlobsInderect& prepacked_for_write,
+                                                  bool align, int64_t allocation_granularity,
+                                                  std::ostream& os,
+                                                  int64_t& external_offset,
+                                                  ::ONNX_NAMESPACE::TensorProto& proto);
 
   using PrepackedInfo = std::tuple<OFFSET_TYPE, size_t, std::string>;
   using PrepackedInfos = std::unordered_map<std::string, std::vector<PrepackedInfo>>;

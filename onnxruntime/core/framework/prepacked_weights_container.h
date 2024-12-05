@@ -91,8 +91,8 @@ class PrepackedForSerialization final {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PrepackedForSerialization);
 
   using KeyToBlobMap = std::unordered_map<std::string, PrePackedWeights>;
-  using KeyToBlobMapIterator = KeyToBlobMap::iterator;
-  using BlobsInderect = std::vector<KeyToBlobMapIterator>;
+  using KeyToBlobMapConstIterator = KeyToBlobMap::const_iterator;
+  using BlobsInderect = std::vector<KeyToBlobMapConstIterator>;
   using BlobsConstIterator = BlobsInderect::const_iterator;
 
   // Maps weight name to iterators in key_to_blobs_. It associates a weight name with its pre-packs.
@@ -130,11 +130,10 @@ class PrepackedForSerialization final {
       return it == subgraph_prepacks_.end() ? nullptr : it->second.get();
     }
 
-    // This does not populate per-initializer structures.
-    void Insert(std::string key, PrePackedWeights&& packed_weight);
+    void InsertFromDisk(std::string key, PrePackedWeights&& packed_weight);
 
-    bool CreateOrOverWrite(const std::string& weight_name, std::string key,
-                           PrePackedWeights&& packed_weight);
+    bool WritePackedForSaving(const std::string& weight_name, const std::string& key,
+                              PrePackedWeights&& packed_weight);
 
     const PrePackedWeights* GetPrepackedWeights(const std::string& key) const;
 
@@ -148,11 +147,20 @@ class PrepackedForSerialization final {
       save_mode_on_ = value;
     }
 
+    // Returns iterators to key->blob pair for writing
+    const BlobsInderect* GetBlobsForWeight(const std::string& weight_name) const {
+      auto hit = sorted_by_weight_for_writing_.find(weight_name);
+      if (hit != sorted_by_weight_for_writing_.end()) {
+        return &hit->second;
+      }
+      return nullptr;
+    }
+
    private:
     bool save_mode_on_;
     Subgraph* parent_ = nullptr;
     KeyToBlobMap& key_to_blobs_;
-    WeightToPrePacksMap weight_to_pre_packs_;
+    WeightToPrePacksMap sorted_by_weight_for_writing_;
     // Map Graph ptr to subgraphs
     std::unordered_map<const Graph*, std::unique_ptr<Subgraph>> subgraph_prepacks_;
   };
@@ -179,7 +187,9 @@ class PrepackedForSerialization final {
 
   std::optional<PrePackedWeights> TakePrepackedWeights(const std::string& key);
 
-  Subgraph& FindOrCreateSubgraph(const Graph& graph);
+  Subgraph& FindOrCreatePrepackedGraph(const Graph& graph);
+
+  const Subgraph* FindPrepackedGraph(const Graph& graph) const;
 
  private:
   // Map of key to pre-packed blobs.This is common for all subgraphs

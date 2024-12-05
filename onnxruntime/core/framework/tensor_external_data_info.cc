@@ -4,6 +4,7 @@
 #include "tensor_external_data_info.h"
 #include "core/common/common.h"
 #include "core/common/narrow.h"
+#include "core/common/safeint.h"
 #include "core/common/string_utils.h"
 #include "core/platform/path_lib.h"
 
@@ -54,8 +55,9 @@ Status ExternalDataInfo::Create(const RepeatedPtrField<StringStringEntryProto>& 
     } else if (stringmap.key() == "checksum" && !stringmap.value().empty()) {
       out->checksum_ = stringmap.value();
     } else if (stringmap.key().find("prepacked", 0) == 0) {
-      // Starts with 'prepacked'. Each prepacked entry may have multiple blobs with the same key
-      //  we output them with the same key
+      // Starts with 'prepacked', each has its own key.
+      // Each prepacked entry may have multiple blobs with the same key
+      // we output them with the same key
       // format = key|offset;length;checksum[|offset;length;checksum]
       // We are ignoring invalid entries (should not be any), and rely
       // on in memory pre-packs regenerated in this case.
@@ -114,17 +116,38 @@ void ExternalDataInfo::SetExternalLocationToProto(const std::filesystem::path& e
   length->set_value(std::to_string(tensor_bytes_size));
 }
 
-// void ExternalDataInfo::AddPrepackedEntriesToProto(
-//     const PrepackedForSerialization::BlobsInderect& prepacked_for_write, ::ONNX_NAMESPACE::TensorProto& proto) {
-//   size_t prepack_count = 0;
-//   std::stringstream os;
-//   for (auto iter : prepacked_for_write) {
-//     const auto& [key, prepacked_weights] = *iter;
-//     os << key << '|';
-//     const size_t blob_num = prepacked_weights.buffers_.size();
-//     for (size_t i = 0; blob_num; ++i) {
-//       //XXX: Need offset calculation
-//       // os << ed_weights.blobs_[i].offset << ';';
-//     }
-//   }
+std::ostream& ExternalDataInfo::AddPrepackedEntriesToProto(
+    const PrepackedForSerialization::BlobsInderect& prepacked_for_write, bool align, int64_t allocation_granularity,
+    std::ostream& os, int64_t& external_offset, ::ONNX_NAMESPACE::TensorProto& proto) {
+  for (const auto& iter : prepacked_for_write) {
+    size_t prepack_count = 0;
+    const auto& [key, prepacked_weights] = *iter;
+    std::stringstream prepacked_entry;
+    prepacked_entry << key << "|";
+    for (size_t i = 0, size = prepacked_weights.buffers_.size(); i < size; ++i) {
+      if (align) {
+        // return early on error
+        if (!AlignAndPad(os, allocation_granularity, external_offset)) {
+          return os;
+        }
+      }
+      const auto size_in_bytes = prepacked_weights.buffer_sizes_[i];
+      if (prepack_count++ > 0) {
+        prepacked_entry << "|";
+      }
+      // Checksum is currently not validated
+      prepacked_entry << external_offset << ";" << size_in_bytes << ";0";
+      if (!os.write(reinterpret_cast<const char*>(prepacked_weights.buffers_[i].get()), size_in_bytes)) {
+        return os;
+      }
+      external_offset = SafeInt<int64_t>(external_offset) + size_in_bytes;
+    }
+    auto* prepacked = proto.add_external_data();
+    std::string prepacked_key("prepacked_");
+    prepacked_key.append(std::to_string(prepack_count));
+    prepacked->set_key(std::move(prepacked_key));
+    prepacked->set_value(prepacked_entry.str());
+  }
+  return os;
+}
 }  // namespace onnxruntime

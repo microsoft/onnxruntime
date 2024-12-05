@@ -1489,12 +1489,14 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   Status AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& constant_node_proto,
                                        std::optional<std::string_view> new_name);
 
-  ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitiallizersImpl(const std::filesystem::path& model_path,
-                                                                       const std::filesystem::path& external_file_path,
-                                                                       const ModelSavingOptions& model_saving_options,
-                                                                       ONNX_NAMESPACE::GraphProto& graph_proto,
-                                                                       std::ostream& external_stream,
-                                                                       int64_t& external_offset) const;
+  Status ToGraphProtoWithExternalInitiallizersImpl(
+      const std::filesystem::path& model_path,
+      const std::filesystem::path& external_file_path,
+      const std::filesystem::path& modified_external_file_path,
+      const ModelSavingOptions& model_saving_options,
+      ONNX_NAMESPACE::GraphProto& graph_proto,
+      std::ostream& external_stream,
+      int64_t& external_offset) const;
 
 #endif
 

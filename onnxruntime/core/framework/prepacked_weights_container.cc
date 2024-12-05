@@ -56,18 +56,21 @@ PrepackedForSerialization::PrepackedForSerialization()
 
 PrepackedForSerialization::~PrepackedForSerialization() = default;
 
-void PrepackedForSerialization::Subgraph::Insert(std::string key, PrePackedWeights&& packed_weight) {
+void PrepackedForSerialization::Subgraph::InsertFromDisk(std::string key, PrePackedWeights&& packed_weight) {
   auto result = key_to_blobs_.emplace(std::move(key), std::move(packed_weight));
   ORT_ENFORCE(result.second, "Duplicate pre-packed weight from disk");
 }
 
-bool PrepackedForSerialization::Subgraph::CreateOrOverWrite(const std::string& weight_name, std::string key,
-                                                            PrePackedWeights&& packed_weight) {
-  // We overwrite the existing key. This is necessary in case we already have a pre-packed weight
-  // mapped from disk, but we want to overwrite it with our most recent pre-packed version.
-  auto result = key_to_blobs_.insert_or_assign(std::move(key), std::move(packed_weight));
-  weight_to_pre_packs_[weight_name].push_back(result.first);
-  return result.second;
+bool PrepackedForSerialization::Subgraph::WritePackedForSaving(const std::string& weight_name, const std::string& key,
+                                                               PrePackedWeights&& packed_weight) {
+  auto hit = key_to_blobs_.find(key);
+  if (hit == key_to_blobs_.end()) {
+    auto result = key_to_blobs_.insert({key, std::move(packed_weight)});
+    sorted_by_weight_for_writing_[weight_name].push_back(result.first);
+    return true;
+  }
+  hit->second = std::move(packed_weight);
+  return false;
 }
 
 const PrePackedWeights* PrepackedForSerialization::Subgraph::GetPrepackedWeights(const std::string& key) const {
@@ -96,12 +99,23 @@ std::optional<PrePackedWeights> PrepackedForSerialization::TakePrepackedWeights(
   return result;
 }
 
-PrepackedForSerialization::Subgraph& PrepackedForSerialization::FindOrCreateSubgraph(const Graph& graph) {
+PrepackedForSerialization::Subgraph& PrepackedForSerialization::FindOrCreatePrepackedGraph(const Graph& graph) {
   if (graph.ParentGraph() == nullptr) {
     return main_graph_;
   }
-  auto& parent = FindOrCreateSubgraph(*graph.ParentGraph());
+  auto& parent = FindOrCreatePrepackedGraph(*graph.ParentGraph());
   return parent.GetOrCreateSubgraph(graph);
+}
+
+const PrepackedForSerialization::Subgraph* PrepackedForSerialization::FindPrepackedGraph(const Graph& graph) const {
+  if (graph.ParentGraph() == nullptr) {
+    return &main_graph_;
+  }
+  auto* parent = FindPrepackedGraph(*graph.ParentGraph());
+  if (parent != nullptr) {
+    parent = parent->GetSubgraph(graph);
+  }
+  return parent;
 }
 
 }  // namespace onnxruntime

@@ -1057,6 +1057,8 @@ Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& mo
     if (prepacked_info != nullptr && !prepacked_infos->empty()) {
       for (const auto& [key, blobs] : *prepacked_infos) {
         PrePackedWeights prepacked_weights;
+        prepacked_weights.buffers_.reserve(blobs.size());
+        prepacked_weights.buffer_sizes_.reserve(blobs.size());
         for (const auto& blob : blobs) {
           const auto blob_offset = std::get<0>(blob);
           const auto blob_length = std::get<1>(blob);
@@ -1074,7 +1076,7 @@ Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& mo
           prepacked_weights.buffer_sizes_.push_back(blob_length);
         }
         if (!blobs.empty()) {
-          prepacked_info->Insert(key, std::move(prepacked_weights));
+          prepacked_info->InsertFromDisk(key, std::move(prepacked_weights));
         }
       }
     }
