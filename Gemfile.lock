@@ -316,6 +316,7 @@ DEPENDENCIES
   github-pages
   html-proofer
   jekyll-feed (~> 0.6)
+  jekyll-include-cache (~> 0.2.1)
   jekyll-redirect-from
   jekyll-toc
   just-the-docs

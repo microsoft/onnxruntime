@@ -8,6 +8,7 @@ search.button: true
 plugins:
   - jekyll-toc
   - jekyll-redirect-from
+  - jekyll-include-cache
 kramdown:
   parse_block_html: true
   toc_levels: '2'
