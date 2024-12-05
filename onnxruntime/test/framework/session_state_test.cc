@@ -378,7 +378,7 @@ class PrePackingTestOpKernel : public OpKernel {
     ORT_UNUSED_PARAMETER(tensor);
     ORT_UNUSED_PARAMETER(input_idx);
 
-    size_t weight_packed_len = 8;
+    constexpr const size_t weight_packed_len = sizeof(float) * 2;
     weight_packed_ = IAllocator::MakeUniquePtr<void>(alloc, weight_packed_len, true);
     float* data_weights_packed = reinterpret_cast<float*>(weight_packed_.get());
     data_weights_packed[0] = 1.2345f;

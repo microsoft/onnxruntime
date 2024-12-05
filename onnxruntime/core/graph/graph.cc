@@ -4182,7 +4182,7 @@ Status Graph::ToGraphProtoWithExternalInitiallizersImpl(
       if (prepacked_parent_graph != nullptr) {
         const auto* iters_to_blobs = prepacked_parent_graph->GetBlobsForWeight(initializer.name());
         if (iters_to_blobs != nullptr && !iters_to_blobs->empty()) {
-          ORT_RETURN_IF_NOT(ExternalDataInfo::AddPrepackedEntriesToProto(
+          ORT_RETURN_IF_NOT(ExternalDataInfo::WritePrepackedToFileAndAddToProto(
               *iters_to_blobs, model_saving_options.align_offset,
               model_saving_options.allocation_granularity,
               external_stream, external_offset, *output_proto));
