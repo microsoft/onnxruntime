@@ -15,10 +15,10 @@ import sys
 from typing import List, Optional
 
 TRT_DOCKER_FILES = {
-    "8.6(cuda11.8+cudnn8)": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_8_tensorrt8_6",
-    "8.6(cuda12.3+cudnn9)": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda12_3_tensorrt8_6",
-    "10.7(cuda11.8+cudnn8)": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_tensorrt10",
-    "10.7(cuda12+cudnn9)": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda12_tensorrt10",
+    "8.6_cuda11.8_cudnn8": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_8_tensorrt8_6",
+    "8.6_cuda12.3_cudnn9": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda12_3_tensorrt8_6",
+    "10.7_cuda11.8_cudnn8": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_tensorrt10",
+    "10.7_cuda12.6_cudnn9": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda12_tensorrt10",
     "BIN": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_tensorrt_bin",
 }
 
