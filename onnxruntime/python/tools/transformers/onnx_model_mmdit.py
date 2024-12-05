@@ -85,7 +85,7 @@ class MmditOnnxModel(BertOnnxModel):
             from tqdm.contrib.logging import logging_redirect_tqdm
 
             with logging_redirect_tqdm():
-                steps = 18
+                steps = 12
                 progress_bar = tqdm.tqdm(range(steps), initial=0, desc="fusion")
                 self._optimize(options, progress_bar)
         else:
@@ -107,6 +107,12 @@ class MmditOnnxModel(BertOnnxModel):
 
         if (options is None) or options.enable_layer_norm:
             self.fuse_layer_norm()
+            self.fuse_simplified_layer_norm()
+        if progress_bar:
+            progress_bar.update(1)
+
+        if (options is None) or options.enable_gelu:
+            self.fuse_gelu()
         if progress_bar:
             progress_bar.update(1)
 
@@ -117,7 +123,6 @@ class MmditOnnxModel(BertOnnxModel):
         self.fuse_reshape()
         if progress_bar:
             progress_bar.update(1)
-
 
         if (options is None) or options.enable_attention:
             self.fuse_multi_head_attention(options)

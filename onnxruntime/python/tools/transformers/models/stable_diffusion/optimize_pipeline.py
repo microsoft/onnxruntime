@@ -27,8 +27,8 @@ import __init__  # noqa: F401. Walk-around to run this script directly
 import coloredlogs
 import onnx
 from fusion_options import FusionOptions
-from onnx_model_mmdit import MmditOnnxModel
 from onnx_model_clip import ClipOnnxModel
+from onnx_model_mmdit import MmditOnnxModel
 from onnx_model_unet import UnetOnnxModel
 from onnx_model_vae import VaeOnnxModel
 from optimizer import optimize_by_onnxruntime, optimize_model

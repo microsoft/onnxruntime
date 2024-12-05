@@ -35,14 +35,13 @@ from onnx_model_bert_tf import BertOnnxModelTF
 from onnx_model_clip import ClipOnnxModel
 from onnx_model_conformer import ConformerOnnxModel
 from onnx_model_gpt2 import Gpt2OnnxModel
+from onnx_model_mmdit import MmditOnnxModel
 from onnx_model_phi import PhiOnnxModel
 from onnx_model_sam2 import Sam2OnnxModel
 from onnx_model_t5 import T5OnnxModel
 from onnx_model_tnlr import TnlrOnnxModel
 from onnx_model_unet import UnetOnnxModel
 from onnx_model_vae import VaeOnnxModel
-from onnx_model_mmdit import MmditOnnxModel
-
 from onnx_utils import extract_raw_data_from_model, has_external_data
 
 import onnxruntime
