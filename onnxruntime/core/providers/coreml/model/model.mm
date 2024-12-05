@@ -302,7 +302,7 @@ Status GetMLMultiArrayCopyInfo(const MLMultiArray* _Nonnull array,
 }
 
 void ProfileComputePlan(NSURL* compileUrl, MLModelConfiguration* config) {
-#if defined(__APPLE__) && defined(__clang__) && __clang_major__ >= 15
+#if defined(__APPLE__) && defined(__clang__) && __clang_major__ >= 15 && !defined(__clang_analyzer__)
   if (@available(macOS 14.4, iOS 17.4, *)) {
     [MLComputePlan loadContentsOfURL:compileUrl
                        configuration:config
@@ -454,7 +454,7 @@ Status Execution::LoadModel() {
       }
 
 // Set the specialization strategy to FastPrediction  for macOS 10.15+
-#if defined(__APPLE__) && defined(__clang__) && __clang_major__ >= 15
+#if defined(__APPLE__) && defined(__clang__) && __clang_major__ >= 15 && !defined(__clang_analyzer__)
       if (HAS_COREML8_OR_LATER) {
         MLOptimizationHints* optimizationHints = [[MLOptimizationHints alloc] init];
         if (coreml_options_.UseStrategy("FastPrediction")) {
