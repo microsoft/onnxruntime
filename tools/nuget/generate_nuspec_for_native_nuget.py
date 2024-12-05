@@ -182,6 +182,8 @@ def generate_description(line_list, package_name):
         description = "This package contains Linux native shared library artifacts for ONNX Runtime with CUDA."
     elif "Microsoft.ML.OnnxRuntime.Gpu.Windows" in package_name:
         description = "This package contains Windows native shared library artifacts for ONNX Runtime with CUDA."
+    elif "Intel.ML.OnnxRuntime" in package_name:
+        description = "This package contains native shared library artifacts for ONNX Runtime with OpenVINO."
     elif "Microsoft.ML.OnnxRuntime" in package_name:  # This is a Microsoft.ML.OnnxRuntime.* package
         description = (
             "This package contains native shared library artifacts for all supported platforms of ONNX Runtime."
@@ -715,7 +717,7 @@ def generate_files(line_list, args):
         )
 
     if args.execution_provider == "openvino":
-        get_env_var("INTEL_OPENVINO_DIR")
+        openvino_path = get_env_var("INTEL_OPENVINO_DIR")
         files_list.append(
             "<file src="
             + '"'
@@ -732,6 +734,31 @@ def generate_files(line_list, args):
             + args.target_architecture
             + '\\native" />'
         )
+
+        if is_windows():
+            dll_list_path = os.path.join(openvino_path, "runtime\\bin\\intel64\\Release\\")
+            tbb_list_path = os.path.join(openvino_path, "runtime\\3rdparty\\tbb\\bin\\")
+            for dll_element in os.listdir(dll_list_path):
+                if dll_element.endswith("dll"):
+                    files_list.append(
+                        "<file src="
+                        + '"'
+                        + os.path.join(dll_list_path, dll_element)
+                        + runtimes_target
+                        + args.target_architecture
+                        + '\\native" />'
+                    )
+            for tbb_element in os.listdir(tbb_list_path):
+                if tbb_element.endswith("dll"):
+                    files_list.append(
+                        "<file src="
+                        + '"'
+                        + os.path.join(tbb_list_path, tbb_element)
+                        + runtimes_target
+                        + args.target_architecture
+                        + '\\native" />'
+                    )
+
 
     if args.execution_provider == "cuda" or is_cuda_gpu_win_sub_package and not is_ado_packaging_build:
         files_list.append(
