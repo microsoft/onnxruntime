@@ -3667,6 +3667,9 @@ struct OrtApi {
    *   execution provider (typically CPU EP).
    *     - "0": Default. Disabled. QNN EP will handle quantization and dequantization of graph I/O.
    *     - "1": Enabled.
+   *   "enable_htp_spill_fill_buffer": Enable HTP spill fill buffer setting. The flag is used while generating context binary.
+   *     - "0": Default. Disabled.
+   *     - "1": Enabled.
    *
    * SNPE supported keys:
    *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",
