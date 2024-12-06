@@ -19,7 +19,7 @@ def shared
     :path => config[:reactNativePath],
     # to enable hermes on iOS, change `false` to `true` and then install pods
     :hermes_enabled => false,
-    :fabric_enabled => flags[:fabric_enabled],
+    :fabric_enabled => false,
     :flipper_configuration => FlipperConfiguration.enabled,
     # An absolute path to your application root.
     :app_path => "#{Pod::Config.instance.installation_root}/.."
