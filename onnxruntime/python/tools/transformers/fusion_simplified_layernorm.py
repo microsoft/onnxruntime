@@ -18,27 +18,27 @@ class FusionSimplifiedLayerNormalization(Fusion):
             return
 
         sim_ln_nodes = None
-        # RMSNorm calculation (notation from https://onnx.ai/onnx/operators/onnx__LayerNormalization.html#summary):
-        # DD = Pow(D, 2) or DD = Mul(D, D)
-        # Var = ReduceMean(DD)
-        # VarEps = Add(Var, epsilon)
-        # StdDev = Sqrt(VarEps)
-        # InvStdDev = Div(1, StdDev)
-        # Normalized = Mul(D, InvStdDev)
-        # NormalizedScaled = Mul(Normalized, Scale)
+        # RMSNorm formula:
+        #   S = Pow(X, 2) or S = Mul(X, X)
+        #   MS = ReduceMean(S)
+        #   MSEps = Add(MS, epsilon)
+        #   RMS = Sqrt(MSEps)
+        #   InvRMS = Div(1, RMS) or InvRMS = Reciprocal(RMS)
+        #   Normalized = Mul(D, InvRMS)
+        #   Y = Mul(Normalized, Scale)
         #
-        #  (root_input) ---------------------------------------+
-        #       |                                              |
-        #       v                                              v
-        #      Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Mul (node)
-        #     (B=2)                 (A/B=eps)                 (A=1)    (A/B=scale)
+        #  (root_input) ----------------------------------------+
+        #       |                                               |
+        #       v                                               v
+        #      Pow --> ReduceMean --> Add ---> Sqrt --> Div --> Mul --> Mul (node)
+        #      (B=2)                  (A/B=eps)         (A=1)           (A/B=scale)
         #
-        #  (root_input) ---------------------------------------+
-        #      | |                                             |
-        #      v v                                             v
-        #      Mul --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Mul (node)
-        #     (B=2)               (A/B=eps)            (A=1)           (A/B=scale)
-
+        #  (root_input) ----------------------------------------+
+        #      | |                                              |
+        #      v v                                              v
+        #      Mul --> ReduceMean --> Add ---> Sqrt --> Div --> Mul --> Mul (node)
+        #      (B=2)                  (A/B=eps)         (A=1)           (A/B=scale)
+        #
         return_indice = []
         sim_ln_nodes = self.model.match_parent_path(
             node,
@@ -48,10 +48,35 @@ class FusionSimplifiedLayerNormalization(Fusion):
             return_indice=return_indice,
         )
 
-        if sim_ln_nodes is None:
-            return
-
-        mul_node, div_node, _sqrt_node, add_node, reduce_mean_node = sim_ln_nodes
+        if sim_ln_nodes:
+            mul_node, div_node, _sqrt_node, add_node, reduce_mean_node = sim_ln_nodes
+            if not self.model.has_constant_input(div_node, 1.0):
+                return
+        else:
+            # Div(1, RMS) can also be represented as Reciprocal(RMS) like
+            #
+            #  (root_input) -----------------------------------------------+
+            #       |                                                      |
+            #       v                                                      v
+            #      Pow --> ReduceMean --> Add ---> Sqrt --> Reciprocal --> Mul --> Mul (node)
+            #      (B=2)                  (A/B=eps)                                (A/B=scale)
+            #
+            #  (root_input) -----------------------------------------------+
+            #      | |                                                     |
+            #      v v                                                     v
+            #      Mul --> ReduceMean --> Add ---> Sqrt --> Reciprocal --> Mul --> Mul (node)
+            #      (B=2)                  (A/B=eps)                                (A/B=scale)
+            #
+            sim_ln_nodes = self.model.match_parent_path(
+                node,
+                ["Mul", "Reciprocal", "Sqrt", "Add", "ReduceMean"],
+                [None, 1, 0, 0, None],
+                output_name_to_node=output_name_to_node,
+                return_indice=return_indice,
+            )
+            if sim_ln_nodes is None:
+                return
+            mul_node, _reciprocal_node, _sqrt_node, add_node, reduce_mean_node = sim_ln_nodes
 
         pow_or_mul_node = self.model.get_parent(reduce_mean_node, 0, output_name_to_node)
         if pow_or_mul_node is None or pow_or_mul_node.op_type not in ["Pow", "Mul"]:
@@ -67,9 +92,6 @@ class FusionSimplifiedLayerNormalization(Fusion):
 
         root_input = pow_or_mul_node.input[0]
         if root_input != mul_node.input[0]:
-            return
-
-        if not self.model.has_constant_input(div_node, 1.0):
             return
 
         _i, epsilon = self.model.get_constant_input(add_node)
@@ -92,6 +114,7 @@ class FusionSimplifiedLayerNormalization(Fusion):
             return
 
         self.nodes_to_remove.extend(sim_ln_nodes)
+        self.nodes_to_remove.append(pow_or_mul_node)
         self.nodes_to_remove.append(node)
 
         normalize_node = helper.make_node(
