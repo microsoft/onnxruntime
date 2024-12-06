@@ -1020,6 +1020,21 @@ MlasComputeSoftmax(
 
 void
 MLASCALL
+MlasComputeQSoftmax(
+    const void* Input,
+    void* Output,
+    size_t N,
+    size_t D,
+    const float* LoopupTable,
+    float X_Scale,
+    float Scale,
+    int ZeroPoint,
+    bool is_signed,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+void
+MLASCALL
 MlasComputeTanh(
     const float* Input,
     float* Output,
