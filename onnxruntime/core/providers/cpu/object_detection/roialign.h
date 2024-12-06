@@ -78,7 +78,7 @@ class RoiAlignBase {
   int64_t output_width_{1};
   int64_t sampling_ratio_{0};
   float spatial_scale_{1.0f};
-  bool half_pixel_{false};
+  bool half_pixel_{true};
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(RoiAlignBase);
