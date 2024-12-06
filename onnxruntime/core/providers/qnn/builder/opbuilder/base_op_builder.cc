@@ -80,6 +80,40 @@ Status BaseOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   return Status::OK();
 }
 
+Status BaseOpBuilder::GetBiasQuantParams(const QnnQuantParamsWrapper& input0_qparams,
+                                         const QnnQuantParamsWrapper& weight_qparams,
+                                         /*out*/ std::vector<float>& bias_scales,
+                                         /*out*/ std::vector<int32_t>& bias_offsets,
+                                         const logging::Logger& logger) const {
+  ORT_UNUSED_PARAMETER(logger);
+  // For now, only handle case where input0 is per-tensor quantized and input1 is either per-tensor
+  // or per-channel quantized.
+  ORT_RETURN_IF_NOT(input0_qparams.IsPerTensor(/*include_bw*/ true) && weight_qparams.IsQuantized(),
+                    "QNN EP currently only supports computing bias quantization params for per-tensor ",
+                    "input[0] and per-tensor/per-channel input[1]");
+
+  // Bias's quantization scale(s) should be the product of the other inputs' quantization scales.
+  // Input[0] is expected to have one scale (per-tensor).
+  // If input[1] is per-channel (many scales), then the bias also needs to be per-channel.
+  std::vector<float> input0_quant_scales;
+  std::vector<float> weight_quant_scales;
+  ORT_RETURN_IF_ERROR(input0_qparams.GetScales(input0_quant_scales));
+  ORT_RETURN_IF_ERROR(weight_qparams.GetScales(weight_quant_scales));
+
+  const size_t num_bias_scales_offsets = weight_quant_scales.size();
+  assert(input0_quant_scales.size() == 1);  // Expected for per-tensor.
+  ORT_RETURN_IF_NOT(num_bias_scales_offsets >= input0_quant_scales.size(),
+                    "Input[1] should have >= 1 quantization scale values");
+
+  bias_offsets = std::vector<int32_t>(num_bias_scales_offsets, 0);  // Bias's zero-points should be all zeros.
+  bias_scales.resize(num_bias_scales_offsets);
+  for (size_t i = 0; i < num_bias_scales_offsets; i++) {
+    bias_scales[i] = input0_quant_scales[0] * weight_quant_scales[i];
+  }
+
+  return Status::OK();
+}
+
 Status BaseOpBuilder::AddZeroBiasInput(QnnModelWrapper& qnn_model_wrapper,
                                        const QnnQuantParamsWrapper& input0_qparams,
                                        const QnnQuantParamsWrapper& input1_qparams,

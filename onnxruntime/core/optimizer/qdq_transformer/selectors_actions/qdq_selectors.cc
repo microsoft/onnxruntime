@@ -25,6 +25,11 @@ constexpr bool Is4BitIntType(int32_t data_type) {
          (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_UINT4);
 }
 
+constexpr bool IsFloatType(int32_t data_type) {
+  return (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT) ||
+         (data_type == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT16);
+}
+
 // adjust for an optional input/output that has an entry but does not exist
 int NumActualValues(const Node& node, bool input) {
   const auto& defs = input ? node.InputDefs() : node.OutputDefs();
@@ -336,38 +341,68 @@ bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                   const Node& node,
                                   const std::vector<const Node*>& dq_nodes,
                                   const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
+  auto is_const_float = [&graph_viewer](const NodeArg* input_def) {
+    const ONNX_NAMESPACE::TensorProto* initializer = graph_viewer.GetConstantInitializer(input_def->Name());
+    return (initializer != nullptr) && IsFloatType(initializer->data_type());
+  };
+
+  const auto& node_inputs = node.InputDefs();
+  const bool is_input_const_float = is_const_float(node_inputs[0]);
+  const bool is_weight_const_float = is_const_float(node_inputs[1]);
+  const bool has_bias = node_inputs.size() > 2 && node_inputs[2]->Exists();
+  const bool is_bias_const_float = has_bias && is_const_float(node_inputs[2]);
+
+  if (is_input_const_float) {
+    return false;
+  }
+
+  if (!allow_float_weight_and_bias_ && (is_weight_const_float || is_bias_const_float)) {
+    return false;
+  }
+
+  // Check that if an input is not a float initializer, it must come from a DQ.
+  const int expected_num_dqs = (1 + static_cast<int>(!is_weight_const_float) +
+                                static_cast<int>(has_bias && !is_bias_const_float));
+
+  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, expected_num_dqs)) {
     return false;
   }
 
   // input and output types need to be same
   int32_t dt_input = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-  int32_t dt_weight = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   if (dt_input != dt_output) {
     return false;
   }
 
-  if (!allow_4bit_weight_ && Is4BitIntType(dt_weight)) {
+  if (!allow_16bit_ && Is16BitIntType(dt_input)) {
     return false;
   }
 
-  if (dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
-    if (!int8_allowed_ || dt_weight != dt_input) {
+  // Check quantized weight type.
+  if (!is_weight_const_float) {
+    int32_t dt_weight = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    if (!allow_4bit_weight_ && Is4BitIntType(dt_weight)) {
+      return false;
+    }
+
+    if (dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+      if (!int8_allowed_ || dt_weight != dt_input) {
+        return false;
+      }
+    }
+
+    if (!allow_16bit_ && Is16BitIntType(dt_weight)) {
       return false;
     }
   }
 
-  if (dq_nodes.size() == 3) {  // has bias
-    int32_t dt_bias = dq_nodes[2]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+  // Check quantized bias (if any)
+  if (has_bias && !is_bias_const_float) {
+    int32_t dt_bias = dq_nodes.back()->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
     if (dt_bias != ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32) {
       return false;
     }
-  }
-
-  // 16-bit int types must be explicitly allowed.
-  if (!allow_16bit_ && (Is16BitIntType(dt_input) || Is16BitIntType(dt_weight))) {
-    return false;
   }
 
   return true;
