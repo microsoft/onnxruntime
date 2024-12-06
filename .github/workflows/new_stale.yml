@@ -1,0 +1,60 @@
+id: scheduledSearch.updateStaleIssues
+name: Update Stale Issues
+description: Update stale issues that have not been active in 30 days
+resource: repository
+configuration:
+  resourceManagementConfiguration:
+    scheduledSearches:
+      - description: >-
+          Search for Issue where - 
+          * Issue is open
+          * Issue is not assigned
+          * Issue has not had activity in the last 30 days
+
+          Then -
+          * Apply the stale label to Issue
+        frequencies:
+          - daily:
+              time: 15:00
+        filters:
+          - isIssue
+          - isOpen
+          - isNotAssigned
+          - isNotLabeledWith:
+              label: contributions welcome
+          - isNotLabeledWith:
+              label: documentation
+          - isNotLabeledWith:
+              label: feature request
+          - isNotLabeledWith:
+              label: regression
+          - noActivitySince:
+              days: 30
+        actions:
+          - addReply:
+              reply: "Applying stale label due to no activity in 30 days"
+          - addLabel:
+              label: stale
+      - description:
+          Search for Issue where - 
+          * Issue is open
+          * Issue is labeled stale
+          * Issue has not had activity in the last 30 days
+
+          Then -
+          * Close the issue
+        frequencies:
+          - daily:
+              time: 15:00
+        filters:
+          - hasLabel:
+              label: stale
+          - isIssue
+          - isOpen
+          - isNotAssigned
+          - noActivitySince:
+              days: 30
+        actions:
+          - addReply:
+              reply: "Closing issue due to no activity in 30 days"
+          - closeIssue
