@@ -85,7 +85,7 @@ Status LayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeContex
 
   auto* output = context.Output(0, x_shape);
 
-  size_t data_size = x_shape.Size();
+  size_t data_size = static_cast<size_t>(x_shape.Size());
   if (data_size == 0) {
     return Status::OK();
   }

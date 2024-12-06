@@ -125,8 +125,8 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     } else {
       size_t shared_dimension = 1;
       for (size_t i = 1; i < output_shape.NumDimensions(); i++) {
-        size_t dimA = lhs_shape.NumDimensions() >= i ? lhs_shape[lhs_shape.NumDimensions() - i] : 1;
-        size_t dimB = rhs_shape.NumDimensions() >= i ? rhs_shape[rhs_shape.NumDimensions() - i] : 1;
+        size_t dimA = lhs_shape.NumDimensions() >= i ? static_cast<size_t>(lhs_shape[lhs_shape.NumDimensions() - i]) : 1;
+        size_t dimB = rhs_shape.NumDimensions() >= i ? static_cast<size_t>(rhs_shape[rhs_shape.NumDimensions() - i]) : 1;
         if (dimA == dimB) {
           shared_dimension *= dimA;
           num_shared_dimension++;
