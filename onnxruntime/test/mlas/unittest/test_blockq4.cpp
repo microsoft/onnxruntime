@@ -117,7 +117,7 @@ class MlasBlockwiseQdqTest : public MlasTestBase {
     MlasDequantizeBlockwise<float, 4>(dequant_buf, elements, scales, zp, block_size,
                                       columnwise, rows, columns, threadpool_ptr);
 
-    MlasTranspose(dequant_buf, transposed, columns, rows);
+    MlasTranspose(dequant_buf, transposed, columns, rows, threadpool_ptr);
 
     uint8_t* o_elements = OutputElements.GetBuffer(q_rows * q_cols, true);
     float* o_scales = OutputScales.GetBuffer(meta_rows * meta_cols);
