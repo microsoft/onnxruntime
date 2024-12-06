@@ -55,7 +55,7 @@ struct OrtMemoryInfo {
   std::string ToString() const {
     std::ostringstream ostr;
     ostr << "OrtMemoryInfo:["
-         << "name:" << name
+         << "name:" << (name ? name : "")
          << " id:" << id
          << " OrtMemType:" << mem_type
          << " OrtAllocatorType:" << alloc_type
