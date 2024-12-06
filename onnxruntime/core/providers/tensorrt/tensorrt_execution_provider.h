@@ -335,6 +335,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   int32_t trt_version_;
   int32_t cuda_version_;
 
+  std::unique_ptr<OrtAllocator> cuda_allocator_;
+  std::unique_ptr<OrtAllocator> cuda_pinned_allocator_;
+
   // The OrtAllocator object will be get during ep compute time
   // and should be kept for the lifetime of TRT EP object.
   OrtAllocator* alloc_ = nullptr;
