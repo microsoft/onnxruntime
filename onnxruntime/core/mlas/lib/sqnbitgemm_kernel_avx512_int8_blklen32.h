@@ -256,6 +256,80 @@ accumulate_blklen32_r2c1blk1_avx512(
     }
 }
 
+static MLAS_FORCEINLINE void
+accumulate_scaled_zp_prod_r1_c4(__m512& acc0, __m512& acc1, __m512& acc2, __m512& acc3, const float* scaled_zp_a, const float* scaled_zp_b, size_t BlockCountK)
+{
+    constexpr size_t PerAccuBlk16 = 16;
+    size_t k_blks_remaining = BlockCountK;
+    // process 2 blks of 64 4b weights a time
+    for (; k_blks_remaining >= PerAccuBlk16; k_blks_remaining -= PerAccuBlk16) {
+        const __m512 a_16_ps = _mm512_loadu_ps(scaled_zp_a);
+        {
+            const __m512 b_16_ps0 = _mm512_loadu_ps(scaled_zp_b);
+            acc0 = _mm512_fmadd_ps(a_16_ps, b_16_ps0, acc0);
+        }
+        {
+            const __m512 b_16_ps1 = _mm512_loadu_ps(scaled_zp_b + BlockCountK);
+            acc1 = _mm512_fmadd_ps(a_16_ps, b_16_ps1, acc1);
+        }
+        {
+            const __m512 b_16_ps2 = _mm512_loadu_ps(scaled_zp_b + 2 * BlockCountK);
+            acc2 = _mm512_fmadd_ps(a_16_ps, b_16_ps2, acc2);
+        }
+        {
+            const __m512 b_16_ps3 = _mm512_loadu_ps(scaled_zp_b + 3 * BlockCountK);
+            acc3 = _mm512_fmadd_ps(a_16_ps, b_16_ps3, acc3);
+        }
+        scaled_zp_a += PerAccuBlk16;
+        scaled_zp_b += PerAccuBlk16;
+    }
+
+    if (k_blks_remaining > 0) {
+      // TODO: the mask is fixed per gemm
+        uint32_t mask = 0xffff >> (PerAccuBlk16 - k_blks_remaining);
+        const __m512 a_16_ps = _mm512_maskz_loadu_ps(__mmask16(mask), scaled_zp_a);
+        {
+            const __m512 b_16_ps0 = _mm512_maskz_loadu_ps(__mmask16(mask), scaled_zp_b);
+            acc0 = _mm512_fmadd_ps(a_16_ps, b_16_ps0, acc0);
+        }
+        {
+            const __m512 b_16_ps1 = _mm512_maskz_loadu_ps(__mmask16(mask), scaled_zp_b + BlockCountK);
+            acc1 = _mm512_fmadd_ps(a_16_ps, b_16_ps1, acc1);
+        }
+        {
+            const __m512 b_16_ps2 = _mm512_maskz_loadu_ps(__mmask16(mask), scaled_zp_b + 2 * BlockCountK);
+            acc2 = _mm512_fmadd_ps(a_16_ps, b_16_ps2, acc2);
+        }
+        {
+            const __m512 b_16_ps3 = _mm512_maskz_loadu_ps(__mmask16(mask), scaled_zp_b + 3 * BlockCountK);
+            acc3 = _mm512_fmadd_ps(a_16_ps, b_16_ps3, acc3);
+        }
+    }
+}
+
+static MLAS_FORCEINLINE void
+accumulate_scaled_zp_prod_r1_c1(__m512& acc, const float* scaled_zp_a, const float* scaled_zp_b, size_t BlockCountK)
+{
+    constexpr size_t PerAccuBlk16 = 16;
+    size_t k_blks_remaining = BlockCountK;
+    // process 2 blks of 64 4b weights a time
+    for (; k_blks_remaining >= PerAccuBlk16; k_blks_remaining -= PerAccuBlk16) {
+        const __m512 a_16_ps = _mm512_loadu_ps(scaled_zp_a);
+        const __m512 b_16_ps = _mm512_loadu_ps(scaled_zp_b);
+        acc = _mm512_fmadd_ps(a_16_ps, b_16_ps, acc);
+        scaled_zp_a += PerAccuBlk16;
+        scaled_zp_b += PerAccuBlk16;
+    }
+
+    if (k_blks_remaining > 0) {
+        // TODO: the mask is fixed per gemm
+        uint32_t mask = 0xffff >> (PerAccuBlk16 - k_blks_remaining);
+        const __m512 a_16_ps = _mm512_maskz_loadu_ps(__mmask16(mask), scaled_zp_a);
+        const __m512 b_16_ps = _mm512_maskz_loadu_ps(__mmask16(mask), scaled_zp_b);
+        acc = _mm512_fmadd_ps(a_16_ps, b_16_ps, acc);
+    }
+}
+
 template <bool vnni>
 MLAS_FORCEINLINE void
 Q4Int8GemmR2xC4BlkLen32Avx512(
@@ -268,7 +342,9 @@ Q4Int8GemmR2xC4BlkLen32Avx512(
     size_t CountN,
     size_t BlockCountK,
     const float* Bias,
-    size_t ldc
+    size_t ldc,
+    const float* ScaledZPA,
+    const float* ScaledZPB
 )
 {
     constexpr size_t BlkLen32 = 32;
@@ -293,6 +369,7 @@ Q4Int8GemmR2xC4BlkLen32Avx512(
         const float* BiasPtr = Bias;
         auto* SumPtr = C + m * ldc;
 
+        const float* scaled_zp_b = ScaledZPB;
         for (size_t n = 0; n < CountN; n += NCols4) {
             const std::byte* QuantAPtr = QuantA + m * lda;
             const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
@@ -304,6 +381,12 @@ Q4Int8GemmR2xC4BlkLen32Avx512(
                 _mm512_setzero_ps(), _mm512_setzero_ps(), _mm512_setzero_ps(), _mm512_setzero_ps(),
                 _mm512_setzero_ps(), _mm512_setzero_ps(), _mm512_setzero_ps(), _mm512_setzero_ps()
             };
+
+            const float* scaled_zp_a = ScaledZPA + m * BlockCountK;
+            accumulate_scaled_zp_prod_r1_c4(acc[0], acc[1], acc[2], acc[3], scaled_zp_a, scaled_zp_b, BlockCountK);
+            accumulate_scaled_zp_prod_r1_c4(acc[4], acc[5], acc[6], acc[7], scaled_zp_a + BlockCountK, scaled_zp_b, BlockCountK);
+            scaled_zp_b += 4 * BlockCountK;
+
 
             size_t k_blks_remaining = BlockCountK;
             // process 2 blks of 64 4b weights a time
@@ -449,7 +532,10 @@ Q4Int8GemmR2C1BlkLen32Avx512(
     size_t CountN,
     size_t BlockCountK,
     const float* Bias,
-    size_t ldc)
+    size_t ldc,
+    const float* ScaledZPA,
+    const float* ScaledZPB
+)
 {
     constexpr size_t BlkLen32 = 32;
     constexpr size_t BlkBitWidth4 = 4;
@@ -473,6 +559,7 @@ Q4Int8GemmR2C1BlkLen32Avx512(
         const float* BiasPtr = Bias;
         float* SumPtr = C + m * ldc;
 
+        const float* scaled_zp_b = ScaledZPB;
         for (size_t n = 0; n < CountN; n++) {
             const std::byte* QuantAPtr = QuantA + m * lda;
             const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
@@ -481,6 +568,11 @@ Q4Int8GemmR2C1BlkLen32Avx512(
             const float* QuantBScalePtr = QuantBScaleColPtr;
 
             __m512 acc0 = _mm512_setzero_ps(), acc1 = _mm512_setzero_ps();
+
+            const float* scaled_zp_a = ScaledZPA + m * BlockCountK;
+            accumulate_scaled_zp_prod_r1_c1(acc0, scaled_zp_a, scaled_zp_b, BlockCountK);
+            accumulate_scaled_zp_prod_r1_c1(acc1, scaled_zp_a + BlockCountK, scaled_zp_b, BlockCountK);
+            scaled_zp_b += BlockCountK;
 
             size_t k_blks_remaining = BlockCountK;
             // process 2 blks of 64 4b weights a time
@@ -559,7 +651,9 @@ Q4Int8GemmR1xC4BlkLen32Avx512(
     size_t CountN,
     size_t BlockCountK,
     const float* Bias,
-    size_t ldc
+    size_t ldc,
+    const float* ScaledZPA,
+    const float* ScaledZPB
 )
 {
     constexpr size_t BlkLen32 = 32;
@@ -584,6 +678,7 @@ Q4Int8GemmR1xC4BlkLen32Avx512(
         const float* BiasPtr = Bias;
         auto* SumPtr = C + m * ldc;
 
+        const float* scaled_zp_b = ScaledZPB;
         for (size_t n = 0; n < CountN; n += NCols4) {
             const std::byte* QuantAPtr = QuantA + m * lda;
             const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
@@ -594,6 +689,11 @@ Q4Int8GemmR1xC4BlkLen32Avx512(
             __m512 acc[NCols4] = {
               _mm512_setzero_ps(), _mm512_setzero_ps(), _mm512_setzero_ps(), _mm512_setzero_ps()
             };
+
+            const float* scaled_zp_a = ScaledZPA;
+            accumulate_scaled_zp_prod_r1_c4(acc[0], acc[1], acc[2], acc[3], scaled_zp_a, scaled_zp_b, BlockCountK);
+            scaled_zp_b += 4 * BlockCountK;
+
             size_t k_blks_remaining = BlockCountK;
             for (; k_blks_remaining >= PerAccuBlk4; k_blks_remaining -= PerAccuBlk4) {
                 const __m512i av_00_epi8 = _mm512_loadu_si512((const __m512i*)QuantAPtr);
@@ -679,7 +779,9 @@ Q4Int8GemmR1xC1BlkLen32Avx512(
     size_t CountN,
     size_t BlockCountK,
     const float* Bias,
-    size_t ldc
+    size_t ldc,
+    const float* ScaledZPA,
+    const float* ScaledZPB
 )
 {
     constexpr size_t BlkLen32 = 32;
@@ -705,6 +807,7 @@ Q4Int8GemmR1xC1BlkLen32Avx512(
         const float* BiasPtr = Bias;
         auto* SumPtr = C + m * ldc;
 
+        const float* scaled_zp_b = ScaledZPB;
         for (size_t n = 0; n < CountN; n++) {
             const std::byte* QuantAPtr = QuantA + m * lda;
             const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
@@ -712,6 +815,10 @@ Q4Int8GemmR1xC1BlkLen32Avx512(
             const float* QuantBScalePtr = QuantBScaleColPtr;
 
             __m512 acc0 = _mm512_setzero_ps();
+            const float* scaled_zp_a = ScaledZPA;
+            accumulate_scaled_zp_prod_r1_c1(acc0, scaled_zp_a, scaled_zp_b, BlockCountK);
+            scaled_zp_b += BlockCountK;
+
             size_t k_blks_remaining = BlockCountK;
             for (; k_blks_remaining >= PerAccuBlk4; k_blks_remaining -= PerAccuBlk4) {
                 const __m512i av_00_epi8 = _mm512_loadu_si512((const __m512i*)QuantAPtr);
@@ -772,8 +879,10 @@ MlasQ4Int8GemmKernelBlkLen32Avx512(
     size_t CountN,
     size_t BlockCountK,
     const float* Bias,
-    size_t ldc
-)
+    size_t ldc,
+    const float* ScaledZPA,
+    const float* ScaledZPB
+    )
 {
     constexpr size_t BlkLen32 = 32;
     constexpr size_t BlkBitWidth4 = 4;
@@ -803,7 +912,9 @@ MlasQ4Int8GemmKernelBlkLen32Avx512(
             multipleCols,
             BlockCountK,
             Bias,
-            ldc
+            ldc,
+            ScaledZPA,
+            ScaledZPB
         );
     }
     if (remainingCols > 0 && multipleRows > 0) {
@@ -817,7 +928,10 @@ MlasQ4Int8GemmKernelBlkLen32Avx512(
             remainingCols,
             BlockCountK,
             Bias ? Bias + multipleCols : nullptr,
-            ldc);
+            ldc,
+            ScaledZPA,
+            ScaledZPB + multipleCols * BlockCountK
+        );
     }
 
     if (remainingRows > 0 && multipleCols > 0) {
@@ -831,7 +945,10 @@ MlasQ4Int8GemmKernelBlkLen32Avx512(
             multipleCols,
             BlockCountK,
             Bias,
-            ldc);
+            ldc,
+            ScaledZPA + multipleRows * BlockCountK,
+            ScaledZPB
+        );
     }
 
     if (remainingCols > 0 && remainingRows > 0) {
@@ -845,7 +962,10 @@ MlasQ4Int8GemmKernelBlkLen32Avx512(
             remainingCols,
             BlockCountK,
             Bias ? Bias + multipleCols : nullptr,
-            ldc);
+            ldc,
+            ScaledZPA + multipleRows * BlockCountK,
+            ScaledZPB + multipleCols * BlockCountK
+        );
     }
 
     return CountM;
