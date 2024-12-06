@@ -1176,6 +1176,123 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
   return Status::OK();
 }
 
+template <bool Signed>
+static Status TensorProtoInt4ToTensorInt8Impl(const Env& env, const std::filesystem::path& model_path,
+                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, Tensor& tensor) {
+  if constexpr (Signed) {
+    ORT_RETURN_IF_NOT(tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_INT4,
+                      "Expected INT4 TensorProto");
+    ORT_RETURN_IF_NOT(tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_INT8,
+                      "Expected int8_t Tensor");
+  } else {
+    ORT_RETURN_IF_NOT(tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT4,
+                      "Expected UINT4 TensorProto");
+    ORT_RETURN_IF_NOT(tensor.GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+                      "Expected uint8_t Tensor");
+  }
+
+  // Validate tensor shape compatibility
+  TensorShape tensor_shape = GetTensorShapeFromTensorProto(tensor_proto);
+
+  if (tensor_shape != tensor.Shape()) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "TensorProtoToTensor() tensor shape mismatch!");
+  }
+
+  const int64_t num_4bit_elems = tensor_shape.Size();  // Can be zero
+
+  if (num_4bit_elems < 0) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "tensor can't contain negative dims");
+  }
+
+  if (static_cast<uint64_t>(num_4bit_elems) > SIZE_MAX) {
+    return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "size overflow");
+  }
+
+  const size_t num_4bit_pairs = Int4x2Base<Signed>::CalcNumInt4Pairs(static_cast<size_t>(num_4bit_elems));
+  const bool odd_elems = (num_4bit_elems & 0x1) == 1;
+  const size_t num_full_pairs = odd_elems ? num_4bit_pairs - 1 : num_4bit_pairs;
+  const bool has_ext_data = utils::HasExternalData(tensor_proto);
+  const bool has_raw_data = utils::HasRawData(tensor_proto);
+
+  using UnpackedType = typename Int4x2Base<Signed>::UnpackedType;
+
+  gsl::span<UnpackedType> dst = tensor.MutableDataAsSpan<UnpackedType>();
+  size_t dst_index = 0;
+
+  if (!has_ext_data && !has_raw_data) {  // Data stored in TensorProto's int32_data()
+    const size_t int32_data_size = static_cast<size_t>(tensor_proto.int32_data_size());
+
+    if (dst.empty()) {
+      return int32_data_size == 0 ? Status::OK() : Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+    }
+
+    ORT_RETURN_IF_NOT(int32_data_size == num_4bit_pairs, "the pre-allocated size does not match the size in proto");
+
+    for (size_t p = 0; p < num_full_pairs; p++) {
+      const Int4x2Base<Signed> i4x2 = Int4x2Base<Signed>(static_cast<std::byte>(tensor_proto.int32_data()[static_cast<int>(p)]));
+      dst[dst_index++] = i4x2.GetElem(0);
+      dst[dst_index++] = i4x2.GetElem(1);
+    }
+
+    if (odd_elems) {
+      const Int4x2Base<Signed> i4x2(static_cast<std::byte>(tensor_proto.int32_data()[static_cast<int>(num_4bit_pairs - 1)]));
+      dst[dst_index++] = i4x2.GetElem(0);
+    }
+  } else {  // Data stored as external_data or in TensorProto's raw_data()
+    gsl::span<const Int4x2Base<Signed>> src;
+    AutoDelete deleter_for_ext_data;  // Deletes buffer for external data at scope's end.
+
+    if (has_ext_data) {
+      void* ext_data = nullptr;
+      SafeInt<size_t> ext_data_len = 0;
+      OrtCallback& d = deleter_for_ext_data.d;
+      ORT_RETURN_IF_ERROR(GetExtDataFromTensorProto(env, model_path, tensor_proto, ext_data, ext_data_len, d));
+
+      src = gsl::make_span<const Int4x2Base<Signed>>(reinterpret_cast<const Int4x2Base<Signed>*>(ext_data), ext_data_len);
+    } else {
+      assert(has_raw_data);
+      const std::string& raw_data = tensor_proto.raw_data();
+      src = gsl::make_span<const Int4x2Base<Signed>>(reinterpret_cast<const Int4x2Base<Signed>*>(raw_data.data()), raw_data.size());
+    }
+
+    if (dst.empty()) {
+      return src.empty() ? Status::OK() : Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT);
+    }
+
+    ORT_RETURN_IF_NOT(num_4bit_pairs == src.size(), "Unexpected number of packed int4 pairs");
+
+    for (size_t p = 0; p < num_full_pairs; p++) {
+      dst[dst_index++] = src[p].GetElem(0);
+      dst[dst_index++] = src[p].GetElem(1);
+    }
+
+    if (odd_elems) {
+      dst[dst_index++] = src[num_4bit_pairs - 1].GetElem(0);
+    }
+  }
+
+  ORT_RETURN_IF_NOT(dst_index == static_cast<size_t>(num_4bit_elems),
+                    "Added incorrect number of int8 elements to Tensor");
+
+  return Status::OK();
+}
+
+Status TensorProtoInt4ToTensorInt8(const Env& env, const std::filesystem::path& model_path,
+                                   const ONNX_NAMESPACE::TensorProto& tensor_proto, Tensor& tensor) {
+  ORT_RETURN_IF_NOT(tensor_proto.has_data_type(), "Expected TensorProto to have a data type");
+  auto data_type = tensor_proto.data_type();
+
+  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT4) {
+    return TensorProtoInt4ToTensorInt8Impl<true>(env, model_path, tensor_proto, tensor);
+  }
+
+  if (data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT4) {
+    return TensorProtoInt4ToTensorInt8Impl<false>(env, model_path, tensor_proto, tensor);
+  }
+
+  return Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Expected to unpack INT4 or UINT4 TensorProto");
+}
+
 Status TensorProtoToOrtValue(const Env& env, const std::filesystem::path& model_path,
                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer& m, OrtValue& value) {
   return TensorProtoToOrtValueImpl(env, model_path, tensor_proto, &m, nullptr, value);
