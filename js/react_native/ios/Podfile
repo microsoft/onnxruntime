@@ -18,8 +18,7 @@ def shared
   use_react_native!(
     :path => config[:reactNativePath],
     # to enable hermes on iOS, change `false` to `true` and then install pods
-    :production => production,
-    :hermes_enabled => flags[:hermes_enabled],
+    :hermes_enabled => false,
     :fabric_enabled => flags[:fabric_enabled],
     :flipper_configuration => FlipperConfiguration.enabled,
     # An absolute path to your application root.
