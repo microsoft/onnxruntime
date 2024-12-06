@@ -1559,10 +1559,6 @@ def generate_build_tree(
                 # The "/profile" flag implies "/DEBUG:FULL /DEBUGTYPE:cv,fixup /OPT:REF /OPT:NOICF /INCREMENTAL:NO /FIXED:NO". We set it for satisfying a Microsoft internal compliance requirement. External users
                 # do not need to have it.
                 ldflags = ["/profile", "/DYNAMICBASE"]
-                # Address Sanitizer libs do not have a Qspectre version. So they two cannot be both enabled.
-                if not args.enable_address_sanitizer:
-                    # Also enable a special perf patch that was made for Intel Meteor Lake mobile CPUs
-                    cflags += ["/Qspectre", "/DONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH"]
                 if config == "Release":
                     cflags += ["/O2", "/Ob2", "/DNDEBUG"]
                 elif config == "RelWithDebInfo":
