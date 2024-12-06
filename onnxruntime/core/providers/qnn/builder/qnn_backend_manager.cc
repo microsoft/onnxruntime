@@ -726,6 +726,9 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 
   // Register spill fill buffer for multi context
   QnnContext_Config_t spill_fill_config = QNN_CONTEXT_CONFIG_INIT;
+
+  // The spill fill buffer is available since 2.28, API version starts from 2.21
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 21)
   QnnHtpContext_CustomConfig_t custom_config;
   custom_config.option = QNN_HTP_CONTEXT_CONFIG_OPTION_REGISTER_MULTI_CONTEXTS;
   QnnHtpContext_GroupRegistration_t group_info;
@@ -737,6 +740,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
   custom_config.groupRegistration = group_info;
   spill_fill_config.option = QNN_CONTEXT_CONFIG_OPTION_CUSTOM;
   spill_fill_config.customConfig = &custom_config;
+ #endif
   QnnContext_Config_t* spill_fill_config_pointer = max_spill_fill_size > 0 ? &spill_fill_config : nullptr;
   LOGS(*logger_, VERBOSE) << "Max spill fill buffer size:" << max_spill_fill_size;
 

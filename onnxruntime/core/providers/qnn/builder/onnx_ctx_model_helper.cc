@@ -155,6 +155,7 @@ Status TryGetMaxSpillFillSize(const std::vector<IExecutionProvider::FusedNodeAnd
                               uint32_t total_context_size,
                               int64_t& max_spill_fill_size,
                               std::vector<int>& main_context_pos_list) {
+  max_spill_fill_size = 0;
   int max_size_index = 0;
   for (uint32_t i = 0; i < total_context_size; ++i) {
     auto index = main_context_pos_list[i];
