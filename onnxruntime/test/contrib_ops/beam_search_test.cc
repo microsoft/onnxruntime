@@ -396,8 +396,9 @@ TEST(BeamSearchTest, GptBeamSearchFp16_VocabPadded) {
   }
 }
 
-TEST(BeamSearchTest, T5WithSequenceInputIds) {
-  ModelTester tester(CurrentTestName(), ORT_TSTR("testdata/tiny_t5_with_sequence_input_ids.onnx"));
+TEST(BeamSearchTest, DummyT5WithSequenceInputIds) {
+  ModelTester tester(CurrentTestName(), ORT_TSTR("testdata/dummy_t5_with_sequence_input_ids.onnx"));
+  tester.ConfigEp(DefaultCpuExecutionProvider());
   tester.AddInput("encoder_input_ids", {1, 5}, {16, 17, 1, 0, 8});
   tester.AddOutput("sequences", {1, 3, 10}, {2, 19, 18, 3, 8, 8, 8, 8, 8, 8, 2, 19, 18, 3, 10, 19, 18, 3, 8, 8, 2, 19, 18, 15, 13, 13, 13, 13, 13, 13});
 #ifdef USE_CUDA
