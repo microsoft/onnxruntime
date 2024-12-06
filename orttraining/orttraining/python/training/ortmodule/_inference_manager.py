@@ -216,8 +216,17 @@ class InferenceManager(GraphExecutionManager):
     @TrackTime(ORTModuleInitPhase.CREATE_SESSION)
     def _create_execution_agent(self):
         """Creates an InferenceAgent that can run forward graph on an inference model"""
+        import os
 
+        self._runtime_options.use_torch_stream = os.environ.get("ORTMODULE_USE_TORCH_STREAM", "0") == "1"
+        if self._runtime_options.use_torch_stream:
+            self._runtime_options.use_external_gpu_allocator = False
         session_options, providers, provider_options = self._get_session_config()
+        if self._runtime_options.use_torch_stream:
+            # torch_stream = str(torch.cuda.Stream().cuda_stream)
+            torch_stream = os.environ["ORTMODULE_TORCH_STREAM"]
+            print(f"--------ortmodule will use torch stream: {torch_stream}--------")
+            provider_options[0]["user_compute_stream"] = str(torch_stream)
         self._execution_agent = InferenceAgent(
             self._onnx_models.optimized_model.SerializeToString(), session_options, providers, provider_options
         )
