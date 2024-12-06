@@ -61,6 +61,15 @@ async function main() {
 
   // we start here:
 
+  // perform exports testing
+  {
+    fs.copySync(PACKAGES_TO_INSTALL[0], path.join(TEST_E2E_RUN_FOLDER, 'exports', 'onnxruntime-common.tgz'));
+    fs.copySync(PACKAGES_TO_INSTALL[1], path.join(TEST_E2E_RUN_FOLDER, 'exports', 'onnxruntime-web.tgz'));
+    const testExportsMain = require(path.join(TEST_E2E_RUN_FOLDER, './exports/main'));
+    await testExportsMain();
+    process.exit(0);
+  }
+
   // install dev dependencies
   await runInShell(`npm install`);
 
