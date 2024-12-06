@@ -54,7 +54,7 @@ struct TraceSession {
   std::unordered_map<GUID, Handler, GUIDHash, GUIDEqual> eventHandler_;
 
   TraceSession()
-      : sessionHandle_(0), traceHandle_(INVALID_PROCESSTRACE_HANDLE), startTime_(0), frequency_(0), shouldStopProcessingEventsFn_(nullptr) {
+      : sessionHandle_(0), traceHandle_(INVALID_PROCESSTRACE_HANDLE), shouldStopProcessingEventsFn_(nullptr), startTime_(0), frequency_(0) {
   }
 
   // Usage:
