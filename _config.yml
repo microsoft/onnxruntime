@@ -1,4 +1,4 @@
-remote_theme: just-the-docs/just-the-docs
+remote_theme: just-the-docs
 color_scheme: onnxruntime
 search_enabled: true
 # Split pages into sections that can be searched individually
