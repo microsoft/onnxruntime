@@ -82,8 +82,7 @@ Status Subgraph::Setup(const SessionState& session_state,
     int idx;
     if (subgraph_map.GetIdx(entry->Name(), idx).IsOK()) {
       feed_names.push_back(entry->Name());
-    }
-    else {
+    } else {
       --num_implicit_inputs;
       used_implicit_inputs[i] = false;
     }
