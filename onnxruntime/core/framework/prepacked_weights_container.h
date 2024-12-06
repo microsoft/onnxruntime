@@ -130,7 +130,7 @@ class PrepackedForSerialization final {
       return it == subgraph_prepacks_.end() ? nullptr : it->second.get();
     }
 
-    void InsertFromDisk(std::string key, PrePackedWeights&& packed_weight);
+    void InsertFromDisk(const std::string& key, PrePackedWeights&& packed_weight);
 
     bool WritePackedForSaving(const std::string& weight_name, const std::string& key,
                               PrePackedWeights&& packed_weight);

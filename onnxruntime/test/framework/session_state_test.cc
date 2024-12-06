@@ -648,7 +648,7 @@ class SessionStateTestSharedInitalizersWithPrePacking : public ::testing::Test {
 };
 
 // Pre-packing enabled + no shared initializers, however, we put all the pre-packs
-// in a session_state container for onwership.
+// in a session_state container for ownership.
 TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test1) {
   SessionOptions sess_options;
   sess_options.enable_mem_pattern = true;
@@ -709,7 +709,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test1) {
   kernel = reinterpret_cast<const PrePackingTestOpKernel*>(session_state_2.GetKernel(0));
 
   // Assert that a pre-pack call was made. The weights are still shared from the serialized container
-  // either because they are loaded from disk or because we share it from there.
+  // either because they are loaded from disk or because the container takes ownership of them.
   ASSERT_EQ(session_state_2.GetNumberOfPrepacksCounter(), static_cast<size_t>(1));
   ASSERT_EQ(kernel->prepack_calls_count, 1);
   ASSERT_EQ(kernel->store_pre_packed_weight_calls_count, 1);

@@ -412,12 +412,12 @@ static std::string GenerateKeyForPrepackedWeightsMap(const std::string& op_type,
 }
 
 Status SessionState::PrepackConstantInitializedTensors(
+    PrepackedForSerialization::Subgraph& prepacked_subgraph,
     InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
     const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map) {
-  auto prepacked_constant_weights = [this, &constant_initializers_use_count, &initializers_to_share_map](
+  auto prepacked_constant_weights = [this, &prepacked_subgraph,
+                                     &constant_initializers_use_count, &initializers_to_share_map](
                                         bool should_cache_prepacked_weights_for_shared_initializers) -> Status {
-    auto& prepacked_subgraph = prepacked_weights_for_serialization_.FindOrCreatePrepackedGraph(graph_);
-
     for (auto& node : GetGraphViewer().Nodes()) {
       auto kernel = GetMutableKernel(node.Index());
       int input_idx = 0;
@@ -490,7 +490,7 @@ Status SessionState::PrepackConstantInitializedTensors(
                       // write out the most recent version of the pre-packed data
                       if (prepacked_weights_for_serialization_.IsSaveModeOn()) {
                         // Here we take references to the shared container owned data, so we unmap this entry
-                        // if it came from disk in thise session.
+                        // if it came from disk in this session.
                         WritePrepackedForSaving(input_name, prepacked_weights_container_key, prepacked_shared,
                                                 prepacked_subgraph);
                       }
@@ -1617,7 +1617,8 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   ORT_RETURN_IF_ERROR(CreateKernels(kernel_registry_manager));
 
   if (!disable_prepacking) {
-    ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count,
+    ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(prepacked_subgraph,
+                                                          constant_initializers_use_count,
                                                           session_options.initializers_to_share_map));
   }
 

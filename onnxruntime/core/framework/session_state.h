@@ -395,7 +395,8 @@ class SessionState {
    * Prepack the constant initialized tensors for better performance.
    * The original constant initialized tensors will be removed to save memory.
    */
-  Status PrepackConstantInitializedTensors(InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
+  Status PrepackConstantInitializedTensors(PrepackedForSerialization::Subgraph& prepacked_subgraph,
+                                           InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
                                            const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map);
 
   SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);

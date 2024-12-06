@@ -56,8 +56,8 @@ PrepackedForSerialization::PrepackedForSerialization()
 
 PrepackedForSerialization::~PrepackedForSerialization() = default;
 
-void PrepackedForSerialization::Subgraph::InsertFromDisk(std::string key, PrePackedWeights&& packed_weight) {
-  auto result = key_to_blobs_.emplace(std::move(key), std::move(packed_weight));
+void PrepackedForSerialization::Subgraph::InsertFromDisk(const std::string& key, PrePackedWeights&& packed_weight) {
+  auto result = key_to_blobs_.emplace(key, std::move(packed_weight));
   ORT_ENFORCE(result.second, "Duplicate pre-packed weight from disk");
 }
 
@@ -65,7 +65,7 @@ bool PrepackedForSerialization::Subgraph::WritePackedForSaving(const std::string
                                                                PrePackedWeights&& packed_weight) {
   auto hit = key_to_blobs_.find(key);
   if (hit == key_to_blobs_.end()) {
-    auto result = key_to_blobs_.insert({key, std::move(packed_weight)});
+    auto result = key_to_blobs_.emplace(key, std::move(packed_weight));
     sorted_by_weight_for_writing_[weight_name].push_back(result.first);
     return true;
   }
