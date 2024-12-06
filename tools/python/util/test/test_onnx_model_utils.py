@@ -10,6 +10,7 @@ from onnx import TensorProto, helper, shape_inference
 from ..mobile_helpers.usability_checker import check_shapes
 from ..onnx_model_utils import (
     fix_output_shapes,
+    fix_output_shapes_path,
     get_producer_consumer_maps,
     is_fixed_size_tensor,
     make_dim_param_fixed,
@@ -237,6 +238,26 @@ class TestDynamicDimReplacement(unittest.TestCase):
         self.assertFalse(is_fixed_size_tensor(model.graph.output[0]))
         fix_output_shapes(model)
         self.assertTrue(is_fixed_size_tensor(model.graph.output[0]))
+
+    def test_fix_output_shape_path(self):
+        """
+        Replace an input shape in a model where that won't update the output shape automatically.
+        Manually fix the output so the usage of the model is clearer.
+        """
+        model_path = ort_root / "onnxruntime" / "test" / "testdata" / "transform" / "fusion" / "bias_gelu_fusion.onnx"
+        output_path = ort_root / "onnxruntime" / "test" / "testdata" / "transform" / \
+            "fusion" / "bias_gelu_fusion_fixed_output.onnx"
+        model = onnx.load_model(str(model_path))
+
+        make_input_shape_fixed(model.graph, "A", [2, 2, 3072])
+
+        # symbolic dim names in graph inputs don't match graph outputs so they won't have been updated yet
+        self.assertFalse(is_fixed_size_tensor(model.graph.output[0]))
+        fix_output_shapes_path(model, model_path, output_path)
+        self.assertTrue(is_fixed_size_tensor(model.graph.output[0]))
+
+        if output_path.exists():
+            output_path.unlink()
 
     def test_invalid_replace_input_shape(self):
         model_path = ort_root / "onnxruntime" / "test" / "testdata" / "sklearn_bin_voting_classifier_soft.onnx"
