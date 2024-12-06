@@ -301,6 +301,8 @@ Status GetMLMultiArrayCopyInfo(const MLMultiArray* _Nonnull array,
   return Status::OK();
 }
 
+// since __clang_major__ >= 15, MLComputePlan is introduced in <CoreML/CoreML.h>
+// we define __clang_analyzer__ here is for bypass static analysis
 void ProfileComputePlan(NSURL* compileUrl, MLModelConfiguration* config) {
 #if defined(__APPLE__) && defined(__clang__) && __clang_major__ >= 15 && !defined(__clang_analyzer__)
   if (@available(macOS 14.4, iOS 17.4, *)) {
@@ -454,6 +456,8 @@ Status Execution::LoadModel() {
       }
 
 // Set the specialization strategy to FastPrediction  for macOS 10.15+
+// since __clang_major__ >= 15, optimizationHints is introduced in <CoreML/CoreML.h>
+// we define __clang_analyzer__ here is for bypass static analysis
 #if defined(__APPLE__) && defined(__clang__) && __clang_major__ >= 15 && !defined(__clang_analyzer__)
       if (HAS_COREML8_OR_LATER) {
         MLOptimizationHints* optimizationHints = [[MLOptimizationHints alloc] init];

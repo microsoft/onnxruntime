@@ -55,6 +55,8 @@ static const char* const kCoremlProviderOption_EnableOnSubgraphs = "EnableOnSubg
 // This process can affect the model loading time and the prediction latency.
 // Use this option to tailor the specialization strategy for your model.
 static const char* const kCoremlProviderOption_SpecializationStrategy = "SpecializationStrategy";
+// this flag is used to profile coreml computeplan after model compile.
+// The profile result includes what hardwares of each ops dispatched to and the estimate excution time.
 static const char* const kCoremlProviderOption_ProfileComputePlan = "ProfileComputePlan";
 // please refer to https://developer.apple.com/documentation/coreml/mlmodelconfiguration/allowlowprecisionaccumulationongpu
 static const char* const kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU = "AllowLowPrecisionAccumulationOnGPU";

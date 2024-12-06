@@ -99,9 +99,8 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, coreml_op_type);
     AddOperationInput(*op, "x", input_defs[0]->Name());
 
-    // it's impossible to have empty exes input for unsqueeze
     if (!axes.empty()) {
-      // coreml squeeze op does support negative axes
+      // coreml supports negative axes
       AddOperationInput(*op, "axes", model_builder.AddConstant(op->type(), "axes", AsSpan(axes)));
     }
     AddOperationOutput(*op, *node.OutputDefs()[0]);
