@@ -1,0 +1,65 @@
+name: Update Stale Issues
+description: Update stale issues
+resource: repository
+configuration:
+  resourceManagementConfiguration:
+    scheduledSearches:
+      - description: Apply stale label to open, unassigned issues that have not been updated in the last 30 days
+        frequencies:
+          - daily:
+              time: 15:00
+        filters:
+          - isIssue
+          - isOpen
+          - isNotAssigned
+          - isNotLabeledWith:
+              label: contributions welcome
+          - isNotLabeledWith:
+              label: documentation
+          - isNotLabeledWith:
+              label: feature request
+          - isNotLabeledWith:
+              label: regression
+          - noActivitySince:
+              days: 30
+        actions:
+          - addReply:
+              reply: "Applying stale label due to no activity in 30 days"
+          - addLabel:
+              label: stale
+      - description: Close open, unassigned issues labeled stale that have not been updated in the last 30 days
+        frequencies:
+          - daily:
+              time: 15:00
+        filters:
+          - hasLabel:
+              label: stale
+          - isIssue
+          - isOpen
+          - isNotAssigned
+          - noActivitySince:
+              days: 30
+        actions:
+          - addReply:
+              reply: "Closing issue due to no activity in 30 days"
+          - closeIssue
+    eventResponderTasks:
+      - description: Remove stale label if open stale issue is commented on
+        if:
+          - payloadType: Issue_Comment
+          - hasLabel:
+              label: stale
+        then:
+          - removeLabel:
+              label: stale
+      - description: Re-open stale issue if closed stale issue is commented on
+        if:
+          - payloadType: Issue_Comment
+          - and:
+              - not:
+                  isOpen
+              - hasLabel:
+                  label: stale
+        then:
+          - reopenIssue
+      
