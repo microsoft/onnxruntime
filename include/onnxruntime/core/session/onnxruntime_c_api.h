@@ -3636,6 +3636,7 @@ struct OrtApi {
    *   "profiling_level": QNN profiling level, options: "off", "basic", "detailed". Default to off.
    *   "profiling_file_path": QNN profiling file path if ETW not enabled.
    *   "rpc_control_latency": QNN RPC control latency.
+   *   "rpc_polling_time": QNN RPC polling time.
    *   "vtcm_mb": QNN VTCM size in MB. default to 0(not set).
    *   "htp_performance_mode": QNN performance mode, options: "burst", "balanced", "default", "high_performance",
    *   "high_power_saver", "low_balanced", "extreme_power_saver", "low_power_saver", "power_saver", "sustained_high_performance". Default to "default".
