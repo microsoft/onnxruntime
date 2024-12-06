@@ -66,7 +66,7 @@ Status TileCoreForFixedSizeTypes(const Tensor& input_tensor, Tensor& output_tens
 
   // some helper variables that will be used along the way
   size_t block_size = 0;
-  int64_t num_repeats = 0;
+  size_t num_repeats = 0;
   const uint8_t* copy = nullptr;
   const int64_t innermost_dim = input_shape[dimension_count - 1];
 
@@ -79,22 +79,27 @@ Status TileCoreForFixedSizeTypes(const Tensor& input_tensor, Tensor& output_tens
 
     // Tile data for the innermost axis
     copy = output - block_size;
-    num_repeats = repeats[dimension_count - 1] - 1;
-    for (int64_t repeat = 0; repeat < num_repeats; ++repeat) {
-      memcpy(output, copy, block_size);
-      output += block_size;
+    num_repeats = static_cast<size_t>(repeats[dimension_count - 1]);
+    size_t repeat;
+    for (repeat = 1; repeat * 2 < num_repeats; repeat *= 2) {
+      memcpy(output, copy, block_size * repeat);
+      output += block_size * repeat;
     }
+    memcpy(output, copy, block_size * (num_repeats - repeat));
+    output += block_size * (num_repeats - repeat);
 
     // Tile data for other axes
     while (input_counters.Increment()) {
       ptrdiff_t pitch = onnxruntime::narrow<size_t>(output_pitches[input_counters.Axis()] * input_shape[input_counters.Axis()]);
       block_size = pitch * element_size;
       copy = output - block_size;
-      num_repeats = repeats[input_counters.Axis()] - 1;
-      for (int64_t repeat = 0; repeat < num_repeats; ++repeat) {
-        memcpy(output, copy, block_size);
-        output += block_size;
+      num_repeats = static_cast<size_t>(repeats[input_counters.Axis()]);
+      for (repeat = 1; repeat * 2 < num_repeats; repeat *= 2) {
+        memcpy(output, copy, block_size * repeat);
+        output += block_size * repeat;
       }
+      memcpy(output, copy, block_size * (num_repeats - repeat));
+      output += block_size * (num_repeats - repeat);
     }
   }
   return Status::OK();
