@@ -3042,8 +3042,17 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
 
       // Set shape accordingly.
       TensorShapeProto inferred_shape;
-      for (auto dim : tensor_proto->dims()) {
-        inferred_shape.add_dim()->set_dim_value(dim);
+
+      auto overridden_shape_iter = name_to_overridden_initial_tensor_shape_.find(name);
+
+      // If the initializer's shape was overridden (e.g. via AddFreeDimensionOverrideByName), we use the overridden shape
+      // instead of the initial one
+      if (overridden_shape_iter != name_to_overridden_initial_tensor_shape_.end()) {
+        inferred_shape = overridden_shape_iter->second;
+      } else {
+        for (auto dim : tensor_proto->dims()) {
+          inferred_shape.add_dim()->set_dim_value(dim);
+        }
       }
 
       const TensorShapeProto* p_existing_shape = node_arg->Shape();
@@ -3056,12 +3065,13 @@ common::Status Graph::TypeCheckInputsAndInitializers() {
       } else {
         bool invalid = false;
 
-        if (p_existing_shape->dim_size() != tensor_proto->dims_size()) {
+        if (p_existing_shape->dim_size() != inferred_shape.dim_size()) {
           invalid = true;
         } else {
           for (int i = 0; i < p_existing_shape->dim_size(); ++i) {
-            auto& d = p_existing_shape->dim(i);
-            if (utils::HasDimValue(d) && (d.dim_value() != tensor_proto->dims(i))) {
+            auto& existing_dim = p_existing_shape->dim(i);
+            auto& inferred_dim = inferred_shape.dim(i);
+            if (utils::HasDimValue(existing_dim) && utils::HasDimValue(inferred_dim) && (existing_dim.dim_value() != inferred_dim.dim_value())) {
               invalid = true;
               break;
             }
@@ -3626,6 +3636,29 @@ bool Graph::GetInitializedTensor(const std::string& tensor_name, const TensorPro
   }
   value = iter->second;
   return true;
+}
+
+void Graph::OverrideInitializedTensorDim(const std::string& tensor_name, int dim_index, int64_t override) {
+  auto iter = name_to_overridden_initial_tensor_shape_.find(tensor_name);
+
+  if (iter == name_to_overridden_initial_tensor_shape_.end()) {
+    // Initialize the overridden shape to the initial shape, which will be overridden below
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = nullptr;
+    ORT_ENFORCE(GetInitializedTensor(tensor_name, tensor_proto), "No initializers found with name ", tensor_name, ".");
+
+    TensorShapeProto initial_shape;
+    for (auto dim : tensor_proto->dims()) {
+      initial_shape.add_dim()->set_dim_value(dim);
+    }
+
+    iter = name_to_overridden_initial_tensor_shape_.emplace(tensor_name, std::move(initial_shape)).first;
+  }
+
+  ORT_ENFORCE(
+      dim_index < iter->second.dim_size(),
+      "dim_index ", dim_index, " should be smaller than the number of dimensions ", iter->second.dim_size(), ".");
+
+  iter->second.mutable_dim(dim_index)->set_dim_value(override);
 }
 
 void Graph::CleanAllInitializedTensors() noexcept {
