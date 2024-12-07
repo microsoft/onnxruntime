@@ -107,10 +107,6 @@ class Resize : public JsKernel, public UpsampleBase {
   }
 
   virtual Status SerializeCustomData(OpKernelContext* context, AllocatorPtr alloc, void** ptr, size_t* size) const {
-    TensorShapeVector output_dims;
-    std::vector<float> roi_array;
-    std::vector<float> scales_array;
-
     // Compute the size of the custom data
     size_t customDataSize = sizeof(int32_t);
 
