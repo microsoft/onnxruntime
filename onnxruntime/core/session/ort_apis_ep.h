@@ -27,6 +27,8 @@ ORT_API_STATUS_IMPL(OrtGraph_GetOrtNode, const OrtGraphViewer* graph, size_t nod
 
 ORT_API_STATUS_IMPL(OrtGraph_GetNodesConsumingInput, const OrtGraphViewer* graph, const char* input_name, _Outptr_ const OrtNode*** consumers, _Out_ size_t* num_consumers);
 
+ORT_API_STATUS_IMPL(ReleaseOrtNodeArray, const OrtNode** nodes);
+
 ORT_API_STATUS_IMPL(OrtGraph_GetNodeProducingOutput, const OrtGraphViewer* graph, const char* output_name, _Outptr_ const OrtNode** node);
 
 ORT_API_STATUS_IMPL(OrtGraph_NumberOfNodes, const OrtGraphViewer* graph, _Out_ int* num_nodes);

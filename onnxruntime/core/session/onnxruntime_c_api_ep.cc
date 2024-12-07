@@ -104,6 +104,14 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetNodesConsumingInput, const OrtGrap
   return nullptr;
 }
 
+ORT_API_STATUS_IMPL(OrtGraphApis::ReleaseOrtNodeArray, const OrtNode** nodes) {
+  if (!nodes) {
+    return nullptr;
+  }
+  delete[] nodes;
+  return nullptr;
+}
+
 ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_GetNodeProducingOutput, const OrtGraphViewer* graph, const char* output_name, _Outptr_ const OrtNode** node) {
   const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
   *node = reinterpret_cast<const OrtNode*>(graph_viewer->GetProducerNode(output_name));
@@ -996,6 +1004,7 @@ static constexpr OrtGraphApi ort_graph_api = {
     &OrtGraphApis::ReleaseCharArray,
     &OrtGraphApis::OrtGraph_GetOrtNode,
     &OrtGraphApis::OrtGraph_GetNodesConsumingInput,
+    &OrtGraphApis::ReleaseOrtNodeArray,
     &OrtGraphApis::OrtGraph_GetNodeProducingOutput,
     &OrtGraphApis::OrtGraph_NumberOfNodes,
     &OrtGraphApis::OrtGraph_MaxNodeIndex,

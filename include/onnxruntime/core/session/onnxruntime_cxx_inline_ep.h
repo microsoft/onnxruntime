@@ -62,16 +62,77 @@ inline std::filesystem::path Graph::GetModelPath() {
   return *reinterpret_cast<const std::filesystem::path*>(model_path);
 }
 
-inline std::shared_ptr<Ort::PluginEP::Node> Graph::GetOrtNode(size_t node_index) {
-  const OrtNode* node = nullptr;
-  ThrowOnError(ort_graph_api->OrtGraph_GetOrtNode(graph_, node_index, &node));
-  return std::make_shared<Ort::PluginEP::Node>(node);
+inline std::vector<std::string> Graph::GetRequiredInputs() {
+  const char** required_inputs = nullptr;
+  size_t required_inputs_count = 0;
+  ThrowOnError(ort_graph_api->OrtGraph_GetRequiredInputs(graph_, &required_inputs, &required_inputs_count));
+  auto release_fn = [](const char** strs) {
+    ThrowOnError(ort_graph_api->ReleaseCharArray(strs));
+  };
+  std::unique_ptr<const char*, decltype(release_fn)> guard(required_inputs, release_fn);
+  std::vector<std::string> ret;
+  ret.reserve(required_inputs_count);
+  for (size_t i = 0; i < required_inputs_count; i++) {
+    ret.emplace_back(required_inputs[i]);
+  }
+  return ret;
 }
 
-inline std::shared_ptr<Ort::PluginEP::Node> Graph::GetNodeProducingOutput(const char* output_name) {
+inline std::vector<std::string> Graph::GetAllInputs() {
+  const char** all_inputs = nullptr;
+  size_t all_inputs_count = 0;
+  ThrowOnError(ort_graph_api->OrtGraph_GetAllInputs(graph_, &all_inputs, &all_inputs_count));
+  auto release_fn = [](const char** strs) {
+    ThrowOnError(ort_graph_api->ReleaseCharArray(strs));
+  };
+  std::unique_ptr<const char*, decltype(release_fn)> guard(all_inputs, release_fn);
+  std::vector<std::string> ret;
+  ret.reserve(all_inputs_count);
+  for (size_t i = 0; i < all_inputs_count; i++) {
+    ret.emplace_back(all_inputs[i]);
+  }
+  return ret;
+}
+
+inline std::vector<std::string> Graph::GetAllInitializers() {
+  const char** all_initializers = nullptr;
+  size_t all_initializers_count = 0;
+  ThrowOnError(ort_graph_api->OrtGraph_GetAllInitializers(graph_, &all_initializers, &all_initializers_count));
+  auto release_fn = [](const char** strs) {
+    ThrowOnError(ort_graph_api->ReleaseCharArray(strs));
+  };
+  std::unique_ptr<const char*, decltype(release_fn)> guard(all_initializers, release_fn);
+  std::vector<std::string> ret;
+  ret.reserve(all_initializers_count);
+  for (size_t i = 0; i < all_initializers_count; i++) {
+    ret.emplace_back(all_initializers[i]);
+  }
+  return ret;
+}
+
+inline Ort::PluginEP::Node Graph::GetOrtNode(size_t node_index) {
+  const OrtNode* node = nullptr;
+  ThrowOnError(ort_graph_api->OrtGraph_GetOrtNode(graph_, node_index, &node));
+  return Ort::PluginEP::Node(node);
+}
+
+inline std::vector<Ort::PluginEP::Node> Graph::GetNodesConsumingInput(const char* input_name) {
+  const OrtNode** consumers = nullptr;
+  size_t consumer_count = 0;
+  ThrowOnError(ort_graph_api->OrtGraph_GetNodesConsumingInput(graph_, input_name, &consumers, &consumer_count));
+  std::vector<Ort::PluginEP::Node> ret;
+  ret.reserve(consumer_count);
+  for (size_t i = 0; i < consumer_count; i++) {
+    ret.emplace_back(consumers[i]);
+  }
+  ort_graph_api->ReleaseOrtNodeArray(consumers);
+  return ret;
+}
+
+inline Ort::PluginEP::Node Graph::GetNodeProducingOutput(const char* output_name) {
   const OrtNode* node = nullptr;
   ThrowOnError(ort_graph_api->OrtGraph_GetNodeProducingOutput(graph_, output_name, &node));
-  return std::make_shared<Ort::PluginEP::Node>(node);
+  return Ort::PluginEP::Node(node);
 }
 
 inline int Graph::NumberOfNodes() {
@@ -207,15 +268,21 @@ inline size_t Node::GetIndex() {
   return node_index;
 }
 
-// inline const std::vector<std::string> Node::GetAttributeNames() {
-//   const ::onnxruntime::Node* n = reinterpret_cast<const ::onnxruntime::Node*>(node_);
-//   const auto& attribute = n->GetAttributes();
-//   std::vector<std::string> attribute_names;
-//   for (const auto& attr : attribute) {
-//     attribute_names.push_back(attr.first);
-//   }
-//   return attribute_names;
-// }
+inline std::vector<std::string> Node::GetAttributeNames() {
+  const char** attribute_names = nullptr;
+  size_t attribute_names_count = 0;
+  ThrowOnError(ort_graph_api->OrtNode_GetAttributeNames(node_, &attribute_names, &attribute_names_count));
+  auto release_fn = [](const char** strs) {
+    ThrowOnError(ort_graph_api->ReleaseCharArray(strs));
+  };
+  std::unique_ptr<const char*, decltype(release_fn)> guard(attribute_names, release_fn);
+  std::vector<std::string> ret;
+  ret.reserve(attribute_names_count);
+  for (size_t i = 0; i < attribute_names_count; i++) {
+    ret.emplace_back(attribute_names[i]);
+  }
+  return ret;
+}
 
 inline size_t Node::GetAttributeSize() {
   size_t attribute_size = 0;
