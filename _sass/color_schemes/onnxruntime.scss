@@ -11,34 +11,36 @@ $btn-primary-color: #226aca;
 // .highlight .c1 {
 // 	color: #188616 !important;
 // }
-
+// 2024 December Accessibility changes
+.highlight .s { color: #3c7a3b ;}
+// Initial Theme
 .highlight .hll { background-color: #ffffcc; }
 .highlight { background: #ffffff; }
-.highlight .c { color: #767676; }
+.highlight .c { color: #707070 ; }
 .highlight .err { background-color: #FFAAAA; color: #a00000; }
-.highlight .k { color: #008800; font-weight: bold; }
+.highlight .k { color: #008100; font-weight: bold; }
 .highlight .o { color: #333333; }
-.highlight .ch { color: #767676; }
-.highlight .cm { color: #767676; }
+.highlight .ch { color: #707070 ; }
+.highlight .cm { color: #707070 ; }
 .highlight .cp { color: #557799; }
-.highlight .cpf { color: #767676; }
-.highlight .c1 { color: #767676; }
+.highlight .cpf { color: #707070 ; }
+.highlight .c1 { color: #707070 ; }
 .highlight .cs { color: #cc0000; font-weight: bold; }
 .highlight .gd { color: #A00000; }
 .highlight .ge { font-style: italic; }
 .highlight .gr { color: #eb0000; }
 .highlight .gh { color: #000080; font-weight: bold; }
 .highlight .gi { color: #008700; }
-.highlight .go { color: #767676; }
+.highlight .go { color: #707070 ; }
 .highlight .gp { font-weight: bold; color: #bc5909; }
 .highlight .gs { font-weight: bold; }
 .highlight .gu { color: #800080; font-weight: bold; }
 .highlight .gt { color: #0044DD; }
-.highlight .kc { color: #008800; font-weight: bold; }
-.highlight .kd { color: #008800; font-weight: bold; }
-.highlight .kn { color: #008800; font-weight: bold; }
+.highlight .kc { color: #008100; font-weight: bold; }
+.highlight .kd { color: #008100; font-weight: bold; }
+.highlight .kn { color: #008100; font-weight: bold; }
 .highlight .kp { color: #003388; font-weight: bold; }
-.highlight .kr { color: #008800; font-weight: bold; }
+.highlight .kr { color: #008100; font-weight: bold; }
 .highlight .kt { color: #333399; font-weight: bold; }
 .highlight .m { color: #6600EE; font-weight: bold; }
 .highlight .s { background-color: #fff0f0; }
@@ -51,11 +53,11 @@ $btn-primary-color: #226aca;
 .highlight .ne { font-weight: bold; color: #eb0000; }
 .highlight .nf { color: #0066BB; font-weight: bold; }
 .highlight .nl { font-weight: bold; color: #8f6f00; }
-.highlight .nn { font-weight: bold; color: #0e7eab; }
+.highlight .nn { font-weight: bold; color: #0d77a2 ; }
 .highlight .nt { color: #007700; }
 .highlight .nv { color: #996633; }
 .highlight .ow { color: #000000; font-weight: bold; }
-.highlight .w { color: #767676; }
+.highlight .w { color: #707070 ; }
 .highlight .mb { color: #6600EE; font-weight: bold; }
 .highlight .mf { color: #6600EE; font-weight: bold; }
 .highlight .mh { color: #005588; font-weight: bold; }
