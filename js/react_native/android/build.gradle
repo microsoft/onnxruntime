@@ -1,5 +1,4 @@
 import java.nio.file.Paths
-
 buildscript {
   repositories {
     google()
@@ -127,8 +126,8 @@ android {
     disable 'GradleCompatible'
   }
   compileOptions {
-    sourceCompatibility JavaVersion.VERSION_1_8
-    targetCompatibility JavaVersion.VERSION_1_8
+    sourceCompatibility JavaVersion.VERSION_17
+    targetCompatibility JavaVersion.VERSION_17
   }
 
   sourceSets {
@@ -226,7 +225,6 @@ dependencies {
   implementation "junit:junit:4.12"
 
   androidTestImplementation "com.linkedin.dexmaker:dexmaker-mockito-inline-extended:2.28.1"
-
   implementation "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
 
   // By default it will just include onnxruntime full aar package

@@ -232,6 +232,7 @@ stages:
       displayName: Copy Android package to Android e2e test directory
 
     - script: |
+        set -e -x
         detox build --configuration android.emu.release
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Build React Native Detox Android e2e Tests

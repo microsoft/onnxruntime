@@ -38,7 +38,7 @@ steps:
       set -e -x
       python3 tools/python/run_android_emulator.py \
         --android-sdk-root $(ANDROID_SDK_ROOT) \
-        --create-avd --system-image "system-images;android-31;default;x86_64"
+        --create-avd --system-image "system-images;android-34;default;x86_64"
     displayName: Create Android Emulator
 
 - ${{ if eq(parameters.start, true) }}:

@@ -1,4 +1,6 @@
-apply plugin: "com.android.application"
+plugins {
+    id 'com.android.application'
+}
 
 import com.android.build.OutputFile
 
@@ -80,8 +82,6 @@ project.ext.react = [
     entryFile: "index.tsx",
 ]
 
-apply from: "../../node_modules/react-native/react.gradle"
-
 /**
  * Set this to true to create two separate APKs instead of one:
  *   - An APK that only works on ARM devices
@@ -123,8 +123,8 @@ android {
     compileSdkVersion rootProject.ext.compileSdkVersion
 
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
 
     defaultConfig {
@@ -218,8 +218,10 @@ dependencies {
     androidTestImplementation "androidx.test:rules:1.5.0"
 
     implementation project(':onnxruntime-react-native')
+
     // specify ORT dependency here so it can be found in libs flatDir repository
     implementation "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
+
 }
 
 // Run this once to be able to run the application with BUCK
