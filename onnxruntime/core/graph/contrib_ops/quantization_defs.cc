@@ -164,7 +164,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "T2", OpSchema::Optional)
         .Output(0, "y", "N-D quantized output tensor. It has same shape as input 'x'.", "T2")
         .TypeConstraint("T1", {"tensor(float16)", "tensor(float)"}, "Constrain 'x', 'y_scale' to float tensors.")
-        .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)", "tensor(int4)", "tensor(uint4)"},
+        .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)", "tensor(int4)",
+                               "tensor(uint4)"},
                         "Constrain 'y_zero_point' and 'y' to 8-bit and 16-bit integer tensors.")
         .SetDoc(QuantizeLinear_ver1_doc)
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -205,7 +206,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(DequantizeLinear, 1,
                                        "T1", OpSchema::Optional)
                                 .Output(0, "y", "N-D full precision output tensor. It has same shape as input 'x'.",
                                         "T2")
-                                .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)", "tensor(int32)", "tensor(int4)", "tensor(uint4)"},
+                                .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)", "tensor(int16)",
+                                                       "tensor(uint16)", "tensor(int32)", "tensor(int4)",
+                                                       "tensor(uint4)"},
                                                 "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors, "
                                                 "16-bit integer tensors, or 32-bit signed integer tensors.")
                                 .TypeConstraint("T2", {"tensor(float16)", "tensor(float)"},
@@ -824,17 +827,41 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
           }
         }));
 
-ONNX_MS_OPERATOR_SET_SCHEMA(QLinearWhere, 1, OpSchema().SetDoc("Return elements, either from X or Y, depending on condition.").Input(0, "condition", " When True (nonzero), yield x, otherwise yield y", "B").Input(1, "X", "Y's zero point.", "T").Input(2, "x_scale", "X's scale.", "TF").Input(3, "x_zero_point", "X's zero point.", "T").Input(4, "Y", "Y's zero point.", "T").Input(5, "y_scale", "Y's scale.", "TF").Input(6, "y_zero_point", "Y's zero point.", "T").Input(7, "z_scale", "Z's scale.", "TF").Input(8, "z_zero_point", "Z's zero point.", "T").Output(0, "Z", "Tensor of shape equal to the broadcasted shape of condition, X, and Y", "T").TypeConstraint("B", {"tensor(bool)"}, "Constrain input and output types to 8 bit signed and unsigned tensors.").TypeConstraint("TF", {"tensor(float)"}, "Constrain scale types to any float tensor type.").TypeConstraint("T", {"tensor(uint8)", "tensor(int8)"}, "Constrain input and output types to 8 bit signed and unsigned tensors.").TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
-  propagateElemTypeFromInputToOutput(ctx, 1, 0);
-  if (hasNInputShapes(ctx, 9)) {
-    std::vector<const onnx::TensorShapeProto*> shapes;
-    shapes.push_back(&ctx.getInputType(0)->tensor_type().shape());
-    shapes.push_back(&ctx.getInputType(1)->tensor_type().shape());
-    shapes.push_back(&ctx.getInputType(4)->tensor_type().shape());
-    multidirectionalBroadcastShapeInference(
-        shapes, *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape());
-  }
-}));
+  ONNX_MS_OPERATOR_SET_SCHEMA(QLinearWhere, 1, OpSchema()
+    .SetDoc("Return elements, either from X or Y, depending on condition.")
+      .Input(0, "condition", " When True (nonzero), yield x, otherwise yield y", "B")
+      .Input(1, "X", "Y's zero point.", "T")
+      .Input(2, "x_scale", "X's scale.", "TF")
+      .Input(3, "x_zero_point", "X's zero point.", "T")
+      .Input(4, "Y", "Y's zero point.", "T")
+      .Input(5, "y_scale", "Y's scale.", "TF")
+      .Input(6, "y_zero_point", "Y's zero point.", "T")
+      .Input(7, "z_scale", "Z's scale.", "TF")
+      .Input(8, "z_zero_point", "Z's zero point.", "T")
+      .Output(0, "Z", "Tensor of shape equal to the broadcasted shape of condition, X, and Y", "T")
+      .TypeConstraint(
+        "B",
+        {"tensor(bool)"},
+        "Constrain input and output types to 8 bit signed and unsigned tensors.")
+      .TypeConstraint(
+        "TF",
+        {"tensor(float)"},
+        "Constrain scale types to any float tensor type.")
+      .TypeConstraint(
+        "T",
+        {"tensor(uint8)", "tensor(int8)"},
+        "Constrain input and output types to 8 bit signed and unsigned tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        if (hasNInputShapes(ctx, 9)) {
+          std::vector<const onnx::TensorShapeProto*> shapes;
+          shapes.push_back(&ctx.getInputType(0)->tensor_type().shape());
+          shapes.push_back(&ctx.getInputType(1)->tensor_type().shape());
+          shapes.push_back(&ctx.getInputType(4)->tensor_type().shape());
+          multidirectionalBroadcastShapeInference(
+              shapes, *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape());
+        }
+      }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
     QGemm, 1,
