@@ -36,6 +36,8 @@ class VitisAIExecutionProvider : public IExecutionProvider {
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
 
+  std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
+
   // This method is called after both `GetComputeCapabilityOps()` and `Compile()`.
   // This timing is required to work with both compliation-based EPs and non-compilation-based EPs.
   const InlinedVector<const Node*> GetEpContextNodes() const override;
