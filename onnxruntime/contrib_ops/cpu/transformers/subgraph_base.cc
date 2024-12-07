@@ -31,6 +31,7 @@ Subgraph::Subgraph(
       allocator_(nullptr),
       is_output_float16_(false) {
   num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
+  used_implicit_inputs = std::vector<bool>(num_implicit_inputs, true);
 
   auto& subgraph_inputs = subgraph.GetInputs();
   auto& subgraph_outputs = subgraph.GetOutputs();
@@ -73,8 +74,18 @@ Status Subgraph::Setup(const SessionState& session_state,
   // The position_ids, attention_mask, past_0, ... are created by this operator so the name doesn't matter.
   feed_names.insert(feed_names.end(), subgraph_input_names.begin(), subgraph_input_names.end());
 
-  for (auto& entry : node.ImplicitInputDefs()) {
-    feed_names.push_back(entry->Name());
+  const auto& subgraph_map = subgraph_session_state.GetOrtValueNameIdxMap();
+
+  const auto& implicit_input_defs = node.ImplicitInputDefs();
+  for (size_t i = 0, end = num_implicit_inputs; i < end; ++i) {
+    const auto* entry = implicit_input_defs[i];
+    int idx;
+    if (subgraph_map.GetIdx(entry->Name(), idx).IsOK()) {
+      feed_names.push_back(entry->Name());
+    } else {
+      --num_implicit_inputs;
+      used_implicit_inputs[i] = false;
+    }
   }
 
   InlinedVector<OrtDevice> feed_locations;
