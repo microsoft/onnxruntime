@@ -69,7 +69,8 @@ bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const We
   }
 }
 
-bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_name, const logging::Logger& logger) {
+bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_name,
+                            const logging::Logger& logger, bool allow_empty_input) {
   const auto& node_arg_name = node_arg.Name();
   const auto* shape_proto = node_arg.Shape();
   // Optional tensors can be indicated by an empty name, just ignore it.
@@ -89,7 +90,7 @@ bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_n
                             << "use sessionOptions.FreeDimensionOverrides to set a fixed shape: " << node_arg_name;
       return false;
     }
-    if (dim.dim_value() == 0) {
+    if (dim.dim_value() == 0 && !allow_empty_input) {
       LOGS(logger, VERBOSE) << "The shape of [" << node_arg_name << "] has 0 dimension which is not supported by WebNN";
       return false;
     }
