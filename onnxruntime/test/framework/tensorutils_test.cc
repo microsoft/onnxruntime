@@ -45,14 +45,12 @@ TEST(TensorProtoUtilsTest, SetExternalDataInformation) {
   const std::string init_name = "test_initializer";
   const std::string blob_key = "test_key";
 
-  auto delete_array = [](void* p) { delete[] reinterpret_cast<char*>(p); };
+  std::array<float, 2> kData = {1.2345f, 2.4690f};
 
-  prepacked_weights.buffers_.push_back(BufferUniquePtr(new char[buffer_size],
-                                                       delete_array));
+  prepacked_weights.buffers_.push_back(BufferUniquePtr(kData.data(), BufferDeleter(nullptr)));
   prepacked_weights.buffer_sizes_.push_back(buffer_size);
   // Write a second entry like this
-  prepacked_weights.buffers_.push_back(BufferUniquePtr(new char[buffer_size],
-                                                       delete_array));
+  prepacked_weights.buffers_.push_back(BufferUniquePtr(kData.data(), BufferDeleter(nullptr)));
   prepacked_weights.buffer_sizes_.push_back(buffer_size);
 
   prepacked_for_serialization.MainGraph().WritePackedForSaving(init_name, blob_key, std::move(prepacked_weights));

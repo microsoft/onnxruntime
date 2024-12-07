@@ -108,6 +108,10 @@ class PrepackedForSerialization final {
 
     ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Subgraph);
 
+    const Subgraph* Parent() const noexcept {
+      return parent_;
+    }
+
     Subgraph* Parent() noexcept {
       return parent_;
     }
@@ -132,12 +136,18 @@ class PrepackedForSerialization final {
 
     void InsertFromDisk(const std::string& key, PrePackedWeights&& packed_weight);
 
-    bool WritePackedForSaving(const std::string& weight_name, const std::string& key,
+    void WritePackedForSaving(const std::string& weight_name, const std::string& key,
                               PrePackedWeights&& packed_weight);
 
     const PrePackedWeights* GetPrepackedWeights(const std::string& key) const;
 
-    PrePackedWeights* GetPrepackedWeights(const std::string& key);
+    // The function would add or replace existing entry with references to it.
+    // If the entry is present, it would replace it with references to the existing entry.
+    // If the entry is not present, it would add reference to refer_if_absent
+    // If present it would return the existing entry otherwise std::nullopt
+    std::optional<PrePackedWeights> ReplaceWithReference(const std::string& weight_name,
+                                                         const std::string& key,
+                                                         const PrePackedWeights& refer_if_absent);
 
     bool IsSaveModeOn() const noexcept {
       return save_mode_on_;
@@ -155,6 +165,28 @@ class PrepackedForSerialization final {
       }
       return nullptr;
     }
+
+    size_t GetSubgraphNum() const noexcept {
+      return subgraph_prepacks_.size();
+    }
+
+    size_t GetNumberOfWeightsForWriting() const noexcept {
+      return sorted_by_weight_for_writing_.size();
+    }
+
+    size_t GetNumberOfKeyedBlobsForWriting() const noexcept {
+      size_t result = 0;
+      for (const auto& [_, indirect_blobs] : sorted_by_weight_for_writing_) {
+        result += indirect_blobs.size();
+      }
+      return result;
+    }
+
+    // This template declaration is intended to be instantiated
+    // and used by test code to inspect private members. Otherwise,
+    // it has no body and is not intended to be used by other code.
+    template <class T>
+    void TestHarness(T&) const;
 
    private:
     bool save_mode_on_;
@@ -184,8 +216,6 @@ class PrepackedForSerialization final {
   bool IsSaveModeOn() const noexcept {
     return main_graph_.IsSaveModeOn();
   }
-
-  std::optional<PrePackedWeights> TakePrepackedWeights(const std::string& key);
 
   Subgraph& FindOrCreatePrepackedGraph(const Graph& graph);
 
