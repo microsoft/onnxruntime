@@ -179,7 +179,7 @@ void IdentifyConnectedNodes(const OrtGraphApi* graph_api,
       graph_api->OrtNode_GetIndex(consumer_nodes[j], &consumer_index);
       IdentifyConnectedNodes(graph_api, graph_viewer, consumer_index, cluster, sub_cluster);
     }
-    // TODO(leca): release consumer_nodes
+    graph_api->ReleaseOrtNodeArray(consumer_nodes);
   }
 }
 
@@ -263,7 +263,7 @@ void GetInputsOutputsOfCluster(const OrtGraphApi* graph_api,
           }
         }
       }
-      // TODO(leca): release consumer_nodes
+      graph_api->ReleaseOrtNodeArray(consumer_nodes);
     }
   }
 

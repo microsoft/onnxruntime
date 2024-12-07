@@ -196,6 +196,8 @@ ORT_API2_STATUS(OrtGraph_GetOrtNode, const OrtGraphViewer* graph, size_t node_in
 
 /** \brief Get the consumer nodes of a node arg with the given name
  *
+ *  NOTE!!: The caller is responsible for releasing the OrtNode arrays using ReleaseOrtNodeArray.
+ *
  * \param[in] graph The graph to query
  * \param[in] input_name The name of the node arg
  * \param[out] consumers The consumer nodes of the node arg
@@ -203,6 +205,16 @@ ORT_API2_STATUS(OrtGraph_GetOrtNode, const OrtGraphViewer* graph, size_t node_in
  *
  */
 ORT_API2_STATUS(OrtGraph_GetNodesConsumingInput, const OrtGraphViewer* graph, const char* input_name, _Outptr_ const OrtNode*** consumers, _Out_ size_t* num_consumers); // TODO(leca): ValueConsumers::comprehensive ?
+
+/** \brief Release the OrtNode arrays
+ *
+ *  NOTE!!: Invoke this function after the use of OrtGraph_GetNodesConsumingInput.
+ *
+ * \param[in] nodes The OrtNode arrays to release
+ * \param[in] num_nodes The number of OrtNode arrays
+ *
+ */
+ORT_API2_STATUS(ReleaseOrtNodeArray, const OrtNode** nodes);
 
 /** \brief Get the producer node of a node arg with the given name
  *
@@ -502,6 +514,8 @@ ORT_API2_STATUS(OrtNode_GetIthOutputName, const OrtNode* node, size_t i, _Outptr
 ORT_API2_STATUS(OrtNode_GetIndex, const OrtNode* node, _Out_ size_t* out);
 
 /** \brief Gets attribute names of the node.
+ *
+ *  NOTE!!: The caller is responsible for releasing the char array using ReleaseCharArray.
  *
  * \param[in] node The node to query
  * \param[out] names The attribute names of the node

@@ -1273,6 +1273,7 @@ std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGr
           break;
         }
       }
+      graph_api_->ReleaseOrtNodeArray(consumers, consumer_count);
     }
   }
 
