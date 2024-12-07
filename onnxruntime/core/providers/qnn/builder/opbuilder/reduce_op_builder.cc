@@ -10,7 +10,6 @@
 #include "onnx/defs/data_type_utils.h"
 #include "core/providers/common.h"
 #include "core/framework/endian_utils.h"
-#include "core/providers/shared/utils/utils.h"
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
@@ -102,7 +101,7 @@ Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const Nod
 
   const int opset_axes_as_input = ReduceOpBuilder::opset_with_axes_as_input[reduce_op_type];
   const int opset = node_unit.SinceVersion();
-  NodeAttrHelper node_helper(node_unit);
+  utils::NodeAttrHelper node_helper(node_unit);
 
   // Extract the axes values from either the attribute or initializer input (depending on opset).
   if (opset < opset_axes_as_input) {  // Axes is in ONNX node attribute.
@@ -212,7 +211,7 @@ Status ReduceOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper, const 
 Status ReduceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
                                                     std::vector<std::string>&& input_names,
                                                     const logging::Logger& logger, bool do_op_validation) const {
-  NodeAttrHelper node_attr_helper(node_unit);
+  utils::NodeAttrHelper node_attr_helper(node_unit);
   std::vector<std::string> param_tensor_names;
 
   //

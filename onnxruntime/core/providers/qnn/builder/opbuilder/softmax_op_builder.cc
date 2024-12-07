@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/common.h"
-#include "core/providers/shared/utils/utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"

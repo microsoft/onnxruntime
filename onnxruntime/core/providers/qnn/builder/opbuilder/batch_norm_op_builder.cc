@@ -6,7 +6,6 @@
 #include <utility>
 
 #include "core/providers/common.h"
-#include "core/providers/shared/utils/utils.h"
 #include "core/framework/float16.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
@@ -546,7 +545,7 @@ Status BatchNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     std::vector<double> scale_double_tensor;
     std::vector<double> bias_double_tensor;
 
-    NodeAttrHelper node_helper(node_unit);
+    utils::NodeAttrHelper node_helper(node_unit);
     const float epsilon = node_helper.Get("epsilon", 1e-05f);  // Default is 1e-05 according to ONNX spec.
 
     double scale_rmax = std::numeric_limits<double>::min();

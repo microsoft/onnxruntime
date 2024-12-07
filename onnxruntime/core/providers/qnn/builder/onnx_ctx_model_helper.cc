@@ -3,6 +3,7 @@
 
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 #include "core/graph/constants.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model.h"
 
 #include <iostream>
@@ -17,7 +18,7 @@ bool GraphHasEpContextNode(const onnxruntime::GraphViewer& graph_viewer) {
   // and the source is QNN or QNNExecutionProvider.
   for (const auto& node : graph_viewer.Nodes()) {
     if (EPCONTEXT_OP == node.OpType()) {
-      NodeAttrHelper node_helper(node);
+      utils::NodeAttrHelper node_helper(node);
       std::string cache_source = node_helper.Get(SOURCE, "");
 
       std::transform(cache_source.begin(),
@@ -53,7 +54,7 @@ Status GetMainContextNode(const std::vector<IExecutionProvider::FusedNodeAndGrap
     ORT_RETURN_IF(graph_viewer.NumberOfNodes() != 1, "One filtered graph should has only one EPContext node!");
     const auto& ep_context_node = graph_viewer.Nodes().begin();
     ORT_RETURN_IF_NOT(EPCONTEXT_OP == ep_context_node->OpType(), "Should only filter in the EPContext node.");
-    NodeAttrHelper node_helper(*ep_context_node);
+    utils::NodeAttrHelper node_helper(*ep_context_node);
     int64_t is_main_context = node_helper.Get(MAIN_CONTEXT, static_cast<int64_t>(0));
     if (1 == is_main_context) {
       main_context_pos.push_back(static_cast<int>(i));
@@ -89,7 +90,7 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
                                 QnnBackendManager* qnn_backend_manager,
                                 QnnModelLookupTable& qnn_models) {
   ORT_RETURN_IF_NOT(EPCONTEXT_OP == main_context_node.OpType(), "Should only filter in the EPContext node.");
-  NodeAttrHelper node_helper(main_context_node);
+  utils::NodeAttrHelper node_helper(main_context_node);
   bool is_embed_mode = node_helper.Get(EMBED_MODE, true);
   if (is_embed_mode) {
     const std::string& context_binary = node_helper.Get(EP_CACHE_CONTEXT, "");

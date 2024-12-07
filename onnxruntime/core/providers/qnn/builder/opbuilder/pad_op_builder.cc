@@ -2,11 +2,9 @@
 // Licensed under the MIT License.
 
 #include "core/providers/common.h"
-#include "core/providers/shared/utils/utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/cpu/tensor/slice_helper.h"
-#include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/common/safeint.h"
 
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
@@ -204,7 +202,7 @@ Status PadOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape of input 0.");
 
-  NodeAttrHelper node_helper(node_unit);
+  utils::NodeAttrHelper node_helper(node_unit);
   std::string mode = node_helper.Get("mode", "constant");
   Qnn_Scalar_t mode_qnn_scalar = QNN_SCALAR_INIT;
   mode_qnn_scalar.dataType = QNN_DATATYPE_UINT_32;

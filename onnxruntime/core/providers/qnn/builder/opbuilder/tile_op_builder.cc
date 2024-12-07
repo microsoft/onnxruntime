@@ -2,12 +2,10 @@
 // Licensed under the MIT License.
 
 #include "core/providers/common.h"
-#include "core/providers/shared/utils/utils.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/cpu/tensor/slice_helper.h"
-#include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/common/safeint.h"
 
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"

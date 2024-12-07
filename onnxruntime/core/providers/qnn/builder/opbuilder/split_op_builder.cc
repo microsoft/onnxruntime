@@ -2,12 +2,10 @@
 // Licensed under the MIT License.
 
 #include "core/providers/common.h"
-#include "core/providers/shared/utils/utils.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/cpu/tensor/slice_helper.h"
-#include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/common/safeint.h"
 
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
@@ -98,7 +96,7 @@ Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN doesn't support dynamic split");
     }
   } else {
-    NodeAttrHelper node_helper(node_unit);
+    utils::NodeAttrHelper node_helper(node_unit);
     if (node_helper.HasAttr("split")) {
       auto split_lengths = node_helper.Get("split", std::vector<int64_t>{0});
       ConvertSplitLengthsToSplitIndices(split_lengths, split_index);

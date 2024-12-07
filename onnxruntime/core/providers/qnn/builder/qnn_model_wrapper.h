@@ -13,7 +13,6 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/node_unit.h"
 #include "core/graph/graph_viewer.h"
-#include "core/providers/shared/utils/utils.h"
 #include "core/providers/qnn/builder/qnn_quant_params_wrapper.h"
 
 namespace onnxruntime {

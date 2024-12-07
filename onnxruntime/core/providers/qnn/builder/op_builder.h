@@ -5,7 +5,6 @@
 
 #include "core/graph/graph_viewer.h"
 #include "core/framework/node_unit.h"
-#include "core/providers/shared/utils/utils.h"
 
 namespace onnxruntime {
 namespace qnn {

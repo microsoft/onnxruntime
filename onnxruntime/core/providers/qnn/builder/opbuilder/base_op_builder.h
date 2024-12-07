@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/providers/shared/utils/utils.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder.h"
 #include "core/providers/qnn/builder/qnn_quant_params_wrapper.h"
@@ -352,7 +352,7 @@ struct OnnxAttrInfo {
 };
 
 template <typename ValType>
-inline ValType GetOnnxAttr(const NodeAttrHelper& node_helper, const OnnxAttrInfo<ValType>& attr_info) {
+inline ValType GetOnnxAttr(const qnn::utils::NodeAttrHelper& node_helper, const OnnxAttrInfo<ValType>& attr_info) {
   return node_helper.Get(attr_info.name, attr_info.default_val);
 }
 

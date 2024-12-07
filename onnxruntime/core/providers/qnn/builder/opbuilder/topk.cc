@@ -3,6 +3,7 @@
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
 #include "core/framework/utils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 namespace onnxruntime {
 namespace qnn {
 const int TOPK_MIN_INPUT = 2;
@@ -48,7 +49,7 @@ Status TopKOpBuilder::ExplictOpCheck(QnnModelWrapper& qnn_model_wrapper, const N
   if (!qnn_model_wrapper.IsInitializerInput(input_1)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The number of top elements to retrieve must be specified as constant input.");
   }
-  NodeAttrHelper node_helper(node_unit);
+  utils::NodeAttrHelper node_helper(node_unit);
   auto largest = node_helper.Get("largest", 1);
   auto sorted = node_helper.Get("sorted", 1);
   if (0 == sorted) {

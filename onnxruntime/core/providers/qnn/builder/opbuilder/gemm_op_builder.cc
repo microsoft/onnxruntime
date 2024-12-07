@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/common.h"
-#include "core/providers/shared/utils/utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
@@ -36,7 +35,7 @@ class GemmOpBuilder : public BaseOpBuilder {
 };
 
 Status GemmOpBuilder::ExplictOpCheck(const NodeUnit& node_unit) const {
-  NodeAttrHelper node_helper(node_unit);
+  utils::NodeAttrHelper node_helper(node_unit);
   auto alpha = node_helper.Get("alpha", (float)1.0);
   if (alpha != 1.0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN FullyConnected Op only support alpha=1.0.");
@@ -79,7 +78,7 @@ Status GemmOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
 
   // for Input A, B, C: 1 -- need transpose, 0 -- not needed
   std::vector<int64_t> input_trans_flag(3, 0);
-  NodeAttrHelper node_helper(node_unit);
+  utils::NodeAttrHelper node_helper(node_unit);
   input_trans_flag.at(0) = node_helper.Get("transA", (int64_t)0);
   auto transB = node_helper.Get("transB", (int64_t)0);
   // QNN input_1 [m, n] vs Onnx [n, m]

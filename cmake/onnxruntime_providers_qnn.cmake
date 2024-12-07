@@ -3,13 +3,6 @@
 
   add_compile_definitions(USE_QNN=1)
 
-  # These are shared utils,
-  # TODO, move to a separate lib when used by EPs other than QNN, NNAPI and CoreML
-  file(GLOB onnxruntime_providers_shared_utils_cc_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/shared/utils/utils.cc"
-  )
-
   file(GLOB_RECURSE
     onnxruntime_providers_qnn_ep_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/qnn/*.h"
@@ -23,7 +16,6 @@
   )
 
   set(onnxruntime_providers_qnn_cc_srcs
-    ${onnxruntime_providers_shared_utils_cc_srcs}
     ${onnxruntime_providers_qnn_ep_cc_srcs}
     ${onnxruntime_providers_qnn_builder_cc_srcs}
   )

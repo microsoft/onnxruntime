@@ -8,7 +8,6 @@
 #include <utility>
 #include "core/graph/graph_utils.h"
 #include "core/framework/node_unit.h"
-#include "core/providers/shared/utils/utils.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
@@ -39,7 +38,7 @@ std::unique_ptr<IQnnNodeGroup> HardSigmoidMulFusion::TryFusion(
     return nullptr;
   }
 
-  NodeAttrHelper hs_attr_helper(hardsigmoid_node_unit);
+  utils::NodeAttrHelper hs_attr_helper(hardsigmoid_node_unit);
   float alpha = hs_attr_helper.Get("alpha", 0.2f);
   float beta = hs_attr_helper.Get("beta", 0.5f);
   constexpr float req_alpha = 1.0f / 6.0f;

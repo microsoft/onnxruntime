@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
-#include "core/providers/shared/utils/utils.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/common/safeint.h"
@@ -75,7 +75,7 @@ Status LRNOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
 
   ORT_RETURN_IF(output_shape != input_shape, "QNN EP: LRN operator's output must have the same shape as the input.");
 
-  NodeAttrHelper node_helper(node_unit);
+  utils::NodeAttrHelper node_helper(node_unit);
 
   // 'size' attribute must be odd and > 0.
   const int64_t onnx_size = GetOnnxAttr(node_helper, onnx_size_attr);
@@ -98,7 +98,7 @@ Status LRNOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrap
                                                  const logging::Logger& logger,
                                                  bool do_op_validation) const {
   std::vector<std::string> param_tensor_names;
-  NodeAttrHelper node_helper(node_unit);
+  utils::NodeAttrHelper node_helper(node_unit);
 
   const int64_t onnx_size = GetOnnxAttr(node_helper, onnx_size_attr);
 

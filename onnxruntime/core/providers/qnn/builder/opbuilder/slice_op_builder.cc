@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #include "core/providers/common.h"
-#include "core/providers/shared/utils/utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
@@ -63,7 +62,7 @@ void SliceOpBuilder::GetDataFromAttribute(const NodeUnit& node_unit,
                                           TensorShapeVector& raw_starts,
                                           TensorShapeVector& raw_ends,
                                           TensorShapeVector& raw_axes) const {
-  NodeAttrHelper node_helper(node_unit);
+  utils::NodeAttrHelper node_helper(node_unit);
   auto starts = node_helper.Get("starts", std::vector<int64_t>{0});
   raw_starts.assign(starts.begin(), starts.end());
   auto ends = node_helper.Get("ends", std::vector<int64_t>{0});

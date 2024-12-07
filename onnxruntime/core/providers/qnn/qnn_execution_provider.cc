@@ -16,7 +16,7 @@
 #include "core/platform/env.h"
 #include "core/providers/common.h"
 #include "core/providers/partitioning_utils.h"
-#include "core/providers/partitioning_utils.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_node_group.h"
@@ -565,7 +565,7 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
 static bool EpSharedContextsHasAllGraphs(const onnxruntime::GraphViewer& graph_viewer,
                                          const logging::Logger& logger) {
   for (const auto& node : graph_viewer.Nodes()) {
-    NodeAttrHelper node_helper(node);
+    qnn::utils::NodeAttrHelper node_helper(node);
     std::string cache_source = node_helper.Get(qnn::SOURCE, "");
 
     std::transform(cache_source.begin(),
@@ -591,7 +591,7 @@ static bool EpSharedContextsHasAllGraphs(const std::vector<IExecutionProvider::F
   for (auto fused_node_and_graph : fused_nodes_and_graphs) {
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
     const auto& ep_context_node = graph_viewer.Nodes().begin();
-    NodeAttrHelper node_helper(*ep_context_node);
+    qnn::utils::NodeAttrHelper node_helper(*ep_context_node);
     std::string cache_source = node_helper.Get(qnn::SOURCE, "");
 
     const std::string& graph_name = ep_context_node->Name();
@@ -615,7 +615,7 @@ static void PartitionCtxModel(const onnxruntime::GraphViewer& graph_viewer,
   std::vector<std::vector<const Node*>> supported_groups{};
 
   for (const auto& node : graph_viewer.Nodes()) {
-    NodeAttrHelper node_helper(node);
+    qnn::utils::NodeAttrHelper node_helper(node);
     std::string cache_source = node_helper.Get(qnn::SOURCE, "");
 
     std::transform(cache_source.begin(),

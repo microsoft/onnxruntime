@@ -3,7 +3,6 @@
 
 #include <cassert>
 #include "core/providers/common.h"
-#include "core/providers/shared/utils/utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
@@ -114,7 +113,7 @@ Status LayerNormOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mode
                                                        std::vector<std::string>&& input_names,
                                                        const logging::Logger& logger,
                                                        bool do_op_validation) const {
-  NodeAttrHelper node_helper(node_unit);
+  utils::NodeAttrHelper node_helper(node_unit);
   std::vector<std::string> param_tensor_names;
 
   const float epsilon = node_helper.Get("epsilon", 1e-05f);  // Default is 1e-05 according to ONNX spec.

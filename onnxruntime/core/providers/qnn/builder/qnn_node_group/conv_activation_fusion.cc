@@ -8,7 +8,6 @@
 #include <string>
 #include "core/graph/graph_utils.h"
 #include "core/framework/node_unit.h"
-#include "core/providers/shared/utils/utils.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_node_group/utils.h"
@@ -110,8 +109,8 @@ static bool CanClipBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
   float clip_min = std::numeric_limits<float>::lowest();
   float clip_max = std::numeric_limits<float>::max();
 
-  if (!onnxruntime::GetClipMinMax(qnn_model_wrapper.GetGraphViewer(), clip_node_unit.GetNode(),
-                                  clip_min, clip_max, logger)) {
+  if (!qnn::utils::GetClipMinMax(qnn_model_wrapper.GetGraphViewer(), clip_node_unit.GetNode(),
+                                 clip_min, clip_max, logger)) {
     return false;
   }
 
