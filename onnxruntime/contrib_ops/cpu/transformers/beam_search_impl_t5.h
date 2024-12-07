@@ -258,7 +258,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                              current_length,
                                                              cpu_state.sequences,
                                                              parameters->max_length,
-                                                             decoder_subgraph_.has_decoder_masked_attention_));
+                                                             decoder_subgraph_.has_decoder_masked_attention_,
+                                                             this->cuda_device_prop_ != nullptr));
 
     if (decoder_subgraph_.past_present_share_buffer_) {
       decoder_fetches.reserve(static_cast<size_t>(decoder_subgraph_.GetFirstPresentOutputIndex()) +
@@ -302,17 +303,24 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     auto cur_len = std::to_string(current_length);
     dumper->Print("***CurrentLength", cur_len, true);
 
-    for (int i = 0; i <= decoder_subgraph_.GetFirstPastInputIndex(); i++) {
+    for (int i = 0; i < decoder_subgraph_.GetFirstPastInputIndex(); i++) {
       dumper->Print("decoder_feeds", i, true);
       dumper->Print("", decoder_feeds[i]);
     }
-    auto offset = decoder_subgraph_.GetFirstPastInputIndex() + 4 * decoder_subgraph_.num_layers;
-    dumper->Print("past_sequence_length", offset, true);
-    dumper->Print("", decoder_feeds[offset]);
-    dumper->Print("beam_width", offset + 1, true);
-    dumper->Print("", decoder_feeds[offset + 1]);
-    dumper->Print("cache_redir", offset + 2, true);
-    dumper->Print("", decoder_feeds[offset + 2]);
+    for (int i = 0; i < decoder_subgraph_.num_layers; i++) {
+      int self_key_idx = decoder_subgraph_.GetFirstPastInputIndex() + 2 * i;
+      int self_value_idx = self_key_idx + 1;
+      dumper->Print("past_key_self", i, true);
+      dumper->Print("", decoder_feeds[self_key_idx]);
+      dumper->Print("past_value_self", i + 1, true);
+      dumper->Print("", decoder_feeds[self_value_idx]);
+      int cross_key_idx = decoder_subgraph_.GetFirstPastInputIndex() + 2 * decoder_subgraph_.num_layers + 2 * i;
+      int cross_value_idx = cross_key_idx + 1;
+      dumper->Print("past_key_cross", i, true);
+      dumper->Print("", decoder_feeds[cross_key_idx]);
+      dumper->Print("past_value_cross", i, true);
+      dumper->Print("", decoder_feeds[cross_value_idx]);
+    }
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
