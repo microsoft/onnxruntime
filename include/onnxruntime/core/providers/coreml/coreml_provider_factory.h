@@ -47,8 +47,19 @@ enum COREMLFlags {
 // and SessionOptionsAppendExecutionProvider (C API). For the old API, use COREMLFlags instead.
 static const char* const kCoremlProviderOption_MLComputeUnits = "MLComputeUnits";
 static const char* const kCoremlProviderOption_ModelFormat = "ModelFormat";
+// same as COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES
 static const char* const kCoremlProviderOption_RequireStaticInputShapes = "RequireStaticInputShapes";
 static const char* const kCoremlProviderOption_EnableOnSubgraphs = "EnableOnSubgraphs";
+// provided by https://developer.apple.com/documentation/coreml/mloptimizationhints-swift.struct/specializationstrategy-swift.property
+// Core ML segments the model’s compute graph and specializes each segment for the target compute device.
+// This process can affect the model loading time and the prediction latency.
+// Use this option to tailor the specialization strategy for your model.
+static const char* const kCoremlProviderOption_SpecializationStrategy = "SpecializationStrategy";
+// this flag is used to profile coreml computeplan after model compile.
+// The profile result includes what hardwares of each ops dispatched to and the estimate excution time.
+static const char* const kCoremlProviderOption_ProfileComputePlan = "ProfileComputePlan";
+// please refer to https://developer.apple.com/documentation/coreml/mlmodelconfiguration/allowlowprecisionaccumulationongpu
+static const char* const kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU = "AllowLowPrecisionAccumulationOnGPU";
 
 #ifdef __cplusplus
 extern "C" {

@@ -408,7 +408,7 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
     : graph_viewer_(graph_viewer),
       logger_(logger),
       coreml_version_(coreml_version),
-      coreml_compute_unit_(coreml_options.ComputeUnits()),
+      coreml_options_(coreml_options),
       create_ml_program_(coreml_options.CreateMLProgram()),
       model_output_path_(GetModelOutputPath(create_ml_program_)),
       onnx_input_names_(std::move(onnx_input_names)),
@@ -989,7 +989,7 @@ Status ModelBuilder::LoadModel(std::unique_ptr<Model>& model) {
                                     get_sanitized_io_info(std::move(input_output_info_)),
                                     std::move(scalar_outputs_),
                                     std::move(int64_outputs_),
-                                    logger_, coreml_compute_unit_);
+                                    logger_, coreml_options_);
   } else
 #endif
   {
@@ -999,7 +999,7 @@ Status ModelBuilder::LoadModel(std::unique_ptr<Model>& model) {
                                     std::move(input_output_info_),
                                     std::move(scalar_outputs_),
                                     std::move(int64_outputs_),
-                                    logger_, coreml_compute_unit_);
+                                    logger_, coreml_options_);
   }
 
   return model->LoadModel();  // load using CoreML API, including compilation
