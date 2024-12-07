@@ -51,7 +51,7 @@ TEST(PartitioningUtilsTest, TestQDQHandling) {
 
   std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
   std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
-  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph_viewer);
+  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph_viewer, logger);
 
   auto result = utils::CreateSupportedPartitions(graph_viewer, is_node_supported, on_group_closed,
                                                  gen_metadef_name, "TEST", kCpuExecutionProvider, &node_unit_map,
@@ -82,7 +82,7 @@ static void CheckAllNodesProcessed(const std::function<void(ModelTestBuilder&)>&
 
   std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
   std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
-  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph_viewer);
+  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph_viewer, logger);
 
   const auto is_node_supported = [&](const Node& /*node*/) -> bool {
     return true;

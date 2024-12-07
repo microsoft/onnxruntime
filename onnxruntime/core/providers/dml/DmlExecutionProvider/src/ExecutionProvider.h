@@ -88,7 +88,8 @@ namespace Dml
         std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
         GetCapability(
             const onnxruntime::GraphViewer& graph,
-            const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup
+            const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+            const onnxruntime::logging::Logger& logger
             ) const;
 
         uint32_t GetSupportedDeviceDataTypeMask() const;

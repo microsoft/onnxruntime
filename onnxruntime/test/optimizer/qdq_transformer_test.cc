@@ -3928,6 +3928,7 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward_SliceMultipleConsumers) {
 
 TEST(QDQTransformerTests, QDQ_Selector_Test) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/transform/qdq_conv.onnx");
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
 
   SessionOptions so;
   // We want to keep the graph un-optimized to prevent QDQ transformer to kick in
@@ -3962,7 +3963,7 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
 
   // Check if SelectorManager get a conv qdq group selection as expected
   {
-    const auto result = selector_mgr.GetQDQSelections(whole_graph_viewer);
+    const auto result = selector_mgr.GetQDQSelections(whole_graph_viewer, logger);
     ASSERT_FALSE(result.empty());
     const auto& qdq_group = result.at(0);
     ASSERT_EQ(std::vector<NodeIndex>({0, 1, 2}), qdq_group.dq_nodes);
@@ -3977,7 +3978,7 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
     std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
     std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
 
-    std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(whole_graph_viewer);
+    std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(whole_graph_viewer, logger);
 
     // We should get a single QDQ Node unit in the result
     ASSERT_EQ(1, node_unit_holder.size());
@@ -4045,7 +4046,7 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
 
     // Check SelectorManager will get empty result
     {
-      const auto result = selector_mgr.GetQDQSelections(partial_graph_viewer);
+      const auto result = selector_mgr.GetQDQSelections(partial_graph_viewer, logger);
       ASSERT_TRUE(result.empty());
     }
   }

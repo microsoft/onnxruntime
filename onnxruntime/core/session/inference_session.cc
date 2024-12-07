@@ -1644,7 +1644,7 @@ Status ApplyOrtFormatModelRuntimeOptimizations(
        level <= static_cast<int>(session_options.graph_optimization_level);
        ++level) {
     const auto transformers = optimizer_utils::GenerateTransformersForMinimalBuild(
-        static_cast<TransformerLevel>(level), session_options, SatRuntimeOptimizationLoadContext{}, cpu_ep,
+        static_cast<TransformerLevel>(level), session_options, SatRuntimeOptimizationLoadContext{}, cpu_ep, logger,
         optimizers_to_disable, intra_op_thread_pool, p_buffered_tensors);
 
     for (const auto& transformer : transformers) {
@@ -1840,7 +1840,8 @@ common::Status InferenceSession::Initialize() {
       ORT_RETURN_IF_ERROR_SESSIONID_(AddPredefinedTransformers(graph_transformer_mgr_,
                                                                session_options_.graph_optimization_level,
                                                                minimal_build_optimization_handling,
-                                                               record_runtime_optimization_produced_op_schema));
+                                                               record_runtime_optimization_produced_op_schema,
+                                                               *session_logger_));
 
 #ifdef USE_DML
       const IExecutionProvider* dmlExecutionProvider = execution_providers_.Get(kDmlExecutionProvider);
@@ -2112,7 +2113,7 @@ common::Status InferenceSession::Initialize() {
     std::vector<TuningResults> tuning_results;
     bool found_tuning_results = false;
     ORT_RETURN_IF_ERROR_SESSIONID_(inference_session_utils::ParseTuningResultsFromModelMetadata(
-        model_metadata_, tuning_results, found_tuning_results));
+        model_metadata_, tuning_results, found_tuning_results, *session_logger_));
     if (found_tuning_results) {
       ORT_RETURN_IF_ERROR_SESSIONID_(SetTuningResults(tuning_results, /*error_on_invalid*/ false, /*auto_enable*/ true));
     }
@@ -3233,7 +3234,8 @@ common::Status InferenceSession::AddPredefinedTransformers(
     GraphTransformerManager& transformer_manager,
     TransformerLevel graph_optimization_level,
     MinimalBuildOptimizationHandling minimal_build_optimization_handling,
-    RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn) const {
+    RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn,
+    const logging::Logger& logger) const {
   const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
@@ -3245,7 +3247,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
             minimal_build_optimization_handling == MinimalBuildOptimizationHandling::ApplyFullBuildOptimizations;
 
         if (use_full_build_optimizations) {
-          return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep,
+          return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
                                                        optimizers_to_disable_,
                                                        GetIntraOpThreadPoolToUse(),
                                                        session_state_->GetMutableBufferedTensors());
@@ -3257,6 +3259,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
                         record_runtime_optimization_produced_op_schema_fn}}
                   : SatApplyContextVariant{SatDirectApplicationContext{}};
           return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, cpu_ep,
+                                                                      logger,
                                                                       optimizers_to_disable_,
                                                                       GetIntraOpThreadPoolToUse(),
                                                                       session_state_->GetMutableBufferedTensors());

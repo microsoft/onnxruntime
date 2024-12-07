@@ -252,6 +252,7 @@ class PlannerTest : public ::testing::Test {
 
   void BindKernel(onnxruntime::Node* p_node, ::onnxruntime::KernelDef& kernel_def, KernelRegistry* reg,
                   std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map) {
+    const auto& logger = DefaultLoggingManager().DefaultLogger();
     const IExecutionProvider* ep = execution_providers_.Get(*p_node);
     ASSERT_NE(ep, nullptr);
     auto info = std::make_unique<OpKernelInfo>(
@@ -261,7 +262,7 @@ class PlannerTest : public ::testing::Test {
     op_kernel_infos_.push_back(std::move(info));
     const auto kernel_type_str_resolver = OpSchemaKernelTypeStrResolver{};
     if (!KernelRegistry::HasImplementationOf(*reg, *p_node, onnxruntime::kCpuExecutionProvider,
-                                             kernel_type_str_resolver)) {
+                                             kernel_type_str_resolver, logger)) {
       ASSERT_STATUS_OK(reg->Register(
           KernelCreateInfo(std::make_unique<KernelDef>(kernel_def),
                            [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
@@ -271,7 +272,7 @@ class PlannerTest : public ::testing::Test {
     }
 
     const KernelCreateInfo* kci;
-    ASSERT_STATUS_OK(reg->TryFindKernel(*p_node, "", kernel_type_str_resolver, &kci));
+    ASSERT_STATUS_OK(reg->TryFindKernel(*p_node, "", kernel_type_str_resolver, logger, &kci));
     kernel_create_info_map.insert({p_node->Index(), gsl::not_null<const KernelCreateInfo*>(kci)});
   }
 
@@ -283,7 +284,8 @@ class PlannerTest : public ::testing::Test {
     }
   }
 
-  void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {}, bool invoke_createPlan_explicityly = true) {
+  void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {},
+                  bool invoke_createPlan_explicityly = true) {
     state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_, edlm_,
                                   DefaultLoggingManager().DefaultLogger(), profiler_, *sess_options_));
     EXPECT_EQ(graph_.Resolve(), Status::OK());

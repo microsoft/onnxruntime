@@ -420,6 +420,7 @@ bool SetEpsForAllNodes(Graph& graph,
       continue;
 
     bool found = false;
+    const auto& logger = DefaultLoggingManager().DefaultLogger();
 
     for (const auto& ep : execution_providers) {
       auto provider_type = ep->Type();
@@ -438,7 +439,8 @@ bool SetEpsForAllNodes(Graph& graph,
       }
 
       // Check the EP has an impl for the node from builtin registry.
-      if (KernelRegistry::HasImplementationOf(*ep->GetKernelRegistry(), node, ep->Type(), kernel_type_str_resolver)) {
+      if (KernelRegistry::HasImplementationOf(*ep->GetKernelRegistry(), node, ep->Type(), kernel_type_str_resolver,
+                                              logger)) {
         found = true;
         break;
       }
@@ -451,6 +453,7 @@ bool SetEpsForAllNodes(Graph& graph,
                                                              std::string_view(kMSInternalNHWCDomain),
                                                              node.SinceVersion(),
                                                              type_constraint_map,
+                                                             logger,
                                                              &kci);
         if (status.IsOK() && kci != nullptr) {
           found = true;
@@ -463,7 +466,7 @@ bool SetEpsForAllNodes(Graph& graph,
           std::any_of(custom_registries->cbegin(), custom_registries->cend(),
                       [&](auto reg) {
                         return KernelRegistry::HasImplementationOf(*reg->GetKernelRegistry(), node, ep->Type(),
-                                                                   kernel_type_str_resolver);
+                                                                   kernel_type_str_resolver, logger);
                       })) {
         found = true;
         break;

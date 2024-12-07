@@ -9,6 +9,9 @@
 #include "core/graph/graph_viewer.h"
 
 namespace onnxruntime {
+namespace logging {
+class Logger;
+}
 
 /**
   Returns a list of nodes that are preferred on CPU.
@@ -19,6 +22,7 @@ namespace onnxruntime {
   */
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const GraphViewer& graph,
                                                    const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                                   gsl::span<const NodeIndex> tentative_nodes);
+                                                   gsl::span<const NodeIndex> tentative_nodes,
+                                                   const logging::Logger& logger);
 
 }  // namespace onnxruntime

@@ -95,7 +95,7 @@ namespace Dml
         const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup) const
     {
 #ifdef ENABLE_GRAPH_COMPILATION
-        return m_impl->GetCapability(graph, kernel_lookup);
+        return m_impl->GetCapability(graph, kernel_lookup, *GetLogger());
 #else
         return onnxruntime::IExecutionProvider::GetCapability(graph, kernel_lookup);
 #endif
@@ -876,7 +876,8 @@ namespace Dml
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
     ExecutionProviderImpl::GetCapability(
         const onnxruntime::GraphViewer& graph,
-        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup) const
+        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+        const onnxruntime::logging::Logger& logger) const
     {
         uint32_t deviceDataTypeMask = GetSupportedDeviceDataTypeMask(); // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
 
@@ -900,7 +901,7 @@ namespace Dml
         }
 
         // Get the list of nodes that should stay on the CPU
-        auto cpuPreferredNodes = GetCpuPreferredNodes(graph, kernel_lookup, tentativeNodes);
+        auto cpuPreferredNodes = GetCpuPreferredNodes(graph, kernel_lookup, tentativeNodes, logger);
 
         for (size_t nodeIndex : toplogicalOrder)
         {

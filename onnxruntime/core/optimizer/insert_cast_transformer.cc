@@ -84,7 +84,9 @@ static bool NodeNeedsInputCastToFp32(const onnxruntime::Node& node) {
 // going to a node that will need a Cast.
 //
 // Return true if all the fp16 inputs and outputs are connected to nodes that will be cast to fp32.
-static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::Graph& graph, const KernelRegistry& cpu_kernel_registry) {
+static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::Graph& graph,
+                                    const KernelRegistry& cpu_kernel_registry,
+                                    const logging::Logger& logger) {
   // we can check if it's an isolated fp16 node
   // if node has input coming from other nodes (only consuming graph inputs or initializers if it doesn't),
   //    does not have a subgraph (would have to alter subgraph inputs if we cast the input to this node),
@@ -211,7 +213,7 @@ static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::
     const KernelCreateInfo* kernel_create_info{};
     const auto lookup_status = cpu_kernel_registry.TryFindKernel(
         kCpuExecutionProvider, node.OpType(), node.Domain(),
-        node.SinceVersion(), type_constraint_map, &kernel_create_info);
+        node.SinceVersion(), type_constraint_map, logger, &kernel_create_info);
     if (lookup_status.IsOK() && kernel_create_info != nullptr) {
       return true;
     }
@@ -220,9 +222,10 @@ static bool IsIsolatedFp16NodeOnCpu(const onnxruntime::Node& node, onnxruntime::
   return false;
 }
 
-static Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph, const KernelRegistry& cpu_kernel_registry) {
+static Status ForceSingleNodeCPUFloat16ToFloat32(onnxruntime::Graph& graph, const KernelRegistry& cpu_kernel_registry,
+                                                 const logging::Logger& logger) {
   for (auto& node : graph.Nodes()) {
-    if (IsIsolatedFp16NodeOnCpu(node, graph, cpu_kernel_registry)) {
+    if (IsIsolatedFp16NodeOnCpu(node, graph, cpu_kernel_registry, logger)) {
       // unassign the node so that NeedInsertCast will return true for it, forcing it to fp32
       node.SetExecutionProviderType("");
     }
@@ -319,7 +322,8 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
       return dst_bit_length <= src_bit_length;
     }
 
-    if ((*src_type == "tensor(float16)" && *dst_type == "tensor(bfloat16)") || (*src_type == "tensor(bfloat16)" && *dst_type == "tensor(float16)")) {
+    if ((*src_type == "tensor(float16)" && *dst_type == "tensor(bfloat16)") ||
+        (*src_type == "tensor(bfloat16)" && *dst_type == "tensor(float16)")) {
       return true;
     }
 
@@ -453,7 +457,7 @@ class RemoveDuplicateCastTransformer : public GraphTransformer {
 Status InsertCastTransformer::ApplyImpl(onnxruntime::Graph& graph, bool& modified, int graph_level,
                                         const logging::Logger& logger) const {
   if (force_cpu_fp32_)
-    ORT_RETURN_IF_ERROR(ForceSingleNodeCPUFloat16ToFloat32(graph, *cpu_kernel_registries_));
+    ORT_RETURN_IF_ERROR(ForceSingleNodeCPUFloat16ToFloat32(graph, *cpu_kernel_registries_, logger));
 
   GraphViewer graph_viewer(graph);
   auto& order = graph_viewer.GetNodesInTopologicalOrder();

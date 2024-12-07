@@ -178,7 +178,7 @@ Status SessionState::PopulateKernelCreateInfo(const KernelRegistryManager& kerne
                                               bool saving_ort_format) {
   for (auto& node : graph_.Nodes()) {
     const KernelCreateInfo* kci = nullptr;
-    auto status = kernel_registry_manager.SearchKernelRegistry(node, &kci);
+    auto status = kernel_registry_manager.SearchKernelRegistry(node, logger_, &kci);
     if (!status.IsOK() && saving_ort_format) {
       // if we didn't find the kernel and are saving to ORT format an EP that compiles nodes is enabled.
       // in that case we assigned the node to that EP but do not compile it into a fused node.
@@ -187,7 +187,7 @@ Status SessionState::PopulateKernelCreateInfo(const KernelRegistryManager& kerne
       // at runtime when the model is loaded in a minimal build, the compiling EP will replace this node if possible.
       // if that's not possible for some reason we can fallback to the CPU EP implementation.
       node.SetExecutionProviderType(kCpuExecutionProvider);
-      status = kernel_registry_manager.SearchKernelRegistry(node, &kci);
+      status = kernel_registry_manager.SearchKernelRegistry(node, logger_, &kci);
     }
 
     ORT_RETURN_IF_ERROR(status);

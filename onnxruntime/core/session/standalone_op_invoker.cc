@@ -314,7 +314,8 @@ class StandAloneKernelContext : public OpKernelContext {
   AllocatorPtr allocator_;
 };  // StandAloneKernelContext
 
-onnxruntime::Status CreateOpAttr(const char* name, const void* data, int len, OrtOpAttrType type, OrtOpAttr** op_attr) {
+onnxruntime::Status CreateOpAttr(const char* name, const void* data, int len, OrtOpAttrType type,
+                                 OrtOpAttr** op_attr) {
   auto attr = std::make_unique<ONNX_NAMESPACE::AttributeProto>();
   onnxruntime::Status status = onnxruntime::Status::OK();
   attr->set_name(std::string{name});
@@ -410,7 +411,9 @@ onnxruntime::Status CreateOp(_In_ const OrtKernelInfo* info,
 
   node_ptr->SetSinceVersion(version);
 
-  auto status = kernel_registry->TryFindKernel(*node_ptr, ep->Type(), type_constraint_map, &kernel_create_info);
+  auto status = kernel_registry->TryFindKernel(*node_ptr, ep->Type(), type_constraint_map,
+                                               logging::LoggingManager::DefaultLogger(),  // no other logger available
+                                               &kernel_create_info);
   ORT_RETURN_IF_ERROR(status);
 
   auto& kernel_def = kernel_create_info->kernel_def;

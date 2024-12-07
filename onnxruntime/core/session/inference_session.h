@@ -690,8 +690,9 @@ class InferenceSession {
    * If we encounter an invalid request, we return an error
    * back to the user.
    */
-  [[nodiscard]] common::Status ValidateAndParseShrinkArenaString(const std::string& ort_device_list,
-                                                                 /*out*/ InlinedVector<AllocatorPtr>& arenas_to_shrink) const;
+  [[nodiscard]] common::Status ValidateAndParseShrinkArenaString(
+      const std::string& ort_device_list,
+      /*out*/ InlinedVector<AllocatorPtr>& arenas_to_shrink) const;
 
   /*
    * Performs the shrinkage of arenas requested to be shrunk by the user
@@ -708,7 +709,8 @@ class InferenceSession {
       GraphTransformerManager& transformer_manager,
       TransformerLevel graph_optimization_level,
       MinimalBuildOptimizationHandling minimal_build_optimization_handling,
-      RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn) const;
+      RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn,
+      const logging::Logger& logger) const;
 
   common::Status TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format);
 

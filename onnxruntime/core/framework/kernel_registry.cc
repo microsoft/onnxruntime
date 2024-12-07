@@ -183,6 +183,7 @@ Status KernelRegistry::TryFindKernelImpl(const Node& node,
                                          ProviderType exec_provider,
                                          const IKernelTypeStrResolver* kernel_type_str_resolver,
                                          const TypeConstraintMap* type_constraints,
+                                         const logging::Logger& logger,
                                          const KernelCreateInfo** out) const {
   const auto& node_provider = node.GetExecutionProviderType();
   const auto& expected_provider = (node_provider.empty() ? exec_provider : node_provider);
@@ -215,7 +216,7 @@ Status KernelRegistry::TryFindKernelImpl(const Node& node,
               std::ostream_iterator<std::string>(oss, "\n"));
     oss << ")";
 
-    VLOGS_DEFAULT(2) << "TryFindKernel failed, Reason: " << oss.str();
+    VLOGS(logger, 2) << "TryFindKernel failed, Reason: " << oss.str();
     return Status(common::ONNXRUNTIME, common::FAIL, oss.str());
   }
 
@@ -224,14 +225,16 @@ Status KernelRegistry::TryFindKernelImpl(const Node& node,
 
 Status KernelRegistry::TryFindKernel(const Node& node, ProviderType exec_provider,
                                      const IKernelTypeStrResolver& kernel_type_str_resolver,
+                                     const logging::Logger& logger,
                                      const KernelCreateInfo** out) const {
-  return TryFindKernelImpl(node, exec_provider, &kernel_type_str_resolver, nullptr, out);
+  return TryFindKernelImpl(node, exec_provider, &kernel_type_str_resolver, nullptr, logger, out);
 }
 
 Status KernelRegistry::TryFindKernel(const Node& node, ProviderType exec_provider,
                                      const TypeConstraintMap& type_constraints,
+                                     const logging::Logger& logger,
                                      const KernelCreateInfo** out) const {
-  return TryFindKernelImpl(node, exec_provider, nullptr, &type_constraints, out);
+  return TryFindKernelImpl(node, exec_provider, nullptr, &type_constraints, logger, out);
 }
 
 static bool KernelDefCompatible(int version, const KernelDef& kernel_def,
@@ -261,6 +264,7 @@ Status KernelRegistry::TryFindKernel(ProviderType exec_provider,
                                      std::string_view domain,
                                      int version,
                                      const KernelRegistry::TypeConstraintMap& type_constraints,
+                                     const logging::Logger& logger,
                                      const KernelCreateInfo** out) const {
   auto range = kernel_creator_fn_map_.equal_range(GetMapKey(op_type, domain, exec_provider));
   if (out) *out = nullptr;
@@ -289,7 +293,7 @@ Status KernelRegistry::TryFindKernel(ProviderType exec_provider,
               std::ostream_iterator<std::string>(oss, "\n"));
     oss << ")";
 
-    VLOGS_DEFAULT(2) << "TryFindKernel failed, Reason: " << oss.str();
+    VLOGS(logger, 2) << "TryFindKernel failed, Reason: " << oss.str();
     return Status(common::ONNXRUNTIME, common::FAIL, oss.str());
   }
 
