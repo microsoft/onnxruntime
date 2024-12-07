@@ -56,18 +56,20 @@ class FusionLayerNormalization(Fusion):
         for child in children:
             # Check if Sub --> Div exists
             div_node_1 = self.model.find_first_child_by_type(child, "Div", input_name_to_nodes, recursive=False)
-
-            # Check if Sub --> Cast --> Div
-            div_node_2 = self.model.match_child_path(child, ["Cast", "Div"], exclude=[])
-
             if div_node_1 is not None:
                 div_node = div_node_1
-            elif div_node_2 is not None:
-                div_node = div_node_2[-1]
+                break
+            else:
+                # Check if Sub --> Cast --> Div
+                div_node_2 = self.model.match_child_path(child, ["Cast", "Div"], exclude=[])
+                if div_node_2 is not None:
+                    div_node = div_node_2[-1]
+                    break
+
         if div_node is None:
             return
 
-        path_id, parent_nodes, _ = self.model.match_parent_paths(
+        _path_id, parent_nodes, _ = self.model.match_parent_paths(
             div_node,
             [
                 (["Sqrt", "Add", "ReduceMean", "Pow", "Sub"], [1, 0, 0, 0, 0]),
@@ -75,7 +77,7 @@ class FusionLayerNormalization(Fusion):
             ],
             output_name_to_node,
         )
-        if path_id < 0:
+        if parent_nodes is None:
             return
 
         sub_node = parent_nodes[-1]
@@ -92,10 +94,14 @@ class FusionLayerNormalization(Fusion):
         if self.model.find_constant_input(pow_node, 2.0) != 1:
             return
 
+        if div_node.output[0] not in input_name_to_nodes:
+            return
         temp_node = input_name_to_nodes[div_node.output[0]][0]
         if temp_node.op_type == "Cast":
             # Div --> Cast --> Mul
             subgraph_nodes.append(temp_node)  # add Cast node to list of subgraph nodes
+            if temp_node.output[0] not in input_name_to_nodes:
+                return
             mul_node = input_name_to_nodes[temp_node.output[0]][0]
         else:
             # Div --> Mul
@@ -103,6 +109,8 @@ class FusionLayerNormalization(Fusion):
         if mul_node.op_type != "Mul":
             return
 
+        if mul_node.output[0] not in input_name_to_nodes:
+            return
         last_add_node = input_name_to_nodes[mul_node.output[0]][0]
         if last_add_node.op_type != "Add":
             return
