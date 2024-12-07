@@ -4615,6 +4615,8 @@ struct OrtApi {
    * \param[in] num_keys
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.17.
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_OpenVINO_V2,
                   _In_ OrtSessionOptions* options,
@@ -4632,6 +4634,8 @@ struct OrtApi {
    * \param[in] num_keys
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.18.
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_VitisAI,
                   _In_ OrtSessionOptions* options,
@@ -4645,7 +4649,10 @@ struct OrtApi {
    *  \param[in] mem_info OrtMemoryInfo instance
    *  \param[in] count_or_bytes How many bytes is this scratch buffer
    *  \param[out] out A pointer to the scrach buffer
+   *
    *  \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.18.
    */
   ORT_API2_STATUS(KernelContext_GetScratchBuffer, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* mem_info, _In_ size_t count_or_bytes, _Outptr_ void** out);
 
@@ -4656,6 +4663,8 @@ struct OrtApi {
    * \param[out] out A pointer to OrtAllocator
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.18.
    */
   ORT_API2_STATUS(KernelInfoGetAllocator, _In_ const OrtKernelInfo* info, _In_ OrtMemType mem_type, _Outptr_ OrtAllocator** out);
 
@@ -4677,6 +4686,8 @@ struct OrtApi {
    * \param[in] num_external_initializer_files Number of external files
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.18.
    */
   ORT_API2_STATUS(AddExternalInitializersFromFilesInMemory, _In_ OrtSessionOptions* options,
                   _In_reads_(num_external_initializer_files) const ORTCHAR_T* const* external_initializer_file_names,
@@ -4699,6 +4710,8 @@ struct OrtApi {
    *                  OrtApi::ReleaseLoraAdapter.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.20.
    */
   ORT_API2_STATUS(CreateLoraAdapter, const ORTCHAR_T* adapter_file_path, _In_ OrtAllocator* allocator,
                   _Outptr_ OrtLoraAdapter** out);
@@ -4717,6 +4730,8 @@ struct OrtApi {
    *                  OrtApi::ReleaseLoraAdapter.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.20.
    */
   ORT_API2_STATUS(CreateLoraAdapterFromArray, _In_ const void* bytes, size_t num_bytes, _In_ OrtAllocator* allocator,
                   _Outptr_ OrtLoraAdapter** out);
@@ -4738,6 +4753,8 @@ struct OrtApi {
    * \param[in] adapter OrtLoraAdapter instance
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.20.
    */
   ORT_API2_STATUS(RunOptionsAddActiveLoraAdapter, _Inout_ OrtRunOptions* options, _In_ const OrtLoraAdapter* adapter);
 
@@ -4756,6 +4773,8 @@ struct OrtApi {
    * \param[in] kv_len Number of elements in the keys and values arrays
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.20.
    */
   ORT_API2_STATUS(SetEpDynamicOptions, _Inout_ OrtSession* sess, _In_reads_(kv_len) const char* const* keys,
                   _In_reads_(kv_len) const char* const* values, _In_ size_t kv_len);
