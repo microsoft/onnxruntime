@@ -146,6 +146,7 @@ fun run(audioTensor: OnnxTensor): Result {
 </script>
 
 <svelte:head>
+	<title>Run PyTorch models on the edge</title>
 	<meta
 		name="description"
 		content="Everything you need to know about running PyTorch models on the edge with ONNX Runtime."

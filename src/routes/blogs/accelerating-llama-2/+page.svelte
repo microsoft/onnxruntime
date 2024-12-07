@@ -14,6 +14,7 @@
 </script>
 
 <svelte:head>
+	<title>Accelerating LLaMA-2 Inference with ONNX Runtime</title>
 	<meta
 		name="description"
 		content="Explore how ONNX Runtime can propel your Llama2 variants for faster inference."
