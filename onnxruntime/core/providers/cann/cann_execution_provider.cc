@@ -1289,7 +1289,7 @@ CANNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewe
       const KernelCreateInfo* cann_kernel_def = kernel_lookup.LookUpKernel(node);
       if (cann_kernel_def == nullptr) {
         LOGS(*GetLogger(), INFO) << "CANN kernel not found in registries for Op type: " << node.OpType()
-                           << " node name: " << node.Name();
+                                 << " node name: " << node.Name();
         continue;
       }
 

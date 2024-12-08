@@ -90,8 +90,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
   ASSERT_STATUS_OK(graph.Resolve());
 
   node.SetExecutionProviderType(ep_type);
-  OptimizerExecutionFrame::Info info({&node}, initializer_map, graph.ModelPath(), *execution_providers.Get(ep_type),
-                                     [](std::string const&) { return false; }, logger);
+  OptimizerExecutionFrame::Info info({&node}, initializer_map, graph.ModelPath(), *execution_providers.Get(ep_type), [](std::string const&) { return false; }, logger);
   const KernelCreateInfo* kernel_create_info = nullptr;
   ASSERT_STATUS_OK(info.TryFindKernel(&node, &kernel_create_info));
   ASSERT_TRUE(kernel_create_info);

@@ -14,7 +14,7 @@
 
 struct NnApi;
 namespace onnxruntime {
-namespace logging{
+namespace logging {
 class Logger;
 }
 class GraphViewer;

@@ -35,7 +35,7 @@ namespace onnxruntime {
 namespace vsi {
 namespace npu {
 GraphEP::GraphEP(const onnxruntime::GraphViewer& graph_viewer, const logging::Logger& logger)
- : graph_viewer_(graph_viewer), logger_(logger) {
+    : graph_viewer_(graph_viewer), logger_(logger) {
   Prepare();
   context_ = tim::vx::Context::Create();
   graph_ = context_->CreateGraph();
