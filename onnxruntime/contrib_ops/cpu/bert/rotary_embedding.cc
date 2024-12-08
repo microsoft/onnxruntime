@@ -4,6 +4,7 @@
 #include "contrib_ops/cpu/bert/rotary_embedding.h"
 #include "contrib_ops/cpu/bert/rotary_embedding_helper.h"
 
+#include "core/mlas/inc/mlas.h"
 #include "core/platform/threadpool.h"
 
 using onnxruntime::concurrency::ThreadPool;
@@ -78,31 +79,12 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
       const T* cos_data = cos_cache + cache_offset;
       const T* sin_data = sin_cache + cache_offset;
 
-      int cache_idx = 0;
-      bool sign = false;
-      int j = 0;
-      for (int i = 0; i < rotary_emb_dim; i++) {
-        if (interleaved) {
-          cache_idx = (i / 2) % half_rotary_emb_dim;
-          sign = i & 1;
-          j = sign ? i - 1 : i + 1;  // i - sign
-        } else {
-          cache_idx = i % half_rotary_emb_dim;
-          sign = (i >= half_rotary_emb_dim);
-          j = (i + half_rotary_emb_dim) % rotary_emb_dim;
-        }
-        float output_data_i = static_cast<float>(input_data[i]) * static_cast<float>(cos_data[cache_idx]);
-        float input_data_j = static_cast<float>(input_data[j]);
-        float sin_data_cache_idx = static_cast<float>(sin_data[cache_idx]);
-        if (sign) {
-          output_data_i += input_data_j * sin_data_cache_idx;
-        } else {
-          output_data_i -= input_data_j * sin_data_cache_idx;
-        }
-        output_data[i] = static_cast<T>(output_data_i);
-      }
-      for (int i = rotary_emb_dim; i < head_size; i++) {
-        output_data[i] = input_data[i];
+      MlasRotaryEmbedOneRow<T>(input_data, sin_data, cos_data, rotary_emb_dim, interleaved, output_data);
+
+      if (rotary_emb_dim < head_size) {
+        std::memcpy(output_data + rotary_emb_dim,
+                    input_data + rotary_emb_dim,
+                    (head_size - rotary_emb_dim) * sizeof(T));
       }
     }
   });
