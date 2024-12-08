@@ -835,7 +835,7 @@ Implicit Arguments: Same as ProcessCountM
         jbe     .LProcessNextColumnLoop16xN1\@    # num of cols <= 16?: process 16 at a time:
 
 .LProcessNextColumnLoop32xN1\@:                   # Ouptut look to process 32 cols at a time:
-        ProduceOutputBlock 32, 1 \ASigned\(), \BSigned\()
+        ProduceOutputBlock 32, 1, \ASigned\(), \BSigned\()
         add     rsi,r14
         sub     r9,32
         jb      .LOutputMasked32xNBlock1\@        # if numcols < 32 (& > 16), use write using masked output and exit
@@ -861,7 +861,7 @@ Implicit Arguments: Same as ProcessCountM
         ja      .LProcessNextColumnLoop32xN1\@    # num of cols > 16?: process 32 at a time:
 
 .LProcessNextColumnLoop16xN1\@:                   # num of cols > 8 and <= 16
-        ProduceOutputBlock 16, 1 \ASigned\(), \BSigned\()
+        ProduceOutputBlock 16, 1, \ASigned\(), \BSigned\()
         sub     r9,16
         jb      .LOutputMasked16xNBlock1\@        # if numcols < 16 (& > 8), use write using masked output and exit
         test    r10b,r10b                       # ZeroMode?
@@ -881,7 +881,7 @@ Implicit Arguments: Same as ProcessCountM
 
 # Loop if num of cols <= 8
 .LProcessRemainingCountN1\@:
-        ProduceOutputBlock 8, 1 \ASigned\(), \BSigned\()
+        ProduceOutputBlock 8, 1, \ASigned\(), \BSigned\()
         cmp     r9,8
         jb      .LOutputMasked8xNBlock1\@     # if numcols < 8, use write using masked output and exit
         test    r10b,r10b                   # ZeroMode?
