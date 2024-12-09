@@ -397,6 +397,9 @@ TEST(BeamSearchTest, GptBeamSearchFp16_VocabPadded) {
 }
 
 TEST(BeamSearchTest, DummyT5) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  SKIP_CUDA_TEST_WITH_DML;
+#endif
   ModelTester tester(CurrentTestName(), ORT_TSTR("testdata/dummy_t5.onnx"));
   tester.ConfigEp(DefaultCpuExecutionProvider());
   tester.AddInput("encoder_input_ids", {1, 5}, {14, 6, 13, 9, 7});
@@ -408,6 +411,9 @@ TEST(BeamSearchTest, DummyT5) {
 }
 
 TEST(BeamSearchTest, DummyT5WithOuterScopeInitializers) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  SKIP_CUDA_TEST_WITH_DML;
+#endif
   ModelTester tester(CurrentTestName(), ORT_TSTR("testdata/dummy_t5_with_outer_scope_initializers.onnx"));
   tester.ConfigEp(DefaultCpuExecutionProvider());
   tester.AddInput("encoder_input_ids", {1, 5}, {14, 6, 13, 9, 7});
