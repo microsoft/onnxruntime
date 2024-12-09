@@ -304,7 +304,6 @@ Status GetMLMultiArrayCopyInfo(const MLMultiArray* _Nonnull array,
 // since __clang_major__ >= 15, MLComputePlan is introduced in <CoreML/CoreML.h>
 // We are actually ensure the MacOS/IOS version and Xcode version is greater than `macOS 14.4, iOS 17.4`.
 // The macro API_AVAILABLE should also be fine.
- 
 // Otherwise, the compiler will complain `MLComputePlan` is not defined.
 // we define __clang_analyzer__ here is for bypass static analysis
 void ProfileComputePlan(NSURL* compileUrl, MLModelConfiguration* config) {
