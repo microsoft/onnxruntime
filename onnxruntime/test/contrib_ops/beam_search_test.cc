@@ -397,6 +397,9 @@ TEST(BeamSearchTest, GptBeamSearchFp16_VocabPadded) {
 }
 
 TEST(BeamSearchTest, DummyT5WithSequenceInputIds) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  SKIP_CUDA_TEST_WITH_DML;
+#endif
   ModelTester tester(CurrentTestName(), ORT_TSTR("testdata/dummy_t5_with_sequence_input_ids.onnx"));
   tester.ConfigEp(DefaultCpuExecutionProvider());
   tester.AddInput("encoder_input_ids", {1, 5}, {16, 17, 1, 0, 8});
