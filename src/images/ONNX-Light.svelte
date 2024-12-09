@@ -3,7 +3,7 @@
 	export let height: number = 175;
 </script>
 
-<svg {width} {height} viewBox="0 0 694 694" fill="none" xmlns="http://www.w3.org/2000/svg">
+<svg {width} {height} viewBox="0 0 694 694" fill="none" xmlns="https://www.w3.org/2000/svg">
 	<g clip-path="url(#clip0_6_5157)">
 		<path
 			d="M152.81 618.573L245.126 491.511C245.45 491.064 245.351 490.439 244.904 490.114L117.961 397.884C117.24 397.36 116.246 397.969 116.385 398.849L151.013 618.141C151.152 619.022 152.286 619.294 152.81 618.573Z"

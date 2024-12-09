@@ -23,7 +23,7 @@
 		<div class="dropdown">
 			<button tabindex="0" class="btn btn-ghost lg:hidden">
 				<svg
-					xmlns="http://www.w3.org/2000/svg"
+					xmlns="https://www.w3.org/2000/svg"
 					class="h-5 w-5"
 					fill="none"
 					viewBox="0 0 24 24"
@@ -133,7 +133,7 @@
 				id="colortoggle"
 			/><svg
 				class="col-start-1 row-start-1 stroke-base-100 fill-base-100"
-				xmlns="http://www.w3.org/2000/svg"
+				xmlns="https://www.w3.org/2000/svg"
 				width="14"
 				height="14"
 				viewBox="0 0 24 24"
@@ -148,7 +148,7 @@
 			>
 			<svg
 				class="col-start-2 row-start-1 stroke-base-100 fill-base-100"
-				xmlns="http://www.w3.org/2000/svg"
+				xmlns="https://www.w3.org/2000/svg"
 				width="14"
 				height="14"
 				viewBox="0 0 24 24"
