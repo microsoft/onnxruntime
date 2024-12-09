@@ -116,6 +116,18 @@ Enable CoreML EP to run on a subgraph in the body of a control flow operator (i.
 - `0`: Disable CoreML EP to run on a subgraph in the body of a control flow operator.
 - `1`: Enable CoreML EP to run on a subgraph in the body of a control flow operator.
 
+`SpecializationStrategy`:  This feature is available since MacOs>=10.15 or IOS>=18.0. This process can affect the model loading time and the prediction latency. Use this option to tailor the specialization strategy for your model. Navigate to [Apple Doc](https://developer.apple.com/documentation/coreml/mloptimizationhints-swift.struct/specializationstrategy-swift.property) for more information. Can be one of the following values: (`Default` by default )
+- `Default`:
+- `FastPrediction`:
+
+`ProfileComputePlan`:Profile the Core ML MLComputePlan. This logs the hardware each operator is dispatched to and the estimated execution time. Intended for developer usage but provide useful diagnostic information if performance is not as expected. can be one of the following values: (`0` by default )
+- `0`: Disable profile.
+- `1`: Enable profile.
+
+`AllowLowPrecisionAccumulationOnGPU`: please refer to https://developer.apple.com/documentation/coreml/mlmodelconfiguration/allowlowprecisionaccumulationongpu.  can be one of the following values: (`0` by default )
+- `0`: Use float32 data type to accumulate data. 
+- `1`: Use low precision data(float16) to accumulate data.
+
 
 ## Configuration Options (Old API)
 ```
