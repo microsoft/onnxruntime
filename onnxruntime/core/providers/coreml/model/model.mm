@@ -302,6 +302,8 @@ Status GetMLMultiArrayCopyInfo(const MLMultiArray* _Nonnull array,
 }
 
 // since __clang_major__ >= 15, MLComputePlan is introduced in <CoreML/CoreML.h>
+// We are actually ensure the MacOS/IOS version and Xcode version is greater than `macOS 14.4, iOS 17.4`.
+// Otherwise, the compiler will complain `MLComputePlan` is not defined.
 // we define __clang_analyzer__ here is for bypass static analysis
 void ProfileComputePlan(NSURL* compileUrl, MLModelConfiguration* config) {
 #if defined(__APPLE__) && defined(__clang__) && __clang_major__ >= 15 && !defined(__clang_analyzer__)
@@ -457,6 +459,7 @@ Status Execution::LoadModel() {
 
 // Set the specialization strategy to FastPrediction  for macOS 10.15+
 // since __clang_major__ >= 15, optimizationHints is introduced in <CoreML/CoreML.h>
+// Same as above comments for why we are checking __clang_major__.
 // we define __clang_analyzer__ here is for bypass static analysis
 #if defined(__APPLE__) && defined(__clang__) && __clang_major__ >= 15 && !defined(__clang_analyzer__)
       if (HAS_COREML8_OR_LATER) {
