@@ -1,4 +1,5 @@
 name: CheckLinks
+
 on:
   push:
     branches:
@@ -12,17 +13,23 @@ jobs:
   checklinks:
     name: Check website links
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v2
-      - name: Ruby
+
+      - name: Set up Ruby
         uses: ruby/setup-ruby@v1
         with:
           ruby-version: 3.3
           bundler-cache: true
-      - name: Build jekyll website with drafts
-        run: bundle exec jekyll build --drafts
 
-      - name: Use Node.js
+      - name: Build Jekyll website with drafts
+        run: |
+          bundle exec jekyll build --drafts
+        env:
+          JEKYLL_ENV: production
+
+      - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
           node-version: 19.x
@@ -37,6 +44,13 @@ jobs:
         run: |
           sudo mv ./build/* ./_site
           rm -rf ./_site/src
+
+      - name: Ensure _site directory exists
+        run: |
+          if [ ! -d "./_site" ]; then
+            echo "Error: _site directory does not exist!";
+            exit 1;
+          fi
 
       - name: Check for broken links
         run: |
