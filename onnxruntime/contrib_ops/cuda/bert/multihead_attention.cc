@@ -20,23 +20,26 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      MultiHeadAttention,                                         \
-      kMSDomain,                                                  \
-      1,                                                          \
-      T,                                                          \
-      kCudaExecutionProvider,                                     \
-      (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())  \
-          .InputMemoryType(OrtMemTypeCPUInput, 8),                \
-      MultiHeadAttention<T>);
+#define REGISTER_KERNEL_TYPED(T, QK)                               \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                   \
+      MultiHeadAttention,                                          \
+      kMSDomain,                                                   \
+      1,                                                           \
+      T##_##QK,                                                    \
+      kCudaExecutionProvider,                                      \
+      (*KernelDefBuilder::Create())                                \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())   \
+          .TypeConstraint("QK", DataTypeImpl::GetTensorType<QK>()) \
+          .InputMemoryType(OrtMemTypeCPUInput, 8),                 \
+      MultiHeadAttention<T, QK>);
 
-REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_KERNEL_TYPED(float, float)
+REGISTER_KERNEL_TYPED(float, MLFloat16)
+REGISTER_KERNEL_TYPED(MLFloat16, float)
+REGISTER_KERNEL_TYPED(MLFloat16, MLFloat16)
 
-template <typename T>
-MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
+template <typename T, typename QK>
+MultiHeadAttention<T, QK>::MultiHeadAttention(const OpKernelInfo& info)
     : CudaKernel(info),
       fused_fp16_cross_attention_kernel_(nullptr),
       cumulated_sequence_length_q_cache_(),
@@ -73,8 +76,8 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info)
   cumulated_sequence_length_kv_cache_.max_batch_size = kCumulatedSequenceLengthCacheMaxBatchSize;
 }
 
-template <typename T>
-Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
+template <typename T, typename QK>
+Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
@@ -344,6 +347,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   }
 
   typedef typename ToCudaType<T>::MappedType CudaT;
+  typedef typename ToCudaType<QK>::MappedType CudaQK;
   AttentionData<CudaT> data;
   data.bias = (nullptr == bias) ? nullptr : reinterpret_cast<const CudaT*>(bias->Data<T>());
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
@@ -363,7 +367,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.present_key = (nullptr == present_key) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
   data.present_value = (nullptr == present_value) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
   if (nullptr != output_qk) {
-    data.output_qk = reinterpret_cast<CudaT*>(output_qk->MutableData<T>());
+    data.output_qk = reinterpret_cast<CudaQK*>(output_qk->MutableData<QK>());
   }
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.fused_cross_attention_kernel = fused_cross_attention_kernel;
@@ -446,7 +450,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   cublasHandle_t cublas = GetCublasHandle(context);
   cudnnHandle_t cudnn = GetCudnnHandle(context);
   DUMP_STRING("Run QkvToContext from MHA CUDA");
-  return QkvToContext<CudaT>(
+  return QkvToContext<CudaT, CudaQK>(
       device_prop, cublas, cudnn, context->GetComputeStream(), parameters, data);
 }
 

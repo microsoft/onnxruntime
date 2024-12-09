@@ -53,7 +53,8 @@ struct DecoderMaskedMultiHeadAttentionParams : AttentionParameters {
 template <
     // The type of the inputs. Supported types: float and half.
     typename T,
-    typename CudaT,
+    // The type of the QK output. Supported types: float and half.
+    typename QK,
     // The hidden dimension per head.
     int head_size,
     // The number of threads per key.
@@ -64,7 +65,7 @@ template <
     int THREADS_PER_BLOCK>
 __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentionParams params);
 
-template <typename T, typename CudaT, int head_size>
+template <typename T, typename QK, int head_size>
 void mmha_launch_kernel(const DecoderMaskedMultiHeadAttentionParams& params, cudaStream_t stream);
 
 inline bool has_decoder_masked_multihead_attention(int sm, int head_size) {

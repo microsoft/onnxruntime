@@ -72,7 +72,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
                   cudaStream_t stream,
                   int max_threads_per_block);
 
-template <typename T>
+template <typename T, typename QK = T>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
@@ -81,7 +81,7 @@ Status QkvToContext(
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data);
 
-template <typename T2, typename CudaT>
+template <typename T, typename QK>
 Status LaunchDecoderMaskedMultiHeadAttention(
     const DecoderMaskedMultiHeadAttentionParams& parameters,
     cudaStream_t stream,

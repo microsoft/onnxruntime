@@ -17,7 +17,7 @@ namespace cuda {
 
 using namespace onnxruntime::cuda;
 
-template <typename T>
+template <typename T, typename QK>
 class MultiHeadAttention final : public CudaKernel {
  public:
   MultiHeadAttention(const OpKernelInfo& info);

@@ -35,6 +35,7 @@ limitations under the License.
 #include "contrib_ops/cpu/bert/attention_parameters.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/attention_kv_cache.h"
+#include "contrib_ops/cuda/bert/attention_qk.h"
 #include "contrib_ops/cuda/bert/attention_softmax.h"
 #include "contrib_ops/cuda/bert/bert_padding.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
@@ -451,7 +452,7 @@ Status EfficientAttention(
 }
 #endif
 
-template <typename T2, typename CudaT>
+template <typename T, typename QK>
 Status LaunchDecoderMaskedMultiHeadAttention(
   const DecoderMaskedMultiHeadAttentionParams& parameters,
   cudaStream_t stream,
@@ -495,15 +496,15 @@ Status LaunchDecoderMaskedMultiHeadAttention(
 
   switch (head_size) {
     case 32:
-      mmha_launch_kernel<T2, CudaT, 32>(parameters, stream);
+      mmha_launch_kernel<T, QK, 32>(parameters, stream);
       break;
 
     case 64:
-      mmha_launch_kernel<T2, CudaT, 64>(parameters, stream);
+      mmha_launch_kernel<T, QK, 64>(parameters, stream);
       break;
 
     case 128:
-      mmha_launch_kernel<T2, CudaT, 128>(parameters, stream);
+      mmha_launch_kernel<T, QK, 128>(parameters, stream);
       break;
 
     default:
@@ -515,7 +516,7 @@ Status LaunchDecoderMaskedMultiHeadAttention(
   return Status::OK();
 }
 
-template <typename T>
+template <typename T, typename QK>
 Status DecoderMaskedMultiHeadAttention(
     cudaStream_t stream,
     contrib::AttentionParameters& parameters,
@@ -564,21 +565,25 @@ Status DecoderMaskedMultiHeadAttention(
 
   p.beam_width = parameters.beam_width;
   p.cache_indir = data.cache_indirection;
-  // p.cache_indir = (parameters.beam_width > 1) ? data.cache_indirection : nullptr;
 
   p.out = data.output;
   p.out_qk = data.output_qk;
 
+  // DecoderMaskedMultiHeadAttention(T, QK) is defined for:
+  // T = float, QK = float
+  // T = float, QK = half
+  // T = uint16_t, QK = float
+  // T = uint16_t, QK = half
   if (std::is_same<T, float>::value) {
-    return LaunchDecoderMaskedMultiHeadAttention<float, float>(p, stream, parameters.head_size);
+    return LaunchDecoderMaskedMultiHeadAttention<float, QK>(p, stream, parameters.head_size);
   }
   if (std::is_same<T, half>::value) {
-    return LaunchDecoderMaskedMultiHeadAttention<uint16_t, half>(p, stream, parameters.head_size);
+    return LaunchDecoderMaskedMultiHeadAttention<uint16_t, QK>(p, stream, parameters.head_size);
   }
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DecoderMaskedMultiHeadAttention is only implemented for float and float16.");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "DecoderMaskedMultiHeadAttention is only implemented for float32 and float16.");
 }
 
-template <typename T>
+template <typename T, typename QK>
 Status UnfusedAttention(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
@@ -671,7 +676,12 @@ Status UnfusedAttention(
   } else {  // no mask
     if (nullptr != data.output_qk) {
       int64_t qk_size = (int64_t)batch_size * num_heads * sequence_length * total_sequence_length;
-      cudaMemcpyAsync(data.output_qk, data.scratch, qk_size * sizeof(T), cudaMemcpyDeviceToDevice, stream);
+      if (std::is_same<T, QK>::value) {
+        cudaMemcpyAsync(data.output_qk, data.scratch, qk_size * sizeof(QK), cudaMemcpyDeviceToDevice, stream);
+      } else {
+        ORT_RETURN_IF_ERROR(
+          (CopyQK<T, QK>(stream, qk_size, data.scratch, reinterpret_cast<QK*>(data.output_qk))));
+      }
     }
     ORT_RETURN_IF_ERROR(
         ComputeSoftmax<T>(
@@ -857,7 +867,7 @@ template Status PastPresentBufferShare<half>(int batch_size, int num_heads, int 
                                              cudaStream_t stream,
                                              int max_threads_per_block);
 
-template <typename T>
+template <typename T, typename QK>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
@@ -888,12 +898,12 @@ Status QkvToContext(
   ORT_RETURN_IF_ERROR(PrepareQkv<T>(parameters, data, stream, max_threads_per_block));
 
   if (!parameters.past_present_share_buffer) {
-    ORT_RETURN_IF_ERROR(ConcatPastToPresent(batch_size, num_heads, qk_head_size, v_head_size,
+    ORT_RETURN_IF_ERROR(ConcatPastToPresent<T>(batch_size, num_heads, qk_head_size, v_head_size,
                                             sequence_length, total_sequence_length,
                                             stream, max_threads_per_block, data));
 
   } else {  // past_present_share_buffer
-    ORT_RETURN_IF_ERROR(PastPresentBufferShare(batch_size, num_heads, qk_head_size, v_head_size,
+    ORT_RETURN_IF_ERROR(PastPresentBufferShare<T>(batch_size, num_heads, qk_head_size, v_head_size,
                                                sequence_length, fused_runner,
                                                parameters, data, stream, max_threads_per_block));
   }
@@ -901,13 +911,13 @@ Status QkvToContext(
   // Q, K and V are ready now
   if (data.fused_cross_attention_kernel != nullptr) {
     DUMP_STRING("FusedTrtCrossAttention");
-    return FusedTrtCrossAttention(stream, parameters, data);
+    return FusedTrtCrossAttention<T>(stream, parameters, data);
   }
 
   // Run TRT fused attention.
   if (nullptr != fused_runner) {
     DUMP_STRING("FusedTrtSelfAttention");
-    return FusedTrtSelfAttention(stream, parameters, data);
+    return FusedTrtSelfAttention<T>(stream, parameters, data);
   }
 
   // For raw attention mask, the scalar 1/sqrt(H) is moved to combine with softmax computation.
@@ -917,29 +927,29 @@ Status QkvToContext(
 #if USE_FLASH_ATTENTION
   if (data.use_flash_attention) {
     DUMP_STRING("FlashAttention");
-    return FlashAttention(device_prop, stream, parameters, data, scale);
+    return FlashAttention<T>(device_prop, stream, parameters, data, scale);
   }
 #endif
 
   if (data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention) {
     DUMP_STRING("CudnnFlashAttention");
-    return CudnnFlashAttention(cudnn, ort_stream, parameters, data, scale);
+    return CudnnFlashAttention<T>(cudnn, ort_stream, parameters, data, scale);
   }
 
 #if USE_MEMORY_EFFICIENT_ATTENTION
   if (data.use_memory_efficient_attention) {
     DUMP_STRING("EfficientAttention");
-    return EfficientAttention(device_prop, stream, parameters, data, scale);
+    return EfficientAttention<T>(device_prop, stream, parameters, data, scale);
   }
 #endif
 
   if (data.use_decoder_masked_multihead_attention) {
     DUMP_STRING("DecoderMaskedMHA");
-    return DecoderMaskedMultiHeadAttention(stream, parameters, data, scale);
+    return DecoderMaskedMultiHeadAttention<T, QK>(stream, parameters, data, scale);
   }
 
   DUMP_STRING("UnfusedAttention");
-  return UnfusedAttention(device_prop, cublas, ort_stream, parameters, data, scale);
+  return UnfusedAttention<T, QK>(device_prop, cublas, ort_stream, parameters, data, scale);
 }
 
 // Template Instantiation
@@ -963,7 +973,33 @@ template Status QkvToContext<half>(
     contrib::AttentionParameters& parameters,
     AttentionData<half>& data);
 
+template Status QkvToContext<float, half>(
+    const cudaDeviceProp& device_prop,
+    cublasHandle_t& cublas,
+    cudnnHandle_t& cudnn,
+    Stream* ort_stream,
+    contrib::AttentionParameters& parameters,
+    AttentionData<float>& data);
+
+template Status QkvToContext<half, float>(
+    const cudaDeviceProp& device_prop,
+    cublasHandle_t& cublas,
+    cudnnHandle_t& cudnn,
+    Stream* ort_stream,
+    contrib::AttentionParameters& parameters,
+    AttentionData<half>& data);
+
 template Status LaunchDecoderMaskedMultiHeadAttention<float, float>(
+  const DecoderMaskedMultiHeadAttentionParams& parameters,
+  cudaStream_t stream,
+  const int head_size);
+
+template Status LaunchDecoderMaskedMultiHeadAttention<float, half>(
+  const DecoderMaskedMultiHeadAttentionParams& parameters,
+  cudaStream_t stream,
+  const int head_size);
+
+template Status LaunchDecoderMaskedMultiHeadAttention<uint16_t, float>(
   const DecoderMaskedMultiHeadAttentionParams& parameters,
   cudaStream_t stream,
   const int head_size);
