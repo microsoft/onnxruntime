@@ -28,7 +28,7 @@ for arg in "$@"; do
     --cuda_minimal=ON)
       # Replace onnxruntime_BUILD_UNIT_TESTS=ON with OFF
       BUILD_ARGS=("${BUILD_ARGS[@]/onnxruntime_BUILD_UNIT_TESTS=ON/onnxruntime_BUILD_UNIT_TESTS=OFF}")
-      BUILD_ARGS+=("onnxruntime_CUDA_MINIMAL=ON")
+      BUILD_ARGS+=("--enable_cuda_minimal_build")
       BUILD_ARGS+=("--skip_tests")
       ;;
   esac
