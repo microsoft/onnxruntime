@@ -23,6 +23,9 @@ jobs:
           ruby-version: 3.3
           bundler-cache: true
 
+      - name: Set up GitHub Pages repository environment
+        run: echo "PAGES_REPO_NWO=${GITHUB_REPOSITORY}" >> $GITHUB_ENV
+
       - name: Build Jekyll website with drafts
         run: |
           bundle exec jekyll build --drafts
