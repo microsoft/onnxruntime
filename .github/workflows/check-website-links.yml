@@ -45,5 +45,5 @@ jobs:
         with:
           directory: "./_site"
           # The directory to scan
-          # arguments: --assume_extension --checks_to_ignore ImageCheck,ScriptCheck --only_4xx --ignore_status_codes 429,403 --allow_hash_href --ignore_urls "https://onnxruntime.ai/docs/reference/api/c-api.html,https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html#c-api-example,https://www.onnxruntime.ai/docs/resources/graph-optimizations.html,onnxruntime/capi/onnxruntime_pybind11_state.html,https://github.com/microsoft/onnx-converters-private/issues/new/choose,https://aka.ms/onnx/exportissue,https://aka.ms/onnx/board" --log-level :info 
+          arguments: --assume_extension --checks_to_ignore ImageCheck,ScriptCheck --only_4xx --ignore_status_codes 429,403 --allow_hash_href --ignore_urls "https://onnxruntime.ai/docs/reference/api/c-api.html,https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html#c-api-example,https://www.onnxruntime.ai/docs/resources/graph-optimizations.html,onnxruntime/capi/onnxruntime_pybind11_state.html,https://github.com/microsoft/onnx-converters-private/issues/new/choose,https://aka.ms/onnx/exportissue,https://aka.ms/onnx/board" --log-level :info 
           # The arguments to pass to HTMLProofer
