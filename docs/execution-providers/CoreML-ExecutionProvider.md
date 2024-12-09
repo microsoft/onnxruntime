@@ -124,7 +124,7 @@ Enable CoreML EP to run on a subgraph in the body of a control flow operator (i.
 - `0`: Disable profile.
 - `1`: Enable profile.
 
-`AllowLowPrecisionAccumulationOnGPU`: please refer to https://developer.apple.com/documentation/coreml/mlmodelconfiguration/allowlowprecisionaccumulationongpu.  can be one of the following values: (`0` by default )
+`AllowLowPrecisionAccumulationOnGPU`: please refer to [Apple Doc](https://developer.apple.com/documentation/coreml/mlmodelconfiguration/allowlowprecisionaccumulationongpu).  can be one of the following values: (`0` by default )
 - `0`: Use float32 data type to accumulate data. 
 - `1`: Use low precision data(float16) to accumulate data.
 
