@@ -454,7 +454,7 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     std::string local_str = std::move(*pstr);
     pstr = nullptr;
     return vaip_core::DllSafe<std::string>(std::move(local_str));
-  }; 
+  };
 
   if (!s_library_vitisaiep.vaip_get_version) {
     return reinterpret_cast<vaip_core::OrtApiForVaip*>(&(the_global_api.host_));
