@@ -8,7 +8,6 @@
 	import FaLink from 'svelte-icons/fa/FaLink.svelte';
 	import { blur, fade } from 'svelte/transition';
 	import { d } from 'svelte-highlight/languages';
-	import github from "svelte-highlight/styles/github";
 
 	let pythonCode =
 		'import onnxruntime as ort\n# Load the model and create InferenceSession\nmodel_path = "path/to/your/onnx/model"\nsession = ort.InferenceSession(model_path)\n# "Load and preprocess the input image inputTensor"\n...\n# Run inference\noutputs = session.run(None, {"input": inputTensor})\nprint(outputs)';
@@ -51,9 +50,6 @@
 
 </script>
 <svelte:window bind:innerWidth/>
-<svelte:head>
-  {@html github}
-</svelte:head>
 <div class="container mx-auto px-4">
 	<h3 class="text-xl mb-4 text-center">
 		Use ONNX Runtime with your favorite language and get started with the tutorials:

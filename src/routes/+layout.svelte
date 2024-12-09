@@ -2,7 +2,7 @@
 	import '../app.css';
 	import Header from './components/header.svelte';
 	import Footer from './components/footer.svelte';
-	import oneLight from 'svelte-highlight/styles/one-light';
+	import a11yLight from 'svelte-highlight/styles/a11y-light';
 	import { fade } from 'svelte/transition';
 	import { page } from '$app/stores';
 	export let data;
@@ -10,7 +10,7 @@
 </script>
 
 <svelte:head>
-	{@html oneLight}
+	{@html a11yLight}
 	{#if !data.pathname.startsWith('/blogs/')}
 	<title
 		>ONNX Runtime | {data.pathname == '/'

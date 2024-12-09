@@ -82,7 +82,7 @@
 				<p class="inline">By:</p>
 			{/if}
 			{#each authors as author, i}
-				<a href={authorsLink[i]} class="text-blue-700">{author}</a>{i + 1 === authors.length
+				<a href={authorsLink[i]} class="text-blue-800">{author}</a>{i + 1 === authors.length
 					? ''
 					: ', '}
 			{/each}
@@ -90,7 +90,7 @@
 		<p class="text-neutral">
 			{date.toLocaleUpperCase()}
 			{#if updated != undefined}
-				<span class="italic text-stone-500">(Updated {updated})</span>
+				<span class="italic text-stone-600">(Updated {updated})</span>
 			{/if}
 		</p>
 		<div class="py-4 markdown-body">

@@ -156,7 +156,7 @@
 		</div>
 		<a
 			href="https://github.com/microsoft/onnxruntime-inference-examples/tree/main/mobile"
-			class="text-2xl text-blue-700">See more examples of ONNX Runtime Mobile on GitHub. →</a
+			class="text-2xl text-blue-800">See more examples of ONNX Runtime Mobile on GitHub. →</a
 		>
 	</div>
 </div>

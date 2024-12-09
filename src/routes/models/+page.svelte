@@ -84,7 +84,7 @@
 	<h2 class="text-2xl">Can't find what you're looking for?</h2>
 	<p>
 		Convert to ONNX, optimize, and quantize your own models quickly and easily with <a
-			class="text-blue-700 underline"
+			class="text-blue-800 underline"
 			href="https://github.com/microsoft/Olive/tree/main">Olive</a
 		>. Here's a quick snippet showing you how easy it can be done:
 	</p>
