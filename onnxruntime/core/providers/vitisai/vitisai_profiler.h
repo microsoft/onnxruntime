@@ -7,7 +7,7 @@ namespace onnxruntime {
 namespace profiling {
 
 #if defined(USE_VITISAI)
-class VitisaiProfiler final: public EpProfiler {
+class VitisaiProfiler final : public EpProfiler {
  public:
   VitisaiProfiler() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(VitisaiProfiler);

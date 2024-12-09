@@ -30,11 +30,11 @@ int vitisai_ep_set_ep_dynamic_options(
  * However, profiler_collect function will call vitis ep which can't include profiler_common.h.
  */
 using EventInfo = std::tuple<
-    std::string,  //name
-    int,          //pid
-    int,          //tid
-    long long,    //timestamp
-    long long     //duration
+    std::string,  // name
+    int,          // pid
+    int,          // tid
+    long long,    // timestamp
+    long long     // duration
 >;
 void profiler_collect(
     std::vector<EventInfo>& api_events,
