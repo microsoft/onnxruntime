@@ -4092,6 +4092,7 @@ Status Graph::ToGraphProtoWithExternalInitiallizersImpl(
     const std::filesystem::path& external_file_path,
     const std::filesystem::path& modified_external_file_path,
     const ModelSavingOptions& model_saving_options,
+    WeightToPrePacksMap& unprocessed_prepacks,
     ONNX_NAMESPACE::GraphProto& output_graph_proto,
     std::ostream& external_stream,
     int64_t& external_offset) const {
@@ -4120,15 +4121,23 @@ Status Graph::ToGraphProtoWithExternalInitiallizersImpl(
         ORT_RETURN_IF_ERROR(subgraph->ToGraphProtoWithExternalInitiallizersImpl(
             model_path, external_file_path,
             modified_external_file_path, model_saving_options,
-            result_subgraph, external_stream, external_offset));
+            unprocessed_prepacks, result_subgraph,
+            external_stream, external_offset));
       }
     }
   }
 
-  const PrepackedForSerialization::Subgraph* prepacked_parent_graph = nullptr;
+  // Used only when pre-packed weights are serialized
+  InlinedHashSet<std::string> processed_weights;
+  const PrepackedForSerialization::Subgraph* prepacked_subgraph = nullptr;
+  bool process_prepacks = false;
   if (model_saving_options.prepacked_for_save != nullptr) {
     // Is there any pre-packed weights for this subgraph?
-    prepacked_parent_graph = model_saving_options.prepacked_for_save->FindPrepackedGraph(*this);
+    prepacked_subgraph = model_saving_options.prepacked_for_save->FindPrepackedGraph(*this);
+    if (prepacked_subgraph != nullptr) {
+      processed_weights.reserve(graph_proto_->initializer_size());
+      process_prepacks = true;
+    }
   }
 
   // Add the initializers to the result graph.
@@ -4149,6 +4158,10 @@ Status Graph::ToGraphProtoWithExternalInitiallizersImpl(
       size_t tensor_bytes_size = raw_data.size();
       if (tensor_bytes_size < model_saving_options.initializer_size_threshold) {
         *output_proto = initializer;
+        if (process_prepacks) {
+          // These pre-packs will reside in memory
+          processed_weights.insert(initializer.name());
+        }
         continue;
       }
 
@@ -4179,20 +4192,49 @@ Status Graph::ToGraphProtoWithExternalInitiallizersImpl(
 
       external_offset += tensor_bytes_size;
 
-      if (prepacked_parent_graph != nullptr) {
-        const auto* iters_to_blobs = prepacked_parent_graph->GetBlobsForWeight(initializer.name());
-        if (iters_to_blobs != nullptr && !iters_to_blobs->empty()) {
+      if (process_prepacks) {
+        // check if this weight was referred to in subgraphs
+        InlinedHashSet<std::string> blob_keys_to_process;
+        auto hit = unprocessed_prepacks.find(initializer.name());
+        if (hit != unprocessed_prepacks.end()) {
+          blob_keys_to_process = std::move(hit->second);
+          unprocessed_prepacks.erase(hit);
+        }
+
+        // See if this weight has any pre-prepacks referred to in this graph.
+        const auto* blobs_keys_for_weight = prepacked_subgraph->GetBlobsForWeight(initializer.name());
+        if (blobs_keys_for_weight != nullptr && !blobs_keys_for_weight->empty()) {
+          // Add all the blob_keys to the set of keys to process
+          blob_keys_to_process.insert(blobs_keys_for_weight->begin(), blobs_keys_for_weight->end());
+        }
+
+        if (!blob_keys_to_process.empty()) {
           ORT_RETURN_IF_NOT(ExternalDataInfo::WritePrepackedToFileAndAddToProto(
-              *iters_to_blobs, model_saving_options.align_offset,
+              *model_saving_options.prepacked_for_save, blob_keys_to_process,
+              model_saving_options.align_offset,
               model_saving_options.allocation_granularity,
               external_stream, external_offset, *output_proto));
         }
+
+        processed_weights.insert(initializer.name());
       }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
     }
 #endif
   }
+
+  // Check if there are any pre-packed weights this graph refers to, but they have
+  // not been processed
+  if (process_prepacks) {
+    const auto& sorted_by_weights = prepacked_subgraph->GetSortedByWeightForWriting();
+    for (const auto& [weight_name, blob_keys] : sorted_by_weights) {
+      if (processed_weights.find(weight_name) == processed_weights.end()) {
+        unprocessed_prepacks[weight_name].insert(blob_keys.begin(), blob_keys.end());
+      }
+    }
+  }
+
   return Status::OK();
 }
 
@@ -4213,12 +4255,19 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(
   ORT_ENFORCE(external_stream.is_open(), "Failed to open for writing:", modified_external_file_path);
   int64_t external_offset = 0;
 
+  WeightToPrePacksMap unprocessed_prepacks;
   ORT_THROW_IF_ERROR(ToGraphProtoWithExternalInitiallizersImpl(model_path, external_file_path,
                                                                modified_external_file_path, model_saving_options,
-                                                               result, external_stream, external_offset));
+                                                               unprocessed_prepacks, result,
+                                                               external_stream, external_offset));
 
   if (!external_stream.flush()) {
     ORT_THROW("Failed to flush file with external initializers: ", modified_external_file_path);
+  }
+
+  if (!unprocessed_prepacks.empty()) {
+    ORT_THROW("BUG. Failed to process all of them pre-packed weights for outerscope external initializers: ",
+              modified_external_file_path);
   }
 
   return result;

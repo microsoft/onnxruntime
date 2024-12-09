@@ -7,6 +7,7 @@
 #include <string>
 #include <tuple>
 
+#include <core/common/inlined_containers_fwd.h>
 #include "core/common/status.h"
 #include "core/common/path_string.h"
 #include "core/framework/prepacked_weights_container.h"
@@ -62,11 +63,13 @@ class ExternalDataInfo {
     return stream;
   }
 
-  static std::ostream& WritePrepackedToFileAndAddToProto(const PrepackedForSerialization::BlobsInderect& prepacked_for_write,
-                                                         bool align, int64_t allocation_granularity,
-                                                         std::ostream& os,
-                                                         int64_t& external_offset,
-                                                         ::ONNX_NAMESPACE::TensorProto& proto);
+  static std::ostream& WritePrepackedToFileAndAddToProto(
+      const PrepackedForSerialization& prepacked_for_serialization,
+      const InlinedHashSet<std::string>& blob_keys,
+      bool align, int64_t allocation_granularity,
+      std::ostream& os,
+      int64_t& external_offset,
+      ::ONNX_NAMESPACE::TensorProto& proto);
 
   using PrepackedInfo = std::tuple<OFFSET_TYPE, size_t, std::string>;
   using PrepackedInfos = std::unordered_map<std::string, std::vector<PrepackedInfo>>;

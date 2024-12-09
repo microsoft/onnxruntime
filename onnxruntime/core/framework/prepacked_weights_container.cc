@@ -78,9 +78,9 @@ void PrepackedForSerialization::Subgraph::WritePacked(const std::string& weight_
   auto hit = key_to_blobs_.find(key);
   if (hit == key_to_blobs_.end()) {
     // new key
-    auto result = key_to_blobs_.emplace(key, std::move(packed_weight));
+    key_to_blobs_.emplace(key, std::move(packed_weight));
     if (save_mode_on_) {
-      sorted_by_weight_for_writing_[weight_name].push_back(result.first);
+      sorted_by_weight_for_writing_[weight_name].insert(key);
     }
     return;
   }
@@ -88,11 +88,7 @@ void PrepackedForSerialization::Subgraph::WritePacked(const std::string& weight_
   // Key existed, but may or may not have a reference in this subgraph
   if (save_mode_on_) {
     auto& list = sorted_by_weight_for_writing_[weight_name];
-    // Avoid duplicates
-    auto it = std::find(list.begin(), list.end(), hit);
-    if (it == list.end()) {
-      list.push_back(hit);
-    }
+    list.insert(key);
   }
   hit->second = std::move(packed_weight);
 }
@@ -112,8 +108,8 @@ std::optional<PrePackedWeights> PrepackedForSerialization::Subgraph::ReplaceWith
   auto it = key_to_blobs_.find(key);
   if (it == key_to_blobs_.end()) {
     if (save_mode_on_) {
-      auto result = key_to_blobs_.emplace(key, refer_if_absent.CreateReferringCopy());
-      sorted_by_weight_for_writing_[weight_name].push_back(result.first);
+      key_to_blobs_.emplace(key, refer_if_absent.CreateReferringCopy());
+      sorted_by_weight_for_writing_[weight_name].insert(key);
     }
     return std::nullopt;
   }
@@ -121,11 +117,8 @@ std::optional<PrePackedWeights> PrepackedForSerialization::Subgraph::ReplaceWith
   PrePackedWeights result = std::move(it->second);
   if (save_mode_on_) {
     it->second = result.CreateReferringCopy();
-    auto& indirect_vec = sorted_by_weight_for_writing_[weight_name];
-    auto it_hit = std::find(indirect_vec.begin(), indirect_vec.end(), it);
-    if (it_hit == indirect_vec.end()) {
-      indirect_vec.push_back(it);
-    }
+    auto& list = sorted_by_weight_for_writing_[weight_name];
+    list.insert(key);
   } else {
     key_to_blobs_.erase(it);
   }

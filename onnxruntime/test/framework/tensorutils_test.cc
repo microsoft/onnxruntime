@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/inlined_containers.h"
 #include "core/framework/prepacked_weights.h"
 #include "core/framework/prepacked_weights_container.h"
 #include "core/framework/tensorprotoutils.h"
@@ -40,6 +41,7 @@ TEST(TensorProtoUtilsTest, SetExternalDataInformation) {
   ASSERT_EQ(tensor_proto.external_data(2).value(), std::to_string(init_length));
 
   PrepackedForSerialization prepacked_for_serialization;
+  prepacked_for_serialization.SetSaveMode(true);
   PrePackedWeights prepacked_weights;
   constexpr size_t buffer_size = 100;
   const std::string init_name = "test_initializer";
@@ -60,8 +62,11 @@ TEST(TensorProtoUtilsTest, SetExternalDataInformation) {
   std::stringstream ss;
   const auto* blobs_for_weight = prepacked_for_serialization.MainGraph().GetBlobsForWeight(init_name);
   ASSERT_TRUE(blobs_for_weight != nullptr);
-  ASSERT_TRUE(ExternalDataInfo::WritePrepackedToFileAndAddToProto(*blobs_for_weight,
-                                                                  true, 0, ss, external_offset, tensor_proto));
+  InlinedHashSet<std::string> blob_keys{blobs_for_weight->begin(), blobs_for_weight->end()};
+  ASSERT_TRUE(ExternalDataInfo::WritePrepackedToFileAndAddToProto(prepacked_for_serialization,
+                                                                  blob_keys,
+                                                                  true, 0, ss, external_offset,
+                                                                  tensor_proto));
 
   auto external_data_info = std::make_unique<ExternalDataInfo>();
   ASSERT_STATUS_OK(ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));

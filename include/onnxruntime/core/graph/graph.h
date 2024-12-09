@@ -19,10 +19,10 @@
 #include "core/common/common.h"
 #include "core/common/path_string.h"
 #include "core/common/const_pointer_container.h"
+#include "core/common/inlined_containers_fwd.h"
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/common/inlined_containers.h"
 #endif
-#include "core/common/inlined_containers_fwd.h"
 #include "core/common/span_utils.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
@@ -1489,11 +1489,24 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   Status AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& constant_node_proto,
                                        std::optional<std::string_view> new_name);
 
+  /// <summary>
+  /// A map that is used to keep track of pre-packed blobs to be serialized
+  /// The implementation adds pre-packed external data references to the TensorProto
+  /// that contains the initializer data. However, it may be an outerscope initializer.
+  /// Thus we need to keep track of the pre-packed blobs that are not serialized in this
+  /// graph, so the parent can make sure it is being serialized.
+  ///
+  /// The below map has <weight_name, std::vector<blob_key_name>>. This contains
+  /// the entries that are not serialized in this graph, and the parent must check in them
+  /// </summary>
+  using WeightToPrePacksMap = NodeHashMap<std::string, InlinedHashSet<std::string>>;
+
   Status ToGraphProtoWithExternalInitiallizersImpl(
       const std::filesystem::path& model_path,
       const std::filesystem::path& external_file_path,
       const std::filesystem::path& modified_external_file_path,
       const ModelSavingOptions& model_saving_options,
+      WeightToPrePacksMap& unprocessed_prepacks,
       ONNX_NAMESPACE::GraphProto& graph_proto,
       std::ostream& external_stream,
       int64_t& external_offset) const;

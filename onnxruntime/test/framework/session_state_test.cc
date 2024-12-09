@@ -47,12 +47,13 @@ void PrepackedForSerialization::Subgraph::TestHarness<InspectPrepackedSubgraph>(
     ASSERT_EQ(sub.GetNumberOfKeyedBlobsForWriting(), expected_blobs_for_writing);
 
     if (sub.Parent() != nullptr) {
-      const auto* blobs_indirect = sub.GetBlobsForWeight("if_shared");
-      ASSERT_TRUE(blobs_indirect != nullptr);
-      ASSERT_EQ(blobs_indirect->size(), 1U);
-      const auto& vec = *blobs_indirect;
-      ASSERT_EQ(vec[0]->second.buffer_sizes_.size(), 1U);
-      ASSERT_EQ(vec[0]->second.buffer_sizes_[0], sizeof(float) * 2);
+      const auto* blob_keys = sub.GetBlobsForWeight("if_shared");
+      ASSERT_TRUE(blob_keys != nullptr);
+      ASSERT_EQ(blob_keys->size(), 1U);
+      const auto* prepacked_weights = sub.GetPrepackedWeights(*blob_keys->cbegin());
+      ASSERT_TRUE(prepacked_weights != nullptr);
+      ASSERT_EQ(prepacked_weights->buffer_sizes_.size(), 1U);
+      ASSERT_EQ(prepacked_weights->buffer_sizes_[0], sizeof(float) * 2);
     }
   };
 

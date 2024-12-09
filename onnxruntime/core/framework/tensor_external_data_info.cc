@@ -117,27 +117,29 @@ void ExternalDataInfo::SetExternalLocationToProto(const std::filesystem::path& e
 }
 
 std::ostream& ExternalDataInfo::WritePrepackedToFileAndAddToProto(
-    const PrepackedForSerialization::BlobsInderect& prepacked_for_write, bool align, int64_t allocation_granularity,
+    const PrepackedForSerialization& prepacked_for_serialization,
+    const InlinedHashSet<std::string>& blob_keys, bool align, int64_t allocation_granularity,
     std::ostream& os, int64_t& external_offset, ::ONNX_NAMESPACE::TensorProto& proto) {
-  for (const auto& iter : prepacked_for_write) {
+  for (const auto& key : blob_keys) {
     size_t prepack_count = 0;
-    const auto& [key, prepacked_weights] = *iter;
+    const auto* prepacked_weights = prepacked_for_serialization.GetPrepackedForKey(key);
+    ORT_ENFORCE(prepacked_weights != nullptr, "Prepacked weights not found for key ", key);
     std::stringstream prepacked_entry;
     prepacked_entry << key << "|";
-    for (size_t i = 0, size = prepacked_weights.buffers_.size(); i < size; ++i) {
+    for (size_t i = 0, size = prepacked_weights->buffers_.size(); i < size; ++i) {
       if (align) {
         // return early on error
         if (!AlignAndPad(os, allocation_granularity, external_offset)) {
           return os;
         }
       }
-      const auto size_in_bytes = prepacked_weights.buffer_sizes_[i];
+      const auto size_in_bytes = prepacked_weights->buffer_sizes_[i];
       if (prepack_count++ > 0) {
         prepacked_entry << "|";
       }
       // Checksum is currently not validated
       prepacked_entry << external_offset << ";" << size_in_bytes << ";0";
-      if (!os.write(reinterpret_cast<const char*>(prepacked_weights.buffers_[i].get()), size_in_bytes)) {
+      if (!os.write(reinterpret_cast<const char*>(prepacked_weights->buffers_[i].get()), size_in_bytes)) {
         return os;
       }
       external_offset = SafeInt<int64_t>(external_offset) + size_in_bytes;

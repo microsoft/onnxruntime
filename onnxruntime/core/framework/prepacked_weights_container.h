@@ -13,6 +13,7 @@
 #include <string>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 
 namespace onnxruntime {
 
@@ -91,14 +92,12 @@ class PrepackedForSerialization final {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PrepackedForSerialization);
 
   using KeyToBlobMap = std::unordered_map<std::string, PrePackedWeights>;
-  using KeyToBlobMapConstIterator = KeyToBlobMap::const_iterator;
-  using BlobsInderect = std::vector<KeyToBlobMapConstIterator>;
-  using BlobsConstIterator = BlobsInderect::const_iterator;
 
   // Maps weight name to iterators in key_to_blobs_. It associates a weight name with its pre-packs.
   // Normally, a single weight produces a single PrePackedWeights. But it is possible that a weight
   // is pre-packed by different kernels.
-  using WeightToPrePacksMap = std::unordered_map<std::string, BlobsInderect>;
+  using KeysPerWeight = std::unordered_set<std::string>;  // blob keys
+  using WeightToPrePacksMap = std::unordered_map<std::string, KeysPerWeight>;
 
   class Subgraph {
    public:
@@ -158,7 +157,7 @@ class PrepackedForSerialization final {
     }
 
     // Returns iterators to key->blob pair for writing
-    const BlobsInderect* GetBlobsForWeight(const std::string& weight_name) const {
+    const KeysPerWeight* GetBlobsForWeight(const std::string& weight_name) const {
       auto hit = sorted_by_weight_for_writing_.find(weight_name);
       if (hit != sorted_by_weight_for_writing_.end()) {
         return &hit->second;
@@ -176,10 +175,14 @@ class PrepackedForSerialization final {
 
     size_t GetNumberOfKeyedBlobsForWriting() const noexcept {
       size_t result = 0;
-      for (const auto& [_, indirect_blobs] : sorted_by_weight_for_writing_) {
-        result += indirect_blobs.size();
+      for (const auto& [_, keys] : sorted_by_weight_for_writing_) {
+        result += keys.size();
       }
       return result;
+    }
+
+    const WeightToPrePacksMap& GetSortedByWeightForWriting() const noexcept {
+      return sorted_by_weight_for_writing_;
     }
 
     // This template declaration is intended to be instantiated
@@ -196,6 +199,11 @@ class PrepackedForSerialization final {
     // Map Graph ptr to subgraphs
     std::unordered_map<const Graph*, std::unique_ptr<Subgraph>> subgraph_prepacks_;
   };
+
+  const PrePackedWeights* GetPrepackedForKey(const std::string& key) const {
+    auto it = key_to_blobs_.find(key);
+    return it == key_to_blobs_.end() ? nullptr : &it->second;
+  }
 
   const Subgraph& MainGraph() const noexcept {
     return main_graph_;
