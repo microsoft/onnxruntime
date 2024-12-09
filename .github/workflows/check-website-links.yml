@@ -17,7 +17,6 @@ jobs:
       - name: Ruby
         uses: ruby/setup-ruby@v1
         with:
-          ruby-version: 2.6
           bundler-cache: true
       - name: Build jekyll website with drafts
         run: bundle exec jekyll build --drafts
