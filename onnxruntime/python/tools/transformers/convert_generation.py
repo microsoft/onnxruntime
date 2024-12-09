@@ -1292,7 +1292,7 @@ def add_cache_indirection_to_mha(model: OnnxModel, past_seq_len_name: str):
     model.topological_sort()
     return model
 
-def add_output_qk_to_mha(model: OnnxModel, skip_node_idxs: Optional[List[int]] = []):
+def add_output_qk_to_mha(model: OnnxModel, dtype: Optional[int] = 0, skip_node_idxs: Optional[List[int]] = []):
     # Add output_qk as output to MultiHeadAttention ops and as outputs to model
     output_qk_basename = "output_cross_qk"
     output_qks = []
@@ -1309,12 +1309,13 @@ def add_output_qk_to_mha(model: OnnxModel, skip_node_idxs: Optional[List[int]] =
                 num_heads = att.i
                 break
 
-        # Get dtype for `output_qk` based on MHA bias
-        output_qk_dtype = None
-        for i in model.model.graph.initializer:
-            if i.name == node.input[3]:
-                output_qk_dtype = i.data_type
-                break
+        # Get dtype for `output_qk` based on MHA bias if not provided
+        output_qk_dtype = dtype
+        if output_qk_dtype == 0:
+            for i in model.model.graph.initializer:
+                if i.name == node.input[3]:
+                    output_qk_dtype = i.data_type
+                    break
         
         # Get `target_sequence_length` attribute from 4D input for key if it's a constant
         target_sequence_length = "target_sequence_length"

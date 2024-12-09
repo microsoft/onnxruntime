@@ -119,6 +119,57 @@ def group_past_key_values(
         cross_attn_kv_caches.append(cross_v_cache)
     return self_attn_kv_caches, cross_attn_kv_caches
 
+# Create alignment heads for timestamps
+# Shape is (num_alignment_heads, 2)
+def get_sample_alignment_heads(
+    config: WhisperConfig,
+    device: torch.device,
+    num_alignment_heads: int = 6,
+    use_int32: bool = True,
+):
+    torch_dtype = torch.int32 if use_int32 else torch.int64
+    alignment_heads = torch.ones((num_alignment_heads, 2), device=device, dtype=torch_dtype)
+    return alignment_heads
+
+# Create length of start-of-transcription sequence for timestamps
+# Shape is (1)
+def get_sample_sot_sequence_length(
+    device: torch.device,
+    sot_sequence_length: int,
+    use_int32: bool = True,
+):
+    torch_dtype = torch.int32 if use_int32 else torch.int64
+    sot_length = torch.tensor(sot_sequence_length, device=device, dtype=torch_dtype)
+    return sot_length
+
+# Create segment length for timestamps
+# Shape is (1)
+def get_sample_segment_length(
+    device: torch.device,
+    segment_length: int,
+    use_int32: bool = True,
+):
+    torch_dtype = torch.int32 if use_int32 else torch.int64
+    segment_size = torch.tensor(segment_length, device=device, dtype=torch_dtype)
+    return segment_size
+
+# Create QKs for timestamps
+# Shape is (batch_size, num_heads, sequence_length, num_frames // 2)
+def get_sample_QKs(
+    config: WhisperConfig,
+    device: torch.device,
+    batch_size: int,
+    sequence_length: int,
+    use_fp16: bool = False,
+):
+    num_heads = config.decoder_attention_heads
+    torch_dtype = torch.float16 if use_fp16 else torch.float32
+    QKs = [
+        torch.rand(batch_size, num_heads, sequence_length, config.max_source_positions, device=device, dtype=torch_dtype)
+        for _ in range(config.num_hidden_layers)
+    ]
+    return QKs
+
 # Create inputs for encoder component of Whisper
 def get_sample_encoder_inputs(
     config: WhisperConfig,
@@ -160,6 +211,24 @@ def get_sample_decoder_inputs(
     encoder_hidden_states = get_sample_encoder_hidden_states(config, device, batch_size, use_fp16)
     past_key_values = get_sample_past_key_values(config, device, batch_size, past_sequence_length, use_fp16)
     return {"decoder_input_ids": decoder_input_ids, "encoder_hidden_states": encoder_hidden_states, "past_key_values": past_key_values}
+
+# Create inputs for timestamps component of Whisper
+def get_sample_jump_times_inputs(
+    config: WhisperConfig,
+    device: torch.device,
+    batch_size: int,
+    sequence_length: int,
+    num_alignment_heads: int,
+    sot_sequence_length: int,
+    segment_length: int,
+    use_fp16: bool = False,
+    use_int32: bool = True,
+):
+    alignment_heads = get_sample_alignment_heads(config, device, num_alignment_heads, use_int32)
+    sot_sequence_length = get_sample_sot_sequence_length(device, sot_sequence_length, use_int32)
+    segment_length = get_sample_segment_length(device, segment_length, use_int32)
+    QKs = get_sample_QKs(config, device, batch_size, sequence_length, use_fp16)
+    return {"alignment_heads": alignment_heads, "sot_sequence_length": sot_sequence_length, "segment_length": segment_length, "QKs": QKs}
 
 # Convert PyTorch inputs to ONNX Runtime inputs
 def convert_inputs_for_ort(
@@ -215,6 +284,12 @@ def get_model_dynamic_axes(
         elif name in {"input_ids", "decoder_input_ids"}:
             # shape is (batch_size, sequence_length)
             dynamic_axes[name] = {0: "batch_size", 1: "sequence_length"}
+        elif name == "alignment_heads":
+            # shape is (num_alignment_heads, 2)
+            dynamic_axes[name] = {0: "num_alignment_heads"}
+        elif name in {"sot_sequence_length", "segment_length"}:
+            # shape is (1)
+            pass
         elif name == "logits":
             # shape is (batch_size, sequence_length, vocab_size)
             dynamic_axes[name] = {0: "batch_size", 1: "sequence_length"}
@@ -231,6 +306,12 @@ def get_model_dynamic_axes(
         elif "past_key_cross" in name or "past_value_cross" in name or "present_key_cross" in name or "present_value_cross" in name:
             # shape is (batch_size, num_heads, num_frames // 2, head_size)
             dynamic_axes[name] = {0: "batch_size"}
+        elif "cross_qk" in name:
+            # shape is (batch_size, num_heads, source_sequence_length, target_sequence_length)
+            dynamic_axes[name] = {0: "batch_size", 2: "sequence_length"}
+        elif "jump_times" in name:
+            # shape is (batch_size, max_length)
+            dynamic_axes[name] = {0: "batch_size", 1: "max_length"}
         else:
             raise Exception(f"Unknown input or output name found: {name}")
     return dynamic_axes

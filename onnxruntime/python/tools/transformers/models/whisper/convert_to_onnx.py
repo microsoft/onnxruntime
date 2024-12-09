@@ -353,6 +353,7 @@ def export_onnx_models(
         torch.float16 if precision == Precision.FLOAT16 else torch.float32,
         merge_encoder_and_decoder_init,
         no_beam_search_op,
+        output_qk,
         state_dict_path,
     )
     config = models["decoder"].config

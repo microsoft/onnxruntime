@@ -13,6 +13,7 @@ import numpy as np
 import torch
 from convert_generation import add_cache_indirection_to_mha, add_output_qk_to_mha, fix_past_sequence_length
 from float16 import float_to_float16_max_diff
+from onnx import TensorProto
 from onnx_model import OnnxModel
 from optimizer import optimize_model
 from packaging import version
@@ -20,6 +21,7 @@ from transformers import WhisperConfig, WhisperForConditionalGeneration, Whisper
 from whisper_decoder import WhisperDecoder
 from whisper_encoder import WhisperEncoder
 from whisper_encoder_decoder_init import WhisperEncoderDecoderInit
+from whisper_jump_times import WhisperJumpTimes
 
 from onnxruntime import InferenceSession
 
@@ -79,6 +81,7 @@ class WhisperHelper:
         dtype: torch.dtype,
         merge_encoder_and_decoder_init: bool = True,
         no_beam_search_op: bool = False,
+        output_qk: bool = False,
         state_dict_path: str = "",
     ) -> Dict[str, torch.nn.Module]:
         """Load model given a pretrained name or path, then build models for ONNX conversion.
@@ -89,6 +92,8 @@ class WhisperHelper:
             cache_dir (str): cache directory
             device (torch.device): device to run the model
             merge_encoder_and_decoder_init (bool, optional): Whether merge encoder and decoder initialization into one ONNX model. Defaults to True.
+            no_beam_search_op (bool, optional): Whether to use beam search op or not. Defaults to False.
+            output_qk (bool, optional): Whether to output QKs to calculate batched jump times for word-level timestamps. Defaults to False.
             state_dict_path (str, optional): custom path to load weights from
         Returns:
             Dict[str, torch.nn.Module]: mapping from name to modules for ONNX conversion.
@@ -117,6 +122,10 @@ class WhisperHelper:
         else:
             encoder = WhisperEncoder(config, model, model_impl).eval()
             components.update({"encoder": encoder, "decoder_init": decoder})
+        
+        if output_qk:
+            batched_jump_times = WhisperJumpTimes(config, device, cache_dir).eval()
+            components.update({"jump_times": batched_jump_times})
         return components
 
     @staticmethod
@@ -160,7 +169,7 @@ class WhisperHelper:
                 use_fp16_inputs,
                 use_int32_inputs,
             )
-        else:
+        elif isinstance(model, WhisperDecoder):
             model.export_onnx(
                 onnx_model_path,
                 provider,
@@ -171,6 +180,17 @@ class WhisperHelper:
                 use_encoder_hidden_states,
                 use_kv_cache_inputs,
             )
+        elif isinstance(model, WhisperJumpTimes):
+            model.export_onnx(
+                onnx_model_path,
+                provider,
+                verbose,
+                use_external_data_format,
+                use_fp16_inputs,
+                use_int32_inputs,
+            )
+        else:
+            raise ValueError(f"Unknown instance for model detected: {type(model)}")
 
     @staticmethod
     def optimize_onnx(
@@ -216,6 +236,7 @@ class WhisperHelper:
                 m = add_cache_indirection_to_mha(m, past_seq_len_name)
             
             if output_qk:
+                # m = add_output_qk_to_mha(m, dtype=TensorProto.FLOAT, skip_node_idxs=list(range(0, 2*num_layers, 2)))
                 m = add_output_qk_to_mha(m, skip_node_idxs=list(range(0, 2*num_layers, 2)))
 
         m.save_model_to_file(optimized_model_path, use_external_data_format, all_tensors_to_one_file=True)
