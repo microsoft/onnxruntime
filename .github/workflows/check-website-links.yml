@@ -32,6 +32,13 @@ jobs:
         env:
           JEKYLL_ENV: production
 
+      - name: Ensure _site directory exists
+        run: |
+          if [ ! -d "./_site" ]; then
+            echo "Error: _site directory does not exist!";
+            exit 1;
+          fi
+
       - name: Set up Node.js
         uses: actions/setup-node@v3
         with:
@@ -47,13 +54,6 @@ jobs:
         run: |
           sudo mv ./build/* ./_site
           rm -rf ./_site/src
-
-      - name: Ensure _site directory exists
-        run: |
-          if [ ! -d "./_site" ]; then
-            echo "Error: _site directory does not exist!";
-            exit 1;
-          fi
 
       - name: Check for broken links
         run: |
