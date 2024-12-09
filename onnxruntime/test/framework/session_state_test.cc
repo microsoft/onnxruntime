@@ -15,6 +15,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/graph/model_saving_options.h"
 #include "core/graph/op.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -1037,12 +1038,18 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test4) {
 
 // sharing is on
 TEST_F(SessionStateTestSharedInitalizersWithPrePacking, TestPrepackedSerialization) {
+  const std::filesystem::path model_with_external_initializers =
+      "testdata/test_prepacked_serialization_optimized_model.onnx";
+
+  const std::filesystem::path external_initializers_file =
+      "test_prepacked_serialization_optimized_model.bin";
+
   SessionOptions sess_options;
   sess_options.enable_mem_pattern = true;
   sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
-  sess_options.optimized_model_filepath = ORT_TSTR("testdata/test_prepacked_serialization_optimized_model.onnx");
+  sess_options.optimized_model_filepath = model_with_external_initializers;
 
   // Enable pre-packing
   sess_options.config_options.configurations[kOrtSessionOptionsConfigDisablePrepacking] = "0";
@@ -1082,7 +1089,8 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, TestPrepackedSerializati
   session_state_1.SetSaveModeForPrepacks(saving_model_true, saving_ort_model_false);
 
   ASSERT_STATUS_OK(session_state_1.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
-                                                        kernel_registry_manager));
+                                                        kernel_registry_manager,
+                                                        !saving_model_true));
 
   const auto& prepacked_for_serialization = session_state_1.GetPrepackedForSerialization();
   ASSERT_TRUE(prepacked_for_serialization.IsSaveModeOn());
@@ -1092,6 +1100,14 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, TestPrepackedSerializati
   const auto& main_graph = prepacked_for_serialization.MainGraph();
   InspectPrepackedSubgraph inspector;
   main_graph.TestHarness<InspectPrepackedSubgraph>(inspector);
+
+  ModelSavingOptions model_saving_options{4};
+  model_saving_options.align_offset = true;
+  model_saving_options.prepacked_for_save = &session_state_1.GetPrepackedForSerialization();
+
+  ASSERT_STATUS_OK(Model::SaveWithExternalInitializers(model_1, model_with_external_initializers,
+                                                       external_initializers_file,
+                                                       model_saving_options));
 }
 
 INSTANTIATE_TEST_SUITE_P(SessionStateTests,

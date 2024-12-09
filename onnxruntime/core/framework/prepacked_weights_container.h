@@ -136,8 +136,8 @@ class PrepackedForSerialization final {
 
     void InsertFromDisk(const std::string& key, PrePackedWeights&& packed_weight);
 
-    void WritePackedForSaving(const std::string& weight_name, const std::string& key,
-                              PrePackedWeights&& packed_weight);
+    void WritePacked(const std::string& weight_name, const std::string& key,
+                     PrePackedWeights&& packed_weight);
 
     const PrePackedWeights* GetPrepackedWeights(const std::string& key) const;
 
@@ -145,9 +145,9 @@ class PrepackedForSerialization final {
     // If the entry is present, it would replace it with references to the existing entry.
     // If the entry is not present, it would add reference to refer_if_absent
     // If present it would return the existing entry otherwise std::nullopt
-    std::optional<PrePackedWeights> ReplaceWithReference(const std::string& weight_name,
-                                                         const std::string& key,
-                                                         const PrePackedWeights& refer_if_absent);
+    std::optional<PrePackedWeights> ReplaceWithReferenceIfSaving(const std::string& weight_name,
+                                                                 const std::string& key,
+                                                                 const PrePackedWeights& refer_if_absent);
 
     bool IsSaveModeOn() const noexcept {
       return save_mode_on_;

@@ -387,13 +387,6 @@ static Status KernelUseSharedPrePackedBuffers(OpKernel& kernel, int input_idx,
   return Status::OK();
 }
 
-static void WritePrepackedForSaving(const std::string& weight_name,
-                                    const std::string& key,
-                                    const PrePackedWeights& prepacked_weights,
-                                    PrepackedForSerialization::Subgraph& prepacked_subgraph) {
-  prepacked_subgraph.WritePackedForSaving(weight_name, key, prepacked_weights.CreateReferringCopy());
-}
-
 static std::string GenerateKeyForPrepackedWeightsMap(const std::string& op_type,
                                                      const PrePackedWeights& pre_packed_weights) {
   std::ostringstream ss_1;
@@ -490,10 +483,9 @@ Status SessionState::PrepackConstantInitializedTensors(
 
                       // Write references to what is stored in the shared container
                       // and release memory mapped entries this container may have loaded from disk
-                      if (prepacked_subgraph.IsSaveModeOn()) {
-                        WritePrepackedForSaving(input_name, prepacked_weights_container_key, prepacked_shared,
-                                                prepacked_subgraph);
-                      }
+                      std::ignore = prepacked_subgraph.ReplaceWithReferenceIfSaving(input_name,
+                                                                                    prepacked_weights_container_key,
+                                                                                    prepacked_shared);
 
                     } else {
                       // container doesn't contain the pre-packed weight - so write into it for sharing across
@@ -508,7 +500,7 @@ Status SessionState::PrepackConstantInitializedTensors(
                       // so we can transfer it to shared container.
                       // if there is not an entry, we replace it with references to weights_to_be_filled_in
                       // in saving mode and return std::nullopt
-                      auto prepacked_from_disk = prepacked_subgraph.ReplaceWithReference(
+                      auto prepacked_from_disk = prepacked_subgraph.ReplaceWithReferenceIfSaving(
                           input_name,
                           prepacked_weights_container_key,
                           weights_to_be_filled_in);
@@ -567,8 +559,8 @@ Status SessionState::PrepackConstantInitializedTensors(
 
                     if (weights_to_use == nullptr) {
                       // In this case pre-packed container owns the data
-                      prepacked_subgraph.WritePackedForSaving(input_name, prepacked_weights_container_key,
-                                                              std::move(weights_to_be_filled_in));
+                      prepacked_subgraph.WritePacked(input_name, prepacked_weights_container_key,
+                                                     std::move(weights_to_be_filled_in));
                       weights_to_use = prepacked_subgraph.GetPrepackedWeights(prepacked_weights_container_key);
                       assert(weights_to_use != nullptr);
                     }

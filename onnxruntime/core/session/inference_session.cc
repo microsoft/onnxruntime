@@ -2103,7 +2103,10 @@ common::Status InferenceSession::Initialize() {
                   kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, "1024"));
           ModelSavingOptions model_saving_options{optimized_model_external_initializers_min_size_in_bytes};
           model_saving_options.align_offset = true;
-          model_saving_options.prepacked_for_save = &session_state_->GetPrepackedForSerialization();
+          const auto& prepacked_for_serialization = session_state_->GetPrepackedForSerialization();
+          model_saving_options.prepacked_for_save = (prepacked_for_serialization.IsSaveModeOn())
+                                                        ? &prepacked_for_serialization
+                                                        : nullptr;
           ORT_RETURN_IF_ERROR_SESSIONID_(Model::SaveWithExternalInitializers(*model_,
                                                                              session_options_.optimized_model_filepath,
                                                                              optimized_model_external_initializers_file_name,

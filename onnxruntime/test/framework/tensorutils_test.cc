@@ -53,7 +53,7 @@ TEST(TensorProtoUtilsTest, SetExternalDataInformation) {
   prepacked_weights.buffers_.push_back(BufferUniquePtr(kData.data(), BufferDeleter(nullptr)));
   prepacked_weights.buffer_sizes_.push_back(buffer_size);
 
-  prepacked_for_serialization.MainGraph().WritePackedForSaving(init_name, blob_key, std::move(prepacked_weights));
+  prepacked_for_serialization.MainGraph().WritePacked(init_name, blob_key, std::move(prepacked_weights));
 
   const int64_t starting_offset = 300;
   int64_t external_offset = starting_offset;

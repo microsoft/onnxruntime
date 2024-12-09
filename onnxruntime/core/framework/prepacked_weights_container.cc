@@ -73,8 +73,8 @@ void PrepackedForSerialization::Subgraph::InsertFromDisk(const std::string& key,
   key_to_blobs_.emplace(key, std::move(packed_weight));
 }
 
-void PrepackedForSerialization::Subgraph::WritePackedForSaving(const std::string& weight_name, const std::string& key,
-                                                               PrePackedWeights&& packed_weight) {
+void PrepackedForSerialization::Subgraph::WritePacked(const std::string& weight_name, const std::string& key,
+                                                      PrePackedWeights&& packed_weight) {
   auto hit = key_to_blobs_.find(key);
   if (hit == key_to_blobs_.end()) {
     // new key
@@ -105,27 +105,29 @@ const PrePackedWeights* PrepackedForSerialization::Subgraph::GetPrepackedWeights
   return &it->second;
 }
 
-std::optional<PrePackedWeights> PrepackedForSerialization::Subgraph::ReplaceWithReference(
+std::optional<PrePackedWeights> PrepackedForSerialization::Subgraph::ReplaceWithReferenceIfSaving(
     const std::string& weight_name,
     const std::string& key,
     const PrePackedWeights& refer_if_absent) {
   auto it = key_to_blobs_.find(key);
   if (it == key_to_blobs_.end()) {
-    auto result = key_to_blobs_.emplace(key, refer_if_absent.CreateReferringCopy());
     if (save_mode_on_) {
+      auto result = key_to_blobs_.emplace(key, refer_if_absent.CreateReferringCopy());
       sorted_by_weight_for_writing_[weight_name].push_back(result.first);
     }
     return std::nullopt;
   }
 
   PrePackedWeights result = std::move(it->second);
-  it->second = result.CreateReferringCopy();
   if (save_mode_on_) {
+    it->second = result.CreateReferringCopy();
     auto& indirect_vec = sorted_by_weight_for_writing_[weight_name];
     auto it_hit = std::find(indirect_vec.begin(), indirect_vec.end(), it);
     if (it_hit == indirect_vec.end()) {
       indirect_vec.push_back(it);
     }
+  } else {
+    key_to_blobs_.erase(it);
   }
   return result;
 }
