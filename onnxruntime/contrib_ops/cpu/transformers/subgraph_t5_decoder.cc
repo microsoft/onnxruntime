@@ -281,8 +281,11 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   }
 
   // Pass through implicit inputs.
-  for (const auto* entry : implicit_inputs) {
-    decoder_feeds.push_back(*entry);
+  for (size_t i = 0; i < implicit_inputs.size(); ++i) {
+    const auto* entry = implicit_inputs[i];
+    if (used_implicit_inputs[i]) {
+      decoder_feeds.push_back(*entry);
+    }
   }
 
   return Status::OK();
