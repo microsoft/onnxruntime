@@ -300,10 +300,10 @@ Status BaseOpBuilder::TransposeInitializer(const QnnModelWrapper& qnn_model_wrap
   // We do this to eliminate unnecessary weight copies.
   transposed_data.resize(tensor_data_size);
   Tensor out_tensor(tensor_dtype, out_tensor_shape, transposed_data.data(), OrtMemoryInfo{});
-  ORT_RETURN_IF_ERROR(Transpose::DoTranspose(perm, in_tensor, out_tensor));
+  ORT_RETURN_IF_ERROR(TransposeBase::DoTranspose(perm, in_tensor, out_tensor));
 
   // If this is an int4, we need to unpack it because QNN treats int4 as a full int8.
-  // TODO: Improve memory usage! Transpose::DoTranspose() internally copies Tensor<int4> to Tensor<int8>,
+  // TODO: Reduce copies for INT4! Transpose::DoTranspose() internally copies Tensor<int4> to Tensor<int8>,
   // does the transpose in 8-bits, and then copies the result back to a new Tensor<int4>. Afterwards, QNN EP unpacks
   // the new Tensor<int4> back to 8-bits. This is wasteful. A better approach would be for QNN EP to do the following:
   //  - Explicitly unpack Tensor<int4> to Tensor<int8> in QNN EP.

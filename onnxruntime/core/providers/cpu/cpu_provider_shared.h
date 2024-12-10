@@ -38,6 +38,11 @@ struct ProviderHostCPU {
   virtual Status NonMaxSuppressionBase__PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) = 0;
   virtual Status NonMaxSuppressionBase__GetThresholdsFromInputs(const PrepareContext& pc, int64_t& max_output_boxes_per_class, float& iou_threshold, float& score_threshold) = 0;
 
+  // TransposeBase
+  virtual Status TransposeBase__DoTranspose(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
+                                            const TensorShape* input_shape_override,
+                                            concurrency::ThreadPool* tp) = 0;
+
 #if defined(USE_CUDA) || defined(USE_ROCM)
 
   // From cpu/tensor/size.h
