@@ -15,7 +15,8 @@ end
 target 'OnnxruntimeModuleExample' do
   config = use_native_modules!
 
-  use_react_native!(:path => config["reactNativePath"])
+  # Check both symbol and string keys with default value
+  use_react_native!(:path => config[:reactNativePath] || config["reactNativePath"] || '../node_modules/react-native')
 
   use_frameworks!
 

@@ -15,7 +15,8 @@ end
 def shared
   config = use_native_modules!
 
-  use_react_native!(:path => config["reactNativePath"])
+  # Check both symbol and string keys with default value
+  use_react_native!(:path => config[:reactNativePath] || config["reactNativePath"] || '../node_modules/react-native')
 
   # Comment the next line if you don't want to use dynamic frameworks
   use_frameworks!
