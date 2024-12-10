@@ -304,11 +304,11 @@ Status BaseOpBuilder::TransposeInitializer(const QnnModelWrapper& qnn_model_wrap
 
   // If this is an int4, we need to unpack it because QNN treats int4 as a full int8.
   // TODO: Improve memory usage! Transpose::DoTranspose() internally copies Tensor<int4> to Tensor<int8>,
-  // does the transpose, and then copies the result to a new Tensor<int4>. Afterwards, QNN EP will unpack
+  // does the transpose in 8-bits, and then copies the result back to a new Tensor<int4>. Afterwards, QNN EP unpacks
   // the new Tensor<int4> back to 8-bits. This is wasteful. A better approach would be for QNN EP to do the following:
-  //  - Explicitly unpack Tensor<int4> to Tensor<int8>
+  //  - Explicitly unpack Tensor<int4> to Tensor<int8> in QNN EP.
   //  - Call Transpose::DoTranspose() with the Tensor<int8>. This generates a new transposed Tensor<int8>.
-  //  - Clear the top 4-bits to zero for every int8 element in the transposed Tensor<int8>.
+  //  - Clear the top 4-bits to zero for every int8 element in the transposed Tensor<int8>. [ONLY if signed int4]
   if (onnx_type == ONNX_NAMESPACE::TensorProto_DataType_INT4) {
     ORT_RETURN_IF_ERROR(qnn::utils::UnpackInt4ToInt8<true>(out_tensor_shape.Size(), transposed_data));
   } else if (onnx_type == ONNX_NAMESPACE::TensorProto_DataType_UINT4) {
