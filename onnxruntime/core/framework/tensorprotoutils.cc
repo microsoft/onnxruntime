@@ -1071,7 +1071,7 @@ Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& mo
           OrtCallback data_deleter;
           ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path.c_str(), blob_offset, blob_length,
                                              data_ptr, data_deleter));
-          BufferUniquePtr data_ptr_unique{data_ptr, data_deleter.f};
+          BufferUniquePtr data_ptr_unique{data_ptr, OrtCallbackInvoker(data_deleter)};
           prepacked_weights.buffers_.push_back(std::move(data_ptr_unique));
           prepacked_weights.buffer_sizes_.push_back(blob_length);
         }

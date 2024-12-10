@@ -128,11 +128,6 @@ class PrepackedForSerialization final {
       return it == subgraph_prepacks_.end() ? nullptr : it->second.get();
     }
 
-    Subgraph* GetSubgraph(const Graph& graph) {
-      auto it = subgraph_prepacks_.find(&graph);
-      return it == subgraph_prepacks_.end() ? nullptr : it->second.get();
-    }
-
     void InsertFromDisk(const std::string& key, PrePackedWeights&& packed_weight);
 
     void WritePacked(const std::string& weight_name, const std::string& key,
@@ -192,7 +187,7 @@ class PrepackedForSerialization final {
     void TestHarness(T&) const;
 
    private:
-    bool save_mode_on_;
+    bool save_mode_on_ = false;
     Subgraph* parent_ = nullptr;
     KeyToBlobMap& key_to_blobs_;
     WeightToPrePacksMap sorted_by_weight_for_writing_;
