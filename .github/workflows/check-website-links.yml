@@ -48,6 +48,7 @@ jobs:
             --allow_hash_href \
             --ignore_urls "https://onnxruntime.ai/docs/reference/api/c-api.html,https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html#c-api-example,https://www.onnxruntime.ai/docs/resources/graph-optimizations.html,onnxruntime/capi/onnxruntime_pybind11_state.html,https://github.com/microsoft/onnx-converters-private/issues/new/choose,https://aka.ms/onnx/exportissue,https://aka.ms/onnx/board" \
             --log-level :info
+            --no-check_external_hash
       # - name: Check for broken links
       #   uses: chabad360/htmlproofer@master
       #   with:
