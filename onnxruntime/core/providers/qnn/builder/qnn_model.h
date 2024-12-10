@@ -113,10 +113,6 @@ class QnnModel {
                               const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map) const;
   bool GetGraphInfoFromModel(QnnModelWrapper& model_wrapper, const logging::Logger& logger);
 
-  Status GetQnnTensorDataLength(const std::vector<uint32_t>& dims,
-                                Qnn_DataType_t data_type,
-                                size_t& data_length) const;
-
   Status SetupTensors(std::vector<QnnTensorInfo>& tensors, const std::vector<QnnTensorWrapper>& tensor_wrappers,
                       bool is_input = true);
 

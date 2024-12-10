@@ -24,6 +24,7 @@
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/common/path_string.h"
+#include "core/providers/qnn/builder/qnn_context_mem_handle_manager.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 
 namespace onnxruntime {
@@ -163,6 +164,10 @@ class QnnBackendManager {
 
   Status DestroyHTPPowerConfigID(uint32_t htp_power_config_id);
 
+  Status GetOrRegisterContextMemHandle(Qnn_ContextHandle_t context, void* shared_memory_address,
+                                       const Qnn_Tensor_t& qnn_tensor,
+                                       Qnn_MemHandle_t& mem_handle);
+
  private:
   void* LoadLib(const char* file_name, int flags, std::string& error_msg);
 
@@ -233,6 +238,9 @@ class QnnBackendManager {
       const char* eventIdentifier);
 #endif
 
+  Status AddQnnContext(Qnn_ContextHandle_t context);
+  Status ReleaseQnnContextMemHandles();
+
  private:
   const std::string backend_path_;
   std::mutex logger_mutex_;
@@ -246,6 +254,13 @@ class QnnBackendManager {
   Qnn_LogHandle_t log_handle_ = nullptr;
   Qnn_DeviceHandle_t device_handle_ = nullptr;
   std::vector<Qnn_ContextHandle_t> contexts_;
+
+  struct ContextMemHandleRecord {
+    std::unique_ptr<QnnContextMemHandleManager> mem_handle_manager;
+    InlinedVector<std::pair<void*, size_t>> outstanding_allocation_clean_up_callbacks;
+  };
+
+  std::unordered_map<Qnn_ContextHandle_t, ContextMemHandleRecord> context_mem_handles_;
   ProfilingLevel profiling_level_etw_;
   ProfilingLevel profiling_level_;
   ProfilingLevel profiling_level_merge_;

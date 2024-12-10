@@ -20,17 +20,14 @@
 namespace onnxruntime {
 namespace qnn {
 
-bool QnnModel::GetGraphInfoFromModel(QnnModelWrapper& model_wrapper, const logging::Logger& logger) {
+bool QnnModel::GetGraphInfoFromModel(QnnModelWrapper& model_wrapper, const logging::Logger& /* logger */) {
   bool rt = true;
 
   graph_info_ = std::make_unique<GraphInfo>(model_wrapper.GetQnnGraph(),
                                             model_wrapper.GetQnnGraphName(),
+                                            model_wrapper.GetQnnGraphContext(),
                                             std::move(model_wrapper.GetGraphInputTensorWrappers()),
                                             std::move(model_wrapper.GetGraphOutputTensorWrappers()));
-  if (graph_info_ == nullptr) {
-    LOGS(logger, ERROR) << "GetGraphInfoFromModel() failed to allocate GraphInfo.";
-    return false;
-  }
 
   return rt;
 }
@@ -189,11 +186,13 @@ Status QnnModel::SetupQnnInputOutput(const logging::Logger& logger) {
 }
 
 static Status BindQnnTensorMemoryToOrtValue(const logging::Logger& logger,
+                                            QnnBackendManager& qnn_backend_manager,
                                             const OrtMemoryInfo& ort_value_memory_info,
                                             void* ort_value_data, uint32_t ort_value_data_size,
+                                            Qnn_ContextHandle_t qnn_context,
                                             Qnn_Tensor_t& qnn_tensor) {
   // either set qnn_tensor memHandle or clientBuf
-  const bool uses_shared_memory = ort_value_memory_info == HtpSharedMemoryAllocator::MemoryInfo();
+  const bool uses_shared_memory = ort_value_memory_info == HtpSharedMemoryAllocator::AssociatedMemoryInfo();
 
   if (!uses_shared_memory) {
     LOGS(logger, VERBOSE) << "Setting Qnn_Tensor_t clientBuf to ORT tensor memory.";
@@ -201,7 +200,9 @@ static Status BindQnnTensorMemoryToOrtValue(const logging::Logger& logger,
     SetQnnTensorClientBuf(qnn_tensor, ort_value_data, ort_value_data_size);
   } else {
     LOGS(logger, VERBOSE) << "Setting Qnn_Tensor_t memHandle to ORT tensor shared memory.";
-    const Qnn_MemHandle_t qnn_mem_handle = SharedContext::GetInstance().GetSharedMemHandles().Get(ort_value_data);
+    Qnn_MemHandle_t qnn_mem_handle{};
+    ORT_RETURN_IF_ERROR(qnn_backend_manager.GetOrRegisterContextMemHandle(qnn_context, ort_value_data, qnn_tensor,
+                                                                          qnn_mem_handle));
     SetQnnTensorMemType(qnn_tensor, QNN_TENSORMEMTYPE_MEMHANDLE);
     SetQnnTensorMemHandle(qnn_tensor, qnn_mem_handle);
   }
@@ -243,8 +244,10 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
 
     ORT_RETURN_IF_ERROR(BindQnnTensorMemoryToOrtValue(
         logger,
+        *qnn_backend_manager_,
         *static_cast<const OrtMemoryInfo*>(ort_input_tensor.GetTensorMemoryInfo()),
         const_cast<void*>(ort_input_tensor.GetTensorRawData()), qnn_input_info.tensor_byte_size,
+        graph_info_->GraphContext(),
         qnn_inputs.back()));
   }
 
@@ -267,8 +270,10 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
 
     ORT_RETURN_IF_ERROR(BindQnnTensorMemoryToOrtValue(
         logger,
+        *qnn_backend_manager_,
         *static_cast<const OrtMemoryInfo*>(ort_output_tensor.GetTensorMemoryInfo()),
         const_cast<void*>(ort_output_tensor.GetTensorRawData()), qnn_output_info.tensor_byte_size,
+        graph_info_->GraphContext(),
         qnn_outputs.back()));
   }
 
@@ -308,20 +313,6 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
   return Status::OK();
 }
 
-Status QnnModel::GetQnnTensorDataLength(const std::vector<uint32_t>& dims,
-                                        Qnn_DataType_t data_type,
-                                        size_t& data_length) const {
-  ORT_RETURN_IF(dims.empty(), "Tensor dimensions is nullptr");
-
-  data_length = utils::GetElementSizeByType(data_type);
-
-  for (size_t r = 0; r < dims.size(); r++) {
-    data_length *= dims[r];
-  }
-
-  return Status::OK();
-}
-
 // Setup information for Qnn inputs/outputs used during execution.
 Status QnnModel::SetupTensors(std::vector<QnnTensorInfo>& qnn_tensor_infos,
                               const std::vector<QnnTensorWrapper>& tensor_wrappers,
@@ -331,11 +322,8 @@ Status QnnModel::SetupTensors(std::vector<QnnTensorInfo>& qnn_tensor_infos,
   qnn_tensor_infos.resize(tensor_count);
 
   for (auto& tensor_wrapper : tensor_wrappers) {
-    size_t length = 0;
-    using namespace qnn::utils;
-    ORT_RETURN_IF_ERROR(GetQnnTensorDataLength(tensor_wrapper.GetTensorDims(),
-                                               tensor_wrapper.GetTensorDataType(),
-                                               length));
+    const size_t length = utils::GetQnnTensorDataSize(tensor_wrapper.GetTensorDims(),
+                                                      tensor_wrapper.GetTensorDataType());
     const auto& tensor_name = tensor_wrapper.GetName();
     auto qnn_index = is_input ? GetGraphInputIndex(tensor_name) : GetOutputIndex(tensor_name);
     auto ort_index = is_input ? GetOrtInputIndex(tensor_name) : qnn_index;
@@ -405,9 +393,9 @@ Status QnnModel::DeserializeGraphInfoFromBinaryInfo(const QnnSystemContext_Graph
 
   graph_info_ = std::make_unique<GraphInfo>(graph,
                                             graph_name,
+                                            context,
                                             std::move(input_tensor_wrappers),
                                             std::move(output_tensor_wrappers));
-  ORT_RETURN_IF(graph_info_ == nullptr, "Failed to allocate GraphInfo");
 
   return Status::OK();
 }

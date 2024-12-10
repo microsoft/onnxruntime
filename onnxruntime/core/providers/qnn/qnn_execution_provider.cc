@@ -396,7 +396,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
   }
 
-  qnn_backend_manager_ = std::make_shared<qnn::QnnBackendManager>(
+  qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
       std::move(backend_path),
       profiling_level_etw,
       profiling_level,
@@ -1166,11 +1166,11 @@ Status QNNExecutionProvider::OnRunEnd(bool /*sync_stream*/, const onnxruntime::R
 std::vector<AllocatorPtr> QNNExecutionProvider::CreatePreferredAllocators() {
   std::vector<AllocatorPtr> allocators{};
 
-  if (IsRpcMemAllocatorAvailable()) {
+  if (IsHtpSharedMemoryAllocatorAvailable()) {
     LOGS_DEFAULT(INFO) << "Creating HtpSharedMemoryAllocator.";
 
     AllocatorFactory rpcmem_allocator_factory = [this](OrtDevice::DeviceId) {
-      return std::make_unique<qnn::HtpSharedMemoryAllocator>(rpcmem_library_, qnn_backend_manager_);
+      return std::make_unique<qnn::HtpSharedMemoryAllocator>(rpcmem_library_);
     };
 
     AllocatorCreationInfo rpcmem_allocator_creation_info{rpcmem_allocator_factory,

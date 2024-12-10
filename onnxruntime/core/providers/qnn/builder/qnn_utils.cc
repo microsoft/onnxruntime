@@ -1,15 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/qnn/builder/qnn_utils.h"
+
 #include <functional>
+#include <map>
 #include <numeric>
 #include <string>
 #include <vector>
-#include <map>
 
 #include "core/common/common.h"
+#include "core/common/safeint.h"
 #include "core/framework/data_types.h"
-#include "qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 
 namespace onnxruntime {
@@ -61,6 +63,12 @@ size_t GetElementSizeByType(ONNXTensorElementDataType elem_type) {
   auto pos = elem_type_to_size.find(elem_type);
   ORT_ENFORCE(pos != elem_type_to_size.end(), "Unknown element type", elem_type);
   return pos->second;
+}
+
+size_t GetQnnTensorDataSize(gsl::span<const uint32_t> shape, Qnn_DataType_t element_type) {
+  ORT_ENFORCE(!shape.empty(), "Empty shape not allowed.");  // TODO can we just treat empty shape as a scalar?
+  SafeInt<size_t> data_length = GetElementSizeByType(element_type);
+  return std::accumulate(shape.begin(), shape.end(), data_length, std::multiplies<>{});
 }
 
 std::ostream& operator<<(std::ostream& out, const Qnn_Scalar_t& scalar) {

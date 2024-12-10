@@ -467,11 +467,13 @@ class QnnOpProperty {
 
 class GraphInfo {
  public:
-  GraphInfo(const Qnn_GraphHandle_t graph,
+  GraphInfo(Qnn_GraphHandle_t graph,
             const std::string& name,
+            Qnn_ContextHandle_t graph_context,
             std::vector<QnnTensorWrapper>&& input_tensors,
             std::vector<QnnTensorWrapper>&& output_tensors) : graph_name_(name),
                                                               graph_(graph),
+                                                              graph_context_(graph_context),
                                                               input_tensors_(std::move(input_tensors)),
                                                               output_tensors_(std::move(output_tensors)) {
   }
@@ -481,12 +483,15 @@ class GraphInfo {
   const std::string& Name() const { return graph_name_; }
   const std::vector<QnnTensorWrapper>& InputTensors() const { return input_tensors_; }
   const std::vector<QnnTensorWrapper>& OutputTensors() const { return output_tensors_; }
-  const Qnn_GraphHandle_t& Graph() const { return graph_; }
+  Qnn_GraphHandle_t Graph() const { return graph_; }
+  Qnn_ContextHandle_t GraphContext() const { return graph_context_; }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphInfo);
 
  private:
   std::string graph_name_;
   Qnn_GraphHandle_t graph_;
+  // QNN context that holds the QNN graph referenced by `graph_`
+  Qnn_ContextHandle_t graph_context_;
   std::vector<QnnTensorWrapper> input_tensors_;
   std::vector<QnnTensorWrapper> output_tensors_;
 };

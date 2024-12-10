@@ -7,17 +7,18 @@
 #include <fstream>
 #include <string>
 #include "QnnOpDef.h"
-#include "HTP/QnnHtpPerfInfrastructure.h"
 #include "CPU/QnnCpuCommon.h"
 // TODO: not exist for Windows yet
 // #include "GPU/QnnGpuCommon.h"
 #include "DSP/QnnDspCommon.h"
 #include "HTP/QnnHtpCommon.h"
 #include "HTP/QnnHtpContext.h"
+#include "HTP/QnnHtpPerfInfrastructure.h"
 #include "Saver/QnnSaver.h"
 #include <gsl/gsl>
 #include "core/framework/endian_utils.h"
 #include "core/common/logging/capture.h"
+#include "core/providers/qnn/qnn_allocator.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 #include "core/providers/qnn/builder/qnn_configs_helper.h"
 
@@ -549,9 +550,10 @@ Status QnnBackendManager::CreateContext() {
                                                           device_handle_,
                                                           context_configs,
                                                           &context);
-  contexts_.push_back(context);
 
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result));
+
+  ORT_RETURN_IF_ERROR(AddQnnContext(context));  // TODO use RAII type for context handle?
 
   context_created_ = true;
   return Status::OK();
@@ -561,6 +563,8 @@ Status QnnBackendManager::ReleaseContext() {
   if (false == context_created_) {
     return Status::OK();
   }
+
+  ORT_RETURN_IF_ERROR(ReleaseQnnContextMemHandles());
 
   bool failed = false;
   for (auto context : contexts_) {
@@ -674,7 +678,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
                                               &context,
                                               profile_backend_handle_);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary.");
-  contexts_.push_back(context);
+  ORT_RETURN_IF_ERROR(AddQnnContext(context));
   if (1 == graph_count) {
     // in case the EPContext node is generated from script
     // the graph name from the context binary may not match the EPContext node name
@@ -1562,6 +1566,68 @@ void* QnnBackendManager::LibFunction(void* handle, const char* symbol, std::stri
 
   return ::dlsym(handle, symbol);
 #endif
+}
+
+Status QnnBackendManager::AddQnnContext(Qnn_ContextHandle_t context) {
+  ORT_RETURN_IF(logger_ == nullptr, "logger_ should be set.");
+
+  auto mem_handle_manager = std::make_unique<QnnContextMemHandleManager>(GetQnnInterface(), context, *logger_);
+  auto mem_handle_record = ContextMemHandleRecord{std::move(mem_handle_manager), {}};
+  const bool inserted = context_mem_handles_.try_emplace(context, std::move(mem_handle_record)).second;
+  ORT_RETURN_IF_NOT(inserted, "QNN context was already added: ", context);
+
+  contexts_.push_back(context);
+
+  return Status::OK();
+}
+
+Status QnnBackendManager::ReleaseQnnContextMemHandles() {
+  // remove outstanding allocation clean up callbacks
+  for (auto& [context_handle, context_mem_handle_record] : context_mem_handles_) {
+    for (const auto [shared_memory_address, idx] :
+         context_mem_handle_record.outstanding_allocation_clean_up_callbacks) {
+      ORT_RETURN_IF_ERROR(HtpSharedMemoryAllocator::RemoveAllocationCleanUp(shared_memory_address, idx,
+                                                                            /* allocation_clean_up */ nullptr));
+    }
+  }
+
+  context_mem_handles_.clear();
+
+  return Status::OK();
+}
+
+Status QnnBackendManager::GetOrRegisterContextMemHandle(Qnn_ContextHandle_t context, void* shared_memory_address,
+                                                        const Qnn_Tensor_t& qnn_tensor,
+                                                        Qnn_MemHandle_t& mem_handle) {
+  const auto context_mem_handles_it = context_mem_handles_.find(context);
+  ORT_RETURN_IF_NOT(context_mem_handles_it != context_mem_handles_.end(), "QNN context not found: ", context);
+
+  auto& context_mem_handle_record = context_mem_handles_it->second;
+  auto& context_mem_handle_manager = *context_mem_handle_record.mem_handle_manager;
+  bool did_register{};
+  ORT_RETURN_IF_ERROR(context_mem_handle_manager.GetOrRegister(shared_memory_address, qnn_tensor,
+                                                               mem_handle, did_register));
+
+  if (did_register) {
+    HtpSharedMemoryAllocator::AllocationCleanUpFn allocation_clean_up =
+        [&logger = *logger_, &context_mem_handle_manager](void* shared_memory_address) {
+          auto unregister_status = context_mem_handle_manager.Unregister(shared_memory_address);
+          if (!unregister_status.IsOK()) {
+            LOGS(logger, ERROR) << "Failed to unregister shared memory mem handle for address: "
+                                << shared_memory_address << ", error: " << unregister_status.ErrorMessage();
+          }
+        };
+
+    size_t allocation_clean_up_idx{};
+    ORT_RETURN_IF_ERROR(HtpSharedMemoryAllocator::AddAllocationCleanUp(shared_memory_address,
+                                                                       std::move(allocation_clean_up),
+                                                                       allocation_clean_up_idx));
+
+    context_mem_handle_record.outstanding_allocation_clean_up_callbacks.emplace_back(shared_memory_address,
+                                                                                     allocation_clean_up_idx);
+  }
+
+  return Status::OK();
 }
 
 }  // namespace qnn

@@ -3,150 +3,256 @@
 
 #include "core/providers/qnn/qnn_allocator.h"
 
+#include <cassert>
+#include <cstddef>
 #include <algorithm>
 #include <limits>
 
-#include <QnnInterface.h>
-
 #include "core/common/common.h"
-#include "core/common/logging/logging.h"
-#include "core/common/inlined_containers.h"
-#include "core/common/narrow.h"
-#include "core/framework/tensor.h"
-#include "core/providers/qnn/builder/qnn_utils.h"
-#include "core/providers/qnn/shared_context.h"  // for shared mem handle access
+#include "core/mlas/inc/mlas.h"  // for MlasGetPreferredBufferAlignment()
 
 namespace onnxruntime::qnn {
 
 namespace {
 
-Qnn_MemHandle_t RegisterQnnMemHandle(const QNN_INTERFACE_VER_TYPE& qnn_interface,
-                                     Qnn_ContextHandle_t qnn_context_handle,
-                                     int shared_memory_fd,
-                                     MLDataType element_data_type, const TensorShape& shape) {
-  auto qnn_shape = [shape_span = shape.GetDims()]() {
-    InlinedVector<uint32_t> qnn_shape;
-    std::transform(shape_span.begin(), shape_span.end(), std::back_inserter(qnn_shape),
-                   [](int64_t dim) { return narrow<uint32_t>(dim); });
-    return qnn_shape;
-  }();
+struct AllocationHeader {
+  static constexpr std::array<char, 8> kAllocationHeaderMarker{'o', 'r', 't', 'a', 'l', 'l', 'o', 'c'};
 
-  const auto qnn_data_type = [element_data_type]() {
-    Qnn_DataType_t qnn_data_type;
-    ORT_ENFORCE(element_data_type->IsPrimitiveDataType());
-    const auto onnx_data_type = element_data_type->AsPrimitiveDataType()->GetDataType();
-    const bool is_quantized = false;  // TODO how should we set this?
-    if (!utils::OnnxDataTypeToQnnDataType(onnx_data_type, qnn_data_type, is_quantized)) {
-      ORT_THROW("Unable to get QNN data type from ONNX data type: ", onnx_data_type);
-    }
-    return qnn_data_type;
-  }();
+  // Marker bytes to verify as a sanity check.
+  std::array<char, 8> marker;
 
-  // set up QNN memory descriptor
-  Qnn_MemDescriptor_t qnn_mem_descriptor = QNN_MEM_DESCRIPTOR_INIT;
-  qnn_mem_descriptor.memShape = {narrow<uint32_t>(qnn_shape.size()),
-                                 qnn_shape.data(),
-                                 nullptr};
-  qnn_mem_descriptor.dataType = qnn_data_type;
-  qnn_mem_descriptor.memType = QNN_MEM_TYPE_ION;
-  qnn_mem_descriptor.ionInfo.fd = shared_memory_fd;
+  // Pointer to the allocating allocator instance.
+  // Note: A critical assumption here is that the allocating allocator is not destroyed before the allocation is freed.
+  HtpSharedMemoryAllocator* allocator_ptr;
 
-  Qnn_MemHandle_t qnn_mem_handle = nullptr;
-  const auto register_status = qnn_interface.memRegister(qnn_context_handle, &qnn_mem_descriptor, 1,
-                                                         &qnn_mem_handle);
-  // TODO show error message
-  ORT_ENFORCE(register_status == QNN_SUCCESS,
-              "qnn_interface.memRegister() failed with error code ", register_status);
-
-  return qnn_mem_handle;
-}
-
-void DeregisterQnnMemHandle(const QNN_INTERFACE_VER_TYPE& qnn_interface,
-                            Qnn_MemHandle_t qnn_mem_handle) {
-  const auto deregister_status = qnn_interface.memDeRegister(&qnn_mem_handle, 1);
-  // TODO show error message
-  if (deregister_status != QNN_SUCCESS) {
-    LOGS_DEFAULT(ERROR) << "qnn_interface.memDeRegister() failed with error code " << deregister_status;
+  AllocationHeader(HtpSharedMemoryAllocator* allocator_ptr)
+      : marker{kAllocationHeaderMarker},
+        allocator_ptr{allocator_ptr} {
   }
+
+  ~AllocationHeader() {
+    marker.fill('\0');
+    allocator_ptr = nullptr;
+  }
+};
+
+size_t AllocationAlignment() {
+  return std::max(alignof(AllocationHeader), MlasGetPreferredBufferAlignment());
 }
 
-using RpcMemUniquePtr = std::unique_ptr<void, void (*)(void*)>;
+size_t DivRoundUp(size_t a, size_t b) {  // TODO is there already a helper function somewhere for this?
+  return (a + b - 1) / b;
+}
 
-RpcMemUniquePtr WrapSharedMemoryWithUniquePtr(void* shared_memory_raw, const RpcMemApi& rpcmem_api) {
+bool IsAligned(const void* address, size_t alignment) {
+  assert((alignment & alignment - 1) == 0);
+  return (reinterpret_cast<uintptr_t>(address) & (alignment - 1)) == 0;
+}
+
+size_t AllocationOffsetFromStartOfHeader() {
+  const size_t allocation_alignment = AllocationAlignment();
+  const size_t offset = DivRoundUp(sizeof(AllocationHeader), allocation_alignment) * allocation_alignment;
+  return offset;
+}
+
+std::byte* GetAllocationHeaderAddress(void* allocation_address) {
+  auto* allocation_header_address = reinterpret_cast<std::byte*>(allocation_address) - sizeof(AllocationHeader);
+  return allocation_header_address;
+}
+
+AllocationHeader& ValidateAllocationAddressAndGetHeader(void* allocation_address) {
+  const size_t allocation_alignment = AllocationAlignment();
+  ORT_ENFORCE(IsAligned(allocation_address, allocation_alignment),
+              "Allocation address (", allocation_address, ") does not have required alignment (",
+              allocation_alignment, " bytes).");
+
+  auto* allocation_header = reinterpret_cast<AllocationHeader*>(GetAllocationHeaderAddress(allocation_address));
+  ORT_ENFORCE(allocation_header->marker == AllocationHeader::kAllocationHeaderMarker,
+              "AllocationHeader for allocation address (", allocation_address,
+              ") does not have the expected marker bytes.");
+
+  return *allocation_header;
+}
+
+std::unique_ptr<void, void (*)(void*)> WrapSharedMemoryWithUniquePtr(void* shared_memory_raw,
+                                                                     const RpcMemApi& rpcmem_api) {
   return {shared_memory_raw, rpcmem_api.free};
 }
 
 }  // namespace
 
-OrtMemoryInfo HtpSharedMemoryAllocator::MemoryInfo() {
+OrtMemoryInfo HtpSharedMemoryAllocator::AssociatedMemoryInfo() {
   return OrtMemoryInfo{QNN_HTP_SHARED, OrtAllocatorType::OrtDeviceAllocator,
                        OrtDevice{OrtDevice::CPU, OrtDevice::MemType::QNN_HTP_SHARED, /* device_id */ 0},
                        /* id */ 0, OrtMemTypeDefault};
 }
 
-HtpSharedMemoryAllocator::HtpSharedMemoryAllocator(std::shared_ptr<RpcMemLibrary> rpcmem_lib,
-                                                   std::shared_ptr<QnnBackendManager> qnn_backend_manager)
-    : IAllocator{MemoryInfo()},
-      rpcmem_lib_{std::move(rpcmem_lib)},
-      qnn_backend_manager_{std::move(qnn_backend_manager)} {
+HtpSharedMemoryAllocator::HtpSharedMemoryAllocator(std::shared_ptr<RpcMemLibrary> rpcmem_lib)
+    : IAllocator{AssociatedMemoryInfo()},
+      rpcmem_lib_{std::move(rpcmem_lib)} {
   ORT_ENFORCE(rpcmem_lib_ != nullptr);
-  ORT_ENFORCE(qnn_backend_manager_ != nullptr);
 }
 
-void* HtpSharedMemoryAllocator::Alloc(size_t /* size */) {
-  LOGS_DEFAULT(ERROR) << "hey this ain't right";
-  std::exit(1);
-  ORT_THROW("HtpSharedMemoryAllocator::Alloc() is not implemented. Use HtpSharedMemoryAllocator::TensorAlloc() instead.");
-}
-
-void* HtpSharedMemoryAllocator::TensorAlloc(MLDataType element_data_type, const TensorShape& shape) {
-  const auto size_in_bytes = Tensor::CalculateTensorStorageSize(element_data_type, shape);
-
-  if (size_in_bytes == 0) {
-    return nullptr;
-  }
+void* HtpSharedMemoryAllocator::Alloc(size_t requested_size) {
+  const size_t allocation_offset = AllocationOffsetFromStartOfHeader();
+  const size_t shared_memory_block_size_in_bytes = allocation_offset + requested_size;
 
   // rpcmem_alloc() has an int size parameter. make sure we don't overflow.
   constexpr size_t max_size_in_bytes = std::numeric_limits<int>::max();
-  ORT_ENFORCE(size_in_bytes <= max_size_in_bytes,
-              "Allocation size (", size_in_bytes, ") is larger than maximum allowed (", max_size_in_bytes, ").");
+  ORT_ENFORCE(shared_memory_block_size_in_bytes <= max_size_in_bytes,
+              "Allocation size (", shared_memory_block_size_in_bytes, ") is larger than maximum allowed (",
+              max_size_in_bytes, ").");
 
   // allocate shared memory
   void* shared_memory_raw = rpcmem_lib_->Api().alloc(rpcmem::RPCMEM_HEAP_ID_SYSTEM, rpcmem::RPCMEM_DEFAULT_FLAGS,
-                                                     static_cast<int>(size_in_bytes));
+                                                     static_cast<int>(shared_memory_block_size_in_bytes));
 
   auto shared_memory = WrapSharedMemoryWithUniquePtr(shared_memory_raw, rpcmem_lib_->Api());
+
+  const size_t allocation_alignment = AllocationAlignment();
+  ORT_ENFORCE(IsAligned(shared_memory_raw, allocation_alignment),
+              "Shared memory address (", shared_memory_raw, ") does not have required alignment (",
+              allocation_alignment, " bytes).");
 
   // get shared memory fd
   const auto shared_memory_fd = rpcmem_lib_->Api().to_fd(shared_memory.get());
   ORT_ENFORCE(shared_memory_fd != -1, "rpcmem_to_fd() returned invalid file descriptor.");
 
-  // register mem handle
-  // TODO synchronize calls to qnn_interface.memRegister()?
-  const auto& qnn_interface = qnn_backend_manager_->GetQnnInterface();
-  const auto qnn_context_handle = qnn_backend_manager_->GetQnnContext();
-  const auto qnn_mem_handle = RegisterQnnMemHandle(qnn_interface, qnn_context_handle,
-                                                   shared_memory_fd, element_data_type, shape);
+  std::byte* allocation_address = reinterpret_cast<std::byte*>(shared_memory_raw) + allocation_offset;
 
-  // save mem handle. for now, the global SharedContext will do...
-  SharedContext::GetInstance().GetSharedMemHandles().Add(shared_memory.get(), qnn_mem_handle);
+  // store allocation record
+  {
+    SharedMemoryInfo shared_memory_info{};
+    shared_memory_info.fd = shared_memory_fd;
+    shared_memory_info.offset = allocation_offset;
+    shared_memory_info.total_size = shared_memory_block_size_in_bytes;
 
-  return shared_memory.release();
+    AllocationRecord allocation_record{};
+    allocation_record.shared_memory_info = std::move(shared_memory_info);
+
+    std::scoped_lock g{allocations_mutex_};
+    const bool inserted = allocations_.emplace(allocation_address, std::move(allocation_record)).second;
+    ORT_ENFORCE(inserted, "Allocation info already exists for address (", allocation_address, ").");
+  }
+
+  // initialize header
+  {
+    std::byte* allocation_header_address = GetAllocationHeaderAddress(allocation_address);
+    new (allocation_header_address) AllocationHeader(this);
+  }
+
+  shared_memory.release();
+  return allocation_address;
 }
 
-void HtpSharedMemoryAllocator::Free(void* p) {
-  if (!p) {
+void HtpSharedMemoryAllocator::Free(void* allocation_address) {
+  if (allocation_address == nullptr) {
     return;
   }
 
-  // take ownership of shared memory and free at end of scope
-  auto shared_memory = WrapSharedMemoryWithUniquePtr(p, rpcmem_lib_->Api());
+  // TODO should we throw exceptions at all from Free()?
 
-  // deregister mem handle
-  // TODO synchronize calls to qnn_interface.memDeRegister()?
-  const auto& qnn_interface = qnn_backend_manager_->GetQnnInterface();
-  const auto qnn_mem_handle = SharedContext::GetInstance().GetSharedMemHandles().GetAndRemove(p);
-  DeregisterQnnMemHandle(qnn_interface, qnn_mem_handle);
+  auto& allocation_header = ValidateAllocationAddressAndGetHeader(allocation_address);
+  ORT_ENFORCE(allocation_header.allocator_ptr == this,
+              "AllocationHeader points to a different allocator (", allocation_header.allocator_ptr,
+              ") than this one (", this, ").");
+
+  const auto allocation_node = [this, allocation_address]() {
+    std::scoped_lock g{allocations_mutex_};
+    return allocations_.extract(allocation_address);
+  }();
+
+  ORT_ENFORCE(!allocation_node.empty(), "Failed to get allocation info for address (", allocation_address, ").");
+
+  // take ownership of shared memory and free at end of scope
+  auto shared_memory = WrapSharedMemoryWithUniquePtr(allocation_address, rpcmem_lib_->Api());
+
+  // destroy header
+  allocation_header.~AllocationHeader();
+
+  // clean up allocation record
+  const auto& allocation_info = allocation_node.mapped();
+  for (auto& clean_up_fn : allocation_info.clean_up_fns) {
+    clean_up_fn(allocation_address);  // TODO handle exceptions?
+  }
+}
+
+Status HtpSharedMemoryAllocator::GetAllocationSharedMemoryInfo(void* allocation_address,
+                                                               SharedMemoryInfo& allocation_info) {
+  auto& allocation_header = ValidateAllocationAddressAndGetHeader(allocation_address);
+  return allocation_header.allocator_ptr->GetAllocationSharedMemoryInfoForThisAllocator(allocation_address,
+                                                                                        allocation_info);
+}
+
+Status HtpSharedMemoryAllocator::AddAllocationCleanUp(void* allocation_address,
+                                                      AllocationCleanUpFn&& allocation_clean_up,
+                                                      size_t& allocation_clean_up_idx) {
+  auto& allocation_header = ValidateAllocationAddressAndGetHeader(allocation_address);
+  return allocation_header.allocator_ptr->AddAllocationCleanUpForThisAllocator(allocation_address,
+                                                                               std::move(allocation_clean_up),
+                                                                               allocation_clean_up_idx);
+}
+
+Status HtpSharedMemoryAllocator::RemoveAllocationCleanUp(void* allocation_address,
+                                                         size_t allocation_clean_up_idx,
+                                                         AllocationCleanUpFn* allocation_clean_up) {
+  auto& allocation_header = ValidateAllocationAddressAndGetHeader(allocation_address);
+  return allocation_header.allocator_ptr->RemoveAllocationCleanUpForThisAllocator(allocation_address,
+                                                                                  allocation_clean_up_idx,
+                                                                                  allocation_clean_up);
+}
+
+Status HtpSharedMemoryAllocator::GetAllocationSharedMemoryInfoForThisAllocator(void* allocation_address,
+                                                                               SharedMemoryInfo& allocation_info) {
+  std::scoped_lock g{allocations_mutex_};
+  const auto allocation_infos_it = allocations_.find(allocation_address);
+  ORT_RETURN_IF(allocation_infos_it == allocations_.end(),
+                "Failed to get allocation info for address (", allocation_address, ").");
+
+  allocation_info = allocation_infos_it->second.shared_memory_info;
+  return Status::OK();
+}
+
+Status HtpSharedMemoryAllocator::AddAllocationCleanUpForThisAllocator(void* allocation_address,
+                                                                      AllocationCleanUpFn&& allocation_clean_up,
+                                                                      size_t& allocation_clean_up_idx) {
+  ORT_RETURN_IF(allocation_clean_up == nullptr, "allocation_clean_up should not be empty.");
+
+  std::scoped_lock g{allocations_mutex_};
+  const auto allocation_infos_it = allocations_.find(allocation_address);
+  ORT_RETURN_IF(allocation_infos_it == allocations_.end(),
+                "Failed to get allocation info for address (", allocation_address, ").");
+
+  auto& clean_up_fns = allocation_infos_it->second.clean_up_fns;
+  clean_up_fns.emplace_back(std::move(allocation_clean_up));
+  allocation_clean_up_idx = clean_up_fns.size() - 1;
+  return Status::OK();
+}
+
+Status HtpSharedMemoryAllocator::RemoveAllocationCleanUpForThisAllocator(void* allocation_address,
+                                                                         size_t allocation_clean_up_idx,
+                                                                         AllocationCleanUpFn* allocation_clean_up) {
+  std::scoped_lock g{allocations_mutex_};
+  const auto allocation_infos_it = allocations_.find(allocation_address);
+  ORT_RETURN_IF(allocation_infos_it == allocations_.end(),
+                "Failed to get allocation info for address (", allocation_address, ").");
+
+  auto& clean_up_fns = allocation_infos_it->second.clean_up_fns;
+  ORT_RETURN_IF_NOT(allocation_clean_up_idx < clean_up_fns.size(),
+                    "Invalid allocation_clean_up_idx: ", allocation_clean_up_idx);
+
+  AllocationCleanUpFn& clean_up_fn = clean_up_fns[allocation_clean_up_idx];
+  ORT_RETURN_IF(clean_up_fn == nullptr,
+                "Allocation clean up has already been removed at allocation_clean_up_idx: ", allocation_clean_up_idx);
+
+  AllocationCleanUpFn removed_clean_up_fn = nullptr;
+  removed_clean_up_fn.swap(clean_up_fn);
+
+  if (allocation_clean_up != nullptr) {
+    *allocation_clean_up = std::move(removed_clean_up_fn);
+  }
+
+  return Status::OK();
 }
 
 }  // namespace onnxruntime::qnn

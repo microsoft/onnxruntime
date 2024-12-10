@@ -75,12 +75,11 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   qnn::ProfilingLevel GetProfilingLevelFromETWLevel(unsigned char level);
 
-  bool IsRpcMemAllocatorAvailable() const { return rpcmem_library_ != nullptr; }
+  bool IsHtpSharedMemoryAllocatorAvailable() const { return rpcmem_library_ != nullptr; }
 
  private:
   qnn::HtpGraphFinalizationOptimizationMode htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
-  // This is potentially shared with HtpSharedMemoryAllocator which may be returned by CreatePreferredAllocators().
-  std::shared_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
+  std::unique_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
   std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models_;
   bool context_cache_enabled_ = false;
   std::string context_cache_path_cfg_ = "";
