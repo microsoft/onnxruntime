@@ -1657,7 +1657,7 @@ Status QnnBackendManager::AddQnnContext(Qnn_ContextHandle_t context) {
 Status QnnBackendManager::ReleaseQnnContextMemHandles() {
   // remove outstanding allocation clean up callbacks
   for (auto& [context_handle, context_mem_handle_record] : context_mem_handles_) {
-    for (const auto [shared_memory_address, idx] :
+    for (const auto& [shared_memory_address, idx] :
          context_mem_handle_record.outstanding_allocation_clean_up_callbacks) {
       ORT_RETURN_IF_ERROR(HtpSharedMemoryAllocator::RemoveAllocationCleanUp(shared_memory_address, idx,
                                                                             /* allocation_clean_up */ nullptr));
