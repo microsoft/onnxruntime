@@ -141,7 +141,6 @@ class QNNExecutionProvider : public IExecutionProvider {
   std::string context_node_name_prefix_ = "";
   bool disable_cpu_ep_fallback_ = false;  // True if CPU EP fallback has been disabled for this session.
   bool qnn_context_embed_mode_ = true;
-  bool enable_htp_weight_sharing_ = false;
   int32_t vtcm_size_in_mb_ = 0;
   std::unique_ptr<onnxruntime::Model> qnn_ep_context_model_;
   ModelMetadefIdGenerator metadef_id_generator_;
@@ -150,6 +149,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   uint32_t default_rpc_control_latency_ = 0;
   bool enable_HTP_FP16_precision_ = true;
   bool share_ep_contexts_ = false;
+  bool enable_spill_fill_buffer_ = false;
 #ifdef _WIN32
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;
 #endif
