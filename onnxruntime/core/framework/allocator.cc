@@ -13,16 +13,9 @@
 #include <mimalloc.h>
 #endif
 
-#include "core/framework/data_types.h"
 #include "core/framework/bfc_arena.h"
-#include "core/framework/tensor.h"
 
 namespace onnxruntime {
-
-void* IAllocator::TensorAlloc(MLDataType element_data_type, const TensorShape& shape) {
-  const auto size_in_bytes = Tensor::CalculateTensorStorageSize(element_data_type, shape);
-  return Alloc(size_in_bytes);
-}
 
 // private helper for calculation so SafeInt usage doesn't bleed into the public allocator.h header
 bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, size_t alignment, size_t* out) noexcept {

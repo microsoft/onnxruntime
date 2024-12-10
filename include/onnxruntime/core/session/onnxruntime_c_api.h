@@ -329,9 +329,6 @@ typedef struct OrtAllocator {
    * those made during session initialization. This allows for separate memory management strategies for these allocations.
    */
   void*(ORT_API_CALL* Reserve)(struct OrtAllocator* this_, size_t size);  ///< Returns a pointer to an allocated block of `size` bytes
-  // TODO docs
-  void*(ORT_API_CALL* TensorAlloc)(struct OrtAllocator* this_,
-                                   const int64_t* shape, size_t shape_len, ONNXTensorElementDataType element_data_type);
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(

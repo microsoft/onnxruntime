@@ -87,7 +87,12 @@ Tensor::Tensor(MLDataType elt_type, const TensorShape& shape, void* p_data, cons
 Tensor::Tensor(MLDataType elt_type, const TensorShape& shape, std::shared_ptr<IAllocator> allocator)
     : alloc_info_(allocator->Info()) {
   ORT_ENFORCE(elt_type != nullptr);
-  void* p_data = allocator->TensorAlloc(elt_type, shape);
+  size_t len = Tensor::CalculateTensorStorageSize(elt_type, shape);
+
+  void* p_data = nullptr;
+  if (len > 0) {
+    p_data = allocator->Alloc(len);
+  }
   Init(elt_type, shape, p_data, allocator, 0L);
 }
 

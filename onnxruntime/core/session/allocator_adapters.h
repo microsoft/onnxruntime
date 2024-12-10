@@ -29,8 +29,6 @@ struct OrtAllocatorImplWrappingIAllocator final : public OrtAllocatorImpl {
   const OrtMemoryInfo* Info() const;
   void* Reserve(size_t size);
 
-  void* TensorAlloc(const int64_t* shape, size_t shape_len, ONNXTensorElementDataType element_data_type);
-
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtAllocatorImplWrappingIAllocator);
 
   onnxruntime::AllocatorPtr GetWrappedIAllocator();
@@ -47,7 +45,6 @@ class IAllocatorImplWrappingOrtAllocator final : public IAllocator {
 
   void* Alloc(size_t size) override;
   void* Reserve(size_t size) override;
-  void* TensorAlloc(MLDataType element_data_type, const TensorShape& shape) override;
 
   void Free(void* p) override;
 

@@ -69,12 +69,6 @@ void* AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_res
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
 
-// Note: Re-declare these from core/framework/data_types.h to avoid including the ONNX protobuf header.
-class DataTypeImpl;
-using MLDataType = const DataTypeImpl*;
-
-class TensorShape;
-
 class IAllocator {
  public:
   IAllocator(const OrtMemoryInfo& info) : memory_info_(info) {}
@@ -89,15 +83,6 @@ class IAllocator {
   virtual void* Alloc(size_t size) = 0;
 
   virtual void Free(void* p) = 0;
-
-  /**
-   * Allocate memory for a tensor of the given shape and element data type.
-   * If the tensor size is 0, nullptr is returned.
-   * On other failures, an exception is thrown.
-   *
-   * Note: The default implementation will call Alloc().
-   */
-  virtual void* TensorAlloc(MLDataType element_data_type, const TensorShape& shape);
 
   // Reserve() is an interface exposed for an implementation of IAllocator
   // to optionally implement some allocation logic that by-passes any arena-based
