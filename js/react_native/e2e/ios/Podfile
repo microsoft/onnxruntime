@@ -16,9 +16,7 @@ target 'OnnxruntimeModuleExample' do
   config = use_native_modules!
 
   use_react_native!(
-    :path => config[:reactNativePath],
-    # to enable hermes on iOS, change `false` to `true` and then install pods
-    :hermes_enabled => false
+    :path => config[:reactNativePath]
   )
 
   use_frameworks!
