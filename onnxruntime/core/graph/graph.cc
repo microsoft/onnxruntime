@@ -4108,7 +4108,9 @@ Status Graph::ToGraphProtoWithExternalInitiallizersImpl(
       ORT_RETURN_IF_NOT(hit != output_graph_proto.mutable_node()->end(), "Node ", node.Name(),
                         " not found in output_graph_proto");
       auto& result_node = *hit;
-      for (const auto& [name, subgraph] : node.GetAttributeNameToSubgraphMap()) {
+      for (const auto& e : node.GetAttributeNameToSubgraphMap()) {
+        const auto& name = e.first;
+        const auto& subgraph = e.second;
         // Lets find this subgraph in the result_node
         auto sub_hit = std::find_if(result_node.mutable_attribute()->begin(),
                                     result_node.mutable_attribute()->end(),
