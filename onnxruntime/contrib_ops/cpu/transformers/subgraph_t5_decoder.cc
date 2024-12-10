@@ -172,7 +172,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), input_ids_shape, allocator, input_ids);
   int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
   AllocatorPtr buffer_allocator = std::make_shared<onnxruntime::CPUAllocator>();
-  size_t total_size = static_cast<size_t>(static_cast<long long>(cur_len) * batch_beam_size);
+  size_t total_size = static_cast<size_t>(cur_len) * static_cast<size_t>(batch_beam_size);
   size_t total_size_bytes = total_size * sizeof(int);
   auto seq_copy = IAllocator::MakeUniquePtr<int>(buffer_allocator, total_size_bytes, false, stream);
   int* seq_copy_ptr = seq_copy.get();
@@ -187,10 +187,10 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
     if (use_cuda) {
       auto sequences_buffer = sequences.GetCurrentDeviceSequences();
       for (int i = 0; i < batch_beam_size; i++) {
-        size_t batch_beam_stride = (size_t)i * sequences.GetMaxLength();
+        size_t batch_beam_stride = static_cast<size_t>(i) * static_cast<size_t>(sequences.GetMaxLength());
         int seq_size = sequences.GetSequenceLength();
         gsl::span<const int32_t> sequence = sequences_buffer.subspan(batch_beam_stride, seq_size);
-        gsl::span<int> temp_input(input_ids_data + i * seq_size, seq_size);
+        gsl::span<int> temp_input(input_ids_data + static_cast<ptrdiff_t>(i) * seq_size, seq_size);
         ORT_RETURN_IF_ERROR(device_copy_int32_func(
             temp_input,
             sequence,
@@ -202,7 +202,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
       for (int i = 0; i < batch_beam_size; i++) {
         gsl::span<const int32_t> sequence = sequences.GetSequence(i);
         const int32_t* sequence_data = sequence.data();
-        long long seq_index = (long long)i * cur_len;
+        ptrdiff_t seq_index = static_cast<ptrdiff_t>(i) * cur_len;
         memcpy(seq_copy_ptr + seq_index, sequence_data, cur_len_bytes);
       }
       gsl::span<int> temp_input(input_ids_data, total_size);
