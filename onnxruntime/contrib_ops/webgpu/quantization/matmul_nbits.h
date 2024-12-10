@@ -33,8 +33,7 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
 
 class MatMulNBitsProgramPrefill final : public Program<MatMulNBitsProgramPrefill> {
  public:
-  MatMulNBitsProgramPrefill(bool has_zero_points) : Program{"MatMulNBitsPrefill"},
-                                                    has_zero_points_{has_zero_points} {
+  MatMulNBitsProgramPrefill() : Program{"MatMulNBitsPrefill"} {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -44,9 +43,6 @@ class MatMulNBitsProgramPrefill final : public Program<MatMulNBitsProgramPrefill
       {"K", ProgramUniformVariableDataType::Uint32},
       {"K4", ProgramUniformVariableDataType::Uint32},
       {"K8", ProgramUniformVariableDataType::Uint32});
-
- private:
-  bool has_zero_points_;
 };
 
 class MatMulNBits final : public WebGpuKernel {
