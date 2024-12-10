@@ -14,7 +14,6 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/ort_value_pattern_planner.h"
 #include "core/framework/session_state_utils.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -179,7 +178,7 @@ Status SessionState::PopulateKernelCreateInfo(const KernelRegistryManager& kerne
                                               bool saving_ort_format) {
   for (auto& node : graph_.Nodes()) {
     const KernelCreateInfo* kci = nullptr;
-    auto status = kernel_registry_manager.SearchKernelRegistry(node, &kci);
+    auto status = kernel_registry_manager.SearchKernelRegistry(node, logger_, &kci);
     if (!status.IsOK() && saving_ort_format) {
       // if we didn't find the kernel and are saving to ORT format an EP that compiles nodes is enabled.
       // in that case we assigned the node to that EP but do not compile it into a fused node.
@@ -188,7 +187,7 @@ Status SessionState::PopulateKernelCreateInfo(const KernelRegistryManager& kerne
       // at runtime when the model is loaded in a minimal build, the compiling EP will replace this node if possible.
       // if that's not possible for some reason we can fallback to the CPU EP implementation.
       node.SetExecutionProviderType(kCpuExecutionProvider);
-      status = kernel_registry_manager.SearchKernelRegistry(node, &kci);
+      status = kernel_registry_manager.SearchKernelRegistry(node, logger_, &kci);
     }
 
     ORT_RETURN_IF_ERROR(status);
@@ -398,18 +397,12 @@ static std::string GenerateKeyForPrepackedWeightsMap(const std::string& op_type,
 }
 
 Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
-                                                       const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map,
-                                                       bool save_prepacked_constant_initializers,
-                                                       PrePackInitializers& pre_packed_initializers) {
-  auto prepacked_constant_weights = [this, &constant_initializers_use_count, &initializers_to_share_map,
-                                     save_prepacked_constant_initializers, &pre_packed_initializers](
+                                                       const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map) {
+  auto prepacked_constant_weights = [this, &constant_initializers_use_count, &initializers_to_share_map](
                                         bool should_cache_prepacked_weights_for_shared_initializers) -> Status {
-    std::unordered_map<std::string, std::string> pre_packed_kernel_input_map;
     for (auto& node : GetGraphViewer().Nodes()) {
       auto kernel = GetMutableKernel(node.Index());
-      auto kernel_name = kernel->Info().node().Name();
       int input_idx = 0;
-      bool is_kernel_prepacked = false;
       for (auto& input_def : node.InputDefs()) {
         if (input_def->Exists()) {
           const std::string& input_name = input_def->Name();
@@ -421,27 +414,16 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
             if (st->GetOrtValueNameIdxMap().GetIdx(input_name, ort_value_idx).IsOK()) {
               std::unordered_map<int, OrtValue>& constant_initialized_tensors = st->constant_initialized_tensors_;
 
-              if (constant_initialized_tensors.count(ort_value_idx) && !is_kernel_prepacked) {
+              if (constant_initialized_tensors.count(ort_value_idx)) {
                 bool is_packed = false;
                 const Tensor& const_initialized_tensor = constant_initialized_tensors[ort_value_idx].Get<Tensor>();
 
                 auto iter = initializers_to_share_map.find(input_name);
                 bool is_shared_initializer = (iter != initializers_to_share_map.end());
 
-                // found pre-packed constant initializers from data file, no need to do pre-packing again
-                // apply pre-packed tensor to kernel so kernel can use it directly
-                if (pre_packed_initializers.pre_packed_initializer_names_read_from_file.count(input_name) != 0) {
-                  is_packed = true;
-
-                  // kernel like Matmul_nbits will call prepack multiple times with input_B and possibly scales/zero_points.
-                  // If prepacked weights already read from ONNX data file (this happens we ORT reads data file with prepacked
-                  // weights serialized), only need to set prepacked weights once to kernel.
-                  is_kernel_prepacked = true;
-                  ORT_THROW_IF_ERROR(kernel->SetPrePackTensor(input_idx, const_initialized_tensor));
-                }
                 // Caching pre-packed weights is limited to shared initializers associated with the CPU EP for now
-                else if (is_shared_initializer && should_cache_prepacked_weights_for_shared_initializers &&
-                         node.GetExecutionProviderType() == kCpuExecutionProvider) {  // caching of pre-packed weights' turned ON
+                if (is_shared_initializer && should_cache_prepacked_weights_for_shared_initializers &&
+                    node.GetExecutionProviderType() == kCpuExecutionProvider) {  // caching of pre-packed weights' turned ON
 
                   AllocatorPtr allocator_for_caching = prepacked_weights_container_->GetOrCreateAllocator(CPU);
                   ORT_ENFORCE(allocator_for_caching.get() != nullptr);
@@ -453,7 +435,7 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                   // weight with the pre-packed weight generated by this instance of the same op_type because other static
                   // properties of the node like node attributes could play a role in the pre-packed weights' contents.
                   ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx, allocator_for_caching,
-                                                      save_prepacked_constant_initializers, is_packed,
+                                                      is_packed,
                                                       &weights_to_be_filled_in));
 
                   if (is_packed) {
@@ -500,49 +482,17 @@ Status SessionState::PrepackConstantInitializedTensors(InlinedHashMap<std::strin
                   AllocatorPtr session_cpu_alloc = GetAllocator(kernel->Info().GetDevice(OrtMemType::OrtMemTypeDefault));
                   ORT_RETURN_IF_ERROR(kernel->PrePack(const_initialized_tensor, input_idx,
                                                       session_cpu_alloc,  // use allocator tied to this session
-                                                      save_prepacked_constant_initializers,
                                                       is_packed,
                                                       nullptr  // no caching required
                                                       ));
                 }
                 if (is_packed) {
-                  // if intended to save prepacked initializers, get prepacked tensors from kernel and save in hashmap,
-                  // will save to data file later
-                  if (save_prepacked_constant_initializers) {
-                    auto tensor = kernel->GetPrePackTensor(input_idx);
-
-                    if (tensor != std::nullopt) {
-                      // save prepacked initializers per initializer and kernel since one initializer could
-                      // be used by multiple kernels
-                      pre_packed_initializers.pre_packed_initializers_to_save[input_name][kernel_name] = std::move(tensor.value());
-
-                      pre_packed_kernel_input_map[kernel_name] = input_name;
-                    }
-                  }
-
                   ++number_of_prepacks_counter_;
 
-                  // if constant_initialized_tensor is already pre-packed, don't need to remove it
-                  if (pre_packed_initializers.pre_packed_initializer_names_read_from_file.count(input_name) == 0 &&
-                      constant_initializers_use_count.count(input_name) && --constant_initializers_use_count[input_name] == 0) {
+                  if (constant_initializers_use_count.count(input_name) && --constant_initializers_use_count[input_name] == 0) {
                     // release the constant initialized tensor
                     st->initialized_tensors_.erase(ort_value_idx);
                     constant_initialized_tensors.erase(ort_value_idx);
-                  }
-                } else {
-                  // handle prepack for matmul_nbits, it will prepack several times but set is_packed
-                  // to false for scales and zero_points, we keep scales and zero_points as it is only
-                  // update packed_tensor to input_B.
-                  // TODO: this logic works with matmul_nbits kernel but if other kernels also call prepack
-                  // multiple times and use different initializers to store prepacked weights, this piece of logic
-                  // might introduce bug and need a per kernel strategy to update prepacked weights.
-                  if (save_prepacked_constant_initializers && pre_packed_kernel_input_map.count(kernel_name)) {
-                    auto tensor = kernel->GetPrePackTensor(input_idx);
-
-                    if (tensor != std::nullopt) {
-                      auto existing_input_name = pre_packed_kernel_input_map[kernel_name];
-                      pre_packed_initializers.pre_packed_initializers_to_save[existing_input_name][kernel_name] = std::move(tensor.value());
-                    }
                   }
                 }
               }
@@ -1226,7 +1176,6 @@ static Status VerifyEachNodeIsAssignedToAnEp(const Graph& graph, const logging::
 
 Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE>& graph_location,
                                           const KernelRegistryManager& kernel_registry_manager,
-                                          PrePackInitializers& pre_packed_initializers,
                                           bool remove_initializers,
                                           bool saving_ort_format) {
   // recursively create the subgraph session state instances and populate the kernel create info in them.
@@ -1240,7 +1189,7 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   InlinedHashMap<std::string, size_t> constant_initializers_use_count;
   ComputeConstantInitializerUseCount(graph_, constant_initializers_use_count);
   return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, sess_options_,
-                                  remove_initializers, constant_initializers_use_count, pre_packed_initializers);
+                                  remove_initializers, constant_initializers_use_count);
 }
 
 static Status Index(const OrtValueNameIdxMap& ort_value_name_idx_map,
@@ -1374,7 +1323,6 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                               const SessionOptions& session_options,
                                               bool remove_initializers,
                                               InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
-                                              PrePackInitializers& pre_packed_initializers,
                                               const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map,
                                               bool graph_info_already_created) {
   if (!graph_info_already_created) {
@@ -1474,8 +1422,6 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   // For inference it is enabled by default, but users can choose to disable it via session options.
   const bool disable_prepacking =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisablePrepacking, "0") == "1";
-  const bool save_prepacked_constant_initializers =
-      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsSavePrePackedConstantInitializers, "0") == "1";
   // Memory pattern tracer allocates all initializers on a single contiguous
   // buffer. This has the effect of reducing memory fragmentation.
   // Further more, in training scenarios NCCL kernels require initializers to be allocated
@@ -1528,9 +1474,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
     }
   }
 #endif
-  // This unorder set is used during model load with prepacked initializer saved in ONNX data file.
-  // ORT reads prepacked initializers and store them into this set so we could skip PrePack
-  // process later to save heap memory.
+
   ORT_RETURN_IF_ERROR(
       session_state_utils::SaveInitializedTensors(
           Env::Default(), graph_location, *graph_viewer_,
@@ -1545,7 +1489,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
             return Status::OK();
           },
           logger_, data_transfer_mgr_, external_data_loader_mgr_, *p_seq_exec_plan_, session_options,
-          memory_profile_func, name_to_buffered_tensor_, pre_packed_initializers.pre_packed_initializer_names_read_from_file));
+          memory_profile_func, name_to_buffered_tensor_));
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Record Weight allocation info on device
@@ -1561,14 +1505,9 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
   ORT_RETURN_IF_ERROR(CreateKernels(kernel_registry_manager));
 
-  // pre-packed constant initializers only when:
-  //   1. pre-packing is not disabled
-  //   2. pre-packed not initializers found and loaded during model load
   if (!disable_prepacking) {
     ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count,
-                                                          session_options.initializers_to_share_map,
-                                                          save_prepacked_constant_initializers,
-                                                          pre_packed_initializers));
+                                                          session_options.initializers_to_share_map));
   }
 
   ORT_RETURN_IF_ERROR(
@@ -1607,7 +1546,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                                subgraph_outer_scope_node_arg_to_location_map));
       ORT_RETURN_IF_ERROR(subgraph_session_state.FinalizeSessionStateImpl(
           graph_location, kernel_registry_manager, &node, subgraph_session_options, remove_initializers,
-          constant_initializers_use_count, pre_packed_initializers, subgraph_outer_scope_node_arg_to_location_map, true));
+          constant_initializers_use_count, subgraph_outer_scope_node_arg_to_location_map, true));
 
       // setup all the info for handling the feeds and fetches used in subgraph execution
       auto* p_op_kernel = GetMutableKernel(node.Index());

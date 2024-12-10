@@ -241,7 +241,7 @@ Module['jsepInit'] = (name, params) => {
     Module['jsepCreateMLContext'] = (optionsOrGpuDevice) => {
       return backend['createMLContext'](optionsOrGpuDevice);
     };
-    Module.jsepRegisterMLConstant = (externalFilePath, dataOffset, dataLength, builder, desc) => {
+    Module['jsepRegisterMLConstant'] = (externalFilePath, dataOffset, dataLength, builder, desc) => {
       return backend['registerMLConstant'](
           externalFilePath, dataOffset, dataLength, builder, desc, Module.MountedFiles);
     };

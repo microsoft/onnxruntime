@@ -444,6 +444,11 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     }
   };
   the_global_api.node_arg_external_location = vaip::node_arg_external_location;
+  the_global_api.model_to_proto = [](onnxruntime::Model& model) { return model.ToProto().release(); };
+  the_global_api.model_proto_serialize_as_string = [](ONNX_NAMESPACE::ModelProto& model_proto) {
+    return vaip_core::DllSafe(model_proto.SerializeAsString());
+  };
+  the_global_api.model_proto_delete = [](ONNX_NAMESPACE::ModelProto* p) { delete p; };
   if (!s_library_vitisaiep.vaip_get_version) {
     return reinterpret_cast<vaip_core::OrtApiForVaip*>(&(the_global_api.host_));
   } else {

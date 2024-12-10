@@ -35,11 +35,13 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   std::vector<int64_t> input_shape;
   std::vector<int64_t> scale_shape;
+  std::vector<uint32_t> zero_point_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get input shape");
   ORT_RETURN_IF_NOT(GetShape(*input_defs[1], scale_shape, logger), "Cannot get scale shape");
   int32_t input_type = 0;
   int32_t output_type = 0;
   int32_t zero_point_type = 0;
+  bool has_zero_point = false;
   ORT_RETURN_IF_NOT(GetType(*input_defs[0], input_type, logger), "Cannot get input data type");
   ORT_RETURN_IF_NOT(GetType(*output_defs[0], output_type, logger), "Cannot get output data type");
 
@@ -49,13 +51,59 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   if (input_defs.size() == 3 && input_defs[2]->Exists()) {
     zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
+    has_zero_point = true;
   } else {
     // DequantizeLinear: x_zero_point's data type equals to input data type
     // QuantizeLinear: x_zero_point's data type equals to output data type
-    // WebNN requires the zero_point to have the same shape as the scale
     zero_point_type = op_type == "DequantizeLinear" ? input_type : output_type;
-    const auto zero_point_shape = GetVecUint32FromVecInt64(scale_shape);
-    zero_point = model_builder.GetZeroConstant(zero_point_type, zero_point_shape);
+  }
+
+  const auto input_rank = input_shape.size();
+  NodeAttrHelper helper(node);
+  int32_t block_size = helper.Get("block_size", 0);
+  int32_t axis = helper.Get("axis", 1);
+  if (axis < 0) {
+    axis = SafeInt<int32_t>(HandleNegativeAxis(axis, input_rank));
+  }
+
+  // For per-axis quantization/dequantization and axis is not equal to input_rank - 1,
+  // we need to reshape the scale and zero_point tensors to make them broadcastable with the input tensor.
+  if (scale_shape.size() == 1 && input_rank > 1 &&
+      block_size == 0 && axis != static_cast<int32_t>(input_rank - 1)) {
+    // Insert ones before and after the axis dimension for broadcasting of scale tensor.
+    std::vector<uint32_t> target_shape{SafeInt<uint32_t>(input_shape[axis])};
+    target_shape.insert(target_shape.begin(), axis, 1);
+    target_shape.insert(target_shape.end(), input_rank - axis - 1, 1);
+    // zero_point has the same shape as the scale tensor.
+    zero_point_shape = target_shape;
+    emscripten::val reshape_scale_options = emscripten::val::object();
+    reshape_scale_options.set("label", node.Name() + "_reshape_scale");
+    scale = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                             scale,
+                                                             emscripten::val::array(target_shape),
+                                                             reshape_scale_options);
+
+    if (has_zero_point) {
+      // Reshape the zero_point tensor too.
+      emscripten::val reshape_zero_point_options = emscripten::val::object();
+      reshape_zero_point_options.set("label", node.Name() + "_reshape_zero_point");
+      zero_point = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                                    zero_point,
+                                                                    emscripten::val::array(target_shape),
+                                                                    reshape_zero_point_options);
+    }
+  }
+
+  // If zero_point is not provided, create a zero constant with the same shape as the scale tensor.
+  if (!has_zero_point) {
+    if (zero_point_shape.empty()) {
+      // zero_point has the same shape as the scale tensor.
+      zero_point_shape = GetVecUint32FromVecInt64(scale_shape);
+    }
+    // Create a zero constant with the same shape as the scale tensor.
+    // The zero value has been pre-processed in the CreateOrGetConstant function,
+    // so the type of T is not relevant here.
+    zero_point = model_builder.CreateOrGetConstant<uint8_t>(zero_point_type, 0, zero_point_shape);
   }
 
   emscripten::val options = emscripten::val::object();

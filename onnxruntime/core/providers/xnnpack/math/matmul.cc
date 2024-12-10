@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "matmul.h"
+#include <limits>
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/xnnpack/xnnpack_init.h"
 
@@ -78,7 +79,6 @@ MatMul::MatMul(const OpKernelInfo& info) : XnnpackKernel(info, /*enable_caches*/
 }
 
 Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                       bool /*save_prepacked_initializers*/,
                        /*out*/ bool& is_packed,
                        /*out*/ PrePackedWeights* /*Not used*/) {
   is_packed = false;
@@ -110,8 +110,8 @@ Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   xnn_weights_cache_t weight_cache = nullptr;
 #endif
 
-  float foutput_min = -INFINITY;
-  float foutput_max = INFINITY;
+  float foutput_min = -std::numeric_limits<float>::infinity();
+  float foutput_max = std::numeric_limits<float>::infinity();
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
     status = xnn_create_fully_connected_nc_f32(
         shape_broadcast[0],    // size_t input_channels,

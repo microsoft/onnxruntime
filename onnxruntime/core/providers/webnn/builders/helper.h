@@ -4,6 +4,7 @@
 
 #pragma once
 
+#include <cstring>
 #include <core/common/status.h>
 #include "core/common/inlined_containers.h"
 #include <core/graph/basic_types.h>
@@ -81,7 +82,7 @@ inline std::string GetTensorName(const ConstPointerContainer<std::vector<NodeArg
   return (input_defs.size() > index) ? std::string(input_defs[index]->Name()) : "";
 }
 
-inline std::vector<uint32_t> GetVecUint32FromVecInt64(const std::vector<int64_t>& int64_vec) {
+inline std::vector<uint32_t> GetVecUint32FromVecInt64(gsl::span<const int64_t> int64_vec) {
   std::vector<uint32_t> uint32_vec;
   uint32_vec.reserve(int64_vec.size());
   std::transform(int64_vec.begin(), int64_vec.end(),
@@ -180,7 +181,8 @@ inline bool IsEmptyTensor(const InitializedTensorSet& initializers, const std::s
   return std::any_of(dims.begin(), dims.end(), [](auto d) { return d == 0; });
 }
 
-bool IsInputSupported(const NodeArg& node_arg, const std::string& parent_name, const logging::Logger& logger);
+bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_name,
+                            const logging::Logger& logger, bool allow_empty_input = false);
 
 // Get a list of groups of supported nodes, each group represents a subgraph supported by WebNN EP.
 std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer,
@@ -209,6 +211,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"DequantizeLinear", "dequantizeLinear"},
     {"Dropout", "identity"},
     {"DynamicQuantizeLinear", "dynamicQuantizeLinear"},
+    {"Einsum", "matmul"},
     {"Elu", "elu"},
     {"Equal", "equal"},
     {"Erf", "erf"},
@@ -226,7 +229,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"GlobalLpPool", "l2Pool2d"},
     {"Greater", "greater"},
     {"GreaterOrEqual", "greaterOrEqual"},
-    {"Gru", "gru"},
+    {"GRU", "gru"},
     {"HardSigmoid", "hardSigmoid"},
     {"HardSwish", "hardSwish"},
     {"Identity", "identity"},
@@ -238,6 +241,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Log", "log"},
     {"LpPool", "l2Pool2d"},
     {"LSTM", "lstm"},
+    {"LRN", "averagePool2d"},
     {"MatMul", "matmul"},
     {"MatMulInteger", "matmulInteger"},
     {"Max", "max"},
@@ -344,6 +348,9 @@ bool GetBidirectionalBroadcastShape(std::vector<int64_t>& shape_a,
 bool SetWebnnDataType(emscripten::val& desc, const int32_t data_type);
 
 bool IsMLTensorSupported();
+
+uint8_t PackInt8ToUint8AsNibble(int8_t value, const int32_t& data_type);
+uint16_t PackFloat32ToUint16AsFloat16(float value);
 
 }  // namespace webnn
 }  // namespace onnxruntime

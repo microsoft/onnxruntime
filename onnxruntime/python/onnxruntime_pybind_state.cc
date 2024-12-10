@@ -1126,16 +1126,6 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       }
     }
 #endif
-  } else if (type == kTvmExecutionProvider) {
-#if USE_TVM
-    onnxruntime::tvm::TvmEPOptions info{};
-    const auto it = provider_options_map.find(type);
-    if (it != provider_options_map.end()) {
-      info = onnxruntime::tvm::TvmEPOptionsHelper::FromProviderOptions(it->second);
-    }
-
-    return onnxruntime::TVMProviderFactoryCreator::Create(info)->CreateProvider();
-#endif
   } else if (type == kVitisAIExecutionProvider) {
 #ifdef USE_VITISAI
     ProviderOptions info{};
@@ -1191,6 +1181,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         kOrtSessionOptionsConfigNnapiEpPartitioningStopOps);
     return onnxruntime::NnapiProviderFactoryCreator::Create(0, partitioning_stop_ops_list)->CreateProvider();
 #endif
+  } else if (type == kVSINPUExecutionProvider) {
+#ifdef USE_VSINPU
+    return onnxruntime::VSINPUProviderFactoryCreator::Create()->CreateProvider();
+#endif
   } else if (type == kRknpuExecutionProvider) {
 #ifdef USE_RKNPU
     return onnxruntime::RknpuProviderFactoryCreator::Create()->CreateProvider();
@@ -1222,6 +1216,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         if (flags_str.find("COREML_FLAG_CREATE_MLPROGRAM") != std::string::npos) {
           coreml_flags |= COREMLFlags::COREML_FLAG_CREATE_MLPROGRAM;
         }
+      } else {
+        // read from provider_options
+        return onnxruntime::CoreMLProviderFactoryCreator::Create(options)->CreateProvider();
       }
     }
 

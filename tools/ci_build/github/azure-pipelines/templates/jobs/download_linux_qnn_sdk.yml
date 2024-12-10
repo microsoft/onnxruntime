@@ -1,7 +1,7 @@
 parameters:
   - name: QnnSDKVersion
     type: string
-    default: '2.28.0.241029'
+    default: '2.28.2.241116'
 
 steps:
   - script: |
@@ -15,6 +15,29 @@ steps:
   - script: |
       echo $(QnnSDKRootDir)
     displayName: 'Print QnnSDKRootDir after downloading QNN SDK'
+
+  - script: |
+      set -x
+      sdk_file="$(QnnSDKRootDir)/sdk.yaml"
+      # Parse the sdk.yaml file to get the QNN SDK version downloaded
+      downloaded_qnn_sdk_version=$(grep '^version:' "$sdk_file" | head -n 1 | cut -d':' -f2 | xargs | cut -d'.' -f1-3 | tr -d '\r')
+
+      # Extract major.minor.patch part from QnnSDKVersion passed as parameter
+      expected_qnn_sdk_version=$(echo ${{ parameters.QnnSDKVersion }} | cut -d'.' -f1-3)
+
+      if [[ -z "$downloaded_qnn_sdk_version" ]]; then
+        echo "QNN version not found in sdk.yaml."
+        exit 1
+      fi
+
+      # Compare provided version with version from sdk.yaml
+      if [[ "$downloaded_qnn_sdk_version" == "$expected_qnn_sdk_version" ]]; then
+        echo "Success: QnnSDKVersion matches sdk.yaml version ($downloaded_qnn_sdk_version)."
+      else
+        echo "Error: QnnSDKVersion ($expected_qnn_sdk_version) does not match sdk.yaml version ($downloaded_qnn_sdk_version) in the QNN SDK directory"
+        exit 1
+      fi
+    displayName: "Sanity Check: QnnSDKVersion vs sdk.yaml version"
 
   - script: |
       azcopy cp --recursive 'https://lotusscus.blob.core.windows.net/models/qnnsdk/Qualcomm AI Hub Proprietary License.pdf' $(QnnSDKRootDir)

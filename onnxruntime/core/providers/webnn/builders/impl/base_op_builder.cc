@@ -32,7 +32,7 @@ bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, cons
   if (!HasSupportedInputs(node, wnn_limits, logger))
     return false;
 
-  if (!HasSupportedOutputsImpl(node, wnn_limits, logger))
+  if (!HasSupportedOutputs(node, wnn_limits, logger))
     return false;
 
   if (!HasSupportedOpSet(node, logger))
@@ -45,7 +45,7 @@ bool BaseOpBuilder::HasSupportedInputs(const Node& node, const emscripten::val& 
                                        const logging::Logger& logger) const {
   const auto node_name = MakeString("Node [", node.Name(), "] type [", node.OpType(), "]");
   for (const auto* input : node.InputDefs()) {
-    if (!IsInputSupported(*input, node_name, logger)) {
+    if (!IsTensorShapeSupported(*input, node_name, logger, allow_empty_tensor_as_input_)) {
       return false;
     }
   }
@@ -64,6 +64,18 @@ bool BaseOpBuilder::HasSupportedInputsImpl(const Node& node,
     return false;
 
   return IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "Input", logger);
+}
+
+bool BaseOpBuilder::HasSupportedOutputs(const Node& node, const emscripten::val& wnn_limits,
+                                        const logging::Logger& logger) const {
+  const auto node_name = MakeString("Node [", node.Name(), "] type [", node.OpType(), "]");
+  for (const auto* output : node.OutputDefs()) {
+    if (!IsTensorShapeSupported(*output, node_name, logger)) {
+      return false;
+    }
+  }
+
+  return HasSupportedOutputsImpl(node, wnn_limits, logger);
 }
 
 bool BaseOpBuilder::HasSupportedOutputsImpl(const Node& node,

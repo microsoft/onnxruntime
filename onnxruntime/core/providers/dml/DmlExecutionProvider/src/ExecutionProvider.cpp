@@ -95,7 +95,7 @@ namespace Dml
         const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup) const
     {
 #ifdef ENABLE_GRAPH_COMPILATION
-        return m_impl->GetCapability(graph, kernel_lookup);
+        return m_impl->GetCapability(graph, kernel_lookup, *GetLogger());
 #else
         return onnxruntime::IExecutionProvider::GetCapability(graph, kernel_lookup);
 #endif
@@ -106,26 +106,7 @@ namespace Dml
         // Release the cached command list references before closing the context
         m_capturedGraphs.clear();
 
-        // Close the allocator before clearing the command queue to stop it from
-        // appending resources to it in an attempt to keep them alive.
-        if (m_allocator)
-        {
-            m_allocator->Close();
-        }
-
-        // Destroy the allocators. We are closing the execution provider, so from now on the
-        // only thing it will be used for is doing copies via the DataTransfer, which doesn't
-        // require allocating any memory.
-        // TODO: Move the copy functions over to ExecutionContext so that we are able to cleanly
-        // destroy ExecutionProviderImpl, and instead have the DataTransfer keep the context alive.
-        m_allocator = nullptr;
-        m_cpuInputAllocator = nullptr;
-
-        // Wait for all pending commands to be done executing and empty the command queue. This will
-        // Force all kernels and resources in flight to get destroyed and, from this point forward,
-        // ExecutionProviderImpl will only be used to execute transfer between resources that are
-        // already existing via the DataTransfer;
-        m_context->WaitForSignalAndClearQueue();
+        m_context->Close();
     }
 
     void ExecutionProviderImpl::WaitForOutstandingWork()
@@ -895,7 +876,8 @@ namespace Dml
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
     ExecutionProviderImpl::GetCapability(
         const onnxruntime::GraphViewer& graph,
-        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup) const
+        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+        const onnxruntime::logging::Logger& logger) const
     {
         uint32_t deviceDataTypeMask = GetSupportedDeviceDataTypeMask(); // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
 
@@ -919,7 +901,7 @@ namespace Dml
         }
 
         // Get the list of nodes that should stay on the CPU
-        auto cpuPreferredNodes = GetCpuPreferredNodes(graph, kernel_lookup, tentativeNodes);
+        auto cpuPreferredNodes = GetCpuPreferredNodes(graph, kernel_lookup, tentativeNodes, logger);
 
         for (size_t nodeIndex : toplogicalOrder)
         {

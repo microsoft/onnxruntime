@@ -11,6 +11,7 @@
 #include "core/framework/execution_provider.h"
 #include "core/providers/webnn/builders/helper.h"
 
+#include <sstream>
 #include <emscripten.h>
 #include <emscripten/val.h>
 
@@ -38,8 +39,11 @@ class ModelBuilder {
   const emscripten::val& GetOpSupportLimits() const { return wnn_limits_; }
 
   void AddOperand(const std::string& name, const emscripten::val& operand);
-  const emscripten::val& GetZeroConstant(
-      const int32_t& data_type, const std::vector<uint32_t>& shape = {});
+
+  template <typename T>
+  const emscripten::val& CreateOrGetConstant(const int32_t& data_type, T value,
+                                             const std::vector<uint32_t>& shape = {});
+
   // Use the buffers to persist WebNN allocated data like transposed weight.
   // It ensures the validity during inference session.
   std::vector<std::unique_ptr<uint8_t[]>> mem_persist_buffers_;
@@ -98,6 +102,121 @@ class ModelBuilder {
 
   static const IOpBuilder* GetOpBuilder(const Node& node);
 };
+
+// Create or retrieve one of the following:
+// - A WebNN constant MLOperand filled with the specified value, data type, and shape.
+// - A WebNN scalar constant MLOperand with the specified value and data type.
+// For scalar constant, it is workaround for builer.constant(type, value) method since
+// it has not been implemented now.
+// https://webmachinelearning.github.io/webnn/#api-mlgraphbuilder-constant-type-value
+//
+// This function enforces a mapping between the data_type and the value types:
+// - TensorProto_DataType_INT4    <-> int8_t
+// - TensorProto_DataType_UINT4   <-> int8_t
+// - TensorProto_DataType_BOOL    <-> bool
+// - TensorProto_DataType_UINT8   <-> uint8_t
+// - TensorProto_DataType_INT8    <-> int8_t
+// - TensorProto_DataType_FLOAT16 <-> float
+// - TensorProto_DataType_FLOAT   <-> float
+// - TensorProto_DataType_INT32   <-> int32_t
+// - TensorProto_DataType_INT64   <-> int64_t
+// - TensorProto_DataType_UINT32  <-> uint32_t
+// - TensorProto_DataType_UINT64  <-> uint64_t
+template <typename T>
+const emscripten::val& ModelBuilder::CreateOrGetConstant(const int32_t& data_type, T value,
+                                                         const std::vector<uint32_t>& shape) {
+  std::string name = "webnn_constant_" + std::to_string(data_type) + "_" + std::to_string(value);
+  emscripten::val dims = emscripten::val::array();
+  if (!shape.empty()) {
+    dims = emscripten::val::array(shape);
+    std::ostringstream name_stream;
+    name_stream << name;
+    for (const auto& dim : shape) {
+      name_stream << "_" << dim;
+    }
+    name = name_stream.str();
+  }
+
+  // If the operand does not exist, create it.
+  if (wnn_operands_.find(name) == wnn_operands_.end()) {
+    emscripten::val desc = emscripten::val::object();
+    desc.set("shape", dims);
+    desc.set("dimensions", dims);
+    emscripten::val buffer = emscripten::val::undefined();
+    if (!SetWebnnDataType(desc, data_type)) {
+      ORT_THROW("Unsupported data type: " + std::to_string(data_type));
+    }
+    auto num_elements = Product(shape);
+    switch (data_type) {
+      case ONNX_NAMESPACE::TensorProto_DataType_INT4:
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT4:
+        // For WebNN int4 and uint4 tensors are stored in Uint8Array,
+        // so we need to adjust the number of elements.
+        num_elements = (num_elements + 1) / 2;
+        buffer = emscripten::val::global("Uint8Array").new_(num_elements);
+        if (value) {
+          buffer.call<void>("fill", emscripten::val(PackInt8ToUint8AsNibble(value, data_type)));
+        }
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+        buffer = emscripten::val::global("Uint8Array").new_(num_elements);
+        if (value) {
+          buffer.call<void>("fill", emscripten::val(value));
+        }
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+        buffer = emscripten::val::global("Int8Array").new_(num_elements);
+        if (value) {
+          buffer.call<void>("fill", emscripten::val(value));
+        }
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+        buffer = emscripten::val::global("Uint16Array").new_(num_elements);
+        if (value) {
+          buffer.call<void>("fill", emscripten::val(PackFloat32ToUint16AsFloat16(value)));
+        }
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+        buffer = emscripten::val::global("Float32Array").new_(num_elements);
+        if (value) {
+          buffer.call<void>("fill", emscripten::val(value));
+        }
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+        buffer = emscripten::val::global("Int32Array").new_(num_elements);
+        if (value) {
+          buffer.call<void>("fill", emscripten::val(value));
+        }
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+        buffer = emscripten::val::global("Uint32Array").new_(num_elements);
+        if (value) {
+          buffer.call<void>("fill", emscripten::val(value));
+        }
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+        buffer = emscripten::val::global("BigInt64Array").new_(num_elements);
+        if (value) {
+          buffer.call<void>("fill", emscripten::val::global("BigInt")(value));
+        }
+        break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
+        buffer = emscripten::val::global("BigUint64Array").new_(num_elements);
+        if (value) {
+          buffer.call<void>("fill", emscripten::val::global("BigInt")(value));
+        }
+        break;
+      default:
+        break;
+    }
+
+    const emscripten::val constant = wnn_builder_.call<emscripten::val>("constant", desc, buffer);
+    wnn_operands_.insert(std::make_pair(name, constant));
+  }
+
+  return wnn_operands_.at(name);
+}
 
 }  // namespace webnn
 }  // namespace onnxruntime

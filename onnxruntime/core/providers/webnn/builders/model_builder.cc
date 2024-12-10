@@ -14,7 +14,6 @@
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 
-#include <sstream>
 #include <utility>
 
 namespace onnxruntime {
@@ -227,7 +226,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     if (!shape.empty()) {
       dims.reserve(shape.size());
       for (const auto& dim : shape) {
-        // dim_param free dimensions should have already been excluded by IsInputSupported().
+        // dim_param free dimensions should have already been excluded by IsTensorShapeSupported().
         assert(dim.has_dim_value());
         dims.push_back(SafeInt<int32_t>(dim.dim_value()));
       }
@@ -383,73 +382,6 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
 
 void ModelBuilder::AddOperand(const std::string& name, const emscripten::val& operand) {
   wnn_operands_.insert(std::make_pair(name, operand));
-}
-
-// Get the zero constant with shape.
-const emscripten::val& ModelBuilder::GetZeroConstant(const int32_t& data_type,
-                                                     const std::vector<uint32_t>& shape) {
-  std::string name = "webnn_zero_constant_" + std::to_string(data_type);
-  emscripten::val dims = emscripten::val::array();
-  if (!shape.empty()) {
-    dims = emscripten::val::array(shape);
-    std::ostringstream name_stream;
-    name_stream << name;
-    for (const auto& dim : shape) {
-      name_stream << "_" << dim;
-    }
-    name = name_stream.str();
-  }
-  // If the operand does not exist, create it.
-  if (wnn_operands_.find(name) == wnn_operands_.end()) {
-    emscripten::val desc = emscripten::val::object();
-    desc.set("dimensions", dims);
-    desc.set("shape", dims);
-    emscripten::val zero_buffer = emscripten::val::undefined();
-    if (!SetWebnnDataType(desc, data_type)) {
-      ORT_THROW("Unsupported data type: " + std::to_string(data_type));
-    }
-    auto num_elements = Product(shape);
-    switch (data_type) {
-      case ONNX_NAMESPACE::TensorProto_DataType_INT4:
-      case ONNX_NAMESPACE::TensorProto_DataType_UINT4:
-        // For WebNN int4 and uint4 tensors are stored in Uint8Array,
-        // so we need to adjust the number of elements.
-        num_elements = (num_elements + 1) / 2;
-        zero_buffer = emscripten::val::global("Uint8Array").new_(num_elements);
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-      case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-        zero_buffer = emscripten::val::global("Uint8Array").new_(num_elements);
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-        zero_buffer = emscripten::val::global("Int8Array").new_(num_elements);
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-        zero_buffer = emscripten::val::global("Uint16Array").new_(num_elements);
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-        zero_buffer = emscripten::val::global("Float32Array").new_(num_elements);
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-        zero_buffer = emscripten::val::global("Int32Array").new_(num_elements);
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-        zero_buffer = emscripten::val::global("BigInt64Array").new_(num_elements);
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-        zero_buffer = emscripten::val::global("Uint32Array").new_(num_elements);
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-        zero_buffer = emscripten::val::global("BigUint64Array").new_(num_elements);
-        break;
-      default:
-        break;
-    }
-
-    emscripten::val zero_constant = wnn_builder_.call<emscripten::val>("constant", desc, zero_buffer);
-    wnn_operands_.insert(std::make_pair(name, zero_constant));
-  }
-  return wnn_operands_.at(name);
 }
 
 void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {

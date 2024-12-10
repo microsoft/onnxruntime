@@ -43,8 +43,8 @@ struct AllocatorCreationInfo {
 AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info);
 
 /**
- * Gets whether a CPU allocator should use an arena or not.
+ * Gets whether a CPU allocator supports arena usage.
  */
-bool ShouldCpuAllocatorUseArena(bool is_arena_requested);
+bool DoesCpuAllocatorSupportArenaUsage();
 
 }  // namespace onnxruntime

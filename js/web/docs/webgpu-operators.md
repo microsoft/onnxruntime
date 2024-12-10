@@ -50,12 +50,14 @@ Do not modify directly.*
 | Gather | ai.onnx(1-10,11-12,13+) |  |
 | GatherBlockQuantized | com.microsoft(1+) |  |
 | GatherElements | ai.onnx(11-12,13+) |  |
+| GatherND | ai.onnx(11,12,13+) |  |
 | Gelu | ai.onnx(20+); com.microsoft(1+) |  |
 | Gemm | ai.onnx(7-8,9-10,11-12,13+) |  |
 | GlobalAveragePool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
 | GlobalMaxPool | ai.onnx(1+); com.ms.internal.nhwc(1+) |  |
 | Greater | ai.onnx(7-8,9-12,13+) |  |
 | GreaterOrEqual | ai.onnx(12-15,16+) |  |
+| GridSample | ai.onnx(16-19); com.ms.internal.nhwc(16-19) |  |
 | GroupQueryAttention | com.microsoft(1+) |  |
 | HardSigmoid | ai.onnx(6+) |  |
 | If | ai.onnx(1-10,11-12,13-18,19-20,21+) |  |
@@ -93,6 +95,7 @@ Do not modify directly.*
 | Reshape | ai.onnx(5-12,13,14-18,19-20,21+) | no GPU kernel |
 | Resize | ai.onnx(10,11-12,13-17,18,19+); com.ms.internal.nhwc(10,11-12,13-17,18,19+) | CoordinateTransformMode align_corners is not supported with downsampling |
 | RotaryEmbedding | com.microsoft(1+) |  |
+| ScatterND | ai.onnx(11-12,13-15,16-17,18+) |  |
 | Shape | ai.onnx(1-12,13-14,15-18,19-20,21+) | no GPU kernel; an ORT warning is generated - need to fix |
 | Sigmoid | ai.onnx(6-12,13+) |  |
 | SimplifiedLayerNormalization | ai.onnx(1+) |  |

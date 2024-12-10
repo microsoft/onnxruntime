@@ -5,7 +5,7 @@
 ARG BASEIMAGE=nvidia/cuda:11.8.0-cudnn8-devel-ubi8
 
 FROM $BASEIMAGE
-ARG TRT_VERSION=10.5.0.18-1.cuda11.8
+ARG TRT_VERSION=10.6.0.26-1.cuda11.8
 
 #Install TensorRT only if TRT_VERSION is not empty
 RUN if [ -n "${TRT_VERSION}" ]; then  \
@@ -32,8 +32,8 @@ else \
     echo "TRT_VERSION is x${TRT_VERSION} skipping Tensor RT Installation" ; \
 fi
 
-ENV PATH /usr/local/cuda/bin:$PATH
-ENV CUDA_MODULE_LOADING "LAZY"
+ENV PATH=/usr/local/cuda/bin:$PATH
+ENV CUDA_MODULE_LOADING="LAZY"
 
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/install_centos.sh && rm -rf /tmp/scripts

@@ -46,11 +46,6 @@ namespace Dml
 
         void SetDefaultRoundingMode(AllocatorRoundingMode roundingMode);
 
-        void Close()
-        {
-            m_closed = true;
-        }
-
     public: // onnxruntime::IAllocator
         void* Alloc(size_t size, AllocatorRoundingMode roundingMode);
         void* Alloc(size_t size) final;
@@ -88,7 +83,6 @@ namespace Dml
         std::vector<Bucket> m_pool;
         size_t m_currentAllocationId = 0;
         uint64_t m_currentResourceId = 0;
-        bool m_closed = false;
 
         // Unless specifically requested, allocation sizes are not rounded to enable pooling
         // until SetDefaultRoundingMode is called.  This should be done at completion of session

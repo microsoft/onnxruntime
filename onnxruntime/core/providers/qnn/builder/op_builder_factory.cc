@@ -83,6 +83,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateReduceOpBuilder("ReduceMin", *this);
     CreateReduceOpBuilder("ReduceProd", *this);
     CreateReduceOpBuilder("ReduceSum", *this);
+    CreateReduceOpBuilder("ReduceL2", *this);
   }
 
   {

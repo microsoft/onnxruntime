@@ -105,7 +105,7 @@ def load_jsonc(basename: str):
     return json.loads("\n".join(lines))
 
 
-def create_backend_test(test_name=None):
+def create_backend_test(devices: list[str], test_name=None):
     """Creates an OrtBackendTest and adds its TestCase's to global scope so unittest will find them."""
 
     overrides = load_jsonc("onnx_backend_test_series_overrides.jsonc")
@@ -126,30 +126,29 @@ def create_backend_test(test_name=None):
     else:
         filters = load_jsonc("onnx_backend_test_series_filters.jsonc")
         current_failing_tests = apply_filters(filters, "current_failing_tests")
-
         if platform.architecture()[0] == "32bit":
             current_failing_tests += apply_filters(filters, "current_failing_tests_x86")
 
-        if backend.supports_device("DNNL"):
+        if backend.supports_device("DNNL") or "DNNL" in devices:
             current_failing_tests += apply_filters(filters, "current_failing_tests_DNNL")
 
-        if backend.supports_device("NNAPI"):
+        if backend.supports_device("NNAPI") or "NNAPI" in devices:
             current_failing_tests += apply_filters(filters, "current_failing_tests_NNAPI")
 
-        if backend.supports_device("OPENVINO_GPU"):
+        if backend.supports_device("OPENVINO_GPU") or "OPENVINO_GPU" in devices:
             current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_GPU")
 
-        if backend.supports_device("OPENVINO_CPU"):
+        if backend.supports_device("OPENVINO_CPU") or "OPENVINO_CPU" in devices:
             current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_CPU_FP32")
             current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_CPU_FP16")
 
-        if backend.supports_device("OPENVINO_NPU"):
+        if backend.supports_device("OPENVINO_NPU") or "OPENVINO_NPU" in devices:
             current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_NPU")
 
-        if backend.supports_device("OPENVINO"):
+        if backend.supports_device("OPENVINO") or "OPENVINO" in devices:
             current_failing_tests += apply_filters(filters, "current_failing_tests_OPENVINO_opset18")
 
-        if backend.supports_device("MIGRAPHX"):
+        if backend.supports_device("MIGRAPHX") or "MIGRAPHX" in devices:
             current_failing_tests += apply_filters(filters, "current_failing_tests_MIGRAPHX")
 
         if backend.supports_device("WEBGPU"):
@@ -158,8 +157,16 @@ def create_backend_test(test_name=None):
         # Skip these tests for a "pure" DML onnxruntime python wheel. We keep these tests enabled for instances where both DML and CUDA
         # EPs are available (Windows GPU CI pipeline has this config) - these test will pass because CUDA has higher precedence than DML
         # and the nodes are assigned to only the CUDA EP (which supports these tests)
-        if backend.supports_device("DML") and not backend.supports_device("GPU"):
+        if (backend.supports_device("DML") and not backend.supports_device("GPU")) or "DML" in devices:
             current_failing_tests += apply_filters(filters, "current_failing_tests_pure_DML")
+            # exclude CUDA EP when DML test is running.
+            os.environ["ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS"] = "TensorrtExecutionProvider,CUDAExecutionProvider"
+        elif backend.supports_device("DML") and "DML" not in devices:
+            # exclude DML EP when CUDA test is running.
+            os.environ["ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS"] = "TensorrtExecutionProvider,DmlExecutionProvider"
+        else:
+            # exclude TRT EP temporarily and only test CUDA EP to retain previous behavior
+            os.environ["ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS"] = "TensorrtExecutionProvider"
 
         filters = (
             current_failing_tests
@@ -171,9 +178,6 @@ def create_backend_test(test_name=None):
 
         backend_test.exclude("(" + "|".join(filters) + ")")
         print("excluded tests:", filters)
-
-        # exclude TRT EP temporarily and only test CUDA EP to retain previous behavior
-        os.environ["ORT_ONNX_BACKEND_EXCLUDE_PROVIDERS"] = "TensorrtExecutionProvider"
 
     # import all test cases at global scope to make
     # them visible to python.unittest.
@@ -199,6 +203,15 @@ def parse_args():
         help="Only run tests that match this value. Matching is regex based, and '.*' is automatically appended",
     )
 
+    parser.add_argument(
+        "--devices",
+        type=str,
+        choices=["CPU", "CUDA", "MIGRAPHX", "DNNL", "DML", "OPENVINO_GPU", "OPENVINO_CPU", "OPENVINO_NPU", "OPENVINO"],
+        nargs="+",  # allows multiple values
+        default=["CPU"],  # default to ["CPU"] if no input is given
+        help="Select one or more devices CPU, CUDA, MIGRAPHX, DNNL, DML, OPENVINO_GPU, OPENVINO_CPU, OPENVINO_NPU, OPENVINO",
+    )
+
     # parse just our args. python unittest has its own args and arg parsing, and that runs inside unittest.main()
     parsed, unknown = parser.parse_known_args()
     sys.argv = sys.argv[:1] + unknown
@@ -209,5 +222,5 @@ def parse_args():
 if __name__ == "__main__":
     args = parse_args()
 
-    create_backend_test(args.test_name)
+    create_backend_test(args.devices, args.test_name)
     unittest.main()

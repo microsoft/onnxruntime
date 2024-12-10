@@ -46,7 +46,6 @@
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session_utils.h"
-#include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 #include "dummy_provider.h"
@@ -65,8 +64,6 @@ using namespace std;
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
 using namespace onnxruntime::concurrency;
-
-extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace {
 struct KernelRegistryAndStatus {
@@ -500,57 +497,6 @@ TEST(InferenceSessionTests, TestModelSerialization) {
   ASSERT_TRUE(session_object_emptyValidation.Initialize().IsOK());
 }
 
-// Test feature serialize prepack weight is only used in PC with CPU on inference,
-// disable this test for training, other device and eps
-#if !ENABLE_TRAINING && !defined(USE_CUDA) && !defined(__wasm__) && !defined(USE_DNNL) && !defined(USE_QNN) && !defined(__ANDROID__) && !defined(USE_COREML)
-// MLAS dispatcher used in matmul_nbits kernels here is 64 bit only
-#if defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)
-TEST(InferenceSessionTests, TestPrePackSerialization) {
-  SessionOptions so;
-  std::string model_name = "model_with_matmul_nbits";
-
-  const std::string test_model = "testdata/prepack/" + model_name + ".onnx";
-  const std::string optimized_model = "testdata/prepack/" + model_name + "_opt.onnx";
-
-  so.session_logid = "InferenceSessionTests.TestPrepackSerialization";
-  so.enable_cpu_mem_arena = false;
-  so.graph_optimization_level = TransformerLevel::Default;
-  so.optimized_model_filepath = optimized_model;
-  std::string external_initializer_file_name = model_name + "_opt.onnx.data";
-
-  // enable serialize prepack initializer to data file
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsSavePrePackedConstantInitializers,
-                                                    "1"));
-  // always save external initializer to data file for test
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes,
-                                                    "0"));
-  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsOptimizedModelExternalInitializersFileName,
-                                                    external_initializer_file_name.c_str()));
-
-  // optimize model with serialize prepack constant initializers
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_TRUE(session_object.Load(test_model).IsOK());
-  ASSERT_TRUE(session_object.Initialize().IsOK());
-
-  // Verify prepack initializers are serialized into optimized model and data file
-  // load optimized model and check initializer are prepacked
-  auto logger = DefaultLoggingManager().CreateLogger("TestPrepackSerialization");
-  std::shared_ptr<Model> model;
-  auto load_status = Model::Load(ToWideString(optimized_model), model, nullptr, *logger);
-  ASSERT_EQ(Status::OK(), load_status);
-  Graph& graph = model->MainGraph();
-
-  bool found_prepack_initializer = false;
-  for (const auto& item : graph.GetAllInitializedTensors()) {
-    if (item.first.find(':') != std::string::npos) {
-      found_prepack_initializer = true;
-    }
-  }
-  ASSERT_TRUE(found_prepack_initializer);
-}
-#endif
-#endif
-
 #ifdef ORT_RUN_EXTERNAL_ONNX_TESTS
 static bool Compare(const InputDefList& f_arg, const InputDefList& s_arg) {
   if (f_arg.size() != s_arg.size()) {
@@ -870,6 +816,47 @@ TEST(InferenceSessionTests, CheckRunProfilerStartTime) {
 
   // the profiler's start time needs to be between before_time and after_time
   ASSERT_TRUE(before_start_time <= profiling_start_time && profiling_start_time <= after_start_time);
+}
+
+TEST(InferenceSessionTests, CheckRunProfilerWithOptionalValues) {
+  // Test whether the profiler can work on model with optional values
+  SessionOptions so;
+
+  so.session_logid = "CheckRunProfiler";
+  so.enable_profiling = true;
+  so.profile_file_prefix = ORT_TSTR("onnxprofile_profile_test");
+
+  InferenceSession session_object(so, GetEnvironment());
+  ASSERT_STATUS_OK(session_object.Load(ORT_TSTR("testdata/relu_with_optional.onnx")));
+  ASSERT_STATUS_OK(session_object.Initialize());
+
+  RunOptions run_options;
+  run_options.run_tag = "RunTag";
+
+  // prepare inputs
+  std::vector<int64_t> dims_x = {1};
+  std::vector<int> values_x = {-4};
+  OrtValue ml_value;
+  CreateMLValue<int>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_x, values_x, &ml_value);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("input", ml_value));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("output");
+  std::vector<OrtValue> fetches;
+
+  // prepare expected inputs and outputs
+  std::vector<int64_t> expected_dims_y = {1};
+  std::vector<int> expected_values_y = {0};
+
+  // Now run
+  common::Status st = session_object.Run(run_options, feeds, output_names, &fetches);
+  if (!st.IsOK()) {
+    std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
+  }
+  ASSERT_TRUE(st.IsOK());
+  VerifyOutputs<int>(fetches.at(0).Get<Tensor>(), expected_dims_y, expected_values_y);
 }
 
 TEST(InferenceSessionTests, MultipleSessionsNoTimeout) {

@@ -48,7 +48,7 @@ RUN cd /code \
     && python3 -m venv /code/env \
     && . /code/env/bin/activate \
     && pip install --upgrade psutil setuptools wheel packaging \
-    && pip install -r tools/ci_build/github/linux/docker/inference/x86_64/python/cpu/scripts/requirements.txt \
+    && pip install -r /code/tools/ci_build/github/linux/python/requirements.txt \
     && python /code/tools/ci_build/build.py --build_dir /code/build/Linux \
     --allow_running_as_root --skip_submodule_sync \
     --use_cuda --cuda_home /usr/local/cuda \
@@ -56,7 +56,6 @@ RUN cd /code \
     --build_shared_lib --skip_tests \
     --config Release --build_wheel --update --build --parallel \
     --cmake_generator Ninja \
-    --enable_cuda_nhwc_ops \
     --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER) "CMAKE_CUDA_ARCHITECTURES=${CMAKE_CUDA_ARCHITECTURES}" onnxruntime_BUILD_UNIT_TESTS=OFF
 
 # Start second stage to copy the build artifacts

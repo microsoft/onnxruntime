@@ -21,7 +21,8 @@ Status EPCtxHandler::ExportEPCtxModel(const GraphViewer& graph_viewer,
                                       const bool& ep_context_embed_mode,
                                       std::string&& model_blob_str,
                                       const std::string& openvino_sdk_version) const {
-  auto model_build = graph_viewer.CreateModel(logger);
+  auto& metadata = graph_viewer.GetGraph().GetModel().MetaData();
+  auto model_build = graph_viewer.CreateModel(logger, metadata);
   auto& graph_build = model_build->MainGraph();
 
   // Get graph inputs and outputs
@@ -94,11 +95,12 @@ Status EPCtxHandler::ExportEPCtxModel(const GraphViewer& graph_viewer,
   return Status::OK();
 }
 
-Status EPCtxHandler::ImportBlobFromEPCtxModel(const GraphViewer& graph_viewer) {
+Status EPCtxHandler::ImportBlobFromEPCtxModel(const GraphViewer& graph_viewer, bool& ep_context_embed_mode) {
   auto node = graph_viewer.GetNode(0);
   auto& attrs = node->GetAttributes();
   ORT_ENFORCE(attrs.count(EP_CACHE_CONTEXT) > 0);
   model_stream_ = std::make_shared<std::istringstream>(attrs.at(EP_CACHE_CONTEXT).s());
+  ep_context_embed_mode = static_cast<bool>(attrs.at(EMBED_MODE).i());
   LOGS_DEFAULT(VERBOSE) << "[OpenVINO EP] Read blob from EPContext Node";
 
   is_valid_ep_ctx_graph_ = true;

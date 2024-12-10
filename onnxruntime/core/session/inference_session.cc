@@ -1644,7 +1644,7 @@ Status ApplyOrtFormatModelRuntimeOptimizations(
        level <= static_cast<int>(session_options.graph_optimization_level);
        ++level) {
     const auto transformers = optimizer_utils::GenerateTransformersForMinimalBuild(
-        static_cast<TransformerLevel>(level), session_options, SatRuntimeOptimizationLoadContext{}, cpu_ep,
+        static_cast<TransformerLevel>(level), session_options, SatRuntimeOptimizationLoadContext{}, cpu_ep, logger,
         optimizers_to_disable, intra_op_thread_pool, p_buffered_tensors);
 
     for (const auto& transformer : transformers) {
@@ -1840,7 +1840,8 @@ common::Status InferenceSession::Initialize() {
       ORT_RETURN_IF_ERROR_SESSIONID_(AddPredefinedTransformers(graph_transformer_mgr_,
                                                                session_options_.graph_optimization_level,
                                                                minimal_build_optimization_handling,
-                                                               record_runtime_optimization_produced_op_schema));
+                                                               record_runtime_optimization_produced_op_schema,
+                                                               *session_logger_));
 
 #ifdef USE_DML
       const IExecutionProvider* dmlExecutionProvider = execution_providers_.Get(kDmlExecutionProvider);
@@ -2062,11 +2063,9 @@ common::Status InferenceSession::Initialize() {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
-    SessionState::PrePackInitializers pre_packed_initializers;
     ORT_RETURN_IF_ERROR_SESSIONID_(
         session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
                                              // need to keep the initializers if saving the optimized model
-                                             pre_packed_initializers,
                                              !saving_model,
                                              saving_ort_format));
 
@@ -2102,47 +2101,11 @@ common::Status InferenceSession::Initialize() {
                   kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, "1024"));
           Graph::OffsetAlignmentInfo align_info;
           align_info.align_offset = true;
-          bool save_prepacked_constant_initializers =
-              session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsSavePrePackedConstantInitializers, "0") == "1" ? true : false;
-          Graph::PrePackedTensorProtoToSave pre_packed_initializers_tensor_proto;
-          if (save_prepacked_constant_initializers) {
-            LOGS(*session_logger_, WARNING) << "Serialize prepacked initializers option has been turn on."
-                                            << "Use this option only when run model inference on PC with CPU."
-                                            << "Make sure to save and load model in same device as prepack is device specific."
-                                            << "Note: this feature in only work with ONNX model format."
-                                            << "Process of use this option is like below:"
-                                            << "1. Optimize model with external data file with save_prepacked_constant_initializers on:"
-                                            << "       sample: sess_options.add_session_config_entry('session.save_prepacked_constant_initializers',  ' 1 ')"
-                                            << "   With save_prepacked_constant_initializers option, prepacked initializer will be serialized into data file."
-                                            << "2. Load optimized model and external data file in same device, no prepack is need."
-                                            << "3. Run inference with optimized model.";
-
-            if (fbs::utils::IsOrtFormatModel(session_options_.optimized_model_filepath)) {
-              ORT_RETURN_IF_ERROR_SESSIONID_(
-                  ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                  "Unable to serialize prepacked external constant initializer for ORT format model."
-                                  "Please use ONNX format model with save_prepacked_constant_initializers."));
-            }
-
-            // convert pre_packed_initializers to tensorproto format and save to external data file
-            for (const auto& name_item_pair : pre_packed_initializers.pre_packed_initializers_to_save) {
-              auto initializer_name = name_item_pair.first;
-
-              for (const auto& kernel_name_initializer_item_pair : name_item_pair.second) {
-                auto kernel_name = kernel_name_initializer_item_pair.first;
-                auto prepacked_initializer_name = utils::GetPrepackedInitializerName(initializer_name, kernel_name);
-
-                pre_packed_initializers_tensor_proto[initializer_name][kernel_name] = utils::TensorToTensorProto(kernel_name_initializer_item_pair.second, prepacked_initializer_name);
-              }
-            }
-          }
           ORT_RETURN_IF_ERROR_SESSIONID_(Model::SaveWithExternalInitializers(*model_,
                                                                              session_options_.optimized_model_filepath,
                                                                              optimized_model_external_initializers_file_name,
                                                                              optimized_model_external_initializers_min_size_in_bytes,
-                                                                             align_info,
-                                                                             save_prepacked_constant_initializers,
-                                                                             pre_packed_initializers_tensor_proto));
+                                                                             align_info));
         }
       }
     }
@@ -2150,7 +2113,7 @@ common::Status InferenceSession::Initialize() {
     std::vector<TuningResults> tuning_results;
     bool found_tuning_results = false;
     ORT_RETURN_IF_ERROR_SESSIONID_(inference_session_utils::ParseTuningResultsFromModelMetadata(
-        model_metadata_, tuning_results, found_tuning_results));
+        model_metadata_, tuning_results, found_tuning_results, *session_logger_));
     if (found_tuning_results) {
       ORT_RETURN_IF_ERROR_SESSIONID_(SetTuningResults(tuning_results, /*error_on_invalid*/ false, /*auto_enable*/ true));
     }
@@ -3271,7 +3234,8 @@ common::Status InferenceSession::AddPredefinedTransformers(
     GraphTransformerManager& transformer_manager,
     TransformerLevel graph_optimization_level,
     MinimalBuildOptimizationHandling minimal_build_optimization_handling,
-    RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn) const {
+    RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn,
+    const logging::Logger& logger) const {
   const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
   for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
     TransformerLevel level = static_cast<TransformerLevel>(i);
@@ -3283,7 +3247,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
             minimal_build_optimization_handling == MinimalBuildOptimizationHandling::ApplyFullBuildOptimizations;
 
         if (use_full_build_optimizations) {
-          return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep,
+          return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
                                                        optimizers_to_disable_,
                                                        GetIntraOpThreadPoolToUse(),
                                                        session_state_->GetMutableBufferedTensors());
@@ -3295,6 +3259,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
                         record_runtime_optimization_produced_op_schema_fn}}
                   : SatApplyContextVariant{SatDirectApplicationContext{}};
           return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, cpu_ep,
+                                                                      logger,
                                                                       optimizers_to_disable_,
                                                                       GetIntraOpThreadPoolToUse(),
                                                                       session_state_->GetMutableBufferedTensors());
