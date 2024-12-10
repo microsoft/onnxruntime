@@ -118,8 +118,11 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
     ORT_ENFORCE(Adapter().GetInfo(&adapter_info_));
     // cache device limits
     wgpu::SupportedLimits device_supported_limits;
+    wgpu::DawnExperimentalSubgroupLimits subgroup_limits;
+    device_supported_limits.nextInChain = &subgroup_limits;
     ORT_ENFORCE(Device().GetLimits(&device_supported_limits));
     device_limits_ = device_supported_limits.limits;
+    min_subgroup_size_ = subgroup_limits.minSubgroupSize;
 
     // create buffer manager
     buffer_mgr_ = BufferManagerFactory::Create(*this, webgpu_ep_info.storage_buffer_cache_mode, webgpu_ep_info.uniform_buffer_cache_mode, webgpu_ep_info.query_resolve_buffer_cache_mode);
@@ -135,6 +138,7 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
     } else {
       query_type_ = TimestampQueryType::None;
     }
+    is_flash_attention_enabled_ = webgpu_ep_info.enable_flash_attention;
   });
 }
 

@@ -23,9 +23,10 @@ class WebGpuProfiler;
 }  // namespace webgpu
 
 struct WebGpuExecutionProviderInfo {
-  WebGpuExecutionProviderInfo(DataLayout data_layout, bool enable_graph_capture)
+  WebGpuExecutionProviderInfo(DataLayout data_layout, bool enable_graph_capture, bool enable_flash_attention)
       : data_layout{data_layout},
         enable_graph_capture{enable_graph_capture},
+        enable_flash_attention{enable_flash_attention},
         storage_buffer_cache_mode{},
         uniform_buffer_cache_mode{},
         query_resolve_buffer_cache_mode{},
@@ -36,6 +37,7 @@ struct WebGpuExecutionProviderInfo {
 
   DataLayout data_layout;
   bool enable_graph_capture;
+  bool enable_flash_attention;
   webgpu::BufferCacheMode storage_buffer_cache_mode;
   webgpu::BufferCacheMode uniform_buffer_cache_mode;
   webgpu::BufferCacheMode query_resolve_buffer_cache_mode;
