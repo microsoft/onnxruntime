@@ -61,6 +61,18 @@ static const char* const kCoremlProviderOption_SpecializationStrategy = "Special
 static const char* const kCoremlProviderOption_ProfileComputePlan = "ProfileComputePlan";
 // please refer to https://developer.apple.com/documentation/coreml/mlmodelconfiguration/allowlowprecisionaccumulationongpu
 static const char* const kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU = "AllowLowPrecisionAccumulationOnGPU";
+// Specify the path to cache the model.
+// CoreML EP will convert onnx subgraph to CoreML model and save to disk.
+// If this path is not specified, the model will be saved to a temp directory and deleted after the session is closed.
+// otherwise, the model will be saved to the specified path and User should manage to delete the model.
+// The basic logic is:
+//   if (ModelCachePath != nullptr && ModelCachePath/cache_coreml.exists()) {
+//     // load from cache_coreml
+//   } else {
+//     // save to ModelCachePath
+//   }
+// we wound not detect if the cached model match the onnx subgraph, so User should carefully manage the cache for a new model.
+static const char* const kCoremlProviderOption_ModelCachePath = "ModelCachePath";
 
 #ifdef __cplusplus
 extern "C" {

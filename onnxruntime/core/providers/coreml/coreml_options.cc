@@ -5,6 +5,7 @@
 #include "core/providers/coreml/coreml_provider_factory.h"  // defines flags
 #include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/coreml/builders/helper.h"
+#include "core/platform/env.h"
 
 namespace onnxruntime {
 
@@ -71,6 +72,7 @@ void CoreMLOptions::ValidateAndParseProviderOption(const ProviderOptions& option
       kCoremlProviderOption_SpecializationStrategy,
       kCoremlProviderOption_ProfileComputePlan,
       kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU,
+      kCoremlProviderOption_ModelCachePath,
   };
   // Validate the options
   for (const auto& option : options) {
@@ -103,7 +105,25 @@ void CoreMLOptions::ValidateAndParseProviderOption(const ProviderOptions& option
       profile_compute_plan_ = option.second == "1";
     } else if (kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU == option.first) {
       allow_low_precision_accumulation_on_gpu_ = option.second == "1";
+    } else if (kCoremlProviderOption_ModelCachePath == option.first) {
+      model_cache_path_ = option.second;
     }
+  }
+
+  // Set the model cache path with equireStaticShape and ModelFormat
+  if (model_cache_path_.size()) {
+    if (require_static_shape_) {
+      model_cache_path_ += "/static_shape";
+    } else {
+      model_cache_path_ += "/dynamic_shape";
+    }
+
+    if (create_mlprogram_) {
+      model_cache_path_ += "/mlpackage";
+    } else {
+      model_cache_path_ += "/mlnnmodel";
+    }
+    ORT_THROW_IF_ERROR(Env::Default().CreateFolder(model_cache_path_));
   }
 }
 }  // namespace onnxruntime
