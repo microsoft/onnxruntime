@@ -59,7 +59,7 @@ jobs:
         run: |
           set -e -x
           python -m pip install --user -r requirements-dev.txt
-          python -m pip install --user -r lintrunner
+          python -m pip install --user lintrunner
           lintrunner init
       - name: Run lintrunner on all files
         run: |
