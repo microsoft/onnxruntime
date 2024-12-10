@@ -43,7 +43,7 @@ jobs:
         run: |
           bundle exec htmlproofer ./_site \
             --assume_extension \
-            --checks_to_ignore ImageCheck,ScriptCheck \
+            --checks 'Links' \
             --only_4xx \
             --ignore-status-codes 429,403 \
             --allow_hash_href \
