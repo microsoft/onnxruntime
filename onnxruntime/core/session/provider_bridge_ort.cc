@@ -812,6 +812,9 @@ struct ProviderHostImpl : ProviderHost {
   int32_t PrimitiveDataTypeBase__GetNumSubElems(const PrimitiveDataTypeBase* p) override { return p->GetNumSubElems(); }
   bool PrimitiveDataTypeBase__HasSubElems(const PrimitiveDataTypeBase* p) override { return p->HasSubElems(); }
 
+  // TensorTypeBase (wrapped)
+  MLDataType TensorTypeBase__GetElementType(const TensorTypeBase* p) override { return p->GetElementType(); }
+
   // DataTypeImpl (wrapped)
   MLDataType DataTypeImpl__GetType_Tensor() override { return DataTypeImpl::GetType<Tensor>(); }
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -931,6 +934,10 @@ struct ProviderHostImpl : ProviderHost {
 
   size_t DataTypeImpl__Size(const DataTypeImpl* p) override { return p->Size(); }
   const PrimitiveDataTypeBase* DataTypeImpl__AsPrimitiveDataType(const DataTypeImpl* p) override { return p->AsPrimitiveDataType(); }
+
+  const TensorTypeBase* DataTypeImpl__TensorTypeFromONNXEnum(int type) override {
+    return DataTypeImpl::TensorTypeFromONNXEnum(type);
+  }
 
   // Function (wrapped)
   const Graph& Function__Body(const Function* p) override { return p->Body(); }

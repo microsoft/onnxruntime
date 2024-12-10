@@ -677,6 +677,9 @@ struct ProviderHost {
   virtual int32_t PrimitiveDataTypeBase__GetNumSubElems(const PrimitiveDataTypeBase* p) = 0;
   virtual bool PrimitiveDataTypeBase__HasSubElems(const PrimitiveDataTypeBase* p) = 0;
 
+  // TensorTypeBase
+  virtual MLDataType TensorTypeBase__GetElementType(const TensorTypeBase* p) = 0;
+
   // DataTypeImpl
   virtual MLDataType DataTypeImpl__GetType_Tensor() = 0;
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -794,6 +797,8 @@ struct ProviderHost {
 
   virtual size_t DataTypeImpl__Size(const DataTypeImpl* p) = 0;
   virtual const PrimitiveDataTypeBase* DataTypeImpl__AsPrimitiveDataType(const DataTypeImpl* p) = 0;
+
+  virtual const TensorTypeBase* DataTypeImpl__TensorTypeFromONNXEnum(int type) = 0;
 
   // Function
   virtual const Graph& Function__Body(const Function* p) = 0;
