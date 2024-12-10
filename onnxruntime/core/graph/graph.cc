@@ -4209,7 +4209,7 @@ Status Graph::ToGraphProtoWithExternalInitiallizersImpl(
         }
 
         if (!blob_keys_to_external_data.empty()) {
-          ORT_RETURN_IF_NOT(ExternalDataInfo::WritePrepackedToFileAndAddToProto(
+          ORT_RETURN_IF_NOT(!!ExternalDataInfo::WritePrepackedToFileAndAddToProto(
               *model_saving_options.prepacked_for_save, blob_keys_to_external_data,
               model_saving_options.align_offset,
               model_saving_options.allocation_granularity,

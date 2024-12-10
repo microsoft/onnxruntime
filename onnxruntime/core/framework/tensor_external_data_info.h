@@ -2,14 +2,15 @@
 // Licensed under the MIT License.
 #pragma once
 
+#include <cmath>
 #include <filesystem>
 #include <ostream>
 #include <string>
 #include <tuple>
 
 #include <core/common/inlined_containers_fwd.h>
-#include "core/common/status.h"
 #include "core/common/path_string.h"
+#include "core/common/status.h"
 #include "core/framework/prepacked_weights_container.h"
 #include "core/graph/onnx_protobuf.h"
 

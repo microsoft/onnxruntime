@@ -75,10 +75,10 @@ void PrepackedForSerialization::Subgraph::TestHarness<InspectLoadedSharedPrepack
 
     // We are expecting to load only one shared pre-packed weight
     // Saving is off, so we should not have any pre-packed weights for writing
-    const size_t expected_prepacks_for_writing = 0U;
+    constexpr const size_t expected_prepacks_for_writing = 0U;
     ASSERT_EQ(expected_prepacks_for_writing, sub.GetNumberOfWeightsForWriting());
 
-    const size_t expected_blobs_for_writing = 0U;
+    constexpr const size_t expected_blobs_for_writing = 0U;
     ASSERT_EQ(expected_blobs_for_writing, sub.GetNumberOfKeyedBlobsForWriting());
 
     ASSERT_EQ(0U, key_to_blobs_.size());

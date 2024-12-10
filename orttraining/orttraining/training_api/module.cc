@@ -11,6 +11,7 @@
 #include "core/session/inference_session.h"
 #include "core/session/environment.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
+#include "core/graph/model_saving_options.h"
 #include "core/graph/graph_utils.h"
 
 #include "orttraining/training_api/checkpoint.h"

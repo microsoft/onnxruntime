@@ -82,7 +82,8 @@ class PrepackedWeightsContainer final {
 ///
 /// If saving is OFF, it is used to contain the weights memory mapped from disk.
 /// Those weights are then moved to the shared container if weight sharing is enabled.
-/// And also the interested kernels.
+/// If x-session weight sharing is not enabled, the weights are stored in this container,
+/// and shared with the interested kernels.
 /// </summary>
 class PrepackedForSerialization final {
  public:
@@ -91,11 +92,11 @@ class PrepackedForSerialization final {
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PrepackedForSerialization);
 
+  // Maps a pre-packed weight blob key to PrepackedWeights instance
   using KeyToBlobMap = std::unordered_map<std::string, PrePackedWeights>;
 
-  // Maps weight name to iterators in key_to_blobs_. It associates a weight name with its pre-packs.
-  // Normally, a single weight produces a single PrePackedWeights. But it is possible that a weight
-  // is pre-packed by different kernels.
+  // WeightToPrePacksMap maps weight name to a set of pre-packed
+  // keys contained in the KeyToBlobMap
   using KeysPerWeight = std::unordered_set<std::string>;  // blob keys
   using WeightToPrePacksMap = std::unordered_map<std::string, KeysPerWeight>;
 
@@ -138,7 +139,7 @@ class PrepackedForSerialization final {
     // The function would add or replace existing entry with references to it.
     // If the entry is present, it would replace it with references to the existing entry.
     // If the entry is not present, it would add reference to refer_if_absent
-    // If present it would return the existing entry otherwise std::nullopt
+    // If the entry is present it would return the existing entry otherwise std::nullopt
     std::optional<PrePackedWeights> ReplaceWithReferenceIfSaving(const std::string& weight_name,
                                                                  const std::string& key,
                                                                  const PrePackedWeights& refer_if_absent);

@@ -26,8 +26,8 @@ namespace test {
 TEST(TensorProtoUtilsTest, SetExternalDataInformation) {
   ONNX_NAMESPACE::TensorProto tensor_proto;
   const std::filesystem::path kExternalDataPath("test.bin");
-  const int64_t init_offset = 100;
-  const size_t init_length = 200;
+  constexpr const int64_t init_offset = 100;
+  constexpr const size_t init_length = 200;
 
   ExternalDataInfo::SetExternalLocationToProto(kExternalDataPath, init_offset, init_length, tensor_proto);
 
@@ -43,11 +43,11 @@ TEST(TensorProtoUtilsTest, SetExternalDataInformation) {
   PrepackedForSerialization prepacked_for_serialization;
   prepacked_for_serialization.SetSaveMode(true);
   PrePackedWeights prepacked_weights;
-  constexpr size_t buffer_size = 100;
   const std::string init_name = "test_initializer";
   const std::string blob_key = "test_key";
 
   std::array<float, 2> kData = {1.2345f, 2.4690f};
+  const size_t buffer_size = kData.size() * sizeof(float);
 
   prepacked_weights.buffers_.push_back(BufferUniquePtr(kData.data(), BufferDeleter(nullptr)));
   prepacked_weights.buffer_sizes_.push_back(buffer_size);
@@ -57,7 +57,7 @@ TEST(TensorProtoUtilsTest, SetExternalDataInformation) {
 
   prepacked_for_serialization.MainGraph().WritePacked(init_name, blob_key, std::move(prepacked_weights));
 
-  const int64_t starting_offset = 300;
+  constexpr const int64_t starting_offset = 300;
   int64_t external_offset = starting_offset;
   std::stringstream ss;
   const auto* blobs_for_weight = prepacked_for_serialization.MainGraph().GetBlobsForWeight(init_name);

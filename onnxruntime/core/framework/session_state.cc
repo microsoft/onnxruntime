@@ -495,7 +495,7 @@ Status SessionState::PrepackConstantInitializedTensors(
                       // everybody can share the same memory mapped entry
                       // the shared container takes ownership of the memory mapped entries
 
-                      // The next like replaces the existing entry with references to it
+                      // The next line replaces the existing entry with references to it
                       // and returns the container that holds the memory mapped entries
                       // so we can transfer it to shared container.
                       // if there is not an entry, we replace it with references to weights_to_be_filled_in
