@@ -45,7 +45,7 @@ bool BaseOpBuilder::HasSupportedInputs(const Node& node, const emscripten::val& 
                                        const logging::Logger& logger) const {
   const auto node_name = MakeString("Node [", node.Name(), "] type [", node.OpType(), "]");
   for (const auto* input : node.InputDefs()) {
-    if (!IsTensorShapeSupported(*input, node_name, logger)) {
+    if (!IsTensorShapeSupported(*input, node_name, logger, allow_empty_tensor_as_input_)) {
       return false;
     }
   }
