@@ -2,7 +2,7 @@
 # You can install the dependencies and initialize with
 #
 # ```sh
-# pip install lintrunner
+# pip install -r requirements-lintrunner.txt
 # lintrunner init
 # ```
 #
