@@ -39,20 +39,22 @@ jobs:
         run: |
           sudo mv ./build/* ./_site
           rm -rf ./_site/src
-
       - name: Check for broken links
-        uses: chabad360/htmlproofer@master
-        with:
-          directory: "./_site"
-          # The directory to scan
-          arguments: |
-            --no-check_external_hash 
-            --assume_extension 
-            --only_4xx 
-            --ignore_status_codes 429,403,999 
-            --allow_missing_href 
-            --allow_hash_href 
-            --checks 'Links' 
-            --log-level :info 
-            --ignore_urls "^https://linkedin.com,https://onnxruntime.ai/docs/reference/api/c-api.html,https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html#c-api-example,https://www.onnxruntime.ai/docs/resources/graph-optimizations.html,onnxruntime/capi/onnxruntime_pybind11_state.html,https://github.com/microsoft/onnx-converters-private/issues/new/choose,https://aka.ms/onnx/exportissue,https://aka.ms/onnx/board" 
-          # The arguments to pass to HTMLProofer
+        run: |
+          bundle exec htmlproofer --assume_extension --checks_to_ignore ImageCheck,ScriptCheck --only_4xx --http_status_ignore 429,403 --allow_hash_href --url_ignore "https://onnxruntime.ai/docs/reference/api/c-api.html,https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html#c-api-example,https://www.onnxruntime.ai/docs/resources/graph-optimizations.html,onnxruntime/capi/onnxruntime_pybind11_state.html,https://github.com/microsoft/onnx-converters-private/issues/new/choose,https://aka.ms/onnx/exportissue,https://aka.ms/onnx/board" --log-level :info ./_site
+      # - name: Check for broken links
+      #   uses: chabad360/htmlproofer@master
+      #   with:
+      #     directory: "./_site"
+      #     # The directory to scan
+      #     arguments: |
+      #       --no-check_external_hash 
+      #       --assume_extension 
+      #       --only_4xx 
+      #       --ignore_status_codes 429,403,999 
+      #       --allow_missing_href 
+      #       --allow_hash_href 
+      #       --checks 'Links' 
+      #       --log-level :info 
+      #       --ignore_urls "^https://linkedin.com,https://onnxruntime.ai/docs/reference/api/c-api.html,https://www.onnxruntime.ai/docs/reference/execution-providers/TensorRT-ExecutionProvider.html#c-api-example,https://www.onnxruntime.ai/docs/resources/graph-optimizations.html,onnxruntime/capi/onnxruntime_pybind11_state.html,https://github.com/microsoft/onnx-converters-private/issues/new/choose,https://aka.ms/onnx/exportissue,https://aka.ms/onnx/board" 
+      #     # The arguments to pass to HTMLProofer
