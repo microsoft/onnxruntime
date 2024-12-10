@@ -4209,11 +4209,12 @@ Status Graph::ToGraphProtoWithExternalInitiallizersImpl(
         }
 
         if (!blob_keys_to_external_data.empty()) {
-          ORT_RETURN_IF_NOT(!!ExternalDataInfo::WritePrepackedToFileAndAddToProto(
+          auto& os = ExternalDataInfo::WritePrepackedToFileAndAddToProto(
               *model_saving_options.prepacked_for_save, blob_keys_to_external_data,
               model_saving_options.align_offset,
               model_saving_options.allocation_granularity,
-              external_stream, external_offset, *output_proto));
+              external_stream, external_offset, *output_proto);
+          ORT_RETURN_IF_NOT(os.good(), "Failed to write pre-packed blobs to external file");
         }
 
         processed_weights.insert(initializer.name());
