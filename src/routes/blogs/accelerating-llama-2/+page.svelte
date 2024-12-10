@@ -50,7 +50,9 @@
 			>Kunal Vaishnavi</a
 		>
 		and
-		<a href="https://www.linkedin.com/in/parinitaparinita/" class="text-blue-800 underline">Parinita Rahi</a>
+		<a href="https://www.linkedin.com/in/parinitaparinita/" class="text-blue-800 underline"
+			>Parinita Rahi</a
+		>
 	</p>
 	<p class="text-neutral">
 		14TH NOVEMBER, 2023 <span class="italic text-stone-600">(Updated 22nd November)</span>
@@ -103,8 +105,8 @@
 				>batch size * (prompt length + token generation length) / wall-clock latency</i
 			> where wall-clock latency = the latency from running end-to-end and token generation length =
 			256 generated tokens. The E2E throughput is 2.4X more (13B) and 1.8X more (7B) when compared to
-			PyTorch compile. For higher batch size, sequence length pairs such as (16, 2048), PyTorch eager times out,
-			while ORT shows better performance than compile mode.
+			PyTorch compile. For higher batch size, sequence length pairs such as (16, 2048), PyTorch eager
+			times out, while ORT shows better performance than compile mode.
 		</p>
 		<div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
 			<figure class="px-10 pt-4">
@@ -166,8 +168,9 @@
 		</p>
 
 		<p class="mb-4">
-			ONNX Runtime applied <a href="https://arxiv.org/pdf/1909.08053.pdf" class="text-blue-800 underline"
-				>Megatron-LM</a
+			ONNX Runtime applied <a
+				href="https://arxiv.org/pdf/1909.08053.pdf"
+				class="text-blue-800 underline">Megatron-LM</a
 			>
 			Tensor Parallelism on the 70B model to split the original model weight onto different GPUs. Megatron
 			sharding on the 70B model shards the PyTorch model with FP16 precision into 4 partitions, converts
@@ -265,8 +268,9 @@
 			>
 			(models ending with <i>-hf</i>) and the Microsoft versions. You can download the optimized HF
 			versions from
-			<a href="https://github.com/microsoft/Llama-2-Onnx/tree/main-CUDA_CPU" class="text-blue-800 underline"
-				>Microsoft's LLaMA-2 ONNX repository</a
+			<a
+				href="https://github.com/microsoft/Llama-2-Onnx/tree/main-CUDA_CPU"
+				class="text-blue-800 underline">Microsoft's LLaMA-2 ONNX repository</a
 			>. Stay tuned for newer Microsoft versions coming soon!
 		</p>
 

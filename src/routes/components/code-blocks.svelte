@@ -46,10 +46,10 @@
 		activeTab = tabText;
 		activeTab = activeTab;
 	};
-	let innerWidth = 0
-
+	let innerWidth = 0;
 </script>
-<svelte:window bind:innerWidth/>
+
+<svelte:window bind:innerWidth />
 <div class="container mx-auto px-4">
 	<h3 class="text-xl mb-4 text-center">
 		Use ONNX Runtime with your favorite language and get started with the tutorials:
@@ -91,7 +91,7 @@
 					on:mouseenter={handleClick}
 					class="tab tab-lg {activeTab === 'JavaScript' || activeTab == 'JS' ? 'tab-active' : ''}"
 				>
-					{innerWidth >=  1024 ? 'JavaScript' : 'JS'}
+					{innerWidth >= 1024 ? 'JavaScript' : 'JS'}
 				</p>
 				<p
 					on:mouseenter={handleClick}
@@ -104,7 +104,8 @@
 				</p>
 				<button
 					on:click={handleClick}
-					class="tab tab-lg hidden lg:block {activeTab === 'More..' ? 'tab-active' : ''}">More..</button
+					class="tab tab-lg hidden lg:block {activeTab === 'More..' ? 'tab-active' : ''}"
+					>More..</button
 				>
 			</div>
 			{#if activeTab === 'Python'}

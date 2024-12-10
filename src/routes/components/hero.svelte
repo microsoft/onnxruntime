@@ -91,8 +91,9 @@
 							{activeWord}
 						</span>
 					{/key}
-					<br/>
-					Machine Learning</h1>
+					<br />
+					Machine Learning
+				</h1>
 				<p class="py-3">
 					Production-grade AI engine to speed up training and inferencing in your existing
 					technology stack.

@@ -9,11 +9,13 @@
 		'ONNX Runtime provides a performant solution to inference models from varying source frameworks (PyTorch, Hugging Face, TensorFlow) on different software and hardware stacks. ONNX Runtime Inference takes advantage of hardware accelerators, supports APIs in multiple languages (Python, C++, C#, C, Java, and more), and works on cloud servers, edge and mobile devices, and in web browsers.';
 	const imgsrc = 'onnxruntimelogo';
 	const imgalt = 'ONNX Runtime Logo';
-	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
-	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
-	let authors = ['']
-	let keywords = 'onnxruntime, onnx runtime inferencing, onnx runtime inferencing models, onnx runtime inferencing deployment, onnx runtime inferencing performance, onnx runtime inferencing time to market, onnx runtime inferencing deploy anywhere, onnx runtime inferencing boost performance, onnx runtime inferencing improve time to market, onnx runtime inferencing production ready, onnx runtime inferencing lower latency, onnx runtime inferencing higher throughput, onnx runtime inferencing get innovations into production faster, onnx runtime inferencing testimonials, onnx runtime inferencing performance enhancements, onnx runtime inferencing production ready, onnx runtime inferencing lower latency, onnx runtime inferencing higher throughput, onnx runtime inferencing get innovations into production faster, onnx runtime inferencing testimonials, onnx runtime inferencing performance enhancements'
+	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png';
+	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png';
+	let authors = [''];
+	let keywords =
+		'onnxruntime, onnx runtime inferencing, onnx runtime inferencing models, onnx runtime inferencing deployment, onnx runtime inferencing performance, onnx runtime inferencing time to market, onnx runtime inferencing deploy anywhere, onnx runtime inferencing boost performance, onnx runtime inferencing improve time to market, onnx runtime inferencing production ready, onnx runtime inferencing lower latency, onnx runtime inferencing higher throughput, onnx runtime inferencing get innovations into production faster, onnx runtime inferencing testimonials, onnx runtime inferencing performance enhancements, onnx runtime inferencing production ready, onnx runtime inferencing lower latency, onnx runtime inferencing higher throughput, onnx runtime inferencing get innovations into production faster, onnx runtime inferencing testimonials, onnx runtime inferencing performance enhancements';
 </script>
+
 <svelte:head>
 	<!-- Dynamic meta tags -->
 	<meta name="description" content={description} />
@@ -21,9 +23,9 @@
 	<meta name="author" content={authors.join(', ')} />
 	<meta name="keywords" content={keywords} />
 	<!-- Open Graph / Facebook -->
-	<meta property="og:description" content={description}/>
+	<meta property="og:description" content={description} />
 	<meta property="og:image" content={image} />
-	
+
 	<!-- Twitter -->
 	<meta property="twitter:description" content={description} />
 	<meta property="twitter:image" content={image} />

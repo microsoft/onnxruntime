@@ -669,11 +669,9 @@
 		'android,C++,ARM64,QNN':
 			"Follow build instructions from <a class='text-blue-500' href='https://aka.ms/build-ort-qnn' target='_blank'>here</a>",
 
-		'windows,Python,ARM64,QNN':
-			"pip install onnxruntime-qnn",
+		'windows,Python,ARM64,QNN': 'pip install onnxruntime-qnn',
 
-		'windows,Python,X64,QNN':
-			"pip install onnxruntime-qnn",
+		'windows,Python,X64,QNN': 'pip install onnxruntime-qnn',
 
 		'android,Java,ARM64,QNN':
 			"Add a dependency on <a class='text-blue-500' href='https://mvnrepository.com/artifact/com.microsoft.onnxruntime/onnxruntime-android-qnn' target='_blank'>com.microsoft.onnxruntime:onnxruntime-android-qnn</a> using Maven/Gradle and refer to the <a class='text-blue-500' href='https://onnxruntime.ai/docs/tutorials/mobile/' target='_blank'>mobile deployment guide</a>",

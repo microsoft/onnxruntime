@@ -42,12 +42,15 @@
 			}
 		});
 	});
-	let description = 'Cross-platform accelerated machine learning. Built-in optimizations speed up training and inferencing with your existing technology stack.'
-	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
-	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
-	let authors = ['']
-	let keywords = 'onnx runtime, onnx, onnxruntime, onnx runtime performance, onnx runtime training, onnx runtime inference, onnx runtime cross-platform, onnx runtime cross platform, onnx runtime crossplatform, onnx runtime training and inference, onnx runtime training & inference, onnx runtime training inference, onnx runtime training, onnx runtime inference, onnx runtime cross-platform, onnx runtime cross platform, onnx runtime crossplatform, onnx runtime training and inference, onnx runtime training & inference, onnx runtime training inference'
+	let description =
+		'Cross-platform accelerated machine learning. Built-in optimizations speed up training and inferencing with your existing technology stack.';
+	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png';
+	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png';
+	let authors = [''];
+	let keywords =
+		'onnx runtime, onnx, onnxruntime, onnx runtime performance, onnx runtime training, onnx runtime inference, onnx runtime cross-platform, onnx runtime cross platform, onnx runtime crossplatform, onnx runtime training and inference, onnx runtime training & inference, onnx runtime training inference, onnx runtime training, onnx runtime inference, onnx runtime cross-platform, onnx runtime cross platform, onnx runtime crossplatform, onnx runtime training and inference, onnx runtime training & inference, onnx runtime training inference';
 </script>
+
 <svelte:head>
 	<!-- Dynamic meta tags -->
 	<meta name="description" content={description} />
@@ -55,9 +58,9 @@
 	<meta name="author" content={authors.join(', ')} />
 	<meta name="keywords" content={keywords} />
 	<!-- Open Graph / Facebook -->
-	<meta property="og:description" content={description}/>
+	<meta property="og:description" content={description} />
 	<meta property="og:image" content={image} />
-	
+
 	<!-- Twitter -->
 	<meta property="twitter:description" content={description} />
 	<meta property="twitter:image" content={image} />

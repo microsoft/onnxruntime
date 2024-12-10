@@ -52,18 +52,16 @@
 	}
 	let featuredblog = [
 		{
-			title:
-				'Cross-Platform Edge AI Made Easy with ONNX Runtime',
+			title: 'Cross-Platform Edge AI Made Easy with ONNX Runtime',
 			date: '19th November, 2024',
 			blurb:
 				"Driven by the growing demand for user privacy, real-time performance, and cost efficiency, edge AI is transforming the AI landscape. At Ignite, we're excited to announce four new features in the ONNX Runtime ecosystem designed to make edge AI more accessible.",
 			link: 'https://techcommunity.microsoft.com/blog/aiplatformblog/cross-platform-edge-ai-made-easy-with-onnx-runtime/4303521',
 			image: ORTLogo,
 			imgalt: 'ONNX Runtime Logo'
-		},	
+		},
 		{
-			title:
-				'Announcing MultiLoRA with ONNX Runtime: Revolutionizing AI Customization',
+			title: 'Announcing MultiLoRA with ONNX Runtime: Revolutionizing AI Customization',
 			date: '20th November, 2024',
 			blurb:
 				'MultiLoRA with ONNX Runtime brings flexible, efficient AI customization by enabling easy integration of LoRA adapters for dynamic, personalized models with minimal resource demands.',
@@ -72,15 +70,14 @@
 			imgalt: 'Serving LoRA models separately vs with MultiLoRA'
 		},
 		{
-			title:
-				'Is it better to quantize before or after finetuning?',
+			title: 'Is it better to quantize before or after finetuning?',
 			date: '19th November, 2024',
 			blurb:
 				'Learn how to quickly and easily experiment in your model optimization workflow using Olive.',
 			link: 'blogs/olive-quant-ft',
 			image: QuantizeFinetune,
 			imgalt: 'Quantize or finetune first for better model performance?'
-		},
+		}
 	];
 	let blogs = [
 		{
