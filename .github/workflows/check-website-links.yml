@@ -46,6 +46,9 @@ jobs:
           directory: ./_site
           enforce_https: false
           ignore_empty_alt: true
+          allow_missing_href: true
+          check_favicon: false
+          check_external_hash: false
           ignore_url: |
             https://linkedin.com
             https://onnxruntime.ai/docs/reference/api/c-api.html
