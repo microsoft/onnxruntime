@@ -304,6 +304,7 @@ struct TypeProto_Tensor final {
   bool has_shape() const { return g_host->TypeProto_Tensor__has_shape(this); }
   const TensorShapeProto& shape() const { return g_host->TypeProto_Tensor__shape(this); }
   TensorShapeProto* mutable_shape() { return g_host->TypeProto_Tensor__mutable_shape(this); }
+  bool has_elem_type() const { return g_host->TypeProto_Tensor__has_elem_type(this); }
   int32_t elem_type() const { return g_host->TypeProto_Tensor__elem_type(this); }
   void set_elem_type(int32_t value) { g_host->TypeProto_Tensor__set_elem_type(this, value); }
 
