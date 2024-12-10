@@ -35,6 +35,7 @@ from onnx_model_bert_tf import BertOnnxModelTF
 from onnx_model_clip import ClipOnnxModel
 from onnx_model_conformer import ConformerOnnxModel
 from onnx_model_gpt2 import Gpt2OnnxModel
+from onnx_model_mmdit import MmditOnnxModel
 from onnx_model_phi import PhiOnnxModel
 from onnx_model_sam2 import Sam2OnnxModel
 from onnx_model_t5 import T5OnnxModel
@@ -66,6 +67,7 @@ MODEL_TYPES = {
     "unet": (UnetOnnxModel, "pytorch", 1),  # UNet in Stable Diffusion
     "vae": (VaeOnnxModel, "pytorch", 1),  # UAE in Stable Diffusion
     "vit": (BertOnnxModel, "pytorch", 1),
+    "mmdit": (MmditOnnxModel, "pytorch", 1),
 }
 
 
