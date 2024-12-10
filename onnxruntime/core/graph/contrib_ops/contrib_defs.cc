@@ -3335,6 +3335,11 @@ void RegisterContribSchemas() {
           AttributeProto::STRING,
           OPTIONAL_VALUE)
       .Attr("notes", "(Optional) Some notes for the model", AttributeProto::STRING, OPTIONAL_VALUE)
+      .Attr(
+          "max_size",
+          "max size in the context. Usage depend on the EP.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
       .AllowUncheckedAttributes()
       .Input(
           0,

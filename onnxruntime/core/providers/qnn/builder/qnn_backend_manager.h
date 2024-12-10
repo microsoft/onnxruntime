@@ -94,9 +94,10 @@ class QnnBackendManager {
 
   Status LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length,
                                         std::string node_name,
-                                        std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models);
+                                        std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models,
+                                        int64_t max_spill_fill_size);
 
-  Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context);
+  Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context, bool need_load_system_lib);
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
 
@@ -111,6 +112,10 @@ class QnnBackendManager {
   const Qnn_ContextHandle_t& GetQnnContext(int index = 0) {
     ORT_ENFORCE((contexts_.size() > 0) && (static_cast<size_t>(index) < contexts_.size()), "No valid QNN context!");
     return contexts_[index];
+  }
+
+  size_t GetQnnContextSize() {
+    return contexts_.size();
   }
 
   const Qnn_BackendHandle_t& GetQnnBackendHandle() { return backend_handle_; }
@@ -146,8 +151,6 @@ class QnnBackendManager {
 
   void ReleaseResources();
 
-  void Split(std::vector<std::string>& split_string, const std::string& tokenized_string, const char separator);
-
   Status ExtractBackendProfilingInfo();
   Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id, std::ofstream& outfile,
                                    bool backendSupportsExtendedEventData, bool tracelogging_provider_ep_enabled);
@@ -163,6 +166,10 @@ class QnnBackendManager {
   const std::string& GetSdkVersion() { return sdk_build_version_; }
 
   Status DestroyHTPPowerConfigID(uint32_t htp_power_config_id);
+
+  Status GetMaxSpillFillBufferSize(unsigned char* buffer,
+                                   uint64_t buffer_length,
+                                   uint64_t& max_spill_fill_buffer_size);
 
   Status GetOrRegisterContextMemHandle(Qnn_ContextHandle_t context, void* shared_memory_address,
                                        const Qnn_Tensor_t& qnn_tensor,

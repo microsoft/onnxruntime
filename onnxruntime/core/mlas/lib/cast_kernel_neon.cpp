@@ -6,7 +6,7 @@ Licensed under the MIT License.
 
 Module Name:
 
-    fp16_neon_common.cpp
+    cast_kernel_neon.cpp
 
 Abstract:
 
