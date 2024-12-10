@@ -104,6 +104,35 @@ Status Quantize(const double double_value,
                 const Qnn_DataType_t qnn_data_type,
                 int& quant_value);
 
+// Re-writes a buffer of packed 4-bit elements to a buffer of unpacked 8-bit elements.
+// QNN requires that 4-bit weights are unpacked to 8-bit.
+template <bool Signed>
+Status UnpackInt4ToInt8(size_t num_int4_elems, std::vector<uint8_t>& data_bytes) {
+  if constexpr (Signed) {  // INT4
+    std::vector<uint8_t> packed_int4_bytes = std::move(data_bytes);
+    data_bytes = std::vector<uint8_t>(num_int4_elems);
+
+    auto dst = gsl::make_span(reinterpret_cast<int8_t*>(data_bytes.data()), data_bytes.size());
+    auto src = gsl::make_span(reinterpret_cast<const Int4x2*>(packed_int4_bytes.data()), packed_int4_bytes.size());
+    ORT_RETURN_IF_NOT(Int4x2::Unpack(dst, src), "Failed to unpack Tensor<Int4x2> for QNN");
+
+    // NOTE: Masking off top 4 bits to workaround a QNN INT4 accuracy bug.
+    // Docs explicitly state that masking off top 4 bits should not be required, but we have to do it.
+    for (size_t i = 0; i < dst.size(); i++) {
+      dst[i] &= 0x0F;  // -3 (0b1111_1101) becomes 13 (0b0000_1101)
+    }
+  } else {  // UINT4
+    std::vector<uint8_t> packed_uint4_bytes = std::move(data_bytes);
+    data_bytes = std::vector<uint8_t>(num_int4_elems);
+
+    auto dst = gsl::make_span(reinterpret_cast<uint8_t*>(data_bytes.data()), data_bytes.size());
+    auto src = gsl::make_span(reinterpret_cast<const UInt4x2*>(packed_uint4_bytes.data()), packed_uint4_bytes.size());
+    ORT_RETURN_IF_NOT(UInt4x2::Unpack(dst, src), "Failed to unpack Tensor<UInt4x2> for QNN");
+  }
+
+  return Status::OK();
+}
+
 /**
  * Wrapping onnxruntime::Node for retrieving attribute values
  */

@@ -624,28 +624,12 @@ Status QnnModelWrapper::UnpackInitializerData(const ONNX_NAMESPACE::TensorProto&
   // If this is an int4, we need to unpack it because QNN treats int4 as a full int8.
   if (onnx_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT4) {
     TensorShape shape = onnxruntime::utils::GetTensorShapeFromTensorProto(initializer);
-    const size_t num_elems = shape.Size();
-    std::vector<uint8_t> packed_int4_bytes = std::move(unpacked_tensor);
-    unpacked_tensor = std::vector<uint8_t>(num_elems);
-
-    auto dst = gsl::make_span(reinterpret_cast<int8_t*>(unpacked_tensor.data()), unpacked_tensor.size());
-    auto src = gsl::make_span(reinterpret_cast<const Int4x2*>(packed_int4_bytes.data()), packed_int4_bytes.size());
-    ORT_RETURN_IF_NOT(Int4x2::Unpack(dst, src), "Failed to unpack Tensor<Int4x2> for QNN");
-
-    // NOTE: Masking off top 4 bits to workaround a QNN INT4 accuracy bug.
-    // Docs explicitly state that masking off top 4 bits should not be required.
-    for (size_t i = 0; i < dst.size(); i++) {
-      dst[i] &= 0x0F;  // -3 (0b1111_1101) becomes 13 (0b0000_1101)
-    }
+    const size_t num_int4_elems = shape.Size();
+    ORT_RETURN_IF_ERROR(qnn::utils::UnpackInt4ToInt8<true>(num_int4_elems, unpacked_tensor));
   } else if (onnx_data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT4) {
     TensorShape shape = onnxruntime::utils::GetTensorShapeFromTensorProto(initializer);
-    const size_t num_elems = shape.Size();
-    std::vector<uint8_t> packed_int4_bytes = std::move(unpacked_tensor);
-    unpacked_tensor = std::vector<uint8_t>(num_elems);
-
-    auto dst = gsl::make_span(reinterpret_cast<uint8_t*>(unpacked_tensor.data()), unpacked_tensor.size());
-    auto src = gsl::make_span(reinterpret_cast<const UInt4x2*>(packed_int4_bytes.data()), packed_int4_bytes.size());
-    ORT_RETURN_IF_NOT(UInt4x2::Unpack(dst, src), "Failed to unpack Tensor<UInt4x2> for QNN");
+    const size_t num_uint4_elems = shape.Size();
+    ORT_RETURN_IF_ERROR(qnn::utils::UnpackInt4ToInt8<false>(num_uint4_elems, unpacked_tensor));
   }
 
   return Status::OK();

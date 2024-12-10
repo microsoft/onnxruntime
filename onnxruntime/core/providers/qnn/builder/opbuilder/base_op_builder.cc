@@ -274,29 +274,46 @@ Status BaseOpBuilder::TransposeInitializer(const QnnModelWrapper& qnn_model_wrap
                                            const onnx::TensorProto& initializer,
                                            const std::vector<size_t>& perm,
                                            std::vector<uint8_t>& transposed_data) const {
-  const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(initializer.data_type())->GetElementType();
-  const auto tensor_shape_dims = onnxruntime::utils::GetTensorShapeFromTensorProto(initializer);
-  TensorShape tensor_shape{tensor_shape_dims};
-  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
-  Tensor in_tensor = Tensor(tensor_dtype, tensor_shape, cpu_allocator);
+  int32_t onnx_type = initializer.data_type();
+  const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(onnx_type)->GetElementType();
+  const TensorShape in_tensor_shape = onnxruntime::utils::GetTensorShapeFromTensorProto(initializer);
 
+  // Unpack initializer data into an input Tensor.
+  size_t tensor_data_size = Tensor::CalculateTensorStorageSize(tensor_dtype, in_tensor_shape);
+  std::vector<uint8_t> input_tensor_data(tensor_data_size);
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer,
+                                                                qnn_model_wrapper.GetGraphViewer().ModelPath(),
+                                                                input_tensor_data));
+  Tensor in_tensor(tensor_dtype, in_tensor_shape, input_tensor_data.data(), OrtMemoryInfo{});
+
+  // Determine the new transposed shape.
   auto rank = perm.size();
-  std::vector<int64_t> new_tensor_shape_dims;
-  std::vector<size_t> permutations;
-  new_tensor_shape_dims.reserve(rank);
-  permutations.reserve(rank);
-  for (int64_t p : perm) {
-    permutations.push_back(p);
-    new_tensor_shape_dims.push_back(tensor_shape_dims[p]);
+  std::vector<int64_t> out_tensor_shape_dims;
+  out_tensor_shape_dims.reserve(rank);
+  for (size_t p : perm) {
+    out_tensor_shape_dims.push_back(in_tensor_shape[p]);
   }
+  const TensorShape out_tensor_shape = TensorShape::FromExistingBuffer(out_tensor_shape_dims);
 
-  TensorShape new_tensor_shape(new_tensor_shape_dims);
-  Tensor out_tensor = Tensor(tensor_dtype, new_tensor_shape, cpu_allocator);
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::TensorProtoToTensor(
-      Env::Default(), qnn_model_wrapper.GetGraphViewer().ModelPath(), initializer, in_tensor));
-  ORT_RETURN_IF_ERROR(Transpose::DoTranspose(permutations, in_tensor, out_tensor));
-  onnx::TensorProto new_tensor_proto = onnxruntime::utils::TensorToTensorProto(out_tensor, "test");
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(new_tensor_proto, transposed_data));
+  // Create an output tensor that does not own the pre-allocated `transposed_data` buffer.
+  // DoTranspose() will write the new transposed elements directly into the `transposed_data` buffer.
+  // We do this to eliminate unnecessary weight copies.
+  transposed_data.resize(tensor_data_size);
+  Tensor out_tensor(tensor_dtype, out_tensor_shape, transposed_data.data(), OrtMemoryInfo{});
+  ORT_RETURN_IF_ERROR(Transpose::DoTranspose(perm, in_tensor, out_tensor));
+
+  // If this is an int4, we need to unpack it because QNN treats int4 as a full int8.
+  // TODO: Improve memory usage! Transpose::DoTranspose() internally copies Tensor<int4> to Tensor<int8>,
+  // does the transpose, and then copies the result to a new Tensor<int4>. Afterwards, QNN EP will unpack
+  // the new Tensor<int4> back to 8-bits. This is wasteful. A better approach would be for QNN EP to do the following:
+  //  - Explicitly unpack Tensor<int4> to Tensor<int8>
+  //  - Call Transpose::DoTranspose() with the Tensor<int8>. This generates a new transposed Tensor<int8>.
+  //  - Clear the top 4-bits to zero for every int8 element in the transposed Tensor<int8>.
+  if (onnx_type == ONNX_NAMESPACE::TensorProto_DataType_INT4) {
+    ORT_RETURN_IF_ERROR(qnn::utils::UnpackInt4ToInt8<true>(out_tensor_shape.Size(), transposed_data));
+  } else if (onnx_type == ONNX_NAMESPACE::TensorProto_DataType_UINT4) {
+    ORT_RETURN_IF_ERROR(qnn::utils::UnpackInt4ToInt8<false>(out_tensor_shape.Size(), transposed_data));
+  }
 
   return Status::OK();
 }
