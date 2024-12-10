@@ -502,7 +502,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     constexpr int32_t subgroup_size = 16;
     // How many times each workgroup reloads A sharing B. This is tuneable,
     // 8 produces a good performance for sequence length of 256/512, 16 will give
-    // slightly better performance for seqeengths of 1024.
+    // slightly better performance for sequence lengths of 1024.
     // Note: This should match A_REPEAT in the shader.
     constexpr unsigned int kMatMulPrefillARepeat = 8;
     program.SetWorkgroupSize(tile_size * subgroup_size);
