@@ -158,7 +158,6 @@ struct ProviderHost {
 
   virtual std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info) = 0;
 
-  virtual void* IAllocator__TensorAlloc(IAllocator* p, MLDataType element_data_type, const TensorShape& shape) = 0;
   virtual void* CPUAllocator__Alloc(CPUAllocator* p, size_t size) = 0;
   virtual void CPUAllocator__Free(CPUAllocator* p, void* allocation) = 0;
 
