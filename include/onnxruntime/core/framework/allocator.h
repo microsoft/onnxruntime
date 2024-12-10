@@ -82,6 +82,10 @@ class IAllocator {
    */
   virtual void* Alloc(size_t size) = 0;
 
+  /**
+   * Free memory at p.
+   * If p is nullptr, do nothing.
+   */
   virtual void Free(void* p) = 0;
 
   // Reserve() is an interface exposed for an implementation of IAllocator
