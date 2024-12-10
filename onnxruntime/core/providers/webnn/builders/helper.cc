@@ -178,14 +178,31 @@ bool IsDataTypeSupportedByOp(const std::string& onnx_op_type,
   if (!GetWebNNOpType(onnx_op_type, webnn_op_type))
     return false;
 
-  if (!IsSupportedDataType(onnx_data_type, wnn_limits[webnn_op_type][webnn_input_output_name]["dataTypes"])) {
-    LOGS(logger, VERBOSE) << "[" << onnx_op_type
-                          << "] " << onnx_input_output_name
-                          << " type: [" << onnx_data_type
-                          << "] is not supported for now";
+  return IsDataTypeSupportedByWebNNOp(onnx_op_type, webnn_op_type, onnx_data_type, wnn_limits,
+                                      webnn_input_output_name, onnx_input_output_name, logger);
+}
+
+bool IsDataTypeSupportedByWebNNOp(const std::string& onnx_op_type,
+                                  const std::string& webnn_op_type,
+                                  const int32_t onnx_data_type,
+                                  const emscripten::val& wnn_limits,
+                                  const std::string& webnn_input_output_name,
+                                  const std::string& onnx_input_output_name,
+                                  const logging::Logger& logger) {
+  if (wnn_limits[webnn_op_type].isUndefined()) {
+    LOGS(logger, VERBOSE) << "[" << onnx_op_type << "] WebNN op [" << webnn_op_type << "] is not supported for now";
     return false;
   }
-
+  if (wnn_limits[webnn_op_type][webnn_input_output_name].isUndefined()) {
+    LOGS(logger, VERBOSE) << "[" << onnx_op_type << "] WebNN op [" << webnn_op_type << "] doesn't have parameter ["
+                          << webnn_input_output_name << "]";
+    return false;
+  }
+  if (!IsSupportedDataType(onnx_data_type, wnn_limits[webnn_op_type][webnn_input_output_name]["dataTypes"])) {
+    LOGS(logger, VERBOSE) << "[" << onnx_op_type << "] " << onnx_input_output_name << "'s data type: ["
+                          << onnx_data_type << "] is not supported by WebNN op [" << webnn_op_type << "] for now";
+    return false;
+  }
   return true;
 }
 
