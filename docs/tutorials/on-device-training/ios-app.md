@@ -964,5 +964,5 @@ Congratulations! You have successfully built an iOS application that can train a
 
 
 
-[Back to top](#contents)
+[Back to top](#table-of-contents)
 

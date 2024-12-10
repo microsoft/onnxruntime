@@ -98,7 +98,7 @@
 		{
 			title: 'Camo',
 			quote:
-				"ONNX Runtime enables Camo Studio to deliver features like background segmentation and feature detection with speed and accuracy. It seamlessly integrated with our existing models and lets us target any processor, including the latest NPUs, saving us valuable development time and allowing us to bring innovative features to all our users. We recommend ONNX Runtime to any developer looking to streamline model deployment and unlock the full potential of their applications.",
+				'ONNX Runtime enables Camo Studio to deliver features like background segmentation and feature detection with speed and accuracy. It seamlessly integrated with our existing models and lets us target any processor, including the latest NPUs, saving us valuable development time and allowing us to bring innovative features to all our users. We recommend ONNX Runtime to any developer looking to streamline model deployment and unlock the full potential of their applications.',
 			author: 'Aidan Fitzpatrick, Founder & CEO, Reincubate',
 			imgsrc: camoLogo,
 			imgalt: 'Camo logo'
@@ -106,7 +106,7 @@
 		{
 			title: 'Cephable',
 			quote:
-				"The ONNX Runtime allows us to simultaneously target CPU, GPU and NPU enabled devices. Converting a model to NPU, using ONNX Runtime and AI Hub reduced our engineering effort from 30 days to 7 days. Given the current state of the art, that would likely be only 3 days today. This allows us to deliver cutting edge performance to our users, minimizing impact of AI/ML workloads when running other applications, and leaves more time to focus on feature work.",
+				'The ONNX Runtime allows us to simultaneously target CPU, GPU and NPU enabled devices. Converting a model to NPU, using ONNX Runtime and AI Hub reduced our engineering effort from 30 days to 7 days. Given the current state of the art, that would likely be only 3 days today. This allows us to deliver cutting edge performance to our users, minimizing impact of AI/ML workloads when running other applications, and leaves more time to focus on feature work.',
 			author: 'Jon Campbell, Director of Engineering, Cephable',
 			imgsrc: cephableLogo,
 			imgalt: 'Cephable logo'
@@ -130,7 +130,7 @@
 		{
 			title: 'Goodnotes',
 			quote:
-			"Thanks to ONNX Runtime Web, Goodnotes has seamlessly implemented Scribble to Erase. The first Goodnotes AI feature for Android, Windows, and Web, delivering lightning-fast performance and an incredibly smooth user experience. It's a game-changer!",
+				"Thanks to ONNX Runtime Web, Goodnotes has seamlessly implemented Scribble to Erase. The first Goodnotes AI feature for Android, Windows, and Web, delivering lightning-fast performance and an incredibly smooth user experience. It's a game-changer!",
 			author: 'Pedro Gómez, Senior Software Engineer, Goodnotes',
 			imgsrc: goodnotesLogo,
 			imgalt: 'Goodnotes logo'
@@ -138,7 +138,7 @@
 		{
 			title: 'Hugging Face',
 			quote:
-			'We use ONNX Runtime to easily deploy thousands of open-source state-of-the-art models in the Hugging Face model hub and accelerate private models for customers of the Accelerated Inference API on CPU and GPU.',
+				'We use ONNX Runtime to easily deploy thousands of open-source state-of-the-art models in the Hugging Face model hub and accelerate private models for customers of the Accelerated Inference API on CPU and GPU.',
 			author: 'Morgan Funtowicz, Machine Learning Engineer, Hugging Face',
 			imgsrc: huggingfaceLogo,
 			imgalt: 'Hugging Face logo'
@@ -146,7 +146,7 @@
 		{
 			title: 'Hypefactors',
 			quote:
-			'ONNX Runtime powers many of our Natural Language Processing (NLP) and Computer Vision (CV) models that crunch the global media landscape in real-time. It is our go-to framework for scaling our production workload, providing important features ranging from built-in quantization tools to easy GPU and VNNI acceleration.',
+				'ONNX Runtime powers many of our Natural Language Processing (NLP) and Computer Vision (CV) models that crunch the global media landscape in real-time. It is our go-to framework for scaling our production workload, providing important features ranging from built-in quantization tools to easy GPU and VNNI acceleration.',
 			author: 'Viet Yen Nguyen, CTO, Hypefactors',
 			imgsrc: hypefactorsLogo,
 			imgalt: 'Hypefactors logo'
@@ -154,7 +154,7 @@
 		{
 			title: 'InFarm',
 			quote:
-			'InFarm delivers machine-learning powered solutions for intelligent farming, running computer vision models on a variety of hardware, including on-premise GPU clusters, edge computing devices like NVIDIA Jetsons, and cloud-based CPU and GPU clusters. ONNX Runtime enables InFarm to standardise the model formats and outputs of models generated across multiple teams to simplify deployment while also providing the best performance on all hardware targets.',
+				'InFarm delivers machine-learning powered solutions for intelligent farming, running computer vision models on a variety of hardware, including on-premise GPU clusters, edge computing devices like NVIDIA Jetsons, and cloud-based CPU and GPU clusters. ONNX Runtime enables InFarm to standardise the model formats and outputs of models generated across multiple teams to simplify deployment while also providing the best performance on all hardware targets.',
 			author: 'Ashley Walker, Chief Information and Technology Officer, InFarm',
 			imgsrc: infarmLogo,
 			imgalt: 'InFarm logo'
@@ -162,7 +162,7 @@
 		{
 			title: 'Intel',
 			quote:
-			'We are excited to support ONNX Runtime on the Intel® Distribution of OpenVINO™. This accelerates machine learning inference across Intel hardware and gives developers the flexibility to choose the combination of Intel hardware that best meets their needs from CPU to VPU or FPGA.',
+				'We are excited to support ONNX Runtime on the Intel® Distribution of OpenVINO™. This accelerates machine learning inference across Intel hardware and gives developers the flexibility to choose the combination of Intel hardware that best meets their needs from CPU to VPU or FPGA.',
 			author: 'Jonathan Ballon, Vice President and General Manager, Intel Internet of Things Group',
 			imgsrc: intelLogo,
 			imgalt: 'Intel logo'
@@ -323,12 +323,14 @@
 			imgalt: 'Xilinx logo'
 		}
 	];
-	let description = "ONNX Runtime's many consumer testimonials. Hear from some of the products and companies using ONNX Runtime."
-	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
-	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
-	let authors = ['']
-	let keywords = 'onnx runtime testimonials'
+	let description =
+		"ONNX Runtime's many consumer testimonials. Hear from some of the products and companies using ONNX Runtime.";
+	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png';
+	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png';
+	let authors = [''];
+	let keywords = 'onnx runtime testimonials';
 </script>
+
 <svelte:head>
 	<!-- Dynamic meta tags -->
 	<meta name="description" content={description} />
@@ -336,9 +338,9 @@
 	<meta name="author" content={authors.join(', ')} />
 	<meta name="keywords" content={keywords} />
 	<!-- Open Graph / Facebook -->
-	<meta property="og:description" content={description}/>
+	<meta property="og:description" content={description} />
 	<meta property="og:image" content={image} />
-	
+
 	<!-- Twitter -->
 	<meta property="twitter:description" content={description} />
 	<meta property="twitter:image" content={image} />

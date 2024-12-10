@@ -8,7 +8,6 @@
 	import FaLink from 'svelte-icons/fa/FaLink.svelte';
 	import { blur, fade } from 'svelte/transition';
 	import { d } from 'svelte-highlight/languages';
-	import github from "svelte-highlight/styles/github";
 
 	let pythonCode =
 		'import onnxruntime as ort\n# Load the model and create InferenceSession\nmodel_path = "path/to/your/onnx/model"\nsession = ort.InferenceSession(model_path)\n# "Load and preprocess the input image inputTensor"\n...\n# Run inference\noutputs = session.run(None, {"input": inputTensor})\nprint(outputs)';
@@ -47,13 +46,10 @@
 		activeTab = tabText;
 		activeTab = activeTab;
 	};
-	let innerWidth = 0
-
+	let innerWidth = 0;
 </script>
-<svelte:window bind:innerWidth/>
-<svelte:head>
-  {@html github}
-</svelte:head>
+
+<svelte:window bind:innerWidth />
 <div class="container mx-auto px-4">
 	<h3 class="text-xl mb-4 text-center">
 		Use ONNX Runtime with your favorite language and get started with the tutorials:
@@ -95,7 +91,7 @@
 					on:mouseenter={handleClick}
 					class="tab tab-lg {activeTab === 'JavaScript' || activeTab == 'JS' ? 'tab-active' : ''}"
 				>
-					{innerWidth >=  1024 ? 'JavaScript' : 'JS'}
+					{innerWidth >= 1024 ? 'JavaScript' : 'JS'}
 				</p>
 				<p
 					on:mouseenter={handleClick}
@@ -108,7 +104,8 @@
 				</p>
 				<button
 					on:click={handleClick}
-					class="tab tab-lg hidden lg:block {activeTab === 'More..' ? 'tab-active' : ''}">More..</button
+					class="tab tab-lg hidden lg:block {activeTab === 'More..' ? 'tab-active' : ''}"
+					>More..</button
 				>
 			</div>
 			{#if activeTab === 'Python'}

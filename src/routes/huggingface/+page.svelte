@@ -1,4 +1,4 @@
-scenario<script lang="ts">
+<script lang="ts">
 	import LandingHero from '../components/landing-hero.svelte';
 	import ImagesHf1 from '../../images/undraw/image_HF1.svelte';
 	import ImageHf2 from '../../images/undraw/image_HF2.svelte';
@@ -9,21 +9,23 @@ scenario<script lang="ts">
 		'ONNX Runtime can be used to accelerate well over 130,000 of the models available on Hugging Face.';
 	const imgsrc = 'onnxruntimelogo';
 	const imgalt = 'ONNX Runtime Logo';
-	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
-	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
-	let authors = ['']
-	let keywords = 'onnxruntime, onnx runtime hugging face, onnx runtime hugging face models, onnx runtime hugging face deployment, onnx runtime hugging face performance, onnx runtime hugging face time to market, onnx runtime hugging face deploy anywhere, onnx runtime hugging face boost performance, onnx runtime hugging face improve time to market, onnx runtime hugging face production ready, onnx runtime hugging face lower latency, onnx runtime hugging face higher throughput, onnx runtime hugging face get innovations into production faster, onnx runtime hugging face testimonials, onnx runtime hugging face performance enhancements, onnx runtime hugging face production ready, onnx runtime hugging face lower latency, onnx runtime hugging face higher throughput, onnx runtime hugging face get innovations into production faster, onnx runtime hugging face testimonials, onnx runtime hugging face performance enhancements'
+	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png';
+	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png';
+	let authors = [''];
+	let keywords =
+		'onnxruntime, onnx runtime hugging face, onnx runtime hugging face models, onnx runtime hugging face deployment, onnx runtime hugging face performance, onnx runtime hugging face time to market, onnx runtime hugging face deploy anywhere, onnx runtime hugging face boost performance, onnx runtime hugging face improve time to market, onnx runtime hugging face production ready, onnx runtime hugging face lower latency, onnx runtime hugging face higher throughput, onnx runtime hugging face get innovations into production faster, onnx runtime hugging face testimonials, onnx runtime hugging face performance enhancements, onnx runtime hugging face production ready, onnx runtime hugging face lower latency, onnx runtime hugging face higher throughput, onnx runtime hugging face get innovations into production faster, onnx runtime hugging face testimonials, onnx runtime hugging face performance enhancements';
 </script>
-<svelte:head>
+
+scenario<svelte:head>
 	<!-- Dynamic meta tags -->
 	<meta name="description" content={description} />
 	<meta name="image" content={image} />
 	<meta name="author" content={authors.join(', ')} />
 	<meta name="keywords" content={keywords} />
 	<!-- Open Graph / Facebook -->
-	<meta property="og:description" content={description}/>
+	<meta property="og:description" content={description} />
 	<meta property="og:image" content={image} />
-	
+
 	<!-- Twitter -->
 	<meta property="twitter:description" content={description} />
 	<meta property="twitter:image" content={image} />
@@ -81,14 +83,26 @@ scenario<script lang="ts">
 			<p class="pb-4">
 				The top 30 most popular model architectures on Hugging Face are all supported by ONNX
 				Runtime, and over 80 Hugging Face model architectures in total boast ORT support. This list
-				includes <a href="https://huggingface.co/models?other=bert" class="dark:text-blue-300 text-blue-800 underline">BERT</a>,
-				<a href="https://huggingface.co/models?other=gpt2" class="dark:text-blue-300 text-blue-800 underline">GPT2</a>,
-				<a href="https://huggingface.co/models?other=t5" class="dark:text-blue-300 text-blue-800 underline">T5</a>,
-				<a href="https://huggingface.co/models?other=stable-diffusion" class="dark:text-blue-300 text-blue-800 underline"
-					>Stable Diffusion</a
+				includes <a
+					href="https://huggingface.co/models?other=bert"
+					class="dark:text-blue-300 text-blue-800 underline">BERT</a
 				>,
-				<a href="https://huggingface.co/models?other=whisper" class="dark:text-blue-300 text-blue-800 underline">Whisper</a>, and
-				many more.
+				<a
+					href="https://huggingface.co/models?other=gpt2"
+					class="dark:text-blue-300 text-blue-800 underline">GPT2</a
+				>,
+				<a
+					href="https://huggingface.co/models?other=t5"
+					class="dark:text-blue-300 text-blue-800 underline">T5</a
+				>,
+				<a
+					href="https://huggingface.co/models?other=stable-diffusion"
+					class="dark:text-blue-300 text-blue-800 underline">Stable Diffusion</a
+				>,
+				<a
+					href="https://huggingface.co/models?other=whisper"
+					class="dark:text-blue-300 text-blue-800 underline">Whisper</a
+				>, and many more.
 			</p>
 			<p class="pb-4">
 				ONNX models can be found directly from the Hugging Face Model Hub in its <a
@@ -102,8 +116,9 @@ scenario<script lang="ts">
 					href="https://huggingface.co/docs/optimum/exporters/onnx/overview"
 					class="dark:text-blue-300 text-blue-800 underline">Hugging Face Optimum</a
 				>, you can easily convert pretrained models to ONNX, and
-				<a href="https://huggingface.co/docs/transformers.js/index" class="dark:text-blue-300 text-blue-800 underline"
-					>Transformers.js</a
+				<a
+					href="https://huggingface.co/docs/transformers.js/index"
+					class="dark:text-blue-300 text-blue-800 underline">Transformers.js</a
 				> lets you run Hugging Face Transformers directly from your browser!
 			</p>
 		</div>
@@ -121,9 +136,14 @@ scenario<script lang="ts">
 					href="https://huggingface.co/models?other=llama"
 					class="dark:text-blue-300 text-blue-800 underline">LLaMA</a
 				>,
-				<a href="https://huggingface.co/models?other=gpt_neo" class="dark:text-blue-300 text-blue-800 underline">GPT Neo</a>,
-				<a href="https://huggingface.co/models?other=bloom" class="dark:text-blue-300 text-blue-800 underline">BLOOM</a>, and
-				many more.
+				<a
+					href="https://huggingface.co/models?other=gpt_neo"
+					class="dark:text-blue-300 text-blue-800 underline">GPT Neo</a
+				>,
+				<a
+					href="https://huggingface.co/models?other=bloom"
+					class="dark:text-blue-300 text-blue-800 underline">BLOOM</a
+				>, and many more.
 			</p>
 			<p>
 				Hugging Face also provides an <a
@@ -149,9 +169,11 @@ scenario<script lang="ts">
 				and designs responsible AI solutions.
 			</p>
 			<p>
-				<a href="https://ml.azure.com/" class="dark:text-blue-300 text-blue-800 underline">Azure Machine Learning</a> publishes a
-				curated model list that is updated regularly and includes the most popular models. You can run
-				the vast majority of the models on the curated list with ONNX Runtime, using HuggingFace Optimum.
+				<a href="https://ml.azure.com/" class="dark:text-blue-300 text-blue-800 underline"
+					>Azure Machine Learning</a
+				> publishes a curated model list that is updated regularly and includes the most popular models.
+				You can run the vast majority of the models on the curated list with ONNX Runtime, using HuggingFace
+				Optimum.
 			</p>
 		</div>
 		<div class="hidden md:grid mx-auto">
@@ -166,12 +188,16 @@ scenario<script lang="ts">
 		<div>
 			<h1 class="text-3xl pb-4">Transformers.js + ONNX Runtime Web</h1>
 			<p class="pb-4">
-				<a href="https://huggingface.co/docs/transformers.js/index" class="dark:text-blue-300 text-blue-800 underline"
-					>Transformers.js</a
+				<a
+					href="https://huggingface.co/docs/transformers.js/index"
+					class="dark:text-blue-300 text-blue-800 underline">Transformers.js</a
 				>
 				is an amazing tool to run transformers on the web, designed to be functionally equivalent to
 				Hugging Face’s
-				<a href="https://github.com/huggingface/transformers" class="dark:text-blue-300 text-blue-800 underline">transformers</a>
+				<a
+					href="https://github.com/huggingface/transformers"
+					class="dark:text-blue-300 text-blue-800 underline">transformers</a
+				>
 				python library.
 			</p>
 			<p class="pb-4">

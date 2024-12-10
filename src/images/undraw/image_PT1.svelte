@@ -4,7 +4,7 @@
 	width="73"
 	height="73"
 	viewBox="0 0 73 73"
-	xmlns="http://www.w3.org/2000/svg"
+	xmlns="https://www.w3.org/2000/svg"
 >
 	<path
 		d="M19.7994 2.61731H1.58496V14.7602H19.7994V2.61731Z"

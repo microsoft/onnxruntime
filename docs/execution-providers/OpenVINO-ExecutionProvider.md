@@ -90,7 +90,7 @@ To use csharp api for openvino execution provider create a custom nuget package.
 
 ### OpenCL queue throttling for GPU devices
 
-Enables [OpenCL queue throttling](https://docs.openvino.ai/latest/groupov_runtime_ocl_gpu_prop_cpp_api.html?highlight=throttling) for GPU devices. Reduces CPU utilization when using GPUs with OpenVINO EP.
+Enables [OpenCL queue throttling](https://docs.openvino.ai/2024/api/c_cpp_api/group__ov__runtime__ocl__gpu__prop__cpp__api.html) for GPU devices. Reduces CPU utilization when using GPUs with OpenVINO EP.
 
 ### Model caching
 
@@ -118,7 +118,7 @@ Int8 models are supported on CPU, GPU and NPU.
 
 OpenVINO™ Execution Provider now  supports ONNX models that store weights in external files. It is especially useful for models larger than 2GB because of protobuf limitations.
 
-See the [OpenVINO™ ONNX Support documentation](https://docs.openvino.ai/latest/classov_1_1Core.html).
+See the [OpenVINO™ ONNX Support documentation](https://docs.openvino.ai/2024/openvino-workflow/model-preparation/convert-model-onnx.html).
 
 Converting and Saving an ONNX Model to External Data:
 Use the ONNX API's.[documentation](https://github.com/onnx/onnx/blob/master/docs/ExternalData.md#converting-and-saving-an-onnx-model-to-external-data).
@@ -177,7 +177,7 @@ Use `AUTO:<device 1><device 2>..` as the device name to delegate selection of an
 From the application point of view, this is just another device that handles all accelerators in full system.
 
 For more information on Auto-Device plugin of OpenVINO™, please refer to the
-[Intel OpenVINO™ Auto Device Plugin](https://docs.openvino.ai/latest/openvino_docs_OV_UG_supported_plugins_AUTO.html).
+[Intel OpenVINO™ Auto Device Plugin](https://docs.openvino.ai/2024/openvino-workflow/running-inference/inference-devices-and-modes/gpu-device.html#automatic-device-selection).
 
 ### Heterogeneous Execution for OpenVINO™ Execution Provider
 
@@ -186,7 +186,7 @@ The heterogeneous execution enables computing for inference on one network on se
 * To utilize accelerator's power and calculate the heaviest parts of the network on the accelerator and execute unsupported layers on fallback devices like the CPU to utilize all available hardware more efficiently during one inference.
 
 For more information on Heterogeneous plugin of OpenVINO™, please refer to the
-[Intel OpenVINO™ Heterogeneous Plugin](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Hetero_execution.html).
+[Intel OpenVINO™ Heterogeneous Plugin](https://docs.openvino.ai/2024/openvino-workflow/running-inference/inference-devices-and-modes/hetero-execution.html).
 
 ### Multi-Device Execution for OpenVINO EP
 
@@ -196,7 +196,7 @@ Multi-Device plugin automatically assigns inference requests to available comput
 * More consistent performance, since the devices can now share the inference burden (so that if one device is becoming too busy, another device can take more of the load)
 
 For more information on Multi-Device plugin of OpenVINO™, please refer to the
-[Intel OpenVINO™ Multi Device Plugin](https://docs.openvino.ai/latest/openvino_docs_OV_UG_Running_on_multiple_devices.html).
+[Intel OpenVINO™ Multi Device Plugin](https://docs.openvino.ai/2024/openvino-workflow/running-inference/inference-devices-and-modes/gpu-device.html#multi-stream-execution).
 
 ### Export OpenVINO Compiled Blob 
 Export the OpenVINO compiled blob as an ONNX model. Using this ONNX model for subsequent inferences avoids model recompilation and could have a positive impact on Session creation time. This feature is currently enabled for fully supported models only. It complies with the ORT session config keys

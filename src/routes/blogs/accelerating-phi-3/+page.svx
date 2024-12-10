@@ -51,7 +51,7 @@ Whether it's Windows, Linux, Android, or Mac, there's a path to infer models eff
 
 ## Try the ONNX Runtime Generate() API
 
-We are pleased to announce our new Generate() API, which makes it easier to run the Phi-3 models across a range of devices, platforms, and EP backends by wrapping several aspects of generative AI inferencing. The Generate() API makes it easy to drag and drop LLMs straight into your app. To run the early version of these models with ONNX, follow the steps [here](http://aka.ms/generate-tutorial).
+We are pleased to announce our new Generate() API, which makes it easier to run the Phi-3 models across a range of devices, platforms, and EP backends by wrapping several aspects of generative AI inferencing. The Generate() API makes it easy to drag and drop LLMs straight into your app. To run the early version of these models with ONNX, follow the steps [here](https://aka.ms/generate-tutorial).
 
 
 Example:

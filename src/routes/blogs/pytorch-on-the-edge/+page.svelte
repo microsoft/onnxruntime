@@ -180,10 +180,14 @@ fun run(audioTensor: OnnxTensor): Result {
 <div class="container mx-auto px-4 md:px-8 lg:px-48 pt-8">
 	<h1 class="text-5xl pb-2">Run PyTorch models on the edge</h1>
 	<p class="text-neutral">
-		By: <a href="https://www.linkedin.com/in/natkershaw/" class="dark:text-blue-300 text-blue-800 underline">Natalie Kershaw</a>
+		By: <a
+			href="https://www.linkedin.com/in/natkershaw/"
+			class="dark:text-blue-300 text-blue-800 underline">Natalie Kershaw</a
+		>
 		and
-		<a href="https://www.linkedin.com/in/prasanthpulavarthi/" class="dark:text-blue-300 text-blue-800 underline"
-			>Prasanth Pulavarthi</a
+		<a
+			href="https://www.linkedin.com/in/prasanthpulavarthi/"
+			class="dark:text-blue-300 text-blue-800 underline">Prasanth Pulavarthi</a
 		>
 	</p>
 	<p class="text-neutral">12TH OCTOBER, 2023</p>
@@ -218,12 +222,16 @@ fun run(audioTensor: OnnxTensor): Result {
 				anywhere that is outside of the cloud, ranging from large, well-resourced personal computers
 				to small footprint devices such as mobile phones. This has been a challenging task to
 				accomplish in the past, but new advances in model optimization and software like
-				<a href="https://onnxruntime.ai/pytorch" class="dark:text-blue-300 text-blue-800 underline">ONNX Runtime</a>
+				<a href="https://onnxruntime.ai/pytorch" class="dark:text-blue-300 text-blue-800 underline"
+					>ONNX Runtime</a
+				>
 				make it more feasible - even for new generative AI and large language models like Stable Diffusion,
 				Whisper, and Llama2.
 			</p>
 
-			<h2 class="dark:text-blue-300 text-blue-800 underline text-3xl mb-4">Considerations for PyTorch models on the edge</h2>
+			<h2 class="dark:text-blue-300 text-blue-800 underline text-3xl mb-4">
+				Considerations for PyTorch models on the edge
+			</h2>
 
 			<p class="mb-4">
 				There are several factors to keep in mind when thinking about running a PyTorch model on the
@@ -293,7 +301,9 @@ fun run(audioTensor: OnnxTensor): Result {
 				</li>
 			</ul>
 
-			<h2 class="dark:text-blue-300 text-blue-800 underline text-3xl mb-4">Tools for PyTorch models on the edge</h2>
+			<h2 class="dark:text-blue-300 text-blue-800 underline text-3xl mb-4">
+				Tools for PyTorch models on the edge
+			</h2>
 
 			<p class="mb-4">
 				We mentioned ONNX Runtime several times above. ONNX Runtime is a compact, standards-based
@@ -329,7 +339,9 @@ fun run(audioTensor: OnnxTensor): Result {
 				and web browsers) via various languages (from C# to JavaScript to Swift).
 			</p>
 
-			<h2 class="dark:text-blue-300 text-blue-800 underline text-3xl mb-4">Examples of PyTorch models on the edge</h2>
+			<h2 class="dark:text-blue-300 text-blue-800 underline text-3xl mb-4">
+				Examples of PyTorch models on the edge
+			</h2>
 
 			<h3 class=" text-2xl mb-2">Stable Diffusion on Windows</h3>
 
@@ -375,8 +387,9 @@ fun run(audioTensor: OnnxTensor): Result {
 
 			<p class="mb-4">
 				Running a PyTorch model locally in the browser is not only possible but super simple with
-				the <a href="https://huggingface.co/docs/transformers.js/index" class="dark:text-blue-300 text-blue-800 underline"
-					>transformers.js</a
+				the <a
+					href="https://huggingface.co/docs/transformers.js/index"
+					class="dark:text-blue-300 text-blue-800 underline">transformers.js</a
 				> library. Transformers.js uses ONNX Runtime Web as its backend. Many models are already converted
 				to ONNX and served by the tranformers.js CDN, making inference in the browser a matter of writing
 				a few lines of HTML:
@@ -481,7 +494,8 @@ fun run(audioTensor: OnnxTensor): Result {
 				>, and
 				<a
 					href="https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training/mobile/ios"
-					class="dark:text-blue-300 text-blue-800 underline">build and run the application from source</a
+					class="dark:text-blue-300 text-blue-800 underline"
+					>build and run the application from source</a
 				>.
 			</p>
 

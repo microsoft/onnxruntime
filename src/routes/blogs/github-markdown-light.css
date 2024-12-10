@@ -6,11 +6,11 @@ ul {
 	width: 35em;
 }
 /*light*/
-@media (max-width: 768px) { 
+@media (max-width: 768px) {
 	.w50 {
 		width: 75%;
 	}
- }
+}
 
 .markdown-body {
 	-ms-text-size-adjust: 100%;

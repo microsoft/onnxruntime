@@ -30,7 +30,7 @@
 			<div class="card-body">
 				<h2 class="card-title">{title}</h2>
 				<p>{description}</p>
-				<p class="text-blue-700 text-right">
+				<p class="text-blue-800 text-right">
 					{date}
 				</p>
 			</div>

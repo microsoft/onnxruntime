@@ -62,10 +62,10 @@
 					<p class="text-lg">
 						Accelerate training of popular models, including <a
 							href="https://huggingface.co/"
-							class="text-blue-700">Hugging Face</a
+							class="text-blue-800 underline">Hugging Face</a
 						>
 						models like Llama-2-7b and curated models from the
-						<a href="https://ml.azure.com/" class="text-blue-700"
+						<a href="https://ml.azure.com/" class="text-blue-800 underline"
 							>Azure AI | Machine Learning Studio</a
 						> model catalog.
 					</p>

@@ -8,7 +8,7 @@
 	height={344 * heightscale}
 	viewBox="0 0 228 172"
 	fill="none"
-	xmlns="http://www.w3.org/2000/svg"
+	xmlns="https://www.w3.org/2000/svg"
 >
 	<g clip-path="url(#clip0_307_423)">
 		<path d="M195.895 127.765V147.869H32.1055V24.1316H195.895V127.765Z" fill="white" />

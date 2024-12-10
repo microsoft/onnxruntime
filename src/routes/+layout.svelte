@@ -2,7 +2,7 @@
 	import '../app.css';
 	import Header from './components/header.svelte';
 	import Footer from './components/footer.svelte';
-	import oneLight from 'svelte-highlight/styles/one-light';
+	import a11yLight from 'svelte-highlight/styles/a11y-light';
 	import { fade } from 'svelte/transition';
 	import { page } from '$app/stores';
 	export let data;
@@ -10,27 +10,33 @@
 </script>
 
 <svelte:head>
-	{@html oneLight}
+	{@html a11yLight}
 	{#if !data.pathname.startsWith('/blogs/')}
-	<title
-		>ONNX Runtime | {data.pathname == '/'
-			? 'Home'
-			: data.pathname.substring(1).charAt(0).toUpperCase() + data.pathname.substring(2)}</title
-	>
-	<meta
-		property="og:title"
-		content="ONNX Runtime | {data.pathname == '/'
-			? 'Home'
-			: data.pathname.substring(1).charAt(0).toUpperCase() + data.pathname.substring(2)}"
-	/>
-	<meta name="title" content={"ONNX Runtime |" + data.pathname == '/'
-		? 'Home'
-		: data.pathname.substring(1).charAt(0).toUpperCase() + data.pathname.substring(2)} />
-	<meta property="twitter:title" content={"ONNX Runtime |" + data.pathname == '/'
-	? 'Home'
-	: data.pathname.substring(1).charAt(0).toUpperCase() + data.pathname.substring(2)} />
+		<title
+			>ONNX Runtime | {data.pathname == '/'
+				? 'Home'
+				: data.pathname.substring(1).charAt(0).toUpperCase() + data.pathname.substring(2)}</title
+		>
+		<meta
+			property="og:title"
+			content="ONNX Runtime | {data.pathname == '/'
+				? 'Home'
+				: data.pathname.substring(1).charAt(0).toUpperCase() + data.pathname.substring(2)}"
+		/>
+		<meta
+			name="title"
+			content={'ONNX Runtime |' + data.pathname == '/'
+				? 'Home'
+				: data.pathname.substring(1).charAt(0).toUpperCase() + data.pathname.substring(2)}
+		/>
+		<meta
+			property="twitter:title"
+			content={'ONNX Runtime |' + data.pathname == '/'
+				? 'Home'
+				: data.pathname.substring(1).charAt(0).toUpperCase() + data.pathname.substring(2)}
+		/>
 	{/if}
-	
+
 	<meta property="twitter:url" content={url + data.pathname} />
 	<meta property="og:url" content={url + data.pathname} />
 
@@ -41,8 +47,6 @@
 	<meta name="msapplication-TileColor" content="#B2B2B2" />
 	<meta name="theme-color" content="#B2B2B2" />
 	<meta property="og:type" content="website" />
-	
-	
 </svelte:head>
 <div class="selection:bg-info">
 	{#if !$page.url.pathname.startsWith('/blogs/')}

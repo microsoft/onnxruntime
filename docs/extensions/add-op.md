@@ -70,7 +70,7 @@ the custom operator kernel C++ code example can be found [operators](https://git
 * the third libraries API docs integrated in ONNXRuntime Extensions the can be used in C++ code
     - OpenCV API docs https://docs.opencv.org/4.x/
     - Google SentencePiece Library docs https://github.com/google/sentencepiece/blob/master/doc/api.md
-    - dlib(matrix and ML library) C++ API docs http://dlib.net/algorithms.html
+    - dlib(matrix and ML library) C++ API docs https://dlib.net/algorithms.html
     - BlingFire Library https://github.com/microsoft/BlingFire
     - Google RE2 Library https://github.com/google/re2/wiki/CplusplusAPI
     - JSON library https://json.nlohmann.me/api/basic_json/

@@ -15,11 +15,13 @@
 	const imgsrc = 'onnxruntimelogo';
 	const imgalt = 'ONNX Runtime Logo';
 	const pythonCode = 'import torch\n\ntorch.onnx.export(\nmodel,\ninputs,\n"model.onnx")';
-	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
-	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
-	let authors = ['']
-	let keywords = 'onnxruntime, onnx runtime pytorch, onnx runtime pytorch models, onnx runtime pytorch deployment, onnx runtime pytorch performance, onnx runtime pytorch time to market, onnx runtime pytorch deploy anywhere, onnx runtime pytorch boost performance, onnx runtime pytorch improve time to market, onnx runtime pytorch production ready, onnx runtime pytorch lower latency, onnx runtime pytorch higher throughput, onnx runtime pytorch get innovations into production faster, onnx runtime pytorch testimonials, onnx runtime pytorch performance enhancements, onnx runtime pytorch production ready, onnx runtime pytorch lower latency, onnx runtime pytorch higher throughput, onnx runtime pytorch get innovations into production faster, onnx runtime pytorch testimonials, onnx runtime pytorch performance enhancements'
+	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png';
+	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png';
+	let authors = [''];
+	let keywords =
+		'onnxruntime, onnx runtime pytorch, onnx runtime pytorch models, onnx runtime pytorch deployment, onnx runtime pytorch performance, onnx runtime pytorch time to market, onnx runtime pytorch deploy anywhere, onnx runtime pytorch boost performance, onnx runtime pytorch improve time to market, onnx runtime pytorch production ready, onnx runtime pytorch lower latency, onnx runtime pytorch higher throughput, onnx runtime pytorch get innovations into production faster, onnx runtime pytorch testimonials, onnx runtime pytorch performance enhancements, onnx runtime pytorch production ready, onnx runtime pytorch lower latency, onnx runtime pytorch higher throughput, onnx runtime pytorch get innovations into production faster, onnx runtime pytorch testimonials, onnx runtime pytorch performance enhancements';
 </script>
+
 <svelte:head>
 	<!-- Dynamic meta tags -->
 	<meta name="description" content={description} />
@@ -27,9 +29,9 @@
 	<meta name="author" content={authors.join(', ')} />
 	<meta name="keywords" content={keywords} />
 	<!-- Open Graph / Facebook -->
-	<meta property="og:description" content={description}/>
+	<meta property="og:description" content={description} />
 	<meta property="og:image" content={image} />
-	
+
 	<!-- Twitter -->
 	<meta property="twitter:description" content={description} />
 	<meta property="twitter:image" content={image} />
