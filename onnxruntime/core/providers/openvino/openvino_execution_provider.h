@@ -90,7 +90,7 @@ struct OpenVINOExecutionProviderInfo {
   bool export_ep_ctx_blob_{false};
   bool enable_qdq_optimizer_{false};
   bool disable_cpu_fallback_{false};
-  bool so_epctx_embed_mode_{true};
+  bool so_epctx_embed_mode_{false};
 
   OpenVINOExecutionProviderInfo() = delete;
 
