@@ -15,9 +15,7 @@ end
 def shared
   config = use_native_modules!
 
-  use_react_native!(
-    :path => config[:reactNativePath]
-  )
+  use_react_native!(:path => config["reactNativePath"])
 
   # Comment the next line if you don't want to use dynamic frameworks
   use_frameworks!
