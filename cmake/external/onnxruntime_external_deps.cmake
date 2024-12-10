@@ -615,12 +615,25 @@ if (onnxruntime_USE_COREML)
 endif()
 
 if (onnxruntime_USE_WEBGPU)
-  FetchContent_Declare(
-    dawn
-    URL ${DEP_URL_dawn}
-    URL_HASH SHA1=${DEP_SHA1_dawn}
-    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
-  )
+  if (onnxruntime_CUSTOM_DAWN_SRC_PATH)
+    # use the custom dawn source path if provided
+    #
+    # specified as:
+    # build.py --use_webgpu --cmake_extra_defines "onnxruntime_CUSTOM_DAWN_SRC_PATH=<PATH_TO_DAWN_SRC_ROOT>"
+    FetchContent_Declare(
+      dawn
+      SOURCE_DIR ${onnxruntime_CUSTOM_DAWN_SRC_PATH}
+    )
+  else()
+    FetchContent_Declare(
+      dawn
+      URL ${DEP_URL_dawn}
+      URL_HASH SHA1=${DEP_SHA1_dawn}
+      # All previous patches are merged into the upstream dawn project. We don't need to apply any patches right now.
+      # if we need to apply patches in the future, we can uncomment the following line.
+      # PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
+    )
+  endif()
 
   # use dawn::dawn_native and dawn::dawn_proc instead of the monolithic dawn::webgpu_dawn to minimize binary size
   set(DAWN_BUILD_MONOLITHIC_LIBRARY OFF CACHE BOOL "" FORCE)

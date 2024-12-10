@@ -396,6 +396,34 @@ TEST(BeamSearchTest, GptBeamSearchFp16_VocabPadded) {
   }
 }
 
+TEST(BeamSearchTest, DummyT5) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  SKIP_CUDA_TEST_WITH_DML;
+#endif
+  ModelTester tester(CurrentTestName(), ORT_TSTR("testdata/dummy_t5.onnx"));
+  tester.ConfigEp(DefaultCpuExecutionProvider());
+  tester.AddInput("encoder_input_ids", {1, 5}, {14, 6, 13, 9, 7});
+  tester.AddOutput("sequences", {1, 3, 10}, {2, 16, 6, 14, 1, 15, 6, 14, 1, 15, 2, 3, 4, 15, 6, 14, 1, 15, 6, 14, 2, 16, 6, 14, 1, 15, 6, 14, 1, 14});
+#ifdef USE_CUDA
+  tester.ConfigEp(DefaultCudaExecutionProvider());
+#endif
+  tester.RunWithConfig();
+}
+
+TEST(BeamSearchTest, DummyT5WithOuterScopeInitializers) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  SKIP_CUDA_TEST_WITH_DML;
+#endif
+  ModelTester tester(CurrentTestName(), ORT_TSTR("testdata/dummy_t5_with_outer_scope_initializers.onnx"));
+  tester.ConfigEp(DefaultCpuExecutionProvider());
+  tester.AddInput("encoder_input_ids", {1, 5}, {14, 6, 13, 9, 7});
+  tester.AddOutput("sequences", {1, 3, 10}, {2, 16, 6, 14, 1, 15, 6, 14, 1, 15, 2, 3, 4, 15, 6, 14, 1, 15, 6, 14, 2, 16, 6, 14, 1, 15, 6, 14, 1, 14});
+#ifdef USE_CUDA
+  tester.ConfigEp(DefaultCudaExecutionProvider());
+#endif
+  tester.RunWithConfig();
+}
+
 TEST(BeamSearchTest, DummyT5WithSequenceInputIds) {
 #if defined(USE_CUDA) && defined(USE_DML)
   SKIP_CUDA_TEST_WITH_DML;

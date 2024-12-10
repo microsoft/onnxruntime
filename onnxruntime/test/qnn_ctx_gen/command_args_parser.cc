@@ -50,6 +50,7 @@ namespace qnnctxgen {
       "\t    [enable_htp_weight_sharing]: Allows common weights across graphs to be shared and stored in a single context binary. Defaults to '1' (enabled).\n"
       "\t    [offload_graph_io_quantization]: Offload graph input quantization and graph output dequantization to another EP (typically CPU EP). \n"
       "\t    Defaults to '0' (QNN EP handles the graph I/O quantization and dequantization). \n"
+      "\t    [enable_htp_spill_fill_buffer]: Enable HTP spill file buffer, used while generating QNN context binary."
       "\t    [Example] -i \"vtcm_mb|8 htp_arch|73\" \n"
       "\n"
       "\t-h: help\n");
@@ -146,7 +147,7 @@ static bool ParseSessionConfigs(const std::string& configs_string,
               ORT_THROW("Wrong value for htp_graph_finalization_optimization_mode. select from: " + str);
             }
           } else if (key == "enable_htp_fp16_precision" || key == "enable_htp_weight_sharing" ||
-                     key == "offload_graph_io_quantization") {
+                     key == "offload_graph_io_quantization" || key == "enable_htp_spill_fill_buffer") {
             std::unordered_set<std::string> supported_options = {"0", "1"};
             if (supported_options.find(value) == supported_options.end()) {
               std::ostringstream str_stream;
@@ -158,7 +159,7 @@ static bool ParseSessionConfigs(const std::string& configs_string,
           } else {
             ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path', 'vtcm_mb', 'htp_performance_mode',
  'htp_graph_finalization_optimization_mode', 'soc_model', 'htp_arch', 'enable_htp_fp16_precision', 'enable_htp_weight_sharing',
- 'offload_graph_io_quantization'])");
+ 'offload_graph_io_quantization', 'enable_htp_spill_fill_buffer'])");
           }
 
           test_config.run_config.qnn_options[key] = value;

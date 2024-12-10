@@ -286,7 +286,11 @@ Return Value:
     this->QuantizeLinearS4Kernel = MlasQuantizeLinearS4Kernel;
     this->QuantizeLinearU4Kernel = MlasQuantizeLinearU4Kernel;
 #ifndef __APPLE__
+#ifndef FORCE_GENERIC_ALGORITHMS
     this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelSse;
+#else  // FORCE_GENERIC_ALGORITHMS
+    this->CastF16ToF32Kernel = nullptr;
+#endif  // FORCE_GENERIC_ALGORITHMS
 #endif  // __APPLE__
 
     this->NchwcBlockSize = 8;
@@ -308,8 +312,11 @@ Return Value:
     //
     // Check if the processor supports SSE 4.1 instructions.
     //
-
+#ifndef FORCE_GENERIC_ALGORITHMS
     if ((Cpuid1[2] & 0x80000) != 0) {
+#else  // FORCE_GENERIC_ALGORITHMS
+    if (false) {
+#endif  // FORCE_GENERIC_ALGORITHMS
         this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchSse41;
     }
 
@@ -319,7 +326,11 @@ Return Value:
     // Check if the processor supports the AVX and OSXSAVE features.
     //
 
+#ifndef FORCE_GENERIC_ALGORITHMS
     if ((Cpuid1[2] & 0x18000000) == 0x18000000) {
+#else  // FORCE_GENERIC_ALGORITHMS
+    if (false) {
+#endif  // FORCE_GENERIC_ALGORITHMS
 
         //
         // Check if the operating system supports saving SSE and AVX states.
@@ -387,7 +398,7 @@ Return Value:
                 this->ConvDepthwiseS8S8Kernel = MlasConvDepthwiseKernelAvx2<int8_t, int8_t>;
                 this->ConvDepthwiseS8U8Kernel = MlasConvDepthwiseKernelAvx2<int8_t, uint8_t>;
                 this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelFma3;
-                this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2;
+                this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2;
                 this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelAvx2;
                 this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelAvx2;
 
@@ -417,7 +428,7 @@ Return Value:
                     this->GemmU8S8Kernel = MlasGemmU8S8KernelAvxVnni;
                     this->GemvU8S8Kernel = MlasGemvU8S8KernelAvxVnni;
                     this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvxVnni;
-                    this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2vnni;
+                    this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2vnni;
                 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -458,7 +469,7 @@ Return Value:
                         this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512Core;
                         this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Core;
                         this->FpQ4GemmDispatch = &MlasFpQ4GemmDispatchAvx512;
-                        this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512;
+                        this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512;
 
                         //
                         // Check if the processor supports AVX512VNNI.
@@ -471,7 +482,7 @@ Return Value:
                             this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Vnni;
                             this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Vnni;
                             this->Q8Q4GemmDispatch = &MlasQ8Q4GemmDispatchAvx512vnni;
-                            this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512vnni;
+                            this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512vnni;
                         }
                     }
                 }
@@ -531,6 +542,8 @@ Return Value:
     this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchNeon;
     this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchNeon;
     this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchNeon;
+    this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchNeon;
+    this->RopeDispatch = &MlasRopeDispatchNeon;
 
     //
     // Check if the processor supports ASIMD dot product instructions.
@@ -560,9 +573,6 @@ Return Value:
         this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchSdot;
         this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchDot;
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
-
-        // MlasSQNBitGemmDispatchNeon has a dependency on dot product instructions
-        this->SQNBitGemmDispatch = &MlasSQNBitGemmDispatchNeon;
     }
 
 #if defined(__linux__)

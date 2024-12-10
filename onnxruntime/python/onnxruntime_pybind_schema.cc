@@ -69,11 +69,14 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
 #ifdef USE_NNAPI
             onnxruntime::NnapiProviderFactoryCreator::Create(0, std::optional<std::string>()),
 #endif
+#ifdef USE_VSINPU
+            onnxruntime::VSINPUProviderFactoryCreator::Create(),
+#endif
 #ifdef USE_RKNPU
             onnxruntime::RknpuProviderFactoryCreator::Create(),
 #endif
 #ifdef USE_COREML
-            onnxruntime::CoreMLProviderFactoryCreator::Create(0),
+            onnxruntime::CoreMLProviderFactoryCreator::Create(ProviderOptions{}),
 #endif
 #ifdef USE_XNNPACK
             onnxruntime::XnnpackProviderFactoryCreator::Create(ProviderOptions{}, nullptr),

@@ -363,19 +363,23 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_fp16_precision: " << enable_HTP_FP16_precision_;
   }
 
+  bool enable_htp_weight_sharing = false;
   static const std::string QNN_HTP_WEIGHT_SHARING_ENABLED = "enable_htp_weight_sharing";
   auto htp_weight_sharing_enabled_pos = provider_options_map.find(QNN_HTP_WEIGHT_SHARING_ENABLED);
   if (htp_weight_sharing_enabled_pos != provider_options_map.end()) {
     if ("1" == htp_weight_sharing_enabled_pos->second) {
-      enable_htp_weight_sharing_ = true;
+      enable_htp_weight_sharing = true;
     } else if ("0" == htp_weight_sharing_enabled_pos->second) {
-      enable_htp_weight_sharing_ = false;
+      enable_htp_weight_sharing = false;
     } else {
-      LOGS_DEFAULT(VERBOSE) << "Invalid enable_htp_weight_sharing: " << enable_htp_weight_sharing_
+      LOGS_DEFAULT(VERBOSE) << "Invalid enable_htp_weight_sharing: " << enable_htp_weight_sharing
                             << " only 0 or 1 allowed. Set to 0.";
     }
-    LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_weight_sharing: " << enable_htp_weight_sharing_;
+    LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_weight_sharing: " << enable_htp_weight_sharing;
   }
+
+  // Add this option because this feature requires QnnSystem lib and it's no supported for Windows x86_64 platform
+  enable_spill_fill_buffer_ = ParseBoolOption("enable_htp_spill_fill_buffer", false, provider_options_map);
 
   model_settings_.offload_graph_io_quantization = ParseBoolOption("offload_graph_io_quantization", false,
                                                                   provider_options_map);
@@ -396,7 +400,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
       device_id_,
       htp_arch,
       soc_model,
-      enable_htp_weight_sharing_);
+      enable_htp_weight_sharing);
 
 #ifdef _WIN32
   auto& etwRegistrationManager = logging::EtwRegistrationManager::Instance();
@@ -686,7 +690,8 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   // It will load the QnnSystem lib if is_qnn_ctx_model=true, and
   // delay the Qnn context creation to Compile() using the cached context binary
-  auto rt = qnn_backend_manager_->SetupBackend(logger, is_qnn_ctx_model);
+  // or generate context cache enable, need to use use QnnSystem lib to parse the binary to get the max spill fill buffer size
+  auto rt = qnn_backend_manager_->SetupBackend(logger, is_qnn_ctx_model, context_cache_enabled_ && enable_spill_fill_buffer_);
   if (Status::OK() != rt) {
     LOGS(logger, ERROR) << "QNN SetupBackend failed " << rt.ErrorMessage();
     return result;
@@ -713,7 +718,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
   std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
 
-  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph_viewer);
+  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph_viewer, logger);
 
   // remove is_qnn_ctx_model related code
   const auto supported_nodes = GetSupportedNodes(graph_viewer, node_unit_map,
@@ -934,6 +939,16 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
 
     std::vector<int> main_context_pos_list;
     ORT_RETURN_IF_ERROR(qnn::GetMainContextNode(fused_nodes_and_graphs, main_context_pos_list));
+    uint32_t total_context_size = SafeInt<uint32_t>(main_context_pos_list.size());
+
+    int64_t max_spill_fill_size = 0;
+
+    // Adjust the main_context_pos_list, move the one with max spill fill buffer to the beginning
+    // HTP spill fill buffer only works for multiple QNN contexts generated after QNN v2.28
+    if (total_context_size > 1) {
+      ORT_RETURN_IF_ERROR(qnn::TryGetMaxSpillFillSize(fused_nodes_and_graphs, total_context_size,
+                                                      max_spill_fill_size, main_context_pos_list));
+    }
 
     for (auto main_context_pos : main_context_pos_list) {
       const onnxruntime::GraphViewer& main_ctx_graph_viewer(fused_nodes_and_graphs[main_context_pos].filtered_graph);
@@ -942,7 +957,8 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                        context_cache_path,
                                                        qnn_backend_manager_.get(),
                                                        qnn_models,
-                                                       logger));
+                                                       logger,
+                                                       max_spill_fill_size));
     }
 
     for (auto fused_node_and_graph : fused_nodes_and_graphs) {
@@ -984,6 +1000,13 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
     // All partitioned graph share single QNN context, included in the same context binary
     uint64_t buffer_size(0);
     auto context_buffer = qnn_backend_manager_->GetContextBinaryBuffer(buffer_size);
+    // Get max spill fill buffer size
+    uint64_t max_spill_fill_buffer_size = 0;
+    if (enable_spill_fill_buffer_) {
+      ORT_RETURN_IF_ERROR(qnn_backend_manager_->GetMaxSpillFillBufferSize(context_buffer.get(),
+                                                                          buffer_size,
+                                                                          max_spill_fill_buffer_size));
+    }
     qnn_ep_context_model_ = std::make_unique<Model>("qnn_ep_context_model", false, logger);
     ORT_RETURN_IF_ERROR(qnn::CreateEPContextNodes(qnn_ep_context_model_.get(),
                                                   context_buffer.get(),
@@ -993,6 +1016,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                   qnn_models_,
                                                   context_cache_path,
                                                   qnn_context_embed_mode_,
+                                                  max_spill_fill_buffer_size,
                                                   logger));
   }
   return Status::OK();
