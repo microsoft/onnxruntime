@@ -408,7 +408,7 @@ std::string GetModelOutputPath(const CoreMLOptions& coreml_options,
     // different subgraph has different folders. so we need to hash the inputs.
     path = std::string(coreml_options.ModelCachePath()) +
            "/" + std::to_string(hasher(inputs_collections));
-    if (!coreml_options_.CreateMLProgram()) {
+    if (!coreml_options.CreateMLProgram()) {
       ORT_THROW_IF_ERROR(Env::Default().CreateFolder(path));
       path += "/mlmodel";
     }
