@@ -274,10 +274,10 @@ const initVarStub = (
       let present_sequence_length = max(total_sequence_length_input, uniforms.past_sequence_length);
       let is_subsequent_prompt: bool = sequence_length > 1 && sequence_length != total_sequence_length_input;
       let is_first_prompt: bool = is_subsequent_prompt == false && sequence_length == total_sequence_length_input;
-      total_sequence_length = u32(${seqLensInput?.getByOffset('batchIdx')}) + 1;
       var past_sequence_length: u32 = 0;
       if (is_first_prompt == false) {
-        past_sequence_length = total_sequence_length - sequence_length;
+        var total_seqlen_input = u32(${seqLensInput?.getByOffset('batchIdx')}) + 1;
+        past_sequence_length = total_seqlen_input - sequence_length;
       }
        `;
   } else {
@@ -343,7 +343,7 @@ const createInPlaceSoftmaxProgramInfo = (
       { name: 'num_heads', type: 'u32' },
       { name: 'past_sequence_length', type: 'u32' },
       { name: 'sequence_length', type: 'u32' },
-      { name: 'total_sequence_length', type: 'u32' },
+      { name: 'total_sequence_length_comp', type: 'u32' },
       { name: 'elements_per_thread', type: 'u32' },
     ];
 
@@ -355,11 +355,11 @@ const createInPlaceSoftmaxProgramInfo = (
     let batchIdx = workgroup_id.z / uniforms.num_heads;
     let headIdx = workgroup_id.z % uniforms.num_heads;
     let sequence_length = uniforms.sequence_length;
-    var total_sequence_length = uniforms.total_sequence_length;
+    var total_sequence_length = uniforms.total_sequence_length_comp * ${components};
     ${initVarStub(seqLensInputHelper, totalSequenceLengthInputHelper, false)}
     let local_offset = local_idx * uniforms.elements_per_thread;
-    let offset = (global_idx / ${WG}) * uniforms.total_sequence_length + local_offset;
-    let seq_causal_length = ${seqLens ? 'u32(past_sequence_length + workgroup_id.y + 1)' : 'total_sequence_length'};
+    let offset = (global_idx / ${WG}) * uniforms.total_sequence_length_comp + local_offset;
+    let seq_causal_length = ${seqLens ? 'u32(past_sequence_length + workgroup_id.y + 1)' : 'uniforms.total_sequence_length_comp'};
     var thread_max_vector = ${f32Type}(-3.402823e+38f);
     for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {
       thread_max_vector = max(${f32Type}(x[offset + i]), thread_max_vector);
@@ -419,7 +419,7 @@ const createInPlaceSoftmaxProgramInfo = (
       ${
         seqLens
           ? `
-        for (var total_seq_id: u32 = seq_causal_length; total_seq_id + local_offset < uniforms.total_sequence_length; total_seq_id++) {
+        for (var total_seq_id: u32 = seq_causal_length; total_seq_id + local_offset < total_sequence_length; total_seq_id++) {
           x[offset + total_seq_id] = ${inputHelper.type.value}(${elemValueType}(0));
         }`
           : ''
@@ -433,7 +433,7 @@ const createInPlaceSoftmaxProgramInfo = (
     getShaderSource,
     getRunData: () => ({
       outputs: [],
-      dispatchGroup: { x: Math.ceil(totalSequenceLength / WG), y: sequenceLength, z: batchSize * numHeads },
+      dispatchGroup: { x: 1, y: sequenceLength, z: batchSize * numHeads },
       programUniforms,
     }),
   };
