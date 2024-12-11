@@ -1059,7 +1059,7 @@ extern const MLAS_ROPE_DISPATCH MlasRopeDispatchNeon;
 // half gemm dispatch structure
 //
 struct MLAS_HGEMM_DISPATCH;
-extern const MLAS_HGEMM_DISPATCH MlasHgemmDispatchNeon;
+extern const MLAS_HGEMM_DISPATCH MlasHGemmDispatchNeon;
 
 
 //
@@ -1223,7 +1223,7 @@ struct MLAS_PLATFORM {
     MLAS_CAST_F32_TO_F16_KERNEL* CastF32ToF16Kernel;
 
     const MLAS_ROPE_DISPATCH* RopeDispatch{nullptr};
-    const MLAS_HGEMM_DISPATCH* HGemmDIspatch{nullptr};
+    const MLAS_HGEMM_DISPATCH* HGemmDispatch{nullptr};
 };
 
 inline

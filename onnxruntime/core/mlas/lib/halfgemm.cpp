@@ -324,6 +324,34 @@ MlasHalfGemmKernel<MLAS_HALF_GEMM_KERNEL_DEFAULT>(
     }
 }
 
+bool
+MLASCALL
+MlasHGemmSupported(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB
+) {
+    auto* dispatch = GetMlasPlatform().HGemmDispatch;
+    if (TransA == CblasNoTrans && TransB == CblasTrans) {
+        return dispatch && dispatch->HGemmKernel_TransposeB;
+    }
+
+    return false;
+}
+
+void
+MLASCALL
+MlasGemmBatch(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_HGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool
+) {
+
+}
 
 const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchDefault = {
     MlasHalfGemmOperation<MLAS_HALF_GEMM_KERNEL_DEFAULT>,

@@ -1459,13 +1459,54 @@ MlasRotaryEmbedOneRow(
 );
 
 /**
+ * @brief Supply matrices data information to half precision gemm functions
+ */
+struct MLAS_HGEMM_DATA_PARAMS {
+    const MLAS_FP16* A = nullptr;      /**< Supplies the address of matrix A */
+    size_t lda = 0;                    /**< Supplies the first dimension of matrix A. */
+    const MLAS_FP16* B = nullptr;      /**< Supplies the address of matrix B */
+    size_t ldb = 0;                    /**< Supplies the first dimension of matrix B. */
+    MLAS_FP16* C = nullptr;            /**< Supplies the address of matrix C */
+    size_t ldc = 0;                    /**< Supplies the first dimension of matrix C. */
+    MLAS_FP16 alpha = MLAS_FP16(1.0f); /**< Supplies the scalar alpha multiplier (see GEMM definition) */
+    MLAS_FP16 beta = MLAS_FP16(0.0f);  /**< Supplies the scalar beta multiplier (see GEMM definition) */
+};
+
+/**
  * @brief Check whether current CPU supports half precision gemm.
  */
 bool
 MLASCALL
 MlasHGemmSupported(
     CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB);
+    CBLAS_TRANSPOSE TransB
+    );
+
+/**
+ * @brief  Batched half precision matrix/matrix multiply operation (HGEMM)
+ *
+ * @param TransA     Supplies the transpose operation for matrix A.
+ * @param TransB     Supplies the transpose operation for matrix B.
+ * @param M          Supplies the number of rows of matrix A and matrix C.
+ * @param N          Supplies the number of columns of matrix B and matrix C.
+ * @param K          Supplies the number of columns of matrix A and the number of rows of matrix B.
+ * @param Data       A array of matrices data parameters
+ * @param BatchSize  Supplies number of multiplications in this batch
+ * @param ThreadPool Supplies the thread pool object to use, else nullptr if the
+                     base library threading support should be used.
+ */
+void
+MLASCALL
+MlasGemmBatch(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_HGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool
+    );
 
 /**
  * @brief  half precision matrix/matrix multiply operation (HGEMM)
@@ -1487,8 +1528,8 @@ MlasHGemmSupported(
  * @param ThreadPool Supplies the thread pool object to use, else nullptr if the base library threading support
  *                   should be used.
  */
+inline
 void
-MLASCALL
 MlasGemm(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
@@ -1505,10 +1546,19 @@ MlasGemm(
     MLAS_FP16 beta,
     MLAS_THREADPOOL* ThreadPool
 ) {
-    // TODO: call MlasGemmBatch for hgemm
+    MLAS_HGEMM_DATA_PARAMS Data;
+    Data.alpha = alpha;
+    Data.A = A;
+    Data.lda = lda;
+    Data.B = B;
+    Data.ldb = ldb;
+    Data.beta = beta;
+    Data.C = C;
+    Data.ldc = ldc;
+    MlasGemmBatch(TransA, TransB, M, N, K, &Data, 1, ThreadPool);
 }
 
-    /**
+/**
  * @brief Whether current CPU supports FP16 acceleration.
 */
 bool MLASCALL
