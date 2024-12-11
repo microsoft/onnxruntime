@@ -159,7 +159,7 @@ struct OpenVINOExecutionProviderInfo {
       device_type_ = std::move(dev_type);
     } else if (dev_type.find("HETERO") == 0 || dev_type.find("MULTI") == 0 || dev_type.find("AUTO") == 0) {
       std::vector<std::string> devices = parseDevices(dev_type, available_devices);
-      device_type_ = dev_type;
+      device_type_ = std::move(dev_type);
     } else {
       ORT_THROW("Invalid device string: " + dev_type);
     }
