@@ -31,6 +31,20 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
   bool use_block32_;
 };
 
+class MatMulNBitsProgramPrefill final : public Program<MatMulNBitsProgramPrefill> {
+ public:
+  MatMulNBitsProgramPrefill() : Program{"MatMulNBitsPrefill"} {
+  }
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"M", ProgramUniformVariableDataType::Uint32},
+      {"N", ProgramUniformVariableDataType::Uint32},
+      {"K", ProgramUniformVariableDataType::Uint32},
+      {"K4", ProgramUniformVariableDataType::Uint32},
+      {"K8", ProgramUniformVariableDataType::Uint32});
+};
+
 class MatMulNBits final : public WebGpuKernel {
  public:
   MatMulNBits(const OpKernelInfo& info) : WebGpuKernel(info) {
