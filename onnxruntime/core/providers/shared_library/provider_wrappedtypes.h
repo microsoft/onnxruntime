@@ -122,6 +122,7 @@ struct AttributeProto final {
   void set_name(const ::std::string& value) { return g_host->AttributeProto__set_name(this, value); }
   void set_type(AttributeProto_AttributeType value) { return g_host->AttributeProto__set_type(this, value); }
   TensorProto* add_tensors() { return g_host->AttributeProto__add_tensors(this); }
+  std::string* release_s() { return g_host->AttributeProto__release_s(this); }
 
   typedef AttributeProto_AttributeType AttributeType;
   static constexpr AttributeType UNDEFINED = AttributeProto_AttributeType_UNDEFINED;
