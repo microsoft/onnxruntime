@@ -271,11 +271,11 @@ Status BaseOpBuilder::SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& 
 }
 
 // Internal function to transpose input from either (N,C,H,W,D) or (C,N,H,W,D) to (H,W,D,C,N).
-static Status TransposeToHwdcn(const TensorShape& input_shape,
-                               gsl::span<const size_t> perm,
-                               size_t elem_byte_size,
-                               gsl::span<const uint8_t> input_buffer,
-                               gsl::span<uint8_t> output_buffer) {
+static Status TransposeDataRank5(const TensorShape& input_shape,
+                                 gsl::span<const size_t> perm,
+                                 size_t elem_byte_size,
+                                 gsl::span<const uint8_t> input_buffer,
+                                 gsl::span<uint8_t> output_buffer) {
   const size_t rank = input_shape.NumDimensions();
   ORT_RETURN_IF_NOT(rank == 5 && perm.size() == 5, "Invalid input tensor rank");
   std::vector<size_t> perm_inverse(perm.size());
@@ -385,11 +385,11 @@ Status BaseOpBuilder::TransposeFromNchwToHwcn(const QnnModelWrapper& qnn_model_w
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(initializer, input_buffer));
   transposed_data.resize(input_buffer.size());
 
-  return TransposeToHwdcn(TensorShape::FromExistingBuffer(input_shape),
-                          nchw2hwcn_perm_3d,
-                          elem_byte_size,
-                          input_buffer,
-                          transposed_data);
+  return TransposeDataRank5(TensorShape::FromExistingBuffer(input_shape),
+                            nchw2hwcn_perm_3d,
+                            elem_byte_size,
+                            input_buffer,
+                            transposed_data);
 }
 
 Status BaseOpBuilder::TransposeFromNchwToHwcn(std::vector<int64_t> input_shape_dims,
@@ -407,11 +407,11 @@ Status BaseOpBuilder::TransposeFromNchwToHwcn(std::vector<int64_t> input_shape_d
     input_shape_dims.push_back(1);  // Make it 3D by making shape (N,C,H,W,1)
   }
 
-  return TransposeToHwdcn(TensorShape::FromExistingBuffer(input_shape_dims),
-                          nchw2hwcn_perm_3d,
-                          elem_byte_size,
-                          input_buffer,
-                          output_buffer);
+  return TransposeDataRank5(TensorShape::FromExistingBuffer(input_shape_dims),
+                            nchw2hwcn_perm_3d,
+                            elem_byte_size,
+                            input_buffer,
+                            output_buffer);
 }
 
 Status BaseOpBuilder::TransposeFromCnhwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
@@ -434,11 +434,11 @@ Status BaseOpBuilder::TransposeFromCnhwToHwcn(const QnnModelWrapper& qnn_model_w
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(initializer, input_buffer));
   transposed_data.resize(input_buffer.size());
 
-  return TransposeToHwdcn(TensorShape::FromExistingBuffer(input_shape),
-                          cnhw2hwcn_perm_3d,
-                          elem_byte_size,
-                          input_buffer,
-                          transposed_data);
+  return TransposeDataRank5(TensorShape::FromExistingBuffer(input_shape),
+                            cnhw2hwcn_perm_3d,
+                            elem_byte_size,
+                            input_buffer,
+                            transposed_data);
 }
 
 Status BaseOpBuilder::TransposeFromCnhwToHwcn(std::vector<int64_t> input_shape_dims,
@@ -456,11 +456,11 @@ Status BaseOpBuilder::TransposeFromCnhwToHwcn(std::vector<int64_t> input_shape_d
     input_shape_dims.push_back(1);  // Make it 3D by making shape (C,N,H,W,1)
   }
 
-  return TransposeToHwdcn(TensorShape::FromExistingBuffer(input_shape_dims),
-                          cnhw2hwcn_perm_3d,
-                          elem_byte_size,
-                          input_buffer,
-                          output_buffer);
+  return TransposeDataRank5(TensorShape::FromExistingBuffer(input_shape_dims),
+                            cnhw2hwcn_perm_3d,
+                            elem_byte_size,
+                            input_buffer,
+                            output_buffer);
 }
 
 Status BaseOpBuilder::ProcessAxisAttribute(const QnnModelWrapper& qnn_model_wrapper,
