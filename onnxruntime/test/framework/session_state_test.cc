@@ -1064,6 +1064,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, test4) {
   ASSERT_EQ(if_node_branches_shared_prepack_counter_2, static_cast<size_t>(2));
 }
 
+#ifndef __wasm__
 // sharing is on
 TEST_F(SessionStateTestSharedInitalizersWithPrePacking, TestPrepackedSerialization) {
   const std::filesystem::path model_with_external_initializers =
@@ -1272,6 +1273,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, TestPrepackedSerializati
     ASSERT_EQ(prepacked_for_serialization.GetNumberOfKeyedBlobs(), 1U);
   }
 }
+#endif  // __wasm__
 
 INSTANTIATE_TEST_SUITE_P(SessionStateTests,
                          SessionStatePrepackingTest,
