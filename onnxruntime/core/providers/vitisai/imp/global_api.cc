@@ -449,6 +449,10 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
     return vaip_core::DllSafe(model_proto.SerializeAsString());
   };
   the_global_api.model_proto_delete = [](ONNX_NAMESPACE::ModelProto* p) { delete p; };
+  the_global_api.is_profiling_enabled = [](void* session_options) {
+    auto options = reinterpret_cast<OrtSessionOptions*>(session_options);
+    return options->GetEnableProfiling();
+  };
   if (!s_library_vitisaiep.vaip_get_version) {
     return reinterpret_cast<vaip_core::OrtApiForVaip*>(&(the_global_api.host_));
   } else {
