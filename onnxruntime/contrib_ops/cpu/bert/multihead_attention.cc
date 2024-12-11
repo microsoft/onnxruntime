@@ -102,6 +102,13 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
+  std::vector<int64_t> attn_probs_shape(4);
+  attn_probs_shape[0] = static_cast<int64_t>(batch_size);
+  attn_probs_shape[1] = static_cast<int64_t>(num_heads_);
+  attn_probs_shape[2] = static_cast<int64_t>(q_sequence_length);
+  attn_probs_shape[3] = static_cast<int64_t>(parameters.total_sequence_length);
+  Tensor* attn_probs = context->Output(3, attn_probs_shape);
+
   constexpr int q_bias_offset = 0;
   const int k_bias_offset = qk_hidden_size;
   const int v_bias_offset = 2 * qk_hidden_size;
@@ -134,7 +141,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                           key->Data<T>(),
                           value->Data<T>(),
                           key_padding_mask, nullptr /* past */, past_key, past_value, output, present_k, present_v,
-                          batch_size, q_sequence_length, kv_sequence_length,
+                          attn_probs, batch_size, q_sequence_length, kv_sequence_length,
                           qk_head_size, v_head_size, v_hidden_size, attn_bias, context);
   }
 
@@ -154,6 +161,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
       past_value == nullptr &&
       present_k == nullptr &&
       present_v == nullptr &&
+      attn_probs == nullptr && // TODO: can we support it?
       l2_cache_size_ > 0) {
     MlasFlashAttentionThreadedArgs args;
     args.batch_size = batch_size;
@@ -214,7 +222,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                         K.GetMutable<Tensor>()->MutableData<T>(),
                         V.GetMutable<Tensor>()->MutableData<T>(),
                         key_padding_mask, nullptr /* past */, past_key, past_value, output, present_k, present_v,
-                        batch_size, q_sequence_length, kv_sequence_length,
+                        attn_probs, batch_size, q_sequence_length, kv_sequence_length,
                         qk_head_size, v_head_size, v_hidden_size, attn_bias, context);
 }
 }  // namespace contrib

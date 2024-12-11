@@ -38,6 +38,7 @@ struct BaseAttentionTestData {
 
   std::vector<float> present_key_data;
   std::vector<float> present_value_data;
+  std::vector<float> attention_probs_data;
 
   std::vector<AttentionKernelType> skip_kernel_types;  // skip some kernels if they do not supported this test case.
 };
