@@ -92,7 +92,7 @@ if (
     import site
 
     # Get the site-packages path where nvidia packages are installed
-    site_packages_path = site.getsitepackages()[0]
+    site_packages_path = site.getsitepackages()[-1]
     nvidia_path = os.path.join(site_packages_path, "nvidia")
     # Traverse the directory and subdirectories
     if platform.system() == "Windows":  #
