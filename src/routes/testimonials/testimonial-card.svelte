@@ -24,7 +24,7 @@
 <article
 	on:mouseenter={handleEnter}
 	on:mouseleave={handleLeave}
-  class="max-w-md mx-auto bg-blue-300 text-primary-content rounded-sm overflow-hidden md:max-w-2xl"
+	class="max-w-md mx-auto bg-blue-300 text-primary-content rounded-sm overflow-hidden md:max-w-2xl"
 	id={title}
 >
 	<div class="md:flex">

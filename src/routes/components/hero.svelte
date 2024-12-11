@@ -56,7 +56,7 @@
 	<div class="toast toast-top top-14 z-50" role="alert">
 		<div class="alert alert-info">
 			<svg
-				xmlns="http://www.w3.org/2000/svg"
+				xmlns="https://www.w3.org/2000/svg"
 				width="16"
 				height="16"
 				fill="currentColor"
@@ -91,8 +91,9 @@
 							{activeWord}
 						</span>
 					{/key}
-					<br/>
-					Machine Learning</h1>
+					<br />
+					Machine Learning
+				</h1>
 				<p class="py-3">
 					Production-grade AI engine to speed up training and inferencing in your existing
 					technology stack.
@@ -123,10 +124,10 @@
 					</div>
 				</div>
 				<!-- <p class="text-lg mt-2">
-					<a class="underline" href="http://">More interested in training? More info here.</a>
+					<a class="underline" href="https://">More interested in training? More info here.</a>
 				</p> -->
 				<p class="text-lg mt-2">
-					<a class="text-blue-700 font-medium" href="./getting-started"
+					<a class="text-blue-800 font-medium" href="./getting-started"
 						>Interested in using other languages? See the many others we support →</a
 					>
 				</p>

@@ -23,7 +23,7 @@ The source code for this sample is available [here](https://github.com/microsoft
 ## Prerequisites
 1. Install [.NET Core 3.1](https://dotnet.microsoft.com/download/dotnet-core/3.1) or higher for you OS (Mac, Windows or Linux).
 
-2. [The Intel<sup>®</sup> Distribution of OpenVINO toolkit](https://docs.openvinotoolkit.org/latest/index.html)
+2. [The Intel<sup>®</sup> Distribution of OpenVINO toolkit](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/overview.html)
 
 3. Use any sample Image as input to the sample.
 

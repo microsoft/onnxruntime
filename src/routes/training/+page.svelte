@@ -10,11 +10,13 @@
 		'ONNX Runtime can be used to accelerate both large model training and on-device training.';
 	const imgsrc = 'onnxruntimelogo';
 	const imgalt = 'ONNX Runtime Logo';
-	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
-	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
-	let authors = ['']
-	let keywords = 'onnx runtime, onnx, onnxruntime, onnx runtime performance, onnx runtime training, onnx runtime cross-platform, onnx runtime cross platform, onnx runtime crossplatform, onnx runtime training, onnx runtime cross-platform, onnx runtime cross platform, onnx runtime crossplatform'
+	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png';
+	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png';
+	let authors = [''];
+	let keywords =
+		'onnx runtime, onnx, onnxruntime, onnx runtime performance, onnx runtime training, onnx runtime cross-platform, onnx runtime cross platform, onnx runtime crossplatform, onnx runtime training, onnx runtime cross-platform, onnx runtime cross platform, onnx runtime crossplatform';
 </script>
+
 <svelte:head>
 	<!-- Dynamic meta tags -->
 	<meta name="description" content={description} />
@@ -22,9 +24,9 @@
 	<meta name="author" content={authors.join(', ')} />
 	<meta name="keywords" content={keywords} />
 	<!-- Open Graph / Facebook -->
-	<meta property="og:description" content={description}/>
+	<meta property="og:description" content={description} />
 	<meta property="og:image" content={image} />
-	
+
 	<!-- Twitter -->
 	<meta property="twitter:description" content={description} />
 	<meta property="twitter:image" content={image} />
@@ -103,12 +105,18 @@
 			<div class="card-body items-center text-center">
 				<h2 class="card-title">Composable with popular acceleration systems</h2>
 				<p>
-					Compose with <a href="https://github.com/microsoft/DeepSpeed" class="dark:text-blue-300 text-blue-800 underline"
-						>DeepSpeed</a
+					Compose with <a
+						href="https://github.com/microsoft/DeepSpeed"
+						class="dark:text-blue-300 text-blue-800 underline">DeepSpeed</a
 					>,
-					<a href="https://github.com/facebookresearch/fairscale" class="dark:text-blue-300 text-blue-800 underline">FairScale</a
-					>, <a href="https://github.com/NVIDIA/Megatron-LM" class="dark:text-blue-300 text-blue-800 underline">Megatron</a>, and
-					more for even faster and more efficient training.
+					<a
+						href="https://github.com/facebookresearch/fairscale"
+						class="dark:text-blue-300 text-blue-800 underline">FairScale</a
+					>,
+					<a
+						href="https://github.com/NVIDIA/Megatron-LM"
+						class="dark:text-blue-300 text-blue-800 underline">Megatron</a
+					>, and more for even faster and more efficient training.
 				</p>
 			</div>
 		</div>

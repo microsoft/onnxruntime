@@ -14,7 +14,7 @@ The source code for this sample is available [here](https://github.com/microsoft
 # How to build
 
 ## Prerequisites
-1. [The Intel<sup>®</sup> Distribution of OpenVINO toolkit](https://docs.openvinotoolkit.org/latest/index.html)
+1. [The Intel<sup>®</sup> Distribution of OpenVINO toolkit](https://www.intel.com/content/www/us/en/developer/tools/openvino-toolkit/overview.html)
 
 2. Use opencv (use the same opencv package that comes builtin with Intel<sup>®</sup> Distribution of OpenVINO toolkit)
 

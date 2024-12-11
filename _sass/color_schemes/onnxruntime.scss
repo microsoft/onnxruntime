@@ -13,6 +13,7 @@ $btn-primary-color: #226aca;
 // }
 // 2024 December Accessibility changes
 .highlight .s { color: #3c7a3b ;}
+.highlight .py {color: #a25f00;}
 // Initial Theme
 .highlight .hll { background-color: #ffffcc; }
 .highlight { background: #ffffff; }
@@ -22,7 +23,7 @@ $btn-primary-color: #226aca;
 .highlight .o { color: #333333; }
 .highlight .ch { color: #707070 ; }
 .highlight .cm { color: #707070 ; }
-.highlight .cp { color: #557799; }
+.highlight .cp { color: #507191; }
 .highlight .cpf { color: #707070 ; }
 .highlight .c1 { color: #707070 ; }
 .highlight .cs { color: #cc0000; font-weight: bold; }
@@ -52,7 +53,7 @@ $btn-primary-color: #226aca;
 .highlight .ni { color: #880000; font-weight: bold; }
 .highlight .ne { font-weight: bold; color: #eb0000; }
 .highlight .nf { color: #0066BB; font-weight: bold; }
-.highlight .nl { font-weight: bold; color: #8f6f00; }
+.highlight .nl { font-weight: bold; color: #876900; }
 .highlight .nn { font-weight: bold; color: #0d77a2 ; }
 .highlight .nt { color: #007700; }
 .highlight .nv { color: #996633; }
@@ -68,7 +69,7 @@ $btn-primary-color: #226aca;
 .highlight .sc { color: #0044DD; }
 .highlight .dl { background-color: #fff0f0; }
 .highlight .sd { color: #d54220; }
-.highlight .s2 { background-color: #fff0f0; }
+.highlight .s2 { color: #3c7a3b ; background-color: #fff0f0; }
 .highlight .se { color: #666666; font-weight: bold; background-color: #fff0f0; }
 .highlight .sh { background-color: #fff0f0; }
 .highlight .si { background-color: #eeeeee; }

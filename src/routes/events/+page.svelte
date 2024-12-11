@@ -15,11 +15,16 @@
 				'ONNX Runtime will be used in the Boost Edge AI session at Microsoft Ignite 2024, as well as behind the scenes as an inference runtime in many other sessions. ONNX Runtime, equipped with NPU acceleration, enables developers to efficiently deploy state-of-the-art models on edge devices including mobile phones.',
 			linkarr: [
 				{ name: 'Microsoft Ignite Page', link: 'https://ignite.microsoft.com/en-US/home' },
-				{ name: 'Boost Edge AI (IRL Session)', link: 'https://ignite.microsoft.com/en-US/sessions/THR602?source=sessions' },
+				{
+					name: 'Boost Edge AI (IRL Session)',
+					link: 'https://ignite.microsoft.com/en-US/sessions/THR602?source=sessions'
+				}
 			],
 			image: ignite2024,
-			imagealt: 'Slide detailing how to convert from various frameworks to ONNX, then deploy anywhere using ORT'
-		},]
+			imagealt:
+				'Slide detailing how to convert from various frameworks to ONNX, then deploy anywhere using ORT'
+		}
+	];
 	let events = [
 		{
 			title: 'ONNX Runtime Community Meetup',
@@ -34,7 +39,8 @@
 				}
 			],
 			image: converttoort,
-			imagealt: 'Slide detailing how to convert from various frameworks to ONNX, then deploy anywhere using ORT'
+			imagealt:
+				'Slide detailing how to convert from various frameworks to ONNX, then deploy anywhere using ORT'
 		}
 	];
 
@@ -45,11 +51,13 @@
 		}
 	];
 	let description = 'ONNX Runtime Events - information on past and future ONNX Runtime Events.';
-	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
-	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png'
-	let authors = ['']
-	let keywords = 'onnxruntime, onnx runtime events, onnx runtime community events, onnx runtime community meetup, onnx runtime community meetups'
+	let image = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png';
+	let imageSquare = 'https://i.ibb.co/0YBy62j/ORT-icon-for-light-bg.png';
+	let authors = [''];
+	let keywords =
+		'onnxruntime, onnx runtime events, onnx runtime community events, onnx runtime community meetup, onnx runtime community meetups';
 </script>
+
 <svelte:head>
 	<!-- Dynamic meta tags -->
 	<meta name="description" content={description} />
@@ -57,9 +65,9 @@
 	<meta name="author" content={authors.join(', ')} />
 	<meta name="keywords" content={keywords} />
 	<!-- Open Graph / Facebook -->
-	<meta property="og:description" content={description}/>
+	<meta property="og:description" content={description} />
 	<meta property="og:image" content={image} />
-	
+
 	<!-- Twitter -->
 	<meta property="twitter:description" content={description} />
 	<meta property="twitter:image" content={image} />
@@ -75,7 +83,7 @@
 	</div>
 	<div class="pt-5 mx-4 md:mx-10">
 		<h3 class="text-3xl pb-8">Upcoming Events</h3>
-		<div class="grid gap-4 grid-cols-1" >
+		<div class="grid gap-4 grid-cols-1">
 			{#each upcomingEvents as event, i}
 				<Event
 					title={event.title}

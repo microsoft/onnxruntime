@@ -33,7 +33,7 @@
 				<h2 class="card-title">{title}</h2>
 				<p>{description}</p>
 				<img class="rounded" src={image} alt={imgalt} />
-				<div class="text-right text-blue-700">
+				<div class="text-right text-blue-800">
 					{date}
 				</div>
 			</div>

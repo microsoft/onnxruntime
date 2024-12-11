@@ -4,7 +4,7 @@
 	height="200"
 	viewBox="0 0 223 200"
 	fill="none"
-	xmlns="http://www.w3.org/2000/svg"
+	xmlns="https://www.w3.org/2000/svg"
 >
 	<g clip-path="url(#clip0_316_879)">
 		<path

@@ -65,7 +65,7 @@ Olive generates models and adapters in ONNX format. These models and adapters ca
 
    Note: this operations requires a system with an NVIDIA GPU, with CUDA installed
 
-   Use the `olive fine-tune` command: https://microsoft.github.io/Olive/features/cli.html#finetune
+   Use the `olive fine-tune` command: https://microsoft.github.io/Olive/how-to/cli/cli-finetune.html
 
    Here is an example usage of the command:
 
@@ -75,12 +75,12 @@ Olive generates models and adapters in ONNX format. These models and adapters ca
 
 2. Optionally, quantize your model
 
-   Use the `olive quantize` command: https://microsoft.github.io/Olive/features/cli.html#quantize
+   Use the `olive quantize` command: https://microsoft.github.io/Olive/how-to/cli/cli-quantize.html
 
 
 3. Generate the ONNX model and adapter using the quantized model
 
-   Use the `olive auto-opt` command for this step: https://microsoft.github.io/Olive/features/cli.html#auto-opt
+   Use the `olive auto-opt` command for this step: https://microsoft.github.io/Olive/how-to/cli/cli-auto-opt.html
 
    The `--adapter path` can either be a HuggingFace adapter reference, or a path to the adapter you fine-tuned above.
 
@@ -162,4 +162,4 @@ python app.py -m <model folder> -a <.onnx_adapter files> -t <prompt template> -s
 ## References
 
 * [Python API docs](../api/python.md#adapter-class)
-* [Olive CLI docs](https://microsoft.github.io/Olive/features/cli.html)
+* [Olive CLI docs](https://microsoft.github.io/Olive/how-to/index.html#working-with-the-cli)

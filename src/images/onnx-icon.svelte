@@ -5,7 +5,7 @@
 
 <svg
 	version="1.0"
-	xmlns="http://www.w3.org/2000/svg"
+	xmlns="https://www.w3.org/2000/svg"
 	width="{width}pt"
 	height="{height}pt"
 	viewBox="0 0 175.000000 165.000000"

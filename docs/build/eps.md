@@ -271,7 +271,7 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
   *2024.3 is the current recommended OpenVINO™ version. [OpenVINO™ 2023.3](https://docs.openvino.ai/2023.3/home.html) is minimal OpenVINO™ version requirement.*
 
 2. Configure the target hardware with specific follow on instructions:
-   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvino.ai/latest/openvino_docs_install_guides_configurations_for_intel_gpu.html#gpu-guide-windows), [Linux](https://docs.openvino.ai/latest/openvino_docs_install_guides_configurations_for_intel_gpu.html#linux)
+   * To configure Intel<sup>®</sup> Processor Graphics(GPU) please follow these instructions: [Windows](https://docs.openvino.ai/2024/get-started/configurations/configurations-intel-gpu.html#windows), [Linux](https://docs.openvino.ai/2024/get-started/configurations/configurations-intel-gpu.html#linux)
 
 
 3. Initialize the OpenVINO™ environment by running the setupvars script as shown below. This is a required step:
@@ -306,7 +306,7 @@ See more information on the OpenVINO™ Execution Provider [here](../execution-p
 * `--use_openvino` builds the OpenVINO™ Execution Provider in ONNX Runtime.
 * `<hardware_option>`: Specifies the default hardware target for building OpenVINO™ Execution Provider. This can be overriden dynamically at runtime with another option (refer to [OpenVINO™-ExecutionProvider](../execution-providers/OpenVINO-ExecutionProvider.md#summary-of-options) for more details on dynamic device selection). Below are the options for different Intel target devices.
 
-Refer to [Intel GPU device naming convention](https://docs.openvino.ai/latest/openvino_docs_OV_UG_supported_plugins_GPU.html#device-naming-convention) for specifying the correct hardware target in cases where both integrated and discrete GPU's co-exist.
+Refer to [Intel GPU device naming convention](https://docs.openvino.ai/2024/openvino-workflow/running-inference/inference-devices-and-modes/gpu-device.html#device-naming-convention) for specifying the correct hardware target in cases where both integrated and discrete GPU's co-exist.
 
 | Hardware Option | Target Device |
 | --------------- | ------------------------|

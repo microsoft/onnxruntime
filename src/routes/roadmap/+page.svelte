@@ -1,14 +1,17 @@
 <script>
-	let description = 'ONNX Runtime Release Roadmap - find the latest release information for ONNX Runtime.';
-	let keywords = 'onnx runtime, onnx runtime roadmap, onnx runtime release, onnx runtime 1.20, onnx runtime 1.21, onnx runtime 1.20.1';
+	let description =
+		'ONNX Runtime Release Roadmap - find the latest release information for ONNX Runtime.';
+	let keywords =
+		'onnx runtime, onnx runtime roadmap, onnx runtime release, onnx runtime 1.20, onnx runtime 1.21, onnx runtime 1.20.1';
 </script>
+
 <svelte:head>
 	<!-- Dynamic meta tags -->
 	<meta name="description" content={description} />
 	<meta name="keywords" content={keywords} />
 	<!-- Open Graph / Facebook -->
-	<meta property="og:description" content={description}/>
-	
+	<meta property="og:description" content={description} />
+
 	<!-- Twitter -->
 	<meta property="twitter:description" content={description} />
 </svelte:head>
@@ -25,7 +28,7 @@
 				<div class="stat-figure">
 					<svg
 						class="stroke-success"
-						xmlns="http://www.w3.org/2000/svg"
+						xmlns="https://www.w3.org/2000/svg"
 						width="32"
 						height="32"
 						viewBox="0 0 24 24"
@@ -44,7 +47,7 @@
 			<div class="stat">
 				<div class="stat-figure text-secondary">
 					<svg
-						xmlns="http://www.w3.org/2000/svg"
+						xmlns="https://www.w3.org/2000/svg"
 						width="24"
 						height="24"
 						class="stroke-warning"
@@ -66,7 +69,7 @@
 			<div class="stat">
 				<div class="stat-figure text-primary">
 					<svg
-						xmlns="http://www.w3.org/2000/svg"
+						xmlns="https://www.w3.org/2000/svg"
 						fill="none"
 						viewBox="0 0 24 24"
 						class="stroke-primary"
@@ -90,12 +93,19 @@
 
 	<h2 class="text-xl font-bold mt-2">Announcements</h2>
 	<ul class="list-disc ml-8">
-		<li><strong>The onnxruntime-gpu v1.10.0 will be removed from PyPI.</strong> We have hit our PyPI project size limit for onnxruntime-gpu,
-		so we will be removing our oldest package version to free up the necessary space.</li>
-		<li><strong>ONNX Runtime v1.20.0 is now officially released.</strong> For release notes, assets, and more, visit our <a
-			href="https://github.com/microsoft/onnxruntime/releases/tag/v1.20.0"
-			class="text-blue-600 underline">GitHub Releases page</a
-		>.</li>
+		<li>
+			<strong>The onnxruntime-gpu v1.10.0 will be removed from PyPI.</strong> We have hit our PyPI project
+			size limit for onnxruntime-gpu, so we will be removing our oldest package version to free up the
+			necessary space.
+		</li>
+		<li>
+			<strong>ONNX Runtime v1.20.0 is now officially released.</strong> For release notes, assets,
+			and more, visit our
+			<a
+				href="https://github.com/microsoft/onnxruntime/releases/tag/v1.20.0"
+				class="text-blue-600 underline">GitHub Releases page</a
+			>.
+		</li>
 	</ul>
 
 	<h2 class="text-xl font-bold mt-2">Versioning Updates</h2>
@@ -116,7 +126,10 @@
 		following updates:
 	</p>
 	<ul class="list-disc ml-8">
-		<li>CPU FP16 implementation fixes for the following kernels: LayerNormalization, SimplifiedLayerNormalization, SkipLayerNormalization, SkipSimplifiedLayerNormalization.</li>
+		<li>
+			CPU FP16 implementation fixes for the following kernels: LayerNormalization,
+			SimplifiedLayerNormalization, SkipLayerNormalization, SkipSimplifiedLayerNormalization.
+		</li>
 		<li>Python quantization tool updates.</li>
 		<li>New QNN SDK version support.</li>
 	</ul>
@@ -149,7 +162,7 @@
 	<p class="font-thin">
 		<em>Note: All timelines and features listed on this page are subject to change.</em>
 	</p>
-	<div class="divider"></div>
+	<div class="divider" />
 	<h2 class="text-xl font-bold mt-2">ONNX Runtime 1.20.1</h2>
 	<p class="font-thin">
 		<strong>Tentative release date:</strong> 11/20/2024
@@ -162,8 +175,10 @@
 			<div class="collapse-title text-xl font-bold">Announcements</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
-					<li><strong>The onnxruntime-gpu v1.10.0 will be removed from PyPI.</strong> We have hit our PyPI project size limit for onnxruntime-gpu,
-						so we will be removing our oldest package version to free up the necessary space.
+					<li>
+						<strong>The onnxruntime-gpu v1.10.0 will be removed from PyPI.</strong> We have hit our PyPI
+						project size limit for onnxruntime-gpu, so we will be removing our oldest package version
+						to free up the necessary space.
 					</li>
 				</ul>
 			</div>
@@ -174,9 +189,7 @@
 			<input type="checkbox" name="build" />
 			<div class="collapse-title text-xl font-bold">Build System & Packages</div>
 			<div class="collapse-content">
-				<p class="font-thin">
-					No features planned for 1.20.1. Stay tuned for 1.21 features.
-				</p>
+				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
 			</div>
 		</div>
 
@@ -185,9 +198,7 @@
 			<input type="checkbox" name="core" />
 			<div class="collapse-title text-xl font-bold">Core</div>
 			<div class="collapse-content">
-				<p class="font-thin">
-					No features planned for 1.20.1. Stay tuned for 1.21 features.
-				</p>
+				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
 			</div>
 		</div>
 
@@ -196,9 +207,7 @@
 			<input type="checkbox" name="performance" />
 			<div class="collapse-title text-xl font-bold">Performance</div>
 			<div class="collapse-content">
-				<p class="font-thin">
-					No features planned for 1.20.1. Stay tuned for 1.21 features.
-				</p>
+				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
 			</div>
 		</div>
 
@@ -208,22 +217,30 @@
 			<div class="collapse-title text-xl font-bold">Quantization</div>
 			<div class="collapse-content">
 				<ul class="list-disc ml-8">
-					<li>Introduce get_int_qdq_config() helper to get QDQ configurations (<a
-						href="https://github.com/microsoft/onnxruntime/pull/22677"
-						class="text-blue-600 underline">#22677</a
-					>).</li>
-					<li>Update QDQ Pad, Slice, Softmax (<a
-						href="https://github.com/microsoft/onnxruntime/pull/22676"
-						class="text-blue-600 underline">#22676</a
-					>).</li>
-					<li>Handle input models with pre-quantized weights (<a
-						href="https://github.com/microsoft/onnxruntime/pull/22633"
-						class="text-blue-600 underline">#22633</a
-					>).</li>
-					<li>Prevent int32 quantized bias from clipping by adjusting the weight's scale (<a
-						href="https://github.com/microsoft/onnxruntime/pull/22020"
-						class="text-blue-600 underline">#22020</a
-					>).</li>
+					<li>
+						Introduce get_int_qdq_config() helper to get QDQ configurations (<a
+							href="https://github.com/microsoft/onnxruntime/pull/22677"
+							class="text-blue-600 underline">#22677</a
+						>).
+					</li>
+					<li>
+						Update QDQ Pad, Slice, Softmax (<a
+							href="https://github.com/microsoft/onnxruntime/pull/22676"
+							class="text-blue-600 underline">#22676</a
+						>).
+					</li>
+					<li>
+						Handle input models with pre-quantized weights (<a
+							href="https://github.com/microsoft/onnxruntime/pull/22633"
+							class="text-blue-600 underline">#22633</a
+						>).
+					</li>
+					<li>
+						Prevent int32 quantized bias from clipping by adjusting the weight's scale (<a
+							href="https://github.com/microsoft/onnxruntime/pull/22020"
+							class="text-blue-600 underline">#22020</a
+						>).
+					</li>
 				</ul>
 			</div>
 		</div>
@@ -235,7 +252,10 @@
 			<div class="collapse-content">
 				<h3 class="text-lg font-semibold">CPU</h3>
 				<ul class="list-disc ml-8">
-					<li>Fix CPU FP16 implementations for the following kernels: LayerNormalization, SimplifiedLayerNormalization, SkipLayerNormalization, SkipSimplifiedLayerNormalization.</li>
+					<li>
+						Fix CPU FP16 implementations for the following kernels: LayerNormalization,
+						SimplifiedLayerNormalization, SkipLayerNormalization, SkipSimplifiedLayerNormalization.
+					</li>
 				</ul>
 				<h3 class="text-lg font-semibold">QNN</h3>
 				<ul class="list-disc ml-8">
@@ -253,9 +273,7 @@
 			<input type="checkbox" name="mobile" />
 			<div class="collapse-title text-xl font-bold">Mobile</div>
 			<div class="collapse-content">
-				<p class="font-thin">
-					No features planned for 1.20.1. Stay tuned for 1.21 features.
-				</p>
+				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
 			</div>
 		</div>
 
@@ -264,9 +282,7 @@
 			<input type="checkbox" name="web" />
 			<div class="collapse-title text-xl font-bold">Web</div>
 			<div class="collapse-content">
-				<p class="font-thin">
-					No features planned for 1.20.1. Stay tuned for 1.21 features.
-				</p>
+				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
 			</div>
 		</div>
 
@@ -275,9 +291,7 @@
 			<input type="checkbox" name="generate" />
 			<div class="collapse-title text-xl font-bold">generate() API</div>
 			<div class="collapse-content">
-				<p class="font-thin">
-					No features planned for 1.20.1. Stay tuned for 1.21 features.
-				</p>
+				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
 			</div>
 		</div>
 
@@ -286,9 +300,7 @@
 			<input type="checkbox" name="extensions" />
 			<div class="collapse-title text-xl font-bold">Extensions</div>
 			<div class="collapse-content">
-				<p class="font-thin">
-					No features planned for 1.20.1. Stay tuned for 1.21 features.
-				</p>
+				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
 			</div>
 		</div>
 
@@ -297,9 +309,7 @@
 			<input type="checkbox" name="olive" />
 			<div class="collapse-title text-xl font-bold">Olive</div>
 			<div class="collapse-content">
-				<p class="font-thin">
-					No features planned for 1.20.1. Stay tuned for 1.21 features.
-				</p>
+				<p class="font-thin">No features planned for 1.20.1. Stay tuned for 1.21 features.</p>
 			</div>
 		</div>
 	</div>
