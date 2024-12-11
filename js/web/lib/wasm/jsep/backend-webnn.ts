@@ -75,6 +75,19 @@ export class WebNNBackend {
    * Current session id.
    */
   private activeSessionId?: number;
+  /**
+   * Maps from session id to list of graph inputs.
+   */
+  private sessionGraphInputs: Map<number, string[]> = new Map();
+  /**
+   * Temporary graph inputs for the current session.
+   * These inputs will be registered when the session is created.
+   */
+  private temporaryGraphInputs: string[] = [];
+  /**
+   * Temporary tensors for the current session.
+   */
+  private temporarySessionTensors: Map<number, TensorId[]> = new Map();
 
   constructor(env: Env) {
     configureLogger(env.logLevel!, !!env.debug);
@@ -89,6 +102,19 @@ export class WebNNBackend {
 
   public onRunStart(sessionId: number): void {
     this.activeSessionId = sessionId;
+  }
+
+  public onRunEnd(sessionId: number): void {
+    LOG_DEBUG('verbose', () => `[WebNN] onRunEnd {sessionId: ${sessionId}}`);
+    const tensors = this.temporarySessionTensors.get(sessionId);
+    if (!tensors) {
+      return;
+    }
+    for (const tensor of tensors) {
+      LOG_DEBUG('verbose', () => `[WebNN] releasing temporary tensor {tensorId: ${tensor}}`);
+      this.tensorManager.releaseTensorId(tensor);
+    }
+    this.temporarySessionTensors.delete(sessionId);
   }
 
   public async createMLContext(optionsOrDevice?: MLContextOptions | GPUDevice): Promise<MLContext> {
@@ -142,9 +168,15 @@ export class WebNNBackend {
       this.sessionIdsByMLContext.set(mlContext, sessionIds);
     }
     sessionIds.add(sessionId);
+
+    if (this.temporaryGraphInputs.length > 0) {
+      this.sessionGraphInputs.set(sessionId, this.temporaryGraphInputs);
+      this.temporaryGraphInputs = [];
+    }
   }
 
   public onReleaseSession(sessionId: number): void {
+    this.sessionGraphInputs.delete(sessionId);
     const mlContext = this.mlContextBySessionId.get(sessionId)!;
     if (!mlContext) {
       // Current session is not a WebNN session.
@@ -187,6 +219,23 @@ export class WebNNBackend {
       throw new Error(`Unsupported ONNX data type: ${onnxDataType}`);
     }
     return this.tensorManager.ensureTensor(tensorId, webnnDataType, dimensions, copyOld);
+  }
+
+  public async createTemporaryTensor(onnxDataType: DataType, shape: readonly number[]): Promise<TensorId> {
+    LOG_DEBUG('verbose', () => `[WebNN] createTemporaryTensor {onnxDataType: ${onnxDataType}, shape: ${shape}}`);
+    const dataType = onnxDataTypeToWebnnDataType.get(onnxDataType);
+    if (!dataType) {
+      throw new Error(`Unsupported ONNX data type: ${onnxDataType}`);
+    }
+    const tensorId = this.tensorManager.reserveTensorId();
+    await this.tensorManager.ensureTensor(tensorId, dataType, shape, false);
+    const tensors = this.temporarySessionTensors.get(this.currentSessionId);
+    if (!tensors) {
+      this.temporarySessionTensors.set(this.currentSessionId, [tensorId]);
+    } else {
+      tensors.push(tensorId);
+    }
+    return tensorId;
   }
 
   public uploadTensor(tensorId: TensorId, data: Uint8Array): void {
@@ -289,6 +338,19 @@ export class WebNNBackend {
     LOG_DEBUG('verbose', () => `[WebNN] registerMLConstant {dataType: ${desc.dataType}, shape: ${desc.shape}}}`);
 
     return builder.constant(desc, bufferView);
+  }
+
+  public registerGraphInput(inputName: string): void {
+    this.temporaryGraphInputs.push(inputName);
+  }
+
+  public isGraphInput(inputName: string): boolean {
+    const sessionId = this.currentSessionId;
+    const inputNames = this.sessionGraphInputs.get(sessionId);
+    if (!inputNames) {
+      return false;
+    }
+    return inputNames.includes(inputName);
   }
 
   public flush(): void {
