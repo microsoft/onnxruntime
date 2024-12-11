@@ -17,6 +17,8 @@ import logging
 import os
 import tempfile
 from typing import Dict
+from enum import Enum
+import ml_dtypes
 
 import numpy as np
 import onnx
@@ -35,7 +37,6 @@ def _npfloat16_to_int(np_list):
     :return int_list: python int list
     """
     return [int(bin(_.view("H"))[2:].zfill(16), 2) for _ in np_list]
-
 
 def convert_np_to_float16(np_array, min_positive_val=5.96e-08, max_finite_val=65504.0):
     """
@@ -107,6 +108,43 @@ def convert_tensor_float_to_float16(tensor, min_positive_val=5.96e-08, max_finit
             tensor.raw_data = float16_list.tobytes()
     return tensor
 
+def convert_tensor_float_to_bfloat16(tensor):
+    """Convert tensor float to bfloat16.
+
+    Args:
+        tensor (TensorProto): the tensor to convert.
+        min_positive_val (float, optional): minimal positive value. Defaults to 1e-7.
+        max_finite_val (float, optional): maximal finite value. Defaults to 1e4.
+
+    Raises:
+        ValueError: input type is not TensorProto.
+
+    Returns:
+        TensorProto: the converted tensor.
+    """
+
+    if not isinstance(tensor, TensorProto):
+        raise ValueError(f"Expected input type is an ONNX TensorProto but got {type(tensor)}")
+
+    if tensor.data_type == TensorProto.FLOAT:
+        tensor.data_type = TensorProto.BFLOAT16
+        # convert float_data (float type) to bfloat16 and write to int32_data
+        if tensor.float_data:
+            bfloat16_data = tensor.float_data.astype(ml_dtypes.bfloat16)
+            # we can use _npfloat16_to_int here because float16 and bfloat16 are both 16-bits.
+            int_list = _npfloat16_to_int(bfloat16_data)
+            tensor.int32_data[:] = int_list
+            tensor.float_data[:] = []
+        # convert raw_data (bytes type)
+        if tensor.raw_data:
+            # convert n.raw_data to float
+            float32_list = np.frombuffer(tensor.raw_data, dtype="float32")
+            # convert float to bfloat16
+            bfloat16_list = float32_list.astype(ml_dtypes.bfloat16)
+            # convert bfloat16 to bytes and write back to raw_data
+            tensor.raw_data = bfloat16_list.tobytes()
+    return tensor
+
 
 def make_value_info_from_tensor(tensor):
     shape = numpy_helper.to_array(tensor).shape
@@ -149,6 +187,10 @@ DEFAULT_OP_BLOCK_LIST = [
 # Note that DirectML allows float16 gamma and beta in GroupNorm. Use force_fp16_inputs parameter could overwrite this.
 ALWAYS_FLOAT_INPUTS = {"Resize": [2], "GroupNorm": [1, 2], "SkipGroupNorm": [1, 2]}
 
+class NodeValueType(Enum):
+    FP32 = 1
+    FP16 = 2
+    BF16 = 3
 
 class InitializerTracker:
     """Class for keeping track of initializer."""
@@ -157,13 +199,15 @@ class InitializerTracker:
         self.initializer = initializer
         self.fp32_nodes = []
         self.fp16_nodes = []
+        self.bf16_nodes = []
 
-    def add_node(self, node: NodeProto, is_node_blocked):
-        if is_node_blocked:
+    def add_node(self, node: NodeProto, node_value_type):
+        if node_value_type == NodeValueType.FP32:
             self.fp32_nodes.append(node)
-        else:
+        elif node_value_type == NodeValueType.FP16:
             self.fp16_nodes.append(node)
-
+        elif node_value_type == NodeValueType.BF16:
+            self.bf16_nodes.append(node)
 
 def convert_float_to_float16(
     model,
@@ -333,12 +377,17 @@ def convert_float_to_float16(
                     is_node_blocked = n.op_type in op_block_list or n.name in node_block_list
                     for i, input_name in enumerate(n.input):
                         if input_name in fp32_initializers:
-                            # For Resize/GroupNorm, only the first input can be float16
-                            use_fp32_weight = is_node_blocked or (
-                                i in ALWAYS_FLOAT_INPUTS.get(n.op_type, [])
-                                and i not in force_fp16_inputs_dict.get(n.op_type, [])
-                            )
-                            fp32_initializers[input_name].add_node(n, use_fp32_weight)
+                            if is_node_blocked and use_bfloat16_as_blocked_nodes_dtype:
+                                fp32_initializers[input_name].add_node(n, NodeValueType.BF16)
+                            else:
+                                # For Resize/GroupNorm, only the first input can be float16
+                                if is_node_blocked or (
+                                    i in ALWAYS_FLOAT_INPUTS.get(n.op_type, [])
+                                    and i not in force_fp16_inputs_dict.get(n.op_type, [])
+                                ):
+                                    fp32_initializers[input_name].add_node(n, NodeValueType.FP32)
+                                else:
+                                    fp32_initializers[input_name].add_node(n, NodeValueType.FP16)
 
                     if is_node_blocked:
                         node_list.append(n)
@@ -414,6 +463,10 @@ def convert_float_to_float16(
                 logger.info(
                     f"initializer is used by both fp32 and fp16 nodes. Consider add these nodes to block list:{value.fp16_nodes}"
                 )
+        if value.bf16_nodes:
+            value.initializer = convert_tensor_float_to_bfloat16(value.initializer)
+            value_info_list.append(make_value_info_from_tensor(value.initializer))
+
 
     # Some operators have data type fixed as float for some input. Add a float16 to float cast for those inputs.
     for node in mixed_float_type_node_list:
