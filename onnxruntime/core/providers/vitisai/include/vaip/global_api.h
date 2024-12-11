@@ -24,3 +24,18 @@ int vitisai_ep_set_ep_dynamic_options(
     const std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>& eps,
     const char* const* keys,
     const char* const* values, size_t kv_len);
+/**
+ * Replace EventRecord with std::tuple<std::string, int ,int, long long, long long>,
+ * because EventRecord is defined in profiler_common.h which is used inside onnxruntime.
+ * However, profiler_collect function will call vitis ep which can't include profiler_common.h.
+ */
+using EventInfo = std::tuple<
+    std::string,  // name
+    int,          // pid
+    int,          // tid
+    long long,    // timestamp
+    long long     // duration
+    >;
+void profiler_collect(
+    std::vector<EventInfo>& api_events,
+    std::vector<EventInfo>& kernel_events);
