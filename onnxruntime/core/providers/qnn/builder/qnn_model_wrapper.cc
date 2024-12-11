@@ -444,7 +444,7 @@ Status QnnModelWrapper::IsPerChannelQuantized(const onnxruntime::NodeUnitIODef& 
   ORT_RETURN_IF(iter == graph_initializers.end(), "Unable to find initializer for scale(s): ",
                 scale_name.c_str());
   gsl::not_null<const onnx::TensorProto*> scale_tensor_proto = iter->second;
-  TensorShape scale_shape = onnxruntime::utils::GetTensorShapeFromTensorProto(*scale_tensor_proto);
+  TensorShape scale_shape(qnn::utils::GetInitializerShape<int64_t>(*scale_tensor_proto));
 
   // Check the number of scale values to determine if the tensor is per-channel.
   // This is consistent with CPU EP's Quant/Dequant logic. We can't use the presence of an axis because even a
