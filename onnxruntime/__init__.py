@@ -76,3 +76,76 @@ if version:
     __version__ = version
 
 onnxruntime_validation.check_distro_info()
+
+# Load nvidia libraries from site-packages/nvidia if the package is onnxruntime-gpu
+if (
+    __package__ == "onnxruntime-gpu"
+    # Just in case we rename the package name in the future
+    or __package__ == "onnxruntime-cuda"
+    or __package__ == "onnxruntime_gpu"
+    or __package__ == "onnxruntime_cuda"
+):
+    import ctypes
+    import os
+    import platform
+    import re
+    import site
+
+    # Get the site-packages path where nvidia packages are installed
+    site_packages_path = site.getsitepackages()[0]
+    nvidia_path = os.path.join(site_packages_path, "nvidia")
+    # Traverse the directory and subdirectories
+    if platform.system() == "Windows":  #
+        # Define the list of DLL patterns
+        cuda_libs = (
+            "cublas",
+            "cublasLt",
+            "cudnn",
+            "cudart",
+            "cufft",
+            # "curand",
+            # "nvJitLink",
+        )
+        # Construct a regex pattern for each library name with optional parts
+        # Pattern explanation:
+        # - `libname`: Match the base library name (e.g., "cudart")
+        # - `(?:64)?`: Optionally match "64"
+        # - `(?:_\d+)*`: Match zero or more occurrences of "_n" where "n" is one or more digits
+        # - `.dll$`: End with ".dll" ignoring case
+        lib_pattern = {lib: re.compile(rf"{lib}(?:64)?(?:_\d+)*\.dll$", re.IGNORECASE) for lib in cuda_libs}
+        # Collect all directories under site-packages/nvidia that contain .dll files (for Windows)
+        for root, _, files in os.walk(nvidia_path):
+            # Add the current directory to the DLL search path
+
+            with os.add_dll_directory(root):
+                # Find all .dll files in the current directory
+                for file in files:
+                    for pattern in lib_pattern.items().values():
+                        if pattern.match(file):
+                            dll_path = os.path.join(root, file)
+                            _ = ctypes.CDLL(dll_path)
+    elif platform.system() == "Linux":
+        # Define the patterns with optional version number and case-insensitivity
+        cuda_libs = (
+            "libcublas.so",
+            "libcudnn.so",
+            "libcudart.so",
+            "libnvrtc.so",
+            "libcufft.so",
+            "libcurand.so",
+            "libnvJitLink.so",
+        )
+
+        # Regular expression to match .so files with optional versioning (e.g., .so, .so.1, .so.2.3)
+        lib_pattern = {pattern: re.compile(rf"{re.escape(pattern)}(\.\d+)*$", re.IGNORECASE) for pattern in cuda_libs}
+
+        # Traverse the directory and subdirectories
+        for root, _, files in os.walk(nvidia_path):
+            for file in files:
+                # Check if the file matches the .so pattern
+                for regex in lib_pattern.items().values():
+                    if regex.match(file):  # Check if the file matches the pattern
+                        so_path = os.path.join(root, file)
+                        _ = ctypes.CDLL(so_path)
+    else:
+        pass
