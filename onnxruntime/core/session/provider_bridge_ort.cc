@@ -382,6 +382,9 @@ struct ProviderHostImpl : ProviderHost {
 
   // Utils::DataTypeUtils (wrapped)
   const std::string* Utils__DataTypeUtils__ToType(const ONNX_NAMESPACE::TypeProto& type_proto) override { return ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(type_proto); }
+  const std::string* Utils__DataTypeUtils__ToType(const std::string& type_str) override {
+    return ONNX_NAMESPACE::Utils::DataTypeUtils::ToType(type_str);
+  }
 
   // int64s (wrapped)
   int int64s__size(const ONNX_NAMESPACE::int64s* p) override { return p->size(); }

@@ -284,6 +284,7 @@ struct ProviderHost {
 
   // Utils::DataTypeUtils
   virtual const std::string* Utils__DataTypeUtils__ToType(const ONNX_NAMESPACE::TypeProto& type_proto) = 0;
+  virtual const std::string* Utils__DataTypeUtils__ToType(const std::string& type_str) = 0;
 
   // int64s
   virtual int int64s__size(const ONNX_NAMESPACE::int64s* p) = 0;

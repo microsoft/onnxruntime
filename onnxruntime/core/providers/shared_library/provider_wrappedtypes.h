@@ -475,6 +475,7 @@ namespace Utils {
 
 struct DataTypeUtils final {
   static const std::string* ToType(const ONNX_NAMESPACE::TypeProto& type_proto) { return g_host->Utils__DataTypeUtils__ToType(type_proto); }
+  static const std::string* ToType(const std::string& type_str) { return g_host->Utils__DataTypeUtils__ToType(type_str); }
 
   PROVIDER_DISALLOW_ALL(DataTypeUtils)
 };
