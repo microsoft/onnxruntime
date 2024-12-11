@@ -21,6 +21,8 @@ endif()
 # Gets the public C/C++ API header files
 function(get_c_cxx_api_headers HEADERS_VAR)
   set(_headers
+    "${REPO_ROOT}/include/onnxruntime/core/session/experimental_onnxruntime_cxx_api.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/experimental_onnxruntime_cxx_inline.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_c_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_inline.h"
