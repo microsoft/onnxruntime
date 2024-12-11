@@ -22,8 +22,8 @@ class QDQOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                              const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
 Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
@@ -118,8 +118,8 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   return Status::OK();
 }
 
-bool QDQOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                                          const logging::Logger& logger) const {
+bool QDQOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                                          const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
   int32_t input0_type = 0;  // input data type

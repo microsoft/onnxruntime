@@ -27,6 +27,8 @@ class SliceOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const InitializedTensorSet& initializers, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
   // TODO: Support Slice opset < 10, which uses attributes for starts and ends.
   int GetMinSupportedOpSet(const Node& /* node */) const override { return 10; }
 };
@@ -159,6 +161,30 @@ bool SliceOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   }
 
   return true;
+}
+
+bool SliceOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& initializers, const Node& node,
+                                            const emscripten::val& wnn_limits, const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  const auto& input = *input_defs[0];
+  const auto& op_type = node.OpType();
+  int32_t input_type;
+  if (!GetType(input, input_type, logger))
+    return false;
+
+  // If there is step < 0, check data type support of reverse.
+  if (input_defs.size() > 4 && input_defs[4]->Exists()) {
+    std::vector<int64_t> steps;
+    if (!ReadIntArrayFrom1DTensor(*initializers.at(input_defs[4]->Name()), steps, logger))
+      return false;
+    if (std::any_of(steps.begin(), steps.end(), [](int64_t step) { return step < 0; })) {
+      if (!IsDataTypeSupportedByWebNNOp(op_type, "reverse", input_type, wnn_limits, "input", "data", logger)) {
+        return false;
+      }
+    }
+  }
+
+  return IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "data", logger);
 }
 
 void CreateSliceOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

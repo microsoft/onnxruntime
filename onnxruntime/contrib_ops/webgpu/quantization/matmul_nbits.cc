@@ -341,6 +341,7 @@ const TILE_SIZE : u32 = 16u;
 const VALUES_PER_VEC4 : u32 = 4u;
 const QUANTIZATION_BLOCK_SIZE : u32 = 32;
 const A_REPEAT : u32 = 8u;
+
 // We want INNER_DIMENSION_ITEMS_PER_CYCLE to be the number of lanes in an EU/SM,
 // so we use BLOCKS_PER_CYCLE as 2u, or process weights 2 blocks at a time.
 // This uses all 16 lanes on 12th gen intel chips.
@@ -525,7 +526,6 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     // const uint32_t output_number = M > 1 && (N / components) % 2 == 0 ? 2 : 1;
     constexpr uint32_t output_number = 1;
     MatMulNBitsProgram program{output_number, gsl::narrow<int>(components_b), has_zero_points, use_block32};
-
     if (use_block32) {
       components = 1;
       constexpr uint32_t workgroup_size = 128;

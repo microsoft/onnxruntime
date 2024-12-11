@@ -26,8 +26,8 @@ class GruOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const WebnnDeviceType /*device_type*/, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                              const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
   bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                const logging::Logger& logger) const override;
 };
@@ -187,8 +187,8 @@ bool GruOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, c
   return true;
 }
 
-bool GruOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                                          const logging::Logger& logger) const {
+bool GruOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                                          const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
   int32_t input_X_type = 0;          // input data type
