@@ -11,6 +11,7 @@
 #include "QnnTypes.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/node_unit.h"
+#include "core/framework/tensor_shape.h"
 #include "core/util/qmath.h"
 
 namespace onnxruntime {
@@ -21,6 +22,8 @@ namespace utils {
 size_t GetElementSizeByType(const Qnn_DataType_t& data_type);
 
 size_t GetElementSizeByType(ONNXTensorElementDataType elem_type);
+
+size_t GetElementSizeByType(ONNX_NAMESPACE::TensorProto_DataType onnx_type);
 
 // TODO: make these work with Wrappers?
 std::ostream& operator<<(std::ostream& out, const Qnn_Param_t& qnn_param);
@@ -128,6 +131,31 @@ Status UnpackInt4ToInt8(size_t num_int4_elems, std::vector<uint8_t>& data_bytes)
     auto dst = gsl::make_span(reinterpret_cast<uint8_t*>(data_bytes.data()), data_bytes.size());
     auto src = gsl::make_span(reinterpret_cast<const UInt4x2*>(packed_uint4_bytes.data()), packed_uint4_bytes.size());
     ORT_RETURN_IF_NOT(UInt4x2::Unpack(dst, src), "Failed to unpack Tensor<UInt4x2> for QNN");
+  }
+
+  return Status::OK();
+}
+
+template <typename T>
+std::vector<T> GetInitializerShape(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  const auto& dims = tensor_proto.dims();
+  std::vector<T> tensor_shape_vec(static_cast<size_t>(dims.size()));
+  for (int i = 0; i < dims.size(); ++i) {
+    tensor_shape_vec[i] = static_cast<T>(dims[i]);
+  }
+
+  return tensor_shape_vec;
+}
+
+template <typename T, typename P>
+Status PermuteShape(gsl::span<const T> input_shape, gsl::span<const P> perm, gsl::span<T> output_shape) {
+  const size_t rank = input_shape.size();
+  ORT_RETURN_IF_NOT(rank == perm.size() && rank == output_shape.size(),
+                    "PermuteShape(): expect all arguments to have the same rank.");
+
+  for (size_t i = 0; i < rank; ++i) {
+    size_t p = static_cast<size_t>(perm[i]);
+    output_shape[i] = input_shape[p];
   }
 
   return Status::OK();

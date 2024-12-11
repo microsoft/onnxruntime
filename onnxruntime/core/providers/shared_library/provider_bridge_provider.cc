@@ -23,7 +23,6 @@
 #include "core/providers/cpu/tensor/split.h"
 #include "core/providers/cpu/tensor/size.h"
 #include "core/providers/cpu/tensor/scatter_nd.h"
-#include "core/providers/cpu/tensor/transpose.h"
 #include "core/providers/cpu/tensor/unsqueeze.h"
 #include "core/providers/cpu/tensor/upsamplebase.h"
 #include "core/providers/cpu/tensor/tile.h"
@@ -513,12 +512,6 @@ Status NonMaxSuppressionBase::GetThresholdsFromInputs(const PrepareContext& pc, 
 
 Status GatherBase::PrepareForCompute(OpKernelContext* context, GatherBase::Prepare& p) const { return g_host_cpu.GatherBase__PrepareForCompute(this, context, reinterpret_cast<GatherBase__Prepare&>(p)); }
 Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, UnsqueezeBase::Prepare& p) const { return g_host_cpu.UnsqueezeBase__PrepareCompute(this, ctx, reinterpret_cast<UnsqueezeBase__Prepare&>(p)); }
-
-Status TransposeBase::DoTranspose(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
-                                  const TensorShape* input_shape_override,
-                                  concurrency::ThreadPool* tp) {
-  return g_host_cpu.TransposeBase__DoTranspose(permutations, input, output, input_shape_override, tp);
-}
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
 bool TileOp::IsTileMemcpy(const TensorShape& input_shape, const int64_t* repeats, size_t rank, bool& is_batched_memcpy, size_t& num_of_elements_per_batch, size_t& num_of_copies_per_batch, size_t& num_of_batch_copies) {

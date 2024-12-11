@@ -65,6 +65,42 @@ size_t GetElementSizeByType(ONNXTensorElementDataType elem_type) {
   return pos->second;
 }
 
+size_t GetElementSizeByType(ONNX_NAMESPACE::TensorProto_DataType onnx_type) {
+  switch (onnx_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_INT4:
+      return sizeof(Int4x2);
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT4:
+      return sizeof(UInt4x2);
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+      return sizeof(int8_t);
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+      return sizeof(uint8_t);
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16:
+      return sizeof(int16_t);
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
+      return sizeof(uint16_t);
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      return sizeof(int32_t);
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+      return sizeof(uint32_t);
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      return sizeof(int64_t);
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
+      return sizeof(uint64_t);
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+      return 2;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      return sizeof(float);
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+      return sizeof(double);
+    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+      return sizeof(bool);
+    default:
+      return 0;
+  }
+  // Unreachable
+}
+
 std::ostream& operator<<(std::ostream& out, const Qnn_Scalar_t& scalar) {
   switch (scalar.dataType) {
     case QNN_DATATYPE_INT_8:

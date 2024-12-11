@@ -23,7 +23,6 @@
 #include "core/providers/cpu/tensor/slice.h"
 #include "core/providers/cpu/tensor/onehot.h"
 #include "core/providers/cpu/tensor/tile.h"
-#include "core/providers/cpu/tensor/transpose.h"
 #include "core/providers/cpu/tensor/gather_elements.h"
 #include "core/providers/cpu/tensor/unsqueeze.h"
 #include "core/providers/cpu/tensor/upsamplebase.h"
@@ -81,13 +80,6 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   // NonMaxSuppressionBase (direct)
   Status NonMaxSuppressionBase__PrepareCompute(OpKernelContext* ctx, PrepareContext& pc) override { return NonMaxSuppressionBase::PrepareCompute(ctx, pc); }
   Status NonMaxSuppressionBase__GetThresholdsFromInputs(const PrepareContext& pc, int64_t& max_output_boxes_per_class, float& iou_threshold, float& score_threshold) override { return NonMaxSuppressionBase::GetThresholdsFromInputs(pc, max_output_boxes_per_class, iou_threshold, score_threshold); }
-
-  // TransposeBase (direct)
-  Status TransposeBase__DoTranspose(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
-                                    const TensorShape* input_shape_override,
-                                    concurrency::ThreadPool* tp) override {
-    return TransposeBase::DoTranspose(permutations, input, output, input_shape_override, tp);
-  }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
   // From cpu/tensor/size.h (direct)

@@ -623,11 +623,11 @@ Status QnnModelWrapper::UnpackInitializerData(const ONNX_NAMESPACE::TensorProto&
 
   // If this is an int4, we need to unpack it because QNN treats int4 as a full int8.
   if (onnx_data_type == ONNX_NAMESPACE::TensorProto_DataType_INT4) {
-    TensorShape shape = onnxruntime::utils::GetTensorShapeFromTensorProto(initializer);
+    TensorShape shape(qnn::utils::GetInitializerShape<int64_t>(initializer));
     const size_t num_int4_elems = shape.Size();
     ORT_RETURN_IF_ERROR(qnn::utils::UnpackInt4ToInt8<true>(num_int4_elems, unpacked_tensor));
   } else if (onnx_data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT4) {
-    TensorShape shape = onnxruntime::utils::GetTensorShapeFromTensorProto(initializer);
+    TensorShape shape(qnn::utils::GetInitializerShape<int64_t>(initializer));
     const size_t num_uint4_elems = shape.Size();
     ORT_RETURN_IF_ERROR(qnn::utils::UnpackInt4ToInt8<false>(num_uint4_elems, unpacked_tensor));
   }
