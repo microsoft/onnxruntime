@@ -87,7 +87,7 @@ export class WebNNBackend {
   /**
    * Temporary tensors for the current session.
    */
-  private temporarySessionTensors: Map<number, TensorId[]> = new Map();
+  private temporarySessionTensorIds: Map<number, TensorId[]> = new Map();
 
   constructor(env: Env) {
     configureLogger(env.logLevel!, !!env.debug);
@@ -106,15 +106,15 @@ export class WebNNBackend {
 
   public onRunEnd(sessionId: number): void {
     LOG_DEBUG('verbose', () => `[WebNN] onRunEnd {sessionId: ${sessionId}}`);
-    const tensors = this.temporarySessionTensors.get(sessionId);
-    if (!tensors) {
+    const tensorIds = this.temporarySessionTensorIds.get(sessionId);
+    if (!tensorIds) {
       return;
     }
-    for (const tensor of tensors) {
-      LOG_DEBUG('verbose', () => `[WebNN] releasing temporary tensor {tensorId: ${tensor}}`);
-      this.tensorManager.releaseTensorId(tensor);
+    for (const tensorId of tensorIds) {
+      LOG_DEBUG('verbose', () => `[WebNN] releasing temporary tensor {tensorId: ${tensorId}}`);
+      this.tensorManager.releaseTensorId(tensorId);
     }
-    this.temporarySessionTensors.delete(sessionId);
+    this.temporarySessionTensorIds.delete(sessionId);
   }
 
   public async createMLContext(optionsOrDevice?: MLContextOptions | GPUDevice): Promise<MLContext> {
@@ -229,9 +229,9 @@ export class WebNNBackend {
     }
     const tensorId = this.tensorManager.reserveTensorId();
     await this.tensorManager.ensureTensor(tensorId, dataType, shape, false);
-    const tensors = this.temporarySessionTensors.get(this.currentSessionId);
+    const tensors = this.temporarySessionTensorIds.get(this.currentSessionId);
     if (!tensors) {
-      this.temporarySessionTensors.set(this.currentSessionId, [tensorId]);
+      this.temporarySessionTensorIds.set(this.currentSessionId, [tensorId]);
     } else {
       tensors.push(tensorId);
     }
