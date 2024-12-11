@@ -1,7 +1,6 @@
-black>=22.3
+-r requirements-lintrunner.txt
 cerberus
 flatbuffers
-isort
 jinja2
 numpy
 onnx

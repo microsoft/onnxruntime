@@ -867,8 +867,9 @@ class GraphTransitionManager:
         assert model_info_for_export.export_mode is not None, "Please use a concrete instance of ExecutionManager"
 
         try:
-            with torch.no_grad(), stage3_export_context(
-                enable_zero_stage3_support, stage3_param_handle, flattened_module
+            with (
+                torch.no_grad(),
+                stage3_export_context(enable_zero_stage3_support, stage3_param_handle, flattened_module),
             ):
                 required_export_kwargs = {
                     "input_names": model_info_for_export.onnx_graph_input_names,  # did not contains parameters as its input yet
