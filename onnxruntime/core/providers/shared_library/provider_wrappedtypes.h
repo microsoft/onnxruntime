@@ -703,12 +703,6 @@ struct PrimitiveDataTypeBase final {
   PROVIDER_DISALLOW_ALL(PrimitiveDataTypeBase)
 };
 
-struct TensorTypeBase final {
-  MLDataType GetElementType() const { return g_host->TensorTypeBase__GetElementType(this); }
-
-  PROVIDER_DISALLOW_ALL(TensorTypeBase)
-};
-
 class DataTypeImpl final {
  public:
   size_t Size() const { return g_host->DataTypeImpl__Size(this); }
@@ -765,7 +759,6 @@ class DataTypeImpl final {
 
   const PrimitiveDataTypeBase* AsPrimitiveDataType() const { return g_host->DataTypeImpl__AsPrimitiveDataType(this); }
 
-  static const TensorTypeBase* TensorTypeFromONNXEnum(int type) { return g_host->DataTypeImpl__TensorTypeFromONNXEnum(type); }
   static const char* ToString(MLDataType type) { return g_host->DataTypeImpl__ToString(type); }
 
   PROVIDER_DISALLOW_ALL(DataTypeImpl)

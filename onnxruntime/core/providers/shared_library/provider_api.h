@@ -169,7 +169,6 @@ class OpKernel;
 struct OpKernelContext;
 struct OpKernelInfo;
 struct PrimitiveDataTypeBase;
-struct TensorTypeBase;
 struct OrtRunOptions;
 struct Tensor;
 struct SparseTensor;
