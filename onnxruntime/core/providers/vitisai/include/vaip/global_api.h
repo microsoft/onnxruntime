@@ -35,7 +35,7 @@ using EventInfo = std::tuple<
     int,          // tid
     long long,    // timestamp
     long long     // duration
->;
+    >;
 void profiler_collect(
     std::vector<EventInfo>& api_events,
     std::vector<EventInfo>& kernel_events);
