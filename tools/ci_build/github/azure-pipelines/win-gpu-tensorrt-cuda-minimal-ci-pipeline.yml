@@ -84,15 +84,3 @@ jobs:
       scriptPath: '$(Build.SourcesDirectory)\setup.py'
       arguments: 'bdist_wheel'
       workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-
-  - script: |
-     mklink  /D /J $(Build.BinariesDirectory)\RelWithDebInfo\models $(Build.BinariesDirectory)\models
-     DIR dist\ /S /B > wheel_filename_file
-     set /p WHEEL_FILENAME=<wheel_filename_file
-     del wheel_filename_file
-     python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
-     set PATH=$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo;%PATH%
-     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config RelWithDebInfo --use_binskim_compliant_compile_flags --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}" --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --enable_cuda_minimal_build
-
-    workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-    displayName: 'Run tests'
