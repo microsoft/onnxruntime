@@ -615,6 +615,10 @@ struct ProviderHostImpl : ProviderHost {
     return std::make_unique<TensorShapeProto_Dimension_Iterator_Impl>(p->end());
   }
 
+  size_t TensorShapeProto_Dimensions__size(const ONNX_NAMESPACE::TensorShapeProto_Dimensions* p) override {
+    return p->size();
+  }
+
   // TensorShapeProto (wrapped)
   int TensorShapeProto__dim_size(const ONNX_NAMESPACE::TensorShapeProto* p) override { return p->dim_size(); }
   const ONNX_NAMESPACE::TensorShapeProto_Dimensions& TensorShapeProto__dim(const ONNX_NAMESPACE::TensorShapeProto* p) override { return p->dim(); }

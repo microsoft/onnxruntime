@@ -288,6 +288,7 @@ struct TensorShapeProto_Dimension final {
 struct TensorShapeProto_Dimensions final {
   IteratorHolder<TensorShapeProto_Dimension_Iterator, const TensorShapeProto_Dimension> begin() const { return g_host->TensorShapeProto_Dimensions__begin(this); }
   IteratorHolder<TensorShapeProto_Dimension_Iterator, const TensorShapeProto_Dimension> end() const { return g_host->TensorShapeProto_Dimensions__end(this); }
+  size_t size() const { return g_host->TensorShapeProto_Dimensions__size(this); }
 
   PROVIDER_DISALLOW_ALL(TensorShapeProto_Dimensions)
 };
