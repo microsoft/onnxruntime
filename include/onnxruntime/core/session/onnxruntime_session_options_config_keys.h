@@ -261,8 +261,8 @@ static const char* const kOrtSessionOptionEpContextEnable = "ep.context_enable";
 static const char* const kOrtSessionOptionEpContextFilePath = "ep.context_file_path";
 
 // Flag to specify whether to dump the EP context into the Onnx model.
-// "0": dump the EP context into separate file, keep the file name in the Onnx model.
-// "1": dump the EP context into the Onnx model. (default).
+// "0": dump the EP context into separate file, keep the file name in the Onnx model. (default).
+// "1": dump the EP context into the Onnx model.
 static const char* const kOrtSessionOptionEpContextEmbedMode = "ep.context_embed_mode";
 
 // Specify the EPContext node name prefix to make it unique

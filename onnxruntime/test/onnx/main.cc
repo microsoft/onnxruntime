@@ -454,8 +454,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
 
     if (ep_context_enable)
       sf.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
-    if (disable_ep_context_embed_mode)
+    if (disable_ep_context_embed_mode) {
       sf.AddConfigEntry(kOrtSessionOptionEpContextEmbedMode, "0");
+    } else {
+      sf.AddConfigEntry(kOrtSessionOptionEpContextEmbedMode, "1");
+    }
 
     for (auto& it : session_config_entries) {
       sf.AddConfigEntry(it.first.c_str(), it.second.c_str());

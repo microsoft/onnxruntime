@@ -53,7 +53,7 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
   bool so_disable_cpu_fallback = config_options_.GetConfigOrDefault(kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
   bool so_export_ep_ctx_blob = config_options_.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
-  bool so_epctx_embed_mode = config_options_.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "1") == "1";
+  bool so_epctx_embed_mode = config_options_.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "0") == "1";
   std::string so_cache_path = config_options_.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "").c_str();
 
   if (so_export_ep_ctx_blob && !so_cache_path.empty()) {

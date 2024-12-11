@@ -52,7 +52,7 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   std::shared_ptr<KernelRegistry> registry_;
   // EP context related.
   bool ep_ctx_enabled_ = false;
-  bool ep_ctx_embed_mode_ = true;
+  bool ep_ctx_embed_mode_ = false;
   std::string ep_ctx_model_path_cfg_{""};
   mutable PathString ep_ctx_model_file_loc_{};
   // It might need to be called before loading
