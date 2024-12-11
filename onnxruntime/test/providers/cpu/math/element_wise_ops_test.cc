@@ -949,7 +949,7 @@ TEST(MathOpTest, Abs_int32) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT parser: Int32 not allowed as input to this layer
 }
 
-TEST(MathOpTest, Neg) {
+TEST(MathOpTest, Neg_float) {
   OpTester test("Neg");
   std::vector<int64_t> dims{2, 2};
   test.AddInput<float>("X", dims,
@@ -961,6 +961,18 @@ TEST(MathOpTest, Neg) {
   test.Run();
 }
 
+TEST(MathOpTest, Neg_double) {
+  OpTester test("Neg");
+  std::vector<int64_t> dims{2, 2};
+  test.AddInput<double>("X", dims,
+                        {1.0, -2.0,
+                         0.0, -10.0});
+  test.AddOutput<double>("Y", dims,
+                         {-1.0, 2.0,
+                          -0.0, 10.0});
+  test.Run();
+}
+
 TEST(MathOpTest, Neg_int8) {
   OpTester test("Neg");
   std::vector<int64_t> dims{4};
@@ -969,6 +981,14 @@ TEST(MathOpTest, Neg_int8) {
 
   // OpenVINO EP: Disabled temporarily
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: INT8 is not supported
+}
+
+TEST(MathOpTest, Neg_int16) {
+  OpTester test("Neg");
+  std::vector<int64_t> dims{4};
+  test.AddInput<int8_t>("X", dims, {1, -2, 0, -10});
+  test.AddOutput<int8_t>("Y", dims, {-1, 2, 0, 10});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Int16 not allowed as input to this layer
 }
 
 TEST(MathOpTest, Neg_int32) {
