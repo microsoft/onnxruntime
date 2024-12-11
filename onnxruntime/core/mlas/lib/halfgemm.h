@@ -513,3 +513,36 @@ MlasHalfGemmGetDispatch()
     return &MlasHalfGemmDispatchDefault;
 #endif
 }
+
+struct MLAS_HGEMM_DISPATCH {
+     /**
+     * @brief C = alpha * A * Transpose(B) + beta * C
+     *
+     * @param       A                   first row of the A matrix segment. Row major.
+     * @param       B                   first column of the B matrix segment. Column major.
+     * @param[out]  C                   first element of the output matrix segment. Row major.
+     * @param       CountM              the number of rows of A chunk.
+     * @param       CountN              the number of columns of B chunk.
+     * @param       CountK              the number of columns of A chunk and the number of rows of B chunk.
+     * @param       lda                 the leading dimension of A.
+     * @param       ldb                 the leading dimension of B.
+     * @param       ldc                 the leading dimension of C.
+     * @param       alpha               the alpha scalar value.
+     * @param       beta                the beta scalar value.
+     */
+    typedef void(HGemmKernel_TransposeB_Fn)(
+        const MLAS_FP16* A,
+        const MLAS_FP16* B,
+        MLAS_FP16* C,
+        size_t CountM,
+        size_t CountN,
+        size_t CountK,
+        size_t lda,
+        size_t ldb,
+        size_t ldc,
+        MLAS_FP16 alpha,
+        MLAS_FP16 beta
+    );
+
+    HGemmKernel_TransposeB_Fn* HGemmKernel_TransposeB = nullptr;
+};

@@ -198,6 +198,8 @@ class GQAAttentionBase {
           math::GemmEx<float, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_seqlen, head_size, alpha, q,
                                           static_cast<int>(head_size), k, static_cast<int>(head_size), 0.0f /*bata*/,
                                           output, static_cast<int>(present_buffer_sequence_length), nullptr);
+        } else if (GetMlasPlatform().HasFP16Support()) {
+          // TODO: if kernel available, call MlasHGemmEx
         } else {
           size_t bytes = head_size * (sequence_length + total_seqlen) * sizeof(float);
           auto q_k_fp32 = allocator->Alloc(bytes);

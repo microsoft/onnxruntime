@@ -1458,6 +1458,56 @@ MlasRotaryEmbedOneRow(
     T* output
 );
 
+/**
+ * @brief Check whether current CPU supports half precision gemm.
+ */
+bool
+MLASCALL
+MlasHGemmSupported(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB);
+
+/**
+ * @brief  half precision matrix/matrix multiply operation (HGEMM)
+ *         C = alpha * op(A) * op(B) + beta * C
+ *
+ * @param TransA  Supplies the transpose operation for matrix A. Currently only support CblasNoTrans.
+ * @param TransB  Supplies the transpose operation for matrix B. Currently only support CblasTrans.
+ * @param M       Supplies the number of rows of matrix A and matrix C.
+ * @param N       Supplies the number of columns of matrix B and matrix C.
+ * @param K       Supplies the number of columns of matrix A and the number of rows of matrix B.
+ * @param A       Supplies the address of matrix A
+ * @param lda     Supplies the first dimension of matrix A.
+ * @param B       Supplies the address of matrix B
+ * @param ldb     Supplies the first dimension of matrix B.
+ * @param C       Supplies the address of matrix C
+ * @param ldc     Supplies the first dimension of matrix C.
+ * @param alpha   Supplies the scalar alpha multiplier (see GEMM definition)
+ * @param beta    Supplies the scalar beta multiplier (see GEMM definition)
+ * @param ThreadPool Supplies the thread pool object to use, else nullptr if the base library threading support
+ *                   should be used.
+ */
+void
+MLASCALL
+MlasGemm(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_FP16* A,
+    size_t lda,
+    const MLAS_FP16* B,
+    size_t ldb,
+    MLAS_FP16* C,
+    size_t ldc,
+    MLAS_FP16 alpha,
+    MLAS_FP16 beta,
+    MLAS_THREADPOOL* ThreadPool
+) {
+    // TODO: call MlasGemmBatch for hgemm
+}
+
     /**
  * @brief Whether current CPU supports FP16 acceleration.
 */
