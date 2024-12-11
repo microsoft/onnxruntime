@@ -185,7 +185,6 @@ class GatherBase;
 class Size;
 class SliceBase;
 class SplitBase;
-class TransposeBase;
 class TensorShape;
 struct Prepare;
 struct PrepareContext;
