@@ -54,6 +54,7 @@ class ModelBuilder {
   // We only support CoreML 3 and later so the spec version is always version + 1.
   int32_t CoreMLVersion() const { return coreml_version_; }
   int32_t CoreMLSpecVersion() const { return coreml_version_ + 1; }
+  bool IsModelCached() const { return is_model_cached_; }
 
   // Returns true if we are creating an ML Program
   bool CreateMLProgram() const {
@@ -218,8 +219,9 @@ class ModelBuilder {
   const logging::Logger& logger_;
   const int32_t coreml_version_;
   CoreMLOptions coreml_options_;
-  const bool create_ml_program_;         // ML Program (CoreML5, iOS 15+, macOS 12+) or NeuralNetwork (old)
-  const std::string model_output_path_;  // create_ml_program_ ? dir for mlpackage : filename for mlmodel
+  const bool create_ml_program_;   // ML Program (CoreML5, iOS 15+, macOS 12+) or NeuralNetwork (old)
+  std::string model_output_path_;  // create_ml_program_ ? dir for mlpackage : filename for mlmodel
+  bool is_model_cached_{false};
 
   std::vector<std::string> onnx_input_names_;
   std::vector<std::string> onnx_output_names_;
