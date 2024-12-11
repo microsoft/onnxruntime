@@ -23,6 +23,9 @@ namespace logging {
 
 struct Logger final {
   bool OutputIsEnabled(Severity severity, DataType data_type) const noexcept { return g_host->logging__Logger__OutputIsEnabled(this, severity, data_type); }
+  Severity GetSeverity() const noexcept {
+    return g_host->logging__Logger__GetSeverity(this);
+  }
 
   PROVIDER_DISALLOW_ALL(Logger)
 };

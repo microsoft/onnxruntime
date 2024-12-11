@@ -270,6 +270,7 @@ struct ProviderHost {
 
   // logging::Logger
   virtual bool logging__Logger__OutputIsEnabled(const logging::Logger* p, logging::Severity severity, logging::DataType data_type) = 0;
+  virtual logging::Severity logging__Logger__GetSeverity(const logging::Logger* p) = 0;
 
   // logging::LoggingManager
   virtual const logging::Logger& logging__LoggingManager__DefaultLogger() = 0;

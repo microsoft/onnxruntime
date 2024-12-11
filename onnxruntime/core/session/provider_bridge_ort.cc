@@ -366,6 +366,9 @@ struct ProviderHostImpl : ProviderHost {
 
   // logging::Logger (wrapped)
   bool logging__Logger__OutputIsEnabled(const logging::Logger* p, logging::Severity severity, logging::DataType data_type) override { return p->OutputIsEnabled(severity, data_type); }
+  logging::Severity logging__Logger__GetSeverity(const logging::Logger* p) override {
+    return p->GetSeverity();
+  }
 
   // logging::LoggingManager (wrapped)
   const logging::Logger& logging__LoggingManager__DefaultLogger() override { return logging::LoggingManager::DefaultLogger(); }
