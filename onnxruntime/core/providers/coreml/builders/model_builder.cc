@@ -390,11 +390,28 @@ void CreateEmptyFile(const std::string& filename) {
 
 #endif  // defined(COREML_ENABLE_MLPROGRAM)
 
-std::string GetModelOutputPath(bool create_ml_program) {
-  // path is used to create the ML Package directory for ML Program, and for the model directly otherwise.
-  auto path = util::GetTemporaryFilePath();
-  if (!create_ml_program) {
-    path += ".model.mlmodel";
+std::string GetModelOutputPath(const CoreMLOptions& coreml_options,
+                               const std::vector<std::string>& onnx_input_names) {
+  std::string path;
+  if (coreml_options.ModelCachePath().empty()) {
+    // path is used to create the ML Package directory for ML Program, and for the model directly otherwise.
+    path = util::GetTemporaryFilePath();
+    if (!coreml_options.CreateMLProgram()) {
+      path += ".model.mlmodel";
+    }
+  } else {
+    // input names in onnx are unique. so we can use them as the key in the cache.
+    std::string inputs_collections = std::accumulate(
+        onnx_input_names.begin(), onnx_input_names.end(), std::string(),
+        [](const std::string& a, const std::string& b) { return a + "," + b; });
+    std::hash<std::string> hasher;
+    // different subgraph has different folders. so we need to hash the inputs.
+    path = std::string(coreml_options.ModelCachePath()) +
+           "/" + std::to_string(hasher(inputs_collections));
+    if (!coreml_options_.CreateMLProgram()) {
+      ORT_THROW_IF_ERROR(Env::Default().CreateFolder(path));
+      path += "/mlmodel";
+    }
   }
 
   return path;
@@ -410,27 +427,11 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
       coreml_version_(coreml_version),
       coreml_options_(coreml_options),
       create_ml_program_(coreml_options.CreateMLProgram()),
+      model_output_path_(GetModelOutputPath(coreml_options, onnx_input_names)),
       onnx_input_names_(std::move(onnx_input_names)),
       onnx_output_names_(std::move(onnx_output_names)),
       coreml_model_(std::make_unique<CoreML::Specification::Model>()) {
-  if (coreml_options.ModelCachePath().empty()) {
-    model_output_path_ = GetModelOutputPath(create_ml_program_);
-  } else {
-    // input names in onnx are unique. so we can use them as the key in the cache.
-    std::string inputs_collections = std::accumulate(
-        onnx_input_names_.begin(), onnx_input_names_.end(), std::string(),
-        [](const std::string& a, const std::string& b) { return a + "," + b; });
-    std::hash<std::string> hasher;
-    // different subgraph has different folders. so we need to hash the inputs.
-    model_output_path_ = std::string(coreml_options.ModelCachePath()) +
-                         "/" + std::to_string(hasher(inputs_collections));
-    if (!coreml_options_.CreateMLProgram()) {
-      ORT_THROW_IF_ERROR(Env::Default().CreateFolder(model_output_path_));
-      model_output_path_ += "/mlmodel";
-    }
-  }
-
-  // GetModelOutputPath(create_ml_program_) always produce a unique path for the model and this is not existed
+  // GetTemporaryFilePath() always produce a unique path for the model and this is not existed
   // Mlprogram will create a folder while NN create a file
   if (Env::Default().FolderExists(ToPathString(model_output_path_)) ||
       Env::Default().FileExists(ToPathString(model_output_path_))) {
@@ -874,7 +875,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
 
   input_output_info_.emplace(name, OnnxTensorInfo{data_type, shape});
 
-  if (is_model_cached_) {
+  if (IsModelCached()) {
     return Status::OK();
   }
 
@@ -1091,6 +1092,7 @@ Status ModelBuilder::Build(const GraphViewer& graph_viewer, const logging::Logge
     ORT_RETURN_IF_ERROR(builder.CreateModel());
     ORT_RETURN_IF_ERROR(builder.SaveModel());
   } else {
+    // runtime requires the input/output names to be passed
     ORT_RETURN_IF_ERROR(builder.RegisterModelInputs());
     ORT_RETURN_IF_ERROR(builder.RegisterModelOutputs());
   }
