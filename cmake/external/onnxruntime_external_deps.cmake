@@ -698,12 +698,6 @@ if (onnxruntime_USE_WEBGPU)
 
   if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::webgpu_dawn)
-
-    # install(TARGETS webgpu_dawn
-    #     ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    #     LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-    #     RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR}
-    # )
   else()
     if (NOT onnxruntime_USE_EXTERNAL_DAWN)
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::dawn_native)
