@@ -67,8 +67,8 @@ class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
 
 class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
  public:
-  InPlaceSoftmaxProgram(const std::string& kernel_name, int work_group_size, int components, bool is_first_prompt, const Tensor* seqlen_k = nullptr)
-      : Program{kernel_name}, work_group_size_(work_group_size), components_(components), seqlen_k_(seqlen_k), is_first_prompt_(is_first_prompt) {
+  InPlaceSoftmaxProgram(const std::string& kernel_name, int work_group_size, int components, bool is_first_prompt, const Tensor* seqlen_k = nullptr, bool present_past_share_buffer = false)
+      : Program{kernel_name}, work_group_size_(work_group_size), components_(components), seqlen_k_(seqlen_k), present_past_share_buffer_(present_past_share_buffer), is_first_prompt_(is_first_prompt) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -84,6 +84,7 @@ class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
   int work_group_size_;
   int components_;
   const Tensor* seqlen_k_;
+  bool present_past_share_buffer_;
   bool is_first_prompt_;
 };
 
