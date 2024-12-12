@@ -28,6 +28,9 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
     // Initialization.Step.1 - Create wgpu::Instance
     if (instance_ == nullptr) {
       const DawnProcTable* dawn_procs = reinterpret_cast<const DawnProcTable*>(dawn_proc_table);
+#if defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
+      ORT_ENFORCE(dawn_procs == nullptr, "setting DawnProcTable is not allowed when dynamically linked to webgpu_dawn.");
+#else
 #if !defined(USE_EXTERNAL_DAWN)
       if (dawn_procs == nullptr) {
         dawn_procs = &dawn::native::GetProcs();
@@ -36,6 +39,7 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
       ORT_ENFORCE(dawn_procs != nullptr, "DawnProcTable must be provided.");
 #endif
       dawnProcSetProcs(dawn_procs);
+#endif
 
       wgpu::InstanceDescriptor instance_desc{};
       instance_desc.features.timedWaitAnyEnable = true;
