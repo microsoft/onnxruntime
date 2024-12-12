@@ -31,3 +31,5 @@ build --use_webgpu --config Release --build_shared_lib
 
 build --use_webgpu --config Release --build_shared_lib
       --cmake_extra_defines onnxruntime_ENABLE_DAWN_BACKEND_D3D12=0 onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=1
+
+  17,617,408 onnxruntime.dll
