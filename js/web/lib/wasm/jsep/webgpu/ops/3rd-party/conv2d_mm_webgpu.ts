@@ -143,12 +143,18 @@ const conv2dCommonSnippet = (
     }
     return ${typeSnippet(innerElementSizeX, dataType)}(0.0);`;
 
-  const sampleW =
-    fitInner && fitBOuter
+  const sampleW = isChannelsLast
+    ? fitInner && fitBOuter
       ? getWSnippet(innerElementSizeW)
       : `
     let col = colIn * ${innerElementSizeW};
     if (row < uniforms.dim_inner && col < uniforms.dim_b_outer) {
+      ${getWSnippet(innerElementSizeW)}
+    }
+    return ${typeSnippet(innerElementSizeW, dataType)}(0.0);`
+    : `
+    let col = colIn * ${innerElementSizeW};
+    if (row < uniforms.dim_inner && col < uniforms.dim_a_outer) {
       ${getWSnippet(innerElementSizeW)}
     }
     return ${typeSnippet(innerElementSizeW, dataType)}(0.0);`;
