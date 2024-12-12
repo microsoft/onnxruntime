@@ -211,7 +211,7 @@ Note: This sample shows model inference using [resnet50_Opset16.onnx](https://gi
 #include "onnxruntime_cxx_api.h"
 
 // path of model, Change to user's own model path
-const char* model_path = "/home/dou/models/onnx/resnet50_Opset16.onnx";
+const char* model_path = "./onnx/resnet50_Opset16.onnx";
 
 /**
  * @brief Input data preparation provided by user.
