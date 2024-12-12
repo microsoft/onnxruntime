@@ -161,7 +161,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
       past_value == nullptr &&
       present_k == nullptr &&
       present_v == nullptr &&
-      attn_probs == nullptr && // TODO: can we support it?
+      attn_probs == nullptr &&  // TODO: can we support it?
       l2_cache_size_ > 0) {
     MlasFlashAttentionThreadedArgs args;
     args.batch_size = batch_size;

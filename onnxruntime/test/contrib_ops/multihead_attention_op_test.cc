@@ -545,6 +545,13 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize40) {
 
   GetCrossAttentionData_HeadSize40_NoBias(data);
   RunMultiHeadAttentionTests(data);
+
+  // Test attention probs output
+  GetCrossAttentionData_HeadSize40(data, /* get_attention_probs */ true);
+  RunMultiHeadAttentionTests(data);
+
+  GetCrossAttentionData_HeadSize40_NoBias(data, /* get_attention_probs */ true);
+  RunMultiHeadAttentionTests(data);
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_Mask1D) {
@@ -555,6 +562,13 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_M
 
   GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding_NoBias(data, true);
   RunMultiHeadAttentionTests(data, DISABLE_CPU | DISABLE_WEBGPU);
+
+  // Test attention probs output
+  GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, true, /* get_attention_probs */ true);
+  RunMultiHeadAttentionTests(data, DISABLE_CPU | DISABLE_WEBGPU);
+
+  GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding_NoBias(data, true, /* get_attention_probs */ true);
+  RunMultiHeadAttentionTests(data, DISABLE_CPU | DISABLE_WEBGPU);
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_Mask2D) {
@@ -563,6 +577,13 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_RightSidePadding_M
   RunMultiHeadAttentionTests(data, DISABLE_CPU | DISABLE_WEBGPU);
 
   GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding_NoBias(data, false);
+  RunMultiHeadAttentionTests(data, DISABLE_CPU | DISABLE_WEBGPU);
+
+  // Test attention probs output
+  GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(data, false, /* get_attention_probs */ true);
+  RunMultiHeadAttentionTests(data, DISABLE_CPU | DISABLE_WEBGPU);
+
+  GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding_NoBias(data, false, /* get_attention_probs */ true);
   RunMultiHeadAttentionTests(data, DISABLE_CPU | DISABLE_WEBGPU);
 }
 
@@ -573,11 +594,22 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize32_LeftSidePadding_Ma
 
   GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding_NoBias(data);
   RunMultiHeadAttentionTests(data, DISABLE_CPU | DISABLE_WEBGPU);
+
+  // Test attention probs output
+  GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(data, /* get_attention_probs */ true);
+  RunMultiHeadAttentionTests(data, DISABLE_CPU | DISABLE_WEBGPU);
+
+  GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding_NoBias(data, /* get_attention_probs */ true);
+  RunMultiHeadAttentionTests(data, DISABLE_CPU | DISABLE_WEBGPU);
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize32_NoBias_NoMask_PackedKV) {
   AttentionTestData data;
   GetCrossAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedKV(data);
+  RunMultiHeadAttentionTests(data, DISABLE_WEBGPU);
+
+  // Test attention probs output
+  GetCrossAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedKV(data, /* get_attention_probs */ true);
   RunMultiHeadAttentionTests(data, DISABLE_WEBGPU);
 }
 
@@ -595,6 +627,13 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch2_HeadSize16_8) {
 
   GetCrossAttentionData_HeadSize16_8_NoBias(data);
   RunMultiHeadAttentionTests(data);
+
+  // Test attention probs output
+  GetCrossAttentionData_HeadSize16_8(data, /* get_attention_probs */ true);
+  RunMultiHeadAttentionTests(data);
+
+  GetCrossAttentionData_HeadSize16_8_NoBias(data, /* get_attention_probs */ true);
+  RunMultiHeadAttentionTests(data);
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize16) {
@@ -604,11 +643,22 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize16) {
 
   GetCrossAttentionData_HeadSize16_NoBias(data);
   RunMultiHeadAttentionTests(data);
+
+  // Test attention probs output
+  GetCrossAttentionData_HeadSize16(data, /* get_attention_probs */ true);
+  RunMultiHeadAttentionTests(data);
+
+  GetCrossAttentionData_HeadSize16_NoBias(data, /* get_attention_probs */ true);
+  RunMultiHeadAttentionTests(data);
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize8) {
   AttentionTestData data;
   GetCrossAttentionData_HeadSize8_NoBias(data);
+  RunMultiHeadAttentionTests(data, DISABLE_CUDA);
+
+  // Test attention probs output
+  GetCrossAttentionData_HeadSize8_NoBias(data, /* get_attention_probs */ true);
   RunMultiHeadAttentionTests(data, DISABLE_CUDA);
 }
 
@@ -647,6 +697,13 @@ TEST(MultiHeadAttentionTest, CrossAttention_DiffSequenceLengths) {
   RunMultiHeadAttentionTests(data, DISABLE_CUDA | DISABLE_WEBGPU);
 
   GetCrossAttentionData_DiffSequenceLengths_HeadSize8_NoBias(data);
+  RunMultiHeadAttentionTests(data, DISABLE_CUDA | DISABLE_WEBGPU);
+
+  // Test attention probs output
+  GetCrossAttentionData_DiffSequenceLengths_HeadSize8(data, /* get_attention_probs */ true);
+  RunMultiHeadAttentionTests(data, DISABLE_CUDA | DISABLE_WEBGPU);
+
+  GetCrossAttentionData_DiffSequenceLengths_HeadSize8_NoBias(data, /* get_attention_probs */ true);
   RunMultiHeadAttentionTests(data, DISABLE_CUDA | DISABLE_WEBGPU);
 }
 
