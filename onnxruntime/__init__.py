@@ -101,25 +101,24 @@ def check_and_load_cuda_libs(root_directory, cuda_libs):
         if set(found_libs.keys()) == cuda_libs:
             print("All required CUDA libraries found and loaded.")
             return True
-    logging.error(
-        f"Failed to load all required CUDA libraries. missing libraries: {cuda_libs - found_libs.keys()}")
+    logging.error(f"Failed to load all required CUDA libraries. missing libraries: {cuda_libs - found_libs.keys()}")
     return False
 
 
 # Load nvidia libraries from site-packages/nvidia if the package is onnxruntime-gpu
 if (
-        __package__ == "onnxruntime-gpu"
-        # Just in case we rename the package name in the future
-        or __package__ == "onnxruntime-cuda"
-        or __package__ == "onnxruntime_gpu"
-        or __package__ == "onnxruntime_cuda"
+    __package__ == "onnxruntime-gpu"
+    # Just in case we rename the package name in the future
+    or __package__ == "onnxruntime-cuda"
+    or __package__ == "onnxruntime_gpu"
+    or __package__ == "onnxruntime_cuda"
 ):
     import ctypes
+    import logging
     import os
     import platform
     import re
     import site
-    import logging
 
     # Get the site-packages path where nvidia packages are installed
     site_packages_path = site.getsitepackages()[-1]
