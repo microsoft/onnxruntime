@@ -2242,7 +2242,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
       new_tensorrt_options.trt_ep_context_file_path = (context_cache_path.size() == 0) ? nullptr : context_cache_path.c_str();
       LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << context_cache_path;
 
-      embed_mode = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "1");
+      embed_mode = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "0");
       if ("1" == embed_mode) {
         new_tensorrt_options.trt_ep_context_embed_mode = 1;
       } else if ("0" == embed_mode) {
