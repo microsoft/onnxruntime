@@ -215,6 +215,7 @@ using DeleteFunc = void (*)(void*);
 using NodeArgInfo = ONNX_NAMESPACE::ValueInfoProto;
 
 using NameMLValMap = std::unordered_map<std::string, OrtValue>;
+
 }  // namespace onnxruntime
 
 #include "core/platform/threadpool.h"
@@ -366,6 +367,20 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Int4x2>() {
 template <>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt4x2>() {
   return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4;
+}
+
+inline std::vector<std::unique_ptr<ComputeCapability>>
+CreateSupportedPartitions(const GraphViewer& graph_viewer,
+                          const std::unordered_set<const Node*>& supported_nodes,
+                          const std::unordered_set<std::string>& stop_ops,
+                          const std::function<std::string()>& generate_metadef_name,
+                          const std::string& execution_provider_name,
+                          const std::string& execution_provider_type,
+                          const std::unordered_map<const Node*, const NodeUnit*>* node_unit_map,
+                          bool drop_constant_initializers = false) {
+  return g_host->Utils__CreateSupportedPartitions(graph_viewer, supported_nodes, stop_ops, generate_metadef_name,
+                                                  execution_provider_name, execution_provider_type, node_unit_map,
+                                                  drop_constant_initializers);
 }
 }  // namespace utils
 

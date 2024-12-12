@@ -896,6 +896,17 @@ struct ProviderHost {
   virtual std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
   QDQ__GetAllNodeUnits(const GraphViewer* graph_viewer) = 0;
 
+  // Partitioning utils
+  virtual std::vector<std::unique_ptr<ComputeCapability>>
+  Utils__CreateSupportedPartitions(const GraphViewer& graph_viewer,
+                                   const std::unordered_set<const Node*>& supported_nodes,
+                                   const std::unordered_set<std::string>& stop_ops,
+                                   const std::function<std::string()>& generate_metadef_name,
+                                   const std::string& execution_provider_name,
+                                   const std::string& execution_provider_type,
+                                   const std::unordered_map<const Node*, const NodeUnit*>* node_unit_map,
+                                   bool drop_constant_initializers) = 0;
+
   // Model
   virtual std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,

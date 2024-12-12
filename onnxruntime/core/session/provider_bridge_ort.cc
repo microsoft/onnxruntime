@@ -81,6 +81,7 @@ using IndexedSubGraph_SourceOfSchema = IndexedSubGraph::SourceOfSchema;
 #include "core/common/cpuid_info.h"
 #include "core/common/logging/logging.h"
 #include "core/providers/shared_library/provider_interfaces.h"
+#include "core/providers/partitioning_utils.h"
 
 #include "core/providers/cuda/cuda_provider_factory_creator.h"
 #include "core/providers/cann/cann_provider_factory_creator.h"
@@ -1070,6 +1071,26 @@ struct ProviderHostImpl : ProviderHost {
   std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
   QDQ__GetAllNodeUnits(const GraphViewer* graph_viewer) override {
     return QDQ::GetAllNodeUnits(*graph_viewer);
+  }
+
+  // Partitioning utils
+  std::vector<std::unique_ptr<ComputeCapability>>
+  Utils__CreateSupportedPartitions(const GraphViewer& graph_viewer,
+                                   const std::unordered_set<const Node*>& supported_nodes,
+                                   const std::unordered_set<std::string>& stop_ops,
+                                   const utils::GenerateMetadefNameFn& generate_metadef_name,
+                                   const std::string& execution_provider_name,
+                                   const std::string& execution_provider_type,
+                                   const std::unordered_map<const Node*, const NodeUnit*>* node_unit_map,
+                                   bool drop_constant_initializers) override {
+    return onnxruntime::utils::CreateSupportedPartitions(graph_viewer,
+                                                         supported_nodes,
+                                                         stop_ops,
+                                                         generate_metadef_name,
+                                                         execution_provider_name,
+                                                         execution_provider_type,
+                                                         node_unit_map,
+                                                         drop_constant_initializers);
   }
 
   // Model (wrapped)
