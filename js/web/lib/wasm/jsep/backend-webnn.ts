@@ -229,11 +229,11 @@ export class WebNNBackend {
     }
     const tensorId = this.tensorManager.reserveTensorId();
     await this.tensorManager.ensureTensor(tensorId, dataType, shape, false);
-    const tensors = this.temporarySessionTensorIds.get(this.currentSessionId);
-    if (!tensors) {
+    const tensorIds = this.temporarySessionTensorIds.get(this.currentSessionId);
+    if (!tensorIds) {
       this.temporarySessionTensorIds.set(this.currentSessionId, [tensorId]);
     } else {
-      tensors.push(tensorId);
+      tensorIds.push(tensorId);
     }
     return tensorId;
   }
