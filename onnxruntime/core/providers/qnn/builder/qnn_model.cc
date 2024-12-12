@@ -342,7 +342,8 @@ Status QnnModel::DeserializeGraphInfoFromBinaryInfo(const QnnSystemContext_Graph
     input_tensors = qnn_sys_ctx_graph_info.graphInfoV2.graphInputs;
     output_tensors = qnn_sys_ctx_graph_info.graphInfoV2.graphOutputs;
   }
-#elif QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 21)  // start from 2.28
+#endif
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 21)  // start from 2.28
   else if (qnn_sys_ctx_graph_info.version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_3) {
     graph_name.assign(qnn_sys_ctx_graph_info.graphInfoV3.graphName);
     graph_input_num = qnn_sys_ctx_graph_info.graphInfoV3.numGraphInputs;
