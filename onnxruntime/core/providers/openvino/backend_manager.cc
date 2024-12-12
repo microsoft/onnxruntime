@@ -70,7 +70,10 @@ BackendManager::BackendManager(const GlobalContext& global_context,
     i++;
   }
   subgraph_context_.subgraph_name = fused_node.Name();
-  auto model_proto = GetModelProtoFromFusedNode(fused_node, subgraph, logger);
+  std::unique_ptr<onnx::ModelProto> model_proto;
+  if (!ep_ctx_handle_.IsValidOVEPCtxGraph()) {
+    model_proto = GetModelProtoFromFusedNode(fused_node, subgraph, logger);
+  }
   std::string device_type = openvino_ep::BackendManager::GetGlobalContext().device_type;
 
   if (ModelHasSymbolicInputDims(subgraph)) {
