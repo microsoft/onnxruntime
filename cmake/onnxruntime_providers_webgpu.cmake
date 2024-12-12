@@ -26,12 +26,12 @@
   if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
     target_link_libraries(onnxruntime_providers_webgpu dawn::webgpu_dawn)
 
-    # # Copy webgpu_dawn.dll to the output directory
-    # add_custom_command(
-    #   TARGET onnxruntime_providers_webgpu
-    #   POST_BUILD
-    #   COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:dawn::webgpu_dawn>" "$<TARGET_FILE_DIR:onnxruntime_providers_webgpu>"
-    #   VERBATIM )
+    # Copy webgpu_dawn.dll to the output directory
+    add_custom_command(
+      TARGET onnxruntime_providers_webgpu
+      POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE:dawn::webgpu_dawn>" "$<TARGET_FILE_DIR:onnxruntime_providers_webgpu>"
+      VERBATIM )
   else()
     if (NOT onnxruntime_USE_EXTERNAL_DAWN)
       target_link_libraries(onnxruntime_providers_webgpu dawn::dawn_native)
