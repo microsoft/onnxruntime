@@ -388,6 +388,7 @@ bool ReduceOpHasAxesInput(const std::string& op_type, int opset_version) {
       {"ReduceMean", 18},
       {"ReduceProd", 18},
       {"ReduceSum", 13},
+      {"ReduceL2", 18},
   };
 
   const auto it = opset_with_axes_as_input.find(op_type);
