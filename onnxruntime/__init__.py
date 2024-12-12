@@ -90,13 +90,13 @@ if (
     import platform
     import re
     import site
-
+    import logging
     # Get the site-packages path where nvidia packages are installed
     site_packages_path = site.getsitepackages()[-1]
     nvidia_path = os.path.join(site_packages_path, "nvidia")
     # Traverse the directory and subdirectories
     if platform.system() == "Windows":  #
-        # Define the list of DLL patterns
+        # Define the list of DLL patterns, curand and nvJitLink are not included for Windows
         cuda_libs = (
             "cublas",
             "cublasLt",
@@ -123,11 +123,15 @@ if (
                     for pattern in lib_pattern.items().values():
                         if pattern.match(file):
                             dll_path = os.path.join(root, file)
-                            _ = ctypes.CDLL(dll_path)
+                            try:
+                                _ = ctypes.CDLL(dll_path)
+                            except Exception as e:
+                                logging.error(f"Failed to load {dll_path}: {e}")
     elif platform.system() == "Linux":
         # Define the patterns with optional version number and case-insensitivity
         cuda_libs = (
             "libcublas.so",
+            "libcublasLt.so",
             "libcudnn.so",
             "libcudart.so",
             "libnvrtc.so",
