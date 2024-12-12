@@ -637,6 +637,7 @@ if (onnxruntime_USE_WEBGPU)
 
   if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
     set(DAWN_BUILD_MONOLITHIC_LIBRARY ON CACHE BOOL "" FORCE)
+    set(DAWN_ENABLE_INSTALL ON CACHE BOOL "" FORCE)
 
     if (onnxruntime_USE_EXTERNAL_DAWN)
       message(FATAL_ERROR "onnxruntime_USE_EXTERNAL_DAWN and onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY cannot be enabled at the same time.")
@@ -644,9 +645,9 @@ if (onnxruntime_USE_WEBGPU)
   else()
     # use dawn::dawn_native and dawn::dawn_proc instead of the monolithic dawn::webgpu_dawn to minimize binary size
     set(DAWN_BUILD_MONOLITHIC_LIBRARY OFF CACHE BOOL "" FORCE)
+    set(DAWN_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
   endif()
   set(DAWN_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
-  set(DAWN_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
   set(DAWN_ENABLE_NULL OFF CACHE BOOL "" FORCE)
   set(DAWN_FETCH_DEPENDENCIES ON CACHE BOOL "" FORCE)
 
@@ -696,6 +697,12 @@ if (onnxruntime_USE_WEBGPU)
 
   if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::webgpu_dawn)
+
+    # install(TARGETS webgpu_dawn
+    #     ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    #     LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    #     RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR}
+    # )
   else()
     if (NOT onnxruntime_USE_EXTERNAL_DAWN)
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::dawn_native)
