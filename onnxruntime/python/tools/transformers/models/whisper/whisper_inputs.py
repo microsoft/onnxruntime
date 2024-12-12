@@ -136,10 +136,10 @@ def get_sample_alignment_heads(
 def get_sample_sot_sequence_length(
     device: torch.device,
     sot_sequence_length: int,
-    use_int32: bool = True,
+    use_int32: bool = False,
 ):
     torch_dtype = torch.int32 if use_int32 else torch.int64
-    sot_length = torch.tensor(sot_sequence_length, device=device, dtype=torch_dtype)
+    sot_length = torch.tensor([sot_sequence_length], device=device, dtype=torch_dtype)
     return sot_length
 
 # Create segment length for timestamps
@@ -147,10 +147,10 @@ def get_sample_sot_sequence_length(
 def get_sample_segment_length(
     device: torch.device,
     segment_length: int,
-    use_int32: bool = True,
+    use_int32: bool = False,
 ):
     torch_dtype = torch.int32 if use_int32 else torch.int64
-    segment_size = torch.tensor(segment_length, device=device, dtype=torch_dtype)
+    segment_size = torch.tensor([segment_length], device=device, dtype=torch_dtype)
     return segment_size
 
 # Create QKs for timestamps
@@ -225,8 +225,9 @@ def get_sample_jump_times_inputs(
     use_int32: bool = True,
 ):
     alignment_heads = get_sample_alignment_heads(config, device, num_alignment_heads, use_int32)
-    sot_sequence_length = get_sample_sot_sequence_length(device, sot_sequence_length, use_int32)
-    segment_length = get_sample_segment_length(device, segment_length, use_int32)
+    # lengths need to be int64 because subsequent 'Slice' ops only take int64 inputs
+    sot_sequence_length = get_sample_sot_sequence_length(device, sot_sequence_length)
+    segment_length = get_sample_segment_length(device, segment_length)
     QKs = get_sample_QKs(config, device, batch_size, sequence_length, use_fp16)
     return {"alignment_heads": alignment_heads, "sot_sequence_length": sot_sequence_length, "segment_length": segment_length, "QKs": QKs}
 
@@ -247,12 +248,16 @@ def convert_inputs_for_ort(
     use_buffer_sharing = "cache_indirection" in model_inputs
     for name in model_inputs:
         if name in {"audio_features", "encoder_input_ids"}:
+            # Encoder input
             ort_inputs[name] = inputs["audio_features"].detach().cpu().numpy()
         elif name == "encoder_hidden_states":
+            # Encoder output
             ort_inputs[name] = inputs["encoder_hidden_states"].detach().cpu().numpy()
         elif name in {"decoder_input_ids", "input_ids"}:
+            # Decoder input
             ort_inputs[name] = inputs["decoder_input_ids"].detach().cpu().numpy()
-        elif "self" in name:
+        elif "past_key_self" in name or "past_value_self" in name:
+            # Decoder input
             orig_kv_cache = self_attn_kv_caches.pop(0).detach().cpu().numpy()
             if use_buffer_sharing:
                 new_kv_cache = np.zeros((batch_size, num_heads, max_seq_len, head_size), dtype=orig_kv_cache.dtype)
@@ -260,13 +265,30 @@ def convert_inputs_for_ort(
                 ort_inputs[name] = new_kv_cache
             else:
                 ort_inputs[name] = orig_kv_cache
-        elif "cross" in name:
+        elif "past_key_cross" in name or "past_value_cross" in name:
+            # Decoder input
             orig_kv_cache = cross_attn_kv_caches.pop(0).detach().cpu().numpy()
             ort_inputs[name] = orig_kv_cache
         elif name == "past_sequence_length":
+            # Decoder input
             ort_inputs[name] = np.array([past_seq_len], dtype=np.int32)
         elif name == "cache_indirection":
+            # Decoder input
             ort_inputs[name] = np.zeros((batch_size, num_beams, max_seq_len), dtype=np.int32)
+        elif name == "alignment_heads":
+            # Jump times input
+            ort_inputs[name] = inputs["alignment_heads"].detach().cpu().numpy()
+        elif name == "sot_sequence_length":
+            # Jump times input
+            ort_inputs[name] = inputs["sot_sequence_length"].detach().cpu().numpy()
+        elif name == "segment_length":
+            # Jump times input
+            ort_inputs[name] = inputs["segment_length"].detach().cpu().numpy()
+        elif "cross_qk" in name:
+            # Jump times input
+            ort_inputs[name] = inputs["QKs"].pop(0).detach().cpu().numpy()
+        else:
+            raise ValueError(f"Unknown name not recognized: {name}")
 
     return ort_inputs
 

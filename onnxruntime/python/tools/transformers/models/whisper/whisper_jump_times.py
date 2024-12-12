@@ -11,6 +11,7 @@ import textwrap
 from pathlib import Path
 from typing import List, Union
 
+import numpy as np
 import onnx
 import torch
 import torch.nn.functional as F
@@ -18,7 +19,7 @@ import torch.utils.cpp_extension
 from onnx_model import OnnxModel
 
 from transformers import WhisperConfig
-from whisper_inputs import get_model_dynamic_axes, get_sample_jump_times_inputs
+from whisper_inputs import convert_inputs_for_ort, get_model_dynamic_axes, get_sample_jump_times_inputs
 
 from onnxruntime import InferenceSession
 from onnxruntime.tools import pytorch_export_contrib_ops
@@ -38,9 +39,32 @@ def index_QKs(alignment_heads: torch.Tensor, QKs: List[torch.Tensor]):
     """
     indexed_QKs = []
     for pair in alignment_heads:
+        # Each QK is of shape (batch_size, num_heads, sequence_length, num_frames // 2)
+        # The `QKs[_l]` selects the right QK from the list of QKs
+        # The `QKs[_l][:, _h]` selects the right attention heads from the chosen QK. The `:` is to do this for the batch dim.
+        #
+        # PyTorch:
+        # QKs[_l] is of shape (batch_size, num_heads, sequence_length, num_frames // 2)
+        # QKs[_l][:, _h] is of shape (batch_size, sequence_length, num_frames // 2)
+        #
+        # ONNX:
+        # QKs[_l] is of shape (batch_size, num_heads, sequence_length, num_frames // 2)
+        # QKs[_l][:, _h] is of shape (batch_size, 1, sequence_length, num_frames // 2) because
+        # the `[:, _h]` operation maps to a Gather op and that op does not reduce dimensions
         _l, _h = pair[0], pair[1]
         indexed_QKs.append(QKs[_l][:, _h])
+
+    # PyTorch:
+    # torch.stack will return a tensor of shape (batch_size, num_alignment_heads, sequence_length, num_frames // 2).
+    #
+    # ONNX:
+    # torch.stack will return a tensor of shape (batch_size, num_alignment_heads, 1, sequence_length, num_frames // 2)
+    # because the Gather op does not reduce dimensions. To remove the unneeded dimension, torch.squeeze with a specified
+    # dim (dim = 2) is added. The torch.squeeze op with a specified dim only runs if the specified dim has a size of 1.
+    # Since the dim won't be of size 1 in the PyTorch tensor but it is of size 1 in the ONNX tensor, it will be a no-op
+    # in PyTorch and an op in ONNX. Thus, the Squeeze op will only affect the ONNX model.
     weights = torch.stack(indexed_QKs, dim=1)
+    weights = torch.squeeze(weights, dim=2)
     return weights
 
 def jump_timings(text_indices, time_indices):
@@ -96,19 +120,13 @@ class WhisperJumpTimes(torch.nn.Module):
         """
         pad_width = self.filter_width // 2
         x = F.pad(weights, (pad_width, pad_width, 0, 0), mode="reflect")
-        result = torch.ops.onnxruntime.UnfoldTensor(x, -1, self.filter_width, 1).sort()[0][..., self.filter_width // 2]
+        x_unfolded = torch.ops.onnxruntime.UnfoldTensor(x, -1, self.filter_width, 1)
+        result = torch.select(x_unfolded.sort()[0], dim=-1, index=pad_width)
         return result
 
     def forward(self, alignment_heads: torch.Tensor, sot_sequence_length: torch.Tensor, segment_length: torch.Tensor, QKs: List[torch.Tensor]):
         # Get stacked QKs tensor
-        # TODO: figure out whether to index QKs in jump times graph or in decoder graph
-        #
-        # Each QK is of shape (batch_size, num_heads, sequence_length, num_frames // 2)
-        # The `QKs[_l]` selects the right QK from the list of QKs
-        # The `QKs[_l][:, _h]` selects the right attention heads from the chosen QK. The `:` is to do this for the batch dim.
-        
         weights = index_QKs(alignment_heads, QKs)
-        # weights = weights.reshape([-1, *weights.shape[2:]])
         weights = weights[:, :, : segment_length // 2]
         weights = weights.to(torch.float32)
 
@@ -123,19 +141,6 @@ class WhisperJumpTimes(torch.nn.Module):
         max_decoded_length = torch.tensor([matrix.size(1)], dtype=torch.int64)
         batched_jump_times = batch_jump_times(matrix, max_decoded_length)
         return batched_jump_times
-
-        # TOKENS_PER_SECOND = 50
-        # batched_jump_times = []
-        # for b in range(matrix.shape[0]):
-        #     trace = dtw(matrix[b])
-        #     text_indices = trace[0, :]
-        #     time_indices = trace[1, :]
-        #     diff = text_indices[1:] - text_indices[:-1]
-        #     padding = torch.tensor([1])
-        #     jumps = torch.cat((padding, diff)).to(torch.bool)
-        #     jump_times = time_indices[jumps] / TOKENS_PER_SECOND
-        #     batched_jump_times.append(jump_times)
-        # return batched_jump_times
 
     def input_names(self):
         input_names = [
@@ -170,6 +175,9 @@ class WhisperJumpTimes(torch.nn.Module):
         """
         1) Create UnfoldTensor and DynamicTimeWarping as torch ops
         3) Provide a symbolic mapping from torch ops to ORT contrib ops
+
+        See https://pytorch.org/tutorials/advanced/torch_script_custom_ops.html#building-with-jit-compilation
+        for more details on how this works.
         """
         # Set torch extensions directory to cache directory
         os.environ["TORCH_EXTENSIONS_DIR"] = self.cache_dir
@@ -196,13 +204,75 @@ class WhisperJumpTimes(torch.nn.Module):
         # Create DynamicTimeWarping torch op
         dtw_op_source = textwrap.dedent("""\
         #include "torch/script.h"
+        #include "torch/torch.h"
+        #include <stdexcept>
         #include <tuple>
+        #include <vector>
+
+        torch::Tensor Backtrace(torch::Tensor trace) {
+          int64_t i = trace.size(0) - 1;
+          int64_t j = trace.size(1) - 1;
+          trace.index({0, torch::indexing::Slice()}) = 2;
+          trace.index({torch::indexing::Slice(), 0}) = 1;
+
+          std::vector<int32_t> result_vec;
+          while (i > 0 || j > 0) {
+            result_vec.push_back(static_cast<int32_t>(i - 1));
+            result_vec.push_back(static_cast<int32_t>(j - 1));
+            int value = trace[i][j].item<int>();
+
+            if (value == 0) {
+              i--;
+              j--;
+            } else if (value == 1) {
+              i--;
+            } else if (value == 2) {
+              j--;
+            } else {
+              throw std::runtime_error("Unexpected trace[i, j]");
+            }
+          }
+
+          // Compute result[::-1, :].T
+          torch::Tensor result = torch::from_blob(result_vec.data(), {static_cast<long int>(result_vec.size() / 2), 2}, torch::kInt32).clone();
+          torch::Tensor reversed = result.flip(0); // result[::-1, :]
+          torch::Tensor transposed = reversed.transpose(0, 1); // .T
+          return transposed;
+        }
 
         torch::Tensor DynamicTimeWarping(torch::Tensor x) {
-          int64_t m = x.size(0);
-          int64_t n = x.size(1);
-          int64_t r = std::min(m, n) - 1;
-          return torch::randint(1LL, m - 1, {2, r}).toType(torch::kInt32);
+          int64_t N = x.size(0);
+          int64_t M = x.size(1);
+          torch::Tensor cost = torch::full({N + 1, M + 1}, std::numeric_limits<float>::infinity(), torch::dtype(torch::kFloat32));
+          torch::Tensor trace = torch::full({N + 1, M + 1}, -1, torch::dtype(torch::kFloat32));
+
+          cost[0][0] = 0;
+          for (int j = 1; j < M + 1; j++) {
+            for (int i = 1; i < N + 1; i++) {
+              float c0 = cost[i - 1][j - 1].item<float>();
+              float c1 = cost[i - 1][j].item<float>();
+              float c2 = cost[i][j - 1].item<float>();
+
+              float c = 0;
+              float t = 0;
+
+              if (c0 < c1 && c0 < c2) {
+                c = c0;
+                t = 0;
+              } else if (c1 < c0 && c1 < c2) {
+                c = c1;
+                t = 1;
+              } else {
+                c = c2;
+                t = 2;
+              }
+
+              cost[i][j] = x[i - 1][j - 1].item<float>() + c;
+              trace[i][j] = t;
+            }
+          }
+
+          return Backtrace(trace);
         }
 
         // namespace is onnxruntime
@@ -337,7 +407,7 @@ class WhisperJumpTimes(torch.nn.Module):
                     all_tensors_to_one_file=True,
                 )
 
-        # self.verify_onnx(onnx_model_path, provider, use_fp16_inputs)
+        self.verify_onnx(onnx_model_path, provider, use_fp16_inputs, use_int32_inputs)
 
     def verify_onnx(
         self,
@@ -346,7 +416,7 @@ class WhisperJumpTimes(torch.nn.Module):
         use_fp16_inputs: bool,
         use_int32_inputs: bool,
     ):
-        """Verify ONNX model outputs and PyTorch model outputs match 
+        """Verify ONNX model outputs and PyTorch model outputs match
 
         Args:
             onnx_model_path (str): path to save ONNX model
@@ -354,27 +424,24 @@ class WhisperJumpTimes(torch.nn.Module):
             use_fp16_inputs (bool, optional): use float16 inputs for the cross_qk_{i}
             use_int32_inputs (bool, optional): use int32 inputs for the alignment_heads and sot_sequence_length
         """
-        # TODO: need to implement
-        # # Shape of encoder's tensors:
-        # # Inputs:
-        # #    audio_features: (batch_size, num_mels, num_frames)
-        # # Outputs:
-        # #    encoder_hidden_states: (batch_size, num_frames // 2, hidden_size)
-        # inputs = get_sample_encoder_inputs(
-        #     self.config,
-        #     self.device,
-        #     batch_size=2,
-        #     use_fp16=use_fp16_inputs,
-        # )
+        # Shape of jump times's tensors:
+        # Inputs:
+        #    alignment_heads: (num_alignment_heads, 2)
+        #    sot_sequence_length: (1)
+        #    segment_length: (1)
+        #    cross_qk_*: (batch_size, num_heads, sequence_length, num_frames // 2)
+        # Outputs:
+        #    jump_times: (batch_size, max_length)
+        inputs = self.inputs(use_fp16_inputs=use_fp16_inputs, use_int32_inputs=use_int32_inputs, return_dict=True)
 
-        # # Run PyTorch model
-        # pt_outputs = self.forward(inputs["audio_features"]).detach().cpu().numpy()
+        # Run PyTorch model
+        pt_outputs = self.forward(inputs["alignment_heads"], inputs["sot_sequence_length"], inputs["segment_length"], inputs["QKs"]).detach().cpu().numpy()
 
-        # # Run ONNX model
-        # sess = ort.InferenceSession(onnx_model_path, providers=[provider])
-        # ort_outputs = sess.run(None, {"audio_features": inputs["audio_features"].detach().cpu().numpy()})[0]
-        
-        # # Calculate output difference
-        # diff = np.abs(pt_outputs - ort_outputs)
-        # logger.warning("Comparing encoder_hidden_states...")
-        # logger.warning(f"Max diff: {np.max(diff)}")
+        # Run ONNX model
+        sess = InferenceSession(onnx_model_path, providers=[provider])
+        ort_outputs = sess.run(None, convert_inputs_for_ort(inputs, sess))
+
+        # Calculate output difference
+        diff = np.abs(pt_outputs - ort_outputs)
+        print("Comparing batched jump_times...", flush=True)
+        print(f"Max diff: {np.max(diff)}", flush=True)
