@@ -22,6 +22,8 @@ if (releaseVersionSuffix != null && releaseVersionSuffix != "" && releaseVersion
 	version = "${version}${releaseVersionSuffix}"
 	println "Appended releaseVersionSuffix to version: ${version}"
 }
+project.version = version
+println "project.version is set to: ${project.version}"
 
 // cmake runs will inform us of the build directory of the current run
 def cmakeBuildDir = System.properties['cmakeBuildDir']
