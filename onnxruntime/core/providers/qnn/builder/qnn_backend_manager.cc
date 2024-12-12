@@ -675,10 +675,10 @@ Status QnnBackendManager::GetMaxSpillFillBufferSize(unsigned char* buffer,
       LOGS(*logger_, VERBOSE) << "Unknown context binary graph info version.";
     }
   }
-  #else
+#else
   ORT_UNUSED_PARAMETER(buffer);
   ORT_UNUSED_PARAMETER(buffer_length);
-  #endif
+#endif
 
   LOGS(*logger_, VERBOSE) << "Get max spill fill buffer size completed.";
   return Status::OK();
