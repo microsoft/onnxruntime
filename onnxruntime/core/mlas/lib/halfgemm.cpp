@@ -339,6 +339,53 @@ MlasHGemmSupported(
 }
 
 void
+HGemmOperation(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t K,
+    const MLAS_HGEMM_DATA_PARAMS* DataParams,
+    const size_t RangeStartM,
+    const size_t RangeCountM,
+    const size_t RangeStartN,
+    const size_t RangeCountN
+) {
+    const size_t lda = DataParams->lda;
+    const size_t ldb = DataParams->ldb;
+    const size_t ldc = DataParams->ldc;
+    const MLAS_FP16 alpha = DataParams->alpha;
+    const MLAS_FP16 beta = DataParams->beta;
+    constexpr size_t StrideM = 2;
+    constexpr size_t StrideN = 32;
+    auto* dispatch = GetMlasPlatform().HGemmDispatch;
+
+    if (TransA == CblasNoTrans && TransB == CblasTrans) {
+        if (!dispatch || !dispatch->HGemmKernel_TransposeB) {
+            MLAS_THROW_EX(std::runtime_error, "hgemm does not have A x Transpoe(B) kernel");
+        }
+
+        const auto* A = DataParams->A + RangeStartM * lda;
+        const auto* B = DataParams->B + RangeStartN * ldb;
+        auto* C = DataParams->C + RangeStartM * ldc + RangeStartN;
+
+        for (size_t n = 0, countN; n < RangeCountN; n += countN) {
+            countN = std::min(StrideN, RangeCountN - n);
+            const MLAS_FP16* a = A;
+            MLAS_FP16* c = C;
+            for (size_t m = 0, countM; m < RangeCountM; m += countM) {
+                countM = std::min(StrideM, RangeCountM - m);
+                dispatch->HGemmKernel_TransposeB(a, B, c, countM, countN, K, lda, ldb, ldc, alpha, beta);
+                a += countM * lda;
+                c += countM * ldc;
+            }
+            B += countN * ldb;
+            C += countN;
+        }
+    } else {
+        MLAS_THROW_EX(std::runtime_error, "hgemm currently only support A x Transpoe(B)");
+    }
+}
+
+void
 MLASCALL
 MlasGemmBatch(
     CBLAS_TRANSPOSE TransA,
@@ -350,7 +397,69 @@ MlasGemmBatch(
     size_t BatchSize,
     MLAS_THREADPOOL* ThreadPool
 ) {
+    if (!ThreadPool) {
+        for (size_t gemm_i = 0; gemm_i < BatchSize; gemm_i++) {
+            HGemmOperation(TransA, TransB, K, &Data[gemm_i], 0, M, 0, N);
+        }
+        return;
+    }
 
+    const double Complexity = double(M) * double(N) * double(K) * double(BatchSize);
+    ptrdiff_t TargetThreadCount;
+
+    if (Complexity < double(MLAS_HGEMM_THREAD_COMPLEXITY) * GetMlasPlatform().MaximumThreadCount) {
+        TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_HGEMM_THREAD_COMPLEXITY)) + 1;
+    } else {
+        TargetThreadCount = GetMlasPlatform().MaximumThreadCount;
+    }
+
+    ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+    if (TargetThreadCount >= MaximumThreadCount) {
+        TargetThreadCount = MaximumThreadCount;
+    }
+
+    // Segment the operation across multiple threads.
+
+    ptrdiff_t ThreadsPerGemm = TargetThreadCount / BatchSize;
+    if (ThreadsPerGemm < 1) {
+        ThreadsPerGemm = 1;
+    }
+
+    constexpr size_t StrideM = 128;
+
+    size_t nc = N;
+    if (ThreadsPerGemm > 1) {
+        // more than one thread per GEMM
+
+        const size_t BlockedM = MlasDivRoundup(M, StrideM);
+        const size_t max_nc = MlasDivRoundup(N * BlockedM, ThreadsPerGemm);
+        if (max_nc < nc) {
+            nc = std::min(
+                nc, MlasDivRoundup(max_nc, MLAS_HGEMM_STRIDEN_THREAD_ALIGN) * MLAS_HGEMM_STRIDEN_THREAD_ALIGN);
+        }
+    }
+    const size_t StrideN = nc;
+
+    const size_t ThreadCountM = MlasDivRoundup(M, StrideM);
+    const size_t ThreadCountN = MlasDivRoundup(N, StrideN);
+    ThreadsPerGemm = ThreadCountM * ThreadCountN;
+
+    MlasTrySimpleParallel(ThreadPool, ThreadsPerGemm * static_cast<ptrdiff_t>(BatchSize), [=](ptrdiff_t tid) {
+        const auto gemm_i = tid / ThreadsPerGemm;
+        const auto blk_i = tid % ThreadsPerGemm;
+        const auto* threadData = &Data[gemm_i];
+
+        const ptrdiff_t ThreadIdN = blk_i / ThreadCountM;
+        const ptrdiff_t ThreadIdM = blk_i % ThreadCountM;
+
+        const size_t RangeStartM = ThreadIdM * StrideM;
+        const size_t RangeCountM = std::min(M - RangeStartM, (size_t)StrideM);
+
+        const size_t RangeStartN = ThreadIdN * StrideN;
+        const size_t RangeCountN = std::min(N - RangeStartN, (size_t)StrideN);
+
+        HGemmOperation(TransA, TransB, K, &Data[gemm_i], RangeStartM, RangeCountM, RangeStartN, RangeCountN);
+    });
 }
 
 const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchDefault = {

@@ -317,6 +317,7 @@ static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
 // the effort at this time.
 //
 
+#define MLAS_HGEMM_STRIDEN_THREAD_ALIGN             16
 #define MLAS_SGEMM_STRIDEN_THREAD_ALIGN             16
 #define MLAS_DGEMM_STRIDEN_THREAD_ALIGN             8
 #define MLAS_QGEMM_STRIDEN_THREAD_ALIGN             16
@@ -944,6 +945,7 @@ extern "C" {
 #define MLAS_SGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
 #define MLAS_DGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
 #define MLAS_QGEMM_THREAD_COMPLEXITY                65536
+#define MLAS_HGEMM_THREAD_COMPLEXITY                65536
 
 #if defined(__aarch64__) && defined(__linux__)
 #define MLAS_SBGEMM_THREAD_COMPLEXITY (size_t(64) * size_t(1024))
