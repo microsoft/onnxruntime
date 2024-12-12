@@ -514,6 +514,24 @@ MlasHalfGemmGetDispatch()
 #endif
 }
 
+namespace hgemm_neon {
+
+void HGemm_TransposeB_Kernel(
+    const MLAS_FP16* A,
+    const MLAS_FP16* B,
+    MLAS_FP16* C,
+    size_t CountM,
+    size_t CountN,
+    size_t CountK,
+    size_t lda,
+    size_t ldb,
+    size_t ldc,
+    MLAS_FP16 alpha,
+    MLAS_FP16 beta
+);
+
+}  // namespace hgemm_neon
+
 struct MLAS_HGEMM_DISPATCH {
      /**
      * @brief C = alpha * A * Transpose(B) + beta * C

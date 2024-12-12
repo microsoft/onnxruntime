@@ -189,7 +189,7 @@ const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchNeon = {
 const MLAS_HGEMM_DISPATCH MlasHGemmDispatchNeon = [](){
     MLAS_HGEMM_DISPATCH d;
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
-    d.HGemmKernel_TransposeB = nullptr;
+    d.HGemmKernel_TransposeB = hgemm_neon::HGemm_TransposeB_Kernel;
 #endif
     return d;
 }();
