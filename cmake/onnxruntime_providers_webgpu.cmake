@@ -26,6 +26,10 @@
   if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
     target_link_libraries(onnxruntime_providers_webgpu dawn::webgpu_dawn)
 
+    if (onnxruntime_ENABLE_DELAY_LOADING_WIN_DLLS)
+      list(APPEND onnxruntime_DELAYLOAD_FLAGS "/DELAYLOAD:webgpu_dawn.dll")
+    endif()
+
     # Copy webgpu_dawn.dll to the output directory
     add_custom_command(
       TARGET onnxruntime_providers_webgpu
