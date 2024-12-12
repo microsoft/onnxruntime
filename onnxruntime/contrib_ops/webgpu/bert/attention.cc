@@ -428,7 +428,7 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
                             {static_cast<uint32_t>(parameters.v_hidden_size_ * parameters.n_reps)},
                             {static_cast<uint32_t>(past_sequence_length)},
                             {static_cast<uint32_t>(parameters.kv_sequence_length_)},
-                            {static_cast<uint32_t>(parameters.seqlen_present_kv_cache_)},
+                            {static_cast<uint32_t>(total_sequence_length)},
                             {static_cast<uint32_t>(parameters.n_reps)}})
       .SetOverridableConstants({{static_cast<uint32_t>(tile_size)}});
 
