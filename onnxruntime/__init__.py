@@ -77,13 +77,42 @@ if version:
 
 onnxruntime_validation.check_distro_info()
 
+
+def check_and_load_cuda_libs(root_directory, cuda_libs):
+    # Convert the target library names to lowercase for case-insensitive comparison
+    found_libs = {}
+    for dirpath, _, filenames in os.walk(root_directory):
+        # Convert filenames in the current directory to lowercase for comparison
+        files_in_dir = {file.lower(): file for file in filenames}  # Map lowercase to original
+        # Find common libraries in the current directory
+        matched_libs = cuda_libs.intersection(files_in_dir.keys())
+        for lib in matched_libs:
+            # Store the full path of the found DLL
+            full_path = os.path.join(dirpath, files_in_dir[lib])
+            found_libs[lib] = full_path
+            try:
+                # Load the DLL using ctypes
+                _ = ctypes.CDLL(full_path)
+                logging.info(f"Successfully loaded: {full_path}")
+            except OSError as e:
+                logging.error(f"Failed to load {full_path}: {e}")
+
+        # If all required libraries are found, stop the search
+        if set(found_libs.keys()) == cuda_libs:
+            print("All required CUDA libraries found and loaded.")
+            return True
+    logging.error(
+        f"Failed to load all required CUDA libraries. missing libraries: {cuda_libs - found_libs.keys()}")
+    return False
+
+
 # Load nvidia libraries from site-packages/nvidia if the package is onnxruntime-gpu
 if (
-    __package__ == "onnxruntime-gpu"
-    # Just in case we rename the package name in the future
-    or __package__ == "onnxruntime-cuda"
-    or __package__ == "onnxruntime_gpu"
-    or __package__ == "onnxruntime_cuda"
+        __package__ == "onnxruntime-gpu"
+        # Just in case we rename the package name in the future
+        or __package__ == "onnxruntime-cuda"
+        or __package__ == "onnxruntime_gpu"
+        or __package__ == "onnxruntime_cuda"
 ):
     import ctypes
     import os
@@ -91,65 +120,57 @@ if (
     import re
     import site
     import logging
+
     # Get the site-packages path where nvidia packages are installed
     site_packages_path = site.getsitepackages()[-1]
     nvidia_path = os.path.join(site_packages_path, "nvidia")
     # Traverse the directory and subdirectories
+    cuda_libs = ()
     if platform.system() == "Windows":  #
-        # Define the list of DLL patterns, curand and nvJitLink are not included for Windows
-        cuda_libs = (
-            "cublas",
-            "cublasLt",
-            "cudnn",
-            "cudart",
-            "cufft",
-            # "curand",
-            # "nvJitLink",
-        )
-        # Construct a regex pattern for each library name with optional parts
-        # Pattern explanation:
-        # - `libname`: Match the base library name (e.g., "cudart")
-        # - `(?:64)?`: Optionally match "64"
-        # - `(?:_\d+)*`: Match zero or more occurrences of "_n" where "n" is one or more digits
-        # - `.dll$`: End with ".dll" ignoring case
-        lib_pattern = {lib: re.compile(rf"{lib}(?:64)?(?:_\d+)*\.dll$", re.IGNORECASE) for lib in cuda_libs}
-        # Collect all directories under site-packages/nvidia that contain .dll files (for Windows)
-        for root, _, files in os.walk(nvidia_path):
-            # Add the current directory to the DLL search path
-
-            with os.add_dll_directory(root):
-                # Find all .dll files in the current directory
-                for file in files:
-                    for pattern in lib_pattern.items().values():
-                        if pattern.match(file):
-                            dll_path = os.path.join(root, file)
-                            try:
-                                _ = ctypes.CDLL(dll_path)
-                            except Exception as e:
-                                logging.error(f"Failed to load {dll_path}: {e}")
+        # Define the list of DLL patterns, nvrtc, curand and nvJitLink are not included for Windows
+        if (11, 0) <= cuda_version() < (12, 0):
+            cuda_libs = (
+                "cublasLT64_11.dll",
+                "cublas64_11.dll",
+                "cufft64_10.dll",
+                "cudart64_11.dll",
+                "cudnn64_8.dll",
+            )
+        elif (12, 0) <= cuda_version() < (13, 0):
+            cuda_libs = (
+                "cublasLT64_12.dll",
+                "cublas64_12.dll",
+                "cufft64_11.dll",
+                "cudart64_12.dll",
+                "cudnn64_9.dll",
+            )
     elif platform.system() == "Linux":
-        # Define the patterns with optional version number and case-insensitivity
-        cuda_libs = (
-            "libcublas.so",
-            "libcublasLt.so",
-            "libcudnn.so",
-            "libcudart.so",
-            "libnvrtc.so",
-            "libcufft.so",
-            "libcurand.so",
-            "libnvJitLink.so",
-        )
-
-        # Regular expression to match .so files with optional versioning (e.g., .so, .so.1, .so.2.3)
-        lib_pattern = {pattern: re.compile(rf"{re.escape(pattern)}(\.\d+)*$", re.IGNORECASE) for pattern in cuda_libs}
-
-        # Traverse the directory and subdirectories
-        for root, _, files in os.walk(nvidia_path):
-            for file in files:
-                # Check if the file matches the .so pattern
-                for regex in lib_pattern.items().values():
-                    if regex.match(file):  # Check if the file matches the pattern
-                        so_path = os.path.join(root, file)
-                        _ = ctypes.CDLL(so_path)
+        if (11, 0) <= cuda_version() < (12, 0):
+            # Define the patterns with optional version number and case-insensitivity
+            cuda_libs = (
+                "libcublaslt.so.11",
+                "libcublas.so.11",
+                "libcurand.so.10",
+                "libcufft.so.10",
+                "libcudart.so.11",
+                "libcudnn.so.8",
+                "libnvrtc.so.11",
+            )
+        elif (12, 0) <= cuda_version() < (13, 0):
+            cuda_libs = (
+                "libcublaslt.so.12",
+                "libcublas.so.12",
+                "libcurand.so.10",
+                "libcufft.so.11",
+                "libcudart.so.12",
+                "libcudnn.so.9",
+                "libnvrtc.so.12",
+            )
     else:
-        pass
+        logging.error(f"Unsupported platform: {platform.system()}")
+
+    if cuda_libs:
+        # Convert the target library names to lowercase for case-insensitive comparison
+        cuda_libs = {lib.lower() for lib in cuda_libs}
+        # Load the required CUDA libraries
+        check_and_load_cuda_libs(nvidia_path, cuda_libs)
