@@ -47,6 +47,7 @@ class OnnxRuntimeTestSession : public TestSession {
   const int input_length_;
   std::string provider_name_;
   bool plugin_;
+  std::basic_string<ORTCHAR_T> plugin_lib_path_;
 };
 
 }  // namespace perftest

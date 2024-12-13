@@ -393,6 +393,9 @@ static bool ParseSessionConfigs(const std::string& configs_string,
       case 'g':
         test_config.plugin = true;
         break;
+      case 'l':
+        test_config.plugin_lib_path = optarg;
+        break;
       case '?':
       case 'h':
       default:

@@ -50,6 +50,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 
   provider_name_ = performance_test_config.machine_config.provider_type_name;
   plugin_ = performance_test_config.plugin;
+  plugin_lib_path_ = performance_test_config.plugin_lib_path;
   if (provider_name_ == onnxruntime::kDnnlExecutionProvider) {
 #ifdef USE_DNNL
     // Generate provider options
@@ -172,7 +173,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #ifdef USE_TENSORRT
     const auto& api = Ort::GetApi();
     if (plugin_) {
-      Ort::ThrowOnError(api.RegisterPluginExecutionProviderLibrary("/home/leca/code/onnxruntime/samples/tensorRTEp/build/libTensorRTEp.so", env, "tensorrtEp"));
+      Ort::ThrowOnError(api.RegisterPluginExecutionProviderLibrary(plugin_lib_path_.c_str(), env, "tensorrtEp"));
       std::vector<const char*> keys{"trt_engine_cache_enable", "trt_dump_ep_context_model", "trt_ep_context_embed_mode"}, values{"0", "0", "0"};
       Ort::ThrowOnError(api.SessionOptionsAppendPluginExecutionProvider(session_options, "tensorrtEp", env, keys.data(), values.data(), keys.size()));
     } else {
