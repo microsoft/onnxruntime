@@ -84,7 +84,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(
       model_builder.IOBuilder().AddOperationInput(*op, "beta", model_builder.AddConstant(op->type(), input_defs[2]->Name() + "beta", bias_tensor));
     }
 
-    if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 || model_builder.IOBuilder().AllowLowPrecision()) {
       MLFloat16 epsilon_fp16(eps);
       model_builder.IOBuilder().AddOperationInput(*op, "epsilon", model_builder.AddScalarConstant(op->type(), "epsilon", epsilon_fp16));
     } else {

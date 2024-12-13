@@ -962,10 +962,13 @@ void ModelBuilder::InsertCastNode(const std::string& input_name, bool is_graph_i
   auto& type_shape = input_output_info_.at(input_name + "_cast");
 
   onnx::TypeProto type_proto_out;
-  const bool is_orig_dtype_float = type_shape.data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+  auto data_type = type_shape.data_type==ONNX_NAMESPACE::TensorProto_DataType_INT64
+                          ? ONNX_NAMESPACE::TensorProto_DataType_INT32
+                          : type_shape.data_type;
+  const bool is_orig_dtype_float = data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
   onnx::TensorProto_DataType new_node_arg_data_type = is_graph_input && is_orig_dtype_float
                                                           ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
-                                                          : onnx::TensorProto_DataType(type_shape.data_type);
+                                                          : onnx::TensorProto_DataType(data_type);
   type_proto_out.mutable_tensor_type()->set_elem_type(new_node_arg_data_type);
   std::string arg_name = is_graph_input ? input_name : input_name + "_cast";
   auto new_node_arg = std::make_unique<NodeArg>(arg_name, &type_proto_out);
