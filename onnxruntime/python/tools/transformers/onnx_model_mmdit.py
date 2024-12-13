@@ -6,7 +6,8 @@
 import logging
 from typing import Optional
 
-from fusion_attention_unet import FusionAttentionUnet
+from fusion_layernorm import FusionLayerNormalization
+from fusion_mha_mmdit import FusionMultiHeadAttentionMMDit
 from fusion_bias_add import FusionBiasAdd
 from fusion_options import FusionOptions
 from import_utils import is_installed
@@ -52,34 +53,22 @@ class MmditOnnxModel(BertOnnxModel):
             self.remove_nodes(nodes_to_remove)
             logger.info("Removed %d Div nodes", len(nodes_to_remove))
 
-    def fuse_multi_head_attention(self, options: Optional[FusionOptions] = None):
-        # Self Attention
-        self_attention_fusion = FusionAttentionUnet(
-            self,
-            self.hidden_size,
-            self.num_heads,
-            is_cross_attention=False,
-            enable_packed_qkv=False,
-            enable_packed_kv=False,
-        )
-        self_attention_fusion.apply()
+    def fuse_layer_norm(self):
+        # TODO: set check_constant_and_dimension=True when LayerNormalization supports broadcasting scale and bias.
+        fusion = FusionLayerNormalization(self, check_constant_and_dimension=False)
+        fusion.apply()
 
-        # Cross Attention
-        cross_attention_fusion = FusionAttentionUnet(
-            self,
-            self.hidden_size,
-            self.num_heads,
-            is_cross_attention=True,
-            enable_packed_qkv=False,
-            enable_packed_kv=False,
-        )
-        cross_attention_fusion.apply()
+    def fuse_multi_head_attention(self):
+        fusion = FusionMultiHeadAttentionMMDit(self)
+        fusion.apply()
 
     def fuse_bias_add(self):
         fusion = FusionBiasAdd(self)
         fusion.apply()
 
-    def optimize(self, options: Optional[FusionOptions] = None):
+    def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
+        assert not add_dynamic_axes
+
         if is_installed("tqdm"):
             import tqdm
             from tqdm.contrib.logging import logging_redirect_tqdm
@@ -125,7 +114,7 @@ class MmditOnnxModel(BertOnnxModel):
             progress_bar.update(1)
 
         if (options is None) or options.enable_attention:
-            self.fuse_multi_head_attention(options)
+            self.fuse_multi_head_attention()
         if progress_bar:
             progress_bar.update(1)
 
