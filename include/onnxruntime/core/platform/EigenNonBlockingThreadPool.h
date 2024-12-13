@@ -1470,8 +1470,11 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
     void SetBlocked(std::function<bool()> should_block,
                     std::function<void()> post_block) {
       std::unique_lock<std::mutex> lk(mutex);
-      assert(GetStatus() == ThreadStatus::Spinning);
-      status.store(ThreadStatus::Blocking, std::memory_order_relaxed);
+      auto old_status = status.exchange(ThreadStatus::Blocking, std::memory_order_seq_cst);
+      if (old_status != ThreadStatus::Spinning) {
+        // Encountered a logical error
+        throw std::runtime_error("The state transition is not allowed");
+      }
       if (should_block()) {
         status.store(ThreadStatus::Blocked, std::memory_order_relaxed);
         do {
