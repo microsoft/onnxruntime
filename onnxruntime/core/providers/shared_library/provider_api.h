@@ -397,6 +397,10 @@ GetAllNodeUnits(const GraphViewer* graph_viewer, const logging::Logger& logger) 
 // So the C API (and C++) becomes available when ORT_API_MANUAL_INIT is used.
 void InitProviderOrtApi();
 
+// This is a replacement for Env::Default(). Returns a reference to the default ORT Environment.
+inline Env& GetDefaultEnv() {
+  return g_host->Env__Default();
+}
 }  // namespace onnxruntime
 
 #define CREATE_MESSAGE(logger, severity, category, datatype) \

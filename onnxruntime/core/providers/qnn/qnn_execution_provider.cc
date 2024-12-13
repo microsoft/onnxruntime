@@ -247,6 +247,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   // set to invalid to indicate that ETW is no enabled when we setup QNN
   qnn::ProfilingLevel profiling_level_etw = qnn::ProfilingLevel::INVALID;
   const Env& env = Env::Default();
+  // const Env& env = GetDefaultEnv();
   auto& provider = env.GetTelemetryProvider();
   if (provider.IsEnabled()) {
     auto level = provider.Level();

@@ -1099,6 +1099,7 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
 
   bool tracelogging_provider_ep_enabled = false;
   const Env& env = Env::Default();
+  // const Env& env = GetDefaultEnv();
   auto& provider = env.GetTelemetryProvider();
   auto level = provider.Level();
   if (provider.IsEnabled()) {
@@ -1492,7 +1493,9 @@ void* QnnBackendManager::LoadLib(const char* file_name, int flags, std::string& 
   auto file_path = std::filesystem::path(file_name);
   if (!file_path.is_absolute()) {
     // construct an absolute path from ORT runtime path + file_name and check whether it exists.
-    auto pathstring = Env::Default().GetRuntimePath() + ToPathString(file_name);
+    const Env& env = Env::Default();
+    // const Env& env = GetDefaultEnv();
+    auto pathstring = env.GetRuntimePath() + ToPathString(file_name);
     auto absolute_path = pathstring.c_str();
     if (std::filesystem::exists(std::filesystem::path(absolute_path))) {
       // load library from absolute path and search for dependencies there.
