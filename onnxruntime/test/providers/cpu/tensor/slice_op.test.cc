@@ -193,6 +193,9 @@ TEST(SliceTest, Slice2D_OneAxis) {
 }
 
 TEST(SliceTest, Slice2D_TwoAxes) {
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Not covered by WebGPU test suite";
+  }
   RunSliceTest<float>({6, 4},
                       {00.0f, 01.0f, 02.0f, 03.0f,
                        10.0f, 11.0f, 12.0f, 13.0f,
@@ -352,6 +355,9 @@ TEST(SliceTest, Slice1D_WithNegativeSteps_EndOutOfBounds_1) {
 }
 
 TEST(SliceTest, Slice1D_WithNegativeSteps_EndOutOfBounds_2) {
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Not covered by WebGPU test suite";
+  }
   RunSliceTest<float>({6},
                       {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f},
                       {0},
@@ -536,6 +542,9 @@ TEST(SliceTest, Slice1D_ReverseAllAxes_1) {
   if (DefaultVSINPUExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{4}] did not match run output shape [{0}] for output";
   }
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Not covered by WebGPU test suite";
+  }
 
   RunSliceTest<float>({4},
                       {1.0f, 2.0f, 3.0f, 4.0f},
@@ -550,6 +559,9 @@ TEST(SliceTest, Slice1D_ReverseAllAxes_1) {
 
 // With numeric_limit_min, the end value should be clamped to -1
 TEST(SliceTest, Slice1D_ReverseAllAxes_2) {
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Not covered by WebGPU test suite";
+  }
   RunSliceTest<float>({4},
                       {1.0f, 2.0f, 3.0f, 4.0f},
                       {-1},
@@ -563,6 +575,9 @@ TEST(SliceTest, Slice1D_ReverseAllAxes_2) {
 
 // giving an end value < -{dim_value} should also clamp it to -1
 TEST(SliceTest, Slice1D_ReverseAllAxes_3) {
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Not covered by WebGPU test suite";
+  }
   RunSliceTest<float>({4},
                       {1.0f, 2.0f, 3.0f, 4.0f},
                       {-1},
@@ -578,6 +593,9 @@ TEST(SliceTest, Slice2D_ReverseAllAxes) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{4}] did not match run output shape [{0}] for output";
+  }
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Not covered by WebGPU test suite";
   }
 
   RunSliceTest<float>({2, 2},
@@ -596,6 +614,9 @@ TEST(SliceTest, Slice2D_ReverseSubsetOfAxes_1) {
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2100): The parameter is incorrect.";
   }
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Not covered by WebGPU test suite";
+  }
 
   RunSliceTest<float>({2, 2},
                       {1.0f, 2.0f, 3.0f, 4.0f},
@@ -612,6 +633,9 @@ TEST(SliceTest, Slice2D_ReverseSubsetOfAxes_2) {
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,2}] did not match run output shape [{0,2}] for output";
+  }
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Not covered by WebGPU test suite";
   }
 
   RunSliceTest<float>({2, 2},
@@ -667,6 +691,9 @@ TEST(SliceTest, Slice2D_ReverseSubsetOfNegAxes_1) {
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,2}] did not match run output shape [{2,0}] for output";
   }
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Not covered by WebGPU test suite";
+  }
 
   RunSliceTest<float>({2, 2},
                       {1.0f, 2.0f, 3.0f, 4.0f},
@@ -700,6 +727,9 @@ TEST(SliceTest, Slice5D_SubsetOfAxes_Flatten2Dims_OffsetInput) {
 // ORT crash due to integer overflow on 32bit system
 // See, https://github.com/microsoft/onnxruntime/issues/9368
 TEST(SliceTest, Slice5D_LargeStep) {
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Not covered by WebGPU test suite";
+  }
   RunSliceTest<float>({1, 2, 2, 2, 2},
                       {1.f, 2.f, 3.f, 4.f,
                        5.f, 6.f, 7.f, 8.f,
@@ -780,6 +810,39 @@ TEST(SliceTest, CoalesceDims) {
                       {std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max()}, {1, 3}, {},
                       {1, 1, 2, 1, 2}, {-3.f, -4.f, -7.f, -8.f}, true);
   RunSliceTest<float>({1, 1, 1}, {1.f}, {0}, {std::numeric_limits<int64_t>::max()}, {1}, {}, {1, 1, 1}, {1.f}, true);
+}
+
+TEST(SliceTest, SliceWebGPU_float32) {
+  RunSliceTest<float>({5},
+                      {0.3964604139328003, -0.8916832804679871, -1.6578896045684814, 1.960708737373352, 1.181204915046692},
+                      {3},
+                      {4},
+                      {},
+                      {},
+                      {1},
+                      {1.960708737373352});
+}
+
+TEST(SliceTest, SliceWebGPU_float32_large_dims) {
+  RunSliceTest<float>({1, 1, 1, 1, 5},
+                      {0.3964604139328003, -0.8916832804679871, -1.6578896045684814, 1.960708737373352, 1.181204915046692},
+                      {3},
+                      {4},
+                      {4},
+                      {},
+                      {1, 1, 1, 1, 1},
+                      {1.960708737373352});
+}
+
+TEST(SliceTest, SliceWebGPU_int32) {
+  RunSliceTest<float>({5},
+                      {0, 0, -1, 1, 0},
+                      {3},
+                      {4},
+                      {},
+                      {},
+                      {1},
+                      {1});
 }
 
 }  // namespace test
