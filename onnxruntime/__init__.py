@@ -104,7 +104,7 @@ def check_and_load_cuda_libs(root_directory, cuda_libs_):
 
         # If all required libraries are found, stop the search
         if set(found_libs.keys()) == cuda_libs_:
-            print("All required CUDA libraries found and loaded.")
+            logging.info("All required CUDA libraries found and loaded.")
             return
     logging.error(f"Failed to load all required CUDA libraries. missing libraries: {cuda_libs_ - found_libs.keys()}")
     return
