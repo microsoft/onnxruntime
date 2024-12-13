@@ -1,8 +1,8 @@
-﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #include "lib/Api/pch/pch.h"
-
 #include "HardwareCoreEnumerator.h"
 
 namespace WINMLP {
@@ -88,22 +88,33 @@ uint32_t HardwareCoreEnumerator::DefaultIntraOpNumThreads() {
 
 #if !defined(_M_ARM64EC) && !defined(_M_ARM64) && !defined(__aarch64__)
   const int kVendorID_Intel[3] = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
+  bool isIntelSpecifiedPlatform = false;
+  const int kVendorID_IntelSpecifiedPlatformIDs[3] = {
+    // ExtendedModel,ExtendedFamily,Family Code, and Model Number
+    0xa06a,  // MTL
+    0xc065,  // ARL-H
+    0xb065   // ARL-U
+  };
+
   int regs_leaf0[4];
-  int regs_leaf7[4];
+  int regs_leaf1[4];
   __cpuid(regs_leaf0, 0);
-  __cpuid(regs_leaf7, 0x7);
+  __cpuid(regs_leaf1, 0x1);
 
   auto isIntel = (kVendorID_Intel[0] == regs_leaf0[1]) && (kVendorID_Intel[1] == regs_leaf0[2]) &&
     (kVendorID_Intel[2] == regs_leaf0[3]);
 
-  auto isHybrid = (regs_leaf7[3] & (1 << 15));
+  for (int intelSpecifiedPlatform : kVendorID_IntelSpecifiedPlatformIDs) {
+    if ((regs_leaf1[0] >> 4) == intelSpecifiedPlatform) {
+      isIntelSpecifiedPlatform = true;
+    }
+  }
 
-  if (isIntel && isHybrid) {
+  if (isIntel && isIntelSpecifiedPlatform) {
     // We want to use the number of physical cores, but exclude cores without an LLC
     return cores.LLCCores;
   }
 #endif
-
   return cores.PhysicalCores;
 }
 

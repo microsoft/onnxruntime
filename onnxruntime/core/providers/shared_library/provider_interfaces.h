@@ -202,7 +202,8 @@ struct ProviderHost {
 
   virtual std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                              const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                                             gsl::span<const NodeIndex> tentative_nodes) = 0;
+                                                             gsl::span<const NodeIndex> tentative_nodes,
+                                                             const logging::Logger& logger) = 0;
 
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ bool* p_data, size_t expected_size) = 0;
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ float* p_data, size_t expected_size) = 0;
@@ -392,6 +393,7 @@ struct ProviderHost {
   virtual void AttributeProto__set_name(ONNX_NAMESPACE::AttributeProto* p, const ::std::string& value) = 0;
   virtual void AttributeProto__set_type(ONNX_NAMESPACE::AttributeProto* p, ONNX_NAMESPACE::AttributeProto_AttributeType value) = 0;
   virtual ONNX_NAMESPACE::TensorProto* AttributeProto__add_tensors(ONNX_NAMESPACE::AttributeProto* p) = 0;
+  virtual std::string* AttributeProto__release_s(ONNX_NAMESPACE::AttributeProto* p) = 0;
 
   // GraphProto
   virtual std::unique_ptr<ONNX_NAMESPACE::GraphProto> GraphProto__construct() = 0;
@@ -894,7 +896,7 @@ struct ProviderHost {
   virtual std::unique_ptr<Node__EdgeIterator> NodeUnit__OutputEdgesEnd(const NodeUnit* p) = 0;
 
   virtual std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
-  QDQ__GetAllNodeUnits(const GraphViewer* graph_viewer) = 0;
+  QDQ__GetAllNodeUnits(const GraphViewer* graph_viewer, const logging::Logger& logger) = 0;
 
   // Partitioning utils
   virtual std::vector<std::unique_ptr<ComputeCapability>>

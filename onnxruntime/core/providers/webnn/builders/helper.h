@@ -181,7 +181,8 @@ inline bool IsEmptyTensor(const InitializedTensorSet& initializers, const std::s
   return std::any_of(dims.begin(), dims.end(), [](auto d) { return d == 0; });
 }
 
-bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_name, const logging::Logger& logger);
+bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_name,
+                            const logging::Logger& logger, bool allow_empty_input = false);
 
 // Get a list of groups of supported nodes, each group represents a subgraph supported by WebNN EP.
 std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer,
@@ -339,6 +340,13 @@ bool IsDataTypeSupportedByOp(const std::string& onnx_op_type,
                              const std::string& webnn_input_output_name,
                              const std::string& onnx_input_output_name,
                              const logging::Logger& logger);
+bool IsDataTypeSupportedByWebNNOp(const std::string& onnx_op_type,
+                                  const std::string& webnn_op_type,
+                                  const int32_t onnx_data_type,
+                                  const emscripten::val& wnn_limits,
+                                  const std::string& webnn_input_output_name,
+                                  const std::string& onnx_input_output_name,
+                                  const logging::Logger& logger);
 
 bool GetBidirectionalBroadcastShape(std::vector<int64_t>& shape_a,
                                     std::vector<int64_t>& shape_b,

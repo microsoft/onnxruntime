@@ -145,8 +145,11 @@ Status T5EncoderSubgraph::CreateInitialFeeds(
       pinned_allocator,
       location));
 
-  for (const auto* entry : implicit_inputs) {
-    feeds.push_back(*entry);
+  for (size_t i = 0; i < implicit_inputs.size(); ++i) {
+    const auto* entry = implicit_inputs[i];
+    if (used_implicit_inputs[i]) {
+      feeds.push_back(*entry);
+    }
   }
 
   return Status::OK();
