@@ -60,7 +60,7 @@ void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
 void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor,
                     size_t batch_slice_idx);
 
-std::shared_ptr<OVNetwork>
+std::shared_ptr<const OVNetwork>
 CreateOVModel(const ONNX_NAMESPACE::ModelProto& model_proto,
               const GlobalContext& global_context,
               std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map);
