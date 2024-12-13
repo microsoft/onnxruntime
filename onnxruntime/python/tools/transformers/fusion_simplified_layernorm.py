@@ -121,7 +121,7 @@ class FusionSimplifiedLayerNormalization(Fusion):
             "SimplifiedLayerNormalization",
             inputs=[root_input, node.input[1 - return_indice[0]]],
             outputs=[node.output[0]],
-            name=self.model.create_node_name("SimplifiedLayerNormalization", name_prefix="LayerNorm"),
+            name=self.model.create_node_name("SimplifiedLayerNormalization", name_prefix="RMSNorm"),
         )
         normalize_node.attribute.extend([helper.make_attribute("epsilon", float(epsilon))])
         normalize_node.attribute.extend([helper.make_attribute("axis", axes[0])])
