@@ -205,7 +205,7 @@ static bool ParseSessionConfigs(const std::string& configs_string,
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqzng"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:y:c:d:o:u:i:l:f:F:S:T:C:AMPIDZvhsqzng"))) != -1) {
     switch (ch) {
       case 'f': {
         std::basic_string<ORTCHAR_T> dim_name;
