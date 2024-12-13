@@ -668,10 +668,12 @@ const std::string& NodeAttrHelper::Get(const std::string& key, const std::string
 
 std::vector<int32_t> NodeAttrHelper::Get(const std::string& key, const std::vector<int32_t>& def_val) const {
   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    const auto& attr = entry->second;
+    const auto& values = entry->second.ints();
+    const int64_t* cbegin = values.data();
+    const int64_t* cend = values.data() + values.size();
     std::vector<int32_t> v;
-    v.reserve(static_cast<size_t>(attr.ints_size()));
-    std::transform(attr.ints().cbegin(), attr.ints().cend(), std::back_inserter(v),
+    v.reserve(static_cast<size_t>(values.size()));
+    std::transform(cbegin, cend, std::back_inserter(v),
                    [](int64_t val) -> int32_t { return narrow<int32_t>(val); });
     return v;
   }
@@ -681,10 +683,12 @@ std::vector<int32_t> NodeAttrHelper::Get(const std::string& key, const std::vect
 
 std::vector<uint32_t> NodeAttrHelper::Get(const std::string& key, const std::vector<uint32_t>& def_val) const {
   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    const auto& attr = entry->second;
+    const auto& values = entry->second.ints();
+    const int64_t* cbegin = values.data();
+    const int64_t* cend = values.data() + values.size();
     std::vector<uint32_t> v;
-    v.reserve(static_cast<size_t>(attr.ints_size()));
-    std::transform(attr.ints().cbegin(), attr.ints().cend(), std::back_inserter(v),
+    v.reserve(static_cast<size_t>(values.size()));
+    std::transform(cbegin, cend, std::back_inserter(v),
                    [](int64_t val) -> uint32_t { return narrow<uint32_t>(val); });
     return v;
   }
@@ -695,16 +699,9 @@ std::vector<uint32_t> NodeAttrHelper::Get(const std::string& key, const std::vec
 std::vector<int64_t> NodeAttrHelper::Get(const std::string& key, const std::vector<int64_t>& def_val) const {
   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
     const auto& values = entry->second.ints();
-    return std::vector<int64_t>{values.cbegin(), values.cend()};
-  }
-
-  return def_val;
-}
-
-std::vector<std::string> NodeAttrHelper::Get(const std::string& key, const std::vector<std::string>& def_val) const {
-  if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
-    const auto& values = entry->second.strings();
-    return std::vector<std::string>{values.cbegin(), values.cend()};
+    const int64_t* cbegin = values.data();
+    const int64_t* cend = values.data() + values.size();
+    return std::vector<int64_t>{cbegin, cend};
   }
 
   return def_val;
@@ -713,7 +710,9 @@ std::vector<std::string> NodeAttrHelper::Get(const std::string& key, const std::
 std::vector<float> NodeAttrHelper::Get(const std::string& key, const std::vector<float>& def_val) const {
   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
     const auto& values = entry->second.floats();
-    return std::vector<float>{values.cbegin(), values.cend()};
+    const float* cbegin = values.data();
+    const float* cend = values.data() + values.size();
+    return std::vector<float>{cbegin, cend};
   }
 
   return def_val;
@@ -741,7 +740,9 @@ std::optional<std::vector<float>> NodeAttrHelper::GetFloats(const std::string& k
   std::optional<std::vector<float>> result;
   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
     const auto& values = entry->second.floats();
-    result = std::vector<float>(values.begin(), values.end());
+    const float* cbegin = values.data();
+    const float* cend = values.data() + values.size();
+    result = std::vector<float>(cbegin, cend);
   }
 
   return result;
@@ -751,7 +752,9 @@ std::optional<std::vector<int64_t>> NodeAttrHelper::GetInt64s(const std::string&
   std::optional<std::vector<int64_t>> result;
   if (auto entry = node_attributes_.find(key); entry != node_attributes_.end()) {
     const auto& values = entry->second.ints();
-    result = std::vector<int64_t>(values.begin(), values.end());
+    const int64_t* cbegin = values.data();
+    const int64_t* cend = values.data() + values.size();
+    result = std::vector<int64_t>(cbegin, cend);
   }
 
   return result;
