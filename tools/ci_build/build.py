@@ -782,6 +782,8 @@ def parse_arguments():
     parser.add_argument("--use_triton_kernel", action="store_true", help="Use triton compiled kernels")
     parser.add_argument("--use_lock_free_queue", action="store_true", help="Use lock-free task queue for threadpool.")
 
+    parser.add_argument("--enable_tensorrt_interface", action="store_true", help="build ORT shared library and compatible bridge with tensorrt, but not TRT EP nor tests")
+
     if not is_windows():
         parser.add_argument(
             "--allow_running_as_root",
@@ -1042,6 +1044,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER="
         + ("ON" if args.use_tensorrt_builtin_parser and not args.use_tensorrt_oss_parser else "OFF"),
+        "-Donnxruntime_ENABLE_TRT_INTERFACE=" + ("ON" if args.enable_tensorrt_interface else "OFF"),
         # set vars for migraphx
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
@@ -1528,6 +1531,9 @@ def generate_build_tree(
             "-Donnxruntime_FUZZ_TEST=ON",
             "-Donnxruntime_USE_FULL_PROTOBUF=ON",
         ]
+
+    if args.enable_tensorrt_interface:
+        cmake_args += ["-Donnxruntime_BUILD_UNIT_TESTS=OFF"]
 
     if args.enable_lazy_tensor:
         import torch
@@ -2648,6 +2654,9 @@ def main():
     if args.enable_address_sanitizer:
         # Disable ONNX Runtime's builtin memory checker
         args.disable_memleak_checker = True
+
+    if args.enable_tensorrt_interface:
+        args.use_tensorrt, args.test = True, False
 
     # If there was no explicit argument saying what to do, default
     # to update, build and test (for native builds).
