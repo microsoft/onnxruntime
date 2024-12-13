@@ -71,6 +71,7 @@ struct PerformanceTestConfig {
   MachineConfig machine_config;
   RunConfig run_config;
   bool plugin = false;
+  std::basic_string<ORTCHAR_T> plugin_lib_path;
 };
 
 }  // namespace perftest

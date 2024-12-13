@@ -8,6 +8,7 @@
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
 #include "murmurhash3.h"
+#include "path_string.h"
 
 namespace fs = std::filesystem;
 
@@ -289,7 +290,7 @@ HashValue TRTGenerateId(const OrtGraphViewer* graph_viewer) {
 
   // Use the model's file name instead of the entire path to avoid cache regeneration if path changes
   if (model_path->has_filename()) {
-    std::string model_name = model_path->filename();
+    std::string model_name = PathToUTF8String(model_path->filename());
 
     // LOGS_DEFAULT(INFO) << "[TensorRT EP] Model name is " << model_name;
     // Ensure enough characters are hashed in case model names are too short

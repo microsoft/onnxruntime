@@ -1273,7 +1273,7 @@ std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGr
           break;
         }
       }
-      graph_api_->ReleaseOrtNodeArray(consumers, consumer_count);
+      graph_api_->ReleaseOrtNodeArray(consumers);
     }
   }
 
@@ -1336,9 +1336,9 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
         graph_api_->OrtGraph_GetModelPath(graph, reinterpret_cast<const void**>(&model_path));
         const auto& path_string = model_path->string();
 #ifdef _WIN32
-        std::strncpy_s(p->model_path_, path_string.c_str(), sizeof(p->model_path_) - 1);
+        strncpy_s(p->model_path_, path_string.c_str(), sizeof(p->model_path_) - 1);
 #else
-        std::strncpy(p->model_path_, path_string.c_str(), sizeof(p->model_path_) - 1);
+        strncpy(p->model_path_, path_string.c_str(), sizeof(p->model_path_) - 1);
 #endif
         p->model_path_[sizeof(p->model_path_) - 1] = '\0';
 
