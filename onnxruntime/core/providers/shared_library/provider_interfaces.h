@@ -123,6 +123,14 @@ struct Node__EdgeIterator {
   virtual int GetDstArgIndex() const = 0;
 };
 
+struct ConstGraphNodes_Iterator {
+  virtual ~ConstGraphNodes_Iterator() {}
+
+  virtual bool operator!=(const ConstGraphNodes_Iterator& other) const = 0;
+  virtual void operator++() = 0;
+  virtual const Node& operator*() = 0;
+};
+
 // There are two ways to route a function, one is a virtual method and the other is a function pointer (or pointer to
 // member function).
 // The function pointers are nicer in that they directly call the target function, but they cannot be used in cases
@@ -982,6 +990,7 @@ struct ProviderHost {
   virtual const std::string& GraphViewer__Name(const GraphViewer* p) noexcept = 0;
   virtual const std::filesystem::path& GraphViewer__ModelPath(const GraphViewer* p) noexcept = 0;
 
+  virtual const ConstGraphNodes& GraphViewer__Nodes(const GraphViewer* p) noexcept = 0;
   virtual const Node* GraphViewer__GetNode(const GraphViewer* p, NodeIndex node_index) = 0;
   virtual const NodeArg* GraphViewer__GetNodeArg(const GraphViewer* p, const std::string& name) = 0;
 
@@ -1014,6 +1023,13 @@ struct ProviderHost {
                                     int execution_order) noexcept = 0;
   virtual const Node* GraphViewer__GetProducerNode(const GraphViewer* p, const std::string& node_arg_name) const = 0;
   virtual IOnnxRuntimeOpSchemaCollectionPtr GraphViewer__GetSchemaRegistry(const GraphViewer* p) const = 0;
+
+  // ConstGraphNodes
+  virtual std::unique_ptr<ConstGraphNodes_Iterator> ConstGraphNodes__begin(const ConstGraphNodes* p) = 0;
+  virtual std::unique_ptr<ConstGraphNodes_Iterator> ConstGraphNodes__end(const ConstGraphNodes* p) = 0;
+  virtual std::unique_ptr<ConstGraphNodes_Iterator> ConstGraphNodes__cbegin(const ConstGraphNodes* p) = 0;
+  virtual std::unique_ptr<ConstGraphNodes_Iterator> ConstGraphNodes__cend(const ConstGraphNodes* p) = 0;
+  virtual bool ConstGraphNodes__empty(const ConstGraphNodes* p) noexcept = 0;
 
   // OpKernel
   virtual const Node& OpKernel__Node(const OpKernel* p) = 0;

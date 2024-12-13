@@ -157,6 +157,7 @@ struct KernelRegistry;
 struct Function;
 struct Graph;
 class GraphViewer;
+struct ConstGraphNodes;
 enum class DataLayout;
 struct Model;
 struct Path;

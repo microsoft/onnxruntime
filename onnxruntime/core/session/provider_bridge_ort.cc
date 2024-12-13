@@ -189,6 +189,18 @@ struct Node__EdgeIterator_Impl : Node__EdgeIterator {
   Node::EdgeConstIterator v_;
 };
 
+struct ConstGraphNodes_Iterator_Impl : ConstGraphNodes_Iterator {
+  ConstGraphNodes_Iterator_Impl(ConstGraphNodes::ConstNodeIterator&& v) : v_{std::move(v)} {}
+
+  bool operator!=(const ConstGraphNodes_Iterator& other) const override {
+    return v_ != static_cast<const ConstGraphNodes_Iterator_Impl*>(&other)->v_;
+  }
+  void operator++() override { v_.operator++(); }
+  const Node& operator*() override { return *v_; }
+
+  ConstGraphNodes::ConstNodeIterator v_;
+};
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 common::Status LoadDynamicLibraryFromProvider(onnxruntime::PathString library_name) {
   const auto& platform_env = onnxruntime::Env::Default();
@@ -1203,6 +1215,7 @@ struct ProviderHostImpl : ProviderHost {
   const std::string& GraphViewer__Name(const GraphViewer* p) noexcept override { return p->Name(); }
   const std::filesystem::path& GraphViewer__ModelPath(const GraphViewer* p) noexcept override { return p->ModelPath(); }
 
+  const ConstGraphNodes& GraphViewer__Nodes(const GraphViewer* p) noexcept override { return p->Nodes(); }
   const Node* GraphViewer__GetNode(const GraphViewer* p, NodeIndex node_index) override { return p->GetNode(node_index); }
   const NodeArg* GraphViewer__GetNodeArg(const GraphViewer* p, const std::string& name) override { return p->GetNodeArg(name); }
 
@@ -1247,6 +1260,21 @@ struct ProviderHostImpl : ProviderHost {
   }
   const Node* GraphViewer__GetProducerNode(const GraphViewer* p, const std::string& node_arg_name) const override { return p->GetProducerNode(node_arg_name); }
   IOnnxRuntimeOpSchemaCollectionPtr GraphViewer__GetSchemaRegistry(const GraphViewer* p) const override { return p->GetSchemaRegistry(); }
+
+  // ConstGraphNodes
+  std::unique_ptr<ConstGraphNodes_Iterator> ConstGraphNodes__begin(const ConstGraphNodes* p) override {
+    return std::make_unique<ConstGraphNodes_Iterator_Impl>(p->begin());
+  }
+  std::unique_ptr<ConstGraphNodes_Iterator> ConstGraphNodes__end(const ConstGraphNodes* p) override {
+    return std::make_unique<ConstGraphNodes_Iterator_Impl>(p->end());
+  }
+  std::unique_ptr<ConstGraphNodes_Iterator> ConstGraphNodes__cbegin(const ConstGraphNodes* p) override {
+    return std::make_unique<ConstGraphNodes_Iterator_Impl>(p->cbegin());
+  }
+  std::unique_ptr<ConstGraphNodes_Iterator> ConstGraphNodes__cend(const ConstGraphNodes* p) override {
+    return std::make_unique<ConstGraphNodes_Iterator_Impl>(p->cend());
+  }
+  bool ConstGraphNodes__empty(const ConstGraphNodes* p) noexcept override { return p->empty(); }
 
   // OpKernel (direct)
   const Node& OpKernel__Node(const OpKernel* p) override { return p->OpKernel::Node(); }

@@ -1040,6 +1040,7 @@ class GraphViewer final {
   const std::string& Name() const noexcept { return g_host->GraphViewer__Name(this); }
   const std::filesystem::path& ModelPath() const noexcept { return g_host->GraphViewer__ModelPath(this); }
 
+  const ConstGraphNodes& Nodes() const noexcept { return g_host->GraphViewer__Nodes(this); }
   const Node* GetNode(NodeIndex node_index) const { return g_host->GraphViewer__GetNode(this, node_index); }
   const NodeArg* GetNodeArg(const std::string& name) const { return g_host->GraphViewer__GetNodeArg(this, name); }
 
@@ -1082,6 +1083,25 @@ class GraphViewer final {
   GraphViewer() = delete;
   GraphViewer(const GraphViewer&) = delete;
   void operator=(const GraphViewer&) = delete;
+};
+
+struct ConstGraphNodes final {
+  IteratorHolder<ConstGraphNodes_Iterator, const Node> begin() const {
+    return g_host->ConstGraphNodes__begin(this);
+  }
+  IteratorHolder<ConstGraphNodes_Iterator, const Node> end() const {
+    return g_host->ConstGraphNodes__end(this);
+  }
+  IteratorHolder<ConstGraphNodes_Iterator, const Node> cbegin() const {
+    return g_host->ConstGraphNodes__cbegin(this);
+  }
+  IteratorHolder<ConstGraphNodes_Iterator, const Node> cend() const {
+    return g_host->ConstGraphNodes__cend(this);
+  }
+
+  bool empty() const noexcept { return g_host->ConstGraphNodes__empty(this); }
+
+  PROVIDER_DISALLOW_ALL(ConstGraphNodes)
 };
 
 struct OpKernelContext final {
