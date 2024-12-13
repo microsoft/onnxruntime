@@ -3,6 +3,7 @@
 #include <fstream>
 #include "onnx_ctx_model_helper.h"
 #include "tensorrt_execution_provider.h"
+#include "path_string.h"
 
 namespace onnxruntime {
 
