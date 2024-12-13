@@ -13,8 +13,9 @@ logger = getLogger(__name__)
 
 
 class FusionLayerNormalization(Fusion):
-    def __init__(self, model: OnnxModel):
+    def __init__(self, model: OnnxModel, check_constant_and_dimension:bool=True):
         super().__init__(model, "LayerNormalization", "ReduceMean")
+        self.check_constant_and_dimension = check_constant_and_dimension
 
     def fuse(self, node, input_name_to_nodes: Dict, output_name_to_node: Dict):
         """
@@ -23,9 +24,9 @@ class FusionLayerNormalization(Fusion):
               |                      |
               |                      v
           [Root] --> ReduceMean -->  Sub  --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Add
-                     (axis=2 or -1)  |      (Y=2)   (axis=2 or -1)  (E-6 or E-12 or 0)    ^
-                                     |                                               |
-                                     +-----------------------------------------------+
+                     (axis=2 or -1)  |      (Y=2)   (axis=2 or -1)  (B=E-6 or E-12)    ^
+                                     |                                                 |
+                                     +-------------------------------------------------+
 
          It also handles cases of duplicated sub nodes exported from older version of PyTorch:
               +----------------------+
@@ -61,7 +62,7 @@ class FusionLayerNormalization(Fusion):
                 break
             else:
                 # Check if Sub --> Cast --> Div
-                div_node_2 = self.model.match_child_path(child, ["Cast", "Div"], exclude=[])
+                div_node_2 = self.model.match_child_path(child, ["Cast", "Div"])
                 if div_node_2 is not None:
                     div_node = div_node_2[-1]
                     break
@@ -84,10 +85,10 @@ class FusionLayerNormalization(Fusion):
         if sub_node not in children:
             return
 
-        second_add_node = parent_nodes[1]
-        i, add_weight = self.model.get_constant_input(second_add_node)
-        if add_weight is None or add_weight <= 0 or add_weight > 1.0e-4:
-            logger.debug(f"skip SkipLayerNormalization fusion since epsilon value is not expected: {add_weight}")
+        add_eps_node = parent_nodes[1]
+        i, epsilon = self.model.get_constant_input(add_eps_node)
+        if epsilon is None or epsilon <= 0 or epsilon > 1.0e-4:
+            logger.debug(f"skip SkipLayerNormalization fusion since epsilon value is not expected: {epsilon}")
             return
 
         pow_node = parent_nodes[3]
@@ -131,11 +132,11 @@ class FusionLayerNormalization(Fusion):
 
         node_before_weight = div_node if temp_node.op_type != "Cast" else temp_node
         weight_input = mul_node.input[1 - self.model.input_index(node_before_weight.output[0], mul_node)]
-        if not self.model.is_constant_with_specified_dimension(weight_input, 1, "layernorm weight"):
+        if self.check_constant_and_dimension and not self.model.is_constant_with_specified_dimension(weight_input, 1, "layernorm weight"):
             return
 
         bias_input = last_add_node.input[1 - self.model.input_index(mul_node.output[0], last_add_node)]
-        if not self.model.is_constant_with_specified_dimension(bias_input, 1, "layernorm bias"):
+        if self.check_constant_and_dimension and not self.model.is_constant_with_specified_dimension(bias_input, 1, "layernorm bias"):
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)
@@ -146,7 +147,7 @@ class FusionLayerNormalization(Fusion):
             outputs=[last_add_node.output[0]],
             name=self.model.create_node_name("LayerNormalization", name_prefix="LayerNorm"),
         )
-        normalize_node.attribute.extend([helper.make_attribute("epsilon", float(add_weight))])
+        normalize_node.attribute.extend([helper.make_attribute("epsilon", float(epsilon))])
         self.nodes_to_add.append(normalize_node)
         self.node_name_to_graph_name[normalize_node.name] = self.this_graph_name
 
@@ -226,9 +227,9 @@ class FusionLayerNormalizationNCHW(Fusion):
         if sub != sub_node:
             return
 
-        i, add_weight = self.model.get_constant_input(second_add_node)
-        if add_weight is None or add_weight <= 0 or add_weight > 1.0e-4:
-            logger.debug(f"skip SkipLayerNormalization fusion since epsilon value is not expected: {add_weight}")
+        i, epsilon = self.model.get_constant_input(second_add_node)
+        if epsilon is None or epsilon <= 0 or epsilon > 1.0e-4:
+            logger.debug(f"skip SkipLayerNormalization fusion since epsilon value is not expected: {epsilon}")
             return
 
         axes = OnnxModel.get_node_attribute(reduce_mean_node, "axes")
@@ -294,7 +295,7 @@ class FusionLayerNormalizationNCHW(Fusion):
             outputs=[layernorm_node_name + "_out_nhwc"],
             name=layernorm_node_name,
         )
-        normalize_node.attribute.extend([helper.make_attribute("epsilon", float(add_weight))])
+        normalize_node.attribute.extend([helper.make_attribute("epsilon", float(epsilon))])
 
         self.nodes_to_add.append(transpose_input)
         self.nodes_to_add.append(normalize_node)
