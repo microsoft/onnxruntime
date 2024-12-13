@@ -5,7 +5,7 @@
 
 #include "qnbitgemm.h"
 #include "sqnbitgemm_kernel_avx_common.h"
-
+#include "sqnbitgemm_kernel_avx2_int8_blklen64.h"
 
 MLAS_FORCEINLINE void
 accumulate_1blk_dot(const __m256i& av_32_epi8, const __m256i& bv_32_epi8,
@@ -234,7 +234,9 @@ Q4Int8Gemm2x4x2BlkLen32Avx2(
     size_t CountN,
     size_t BlockCountK,
     const float* Bias,
-    size_t ldc
+    size_t ldc,
+    const float* ScaledZPA,
+    const float* ScaledZPB
 )
 {
     constexpr size_t BlkLen32 = 32;
@@ -265,6 +267,7 @@ Q4Int8Gemm2x4x2BlkLen32Avx2(
         const float* BiasPtr = Bias;
         auto* SumPtr = C + m * ldc;
 
+        const float* scaled_zp_b = ScaledZPB;
         for (size_t n = 0; n < CountN; n += NCols4) {
             const std::byte* QuantAPtr = QuantA + m * lda;
             const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
@@ -276,6 +279,11 @@ Q4Int8Gemm2x4x2BlkLen32Avx2(
                 _mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps(),
                 _mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps()
             };
+
+            const float* scaled_zp_a = ScaledZPA + m * BlockCountK;
+            accumulate_scaled_zp_prod_r1_c4_avx(acc[0], acc[1], acc[2], acc[3], scaled_zp_a, scaled_zp_b, BlockCountK);
+            accumulate_scaled_zp_prod_r1_c4_avx(acc[4], acc[5], acc[6], acc[7], scaled_zp_a + BlockCountK, scaled_zp_b, BlockCountK);
+            scaled_zp_b += 4 * BlockCountK;
 
             size_t k_blks_remaining = BlockCountK;
             // process 2 blks of 64 4b weights a time
@@ -378,7 +386,10 @@ void MLAS_FORCEINLINE Q4Int8Gemm2xXBlkLen32Avx2(
     size_t CountN,
     size_t BlockCountK,
     const float* Bias,
-    size_t ldc)
+    size_t ldc,
+    const float* ScaledZPA,
+    const float* ScaledZPB
+)
 {
     constexpr size_t BlkLen32 = 32;
     constexpr size_t BlkBitWidth4 = 4;
@@ -403,6 +414,7 @@ void MLAS_FORCEINLINE Q4Int8Gemm2xXBlkLen32Avx2(
         const float* BiasPtr = Bias;
         float* SumPtr = C + m * ldc;
 
+        const float* scaled_zp_b = ScaledZPB;
         for (size_t n = 0; n < CountN; n++) {
             const std::byte* QuantAPtr = QuantA + m * lda;
             const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
@@ -411,6 +423,11 @@ void MLAS_FORCEINLINE Q4Int8Gemm2xXBlkLen32Avx2(
             const float* QuantBScalePtr = QuantBScaleColPtr;
 
             __m256 acc0 = _mm256_setzero_ps(), acc1 = _mm256_setzero_ps();
+
+            const float* scaled_zp_a = ScaledZPA + m * BlockCountK;
+            accumulate_scaled_zp_prod_r1_c1_avx(acc0, scaled_zp_a, scaled_zp_b, BlockCountK);
+            accumulate_scaled_zp_prod_r1_c1_avx(acc1, scaled_zp_a + BlockCountK, scaled_zp_b, BlockCountK);
+            scaled_zp_b += BlockCountK;
 
             size_t k_blks_remaining = BlockCountK;
             // process 2 blks of 64 4b weights a time
@@ -472,7 +489,9 @@ Q4Int8GemmXx4BlkLen32Avx2(
     size_t CountN,
     size_t BlockCountK,
     const float* Bias,
-    size_t ldc
+    size_t ldc,
+    const float* ScaledZPA,
+    const float* ScaledZPB
 )
 {
     constexpr size_t BlkLen32 = 32;
@@ -502,6 +521,7 @@ Q4Int8GemmXx4BlkLen32Avx2(
         const float* BiasPtr = Bias;
         auto* SumPtr = C + m * ldc;
 
+        const float* scaled_zp_b = ScaledZPB;
         for (size_t n = 0; n < CountN; n += NCols4) {
             const std::byte* QuantAPtr = QuantA + m * lda;
             const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
@@ -510,6 +530,11 @@ Q4Int8GemmXx4BlkLen32Avx2(
             const float* QuantBScalePtr = QuantBScaleColPtr;
 
             __m256 acc[NCols4] = {_mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps()};
+
+            const float* scaled_zp_a = ScaledZPA;
+            accumulate_scaled_zp_prod_r1_c4_avx(acc[0], acc[1], acc[2], acc[3], scaled_zp_a, scaled_zp_b, BlockCountK);
+            scaled_zp_b += 4 * BlockCountK;
+
             size_t k_blks_remaining = BlockCountK;
             for (; k_blks_remaining > 1; k_blks_remaining -= PerAccuBlk2) {
                 const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr));
@@ -601,7 +626,9 @@ Q4Int8GemmXxXBlkLen32Avx2(
     size_t CountN,
     size_t BlockCountK,
     const float* Bias,
-    size_t ldc
+    size_t ldc,
+    const float* ScaledZPA,
+    const float* ScaledZPB
 )
 {
     constexpr size_t BlkLen32 = 32;
@@ -627,6 +654,7 @@ Q4Int8GemmXxXBlkLen32Avx2(
         const float* BiasPtr = Bias;
         auto* SumPtr = C + m * ldc;
 
+        const float* scaled_zp_b = ScaledZPB;
         for (size_t n = 0; n < CountN; n++) {
             const std::byte* QuantAPtr = QuantA + m * lda;
             const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
@@ -634,6 +662,11 @@ Q4Int8GemmXxXBlkLen32Avx2(
             const float* QuantBScalePtr = QuantBScaleColPtr;
 
             __m256 acc0 = _mm256_setzero_ps();
+
+            const float* scaled_zp_a = ScaledZPA;
+            accumulate_scaled_zp_prod_r1_c1_avx(acc0, scaled_zp_a, scaled_zp_b, BlockCountK);
+            scaled_zp_b += BlockCountK;
+
             size_t k_blks_remaining = BlockCountK;
             for (; k_blks_remaining > 1; k_blks_remaining -= PerAccuBlk2) {
                 const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr));
@@ -686,7 +719,9 @@ MLAS_FORCEINLINE
         size_t /*CountK*/,
         size_t BlockCountK,
         const float* Bias,
-        size_t ldc
+        size_t ldc,
+        const float* ScaledZPA,
+        const float* ScaledZPB
     )
 {
     constexpr size_t BlkLen32 = 32;
@@ -717,7 +752,9 @@ MLAS_FORCEINLINE
             multipleCols,
             BlockCountK,
             Bias,
-            ldc
+            ldc,
+            ScaledZPA,
+            ScaledZPB
         );
     }
     if (remainingCols > 0 && multipleRows > 0) {
@@ -731,7 +768,10 @@ MLAS_FORCEINLINE
             remainingCols,
             BlockCountK,
             Bias ? Bias + multipleCols : nullptr,
-            ldc);
+            ldc,
+            ScaledZPA,
+            ScaledZPB + multipleCols * StrideQuantBScale
+        );
     }
 
     if (remainingRows > 0 && multipleCols > 0) {
@@ -745,7 +785,10 @@ MLAS_FORCEINLINE
             multipleCols,
             BlockCountK,
             Bias,
-            ldc);
+            ldc,
+            ScaledZPA + multipleRows * lda_scale,
+            ScaledZPB
+        );
     }
 
     if (remainingCols > 0 && remainingRows > 0) {
@@ -759,7 +802,10 @@ MLAS_FORCEINLINE
             remainingCols,
             BlockCountK,
             Bias ? Bias + multipleCols : nullptr,
-            ldc);
+            ldc,
+            ScaledZPA + multipleRows * lda_scale,
+            ScaledZPB + multipleCols * StrideQuantBScale
+        );
     }
 
     return CountM;

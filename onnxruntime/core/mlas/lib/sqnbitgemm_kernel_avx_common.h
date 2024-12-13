@@ -337,7 +337,7 @@ ComputePackBlkSum(
             }
         }
 
-        if (is_avx512 && BlkLen != 32) {
+        if (!is_avx512 || (is_avx512 && BlkLen != 32)) {
             const size_t dst_offset = n * BlockCountK + k_blk;
             *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
         } else {
