@@ -163,7 +163,7 @@ Status TryGetMaxSpillFillSize(const std::vector<IExecutionProvider::FusedNodeAnd
     const onnxruntime::GraphViewer& main_ctx_graph_viewer(fused_nodes_and_graphs[index].filtered_graph);
     ORT_RETURN_IF(main_ctx_graph_viewer.NumberOfNodes() != 1, "One filtered graph should has only one EPContext node!");
     const auto& ep_context_node = main_ctx_graph_viewer.Nodes().begin();
-    NodeAttrHelper node_helper(*ep_context_node);
+    qnn::utils::NodeAttrHelper node_helper(*ep_context_node);
     int64_t max_size = node_helper.Get(MAX_SIZE, static_cast<int64_t>(0));
     if (max_size > max_spill_fill_size) {
       max_spill_fill_size = max_size;
