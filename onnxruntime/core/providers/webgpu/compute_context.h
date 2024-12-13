@@ -41,6 +41,12 @@ class ComputeContext {
   inline const wgpu::Limits& DeviceLimits() const {
     return webgpu_context_.DeviceLimits();
   }
+  inline const uint32_t MinSubgroupSize() const {
+    return webgpu_context_.MinSubgroupSize();
+  }
+  inline const bool IsFlashAttentionEnabled() const {
+    return webgpu_context_.IsFlashAttentionEnabled();
+  }
 
   //
   // Get the kernel context.
