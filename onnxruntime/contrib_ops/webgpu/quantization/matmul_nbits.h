@@ -31,6 +31,20 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
   bool use_block32_;
 };
 
+class MatMulNBitsWithLargeMProgram final : public Program<MatMulNBitsWithLargeMProgram> {
+ public:
+  MatMulNBitsWithLargeMProgram(int components_b, bool has_zero_points) : Program{"MatMulNBitsWithLargeM"},
+                                                                         components_b_{components_b},
+                                                                         has_zero_points_{has_zero_points} {
+  }
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+ private:
+  int components_b_;
+  bool has_zero_points_;
+};
+
 class MatMulNBitsProgramPrefill final : public Program<MatMulNBitsProgramPrefill> {
  public:
   MatMulNBitsProgramPrefill() : Program{"MatMulNBitsPrefill"} {
