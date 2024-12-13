@@ -173,6 +173,9 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #ifdef USE_TENSORRT
     const auto& api = Ort::GetApi();
     if (plugin_) {
+      if (plugin_lib_path_.empty()) {
+        ORT_THROW("Please specify EP plugin library path, e.g. -l /path/to/ep_plugin_lib");
+      }
       Ort::ThrowOnError(api.RegisterPluginExecutionProviderLibrary(plugin_lib_path_.c_str(), env, "tensorrtEp"));
       std::vector<const char*> keys{"trt_engine_cache_enable", "trt_dump_ep_context_model", "trt_ep_context_embed_mode"}, values{"0", "0", "0"};
       Ort::ThrowOnError(api.SessionOptionsAppendPluginExecutionProvider(session_options, "tensorrtEp", env, keys.data(), values.data(), keys.size()));
