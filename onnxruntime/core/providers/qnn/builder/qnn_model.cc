@@ -325,28 +325,35 @@ Status QnnModel::DeserializeGraphInfoFromBinaryInfo(const QnnSystemContext_Graph
   Qnn_Tensor_t* output_tensors = nullptr;
   uint32_t graph_input_num = 0;
   uint32_t graph_output_num = 0;
-  if (qnn_sys_ctx_graph_info.version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_3) {
-    graph_name.assign(qnn_sys_ctx_graph_info.graphInfoV3.graphName);
-    graph_input_num = qnn_sys_ctx_graph_info.graphInfoV3.numGraphInputs;
-    graph_output_num = qnn_sys_ctx_graph_info.graphInfoV3.numGraphOutputs;
-
-    input_tensors = qnn_sys_ctx_graph_info.graphInfoV3.graphInputs;
-    output_tensors = qnn_sys_ctx_graph_info.graphInfoV3.graphOutputs;
-  } else if (qnn_sys_ctx_graph_info.version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_2) {
-    graph_name.assign(qnn_sys_ctx_graph_info.graphInfoV2.graphName);
-    graph_input_num = qnn_sys_ctx_graph_info.graphInfoV2.numGraphInputs;
-    graph_output_num = qnn_sys_ctx_graph_info.graphInfoV2.numGraphOutputs;
-
-    input_tensors = qnn_sys_ctx_graph_info.graphInfoV2.graphInputs;
-    output_tensors = qnn_sys_ctx_graph_info.graphInfoV2.graphOutputs;
-  } else if (qnn_sys_ctx_graph_info.version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_1) {
+  if (qnn_sys_ctx_graph_info.version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_1) {
     graph_name.assign(qnn_sys_ctx_graph_info.graphInfoV1.graphName);
     graph_input_num = qnn_sys_ctx_graph_info.graphInfoV1.numGraphInputs;
     graph_output_num = qnn_sys_ctx_graph_info.graphInfoV1.numGraphOutputs;
 
     input_tensors = qnn_sys_ctx_graph_info.graphInfoV1.graphInputs;
     output_tensors = qnn_sys_ctx_graph_info.graphInfoV1.graphOutputs;
-  } else {
+  }
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 18)  // start from 2.25
+  else if (qnn_sys_ctx_graph_info.version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_2) {
+    graph_name.assign(qnn_sys_ctx_graph_info.graphInfoV2.graphName);
+    graph_input_num = qnn_sys_ctx_graph_info.graphInfoV2.numGraphInputs;
+    graph_output_num = qnn_sys_ctx_graph_info.graphInfoV2.numGraphOutputs;
+
+    input_tensors = qnn_sys_ctx_graph_info.graphInfoV2.graphInputs;
+    output_tensors = qnn_sys_ctx_graph_info.graphInfoV2.graphOutputs;
+  }
+#endif
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 21)  // start from 2.28
+  else if (qnn_sys_ctx_graph_info.version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_3) {
+    graph_name.assign(qnn_sys_ctx_graph_info.graphInfoV3.graphName);
+    graph_input_num = qnn_sys_ctx_graph_info.graphInfoV3.numGraphInputs;
+    graph_output_num = qnn_sys_ctx_graph_info.graphInfoV3.numGraphOutputs;
+
+    input_tensors = qnn_sys_ctx_graph_info.graphInfoV3.graphInputs;
+    output_tensors = qnn_sys_ctx_graph_info.graphInfoV3.graphOutputs;
+  }
+#endif
+  else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported context graph info version.");
   }
   ORT_RETURN_IF(nullptr == input_tensors, "Graph from cached context doesn't have any inputs.");
