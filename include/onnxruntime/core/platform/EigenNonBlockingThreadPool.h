@@ -1473,7 +1473,11 @@ class ThreadPoolTempl : public onnxruntime::concurrency::ExtendedThreadPoolInter
       auto old_status = status.exchange(ThreadStatus::Blocking, std::memory_order_seq_cst);
       if (old_status != ThreadStatus::Spinning) {
         // Encountered a logical error
+#ifdef ORT_NO_EXCEPTIONS
+        abort();
+#else
         throw std::runtime_error("The state transition is not allowed");
+#endif
       }
       if (should_block()) {
         status.store(ThreadStatus::Blocked, std::memory_order_relaxed);
