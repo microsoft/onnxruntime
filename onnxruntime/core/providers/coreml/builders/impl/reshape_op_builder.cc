@@ -57,11 +57,11 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.tensor_transformation.reshape
     std::unique_ptr<Operation> reshape_op = model_builder.CreateOperation(node, "reshape");
 
-    AddOperationInput(*reshape_op, "x", data_name);
-    AddOperationInput(*reshape_op, "shape",
-                      model_builder.AddConstant(reshape_op->type(), "shape", ToConstSpan(new_shape)));
+    model_builder.IOBuilder().AddOperationInput(*reshape_op, "x", data_name);
+    model_builder.IOBuilder().AddOperationInput(*reshape_op, "shape",
+                                                model_builder.AddConstant(reshape_op->type(), "shape", ToConstSpan(new_shape)));
 
-    AddOperationOutput(*reshape_op, *node.OutputDefs()[0]);
+    model_builder.IOBuilder().AddOperationOutput(*reshape_op, *node.OutputDefs()[0]);
 
     model_builder.AddOperation(std::move(reshape_op));
   } else

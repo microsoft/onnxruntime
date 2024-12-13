@@ -63,20 +63,20 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
     // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.normalization.batch_norm
 
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, "batch_norm");
-    AddOperationInput(*op, "x", input_defs[0]->Name());
-    AddOperationInput(*op, "mean", model_builder.AddConstant(op->type(), input_defs[3]->Name() + "mean", mean_tensor));
-    AddOperationInput(*op, "variance", model_builder.AddConstant(op->type(), input_defs[4]->Name() + "variance", var_tensor));
-    AddOperationInput(*op, "gamma", model_builder.AddConstant(op->type(), input_defs[1]->Name(), scale_tensor));
-    AddOperationInput(*op, "beta", model_builder.AddConstant(op->type(), input_defs[2]->Name(), bias_tensor));
+    model_builder.IOBuilder().AddOperationInput(*op, "x", input_defs[0]->Name());
+    model_builder.IOBuilder().AddOperationInput(*op, "mean", model_builder.AddConstant(op->type(), input_defs[3]->Name() + "mean", mean_tensor));
+    model_builder.IOBuilder().AddOperationInput(*op, "variance", model_builder.AddConstant(op->type(), input_defs[4]->Name() + "variance", var_tensor));
+    model_builder.IOBuilder().AddOperationInput(*op, "gamma", model_builder.AddConstant(op->type(), input_defs[1]->Name(), scale_tensor));
+    model_builder.IOBuilder().AddOperationInput(*op, "beta", model_builder.AddConstant(op->type(), input_defs[2]->Name(), bias_tensor));
     auto input_dtype = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
     if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
       MLFloat16 epsilon_fp16(eps);
-      AddOperationInput(*op, "epsilon", model_builder.AddScalarConstant(op->type(), "epsilon", epsilon_fp16));
+      model_builder.IOBuilder().AddOperationInput(*op, "epsilon", model_builder.AddScalarConstant(op->type(), "epsilon", epsilon_fp16));
     } else {
-      AddOperationInput(*op, "epsilon", model_builder.AddScalarConstant(op->type(), "epsilon", eps));
+      model_builder.IOBuilder().AddOperationInput(*op, "epsilon", model_builder.AddScalarConstant(op->type(), "epsilon", eps));
     }
 
-    AddOperationOutput(*op, *node.OutputDefs()[0]);
+    model_builder.IOBuilder().AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
   } else
 #endif  // (COREML_ENABLE_MLPROGRAM)

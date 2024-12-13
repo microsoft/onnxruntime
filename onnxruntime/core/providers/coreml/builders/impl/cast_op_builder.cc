@@ -47,7 +47,12 @@ Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model
       // ONNX_NAMESPACE::TensorProto::INT64 values to be int32.
       cast_to_type = ONNX_NAMESPACE::TensorProto::INT32;
     } else if (cast_to_type == ONNX_NAMESPACE::TensorProto::FLOAT) {
-      to_dtype = "fp32";
+      if (model_builder.IOBuilder().AllowLowPrecision()) {
+        cast_to_type = ONNX_NAMESPACE::TensorProto::FLOAT16;
+        to_dtype = "fp16";
+      } else {
+        to_dtype = "fp32";
+      }
     } else if (cast_to_type == ONNX_NAMESPACE::TensorProto::FLOAT16) {
       to_dtype = "fp16";
     } else if (cast_to_type == ONNX_NAMESPACE::TensorProto::BOOL) {
@@ -66,11 +71,11 @@ Status CastOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model
     }
 
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, op_type);
-    AddOperationInput(*op, "x", node.InputDefs()[0]->Name());
+    model_builder.IOBuilder().AddOperationInput(*op, "x", node.InputDefs()[0]->Name());
     if (op_type == "cast") {
-      AddOperationInput(*op, "dtype", model_builder.AddScalarConstant(op->type(), "dtype", std::string(to_dtype)));
+      model_builder.IOBuilder().AddOperationInput(*op, "dtype", model_builder.AddScalarConstant(op->type(), "dtype", std::string(to_dtype)));
     }
-    AddOperationOutput(*op, *node.OutputDefs()[0], cast_to_type);
+    model_builder.IOBuilder().AddOperationOutput(*op, *node.OutputDefs()[0], cast_to_type);
     model_builder.AddOperation(std::move(op));
   }
 #endif

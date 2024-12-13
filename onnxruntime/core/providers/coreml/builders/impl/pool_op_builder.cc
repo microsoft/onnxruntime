@@ -57,13 +57,13 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, coreml_op_type);
 
-    AddOperationInput(*op, "x", input_defs[0]->Name());
+    model_builder.IOBuilder().AddOperationInput(*op, "x", input_defs[0]->Name());
 
     if (is_global) {
       // keep N and C dims, reduce the rest with keepdims=True. equivalent to the ONNX Global*Pool ops.
       std::vector<int64_t> axes{2, 3};  // we only support 4D input currently.
-      AddOperationInput(*op, "axes", model_builder.AddConstant(op->type(), "axes", axes));
-      AddOperationInput(*op, "keep_dims", model_builder.AddScalarConstant(op->type(), "keep_dims", true));
+      model_builder.IOBuilder().AddOperationInput(*op, "axes", model_builder.AddConstant(op->type(), "axes", axes));
+      model_builder.IOBuilder().AddOperationInput(*op, "keep_dims", model_builder.AddScalarConstant(op->type(), "keep_dims", true));
     } else {
       NodeAttrHelper helper(node);
       constexpr int num_spatial_dims = 2;  // we only support 4D. -2 for N and C dims.
@@ -71,24 +71,24 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       AddPadTypeAndPads(*op, model_builder, op->type(), helper, num_spatial_dims);
 
       const auto kernel_shape = helper.GetInt64s("kernel_shape");  // required
-      AddOperationInput(*op, "kernel_sizes", model_builder.AddConstant(op->type(), "kernel_sizes", *kernel_shape));
+      model_builder.IOBuilder().AddOperationInput(*op, "kernel_sizes", model_builder.AddConstant(op->type(), "kernel_sizes", *kernel_shape));
 
       // in theory all these values are optional according to the CoreML spec but simpler to just provide default
       // values as the actual model compilation tends to require them.
       const auto strides = helper.Get("strides", std::vector<int64_t>(num_spatial_dims, 1));
       const bool ceil_mode = helper.Get("ceil_mode", int64_t(0));  // convert int64_t to bool
 
-      AddOperationInput(*op, "strides", model_builder.AddConstant(op->type(), "strides", strides));
-      AddOperationInput(*op, "ceil_mode", model_builder.AddScalarConstant(op->type(), "ceil_mode", ceil_mode));
+      model_builder.IOBuilder().AddOperationInput(*op, "strides", model_builder.AddConstant(op->type(), "strides", strides));
+      model_builder.IOBuilder().AddOperationInput(*op, "ceil_mode", model_builder.AddScalarConstant(op->type(), "ceil_mode", ceil_mode));
 
       if (is_avg_pool) {
         const bool count_exclude_pad = helper.Get("count_include_pad", int64_t(0)) == 0;
-        AddOperationInput(*op, "exclude_padding_from_average",
-                          model_builder.AddScalarConstant(op->type(), "count_exclude_pad", count_exclude_pad));
+        model_builder.IOBuilder().AddOperationInput(*op, "exclude_padding_from_average",
+                                                    model_builder.AddScalarConstant(op->type(), "count_exclude_pad", count_exclude_pad));
       }
     }
 
-    AddOperationOutput(*op, *node.OutputDefs()[0]);
+    model_builder.IOBuilder().AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
 
   } else

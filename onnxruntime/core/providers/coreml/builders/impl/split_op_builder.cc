@@ -60,18 +60,18 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
     std::unique_ptr<Operation> split_op = model_builder.CreateOperation(node, "split");
-    AddOperationInput(*split_op, "axis", model_builder.AddScalarConstant(split_op->type(), "axis", axis));
+    model_builder.IOBuilder().AddOperationInput(*split_op, "axis", model_builder.AddScalarConstant(split_op->type(), "axis", axis));
 
     if (input_defs.size() > 1) {
       // if "split" is explicitly provided as an input
       Initializer unpacked_tensor(*model_builder.GetConstantInitializer(input_defs[1]->Name()));
       auto split_span = unpacked_tensor.DataAsSpan<int64_t>();
-      AddOperationInput(*split_op, "split_sizes",
-                        model_builder.AddConstant(split_op->type(), "split_sizes", split_span));
+      model_builder.IOBuilder().AddOperationInput(*split_op, "split_sizes",
+                                                  model_builder.AddConstant(split_op->type(), "split_sizes", split_span));
     } else if (node.SinceVersion() < 18) {
       int64_t num_outputs = narrow<int64_t>(node.OutputDefs().size());
-      AddOperationInput(*split_op, "num_splits",
-                        model_builder.AddScalarConstant(split_op->type(), "num_splits", num_outputs));
+      model_builder.IOBuilder().AddOperationInput(*split_op, "num_splits",
+                                                  model_builder.AddScalarConstant(split_op->type(), "num_splits", num_outputs));
     } else {
       // note: for opset 18+ 'num_outputs' is a required attribute
       int64_t num_outputs = helper.GetInt64("num_outputs").value();
@@ -80,18 +80,18 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
         // uneven
         std::vector<int64_t> split_sizes(num_outputs, chunk_size);
         split_sizes.back() = remainder;
-        AddOperationInput(*split_op, "split_sizes",
-                          model_builder.AddConstant(split_op->type(), "split_sizes", split_sizes));
+        model_builder.IOBuilder().AddOperationInput(*split_op, "split_sizes",
+                                                    model_builder.AddConstant(split_op->type(), "split_sizes", split_sizes));
       } else {
         // even
-        AddOperationInput(*split_op, "num_splits",
-                          model_builder.AddScalarConstant(split_op->type(), "num_splits", num_outputs));
+        model_builder.IOBuilder().AddOperationInput(*split_op, "num_splits",
+                                                    model_builder.AddScalarConstant(split_op->type(), "num_splits", num_outputs));
       }
     }
 
-    AddOperationInput(*split_op, "x", input_defs[0]->Name());
+    model_builder.IOBuilder().AddOperationInput(*split_op, "x", input_defs[0]->Name());
     for (const auto& output_def : node.OutputDefs()) {
-      AddOperationOutput(*split_op, *output_def);
+      model_builder.IOBuilder().AddOperationOutput(*split_op, *output_def);
     }
     model_builder.AddOperation(std::move(split_op));
 

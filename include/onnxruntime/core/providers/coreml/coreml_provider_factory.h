@@ -61,6 +61,7 @@ static const char* const kCoremlProviderOption_SpecializationStrategy = "Special
 static const char* const kCoremlProviderOption_ProfileComputePlan = "ProfileComputePlan";
 // please refer to https://developer.apple.com/documentation/coreml/mlmodelconfiguration/allowlowprecisionaccumulationongpu
 static const char* const kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU = "AllowLowPrecisionAccumulationOnGPU";
+static const char* const kCoremlProviderOption_AllowLowPrecision = "AllowLowPrecision";
 
 #ifdef __cplusplus
 extern "C" {

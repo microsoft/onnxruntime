@@ -131,25 +131,25 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     if (is_gemm) {
       // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.linear.linear
       auto gemm_op = model_builder.CreateOperation(node, "linear");
-      AddOperationInput(*gemm_op, "x", a.Name());
+      model_builder.IOBuilder().AddOperationInput(*gemm_op, "x", a.Name());
 
       // CoreML takes weight input as {N, K} which is the reverse of ONNX.
       // if transB is true the input weight is {N, K} so can be added directly.
       if (transB) {
-        AddOperationInput(*gemm_op, "weight", b.Name());
+        model_builder.IOBuilder().AddOperationInput(*gemm_op, "weight", b.Name());
       } else {
         std::vector<int64_t> weight_nk_shape = {N, K};
         // transpose from {K, N} to {N, K}
         if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
           std::vector<float> weight_nk;
           ORT_RETURN_IF_ERROR(GetTensorDataTransposed(*b_initializer, weight_nk));
-          AddOperationInput(*gemm_op, "weight",
-                            model_builder.AddConstant(gemm_op->type(), b.Name() + "_t", weight_nk, weight_nk_shape));
+          model_builder.IOBuilder().AddOperationInput(*gemm_op, "weight",
+                                                      model_builder.AddConstant(gemm_op->type(), b.Name() + "_t", weight_nk, weight_nk_shape));
         } else {  // TensorProto_DataType_FLOAT16
           std::vector<MLFloat16> weight_nk;
           ORT_RETURN_IF_ERROR(GetTensorDataTransposed(*b_initializer, weight_nk));
-          AddOperationInput(*gemm_op, "weight",
-                            model_builder.AddConstant(gemm_op->type(), b.Name() + "_t", weight_nk, weight_nk_shape));
+          model_builder.IOBuilder().AddOperationInput(*gemm_op, "weight",
+                                                      model_builder.AddConstant(gemm_op->type(), b.Name() + "_t", weight_nk, weight_nk_shape));
         }
       }
 
@@ -160,7 +160,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
         // CoreML linear op requires bias to be 1D tensor of size N
         if (bias.dims_size() == 1 && bias.dims().at(0) == N) {
           // can use existing initializer
-          AddOperationInput(*gemm_op, "bias", bias_arg.Name());
+          model_builder.IOBuilder().AddOperationInput(*gemm_op, "bias", bias_arg.Name());
         } else {
           Initializer unpacked_tensor(bias);
           std::string_view bias_data_name;
@@ -187,24 +187,24 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
             }
           }
 
-          AddOperationInput(*gemm_op, "bias", bias_data_name);
+          model_builder.IOBuilder().AddOperationInput(*gemm_op, "bias", bias_data_name);
         }
       }
 
-      AddOperationOutput(*gemm_op, *node.OutputDefs()[0]);
+      model_builder.IOBuilder().AddOperationOutput(*gemm_op, *node.OutputDefs()[0]);
       model_builder.AddOperation(std::move(gemm_op));
     } else {
       // CoreML implementation is the same as ONNX MatMul.
       auto matmul_op = model_builder.CreateOperation(node, "matmul");
-      AddOperationInput(*matmul_op, "x", a.Name());
-      AddOperationInput(*matmul_op, "y", b.Name());
+      model_builder.IOBuilder().AddOperationInput(*matmul_op, "x", a.Name());
+      model_builder.IOBuilder().AddOperationInput(*matmul_op, "y", b.Name());
 
       // once again the spec lies and says transpose_y and transpose_x are optional...
       auto false_value_name = model_builder.AddScalarConstant(matmul_op->type(), "false", false);
-      AddOperationInput(*matmul_op, "transpose_x", false_value_name);
-      AddOperationInput(*matmul_op, "transpose_y", false_value_name);
+      model_builder.IOBuilder().AddOperationInput(*matmul_op, "transpose_x", false_value_name);
+      model_builder.IOBuilder().AddOperationInput(*matmul_op, "transpose_y", false_value_name);
 
-      AddOperationOutput(*matmul_op, *node.OutputDefs()[0]);
+      model_builder.IOBuilder().AddOperationOutput(*matmul_op, *node.OutputDefs()[0]);
       model_builder.AddOperation(std::move(matmul_op));
     }
   } else

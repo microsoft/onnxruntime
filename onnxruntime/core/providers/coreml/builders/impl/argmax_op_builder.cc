@@ -38,13 +38,13 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#module-coremltools.converters.mil.mil.ops.defs.iOS15.reduction
 
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, "reduce_argmax");
-    AddOperationInput(*op, "x", node.InputDefs()[0]->Name());
-    AddOperationInput(*op, "axis", model_builder.AddScalarConstant(op->type(), "axis", axis));
-    AddOperationInput(*op, "keep_dims", model_builder.AddScalarConstant(op->type(), "keep_dims", bool(keepdims)));
+    model_builder.IOBuilder().AddOperationInput(*op, "x", node.InputDefs()[0]->Name());
+    model_builder.IOBuilder().AddOperationInput(*op, "axis", model_builder.AddScalarConstant(op->type(), "axis", axis));
+    model_builder.IOBuilder().AddOperationInput(*op, "keep_dims", model_builder.AddScalarConstant(op->type(), "keep_dims", bool(keepdims)));
 
     int32_t output_datatype = ONNX_NAMESPACE::TensorProto_DataType_INT32;
     // the output of ArgMax must be int32
-    AddOperationOutput(*op, *node.OutputDefs()[0], output_datatype);
+    model_builder.IOBuilder().AddOperationOutput(*op, *node.OutputDefs()[0], output_datatype);
     model_builder.AddOperation(std::move(op));
   } else
 #endif  // (COREML_ENABLE_MLPROGRAM)

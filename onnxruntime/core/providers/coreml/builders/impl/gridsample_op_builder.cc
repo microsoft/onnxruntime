@@ -64,20 +64,20 @@ Status GridSampleOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder&
   }
 
   auto op = model_builder.CreateOperation(node, "resample");
-  AddOperationInput(*op, "x", input_defs[0]->Name());
-  AddOperationInput(*op, "coordinates", input_defs[1]->Name());
-  AddOperationInput(*op, "sampling_mode", model_builder.AddScalarConstant(op->type(), "sampling_mode", mode));
-  AddOperationInput(*op, "padding_mode", model_builder.AddScalarConstant(op->type(), "padding_mode", padding_mode));
+  model_builder.IOBuilder().AddOperationInput(*op, "x", input_defs[0]->Name());
+  model_builder.IOBuilder().AddOperationInput(*op, "coordinates", input_defs[1]->Name());
+  model_builder.IOBuilder().AddOperationInput(*op, "sampling_mode", model_builder.AddScalarConstant(op->type(), "sampling_mode", mode));
+  model_builder.IOBuilder().AddOperationInput(*op, "padding_mode", model_builder.AddScalarConstant(op->type(), "padding_mode", padding_mode));
   if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-    AddOperationInput(*op, "padding_value", model_builder.AddScalarConstant(op->type(), "padding_value", 0.0f));
+    model_builder.IOBuilder().AddOperationInput(*op, "padding_value", model_builder.AddScalarConstant(op->type(), "padding_value", 0.0f));
   } else {
-    AddOperationInput(*op, "padding_value", model_builder.AddScalarConstant(op->type(), "padding_value", MLFloat16(0.0f)));
+    model_builder.IOBuilder().AddOperationInput(*op, "padding_value", model_builder.AddScalarConstant(op->type(), "padding_value", MLFloat16(0.0f)));
   }
-  AddOperationInput(*op, "coordinates_mode",
-                    model_builder.AddScalarConstant(op->type(), "coordinates_mode", coordinates_mode));
-  AddOperationInput(*op, "align_corners", model_builder.AddScalarConstant(op->type(), "align_corners", align_corners));
+  model_builder.IOBuilder().AddOperationInput(*op, "coordinates_mode",
+                                              model_builder.AddScalarConstant(op->type(), "coordinates_mode", coordinates_mode));
+  model_builder.IOBuilder().AddOperationInput(*op, "align_corners", model_builder.AddScalarConstant(op->type(), "align_corners", align_corners));
 
-  AddOperationOutput(*op, *output_defs[0]);
+  model_builder.IOBuilder().AddOperationOutput(*op, *output_defs[0]);
 
   model_builder.AddOperation(std::move(op));
 #endif

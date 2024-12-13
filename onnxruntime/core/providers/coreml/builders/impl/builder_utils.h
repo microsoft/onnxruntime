@@ -13,6 +13,7 @@
 #include "core/providers/common.h"
 #include "core/providers/coreml/builders/coreml_spec.h"
 #include "core/providers/shared/utils/utils.h"
+#include "core/providers/coreml/coreml_options.h"
 
 namespace onnxruntime {
 class NodeArg;
@@ -122,48 +123,56 @@ COREML_SPEC::MILSpec::Value CreateScalarTensorValue(const T& data);
 /// <remarks>Used to create inputs for the 'main' function in an ML Program.</remarks>
 COREML_SPEC::MILSpec::NamedValueType CreateNamedTensorValueType(const NodeArg& node_arg, bool convert_scalar = false);
 
-/// <summary>
-/// Add an input argument to a MILSpec::Operation
-/// </summary>
-/// <param name="op">Operation to update.</param>
-/// <param name="input_name">The input name defined by the spec for the operation.</param>
-/// <param name="value_name">The name of the value that is providing the input.</param>
-/// <see>"https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html"</see>
-void AddOperationInput(COREML_SPEC::MILSpec::Operation& op,
-                       std::string_view input_name, std::string_view value_name);
+class OperationIOBuilder {
+ private:
+  const CoreMLOptions& coreml_options_;
 
-/// <summary>
-/// Add a variadic input argument to a MILSpec::Operation
-/// </summary>
-/// <param name="op">Operation to update.</param>
-/// <param name="input name">The input name defined by the spec for the operation. </param>
-/// <param name="value_names">The input value names.</param>
-void AddOperationVariadicInput(COREML_SPEC::MILSpec::Operation& op, std::string_view input_name,
-                               const std::vector<std::string_view>& value_names);
+ public:
+  OperationIOBuilder(const CoreMLOptions& coreml_options) : coreml_options_(coreml_options) {}
+  bool AllowLowPrecision() const { return coreml_options_.AllowLowPrecision(); }
+  /// <summary>
+  /// Add an input argument to a MILSpec::Operation
+  /// </summary>
+  /// <param name="op">Operation to update.</param>
+  /// <param name="input_name">The input name defined by the spec for the operation.</param>
+  /// <param name="value_name">The name of the value that is providing the input.</param>
+  /// <see>"https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html"</see>
+  void AddOperationInput(COREML_SPEC::MILSpec::Operation& op,
+                         std::string_view input_name, std::string_view value_name);
 
-/// Add an output to a MILSpec::Operation for an intermediate operation when the implementation is composed of
-/// multiple MLProgram operations. In this case we don't have a NodeArg for the output.
-/// </summary>
-/// <param name="op">Operation to update.</param>
-/// <param name="output_name">Name of the intermediate output. Create using ModelBuilder::GetUniqueName.</param>
-/// <param name="element_type">onnx::TensorProto_DataType element type of the output.
-///   int32_t as that is what TensorShapeProto uses to store the value.</param>
-/// <param name="shape">Shape of the output if known.</param>
-void AddIntermediateOperationOutput(COREML_SPEC::MILSpec::Operation& op, std::string_view output_name,
-                                    int32_t element_type, std::optional<gsl::span<const int64_t>> shape);
+  /// <summary>
+  /// Add a variadic input argument to a MILSpec::Operation
+  /// </summary>
+  /// <param name="op">Operation to update.</param>
+  /// <param name="input name">The input name defined by the spec for the operation. </param>
+  /// <param name="value_names">The input value names.</param>
+  void AddOperationVariadicInput(COREML_SPEC::MILSpec::Operation& op, std::string_view input_name,
+                                 const std::vector<std::string_view>& value_names);
 
-/// <summary>
-/// Add an output to a MILSpec::Operation. Name, data type and shape are used from the NodeArg.
-/// </summary>
-/// <param name="op">Operation to update.</param>
-/// <param name="output">NodeArg with details of output to add.</param>
-/// <param name="override_element_type">
-///   Override the element type. Only set to handle cases where we believe the data at runtime will be int32 but
-///   the original ONNX node has type int64.
-/// </param>
-void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output,
-                        std::optional<int32_t> override_element_type = std::nullopt);
+  /// Add an output to a MILSpec::Operation for an intermediate operation when the implementation is composed of
+  /// multiple MLProgram operations. In this case we don't have a NodeArg for the output.
+  /// </summary>
+  /// <param name="op">Operation to update.</param>
+  /// <param name="output_name">Name of the intermediate output. Create using ModelBuilder::GetUniqueName.</param>
+  /// <param name="element_type">onnx::TensorProto_DataType element type of the output.
+  ///   int32_t as that is what TensorShapeProto uses to store the value.</param>
+  /// <param name="shape">Shape of the output if known.</param>
+  void AddIntermediateOperationOutput(COREML_SPEC::MILSpec::Operation& op, std::string_view output_name,
+                                      int32_t element_type, std::optional<gsl::span<const int64_t>> shape);
 
+  /// <summary>
+  /// Add an output to a MILSpec::Operation. Name, data type and shape are used from the NodeArg.
+  /// </summary>
+  /// <param name="op">Operation to update.</param>
+  /// <param name="output">NodeArg with details of output to add.</param>
+  /// <param name="override_element_type">
+  ///   Override the element type. Only set to handle cases where we believe the data at runtime will be int32 but
+  ///   the original ONNX node has type int64.
+  /// </param>
+  void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output,
+                          std::optional<int32_t> override_element_type = std::nullopt,
+                          std::optional<gsl::span<const int64_t>> shape = std::nullopt);
+};
 /// <summary>
 /// Add pad_type and pad values.
 /// </summary>

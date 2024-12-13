@@ -39,10 +39,10 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     for (const auto* input : node.InputDefs()) {
       input_names.emplace_back(input->Name());
     }
-    AddOperationVariadicInput(*op, "values", input_names);
-    AddOperationInput(*op, "axis", model_builder.AddScalarConstant(op->type(), "axis", *axis));
-    AddOperationInput(*op, "interleave", model_builder.AddScalarConstant(op->type(), "interleave", interleave));
-    AddOperationOutput(*op, *node.OutputDefs()[0]);
+    model_builder.IOBuilder().AddOperationVariadicInput(*op, "values", input_names);
+    model_builder.IOBuilder().AddOperationInput(*op, "axis", model_builder.AddScalarConstant(op->type(), "axis", *axis));
+    model_builder.IOBuilder().AddOperationInput(*op, "interleave", model_builder.AddScalarConstant(op->type(), "interleave", interleave));
+    model_builder.IOBuilder().AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
   } else  // NOLINT
 #endif    // defined(COREML_ENABLE_MLPROGRAM)

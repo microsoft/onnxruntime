@@ -74,24 +74,24 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(
     // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.normalization.layer_norm
 
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, op_name);
-    AddOperationInput(*op, "x", layer_input_name_x);
+    model_builder.IOBuilder().AddOperationInput(*op, "x", layer_input_name_x);
     if (op_name == "layer_norm") {
-      AddOperationInput(*op, "axes", model_builder.AddConstant(op->type(), input_defs[0]->Name() + "axes", axes));
+      model_builder.IOBuilder().AddOperationInput(*op, "axes", model_builder.AddConstant(op->type(), input_defs[0]->Name() + "axes", axes));
     }
-    AddOperationInput(*op, "gamma", model_builder.AddConstant(op->type(), input_defs[1]->Name() + "gamma", scale_tensor));
+    model_builder.IOBuilder().AddOperationInput(*op, "gamma", model_builder.AddConstant(op->type(), input_defs[1]->Name() + "gamma", scale_tensor));
     if (input_defs.size() > 2) {
       const auto& bias_tensor = *model_builder.GetConstantInitializer(input_defs[2]->Name());
-      AddOperationInput(*op, "beta", model_builder.AddConstant(op->type(), input_defs[2]->Name() + "beta", bias_tensor));
+      model_builder.IOBuilder().AddOperationInput(*op, "beta", model_builder.AddConstant(op->type(), input_defs[2]->Name() + "beta", bias_tensor));
     }
 
     if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
       MLFloat16 epsilon_fp16(eps);
-      AddOperationInput(*op, "epsilon", model_builder.AddScalarConstant(op->type(), "epsilon", epsilon_fp16));
+      model_builder.IOBuilder().AddOperationInput(*op, "epsilon", model_builder.AddScalarConstant(op->type(), "epsilon", epsilon_fp16));
     } else {
-      AddOperationInput(*op, "epsilon", model_builder.AddScalarConstant(op->type(), "epsilon", eps));
+      model_builder.IOBuilder().AddOperationInput(*op, "epsilon", model_builder.AddScalarConstant(op->type(), "epsilon", eps));
     }
 
-    AddOperationOutput(*op, *node.OutputDefs()[0]);
+    model_builder.IOBuilder().AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
   }
 #endif  // (COREML_ENABLE_MLPROGRAM)
@@ -141,42 +141,42 @@ Status NormalizationOpBuilder::AddGroupNormToModelBuilderImpl(
     shape1[2] = input_shape[1] / num_groups;
     std::vector<int64_t> shape_scale_bias(input_shape.size(), 1);
     shape_scale_bias[1] = channel_dims;
-    AddOperationInput(*reshape1, "x", node.InputDefs()[0]->Name());
-    AddOperationInput(*reshape1, "shape", model_builder.AddConstant(reshape1->type(), "shape1", shape1));
+    model_builder.IOBuilder().AddOperationInput(*reshape1, "x", node.InputDefs()[0]->Name());
+    model_builder.IOBuilder().AddOperationInput(*reshape1, "shape", model_builder.AddConstant(reshape1->type(), "shape1", shape1));
     layer_input_name_x = model_builder.GetUniqueName(node, "ln_reshape1_");
-    AddIntermediateOperationOutput(*reshape1, layer_input_name_x, elem_type, shape1);
+    model_builder.IOBuilder().AddIntermediateOperationOutput(*reshape1, layer_input_name_x, elem_type, shape1);
 
     std::unique_ptr<Operation> layer_norm = model_builder.CreateOperation(node, "layer_norm");
-    AddOperationInput(*layer_norm, "x", layer_input_name_x);
-    AddOperationInput(*layer_norm, "axes", model_builder.AddConstant(layer_norm->type(), "axes", axes));
+    model_builder.IOBuilder().AddOperationInput(*layer_norm, "x", layer_input_name_x);
+    model_builder.IOBuilder().AddOperationInput(*layer_norm, "axes", model_builder.AddConstant(layer_norm->type(), "axes", axes));
 
     if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
       MLFloat16 epsilon_fp16(eps);
-      AddOperationInput(*layer_norm, "epsilon", model_builder.AddScalarConstant(layer_norm->type(), "epsilon", epsilon_fp16));
+      model_builder.IOBuilder().AddOperationInput(*layer_norm, "epsilon", model_builder.AddScalarConstant(layer_norm->type(), "epsilon", epsilon_fp16));
     } else {
-      AddOperationInput(*layer_norm, "epsilon", model_builder.AddScalarConstant(layer_norm->type(), "epsilon", eps));
+      model_builder.IOBuilder().AddOperationInput(*layer_norm, "epsilon", model_builder.AddScalarConstant(layer_norm->type(), "epsilon", eps));
     }
 
     const auto& ln_output_name = model_builder.GetUniqueName(node, "ln_output_");
-    AddIntermediateOperationOutput(*layer_norm, ln_output_name, elem_type, shape1);
+    model_builder.IOBuilder().AddIntermediateOperationOutput(*layer_norm, ln_output_name, elem_type, shape1);
 
     auto reshape2 = model_builder.CreateOperation(node, "reshape", "post");
-    AddOperationInput(*reshape2, "x", ln_output_name);
-    AddOperationInput(*reshape2, "shape", model_builder.AddConstant(reshape2->type(), "shape2", input_shape));
+    model_builder.IOBuilder().AddOperationInput(*reshape2, "x", ln_output_name);
+    model_builder.IOBuilder().AddOperationInput(*reshape2, "shape", model_builder.AddConstant(reshape2->type(), "shape2", input_shape));
 
     const auto& reshape2_output_name = model_builder.GetUniqueName(node, "gn_reshape_output_");
-    AddIntermediateOperationOutput(*reshape2, reshape2_output_name, elem_type, input_shape);
+    model_builder.IOBuilder().AddIntermediateOperationOutput(*reshape2, reshape2_output_name, elem_type, input_shape);
 
     auto mul = model_builder.CreateOperation(node, "mul", "post_mul");
-    AddOperationInput(*mul, "x", reshape2_output_name);
-    AddOperationInput(*mul, "y", model_builder.AddConstant(mul->type(), "mul1", scale_tensor, shape_scale_bias));
+    model_builder.IOBuilder().AddOperationInput(*mul, "x", reshape2_output_name);
+    model_builder.IOBuilder().AddOperationInput(*mul, "y", model_builder.AddConstant(mul->type(), "mul1", scale_tensor, shape_scale_bias));
     const auto& mul_output_name = model_builder.GetUniqueName(node, "mul_output_");
-    AddIntermediateOperationOutput(*mul, mul_output_name, elem_type, input_shape);
+    model_builder.IOBuilder().AddIntermediateOperationOutput(*mul, mul_output_name, elem_type, input_shape);
 
     auto add = model_builder.CreateOperation(node, "add", "post_add");
-    AddOperationInput(*add, "x", mul_output_name);
-    AddOperationInput(*add, "y", model_builder.AddConstant(add->type(), "add1", bias_tensor, shape_scale_bias));
-    AddOperationOutput(*add, *node.OutputDefs()[0]);
+    model_builder.IOBuilder().AddOperationInput(*add, "x", mul_output_name);
+    model_builder.IOBuilder().AddOperationInput(*add, "y", model_builder.AddConstant(add->type(), "add1", bias_tensor, shape_scale_bias));
+    model_builder.IOBuilder().AddOperationOutput(*add, *node.OutputDefs()[0]);
 
     model_builder.AddOperation(std::move(reshape1));
     model_builder.AddOperation(std::move(layer_norm));

@@ -16,6 +16,7 @@
 #include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/coreml/shape_utils.h"
 #include "core/optimizer/initializer.h"
+#include "core/mlas/inc/mlas.h"
 
 #if defined(COREML_ENABLE_MLPROGRAM)
 // includes from coremltools-src in _deps
@@ -104,7 +105,7 @@ void CopyUInt64DataToBytes(const ONNX_NAMESPACE::TensorProto& tensor_proto, MILS
 
 // NOTE: This supports all the ONNX data types. Weights in CoreML may not need all these
 void CopyOnnxTensorToCoreMLTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                  MILSpec::TensorValue& tensor_value) {
+                                  MILSpec::TensorValue& tensor_value, bool allow_low_precision = false) {
   bool has_raw_data = tensor_proto.has_raw_data();
   auto data_type = tensor_proto.data_type();
 
@@ -120,10 +121,23 @@ void CopyOnnxTensorToCoreMLTensor(const ONNX_NAMESPACE::TensorProto& tensor_prot
   switch (data_type) {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
       // from: float_data/raw, to: floats
+      const float* raw_data_ptr;
+      unsigned long raw_data_size;
       if (has_raw_data) {
-        CopyRawDataToRepeatedField<float>(tensor_proto, *tensor_value.mutable_floats()->mutable_values());
+        raw_data_ptr = (const float*)tensor_proto.raw_data().data();
+        raw_data_size = tensor_proto.raw_data().size() / 4;
+        // CopyRawDataToRepeatedField<float>(tensor_proto, *tensor_value.mutable_floats()->mutable_values());
       } else {
-        tensor_value.mutable_floats()->mutable_values()->CopyFrom(tensor_proto.float_data());
+        raw_data_ptr = tensor_proto.float_data().data();
+        raw_data_size = tensor_proto.float_data_size();
+        // tensor_value.mutable_floats()->mutable_values()->CopyFrom(tensor_proto.float_data());
+      }
+      if (allow_low_precision) {
+        std::vector<MLFloat16> fp16_data(raw_data_size);
+        MlasConvertFloatToHalfBuffer((const float*)raw_data_ptr, reinterpret_cast<MLFloat16*>(fp16_data.data()), fp16_data.size());
+        tensor_value.mutable_bytes()->mutable_values()->assign((const char*)fp16_data.data(), (const char*)(fp16_data.data() + fp16_data.size()));
+      } else {
+        tensor_value.mutable_floats()->mutable_values()->Add(raw_data_ptr, raw_data_ptr + raw_data_size);
       }
       break;
     }
@@ -256,6 +270,16 @@ void CopyOnnxTensorToCoreMLTensor(const ONNX_NAMESPACE::TensorProto& tensor_prot
   }
 }
 
+[[maybe_unused]] uint64_t ConvertHalfAndWriteRawDataUsingStorageWriter(const onnx::TensorProto& tensor_proto,
+                                                                       MILBlob::Blob::StorageWriter& writer) {
+  gsl::span<const float> raw_data(reinterpret_cast<const float*>(tensor_proto.raw_data().data()),
+                                  tensor_proto.raw_data().size() / sizeof(float));
+  std::vector<MILBlob::Fp16> fp16_data(raw_data.size());
+  MlasConvertFloatToHalfBuffer(raw_data.data(), reinterpret_cast<MLFloat16*>(fp16_data.data()), raw_data.size());
+  MILBlob::Util::Span<const MILBlob::Fp16> fp16_data_span(fp16_data.data(), fp16_data.size());
+  return writer.WriteData(fp16_data_span);
+}
+
 template <typename T>
 uint64_t WriteRawDataUsingStorageWriter(const onnx::TensorProto& tensor_proto,
                                         MILBlob::Blob::StorageWriter& writer) {
@@ -295,7 +319,8 @@ uint64_t WriteFromInt32DataUsingStorageWriter(const onnx::TensorProto& tensor_pr
 // StorageWriter is currently limited to fp32, fp16, bfloat16, uint8/int8, uint16/int16.
 // AFAIK we don't use bfloat16/int16/uint16 for weights in ONNX, so limit handling to fp32, fp16, uint8/int8
 uint64_t CopyOnnxTensorToCoreMLWeightsFile(const onnx::TensorProto& tensor_proto,
-                                           MILBlob::Blob::StorageWriter& writer) {
+                                           MILBlob::Blob::StorageWriter& writer,
+                                           bool allow_low_precision = false) {
   bool has_raw_data = tensor_proto.has_raw_data();
   auto data_type = tensor_proto.data_type();
 
@@ -308,10 +333,24 @@ uint64_t CopyOnnxTensorToCoreMLWeightsFile(const onnx::TensorProto& tensor_proto
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
       // from: float_data/raw, to: floats
       if (has_raw_data) {
-        offset = WriteRawDataUsingStorageWriter<float>(tensor_proto, writer);
+        if (allow_low_precision) {
+          offset = ConvertHalfAndWriteRawDataUsingStorageWriter(tensor_proto, writer);
+        } else {
+          offset = WriteRawDataUsingStorageWriter<float>(tensor_proto, writer);
+        }
       } else {
-        MILBlob::Util::Span<const float> data(tensor_proto.float_data().data(), tensor_proto.float_data().size());
-        offset = writer.WriteData(data);
+        if (allow_low_precision) {
+          unsigned long raw_data_size = tensor_proto.float_data().size();
+          const float* raw_data_ptr = tensor_proto.float_data().data();
+          std::vector<MLFloat16> fp16_data(raw_data_size);
+          MlasConvertFloatToHalfBuffer((const float*)raw_data_ptr, reinterpret_cast<MLFloat16*>(fp16_data.data()), fp16_data.size());
+
+          MILBlob::Util::Span<const MILBlob::Fp16> data((const MILBlob::Fp16*)fp16_data.data(), fp16_data.size());
+          offset = writer.WriteData(data);
+        } else {
+          MILBlob::Util::Span<const float> data(tensor_proto.float_data().data(), tensor_proto.float_data().size());
+          offset = writer.WriteData(data);
+        }
       }
       break;
     }
@@ -353,13 +392,20 @@ uint64_t CopyOnnxTensorToCoreMLWeightsFile(const onnx::TensorProto& tensor_proto
 }
 
 MILSpec::Value OnnxTensorToCoreMLTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                        MILBlob::Blob::StorageWriter& weights_file_writer) {
+                                        MILBlob::Blob::StorageWriter& weights_file_writer,
+                                        bool allow_low_precision = false) {
   MILSpec::Value value;
 
   // populate ValueType with tensor data type, dims and rank
   MILSpec::ValueType& value_type = *value.mutable_type();
   MILSpec::TensorType& tensor_type = *value_type.mutable_tensortype();
-  tensor_type.set_datatype(OnnxDataTypeToMILSpec(tensor_proto.data_type()));
+  auto element_type = tensor_proto.data_type();
+  if (allow_low_precision && element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    element_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  }
+
+  // all other types are handled by OnnxDataTypeToMILSpec
+  tensor_type.set_datatype(OnnxDataTypeToMILSpec(element_type));
 
   tensor_type.set_rank(tensor_proto.dims().size());
   for (const auto& dim : tensor_proto.dims()) {
@@ -368,7 +414,7 @@ MILSpec::Value OnnxTensorToCoreMLTensor(const ONNX_NAMESPACE::TensorProto& tenso
 
   // add data to either weights.bin or as an immediate value
   if (ShouldWriteInitializerToWeightsFile(tensor_proto)) {
-    uint64_t offset = CopyOnnxTensorToCoreMLWeightsFile(tensor_proto, weights_file_writer);
+    uint64_t offset = CopyOnnxTensorToCoreMLWeightsFile(tensor_proto, weights_file_writer, allow_low_precision);
 
     auto* file_value = value.mutable_blobfilevalue();
     // Filename copied from
@@ -377,7 +423,7 @@ MILSpec::Value OnnxTensorToCoreMLTensor(const ONNX_NAMESPACE::TensorProto& tenso
     file_value->set_offset(offset);
   } else {
     MILSpec::TensorValue& tensor_value = *value.mutable_immediatevalue()->mutable_tensor();
-    CopyOnnxTensorToCoreMLTensor(tensor_proto, tensor_value);
+    CopyOnnxTensorToCoreMLTensor(tensor_proto, tensor_value, allow_low_precision);
   }
 
   return value;
@@ -411,6 +457,7 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
       coreml_options_(coreml_options),
       create_ml_program_(coreml_options.CreateMLProgram()),
       model_output_path_(GetModelOutputPath(create_ml_program_)),
+      io_builder_(coreml_options_),
       onnx_input_names_(std::move(onnx_input_names)),
       onnx_output_names_(std::move(onnx_output_names)),
       coreml_model_(std::make_unique<CoreML::Specification::Model>()) {
@@ -594,6 +641,18 @@ std::unique_ptr<COREML_SPEC::MILSpec::Operation> ModelBuilder::CreateOperation(c
   return op;
 }
 
+std::unique_ptr<COREML_SPEC::MILSpec::Operation> ModelBuilder::CreateOperation(const std::string& node_name,
+                                                                               std::string_view op_type,
+                                                                               std::string_view suffix) {
+  std::string operation_name = GetUniqueName(node_name + std::string(suffix));
+
+  std::unique_ptr<MILSpec::Operation> op = std::make_unique<MILSpec::Operation>();
+  op->set_type(std::string(op_type));
+  (*op->mutable_attributes())["name"] = CreateScalarTensorValue(operation_name);
+
+  return op;
+}
+
 const std::string& ModelBuilder::AddConstantOperation(std::string_view name, MILSpec::Value&& coreml_tensor) {
   // Replicates coremltools/converters/mil/backend/mil/load.py translate_const logic
   MILSpec::Operation& const_op = *mlprogram_main_block_->mutable_operations()->Add();
@@ -713,7 +772,7 @@ Status ModelBuilder::RegisterInitializers() {
 
 #if defined(COREML_ENABLE_MLPROGRAM)
     if (create_ml_program_) {
-      MILSpec::Value coreml_tensor = OnnxTensorToCoreMLTensor(tensor, *weights_file_writer_);
+      MILSpec::Value coreml_tensor = OnnxTensorToCoreMLTensor(tensor, *weights_file_writer_, coreml_options_.AllowLowPrecision());
       ORT_IGNORE_RETURN_VALUE(AddConstantOperation(name, std::move(coreml_tensor)));
     } else
 #endif
@@ -758,11 +817,21 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     }
   }
 
+  std::string hooked_inout_name = name;
+  if (coreml_options_.AllowLowPrecision()) {
+    hooked_inout_name = name + (is_input ? "_cast" : "_cast");
+    if (is_input) {
+      onnx_input_names_.back() = hooked_inout_name;
+    } else {
+      onnx_output_names_.back() = hooked_inout_name;
+    }
+  }
+
   auto* model_description = coreml_model_->mutable_description();
   auto& input_output = is_input ? *model_description->mutable_input()->Add()
                                 : *model_description->mutable_output()->Add();
 
-  input_output.set_name(name);
+  input_output.set_name(hooked_inout_name);
 
   auto* multi_array = input_output.mutable_type()->mutable_multiarraytype();
 
@@ -819,6 +888,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     data_type = type_proto->tensor_type().elem_type();
     switch (data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+        // multi_array->set_datatype(ArrayFeatureType::FLOAT16);
         multi_array->set_datatype(ArrayFeatureType::FLOAT32);
         break;
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
@@ -845,7 +915,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     }
   }
 
-  input_output_info_.emplace(name, OnnxTensorInfo{data_type, shape});
+  input_output_info_.emplace(hooked_inout_name, OnnxTensorInfo{data_type, shape});
 
 #if defined(COREML_ENABLE_MLPROGRAM)
   if (create_ml_program_) {
@@ -858,13 +928,18 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
         tensor_value_type.mutable_type()->mutable_tensortype()->set_datatype(
             OnnxDataTypeToMILSpec(ONNX_NAMESPACE::TensorProto_DataType_INT32));
       }
+      // we need to convert int64 to int32 here as well
+      // if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      //   tensor_value_type.mutable_type()->mutable_tensortype()->set_datatype(
+      //       OnnxDataTypeToMILSpec(ONNX_NAMESPACE::TensorProto_DataType_FLOAT16));
+      // }
 
-      tensor_value_type.set_name(name);
+      tensor_value_type.set_name(hooked_inout_name);
 
       mlprogram_main_fn_->mutable_inputs()->Add(std::move(tensor_value_type));
     } else {
       // the model outputs need to be set as outputs of the Block for the 'main' function
-      *mlprogram_main_block_->mutable_outputs()->Add() = name;
+      *mlprogram_main_block_->mutable_outputs()->Add() = hooked_inout_name;
     }
   }
 #endif  // defined(COREML_ENABLE_MLPROGRAM)
@@ -875,9 +950,36 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
 Status ModelBuilder::RegisterModelInputs() {
   for (const auto* node_arg : graph_viewer_.GetInputs()) {
     ORT_RETURN_IF_ERROR(RegisterModelInputOutput(*node_arg, true /* is_input */));
+    if (coreml_options_.AllowLowPrecision()) {
+      InsertCastNode(node_arg->Name(), true);
+    }
   }
 
   return Status::OK();
+}
+
+void ModelBuilder::InsertCastNode(const std::string& input_name, bool is_graph_input) {
+  auto& type_shape = input_output_info_.at(input_name + "_cast");
+
+  onnx::TypeProto type_proto_out;
+  const bool is_orig_dtype_float = type_shape.data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
+  onnx::TensorProto_DataType new_node_arg_data_type = is_graph_input && is_orig_dtype_float
+                                                          ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
+                                                          : onnx::TensorProto_DataType(type_shape.data_type);
+  type_proto_out.mutable_tensor_type()->set_elem_type(new_node_arg_data_type);
+  std::string arg_name = is_graph_input ? input_name : input_name + "_cast";
+  auto new_node_arg = std::make_unique<NodeArg>(arg_name, &type_proto_out);
+
+  std::string_view op_type = is_orig_dtype_float ? "cast" : "identity";
+  std::unique_ptr<CoreML::Specification::MILSpec::Operation> op = CreateOperation("auto_cast_insert", op_type);
+  IOBuilder().AddOperationInput(*op, "x", is_graph_input ? input_name + "_cast" : input_name);
+  if (op_type == "cast") {
+    std::string to_dtype = is_graph_input ? "fp16" : "fp32";
+    IOBuilder().AddOperationInput(*op, "dtype", AddScalarConstant(op->type(), "dtype", to_dtype));
+  }
+  IOBuilder().AddOperationOutput(*op, *new_node_arg, new_node_arg_data_type, type_shape.shape);
+
+  AddOperation(std::move(op));
 }
 
 Status ModelBuilder::ProcessNodes() {
@@ -899,6 +1001,9 @@ Status ModelBuilder::ProcessNodes() {
 Status ModelBuilder::RegisterModelOutputs() {
   for (const auto* node_arg : graph_viewer_.GetOutputs()) {
     ORT_RETURN_IF_ERROR(RegisterModelInputOutput(*node_arg, false /* is_input */));
+    if (coreml_options_.AllowLowPrecision()) {
+      InsertCastNode(node_arg->Name(), false);
+    }
   }
 
   return Status::OK();
@@ -1013,9 +1118,16 @@ std::string_view ModelBuilder::AddConstant(std::string_view op_type, std::string
   Initializer unpacked_tensor(tensor);
   std::string_view ret;
   switch (data_type) {
-    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-      ret = AddConstant(op_type, value_type, unpacked_tensor.DataAsSpan<float>(), shape ? shape : tensor.dims());
-      break;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
+      if (coreml_options_.AllowLowPrecision()) {
+        auto data = unpacked_tensor.DataAsSpan<float>();
+        std::vector<MLFloat16> fp16_data(data.size());
+        MlasConvertFloatToHalfBuffer(data.data(), (fp16_data.data()), data.size());
+        ret = AddConstant(op_type, value_type, AsSpan(fp16_data), shape ? shape : tensor.dims());
+      } else {
+        ret = AddConstant(op_type, value_type, unpacked_tensor.DataAsSpan<float>(), shape ? shape : tensor.dims());
+      }
+    } break;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
       ret = AddConstant(op_type, value_type, unpacked_tensor.DataAsSpan<MLFloat16>(), shape ? shape : tensor.dims());
       break;

@@ -60,11 +60,11 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
     std::unique_ptr<Operation> conv_op = model_builder.CreateOperation(node, "conv");
 
-    AddOperationInput(*conv_op, "x", input_name);
-    AddOperationInput(*conv_op, "weight", input_defs[1]->Name());
+    model_builder.IOBuilder().AddOperationInput(*conv_op, "x", input_name);
+    model_builder.IOBuilder().AddOperationInput(*conv_op, "weight", input_defs[1]->Name());
 
     if (input_defs.size() > 2) {
-      AddOperationInput(*conv_op, "bias", input_defs[2]->Name());
+      model_builder.IOBuilder().AddOperationInput(*conv_op, "bias", input_defs[2]->Name());
     }
 
     // we know this input has a valid shape due to the check in IsOpSupportedImpl. ignore N and C dims.
@@ -77,16 +77,16 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     auto dilations = helper.Get("dilations", std::vector<int64_t>(num_spatial_dims, 1));
     auto groups = helper.GetInt64("group");
 
-    AddOperationInput(*conv_op, "strides", model_builder.AddConstant(op_type, "strides", strides));
-    AddOperationInput(*conv_op, "dilations", model_builder.AddConstant(op_type, "dilations", dilations));
+    model_builder.IOBuilder().AddOperationInput(*conv_op, "strides", model_builder.AddConstant(op_type, "strides", strides));
+    model_builder.IOBuilder().AddOperationInput(*conv_op, "dilations", model_builder.AddConstant(op_type, "dilations", dilations));
 
     if (groups) {
-      AddOperationInput(*conv_op, "groups", model_builder.AddScalarConstant(op_type, "groups", *groups));
+      model_builder.IOBuilder().AddOperationInput(*conv_op, "groups", model_builder.AddScalarConstant(op_type, "groups", *groups));
     }
 
     AddPadTypeAndPads(*conv_op, model_builder, op_type, helper, num_spatial_dims);
 
-    AddOperationOutput(*conv_op, *node.OutputDefs()[0]);
+    model_builder.IOBuilder().AddOperationOutput(*conv_op, *node.OutputDefs()[0]);
 
     model_builder.AddOperation(std::move(conv_op));
   } else

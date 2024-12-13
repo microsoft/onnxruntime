@@ -56,26 +56,26 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       target_shape.push_back(input_shape.SizeToDimension(axis_nonnegative));
       target_shape.push_back(input_shape.SizeFromDimension(axis_nonnegative));
       axis_nonnegative = 1;
-      AddOperationInput(*reshape1, "x", layer_input_name_x);
-      AddOperationInput(*reshape1, "shape", model_builder.AddConstant(reshape1->type(), "shape1", target_shape));
+      model_builder.IOBuilder().AddOperationInput(*reshape1, "x", layer_input_name_x);
+      model_builder.IOBuilder().AddOperationInput(*reshape1, "shape", model_builder.AddConstant(reshape1->type(), "shape1", target_shape));
       layer_input_name_x = model_builder.GetUniqueName(node, "ln_reshape1_");
-      AddIntermediateOperationOutput(*reshape1, layer_input_name_x, elem_type, target_shape);
+      model_builder.IOBuilder().AddIntermediateOperationOutput(*reshape1, layer_input_name_x, elem_type, target_shape);
       model_builder.AddOperation(std::move(reshape1));
     }
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, "softmax");
-    AddOperationInput(*op, "x", layer_input_name_x);
-    AddOperationInput(*op, "axis", model_builder.AddScalarConstant(op->type(), "axis", axis_nonnegative));
+    model_builder.IOBuilder().AddOperationInput(*op, "x", layer_input_name_x);
+    model_builder.IOBuilder().AddOperationInput(*op, "axis", model_builder.AddScalarConstant(op->type(), "axis", axis_nonnegative));
     if (!need_reshape) {
-      AddOperationOutput(*op, *node.OutputDefs()[0]);
+      model_builder.IOBuilder().AddOperationOutput(*op, *node.OutputDefs()[0]);
       model_builder.AddOperation(std::move(op));
     } else {
       std::string_view ln_output_name = model_builder.GetUniqueName(node, "ln_reshape1_");
-      AddIntermediateOperationOutput(*op, ln_output_name, elem_type, target_shape);
+      model_builder.IOBuilder().AddIntermediateOperationOutput(*op, ln_output_name, elem_type, target_shape);
       model_builder.AddOperation(std::move(op));
       auto reshape2 = model_builder.CreateOperation(node, "reshape", "post");
-      AddOperationInput(*reshape2, "x", ln_output_name);
-      AddOperationInput(*reshape2, "shape", model_builder.AddConstant(reshape2->type(), "shape2", data_shape));
-      AddOperationOutput(*reshape2, *node.OutputDefs()[0]);
+      model_builder.IOBuilder().AddOperationInput(*reshape2, "x", ln_output_name);
+      model_builder.IOBuilder().AddOperationInput(*reshape2, "shape", model_builder.AddConstant(reshape2->type(), "shape2", data_shape));
+      model_builder.IOBuilder().AddOperationOutput(*reshape2, *node.OutputDefs()[0]);
       model_builder.AddOperation(std::move(reshape2));
     }
   } else  // NOLINT

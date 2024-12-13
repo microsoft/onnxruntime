@@ -339,15 +339,15 @@ COREML_SPEC::MILSpec::NamedValueType CreateNamedTensorValueType(const NodeArg& n
   return nvt;
 }
 
-void AddOperationInput(MILSpec::Operation& op, std::string_view input_name, std::string_view value_name) {
+void OperationIOBuilder::AddOperationInput(MILSpec::Operation& op, std::string_view input_name, std::string_view value_name) {
   MILSpec::Argument arg;
   arg.mutable_arguments()->Add()->set_name(value_name.data(), value_name.size());
 
   (*op.mutable_inputs())[input_name] = std::move(arg);
 }
 
-void AddOperationVariadicInput(MILSpec::Operation& op, std::string_view input_name,
-                               const std::vector<std::string_view>& value_names) {
+void OperationIOBuilder::AddOperationVariadicInput(MILSpec::Operation& op, std::string_view input_name,
+                                                   const std::vector<std::string_view>& value_names) {
   MILSpec::Argument arg;
   for (const auto& value : value_names) {
     arg.mutable_arguments()->Add()->set_name(value.data(), value.size());
@@ -356,8 +356,8 @@ void AddOperationVariadicInput(MILSpec::Operation& op, std::string_view input_na
   (*op.mutable_inputs())[input_name] = std::move(arg);
 }
 
-void AddIntermediateOperationOutput(COREML_SPEC::MILSpec::Operation& op, std::string_view output_name,
-                                    int32_t element_type, std::optional<gsl::span<const int64_t>> shape) {
+void OperationIOBuilder::AddIntermediateOperationOutput(COREML_SPEC::MILSpec::Operation& op, std::string_view output_name,
+                                                        int32_t element_type, std::optional<gsl::span<const int64_t>> shape) {
   auto& outputs = *op.mutable_outputs();
   auto& output_arg = *outputs.Add();
   output_arg.set_name(output_name.data(), output_name.size());
@@ -365,11 +365,15 @@ void AddIntermediateOperationOutput(COREML_SPEC::MILSpec::Operation& op, std::st
   MILSpec::ValueType& value = *output_arg.mutable_type();
   MILSpec::TensorType& tensor_type = *value.mutable_tensortype();
 
+  if (coreml_options_.AllowLowPrecision() && element_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    element_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  }
+
   SetTensorTypeInfo(tensor_type, OnnxDataTypeToMILSpec(element_type), shape, /*convert_scalar*/ true);
 }
 
-void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output,
-                        std::optional<int32_t> override_element_type) {
+void OperationIOBuilder::AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output,
+                                            std::optional<int32_t> override_element_type, std::optional<gsl::span<const int64_t>> shape) {
   auto& outputs = *op.mutable_outputs();
   auto& output_arg = *outputs.Add();
   output_arg.set_name(output.Name());
@@ -379,8 +383,14 @@ void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& outp
 
   auto elem_type = override_element_type ? *override_element_type
                                          : output.TypeAsProto()->tensor_type().elem_type();
-
-  SetTensorTypeInfo(tensor_type, OnnxDataTypeToMILSpec(elem_type), output.Shape(), /*convert_scalar*/ true);
+  if (coreml_options_.AllowLowPrecision() && !override_element_type && elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+    elem_type = ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
+  }
+  if (shape) {
+    SetTensorTypeInfo(tensor_type, OnnxDataTypeToMILSpec(elem_type), shape, /*convert_scalar*/ true);
+  } else {
+    SetTensorTypeInfo(tensor_type, OnnxDataTypeToMILSpec(elem_type), output.Shape(), /*convert_scalar*/ true);
+  }
 }
 
 void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_builder, std::string_view op_type,
@@ -401,8 +411,8 @@ void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_
       // use `pads` attribute.
       auto onnx_pads = helper.GetInt64s("pads");  // 'pads' are used if auto_pad is NOTSET
       if (onnx_pads) {
-        AddOperationInput(op, "pad_type",
-                          model_builder.AddScalarConstant(op_type, "pad_type", std::string("custom")));
+        model_builder.IOBuilder().AddOperationInput(op, "pad_type",
+                                                    model_builder.AddScalarConstant(op_type, "pad_type", std::string("custom")));
 
         // need to re-order from x1_start, x2_start..., x1_end, x2_end... to
         // x1_start, x1_end, x2_start, x2_end,...
@@ -418,7 +428,7 @@ void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_
           }
         }
 
-        AddOperationInput(op, "pad", model_builder.AddConstant(op_type, "pad", reordered_pads));
+        model_builder.IOBuilder().AddOperationInput(op, "pad", model_builder.AddConstant(op_type, "pad", reordered_pads));
 
         break;
       }
@@ -428,21 +438,21 @@ void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_
       [[fallthrough]];
     }
     case AutoPadType::VALID:
-      AddOperationInput(op, "pad_type",
-                        model_builder.AddScalarConstant(op_type, "pad_type", std::string("valid")));
+      model_builder.IOBuilder().AddOperationInput(op, "pad_type",
+                                                  model_builder.AddScalarConstant(op_type, "pad_type", std::string("valid")));
 
       break;
     case AutoPadType::SAME_UPPER:
     case AutoPadType::SAME_LOWER: {
       const auto pad_type = (auto_pad_type == AutoPadType::SAME_UPPER ? "same" : "same_lower");
-      AddOperationInput(op, "pad_type",
-                        model_builder.AddScalarConstant(op_type, "pad_type", std::string(pad_type)));
+      model_builder.IOBuilder().AddOperationInput(op, "pad_type",
+                                                  model_builder.AddScalarConstant(op_type, "pad_type", std::string(pad_type)));
 
       // despite what the spec says, a 'pad' input seems to be required.
       // https://github.com/apple/coremltools/issues/2127
       // Provide the default value as that's what coremltools does for conv/avg_pool/max_pool.
       std::vector<int64_t> ignored_pads(num_spatial_dims * 2, 0);
-      AddOperationInput(op, "pad", model_builder.AddConstant(op_type, "pad", ignored_pads));
+      model_builder.IOBuilder().AddOperationInput(op, "pad", model_builder.AddConstant(op_type, "pad", ignored_pads));
 
       break;
     }

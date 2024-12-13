@@ -7,7 +7,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/providers/coreml/builders/coreml_spec.h"
 #include "core/providers/coreml/model/model.h"
-#include "core/providers/coreml/coreml_options.h"
+#include "core/providers/coreml/builders/impl/builder_utils.h"
 
 #if defined(COREML_ENABLE_MLPROGRAM)
 // coremltools classes
@@ -83,7 +83,10 @@ class ModelBuilder {
   // Create Operation, set type and the unique name attribute.
   std::unique_ptr<COREML_SPEC::MILSpec::Operation> CreateOperation(const Node& node, std::string_view op_type,
                                                                    std::string_view suffix = "");
-
+  std::unique_ptr<COREML_SPEC::MILSpec::Operation> CreateOperation(const std::string& node_name,
+                                                                   std::string_view op_type,
+                                                                   std::string_view suffix = "");
+  void InsertCastNode(const std::string& input_name, bool is_graph_input);
   //
   // Helpers for adding attributes from ONNX nodes as inputs to an ML Program Operation
   //
@@ -173,6 +176,7 @@ class ModelBuilder {
   const std::string& GetUniqueName(const Node& node, std::string_view suffix);
 
   const logging::Logger& Logger() const { return logger_; }
+  OperationIOBuilder& IOBuilder() { return io_builder_; }
 
  private:
 #if defined(COREML_ENABLE_MLPROGRAM)
@@ -220,6 +224,7 @@ class ModelBuilder {
   CoreMLOptions coreml_options_;
   const bool create_ml_program_;         // ML Program (CoreML5, iOS 15+, macOS 12+) or NeuralNetwork (old)
   const std::string model_output_path_;  // create_ml_program_ ? dir for mlpackage : filename for mlmodel
+  OperationIOBuilder io_builder_;
 
   std::vector<std::string> onnx_input_names_;
   std::vector<std::string> onnx_output_names_;

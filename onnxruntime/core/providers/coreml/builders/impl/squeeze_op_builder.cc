@@ -68,10 +68,10 @@ void HandleX86ArchUnsqueezeScalarInput(ModelBuilder& model_builder,
   std::vector<int64_t> input_shape;
   GetShape(*input_defs[0], input_shape, logger);
   auto op = model_builder.CreateOperation(node, "reshape");
-  AddOperationInput(*op, "x", input_defs[0]->Name());
+  model_builder.IOBuilder().AddOperationInput(*op, "x", input_defs[0]->Name());
   TensorShapeVector output_shape = UnsqueezeBase::ComputeOutputShape(TensorShape(input_shape), axes);
-  AddOperationInput(*op, "shape", model_builder.AddConstant(op->type(), "shape", AsSpan(output_shape)));
-  AddOperationOutput(*op, *node.OutputDefs()[0]);
+  model_builder.IOBuilder().AddOperationInput(*op, "shape", model_builder.AddConstant(op->type(), "shape", AsSpan(output_shape)));
+  model_builder.IOBuilder().AddOperationOutput(*op, *node.OutputDefs()[0]);
   model_builder.AddOperation(std::move(op));
 }
 #endif
@@ -97,13 +97,13 @@ Status SqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 #endif
     std::string_view coreml_op_type = node.OpType() == "Squeeze" ? "squeeze" : "expand_dims";
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, coreml_op_type);
-    AddOperationInput(*op, "x", input_defs[0]->Name());
+    model_builder.IOBuilder().AddOperationInput(*op, "x", input_defs[0]->Name());
 
     if (!axes.empty()) {
       // coreml supports negative axes
-      AddOperationInput(*op, "axes", model_builder.AddConstant(op->type(), "axes", AsSpan(axes)));
+      model_builder.IOBuilder().AddOperationInput(*op, "axes", model_builder.AddConstant(op->type(), "axes", AsSpan(axes)));
     }
-    AddOperationOutput(*op, *node.OutputDefs()[0]);
+    model_builder.IOBuilder().AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
   } else  // NOLINT
 #endif

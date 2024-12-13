@@ -44,18 +44,18 @@ Status UnaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     }
 
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, coreml_op_type);
-    AddOperationInput(*op, "x", input_defs[0]->Name());
+    model_builder.IOBuilder().AddOperationInput(*op, "x", input_defs[0]->Name());
     if (op_type == "Reciprocal") {
       float epsilon = 1e-4f;  // epsilon: const T (Optional, default=1e-4)
       auto dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
       if (dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-        AddOperationInput(*op, "epsilon", model_builder.AddScalarConstant(op->type(), "epsilon", epsilon));
+        model_builder.IOBuilder().AddOperationInput(*op, "epsilon", model_builder.AddScalarConstant(op->type(), "epsilon", epsilon));
       } else if (dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-        AddOperationInput(*op, "epsilon", model_builder.AddScalarConstant(op->type(), "epsilon", MLFloat16(epsilon)));
+        model_builder.IOBuilder().AddOperationInput(*op, "epsilon", model_builder.AddScalarConstant(op->type(), "epsilon", MLFloat16(epsilon)));
       }
     }
 
-    AddOperationOutput(*op, *node.OutputDefs()[0]);
+    model_builder.IOBuilder().AddOperationOutput(*op, *node.OutputDefs()[0]);
 
     model_builder.AddOperation(std::move(op));
   } else  // NOLINT

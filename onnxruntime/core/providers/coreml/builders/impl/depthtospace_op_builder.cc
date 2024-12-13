@@ -44,9 +44,9 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.tensor_transformation.depth_to_space
       // Validated with depth_to_space.py.
       auto op = model_builder.CreateOperation(node, "depth_to_space");
-      AddOperationInput(*op, "x", input_name);
-      AddOperationInput(*op, "block_size", model_builder.AddScalarConstant(op->type(), "blocksize", blocksize));
-      AddOperationOutput(*op, *output_defs[0]);
+      model_builder.IOBuilder().AddOperationInput(*op, "x", input_name);
+      model_builder.IOBuilder().AddOperationInput(*op, "block_size", model_builder.AddScalarConstant(op->type(), "blocksize", blocksize));
+      model_builder.IOBuilder().AddOperationOutput(*op, *output_defs[0]);
       model_builder.AddOperation(std::move(op));
     } else {
       // CRD is manual. there may be a perf cost from the Reshape's (typically that happens on CPU) but if the input
@@ -75,19 +75,19 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       auto reshape1 = model_builder.CreateOperation(node, "reshape", "pre");
       std::vector<int64_t> shape1 = {input_shape[0] * input_shape[1] / (blocksize * blocksize),
                                      blocksize, blocksize, input_shape[2], input_shape[3]};
-      AddOperationInput(*reshape1, "x", input_name);
-      AddOperationInput(*reshape1, "shape", model_builder.AddConstant(reshape1->type(), "shape", shape1));
+      model_builder.IOBuilder().AddOperationInput(*reshape1, "x", input_name);
+      model_builder.IOBuilder().AddOperationInput(*reshape1, "shape", model_builder.AddConstant(reshape1->type(), "shape", shape1));
       const auto& reshape1_output = model_builder.GetUniqueName(node, "reshape1");
-      AddIntermediateOperationOutput(*reshape1, reshape1_output, elem_type, shape1);
+      model_builder.IOBuilder().AddIntermediateOperationOutput(*reshape1, reshape1_output, elem_type, shape1);
 
       // transpose to [0, 3, 1, 4, 2]
       auto transpose = model_builder.CreateOperation(node, "transpose");
       std::vector<int64_t> perm = {0, 3, 1, 4, 2};
       std::vector<int64_t> shape2 = {shape1[0], shape1[3], shape1[1], shape1[4], shape1[2]};
-      AddOperationInput(*transpose, "x", reshape1_output);
-      AddOperationInput(*transpose, "perm", model_builder.AddConstant(transpose->type(), "perm", perm));
+      model_builder.IOBuilder().AddOperationInput(*transpose, "x", reshape1_output);
+      model_builder.IOBuilder().AddOperationInput(*transpose, "perm", model_builder.AddConstant(transpose->type(), "perm", perm));
       const auto& transpose_output = model_builder.GetUniqueName(node, "transpose");
-      AddIntermediateOperationOutput(*transpose, transpose_output, elem_type, shape2);
+      model_builder.IOBuilder().AddIntermediateOperationOutput(*transpose, transpose_output, elem_type, shape2);
 
       // reshape to [b, c // (blocksize ** 2), h * blocksize, w * blocksize]
       auto reshape2 = model_builder.CreateOperation(node, "reshape", "post");
@@ -95,10 +95,10 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                      input_shape[1] / (blocksize * blocksize),
                                      input_shape[2] * blocksize,
                                      input_shape[3] * blocksize};
-      AddOperationInput(*reshape2, "x", transpose_output);
-      AddOperationInput(*reshape2, "shape", model_builder.AddConstant(reshape2->type(), "shape", shape3));
+      model_builder.IOBuilder().AddOperationInput(*reshape2, "x", transpose_output);
+      model_builder.IOBuilder().AddOperationInput(*reshape2, "shape", model_builder.AddConstant(reshape2->type(), "shape", shape3));
 
-      AddOperationOutput(*reshape2, *output_defs[0]);
+      model_builder.IOBuilder().AddOperationOutput(*reshape2, *output_defs[0]);
 
       model_builder.AddOperation(std::move(reshape1));
       model_builder.AddOperation(std::move(transpose));

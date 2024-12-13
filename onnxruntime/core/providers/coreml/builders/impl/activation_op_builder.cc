@@ -125,7 +125,7 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     }
 
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, coreml_op_type);
-    AddOperationInput(*op, "x", node.InputDefs()[0]->Name());
+    model_builder.IOBuilder().AddOperationInput(*op, "x", node.InputDefs()[0]->Name());
 
     if (add_alpha) {
       auto input_dtype = node.InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
@@ -134,20 +134,20 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
         if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
           std::vector<float> alpha_values;
           HandlePReluWeight(model_builder, node, logger, alpha_values);
-          AddOperationInput(*op, "alpha", model_builder.AddConstant(op->type(), "alpha", alpha_values));
+          model_builder.IOBuilder().AddOperationInput(*op, "alpha", model_builder.AddConstant(op->type(), "alpha", alpha_values));
         } else {
           std::vector<MLFloat16> alpha_values;
           HandlePReluWeight(model_builder, node, logger, alpha_values);
-          AddOperationInput(*op, "alpha", model_builder.AddConstant(op->type(), "alpha", alpha_values));
+          model_builder.IOBuilder().AddOperationInput(*op, "alpha", model_builder.AddConstant(op->type(), "alpha", alpha_values));
         }
       } else {
         NodeAttrHelper helper(node);
         const auto alpha = helper.Get("alpha", 0.01f);
 
         if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
-          AddOperationInput(*op, "alpha", model_builder.AddScalarConstant(op->type(), "alpha", alpha));
+          model_builder.IOBuilder().AddOperationInput(*op, "alpha", model_builder.AddScalarConstant(op->type(), "alpha", alpha));
         } else {
-          AddOperationInput(*op, "alpha", model_builder.AddScalarConstant(op->type(), "alpha", MLFloat16(alpha)));
+          model_builder.IOBuilder().AddOperationInput(*op, "alpha", model_builder.AddScalarConstant(op->type(), "alpha", MLFloat16(alpha)));
         }
       }
     }
@@ -159,10 +159,10 @@ Status ActivationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       } else if (approximate == "none") {
         approximate = "EXACT";
       }
-      AddOperationInput(*op, "mode", model_builder.AddScalarConstant(op->type(), "mode", std::string(approximate)));
+      model_builder.IOBuilder().AddOperationInput(*op, "mode", model_builder.AddScalarConstant(op->type(), "mode", std::string(approximate)));
     }
 
-    AddOperationOutput(*op, *node.OutputDefs()[0]);
+    model_builder.IOBuilder().AddOperationOutput(*op, *node.OutputDefs()[0]);
 
     model_builder.AddOperation(std::move(op));
 

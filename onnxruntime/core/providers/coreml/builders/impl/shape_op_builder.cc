@@ -44,23 +44,23 @@ Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
     int32_t output_datatype = ONNX_NAMESPACE::TensorProto_DataType_INT32;
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, "shape");
-    AddOperationInput(*op, "x", input_defs[0]->Name());
+    model_builder.IOBuilder().AddOperationInput(*op, "x", input_defs[0]->Name());
     if (size != -1 || start != 0) {
       std::string_view layer_input_name_x = model_builder.GetUniqueName(node, "slice_by_size");
       std::vector<int64_t> x0_shape{num_dims};
-      AddIntermediateOperationOutput(*op, layer_input_name_x, output_datatype, x0_shape);
+      model_builder.IOBuilder().AddIntermediateOperationOutput(*op, layer_input_name_x, output_datatype, x0_shape);
       model_builder.AddOperation(std::move(op));
 
       auto slice_op = model_builder.CreateOperation(node, "slice_by_size");
-      AddOperationInput(*slice_op, "x", layer_input_name_x);
+      model_builder.IOBuilder().AddOperationInput(*slice_op, "x", layer_input_name_x);
       std::vector<int64_t> starts = {start};
       std::vector<int64_t> sizes = {size};
-      AddOperationInput(*slice_op, "begin", model_builder.AddConstant(slice_op->type(), "begin", starts));
-      AddOperationInput(*slice_op, "size", model_builder.AddConstant(slice_op->type(), "size", sizes));
-      AddOperationOutput(*slice_op, *node.OutputDefs()[0], output_datatype);
+      model_builder.IOBuilder().AddOperationInput(*slice_op, "begin", model_builder.AddConstant(slice_op->type(), "begin", starts));
+      model_builder.IOBuilder().AddOperationInput(*slice_op, "size", model_builder.AddConstant(slice_op->type(), "size", sizes));
+      model_builder.IOBuilder().AddOperationOutput(*slice_op, *node.OutputDefs()[0], output_datatype);
       model_builder.AddOperation(std::move(slice_op));
     } else {
-      AddOperationOutput(*op, *node.OutputDefs()[0], output_datatype);
+      model_builder.IOBuilder().AddOperationOutput(*op, *node.OutputDefs()[0], output_datatype);
       model_builder.AddOperation(std::move(op));
     }
   } else  // NOLINT

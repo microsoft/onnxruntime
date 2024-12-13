@@ -228,35 +228,35 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     }
 
     std::unique_ptr<Operation> op = model_builder.CreateOperation(node, coreml_op_type);
-    AddOperationInput(*op, "x", input_defs[0]->Name());
+    model_builder.IOBuilder().AddOperationInput(*op, "x", input_defs[0]->Name());
 
     std::string coord_trans_mode = helper.Get("coordinate_transformation_mode", "half_pixel");
 
     if (using_scales) {
       float scale_height = output_scales[num_scales - 2];
       float scale_width = output_scales[num_scales - 1];
-      AddOperationInput(*op, "scale_factor_height",
-                        model_builder.AddScalarConstant(coreml_op_type, "scale_factor_height", scale_height));
-      AddOperationInput(*op, "scale_factor_width",
-                        model_builder.AddScalarConstant(coreml_op_type, "scale_factor_width", scale_width));
+      model_builder.IOBuilder().AddOperationInput(*op, "scale_factor_height",
+                                                  model_builder.AddScalarConstant(coreml_op_type, "scale_factor_height", scale_height));
+      model_builder.IOBuilder().AddOperationInput(*op, "scale_factor_width",
+                                                  model_builder.AddScalarConstant(coreml_op_type, "scale_factor_width", scale_width));
 
       if (is_linear) {
         // we only allow these coord modes in the 'is supported' check,
         //   - half_pixel or pytorch_half_pixel with output size > 1 -> align_corners = false
         //   - align_corners -> align_corners = true
         bool align_corners = coord_trans_mode == "align_corners";
-        AddOperationInput(*op, "align_corners",
-                          model_builder.AddScalarConstant(coreml_op_type, "align_corners", align_corners));
+        model_builder.IOBuilder().AddOperationInput(*op, "align_corners",
+                                                    model_builder.AddScalarConstant(coreml_op_type, "align_corners", align_corners));
       }
     } else {
       assert(using_sizes);
       int64_t target_height = output_sizes[num_sizes - 2];
       int64_t target_width = output_sizes[num_sizes - 1];
 
-      AddOperationInput(*op, "target_size_height",
-                        model_builder.AddScalarConstant(coreml_op_type, "target_size_height", target_height));
-      AddOperationInput(*op, "target_size_width",
-                        model_builder.AddScalarConstant(coreml_op_type, "target_size_width", target_width));
+      model_builder.IOBuilder().AddOperationInput(*op, "target_size_height",
+                                                  model_builder.AddScalarConstant(coreml_op_type, "target_size_height", target_height));
+      model_builder.IOBuilder().AddOperationInput(*op, "target_size_width",
+                                                  model_builder.AddScalarConstant(coreml_op_type, "target_size_width", target_width));
 
       if (is_linear) {
         // we only allow these coord modes in the 'is supported' check,
@@ -272,12 +272,12 @@ Status ResizeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
           sampling_mode_value = "UNALIGN_CORNERS";
         }
 
-        AddOperationInput(*op, "sampling_mode",
-                          model_builder.AddScalarConstant(coreml_op_type, "sampling_mode", sampling_mode_value));
+        model_builder.IOBuilder().AddOperationInput(*op, "sampling_mode",
+                                                    model_builder.AddScalarConstant(coreml_op_type, "sampling_mode", sampling_mode_value));
       }
     }
 
-    AddOperationOutput(*op, *output_defs[0]);
+    model_builder.IOBuilder().AddOperationOutput(*op, *output_defs[0]);
     model_builder.AddOperation(std::move(op));
   } else  // NOLINT
 #endif
