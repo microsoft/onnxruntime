@@ -123,7 +123,7 @@ if(onnxruntime_USE_SNPE)
 endif()
 
 include(onnxruntime_providers_cpu.cmake)
-if (onnxruntime_USE_CUDA)
+if (onnxruntime_USE_CUDA AND (NOT onnxruntime_ENABLE_TRT_INTERFACE))
   include(onnxruntime_providers_cuda.cmake)
 endif()
 
@@ -131,7 +131,7 @@ if (onnxruntime_USE_DNNL)
   include(onnxruntime_providers_dnnl.cmake)
 endif()
 
-if (onnxruntime_USE_TENSORRT)
+if (onnxruntime_USE_TENSORRT AND (NOT onnxruntime_ENABLE_TRT_INTERFACE))
   include(onnxruntime_providers_tensorrt.cmake)
 endif()
 
