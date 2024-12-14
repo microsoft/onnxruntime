@@ -26,6 +26,7 @@ struct WebGpuExecutionProviderInfo {
   WebGpuExecutionProviderInfo(DataLayout data_layout, bool enable_graph_capture)
       : data_layout{data_layout},
         enable_graph_capture{enable_graph_capture},
+        backend_type{},
         storage_buffer_cache_mode{},
         uniform_buffer_cache_mode{},
         query_resolve_buffer_cache_mode{},
@@ -36,6 +37,7 @@ struct WebGpuExecutionProviderInfo {
 
   DataLayout data_layout;
   bool enable_graph_capture;
+  int backend_type;
   webgpu::BufferCacheMode storage_buffer_cache_mode;
   webgpu::BufferCacheMode uniform_buffer_cache_mode;
   webgpu::BufferCacheMode query_resolve_buffer_cache_mode;
