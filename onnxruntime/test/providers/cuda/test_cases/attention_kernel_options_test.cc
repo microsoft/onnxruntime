@@ -17,7 +17,7 @@ using onnxruntime::contrib::attention::AttentionBackend;
 namespace onnxruntime {
 namespace test {
 
-TEST(AttentionKernelOptionsTest, NonZeroValue) {
+TEST(CudaEpAttentionKernelOptionsTest, NonZeroValue) {
   {
     AttentionKernelOptions options;
     int value = static_cast<int>(AttentionBackend::FLASH_ATTENTION) | static_cast<int>(AttentionBackend::EFFICIENT_ATTENTION);
@@ -156,7 +156,7 @@ TEST(AttentionKernelOptionsTest, NonZeroValue) {
 }
 
 // Test all environment variables take effect when option value is 0.
-TEST(AttentionKernelOptionsTest, DefaultOptionWithEnvVar) {
+TEST(CudaEpAttentionKernelOptionsTest, DefaultOptionWithEnvVar) {
   constexpr int value = 0;
   ScopedEnvironmentVariables scoped_env_vars{
       EnvVarMap{
@@ -186,7 +186,7 @@ TEST(AttentionKernelOptionsTest, DefaultOptionWithEnvVar) {
 }
 
 // Test default min sequence lengths when environment variables are not set.
-TEST(AttentionKernelOptionsTest, DefaultMinSeqLens) {
+TEST(CudaEpAttentionKernelOptionsTest, DefaultMinSeqLens) {
   constexpr int value = 0;
   ScopedEnvironmentVariables scoped_env_vars{
       EnvVarMap{

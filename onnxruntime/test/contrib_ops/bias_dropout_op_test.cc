@@ -181,6 +181,9 @@ void RunBiasDropoutTest(const bool use_mask, const std::vector<int64_t>& input_s
   t.SetCustomOutputVerifier(output_verifier);
   std::vector<std::unique_ptr<IExecutionProvider>> t_eps;
 #ifdef USE_CUDA
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   t_eps.emplace_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   t_eps.emplace_back(DefaultRocmExecutionProvider());

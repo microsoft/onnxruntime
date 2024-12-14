@@ -291,7 +291,8 @@ SelectorManager::SelectorManager() {
   InitializeSelectorsMap();
 }
 
-std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& graph_viewer) const {
+std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& graph_viewer,
+                                                         const logging::Logger& logger) const {
   std::vector<NodeGroup> qdq_selections;
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     const auto* node = graph_viewer.GetNode(index);
@@ -313,7 +314,7 @@ std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& grap
     const auto& versions = op_versions_and_selector.op_versions_map.find(node->OpType())->second;
     if (!versions.empty()) {
       if (std::find(versions.cbegin(), versions.cend(), node->SinceVersion()) == versions.cend()) {
-        LOGS_DEFAULT(VERBOSE) << "Op version is not supported for" << node->OpType();
+        LOGS(logger, VERBOSE) << "Op version is not supported for" << node->OpType();
         continue;
       }
     }
@@ -329,7 +330,7 @@ std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& grap
 }
 
 std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
-GetAllNodeUnits(const GraphViewer& graph_viewer) {
+GetAllNodeUnits(const GraphViewer& graph_viewer, const logging::Logger& logger) {
   std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
   std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
 
@@ -342,7 +343,7 @@ GetAllNodeUnits(const GraphViewer& graph_viewer) {
 
   // Get QDQ NodeUnits first
   QDQ::SelectorManager selector_mgr;
-  const auto qdq_selections = selector_mgr.GetQDQSelections(graph_viewer);
+  const auto qdq_selections = selector_mgr.GetQDQSelections(graph_viewer, logger);
 
   for (const auto& qdq_selection : qdq_selections) {
     auto qdq_unit = std::make_unique<NodeUnit>(graph_viewer, qdq_selection);

@@ -414,6 +414,28 @@ TEST(MathOpTest, Add_Broadcast_3x2_3x1) {
 #endif
 }
 
+TEST(MathOpTest, Add_Broadcast_2x2x2_1x2x2) {
+  OpTester test("Add");
+
+  test.AddInput<float>("A", {2, 2, 2},
+                       {101.0f, 102.0f,
+                        103.0f, 104.0f,
+
+                        201.0f, 202.0f,
+                        203.0f, 204.0f});
+  test.AddInput<float>("B", {1, 2, 2},
+                       {010.0f, 020.0f,
+                        030.0f, 040.0f});
+  test.AddOutput<float>("C", {2, 2, 2},
+                        {111.0f, 122.0f,
+                         133.0f, 144.0f,
+
+                         211.0f, 222.0f,
+                         233.0f, 244.0f});
+
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
 TEST(MathOpTest, Add_Broadcast_2x1x4_1x3x1) {
   OpTester test("Add");
 
@@ -2249,6 +2271,21 @@ TEST(MathOpTest, Max_12_MLFloat16_Scalar1) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
 }
 
+TEST(MathOpTest, Max_12_MLFloat16_Scalar2) {
+  OpTester test("Max", 12);
+  test.AddInput<MLFloat16>("data_0", {1},
+                           MakeMLFloat16({-1.f}));
+  test.AddInput<MLFloat16>("data_1", {},
+                           MakeMLFloat16({2.f}));
+  test.AddInput<MLFloat16>("data_2", {1, 3},
+                           MakeMLFloat16({-2.f, -3.f, -4.f}));
+  test.AddInput<MLFloat16>("data_3", {1, 1, 3},
+                           MakeMLFloat16({-2.f, -3.f, -4.f}));
+  test.AddOutput<MLFloat16>("max", {1, 1, 3},
+                            MakeMLFloat16({2.f, 2.f, 2.f}));
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: Input batch size is inconsistent
+}
+
 TEST(MathOpTest, Max_13_Float16_MatrixVector) {
   TestFloat16MinMax("Max",
                     {4, 3},
@@ -3181,7 +3218,14 @@ TEST(MathOpTest, Tan) {
 
 TEST(MathOpTest, Asin) {
   OpTester test("Asin");
-  float abs_error = DefaultDmlExecutionProvider().get() != nullptr ? 0.0001f : -1.0f;
+  float abs_error =
+#ifdef _WIN32
+      // Set abs_error to 0.0001f for built-in function asin() in HLSL based EPs (DML and WebGPU)
+      DefaultDmlExecutionProvider().get() != nullptr || DefaultWebGpuExecutionProvider().get() != nullptr
+          ? 0.0001f
+          :
+#endif
+          -1.0f;
   TrigFloatTest<::asinf>(test, {-1.0f, -0.5f, 0.0f, 0.5f, 1.0f}, abs_error);
 }
 

@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.11)
 
 project (onnxruntime-node)
 
-set(CMAKE_CXX_STANDARD 14)
+set(CMAKE_CXX_STANDARD 17)
 
 add_compile_definitions(NAPI_VERSION=${napi_build_version})
 add_compile_definitions(ORT_API_MANUAL_INIT)
@@ -34,6 +34,7 @@ include_directories(${CMAKE_SOURCE_DIR}/node_modules/node-addon-api)
 
 # optional providers
 option(USE_DML "Build with DirectML support" OFF)
+option(USE_WEBGPU "Build with WebGPU support" OFF)
 option(USE_CUDA "Build with CUDA support" OFF)
 option(USE_TENSORRT "Build with TensorRT support" OFF)
 option(USE_COREML "Build with CoreML support" OFF)
@@ -41,6 +42,9 @@ option(USE_QNN "Build with QNN support" OFF)
 
 if(USE_DML)
   add_compile_definitions(USE_DML=1)
+endif()
+if(USE_WEBGPU)
+  add_compile_definitions(USE_WEBGPU=1)
 endif()
 if(USE_CUDA)
   add_compile_definitions(USE_CUDA=1)

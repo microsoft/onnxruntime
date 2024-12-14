@@ -49,6 +49,7 @@ jobs:
       Repository: onnxruntimecpubuild
 
   - task: CmdLine@2
+    displayName: 'Build and test'
     inputs:
       script: |
         mkdir -p $HOME/.onnx
@@ -61,7 +62,7 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
-            /opt/python/cp38-cp38/bin/python3.8 /onnxruntime_src/tools/ci_build/build.py \
+            /opt/python/cp310-cp310/bin/python3.10 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build \
               --config Debug Release \
               --skip_submodule_sync \

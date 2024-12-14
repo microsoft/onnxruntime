@@ -88,11 +88,15 @@ Status ModelBuilder::RegisterInitializers() {
   for (const auto& pair : GetInitializerTensors()) {
     const auto& tensor = *pair.second;
     const auto& name = tensor.name();
-    // Optional tensors can be indicated by an empty name, just ignore it.
-    if (name.empty() || Contains(skipped_initializers_, name))
+    const auto& shape = tensor.dims();
+
+    // Ignore the following tensors:
+    // 1. Empty tensors: optional tensors can be indicated by an empty name.
+    // 2. Tensors in skipped_initializers_: These are tensors that are not used as WebNN Constants.
+    //    Note: Scalar tensors are excluded because ONNX Runtime will optimize same scalar initializers into one.
+    if (name.empty() || (Contains(skipped_initializers_, name) && !shape.empty()))
       continue;
 
-    const auto& shape = tensor.dims();
     std::vector<int32_t> dims;
     // When the shape is empty, it is scalar initializer that dims = {};
     std::transform(shape.cbegin(), shape.cend(),
@@ -378,62 +382,6 @@ Status ModelBuilder::Compile(std::unique_ptr<Model>& model) {
 
 void ModelBuilder::AddOperand(const std::string& name, const emscripten::val& operand) {
   wnn_operands_.insert(std::make_pair(name, operand));
-}
-
-// Get the zero scalar constant.
-// Workaround for builer.constant(value, type) method since it has not been implemented now.
-// https://webmachinelearning.github.io/webnn/#api-mlgraphbuilder-constant-value-type
-// BTW, the spec is discussing if the builer.constant(value, type) should be dropped at
-// https://github.com/webmachinelearning/webnn/issues/475. Fix me according to the spec decision.
-const emscripten::val& ModelBuilder::GetZeroConstant(const int32_t& data_type) {
-  std::string name = "webnn_zero_constant_" + std::to_string(data_type);
-  // If the operand does not exist, create it.
-  if (wnn_operands_.find(name) == wnn_operands_.end()) {
-    emscripten::val desc = emscripten::val::object();
-    emscripten::val dims = emscripten::val::array();
-    desc.set("dimensions", dims);
-    desc.set("shape", dims);
-    emscripten::val zero_buffer = emscripten::val::undefined();
-    if (!SetWebnnDataType(desc, data_type)) {
-      ORT_THROW("Unsupported data type: " + std::to_string(data_type));
-    }
-
-    switch (data_type) {
-      case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
-      case ONNX_NAMESPACE::TensorProto_DataType_INT4:
-      case ONNX_NAMESPACE::TensorProto_DataType_UINT4:
-      case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
-        zero_buffer = emscripten::val::global("Uint8Array").new_(1);
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType_INT8:
-        zero_buffer = emscripten::val::global("Int8Array").new_(1);
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
-        zero_buffer = emscripten::val::global("Uint16Array").new_(1);
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
-        zero_buffer = emscripten::val::global("Float32Array").new_(1);
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-        zero_buffer = emscripten::val::global("Int32Array").new_(1);
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-        zero_buffer = emscripten::val::global("BigInt64Array").new_(1);
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-        zero_buffer = emscripten::val::global("Uint32Array").new_(1);
-        break;
-      case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-        zero_buffer = emscripten::val::global("BigUint64Array").new_(1);
-        break;
-      default:
-        break;
-    }
-
-    emscripten::val zero_constant = wnn_builder_.call<emscripten::val>("constant", desc, zero_buffer);
-    wnn_operands_.insert(std::make_pair(name, zero_constant));
-  }
-  return wnn_operands_.at(name);
 }
 
 void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {

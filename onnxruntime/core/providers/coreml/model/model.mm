@@ -25,6 +25,7 @@
 #include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/coreml/model/objc_str_utils.h"
 #include "core/providers/coreml/shape_utils.h"
+#include "core/providers/coreml/coreml_options.h"
 
 // force the linker to create a dependency on the CoreML framework so that in MAUI usage we don't need
 // to manually do this
@@ -300,6 +301,53 @@ Status GetMLMultiArrayCopyInfo(const MLMultiArray* _Nonnull array,
   return Status::OK();
 }
 
+// since __clang_major__ >= 15, MLComputePlan is introduced in <CoreML/CoreML.h>
+// We are actually ensure the MacOS/IOS version and Xcode version is greater than `macOS 14.4, iOS 17.4`.
+// The macro API_AVAILABLE should also be fine.
+// Otherwise, the compiler will complain `MLComputePlan` is not defined.
+// we define __clang_analyzer__ here is for bypass static analysis
+void ProfileComputePlan(NSURL* compileUrl, MLModelConfiguration* config) {
+#if defined(__APPLE__) && defined(__clang__) && __clang_major__ >= 15 && !defined(__clang_analyzer__)
+  if (@available(macOS 14.4, iOS 17.4, *)) {
+    [MLComputePlan loadContentsOfURL:compileUrl
+                       configuration:config
+                   completionHandler:^(MLComputePlan* _Nullable computePlan, NSError* _Nullable error) {
+                     if (!computePlan) {
+                       NSLog(@"Error loading compute plan: %@", error);
+                       // Handle error.
+                       return;
+                     }
+                     MLModelStructureProgram* program = computePlan.modelStructure.program;
+                     if (!program) {
+                       NSLog(@"Error loading program from compute plan., this is not a mlprogram model");
+                       return;
+                     }
+
+                     MLModelStructureProgramFunction* mainFunction = program.functions[@"main"];
+                     if (!mainFunction) {
+                       NSLog(@"Error loading main function from program");
+                       return;
+                     }
+
+                     NSArray<MLModelStructureProgramOperation*>* operations = mainFunction.block.operations;
+                     NSLog(@"Number of operations, 'const' node is included. : %lu", operations.count);
+                     for (MLModelStructureProgramOperation* operation in operations) {
+                       // Get the compute device usage for the operation.
+                       MLComputePlanDeviceUsage* computeDeviceUsage = [computePlan computeDeviceUsageForMLProgramOperation:operation];
+                       id<MLComputeDeviceProtocol> preferredDevice = computeDeviceUsage.preferredComputeDevice;
+                       // Get the estimated cost of executing the operation.
+                       MLComputePlanCost* estimatedCost = [computePlan estimatedCostOfMLProgramOperation:operation];
+                       if (![operation.operatorName isEqualToString:@"const"]) {
+                         NSLog(@"Operation: %@, Device Usage: %@, Estimated Cost: %f", operation.operatorName, preferredDevice, estimatedCost.weight);
+                       }
+                     }
+                   }];
+  } else {
+    NSLog(@"iOS 17.4+/macOS 14.4+ or later is required to use the compute plan API");
+  }
+#endif
+}
+
 // Internal Execution class
 // This class is part of the model class and handles the calls into CoreML. Specifically, it performs
 // 1. Compile the model by given path for execution
@@ -307,7 +355,7 @@ Status GetMLMultiArrayCopyInfo(const MLMultiArray* _Nonnull array,
 // 3. The compiled model will be removed in dealloc or removed using cleanup function
 class Execution {
  public:
-  Execution(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags);
+  Execution(const std::string& path, const logging::Logger& logger, const CoreMLOptions& coreml_options);
   ~Execution();
 
   Status LoadModel();
@@ -320,13 +368,13 @@ class Execution {
   NSString* coreml_model_path_{nil};
   NSString* compiled_model_path_{nil};
   const logging::Logger& logger_;
-  uint32_t coreml_flags_{0};
+  CoreMLOptions coreml_options_;
   MLModel* model_{nil};
 };
 
-Execution::Execution(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags)
+Execution::Execution(const std::string& path, const logging::Logger& logger, const CoreMLOptions& coreml_options)
     : logger_(logger),
-      coreml_flags_(coreml_flags) {
+      coreml_options_(coreml_options) {
   @autoreleasepool {
     coreml_model_path_ = util::Utf8StringToNSString(path.c_str());
   }
@@ -395,13 +443,39 @@ Status Execution::LoadModel() {
       compiled_model_path_ = [compileUrl path];
 
       MLModelConfiguration* config = [[MLModelConfiguration alloc] init];
-
-      if (coreml_flags_ & COREML_FLAG_USE_CPU_ONLY) {
+      uint32_t coreml_compute_unit = coreml_options_.ComputeUnits();
+      if (coreml_compute_unit & COREML_FLAG_USE_CPU_ONLY) {
         config.computeUnits = MLComputeUnitsCPUOnly;
-      } else if (coreml_flags_ & COREML_FLAG_USE_CPU_AND_GPU) {
+      } else if (coreml_compute_unit & COREML_FLAG_USE_CPU_AND_GPU) {
         config.computeUnits = MLComputeUnitsCPUAndGPU;
+      } else if (coreml_compute_unit & COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE) {
+        config.computeUnits = MLComputeUnitsCPUAndNeuralEngine;  // Apple Neural Engine
       } else {
         config.computeUnits = MLComputeUnitsAll;
+      }
+
+      if (coreml_options_.AllowLowPrecisionAccumulationOnGPU()) {
+        config.allowLowPrecisionAccumulationOnGPU = YES;
+      }
+
+// Set the specialization strategy to FastPrediction  for macOS 10.15+
+// since __clang_major__ >= 15, optimizationHints is introduced in <CoreML/CoreML.h>
+// Same as above comments for why we are checking __clang_major__.
+// we define __clang_analyzer__ here is for bypass static analysis
+#if defined(__APPLE__) && defined(__clang__) && __clang_major__ >= 15 && !defined(__clang_analyzer__)
+      if (HAS_COREML8_OR_LATER) {
+        MLOptimizationHints* optimizationHints = [[MLOptimizationHints alloc] init];
+        if (coreml_options_.UseStrategy("FastPrediction")) {
+          optimizationHints.specializationStrategy = MLSpecializationStrategyFastPrediction;
+          config.optimizationHints = optimizationHints;
+        } else if (coreml_options_.UseStrategy("Default")) {
+          optimizationHints.specializationStrategy = MLSpecializationStrategyDefault;
+          config.optimizationHints = optimizationHints;
+        }
+      }
+#endif
+      if (coreml_options_.ProfileComputePlan()) {
+        ProfileComputePlan(compileUrl, config);
       }
 
       model_ = [MLModel modelWithContentsOfURL:compileUrl configuration:config error:&error];
@@ -522,8 +596,8 @@ Model::Model(const std::string& path,
              std::unordered_set<std::string>&& scalar_outputs,
              std::unordered_set<std::string>&& int64_outputs,
              const logging::Logger& logger,
-             uint32_t coreml_flags)
-    : execution_(std::make_unique<Execution>(path, logger, coreml_flags)),
+             const CoreMLOptions& coreml_options)
+    : execution_(std::make_unique<Execution>(path, logger, coreml_options)),
       model_input_names_(std::move(model_input_names)),
       model_output_names_(std::move(model_output_names)),
       input_output_info_(std::move(input_output_info)),

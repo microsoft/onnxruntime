@@ -68,9 +68,6 @@ stages:
   jobs:
     - job: MacOS_C_API_Package_Publish
       pool:
-        ${{ if eq(parameters.DoESRP, true)}}:
-          vmImage: 'macOS-12'
-        ${{ else }}:
           vmImage: 'macOS-13'
       steps:
       - checkout: none

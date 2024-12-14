@@ -88,7 +88,8 @@ namespace Dml
         std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
         GetCapability(
             const onnxruntime::GraphViewer& graph,
-            const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup
+            const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+            const onnxruntime::logging::Logger& logger
             ) const;
 
         uint32_t GetSupportedDeviceDataTypeMask() const;
@@ -242,8 +243,8 @@ namespace Dml
 
         bool CanCopy(const OrtDevice& srcDevice, const OrtDevice& dstDevice) const final
         {
-              return (srcDevice.Type() == OrtDevice::GPU) ||
-                     (dstDevice.Type() == OrtDevice::GPU);
+          return (srcDevice.Type() == OrtDevice::DML) ||
+                 (dstDevice.Type() == OrtDevice::DML);
         }
 
     private:

@@ -831,7 +831,8 @@ static void VerifyConstantFoldingWithDequantizeLinear(const std::unordered_map<s
 
   bool has_constant_folding = false;
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
-  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, session_options, *e.get(), {});
+  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, session_options, *e.get(), logger,
+                                                            {});
   for (auto& transformer : transformers) {
     if (transformer->Name() == "ConstantFolding") {
       ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(transformer), TransformerLevel::Level1));
@@ -1762,6 +1763,35 @@ TEST_F(GraphTransformationTests, FuseMatmulBNDirectly) {
           << "fusion should produce the same output name as the last node";
     }
   }
+}
+
+TEST_F(GraphTransformationTests, DoNotApplyFuseMatmulBNDirectly) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/fuse-matmul-bn-directly-dont-fuse.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  std::string expected_output_name;
+  GraphViewer graphViewer(graph);
+  for (auto& node_index : graphViewer.GetNodesInTopologicalOrder()) {
+    auto& node = *graph.GetNode(node_index);
+    if (node.OpType() == "BatchNormalization") {
+      expected_output_name = node.OutputDefs()[0]->Name();
+    }
+  }
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformerL1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<MatmulBNFusion>()));
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["BatchNormalization"], 1);
+  ASSERT_EQ(op_to_count["MatMul"], 1);
+  ASSERT_EQ(op_to_count["Gemm"], 0);
 }
 
 TEST_F(GraphTransformationTests, FuseMatmulBNWithOnlyReshape) {
@@ -4675,7 +4705,8 @@ TEST_F(GraphTransformationTests, BiasGeluSwitchedInputOrder) {
   // Compare results
   double per_sample_tolerance = 1e-3;
   double relative_per_sample_tolerance = 0.0;
-  auto ret = CompareOrtValue(optimized_fetches[0], unoptimized_fetches[0], per_sample_tolerance, relative_per_sample_tolerance, false);
+  auto ret = CompareOrtValue(optimized_fetches[0], unoptimized_fetches[0],
+                             per_sample_tolerance, relative_per_sample_tolerance, false);
   EXPECT_EQ(ret.first, COMPARE_RESULT::SUCCESS) << ret.second;
 }
 
@@ -4684,7 +4715,8 @@ static void VerifyGeluApproximation(bool is_enabled, SessionOptions& session_opt
       std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
 
   bool has_gelu_approximation = false;
-  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, session_options, *e.get(), {});
+  auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level2, session_options, *e.get(),
+                                                            DefaultLoggingManager().DefaultLogger(), {});
   for (auto& transformer : transformers) {
     if (transformer->Name() == "GeluApproximation") {
       has_gelu_approximation = true;
@@ -4699,7 +4731,8 @@ TEST_F(GraphTransformationTests, DoubleQDQRemover_SessionOptionConfig) {
   auto verify_session_config = [&](bool is_enabled, SessionOptions& session_option) {
     std::unique_ptr<CPUExecutionProvider> cpu_ep = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
     bool has_double_qdq_remover = false;
-    auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, session_option, *cpu_ep.get(), {});
+    auto transformers = optimizer_utils::GenerateTransformers(TransformerLevel::Level1, session_option, *cpu_ep.get(),
+                                                              DefaultLoggingManager().DefaultLogger(), {});
     for (auto& transformer : transformers) {
       if (transformer->Name() == "DoubleQDQPairsRemover") {
         has_double_qdq_remover = true;
@@ -5858,6 +5891,22 @@ TEST_F(GraphTransformationTests, MatMulIntegerToFloat16Test) {
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
   EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 1);
+}
+
+TEST_F(GraphTransformationTests, MatMulIntegerToFloatLargeTensorTest) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/matmul_integer_to_float_large_tensor.onnx";
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType(kDmlExecutionProvider);
+  }
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<MatMulIntegerToFloatFusion>(), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["com.microsoft.MatMulIntegerToFloat"], 0);
 }
 #endif  // USE_DML
 

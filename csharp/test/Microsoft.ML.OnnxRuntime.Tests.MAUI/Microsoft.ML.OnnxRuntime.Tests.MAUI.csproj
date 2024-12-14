@@ -1,306 +1,125 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
-	<!-- ORT specific high level properties -->
-	<PropertyGroup>
-		<IsWindowsBuild Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">true</IsWindowsBuild>
-		<IsAndroidBuild Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android'">true</IsAndroidBuild>
-		<IsIOSBuild Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'ios'">true</IsIOSBuild>
-		<IsMacCatalystBuild Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'maccatalyst'">true</IsMacCatalystBuild>
-		<OnnxRuntimeRoot>$(ProjectDir)..\..\..</OnnxRuntimeRoot>
-	</PropertyGroup>
+    <PropertyGroup>
+        <OnnxRuntimeRoot>$(ProjectDir)..\..\..</OnnxRuntimeRoot>
+    </PropertyGroup>
 
-	<!-- General app properties -->
-	<PropertyGroup>
-		<TargetFrameworks>net8.0-android;net8.0-ios;net8.0-maccatalyst</TargetFrameworks>
-		<TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net8.0-windows10.0.19041.0</TargetFrameworks>
+    <Import Project="../Microsoft.ML.OnnxRuntime.Tests.Common/NativeLibraryInclude.props" />
 
-		<!-- Note for MacCatalyst:
-		The default runtime is maccatalyst-x64, except in Release config, in which case the default is maccatalyst-x64;maccatalyst-arm64.
-		When specifying both architectures, use the plural <RuntimeIdentifiers> instead of the singular <RuntimeIdentifier>.
-		The Mac App Store will NOT accept apps with ONLY maccatalyst-arm64 indicated;
-		either BOTH runtimes must be indicated or ONLY macatalyst-x64. -->
-		<!-- For example: <RuntimeIdentifiers>maccatalyst-x64;maccatalyst-arm64</RuntimeIdentifiers> -->
+    <!-- General app properties -->
+    <PropertyGroup>
+        <TargetFrameworks>net8.0-android;net8.0-ios;net8.0-maccatalyst</TargetFrameworks>
+        <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net8.0-windows10.0.19041.0</TargetFrameworks>
 
-		<OutputType>Exe</OutputType>
-		<RootNamespace>Microsoft.ML.OnnxRuntime.Tests.MAUI</RootNamespace>
-		<UseMaui>true</UseMaui>
-		<SingleProject>true</SingleProject>
-		<ImplicitUsings>enable</ImplicitUsings>
-		<Nullable>enable</Nullable>
-		<AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-		<!-- some of the helper packages don't have strong named assemblies. -->
-		<NoWarn>8002</NoWarn>
+        <!-- Note for MacCatalyst:
+        The default runtime is maccatalyst-x64, except in Release config, in which case the default is maccatalyst-x64;maccatalyst-arm64.
+        When specifying both architectures, use the plural <RuntimeIdentifiers> instead of the singular <RuntimeIdentifier>.
+        The Mac App Store will NOT accept apps with ONLY maccatalyst-arm64 indicated;
+        either BOTH runtimes must be indicated or ONLY macatalyst-x64. -->
+        <!-- For example: <RuntimeIdentifiers>maccatalyst-x64;maccatalyst-arm64</RuntimeIdentifiers> -->
 
-		<!-- These are copied from the sample. TBD what we really need. -->
-		<DefineConstants Condition="'$(CI)' != 'true'">$(DefineConstants);INCLUDE_FAILING_TESTS</DefineConstants>
-		<DefineConstants Condition="'$(TestingMode)' == 'NonInteractiveVisual'">$(DefineConstants);MODE_NON_INTERACTIVE_VISUAL</DefineConstants>
-		<DefineConstants Condition="'$(TestingMode)' == 'XHarness'">$(DefineConstants);MODE_XHARNESS</DefineConstants>
+        <OutputType>Exe</OutputType>
+        <RootNamespace>Microsoft.ML.OnnxRuntime.Tests.MAUI</RootNamespace>
+        <UseMaui>true</UseMaui>
+        <SingleProject>true</SingleProject>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+        <!-- some of the helper packages don't have strong named assemblies. -->
+        <NoWarn>8002</NoWarn>
 
-		<!-- Display name -->
-		<ApplicationTitle>Microsoft.ML.OnnxRuntime.Tests.MAUI</ApplicationTitle>
+        <!-- These are copied from the sample. TBD what we really need. -->
+        <DefineConstants Condition="'$(CI)' != 'true'">$(DefineConstants);INCLUDE_FAILING_TESTS</DefineConstants>
+        <DefineConstants Condition="'$(TestingMode)' == 'NonInteractiveVisual'">$(DefineConstants);MODE_NON_INTERACTIVE_VISUAL</DefineConstants>
+        <DefineConstants Condition="'$(TestingMode)' == 'XHarness'">$(DefineConstants);MODE_XHARNESS</DefineConstants>
 
-		<!-- App Identifier. MUST be short or you get a misleading error about not being able to deploy the app -->
-		<ApplicationId>ORT.CSharp.Tests.MAUI</ApplicationId>
+        <!-- Display name -->
+        <ApplicationTitle>Microsoft.ML.OnnxRuntime.Tests.MAUI</ApplicationTitle>
 
-		<!-- Versions -->
-		<ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
-		<ApplicationVersion>1</ApplicationVersion>
+        <!-- App Identifier. MUST be short or you get a misleading error about not being able to deploy the app -->
+        <ApplicationId>ORT.CSharp.Tests.MAUI</ApplicationId>
 
-		<SupportedOSPlatformVersion Condition="'$(IsIOSBuild)' == 'true'">15.0</SupportedOSPlatformVersion>
-		<SupportedOSPlatformVersion Condition="'$(IsMacCatalystBuild)' == 'true'">13.1</SupportedOSPlatformVersion>
-		<SupportedOSPlatformVersion Condition="'$(IsAndroidBuild)' == 'true'">30.0</SupportedOSPlatformVersion>
-		<SupportedOSPlatformVersion Condition="'$(IsWindowsBuild)' == 'true'">10.0.17763.0</SupportedOSPlatformVersion>
-		<TargetPlatformMinVersion Condition="'$(IsWindowsBuild)' == 'true'">10.0.17763.0</TargetPlatformMinVersion>
+        <!-- Versions -->
+        <ApplicationDisplayVersion>1.0</ApplicationDisplayVersion>
+        <ApplicationVersion>1</ApplicationVersion>
 
-		<SignAssembly>true</SignAssembly>
-		<AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
+        <SupportedOSPlatformVersion Condition="'$(IsIOSTarget)' == 'true'">15.0</SupportedOSPlatformVersion>
+        <SupportedOSPlatformVersion Condition="'$(IsMacCatalystTarget)' == 'true'">13.1</SupportedOSPlatformVersion>
+        <SupportedOSPlatformVersion Condition="'$(IsAndroidTarget)' == 'true'">30.0</SupportedOSPlatformVersion>
+        <SupportedOSPlatformVersion Condition="'$(IsWindowsTarget)' == 'true'">10.0.17763.0</SupportedOSPlatformVersion>
+        <TargetPlatformMinVersion Condition="'$(IsWindowsTarget)' == 'true'">10.0.17763.0</TargetPlatformMinVersion>
 
-		<!-- Multiple csproj files copy the ORT dll and pdb files. -->
-		<ErrorOnDuplicatePublishOutputFiles>false</ErrorOnDuplicatePublishOutputFiles>
-	</PropertyGroup>
+        <SignAssembly>true</SignAssembly>
+        <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
+    </PropertyGroup>
 
-	<!--
-	Setup directories to find ORT native binary.
+    <ItemGroup>
+        <!-- App Icon -->
+        <MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />
 
-	You can use a released Microsoft.ML.OnnxRuntime nuget package or a recent build from
-	https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/ORT-Nightly if testing C# changes.
-	The native nuget package contains Windows, Android, macOS, mac-catalyst and iOS builds.
+        <!-- Splash Screen -->
+        <MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#512BD4" BaseSize="128,128" />
 
-	Unzip the nupkg file in the /build directory to create /build/microsoft.ml.onnxruntime.1.18.1 directory.
-	Adjust the version number as needed.
+        <!-- Images -->
+        <MauiImage Include="Resources\Images\*" />
+        <MauiImage Update="Resources\Images\dotnet_bot.png" Resize="True" BaseSize="300,185" />
 
-	If testing changes to the native library, build locally with the `<dash><dash>build_csharp` flag so that
-	OnnxRuntimeBuildDirectory is set to the build output directory.	Adjust the build path if necessary.
-	-->
-	<PropertyGroup>
-		<PrebuiltRuntimesDir>$(OnnxRuntimeRoot)\build\microsoft.ml.onnxruntime.1.18.1\runtimes</PrebuiltRuntimesDir>
-		<!--
-		set this so Microsoft.ML.OnnxRuntime.Tests.Common.csproj lets us do the include of the native library
-		as it may come from a local build or a nuget package. This saves duplicating the include logic.
-		-->
-		<SkipNativeLibInclude>true</SkipNativeLibInclude>
-	</PropertyGroup>
+        <!-- Custom Fonts -->
+        <MauiFont Include="Resources\Fonts\*" />
 
-	<PropertyGroup Condition="'$(IsWindowsBuild)' == 'true'">
-		<OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeRoot)\build\Windows</OnnxRuntimeBuildDirectory>
-		<NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)</NativeBuildOutputDir>
-		<!-- TODO: support other architectures if needed. -->
-		<PrebuiltWinDir>$(PrebuiltRuntimesDir)\win-x64\native</PrebuiltWinDir>
-	</PropertyGroup>
-	<PropertyGroup Condition="'$(IsAndroidBuild)' == 'true'">
-		<OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeRoot)\build\Android</OnnxRuntimeBuildDirectory>
-		<NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
-		<PrebuiltAAR>$(PrebuiltRuntimesDir)\android\native\onnxruntime.aar</PrebuiltAAR>
-	</PropertyGroup>
-	<PropertyGroup Condition="'$(IsIOSBuild)' == 'true'">
-		<OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeRoot)\build\iOS</OnnxRuntimeBuildDirectory>
-		<Platform Condition=" '$(Platform)' == '' ">iPhoneSimulator</Platform>
-		<PlatformLower>$(Platform.ToLower())</PlatformLower>
-		<NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)\$(Configuration)-$(PlatformLower)</NativeBuildOutputDir>
-		<PrebuiltFramework>$(PrebuiltRuntimesDir)\ios\native\onnxruntime.xcframework</PrebuiltFramework>
-	</PropertyGroup>
-	<PropertyGroup Condition="'$(IsMacCatalystBuild)' == 'true'">
-		<OnnxRuntimeBuildDirectory Condition="'$(OnnxRuntimeBuildDirectory)'==''">$(OnnxRuntimeRoot)\build\macOS</OnnxRuntimeBuildDirectory>
-		<NativeBuildOutputDir>$(OnnxRuntimeBuildDirectory)\$(Configuration)</NativeBuildOutputDir>
-		<PrebuiltFramework>$(PrebuiltRuntimesDir)\ios\native\onnxruntime.xcframework</PrebuiltFramework>
-	</PropertyGroup>
+        <!-- Raw Assets (also remove the "Resources\Raw" prefix) -->
+        <MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
+    </ItemGroup>
 
-	<ItemGroup Condition="'$(IsWindowsBuild)' == 'true'">
-		<!-- local build -->
-		<None Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.dll')"
-			Include="$(NativeBuildOutputDir)\*.dll;$(NativeBuildOutputDir)\*.pdb">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-			<Visible>true</Visible>
-		</None>
+    <!-- NOTE: The xUnit framework doesn't pickup the tests defined within the referenced
+    Microsoft.ML.OnnxRuntime.Tests.Common project -->
+    <ItemGroup>
+        <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\InferenceTest.cs">
+            <Link>InferenceTest.cs</Link>
+        </Compile>
+        <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OrtIoBindingAllocationTest.cs">
+            <Link>OrtIoBindingAllocationTest.cs</Link>
+        </Compile>
+        <Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Tensors\TensorTests.cs">
+            <Link>TensorTests.cs</Link>
+        </Compile>
+    </ItemGroup>
 
-		<!-- build from package -->
-		<None Condition="!Exists('$(NativeBuildOutputDir)\onnxruntime.dll')"
-			  Include="$(PrebuiltWinDir)\*.*">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-			<Visible>true</Visible>
-		</None>
+    <ItemGroup>
+        <ProjectReference
+            Include="..\..\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
+            name="Microsoft.ML.OnnxRuntime" />
+        <ProjectReference
+            Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Microsoft.ML.OnnxRuntime.Tests.Common.csproj"
+            name="Microsoft.ML.OnnxRuntime.Tests.Common" />
+        <ProjectReference
+            Include="..\Microsoft.ML.OnnxRuntime.Tests.Devices\Microsoft.ML.OnnxRuntime.Tests.Devices.csproj"
+            name="Microsoft.ML.OnnxRuntime.Tests.Devices" />
+    </ItemGroup>
 
-		<!-- test data -->
-		<None Include="$(OnnxRuntimeRoot)\onnxruntime\test\testdata\*">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-			<Visible>false</Visible>
-			</None>
-			<None Include="$(OnnxRuntimeRoot)\onnxruntime\test\testdata\overridable_initializer.onnx">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-			<Visible>false</Visible>
-		</None>
-		<None Include="$(OnnxRuntimeRoot)\onnxruntime\test\testdata\capi_symbolic_dims.onnx">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-			<Visible>false</Visible>
-		</None>
-		<None Include="$(OnnxRuntimeRoot)\onnxruntime\test\testdata\custom_op_library\custom_op_test.onnx">
-			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-			<Visible>false</Visible>
-		</None>
-    <None Include="$(OnnxRuntimeRoot)\onnxruntime\test\testdata\lora\two_params_lora_model.onnx">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Visible>false</Visible>
-    </None>
-    <None Include="$(OnnxRuntimeRoot)\onnxruntime\test\testdata\lora\two_params_lora_model.onnx_adapter">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-      <Visible>false</Visible>
-    </None>
-  </ItemGroup>
+    <ItemGroup>
+        <PackageReference Include="DeviceRunners.VisualRunners.Maui" Version="0.1.0-preview.2" />
+        <PackageReference Include="DeviceRunners.VisualRunners.Xunit" Version="0.1.0-preview.2" />
+        <PackageReference Include="DeviceRunners.XHarness.Maui" Version="0.1.0-preview.2" />
+        <PackageReference Include="DeviceRunners.XHarness.Xunit" Version="0.1.0-preview.2" />
+        <PackageReference Include="Microsoft.DotNet.XHarness.TestRunners.Xunit" Version="9.0.0-prerelease.24374.1" />
+        <PackageReference Include="Microsoft.Maui.Controls" Version="8.0.70" />
+        <PackageReference Include="Microsoft.Maui.Controls.Compatibility" Version="8.0.70" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.0" />
+        <PackageReference Include="xunit" Version="2.9.0" />
+        <PackageReference Include="xunit.runner.utility" Version="2.9.0" />
+    </ItemGroup>
 
-	<ItemGroup Condition="'$(IsAndroidBuild)' == 'true'">
-		<!-- local build -->
-		<AndroidNativeLibrary Condition="Exists('$(NativeBuildOutputDir)\libonnxruntime.so')"
-							  Include="$(NativeBuildOutputDir)\libonnxruntime.so">
-			<Link>libs\libonnxruntime.so</Link>
-		</AndroidNativeLibrary>
+    <ItemGroup Condition="$(IsIOSTarget)=='true' OR $(IsMacCatalystTarget)=='true'">
+        <!-- need the dummy ORT Extensions package to resolve the RegisterCustomOps symbol. -->
+        <PackageReference Include="Microsoft.ML.OnnxRuntime.Extensions.Dummy" Version="0.12.0" />
+    </ItemGroup>
 
-		<!-- build from package -->
-		<AndroidLibrary
-			Bind="false"
-			Condition="Exists('$(PrebuiltAAR)') AND !Exists('$(NativeBuildOutputDir)\libonnxruntime.so')"
-			Include="$(PrebuiltAAR)"/>
-	</ItemGroup>
-
-	<ItemGroup Condition="'$(IsIOSBuild)' == 'true'">
-		<!-- local build of shared lib -->
-		<NativeReference
-			Condition="Exists('$(NativeBuildOutputDir)\libonnxruntime.dylib')"
-			Include="$(NativeBuildOutputDir)\libonnxruntime.dylib">
-			<Link>libs\libonnxruntime.dylib</Link>
-			<Kind>Dynamic</Kind>
-			<ForceLoad>True</ForceLoad>
-			<IsCxx>True</IsCxx>
-		</NativeReference>
-
-		<!-- build from package -->
-		<NativeReference
-			Condition="Exists('$(PrebuiltFramework)') AND !Exists('$(NativeBuildOutputDir)\libonnxruntime.dylib')"
-			Include="$(PrebuiltFramework)">
-			<Kind>Framework</Kind>
-			<ForceLoad>True</ForceLoad>
-			<IsCxx>True</IsCxx>
-		</NativeReference>
-	</ItemGroup>
-
-	<ItemGroup Condition="'$(IsMacCatalystBuild)' == 'true'">
-		<!-- local build -->
-		<NativeReference Condition="Exists('$(NativeBuildOutputDir)\libonnxruntime.dylib')"
-				 Include="$(NativeBuildOutputDir)\libonnxruntime.dylib">
-			<Link>libs\libonnxruntime.dylib</Link>
-			<Kind>Dynamic</Kind>
-			<ForceLoad>True</ForceLoad>
-			<IsCxx>True</IsCxx>
-		</NativeReference>
-
-		<!-- build from package -->
-		<NativeReference
-			Condition="Exists('$(PrebuiltFramework)') AND !Exists('$(NativeBuildOutputDir)\libonnxruntime.dylib')"
-			Include="$(PrebuiltFramework)">
-			<Kind>Framework</Kind>
-			<ForceLoad>True</ForceLoad>
-			<IsCxx>True</IsCxx>
-		</NativeReference>
-	</ItemGroup>
-
-	<!-- Property debug output - makes finding/fixing any issues with the conditions easy. -->
-	<PropertyGroup>
-		<!-- local builds-->
-		<HaveOrtDll>false</HaveOrtDll>
-		<HaveOrtDll Condition="Exists('$(NativeBuildOutputDir)\onnxruntime.dll')">true</HaveOrtDll>
-		<HaveOrtSo>false</HaveOrtSo>
-		<HaveOrtSo Condition="Exists('$(NativeBuildOutputDir)\libonnxruntime.so')">true</HaveOrtSo>
-		<HaveOrtDylib>false</HaveOrtDylib>
-		<HaveOrtDylib Condition="Exists('$(NativeBuildOutputDir)\libonnxruntime.dylib')">true</HaveOrtDylib>
-		<!-- prebuilt -->
-		<HavePrebuilt>false</HavePrebuilt>
-		<HavePrebuilt Condition="Exists('$(PrebuiltWinDir)')">true</HavePrebuilt>
-		<HaveAAR>false</HaveAAR>
-		<HaveAAR Condition="Exists('$(PrebuiltAAR)')">true</HaveAAR>
-		<HaveFramework>false</HaveFramework>
-		<HaveFramework Condition="Exists('$(PrebuiltFramework)')">true</HaveFramework>
-	</PropertyGroup>
-
-	<Target Name="DumpValues" BeforeTargets="PreBuildEvent">
-		<Message Text="TargetFramework=$(TargetFramework)" />
-		<Message Text="Platform=$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)'))" />
-		<Message Text="OnnxRuntimeRoot=$(OnnxRuntimeRoot)" />
-		<Message Text="NativeBuildOutputDir=$(NativeBuildOutputDir)" />
-		<Message Text="IsWindowsBuild='$(IsWindowsBuild)'" />
-		<Message Text="IsAndroidBuild='$(IsAndroidBuild)'" />
-		<Message Text="IsIOSBuild='$(IsIOSBuild)'" />
-		<Message Text="IsMacCatalystBuild='$(IsMacCatalystBuild)'" />
-		<Message Text="onnxruntime.dll from local build=$(HaveOrtDll)" />
-		<Message Text="libonnxruntime.so from local build=$(HaveOrtSo)" />
-		<Message Text="libonnxruntime.dylib from local build=$(HaveOrtDylib)" />
-		<Message Text="Prebuilt runtime=$(HavePrebuilt)" />
-		<Message Text="Prebuilt AAR=$(HaveAAR)" />
-		<Message Text="Prebuilt xcframework=$(HaveFramework)" />
-	</Target>
-
-	<ItemGroup>
-		<!-- App Icon -->
-		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />
-
-		<!-- Splash Screen -->
-		<MauiSplashScreen Include="Resources\Splash\splash.svg" Color="#512BD4" BaseSize="128,128" />
-
-		<!-- Images -->
-		<MauiImage Include="Resources\Images\*" />
-		<MauiImage Update="Resources\Images\dotnet_bot.png" Resize="True" BaseSize="300,185" />
-
-		<!-- Custom Fonts -->
-		<MauiFont Include="Resources\Fonts\*" />
-
-		<!-- Raw Assets (also remove the "Resources\Raw" prefix) -->
-		<MauiAsset Include="Resources\Raw\**" LogicalName="%(RecursiveDir)%(Filename)%(Extension)" />
-	</ItemGroup>
-
-	<ItemGroup>
-		<Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\InferenceTest.cs">
-			<Link>InferenceTest.cs</Link>
-		</Compile>
-		<Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\OrtIoBindingAllocationTest.cs">
-			<Link>OrtIoBindingAllocationTest.cs</Link>
-		</Compile>
-		<Compile Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Tensors\TensorTests.cs">
-			<Link>TensorTests.cs</Link>
-		</Compile>
-	</ItemGroup>
-
-	<ItemGroup>
-		<ProjectReference
-			Include="..\..\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
-			name="Microsoft.ML.OnnxRuntime" />
-		<ProjectReference
-			Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Microsoft.ML.OnnxRuntime.Tests.Common.csproj"
-			name="Microsoft.ML.OnnxRuntime.Tests.Common" />
-		<ProjectReference
-			Include="..\Microsoft.ML.OnnxRuntime.Tests.Devices\Microsoft.ML.OnnxRuntime.Tests.Devices.csproj"
-			name="Microsoft.ML.OnnxRuntime.Tests.Devices" />
-	</ItemGroup>
-
-	<ItemGroup>
-		<PackageReference Include="DeviceRunners.VisualRunners.Maui" Version="0.1.0-preview.2" />
-		<PackageReference Include="DeviceRunners.VisualRunners.Xunit" Version="0.1.0-preview.2" />
-		<PackageReference Include="DeviceRunners.XHarness.Maui" Version="0.1.0-preview.2" />
-		<PackageReference Include="DeviceRunners.XHarness.Xunit" Version="0.1.0-preview.2" />
-		<PackageReference Include="Microsoft.DotNet.XHarness.TestRunners.Xunit" Version="9.0.0-prerelease.24374.1" />
-		<PackageReference Include="Microsoft.Maui.Controls" Version="8.0.70" />
-		<PackageReference Include="Microsoft.Maui.Controls.Compatibility" Version="8.0.70" />
-		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.0" />
-		<PackageReference Include="xunit" Version="2.9.0" />
-		<PackageReference Include="xunit.runner.utility" Version="2.9.0" />
-	</ItemGroup>
-
-	<ItemGroup Condition="$(IsIOSBuild)=='true' OR $(IsMacCatalystBuild)=='true'">
-		<!-- need the dummy ORT Extensions package to resolve the RegisterCustomOps symbol.
-		TODO: Update to 0.12.0 when released so there's a mac-catalyst build in the package. -->
-		<PackageReference Include="Microsoft.ML.OnnxRuntime.Extensions.Dummy" Version="0.10.0" />
-	</ItemGroup>
-
-	<Target Name="RemoveVisualStudioTestRunner" BeforeTargets="_ComputeAppxPackagePayload">
-		<ItemGroup>
-			<_VisualStudioTestRunnerFiles Include="@(PackagingOutputs)" Condition="$([System.String]::Copy('%(PackagingOutputs.FullPath)').Contains('xunit.runner.visualstudio'))" />
-			<PackagingOutputs Remove="@(_VisualStudioTestRunnerFiles)" />
-		</ItemGroup>
-	</Target>
+    <Target Name="RemoveVisualStudioTestRunner" BeforeTargets="_ComputeAppxPackagePayload">
+        <ItemGroup>
+            <_VisualStudioTestRunnerFiles
+                Include="@(PackagingOutputs)"
+                Condition="$([System.String]::Copy('%(PackagingOutputs.FullPath)').Contains('xunit.runner.visualstudio'))" />
+            <PackagingOutputs Remove="@(_VisualStudioTestRunnerFiles)" />
+        </ItemGroup>
+    </Target>
 </Project>

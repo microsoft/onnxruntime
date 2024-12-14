@@ -25,6 +25,11 @@ GlobalContext& BackendManager::GetGlobalContext() {
   return global_context_;
 }
 
+ov::CompiledModel& BackendManager::GetOVCompiledModel() {
+  ov::CompiledModel& ov_ptr = concrete_backend_->GetOVCompiledModel();
+  return (ov_ptr);
+}
+
 BackendManager::BackendManager(const GlobalContext& global_context,
                                const onnxruntime::Node& fused_node,
                                const onnxruntime::GraphViewer& subgraph,
@@ -35,7 +40,7 @@ BackendManager::BackendManager(const GlobalContext& global_context,
   openvino_sdk_version_ = std::to_string(global_context_.OpenVINO_Version.at(0)) + "." +
                           std::to_string(global_context_.OpenVINO_Version.at(1));
   if (ep_ctx_handle_.CheckForOVEPCtxNode(subgraph, openvino_sdk_version_)) {
-    if (ep_ctx_handle_.ImportBlobFromEPCtxModel(subgraph) != Status::OK())
+    if (ep_ctx_handle_.ImportBlobFromEPCtxModel(subgraph, global_context_.ep_context_embed_mode) != Status::OK())
       ORT_THROW("Import blob from model failed");
   }
 
@@ -65,7 +70,10 @@ BackendManager::BackendManager(const GlobalContext& global_context,
     i++;
   }
   subgraph_context_.subgraph_name = fused_node.Name();
-  auto model_proto = GetModelProtoFromFusedNode(fused_node, subgraph, logger);
+  std::unique_ptr<onnx::ModelProto> model_proto;
+  if (!ep_ctx_handle_.IsValidOVEPCtxGraph()) {
+    model_proto = GetModelProtoFromFusedNode(fused_node, subgraph, logger);
+  }
   std::string device_type = openvino_ep::BackendManager::GetGlobalContext().device_type;
 
   if (ModelHasSymbolicInputDims(subgraph)) {

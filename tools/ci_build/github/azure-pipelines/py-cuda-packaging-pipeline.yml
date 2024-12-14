@@ -24,13 +24,22 @@ parameters:
       - RelWithDebInfo
       - MinSizeRel
 
+
 extends:
   # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
   # For non-production pipelines, use "Unofficial" as defined below.
   # For productions pipelines, use "Official".
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
-    # Update the pool with your team's 1ES hosted pool.
+    sdl:
+      tsa:
+        enabled: true
+      codeSignValidation:
+        enabled: true
+        break: true
+      policheck:
+        enabled: true
+        exclusionsFile: '$(Build.SourcesDirectory)\tools\ci_build\policheck_exclusions.xml'
     pool:
       name: 'onnxruntime-Win-CPU-2022'  # Name of your hosted pool
       os: windows  # OS of the image. This value cannot be a variable. Allowed values: windows, linux, macOS

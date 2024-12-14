@@ -196,7 +196,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "9f98e2ebe7507fe0774d06a44bbf4b0e82cc9ce7",
+          "commitHash": "bc0d2e35909b8456abe32f3b30a49bb0c125e8b7",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "onnx_tensorrt"
@@ -346,7 +346,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "511eb80847afe6bded34ec491a38d5d78ba2d604",
+          "commitHash": "12a3b24c456cebd9fd11f23ac0164f78129b00c6",
           "repositoryUrl": "https://github.com/google/dawn.git"
         },
         "comments": "dawn"

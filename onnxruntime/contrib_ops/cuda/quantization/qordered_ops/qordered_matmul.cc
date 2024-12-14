@@ -51,7 +51,6 @@ QOrderedMatMul::QOrderedMatMul(const OpKernelInfo& info) : CudaKernel(info) {
 }
 
 Status QOrderedMatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                               bool /*save_prepacked_initializers*/,
                                /*out*/ bool& is_packed,
                                /*out*/ PrePackedWeights* /* prepacked_weights */) {
   is_packed = false;

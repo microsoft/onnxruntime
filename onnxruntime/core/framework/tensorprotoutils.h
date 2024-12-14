@@ -17,19 +17,26 @@
 #include "core/framework/external_data_loader.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/mem_buffer.h"
-#include "core/framework/session_state.h"
 #include "core/framework/tensor_external_data_info.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/platform/env.h"
 
 namespace onnxruntime {
 namespace utils {
+/**
+ * This function is used to get the external data info from the given tensor proto.
+ * @param tensor_proto       given initializer tensor
+ * @param tensor_proto_dir   directory of the tensor proto file
+ * @param external_file_path output external file path
+ * @param file_offset        output tensor offset
+ * @param tensor_byte_size   output tensor byte size
+ * @returns                  Status::OK() if the function is executed successfully
+ */
 Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                            const std::filesystem::path& tensor_proto_dir,
                            std::basic_string<ORTCHAR_T>& external_file_path,
                            onnxruntime::FileOffsetType& file_offset,
                            SafeInt<size_t>& tensor_byte_size);
-
 /**
  * This function is used to convert the endianess of Tensor data.
  * Mostly, will be used in big endian system to support the model file
@@ -165,7 +172,6 @@ common::Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::
                                          const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                          void*& ext_data_buf, SafeInt<size_t>& ext_data_len,
                                          OrtCallback& ext_data_deleter,
-                                         SessionState::PrePackInitializers::PrePackedTensorNamesReadFromFile* pre_packed_initializers_name_set,
                                          Tensor* buffered_tensor = nullptr);
 
 // Given a tensor proto with external data obtain a tensor using the specified custom external data loader.

@@ -51,7 +51,6 @@ class FusedConvFp16 final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 
   Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                 bool save_prepacked_initializers,
                  /*out*/ bool& is_packed, /*out*/ PrePackedWeights* prepacked_weights) override;
 
   Status UseSharedPrePackedBuffers(std::vector<BufferUniquePtr>& prepacked_buffers,
@@ -102,7 +101,6 @@ class FusedConvFp16 final : public OpKernel {
 };
 
 Status FusedConvFp16::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
-                              bool /*save_prepacked_initializers*/,
                               /*out*/ bool& is_packed,
                               /*out*/ PrePackedWeights* prepacked_weights) {
   is_packed = false;

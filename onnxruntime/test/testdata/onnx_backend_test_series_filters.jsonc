@@ -306,6 +306,11 @@
         "^test_qlinearmatmul_3D_int8_float32_cuda",
         "^test_qlinearmatmul_3D_uint8_float16_cuda",
         "^test_qlinearmatmul_3D_uint8_float32_cuda",
+        // Tests that failed on CUDA 12.2.
+        "^test_Conv3d_dilated_cuda",
+        "^test_Conv3d_dilated_strided_cuda",
+        "^test_Conv3d_stride_cuda",
+        "^test_Conv3d_stride_padding_cuda",
         // Size(21) from ONNX 1.16.0 is not implemented in cuda.
         "^test_size_cuda",
         "^test_size_example_cuda",
@@ -672,6 +677,30 @@
         "^test_nonmaxsuppression_flipped_coordinates_cpu",
         "^test_nonmaxsuppression_center_point_box_format_cpu"
     ],
+    "current_failing_tests_WEBGPU": [
+        "^test_layer_normalization_2d_axis0_cpu",
+        "^test_layer_normalization_2d_axis1_cpu",
+        "^test_layer_normalization_2d_axis_negative_1_cpu",
+        "^test_layer_normalization_2d_axis_negative_2_cpu",
+        "^test_layer_normalization_3d_axis0_epsilon_cpu",
+        "^test_layer_normalization_3d_axis1_epsilon_cpu",
+        "^test_layer_normalization_3d_axis2_epsilon_cpu",
+        "^test_layer_normalization_3d_axis_negative_1_epsilon_cpu",
+        "^test_layer_normalization_3d_axis_negative_2_epsilon_cpu",
+        "^test_layer_normalization_3d_axis_negative_3_epsilon_cpu",
+        "^test_layer_normalization_4d_axis0_cpu",
+        "^test_layer_normalization_4d_axis1_cpu",
+        "^test_layer_normalization_4d_axis2_cpu",
+        "^test_layer_normalization_4d_axis3_cpu",
+        "^test_layer_normalization_4d_axis_negative_1_cpu",
+        "^test_layer_normalization_4d_axis_negative_2_cpu",
+        "^test_layer_normalization_4d_axis_negative_3_cpu",
+        "^test_layer_normalization_4d_axis_negative_4_cpu",
+        "^test_layer_normalization_default_axis_cpu",
+        "^test_gelu_tanh_1_expanded_cpu",
+        "^test_gelu_tanh_2_expanded_cpu",
+        "^test_dynamicquantizelinear_expanded_cpu"
+    ],
     "current_failing_tests_pure_DML": [
         "^test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_cpu",
         "^test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_expanded_cpu",
@@ -721,6 +750,13 @@
         "^test_reduce_log_sum_empty_set_cpu",
         "^test_reduce_log_sum_exp_empty_set_cpu",
         "^test_reduce_prod_empty_set_cpu",
+        // Bug: DML EP some how executes these CUDA tests and failed
+        // TODO: Remove these tests when DML EP is fixed
+        "^test_convtranspose_autopad_same_cuda",
+        "^test_asin_example_cuda",
+        "^test_dynamicquantizelinear_cuda",
+        "^test_dynamicquantizelinear_expanded_cuda",
+        "^test_reduce_min_empty_set_cuda",
         //Bug: DML EP does not execute operators with an empty input tensor
         //TODO: Resolve as a graph implementation that returns a constant inf tensor with appropriate strides
         "^test_reduce_min_empty_set_cpu"
