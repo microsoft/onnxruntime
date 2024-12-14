@@ -117,6 +117,14 @@ if (WIN32)
     file(COPY ${ONNXRUNTIME_WIN_BIN_DIR}/DirectML.dll
       DESTINATION ${dist_folder})
   endif ()
+  if(USE_WEBGPU)
+    file(COPY ${ONNXRUNTIME_WIN_BIN_DIR}/webgpu_dawn.dll
+      DESTINATION ${dist_folder})
+    file(COPY ${ONNXRUNTIME_WIN_BIN_DIR}/dxil.dll
+      DESTINATION ${dist_folder})
+    file(COPY ${ONNXRUNTIME_WIN_BIN_DIR}/dxcompiler.dll
+      DESTINATION ${dist_folder})
+  endif ()
 elseif (APPLE)
   file(COPY ${ONNXRUNTIME_BUILD_DIR}/libonnxruntime.dylib
       DESTINATION ${dist_folder} FOLLOW_SYMLINK_CHAIN)
