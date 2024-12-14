@@ -332,7 +332,10 @@ MlasHGemmSupported(
 ) {
     auto* dispatch = GetMlasPlatform().HGemmDispatch;
     if (TransA == CblasNoTrans && TransB == CblasTrans) {
-        return dispatch && dispatch->HGemmKernel_TransposeB;
+        return dispatch &&
+        dispatch->HGemmKernel_TransposeB &&
+        dispatch->HTransposePackB &&
+        dispatch->HGemmKernel_TransposePackB;
     }
 
     return false;
@@ -342,7 +345,7 @@ void
 HGemmOperation(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
-    size_t K,
+    size_t K, // full K slice
     const MLAS_HGEMM_DATA_PARAMS* DataParams,
     const size_t RangeStartM,
     const size_t RangeCountM,
@@ -354,31 +357,60 @@ HGemmOperation(
     const size_t ldc = DataParams->ldc;
     const MLAS_FP16 alpha = DataParams->alpha;
     const MLAS_FP16 beta = DataParams->beta;
-    constexpr size_t StrideM = 2;
-    constexpr size_t StrideN = 32;
     auto* dispatch = GetMlasPlatform().HGemmDispatch;
+    constexpr size_t StrideM = 2;
+    const auto beta_add = MLAS_FP16(1.0f);
+    constexpr size_t buffer_size = MLAS_HGEMM_STRIDEN * MLAS_HGEMM_STRIDEK;
+    MLAS_DECLSPEC_ALIGN(MLAS_FP16 PackedB[buffer_size], 16 * sizeof(_mlas_fp16_));
 
     if (TransA == CblasNoTrans && TransB == CblasTrans) {
-        if (!dispatch || !dispatch->HGemmKernel_TransposeB) {
-            MLAS_THROW_EX(std::runtime_error, "hgemm does not have A x Transpoe(B) kernel");
-        }
-
         const auto* A = DataParams->A + RangeStartM * lda;
         const auto* B = DataParams->B + RangeStartN * ldb;
         auto* C = DataParams->C + RangeStartM * ldc + RangeStartN;
 
-        for (size_t n = 0, countN; n < RangeCountN; n += countN) {
-            countN = std::min(StrideN, RangeCountN - n);
-            const MLAS_FP16* a = A;
-            MLAS_FP16* c = C;
-            for (size_t m = 0, countM; m < RangeCountM; m += countM) {
-                countM = std::min(StrideM, RangeCountM - m);
-                dispatch->HGemmKernel_TransposeB(a, B, c, countM, countN, K, lda, ldb, ldc, alpha, beta);
-                a += countM * lda;
-                c += countM * ldc;
+        if (RangeCountM <= StrideM) {
+            if (!dispatch || !dispatch->HGemmKernel_TransposeB) {
+                MLAS_THROW_EX(std::runtime_error, "hgemm does not have A x Transpoe(B) kernels");
             }
-            B += countN * ldb;
-            C += countN;
+            // Without PackB, to utilize memory locality, iterate full K.
+            const size_t StrideN = 16;
+            for (size_t n = 0, countN; n < RangeCountN; n += countN) {
+                countN = std::min(StrideN, RangeCountN - n);
+                dispatch->HGemmKernel_TransposeB(A, B, C, RangeCountM, countN, K, lda, ldb, ldc, alpha, beta);
+                B += countN * ldb;
+                C += countN;
+            }
+        } else {
+            if (!dispatch || !dispatch->HTransposePackB || !dispatch->HGemmKernel_TransposePackB) {
+                MLAS_THROW_EX(std::runtime_error, "hgemm does not have A x Transpoe(B) kernels");
+            }
+            // 16N is the smallest pack unit.
+            const size_t StrideK = std::min(K, size_t(MLAS_HGEMM_STRIDEK));
+            const size_t StrideN = buffer_size/StrideK & (~15); // >= MLAS_HGEMM_STRIDEN
+            for (size_t n = 0, countN; n < RangeCountN; n += countN) {
+                countN = std::min(StrideN, RangeCountN - n);
+                const MLAS_FP16* a = A;
+                const MLAS_FP16* b = B;
+                MLAS_FP16* c = C;
+                for (size_t k = 0, countK; k < K; k += countK) {
+                    countK = std::min(StrideK, K - k);
+                    dispatch->HTransposePackB(b, PackedB, countN, countK, ldb);
+                    const MLAS_FP16* aa = a;
+                    MLAS_FP16* cc = c;
+                    for (size_t m = 0, countM; m < RangeCountM; m += countM) {
+                        countM = std::min(StrideM, RangeCountM - m);
+                        // First K iteration, beta is applied to the whole C. In rest K iterations, use add mode.
+                        dispatch->HGemmKernel_TransposePackB(
+                            aa, PackedB, cc, countM, countN, countK, lda, ldc, alpha, k == 0 ? beta : beta_add);
+                        aa += countM * lda;
+                        cc += countM * ldc;
+                    }
+                    a += countK;
+                    b += countK;
+                }
+                B += countN * ldb;
+                C += countN;
+            }
         }
     } else {
         MLAS_THROW_EX(std::runtime_error, "hgemm currently only support A x Transpoe(B)");
