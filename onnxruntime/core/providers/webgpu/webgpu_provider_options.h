@@ -14,6 +14,8 @@ constexpr const char* kEnableGraphCapture = "WebGPU:enableGraphCapture";
 
 constexpr const char* kDawnProcTable = "WebGPU:dawnProcTable";
 
+constexpr const char* kDawnBackendType = "WebGPU:dawnBackendType";
+
 constexpr const char* kDeviceId = "WebGPU:deviceId";
 constexpr const char* kWebGpuInstance = "WebGPU:webgpuInstance";
 constexpr const char* kWebGpuAdapter = "WebGPU:webgpuAdapter";
@@ -29,6 +31,9 @@ constexpr const char* kValidationMode = "WebGPU:validationMode";
 constexpr const char* kForceCpuNodeNames = "WebGPU:forceCpuNodeNames";
 
 // The following are the possible values for the provider options.
+
+constexpr const char* kDawnBackendType_D3D12 = "D3D12";
+constexpr const char* kDawnBackendType_Vulkan = "Vulkan";
 
 constexpr const char* kPreferredLayout_NCHW = "NCHW";
 constexpr const char* kPreferredLayout_NHWC = "NHWC";
