@@ -122,7 +122,7 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
 
   // PROCESS INPUTS
   std::vector<uint32_t> starts;
-  for (int i = 0; i < starts_raw.size(); i++) {
+  for (auto i = 0; i < starts_raw.size(); i++) {
     int64_t val = starts_raw[i];
     if (val < 0) {
       val += input_shape[axes_raw[i]];
@@ -136,7 +136,7 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
   }
 
   std::vector<uint32_t> ends;
-  for (int i = 0; i < ends_raw.size(); i++) {
+  for (auto i = 0; i < ends_raw.size(); i++) {
     int64_t val = ends_raw[i];
     if (val < 0) {
       val += input_shape[axes_raw[i]];
@@ -150,20 +150,20 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
   }
 
   std::vector<uint32_t> axes;
-  for (int i = 0; i < axes_raw.size(); i++) {
+  for (auto i = 0; i < axes_raw.size(); i++) {
     axes.push_back(static_cast<int32_t>(axes_raw[i]));
   }
 
   // temporary steps vector to handle negative steps
   std::vector<int32_t> steps_tmp;
-  for (int i = 0; i < steps_raw.size(); i++) {
+  for (auto i = 0; i < steps_raw.size(); i++) {
     steps_tmp.push_back(static_cast<int32_t>(steps_raw[i]));
   }
 
   if (static_cast<int64_t>(axes.size()) != input_rank) {
     for (uint32_t i = 0; i < input_rank; i++) {
-      int idx = -1;
-      for (int j = 0; j < axes_raw.size(); j++) {
+      auto idx = -1;
+      for (auto j = 0; j < axes_raw.size(); j++) {
         if (axes_raw[j] == i) {
           idx = j;
           break;
@@ -180,12 +180,12 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
 
   // retain the sign of the steps
   std::vector<int32_t> signs;
-  for (int i = 0; i < steps_tmp.size(); i++) {
+  for (auto i = 0; i < steps_tmp.size(); i++) {
     signs.push_back(steps_tmp[i] < 0 ? -1 : (steps_tmp[i] > 0 ? 1 : 0));
   }
 
   // Convert negative steps to positive steps and reverse starts and ends
-  for (int i = 0; i < steps_tmp.size(); i++) {
+  for (auto i = 0; i < steps_tmp.size(); i++) {
     if (steps_tmp[i] < 0) {
       float numSteps = static_cast<float>((static_cast<float>(ends[i]) - static_cast<float>(starts[i])) / static_cast<float>(steps_tmp[i]));
       float newEnd = static_cast<float>(starts[i]);
@@ -199,13 +199,13 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
 
   // final steps vector of type unsigned int
   std::vector<uint32_t> steps;
-  for (int i = 0; i < steps_tmp.size(); i++) {
+  for (auto i = 0; i < steps_tmp.size(); i++) {
     steps.push_back(static_cast<uint32_t>(steps_tmp[i]));
   }
 
   // calculate output dims
   std::vector<int64_t> output_dims;
-  for (int i = 0; i < axes.size(); i++) {
+  for (auto i = 0; i < axes.size(); i++) {
     int32_t dim = axes[i];
     float tmp = ceil((static_cast<float>(ends[dim]) - static_cast<float>(starts[dim])) / static_cast<float>(steps[dim]));
     if (tmp < 0)
