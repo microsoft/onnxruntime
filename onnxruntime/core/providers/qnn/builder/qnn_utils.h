@@ -9,10 +9,7 @@
 #include <vector>
 
 #include "QnnTypes.h"
-#include "core/session/onnxruntime_cxx_api.h"
-#include "core/framework/node_unit.h"
-#include "core/framework/tensor_shape.h"
-#include "core/util/qmath.h"
+#include "core/providers/qnn/ort_api.h"
 
 namespace onnxruntime {
 namespace qnn {

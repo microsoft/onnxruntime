@@ -5,29 +5,21 @@
 
 #include <filesystem>
 #include <unordered_set>
-#include "core/framework/compute_capability.h"
-#include "core/graph/graph_viewer.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/session/onnxruntime_run_options_config_keys.h"
-#include "core/session/onnxruntime_cxx_api.h"
-#include "core/framework/kernel_registry.h"
-#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
-#include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
-#include "core/platform/env.h"
-#include "core/providers/common.h"
-#include "core/providers/partitioning_utils.h"
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_node_group.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
-#include "core/framework/run_options.h"
 
 #ifdef _WIN32
 #include <Windows.h>
+// TODO: Enable once QNN is built as a DLL
+#if 0
 #include "core/platform/windows/logging/etw_sink.h"
 #endif
+#endif  // _WIN32
 
 namespace onnxruntime {
 
@@ -35,6 +27,7 @@ constexpr const char* QNN = "QNN";
 
 static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;
 
+// TODO: Remove and use versions in EP provider bridge.
 void RunOnUnload(std::function<void()> function) {
   static std::mutex mutex;
   std::lock_guard<std::mutex> guard(mutex);
@@ -44,6 +37,7 @@ void RunOnUnload(std::function<void()> function) {
   s_run_on_unload_->push_back(std::move(function));
 }
 
+// TODO: Remove and use versions in EP provider bridge.
 struct OnUnload {
   ~OnUnload() {
     if (!s_run_on_unload_)
@@ -193,17 +187,17 @@ qnn::ProfilingLevel QNNExecutionProvider::GetProfilingLevelFromETWLevel(unsigned
 }
 
 QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_options_map,
-                                           const SessionOptions* session_options)
+                                           const ConfigOptions* config_options)
     : IExecutionProvider{onnxruntime::kQnnExecutionProvider} {
-  if (session_options) {
-    disable_cpu_ep_fallback_ = session_options->config_options.GetConfigOrDefault(
+  if (config_options) {
+    disable_cpu_ep_fallback_ = config_options->GetConfigOrDefault(
                                    kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
 
-    context_cache_enabled_ = session_options->config_options.GetConfigOrDefault(
+    context_cache_enabled_ = config_options->GetConfigOrDefault(
                                  kOrtSessionOptionEpContextEnable, "0") == "1";
     LOGS_DEFAULT(VERBOSE) << "Context cache enable: " << context_cache_enabled_;
 
-    std::string embed_mode = session_options->config_options.GetConfigOrDefault(
+    std::string embed_mode = config_options->GetConfigOrDefault(
         kOrtSessionOptionEpContextEmbedMode, "0");
     if ("1" == embed_mode) {
       qnn_context_embed_mode_ = true;
@@ -214,18 +208,18 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     }
     LOGS_DEFAULT(VERBOSE) << "User specified context cache embed mode: " << qnn_context_embed_mode_;
 
-    context_cache_path_cfg_ = session_options->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+    context_cache_path_cfg_ = config_options->GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
     LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << context_cache_path_cfg_;
 
     // For the case that workaround QNN context PD memory limit, user need split the model into pieces and
     // generate the QNN context model separately.
     // It could happen that the generated EPContext node in separate graph has same node name.
     // User can set this context_node_name_prefix for each split pieces to avoid that happens.
-    context_node_name_prefix_ = session_options->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextNodeNamePrefix, "");
+    context_node_name_prefix_ = config_options->GetConfigOrDefault(kOrtSessionOptionEpContextNodeNamePrefix, "");
     LOGS_DEFAULT(VERBOSE) << "User specified QNN context node name prefix: " << context_node_name_prefix_;
 
     share_ep_contexts_ =
-        session_options->config_options.GetConfigOrDefault(kOrtSessionOptionShareEpContexts, "0") == "1";
+        config_options->GetConfigOrDefault(kOrtSessionOptionShareEpContexts, "0") == "1";
     LOGS_DEFAULT(VERBOSE) << "User specified option - share EP contexts across sessions: " << share_ep_contexts_;
   }
 
@@ -403,6 +397,8 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
       soc_model,
       enable_htp_weight_sharing);
 
+// TODO: Renable once QNN is a dll
+#if 0
 #ifdef _WIN32
   auto& etwRegistrationManager = logging::EtwRegistrationManager::Instance();
   // Register callback for ETW capture state (rundown)
@@ -445,6 +441,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
       });
   etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_provider_);
 #endif
+#endif
 }
 
 QNNExecutionProvider::~QNNExecutionProvider() {
@@ -458,9 +455,12 @@ QNNExecutionProvider::~QNNExecutionProvider() {
 
   // Unregister the ETW callback
 #ifdef _WIN32
+  // TODO: Re-enable when QNN EP is a DLL
+#if 0
   if (callback_ETWSink_provider_ != nullptr) {
     logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_provider_);
   }
+#endif
 #endif
 }
 

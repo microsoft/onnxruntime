@@ -1702,6 +1702,12 @@ static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX ORT_TSTR("onnxruntime_p
 #endif
 );
 static ProviderLibrary s_library_migraphx(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_migraphx") LIBRARY_EXTENSION);
+static ProviderLibrary s_library_qnn(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_qnn") LIBRARY_EXTENSION
+#ifndef _WIN32
+                                     ,
+                                     false /* unload - On Linux if we unload the vitisai shared provider we crash */
+#endif
+);
 
 void UnloadSharedProviders() {
   s_library_dnnl.Unload();
@@ -1714,6 +1720,7 @@ void UnloadSharedProviders() {
   s_library_rocm.Unload();
   s_library_shared.Unload();
   s_library_migraphx.Unload();
+  s_library_qnn.Unload();
 }
 
 // Used by test code

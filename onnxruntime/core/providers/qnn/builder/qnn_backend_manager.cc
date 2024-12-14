@@ -17,8 +17,8 @@
 #include "HTP/QnnHtpContext.h"
 #include "Saver/QnnSaver.h"
 #include <gsl/gsl>
-#include "core/framework/endian_utils.h"
-#include "core/common/logging/capture.h"
+
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 #include "core/providers/qnn/builder/qnn_configs_helper.h"
 

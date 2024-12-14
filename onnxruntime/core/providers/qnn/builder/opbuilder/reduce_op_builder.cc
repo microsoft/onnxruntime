@@ -9,7 +9,6 @@
 #include "core/common/safeint.h"
 #include "onnx/defs/data_type_utils.h"
 #include "core/providers/common.h"
-#include "core/framework/endian_utils.h"
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
@@ -145,10 +144,7 @@ Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const Nod
       auto src_span = gsl::make_span(axes_bytes.data(), axes_bytes.size());
       auto dst_span = gsl::make_span(reduce_axes.data(), reduce_axes.size());
 
-      // Copy initializer bytes (stored in little-endian order) to vector of int64_t.
-      // ReadLittleEndian returns a status error if the source and destination spans do not have
-      // matching byte sizes.
-      ORT_RETURN_IF_ERROR(onnxruntime::utils::ReadLittleEndian(src_span, dst_span));
+      std::memcpy(dst_span.data(), src_span.data(), src_span.size_bytes());
     }
   }
 

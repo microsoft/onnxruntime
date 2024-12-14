@@ -1,18 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "qnn_utils.h"
+
 #include <functional>
 #include <numeric>
 #include <string>
 #include <vector>
 #include <map>
 
-#include "core/common/common.h"
-#include "core/framework/data_types.h"
-#include "core/framework/tensorprotoutils.h"
-#include "qnn_utils.h"
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_def.h"
-#include "core/graph/graph_viewer.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -560,6 +558,14 @@ Status GetQminQmax(const Qnn_DataType_t qnn_data_type,
   return Status::OK();
 }
 
+inline float RoundHalfToEven(float input) {
+  if (!std::isfinite(input)) {
+    return input;
+  }
+  // std::remainder returns x - n, where n is the integral value nearest to x. When |x - n| = 0.5, n is chosen to be even
+  return input - std::remainderf(input, 1.f);
+}
+
 Status GetQuantParams(float rmin,
                       float rmax,
                       const Qnn_DataType_t qnn_data_type,
@@ -584,7 +590,7 @@ Status GetQuantParams(float rmin,
   } else {
     initial_zero_point = qmin - (rmin / scale);
   }
-  zero_point = static_cast<int32_t>(RoundHalfToEven(Saturate(qmax, qmin, initial_zero_point)));
+  zero_point = static_cast<int32_t>(qnn::utils::RoundHalfToEven(Saturate(qmax, qmin, initial_zero_point)));
   // To match QNN quantization definition
   zero_point = 0 - zero_point;
   return Status::OK();

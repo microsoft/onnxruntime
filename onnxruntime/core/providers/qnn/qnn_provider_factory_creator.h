@@ -11,6 +11,7 @@
 namespace onnxruntime {
 struct SessionOptions;
 
+// defined in core/session/provider_bridge_ort.cc
 struct QNNProviderFactoryCreator {
   static std::shared_ptr<IExecutionProviderFactory> Create(const ProviderOptions& provider_options_map,
                                                            const SessionOptions* session_options);

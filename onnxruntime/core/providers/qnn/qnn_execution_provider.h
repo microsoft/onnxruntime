@@ -3,24 +3,26 @@
 
 #pragma once
 
-#include "core/framework/execution_provider.h"
-#include "core/framework/session_options.h"
-#include "core/framework/model_metadef_id_generator.h"
-#include "core/graph/model.h"
+#include <set>
 #include <string>
+#include <unordered_map>
+#include <vector>
+
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_backend_manager.h"
 #include "core/providers/qnn/builder/qnn_model.h"
 #include "core/providers/qnn/builder/qnn_configs_helper.h"
 #include "HTP/QnnHtpGraph.h"
-#include <vector>
-#include <set>
-#include <unordered_map>
 #ifdef _WIN32
+// TODO: Reenable when QNN ep is a dll
+#if 0
 #include "core/platform/windows/logging/etw_sink.h"
+#endif
 #endif
 
 namespace onnxruntime {
 
+// TODO: Remove. It's in provider bridge.
 void RunOnUnload(std::function<void()> function);
 
 class SharedContext {
@@ -87,7 +89,7 @@ class SharedContext {
 // Logical device representation.
 class QNNExecutionProvider : public IExecutionProvider {
  public:
-  explicit QNNExecutionProvider(const ProviderOptions& provider_options_map, const SessionOptions* session_options);
+  explicit QNNExecutionProvider(const ProviderOptions& provider_options_map, const ConfigOptions* config_options);
   virtual ~QNNExecutionProvider();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QNNExecutionProvider);
 
@@ -151,7 +153,10 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool share_ep_contexts_ = false;
   bool enable_spill_fill_buffer_ = false;
 #ifdef _WIN32
+  // TODO: Re-enable when QNN is a DLL
+#if 0
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;
+#endif
 #endif
   qnn::ModelSettings model_settings_ = {};
 
