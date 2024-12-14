@@ -128,6 +128,15 @@ ORT_API_STATUS_IMPL(OrtApis::CreateEnvWithCustomLogger, OrtLoggingFunction loggi
 ORT_API_STATUS_IMPL(OrtApis::CreateEnv, OrtLoggingLevel logging_level,
                     _In_ const char* logid, _Outptr_ OrtEnv** out) {
   API_IMPL_BEGIN
+
+  auto module1 = LoadLibraryExA(".\\DirectML.dll", NULL, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+  auto module2 = LoadLibraryExA("C:\\code\\onnxruntime\\js\\node\\bin\\napi-v3\\win32\\x64\\js\\webgpu_dawn.dll", NULL, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
+  auto errr = GetLastError();
+
+  if (!module2 || !module1) {
+    printf("loaded - err=%d\n", ((int)(errr)));
+  }
+
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, logging_level, logid};
   Status status;
   *out = OrtEnv::GetInstance(lm_info, status);

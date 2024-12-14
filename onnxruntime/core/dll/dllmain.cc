@@ -56,12 +56,11 @@ BOOL APIENTRY DllMain(HMODULE /*hModule*/,
 #if USE_DELAYLOAD_WORKAROUND
 
 FARPROC WINAPI delay_load_workaround_hook(unsigned dliNotify, PDelayLoadInfo pdli) {
-  if (dliNotify == dliFailLoadLib && pdli->dwLastError == ERROR_MOD_NOT_FOUND) {
-    return FARPROC(LoadLibraryExA(pdli->szDll, NULL,
-                                  LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS));
+  if (dliNotify == dliNotePreLoadLibrary) {
+    return FARPROC(LoadLibraryExA(pdli->szDll, NULL, LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR));
   }
   return NULL;
 }
 
-extern "C" const PfnDliHook __pfnDliFailureHook2 = delay_load_workaround_hook;
+extern "C" const PfnDliHook __pfnDliNotifyHook2 = delay_load_workaround_hook;
 #endif

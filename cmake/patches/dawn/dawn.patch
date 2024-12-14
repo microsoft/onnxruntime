@@ -1,14 +1,17 @@
 diff --git a/src/dawn/common/DynamicLib.cpp b/src/dawn/common/DynamicLib.cpp
-index 9d4747714f..f24d157487 100644
+index 9d4747714f..8bcea03f74 100644
 --- a/src/dawn/common/DynamicLib.cpp
 +++ b/src/dawn/common/DynamicLib.cpp
-@@ -66,7 +66,8 @@ bool DynamicLib::Open(const std::string& filename, std::string* error) {
+@@ -66,7 +66,11 @@ bool DynamicLib::Open(const std::string& filename, std::string* error) {
  #if DAWN_PLATFORM_IS(WINUWP)
      mHandle = LoadPackagedLibrary(UTF8ToWStr(filename.c_str()).c_str(), 0);
  #else
 -    mHandle = LoadLibraryA(filename.c_str());
 +    mHandle = LoadLibraryExA(filename.c_str(), NULL,
 +                             LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR | LOAD_LIBRARY_SEARCH_DEFAULT_DIRS);
++    if (mHandle == nullptr) {
++        mHandle = LoadLibraryA(filename.c_str());
++    }
  #endif
      if (mHandle == nullptr && error != nullptr) {
          *error = "Windows Error: " + std::to_string(GetLastError());
