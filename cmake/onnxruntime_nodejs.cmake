@@ -103,4 +103,8 @@ add_custom_target(nodejs_binding_wrapper ALL
 add_dependencies(js_common_npm_ci js_npm_ci)
 add_dependencies(nodejs_binding_wrapper js_common_npm_ci)
 add_dependencies(nodejs_binding_wrapper onnxruntime)
+if (WIN32 AND onnxruntime_USE_WEBGPU)
+    add_dependencies(nodejs_binding_wrapper copy_dxil_dll)
+    add_dependencies(nodejs_binding_wrapper dxcompiler)
+endif()
 endif()

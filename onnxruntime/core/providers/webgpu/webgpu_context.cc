@@ -19,6 +19,7 @@
 #include "core/providers/webgpu/program_cache_key.h"
 #include "core/providers/webgpu/program_manager.h"
 #include "core/providers/webgpu/string_macros.h"
+#include "core/providers/webgpu/dll_delay_load_helper.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -50,6 +51,10 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
 
     // Initialization.Step.2 - Create wgpu::Adapter
     if (adapter_ == nullptr) {
+      // DLL delay loading happens inside wgpuRequestAdapter().
+      // Use this helper as RAII to ensure the DLL search path is set correctly.
+      DllDelayLoadHelper helper{};
+
       wgpu::RequestAdapterOptions req_adapter_options = {};
       wgpu::DawnTogglesDescriptor adapter_toggles_desc = {};
       req_adapter_options.nextInChain = &adapter_toggles_desc;
