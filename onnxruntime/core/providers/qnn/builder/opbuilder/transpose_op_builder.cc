@@ -4,10 +4,10 @@
 #include <string>
 #include <vector>
 
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
-#include "core/common/safeint.h"
 
 #include "base_op_builder.h"
 

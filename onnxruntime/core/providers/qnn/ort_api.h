@@ -6,6 +6,7 @@
 #define BUILD_QNN_EP_STATIC 1
 
 #if BUILD_QNN_EP_STATIC
+#include "onnx/defs/data_type_utils.h"
 #include "core/common/common.h"
 #include "core/common/status.h"
 #include "core/common/safeint.h"
@@ -14,6 +15,7 @@
 #include "core/common/path_string.h"
 #include "core/platform/env.h"
 #include "core/framework/data_types.h"
+#include "core/framework/float16.h"
 #include "core/framework/run_options.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/model_metadef_id_generator.h"

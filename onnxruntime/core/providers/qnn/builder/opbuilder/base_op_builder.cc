@@ -4,12 +4,6 @@
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 
-#include <core/providers/common.h>
-
-#include "core/framework/tensorprotoutils.h"
-#include "core/providers/cpu/tensor/transpose.h"
-#include "core/common/safeint.h"
-
 namespace onnxruntime {
 namespace qnn {
 
