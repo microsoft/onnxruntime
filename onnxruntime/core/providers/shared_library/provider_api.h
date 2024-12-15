@@ -385,6 +385,14 @@ CreateSupportedPartitions(const GraphViewer& graph_viewer,
                                                   execution_provider_name, execution_provider_type, node_unit_map,
                                                   drop_constant_initializers);
 }
+inline std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewer& graph_viewer,
+                                                                const std::vector<const Node*>& group,
+                                                                const std::function<std::string()>& generate_metadef_name,
+                                                                const std::string& execution_provider_name,
+                                                                bool drop_constant_initializers) {
+  return g_host->Utils__MakeComputeCapability(graph_viewer, group, generate_metadef_name,
+                                              execution_provider_name, drop_constant_initializers);
+}
 }  // namespace utils
 
 namespace QDQ {

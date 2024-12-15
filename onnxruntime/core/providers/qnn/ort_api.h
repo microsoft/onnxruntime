@@ -3,7 +3,7 @@
 
 #pragma once
 
-#define BUILD_QNN_EP_STATIC 1
+#define BUILD_QNN_EP_STATIC 0
 
 #if BUILD_QNN_EP_STATIC
 #include "onnx/defs/data_type_utils.h"

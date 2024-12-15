@@ -352,6 +352,7 @@ struct ProviderHost {
   // TypeProto
   virtual std::unique_ptr<ONNX_NAMESPACE::TypeProto> TypeProto__construct() = 0;
   virtual void TypeProto__CopyFrom(ONNX_NAMESPACE::TypeProto* p, const ONNX_NAMESPACE::TypeProto* other) = 0;
+  virtual bool TypeProto__has_tensor_type(const ONNX_NAMESPACE::TypeProto* p) = 0;
   virtual const ONNX_NAMESPACE::TypeProto_Tensor& TypeProto__tensor_type(const ONNX_NAMESPACE::TypeProto* p) = 0;
   virtual ONNX_NAMESPACE::TypeProto_Tensor* TypeProto__mutable_tensor_type(ONNX_NAMESPACE::TypeProto* p) = 0;
 
@@ -933,6 +934,12 @@ struct ProviderHost {
                                    const std::unordered_map<const Node*, const NodeUnit*>* node_unit_map,
                                    bool drop_constant_initializers) = 0;
 
+  virtual std::unique_ptr<ComputeCapability>
+  Utils__MakeComputeCapability(const GraphViewer& graph_viewer,
+                               const std::vector<const Node*>& group,
+                               const std::function<std::string()>& generate_metadef_name,
+                               const std::string& execution_provider_name,
+                               bool drop_constant_initializers) = 0;
   // Model
   virtual std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,

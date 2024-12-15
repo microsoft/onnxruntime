@@ -246,12 +246,12 @@ void QnnLogging(const char* format,
   const auto data_type = ::onnxruntime::logging::DataType::SYSTEM;
 
   if (logger.OutputIsEnabled(severity, data_type)) {
-    ::onnxruntime::logging::Capture(logger,
-                                    severity,
-                                    ::onnxruntime::logging::Category::onnxruntime,
-                                    data_type,
-                                    ORT_WHERE)
-        .ProcessPrintf(format, argument_parameter);
+    auto log_capture = ::onnxruntime::logging::Capture::Create(logger,
+                                                               severity,
+                                                               ::onnxruntime::logging::Category::onnxruntime,
+                                                               data_type,
+                                                               ORT_WHERE);
+    log_capture.ProcessPrintf(format, argument_parameter);
   }
 }
 

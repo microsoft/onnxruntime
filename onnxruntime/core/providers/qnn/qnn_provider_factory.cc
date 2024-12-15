@@ -22,19 +22,8 @@ struct QNNProviderFactory : IExecutionProviderFactory {
   const ConfigOptions* config_options_;
 };
 
-// TODO: Move to core/session/provider_bridge_ort.cc
-std::shared_ptr<IExecutionProviderFactory> QNNProviderFactoryCreator::Create(const ProviderOptions& provider_options_map,
-                                                                             const SessionOptions* session_options) {
-  const ConfigOptions* config_options = nullptr;
-  if (session_options != nullptr) {
-    config_options = &session_options->config_options;
-  }
-
-  return std::make_shared<onnxruntime::QNNProviderFactory>(provider_options_map, config_options);
-}
-
-struct QNN_Provider /*: Provider*/ {
-  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* param) /*override*/ {
+struct QNN_Provider : Provider {
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* param) override {
     if (param == nullptr) {
       LOGS_DEFAULT(ERROR) << "[QNN EP] Passed NULL options to CreateExecutionProviderFactory()";
       return nullptr;
@@ -52,18 +41,15 @@ struct QNN_Provider /*: Provider*/ {
     return std::make_shared<onnxruntime::QNNProviderFactory>(*provider_options, config_options);
   }
 
-  void Initialize() /*override*/ {}
-  void Shutdown() /*override*/ {}
+  void Initialize() override {}
+  void Shutdown() override {}
 } g_provider;
 
 }  // namespace onnxruntime
 
-// TODO: Uncomment when it is an EP dll
-#if 0
 extern "C" {
 
 ORT_API(onnxruntime::Provider*, GetProvider) {
   return &onnxruntime::g_provider;
 }
 }
-#endif
