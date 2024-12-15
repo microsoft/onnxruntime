@@ -838,34 +838,34 @@ Status QNNExecutionProvider::CreateComputeFunc(std::vector<NodeComputeInfo>& nod
 void QNNExecutionProvider::InitQnnGraphConfigs(qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t>& configs_builder) const {
   if (qnn_backend_manager_->GetQnnBackendType() == qnn::QnnBackendType::HTP) {
     if (htp_graph_finalization_opt_mode_ != qnn::HtpGraphFinalizationOptimizationMode::kDefault) {
-      QnnHtpGraph_CustomConfig_t& htp_graph_opt_config = configs_builder.PushCustomConfig();
-      htp_graph_opt_config.option = QNN_HTP_GRAPH_CONFIG_OPTION_OPTIMIZATION;
-      htp_graph_opt_config.optimizationOption.type = QNN_HTP_GRAPH_OPTIMIZATION_TYPE_FINALIZE_OPTIMIZATION_FLAG;
-      htp_graph_opt_config.optimizationOption.floatValue = static_cast<float>(htp_graph_finalization_opt_mode_);
+      gsl::not_null<QnnHtpGraph_CustomConfig_t*> htp_graph_opt_config = configs_builder.PushCustomConfig();
+      htp_graph_opt_config->option = QNN_HTP_GRAPH_CONFIG_OPTION_OPTIMIZATION;
+      htp_graph_opt_config->optimizationOption.type = QNN_HTP_GRAPH_OPTIMIZATION_TYPE_FINALIZE_OPTIMIZATION_FLAG;
+      htp_graph_opt_config->optimizationOption.floatValue = static_cast<float>(htp_graph_finalization_opt_mode_);
 
-      QnnGraph_Config_t& graph_opt_config = configs_builder.PushConfig();
-      graph_opt_config.option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
-      graph_opt_config.customConfig = &htp_graph_opt_config;
+      gsl::not_null<QnnGraph_Config_t*> graph_opt_config = configs_builder.PushConfig();
+      graph_opt_config->option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
+      graph_opt_config->customConfig = htp_graph_opt_config;
     }
 
     if (vtcm_size_in_mb_ > 0) {
-      QnnHtpGraph_CustomConfig_t& htp_graph_opt_config_vtcm = configs_builder.PushCustomConfig();
-      htp_graph_opt_config_vtcm.option = QNN_HTP_GRAPH_CONFIG_OPTION_VTCM_SIZE;
-      htp_graph_opt_config_vtcm.vtcmSizeInMB = static_cast<uint32_t>(vtcm_size_in_mb_);
+      gsl::not_null<QnnHtpGraph_CustomConfig_t*> htp_graph_opt_config_vtcm = configs_builder.PushCustomConfig();
+      htp_graph_opt_config_vtcm->option = QNN_HTP_GRAPH_CONFIG_OPTION_VTCM_SIZE;
+      htp_graph_opt_config_vtcm->vtcmSizeInMB = static_cast<uint32_t>(vtcm_size_in_mb_);
 
-      QnnGraph_Config_t& graph_opt_config_vtcm = configs_builder.PushConfig();
-      graph_opt_config_vtcm.option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
-      graph_opt_config_vtcm.customConfig = &htp_graph_opt_config_vtcm;
+      gsl::not_null<QnnGraph_Config_t*> graph_opt_config_vtcm = configs_builder.PushConfig();
+      graph_opt_config_vtcm->option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
+      graph_opt_config_vtcm->customConfig = htp_graph_opt_config_vtcm;
     }
 
     if (enable_HTP_FP16_precision_) {
-      QnnHtpGraph_CustomConfig_t& htp_graph_precision_config = configs_builder.PushCustomConfig();
-      htp_graph_precision_config.option = QNN_HTP_GRAPH_CONFIG_OPTION_PRECISION;
-      htp_graph_precision_config.precision = QNN_PRECISION_FLOAT16;
+      gsl::not_null<QnnHtpGraph_CustomConfig_t*> htp_graph_precision_config = configs_builder.PushCustomConfig();
+      htp_graph_precision_config->option = QNN_HTP_GRAPH_CONFIG_OPTION_PRECISION;
+      htp_graph_precision_config->precision = QNN_PRECISION_FLOAT16;
 
-      QnnGraph_Config_t& graph_precision_config = configs_builder.PushConfig();
-      graph_precision_config.option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
-      graph_precision_config.customConfig = &htp_graph_precision_config;
+      gsl::not_null<QnnGraph_Config_t*> graph_precision_config = configs_builder.PushConfig();
+      graph_precision_config->option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
+      graph_precision_config->customConfig = htp_graph_precision_config;
     }
   }
 }
