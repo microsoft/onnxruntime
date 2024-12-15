@@ -1263,6 +1263,9 @@ struct ProviderHostImpl : ProviderHost {
 
   const std::vector<const NodeArg*>& GraphViewer__GetInputs(const GraphViewer* p) noexcept override { return p->GetInputs(); }
   const std::vector<const NodeArg*>& GraphViewer__GetOutputs(const GraphViewer* p) noexcept override { return p->GetOutputs(); }
+  bool GraphViewer__NodeProducesGraphOutput(const GraphViewer* p, const Node& node) override {
+    return p->NodeProducesGraphOutput(node);
+  }
   const std::unordered_set<const NodeArg*>& GraphViewer__GetValueInfo(const GraphViewer* p) noexcept override { return p->GetValueInfo(); }
 
   const InitializedTensorSet& GraphViewer__GetAllInitializedTensors(const GraphViewer* p) override { return p->GetAllInitializedTensors(); }

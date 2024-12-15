@@ -1087,6 +1087,9 @@ class GraphViewer final {
 
   const std::vector<const NodeArg*>& GetInputs() const noexcept { return g_host->GraphViewer__GetInputs(this); }
   const std::vector<const NodeArg*>& GetOutputs() const noexcept { return g_host->GraphViewer__GetOutputs(this); }
+  bool NodeProducesGraphOutput(const Node& node) const {
+    return g_host->GraphViewer__NodeProducesGraphOutput(this, node);
+  }
   const std::unordered_set<const NodeArg*>& GetValueInfo() const noexcept { return g_host->GraphViewer__GetValueInfo(this); }
 
   const InitializedTensorSet& GetAllInitializedTensors() const noexcept { return g_host->GraphViewer__GetAllInitializedTensors(this); }

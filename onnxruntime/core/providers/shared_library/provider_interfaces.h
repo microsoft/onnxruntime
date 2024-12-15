@@ -1021,6 +1021,7 @@ struct ProviderHost {
 
   virtual const std::vector<const NodeArg*>& GraphViewer__GetInputs(const GraphViewer* p) noexcept = 0;
   virtual const std::vector<const NodeArg*>& GraphViewer__GetOutputs(const GraphViewer* p) noexcept = 0;
+  virtual bool GraphViewer__NodeProducesGraphOutput(const GraphViewer* p, const Node& node) = 0;
   virtual const std::unordered_set<const NodeArg*>& GraphViewer__GetValueInfo(const GraphViewer* p) noexcept = 0;
 
   virtual const InitializedTensorSet& GraphViewer__GetAllInitializedTensors(const GraphViewer* p) = 0;
