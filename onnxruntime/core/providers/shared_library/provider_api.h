@@ -162,6 +162,7 @@ enum class DataLayout;
 struct Model;
 struct Path;
 struct Node;
+struct Node_EdgeEnd;
 struct NodeArg;
 struct NodeAttributes;
 struct NodeUnitIODef;
