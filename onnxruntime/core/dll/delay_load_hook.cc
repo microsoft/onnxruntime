@@ -20,11 +20,11 @@
 // - https://learn.microsoft.com/en-us/cpp/build/reference/understanding-the-helper-function?view=msvc-170#structure-and-constant-definitions
 // - https://learn.microsoft.com/en-us/windows/win32/dlls/dynamic-link-library-search-order#alternate-search-order-for-unpackaged-apps
 //
-// The DLL DelayLoad hook is only enabled when:
-// - The compiler is MSVC
-// - at least one of USE_WEBGPU or USE_DML is defined
+// The DLL DelayLoad hook is only enabled when the compiler is MSVC and at least one of the following is True:
+// - both USE_WEBGPU and BUILD_DAWN_MONOLITHIC_LIBRARY are defined
+// - USE_DML is defined
 //
-#if defined(_MSC_VER) && (defined(USE_WEBGPU) || defined(USE_DML))
+#if defined(_MSC_VER) && ((defined(USE_WEBGPU) && defined(BUILD_DAWN_MONOLITHIC_LIBRARY)) || defined(USE_DML))
 
 #include <Windows.h>
 #include <delayimp.h>
