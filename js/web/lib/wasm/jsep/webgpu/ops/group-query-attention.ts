@@ -7,7 +7,6 @@ import { ComputeContext } from '../types';
 
 import { applyAttention, AttentionMaskType, AttentionParameters, AttentionQkvFormat } from './attention';
 import { maybeTransposeToBNSHAndAddBias } from './multihead-attention';
-import { createSplitProgramInfo, SplitAttributes } from './split';
 import { createTransposeProgramInfo, TransposeAttributes } from './transpose';
 export interface GroupQueryAttentionAttributes {
   numHeads: number;
@@ -216,6 +215,7 @@ export const validateInputs = (
     broadcastResPosBias,
     passPastInKv,
     qkvFormat,
+    packedQKV,
   };
 };
 
@@ -237,39 +237,19 @@ const maybeTransposeToBNSH = (context: ComputeContext, input: TensorView, params
 
 export const groupQueryAttention = (context: ComputeContext, attributes: GroupQueryAttentionAttributes): void => {
   const params = validateInputs(context.inputs, attributes);
-  if (context.inputs[0].dims.length === 5) {
-    throw new Error('Packed QKV is not implemented');
-  }
 
-  if (context.inputs[1]?.dims.length === 5) {
-    throw new Error('Packed KV is not implemented');
-  }
-
-  const q = context.inputs[0];
-  const k = context.inputs[1] && context.inputs[1].dims.length > 0 ? context.inputs[1] : undefined;
-  const v = context.inputs[2] && context.inputs[2].dims.length > 0 ? context.inputs[2] : undefined;
+  const query = context.inputs[0];
+  const key = context.inputs[1] && context.inputs[1].dims.length > 0 ? context.inputs[1] : undefined;
+  const value = context.inputs[2] && context.inputs[2].dims.length > 0 ? context.inputs[2] : undefined;
   const pastKey = context.inputs[3] && context.inputs[3].dims.length !== 0 ? context.inputs[3] : undefined;
   const pastValue = context.inputs[4] && context.inputs[4].dims.length !== 0 ? context.inputs[4] : undefined;
   const seqLens = context.inputs.length > 4 ? context.inputs[5] : undefined;
   const totalSequenceLengthInput = context.inputs.length > 5 ? context.inputs[6] : undefined;
-  const kvNumHeads = params.kvNumHeads ? params.kvNumHeads : params.numHeads;
-
-  // TODO Remove explicit split operation and use indexing in Attention implementation to avoid overhead.
-
-  const splitAttributes: SplitAttributes = createAttributeWithCacheKey({
-    axis: 2,
-    numOutputs: 3,
-    splitSizes: [params.numHeads * params.headSize, kvNumHeads * params.headSize, kvNumHeads * params.headSize],
-  });
-  const [query, key, value] =
-    !k && !v
-      ? context.compute(createSplitProgramInfo([q], splitAttributes), { inputs: [q], outputs: [-1, -1, -1] })
-      : [q, k!, v!];
 
   const Q = maybeTransposeToBNSHAndAddBias(
     context,
     params.batchSize,
-    params.numHeads,
+    params.packedQKV ? params.numHeads + 2 * attributes.kvNumHeads : params.numHeads,
     params.sequenceLength,
     params.headSize,
     query,
@@ -279,8 +259,8 @@ export const groupQueryAttention = (context: ComputeContext, attributes: GroupQu
   applyAttention(
     context,
     Q,
-    maybeTransposeToBNSH(context, key, params),
-    maybeTransposeToBNSH(context, value, params),
+    key ? maybeTransposeToBNSH(context, key, params) : undefined,
+    value ? maybeTransposeToBNSH(context, value, params) : undefined,
     undefined,
     undefined,
     pastKey,
