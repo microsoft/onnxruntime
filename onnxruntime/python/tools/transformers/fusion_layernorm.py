@@ -13,9 +13,10 @@ logger = getLogger(__name__)
 
 
 class FusionLayerNormalization(Fusion):
-    def __init__(self, model: OnnxModel, check_constant_and_dimension: bool = True):
+    def __init__(self, model: OnnxModel, check_constant_and_dimension: bool = True, force: bool = False):
         super().__init__(model, "LayerNormalization", "ReduceMean")
         self.check_constant_and_dimension = check_constant_and_dimension
+        self.force = force
 
     def fuse(self, node, input_name_to_nodes: Dict, output_name_to_node: Dict):
         """
@@ -97,63 +98,74 @@ class FusionLayerNormalization(Fusion):
 
         if div_node.output[0] not in input_name_to_nodes:
             return
-        temp_node = input_name_to_nodes[div_node.output[0]][0]
-        if temp_node.op_type == "Cast":
-            # Div --> Cast --> Mul
-            subgraph_nodes.append(temp_node)  # add Cast node to list of subgraph nodes
-            if temp_node.output[0] not in input_name_to_nodes:
-                return
-            mul_node = input_name_to_nodes[temp_node.output[0]][0]
-        else:
-            # Div --> Mul
-            mul_node = temp_node
-        if mul_node.op_type != "Mul":
-            return
 
-        if mul_node.output[0] not in input_name_to_nodes:
-            return
-        last_add_node = input_name_to_nodes[mul_node.output[0]][0]
-        if last_add_node.op_type != "Add":
-            return
+        # In MMDit model, Div might have two Mul+Add children paths.
+        div_children = input_name_to_nodes[div_node.output[0]]
+        for temp_node in div_children:
+            if temp_node.op_type == "Cast":
+                # Div --> Cast --> Mul
+                subgraph_nodes.append(temp_node)  # add Cast node to list of subgraph nodes
+                if temp_node.output[0] not in input_name_to_nodes:
+                    continue
+                mul_node = input_name_to_nodes[temp_node.output[0]][0]
+            else:
+                # Div --> Mul
+                mul_node = temp_node
+            if mul_node.op_type != "Mul":
+                continue
 
-        subgraph_nodes.append(node)
-        subgraph_nodes.extend(children)
-        subgraph_nodes.extend(parent_nodes[:-1])
+            if mul_node.output[0] not in input_name_to_nodes:
+                continue
+            last_add_node = input_name_to_nodes[mul_node.output[0]][0]
+            if last_add_node.op_type != "Add":
+                continue
 
-        subgraph_nodes.extend([last_add_node, mul_node, div_node])
-        if not self.model.is_safe_to_fuse_nodes(
-            subgraph_nodes,
-            last_add_node.output,
-            input_name_to_nodes,
-            output_name_to_node,
-        ):
-            logger.debug("It is not safe to fuse LayerNormalization node. Skip")
-            return
+            subgraph_nodes.append(node)
+            subgraph_nodes.extend(children)
+            subgraph_nodes.extend(parent_nodes[:-1])
 
-        node_before_weight = div_node if temp_node.op_type != "Cast" else temp_node
-        weight_input = mul_node.input[1 - self.model.input_index(node_before_weight.output[0], mul_node)]
-        if self.check_constant_and_dimension and not self.model.is_constant_with_specified_dimension(
-            weight_input, 1, "layernorm weight"
-        ):
-            return
+            subgraph_nodes.extend([last_add_node, mul_node, div_node])
 
-        bias_input = last_add_node.input[1 - self.model.input_index(mul_node.output[0], last_add_node)]
-        if self.check_constant_and_dimension and not self.model.is_constant_with_specified_dimension(
-            bias_input, 1, "layernorm bias"
-        ):
-            return
+            node_before_weight = div_node if temp_node.op_type != "Cast" else temp_node
+            weight_input = mul_node.input[1 - self.model.input_index(node_before_weight.output[0], mul_node)]
+            if self.check_constant_and_dimension and not self.model.is_constant_with_specified_dimension(
+                weight_input, 1, "layernorm weight"
+            ):
+                continue
 
-        self.nodes_to_remove.extend(subgraph_nodes)
+            bias_input = last_add_node.input[1 - self.model.input_index(mul_node.output[0], last_add_node)]
+            if self.check_constant_and_dimension and not self.model.is_constant_with_specified_dimension(
+                bias_input, 1, "layernorm bias"
+            ):
+                continue
 
-        normalize_node = helper.make_node(
-            "LayerNormalization",
-            inputs=[node.input[0], weight_input, bias_input],
-            outputs=[last_add_node.output[0]],
-            name=self.model.create_node_name("LayerNormalization", name_prefix="LayerNorm"),
-        )
-        normalize_node.attribute.extend([helper.make_attribute("epsilon", float(epsilon))])
-        self.nodes_to_add.append(normalize_node)
-        self.node_name_to_graph_name[normalize_node.name] = self.this_graph_name
+            layer_norm_output = last_add_node.output[0]
+            if not self.model.is_safe_to_fuse_nodes(
+                subgraph_nodes,
+                last_add_node.output,
+                input_name_to_nodes,
+                output_name_to_node,
+            ):
+                # If it is not safe to fuse, somce computation may be duplicated if we force to fuse it.
+                # It it unknown that force fusion might bring performance gain/loss.
+                # User need test performance impact to see whether forcing fusion can help.
+                if self.force:
+                    self.prune_graph = True
+                else:
+                    logger.debug("It is not safe to fuse LayerNormalization node. Skip")
+                    continue
+            else:
+                self.nodes_to_remove.extend(subgraph_nodes)
+
+            normalize_node = helper.make_node(
+                "LayerNormalization",
+                inputs=[node.input[0], weight_input, bias_input],
+                outputs=[layer_norm_output],
+                name=self.model.create_node_name("LayerNormalization", name_prefix="LayerNorm"),
+            )
+            normalize_node.attribute.extend([helper.make_attribute("epsilon", float(epsilon))])
+            self.nodes_to_add.append(normalize_node)
+            self.node_name_to_graph_name[normalize_node.name] = self.this_graph_name
 
 
 class FusionLayerNormalizationNCHW(Fusion):

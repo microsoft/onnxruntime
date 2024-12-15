@@ -39,7 +39,9 @@ class MmditOnnxModel(BertOnnxModel):
             "The optimized model requires LayerNormalization with broadcast support. "
             "Please use onnxruntime-gpu>=1.21 for inference."
         )
-        fusion = FusionLayerNormalization(self, check_constant_and_dimension=not layernorm_support_broadcast)
+        fusion = FusionLayerNormalization(
+            self, check_constant_and_dimension=not layernorm_support_broadcast, force=True
+        )
         fusion.apply()
 
     def fuse_multi_head_attention(self):
@@ -88,7 +90,8 @@ class MmditOnnxModel(BertOnnxModel):
 
         # TODO: SkipLayerNormalization does not support broadcast yet.
         # if (options is None) or options.enable_skip_layer_norm:
-        #     self.fuse_skip_layer_norm()
+        #    self.fuse_skip_simplified_layer_norm()
+        #    self.fuse_skip_layer_norm()
         # if (options is None) or options.enable_bias_skip_layer_norm:
         #     # Fuse SkipLayerNormalization and Add Bias before it.
         #     self.fuse_add_bias_skip_layer_norm()
