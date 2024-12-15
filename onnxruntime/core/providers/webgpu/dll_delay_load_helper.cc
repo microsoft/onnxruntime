@@ -24,6 +24,9 @@ std::wstring GetCurrentDllDir() {
 
   GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                      reinterpret_cast<LPCWSTR>(&GetCurrentDllDir), &moduleHandle);
+  if (moduleHandle == nullptr) {
+    return std::wstring{};
+  }
 
   DWORD getModuleFileNameResult = GetModuleFileNameW(moduleHandle, const_cast<wchar_t*>(path.c_str()), pathLen);
   while (getModuleFileNameResult == 0 || getModuleFileNameResult == pathLen) {
