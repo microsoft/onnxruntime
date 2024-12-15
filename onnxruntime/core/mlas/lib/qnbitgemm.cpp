@@ -528,19 +528,14 @@ SQ4BitGemm_CompInt8(
     const size_t lda = k_blks * (per_gemm_quant_a_workspace->QuantScale ? BlkLen : Q8BlkSize(BlkLen));
     const size_t ldc = DataParams->ldc;
     const size_t ldb = k_blks * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
-    const size_t k_blks_zp_bytes = MlasQNBitZeroPointsForBlksSizeInBytes<BlkBitWidth>(k_blks);
 
     const std::byte* QuantA = per_gemm_quant_a_workspace->QuantData + RangeStartM * lda;
     const float* QuantAScale = per_gemm_quant_a_workspace->QuantScale + RangeStartM * k_blks;
+    const float* ABlockSum = per_gemm_quant_a_workspace->BlockSum + RangeStartM * k_blks;
 
     assert(RangeStartN % 4 == 0);
     const std::byte* QuantBData = static_cast<const std::byte*>(DataParams->PackedQuantBData) + RangeStartN * ldb;
     const float* QuantBScale = DataParams->QuantBScale + RangeStartN * k_blks;
-    const std::byte* QuantBZeroPoint =
-        (DataParams->QuantBZeroPoint == nullptr)
-            ? nullptr
-            : static_cast<const std::byte*>(DataParams->QuantBZeroPoint) + RangeStartN * k_blks_zp_bytes;
-    const float* ABlockSum = per_gemm_quant_a_workspace->BlockSum + RangeStartM * k_blks;
     const float* QuantBBlkSum = DataParams->QuantBBlkSum + RangeStartN * k_blks;
     float* C = DataParams->C + RangeStartM * ldc + RangeStartN;
 
@@ -572,14 +567,43 @@ SQ4BitGemm_CompInt8(
     for (size_t n = 0; n < RangeCountN; n += CountN) {
         CountN = std::min(RangeCountN - n, size_t{128});
 
-        const std::byte* a_row = QuantA;
         const std::byte* b_col = QuantBData + n * ldb;
         const float* b_col_scale = QuantBScale + n * k_blks;
-        const std::byte* b_col_zp =
-            (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
         float* c_blk = C + n;
         const float* bias = (Bias == nullptr) ? nullptr : Bias + n;
 
+#ifdef MLAS_TARGET_AMD64_IX86
+        if (GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_BlkSum_CompInt8 != nullptr)
+        {
+            const float* b_blk_sum = QuantBBlkSum + n * k_blks;
+            GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_BlkSum_CompInt8(
+                BlkLen,
+                QuantA,
+                QuantAScale,
+                b_col,
+                b_col_scale,
+                c_blk,
+                RangeCountM,
+                CountN,
+                K,
+                k_blks,
+                bias,
+                ldc,
+                ABlockSum,
+                b_blk_sum
+            );
+
+            if (DataParams->PostProcessor != nullptr) {
+                DataParams->PostProcessor->Process(
+                    DataParams->C, RangeStartM, RangeStartN + n,
+                    RangeCountM, CountN, ldc
+                );
+            }
+        }
+#else
+        const std::byte* a_row = QuantA;
+        const std::byte* b_col_zp =
+            (QuantBZeroPoint == nullptr) ? nullptr : QuantBZeroPoint + n * k_blks_zp_bytes;
         if (GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_CompInt8 != nullptr) {
             size_t RowsRemaining = RangeCountM;
             while (RowsRemaining > 0) {
@@ -599,35 +623,6 @@ SQ4BitGemm_CompInt8(
                 a_row += RowsHandled * lda;
 
                 RowsRemaining -= RowsHandled;
-            }
-        }
-#ifdef MLAS_TARGET_AMD64_IX86
-        else if (GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_BlkSum_CompInt8 != nullptr)
-        {
-            const float* b_blk_sum = QuantBBlkSum + n * k_blks;
-            GetMlasPlatform().QNBitGemmDispatch->SQ4BitGemmKernel_BlkSum_CompInt8(
-                BlkLen,
-                QuantA,
-                QuantAScale,
-                b_col,
-                b_col_scale,
-                b_col_zp,
-                c_blk,
-                RangeCountM,
-                CountN,
-                K,
-                k_blks,
-                bias,
-                ldc,
-                ABlockSum,
-                b_blk_sum
-            );
-
-            if (DataParams->PostProcessor != nullptr) {
-                DataParams->PostProcessor->Process(
-                    DataParams->C, RangeStartM, RangeStartN + n,
-                    RangeCountM, CountN, ldc
-                );
             }
         }
 #endif

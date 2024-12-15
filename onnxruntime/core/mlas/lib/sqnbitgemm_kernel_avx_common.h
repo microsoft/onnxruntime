@@ -19,14 +19,7 @@ Q4BitGemmPackQuantBDataSize(
     if (ComputeType == SQNBIT_CompInt8) {
         size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
         const size_t ScaleSize = N * BlockCountK * sizeof(float);
-        size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(float);
-
-        // _mm256_load_si256 requires alignment on a 32-byte boundary
-        constexpr size_t PackedQuantBDataAlignment = 32;
-        PackedQuantBDataSize += PackedQuantBDataAlignment - 1;
-        constexpr size_t BlkSumAlignment = MlasQNBitQuantBBlkSumAlignment();
-        BlkSumSize += BlkSumAlignment - 1;
-
+        const size_t BlkSumSize = ScaleSize;
         return PackedQuantBDataSize + ScaleSize + BlkSumSize;
     } else {
         const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
@@ -327,7 +320,6 @@ ComputePackBlkSum(
 
         bool is_avx512 = SubBlkLen == 128;
         if (is_avx512) {
-            // not to use sgemm so blksum has the same layout as scale
             if (BlkLen == 32) {
                 int blks_per_sub = (int)(SubBlkLen / BlkLen);
                 size_t dst_offset = GetContinueLayoutOffsetBlkInSubBlk(N, n, BlockCountK, k_blk, blks_per_sub);
@@ -341,13 +333,11 @@ ComputePackBlkSum(
             const size_t dst_offset = n * BlockCountK + k_blk;
             *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
         } else {
-            // to use sgemm BlockSum is a width 16 row major matrix
             const size_t dst_offset = ((n / 16) * BlockCountK + k_blk) * 16 + n % 16;
             *(BlockSumBegin + dst_offset) = -QuantBScale * zp;
         }
 
-        if (BlkLen == 16) {  // TODO
-
+        if (BlkLen == 16) {
         } else if (BlkLen >= SubBlkLen) {
             const size_t scale_dst_offset = GetContinueLayoutOffsetSubBlk(N, n, BlockCountK, k_blk);
             *(QuantBScaleBegin + scale_dst_offset) = QuantBScale;

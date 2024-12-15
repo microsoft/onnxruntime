@@ -71,14 +71,19 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     params.Bias = Bias;
     params.C = C;
     params.ldc = ldc;
+    bool bpacked_with_scale_zp = false;
 #ifdef MLAS_TARGET_AMD64_IX86
     if (ComputeType == SQNBIT_CompInt8) {
-      params.QuantBDataWorkspace = PackedQuantBDataWorkspace;
+      bpacked_with_scale_zp = true;
     }
 #endif
-    params.PackedQuantBData = static_cast<const std::byte*>(PackedQuantBDataWorkspace);
-    params.QuantBScale = QuantBScale;
-    params.QuantBZeroPoint = QuantBZeroPoint;
+    if (bpacked_with_scale_zp) {
+      params.QuantBDataWorkspace = PackedQuantBDataWorkspace;
+    } else {
+      params.PackedQuantBData = static_cast<const std::byte*>(PackedQuantBDataWorkspace);
+      params.QuantBScale = QuantBScale;
+      params.QuantBZeroPoint = QuantBZeroPoint;
+    }
     params.PostProcessor = nullptr;
 
     MlasQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace, Threadpool);

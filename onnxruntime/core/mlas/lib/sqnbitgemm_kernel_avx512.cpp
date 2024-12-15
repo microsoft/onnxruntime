@@ -162,7 +162,6 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx512(
     const float* QuantAScale,
     const std::byte* QuantBData,
     const float* QuantBScale,
-    const std::byte* /*QuantBZeroPoint*/,
     float* C,
     size_t CountM,
     size_t CountN,
