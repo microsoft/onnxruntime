@@ -1,15 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/common.h"
-#include "core/framework/tensorprotoutils.h"
+#include "base_op_builder.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
-#include "core/common/safeint.h"
-#include "core/util/qmath.h"
-
-#include "base_op_builder.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -259,15 +254,16 @@ Status ProcessAlphaAttributeAsInput(QnnModelWrapper& qnn_model_wrapper,
   // Check LeakyRelu input 0 to see if it's quantized tensor
   bool is_quantized_tensor = node_unit.Outputs()[0].quant_param.has_value();
   if (is_quantized_tensor) {
-    float scale;
-    uint8_t zero_point;
-    int64_t num_of_elements = 1;
-    concurrency::ThreadPool* thread_pool = nullptr;
-    GetQuantizationParameter(&tensor_data.alpha, num_of_elements, scale, zero_point, thread_pool);
-    unpacked_data.resize(1);
-    ParQuantizeLinearStd(&tensor_data.alpha, unpacked_data.data(), num_of_elements, scale, zero_point, thread_pool);
-    quantize_param = QnnQuantParamsWrapper(scale, static_cast<int32_t>(zero_point));
     qnn_data_type = QNN_DATATYPE_UFIXED_POINT_8;
+    std::array<float, 1> scales = {1.0f};
+    std::array<int32_t, 1> offsets = {0};
+    std::array<uint32_t, 1> shape = {1};
+    auto float_data = gsl::make_span<const float>(&tensor_data.alpha, 1);
+    ORT_RETURN_IF_ERROR(qnn::utils::GetDataQuantParams(float_data, shape, scales, offsets, qnn_data_type));
+
+    unpacked_data.resize(1);
+    ORT_RETURN_IF_ERROR(qnn::utils::QuantizeData(float_data, shape, scales, offsets, unpacked_data, qnn_data_type));
+    quantize_param = QnnQuantParamsWrapper(scales[0], static_cast<int32_t>(offsets[0]));
   } else {
     const auto& inputs = node_unit.Inputs();
     TensorInfo input_info = {};
