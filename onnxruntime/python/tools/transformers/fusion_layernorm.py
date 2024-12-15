@@ -13,7 +13,7 @@ logger = getLogger(__name__)
 
 
 class FusionLayerNormalization(Fusion):
-    def __init__(self, model: OnnxModel, check_constant_and_dimension:bool=True):
+    def __init__(self, model: OnnxModel, check_constant_and_dimension: bool = True):
         super().__init__(model, "LayerNormalization", "ReduceMean")
         self.check_constant_and_dimension = check_constant_and_dimension
 
@@ -132,11 +132,15 @@ class FusionLayerNormalization(Fusion):
 
         node_before_weight = div_node if temp_node.op_type != "Cast" else temp_node
         weight_input = mul_node.input[1 - self.model.input_index(node_before_weight.output[0], mul_node)]
-        if self.check_constant_and_dimension and not self.model.is_constant_with_specified_dimension(weight_input, 1, "layernorm weight"):
+        if self.check_constant_and_dimension and not self.model.is_constant_with_specified_dimension(
+            weight_input, 1, "layernorm weight"
+        ):
             return
 
         bias_input = last_add_node.input[1 - self.model.input_index(mul_node.output[0], last_add_node)]
-        if self.check_constant_and_dimension and not self.model.is_constant_with_specified_dimension(bias_input, 1, "layernorm bias"):
+        if self.check_constant_and_dimension and not self.model.is_constant_with_specified_dimension(
+            bias_input, 1, "layernorm bias"
+        ):
             return
 
         self.nodes_to_remove.extend(subgraph_nodes)

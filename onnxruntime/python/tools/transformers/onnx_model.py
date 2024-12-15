@@ -242,13 +242,11 @@ class OnnxModel:
             if output_index < len(node.output):
                 output = node.output[output_index]
                 if output in input_name_to_nodes:
-                    for node in input_name_to_nodes[output]:
-                        children.append(node)
+                    children = list(input_name_to_nodes[output])
         else:
             for output in node.output:
                 if output in input_name_to_nodes:
-                    for node in input_name_to_nodes[output]:
-                        children.append(node)  # noqa: PERF402
+                    children.extend(input_name_to_nodes[output])
 
         return children
 
@@ -444,7 +442,7 @@ class OnnxModel:
         self,
         node,
         child_op_types,
-        edges:Optional[List[Tuple[int, int]]]=None,
+        edges: Optional[List[Tuple[int, int]]] = None,
         input_name_to_nodes=None,
         exclude=[],  # noqa: B006
     ):
@@ -465,10 +463,12 @@ class OnnxModel:
         if edges is not None:
             assert len(edges) == len(child_op_types)
             for edge in edges:
-                assert isinstance(edge, tuple) and len(edge) == 2 and isinstance(edge[0], int) and isinstance(edge[1], int)
+                assert (
+                    isinstance(edge, tuple) and len(edge) == 2 and isinstance(edge[0], int) and isinstance(edge[1], int)
+                )
 
         if input_name_to_nodes is None:
-           input_name_to_nodes = self.input_name_to_nodes()
+            input_name_to_nodes = self.input_name_to_nodes()
 
         current_node = node
         matched_children = []
@@ -478,7 +478,9 @@ class OnnxModel:
             if edges is None:
                 children_nodes = self.get_children(current_node, input_name_to_nodes=input_name_to_nodes)
             else:
-                children_nodes = self.get_children(current_node, input_name_to_nodes=input_name_to_nodes, output_index=edges[i][0])
+                children_nodes = self.get_children(
+                    current_node, input_name_to_nodes=input_name_to_nodes, output_index=edges[i][0]
+                )
 
             for child in children_nodes:
                 if child.op_type == op_type and child not in exclude:

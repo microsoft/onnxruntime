@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 from logging import getLogger
-from typing import Optional, Tuple
+from typing import Optional
 
 import numpy as np
 from fusion_base import Fusion
@@ -13,13 +13,14 @@ from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
 
+
 class FusionMultiHeadAttentionMMDit(Fusion):
     """
     Fuse MultiHeadAttention for Multimodal Diffusion Transformer (MMDiT).
     """
 
     def __init__(self, model: OnnxModel):
-        super().__init__(model, fused_op_type = "MultiHeadAttention", search_op_types = ["Softmax"])
+        super().__init__(model, fused_op_type="MultiHeadAttention", search_op_types=["Softmax"])
 
     def get_num_heads(self, node: NodeProto, output_name_to_node) -> int:
         """
@@ -46,7 +47,8 @@ class FusionMultiHeadAttentionMMDit(Fusion):
             node,
             ["SimplifiedLayerNormalization", "Transpose", "Reshape", "Add"],
             [0, 0, 0, 0],
-            output_name_to_node=output_name_to_node)
+            output_name_to_node=output_name_to_node,
+        )
 
         num_heads = 0
         if k_proj_nodes:
@@ -101,11 +103,7 @@ class FusionMultiHeadAttentionMMDit(Fusion):
                          |
                     Transpose(perm=0,1,3,2)
         """
-        nodes = self.model.match_parent_path(
-            transpose_k,
-            ["Concat"],
-            [0],
-            output_name_to_node=output_name_to_node)
+        nodes = self.model.match_parent_path(transpose_k, ["Concat"], [0], output_name_to_node=output_name_to_node)
 
         return self.get_num_heads(nodes[0], output_name_to_node) if nodes else 0
 
@@ -155,37 +153,35 @@ class FusionMultiHeadAttentionMMDit(Fusion):
 
         return self.reshape_to_3d(sln_a.output[0], sln_output + "_BSD")
 
-
-
     def adjust_query_from_bnsh_to_bsd(self, mul_q: NodeProto, output_name_to_node) -> Optional[str]:
         """
-        Before:
-                  MatMul      MatMul    .. [-1] [24] ..
-                    |            |       |  |  /   /
-                    Add Concat  Add    Concat
-                     |    /      |      /
-                     Reshape     Reshape
-                        |           |
-    Transpose(perm=0,2,1,3)      Transpose(perm=0,2,1,3)
-                        |           |
-        SimplifiedLayerNorm  SimplifiedLayerNorm
-                        |     /
-                        Concat(axis=2)
-                         |
-                        Mul
-
-        After:
-                  MatMul      MatMul    .. [-1] [24] ..
-                    |            |       |  |  /   /
-                    Add Concat Add       Concat
-                     |    /      |      /
-                     Reshape     Reshape
-                        |           |
+            Before:
+                      MatMul      MatMul    .. [-1] [24] ..
+                        |            |       |  |  /   /
+                        Add Concat  Add    Concat
+                         |    /      |      /
+                         Reshape     Reshape
+                            |           |
+        Transpose(perm=0,2,1,3)      Transpose(perm=0,2,1,3)
+                            |           |
             SimplifiedLayerNorm  SimplifiedLayerNorm
-                        |         /
-                    Concat(axis=1)
-                         |
-                       Reshape (shape=[0, 0, -1])
+                            |     /
+                            Concat(axis=2)
+                             |
+                            Mul
+
+            After:
+                      MatMul      MatMul    .. [-1] [24] ..
+                        |            |       |  |  /   /
+                        Add Concat Add       Concat
+                         |    /      |      /
+                         Reshape     Reshape
+                            |           |
+                SimplifiedLayerNorm  SimplifiedLayerNorm
+                            |         /
+                        Concat(axis=1)
+                             |
+                           Reshape (shape=[0, 0, -1])
         """
 
         path = self.model.match_parent_path(
@@ -204,7 +200,6 @@ class FusionMultiHeadAttentionMMDit(Fusion):
             concat,
             ["SimplifiedLayerNormalization", "Transpose"],
             [1, 0],
-
         )
         if path is None:
             return None
@@ -231,7 +226,6 @@ class FusionMultiHeadAttentionMMDit(Fusion):
         self.node_name_to_graph_name[new_concat_node.name] = self.this_graph_name
 
         return self.reshape_to_3d(new_concat_node.output[0], concat.output[0] + "_BSD")
-
 
     def create_multihead_attention_node(
         self,
@@ -284,10 +278,9 @@ class FusionMultiHeadAttentionMMDit(Fusion):
         if self.model.find_graph_output(softmax.output[0]):
             return
 
-        nodes = self.model.match_child_path(softmax,
-                                            ["MatMul", "Transpose", "Reshape"],
-                                            [(0, 0), (0, 0), (0, 0)],
-                                            input_name_to_nodes)
+        nodes = self.model.match_child_path(
+            softmax, ["MatMul", "Transpose", "Reshape"], [(0, 0), (0, 0), (0, 0)], input_name_to_nodes
+        )
         if nodes is None:
             return
 
@@ -334,13 +327,17 @@ class FusionMultiHeadAttentionMMDit(Fusion):
             #                                     |
             #                                     v
             #   -- Transpose (perm=[0,2,1,3]) -> Concat -> (v)
-            transpose_1 = self.model.match_parent(concat, "Transpose", input_index=0, output_name_to_node=output_name_to_node)
+            transpose_1 = self.model.match_parent(
+                concat, "Transpose", input_index=0, output_name_to_node=output_name_to_node
+            )
             if transpose_1 is None:
                 return
             if not FusionUtils.check_node_attribute(transpose_1, "perm", [0, 2, 1, 3]):
                 return
 
-            transpose_2 = self.model.match_parent(concat, "Transpose", input_index=1, output_name_to_node=output_name_to_node)
+            transpose_2 = self.model.match_parent(
+                concat, "Transpose", input_index=1, output_name_to_node=output_name_to_node
+            )
             if transpose_2 is None:
                 return
             if not FusionUtils.check_node_attribute(transpose_2, "perm", [0, 2, 1, 3]):
@@ -348,7 +345,9 @@ class FusionMultiHeadAttentionMMDit(Fusion):
         else:
             # Match v path like:
             #   -- Transpose (perm=[0,2,1,3]) -> (v)
-            transpose_1 = self.model.match_parent(matmul_s_v, "Transpose", input_index=1, output_name_to_node=output_name_to_node)
+            transpose_1 = self.model.match_parent(
+                matmul_s_v, "Transpose", input_index=1, output_name_to_node=output_name_to_node
+            )
             if transpose_1 is None:
                 return
             if not FusionUtils.check_node_attribute(transpose_1, "perm", [0, 2, 1, 3]):
