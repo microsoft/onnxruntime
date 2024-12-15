@@ -2,13 +2,14 @@
 // Licensed under the MIT License.
 
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
-#include "core/graph/constants.h"
-#include "core/providers/qnn/builder/qnn_utils.h"
-#include "core/providers/qnn/builder/qnn_model.h"
 
 #include <iostream>
 #include <fstream>
 #include <filesystem>
+
+#include "core/providers/qnn/ort_api.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
+#include "core/providers/qnn/builder/qnn_model.h"
 
 namespace onnxruntime {
 namespace qnn {

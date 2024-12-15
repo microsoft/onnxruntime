@@ -189,6 +189,9 @@ qnn::ProfilingLevel QNNExecutionProvider::GetProfilingLevelFromETWLevel(unsigned
 QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_options_map,
                                            const ConfigOptions* config_options)
     : IExecutionProvider{onnxruntime::kQnnExecutionProvider} {
+  // TODO: Uncomment when QNN EP is built as a DLL
+  // InitProviderOrtApi();
+
   if (config_options) {
     disable_cpu_ep_fallback_ = config_options->GetConfigOrDefault(
                                    kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";

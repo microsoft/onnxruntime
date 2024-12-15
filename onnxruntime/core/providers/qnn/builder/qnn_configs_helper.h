@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include <core/common/inlined_containers_fwd.h>
+#include <vector>
 
 namespace onnxruntime {
 namespace qnn {
@@ -81,9 +81,9 @@ class QnnConfigsBuilder {
 
   BaseConfigType base_config_init_;
   CustomConfigType custom_config_init_;
-  InlinedVector<CustomConfigType> custom_configs_;
-  InlinedVector<BaseConfigType> configs_;
-  InlinedVector<const BaseConfigType*> config_ptrs_;
+  std::vector<CustomConfigType> custom_configs_;
+  std::vector<BaseConfigType> configs_;
+  std::vector<const BaseConfigType*> config_ptrs_;
 };
 
 }  // namespace qnn

@@ -7,10 +7,7 @@
 #include <vector>
 
 #include "qnn_def.h"
-#include "core/common/logging/logging.h"
-#include "core/graph/graph_viewer.h"
-#include "core/graph/model.h"
-#include "core/framework/execution_provider.h"
+#include "core/providers/qnn/ort_api.h"
 
 namespace onnxruntime {
 

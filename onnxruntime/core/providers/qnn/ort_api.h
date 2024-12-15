@@ -8,6 +8,7 @@
 #if BUILD_QNN_EP_STATIC
 #include "core/common/common.h"
 #include "core/common/status.h"
+#include "core/common/safeint.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/capture.h"
 #include "core/common/path_string.h"
@@ -20,6 +21,9 @@
 #include "core/framework/tensor_shape.h"
 #include "core/framework/node_unit.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/framework/utils.h"
+#include "core/graph/constants.h"
+#include "core/graph/basic_types.h"
 #include "core/graph/model.h"
 #include "core/graph/graph_viewer.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
