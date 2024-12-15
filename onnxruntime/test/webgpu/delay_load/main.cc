@@ -43,10 +43,10 @@ int wmain(int argc, wchar_t* argv[]) {
 }
 
 int prepare_main() {
-  WCHAR path[32768];
-  GetModuleFileNameW(NULL, path, 32768);
+  std::wstring path_str(32768, L'\0');
+  GetModuleFileNameW(NULL, path_str.data(), static_cast<DWORD>(path_str.size()));
+
   namespace fs = std::filesystem;
-  std::wstring path_str(path);
   fs::path exe_full_path{path_str};                                    // <TEST_DIR>/onnxruntime_webgpu_delay_load_test.exe
   fs::path test_dir = exe_full_path.parent_path();                     // <TEST_DIR>/
   fs::path exe_name = exe_full_path.filename();                        // onnxruntime_webgpu_delay_load_test.exe
