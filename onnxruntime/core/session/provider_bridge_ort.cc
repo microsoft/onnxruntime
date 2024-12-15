@@ -594,6 +594,7 @@ struct ProviderHostImpl : ProviderHost {
   const std::string& TensorProto__raw_data(const ONNX_NAMESPACE::TensorProto* p) override { return p->raw_data(); }
   std::string* TensorProto__mutable_raw_data(ONNX_NAMESPACE::TensorProto* p) override { return p->mutable_raw_data(); }
 
+  bool TensorProto__has_data_type(const ONNX_NAMESPACE::TensorProto* p) override { return p->has_data_type(); }
   int32_t TensorProto__data_type(const ONNX_NAMESPACE::TensorProto* p) override { return p->data_type(); }
   void TensorProto__set_data_type(ONNX_NAMESPACE::TensorProto* p, int32_t type) override { p->set_data_type(type); }
 

@@ -237,6 +237,7 @@ struct TensorProto final {
   const std::string& raw_data() const { return g_host->TensorProto__raw_data(this); }
   std::string* mutable_raw_data() { return g_host->TensorProto__mutable_raw_data(this); }
 
+  bool has_data_type() const { return g_host->TensorProto__has_data_type(this); }
   int32_t data_type() const { return g_host->TensorProto__data_type(this); }
   void set_data_type(int32_t type) { return g_host->TensorProto__set_data_type(this, type); }
 
