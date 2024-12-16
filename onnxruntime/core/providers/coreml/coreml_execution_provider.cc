@@ -58,11 +58,18 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       [&]() {
         HashValue model_hash;
         int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
-        std::string user_provide_hash;
-        if (graph_viewer.GetGraph().GetModel().MetaData().count("CACHE_KEY") > 0) {
-          user_provide_hash = graph_viewer.GetGraph().GetModel().MetaData().at("CACHE_KEY");
+        std::string user_provide_key;
+        const Graph* main_graph = &graph_viewer.GetGraph();
+        while (main_graph->IsSubgraph()) {
+          main_graph = main_graph->ParentGraph();
         }
-        return MakeString(user_provide_hash, "_", COREML, "_", model_hash, "_", metadef_id);
+        if (main_graph->GetModel().MetaData().count("CACHE_KEY") > 0) {
+          user_provide_key = graph_viewer.GetGraph().GetModel().MetaData().at("CACHE_KEY");
+        } else {
+          // model_hash is a 64-bit hash value of model_path
+          user_provide_key = std::to_string(model_hash);
+        }
+        return MakeString(user_provide_key, "_", COREML, "_", model_hash, "_", metadef_id);
       };
 
   result = utils::CreateSupportedPartitions(graph_viewer, supported_nodes, {},

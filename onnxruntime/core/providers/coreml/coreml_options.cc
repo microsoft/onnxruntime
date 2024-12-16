@@ -109,21 +109,5 @@ void CoreMLOptions::ValidateAndParseProviderOption(const ProviderOptions& option
       model_cache_path_ = option.second;
     }
   }
-
-  // Set the model cache path with equireStaticShape and ModelFormat
-  if (model_cache_path_.size()) {
-    if (require_static_shape_) {
-      model_cache_path_ += "/static_shape";
-    } else {
-      model_cache_path_ += "/dynamic_shape";
-    }
-
-    if (create_mlprogram_) {
-      model_cache_path_ += "/mlpackage";
-    } else {
-      model_cache_path_ += "/mlnnmodel";
-    }
-    ORT_THROW_IF_ERROR(Env::Default().CreateFolder(model_cache_path_));
-  }
 }
 }  // namespace onnxruntime
