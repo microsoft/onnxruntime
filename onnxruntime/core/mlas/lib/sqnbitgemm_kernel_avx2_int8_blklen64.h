@@ -6,6 +6,86 @@
 #include "qnbitgemm.h"
 #include "sqnbitgemm_kernel_avx_common.h"
 
+MLAS_FORCEINLINE
+__m256i
+make_load_mask(int n)
+{
+    static const int32_t avx2_load_mask_buffer[16] = {-1, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0};
+    return _mm256_loadu_si256((const __m256i*)(avx2_load_mask_buffer + 8 - n));
+}
+
+static MLAS_FORCEINLINE void
+accumulate_scaled_zp_prod_r1_c4_avx(__m256& acc0, __m256& acc1, __m256& acc2, __m256& acc3, const float* scaled_zp_a, const float* scaled_zp_b, size_t BlockCountK)
+{
+    constexpr size_t PerAccuBlk8 = 8;
+    size_t k_blks_remaining = BlockCountK;
+    // process 2 blks of 64 4b weights a time
+    for (; k_blks_remaining >= PerAccuBlk8; k_blks_remaining -= PerAccuBlk8) {
+        const __m256 a_8_ps = _mm256_loadu_ps(scaled_zp_a);
+        {
+            const __m256 b_16_ps0 = _mm256_loadu_ps(scaled_zp_b);
+            acc0 = _mm256_fmadd_ps(a_8_ps, b_16_ps0, acc0);
+        }
+        {
+            const __m256 b_16_ps1 = _mm256_loadu_ps(scaled_zp_b + BlockCountK);
+            acc1 = _mm256_fmadd_ps(a_8_ps, b_16_ps1, acc1);
+        }
+        {
+            const __m256 b_16_ps2 = _mm256_loadu_ps(scaled_zp_b + 2 * BlockCountK);
+            acc2 = _mm256_fmadd_ps(a_8_ps, b_16_ps2, acc2);
+        }
+        {
+            const __m256 b_16_ps3 = _mm256_loadu_ps(scaled_zp_b + 3 * BlockCountK);
+            acc3 = _mm256_fmadd_ps(a_8_ps, b_16_ps3, acc3);
+        }
+        scaled_zp_a += PerAccuBlk8;
+        scaled_zp_b += PerAccuBlk8;
+    }
+
+    if (k_blks_remaining > 0) {
+        __m256i load_mask = make_load_mask((int)k_blks_remaining);
+        const __m256 a_8_ps = _mm256_maskload_ps(scaled_zp_a, load_mask);
+        {
+            const __m256 b_8_ps0 = _mm256_maskload_ps(scaled_zp_b, load_mask);
+            acc0 = _mm256_fmadd_ps(a_8_ps, b_8_ps0, acc0);
+        }
+        {
+            const __m256 b_8_ps1 = _mm256_maskload_ps(scaled_zp_b + BlockCountK, load_mask);
+            acc1 = _mm256_fmadd_ps(a_8_ps, b_8_ps1, acc1);
+        }
+        {
+            const __m256 b_8_ps2 = _mm256_maskload_ps(scaled_zp_b + 2 * BlockCountK, load_mask);
+            acc2 = _mm256_fmadd_ps(a_8_ps, b_8_ps2, acc2);
+        }
+        {
+            const __m256 b_8_ps3 = _mm256_maskload_ps(scaled_zp_b + 3 * BlockCountK, load_mask);
+            acc3 = _mm256_fmadd_ps(a_8_ps, b_8_ps3, acc3);
+        }
+    }
+}
+
+static MLAS_FORCEINLINE void
+accumulate_scaled_zp_prod_r1_c1_avx(__m256& acc, const float* scaled_zp_a, const float* scaled_zp_b, size_t BlockCountK)
+{
+    constexpr size_t PerAccuBlk8 = 8;
+    size_t k_blks_remaining = BlockCountK;
+    // process 2 blks of 64 4b weights a time
+    for (; k_blks_remaining >= PerAccuBlk8; k_blks_remaining -= PerAccuBlk8) {
+        const __m256 a_8_ps = _mm256_loadu_ps(scaled_zp_a);
+        const __m256 b_8_ps = _mm256_loadu_ps(scaled_zp_b);
+        acc = _mm256_fmadd_ps(a_8_ps, b_8_ps, acc);
+        scaled_zp_a += PerAccuBlk8;
+        scaled_zp_b += PerAccuBlk8;
+    }
+
+    if (k_blks_remaining > 0) {
+        __m256i load_mask = make_load_mask((int)k_blks_remaining);
+        const __m256 a_8_ps = _mm256_maskload_ps(scaled_zp_a, load_mask);
+        const __m256 b_8_ps = _mm256_maskload_ps(scaled_zp_b, load_mask);
+        acc = _mm256_fmadd_ps(a_8_ps, b_8_ps, acc);
+    }
+}
+
 template<bool vnni>
 static MLAS_FORCEINLINE void
 accumulate_blklen64_r2c1blk1_avx2(
@@ -135,7 +215,9 @@ Q4Int8GemmR2xC4BlkLen64Avx2(
     size_t CountN,
     size_t BlockCountK,
     const float* Bias,
-    size_t ldc
+    size_t ldc,
+    const float* ScaledZPA,
+    const float* ScaledZPB
 )
 {
     constexpr size_t BlkBitWidth4 = 4;
@@ -160,6 +242,7 @@ Q4Int8GemmR2xC4BlkLen64Avx2(
         const float* BiasPtr = Bias;
         auto* SumPtr = C + m * ldc;
 
+        const float* scaled_zp_b = ScaledZPB;
         for (size_t n = 0; n < CountN; n += NCols4) {
             const std::byte* QuantAPtr = QuantA + m * lda;
             const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
@@ -171,6 +254,11 @@ Q4Int8GemmR2xC4BlkLen64Avx2(
                 _mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps(),
                 _mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps()
             };
+
+            const float* scaled_zp_a = ScaledZPA + m * BlockCountK;
+            accumulate_scaled_zp_prod_r1_c4_avx(acc[0], acc[1], acc[2], acc[3], scaled_zp_a, scaled_zp_b, BlockCountK);
+            accumulate_scaled_zp_prod_r1_c4_avx(acc[4], acc[5], acc[6], acc[7], scaled_zp_a + BlockCountK, scaled_zp_b, BlockCountK);
+            scaled_zp_b += 4 * BlockCountK;
 
             // process 1 blks of 64 4b weights a time
             for (size_t k = 0; k < BlockCountK; ++k) {
@@ -225,7 +313,9 @@ Q4Int8GemmR2xC1BlkLen64Avx2(
     size_t CountN,
     size_t BlockCountK,
     const float* Bias,
-    size_t ldc
+    size_t ldc,
+    const float* ScaledZPA,
+    const float* ScaledZPB
 )
 {
     constexpr size_t BlkBitWidth4 = 4;
@@ -250,6 +340,7 @@ Q4Int8GemmR2xC1BlkLen64Avx2(
         const float* BiasPtr = Bias;
         float* SumPtr = C + m * ldc;
 
+        const float* scaled_zp_b = ScaledZPB;
         for (size_t n = 0; n < CountN; n++) {
             const std::byte* QuantAPtr = QuantA + m * lda;
             const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
@@ -258,6 +349,11 @@ Q4Int8GemmR2xC1BlkLen64Avx2(
             const float* QuantBScalePtr = QuantBScaleColPtr;
 
             __m256 acc0 = _mm256_setzero_ps(), acc1 = _mm256_setzero_ps();
+
+            const float* scaled_zp_a = ScaledZPA + m * BlockCountK;
+            accumulate_scaled_zp_prod_r1_c1_avx(acc0, scaled_zp_a, scaled_zp_b, BlockCountK);
+            accumulate_scaled_zp_prod_r1_c1_avx(acc1, scaled_zp_a + BlockCountK, scaled_zp_b, BlockCountK);
+            scaled_zp_b += BlockCountK;
 
             for (size_t k = 0; k < BlockCountK; ++k) {
                 for (size_t kk = 0; kk < PerBlkSubblkCount; kk++) {
@@ -305,7 +401,9 @@ Q4Int8GemmR1xC4BlkLen64Avx2(
     size_t CountN,
     size_t BlockCountK,
     const float* Bias,
-    size_t ldc
+    size_t ldc,
+    const float* ScaledZPA,
+    const float* ScaledZPB
 )
 {
     constexpr size_t BlkBitWidth4 = 4;
@@ -330,6 +428,7 @@ Q4Int8GemmR1xC4BlkLen64Avx2(
         const float* BiasPtr = Bias;
         auto* SumPtr = C + m * ldc;
 
+        const float* scaled_zp_b = ScaledZPB;
         for (size_t n = 0; n < CountN; n += NCols4) {
             const std::byte* QuantAPtr = QuantA + m * lda;
             const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
@@ -338,6 +437,11 @@ Q4Int8GemmR1xC4BlkLen64Avx2(
             const float* QuantBScalePtr = QuantBScaleColPtr;
 
             __m256 acc[NCols4] = {_mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps()};
+
+            const float* scaled_zp_a = ScaledZPA;
+            accumulate_scaled_zp_prod_r1_c4_avx(acc[0], acc[1], acc[2], acc[3], scaled_zp_a, scaled_zp_b, BlockCountK);
+            scaled_zp_b += 4 * BlockCountK;
+
             for (size_t k = 0; k < BlockCountK; ++k) {
                 for (size_t kk = 0; kk < PerBlkSubblkCount; kk++) {
                     const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)QuantAPtr);
@@ -384,7 +488,9 @@ Q4Int8GemmR1xC1BlkLen64Avx2(
     size_t CountN,
     size_t BlockCountK,
     const float* Bias,
-    size_t ldc
+    size_t ldc,
+    const float* ScaledZPA,
+    const float* ScaledZPB
 )
 {
     constexpr size_t BlkBitWidth4 = 4;
@@ -403,6 +509,7 @@ Q4Int8GemmR1xC1BlkLen64Avx2(
     assert(CountM < NRows2);
     assert(CountN < NCols4);
 
+    const float* scaled_zp_b = ScaledZPB;
     for (size_t m = 0; m < CountM; m++) {
         const std::byte* QuantBDataColPtr = QuantBData;
         const float* QuantBScaleColPtr = QuantBScale;
@@ -416,6 +523,10 @@ Q4Int8GemmR1xC1BlkLen64Avx2(
             const float* QuantBScalePtr = QuantBScaleColPtr;
 
             __m256 acc0 = _mm256_setzero_ps();
+            const float* scaled_zp_a = ScaledZPA;
+            accumulate_scaled_zp_prod_r1_c1_avx(acc0, scaled_zp_a, scaled_zp_b, BlockCountK);
+            scaled_zp_b += BlockCountK;
+
             for (size_t k = 0; k < BlockCountK; ++k) {
                 for (size_t kk = 0; kk < PerBlkSubblkCount; kk++) {
                     const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)QuantAPtr);
@@ -460,7 +571,9 @@ MlasQ4Int8GemmKernelBlkLen64Avx2(
     size_t CountN,
     size_t BlockCountK,
     const float* Bias,
-    size_t ldc
+    size_t ldc,
+    const float* ScaledZPA,
+    const float* ScaledZPB
 )
 {
     constexpr size_t BlkBitWidth4 = 4;
@@ -489,7 +602,9 @@ MlasQ4Int8GemmKernelBlkLen64Avx2(
             multipleCols,
             BlockCountK,
             Bias,
-            ldc
+            ldc,
+            ScaledZPA,
+            ScaledZPB
         );
     }
     if (remainingCols > 0 && multipleRows > 0) {
@@ -504,7 +619,10 @@ MlasQ4Int8GemmKernelBlkLen64Avx2(
             remainingCols,
             BlockCountK,
             Bias ? Bias + multipleCols : nullptr,
-            ldc);
+            ldc,
+            ScaledZPA,
+            ScaledZPB + multipleCols * StrideQuantBScale
+        );
     }
 
     if (remainingRows > 0 && multipleCols > 0) {
@@ -519,7 +637,10 @@ MlasQ4Int8GemmKernelBlkLen64Avx2(
             multipleCols,
             BlockCountK,
             Bias,
-            ldc);
+            ldc,
+            ScaledZPA + multipleRows * lda_scale,
+            ScaledZPB
+        );
     }
 
     if (remainingCols > 0 && remainingRows > 0) {
@@ -534,7 +655,10 @@ MlasQ4Int8GemmKernelBlkLen64Avx2(
             remainingCols,
             BlockCountK,
             Bias ? Bias + multipleCols : nullptr,
-            ldc);
+            ldc,
+            ScaledZPA + multipleRows * lda_scale,
+            ScaledZPB + multipleCols * StrideQuantBScale
+        );
     }
 
     return CountM;

@@ -71,14 +71,19 @@ class MlasSQNBitGemmTest : public MlasTestBase {
     params.Bias = Bias;
     params.C = C;
     params.ldc = ldc;
+    bool bpacked_with_scale_zp = false;
 #ifdef MLAS_TARGET_AMD64_IX86
     if (ComputeType == SQNBIT_CompInt8) {
-      params.QuantBDataWorkspace = PackedQuantBDataWorkspace;
+      bpacked_with_scale_zp = true;
     }
 #endif
-    params.PackedQuantBData = static_cast<const std::byte*>(PackedQuantBDataWorkspace);
-    params.QuantBScale = QuantBScale;
-    params.QuantBZeroPoint = QuantBZeroPoint;
+    if (bpacked_with_scale_zp) {
+      params.QuantBDataWorkspace = PackedQuantBDataWorkspace;
+    } else {
+      params.PackedQuantBData = static_cast<const std::byte*>(PackedQuantBDataWorkspace);
+      params.QuantBScale = QuantBScale;
+      params.QuantBZeroPoint = QuantBZeroPoint;
+    }
     params.PostProcessor = nullptr;
 
     MlasQNBitGemmBatch(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType, &params, Workspace, Threadpool);
@@ -407,6 +412,22 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
           tests_registered += RegisterSingleTest(1, 527, 2131, ComputeType, WithThreadpool, Symmetric, true);
           tests_registered += RegisterSingleTest(11, 527, 2131, ComputeType, WithThreadpool, Symmetric, true);
           // tests_registered += RegisterSingleTest(1001, 1027, 1031, ComputeType, WithThreadpool, Symmetric, false);
+          tests_registered += RegisterSingleTest(1, 1, 128, ComputeType, WithThreadpool, Symmetric, false);
+          tests_registered += RegisterSingleTest(1, 4, 128, ComputeType, WithThreadpool, Symmetric, false);
+          tests_registered += RegisterSingleTest(2, 1, 128, ComputeType, WithThreadpool, Symmetric, false);
+          tests_registered += RegisterSingleTest(2, 4, 128, ComputeType, WithThreadpool, Symmetric, false);
+          tests_registered += RegisterSingleTest(2, 4, 128, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(3, 4, 128, ComputeType, WithThreadpool, Symmetric, false);
+          tests_registered += RegisterSingleTest(3, 4, 128, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 1, 33, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 4, 33, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 32, 33, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(1, 32, 128, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(8, 1, 1, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(8, 4, 1, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(8, 6, 1, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(8, 8, 1, ComputeType, WithThreadpool, Symmetric, true);
+          tests_registered += RegisterSingleTest(8, 16, 1, ComputeType, WithThreadpool, Symmetric, true);
         }
       }
     }
