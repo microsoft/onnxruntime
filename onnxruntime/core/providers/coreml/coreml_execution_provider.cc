@@ -70,6 +70,10 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
                           [](unsigned char c) { return !std::isalnum(c); })) {
             user_provided_key = std::to_string(std::hash<std::string>{}(user_provided_key));
           }
+          // invalid cache-key
+          if (user_provided_key.size() == 0){
+            user_provided_key = std::to_string(model_hash);
+          }
         } else {
           // model_hash is a 64-bit hash value of model_path if model_path is not empty,
           // otherwise it hashes the graph input names and all the node output names.
