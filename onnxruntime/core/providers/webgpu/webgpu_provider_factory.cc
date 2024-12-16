@@ -67,6 +67,26 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
   }
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP graph capture enable: " << webgpu_ep_info.enable_graph_capture;
 
+  std::string backend_type_str;
+  if (config_options.TryGetConfigEntry(kDawnBackendType, backend_type_str)) {
+#ifdef _WIN32
+    // Setup Windows default backend type based on the build configuration
+#if defined(onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
+    webgpu_ep_info.backend_type = static_cast<int>(WGPUBackendType_D3D12);
+#elif defined(onnxruntime_ENABLE_DAWN_BACKEND_VULKAN)
+    webgpu_ep_info.backend_type = static_cast<int>(WGPUBackendType_Vulkan);
+#endif
+#endif
+    if (backend_type_str == kDawnBackendType_D3D12) {
+      webgpu_ep_info.backend_type = static_cast<int>(WGPUBackendType_D3D12);
+    } else if (backend_type_str == kDawnBackendType_Vulkan) {
+      webgpu_ep_info.backend_type = static_cast<int>(WGPUBackendType_Vulkan);
+    } else {
+      ORT_THROW("Invalid Dawn backend type: ", backend_type_str);
+    }
+  }
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP Dawn backend type: " << webgpu_ep_info.backend_type;
+
   auto parse_buffer_cache_mode = [&config_options](const std::string& config_entry_str,
                                                    webgpu::BufferCacheMode default_value) -> webgpu::BufferCacheMode {
     std::string buffer_cache_mode_str;
