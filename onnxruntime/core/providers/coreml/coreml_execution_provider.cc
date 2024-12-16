@@ -18,6 +18,7 @@
 #include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/coreml/model/model.h"
 #include "core/providers/coreml/shape_utils.h"
+#include "core/graph/model.h"
 
 namespace onnxruntime {
 
@@ -57,7 +58,11 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       [&]() {
         HashValue model_hash;
         int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
-        return MakeString(COREML, "_", model_hash, "_", metadef_id);
+        std::string user_provide_hash;
+        if (graph_viewer.GetGraph().GetModel().MetaData().count("CACHE_KEY") > 0) {
+          user_provide_hash = graph_viewer.GetGraph().GetModel().MetaData().at("CACHE_KEY");
+        }
+        return MakeString(user_provide_hash, "_", COREML, "_", model_hash, "_", metadef_id);
       };
 
   result = utils::CreateSupportedPartitions(graph_viewer, supported_nodes, {},
