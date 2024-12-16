@@ -142,7 +142,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool qnn_context_embed_mode_ = true;
   int32_t vtcm_size_in_mb_ = 0;
   std::unique_ptr<onnxruntime::Model> qnn_ep_context_model_;
-  ModelMetadefIdGenerator metadef_id_generator_;
+  std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
   uint32_t device_id_ = 0;
   qnn::HtpPerformanceMode default_htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
   uint32_t default_rpc_control_latency_ = 0;

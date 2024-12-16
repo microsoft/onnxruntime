@@ -164,6 +164,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
                                            const ConfigOptions* config_options)
     : IExecutionProvider{onnxruntime::kQnnExecutionProvider} {
   InitProviderOrtApi();
+  metadef_id_generator_ = ModelMetadefIdGenerator::Create();
 
   if (config_options) {
     disable_cpu_ep_fallback_ = config_options->GetConfigOrDefault(
@@ -654,7 +655,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   const auto gen_metadef_name = [&]() {
     uint64_t model_hash;
-    int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
+    int metadef_id = metadef_id_generator_->GenerateId(graph_viewer, model_hash);
     return MakeString(QNN, context_node_name_prefix_, "_", model_hash, "_", metadef_id);
   };
 

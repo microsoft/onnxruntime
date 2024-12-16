@@ -902,21 +902,23 @@ static bool GetClipMinMaxImpl(const GraphViewer& graph_viewer, const Node& node,
 
       switch (input_type) {
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
-          auto status = onnxruntime::utils::UnpackTensor(*initializer, graph_viewer.ModelPath(), &value, 1);
+          std::vector<uint8_t> bytes(sizeof(float));
+          auto status = onnxruntime::utils::UnpackInitializerData(*initializer, graph_viewer.ModelPath(), bytes);
           if (!status.IsOK()) {
             LOGS(logger, ERROR) << "GetClipMinMax() failed to unpack float initializer: " << status.ErrorMessage();
             return false;
           }
+          value = *reinterpret_cast<float*>(bytes.data());
           break;
         }
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
-          MLFloat16 f16_val{};
-          auto status = onnxruntime::utils::UnpackTensor(*initializer, graph_viewer.ModelPath(), &f16_val, 1);
+          std::vector<uint8_t> bytes(sizeof(MLFloat16));
+          auto status = onnxruntime::utils::UnpackInitializerData(*initializer, graph_viewer.ModelPath(), bytes);
           if (!status.IsOK()) {
             LOGS(logger, ERROR) << "GetClipMinMax() failed to unpack float16 initializer: " << status.ErrorMessage();
             return false;
           }
-          value = f16_val.ToFloat();
+          value = reinterpret_cast<MLFloat16*>(bytes.data())->ToFloat();
           break;
         }
         default:

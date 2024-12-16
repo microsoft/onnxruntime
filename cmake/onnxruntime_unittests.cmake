@@ -628,12 +628,11 @@ set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_session
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
-    # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime
+    # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, OpenVINO, and QNN are dynamically loaded at runtime
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_VSINPU}
     ${PROVIDERS_JS}
     ${PROVIDERS_WEBGPU}
-    ${PROVIDERS_QNN}
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
@@ -704,8 +703,7 @@ endif()
 if(onnxruntime_USE_QNN AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
   list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/qnn/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_qnn)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_qnn)
-  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_qnn)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_qnn onnxruntime_providers_shared)
 endif()
 
 if(onnxruntime_USE_SNPE)

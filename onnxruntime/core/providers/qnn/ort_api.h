@@ -6,6 +6,7 @@
 #define BUILD_QNN_EP_STATIC 0
 
 #if BUILD_QNN_EP_STATIC
+// Includes when building QNN EP statically
 #include "onnx/defs/data_type_utils.h"
 #include "core/common/common.h"
 #include "core/common/status.h"
@@ -32,10 +33,13 @@
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 #include "core/providers/common.h"
 #include "core/providers/partitioning_utils.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #else
+// Includes when building QNN EP as a shared library
 #include "core/providers/shared_library/provider_api.h"
+#define ORT_API_MANUAL_INIT
+#include "core/session/onnxruntime_cxx_api.h"
 #endif
 
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
-#include "core/session/onnxruntime_cxx_api.h"
