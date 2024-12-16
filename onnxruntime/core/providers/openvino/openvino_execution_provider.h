@@ -79,8 +79,8 @@ static std::vector<std::string> parseDevices(const std::string& device_string,
 struct OpenVINOExecutionProviderInfo {
   std::string device_type_{""};
   std::string precision_{""};
-  bool enable_npu_fast_compile_{false};
   size_t num_of_threads_{0};
+  std::map<std::string, ov::AnyMap> load_config_{};
   std::string cache_dir_{""};
   std::string model_priority_{""};
   int num_streams_{1};
@@ -90,20 +90,22 @@ struct OpenVINOExecutionProviderInfo {
   bool export_ep_ctx_blob_{false};
   bool enable_qdq_optimizer_{false};
   bool disable_cpu_fallback_{false};
-  bool so_epctx_embed_mode_{true};
+  bool so_epctx_embed_mode_{false};
 
   OpenVINOExecutionProviderInfo() = delete;
 
-  explicit OpenVINOExecutionProviderInfo(const std::string& dev_type, const std::string& precision,
-                                         bool enable_npu_fast_compile, size_t num_of_threads,
-                                         const std::string& cache_dir, const std::string& model_priority,
-                                         int num_streams, void* context, bool enable_opencl_throttling,
+  explicit OpenVINOExecutionProviderInfo(std::string dev_type, const std::string& precision,
+                                         size_t num_of_threads,
+                                         const std::map<std::string, ov::AnyMap>& load_config,
+                                         const std::string& cache_dir,
+                                         const std::string& model_priority, int num_streams,
+                                         void* context, bool enable_opencl_throttling,
                                          bool disable_dynamic_shapes, bool export_ep_ctx_blob,
                                          bool enable_qdq_optimizer, bool disable_cpu_fallback,
                                          bool so_epctx_embed_mode)
       : precision_(std::move(precision)),
-        enable_npu_fast_compile_(enable_npu_fast_compile),
         num_of_threads_(num_of_threads),
+        load_config_(std::move(load_config)),
         cache_dir_(std::move(cache_dir)),
         model_priority_(std::move(model_priority)),
         num_streams_(num_streams),
@@ -157,7 +159,7 @@ struct OpenVINOExecutionProviderInfo {
       device_type_ = std::move(dev_type);
     } else if (dev_type.find("HETERO") == 0 || dev_type.find("MULTI") == 0 || dev_type.find("AUTO") == 0) {
       std::vector<std::string> devices = parseDevices(dev_type, available_devices);
-      device_type_ = dev_type;
+      device_type_ = std::move(dev_type);
     } else {
       ORT_THROW("Invalid device string: " + dev_type);
     }
@@ -186,12 +188,18 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
   Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
                  std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
+  Status SetEpDynamicOptions(gsl::span<const char* const> /*keys*/,
+                             gsl::span<const char* const> /*values*/) override;
+
   const void* GetExecutionHandle() const noexcept override {
     return nullptr;
   }
-
+#ifdef USE_OVEP_NPU_MEMORY
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
+#endif
  private:
   std::unique_ptr<openvino_ep::GlobalContext> global_context_;
+  std::shared_ptr<openvino_ep::BackendManager> backend_manager_;
   openvino_ep::EPCtxHandler ep_ctx_handle_{};
 };
 

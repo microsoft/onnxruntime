@@ -265,6 +265,41 @@ TEST(TrainingCApiTest, LoadONNXModelsFromBuffer) {
                                                                train_model_data);
 }
 
+TEST(TrainingCApiTest, LoadONNXModelsFromBufferThenExport) {
+  auto model_path = MODEL_FOLDER "training_model.onnx";
+  size_t model_data_len = 0;
+  ASSERT_STATUS_OK(Env::Default().GetFileLength(model_path, model_data_len));
+  std::vector<uint8_t> train_model_data(model_data_len);
+  std::ifstream bytes_stream(model_path, std::ifstream::in | std::ifstream::binary);
+  bytes_stream.read(reinterpret_cast<char*>(train_model_data.data()), model_data_len);
+  ASSERT_TRUE(train_model_data.size() == model_data_len);
+
+  auto eval_model_path = MODEL_FOLDER "eval_model.onnx";
+  size_t eval_model_data_len = 0;
+  ASSERT_STATUS_OK(Env::Default().GetFileLength(eval_model_path, eval_model_data_len));
+  std::vector<uint8_t> eval_model_data(eval_model_data_len);
+  std::ifstream eval_bytes_stream(eval_model_path, std::ifstream::in | std::ifstream::binary);
+  eval_bytes_stream.read(reinterpret_cast<char*>(eval_model_data.data()), eval_model_data_len);
+  ASSERT_TRUE(eval_model_data.size() == eval_model_data_len);
+
+  Ort::Env env;
+  Ort::CheckpointState checkpoint_state = Ort::CheckpointState::LoadCheckpoint(MODEL_FOLDER "checkpoint.ckpt");
+  Ort::TrainingSession training_session = Ort::TrainingSession(env,
+                                                               Ort::SessionOptions(),
+                                                               checkpoint_state,
+                                                               train_model_data,
+                                                               eval_model_data);
+
+  // randomly selected output name
+  std::vector<std::string> graph_output_names({"onnx::loss::21273"});
+  training_session.ExportModelForInferencing(MODEL_FOLDER "inference_model.onnx", graph_output_names);
+
+  // Check that the model is a valid inference model by loading into an InferenceSession
+  std::unique_ptr<Environment> environment;
+  ASSERT_STATUS_OK(Environment::Create(nullptr, environment));
+  InferenceSession inference_session = InferenceSession(SessionOptions(), *environment, MODEL_FOLDER "inference_model.onnx");
+}
+
 TEST(TrainingCApiTest, LoadORTFormatModelsFromBuffer) {
   auto train_model_path = ORT_FORMAT_MODEL_FOLDER "training_model.ort";
   auto eval_model_path = ORT_FORMAT_MODEL_FOLDER "eval_model.ort";

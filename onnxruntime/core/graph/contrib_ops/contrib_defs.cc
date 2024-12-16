@@ -1067,11 +1067,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GridSample, 1,
 ONNX_MS_OPERATOR_SET_SCHEMA(
     UnfoldTensor, 1,
     OpSchema()
-        .SetDoc("Returns a tensor which contains all slices of size size from input tensor in the dimension dim. "
-                "Step between two slices is given by step. "
-                "If sizedim is the size of dimension dim for input tensor, the size of dimension dim in "
-                "the returned tensor will be (sizedim - size) / step + 1. "
-                "An additional dimension of size size is appended in the returned tensor.")
+        .SetDoc("Returns a tensor which contains all slices of size `size` from input tensor in the dimension `dim`. "
+                "Step between two slices is given by `step`. "
+                "If `sizedim` is the size of dimension `dim` for input tensor, the size of dimension `dim` in "
+                "the returned tensor will be `(sizedim - size) / step + 1`. "
+                "An additional dimension of size `size` is appended in the returned tensor.")
         .Attr("dim", "specify the dimension to unfold", AttributeProto::INT, static_cast<int64_t>(-1))
         .Attr("size", "specify the size", AttributeProto::INT)
         .Attr("step", "specify the step.", AttributeProto::INT, static_cast<int64_t>(1))
@@ -1122,7 +1122,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
     OpSchema()
         .SetDoc("Input is cost matrix where each value in input[r][c] is the cost for pass the point (r, c). From current point"
                 "(r, c),  points (r+1, c), (r+1, c+1) or (r, c+1) could be arrived in next move. Given such cost matrix, return "
-                "dynamic time wrapping of shape [2, x], where the path made by all points (output[0][t], output[1][t])"
+                "dynamic time warping of shape [2, x], where the path made by all points (output[0][t], output[1][t])"
                 "have the lowest cost among all paths from (0, 0) to (M-1, N-1).")
         .Input(0, "input", "Input cost tensor, it must be 2D tensor of shape M x N, or 1 x M x N", "F")
         .Output(0, "output", "Output tensor. shape is [2, x], where max(M, N) <= x < M + N", "I")
@@ -1395,6 +1395,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(MoE, 1,
                                 .Attr("activation_type", "Activation function to use. Choose from relu, gelu, silu and identity. Default is relu", AttributeProto::STRING, std::string("relu"))
                                 .Attr("k", "Number of top experts to select from expert pool", AttributeProto::INT, static_cast<int64_t>(1))
                                 .Attr("normalize_routing_weights", "Whether to normalize routing weights", AttributeProto::INT, static_cast<int64_t>(0))
+                                .Attr("use_sparse_mixer", "Whether to use sparse mixer", AttributeProto::INT, static_cast<int64_t>(0))
                                 .Input(0, "input", "2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape (batch_size, sequence_length, hidden_size)", "T")
                                 .Input(1, "router_probs", "2D input tensor with shape (num_rows, num_experts)", "T")
                                 .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, hidden_size, inter_size)", "T")
@@ -1410,7 +1411,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(MoE, 1,
 ONNX_MS_OPERATOR_SET_SCHEMA(
     QMoE, 1,
     OpSchema()
-        .SetDoc("Int4 MoE")
+        .SetDoc("Quantized MoE")
         .Attr("activation_type",
               "Activation function to use. Choose from relu, gelu, silu and identity. Default is relu",
               AttributeProto::STRING,
@@ -1423,18 +1424,31 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Whether to normalize routing weights",
               AttributeProto::INT,
               static_cast<int64_t>(0))
+        .Attr("use_sparse_mixer", "Whether to use sparse mixer", AttributeProto::INT, static_cast<int64_t>(0))
+        .Attr("expert_weight_bits",
+              "Number of bits used in quantized weights. Default is 4 bits",
+              AttributeProto::INT,
+              static_cast<int64_t>(4))
         .Input(0,
                "input",
                "2D input tensor with shape (num_rows, hidden_size) or 3D input tensor with shape "
                "(batch_size, sequence_length, hidden_size)",
                "T")
         .Input(1, "router_probs", "2D input tensor with shape (num_rows, num_experts)", "T")
-        .Input(2, "fc1_experts_weights", "3D input tensor with shape (num_experts, hidden_size, inter_size / 2)", "T1")
+        .Input(2,
+               "fc1_experts_weights",
+               "3D input tensor with shape (num_experts, hidden_size, inter_size) "
+               "or (num_experts, hidden_size, inter_size / 2)",
+               "T1")
         .Input(3, "fc1_scales", "2D input tensor with shape (num_experts, inter_size)", "T")
         .Input(4,
                "fc1_experts_bias",
                "2D optional input tensor with shape (num_experts, inter_size)", "T", OpSchema::Optional)
-        .Input(5, "fc2_experts_weights", "3D input tensor with shape (num_experts, inter_size, hidden_size / 2)", "T1")
+        .Input(5,
+               "fc2_experts_weights",
+               "3D input tensor with shape (num_experts, inter_size, hidden_size) "
+               "or (num_experts, inter_size, hidden_size / 2)",
+               "T1")
         .Input(6, "fc2_scales", "2D input tensor with shape (num_experts, hidden_size)", "T")
         .Input(7,
                "fc2_experts_bias",
@@ -1443,7 +1457,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                OpSchema::Optional)
         .Input(8,
                "fc3_experts_weights",
-               "3D optional input tensor with shape (num_experts, hidden_size, inter_size / 2)",
+               "3D optional input tensor with shape (num_experts, hidden_size, inter_size) "
+               "or (num_experts, hidden_size, inter_size / 2)",
                "T1",
                OpSchema::Optional)
         .Input(9,
@@ -3320,6 +3335,11 @@ void RegisterContribSchemas() {
           AttributeProto::STRING,
           OPTIONAL_VALUE)
       .Attr("notes", "(Optional) Some notes for the model", AttributeProto::STRING, OPTIONAL_VALUE)
+      .Attr(
+          "max_size",
+          "max size in the context. Usage depend on the EP.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
       .AllowUncheckedAttributes()
       .Input(
           0,
@@ -3427,7 +3447,7 @@ MatMulNBits is a MatMul with weight quantized with N bits(e.g., 2, 3, 4, 5, 6, 7
 
 Input scales is stored in same type as original type of B(float32, float16) with shape like: [N * n_blocks_per_col]
 Input zero_points is stored as uint8_t or same as type(A). It has the same packing method as input B.
-  - [CeilDiv((N * n_blocks_per_col + 1) *bits, 8)]
+  - [N * CeilDiv(n_blocks_per_col * bits, 8)]
   If zero_points has same type as A, it's not packed and has the same shape as Scales.
 )DOC";
 
@@ -3542,6 +3562,124 @@ MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4
         int64_t out_features = getAttribute(ctx, "N", -1);
         bool transB = getAttribute(ctx, "transB", 1) != 0;
         MatmulWithQuantWeightShapeInference(ctx, in_features, out_features, transB);
+      });
+
+  static const char* GatherBlockQuantized_ver1_doc = R"DOC(
+GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (https://github.com/onnx/onnx/blob/main/docs/Operators.md#gather) with differences:
+  1. Input `data` is a constant. It is quantized block-wise along attribute `quantize_axis` with block size specified by attribute `block_size`.
+     `block_size must` be a power of 2 and not smaller than 16, like 16, 32, 64, 128, ..
+  2. Input `data`'s scale and zero point are specified by input `scales` and `zero_points`. `scales` and `zero_points` are also constants.
+     If `zero_points` is not provided, 0 is the zero point.
+  3. During the op execution, `data` and `indices` are first used to generate the quantized output. Then, `scales` and `zero_points` are used
+     to dequantize the output.
+  4. The `output` and `scales` have the same type. The `data` and `zero_points` have the same type.
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(GatherBlockQuantized)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(GatherBlockQuantized_ver1_doc)
+      .Attr("gather_axis",
+            "(Optional) Which axis to gather on. Negative value means "
+            "counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).",
+            AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr("quantize_axis",
+            "(Optional) Which axis to block-wise quantize. Negative value means "
+            "counting dimensions from the back. Accepted range is [-r, r-1] where r = rank(data).",
+            AttributeProto::INT, static_cast<int64_t>(1))
+      .Attr("block_size",
+            "(Optional) block size used for weight quantization. It needs to be a power of 2 and not smaller than 16.",
+            AttributeProto::INT,
+            static_cast<int64_t>(128))
+      .Input(0, "data", "Tensor of rank r >= 1. Block-wise quantized.", "T1")
+      .Input(1,
+             "indices",
+             "Tensor of int32/int64 indices, of any rank q. All index values are expected to be within bounds [-s, s-1] "
+             "along axis of size s. It is an error if any of the index values are out of bounds.",
+             "Tind")
+      .Input(2, "scales", "quantization scale", "T2")
+      .Input(3, "zero_points", "quantization zero points", "T1", OpSchema::Optional)
+      .Output(0, "output", "Dequantized output tensor of rank q + (r - 1).", "T2")
+      .TypeConstraint("T1", {"tensor(int4)", "tensor(uint4)"}, "Constrain quantized types.")
+      .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain dequantized types.")
+      .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types.")
+      .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
+        // Type inference
+        propagateElemTypeFromInputToOutput(ctx, 2, 0);
+        // Shape inference
+        if (!hasNInputShapes(ctx, 3)) {
+          return;
+        }
+        const TensorShapeProto& data_shape = ctx.getInputType(0)->tensor_type().shape();
+        const TensorShapeProto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
+        const TensorShapeProto& scales_shape = ctx.getInputType(2)->tensor_type().shape();
+        int r = data_shape.dim_size();
+
+        if (r < 1) {
+          fail_shape_inference("data tensor must have rank >= 1");
+        }
+
+        int gather_axis = static_cast<int>(getAttribute(ctx, "gather_axis", 0));
+        int quantize_axis = static_cast<int>(getAttribute(ctx, "quantize_axis", 1));
+        auto block_size = getAttribute(ctx, "block_size", 128);
+        if (gather_axis < -r || gather_axis >= r) {
+          fail_shape_inference("gather_axis must be in [-r, r-1]");
+        }
+        if (quantize_axis < -r || quantize_axis >= r) {
+          fail_shape_inference("quantize_axis must be in [-r, r-1]");
+        }
+        if (block_size < 0) {
+          fail_shape_inference("block_size must be non-negative");
+        }
+
+        gather_axis = (gather_axis + r) % r;
+        quantize_axis = (quantize_axis + r) % r;
+
+        if (scales_shape.dim_size() != r) {
+          fail_shape_inference("scales must have the same rank as data");
+        }
+
+        for (int i = 0; i < r; ++i) {
+          if (!data_shape.dim(i).has_dim_value() ||
+              !scales_shape.dim(i).has_dim_value() ||
+              (i == quantize_axis && (data_shape.dim(i).dim_value() + block_size - 1) / block_size != scales_shape.dim(i).dim_value()) ||
+              (i != quantize_axis && data_shape.dim(i).dim_value() != scales_shape.dim(i).dim_value())) {
+            fail_shape_inference("data shape and scales shape do not match");
+          }
+        }
+
+        // validate zero point shape
+        if (ctx.hasInput(3)) {
+          if (!hasInputShape(ctx, 3)) {
+            fail_shape_inference("zero_points shape must be known");
+          }
+
+          const auto& zp_shape = getInputShape(ctx, 3);
+          if (zp_shape.dim_size() != r) {
+            fail_shape_inference("zero points must have the same rank as data");
+          }
+
+          for (int i = 0; i < r; ++i) {
+            if (!zp_shape.dim(i).has_dim_value() ||
+                zp_shape.dim(i).dim_value() != scales_shape.dim(i).dim_value()) {
+              fail_shape_inference("zero points shape and scales shape do not match");
+            }
+          }
+        }
+
+        int q = indices_shape.dim_size();
+        int out_rank = q + r - 1;
+        if (out_rank == 0) {
+          ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
+        }
+        for (int i = 0; i < out_rank; ++i) {
+          *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape()->add_dim() =
+              (i < gather_axis)
+                  ? data_shape.dim(i)
+              : (i >= gather_axis && i < gather_axis + q)
+                  ? indices_shape.dim(i - gather_axis)
+                  : data_shape.dim(i - q + 1);
+        }
       });
 
 #ifdef ENABLE_ATEN

@@ -25,7 +25,7 @@ parameters:
 
 - name: runTests
   type: boolean
-  default: true
+  default: false
 
 - name: buildJava
   type: boolean
@@ -70,6 +70,10 @@ parameters:
   values:
       - 11.8
       - 12.2
+
+- name: ComboTests
+  type: boolean
+  default: false
 
 - name: SpecificArtifact
   displayName: Use Specific Artifact
@@ -118,25 +122,33 @@ stages:
         clean: true
         submodules: none
 
+      - task: UsePythonVersion@0
+        inputs:
+          versionSpec: '3.12'
+          addToPath: true
+          architecture: ${{ parameters.buildArch }}
+
       - template: telemetry-steps.yml
+
+      # The private ADO project
+      - ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
+        - task: PipAuthenticate@1
+          displayName: 'Pip Authenticate'
+          inputs:
+            artifactFeeds: 'Lotus'
 
       - ${{ if eq(parameters['buildJava'], 'true') }}:
         - task: JavaToolInstaller@0
           inputs:
-            versionSpec: "11"
+            versionSpec: "17"
             jdkArchitectureOption: ${{ parameters.buildArch }}
             jdkSourceOption: 'PreInstalled'
 
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: '3.8'
-          addToPath: true
-          architecture: ${{ parameters.buildArch }}
 
       - task: NodeTool@0
         condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
         inputs:
-          versionSpec: '18.x'
+          versionSpec: '20.x'
 
       - ${{ if ne(parameters.CudaVersion, '') }}:
         - template: jobs/download_win_gpu_library.yml
@@ -214,7 +226,7 @@ stages:
           condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
           inputs:
             scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "$(VSGenerator)" --enable_onnx_tests  $(TelemetryOption) ${{ parameters.buildparameter }}'
+            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --test --skip_submodule_sync --build_shared_lib --cmake_generator "$(VSGenerator)" --enable_onnx_tests  $(TelemetryOption) ${{ parameters.buildparameter }}'
             workingDirectory: '$(Build.BinariesDirectory)'
       - ${{ else }}:
         - powershell: |
@@ -326,6 +338,10 @@ stages:
           displayName: 'Clean Agent Directories'
           condition: always()
 
+        - script:
+            echo ${{ parameters.SpecificArtifact }}
+          displayName: 'Print Specific Artifact'
+
         - checkout: self
           clean: true
           submodules: none
@@ -354,20 +370,27 @@ stages:
         - ${{ if eq(parameters['buildJava'], 'true') }}:
           - task: JavaToolInstaller@0
             inputs:
-              versionSpec: "11"
+              versionSpec: "17"
               jdkArchitectureOption: ${{ parameters.buildArch }}
               jdkSourceOption: 'PreInstalled'
 
         - task: UsePythonVersion@0
           inputs:
-            versionSpec: '3.8'
+            versionSpec: '3.12'
             addToPath: true
             architecture: ${{ parameters.buildArch }}
+
+        # The private ADO project
+        - ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
+          - task: PipAuthenticate@1
+            displayName: 'Pip Authenticate'
+            inputs:
+              artifactFeeds: 'Lotus'
 
         - task: NodeTool@0
           condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
           inputs:
-            versionSpec: '18.x'
+            versionSpec: '20.x'
 
         - ${{ if ne(parameters.CudaVersion, '') }}:
           - template: jobs/download_win_gpu_library.yml
@@ -384,13 +407,35 @@ stages:
           displayName: 'Append dotnet x86  Directory to PATH'
           condition: and(succeeded(), eq('${{ parameters.buildArch}}', 'x86'))
 
-        - task: PythonScript@0
-          displayName: 'test'
-          condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
-          inputs:
-            scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
-            workingDirectory: '$(Build.BinariesDirectory)'
+        - ${{ if eq(parameters.ComboTests, 'true') }}:
+          - task: PythonScript@0
+            displayName: 'test excludes CUDA'
+            condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
+            inputs:
+              scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+              arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
+              workingDirectory: '$(Build.BinariesDirectory)'
+            env:
+              NO_CUDA_TEST: '1'
+              GTEST_FILTER: '-CudaEp*:CudaNhwcTypedTest*' # Exclude CUDA EP tests under providers/cuda/
+          - task: PythonScript@0
+            displayName: 'test excludes DML'
+            condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
+            inputs:
+              scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+              arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
+              workingDirectory: '$(Build.BinariesDirectory)'
+            env:
+              NO_DML_TEST: '1'
+        - ${{ else }}:
+          - task: PythonScript@0
+            displayName: 'test'
+            condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
+            inputs:
+              scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+              arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
+              workingDirectory: '$(Build.BinariesDirectory)'
+
 # Previous stage only assembles the java binaries, testing will be done in this stage with GPU machine
         - ${{ if eq(parameters.buildJava, 'true') }}:
           - template: make_java_win_binaries.yml

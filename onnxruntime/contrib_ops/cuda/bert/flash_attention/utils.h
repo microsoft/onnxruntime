@@ -369,5 +369,15 @@ inline __device__ void copy_w_min_idx(Tensor<Engine0, Layout0> const& S,
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
+template <typename Engine, typename Layout>
+__forceinline__ __device__ void apply_softcap(Tensor<Engine, Layout>& tensor, const float softcap) {
+#pragma unroll
+  for (int i = 0; i < size(tensor); ++i) {
+    tensor(i) = cutlass::fast_tanh(tensor(i) * softcap);
+  }
+}
+
+////////////////////////////////////////////////////////////////////////////////////////////////////
+
 }  // namespace flash
 }  // namespace onnxruntime

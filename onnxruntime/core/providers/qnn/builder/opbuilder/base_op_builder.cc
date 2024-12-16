@@ -80,6 +80,64 @@ Status BaseOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   return Status::OK();
 }
 
+Status BaseOpBuilder::AddZeroBiasInput(QnnModelWrapper& qnn_model_wrapper,
+                                       const QnnQuantParamsWrapper& input0_qparams,
+                                       const QnnQuantParamsWrapper& input1_qparams,
+                                       std::vector<uint32_t>&& bias_shape,
+                                       const std::string& bias_name,
+                                       const logging::Logger& logger,
+                                       std::vector<std::string>& input_names) const {
+  ORT_UNUSED_PARAMETER(logger);
+  // For now, only handle case where input0 is per-tensor quantized and input1 is either per-tensor
+  // or per-channel quantized.
+  ORT_RETURN_IF_NOT(input0_qparams.IsPerTensor(/*include_bw*/ true) && input1_qparams.IsQuantized(),
+                    "QNN EP currently only supports adding a dummy zero bias input for per-tensor ",
+                    "input[0] and per-tensor/per-channel input[1]");
+
+  size_t num_bias_elems = 1;
+  for (size_t i = 0; i < bias_shape.size(); i++) {
+    num_bias_elems *= static_cast<size_t>(bias_shape[i]);
+  }
+
+  // Bias static input should be all zeros.
+  std::vector<uint8_t> bias_bytes(num_bias_elems * sizeof(int32_t), 0);
+
+  // Bias's quantization scale(s) should be the product of the other inputs' quantization scales.
+  // Input[0] is expected to have one scale (per-tensor).
+  // If input[1] is per-channel (many scales), then the dummy bias also needs to be per-channel.
+  std::vector<float> input0_quant_scales;
+  std::vector<float> input1_quant_scales;
+  ORT_RETURN_IF_ERROR(input0_qparams.GetScales(input0_quant_scales));
+  ORT_RETURN_IF_ERROR(input1_qparams.GetScales(input1_quant_scales));
+
+  const size_t num_bias_scales_offsets = input1_quant_scales.size();
+  assert(input0_quant_scales.size() == 1);  // Expected for per-tensor.
+  ORT_RETURN_IF_NOT(num_bias_scales_offsets >= input0_quant_scales.size(),
+                    "Input[1] should have >= 1 quantization scale values");
+
+  std::vector<float> bias_scales(num_bias_scales_offsets);
+  for (size_t i = 0; i < num_bias_scales_offsets; i++) {
+    bias_scales[i] = input0_quant_scales[0] * input1_quant_scales[i];
+  }
+
+  std::vector<int32_t> bias_offsets(num_bias_scales_offsets, 0);  // Bias's zero-points should be all zeros.
+  QnnQuantParamsWrapper bias_qparams;
+
+  if (input1_qparams.IsPerChannel()) {
+    bias_qparams = QnnQuantParamsWrapper(bias_scales, bias_offsets, /*axis*/ 0, /*is_int4*/ false);
+  } else {
+    bias_qparams = QnnQuantParamsWrapper(bias_scales[0], bias_offsets[0]);
+  }
+
+  auto tensor_wrapper = QnnTensorWrapper(bias_name, QNN_TENSOR_TYPE_STATIC, QNN_DATATYPE_SFIXED_POINT_32,
+                                         std::move(bias_qparams), std::move(bias_shape), std::move(bias_bytes));
+
+  qnn_model_wrapper.AddTensorWrapper(std::move(tensor_wrapper));
+  input_names.push_back(bias_name);
+
+  return Status::OK();
+}
+
 Status BaseOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                   const NodeUnit& node_unit,
                                                   std::vector<std::string>&& input_names,

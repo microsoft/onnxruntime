@@ -11,9 +11,6 @@ parameters:
 - name: CudaVersion
   type: string
 
-- name: docker_base_image
-  type: string
-
 - name: win_trt_home
   type: string
 
@@ -42,7 +39,6 @@ stages:
 - template: nuget-linux-cuda-packaging-stage.yml
   parameters:
     CudaVersion: ${{ parameters.CudaVersion }}
-    docker_base_image: ${{ parameters.docker_base_image }}
     buildJava: ${{ parameters.buildJava }}
     buildNodejs: ${{ parameters.buildNodejs }}
 
@@ -54,12 +50,16 @@ stages:
     win_trt_home: ${{ parameters.win_trt_home }}
     win_cuda_home: ${{ parameters.win_cuda_home }}
     buildJava: ${{ parameters.buildJava }}
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
 
 - template: nuget-cuda-packaging-stage.yml
   parameters:
     DoCompliance: ${{ parameters.DoCompliance }}
     DoEsrp: ${{ parameters.DoEsrp }}
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
 
 - template: ../nuget/templates/test_win.yml
   parameters:

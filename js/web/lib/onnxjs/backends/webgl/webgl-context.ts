@@ -1,19 +1,20 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {env} from 'onnxruntime-common';
+import { env } from 'onnxruntime-common';
 
 import * as DataEncoders from './texture-data-encoder';
-import {DataEncoder, Encoder, EncoderUsage} from './texture-data-encoder';
-import {repeatedTry} from './utils';
+import { DataEncoder, Encoder, EncoderUsage } from './texture-data-encoder';
+import { repeatedTry } from './utils';
 
 export interface FenceContext {
-  query: WebGLSync|null;
+  query: WebGLSync | null;
   isFencePassed(): boolean;
 }
 
 type PollItem = {
-  isDoneFn: () => boolean; resolveFn: () => void;
+  isDoneFn: () => boolean;
+  resolveFn: () => void;
 };
 
 export function linearSearchLastTrue(arr: Array<() => boolean>): number {
@@ -32,7 +33,7 @@ export function linearSearchLastTrue(arr: Array<() => boolean>): number {
  */
 export class WebGLContext {
   gl: WebGLRenderingContext;
-  version: 1|2;
+  version: 1 | 2;
 
   private vertexbuffer: WebGLBuffer;
   private framebuffer: WebGLFramebuffer;
@@ -58,19 +59,19 @@ export class WebGLContext {
 
   // WebGL extensions
   // eslint-disable-next-line camelcase
-  textureFloatExtension: OES_texture_float|null;
+  textureFloatExtension: OES_texture_float | null;
   // eslint-disable-next-line camelcase
-  textureHalfFloatExtension: OES_texture_half_float|null;
+  textureHalfFloatExtension: OES_texture_half_float | null;
 
   // WebGL2 extensions
-  colorBufferFloatExtension: unknown|null;
+  colorBufferFloatExtension: unknown | null;
   // eslint-disable-next-line @typescript-eslint/naming-convention
-  disjointTimerQueryWebgl2Extension: {TIME_ELAPSED_EXT: GLenum; GPU_DISJOINT_EXT: GLenum}|null;
+  disjointTimerQueryWebgl2Extension: { TIME_ELAPSED_EXT: GLenum; GPU_DISJOINT_EXT: GLenum } | null;
 
   private disposed: boolean;
   private frameBufferBound = false;
 
-  constructor(gl: WebGLRenderingContext, version: 1|2) {
+  constructor(gl: WebGLRenderingContext, version: 1 | 2) {
     this.gl = gl;
     this.version = version;
 
@@ -92,25 +93,40 @@ export class WebGLContext {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     const buffer = data ? encoder.encode(data, width * height) : null;
     gl.texImage2D(
-        gl.TEXTURE_2D,
-        0,  // Level of detail.
-        encoder.internalFormat, width, height,
-        0,  // Always 0 in OpenGL ES.
-        encoder.format, encoder.textureType, buffer);
+      gl.TEXTURE_2D,
+      0, // Level of detail.
+      encoder.internalFormat,
+      width,
+      height,
+      0, // Always 0 in OpenGL ES.
+      encoder.format,
+      encoder.textureType,
+      buffer,
+    );
     this.checkError();
     return texture as WebGLTexture;
   }
   updateTexture(
-      texture: WebGLTexture, width: number, height: number, encoder: DataEncoder, data: Encoder.DataArrayType): void {
+    texture: WebGLTexture,
+    width: number,
+    height: number,
+    encoder: DataEncoder,
+    data: Encoder.DataArrayType,
+  ): void {
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, texture);
     const buffer = encoder.encode(data, width * height);
     gl.texSubImage2D(
-        gl.TEXTURE_2D,
-        0,  // level
-        0,  // xoffset
-        0,  // yoffset
-        width, height, encoder.format, encoder.textureType, buffer);
+      gl.TEXTURE_2D,
+      0, // level
+      0, // xoffset
+      0, // yoffset
+      width,
+      height,
+      encoder.format,
+      encoder.textureType,
+      buffer,
+    );
     this.checkError();
   }
   attachFramebuffer(texture: WebGLTexture, width: number, height: number): void {
@@ -118,16 +134,19 @@ export class WebGLContext {
     // Make it the target for framebuffer operations - including rendering.
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
-    gl.framebufferTexture2D(
-        gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture,
-        0);  // 0, we aren't using MIPMAPs
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0); // 0, we aren't using MIPMAPs
     this.checkError();
     gl.viewport(0, 0, width, height);
     gl.scissor(0, 0, width, height);
   }
   readTexture(
-      texture: WebGLTexture, width: number, height: number, dataSize: number, dataType: Encoder.DataType,
-      channels: number): Encoder.DataArrayType {
+    texture: WebGLTexture,
+    width: number,
+    height: number,
+    dataSize: number,
+    dataType: Encoder.DataType,
+    channels: number,
+  ): Encoder.DataArrayType {
     const gl = this.gl;
     if (!channels) {
       channels = 1;
@@ -139,9 +158,7 @@ export class WebGLContext {
     const buffer = encoder.allocate(width * height);
     // bind texture to framebuffer
     gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.framebufferTexture2D(
-        gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture,
-        0);  // 0, we aren't using MIPMAPs
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0); // 0, we aren't using MIPMAPs
     // TODO: Check if framebuffer is ready
     gl.readPixels(0, 0, width, height, gl.RGBA, encoder.textureType, buffer);
     this.checkError();
@@ -156,7 +173,7 @@ export class WebGLContext {
   getActiveTexture(): string {
     const gl = this.gl;
     const n = gl.getParameter(this.gl.ACTIVE_TEXTURE);
-    return `TEXTURE${(n - gl.TEXTURE0)}`;
+    return `TEXTURE${n - gl.TEXTURE0}`;
   }
   getTextureBinding(): WebGLTexture {
     return this.gl.getParameter(this.gl.TEXTURE_BINDING_2D);
@@ -174,10 +191,7 @@ export class WebGLContext {
     }
     this.checkError();
   }
-  createProgram(
-      vertexShader: WebGLShader,
-      fragShader: WebGLShader,
-      ): WebGLProgram {
+  createProgram(vertexShader: WebGLShader, fragShader: WebGLShader): WebGLProgram {
     const gl = this.gl;
     const program = gl.createProgram()!;
 
@@ -225,24 +239,24 @@ ${shaderSource}`);
       const error = gl.getError();
       let label = '';
       switch (error) {
-        case (gl.NO_ERROR):
+        case gl.NO_ERROR:
           return;
-        case (gl.INVALID_ENUM):
+        case gl.INVALID_ENUM:
           label = 'INVALID_ENUM';
           break;
-        case (gl.INVALID_VALUE):
+        case gl.INVALID_VALUE:
           label = 'INVALID_VALUE';
           break;
-        case (gl.INVALID_OPERATION):
+        case gl.INVALID_OPERATION:
           label = 'INVALID_OPERATION';
           break;
-        case (gl.INVALID_FRAMEBUFFER_OPERATION):
+        case gl.INVALID_FRAMEBUFFER_OPERATION:
           label = 'INVALID_FRAMEBUFFER_OPERATION';
           break;
-        case (gl.OUT_OF_MEMORY):
+        case gl.OUT_OF_MEMORY:
           label = 'OUT_OF_MEMORY';
           break;
-        case (gl.CONTEXT_LOST_WEBGL):
+        case gl.CONTEXT_LOST_WEBGL:
           label = 'CONTEXT_LOST_WEBGL';
           break;
         default:
@@ -268,7 +282,10 @@ ${shaderSource}`);
           return new DataEncoders.RGBAFloatDataEncoder(this.gl, channels);
         } else {
           return new DataEncoders.RGBAFloatDataEncoder(
-              this.gl, channels, this.textureHalfFloatExtension!.HALF_FLOAT_OES);
+            this.gl,
+            channels,
+            this.textureHalfFloatExtension!.HALF_FLOAT_OES,
+          );
         }
       case 'int':
         throw new Error('not implemented');
@@ -302,10 +319,26 @@ ${shaderSource}`);
   private createDefaultGeometry(): Float32Array {
     // Sets of x,y,z(=0),s,t coordinates.
     return new Float32Array([
-      -1.0, 1.0,  0.0, 0.0, 1.0,  // upper left
-      -1.0, -1.0, 0.0, 0.0, 0.0,  // lower left
-      1.0,  1.0,  0.0, 1.0, 1.0,  // upper right
-      1.0,  -1.0, 0.0, 1.0, 0.0   // lower right
+      -1.0,
+      1.0,
+      0.0,
+      0.0,
+      1.0, // upper left
+      -1.0,
+      -1.0,
+      0.0,
+      0.0,
+      0.0, // lower left
+      1.0,
+      1.0,
+      0.0,
+      1.0,
+      1.0, // upper right
+      1.0,
+      -1.0,
+      0.0,
+      1.0,
+      0.0, // lower right
     ]);
   }
   private createVertexbuffer(): WebGLBuffer {
@@ -373,7 +406,7 @@ ${shaderSource}`);
     const texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, texture);
     // eslint-disable-next-line @typescript-eslint/naming-convention
-    const internalFormat = this.version === 2 ? (gl as unknown as {RGBA32F: number}).RGBA32F : gl.RGBA;
+    const internalFormat = this.version === 2 ? (gl as unknown as { RGBA32F: number }).RGBA32F : gl.RGBA;
     gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, 1, 1, 0, gl.RGBA, gl.FLOAT, null);
     // STEP.2 bind a frame buffer
     const frameBuffer = gl.createFramebuffer();
@@ -427,11 +460,11 @@ ${shaderSource}`);
 
     const gl = this.gl;
 
-    let texture: WebGLTexture|null|undefined;
-    let frameBuffer: WebGLFramebuffer|null|undefined;
-    let vertexShader: WebGLShader|null|undefined;
-    let fragmentShader: WebGLShader|null|undefined;
-    let program: WebGLProgram|null|undefined;
+    let texture: WebGLTexture | null | undefined;
+    let frameBuffer: WebGLFramebuffer | null | undefined;
+    let vertexShader: WebGLShader | null | undefined;
+    let fragmentShader: WebGLShader | null | undefined;
+    let program: WebGLProgram | null | undefined;
 
     try {
       texture = gl.createTexture();
@@ -439,7 +472,7 @@ ${shaderSource}`);
       gl.bindTexture(gl.TEXTURE_2D, texture);
 
       // eslint-disable-next-line @typescript-eslint/naming-convention
-      const internalFormat = this.version === 2 ? (gl as unknown as {RGBA32F: number}).RGBA32F : gl.RGBA;
+      const internalFormat = this.version === 2 ? (gl as unknown as { RGBA32F: number }).RGBA32F : gl.RGBA;
       gl.texImage2D(gl.TEXTURE_2D, 0, internalFormat, 1, 1, 0, gl.RGBA, gl.FLOAT, null);
 
       gl.bindFramebuffer(gl.FRAMEBUFFER, frameBuffer);
@@ -472,7 +505,6 @@ ${shaderSource}`);
 
       gl.drawArrays(gl.POINTS, 0, 1);
       return gl.getError() === gl.NO_ERROR;
-
     } finally {
       gl.disable(gl.BLEND);
 
@@ -523,7 +555,8 @@ ${shaderSource}`);
   }
 
   isTimerResultAvailable(query: WebGLQuery): boolean {
-    let available = false, disjoint = false;
+    let available = false,
+      disjoint = false;
     if (this.version === 2 && this.disjointTimerQueryWebgl2Extension) {
       const gl2 = this.gl as WebGL2RenderingContext;
       const ext = this.disjointTimerQueryWebgl2Extension;
@@ -575,12 +608,15 @@ ${shaderSource}`);
         return status === gl2.ALREADY_SIGNALED || status === gl2.CONDITION_SATISFIED;
       };
     }
-    return {query, isFencePassed};
+    return { query, isFencePassed };
   }
 
   async pollFence(fenceContext: FenceContext) {
-    return new Promise<void>(resolve => {
-      void this.addItemToPoll(() => fenceContext.isFencePassed(), () => resolve());
+    return new Promise<void>((resolve) => {
+      void this.addItemToPoll(
+        () => fenceContext.isFencePassed(),
+        () => resolve(),
+      );
     });
   }
 
@@ -588,16 +624,16 @@ ${shaderSource}`);
 
   pollItems(): void {
     // Find the last query that has finished.
-    const index = linearSearchLastTrue(this.itemsToPoll.map(x => x.isDoneFn));
+    const index = linearSearchLastTrue(this.itemsToPoll.map((x) => x.isDoneFn));
     for (let i = 0; i <= index; ++i) {
-      const {resolveFn} = this.itemsToPoll[i];
+      const { resolveFn } = this.itemsToPoll[i];
       resolveFn();
     }
     this.itemsToPoll = this.itemsToPoll.slice(index + 1);
   }
 
   private async addItemToPoll(isDoneFn: () => boolean, resolveFn: () => void) {
-    this.itemsToPoll.push({isDoneFn, resolveFn});
+    this.itemsToPoll.push({ isDoneFn, resolveFn });
     if (this.itemsToPoll.length > 1) {
       // We already have a running loop that polls.
       return;

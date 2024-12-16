@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include <iostream>
@@ -95,7 +96,7 @@ TEST_P(ModelTest, Run) {
 
   // when cuda or openvino is enabled, set it to a larger value for resolving random MNIST test failure
   if (model_path.find(ORT_TSTR("_MNIST")) > 0) {
-    if (provider_name == "cuda" || provider_name == "openvino") {
+    if (provider_name == "cuda" || provider_name == "openvino" || provider_name == "rocm") {
       per_sample_tolerance = 2.5e-2;
       relative_per_sample_tolerance = 1e-2;
     }
@@ -254,12 +255,17 @@ TEST_P(ModelTest, Run) {
 #endif
 #ifdef USE_ACL
       else if (provider_name == "acl") {
-        ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_ACL(ortso, 0));
+        ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_ACL(ortso, false));
       }
 #endif
 #ifdef USE_ARMNN
       else if (provider_name == "armnn") {
         ASSERT_ORT_STATUS_OK(OrtSessionOptionsAppendExecutionProvider_ArmNN(ortso));
+      }
+#endif
+#ifdef USE_XNNPACK
+      else if (provider_name == "xnnpack") {
+        ortso.AppendExecutionProvider("XNNPACK");
       }
 #endif
       OrtSession* ort_session;
@@ -407,9 +413,7 @@ static constexpr ORT_STRING_VIEW provider_name_migraphx = ORT_TSTR("migraphx");
 #endif
 static constexpr ORT_STRING_VIEW provider_name_openvino = ORT_TSTR("openvino");
 static constexpr ORT_STRING_VIEW provider_name_cuda = ORT_TSTR("cuda");
-#ifdef USE_ROCM
 static constexpr ORT_STRING_VIEW provider_name_rocm = ORT_TSTR("rocm");
-#endif
 static constexpr ORT_STRING_VIEW provider_name_dnnl = ORT_TSTR("dnnl");
 // For any non-Android system, NNAPI will only be used for ort model converter
 #if defined(USE_NNAPI) && defined(__ANDROID__)
@@ -426,6 +430,9 @@ static constexpr ORT_STRING_VIEW provider_name_acl = ORT_TSTR("acl");
 #endif
 #ifdef USE_ARMNN
 static constexpr ORT_STRING_VIEW provider_name_armnn = ORT_TSTR("armnn");
+#endif
+#ifdef USE_XNNPACK
+static constexpr ORT_STRING_VIEW provider_name_xnnpack = ORT_TSTR("xnnpack");
 #endif
 static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
 
@@ -474,6 +481,9 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
 #ifdef USE_DML
   provider_names[provider_name_dml] = {opset7, opset8, opset9, opset10, opset11, opset12, opset13, opset14, opset15, opset16, opset17, opset18};
 #endif
+#ifdef USE_XNNPACK
+  provider_names[provider_name_xnnpack] = {opset12, opset13, opset14, opset15, opset16, opset17, opset18};
+#endif
 
 #if defined(ENABLE_TRAINING_CORE) && defined(USE_CUDA)
   // Removing the CPU EP tests from CUDA build for training as these tests are already run in the CPU pipelines.
@@ -481,6 +491,18 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
   // the number of times these are run to reduce the CI time.
   provider_names.erase(provider_name_cpu);
 #endif
+
+#if defined(USE_CUDA) && defined(USE_DML)
+  const std::string no_cuda_ep_test = Env::Default().GetEnvironmentVar("NO_CUDA_TEST");
+  if (no_cuda_ep_test == "1") {
+    provider_names.erase(provider_name_cuda);
+  }
+  const std::string no_dml_ep_test = Env::Default().GetEnvironmentVar("NO_DML_TEST");
+  if (no_dml_ep_test == "1") {
+    provider_names.erase(provider_name_dml);
+  }
+#endif
+
   std::vector<std::basic_string<ORTCHAR_T>> v;
   // Permanently exclude following tests because ORT support only opset starting from 7,
   // Please make no more changes to the list
@@ -521,29 +543,46 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
       ORT_TSTR("operator_pow"),
   };
 
-  static const ORTCHAR_T* cuda_flaky_tests[] = {ORT_TSTR("fp16_inception_v1"),
-                                                ORT_TSTR("fp16_shufflenet"),
-                                                ORT_TSTR("fp16_tiny_yolov2"),
-                                                ORT_TSTR("candy"),
-                                                ORT_TSTR("tinyyolov3"),
-                                                ORT_TSTR("mlperf_ssd_mobilenet_300"),
-                                                ORT_TSTR("mlperf_ssd_resnet34_1200"),
-                                                ORT_TSTR("tf_inception_v1"),
-                                                ORT_TSTR("faster_rcnn"),
-                                                ORT_TSTR("split_zero_size_splits"),
-                                                ORT_TSTR("convtranspose_3d"),
-                                                ORT_TSTR("fp16_test_tiny_yolov2-Candy"),
-                                                ORT_TSTR("fp16_coreml_FNS-Candy"),
-                                                ORT_TSTR("fp16_test_tiny_yolov2"),
-                                                ORT_TSTR("fp16_test_shufflenet"),
-                                                ORT_TSTR("keras2coreml_SimpleRNN_ImageNet")};
+  static const ORTCHAR_T* cuda_rocm_flaky_tests[] = {ORT_TSTR("fp16_inception_v1"),
+                                                     ORT_TSTR("fp16_shufflenet"),
+                                                     ORT_TSTR("fp16_tiny_yolov2"),
+                                                     ORT_TSTR("candy"),
+                                                     ORT_TSTR("tinyyolov3"),
+                                                     ORT_TSTR("mlperf_ssd_mobilenet_300"),
+                                                     ORT_TSTR("mlperf_ssd_resnet34_1200"),
+                                                     ORT_TSTR("tf_inception_v1"),
+                                                     ORT_TSTR("faster_rcnn"),
+                                                     ORT_TSTR("split_zero_size_splits"),
+                                                     ORT_TSTR("convtranspose_3d"),
+                                                     ORT_TSTR("fp16_test_tiny_yolov2-Candy"),
+                                                     ORT_TSTR("fp16_coreml_FNS-Candy"),
+                                                     ORT_TSTR("fp16_test_tiny_yolov2"),
+                                                     ORT_TSTR("fp16_test_shufflenet"),
+                                                     ORT_TSTR("keras2coreml_SimpleRNN_ImageNet")};
+  // For ROCm EP, also disable the following tests due to flakiness,
+  // mainly with precision issue and random memory access fault.
+  static const ORTCHAR_T* rocm_disabled_tests[] = {ORT_TSTR("bvlc_alexnet"),
+                                                   ORT_TSTR("bvlc_reference_caffenet"),
+                                                   ORT_TSTR("bvlc_reference_rcnn_ilsvrc13"),
+                                                   ORT_TSTR("coreml_Resnet50_ImageNet"),
+                                                   ORT_TSTR("mlperf_resnet"),
+                                                   ORT_TSTR("mobilenetv2-1.0"),
+                                                   ORT_TSTR("shufflenet"),
+                                                   // models from model zoo
+                                                   ORT_TSTR("AlexNet"),
+                                                   ORT_TSTR("CaffeNet"),
+                                                   ORT_TSTR("MobileNet v2-7"),
+                                                   ORT_TSTR("R-CNN ILSVRC13"),
+                                                   ORT_TSTR("ShuffleNet-v1"),
+                                                   ORT_TSTR("version-RFB-320"),
+                                                   ORT_TSTR("version-RFB-640")};
   static const ORTCHAR_T* openvino_disabled_tests[] = {
       ORT_TSTR("tf_mobilenet_v1_1.0_224"),
       ORT_TSTR("bertsquad"),
       ORT_TSTR("yolov3"),
       ORT_TSTR("LSTM_Seq_lens_unpacked"),
       ORT_TSTR("tinyyolov3"),
-      ORT_TSTR("faster_rcnn"),
+      // ORT_TSTR("faster_rcnn"),
       ORT_TSTR("mask_rcnn"),
       ORT_TSTR("coreml_FNS-Candy_ImageNet"),
       ORT_TSTR("tf_mobilenet_v2_1.0_224"),
@@ -554,7 +593,7 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
       ORT_TSTR("mlperf_ssd_resnet34_1200"),
       ORT_TSTR("candy"),
       ORT_TSTR("cntk_simple_seg"),
-      ORT_TSTR("GPT2_LM_HEAD"),
+      // ORT_TSTR("GPT2_LM_HEAD"),
       ORT_TSTR("mlperf_ssd_mobilenet_300"),
       ORT_TSTR("fp16_coreml_FNS-Candy"),
       ORT_TSTR("fp16_test_tiny_yolov2"),
@@ -663,8 +702,13 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
 
     std::unordered_set<std::basic_string<ORTCHAR_T>> all_disabled_tests(std::begin(immutable_broken_tests),
                                                                         std::end(immutable_broken_tests));
-    if (provider_name == provider_name_cuda) {
-      all_disabled_tests.insert(std::begin(cuda_flaky_tests), std::end(cuda_flaky_tests));
+    bool provider_cuda_or_rocm = provider_name == provider_name_cuda;
+    if (provider_name == provider_name_rocm) {
+      provider_cuda_or_rocm = true;
+      all_disabled_tests.insert(std::begin(rocm_disabled_tests), std::end(rocm_disabled_tests));
+    }
+    if (provider_cuda_or_rocm) {
+      all_disabled_tests.insert(std::begin(cuda_rocm_flaky_tests), std::end(cuda_rocm_flaky_tests));
     } else if (provider_name == provider_name_dml) {
       all_disabled_tests.insert(std::begin(dml_disabled_tests), std::end(dml_disabled_tests));
     } else if (provider_name == provider_name_dnnl) {

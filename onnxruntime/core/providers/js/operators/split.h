@@ -49,7 +49,7 @@ class Split : public JsKernel, public SplitBase {
 
     JSEP_INIT_KERNEL_ATTRIBUTE(Split, ({"axis" : $1,
                                         "numOutputs" : $2,
-                                        "splitSizes" : $3 ? Array.from(HEAP32.subarray($3, $4)) : []}),
+                                        "splitSizes" : $3 ? Array.from(HEAP32.subarray(Number($3), Number($4))) : []}),
                                static_cast<int32_t>(axis_),
                                static_cast<int32_t>(num_outputs_),
                                JSEP_HEAP32_INDEX_START(split_sizes),

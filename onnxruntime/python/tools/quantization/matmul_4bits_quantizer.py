@@ -29,8 +29,14 @@ logger = logging.getLogger(__name__)
 
 
 class WeightOnlyQuantConfig:
-    def __init__(self, algorithm, quant_format):
-        """This is the Base class for Weight Only Quant Configuration.
+    def __init__(
+        self,
+        algorithm: str,
+        quant_format: QuantFormat,
+        op_types_to_quantize: tuple[str, ...] | None = None,
+        quant_axes: tuple[tuple[str, int], ...] | None = None,
+    ):
+        """This is the Base class for Weight Only blockwise quantization Configuration.
 
         Args:
             algorithm:
@@ -38,9 +44,15 @@ class WeightOnlyQuantConfig:
             quant_format: QuantFormat{QOperator, QDQ}.
                 QOperator format quantizes the model with quantized operators directly.
                 QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
+            op_types_to_quantize (optional):
+                set of operator types to quantize. Default {MatMul}
+            quant_axes (dict[str, int], optional):
+                op:axis, which axis to quantize for an op. Default {MatMul: 0, Gather: 1}
         """
         self.algorithm = algorithm
         self.quant_format = quant_format
+        self.op_types_to_quantize = set(op_types_to_quantize) if op_types_to_quantize else {"MatMul"}
+        self.quant_axes = dict(quant_axes) if quant_axes else {"MatMul": 0, "Gather": 1}
 
 
 class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
@@ -48,6 +60,7 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         self,
         ratios=None,
         quant_format=QuantFormat.QOperator,
+        op_types_to_quantize: tuple[str, ...] | None = None,
     ):
         """
         This is a class for round-to-nearest (RTN) algorithm Weight Only Quant Configuration.
@@ -60,6 +73,8 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
                 QOperator format quantizes the model with quantized operators directly.
                 QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
                 Defaults to QuantFormat.QOperator.
+            op_types_to_quantize (optional):
+                set of operator types to quantize.
         """
         assert quant_format == QuantFormat.QOperator, "RTN only supports QOperator format"
 
@@ -68,6 +83,7 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         super().__init__(
             algorithm="RTN",
             quant_format=quant_format,
+            op_types_to_quantize=op_types_to_quantize,
         )
         self.ratios = ratios
 
@@ -75,13 +91,14 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
 class GPTQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
     def __init__(
         self,
-        calibration_data_reader: CalibrationDataReader,
+        calibration_data_reader: CalibrationDataReader | None = None,
         percdamp=0.01,
         block_size=128,
         actorder=False,
         mse=False,
         perchannel=True,
         quant_format=QuantFormat.QOperator,
+        op_types_to_quantize: tuple[str, ...] | None = None,
     ):
         """
         This is a class for GPTQ algorithm Weight Only Quant Configuration.
@@ -104,12 +121,15 @@ class GPTQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
                 QOperator format quantizes the model with quantized operators directly.
                 QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
                 Defaults to QuantFormat.QOperator.
+            op_types_to_quantize (optional):
+                set of operator types to quantize.
         """
         assert quant_format == QuantFormat.QOperator, "GPTQ only supports QOperator format"
 
         super().__init__(
             algorithm="GPTQ",
             quant_format=quant_format,
+            op_types_to_quantize=op_types_to_quantize,
         )
         self.calibration_data_reader = calibration_data_reader
         self.percdamp = percdamp
@@ -126,6 +146,8 @@ class HQQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         bits=4,
         axis=1,
         quant_format=QuantFormat.QOperator,
+        op_types_to_quantize: tuple[str, ...] | None = None,
+        quant_axes: tuple[tuple[str, int], ...] | None = None,
     ):
         """
         This is a class for HQQ algorithm Weight Only Quant Configuration.
@@ -142,12 +164,18 @@ class HQQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
                 QOperator format quantizes the model with quantized operators directly.
                 QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
                 Defaults to QuantFormat.QOperator.
+            op_types_to_quantize (optional):
+                set of operator types to quantize.
+            quant_axes (dict[str, int], optional):
+                op:axis, which axis to quantize for an op. Default {MatMul: 0, Gather: 1}
         """
         assert quant_format == QuantFormat.QOperator, "HQQ only supports QOperator format"
 
         super().__init__(
             algorithm="HQQ",
             quant_format=quant_format,
+            op_types_to_quantize=op_types_to_quantize,
+            quant_axes=quant_axes,
         )
         self.block_size = block_size
         self.bits = bits
@@ -161,6 +189,8 @@ class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         is_symmetric: bool = False,
         accuracy_level: int | None = None,
         quant_format=QuantFormat.QOperator,
+        op_types_to_quantize: tuple[str, ...] | None = None,
+        quant_axes: tuple[tuple[str, int], ...] | None = None,
     ):
         """
         This is a class for weight only affine quantization configuration.
@@ -178,12 +208,267 @@ class DefaultWeightOnlyQuantConfig(WeightOnlyQuantConfig):
                 QOperator format quantizes the model with quantized operators directly.
                 QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
                 Defaults to QuantFormat.QOperator.
+            op_types_to_quantize (optional):
+                set of operator types to quantize.
+            quant_axes (dict[str, int], optional):
+                op:axis, which axis to quantize for an op. Default {MatMul: 0, Gather: 1}
         """
-        super().__init__(algorithm="DEFAULT", quant_format=quant_format)
+        super().__init__(
+            algorithm="DEFAULT",
+            quant_format=quant_format,
+            op_types_to_quantize=op_types_to_quantize,
+            quant_axes=quant_axes,
+        )
         self.block_size = block_size
         self.is_symmetric = is_symmetric
         self.bits = 4
         self.accuracy_level = accuracy_level
+
+
+class NVAWQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
+    def __init__(
+        self,
+        tokenizer_dir,
+        dataset_name="cnn",
+        cache_dir="./cache",
+        calibration_method="awq_lite",
+    ):
+        """
+        Configuration for the nvidia_awq quantization method.
+
+        Args:
+            tokenizer_dir (str): pathof the tokenizer dir.
+            dataset_name (str): Name of the dataset.
+            cache_dir (str): Directory for caching.
+            calibration_method (str): calib method for nvidia_awq.
+        """
+        # Import torch and DataLoader
+        try:
+            import torch
+            from torch.utils.data import DataLoader
+
+            self.torch = torch
+            self.DataLoader = DataLoader
+        except ImportError:
+            print(
+                "Error: The 'torch' library is required but not installed. Please install it using 'pip install torch'."
+            )
+            raise ImportError("torch is not installed. Exiting.") from None
+
+        # Import datasets
+        try:
+            from datasets import load_dataset
+
+            self.load_dataset = load_dataset
+        except ImportError:
+            print(
+                "Error: The 'datasets' library is required but not installed. Please install it using 'pip install datasets'."
+            )
+            raise ImportError("datasets is not installed. Exiting.") from None
+
+        # Import transformers
+        try:
+            from transformers import AutoConfig, AutoTokenizer
+
+            self.AutoConfig = AutoConfig
+            self.AutoTokenizer = AutoTokenizer
+        except ImportError:
+            print(
+                "Error: The 'transformers' library is required but not installed. Please install it using 'pip install transformers'."
+            )
+            raise ImportError("transformers is not installed. Exiting.") from None
+
+        super().__init__(
+            algorithm="nvidia_awq",
+            quant_format=QuantFormat.QDQ,
+            op_types_to_quantize=None,  # Assuming op_types_to_quantize is handled elsewhere
+            quant_axes=None,  # Assuming quant_axes is handled elsewhere
+        )
+
+        # Determine the device
+        device = self.torch.device("cuda" if self.torch.cuda.is_available() else "cpu")
+
+        calib_inputs = self.get_calib_inputs(
+            dataset_name=dataset_name,
+            model_name=tokenizer_dir,
+            cache_dir=cache_dir,
+            calib_size=32,
+            batch_size=1,
+            block_size=512,
+            device=device,
+            use_fp16=True,
+            use_buffer_share=False,
+            add_past_kv_inputs=True,
+            max_calib_rows_to_load=128,
+            add_position_ids=True,
+        )
+
+        self.calibration_data_reader = calib_inputs
+        self.calibration_method = calibration_method
+
+    def make_model_input(
+        self,
+        config,
+        input_ids_arg,
+        attention_mask_arg,
+        add_past_kv_inputs,
+        device,
+        use_fp16,
+        use_buffer_share,
+        add_position_ids,
+    ):
+        # Access torch from the instance variable
+        torch = self.torch
+
+        input_ids = input_ids_arg
+        attention_mask = attention_mask_arg
+
+        if isinstance(input_ids_arg, list):
+            input_ids = torch.tensor(input_ids_arg, device=device, dtype=torch.int64)
+            attention_mask = torch.tensor(attention_mask_arg, device=device, dtype=torch.int64)
+
+        inputs = {
+            "input_ids": input_ids.contiguous(),
+            "attention_mask": attention_mask.contiguous(),
+        }
+
+        if add_position_ids:
+            position_ids = attention_mask.long().cumsum(-1) - 1
+            position_ids.masked_fill_(attention_mask == 0, 1)
+            inputs["position_ids"] = position_ids.contiguous()
+
+        if add_past_kv_inputs:
+            torch_dtype = torch.float16 if use_fp16 else torch.float32
+            batch_size, sequence_length = input_ids.shape
+            max_sequence_length = config.max_position_embeddings
+            num_heads, head_size = (
+                config.num_key_value_heads,
+                config.hidden_size // config.num_attention_heads,
+            )
+            for i in range(config.num_hidden_layers):
+                past_key = torch.zeros(
+                    batch_size,
+                    num_heads,
+                    max_sequence_length if use_buffer_share else 0,
+                    head_size,
+                    device=device,
+                    dtype=torch_dtype,
+                )
+                past_value = torch.zeros(
+                    batch_size,
+                    num_heads,
+                    max_sequence_length if use_buffer_share else 0,
+                    head_size,
+                    device=device,
+                    dtype=torch_dtype,
+                )
+                inputs.update(
+                    {
+                        f"past_key_values.{i}.key": past_key.contiguous(),
+                        f"past_key_values.{i}.value": past_value.contiguous(),
+                    }
+                )
+
+        return inputs
+
+    def get_calib_inputs(
+        self,
+        dataset_name,
+        model_name,
+        cache_dir,
+        calib_size,
+        batch_size,
+        block_size,
+        device,
+        use_fp16,
+        use_buffer_share,
+        add_past_kv_inputs,
+        max_calib_rows_to_load,
+        add_position_ids,
+    ):
+        # Access transformers and datasets from the instance variables
+        auto_config = self.AutoConfig
+        auto_tokenizer = self.AutoTokenizer
+        load_dataset = self.load_dataset
+
+        config = auto_config.from_pretrained(
+            model_name, use_auth_token=True, cache_dir=cache_dir, trust_remote_code=True
+        )
+        tokenizer = auto_tokenizer.from_pretrained(
+            model_name, use_auth_token=True, cache_dir=cache_dir, trust_remote_code=True
+        )
+        tokenizer.add_special_tokens({"pad_token": "[PAD]"})
+        tokenizer.pad_token = tokenizer.eos_token
+
+        assert calib_size <= max_calib_rows_to_load, "calib size should be no more than max_calib_rows_to_load"
+
+        if "cnn" in dataset_name:
+            dataset2 = load_dataset("cnn_dailymail", name="3.0.0", split="train").select(range(max_calib_rows_to_load))
+            column = "article"
+        elif "pile" in dataset_name:
+            dataset2 = load_dataset("mit-han-lab/pile-val-backup", split="validation")
+            column = "text"
+        else:
+            raise ValueError(f'dataset "{dataset_name}" not supported')
+
+        dataset2 = dataset2[column][:calib_size]
+        batch_encoded = tokenizer.batch_encode_plus(
+            dataset2, return_tensors="pt", padding=True, truncation=True, max_length=block_size
+        )
+        batch_encoded = batch_encoded.to(device)
+        batch_encoded_input_ids = batch_encoded["input_ids"]
+        batch_encoded_attention_mask = batch_encoded["attention_mask"]
+
+        # Access DataLoader from the instance variable
+        data_loader = self.DataLoader
+
+        calib_dataloader_input_ids = data_loader(batch_encoded_input_ids, batch_size=batch_size, shuffle=False)
+        calib_dataloader_attention_mask = data_loader(
+            batch_encoded_attention_mask, batch_size=batch_size, shuffle=False
+        )
+
+        assert len(calib_dataloader_input_ids.dataset) == len(calib_dataloader_attention_mask.dataset)
+        assert len(calib_dataloader_input_ids) == len(calib_dataloader_attention_mask)
+
+        number_of_batched_samples = calib_size // batch_size
+
+        batched_input_ids = []
+        for idx, data in enumerate(calib_dataloader_input_ids):
+            batched_input_ids.append(data)
+            if idx == (number_of_batched_samples - 1):
+                break
+
+        batched_attention_mask = []
+        for idx, data in enumerate(calib_dataloader_attention_mask):
+            batched_attention_mask.append(data)
+            if idx == (number_of_batched_samples - 1):
+                break
+
+        print(
+            f"\n--Quantize-Script-- number_of_batched_samples={number_of_batched_samples}, "
+            f"batch-input-ids-list-len={len(batched_input_ids)}, batched_attention_mask={len(batched_attention_mask)}\n"
+        )
+
+        batched_inputs_list = []
+        for i in range(number_of_batched_samples):
+            input_ids = batched_input_ids[i]
+            attention_mask = batched_attention_mask[i]
+
+            inputs = self.make_model_input(
+                config,
+                input_ids,
+                attention_mask,
+                add_past_kv_inputs,
+                device,
+                use_fp16,
+                use_buffer_share,
+                add_position_ids,
+            )
+            inputs = {input_name: torch_tensor.cpu().numpy() for input_name, torch_tensor in inputs.items()}
+            batched_inputs_list.append(inputs)
+
+        print(f"\n--Quantize-Script-- number of batched inputs = {len(batched_inputs_list)}\n")
+        return batched_inputs_list
 
 
 def is_divisible(val1, val2):
@@ -205,7 +490,7 @@ class HQQWeightOnlyQuantizer:
         zero,
         min_max: list[int],
         axis: int = 0,
-        opt_params: dict = None,  # noqa: RUF013
+        opt_params: dict | None = None,
         verbose=False,
     ):
         import torch
@@ -223,14 +508,10 @@ class HQQWeightOnlyQuantizer:
         scale = scale.to(dtype)
         zero = zero.to(dtype)
 
-        if lp_norm == 1:
-
-            def shrink_op(x, beta):
+        def shrink_op(x, beta, p=lp_norm):
+            if p == 1:
                 return torch.sign(x) * torch.nn.functional.relu(torch.abs(x) - 1.0 / beta)
-
-        else:
-
-            def shrink_op(x, beta, p=lp_norm):
+            else:
                 return torch.sign(x) * torch.nn.functional.relu(
                     torch.abs(x) - (1.0 / beta) * torch.pow(torch.abs(x) + 1e-8, p - 1)
                 )
@@ -335,11 +616,20 @@ class HQQWeightOnlyQuantizer:
 
     def quantize(self, node: NodeProto, graph_stack: list[GraphProto]) -> list[NodeProto]:
         """
-        If the node is MatMul with fp32 const weight, quantize the weight with int4, and return the new node.
-        If QOperator format, return MatMulNbits. If QDQ format, return DeQuantizeLinear + MatMul.
+        Target node:        QOperator node:            QDQ nodes:
+        MatMul              MatMulNBits                DeQuantizeLinear -> MatMul
+        Gather              GatherBlockQuantized       Gather, Gather, Gather (optional) -> DequantizeLinear
+        If the node is target node with fp32 or fp16 const weight, quantize the weight to int4 and
+        return the new nodes.
+        If QOperator format, return the corresponding QOperator nodes.
+        If QDQ format, return the corresdponging QDQ nodes.
+        Gather (quantized data) + Gather (scales) + Gather (optional, zero points) -> DequantizeLinear is
+        not supported yet because Gather does not support int4 data.
         """
-        if node.op_type != "MatMul":
-            return [node]  # only care about MatMul for now
+        # With HQQ, zero points are in float. Current GatherBlockQuantized does not support float zero points.
+        if node.op_type == "Gather":
+            raise NotImplementedError("Gather quantization is not supported yet in HQQ")
+
         import torch
 
         logger.info(f"start to quantize {node.name} ...")
@@ -432,7 +722,7 @@ class DefaultWeightOnlyQuantizer:
         self.config = config
 
     def int4_block_quant(self, fp32weight: npt.ArrayLike) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """4b quantize fp32 weight to a blob"""
+        """4b quantize fp32 weight to int4 using C++ kernels."""
 
         if len(fp32weight.shape) != 2:
             raise ValueError("Current int4 block quantization only supports 2D tensors!")
@@ -465,16 +755,11 @@ class DefaultWeightOnlyQuantizer:
 
         return (packed, scales, zero_point)
 
-    def quantize(self, node: NodeProto, graph_stack: list[GraphProto]) -> list[NodeProto]:
+    def quantize_matmul(self, node: NodeProto, graph_stack: list[GraphProto]) -> list[NodeProto]:
         """
-        If the node is MatMul with fp32 const weight, quantize the weight with int4, and return the new node.
-        If QOperator format, return MatMulNbits. If QDQ format, return DeQuantizeLinear + MatMul.
+        Quantize weight B of MatMul node to int4.
+        Currently only support 2D constant matrix and axis 0 blockwise quantization.
         """
-
-        if node.op_type != "MatMul":
-            return [node]  # only care about MatMul for now
-
-        logger.info(f"start to quantize {node.name} ...")
         qtype = TensorProto.INT4 if self.config.is_symmetric else TensorProto.UINT4
         input_b = node.input[1]
         b_tensor, b_graph = get_initializer(input_b, graph_stack)
@@ -557,17 +842,249 @@ class DefaultWeightOnlyQuantizer:
             )
             output_nodes.extend([dq_node, matmul_node])
 
-        logger.info(f"complete quantization of {node.name} ...")
         return output_nodes
 
+    @staticmethod
+    def quant_slice_symmetric(data: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        max_val = np.max(data, axis=1, keepdims=True)
+        min_val = np.min(data, axis=1, keepdims=True)
+        abs_max = np.where(np.abs(max_val) > np.abs(min_val), max_val, min_val)
 
+        scale = abs_max / -8.0  # if max == min, max may be clipped
+        quantized_slice = np.where(scale == 0, 0, data / scale).round().clip(-8, 7).astype(np.int8)
+
+        return quantized_slice, scale
+
+    @staticmethod
+    def quant_slice_asymmetric(data: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        min_val = np.minimum(data.min(axis=1, keepdims=True), 0)
+        max_val = np.maximum(data.max(axis=1, keepdims=True), 0)
+
+        scale = (max_val - min_val) / 15.0
+        zero_point = np.where(scale == 0, 8, -min_val / scale).round().clip(0, 15).astype(np.uint8)
+        quantized_slice = np.where(scale == 0, 8, data / scale + zero_point).round().clip(0, 15).astype(np.uint8)
+
+        return quantized_slice, scale, zero_point
+
+    @staticmethod
+    def pack_int8_to_int4(data: np.ndarray) -> np.ndarray:
+        """Pack int8 data to int4 and store in uint8 ndarray."""
+        data_flat = data.reshape(-1)
+        if len(data_flat) % 2 != 0:
+            data_flat = np.append(data_flat, 0)
+        quant_data_int4 = (data_flat[::2] & 0xF) | ((data_flat[1::2] & 0xF) << 4)
+
+        return quant_data_int4.astype("uint8")
+
+    @staticmethod
+    def quantize_ndarray(
+        data: np.ndarray,
+        quantize_axis: int,
+        block_size: int,
+        is_symmetric: bool,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None]:
+        """Quantize ndarray data to int4 using numpy, return (quantized data, scales, zero points)."""
+        # Get the shape of the matrix
+        m = 1  # dimension of the matrix before the quantize axis
+        k = data.shape[quantize_axis]  # dimension of the matrix along the quantize axis
+        n = 1  # dimension of the matrix after the quantize axis
+        for i, dim in enumerate(data.shape):
+            if i < quantize_axis:
+                m *= dim
+            elif i > quantize_axis:
+                n *= dim
+
+        k_blocks = (k + block_size - 1) // block_size
+        scales_shape = list(data.shape)
+        scales_shape[quantize_axis] = k_blocks
+
+        data_reshape = data.reshape((m, k, n))
+        scales = np.zeros((m, k_blocks, n), dtype=data.dtype)
+        if is_symmetric:
+            quant_data_int8 = np.zeros((m, k, n), dtype="int8")
+        else:
+            quant_data_int8 = np.zeros((m, k, n), dtype="uint8")
+            zero_point_int8 = np.zeros((m, k_blocks, n), dtype="uint8")
+
+        # slice and quantize
+        for i in range(0, k, block_size):
+            end_idx = min(i + block_size, k)
+            slice = data_reshape[:, i:end_idx, :]
+
+            if is_symmetric:
+                quantized_slice_int8, scale_slice = DefaultWeightOnlyQuantizer.quant_slice_symmetric(slice)
+            else:
+                quantized_slice_int8, scale_slice, zero_point_slice_int8 = (
+                    DefaultWeightOnlyQuantizer.quant_slice_asymmetric(slice)
+                )
+
+            quant_data_int8[:, i:end_idx, :] = quantized_slice_int8
+            j = i // block_size
+            scales[:, j : (j + 1), :] = scale_slice
+            if not is_symmetric:
+                zero_point_int8[:, j : (j + 1), :] = zero_point_slice_int8
+
+        # pack int8 to int4
+        quant_data_int4 = DefaultWeightOnlyQuantizer.pack_int8_to_int4(quant_data_int8)
+        zero_point_int4 = None
+        if not is_symmetric:
+            zero_point_int4 = DefaultWeightOnlyQuantizer.pack_int8_to_int4(zero_point_int8)
+        scales = scales.reshape(scales_shape)
+        return quant_data_int4, scales, zero_point_int4
+
+    def quantize_gather(self, node: NodeProto, graph_stack: list[GraphProto]) -> list[NodeProto]:
+        """Quantize weight data of Gather node to int4."""
+        assert self.config.quant_format == QuantFormat.QOperator, "Gather only supports QOperator format currently."
+
+        qtype = TensorProto.INT4 if self.config.is_symmetric else TensorProto.UINT4
+        data_arg = node.input[0]
+        data_tensorproto, data_graphproto = get_initializer(data_arg, graph_stack)
+        if data_tensorproto is None:
+            logger.info("Gather doesn't have const weight. Skip quantization.")
+            return [node]  # only care about constant weight
+
+        data_ndarray = onnx.numpy_helper.to_array(data_tensorproto)
+        data_rank = len(data_ndarray.shape)
+        quantize_axis = self.config.quant_axes.get("Gather", 1)
+        block_size = self.config.block_size
+
+        assert quantize_axis < data_rank and quantize_axis >= -data_rank, "Invalid quantize axis for Gather node."
+        assert block_size >= 16 and ((block_size - 1) & block_size == 0), "Invalid block size for Gather node."
+
+        quantize_axis = (quantize_axis + data_rank) % data_rank
+        quantized_data, scales, zero_points = self.quantize_ndarray(
+            data_ndarray, quantize_axis, block_size, self.config.is_symmetric
+        )
+
+        for input in data_graphproto.input:
+            if input.name == data_arg:
+                data_graphproto.input.remove(input)
+                break
+
+        quantized_data_tensorproto = onnx.helper.make_tensor(
+            data_tensorproto.name + "_Q4", qtype, data_ndarray.shape, quantized_data.tobytes(), True
+        )
+        scales_tensorproto = onnx.numpy_helper.from_array(scales, data_tensorproto.name + "_scales")
+        input_names = [quantized_data_tensorproto.name, node.input[1], scales_tensorproto.name]
+        data_graphproto.initializer.extend([quantized_data_tensorproto, scales_tensorproto])
+        if not self.config.is_symmetric:
+            zp_tensorproto = onnx.helper.make_tensor(
+                data_tensorproto.name + "_zero_points", qtype, scales.shape, zero_points.tobytes(), True
+            )
+            input_names.append(zp_tensorproto.name)
+            data_graphproto.initializer.extend([zp_tensorproto])
+
+        try:
+            gather_axis = onnx.helper.get_node_attr_value(node, "axis")
+        except ValueError:
+            gather_axis = 0
+
+        kwargs = {
+            "gather_axis": gather_axis,
+            "quantize_axis": quantize_axis,
+            "block_size": block_size,
+        }
+
+        gather_q4_node = onnx.helper.make_node(
+            "GatherBlockQuantized",
+            inputs=input_names,
+            outputs=[node.output[0]],
+            name=node.name + "_Q4" if node.name else "",
+            domain="com.microsoft",
+            **kwargs,
+        )
+
+        return [gather_q4_node]
+
+    def quantize(self, node: NodeProto, graph_stack: list[GraphProto]) -> list[NodeProto]:
+        """
+        Target node:        QOperator node:            QDQ nodes:
+        MatMul              MatMulNBits                DeQuantizeLinear -> MatMul
+        Gather              GatherBlockQuantized       Gather, Gather, Gather (optional) -> DequantizeLinear
+        If the node is target node with fp32 or fp16 const weight, quantize the weight to int4 and
+        return the new nodes.
+        If QOperator format, return the corresponding QOperator nodes.
+        If QDQ format, return the corresdponging QDQ nodes.
+        Gather (quantized data) + Gather (scales) + Gather (optional, zero points) -> DequantizeLinear is
+        not supported yet because Gather does not support int4 data.
+        """
+        logger.info(f"start to quantize {node.name} ...")
+
+        if node.op_type == "MatMul":
+            results = self.quantize_matmul(node, graph_stack)
+        elif node.op_type == "Gather":
+            results = self.quantize_gather(node, graph_stack)
+        else:
+            logger.error(f"Unsupported operator {node.op_type} for weight only quantization. Skip quantization.")
+            results = [node]
+
+        logger.info(f"complete quantization of {node.name} ...")
+
+        return results
+
+
+class NVAWQWeightOnlyQuantizer:
+    def __init__(
+        self,
+        config: NVAWQWeightOnlyQuantConfig,
+    ):
+        self.config = config
+
+    def quantize_awq(self, model: ModelProto | str) -> ModelProto:
+        """
+        Perform nvidia_awq quantization using ModelOpt's int4 quantize function.
+
+        Args:
+            model (ModelProto): The ONNX model to quantize.
+
+        Returns:
+            ModelProto: The quantized ONNX model.
+        """
+        try:
+            from modelopt.onnx.quantization.int4 import quantize as quantize_int4
+        except ImportError:
+            print(
+                "Please ensure that the 'modelopt' package is installed. Please install it using pip install nvidia_modelopt."
+            )
+            raise ImportError(
+                "modelopt is not installed. Please install it using pip install nvidia_modelopt. Exiting."
+            ) from None
+
+        logger.info("Starting nvidia_awq quantization...")
+
+        # Prepare calibration inputs
+        calib_inputs = self.config.calibration_data_reader
+
+        # Perform quantization using ModelOpt's int4 quantize function
+        quantized_model = quantize_int4(
+            model,
+            calibration_method=self.config.calibration_method,
+            calibration_data_reader=calib_inputs,
+        )
+
+        logger.info("Completed nvidia_awq quantization.")
+        return quantized_model
+
+
+# TODO(fajin): change class name
 class MatMul4BitsQuantizer:
     """
-    Perform 4b quantization of constant MatMul weights.
-    If algo_config.quant_format is QOperator, the quantized weight is stored in a MatMulNBits node, which relaces the
-    MatMul node.
-    If algo_config.quant_format is QDQ, the quantized weight is stored in a DeQuantizeLinear node. The MatMul node is
-    replaced by the DequantizeLinear + MatMul nodes.
+    Target node:        QOperator node:            QDQ nodes:
+    MatMul              MatMulNBits                DeQuantizeLinear -> MatMul
+    Gather              GatherBlockQuantized       Gather, Gather, Gather (optional) -> DequantizeLinear
+
+    Perform 4b quantization of constant weights for target nodes.
+    If algo_config.quant_format is QOperator:
+      - nodes are replaced by the corresponding QOperator nodes.
+      - quantized weights are stored in the contrib ops.
+    If algo_config.quant_format is QDQ:
+      - the quantized weight is stored in a standard onnx node. For MatMul, it is DequantizeLinear. For Gather,
+        it is the three Gathers, one for quantized data, one for scales and one for optional zero points.
+      - The nodes are replaced by the corresponding QDQ nodes.
+      - currently Gather is not supported in QDQ because Gather does not support int4 yet.
+    Note:
+      - for quantized gather, the memory usage of "DequantizeLinear + Gather" is the same as the original Gather
+        during runtime. Therefor it is not recommended.
     """
 
     def __init__(
@@ -577,7 +1094,10 @@ class MatMul4BitsQuantizer:
         is_symmetric: bool = False,
         accuracy_level: int | None = None,
         nodes_to_exclude=None,
+        nodes_to_include: list[str] | None = None,
         quant_format=QuantFormat.QOperator,
+        op_types_to_quantize: tuple[str, ...] | None = None,
+        quant_axes: tuple[tuple[str, int], ...] | None = None,
         algo_config: WeightOnlyQuantConfig | None = None,
     ):
         if nodes_to_exclude is None:
@@ -588,19 +1108,25 @@ class MatMul4BitsQuantizer:
         self.is_symmetric = is_symmetric
         self.accuracy_level = accuracy_level
         self.nodes_to_exclude = set(nodes_to_exclude)
+        self.nodes_to_include = set(nodes_to_include) if nodes_to_include else None
         self.node_quantizer = None
+
         if algo_config is None:
             algo_config = DefaultWeightOnlyQuantConfig(
                 block_size=block_size,
                 is_symmetric=is_symmetric,
                 accuracy_level=accuracy_level,
                 quant_format=quant_format,
+                op_types_to_quantize=op_types_to_quantize,
+                quant_axes=quant_axes,
             )
         self.algo_config = algo_config
         if algo_config.algorithm == "HQQ":
             self.node_quantizer = HQQWeightOnlyQuantizer(self.algo_config)
         elif algo_config.algorithm == "DEFAULT":
             self.node_quantizer = DefaultWeightOnlyQuantizer(self.algo_config)
+        elif algo_config.algorithm == "nvidia_awq":
+            self.node_quantizer = NVAWQWeightOnlyQuantizer(self.algo_config)
 
     def _process_subgraph(self, graph_stack: list[GraphProto]):
         new_nodes = []
@@ -636,10 +1162,13 @@ class MatMul4BitsQuantizer:
             if node.name in self.nodes_to_exclude:
                 logger.info(f"exclude to quantize {node.name} as specified by nodes_to_exclude...")
                 out_nodes = [node]
-            elif self.algo_config is not None and self.algo_config.algorithm == "HQQ":
+            elif (self.nodes_to_include and node.name in self.nodes_to_include) or (
+                node.op_type in self.algo_config.op_types_to_quantize
+            ):
                 out_nodes = self.node_quantizer.quantize(node, graph_stack)
             else:
-                out_nodes = self.node_quantizer.quantize(node, graph_stack)
+                logger.info(f"skip to quantize {node.name} ...")
+                out_nodes = [node]
             new_nodes.extend(out_nodes)
 
         graph.ClearField("node")
@@ -712,15 +1241,32 @@ class MatMul4BitsQuantizer:
         if self.algo_config.algorithm in ["HQQ", "DEFAULT"]:
             # use a stack to keep track of sub-graphs
             graph_stack = [self.model.graph()]
-            opset_import = self.model.opset_import()
 
-            has_ms_domain = False
-            for opset in opset_import:
-                if opset.domain == "com.microsoft":
-                    has_ms_domain = True
-            if not has_ms_domain:
-                opset_import.extend([onnx.helper.make_opsetid("com.microsoft", 1)])
+            # Update domain opset
+            if self.algo_config.quant_format == QuantFormat.QOperator:
+                self.model.set_opset_import("com.microsoft", 1)
+
+            if self.algo_config.quant_format == QuantFormat.QDQ or "Gather" in self.algo_config.op_types_to_quantize:
+                opset_import = self.model.opset_import()
+                for opset in opset_import:
+                    if opset.domain in [None, "ai.onnx", ""] and opset.version < 21:
+                        logger.warning(
+                            "The opset of the input model is under 21 and doesn't support int4 data type. "
+                            "Force to update it to opset 21, but the generated model may not be a valid model."
+                        )
+                        self.model.set_opset_import(opset.domain, 21)
+
             self._process_subgraph(graph_stack)
+            self.model.clean_initializers()
+        elif self.algo_config.algorithm == "nvidia_awq":
+
+            # Handle nvidia_awq quantization
+            logger.info("Processing nvidia_awq quantization...")
+            self.model = self.node_quantizer.quantize_awq(
+                self.model.model if self.model_path is None else self.model_path
+            )
+            logger.info("Completed nvidia_awq quantization.")
+            self.model = ONNXModel(self.model)  # Ensure the model is wrapped back into ONNXModel
             self.model.clean_initializers()
         else:
             # use Intel® Neural Compressor for RTN or GPTQ weight-only quantize algorithm
@@ -745,6 +1291,12 @@ def ort_convert_str_to_bool(value):
     return value.lower() in ("true", "1")
 
 
+# Custom function to parse str:int pairs
+def parse_key_value_pair(s):
+    key, value = s.split(":")
+    return key, int(value)
+
+
 def parse_args():
     parser = argparse.ArgumentParser(
         description="""Blockwise int4 quantization for MatMul 2D weight matrices.
@@ -762,7 +1314,7 @@ set of 4b integers with a scaling factor and an optional offset.
         "--quant_method",
         default="default",
         type=str,
-        choices=["default", "hqq", "rtn", "gptq"],
+        choices=["default", "hqq", "rtn", "gptq", "nvidia_awq"],
         help="the algorithm used to quantize weight, \nrtn and gptq leverage Intel® Neural Compressor",
     )
     parser.add_argument("--bits", default=4, type=int, help="the target bits to represent weight")
@@ -795,6 +1347,13 @@ set of 4b integers with a scaling factor and an optional offset.
         help="Specify the nodes to be excluded from quantization with node names",
     )
     parser.add_argument(
+        "--nodes_to_include",
+        nargs="+",
+        type=str,
+        required=False,
+        help="Specify the specific nodes to be included from quantization with node names",
+    )
+    parser.add_argument(
         "--quant_format",
         default="QOperator",
         type=str,
@@ -803,7 +1362,49 @@ set of 4b integers with a scaling factor and an optional offset.
         "QOperator format quantizes the model with quantized operators directly."
         "QDQ format quantize the model by inserting DeQuantizeLinear before the MatMul.",
     )
-
+    parser.add_argument(
+        "--op_types_to_quantize",
+        type=str,
+        nargs="+",
+        choices=["MatMul", "Gather"],
+        help="op_types_to_quantize {MatMul, Gather}. Operators to quantize. Default is MatMul.",
+    )
+    parser.add_argument(
+        "--quant_axes",
+        type=parse_key_value_pair,
+        nargs="+",
+        required=False,
+        help="Key-value pairs in op_type:axis_to_quantize separated by space."
+        "Specify the axis to quantize for an op. Default {MatMul:0, Gather:1}"
+        "Example: --quant_axes MatMul:0 Gather:1",
+    )
+    # Group arguments specific to nvidia_awq
+    nv_awq_config = parser.add_argument_group("nvidia_awq", "Arguments specific to nvidia_awq quantization")
+    nv_awq_config.add_argument(
+        "--calib_dataset_name",
+        type=str,
+        default="cnn",
+        help="Name of the calibration dataset for nvidia_awq.",
+    )
+    nv_awq_config.add_argument(
+        "--tokenizer_dir",
+        type=str,
+        required=False,
+        help="Path of the tokenizer dir.",
+    )
+    nv_awq_config.add_argument(
+        "--calibration_method",
+        type=str,
+        required=False,
+        choices=["awq", "awq_clip"],
+        help="Support two options, awq implementation and weight clipping.",
+    )
+    nv_awq_config.add_argument(
+        "--cache_dir",
+        type=str,
+        default="./cache",
+        help="Cache directory for calibration data.",
+    )
     return parser.parse_args()
 
 
@@ -815,6 +1416,8 @@ if __name__ == "__main__":
     input_model_path = args.input_model
     output_model_path = args.output_model
     quant_format = QuantFormat[args.quant_format]
+    op_types_to_quantize = tuple(args.op_types_to_quantize) if args.op_types_to_quantize else ("MatMul",)
+    quant_axes = tuple(args.quant_axes) if args.quant_axes else None
 
     if os.path.exists(output_model_path):
         logger.error(f"file {output_model_path} already exists")
@@ -826,18 +1429,43 @@ if __name__ == "__main__":
 
     model = onnx.load(input_model_path)
     if args.quant_method == "hqq":
-        quant_config = HQQWeightOnlyQuantConfig(block_size=args.block_size, bits=args.bits)
+        quant_config = HQQWeightOnlyQuantConfig(
+            block_size=args.block_size, bits=args.bits, op_types_to_quantize=op_types_to_quantize, quant_axes=quant_axes
+        )
     elif args.quant_method == "default":
         quant_config = DefaultWeightOnlyQuantConfig(
             block_size=args.block_size,
             is_symmetric=args.symmetric,
             accuracy_level=args.accuracy_level,
             quant_format=quant_format,
+            op_types_to_quantize=op_types_to_quantize,
+            quant_axes=quant_axes,
         )
     elif args.quant_method == "rtn":
-        quant_config = RTNWeightOnlyQuantConfig()
+        quant_config = RTNWeightOnlyQuantConfig(op_types_to_quantize=op_types_to_quantize)
     elif args.quant_method == "gptq":
-        quant_config = GPTQWeightOnlyQuantConfig(block_size=args.block_size)
+        quant_config = GPTQWeightOnlyQuantConfig(block_size=args.block_size, op_types_to_quantize=op_types_to_quantize)
+    elif args.quant_method == "nvidia_awq":
+
+        if quant_format == QuantFormat.QOperator:
+            logger.warning("QOperator is not applicable to nvidia_awq. overriding the value to QDQ")
+            quant_format = QuantFormat.QDQ
+
+        model = input_model_path
+        if args.calibration_method is not None:
+            if args.calibration_method == "awq":
+                calibration_method = "awq_lite"
+            else:
+                calibration_method = "awq_clip"
+        else:
+            calibration_method = "awq_lite"
+
+        quant_config = NVAWQWeightOnlyQuantConfig(
+            dataset_name=args.calib_dataset_name,
+            tokenizer_dir=args.tokenizer_dir,
+            cache_dir=args.cache_dir,
+            calibration_method=calibration_method,
+        )
     else:
         raise ValueError(f"Unsupported quantization method: {args.quant_method}")
 
@@ -845,6 +1473,7 @@ if __name__ == "__main__":
         model=model,
         accuracy_level=args.accuracy_level,
         nodes_to_exclude=args.nodes_to_exclude,
+        nodes_to_include=args.nodes_to_include,
         algo_config=quant_config,
     )
     quant.process()

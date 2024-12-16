@@ -156,7 +156,8 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
     int cur_len,
     transformers::Sequences& sequences,
     int past_present_share_buffer_max_seq_len,
-    bool need_cache_indir) {
+    bool need_cache_indir,
+    bool use_cuda) {
   ORT_ENFORCE(session_state_ != nullptr, "Setup must be called before CreateInitialFeeds");
 
   // Allocate subgraph inputs from same device as inputs of encoder subgraph.
@@ -171,8 +172,9 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   Tensor::InitOrtValue(DataTypeImpl::GetType<int32_t>(), input_ids_shape, allocator, input_ids);
   int32_t* input_ids_data = input_ids.GetMutable<Tensor>()->MutableData<int32_t>();
   AllocatorPtr buffer_allocator = std::make_shared<onnxruntime::CPUAllocator>();
-  size_t total_size = static_cast<size_t>(static_cast<long long>(cur_len) * batch_beam_size * sizeof(int));
-  auto seq_copy = IAllocator::MakeUniquePtr<int>(buffer_allocator, total_size, false, stream);
+  size_t total_size = static_cast<size_t>(cur_len) * static_cast<size_t>(batch_beam_size);
+  size_t total_size_bytes = total_size * sizeof(int);
+  auto seq_copy = IAllocator::MakeUniquePtr<int>(buffer_allocator, total_size_bytes, false, stream);
   int* seq_copy_ptr = seq_copy.get();
 
   if (!use_sequence_as_input_ids_) {
@@ -182,19 +184,35 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
         stream,
         DeviceCopyDirection::hostToDevice));
   } else {
-    for (int i = 0; i < batch_beam_size; i++) {
-      gsl::span<const int32_t> sequence = sequences.GetSequence(i);
-      const int32_t* sequence_data = sequence.data();
-      long long seq_index = (long long)i * cur_len;
-      memcpy(seq_copy_ptr + seq_index, sequence_data, total_size);
+    if (use_cuda) {
+      auto sequences_buffer = sequences.GetCurrentDeviceSequences();
+      for (int i = 0; i < batch_beam_size; i++) {
+        size_t batch_beam_stride = static_cast<size_t>(i) * static_cast<size_t>(sequences.GetMaxLength());
+        int seq_size = sequences.GetSequenceLength();
+        gsl::span<const int32_t> sequence = sequences_buffer.subspan(batch_beam_stride, seq_size);
+        gsl::span<int> temp_input(input_ids_data + static_cast<ptrdiff_t>(i) * seq_size, seq_size);
+        ORT_RETURN_IF_ERROR(device_copy_int32_func(
+            temp_input,
+            sequence,
+            stream,
+            DeviceCopyDirection::deviceToDevice));
+      }
+    } else {
+      const size_t cur_len_bytes = cur_len * sizeof(int);
+      for (int i = 0; i < batch_beam_size; i++) {
+        gsl::span<const int32_t> sequence = sequences.GetSequence(i);
+        const int32_t* sequence_data = sequence.data();
+        ptrdiff_t seq_index = static_cast<ptrdiff_t>(i) * cur_len;
+        memcpy(seq_copy_ptr + seq_index, sequence_data, cur_len_bytes);
+      }
+      gsl::span<int> temp_input(input_ids_data, total_size);
+      gsl::span<int> temp_sequence(seq_copy_ptr, total_size);
+      ORT_RETURN_IF_ERROR(device_copy_int32_func(
+          temp_input,
+          temp_sequence,
+          stream,
+          DeviceCopyDirection::hostToDevice));
     }
-    gsl::span<int> temp_input(input_ids_data, total_size);
-    gsl::span<int> temp_sequence(seq_copy_ptr, total_size);
-    ORT_RETURN_IF_ERROR(device_copy_int32_func(
-        temp_input,
-        temp_sequence,
-        stream,
-        DeviceCopyDirection::hostToDevice));
   }
 
   // The ordering is the same as used in Setup.
@@ -230,7 +248,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
                                                        num_beam,
                                                        allocator,
                                                        expanded_hidden_states,
-                                                       true,
+                                                       false,
                                                        0 /*max_sequence_length*/));
       } else {
         ORT_RETURN_IF_ERROR(expand_buffer_float_func(stream,
@@ -238,7 +256,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
                                                      num_beam,
                                                      allocator,
                                                      expanded_hidden_states,
-                                                     true,
+                                                     false,
                                                      0 /*max_sequence_length*/));
       }
       decoder_feeds.push_back(expanded_hidden_states);
@@ -281,8 +299,11 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
   }
 
   // Pass through implicit inputs.
-  for (const auto* entry : implicit_inputs) {
-    decoder_feeds.push_back(*entry);
+  for (size_t i = 0; i < implicit_inputs.size(); ++i) {
+    const auto* entry = implicit_inputs[i];
+    if (used_implicit_inputs[i]) {
+      decoder_feeds.push_back(*entry);
+    }
   }
 
   return Status::OK();

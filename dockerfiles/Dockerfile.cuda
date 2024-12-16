@@ -2,23 +2,109 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------
-# Dockerfile to run ONNXRuntime with CUDA, CUDNN integration
+# Build onnxruntime-gpu python package with CUDA 12.x & CUDNN 9.x for python 3.12 in Ubuntu 24.04.
+# If memory is less than 64GB, you may change "--parallel" to "--parallel 4" to avoid out-of-memory error.
 
-# nVidia cuda 11.4 Base Image
-FROM nvcr.io/nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04
-ENV	    DEBIAN_FRONTEND=noninteractive
-MAINTAINER Changming Sun "chasun@microsoft.com"
+ARG CUDA_VERSION=12.6.1
+ARG CUDNN_VERSION=9.5.0.50
+ARG OS=ubuntu24.04
+
+FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-devel-${OS}
+ARG CUDA_VERSION
+ARG CUDNN_VERSION
+ARG CMAKE_CUDA_ARCHITECTURES="61;70;75;80;86;90"
+
+ENV DEBIAN_FRONTEND=noninteractive
+
+# Add source code to /code
 ADD . /code
 
-ENV PATH /usr/local/nvidia/bin:/usr/local/cuda/bin:${PATH}
-RUN apt-get update && apt-get install -y --no-install-recommends python3-dev ca-certificates g++ python3-numpy gcc make git python3-setuptools python3-wheel python3-packaging python3-pip aria2 && aria2c -q -d /tmp -o cmake-3.27.3-linux-x86_64.tar.gz https://github.com/Kitware/CMake/releases/download/v3.27.3/cmake-3.27.3-linux-x86_64.tar.gz && tar -zxf /tmp/cmake-3.27.3-linux-x86_64.tar.gz --strip=1 -C /usr
+ENV PATH=/usr/local/cuda/bin:${PATH}
 
-RUN cd /code && python3 -m pip install -r tools/ci_build/github/linux/docker/inference/x86_64/python/cpu/scripts/requireme\
-nts.txt && /bin/bash ./build.sh --allow_running_as_root --skip_submodule_sync --cuda_home /usr/local/cuda --cudnn_home /usr/lib/x86_64-linux-gnu/ --use_cuda --config Release --build_wheel --update --build --parallel --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER) 'CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;86'
+# Install required packages
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    ca-certificates \
+    g++ \
+    gcc \
+    make \
+    git \
+    cmake \
+    wget \
+    ninja-build \
+    python3-pip \
+    python3.12-dev \
+    python3.12-venv \
+    && rm -rf /var/lib/apt/lists/*
 
-FROM nvcr.io/nvidia/cuda:12.1.1-cudnn8-runtime-ubuntu22.04
-ENV	    DEBIAN_FRONTEND=noninteractive
-COPY --from=0 /code/build/Linux/Release/dist /root
+# Install CUDNN 9.4.0.58 for building ONNX Runtime with CUDA.
+RUN cudnn_tar="cudnn-linux-x86_64-${CUDNN_VERSION}_cuda${CUDA_VERSION%%.*}-archive.tar.xz" \
+    && wget "https://developer.download.nvidia.com/compute/cudnn/redist/cudnn/linux-x86_64/${cudnn_tar}" \
+    && mkdir -p /code/build/cudnn \
+    && tar -Jxvf ${cudnn_tar} -C /code/build/cudnn --strip=1 \
+    && rm -f ${cudnn_tar}
+
+# Create a virtual environment and install dependencies, then build ONNX Runtime with CUDA support.
+RUN cd /code \
+    && python3 -m venv /code/env \
+    && . /code/env/bin/activate \
+    && pip install --upgrade psutil setuptools wheel packaging \
+    && pip install -r /code/tools/ci_build/github/linux/python/requirements.txt \
+    && python /code/tools/ci_build/build.py --build_dir /code/build/Linux \
+    --allow_running_as_root --skip_submodule_sync \
+    --use_cuda --cuda_home /usr/local/cuda \
+    --cudnn_home /code/build/cudnn \
+    --build_shared_lib --skip_tests \
+    --config Release --build_wheel --update --build --parallel \
+    --cmake_generator Ninja \
+    --cmake_extra_defines ONNXRUNTIME_VERSION=$(cat ./VERSION_NUMBER) "CMAKE_CUDA_ARCHITECTURES=${CMAKE_CUDA_ARCHITECTURES}" onnxruntime_BUILD_UNIT_TESTS=OFF
+
+# Start second stage to copy the build artifacts
+FROM nvcr.io/nvidia/cuda:${CUDA_VERSION}-runtime-${OS}
+ARG CUDA_VERSION
+ARG CUDNN_VERSION
+ARG GIT_COMMIT
+ARG GIT_BRANCH
+ARG ONNXRUNTIME_VERSION
+
+# Make sure the required build arguments are set. See README.md for more information.
+RUN test -n ${GIT_COMMIT:?}
+RUN test -n ${GIT_BRANCH:?}
+RUN test -n ${ONNXRUNTIME_VERSION:?}
+
+LABEL CUDA_VERSION="${CUDA_VERSION}"
+LABEL CUDNN_VERSION="${CUDNN_VERSION}"
+LABEL maintainer="Changming Sun <chasun@microsoft.com>"
+LABEL onnxruntime_version="${ONNXRUNTIME_VERSION}"
+LABEL onnxruntime_git_branch="${GIT_BRANCH}"
+LABEL onnxruntime_git_commit="${GIT_COMMIT}"
+
+# Copy built wheel and license
+COPY --from=0 /code/build/Linux/Release/dist /ort
 COPY --from=0 /code/dockerfiles/LICENSE-IMAGE.txt /code/LICENSE-IMAGE.txt
+
+# Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
-RUN apt-get update && apt-get install -y --no-install-recommends libstdc++6 ca-certificates python3-setuptools python3-wheel python3-pip unattended-upgrades && unattended-upgrade && python3 -m pip install /root/*.whl && rm -rf /root/*.whl
+ENV CUDNN_VERSION=$CUDNN_VERSION
+ENV ONNXRUNTIME_VERSION=$ONNXRUNTIME_VERSION
+# CUDNN from nvidia-cudnn-cu12 python package is located in the site-packages directory of python virtual environment.
+ENV LD_LIBRARY_PATH="/ort/env/lib/python3.12/site-packages/nvidia/cudnn/lib:/usr/local/cuda/lib64"
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libstdc++6 \
+    ca-certificates \
+    python3-pip \
+    python3.12-venv \
+    && python3 -m venv /ort/env \
+    && . /ort/env/bin/activate \
+    && pip install /ort/*.whl \
+    && pip install nvidia-cudnn-cu${CUDA_VERSION%%.*}==${CUDNN_VERSION} \
+    && python -c 'import onnxruntime; print(onnxruntime.get_available_providers())' \
+    && rm -rf /ort/*.whl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Ensure the virtual environment is always activated when running commands in the container.
+RUN echo ". /ort/env/bin/activate" >> ~/.bashrc
+
+# Set the default command to start an interactive bash shell
+CMD [ "/bin/bash" ]

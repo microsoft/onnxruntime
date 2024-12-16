@@ -28,9 +28,56 @@ public:
         castDesc.InputTensor = inputDescs.data();
         castDesc.OutputTensor = outputDescs.data();
 
-        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_CAST, &castDesc };
+        if (kernelInfo.GetOutputEdgeDescription(0).tensorDataType == static_cast<MLOperatorTensorDataType>(ONNX_NAMESPACE::TensorProto_DataType_BOOL))
+        {
+            DML_OPERATOR_DESC dmlCastDesc = { DML_OPERATOR_CAST, &castDesc };
 
-        SetDmlOperatorDesc(opDesc, kernelInfo);
+            DML_ELEMENT_WISE_CLIP1_OPERATOR_DESC clipDesc = {};
+            clipDesc.InputTensor = outputDescs.data();
+            clipDesc.OutputTensor = outputDescs.data();
+            clipDesc.Min.UInt8 = 0;
+            clipDesc.Max.UInt8 = 1;
+
+            DML_OPERATOR_DESC dmlClipDesc = { DML_OPERATOR_ELEMENT_WISE_CLIP1, &clipDesc };
+
+            std::vector<const DML_OPERATOR_DESC*> opDescs = { &dmlCastDesc, &dmlClipDesc };
+
+            DML_INPUT_GRAPH_EDGE_DESC inputToCastEdge = {};
+            inputToCastEdge.GraphInputIndex = 0;
+            inputToCastEdge.ToNodeIndex = 0;
+            inputToCastEdge.ToNodeInputIndex = 0;
+
+            DML_INTERMEDIATE_GRAPH_EDGE_DESC castToClipEdge = {};
+            castToClipEdge.FromNodeIndex = 0; 
+            castToClipEdge.FromNodeOutputIndex = 0;
+            castToClipEdge.ToNodeIndex = 1;
+            castToClipEdge.ToNodeInputIndex = 0;
+
+            DML_OUTPUT_GRAPH_EDGE_DESC clipToOutputEdge = {};
+            clipToOutputEdge.FromNodeIndex = 1;
+            clipToOutputEdge.FromNodeOutputIndex = 0;
+            clipToOutputEdge.GraphOutputIndex = 0;
+
+            MLOperatorGraphDesc operatorGraphDesc = {};
+            operatorGraphDesc.nodeCount = gsl::narrow_cast<uint32_t>(opDescs.size());
+            operatorGraphDesc.nodes = opDescs.data();
+
+            operatorGraphDesc.inputEdgeCount = 1;
+            operatorGraphDesc.inputEdges = &inputToCastEdge;
+
+            operatorGraphDesc.intermediateEdgeCount = 1;
+            operatorGraphDesc.intermediateEdges = &castToClipEdge;
+
+            operatorGraphDesc.outputEdgeCount = 1;
+            operatorGraphDesc.outputEdges = &clipToOutputEdge;
+
+            SetDmlOperatorGraphDesc(std::move(operatorGraphDesc), kernelInfo);
+        }
+        else
+        {        
+            DML_OPERATOR_DESC opDesc = { DML_OPERATOR_CAST, &castDesc };
+            SetDmlOperatorDesc(opDesc, kernelInfo);
+        }
     }
 
     void Compute(const MLOperatorKernelContext& kernelContext)
@@ -50,5 +97,6 @@ public:
 DML_OP_DEFINE_CREATION_FUNCTION(Cast, DmlOperatorCast);
 DML_OP_DEFINE_CREATION_FUNCTION(CastLike15, DmlOperatorCast);
 DML_OP_DEFINE_CREATION_FUNCTION(CastLike19, DmlOperatorCast);
+DML_OP_DEFINE_CREATION_FUNCTION(CastLike21, DmlOperatorCast);
 
 } // namespace Dml

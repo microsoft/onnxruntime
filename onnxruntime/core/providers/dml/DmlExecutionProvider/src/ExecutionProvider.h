@@ -25,7 +25,6 @@ namespace Dml
     class ReadbackHeap;
     class ExecutionContext;
     class BucketizedBufferAllocator;
-    class CPUAllocator;
     class ExecutionProvider;
 
     class ExecutionProviderImpl : public WRL::Base<Dml::IExecutionProvider,
@@ -89,7 +88,8 @@ namespace Dml
         std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
         GetCapability(
             const onnxruntime::GraphViewer& graph,
-            const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup
+            const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+            const onnxruntime::logging::Logger& logger
             ) const;
 
         uint32_t GetSupportedDeviceDataTypeMask() const;
@@ -213,7 +213,7 @@ namespace Dml
         std::unique_ptr<PooledUploadHeap> m_uploadHeap;
         std::unique_ptr<ReadbackHeap> m_readbackHeap;
         std::shared_ptr<BucketizedBufferAllocator> m_allocator;
-        std::shared_ptr<CPUAllocator> m_cpuInputAllocator;
+        std::shared_ptr<onnxruntime::IAllocator> m_cpuInputAllocator;
         std::shared_ptr<onnxruntime::KernelRegistry> m_kernelRegistry;
         std::shared_ptr<const Windows::AI::MachineLearning::Adapter::InternalRegistrationInfoMap> m_internalRegInfoMap;
         mutable uint64_t m_partitionKernelPrefixVal = 0;
@@ -243,8 +243,8 @@ namespace Dml
 
         bool CanCopy(const OrtDevice& srcDevice, const OrtDevice& dstDevice) const final
         {
-              return (srcDevice.Type() == OrtDevice::GPU) ||
-                     (dstDevice.Type() == OrtDevice::GPU);
+          return (srcDevice.Type() == OrtDevice::DML) ||
+                 (dstDevice.Type() == OrtDevice::DML);
         }
 
     private:

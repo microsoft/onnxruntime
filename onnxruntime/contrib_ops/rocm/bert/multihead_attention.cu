@@ -87,7 +87,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   const Tensor* bias{};
   const Tensor* key_padding_mask{};
-  const Tensor* relative_position_bias{};
+  const Tensor* attention_bias{};
   const Tensor* past_key{};
   const Tensor* past_value{};
   const Tensor* past_seq_len{};
@@ -95,12 +95,12 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (attn_type_ == kMultiHeadAttention) {
     bias = context->Input<Tensor>(3);
     key_padding_mask = context->Input<Tensor>(4);
-    relative_position_bias = context->Input<Tensor>(5);
+    attention_bias = context->Input<Tensor>(5);
     past_key = context->Input<Tensor>(6);
     past_value = context->Input<Tensor>(7);
   } else if (attn_type_ == kDecoderMaskedMultiHeadAttention) {
     key_padding_mask = context->Input<Tensor>(3);
-    relative_position_bias = context->Input<Tensor>(4);
+    attention_bias = context->Input<Tensor>(4);
     past_key = context->Input<Tensor>(5);
     past_value = context->Input<Tensor>(6);
     past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
@@ -120,7 +120,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(
       multihead_attention_helper::CheckInputs<Tensor>(
           query, key, value, bias,
-          key_padding_mask, relative_position_bias,
+          key_padding_mask, attention_bias,
           past_key, past_value, past_seq_len,
           &attn, num_heads_,
           mask_filter_value_, scale_, false, /*is_unidirectional_*/
@@ -245,7 +245,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   GemmSoftmaxGemmPermuteParams<HipT> params;
   params.tuning_ctx = GetTuningContext();
   params.stream = context->GetComputeStream();
-  params.handle = GetRocblasHandle(context);
+  params.handle = GetHipblasHandle(context);
   params.attention = &attn;
   params.device_prop = &device_prop;
   params.scale = scale_ == 0 ? 1.0f / sqrt(attn.head_size) : scale_;
@@ -263,8 +263,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
     params.mask_index_dims = key_padding_mask->Shape().AsShapeVector();
   }
 
-  if (relative_position_bias != nullptr) {
-    params.bias_buffer = reinterpret_cast<const HipT*>(relative_position_bias->DataRaw());
+  if (attention_bias != nullptr) {
+    params.bias_buffer = reinterpret_cast<const HipT*>(attention_bias->DataRaw());
   }
 
   params.workspace_buffer = reinterpret_cast<HipT*>(workspace.get());

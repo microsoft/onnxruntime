@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Attribute} from './attribute';
-import {onnxruntime} from './ort-schema/flatbuffers/ort-generated';
-import {onnx} from './ort-schema/protobuf/onnx';
-import {Tensor} from './tensor';
-import {LongUtil, MAX_CLIP, MIN_CLIP, ProtoUtil} from './util';
+import { Attribute } from './attribute';
+import { onnxruntime } from './ort-schema/flatbuffers/ort-generated';
+import { onnx } from './ort-schema/protobuf/onnx';
+import { Tensor } from './tensor';
+import { LongUtil, MAX_CLIP, MIN_CLIP, ProtoUtil } from './util';
 
 import ortFbs = onnxruntime.experimental.fbs;
 
@@ -78,8 +78,8 @@ export const Graph = {
   /**
    * construct a graph from a graph protobuf type
    */
-  from: (graphProto: onnx.IGraphProto|ortFbs.Graph, initializer?: Graph.Initializer) =>
-      new GraphImpl(graphProto, initializer),
+  from: (graphProto: onnx.IGraphProto | ortFbs.Graph, initializer?: Graph.Initializer) =>
+    new GraphImpl(graphProto, initializer),
 };
 
 class Value implements Graph.Value {
@@ -94,7 +94,7 @@ class Value implements Graph.Value {
     }
   }
 
-  _from?: number;  // -1 represent from initializer
+  _from?: number; // -1 represent from initializer
   get from() {
     return this._from!;
   }
@@ -107,7 +107,7 @@ class Value implements Graph.Value {
 }
 
 class Node implements Graph.Node {
-  constructor(_nodeProto: onnx.INodeProto|ortFbs.Node, name?: string) {
+  constructor(_nodeProto: onnx.INodeProto | ortFbs.Node, name?: string) {
     if (_nodeProto instanceof onnx.NodeProto) {
       this.name = _nodeProto.name;
       this.opType = _nodeProto.opType;
@@ -142,7 +142,7 @@ class GraphImpl implements Graph, Graph.Transformer {
 
   private _nodes: Node[];
 
-  constructor(graph: onnx.IGraphProto|ortFbs.Graph, graphInitializer?: Graph.Initializer) {
+  constructor(graph: onnx.IGraphProto | ortFbs.Graph, graphInitializer?: Graph.Initializer) {
     if (!graph) {
       throw new TypeError('graph is empty');
     }
@@ -181,7 +181,7 @@ class GraphImpl implements Graph, Graph.Transformer {
     return this._nodes;
   }
 
-  private buildGraph(graph: onnx.IGraphProto|ortFbs.Graph) {
+  private buildGraph(graph: onnx.IGraphProto | ortFbs.Graph) {
     // build the graph - will throw exceptions if something fatal is detected
     if (graph instanceof onnx.GraphProto) {
       this.buildGraphFromOnnxFormat(graph);
@@ -228,8 +228,8 @@ class GraphImpl implements Graph, Graph.Transformer {
       if (index === undefined) {
         const value = new Value();
         value.type = {
-          shape: {dims: ProtoUtil.tensorDimsFromProto(i.dims!)},
-          tensorType: ProtoUtil.tensorDataTypeFromProto(i.dataType!)
+          shape: { dims: ProtoUtil.tensorDimsFromProto(i.dims!) },
+          tensorType: ProtoUtil.tensorDataTypeFromProto(i.dataType!),
         };
         index = this._allData.push(value) - 1;
         dataIndices.set(i.name!, index);
@@ -267,7 +267,7 @@ class GraphImpl implements Graph, Graph.Transformer {
     for (const nodeProto of graph.node) {
       if (!nodeProto.name) {
         // assign a name to the node if it doesn't have one
-        for (let pick = 0;; pick++) {
+        for (let pick = 0; ; pick++) {
           const name = `unnamed_${nodeProto.opType}_${pick}`;
           if (!nodesIndices.has(name)) {
             nodeProto.name = name;
@@ -333,8 +333,11 @@ class GraphImpl implements Graph, Graph.Transformer {
         const dataIndex = dataIndices.get(input);
         if (typeof dataIndex === 'undefined') {
           // handle exception when opset > 9 and roi / scales not given
-          if (input === '' && (nodeProto.input.length === 3 || nodeProto.input.length === 4) &&
-              nodeProto.opType === 'Resize') {
+          if (
+            input === '' &&
+            (nodeProto.input.length === 3 || nodeProto.input.length === 4) &&
+            nodeProto.opType === 'Resize'
+          ) {
             continue;
           }
           throw new Error(`unrecognized input '${input}' for node: ${nodeProto.name}`);
@@ -384,7 +387,7 @@ class GraphImpl implements Graph, Graph.Transformer {
           for (let k = 0; k < shape.dimLength()!; k++) {
             dims.push(LongUtil.longToNumber(shape.dim(k)!.value()!.dimValue()!));
           }
-          value.type = {shape: {dims}, tensorType: type};
+          value.type = { shape: { dims }, tensorType: type };
           const currentIndex = this._allData.push(value) - 1;
           dataIndices.set(inputName, currentIndex);
           inputValueNames.push(inputName);
@@ -399,7 +402,7 @@ class GraphImpl implements Graph, Graph.Transformer {
         const value = new Value();
         const dims = ProtoUtil.tensorDimsFromORTFormat(initializer);
         const type = ProtoUtil.tensorDataTypeFromProto(initializer.dataType());
-        value.type = {shape: {dims}, tensorType: type};
+        value.type = { shape: { dims }, tensorType: type };
         index = this._allData.push(value) - 1;
         dataIndices.set(initializer.name()!, index);
       }
@@ -436,7 +439,7 @@ class GraphImpl implements Graph, Graph.Transformer {
       let name = nodeProto!.name();
       if (!name) {
         // assign a name to the node if it doesn't have one
-        for (let pick = 0;; pick++) {
+        for (let pick = 0; ; pick++) {
           name = `unnamed_${nodeProto!.opType()}_${pick}`;
           if (!nodesIndices.has(name)) {
             // an unique name is found. break.
@@ -518,9 +521,9 @@ class GraphImpl implements Graph, Graph.Transformer {
   private checkIsAcyclic() {
     // go through the graph and check for cycles or other fatal inconsistencies
     const starters: Set<number> = new Set<number>();
-    this._allInputIndices.forEach(i => {
+    this._allInputIndices.forEach((i) => {
       const data = this._allData[i];
-      data._to.forEach(j => {
+      data._to.forEach((j) => {
         starters.add(j);
       });
     });
@@ -545,7 +548,7 @@ class GraphImpl implements Graph, Graph.Transformer {
             throw new Error('node outputs should not be initialized');
           }
           if (data._from !== nodeIndex) {
-            throw new Error('from property of the Value object doesn\'t match index of Node being processed');
+            throw new Error("from property of the Value object doesn't match index of Node being processed");
           }
           data._to.forEach((downstreamNodeIndex) => {
             // back edge found - cyclic
@@ -600,10 +603,9 @@ class GraphImpl implements Graph, Graph.Transformer {
           this._nodes[nodePossition] = this._nodes[i];
         }
         nodePossition++;
-
       } else {
         // delete all output values
-        this._nodes[i].outputs.forEach(ind => {
+        this._nodes[i].outputs.forEach((ind) => {
           this._allData[ind]._from = -2;
         });
       }
@@ -656,7 +658,7 @@ class GraphImpl implements Graph, Graph.Transformer {
         }
 
         // find the node that the current value is linking to and update its input reference
-        this._allData[i].to.forEach(node => {
+        this._allData[i].to.forEach((node) => {
           ind = this._nodes[node].inputs.indexOf(i + offset);
           if (ind !== -1) {
             this._nodes[node].inputs[ind] = i;
@@ -699,7 +701,7 @@ class GraphImpl implements Graph, Graph.Transformer {
       const delIndex = this._allData[node.inputs[i]].to.indexOf(nodeIndex);
       // should not happen
       if (delIndex === -1) {
-        throw new Error('The Value object doesn\'t have the current Node in it\'s \'to\' property ');
+        throw new Error("The Value object doesn't have the current Node in it's 'to' property ");
       }
       this._allData[node.inputs[i]].to.splice(delIndex, 1);
     }
@@ -719,7 +721,7 @@ class GraphImpl implements Graph, Graph.Transformer {
         const replaceIndex = this._nodes[nodeIndex].inputs.indexOf(outputValueIndex);
         // should not happen
         if (replaceIndex === -1) {
-          throw new Error('The Node object doesn\'t have the output Value in it\'s \'inputs\' property ');
+          throw new Error("The Node object doesn't have the output Value in it's 'inputs' property ");
         }
         this._nodes[nodeIndex].inputs[replaceIndex] = inputValueIndex;
         this._allData[inputValueIndex].to.push(nodeIndex);
@@ -741,7 +743,7 @@ class GraphImpl implements Graph, Graph.Transformer {
         }
         // the second output should not be referenced by any other node
         if (node.outputs.length === 2 && this._allData[node.outputs[1]]._to.length !== 0) {
-          throw new Error('Dropout nodes\'s second output should not be referenced by other nodes');
+          throw new Error("Dropout nodes's second output should not be referenced by other nodes");
         }
         this.deleteNode(nodeIndex);
       }
@@ -781,24 +783,28 @@ class GraphImpl implements Graph, Graph.Transformer {
           if (child.opType === 'Clip') {
             if (child.inputs.length === 1) {
               try {
-                node.attributes.set(
-                    'activation_params', 'floats',
-                    [child.attributes.getFloat('min'), child.attributes.getFloat('max')]);
+                node.attributes.set('activation_params', 'floats', [
+                  child.attributes.getFloat('min'),
+                  child.attributes.getFloat('max'),
+                ]);
               } catch (e) {
                 node.attributes.set('activation_params', 'floats', [MIN_CLIP, MAX_CLIP]);
               }
             } else if (
-                child.inputs.length >= 3 && this._allData[child.inputs[1]].tensor !== undefined &&
-                this._allData[child.inputs[2]].tensor !== undefined) {
+              child.inputs.length >= 3 &&
+              this._allData[child.inputs[1]].tensor !== undefined &&
+              this._allData[child.inputs[2]].tensor !== undefined
+            ) {
               node.attributes.set('activation_params', 'floats', [
-                this._allData[child.inputs[1]].tensor!.floatData[0], this._allData[child.inputs[2]].tensor!.floatData[0]
+                this._allData[child.inputs[1]].tensor!.floatData[0],
+                this._allData[child.inputs[2]].tensor!.floatData[0],
               ]);
             } else {
               // Skip fusion with clip node since clip min and clip max are not coming from initializer
               continue;
             }
           }
-          node.attributes.set('activation', 'string', (child.opType));
+          node.attributes.set('activation', 'string', child.opType);
           this.deleteNode(next[0]);
         }
       }

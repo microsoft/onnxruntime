@@ -125,7 +125,7 @@ TEST_F(ActivationOpTest, Relu) {
       {}, {},
       /*is_tensorrt_supported=*/false,
       /*opset_version= */ 14);
-#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(COREML_ENABLE_MLPROGRAM)
   TestActivationOp<MLFloat16>(
       "Relu",
       input_values_fp16,
@@ -139,7 +139,7 @@ TEST_F(ActivationOpTest, Relu) {
 #endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM)
 TEST_F(ActivationOpTest, Sigmoid_fp16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -413,7 +413,7 @@ TEST_F(ActivationOpTest, LeakyRelu) {
                           {{"alpha", alpha}}, {});
 }
 
-#ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(COREML_ENABLE_MLPROGRAM)
 TEST_F(ActivationOpTest, LeakyRelu_fp16) {
   OpTester test("LeakyRelu", 11);
   float alpha = 0.01f;  // oneDNN set alpha equal to 0.01

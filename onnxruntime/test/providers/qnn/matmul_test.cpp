@@ -117,13 +117,20 @@ static void RunQDQPerChannelMatMulOpOpTest(const TestInputDef<float>& input_def,
                                            ExpectedEPNodeAssignment expected_ep_assignment,
                                            int opset = 21,
                                            bool use_contrib_qdq = false,
-                                           QDQTolerance tolerance = QDQTolerance()) {
+                                           QDQTolerance tolerance = QDQTolerance(),
+                                           bool enable_fp16_precision = true) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+
+  if (enable_fp16_precision) {
+    provider_options["enable_htp_fp16_precision"] = "1";
+  } else {
+    provider_options["enable_htp_fp16_precision"] = "0";
+  }
 
   TestQDQModelAccuracy(BuildMatMulOpTestCase(input_def, weights_def),
                        BuildQDQPerChannelMatMulTestCase<Input0QType, WeightQType, OutputQType>(input_def,
@@ -266,7 +273,9 @@ TEST_F(QnnHTPBackendTests, MatMulOp_PerChannel_A16_WeightUInt4) {
 }
 
 // Test QDQ per-channel MatMul with int8 act, int4 weights (static)
-TEST_F(QnnHTPBackendTests, MatMulOp_PerChannel_AS8_WeightInt4) {
+// QNN 2.27 regression. Also fails on QNN 2.28.2.
+// Failed to finalize QNN graph. Error code: 1002
+TEST_F(QnnHTPBackendTests, DISABLED_MatMulOp_PerChannel_AS8_WeightInt4) {
   std::vector<float> input0_data = GetFloatDataInRange(-5.0f, 5.0f, 6);
   std::vector<float> input1_data = {-2.0f, -1.0f, -0.5f, 0.0f, 1.0f, 2.0f};
   RunQDQPerChannelMatMulOpOpTest<int8_t, Int4x2, int8_t>(TestInputDef<float>({1, 1, 2, 3}, false, input0_data),
@@ -275,7 +284,8 @@ TEST_F(QnnHTPBackendTests, MatMulOp_PerChannel_AS8_WeightInt4) {
                                                          ExpectedEPNodeAssignment::All,
                                                          21,
                                                          false,
-                                                         QDQTolerance(0.007f));
+                                                         QDQTolerance(0.007f),
+                                                         false);
 }
 
 // Test QDQ per-channel MatMul with 16-bit act, int8 weights (static)

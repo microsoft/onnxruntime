@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include "python/onnxruntime_pybind_state_common.h"
@@ -54,7 +55,7 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
             onnxruntime::VitisAIProviderFactoryCreator::Create(ProviderOptions{}),
 #endif
 #ifdef USE_ACL
-            onnxruntime::ACLProviderFactoryCreator::Create(0),
+            onnxruntime::ACLProviderFactoryCreator::Create(false),
 #endif
 #ifdef USE_ARMNN
             onnxruntime::ArmNNProviderFactoryCreator::Create(0),
@@ -68,11 +69,14 @@ void addGlobalSchemaFunctions(pybind11::module& m) {
 #ifdef USE_NNAPI
             onnxruntime::NnapiProviderFactoryCreator::Create(0, std::optional<std::string>()),
 #endif
+#ifdef USE_VSINPU
+            onnxruntime::VSINPUProviderFactoryCreator::Create(),
+#endif
 #ifdef USE_RKNPU
             onnxruntime::RknpuProviderFactoryCreator::Create(),
 #endif
 #ifdef USE_COREML
-            onnxruntime::CoreMLProviderFactoryCreator::Create(0),
+            onnxruntime::CoreMLProviderFactoryCreator::Create(ProviderOptions{}),
 #endif
 #ifdef USE_XNNPACK
             onnxruntime::XnnpackProviderFactoryCreator::Create(ProviderOptions{}, nullptr),

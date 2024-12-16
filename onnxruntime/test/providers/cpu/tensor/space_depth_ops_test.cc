@@ -4,9 +4,17 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/providers/cpu/tensor/space_depth_ops.h"
+#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 namespace test {
+
+template <typename T>
+class TensorOpTest : public ::testing::Test {
+};
+
+using TensorOpTestTypes = ::testing::Types<float, MLFloat16>;
+TYPED_TEST_SUITE(TensorOpTest, TensorOpTestTypes);
 
 TEST(TensorOpTest, SpaceToDepthTest_1) {
   OpTester test("SpaceToDepth");
@@ -36,8 +44,8 @@ TEST(TensorOpTest, SpaceToDepthTest_1) {
       3.1f, 3.3f};
   test.AddOutput<float>("output", {N, C * blocksize * blocksize, H / blocksize, W / blocksize}, result);
 
-  // TODO: Test is flaky on QNN EP (CPU backend). Reneable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky test
-  // is fixed.
+  // TODO: Test is flaky on QNN EP (CPU backend).
+  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky test  is fixed.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
@@ -103,8 +111,8 @@ TEST(TensorOpTest, SpaceToDepthTest_2) {
       88., 103., 106., 68., 71., 86., 89., 104., 107.};
   test.AddOutput<float>("output", {2, 27, 1, 2}, result);
 
-  // TODO: Test is flaky on QNN EP (CPU backend). Reneable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky2
-  // test is fixed.
+  // TODO: Test is flaky on QNN EP (CPU backend).
+  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky2 test is fixed.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
@@ -259,7 +267,7 @@ TEST(TensorOpTest, DepthToSpaceTest_2) {
   test.Run();
 }
 
-TEST(TensorOpTest, DepthToSpaceTest_3) {
+TYPED_TEST(TensorOpTest, DepthToSpaceTest_3) {
   OpTester test("DepthToSpace", 11);  // create an opset 11 model with missing default attribute
   constexpr int64_t blocksize = 2;
   test.AddAttribute("blocksize", blocksize);
@@ -281,8 +289,6 @@ TEST(TensorOpTest, DepthToSpaceTest_3) {
       132., 133., 134., 135., 136., 137., 138., 139., 140., 141., 142.,
       143.};
 
-  test.AddInput<float>("input", {N, C, H, W}, X);
-
   const std::vector<float> result = {
       0., 18., 1., 19., 36., 54., 37., 55., 2., 20., 3.,
       21., 38., 56., 39., 57., 4., 22., 5., 23., 40., 58.,
@@ -298,11 +304,24 @@ TEST(TensorOpTest, DepthToSpaceTest_3) {
       102., 85., 103., 120., 138., 121., 139., 86., 104., 87., 105.,
       122., 140., 123., 141., 88., 106., 89., 107., 124., 142., 125.,
       143.};
-  test.AddOutput<float>("output", {2, 3, 6, 4}, result);
-  test.Run();
+
+  if constexpr (std::is_same<TypeParam, float>::value) {
+    test.AddInput<float>("input", {N, C, H, W}, X);
+    test.AddOutput<float>("output", {2, 3, 6, 4}, result);
+  } else {
+    std::vector<TypeParam> X_fp16(X.size());
+    std::vector<TypeParam> result_fp16(result.size());
+    ConvertFloatToMLFloat16(result.data(), result_fp16.data(), result.size());
+    ConvertFloatToMLFloat16(X.data(), X_fp16.data(), X.size());
+    test.AddOutput<TypeParam>("output", {2, 3, 6, 4}, result_fp16);
+    test.AddInput<TypeParam>("input", {N, C, H, W}, X_fp16);
+  }
+  // TODO: Test is flaky on QNN EP (CPU backend).
+  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky test is fixed.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
-TEST(TensorOpTest, DepthToSpaceTest_4) {
+TYPED_TEST(TensorOpTest, DepthToSpaceTest_4) {
   OpTester test("DepthToSpace", 11);  // create an opset 11 model with attribute present = "DCR" mode
   constexpr int64_t blocksize = 2;
   test.AddAttribute("blocksize", blocksize);
@@ -325,8 +344,6 @@ TEST(TensorOpTest, DepthToSpaceTest_4) {
       132., 133., 134., 135., 136., 137., 138., 139., 140., 141., 142.,
       143.};
 
-  test.AddInput<float>("input", {N, C, H, W}, X);
-
   const std::vector<float> result = {
       0., 18., 1., 19., 36., 54., 37., 55., 2., 20., 3.,
       21., 38., 56., 39., 57., 4., 22., 5., 23., 40., 58.,
@@ -342,11 +359,25 @@ TEST(TensorOpTest, DepthToSpaceTest_4) {
       102., 85., 103., 120., 138., 121., 139., 86., 104., 87., 105.,
       122., 140., 123., 141., 88., 106., 89., 107., 124., 142., 125.,
       143.};
-  test.AddOutput<float>("output", {2, 3, 6, 4}, result);
-  test.Run();
+
+  if constexpr (std::is_same<TypeParam, float>::value) {
+    test.AddInput<float>("input", {N, C, H, W}, X);
+    test.AddOutput<float>("output", {2, 3, 6, 4}, result);
+  } else {
+    std::vector<TypeParam> X_fp16(X.size());
+    std::vector<TypeParam> result_fp16(result.size());
+    ConvertFloatToMLFloat16(X.data(), X_fp16.data(), X.size());
+    ConvertFloatToMLFloat16(result.data(), result_fp16.data(), result.size());
+    test.AddInput<TypeParam>("input", {N, C, H, W}, X_fp16);
+    test.AddOutput<TypeParam>("output", {2, 3, 6, 4}, result_fp16);
+  }
+
+  // TODO: Test is flaky on QNN EP (CPU backend).
+  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky2 test is fixed.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
-TEST(TensorOpTest, DepthToSpaceTest_5) {
+TYPED_TEST(TensorOpTest, DepthToSpaceTest_5) {
   OpTester test("DepthToSpace", 11);  // create an opset 11 model with attribute present = "CRD" mode
   constexpr int64_t blocksize = 2;
   test.AddAttribute("blocksize", blocksize);
@@ -362,15 +393,25 @@ TEST(TensorOpTest, DepthToSpaceTest_5) {
                                 27., 28., 29.,
                                 30., 31., 32.};
 
-  test.AddInput<float>("input", {N, C, H, W}, X);
-
   const std::vector<float> result = {0., 9., 1., 10., 2., 11.,
                                      18., 27., 19., 28., 20., 29.,
                                      3., 12., 4., 13., 5., 14.,
                                      21., 30., 22., 31., 23., 32.};
 
-  test.AddOutput<float>("output", {1, 1, 4, 6}, result);
-  test.Run();
+  if constexpr (std::is_same<TypeParam, float>::value) {
+    test.AddInput<float>("input", {N, C, H, W}, X);
+    test.AddOutput<float>("output", {1, 1, 4, 6}, result);
+  } else {
+    std::vector<TypeParam> X_fp16(X.size());
+    std::vector<TypeParam> result_fp16(result.size());
+    ConvertFloatToMLFloat16(X.data(), X_fp16.data(), X.size());
+    ConvertFloatToMLFloat16(result.data(), result_fp16.data(), result.size());
+    test.AddInput<TypeParam>("input", {N, C, H, W}, X_fp16);
+    test.AddOutput<TypeParam>("output", {1, 1, 4, 6}, result_fp16);
+  }
+  // TODO: Test is flaky on QNN EP (CPU backend).
+  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky2 test is fixed.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST(TensorOpTest, DepthToSpaceTest_CRD_Batched) {

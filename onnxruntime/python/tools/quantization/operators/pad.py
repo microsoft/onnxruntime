@@ -1,3 +1,12 @@
+# --------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------------------
+from __future__ import annotations
+
+from typing import Any
+
+import numpy as np
 import onnx
 
 from ..quant_utils import (
@@ -8,6 +17,7 @@ from ..quant_utils import (
     quantize_nparray,
 )
 from .base_operator import QuantOperatorBase
+from .qdq_base_operator import QDQOperatorBase
 
 
 class QPad(QuantOperatorBase):
@@ -98,3 +108,65 @@ class QPad(QuantOperatorBase):
         node.input[0] = quantized_input_value.q_name
         node.output[0] = quantized_output_value.q_name
         self.quantizer.new_nodes += [node]
+
+
+class QDQPad(QDQOperatorBase):
+    def __init__(self, onnx_quantizer, onnx_node):
+        super().__init__(onnx_quantizer, onnx_node)
+
+    def _get_pad_const_val(self, attrs_dict: dict[str, Any]) -> np.ndarray | None:
+        """
+        Returns the Pad's constant padding value. Returns `None` if the padding value is
+        not constant (i.e., comes from a dynamic input).
+        """
+        const_val = None
+        onnx_tensor_type = self.quantizer.model.get_tensor_type(self.node.input[0])
+        if onnx_tensor_type is None:
+            return None
+
+        np_dtype = onnx.helper.tensor_dtype_to_np_dtype(onnx_tensor_type.elem_type)
+        if self.quantizer.opset_version < 11:
+            const_val = np.array(attrs_dict.get("value", 0), dtype=np_dtype)
+        elif len(self.node.input) >= 3 and self.node.input[2]:
+            const_val = self.quantizer.model.get_constant_value(self.node.input[2])
+        else:
+            const_val = np.array(0, dtype=np_dtype)
+
+        return const_val
+
+    def _should_quantize_output_same_as_input(self) -> bool:
+        """
+        Returns true if Pad's output should use the same quantization parameters as input[0]
+        """
+        attrs_dict = {}
+        for attribute in self.node.attribute:
+            kv = attribute_to_kwarg(attribute)
+            attrs_dict.update(kv)
+
+        pad_mode = attrs_dict.get("mode", b"constant")
+        if pad_mode in (b"reflect", b"edge", b"wrap"):
+            # These modes pad the output with a value that already exists in the input.
+            # So, we can quantize the output the same as the input.
+            return True
+
+        # For 'constant' mode, if padding with 0, we can also quantize the output the same as the input
+        # because our quantization floating-point range always includes 0.
+        if pad_mode == b"constant":
+            pad_val = self._get_pad_const_val(attrs_dict)
+            if pad_val is not None and pad_val.dtype in (np.float32, np.float16):
+                return float(pad_val.item()) == 0
+
+        return False
+
+    def quantize(self):
+        assert self.node.op_type == "Pad"
+
+        for input_name in self.node.input:
+            if input_name:
+                self.quantizer.quantize_activation_tensor(input_name)
+
+        if not self.disable_qdq_for_node_output:
+            if self._should_quantize_output_same_as_input():
+                self.quantizer.quantize_output_same_as_input(self.node.output[0], self.node.input[0], self.node.name)
+            else:
+                self.quantizer.quantize_activation_tensor(self.node.output[0])

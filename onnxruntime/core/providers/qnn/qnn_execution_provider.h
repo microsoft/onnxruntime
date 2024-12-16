@@ -23,6 +23,67 @@ namespace onnxruntime {
 
 void RunOnUnload(std::function<void()> function);
 
+class SharedContext {
+ public:
+  static SharedContext& GetInstance() {
+    static SharedContext instance_;
+    return instance_;
+  }
+
+  bool HasSharedQnnModels() {
+    const std::lock_guard<std::mutex> lock(mtx_);
+    return !shared_qnn_models_.empty();
+  }
+
+  bool HasQnnModel(const std::string& model_name) {
+    auto it = find_if(shared_qnn_models_.begin(), shared_qnn_models_.end(),
+                      [&model_name](const std::unique_ptr<qnn::QnnModel>& qnn_model) { return qnn_model->Name() == model_name; });
+    return it != shared_qnn_models_.end();
+  }
+
+  std::unique_ptr<qnn::QnnModel> GetSharedQnnModel(const std::string& model_name) {
+    const std::lock_guard<std::mutex> lock(mtx_);
+    auto it = find_if(shared_qnn_models_.begin(), shared_qnn_models_.end(),
+                      [&model_name](const std::unique_ptr<qnn::QnnModel>& qnn_model) { return qnn_model->Name() == model_name; });
+    if (it == shared_qnn_models_.end()) {
+      return nullptr;
+    }
+    auto qnn_model = std::move(*it);
+    shared_qnn_models_.erase(it);
+    return qnn_model;
+  }
+
+  bool SetSharedQnnModel(std::vector<std::unique_ptr<qnn::QnnModel>>&& shared_qnn_models,
+                         std::string& duplicate_graph_names) {
+    const std::lock_guard<std::mutex> lock(mtx_);
+    bool graph_exist = false;
+    for (auto& shared_qnn_model : shared_qnn_models) {
+      auto& model_name = shared_qnn_model->Name();
+      auto it = find_if(shared_qnn_models_.begin(), shared_qnn_models_.end(),
+                        [&model_name](const std::unique_ptr<qnn::QnnModel>& qnn_model) { return qnn_model->Name() == model_name; });
+      if (it == shared_qnn_models_.end()) {
+        shared_qnn_models_.push_back(std::move(shared_qnn_model));
+      } else {
+        duplicate_graph_names.append(model_name + " ");
+        graph_exist = true;
+      }
+    }
+
+    return graph_exist;
+  }
+
+ private:
+  SharedContext() = default;
+  ~SharedContext() = default;
+  SharedContext(const SharedContext&) = delete;
+  SharedContext& operator=(const SharedContext&) = delete;
+
+  std::vector<std::unique_ptr<qnn::QnnModel>> shared_qnn_models_;
+  // Producer sessions can be in parallel
+  // Consumer sessions have to be after producer sessions initialized
+  std::mutex mtx_;
+};
+
 // Logical device representation.
 class QNNExecutionProvider : public IExecutionProvider {
  public:
@@ -86,10 +147,13 @@ class QNNExecutionProvider : public IExecutionProvider {
   uint32_t device_id_ = 0;
   qnn::HtpPerformanceMode default_htp_performance_mode_ = qnn::HtpPerformanceMode::kHtpDefault;
   uint32_t default_rpc_control_latency_ = 0;
-  bool enable_HTP_FP16_precision_ = false;
+  bool enable_HTP_FP16_precision_ = true;
+  bool share_ep_contexts_ = false;
+  bool enable_spill_fill_buffer_ = false;
 #ifdef _WIN32
-  onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_;
+  onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;
 #endif
+  qnn::ModelSettings model_settings_ = {};
 
   class PerThreadContext final {
    public:
@@ -138,7 +202,7 @@ class QNNExecutionProvider : public IExecutionProvider {
     std::set<std::weak_ptr<PerThreadContextMap>, std::owner_less<std::weak_ptr<PerThreadContextMap>>>
         caches_to_update_on_destruction;
     // synchronizes access to PerThreadContextState members
-    OrtMutex mutex;
+    std::mutex mutex;
   };
 
   // The execution provider maintains the PerThreadContexts in this structure.

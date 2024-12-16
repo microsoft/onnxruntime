@@ -4,6 +4,7 @@
 #pragma once
 
 #include <vector>
+#include <map>
 #include <unordered_map>
 #include <string>
 #include "core/providers/openvino/ov_interface.h"
@@ -15,18 +16,19 @@ namespace openvino_ep {
 struct GlobalContext {
   OVCore ie_core;
   bool is_wholly_supported_graph = false;
-  bool enable_npu_fast_compile = false;
   bool enable_opencl_throttling = false;
   bool disable_dynamic_shapes = false;
-  bool ep_context_embed_mode = true;
+  bool ep_context_embed_mode = false;
   bool export_ep_ctx_blob = false;
   bool enable_qdq_optimizer = false;
   bool disable_cpu_fallback = false;
+  bool has_external_weights = false;
   size_t num_of_threads;
   std::string device_type;
   std::string precision_str;
   std::string model_precision;
   std::string cache_dir;
+  std::map<std::string, ov::AnyMap> load_config;
   std::string model_priority = "DEFAULT";
   int num_streams;
   std::vector<bool> deviceAvailableList = {true, true, true, true, true, true, true, true};

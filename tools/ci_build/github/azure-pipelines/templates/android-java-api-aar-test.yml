@@ -14,14 +14,22 @@ parameters:
   type: string
   default: 'onnxruntime-android'
 
+- name: ReleaseVersionSuffix
+  displayName: Release Version Suffix
+  type: string
+  default: ''
+
+- name: QnnSDKVersion
+  displayName: QNN SDK Version
+  type: string
+  default: '2.28.0.241029'
+
 jobs:
 - job: Final_AAR_Testing_Android_${{ parameters.job_name_suffix }}
   workspace:
     clean: all
   pool:
-    # We need macOS-12 to run the Android emulator for now.
-    # https://github.com/actions/runner-images/issues/7671
-    vmImage: 'macOS-12'
+    vmImage: 'macOS-13'
   variables:
   - name: runCodesignValidationInjection
     value: false
@@ -39,50 +47,75 @@ jobs:
       targetPath: '$(Build.BinariesDirectory)/final-android-aar'
 
   - task: JavaToolInstaller@0
-    displayName: Use jdk 11
+    displayName: Use jdk 17
     inputs:
-      versionSpec: '11'
+      versionSpec: '17'
       jdkArchitectureOption: 'x64'
       jdkSourceOption: 'PreInstalled'
 
   - template: use-android-ndk.yml
 
-  - template: install-appcenter.yml
-
-  - template: use-android-emulator.yml
-    parameters:
-      create: true
-      start: true
-
   - script: |
-      set -e -x
-      mkdir android_test
-      cd android_test
-      cp -av $(Build.SourcesDirectory)/java/src/test/android ./
-      cd ./android
-      mkdir -p app/libs
-      cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion).aar app/libs/onnxruntime-android.aar
-      $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest --stacktrace
-    displayName: Run E2E test using Emulator
+        set -e -x
+        mkdir -p android_test/android/app/libs
+        cd android_test/android
+        cp -av $(Build.SourcesDirectory)/java/src/test/android/* ./
+        cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion)${{parameters.ReleaseVersionSuffix}}.aar app/libs/${{parameters.packageName}}.aar
+    displayName: Copy Android test files and AAR to android_test directory
     workingDirectory: $(Build.BinariesDirectory)
 
-  - template: use-android-emulator.yml
-    parameters:
-      stop: true
+  # skip emulator tests for qnn package as there are no arm64-v8a emulators and no qnn libraries for x86
+  - ${{ if not(contains(parameters.packageName, 'qnn')) }}:
+    - template: use-android-emulator.yml
+      parameters:
+        create: true
+        start: true
 
+    - script: |
+        set -e -x
+        cd android_test/android
+        $(Build.SourcesDirectory)/java/gradlew --no-daemon clean connectedDebugAndroidTest --stacktrace
+      displayName: Run E2E test using Emulator
+      workingDirectory: $(Build.BinariesDirectory)
+
+    - template: use-android-emulator.yml
+      parameters:
+        stop: true
+
+  - ${{ else }}:
+    - script: |
+        # QNN SDK version string, expected format: 2.28.0.241029
+        # Extract the first three parts of the version string to get the Maven package version (e.g., 2.28.0)
+        QnnMavenPackageVersion=$(echo ${{ parameters.QnnSDKVersion }} | cut -d'.' -f1-3)
+        echo "QnnMavenPackageVersion: $QnnMavenPackageVersion"
+        echo "##vso[task.setvariable variable=QnnMavenPackageVersion]$QnnMavenPackageVersion"
+      displayName: Trim QNN SDK version to major.minor.patch
+
+    - script: |
+          set -e -x
+          # build apks for qnn package as they are not built in the emulator test step
+          $(Build.SourcesDirectory)/java/gradlew  --no-daemon clean assembleDebug assembleAndroidTest -DqnnVersion=$(QnnMavenPackageVersion) --stacktrace
+      displayName: Build QNN APK
+      workingDirectory: $(Build.BinariesDirectory)/android_test/android
+
+  # we run e2e tests on one older device (Pixel 3) and one newer device (Galaxy 23)
   - script: |
       set -e -x
-      cd android_test/android
-      appcenter test run espresso \
-        --app "AI-Frameworks/ORT-Mobile-Android" \
-        --devices $(app_center_android_test_devices) \
-        --app-path ./app/build/outputs/apk/debug/app-debug.apk \
-        --test-series "master" \
-        --locale "en_US" \
-        --build-dir ./app/build/outputs/apk/androidTest/debug \
-        --token $(app_center_api_token)
-    displayName: Run E2E tests using App Center
-    workingDirectory: $(Build.BinariesDirectory)
+      pip install requests
+
+      python $(Build.SourcesDirectory)/tools/python/upload_and_run_browserstack_tests.py \
+        --test_platform espresso \
+        --app_path "debug/app-debug.apk" \
+        --test_path "androidTest/debug/app-debug-androidTest.apk" \
+        --devices "Samsung Galaxy S23-13.0" "Google Pixel 3-9.0" \
+        --build_tag "${{ parameters.packageName }}"
+
+    displayName: Run E2E tests using Browserstack
+    workingDirectory: $(Build.BinariesDirectory)/android_test/android/app/build/outputs/apk
+    timeoutInMinutes: 15
+    env:
+      BROWSERSTACK_ID: $(browserstack_username)
+      BROWSERSTACK_TOKEN: $(browserstack_access_key)
 
   - template: component-governance-component-detection-steps.yml
     parameters :

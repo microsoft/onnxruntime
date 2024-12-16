@@ -42,4 +42,9 @@ struct AllocatorCreationInfo {
 // Valid values can be found in onnxruntime_c_api.h.
 AllocatorPtr CreateAllocator(const AllocatorCreationInfo& info);
 
+/**
+ * Gets whether a CPU allocator supports arena usage.
+ */
+bool DoesCpuAllocatorSupportArenaUsage();
+
 }  // namespace onnxruntime

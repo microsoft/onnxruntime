@@ -4,7 +4,7 @@ REM Licensed under the MIT License.
 @ECHO ON
 SETLOCAL EnableDelayedExpansion
 
-SET TargetFramework=netcoreapp5.0
+SET TargetFramework=net8.0
 SET TargetArch=x64
 SET dn="C:\Program Files\dotnet\dotnet"
 SET CurrentOnnxRuntimeVersion=""

@@ -18,6 +18,7 @@
 #include "core/framework/execution_providers.h"
 #include "core/framework/framework_common.h"
 #include "core/framework/iexecutor.h"
+#include "core/framework/external_data_loader_manager.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/prepacked_weights_container.h"
 #include "core/framework/session_state.h"
@@ -28,7 +29,7 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
 #endif
@@ -128,7 +129,7 @@ class InferenceSession {
   using InputOutputDefMetaMap = InlinedHashMap<std::string_view, InputOutputDefMetaData>;
   static std::map<uint32_t, InferenceSession*> active_sessions_;
 #ifdef _WIN32
-  static OrtMutex active_sessions_mutex_;  // Protects access to active_sessions_
+  static std::mutex active_sessions_mutex_;  // Protects access to active_sessions_
   static onnxruntime::WindowsTelemetry::EtwInternalCallback callback_ML_ORT_provider_;
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_;
 #endif
@@ -329,6 +330,9 @@ class InferenceSession {
    */
   [[nodiscard]] common::Status Initialize();
 
+  [[nodiscard]] common::Status SetEpDynamicOptions(gsl::span<const char* const> keys,
+                                                   gsl::span<const char* const> values);
+
   [[nodiscard]] common::Status Run(const RunOptions& run_options, gsl::span<const std::string> feed_names,
                                    gsl::span<const OrtValue> feeds, gsl::span<const std::string> output_names,
                                    std::vector<OrtValue>* p_fetches,
@@ -453,6 +457,11 @@ class InferenceSession {
    * Get the DataTransferManager associated with this session
    */
   const DataTransferManager& GetDataTransferManager() const;
+
+  /*
+   * Get the GetExternalDataLoaderManager associated with this session
+   */
+  const ExternalDataLoaderManager& GetExternalDataLoaderManager() const;
 
   /*
    * Get all the providers' options this session was initialized with.
@@ -611,7 +620,7 @@ class InferenceSession {
                          const Environment& session_env);
   void ConstructorCommon(const SessionOptions& session_options,
                          const Environment& session_env);
-
+  [[nodiscard]] common::Status HasInvalidCombinationOfExecutionProviders() const;
   [[nodiscard]] common::Status SaveModelMetadata(const onnxruntime::Model& model);
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -654,7 +663,7 @@ class InferenceSession {
 
   void InitLogger(logging::LoggingManager* logging_manager);
 
-  void TraceSessionOptions(const SessionOptions& session_options, bool captureState);
+  static void TraceSessionOptions(const SessionOptions& session_options, bool captureState, const logging::Logger& logger);
 
   [[nodiscard]] common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape,
                                            const TensorShape& expected_shape, const char* input_output_moniker) const;
@@ -681,8 +690,9 @@ class InferenceSession {
    * If we encounter an invalid request, we return an error
    * back to the user.
    */
-  [[nodiscard]] common::Status ValidateAndParseShrinkArenaString(const std::string& ort_device_list,
-                                                                 /*out*/ InlinedVector<AllocatorPtr>& arenas_to_shrink) const;
+  [[nodiscard]] common::Status ValidateAndParseShrinkArenaString(
+      const std::string& ort_device_list,
+      /*out*/ InlinedVector<AllocatorPtr>& arenas_to_shrink) const;
 
   /*
    * Performs the shrinkage of arenas requested to be shrunk by the user
@@ -691,7 +701,7 @@ class InferenceSession {
   void ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink);
 
 #ifdef _WIN32
-  void LogAllSessions();
+  static void LogAllSessions();
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -699,7 +709,8 @@ class InferenceSession {
       GraphTransformerManager& transformer_manager,
       TransformerLevel graph_optimization_level,
       MinimalBuildOptimizationHandling minimal_build_optimization_handling,
-      RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn) const;
+      RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn,
+      const logging::Logger& logger) const;
 
   common::Status TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format);
 
@@ -784,13 +795,16 @@ class InferenceSession {
   // Data transfer manager.
   DataTransferManager data_transfer_mgr_;
 
+  // External data loader manager.
+  ExternalDataLoaderManager external_data_loader_mgr_;
+
   // Number of concurrently running executors
   std::atomic<int> current_num_runs_ = 0;
 
-  mutable onnxruntime::OrtMutex session_mutex_;  // to ensure only one thread can invoke Load/Initialize
-  bool is_model_loaded_ = false;                 // GUARDED_BY(session_mutex_)
-  bool is_inited_ = false;                       // GUARDED_BY(session_mutex_)
-  bool is_concurrent_run_supported_ = true;      // Graph execution in Run is GUARDED_BY(session_mutex_) if false
+  mutable std::mutex session_mutex_;         // to ensure only one thread can invoke Load/Initialize
+  bool is_model_loaded_ = false;             // GUARDED_BY(session_mutex_)
+  bool is_inited_ = false;                   // GUARDED_BY(session_mutex_)
+  bool is_concurrent_run_supported_ = true;  // Graph execution in Run is GUARDED_BY(session_mutex_) if false
 
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
   InterOpDomains interop_domains_;

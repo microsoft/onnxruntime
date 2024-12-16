@@ -42,30 +42,31 @@ jobs:
       dependsOn: [ ]
     timeoutInMinutes: ${{ parameters.timeout }}
     variables:
+      - template: ../../templates/common-variables.yml
       - name: docker_base_image
         ${{ if eq(parameters.CudaVersion, '11.8') }}:
-          value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+          value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241120.3
         ${{ if eq(parameters.CudaVersion, '12.2') }}:
-          value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20240719.1
+          value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20241120.3
       - name: linux_trt_version
         ${{ if eq(parameters.CudaVersion, '11.8') }}:
-          value: 10.2.0.19-1.cuda11.8
+          value: ${{ variables.linux_trt_version_cuda11 }}
         ${{ if eq(parameters.CudaVersion, '12.2') }}:
-          value: 10.2.0.19-1.cuda12.5
+          value: ${{ variables.linux_trt_version_cuda12 }}
     pool: ${{ parameters.machine_pool }}
     steps:
       - checkout: self
       - task: DownloadPipelineArtifact@2
         inputs:
-          artifact: 'drop-linux-gpu-x86_64'
-          targetPath: '$(Build.SourcesDirectory)/drop-linux-gpu-x86_64'
+          artifact: 'linux_gpu_wheel_x86_64'
+          targetPath: '$(Build.SourcesDirectory)/linux_gpu_wheel_x86_64'
           ${{ if ne(parameters.build_id, 'latest') }}:
             buildType: 'specific'
             project: '${{ parameters.project }}'
             pipeline: '${{ parameters.pipeline }}'
             buildVersionToDownload: 'specific'
             buildId: '${{ parameters.build_id }}'
-        displayName: 'Download Build Artifacts - drop-linux-gpu-x86_64'
+        displayName: 'Download Build Artifacts - linux_gpu_wheel_x86_64'
 
       - task: DownloadPipelineArtifact@2
         inputs:
@@ -82,7 +83,7 @@ jobs:
       - bash: |
           set -e -x
           ls $(Build.SourcesDirectory)
-          mv "$(Build.SourcesDirectory)/drop-linux-gpu-x86_64" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
+          mv "$(Build.SourcesDirectory)/linux_gpu_wheel_x86_64" $(Build.BinariesDirectory)/${{parameters.cmake_build_type}}
           mv "$(Build.SourcesDirectory)/onnxruntime_gpu" "$(Build.BinariesDirectory)/whl"
           cp -r "$(Build.BinariesDirectory)/whl" $(Build.BinariesDirectory)/tmp
           find "$(Build.BinariesDirectory)/tmp" -name '*.whl' -exec bash -c 'unzip -d "${1%.*}" "$1"' _ {} \;
@@ -99,7 +100,7 @@ jobs:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
           Context: tools/ci_build/github/linux/docker
           DockerBuildArgs: "
-          --network=host 
+          --network=host
           --build-arg BASEIMAGE=${{ variables.docker_base_image }}
           --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
           --build-arg BUILD_UID=$( id -u )

@@ -12,9 +12,11 @@
 #endif
 
 #include <memory>
+#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
+
 #include "HTP/QnnHtpDevice.h"
 #include "QnnLog.h"
 #include "QnnTypes.h"
@@ -39,7 +41,8 @@ class QnnBackendManager {
                     std::string&& qnn_saver_path,
                     uint32_t device_id,
                     QnnHtpDevice_Arch_t htp_arch,
-                    uint32_t soc_model)
+                    uint32_t soc_model,
+                    bool enable_htp_weight_sharing)
       : backend_path_(backend_path),
         profiling_level_etw_(profiling_level_etw),
         profiling_level_(profiling_level),
@@ -48,7 +51,8 @@ class QnnBackendManager {
         qnn_saver_path_(qnn_saver_path),
         device_id_(device_id),
         htp_arch_(htp_arch),
-        soc_model_(soc_model) {
+        soc_model_(soc_model),
+        enable_htp_weight_sharing_(enable_htp_weight_sharing) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
 
@@ -89,9 +93,10 @@ class QnnBackendManager {
 
   Status LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length,
                                         std::string node_name,
-                                        std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models);
+                                        std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models,
+                                        int64_t max_spill_fill_size);
 
-  Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context);
+  Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context, bool need_load_system_lib);
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
 
@@ -106,6 +111,10 @@ class QnnBackendManager {
   const Qnn_ContextHandle_t& GetQnnContext(int index = 0) {
     ORT_ENFORCE((contexts_.size() > 0) && (static_cast<size_t>(index) < contexts_.size()), "No valid QNN context!");
     return contexts_[index];
+  }
+
+  size_t GetQnnContextSize() {
+    return contexts_.size();
   }
 
   const Qnn_BackendHandle_t& GetQnnBackendHandle() { return backend_handle_; }
@@ -141,8 +150,6 @@ class QnnBackendManager {
 
   void ReleaseResources();
 
-  void Split(std::vector<std::string>& split_string, const std::string& tokenized_string, const char separator);
-
   Status ExtractBackendProfilingInfo();
   Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id, std::ofstream& outfile,
                                    bool backendSupportsExtendedEventData, bool tracelogging_provider_ep_enabled);
@@ -158,6 +165,10 @@ class QnnBackendManager {
   const std::string& GetSdkVersion() { return sdk_build_version_; }
 
   Status DestroyHTPPowerConfigID(uint32_t htp_power_config_id);
+
+  Status GetMaxSpillFillBufferSize(unsigned char* buffer,
+                                   uint64_t buffer_length,
+                                   uint64_t& max_spill_fill_buffer_size);
 
  private:
   void* LoadLib(const char* file_name, int flags, std::string& error_msg);
@@ -231,6 +242,7 @@ class QnnBackendManager {
 
  private:
   const std::string backend_path_;
+  std::mutex logger_mutex_;
   const logging::Logger* logger_ = nullptr;
   QNN_INTERFACE_VER_TYPE qnn_interface_ = QNN_INTERFACE_VER_TYPE_INIT;
   QNN_SYSTEM_INTERFACE_VER_TYPE qnn_sys_interface_ = QNN_SYSTEM_INTERFACE_VER_TYPE_INIT;
@@ -262,6 +274,7 @@ class QnnBackendManager {
   uint32_t device_id_ = 0;
   QnnHtpDevice_Arch_t htp_arch_ = QNN_HTP_DEVICE_ARCH_NONE;
   uint32_t soc_model_ = QNN_SOC_MODEL_UNKNOWN;
+  bool enable_htp_weight_sharing_ = false;
 };
 
 }  // namespace qnn

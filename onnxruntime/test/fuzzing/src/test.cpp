@@ -5,7 +5,6 @@
 #include "testlog.h"
 #include "OnnxPrediction.h"
 #include "onnxruntime_session_options_config_keys.h"
-
 #include <type_traits>
 
 using user_options = struct
@@ -15,6 +14,13 @@ using user_options = struct
   bool stress;
   bool is_ort;
 };
+
+#if !defined(_WIN32) || !defined(_WIN64)
+std::string wstring_to_string(const std::wstring& wstr) {
+  std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+  return converter.to_bytes(wstr);
+}
+#endif
 
 void predict(onnx::ModelProto& model_proto, unsigned int seed, Ort::Env& env) {
   // Create object for prediction
@@ -61,10 +67,9 @@ void mutateModelTest(onnx::ModelProto& model_proto,
 
   // Mutate model
   //
-  Logger::testLog << L"Model Successfully Initialized" << Logger::endl;
+  Logger::testLog << "Model Successfully Initialized" << Logger::endl;
   mutator.Seed(seed);
   mutator.Mutate(&model_proto, model_proto.ByteSizeLong());
-
   if (opt.write_model) {
     // Create file to store model
     //
@@ -73,8 +78,11 @@ void mutateModelTest(onnx::ModelProto& model_proto,
     auto mutateModelFileName = mutateModelName.str();
 
     // Log the model to a file
-    //
+#if defined(_WIN32) || defined(_WIN64)
     std::ofstream outStream(mutateModelFileName);
+#else
+    std::ofstream outStream(wstring_to_string(mutateModelFileName));
+#endif
     model_proto.SerializeToOstream(&outStream);
     Logger::testLog << "Mutated Model Written to file: " << mutateModelFileName << Logger::endl;
 
@@ -153,7 +161,7 @@ int processCommandLine(int argc, char* argv[], runtimeOpt& opt) {
       std::stringstream parser{argv[3]};
       parser >> opt.seed;
       if (parser.bad()) {
-        throw std::exception("Could not parse seed from command line");
+        throw std::runtime_error("Could not parse seed from command line");
       }
 
       std::wcout << L"seed: " << opt.seed << L"\n";
@@ -169,7 +177,7 @@ int processCommandLine(int argc, char* argv[], runtimeOpt& opt) {
       parser >> desired_scale;
 
       if (parser.bad()) {
-        throw std::exception("Could not parse the time scale from the command line");
+        throw std::runtime_error("Could not parse the time scale from the command line");
       }
 
       opt.scale = static_cast<timeScale>(std::tolower(desired_scale));
@@ -179,13 +187,13 @@ int processCommandLine(int argc, char* argv[], runtimeOpt& opt) {
         case timeScale::Sec:
           break;
         default:
-          throw std::exception("Could not parse the time scale from the command line");
+          throw std::runtime_error("Could not parse the time scale from the command line");
       }
 
       parser << argv[index--];
       parser >> opt.test_time_out;
       if (parser.bad()) {
-        throw std::exception("Could not parse the time value from the command line");
+        throw std::runtime_error("Could not parse the time value from the command line");
       }
 
       Logger::testLog << L"Running Test for: " << opt.test_time_out << desired_scale << Logger::endl;
@@ -193,7 +201,7 @@ int processCommandLine(int argc, char* argv[], runtimeOpt& opt) {
       Logger::testLog << L"Model file: " << opt.model_file_name << Logger::endl;
       std::filesystem::path model_file_namePath{opt.model_file_name};
       if (!std::filesystem::exists(model_file_namePath)) {
-        throw std::exception("Cannot find model file");
+        throw std::runtime_error("Cannot find model file");
       }
 
       // process options
@@ -251,9 +259,9 @@ struct RunStats {
 static void fuzz_handle_exception(struct RunStats& run_stats) {
   try {
     throw;
-  } catch (const Ort::Exception& ortException) {
+  } catch (const Ort::Exception& ortexception) {
     run_stats.num_ort_exception++;
-    Logger::testLog << L"onnx runtime exception: " << ortException.what() << Logger::endl;
+    Logger::testLog << L"onnx runtime exception: " << ortexception.what() << Logger::endl;
     Logger::testLog << "Failed Test iteration: " << run_stats.iteration++ << Logger::endl;
   } catch (const std::exception& e) {
     run_stats.num_std_exception++;
@@ -299,8 +307,11 @@ int main(int argc, char* argv[]) {
     std::wstring model_file{model_file_name};
 
     // Create a stream to hold the model
-    //
+#if defined(_WIN32) || defined(_WIN64)
     std::ifstream modelStream{model_file, std::ios::in | std::ios::binary};
+#else
+    std::ifstream modelStream(wstring_to_string(model_file), std::ios::in | std::ios::binary);
+#endif
     if (opt.user_opt.is_ort == false) {
       // Create an onnx protobuf object
       //
@@ -345,7 +356,7 @@ int main(int argc, char* argv[]) {
           }
         }
       } else {
-        throw std::exception("Unable to initialize the Onnx model in memory");
+        throw std::runtime_error("Unable to initialize the Onnx model in memory");
       }
     } else {
       std::wstring ort_model_file = model_file;
@@ -353,16 +364,25 @@ int main(int argc, char* argv[]) {
         ort_model_file = model_file + L".ort";
         Ort::SessionOptions so;
         so.SetGraphOptimizationLevel(ORT_DISABLE_ALL);
-        so.SetOptimizedModelFilePath(ort_model_file.c_str());
         so.AddConfigEntry(kOrtSessionOptionsConfigSaveModelFormat, "ORT");
+#if defined(_WIN32) || defined(_WIN64)
+        so.SetOptimizedModelFilePath(ort_model_file.c_str());
         Ort::Session session(env, model_file.c_str(), so);
+#else
+        so.SetOptimizedModelFilePath(wstring_to_string(ort_model_file).c_str());
+        Ort::Session session(env, wstring_to_string(model_file).c_str(), so);
+#endif
       } else if (model_file.substr(model_file.find_last_of(L".") + 1) != L"ort") {
         Logger::testLog << L"Input file name extension is not 'onnx' or 'ort' " << Logger::endl;
         return 1;
       }
       size_t num_bytes = std::filesystem::file_size(ort_model_file);
       std::vector<char> model_data(num_bytes);
+#if defined(_WIN32) || defined(_WIN64)
       std::ifstream ortModelStream(ort_model_file, std::ifstream::in | std::ifstream::binary);
+#else
+      std::ifstream ortModelStream(wstring_to_string(ort_model_file), std::ifstream::in | std::ifstream::binary);
+#endif
       ortModelStream.read(model_data.data(), num_bytes);
       ortModelStream.close();
       // Currently mutations are generated by using XOR of a byte with the preceding byte at a time.
@@ -389,7 +409,8 @@ int main(int argc, char* argv[]) {
     if (user_opt.stress) {
       Logger::testLog.enable();
     }
-    size_t toal_num_exception = run_stats.num_unknown_exception + run_stats.num_std_exception + run_stats.num_ort_exception;
+    size_t toal_num_exception =
+        run_stats.num_unknown_exception + run_stats.num_std_exception + run_stats.num_ort_exception;
     Logger::testLog << L"Total number of exceptions: " << toal_num_exception << Logger::endl;
     Logger::testLog << L"Number of Unknown exceptions: " << run_stats.num_unknown_exception << Logger::endl;
     Logger::testLog << L"Number of ort exceptions: " << run_stats.num_ort_exception << Logger::endl;

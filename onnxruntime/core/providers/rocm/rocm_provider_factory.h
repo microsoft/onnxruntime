@@ -39,7 +39,7 @@ struct ProviderInfo_ROCM {
   virtual int hipGetDeviceCount() = 0;
   virtual void ROCMExecutionProviderInfo__FromProviderOptions(const onnxruntime::ProviderOptions& options, onnxruntime::ROCMExecutionProviderInfo& info) = 0;
 
-#if defined(USE_ROCM) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
+#if defined(USE_ROCM) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P) && defined(ENABLE_TRAINING)
   virtual onnxruntime::rocm::INcclService& GetINcclService() = 0;
 #endif
 

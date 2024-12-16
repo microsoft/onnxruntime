@@ -1,0 +1,97 @@
+parameters:
+- name: machine_pool
+  type: string
+
+- name: cmake_build_type
+  type: string
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+- name: device
+  type: string
+  default: 'NPU'
+
+- name: with_cache
+  type: boolean
+  default: false
+
+- name: extra_build_arg
+  type: string
+  default: ''
+
+- name: QnnSdk
+  displayName: QNN SDK version
+  type: string
+  default: 2.28.2.241116
+
+jobs:
+- job: Linux_py_qnn_Wheels_x64
+  timeoutInMinutes: 240
+  workspace:
+    clean: all
+  pool: ${{ parameters.machine_pool }}
+  variables:
+    # The build machine pool doesn't have dotnet, so it can't run CG.
+    - name: skipComponentGovernanceDetection
+      value: true
+    - name: ORT_CACHE_DIR
+      value: $(Agent.TempDirectory)/ort_ccache
+    - name: TODAY
+      value: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+    - name: extra_build_args
+      ${{ if ne(parameters.extra_build_arg, '') }}:
+        value: -x ${{ parameters.extra_build_arg }}
+      ${{ if eq(parameters.extra_build_arg, '') }}:
+        value: ''
+  steps:
+    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+      displayName: 'Clean Agent Directories'
+      condition: always()
+
+    - checkout: self
+      clean: true
+      submodules: none
+
+    - template: jobs/download_linux_qnn_sdk.yml
+      parameters:
+        QnnSDKVersion: ${{ parameters.QnnSdk }}
+
+    - template: set-nightly-build-option-variable-step.yml
+
+    - template: get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/python/cpu/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/x86_64/python/cpu
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimecpubuildpythonx86_64_qnn
+
+    - template: linux-build-step-with-cache.yml
+      parameters:
+        WithCache: ${{parameters.with_cache}}
+        Today: $(TODAY)
+        AdditionalKey: Linux_py_qnn_Wheels_x64
+        CacheDir: $(ORT_CACHE_DIR)
+        ChangeEveryCommit: true
+        BuildStep:
+          - task: Bash@3
+            displayName: 'Build Python Wheel'
+            inputs:
+              targetType: filePath
+              filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
+              arguments: -i onnxruntimecpubuildpythonx86_64_qnn -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} $(extra_build_args)
+            env:
+              ADDITIONAL_DOCKER_PARAMETER: "--volume $(QnnSDKRootDir):/qnn_sdk"
+
+    - task: PublishBuildArtifacts@1
+      displayName: 'Publish Artifact: Linux ONNXRuntime QNN python wheel'
+      inputs:
+        PathtoPublish: '$(Build.BinariesDirectory)/dist'
+        ArtifactName: onnxruntime-linux-qnn-x64
+
+    - template: component-governance-component-detection-steps.yml
+      parameters :
+        condition : 'succeeded'

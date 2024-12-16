@@ -196,7 +196,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
         .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-        .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+        .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
     If);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -207,7 +207,7 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
         .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-        .TypeConstraint("V", DataTypeImpl::AllTensorTypes()),
+        .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypes()),
     If);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -218,46 +218,50 @@ ONNX_OPERATOR_KERNEL_EX(
     (*KernelDefBuilder::Create())
         .InputMemoryType(OrtMemTypeCPUInput, 0)  // 'cond' needs to be on CPU
         .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-        .TypeConstraint("V", DataTypeImpl::AllTensorTypesIRv9()),
+        .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorTypesIRv9()),
     If);
 }
 
 namespace Dml
 {
 
-enum class SupportedTensorDataTypes : uint32_t
+enum class SupportedTensorDataTypes : uint64_t
 {
-    Undefined = 1<<0,
-    Float32 = 1<<1,
-    UInt8 = 1<<2,
-    Int8 = 1<<3,
-    UInt16 = 1<<4,
-    Int16 = 1<<5,
-    Int32 = 1<<6,
-    Int64 = 1<<7,
-    String = 1<<8,
-    Bool = 1<<9,
-    Float16 = 1<<10,
-    Float64 = 1<<11,
-    UInt32 = 1<<12,
-    UInt64 = 1<<13,
-    Complex64 = 1<<14,
-    Complex128 = 1<<15,
-    SequenceFloat32 = 1<<16,
-    SequenceUInt8 = 1<<17,
-    SequenceInt8 = 1<<18,
-    SequenceUInt16 = 1<<19,
-    SequenceInt16 = 1<<20,
-    SequenceInt32 = 1<<21,
-    SequenceInt64 = 1<<22,
-    SequenceString = 1<<23,
-    SequenceBool = 1<<24,
-    SequenceFloat16 = 1<<25,
-    SequenceFloat64 = 1<<26,
-    SequenceUInt32 = 1<<27,
-    SequenceUInt64 = 1<<28,
-    SequenceComplex64 = 1<<29,
-    SequenceComplex128 = 1<<30,
+    Undefined = 1LLU<<0,
+    Float32 = 1LLU<<1,
+    UInt4 = 1LLU<<2,
+    Int4 = 1LLU<<3,
+    UInt8 = 1LLU<<4,
+    Int8 = 1LLU<<5,
+    UInt16 = 1LLU<<6,
+    Int16 = 1LLU<<7,
+    Int32 = 1LLU<<8,
+    Int64 = 1LLU<<9,
+    String = 1LLU<<10,
+    Bool = 1LLU<<11,
+    Float16 = 1LLU<<12,
+    Float64 = 1LLU<<13,
+    UInt32 = 1LLU<<14,
+    UInt64 = 1LLU<<15,
+    Complex64 = 1LLU<<16,
+    Complex128 = 1LLU<<17,
+    SequenceFloat32 = 1LLU<<18,
+    SequenceUInt4 = 1LLU<<19,
+    SequenceInt4 = 1LLU<<20,
+    SequenceUInt8 = 1LLU<<21,
+    SequenceInt8 = 1LLU<<22,
+    SequenceUInt16 = 1LLU<<23,
+    SequenceInt16 = 1LLU<<24,
+    SequenceInt32 = 1LLU<<25,
+    SequenceInt64 = 1LLU<<26,
+    SequenceString = 1LLU<<27,
+    SequenceBool = 1LLU<<28,
+    SequenceFloat16 = 1LLU<<29,
+    SequenceFloat64 = 1LLU<<30,
+    SequenceUInt32 = 1LLU<<31,
+    SequenceUInt64 = 1LLU<<32,
+    SequenceComplex64 = 1LLU<<33,
+    SequenceComplex128 = 1LLU<<34,
     Ints8to32 = UInt8|Int8|UInt16|Int16|UInt32|Int32,
     Ints32to64 = UInt32|Int32|UInt64|Int64,
     Ints8to64 = UInt8|Int8|UInt16|Int16|UInt32|Int32|UInt64|Int64,
@@ -273,7 +277,7 @@ enum class SupportedTensorDataTypes : uint32_t
     Ints16Bit = UInt16|Int16,
     Ints32Bit = UInt32|Int32,
     Ints64Bit = UInt64|Int64,
-    All = static_cast<uint32_t>(-1),
+    All = static_cast<uint64_t>(-1),
 };
 DEFINE_ENUM_FLAG_OPERATORS(Dml::SupportedTensorDataTypes);
 
@@ -361,6 +365,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(Pad11);
 DML_OP_EXTERN_CREATION_FUNCTION(Pad13);
 DML_OP_EXTERN_CREATION_FUNCTION(Pad18);
 DML_OP_EXTERN_CREATION_FUNCTION(Pad19);
+DML_OP_EXTERN_CREATION_FUNCTION(Pad21);
 DML_OP_EXTERN_CREATION_FUNCTION(SpaceToDepth);
 DML_OP_EXTERN_CREATION_FUNCTION(DepthToSpace);
 DML_OP_EXTERN_CREATION_FUNCTION(Sqrt);
@@ -441,6 +446,7 @@ DML_OP_EXTERN_CREATION_FUNCTION(DynamicQuantizeMatMul);
 DML_OP_EXTERN_CREATION_FUNCTION(Cast);
 DML_OP_EXTERN_CREATION_FUNCTION(CastLike15);
 DML_OP_EXTERN_CREATION_FUNCTION(CastLike19);
+DML_OP_EXTERN_CREATION_FUNCTION(CastLike21);
 DML_OP_EXTERN_CREATION_FUNCTION(MemcpyFromHost);
 DML_OP_EXTERN_CREATION_FUNCTION(MemcpyToHost);
 DML_OP_EXTERN_CREATION_FUNCTION(TopK7);
@@ -463,7 +469,9 @@ DML_OP_EXTERN_CREATION_FUNCTION(DmlFusedMatMul);
 DML_OP_EXTERN_CREATION_FUNCTION(DmlFusedAdd);
 DML_OP_EXTERN_CREATION_FUNCTION(DmlFusedSum);
 DML_OP_EXTERN_CREATION_FUNCTION(QuantizeLinear);
+DML_OP_EXTERN_CREATION_FUNCTION(QuantizeLinear21);
 DML_OP_EXTERN_CREATION_FUNCTION(DequantizeLinear);
+DML_OP_EXTERN_CREATION_FUNCTION(DequantizeLinear21);
 DML_OP_EXTERN_CREATION_FUNCTION(QLinearSigmoid);
 DML_OP_EXTERN_CREATION_FUNCTION(Sign);
 DML_OP_EXTERN_CREATION_FUNCTION(IsNaN);
@@ -599,8 +607,10 @@ constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListScatte
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListSlice10 = { SupportedTensorDataTypes::AllScalars, SupportedTensorDataTypes::Int32 | SupportedTensorDataTypes::Int64 };
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListQuantizeLinear = { SupportedTensorDataTypes::Float32 | SupportedTensorDataTypes::Int32, SupportedTensorDataTypes::UInt8 | SupportedTensorDataTypes::Int8 };
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListQuantizeLinear19 = { SupportedTensorDataTypes::Float16to32 | SupportedTensorDataTypes::Int32, SupportedTensorDataTypes::UInt8 | SupportedTensorDataTypes::Int8 };
+constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListQuantizeLinear21 = { SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::UInt4 | SupportedTensorDataTypes::Int4 | SupportedTensorDataTypes::UInt8 | SupportedTensorDataTypes::Int8 };
 constexpr static std::array<SupportedTensorDataTypes, 1> supportedTypeListDequantizeLinear = { SupportedTensorDataTypes::UInt8 | SupportedTensorDataTypes::Int8 | SupportedTensorDataTypes::Int32 };
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListDequantizeLinear19 = { SupportedTensorDataTypes::UInt8 | SupportedTensorDataTypes::Int8 | SupportedTensorDataTypes::Int32, SupportedTensorDataTypes::Float16to32 };
+constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListDequantizeLinear21 = { SupportedTensorDataTypes::UInt4 | SupportedTensorDataTypes::Int4 | SupportedTensorDataTypes::UInt8 | SupportedTensorDataTypes::Int8, SupportedTensorDataTypes::Float16to32 };
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListIsNan = { SupportedTensorDataTypes::Float16to32, SupportedTensorDataTypes::Bool };
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListIsInf = { SupportedTensorDataTypes::Float32, SupportedTensorDataTypes::Bool };
 constexpr static std::array<SupportedTensorDataTypes, 2> supportedTypeListConstantOfShape = { SupportedTensorDataTypes::Int64, SupportedTensorDataTypes::AllScalars };
@@ -784,6 +794,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_VER( 18,  Split,                              typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1))},
     {REG_INFO(      7,  Transpose,                          typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO(     13,  Transpose,                          typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
+    {REG_INFO(     21,  Transpose,                          typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO(      7,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO(     11,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},  // Adds negative axis.
     {REG_INFO(     13,  Concat,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},  // Adds negative axis.
@@ -796,6 +807,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_VER( 11,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2) /*pads, value*/)}, // https://microsoft.visualstudio.com/OS/_workitems/edit/26007728
     {REG_INFO_VER( 13,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2) /*pads, value*/)}, // https://microsoft.visualstudio.com/OS/_workitems/edit/26007728
     {REG_INFO_VER( 18,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*pads, value, axes*/)},
+    {REG_INFO_VER( 21,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*pads, value, axes*/)},
 
 #if DML_TARGET_VERSION >= 0x6400
     {REG_INFO_VER( 19,  Pad,                                typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1, 2, 3) /*pads, value, axes*/)},
@@ -811,6 +823,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      8,  Expand,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1))},
     {REG_INFO(     13,  Expand,                             typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,      requiredConstantCpuInputs(1))},
     {REG_INFO(      9,  ConstantOfShape,                    typeNameListConstantOfShape,    supportedTypeListConstantOfShape,       DmlGraphSupport::Supported,      requiredConstantCpuInputs(0))},
+    {REG_INFO(     21,  ConstantOfShape,                    typeNameListConstantOfShape,    supportedTypeListConstantOfShape,       DmlGraphSupport::Supported,      requiredConstantCpuInputs(0))},
     {REG_INFO(      7,  Gather,                             typeNameListScatterGather,      supportedTypeListScatterGather,         DmlGraphSupport::Supported)},
     {REG_INFO(     11,  Gather,                             typeNameListScatterGather,      supportedTypeListScatterGather,         DmlGraphSupport::Supported)},
     {REG_INFO(     13,  Gather,                             typeNameListScatterGather,      supportedTypeListScatterGather,         DmlGraphSupport::Supported)},
@@ -841,20 +854,25 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_COPY(14,  Identity,                           typeNameListDefaultV,           supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY(16,  Identity,                           typeNameListDefaultV,           supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY(19,  Identity,                           typeNameListDefaultV,           supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
+    {REG_INFO_COPY(21,  Identity,                           typeNameListDefaultV,           supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY( 7,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY( 9,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY(11,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY(13,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
+    {REG_INFO_COPY(21,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY( 7,  Squeeze,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY(11,  Squeeze,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY(13,  Squeeze,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,     requiredConstantCpuInputs(1))},
+    {REG_INFO_COPY(21,  Squeeze,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,     requiredConstantCpuInputs(1))},
     {REG_INFO_COPY( 7,  Unsqueeze,                          typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY(11,  Unsqueeze,                          typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY(13,  Unsqueeze,                          typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,     requiredConstantCpuInputs(1))},
+    {REG_INFO_COPY(21,  Unsqueeze,                          typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,     requiredConstantCpuInputs(1))},
     {REG_INFO_COPY( 7,  Reshape,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,     requiredConstantCpuInputs(1))},
     {REG_INFO_COPY(13,  Reshape,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,     requiredConstantCpuInputs(1))},
     {REG_INFO_COPY(14,  Reshape,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,     requiredConstantCpuInputs(1))},
     {REG_INFO_COPY(19,  Reshape,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,     requiredConstantCpuInputs(1))},
+    {REG_INFO_COPY(21,  Reshape,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported,     requiredConstantCpuInputs(1))},
 
     // Elementwise
     {REG_INFO(      7,  Sqrt,                               typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
@@ -915,9 +933,11 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      10, QuantizeLinear,                     typeNameListTwo,                supportedTypeListQuantizeLinear,        DmlGraphSupport::Supported)},
     {REG_INFO(      13, QuantizeLinear,                     typeNameListTwo,                supportedTypeListQuantizeLinear,        DmlGraphSupport::Supported)},
     {REG_INFO(      19, QuantizeLinear,                     typeNameListTwo,                supportedTypeListQuantizeLinear19,      DmlGraphSupport::Supported)},
+    {REG_INFO_VER(  21, QuantizeLinear,                     typeNameListTwo,                supportedTypeListQuantizeLinear21,      DmlGraphSupport::Supported)},
     {REG_INFO(      10, DequantizeLinear,                   typeNameListDefault,            supportedTypeListDequantizeLinear,      DmlGraphSupport::Supported)},
     {REG_INFO(      13, DequantizeLinear,                   typeNameListDefault,            supportedTypeListDequantizeLinear,      DmlGraphSupport::Supported)},
     {REG_INFO(      19, DequantizeLinear,                   typeNameListTwo,                supportedTypeListDequantizeLinear19,    DmlGraphSupport::Supported)},
+    {REG_INFO_VER(  21, DequantizeLinear,                   typeNameListTwo,                supportedTypeListDequantizeLinear21,    DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  QuantizeLinear,                     typeNameListTwo,                supportedTypeListQuantizeLinear19,      DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  DequantizeLinear,                   typeNameListTwo,                supportedTypeListDequantizeLinear19,    DmlGraphSupport::Supported)},
     {REG_INFO(      9,  Sign,                               typeNameListDefault,            supportedTypeListFloat16to32Ints8to64,  DmlGraphSupport::Supported)},
@@ -1071,8 +1091,10 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(      9,  Cast,                               typeNameListTwo,                supportedTypeListCast,                  DmlGraphSupport::Supported)},
     {REG_INFO(     13,  Cast,                               typeNameListTwo,                supportedTypeListCast,                  DmlGraphSupport::Supported)},
     {REG_INFO(     19,  Cast,                               typeNameListTwo,                supportedTypeListCast,                  DmlGraphSupport::Supported)},
+    {REG_INFO(     21,  Cast,                               typeNameListTwo,                supportedTypeListCast,                  DmlGraphSupport::Supported)},
     {REG_INFO_VER( 15,  CastLike,                           typeNameListTwo,                supportedTypeListCast,                  DmlGraphSupport::Supported)},
     {REG_INFO_VER( 19,  CastLike,                           typeNameListTwo,                supportedTypeListCast,                  DmlGraphSupport::Supported)},
+    {REG_INFO_VER( 21,  CastLike,                           typeNameListTwo,                supportedTypeListCast,                  DmlGraphSupport::Supported)},
     {REG_INFO(      7,  MemcpyFromHost,                     typeNameListDefault,            supportedTypeListAll)},
     {REG_INFO(      7,  MemcpyToHost,                       typeNameListDefault,            supportedTypeListAll)},
     {REG_INFO_VER(  7,  TopK,                               typeNameListTopK,               supportedTypeListTopK,                  DmlGraphSupport::Supported)},
@@ -1084,9 +1106,11 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO(     13,  Shape,                              typeNameShape,                  supportedTypeListShape,                 DmlGraphSupport::NotSupported)},
     {REG_INFO(     15,  Shape,                              typeNameShape,                  supportedTypeListShape,                 DmlGraphSupport::NotSupported)},
     {REG_INFO(     19,  Shape,                              typeNameShape,                  supportedTypeListShape,                 DmlGraphSupport::NotSupported)},
+    {REG_INFO(     21,  Shape,                              typeNameShape,                  supportedTypeListShape,                 DmlGraphSupport::NotSupported)},
     {REG_INFO(      7,  Size,                               typeNameSize,                   supportedTypeListSize,                  DmlGraphSupport::NotSupported)},
     {REG_INFO(     13,  Size,                               typeNameSize,                   supportedTypeListSize,                  DmlGraphSupport::NotSupported)},
     {REG_INFO(     19,  Size,                               typeNameSize,                   supportedTypeListSize,                  DmlGraphSupport::NotSupported)},
+    {REG_INFO(     21,  Size,                               typeNameSize,                   supportedTypeListSize,                  DmlGraphSupport::NotSupported)},
     {REG_INFO_DYNAMIC_OUTPUTS( 9,  NonZero,                 typeNameListDefault,            supportedTypeListNonZero,               DmlGraphSupport::NotSupported)},
     {REG_INFO_DYNAMIC_OUTPUTS(13,  NonZero,                 typeNameListDefault,            supportedTypeListNonZero,               DmlGraphSupport::NotSupported)},
 
@@ -1134,6 +1158,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_MS(  1,   QLinearAdd,                         typeNameListDefault,            supportedTypeListInteger8,              DmlGraphSupport::Supported)},
     {REG_INFO(     10,  QLinearConv,                        typeNameListFour,               supportedTypeListQLinearConv,           DmlGraphSupport::Supported)},
     {REG_INFO(     10,  QLinearMatMul,                      typeNameListThree,              supportedTypeListQLinearMatMul,         DmlGraphSupport::Supported)},
+    {REG_INFO(     21,  QLinearMatMul,                      typeNameListThree,              supportedTypeListQLinearMatMul,         DmlGraphSupport::Supported)},
     {REG_INFO(     10,  MatMulInteger,                      typeNameListThree,              supportedTypeListInteger,               DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  MatMulIntegerToFloat,               typeNameListThree,              supportedTypeListMatMulIntegerToFloat,  DmlGraphSupport::Supported)},
     {REG_INFO(     10,  ConvInteger,                        typeNameListThree,              supportedTypeListInteger,               DmlGraphSupport::Supported)},
@@ -1147,6 +1172,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_MS(   1,  BiasAdd,                            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  QuickGelu,                          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  GroupNorm,                          typeNameListGroupNorm,          supportedTypeListGroupNorm,             DmlGraphSupport::Supported)},
+    {REG_INFO(      21, GroupNorm,                          typeNameListGroupNorm,          supportedTypeListGroupNorm,             DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  MatMulNBits,                        typeNameListTwo,                supportedTypeListMatMulNBits,           DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryMatMulNBits)},
 
     // Operators that need to alias an input with an output
@@ -1246,6 +1272,8 @@ void RegisterDmlOperators(IMLOperatorRegistry* registry)
 
             // Scalars
             if (bool(supportedTypes & SupportedTensorDataTypes::Float32)) edgeDescs.push_back(TensorEdgeDesc<float>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::UInt4  )) edgeDescs.push_back(TensorEdgeDesc<::MLUInt4x2>());
+            if (bool(supportedTypes & SupportedTensorDataTypes::Int4   )) edgeDescs.push_back(TensorEdgeDesc<::MLInt4x2>());
             if (bool(supportedTypes & SupportedTensorDataTypes::UInt8  )) edgeDescs.push_back(TensorEdgeDesc<uint8_t>());
             if (bool(supportedTypes & SupportedTensorDataTypes::Int8   )) edgeDescs.push_back(TensorEdgeDesc<int8_t>());
             if (bool(supportedTypes & SupportedTensorDataTypes::UInt16 )) edgeDescs.push_back(TensorEdgeDesc<uint16_t>());

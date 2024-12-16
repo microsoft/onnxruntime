@@ -110,7 +110,16 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   Tensor* Y = ctx->Output(0, helper.OutputShape());
   // Bail out early if the output is going to be empty
-  if (Y->Shape().Size() == 0) return Status::OK();
+  const auto output_size = Y->Shape().Size();
+  if (output_size == 0) return Status::OK();
+
+  if (helper.K() == 0) {
+    // When we have (M, 0, N) then the inputs are empty, but the output should
+    // be filled out with zeros.
+    using CudaT = typename ToCudaType<T>::MappedType;
+    Fill<CudaT>(Stream(ctx), reinterpret_cast<CudaT*>(Y->MutableData<T>()), CudaT(0.f), narrow<int64_t>(output_size));
+    return Status::OK();
+  }
 
   if (GetTuningContext()->IsTunableOpEnabled()) {
     return tunable::TunableMatMul<T>(alpha_, trans_a, trans_b, trans_batch_a_, trans_batch_b_, helper, this, ctx);

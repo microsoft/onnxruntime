@@ -261,13 +261,16 @@ static const char* const kOrtSessionOptionEpContextEnable = "ep.context_enable";
 static const char* const kOrtSessionOptionEpContextFilePath = "ep.context_file_path";
 
 // Flag to specify whether to dump the EP context into the Onnx model.
-// "0": dump the EP context into separate file, keep the file name in the Onnx model.
-// "1": dump the EP context into the Onnx model. (default).
+// "0": dump the EP context into separate file, keep the file name in the Onnx model. (default).
+// "1": dump the EP context into the Onnx model.
 static const char* const kOrtSessionOptionEpContextEmbedMode = "ep.context_embed_mode";
 
 // Specify the EPContext node name prefix to make it unique
 // in case user need to merge/connect multiple EPContext nodes in one model
 static const char* const kOrtSessionOptionEpContextNodeNamePrefix = "ep.context_node_name_prefix";
+
+// Share EP related resources across EPs
+static const char* const kOrtSessionOptionShareEpContexts = "ep.share_ep_contexts";
 
 // Gemm fastmath mode provides fp32 gemm acceleration with bfloat16 based matmul.
 // Option values:
@@ -279,3 +282,10 @@ static const char* const kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16 = "mlas
 // Refer to MatMulNBits op schema for more details.
 // If not provided, default is 4.
 static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "session.qdq_matmulnbits_accuracy_level";
+
+// THIS OPTION IS NOT A REGULAR SESSION OPTION SINCE IT CAN BE MODIFIED AT ANY TIME
+// Meant to be used with SetEpDynamicOptions
+// Specify the type of workload for this session.
+// “Default”: OS determines the scheduling priority and processor performance to service this workload. [Default]
+// “Efficient”: OS treats this workload is efficiency oriented with low scheduling priority and efficient processor performance.
+static const char* const kOrtEpDynamicOptionsWorkloadType = "ep.dynamic.workload_type";

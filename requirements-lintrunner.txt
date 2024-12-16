@@ -1,5 +1,7 @@
 # This file is auto updated by dependabot
-lintrunner-adapters>=0.12.4
+# When any package below is changed, you shall run "lintrunner init" again.
+lintrunner==0.12.5
+lintrunner-adapters==0.12.4
 # RUFF
 ruff==0.5.4
 # BLACK-ISORT

@@ -107,5 +107,3 @@ elseif(CUDNN_MAJOR_VERSION EQUAL 9)
         CUDNN::cudnn_heuristic
     )
 endif()
-
-mark_as_advanced(CUDNN_INCLUDE_DIR)

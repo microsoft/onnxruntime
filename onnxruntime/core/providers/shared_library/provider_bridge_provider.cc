@@ -174,6 +174,7 @@ MLDataType DataTypeImpl::GetType<UInt4x2>() { return Provider_GetHost()->DataTyp
 
 template <>
 MLDataType DataTypeImpl::GetType<std::string>() { return Provider_GetHost()->DataTypeImpl__GetType_string(); }
+MLDataType DataTypeImpl::GetTensorTypeFromOnnxType(int onnx_type) { return Provider_GetHost()->DataTypeImpl__GetTensorTypeFromOnnxType(onnx_type); }
 template <>
 MLDataType DataTypeImpl::GetTensorType<bool>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_bool(); }
 template <>
@@ -368,8 +369,9 @@ std::string GetEnvironmentVar(const std::string& var_name) {
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                                   gsl::span<const NodeIndex> tentative_nodes) {
-  return g_host->GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes);
+                                                   gsl::span<const NodeIndex> tentative_nodes,
+                                                   const logging::Logger& logger) {
+  return g_host->GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes, logger);
 }
 
 namespace profiling {
@@ -608,12 +610,12 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const TensorShape& bias_shape,
                                   const Tensor*& mask_index,
                                   const Tensor* past,
-                                  const Tensor* relative_position_bias,
+                                  const Tensor* attention_bias,
                                   void* parameters,
                                   const int max_threads_per_block,
                                   const Tensor* past_seq_len) const {
   return g_host_cpu.AttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape,
-                                               mask_index, past, relative_position_bias, parameters,
+                                               mask_index, past, attention_bias, parameters,
                                                max_threads_per_block, past_seq_len);
 }
 Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, int batch_size, int head_size,

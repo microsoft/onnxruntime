@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2019, 2024, Oracle and/or its affiliates. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -10,6 +11,7 @@ import ai.onnxruntime.providers.OrtCUDAProviderOptions;
 import ai.onnxruntime.providers.OrtFlags;
 import ai.onnxruntime.providers.OrtTensorRTProviderOptions;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -90,6 +92,31 @@ public class OrtSession implements AutoCloseable {
     this(
         createSession(
             OnnxRuntime.ortApiHandle, env.getNativeHandle(), modelArray, options.getNativeHandle()),
+        allocator);
+  }
+
+  /**
+   * Creates a session reading the model from the supplied byte buffer.
+   *
+   * <p>Must be a direct byte buffer.
+   *
+   * @param env The environment.
+   * @param modelBuffer The model protobuf as a byte buffer.
+   * @param allocator The allocator to use.
+   * @param options Session configuration options.
+   * @throws OrtException If the model was corrupted or some other error occurred in native code.
+   */
+  OrtSession(
+      OrtEnvironment env, ByteBuffer modelBuffer, OrtAllocator allocator, SessionOptions options)
+      throws OrtException {
+    this(
+        createSession(
+            OnnxRuntime.ortApiHandle,
+            env.getNativeHandle(),
+            modelBuffer,
+            modelBuffer.position(),
+            modelBuffer.remaining(),
+            options.getNativeHandle()),
         allocator);
   }
 
@@ -513,6 +540,15 @@ public class OrtSession implements AutoCloseable {
   private static native long createSession(
       long apiHandle, long envHandle, byte[] modelArray, long optsHandle) throws OrtException;
 
+  private static native long createSession(
+      long apiHandle,
+      long envHandle,
+      ByteBuffer modelBuffer,
+      int bufferPos,
+      int bufferSize,
+      long optsHandle)
+      throws OrtException;
+
   private native long getNumInputs(long apiHandle, long nativeHandle) throws OrtException;
 
   private native String[] getInputNames(long apiHandle, long nativeHandle, long allocatorHandle)
@@ -599,8 +635,8 @@ public class OrtSession implements AutoCloseable {
      * The optimisation level to use. Needs to be kept in sync with the GraphOptimizationLevel enum
      * in the C API.
      *
-     * <p>See <a
-     * href="https://onnxruntime.ai/docs/performance/model-optimizations/graph-optimizations.html">Graph
+     * <p>See <a href=
+     * "https://onnxruntime.ai/docs/performance/model-optimizations/graph-optimizations.html">Graph
      * Optimizations</a> for more details.
      */
     public enum OptLevel {
@@ -648,6 +684,7 @@ public class OrtSession implements AutoCloseable {
       SEQUENTIAL(0),
       /** Executes some nodes in parallel. */
       PARALLEL(1);
+
       private final int id;
 
       ExecutionMode(int id) {
@@ -904,6 +941,20 @@ public class OrtSession implements AutoCloseable {
       checkClosed();
       addFreeDimensionOverrideByName(
           OnnxRuntime.ortApiHandle, nativeHandle, dimensionName, dimensionValue);
+    }
+
+    /**
+     * Set whether to use deterministic compute.
+     *
+     * <p>Default is false. If set to true, this will enable deterministic compute for GPU kernels
+     * where possible. Note that this most likely will have a performance cost.
+     *
+     * @param value Should the compute be deterministic?
+     * @throws OrtException If there was an error in native code.
+     */
+    public void setDeterministicCompute(boolean value) throws OrtException {
+      checkClosed();
+      setDeterministicCompute(OnnxRuntime.ortApiHandle, nativeHandle, value);
     }
 
     /**
@@ -1181,12 +1232,12 @@ public class OrtSession implements AutoCloseable {
     /**
      * Adds the ARM Compute Library as an execution backend.
      *
-     * @param useArena If true use the arena memory allocator.
+     * @param enableFastMath Enable fast math mode in ACL.
      * @throws OrtException If there was an error in native code.
      */
-    public void addACL(boolean useArena) throws OrtException {
+    public void addACL(boolean enableFastMath) throws OrtException {
       checkClosed();
-      addACL(OnnxRuntime.ortApiHandle, nativeHandle, useArena ? 1 : 0);
+      addACL(OnnxRuntime.ortApiHandle, nativeHandle, enableFastMath);
     }
 
     /**
@@ -1221,16 +1272,16 @@ public class OrtSession implements AutoCloseable {
     }
 
     /**
-     * Adds Xnnpack as an execution backend. Needs to list all options hereif a new option
-     * supported. current supported options: {} The maximum number of provider options is set to 128
-     * (see addExecutionProvider's comment). This number is controlled by
-     * ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH in ai_onnxruntime_OrtSession_SessionOptions.c. If 128 is
-     * not enough, please increase it or implementing an incremental way to add more options.
+     * Adds the named execution provider (backend) as an execution backend. This generic function
+     * only allows a subset of execution providers.
      *
-     * @param providerOptions options pass to XNNPACK EP for initialization.
+     * @param providerName The name of the execution provider.
+     * @param providerOptions Configuration options for the execution provider. Refer to the
+     *     specific execution provider's documentation.
      * @throws OrtException If there was an error in native code.
      */
-    public void addXnnpack(Map<String, String> providerOptions) throws OrtException {
+    private void addExecutionProvider(String providerName, Map<String, String> providerOptions)
+        throws OrtException {
       checkClosed();
       String[] providerOptionKey = new String[providerOptions.size()];
       String[] providerOptionVal = new String[providerOptions.size()];
@@ -1241,7 +1292,47 @@ public class OrtSession implements AutoCloseable {
         i++;
       }
       addExecutionProvider(
-          OnnxRuntime.ortApiHandle, nativeHandle, "XNNPACK", providerOptionKey, providerOptionVal);
+          OnnxRuntime.ortApiHandle,
+          nativeHandle,
+          providerName,
+          providerOptionKey,
+          providerOptionVal);
+    }
+
+    /**
+     * Adds XNNPACK as an execution backend.
+     *
+     * @param providerOptions Configuration options for the XNNPACK backend. Refer to the XNNPACK
+     *     execution provider's documentation.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addXnnpack(Map<String, String> providerOptions) throws OrtException {
+      String xnnpackProviderName = "XNNPACK";
+      addExecutionProvider(xnnpackProviderName, providerOptions);
+    }
+
+    /**
+     * Adds QNN as an execution backend.
+     *
+     * @param providerOptions Configuration options for the QNN backend. Refer to the QNN execution
+     *     provider's documentation.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addQnn(Map<String, String> providerOptions) throws OrtException {
+      String qnnProviderName = "QNN";
+      addExecutionProvider(qnnProviderName, providerOptions);
+    }
+
+    /**
+     * Adds CoreML as an execution backend.
+     *
+     * @param providerOptions Configuration options for the CoreML backend. Refer to the CoreML
+     *     execution provider's documentation.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addCoreML(Map<String, String> providerOptions) throws OrtException {
+      String CoreMLProviderName = "CoreML";
+      addExecutionProvider(CoreMLProviderName, providerOptions);
     }
 
     private native void setExecutionMode(long apiHandle, long nativeHandle, int mode)
@@ -1291,6 +1382,9 @@ public class OrtSession implements AutoCloseable {
 
     private native void closeOptions(long apiHandle, long nativeHandle);
 
+    private native void setDeterministicCompute(
+        long apiHandle, long nativeHandle, boolean isDeterministic) throws OrtException;
+
     private native void addFreeDimensionOverrideByName(
         long apiHandle, long nativeHandle, String dimensionName, long dimensionValue)
         throws OrtException;
@@ -1310,17 +1404,19 @@ public class OrtSession implements AutoCloseable {
         throws OrtException;
 
     /*
-     * To use additional providers, you must build ORT with the extra providers enabled. Then call one of these
-     * functions to enable them in the session:
+     * To use additional providers, you must build ORT with the extra providers enabled. Then call
+     * one of these functions to enable them in the session:
+     *
      *   OrtSessionOptionsAppendExecutionProvider_CPU
      *   OrtSessionOptionsAppendExecutionProvider_CUDA
      *   OrtSessionOptionsAppendExecutionProvider_ROCM
      *   OrtSessionOptionsAppendExecutionProvider_<remaining providers...>
-     * The order they care called indicates the preference order as well. In other words call this method
-     * on your most preferred execution provider first followed by the less preferred ones.
-     * If none are called Ort will use its internal CPU execution provider.
      *
-     * If a backend is unavailable then it throws an OrtException
+     * The order they are called indicates the preference order as well. In other words call this
+     * method on your most preferred execution provider first followed by the less preferred ones.
+     * If none are called ORT will use its internal CPU execution provider.
+     *
+     * If a backend is unavailable then it throws an OrtException.
      */
     private native void addCPU(long apiHandle, long nativeHandle, int useArena) throws OrtException;
 
@@ -1354,7 +1450,8 @@ public class OrtSession implements AutoCloseable {
     private native void addDirectML(long apiHandle, long nativeHandle, int deviceId)
         throws OrtException;
 
-    private native void addACL(long apiHandle, long nativeHandle, int useArena) throws OrtException;
+    private native void addACL(long apiHandle, long nativeHandle, boolean enableFastMath)
+        throws OrtException;
 
     private native void addArmNN(long apiHandle, long nativeHandle, int useArena)
         throws OrtException;
@@ -1362,10 +1459,6 @@ public class OrtSession implements AutoCloseable {
     private native void addCoreML(long apiHandle, long nativeHandle, int coreMLFlags)
         throws OrtException;
 
-    /*
-     * The max length of providerOptionKey and providerOptionVal is 128, as specified by
-     * ORT_JAVA_MAX_ARGUMENT_ARRAY_LENGTH (search ONNXRuntime PR #14067 for its location).
-     */
     private native void addExecutionProvider(
         long apiHandle,
         long nativeHandle,
@@ -1501,6 +1594,18 @@ public class OrtSession implements AutoCloseable {
       addRunConfigEntry(OnnxRuntime.ortApiHandle, nativeHandle, key, value);
     }
 
+    /**
+     * Adds the specified adapter to the list of active adapters for this run.
+     *
+     * @param loraAdapter valid OrtLoraAdapter object
+     * @throws OrtException of the native library call failed
+     */
+    public void addActiveLoraAdapter(OrtLoraAdapter loraAdapter) throws OrtException {
+      checkClosed();
+      loraAdapter.checkClosed();
+      addActiveLoraAdapter(OnnxRuntime.ortApiHandle, nativeHandle, loraAdapter.getNativeHandle());
+    }
+
     /** Checks if the RunOptions is closed, if so throws {@link IllegalStateException}. */
     private void checkClosed() {
       if (closed) {
@@ -1540,6 +1645,9 @@ public class OrtSession implements AutoCloseable {
 
     private native void addRunConfigEntry(
         long apiHandle, long nativeHandle, String key, String value) throws OrtException;
+
+    private native void addActiveLoraAdapter(
+        long apiHandle, long nativeHandle, long loraAdapterHandle) throws OrtException;
 
     private static native void close(long apiHandle, long nativeHandle);
   }

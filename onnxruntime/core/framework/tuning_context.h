@@ -7,7 +7,7 @@
 #include <unordered_map>
 
 #include "core/common/common.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/framework/allocator.h"
 #include "core/framework/tuning_results.h"
 
@@ -19,7 +19,7 @@ class TuningResultsValidator;
 
 class ITuningContext {
  public:
-  explicit ITuningContext(IExecutionProvider* ep) : ep_(ep) {}
+  explicit ITuningContext(IExecutionProvider* ep) : ep_(ep), allocators_(nullptr) {}
   virtual ~ITuningContext() = default;
 
   virtual void EnableTunableOp() = 0;
@@ -77,7 +77,7 @@ class TuningResultsManager {
   void Clear();
 
  private:
-  mutable OrtMutex lock_;
+  mutable std::mutex lock_;
   std::unordered_map<std::string, KernelMap> results_;
 };
 

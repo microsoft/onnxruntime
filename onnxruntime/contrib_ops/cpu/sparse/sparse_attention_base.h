@@ -184,7 +184,7 @@ class SparseAttentionBase {
         // Concatenate past_k + k -> present_k
         // TODO: avoid copying mutiple times for a group.
         k = ConcatStateChunkGQA(past_key, k, present_key, present_buff_chunk_length, past_buff_chunk_length,
-                                past_chunk_length, kv_input_chunk_length, is_prompt, past_present_share_buffer,
+                                is_prompt ? 0 : past_chunk_length, kv_input_chunk_length, past_present_share_buffer,
                                 i / kv_num_heads_factor);
 
         // Compute Q*K' + AttentionMask
@@ -365,7 +365,7 @@ class SparseAttentionBase {
 
             // Concatenate past_v + v -> present_v
             v = ConcatStateChunkGQA(past_value, v, present_value, present_buff_chunk_length, past_buff_chunk_length,
-                                    past_chunk_length, kv_input_chunk_length, is_prompt, past_present_share_buffer,
+                                    is_prompt ? 0 : past_chunk_length, kv_input_chunk_length, past_present_share_buffer,
                                     i / kv_num_heads_factor);
 
             DUMP_CPU_TENSOR("present_value", v, total_seq_len, head_size);

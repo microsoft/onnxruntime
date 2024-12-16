@@ -200,7 +200,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
                 long[] shape = { 1, 1, 3 };
                 var elementsNum = ShapeUtils.GetSizeForShape(shape);
-                Assert.Equal(elementsNum, Elements);
+                Assert.Equal(Elements, elementsNum);
 
                 using (var tensor = OrtValue.CreateTensorValueWithData(OrtMemoryInfo.DefaultInstance, TensorElementType.Int32,
                         shape, dataPtr, bufferLen))

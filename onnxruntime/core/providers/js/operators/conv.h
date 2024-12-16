@@ -48,25 +48,24 @@ class ConvBase : public JsKernel {
     std::vector<float> activation_params = info.GetAttrsOrDefault<float>("activation_params");
     int64_t channels_last = is_channels_last ? 1 : info.GetAttrOrDefault<int64_t>("channels_last", 0);
 
-    // currently only support Conv 1D/2D. TODO: support Conv3D and other
     JSEP_INIT_KERNEL_ATTRIBUTE(Conv, ({
                                  "format" : $11 ? "NHWC" : "NCHW",
                                  "auto_pad" : $1,
-                                 "dilations" : $2 ? Array.from(HEAP32.subarray($2, $3)) : [],
+                                 "dilations" : $2 ? Array.from(HEAP32.subarray(Number($2), Number($3))) : [],
                                  "group" : $4,
-                                 "kernel_shape" : $5 ? Array.from(HEAP32.subarray($5, $6)) : [],
-                                 "pads" : $7 ? Array.from(HEAP32.subarray($7, $8)) : [],
-                                 "strides" : $9 ? Array.from(HEAP32.subarray($9, $10)) : [],
-                                 "w_is_const" : () JS_ARROW(!!HEAP8[$12]),
+                                 "kernel_shape" : $5 ? Array.from(HEAP32.subarray(Number($5), Number($6))) : [],
+                                 "pads" : $7 ? Array.from(HEAP32.subarray(Number($7), Number($8))) : [],
+                                 "strides" : $9 ? Array.from(HEAP32.subarray(Number($9), Number($10))) : [],
+                                 "w_is_const" : () JS_ARROW(!!HEAP8[Number($12)]),
                                  "activation" : UTF8ToString($13),
-                                 "activation_params" : $14 ? Array.from(HEAPF32.subarray($14, $15)) : []
+                                 "activation_params" : $14 ? Array.from(HEAPF32.subarray(Number($14), Number($15))) : []
                                }),
                                static_cast<int32_t>(conv_attrs_.auto_pad),
                                JSEP_HEAP32_INDEX_START(dilations),
                                JSEP_HEAP32_INDEX_END(dilations),
                                static_cast<int32_t>(conv_attrs_.group),
-                               JSEP_HEAP32_INDEX_START(kernel_shape),
-                               JSEP_HEAP32_INDEX_END(kernel_shape),
+                               JSEP_HEAP32_INDEX_START(kernel_shapes),
+                               JSEP_HEAP32_INDEX_END(kernel_shapes),
                                JSEP_HEAP32_INDEX_START(local_pads),
                                JSEP_HEAP32_INDEX_END(local_pads),
                                JSEP_HEAP32_INDEX_START(strides),

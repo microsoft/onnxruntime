@@ -54,8 +54,10 @@ class Block(ABC):
         output = self.build(*args, **kwargs)
 
         if accessor._GLOBAL_ACCESSOR.has_path:
+            # `save` will destructively access any external data
+            copied_model = copy.deepcopy(accessor._GLOBAL_ACCESSOR.model)
             onnx.save(
-                accessor._GLOBAL_ACCESSOR.model,
+                copied_model,
                 self.temp_onnx_file_path,
                 save_as_external_data=True,
                 all_tensors_to_one_file=True,

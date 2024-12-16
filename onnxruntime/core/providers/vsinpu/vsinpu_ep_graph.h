@@ -51,7 +51,7 @@ struct NodeIOInfo {
 
 class GraphEP {
  public:
-  explicit GraphEP(const GraphViewer& graph_viewer);
+  explicit GraphEP(const GraphViewer& graph_viewer, const logging::Logger& logger);
   ~GraphEP() {}
 
   bool Prepare();
@@ -104,6 +104,7 @@ class GraphEP {
   // In the form of {input_name, [NodeUnit(s) using the input]}
   std::unordered_map<std::string, std::vector<const NodeUnit*>> all_quantized_op_inputs_;
   const GraphViewer& graph_viewer_;
+  const logging::Logger& logger_;
 
   // Holder for the NodeUnits in the graph, this will guarantee the NodeUnits is
   // valid throughout the lifetime of the ModelBuilder

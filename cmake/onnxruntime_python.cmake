@@ -71,9 +71,7 @@ onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_p
 
 if(MSVC)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
-  if(onnxruntime_ENABLE_TRAINING)
-    target_compile_options(onnxruntime_pybind11_state PRIVATE "/bigobj")
-  endif()
+  target_compile_options(onnxruntime_pybind11_state PRIVATE "/bigobj")
 endif()
 if(HAS_CAST_FUNCTION_TYPE)
   target_compile_options(onnxruntime_pybind11_state PRIVATE "-Wno-cast-function-type")
@@ -112,15 +110,17 @@ if (onnxruntime_USE_NCCL)
 endif()
 
 if(APPLE)
-  set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker -exported_symbols_list -Xlinker ${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
+  target_link_options(onnxruntime_pybind11_state PRIVATE  "LINKER:-exported_symbols_list,${ONNXRUNTIME_ROOT}/python/exported_symbols.lst")
 elseif(UNIX)
   if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
-    set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/version_script_expose_onnx_protobuf.lds -Xlinker --gc-sections")
+    target_link_options(onnxruntime_pybind11_state PRIVATE  "LINKER:--version-script=${ONNXRUNTIME_ROOT}/python/version_script_expose_onnx_protobuf.lds" "LINKER:--gc-sections")
   else()
-    set(ONNXRUNTIME_SO_LINK_FLAG "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/python/version_script.lds -Xlinker --gc-sections")
+    if (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+      target_link_options(onnxruntime_pybind11_state PRIVATE  "LINKER:--version-script=${ONNXRUNTIME_ROOT}/python/version_script.lds" "LINKER:--gc-sections")
+    endif()
   endif()
 else()
-  set(ONNXRUNTIME_SO_LINK_FLAG "-DEF:${ONNXRUNTIME_ROOT}/python/pybind.def")
+  target_link_options(onnxruntime_pybind11_state PRIVATE  "-DEF:${ONNXRUNTIME_ROOT}/python/pybind.def")
 endif()
 
 if (onnxruntime_ENABLE_ATEN)
@@ -169,8 +169,8 @@ endif()
 target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
-    ${PROVIDERS_TVM}
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_VSINPU}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_COREML}
     ${PROVIDERS_RKNPU}
@@ -178,12 +178,13 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_XNNPACK}
+    ${PROVIDERS_WEBGPU}
     ${PROVIDERS_AZURE}
     ${PROVIDERS_QNN}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
-    ${onnxruntime_tvm_libs}
+    onnxruntime_lora
     onnxruntime_framework
     onnxruntime_util
     onnxruntime_graph
@@ -197,11 +198,11 @@ set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}
     ${pybind11_dep}
 )
-set_property(TARGET onnxruntime_pybind11_state APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})
+
 add_dependencies(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_dependencies})
 
 if (MSVC)
-  set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG}")
+  target_link_options(onnxruntime_pybind11_state PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})
   # if MSVC, pybind11 undefines _DEBUG in pybind11/detail/common.h, which causes the pragma in pyconfig.h
   # from the python installation to require the release version of the lib
   # e.g. from a python 3.10 install:
@@ -218,13 +219,16 @@ if (MSVC)
   # Explicitly use the release version of the python library to make the project file consistent with this.
   target_link_libraries(onnxruntime_pybind11_state PRIVATE ${Python_LIBRARY_RELEASE})
 elseif (APPLE)
-  set_target_properties(onnxruntime_pybind11_state PROPERTIES LINK_FLAGS "${ONNXRUNTIME_SO_LINK_FLAG} -Xlinker -undefined -Xlinker dynamic_lookup")
+  # The following flag no longer works
+  #target_link_options(onnxruntime_pybind11_state PRIVATE "LINKER:-undefined,dynamic_lookup")
   set_target_properties(onnxruntime_pybind11_state PROPERTIES
     INSTALL_RPATH "@loader_path"
     BUILD_WITH_INSTALL_RPATH TRUE
     INSTALL_RPATH_USE_LINK_PATH FALSE)
 else()
-  set_property(TARGET onnxruntime_pybind11_state APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker -rpath=\\$ORIGIN")
+  if (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+     target_link_options(onnxruntime_pybind11_state PRIVATE "LINKER:-rpath=\$ORIGIN")
+  endif()
 endif()
 
 if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
@@ -234,8 +238,8 @@ if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
   MATH(EXPR PROTOBUF_INDEX_NEXT "${PROTOBUF_INDEX} + 1")
   if (ONNX_INDEX GREATER_EQUAL 0 AND PROTOBUF_INDEX GREATER_EQUAL 0)
     # Expect protobuf to follow onnx due to dependence
-    list(INSERT  onnxruntime_CUSTOM_EXTERNAL_LIBRARIES ${ONNX_INDEX} "-Wl,--no-as-needed")
-    list(INSERT onnxruntime_CUSTOM_EXTERNAL_LIBRARIES ${PROTOBUF_INDEX_NEXT} "-Wl,--as-needed")
+    list(INSERT  onnxruntime_CUSTOM_EXTERNAL_LIBRARIES ${ONNX_INDEX} "LINKER:--no-as-needed")
+    list(INSERT onnxruntime_CUSTOM_EXTERNAL_LIBRARIES ${PROTOBUF_INDEX_NEXT} "LINKER:--as-needed")
   else()
     message(FATAL_ERROR "Required external libraries onnx and protobuf are not found in onnxruntime_EXTERNAL_LIBRARIES")
   endif()
@@ -472,6 +476,9 @@ file(GLOB onnxruntime_python_transformers_models_longformer_src CONFIGURE_DEPEND
 file(GLOB onnxruntime_python_transformers_models_phi2_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/phi2/*.py"
 )
+file(GLOB onnxruntime_python_transformers_models_sam2_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/sam2/*.py"
+)
 file(GLOB onnxruntime_python_transformers_models_stable_diffusion_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/stable_diffusion/*.py"
 )
@@ -543,6 +550,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/llama
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/longformer
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/phi2
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/sam2
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/stable_diffusion
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/t5
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/whisper
@@ -652,6 +660,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_transformers_models_phi2_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/phi2/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_transformers_models_sam2_src}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/sam2/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_transformers_models_stable_diffusion_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/stable_diffusion/
@@ -953,37 +964,6 @@ if (onnxruntime_USE_ROCM)
     )
 endif()
 
-if (onnxruntime_USE_TVM)
-  file(GLOB onnxruntime_python_providers_tvm_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/python/providers/tvm/*.py"
-  )
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/tvm
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_providers_tvm_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/tvm
-    COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:onnxruntime_providers_tvm>
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  )
-
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-      WORKING_DIRECTORY ${tvm_SOURCE_DIR}/python
-      COMMAND ${Python_EXECUTABLE} setup.py bdist_wheel
-    )
-
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${Python_EXECUTABLE}
-          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/tvm/extend_python_file.py
-          --target_file $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/_ld_preload.py
-  )
-
-endif()
-
 if (onnxruntime_USE_DML)
   if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
     set(dml_shared_lib_path ${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/${DML_SHARED_LIB})
@@ -1023,6 +1003,12 @@ if (onnxruntime_USE_QNN)
         ${QNN_LIB_FILES}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_qnn_ctx_gen>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
   if (EXISTS "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf")
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
@@ -1031,6 +1017,15 @@ if (onnxruntime_USE_QNN)
           $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
     )
   endif()
+endif()
+
+if (onnxruntime_USE_VSINPU)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_vsinpu>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
 endif()
 
 endif()

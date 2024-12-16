@@ -36,8 +36,6 @@ const MLFloat16 MLFloat16::NaN(MLFloat16::FromBits(MLFloat16::kPositiveQNaNBits)
 const MLFloat16 MLFloat16::NegativeNaN(MLFloat16::FromBits(MLFloat16::kNegativeQNaNBits));
 const MLFloat16 MLFloat16::Infinity(MLFloat16::FromBits(MLFloat16::kPositiveInfinityBits));
 const MLFloat16 MLFloat16::NegativeInfinity(MLFloat16::FromBits(MLFloat16::kNegativeInfinityBits));
-const MLFloat16 MLFloat16::Epsilon(MLFloat16::FromBits(MLFloat16::kEpsilonBits));
-const MLFloat16 MLFloat16::MinValue(MLFloat16::FromBits(MLFloat16::kMinValueBits));
 const MLFloat16 MLFloat16::MaxValue(MLFloat16::FromBits(MLFloat16::kMaxValueBits));
 const MLFloat16 MLFloat16::Zero(MLFloat16::FromBits(0));
 const MLFloat16 MLFloat16::One(MLFloat16::FromBits(MLFloat16::kOneBits));
@@ -47,8 +45,6 @@ const BFloat16 BFloat16::NaN(BFloat16::FromBits(BFloat16::kPositiveQNaNBits));
 const BFloat16 BFloat16::NegativeNaN(BFloat16::FromBits(BFloat16::kNegativeQNaNBits));
 const BFloat16 BFloat16::Infinity(BFloat16::FromBits(BFloat16::kPositiveInfinityBits));
 const BFloat16 BFloat16::NegativeInfinity(BFloat16::FromBits(BFloat16::kNegativeInfinityBits));
-const BFloat16 BFloat16::Epsilon(BFloat16::FromBits(BFloat16::kEpsilonBits));
-const BFloat16 BFloat16::MinValue(BFloat16::FromBits(BFloat16::kMinValueBits));
 const BFloat16 BFloat16::MaxValue(BFloat16::FromBits(BFloat16::kMaxValueBits));
 const BFloat16 BFloat16::Zero(BFloat16::FromBits(0));
 const BFloat16 BFloat16::One(BFloat16::FromBits(BFloat16::kOneBits));

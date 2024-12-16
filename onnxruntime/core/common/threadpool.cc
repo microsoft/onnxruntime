@@ -21,9 +21,10 @@ limitations under the License.
 #include "core/common/cpuid_info.h"
 #include "core/common/eigen_common_wrapper.h"
 #include "core/platform/EigenNonBlockingThreadPool.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #if !defined(ORT_MINIMAL_BUILD)
 #ifdef _WIN32
+#include <Windows.h>
 #include "processthreadsapi.h"
 #include <codecvt>
 #include <locale>

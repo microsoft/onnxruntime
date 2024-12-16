@@ -55,7 +55,7 @@ class QDQGather(QDQOperatorBase):
 
     def quantize(self):
         node = self.node
-        assert node.op_type == "Gather"
+        assert node.op_type == "Gather" or node.op_type == "GatherElements"
 
         if self.quantizer.is_valid_quantize_weight(node.input[0]) or self.quantizer.force_quantize_no_input_check:
             self.quantizer.quantize_activation_tensor(node.input[0])

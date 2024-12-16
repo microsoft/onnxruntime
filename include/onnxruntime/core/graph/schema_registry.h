@@ -12,7 +12,6 @@
 #include "core/graph/constants.h"
 #include "core/common/common.h"
 #include "core/common/status.h"
-#include "core/platform/ort_mutex.h"
 
 namespace onnxruntime {
 using OpName_Domain_Version_Schema_Map = std::unordered_map<
@@ -102,7 +101,7 @@ class OnnxRuntimeOpSchemaRegistry : public IOnnxRuntimeOpSchemaCollection {
 
   common::Status RegisterOpSchemaInternal(ONNX_NAMESPACE::OpSchema&& op_schema);
 
-  OrtMutex mutex_;
+  std::mutex mutex_;
 
   OpName_Domain_Version_Schema_Map map_;
   DomainToVersionRangeMap domain_version_range_map_;

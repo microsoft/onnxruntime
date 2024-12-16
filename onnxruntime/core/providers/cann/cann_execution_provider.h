@@ -12,7 +12,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/providers/cann/cann_execution_provider_info.h"
 #include "core/providers/cann/cann_inc.h"
 #include "core/providers/cann/cann_utils.h"

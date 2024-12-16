@@ -7,7 +7,7 @@
     "type": "git"
   },
   "author": "fs-eire",
-  "version": "1.20.0",
+  "version": "1.21.0",
   "jsdelivr": "dist/ort.min.js",
   "dependencies": {
     "flatbuffers": "^1.12.0",
@@ -23,7 +23,6 @@
     "build:doc": "node ./script/generate-webgl-operator-md && node ./script/generate-webgpu-operator-md",
     "pull:wasm": "node ./script/pull-prebuilt-wasm-artifacts",
     "test:e2e": "node ./test/e2e/run",
-    "test:training:e2e": "node ./test/training/e2e/run",
     "prebuild": "tsc -p . --noEmit && tsc -p lib/wasm/proxy-worker --noEmit",
     "build": "node ./script/build",
     "test": "tsc --build ../scripts && node ../scripts/prepare-onnx-node-tests && node ./script/test-runner-cli",
@@ -36,6 +35,7 @@
   ],
   "devDependencies": {
     "@chiragrupani/karma-chromium-edge-launcher": "^2.2.2",
+    "@petamoriken/float16": "^3.8.7",
     "@types/chai": "^4.3.4",
     "@types/emscripten": "^1.39.6",
     "@types/flatbuffers": "^1.10.0",
@@ -78,33 +78,23 @@
       "types": "./types.d.ts"
     },
     "./all": {
-      "node": null,
       "import": "./dist/ort.all.bundle.min.mjs",
       "require": "./dist/ort.all.min.js",
       "types": "./types.d.ts"
     },
     "./wasm": {
-      "node": null,
-      "import": "./dist/ort.wasm.min.mjs",
+      "import": "./dist/ort.wasm.bundle.min.mjs",
       "require": "./dist/ort.wasm.min.js",
       "types": "./types.d.ts"
     },
     "./webgl": {
-      "node": null,
       "import": "./dist/ort.webgl.min.mjs",
       "require": "./dist/ort.webgl.min.js",
       "types": "./types.d.ts"
     },
     "./webgpu": {
-      "node": null,
       "import": "./dist/ort.webgpu.bundle.min.mjs",
       "require": "./dist/ort.webgpu.min.js",
-      "types": "./types.d.ts"
-    },
-    "./training": {
-      "node": null,
-      "import": "./dist/ort.training.wasm.min.mjs",
-      "require": "./dist/ort.training.wasm.min.js",
       "types": "./types.d.ts"
     }
   },

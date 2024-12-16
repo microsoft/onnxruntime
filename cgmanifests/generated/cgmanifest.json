@@ -36,7 +36,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "f46495ea96f68fc3f6c394f099b2992743f6ff7f",
+          "commitHash": "4447c7562e3bc702ade25105912dce503f0c4010",
           "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
         },
         "comments": "abseil_cpp"
@@ -126,16 +126,6 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "13de152c2a1cd73ff4df97bd2c406b6d15d34af3",
-          "repositoryUrl": "https://github.com/google/nsync.git"
-        },
-        "comments": "google_nsync"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
           "commitHash": "e39786088138f2749d64e9e90e0f9902daa77c40",
           "repositoryUrl": "https://github.com/google/googletest.git"
         },
@@ -146,7 +136,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "0da379fc4808f9601faef392352018c741c0f297",
+          "commitHash": "309b75c9e56e0a674bf78d59872ce131f814dfb6",
           "repositoryUrl": "https://github.com/google/XNNPACK.git"
         },
         "comments": "googlexnnpack"
@@ -206,17 +196,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "150e7527d5286ddd3a995c228dedf8d76a7a86bc",
-          "repositoryUrl": "https://github.com/intel/neural-speed.git"
-        },
-        "comments": "neural_speed"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "f161f95883b4ebd8cb789de5efc67b73c0a6e694",
+          "commitHash": "bc0d2e35909b8456abe32f3b30a49bb0c125e8b7",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "onnx_tensorrt"
@@ -306,7 +286,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "7d49e6c7e2f8896c47f586706e67e1fb215529dc",
+          "commitHash": "f7b19de32c5d1f3cedfc735c2849f12b537522ee",
           "repositoryUrl": "https://github.com/NVIDIA/cutlass.git"
         },
         "comments": "cutlass"
@@ -356,10 +336,20 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "98ca4e1941fe3263f128f74f10063a3ea35c7019",
+          "commitHash": "de355c7094af70467f2b264f531ab5c5f4401c42",
           "repositoryUrl": "https://github.com/NVIDIA/cudnn-frontend.git"
         },
         "comments": "cudnn_frontend"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "12a3b24c456cebd9fd11f23ac0164f78129b00c6",
+          "repositoryUrl": "https://github.com/google/dawn.git"
+        },
+        "comments": "dawn"
       }
     }
   ]

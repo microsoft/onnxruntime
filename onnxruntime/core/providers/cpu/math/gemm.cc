@@ -154,6 +154,14 @@ void Gemm<T>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans_b,
   // Broadcast the bias as needed if bias is given
   GemmBroadcastBias(M, N, beta, c_data, c_shape, y_data);
 
+  if (K == 0) {
+    if (beta == 0 || c_data == nullptr) {
+      EigenMatrixMapRowMajor<T> dest(y_data, narrow<Eigen::Index>(M), narrow<Eigen::Index>(N));
+      dest.setZero();
+    }
+    return;
+  }
+
   math::Gemm<T>(trans_a, trans_b,
                 M, N, K,
                 alpha,
@@ -179,16 +187,18 @@ void Gemm<MLFloat16>::ComputeGemm(CBLAS_TRANSPOSE trans_a, CBLAS_TRANSPOSE trans
   if (M == 0 || N == 0)
     return;
 
-#if defined(__GNUC__) && defined(HAS_CLASS_MEMACCESS)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wclass-memaccess"
-#endif
-  // MLFloat16's constructor is explicit, so here we need to use memset
+  if (K == 0) {
+    if (beta != onnxruntime::MLFloat16::Zero && c_data != nullptr) {
+      GemmBroadcastBias(M, N, beta, c_data, c_shape, y_data);
+    } else {
+      auto output_span = gsl::make_span(y_data, SafeInt<size_t>(M) * N);
+      std::fill(output_span.begin(), output_span.end(), onnxruntime::MLFloat16::Zero);
+    }
+    return;
+  }
+
   if (c_data == nullptr)
-    memset(&beta, 0, sizeof(MLFloat16));
-#if defined(__GNUC__) && defined(HAS_CLASS_MEMACCESS)
-#pragma GCC diagnostic pop
-#endif
+    beta = onnxruntime::MLFloat16::Zero;
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED
   bool support_mlas = false;
   if (c_shape == nullptr) {
@@ -413,19 +423,24 @@ Status Gemm<float>::Compute(OpKernelContext* context) const {
                 c_data, c_shape, y_data, thread_pool);
   } else {
     GemmBroadcastBias(M, N, beta_, c_data, c_shape, y_data);
-    MlasGemm(
-        trans_A_,
-        static_cast<size_t>(M),
-        static_cast<size_t>(N),
-        static_cast<size_t>(K),
-        alpha_,
-        A->Data<float>(),
-        static_cast<size_t>(trans_A_ != CblasNoTrans ? M : K),
-        packed_b_.get(),
-        c_data != nullptr ? beta_ : 0.0f,
-        y_data,
-        static_cast<size_t>(N),
-        thread_pool);
+    if (K > 0) {
+      MlasGemm(
+          trans_A_,
+          static_cast<size_t>(M),
+          static_cast<size_t>(N),
+          static_cast<size_t>(K),
+          alpha_,
+          A->Data<float>(),
+          static_cast<size_t>(trans_A_ != CblasNoTrans ? M : K),
+          packed_b_.get(),
+          c_data != nullptr ? beta_ : 0.0f,
+          y_data,
+          static_cast<size_t>(N),
+          thread_pool);
+    } else if (beta_ == 0 || c_data == nullptr) {
+      EigenMatrixMapRowMajor<float> dest(y_data, narrow<Eigen::Index>(M), narrow<Eigen::Index>(N));
+      dest.setZero();
+    }
   }
 
   ComputeActivation(y_data, SafeInt<size_t>(M) * N, thread_pool);

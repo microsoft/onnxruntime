@@ -58,6 +58,15 @@ stages:
         showWarnings: true
         workingDirectory: '$(Build.BinariesDirectory)\java-artifact'
 
+    - template: ../templates/jar-esrp-dll.yml
+      parameters:
+        JarFileDirectory: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+        JarFileName: 'onnxruntime_gpu-$(OnnxRuntimeVersion).jar'
+
+    - template: ../templates/jar-maven-signing-win.yml
+      parameters:
+        JarFileDirectory: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
+
     - task: CopyFiles@2
       displayName: 'Copy Java Files to Artifact Staging Directory'
       inputs:
@@ -139,9 +148,9 @@ stages:
       value: false
     - name: docker_base_image
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
-        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20240531.1
+        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241120.3
       ${{ if eq(parameters.CudaVersion, '12.2') }}:
-        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20240719.1
+        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20241120.3
     timeoutInMinutes: 60
 
     steps:

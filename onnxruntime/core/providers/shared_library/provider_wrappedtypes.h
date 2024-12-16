@@ -114,6 +114,7 @@ struct AttributeProto final {
   float f() const { return g_host->AttributeProto__f(this); }
   const ONNX_NAMESPACE::TensorProto& t() const { return g_host->AttributeProto__t(this); }
   void set_s(const ::std::string& value) { return g_host->AttributeProto__set_s(this, value); }
+  void set_s(::std::string&& value) { return g_host->AttributeProto__set_s(this, ::std::move(value)); }
   void set_f(const float& value) { return g_host->AttributeProto__set_f(this, value); }
   void set_i(int64_t value) { return g_host->AttributeProto__set_i(this, value); }
   void set_t(const TensorProto& value) { return g_host->AttributeProto__set_t(this, value); }
@@ -121,6 +122,7 @@ struct AttributeProto final {
   void set_name(const ::std::string& value) { return g_host->AttributeProto__set_name(this, value); }
   void set_type(AttributeProto_AttributeType value) { return g_host->AttributeProto__set_type(this, value); }
   TensorProto* add_tensors() { return g_host->AttributeProto__add_tensors(this); }
+  std::string* release_s() { return g_host->AttributeProto__release_s(this); }
 
   typedef AttributeProto_AttributeType AttributeType;
   static constexpr AttributeType UNDEFINED = AttributeProto_AttributeType_UNDEFINED;
@@ -451,6 +453,15 @@ struct FunctionProto final {
   FunctionProto(const FunctionProto&) = delete;
   void operator=(const FunctionProto&) = delete;
 };
+
+struct OpSchema final {
+  const TypeConstraintMap& typeConstraintMap() const { return g_host->OpSchema__typeConstraintMap(this); }
+  const std::string& inputs__GetName(const size_t i) const { return g_host->OpSchema__inputs__GetName(this, i); };
+  const std::string& inputs__GetTypeStr(const size_t i) const { return g_host->OpSchema__inputs__GetTypeStr(this, i); };
+  const std::string& outputs__GetName(const size_t i) const { return g_host->OpSchema__outputs__GetName(this, i); };
+  const std::string& outputs__GetTypeStr(const size_t i) const { return g_host->OpSchema__outputs__GetTypeStr(this, i); };
+  PROVIDER_DISALLOW_ALL(OpSchema)
+};
 }  // namespace ONNX_NAMESPACE
 
 namespace onnxruntime {
@@ -473,6 +484,10 @@ struct DataTypeUtils final {
 struct ConfigOptions final {
   std::optional<std::string> GetConfigEntry(const std::string& config_key) const {
     return g_host->ConfigOptions__GetConfigEntry(this, config_key);
+  }
+
+  std::string GetConfigOrDefault(const std::string& config_key, const std::string& default_value) const {
+    return g_host->ConfigOptions__GetConfigOrDefault(this, config_key, default_value);
   }
 
   PROVIDER_DISALLOW_ALL(ConfigOptions)
@@ -702,6 +717,7 @@ class DataTypeImpl final {
 #endif
 
   static MLDataType GetTypeFromOnnxType(int);
+  static MLDataType GetTensorTypeFromOnnxType(int);
 
   bool IsTensorType() const { return g_host->DataTypeImpl__IsTensorType(this); }
   bool IsTensorSequenceType() const { return g_host->DataTypeImpl__IsTensorSequenceType(this); }
@@ -862,6 +878,7 @@ struct NodeAttributes final {
   IteratorHolder<NodeAttributes_Iterator, std::pair<const std::string, ONNX_NAMESPACE::AttributeProto>> find(const std::string& key) const { return g_host->NodeAttributes__find(this, key); }
   void insert(const NodeAttributes& v) { return g_host->NodeAttributes__insert(this, v); }
   void emplace(const std::string& k, const ONNX_NAMESPACE::AttributeProto& v) { g_host->NodeAttributes__emplace(this, k, v); }
+  void emplace(const std::string& k, ONNX_NAMESPACE::AttributeProto&& v) { g_host->NodeAttributes__emplace(this, k, std::move(v)); }
   void insert_or_assign(const std::string& k, const ONNX_NAMESPACE::AttributeProto& v) { g_host->NodeAttributes__insert_or_assign(this, k, v); }
 
   void reserve(size_t size) { g_host->NodeAttributes__reserve(this, size); }
@@ -943,10 +960,11 @@ struct Graph final {
   NodeArg& GetOrCreateNodeArg(const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) { return g_host->Graph__GetOrCreateNodeArg(this, name, p_arg_type); }
   void AddOuterScopeNodeArg(const std::string& name) { g_host->Graph__AddOuterScopeNodeArg(this, name); }
   void SetInputs(gsl::span<const NodeArg* const> inputs) { g_host->Graph__SetInputs(this, inputs); }
-
+  const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept { return g_host->Graph__DomainToVersionMap(this); }
   Status Resolve() { return g_host->Graph__Resolve(this); }
   void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor) { return g_host->Graph__AddInitializedTensor(this, tensor); }
   Node& AddNode(const std::string& name, const std::string& op_type, const std::string& description, gsl::span<NodeArg* const> input_args, gsl::span<NodeArg* const> output_args, const NodeAttributes* attributes, const std::string& domain) { return g_host->Graph__AddNode(this, name, op_type, description, input_args, output_args, attributes, domain); }
+  Node& AddNode(const std::string& name, const std::string& op_type, const std::string& description, gsl::span<NodeArg* const> input_args, gsl::span<NodeArg* const> output_args, NodeAttributes&& attributes, const std::string& domain) { return g_host->Graph__AddNode(this, name, op_type, description, input_args, output_args, std::move(attributes), domain); }
   Node& AddNode(const Node& other) { return g_host->Graph__AddNode(this, other); }
 
   const std::vector<const NodeArg*>& GetOutputs() const noexcept { return g_host->Graph__GetOutputs(this); }
@@ -1000,15 +1018,18 @@ struct Graph final {
   Node* GetNode(NodeIndex node_index) noexcept { return g_host->Graph__GetNode(this, node_index); }
   const NodeArg* GetNodeArg(const std::string& name) const { return g_host->Graph__GetNodeArg(this, name); }
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const { return g_host->Graph__GetSchemaRegistry(this); }
+  bool SetOpSchemaFromRegistryForNode(Node& node) { return g_host->Graph__SetOpSchemaFromRegistryForNode(this, node); }
 
   PROVIDER_DISALLOW_ALL(Graph)
 };
+
+using ModelMetaData = std::unordered_map<std::string, std::string>;
 
 class GraphViewer final {
  public:
   static void operator delete(void* p) { g_host->GraphViewer__operator_delete(reinterpret_cast<GraphViewer*>(p)); }
 
-  std::unique_ptr<Model> CreateModel(const logging::Logger& logger) const { return g_host->GraphViewer__CreateModel(this, logger); }
+  std::unique_ptr<Model> CreateModel(const logging::Logger& logger, const ModelMetaData& metadata = ModelMetaData()) const { return g_host->GraphViewer__CreateModel(this, logger, metadata); }
 
   const std::string& Name() const noexcept { return g_host->GraphViewer__Name(this); }
   const std::filesystem::path& ModelPath() const noexcept { return g_host->GraphViewer__ModelPath(this); }
@@ -1050,6 +1071,7 @@ class GraphViewer final {
     g_host->GraphViewer__ToProto(this, graph_proto, include_initializers, include_outer_scope_args, execution_order);
   }
   const Node* GetProducerNode(const std::string& node_arg_name) const { return g_host->GraphViewer__GetProducerNode(this, node_arg_name); }
+  IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const { return g_host->GraphViewer__GetSchemaRegistry(this); }
 
   GraphViewer() = delete;
   GraphViewer(const GraphViewer&) = delete;
@@ -1279,6 +1301,10 @@ struct Tensor final {
 template <>
 inline bool Tensor::IsDataType<bool>() const { return g_host->Tensor__IsDataType_bool(this); }
 template <>
+inline bool Tensor::IsDataType<Int4x2>() const { return g_host->Tensor__IsDataType_Int4x2(this); }
+template <>
+inline bool Tensor::IsDataType<UInt4x2>() const { return g_host->Tensor__IsDataType_UInt4x2(this); }
+template <>
 inline bool Tensor::IsDataType<int8_t>() const { return g_host->Tensor__IsDataType_int8(this); }
 template <>
 inline bool Tensor::IsDataType<uint8_t>() const { return g_host->Tensor__IsDataType_uint8(this); }
@@ -1317,6 +1343,10 @@ inline bool Tensor::IsDataType<Float8E5M2FNUZ>() const { return g_host->Tensor__
 template <>
 inline bool* Tensor::MutableData<bool>() { return g_host->Tensor__MutableData_bool(this); }
 template <>
+inline Int4x2* Tensor::MutableData<Int4x2>() { return g_host->Tensor__MutableData_Int4x2(this); }
+template <>
+inline UInt4x2* Tensor::MutableData<UInt4x2>() { return g_host->Tensor__MutableData_UInt4x2(this); }
+template <>
 inline int8_t* Tensor::MutableData<int8_t>() { return g_host->Tensor__MutableData_int8(this); }
 template <>
 inline uint8_t* Tensor::MutableData<uint8_t>() { return g_host->Tensor__MutableData_uint8(this); }
@@ -1354,6 +1384,10 @@ inline Float8E5M2FNUZ* Tensor::MutableData<Float8E5M2FNUZ>() { return g_host->Te
 
 template <>
 inline const bool* Tensor::Data<bool>() const { return g_host->Tensor__Data_bool(this); }
+template <>
+inline const Int4x2* Tensor::Data<Int4x2>() const { return g_host->Tensor__Data_Int4x2(this); }
+template <>
+inline const UInt4x2* Tensor::Data<UInt4x2>() const { return g_host->Tensor__Data_UInt4x2(this); }
 template <>
 inline const int8_t* Tensor::Data<int8_t>() const { return g_host->Tensor__Data_int8(this); }
 template <>
@@ -1429,4 +1463,11 @@ struct OrtRunOptions final {
     return onnxruntime::g_host->RunOptions__GetConfigOptions(this);
   }
   PROVIDER_DISALLOW_ALL(OrtRunOptions)
+};
+
+struct OrtSessionOptions final {
+  const std::unordered_map<std::string, std::string>& GetConfigOptions() const {
+    return onnxruntime::g_host->SessionOptions__GetConfigOptionsMap(this);
+  }
+  PROVIDER_DISALLOW_ALL(OrtSessionOptions)
 };

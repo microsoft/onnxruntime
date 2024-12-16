@@ -103,6 +103,15 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
   if (y->Shape().Size() == 0)
     return Status::OK();
 
+  if (helper.K() == 0) {
+    // When we have (M, 0, N) then the inputs are empty, but the output should
+    // be filled out with zeros.
+    EigenMatrixMapRowMajor<T> dest(y->MutableData<T>(),
+                                   narrow<Eigen::Index>(helper.M()), narrow<Eigen::Index>(helper.N()));
+    dest.setZero();
+    return Status::OK();
+  }
+
   // Using DataRaw as int32_t/uint32_t and int64_t/uint64_t share a common
   // operator body.
   const auto* a_data = reinterpret_cast<const T*>(a->DataRaw());
@@ -229,6 +238,15 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
   // Bail out early if the output is going to be empty
   if (y->Shape().Size() == 0)
     return Status::OK();
+
+  if (helper.K() == 0) {
+    // When we have (M, 0, N) then the inputs are empty, but the output should
+    // be filled out with zeros.
+    EigenMatrixMapRowMajor<float> dest(y->MutableData<float>(),
+                                       narrow<Eigen::Index>(helper.M()), narrow<Eigen::Index>(helper.N()));
+    dest.setZero();
+    return Status::OK();
+  }
 
   const auto* a_data = a->Data<float>();
   const auto* b_data = b ? b->Data<float>() : nullptr;

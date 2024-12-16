@@ -420,6 +420,7 @@ bool SetEpsForAllNodes(Graph& graph,
       continue;
 
     bool found = false;
+    const auto& logger = DefaultLoggingManager().DefaultLogger();
 
     for (const auto& ep : execution_providers) {
       auto provider_type = ep->Type();
@@ -438,7 +439,8 @@ bool SetEpsForAllNodes(Graph& graph,
       }
 
       // Check the EP has an impl for the node from builtin registry.
-      if (KernelRegistry::HasImplementationOf(*ep->GetKernelRegistry(), node, ep->Type(), kernel_type_str_resolver)) {
+      if (KernelRegistry::HasImplementationOf(*ep->GetKernelRegistry(), node, ep->Type(), kernel_type_str_resolver,
+                                              logger)) {
         found = true;
         break;
       }
@@ -451,6 +453,7 @@ bool SetEpsForAllNodes(Graph& graph,
                                                              std::string_view(kMSInternalNHWCDomain),
                                                              node.SinceVersion(),
                                                              type_constraint_map,
+                                                             logger,
                                                              &kci);
         if (status.IsOK() && kci != nullptr) {
           found = true;
@@ -463,7 +466,7 @@ bool SetEpsForAllNodes(Graph& graph,
           std::any_of(custom_registries->cbegin(), custom_registries->cend(),
                       [&](auto reg) {
                         return KernelRegistry::HasImplementationOf(*reg->GetKernelRegistry(), node, ep->Type(),
-                                                                   kernel_type_str_resolver);
+                                                                   kernel_type_str_resolver, logger);
                       })) {
         found = true;
         break;
@@ -528,6 +531,17 @@ void BaseTester::Run(ExpectResult expect_result, const std::string& expected_fai
   so.execution_mode = execution_mode;
   so.use_deterministic_compute = use_determinism_;
   so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
+
+  // remove nullptr in execution_providers.
+  // it's a little ugly but we need to do this because DefaultXXXExecutionProvider() can return nullptr in Runtime.
+  // And there're many places adding DefaultXXXExecutionProvider() to execution_providers directly.
+  if (execution_providers != nullptr) {
+    execution_providers->erase(std::remove(execution_providers->begin(), execution_providers->end(), nullptr), execution_providers->end());
+    if (execution_providers->size() == 0) {
+      // In fact, no ep is needed to run
+      return;
+    }
+  }
 
   Run(so, expect_result, expected_failure_string, excluded_provider_types, run_options, execution_providers, options);
 }
@@ -657,6 +671,7 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           kQnnExecutionProvider,
           kSnpeExecutionProvider,
           kXnnpackExecutionProvider,
+          kWebGpuExecutionProvider,
       };
 
       // need to special case any synthetic EP names in the exclude list
@@ -712,6 +727,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultXnnpackExecutionProvider();
         else if (provider_type == onnxruntime::kDmlExecutionProvider)
           execution_provider = DefaultDmlExecutionProvider();
+        else if (provider_type == onnxruntime::kWebGpuExecutionProvider)
+          execution_provider = DefaultWebGpuExecutionProvider();
 
         // skip if execution provider is disabled
         if (execution_provider == nullptr)

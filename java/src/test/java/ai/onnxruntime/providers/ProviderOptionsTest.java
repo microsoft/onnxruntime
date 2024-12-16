@@ -27,13 +27,15 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledIfSystemProperty;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
 
 public class ProviderOptionsTest {
-  private static final OrtEnvironment env = OrtEnvironment.getEnvironment();
+  private static final OrtEnvironment env = TestHelpers.getOrtEnvironment();
 
   @Test
   @EnabledIfSystemProperty(named = "USE_CUDA", matches = "1")
+  @DisabledIfSystemProperty(named = "NO_CUDA_TEST", matches = "1")
   public void testCUDAOptions() throws OrtException {
     // Test standard options
     OrtCUDAProviderOptions cudaOpts = new OrtCUDAProviderOptions(0);
@@ -61,6 +63,7 @@ public class ProviderOptionsTest {
 
   @Test
   @EnabledIfSystemProperty(named = "USE_TENSORRT", matches = "1")
+  @DisabledIfSystemProperty(named = "NO_CUDA_TEST", matches = "1")
   public void testTensorRT() throws OrtException {
     // Test standard options
     OrtTensorRTProviderOptions rtOpts = new OrtTensorRTProviderOptions(0);

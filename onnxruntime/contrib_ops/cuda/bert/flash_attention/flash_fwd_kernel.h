@@ -34,7 +34,7 @@ using namespace cute;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template <typename Kernel_traits, bool Is_causal, bool Is_local, bool Has_alibi, bool Is_even_MN, bool Is_even_K, bool Return_softmax, typename Params>
+template <typename Kernel_traits, bool Is_causal, bool Is_local, bool Has_alibi, bool Is_even_MN, bool Is_even_K, bool Is_softcap, bool Return_softmax, typename Params>
 inline __device__ void compute_attn_1rowblock(const Params& params, const int bidb, const int bidh, const int m_block) {
   using Element = typename Kernel_traits::Element;
   using ElementAccum = typename Kernel_traits::ElementAccum;
@@ -98,7 +98,7 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
       for (int m = 0; m < size<1>(tOgO); ++m) {
         const int row = get<0>(tOcO(0, m, 0));
         if (row < binfo.actual_seqlen_q - m_block * kBlockM && get<1>(tOcO(0, m, 0)) == 0) {
-          gLSE(row) = INFINITY;
+          gLSE(row) = std::numeric_limits<ElementAccum>::infinity();
         }
       }
       return;
@@ -278,6 +278,9 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
         acc_s, tSrQ, tSrK, tSsQ, tSsK, tiled_mma, smem_tiled_copy_Q, smem_tiled_copy_K,
         smem_thr_copy_Q, smem_thr_copy_K);
     // if (cute::thread0()) { print(acc_s); }
+    if constexpr (Is_softcap) {
+      flash::apply_softcap(acc_s, params.softcap);
+    }
 
     mask.template apply_mask<Is_causal, Is_even_MN>(
         acc_s, n_block * kBlockN, m_block * kBlockM + (tidx / 32) * 16 + (tidx % 32) / 4, kNWarps * 16);
@@ -322,6 +325,9 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
     flash::gemm</*A_in_regs=*/Kernel_traits::Is_Q_in_regs>(
         acc_s, tSrQ, tSrK, tSsQ, tSsK, tiled_mma, smem_tiled_copy_Q, smem_tiled_copy_K,
         smem_thr_copy_Q, smem_thr_copy_K);
+    if constexpr (Is_softcap) {
+      flash::apply_softcap(acc_s, params.softcap);
+    }
 
     flash::cp_async_wait<0>();
     __syncthreads();
@@ -346,7 +352,7 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
 
   // Epilogue
 
-  Tensor lse = softmax.template normalize_softmax_lse<>(acc_o, params.scale_softmax);
+  Tensor lse = softmax.template normalize_softmax_lse<>(acc_o, params.scale_softmax, params.smooth_softmax);
 
   // Convert acc_o from fp32 to fp16/bf16
   Tensor rO = flash::convert_type<Element>(acc_o);
@@ -418,7 +424,7 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template <typename Kernel_traits, bool Is_causal, bool Is_local, bool Has_alibi, bool Is_even_MN, bool Is_even_K, bool Split, bool Append_KV, typename Params>
+template <typename Kernel_traits, bool Is_causal, bool Is_local, bool Has_alibi, bool Is_even_MN, bool Is_even_K, bool Is_softcap, bool Split, bool Append_KV, typename Params>
 inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, const int bidb, const int bidh,
                                                       const int m_block, const int n_split_idx,
                                                       const int num_n_splits) {
@@ -493,7 +499,7 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
     for (int m = 0; m < size<1>(tOgOaccum); ++m) {
       const int row = get<0>(tOcO(0, m, 0));
       if (row < binfo.actual_seqlen_q - m_block * kBlockM && get<1>(tOcO(0, m, 0)) == 0) {
-        gLSEaccum(row) = Split ? -INFINITY : INFINITY;
+        gLSEaccum(row) = Split ? -std::numeric_limits<ElementAccum>::infinity() : std::numeric_limits<ElementAccum>::infinity();
       }
     }
     return;
@@ -799,6 +805,9 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
         acc_s, tSrQ, tSrK, tSsQ, tSsK, tiled_mma, smem_tiled_copy_Q, smem_tiled_copy_K,
         smem_thr_copy_Q, smem_thr_copy_K);
     // if (cute::thread0()) { print(acc_s); }
+    if constexpr (Is_softcap) {
+      flash::apply_softcap(acc_s, params.softcap);
+    }
 
     mask.template apply_mask<Is_causal, Is_even_MN>(
         acc_s, n_block * kBlockN, m_block * kBlockM + (tidx / 32) * 16 + (tidx % 32) / 4, kNWarps * 16);
@@ -868,6 +877,9 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
     flash::gemm(
         acc_s, tSrQ, tSrK, tSsQ, tSsK, tiled_mma, smem_tiled_copy_Q, smem_tiled_copy_K,
         smem_thr_copy_Q, smem_thr_copy_K);
+    if constexpr (Is_softcap) {
+      flash::apply_softcap(acc_s, params.softcap);
+    }
 
     flash::cp_async_wait<0>();
     __syncthreads();
@@ -902,7 +914,7 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
 
   // Epilogue
 
-  Tensor lse = softmax.template normalize_softmax_lse<Split>(acc_o, params.scale_softmax);
+  Tensor lse = softmax.template normalize_softmax_lse<Split>(acc_o, params.scale_softmax, params.smooth_softmax);
 
   Tensor sOaccum = make_tensor(make_smem_ptr(reinterpret_cast<ElementO*>(smem_)), typename Kernel_traits::SmemLayoutO{});  // (SMEM_M,SMEM_N)
   // Partition sO to match the accumulator partitioning
@@ -979,7 +991,7 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template <typename Kernel_traits, bool Is_causal, bool Is_local, bool Has_alibi, bool Is_even_MN, bool Is_even_K, bool Return_softmax, typename Params>
+template <typename Kernel_traits, bool Is_causal, bool Is_local, bool Has_alibi, bool Is_even_MN, bool Is_even_K, bool Is_softcap, bool Return_softmax, typename Params>
 inline __device__ void compute_attn(const Params& params) {
   const int m_block = blockIdx.x;
   // The block index for the batch.
@@ -995,12 +1007,12 @@ inline __device__ void compute_attn(const Params& params) {
   // the attention matrix. This way, as long as we have the batch, head, and the location of
   // the 16 x 32 block within the attention matrix, we can generate the exact same dropout pattern.
 
-  flash::compute_attn_1rowblock<Kernel_traits, Is_causal, Is_local, Has_alibi, Is_even_MN, Is_even_K, Return_softmax>(params, bidb, bidh, m_block);
+  flash::compute_attn_1rowblock<Kernel_traits, Is_causal, Is_local, Has_alibi, Is_even_MN, Is_even_K, Is_softcap, Return_softmax>(params, bidb, bidh, m_block);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
-template <typename Kernel_traits, bool Is_causal, bool Is_local, bool Has_alibi, bool Is_even_MN, bool Is_even_K, bool Split, bool Append_KV, typename Params>
+template <typename Kernel_traits, bool Is_causal, bool Is_local, bool Has_alibi, bool Is_even_MN, bool Is_even_K, bool Is_softcap, bool Split, bool Append_KV, typename Params>
 inline __device__ void compute_attn_splitkv(const Params& params) {
   const int m_block = blockIdx.x;
   // The block index for the batch.
@@ -1009,7 +1021,7 @@ inline __device__ void compute_attn_splitkv(const Params& params) {
   const int bidh = Split ? blockIdx.z - bidb * params.h : blockIdx.z;
   const int n_split_idx = Split ? blockIdx.y : 0;
   const int num_n_splits = Split ? gridDim.y : 1;
-  flash::compute_attn_1rowblock_splitkv<Kernel_traits, Is_causal, Is_local, Has_alibi, Is_even_MN, Is_even_K, Split, Append_KV>(params, bidb, bidh, m_block, n_split_idx, num_n_splits);
+  flash::compute_attn_1rowblock_splitkv<Kernel_traits, Is_causal, Is_local, Has_alibi, Is_even_MN, Is_even_K, Is_softcap, Split, Append_KV>(params, bidb, bidh, m_block, n_split_idx, num_n_splits);
 }
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -1049,7 +1061,7 @@ inline __device__ void combine_attn_seqk_parallel(const Params& params) {
   for (int l = 0; l < kNLsePerThread; ++l) {
     const int row = l * kRowsPerLoadLSE + tidx / kBlockM;
     const int col = tidx % kBlockM;
-    ElementAccum lse = (row < params.num_splits && col < params.b * params.h * params.seqlen_q - bidx * kBlockM) ? gLSEaccum(row, col) : -INFINITY;
+    ElementAccum lse = (row < params.num_splits && col < params.b * params.h * params.seqlen_q - bidx * kBlockM) ? gLSEaccum(row, col) : -std::numeric_limits<ElementAccum>::infinity();
     if (row < kMaxSplits) {
       sLSE[row][col] = lse;
     }
@@ -1070,7 +1082,7 @@ inline __device__ void combine_attn_seqk_parallel(const Params& params) {
   for (int l = 0; l < kNLsePerThread; ++l) {
     const int row = l * kRowsPerLoadTranspose + tidx % kRowsPerLoadTranspose;
     const int col = tidx / kRowsPerLoadTranspose;
-    lse_accum(l) = (row < kMaxSplits && col < kBlockM) ? sLSE[row][col] : -INFINITY;
+    lse_accum(l) = (row < kMaxSplits && col < kBlockM) ? sLSE[row][col] : -std::numeric_limits<ElementAccum>::infinity();
     // if (bidx == 0 && tidx < 32) { printf("tidx = %d, row = %d, col = %d, lse = %f\n", tidx, row, col, lse_accum(l)); }
   }
 
@@ -1082,7 +1094,7 @@ inline __device__ void combine_attn_seqk_parallel(const Params& params) {
   }
   MaxOp<float> max_op;
   lse_max = Allreduce<kRowsPerLoadTranspose>::run(lse_max, max_op);
-  lse_max = lse_max == -INFINITY ? 0.0f : lse_max;  // In case all local LSEs are -inf
+  lse_max = lse_max == -std::numeric_limits<ElementAccum>::infinity() ? 0.0f : lse_max;  // In case all local LSEs are -inf
   float lse_sum = expf(lse_accum(0) - lse_max);
 #pragma unroll
   for (int l = 1; l < kNLsePerThread; ++l) {
@@ -1092,7 +1104,7 @@ inline __device__ void combine_attn_seqk_parallel(const Params& params) {
   lse_sum = Allreduce<kRowsPerLoadTranspose>::run(lse_sum, sum_op);
   // For the case where all local lse == -INFINITY, we want to set lse_logsum to INFINITY. Otherwise
   // lse_logsum is log(0.0) = -INFINITY and we get NaN when we do lse_accum(l) - lse_logsum.
-  ElementAccum lse_logsum = (lse_sum == 0.f || lse_sum != lse_sum) ? INFINITY : logf(lse_sum) + lse_max;
+  ElementAccum lse_logsum = (lse_sum == 0.f || lse_sum != lse_sum) ? std::numeric_limits<ElementAccum>::infinity() : logf(lse_sum) + lse_max;
   // if (bidx == 0 && tidx < 32) { printf("tidx = %d, lse = %f, lse_max = %f, lse_logsum = %f\n", tidx, lse_accum(0), lse_max, lse_logsum); }
   if (tidx % kRowsPerLoadTranspose == 0 && tidx / kRowsPerLoadTranspose < kBlockM) {
     gLSE(tidx / kRowsPerLoadTranspose) = lse_logsum;

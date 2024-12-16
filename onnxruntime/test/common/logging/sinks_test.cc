@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
+#include "core/common/common.h"
 #include "core/common/logging/capture.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/cerr_sink.h"
@@ -126,9 +126,13 @@ TEST(LoggingTests, TestFileSink) {
 
   // create scoped manager so sink gets destroyed once done
   {
+#ifdef _WIN32
+    LoggingManager manager{std::make_unique<FileSink>(onnxruntime::ToWideString(filename), false, false),
+                           min_log_level, false, InstanceType::Temporal};
+#else
     LoggingManager manager{std::unique_ptr<ISink>{new FileSink{filename, false, false}},
                            min_log_level, false, InstanceType::Temporal};
-
+#endif
     auto logger = manager.CreateLogger(logid);
 
     LOGS(*logger, WARNING) << message;

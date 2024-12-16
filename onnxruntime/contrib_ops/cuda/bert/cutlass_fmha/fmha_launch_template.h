@@ -10,7 +10,7 @@
 #endif
 
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
-#include "41_fused_multi_head_attention/kernel_forward.h"
+#include "contrib_ops/cuda/bert/cutlass_fmha/kernel_forward.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -42,7 +42,6 @@ struct RightPaddingBatchHook {
 
     auto lse_dim = ceil_div((int32_t)(p.num_queries), kAlignLSE) * kAlignLSE;
 
-    // Advance to current batch - in case of different sequence lengths
     if (p.seqlen_k_ptr) {
       p.num_keys = p.seqlen_k_ptr[batch_id];
     }
@@ -169,6 +168,7 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
     p.head_dim_value = params.v_head_size;
 
     p.scale = params.scale;
+    p.softcap = params.softcap;
 
     // When params.cu_seqlens_q is provided, num_queries is max_seq_q and num_keys will be set inside the kernel
     p.num_queries = params.sequence_length;
@@ -184,36 +184,44 @@ void LaunchCutlassFmha(const MemoryEfficientAttentionParams& params) {
       p.q_strideH = params.qk_head_size;
       p.k_strideH = params.qk_head_size;
       p.v_strideH = params.v_head_size;
-      p.bias_strideH = nullptr == params.attn_bias ? 0 : p.num_queries * p.num_keys;
 
       p.q_strideM = params.num_heads * params.qk_head_size;
       p.k_strideM = params.num_heads * params.qk_head_size;
       p.v_strideM = params.num_heads * params.v_head_size;
       p.o_strideM = params.num_heads * params.v_head_size;
-      p.bias_strideM = nullptr == params.attn_bias ? 0 : p.num_keys;
 
       p.q_strideB = static_cast<int64_t>(p.q_strideM) * params.sequence_length;
       p.k_strideB = static_cast<int64_t>(p.k_strideM) * params.max_sequence_length;
       p.v_strideB = static_cast<int64_t>(p.v_strideM) * params.max_sequence_length;
-      p.bias_strideB = params.is_attn_bias_batched ? static_cast<int64_t>(p.bias_strideH) * params.num_heads : 0;
     } else {
       // Input K, V format is BxNxSxH, Input Q is BxSxNxH, output is BxSxNxH
       p.q_strideH = params.qk_head_size;
       p.k_strideH = params.max_sequence_length * params.qk_head_size;
       p.v_strideH = params.max_sequence_length * params.v_head_size;
-      p.bias_strideH = nullptr == params.attn_bias ? 0 : p.num_queries * p.num_keys;
 
       p.q_strideM = params.num_heads * params.qk_head_size;
       p.k_strideM = params.qk_head_size;
       p.v_strideM = params.v_head_size;
       p.o_strideM = params.num_heads * params.v_head_size;
-      p.bias_strideM = nullptr == params.attn_bias ? 0 : p.num_keys;
 
       p.q_strideB = params.num_heads * params.qk_head_size * params.sequence_length;
       p.k_strideB = params.num_heads * params.qk_head_size * params.max_sequence_length;
       p.v_strideB = params.num_heads * params.v_head_size * params.max_sequence_length;
-      p.bias_strideB = params.is_attn_bias_batched ? static_cast<int64_t>(p.bias_strideH) * params.num_heads : 0;
     }
+
+    if (params.attn_bias != nullptr) {
+      p.bias_strideH = params.broadcast_attn_bias_dim_1 ? 0 : p.num_queries * p.num_keys;
+      p.bias_strideM = p.num_keys;
+      p.bias_strideB = params.broadcast_attn_bias_dim_0
+                           ? 0
+                           : ((params.broadcast_attn_bias_dim_1 ? 1 : params.num_heads) * p.num_queries * p.num_keys);
+    } else {
+      p.bias_strideH = 0;
+      p.bias_strideM = 0;
+      p.bias_strideB = 0;
+    }
+
+    p.use_smooth_softmax = params.use_smooth_softmax;
   }
 
   auto kernel_fn = attention_kernel_batched_impl<Attention>;

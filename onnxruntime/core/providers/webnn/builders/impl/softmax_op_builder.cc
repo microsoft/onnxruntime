@@ -24,8 +24,6 @@ class SoftmaxOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
-                              const logging::Logger& logger) const override;
 };
 
 Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
@@ -59,30 +57,6 @@ bool SoftmaxOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initiali
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger))
     return false;
-
-  return true;
-}
-
-bool SoftmaxOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
-                                              const logging::Logger& logger) const {
-  const auto& input = *node.InputDefs()[0];
-  const auto& op_type = node.OpType();
-  int32_t input_type;
-  if (!GetType(input, input_type, logger))
-    return false;
-
-  // WebNN softmax only supports float32 and float16 input data types.
-  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types = {
-      ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-      ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-  };
-
-  if (!IsSupportedDataType(input_type, supported_data_types)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input_type
-                          << "] is not supported for now";
-    return false;
-  }
 
   return true;
 }

@@ -1,0 +1,22 @@
+huggingface_hub==0.25.2
+diffusers==0.28.0
+transformers==4.41.2
+numpy>=1.24.1
+accelerate
+onnx==1.17.0
+coloredlogs
+packaging
+# Use newer version of protobuf might cause crash
+protobuf==3.20.3
+psutil
+sympy
+nvtx==0.2.5
+torchvision==0.15.2
+tensorrt==8.5.1.7
+mediapipe
+controlnet_aux==0.0.9
+# The following are for SDXL
+optimum==1.20.0
+safetensors
+invisible_watermark
+opencv-python-headless

@@ -915,6 +915,42 @@ void Node::Init(std::string_view name,
     }
   }
 }
+void Node::Init(std::string_view name,
+                std::string_view op_type,
+                std::string_view description,
+                gsl::span<NodeArg* const> input_args,
+                gsl::span<NodeArg* const> output_args,
+                NodeAttributes&& attributes,
+                std::string_view domain) {
+  name_ = name;
+  op_type_ = op_type;
+  description_ = description;
+  definitions_.input_defs.assign(input_args.begin(), input_args.end());
+  definitions_.output_defs.assign(output_args.begin(), output_args.end());
+  domain_ = domain;
+  can_be_saved_ = true;
+  priority_ = 0;
+  if (kOnnxDomainAlias == domain_) {
+    domain_ = kOnnxDomain;
+  }
+
+  // Set each arg count as 1 by default.
+  // It could be adjusted when resolving the node with its operator
+  // information.
+  definitions_.input_arg_count.assign(input_args.size(), 1);
+
+  attributes_ = std::move(attributes);
+
+  for (auto& name_to_attr : attributes_) {
+    if (utils::HasGraph(name_to_attr.second)) {
+#if !defined(ORT_MINIMAL_BUILD)
+      CreateSubgraph(name_to_attr.first);
+#else
+      ORT_THROW("Creating node with a subgraph via AddNode is not supported in this build.");
+#endif
+    }
+  }
+}
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -3923,6 +3959,35 @@ Node& Graph::AddNode(const std::string& name,
   return *node;
 }
 
+Node& Graph::AddNode(const std::string& name,
+                     const std::string& op_type,
+                     const std::string& description,
+                     gsl::span<NodeArg* const> input_args,
+                     gsl::span<NodeArg* const> output_args,
+                     NodeAttributes&& attributes,
+                     const std::string& domain) {
+  InlinedVector<NodeArg*> inputs;
+  InlinedVector<NodeArg*> outputs;
+  inputs.resize(input_args.size());
+  outputs.resize(output_args.size());
+  int i = 0;
+  for (auto input_arg : input_args) {
+    inputs[i++] = &GetOrCreateNodeArg(input_arg->Name(), input_arg->TypeAsProto());
+  }
+  i = 0;
+  for (auto output_arg : output_args) {
+    outputs[i++] = &GetOrCreateNodeArg(output_arg->Name(), output_arg->TypeAsProto());
+  }
+
+  const gsl::not_null<Node*> node = AllocateNode();
+  node->Init(name, op_type, description, inputs, outputs, std::move(attributes), domain);
+  if (0 != op_type.compare(kNoOp)) {
+    GraphProtoSyncNeeded(true);
+  }
+
+  return *node;
+}
+
 bool Graph::RemoveNode(NodeIndex p_index) {
   auto node = GetNode(p_index);
   if (nullptr == node) {
@@ -4021,7 +4086,8 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
 
 ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
                                                                        const std::filesystem::path& model_file_path,
-                                                                       size_t initializer_size_threshold) const {
+                                                                       size_t initializer_size_threshold,
+                                                                       const OffsetAlignmentInfo& align_info) const {
   GraphProto result;
   ToGraphProtoInternal(result);
   ORT_ENFORCE(external_file_path.is_relative());
@@ -4057,6 +4123,27 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(const std
       if (tensor_bytes_size < initializer_size_threshold) {
         *output_proto = initializer;
         continue;
+      }
+
+      // update external_offset for alignment
+      // need to do padding before write actual tensor data as we do offset alignment at the begin of
+      // large tensors (offset need to be page aligned and alloction granularity aligned) like below:
+      // \242\2557\256\023.\031&0000000000000000\332)k+\253\246\342\246(&\006!\347\232\374\236\325\026\032+\36XXXX
+      // |<---small tensor---->|<---padding--->|<------------------large tensor----------------------------->|
+      if (align_info.align_offset && static_cast<int64_t>(tensor_bytes_size) > align_info.align_threshold) {
+        // Align to the larger of the page size or the allocation granularity
+        int64_t alignment_factor = std::max(static_cast<int64_t>(4096), align_info.allocation_granularity);
+        // Align to the next page or alloc granularity boundary
+        int64_t new_external_offset = static_cast<int64_t>(
+                                          std::floor((external_offset + alignment_factor - 1) / alignment_factor)) *
+                                      alignment_factor;
+
+        // padding tensor with zeros for alignment
+        for (int64_t index = external_offset; index != new_external_offset; ++index) {
+          external_stream << '0';
+        }
+
+        external_offset = new_external_offset;
       }
 
       for (size_t index = 0; index != tensor_bytes_size; ++index) {

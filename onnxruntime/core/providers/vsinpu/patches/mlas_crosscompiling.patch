@@ -1,10 +1,10 @@
 diff --git a/cmake/onnxruntime_mlas.cmake b/cmake/onnxruntime_mlas.cmake
-index 304aa77f54..5c22b7097b 100644
+index 10c307b3b9..a52bf71c4d 100644
 --- a/cmake/onnxruntime_mlas.cmake
 +++ b/cmake/onnxruntime_mlas.cmake
-@@ -354,7 +354,7 @@ else()
+@@ -370,7 +370,7 @@ else()
          )
-         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon.cpp
+         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
                                      PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
 -        if (NOT APPLE)
 +        if (NOT APPLE AND NOT onnxruntime_USE_VSINPU)
@@ -12,10 +12,10 @@ index 304aa77f54..5c22b7097b 100644
              ${mlas_platform_srcs}
              ${MLAS_SRC_DIR}/aarch64/HalfGemmKernelNeon.S
 diff --git a/onnxruntime/core/mlas/inc/mlas.h b/onnxruntime/core/mlas/inc/mlas.h
-index cdfd283899..678a055b24 100644
+index 28ae64c4d5..0c77e0ca78 100644
 --- a/onnxruntime/core/mlas/inc/mlas.h
 +++ b/onnxruntime/core/mlas/inc/mlas.h
-@@ -82,6 +82,9 @@ Abstract:
+@@ -83,6 +83,9 @@ Abstract:
 
  #if (!defined(_MSC_VER)) || (_MSC_VER >= 1930)
  #if defined(MLAS_TARGET_ARM64) || defined(MLAS_TARGET_ARM64EC)
@@ -25,7 +25,7 @@ index cdfd283899..678a055b24 100644
  #if !defined(__APPLE__)
  // Had to temporary disable fp16 under APPLE ARM64, as compiling
  // the source files require a hardware specific compilation flag.
-@@ -90,6 +93,7 @@ Abstract:
+@@ -91,6 +94,7 @@ Abstract:
 
  #define MLAS_F16VEC_INTRINSICS_SUPPORTED
 
@@ -33,3 +33,203 @@ index cdfd283899..678a055b24 100644
  #endif //
  #endif // ARM64
  #endif // Visual Studio 16 or earlier does not support fp16 intrinsic
+@@ -1644,6 +1648,7 @@ MlasHalfGemmConvertPackB(
+     );
+
+ #if defined(__aarch64__) && defined(__linux__)
++#if !defined(USE_VSINPU)
+ /**
+  * @brief Whether current CPU supports Bfloat16(bf16) acceleration.
+  */
+@@ -1755,6 +1760,7 @@ MlasSBGemmPackBSize(size_t N, size_t K);
+ void MLASCALL
+ MlasSBGemmConvertPackB(size_t N, size_t K, const float* B, size_t ldb, void* PackedB);
+ #endif
++#endif
+
+ /**
+  * @brief Indirect Depthwise convolution for fp16
+diff --git a/onnxruntime/core/mlas/lib/mlasi.h b/onnxruntime/core/mlas/lib/mlasi.h
+index 0533a5e49b..c18bf7f90d 100644
+--- a/onnxruntime/core/mlas/lib/mlasi.h
++++ b/onnxruntime/core/mlas/lib/mlasi.h
+@@ -377,6 +377,7 @@ size_t
+ #else
+
+ #if defined(__aarch64__) && defined(__linux__)
++#if !defined(USE_VSINPU)
+ typedef size_t(MLASCALL MLAS_SBGEMM_FLOAT_KERNEL)(
+     const float* A,
+     const bfloat16_t* B,
+@@ -389,6 +390,7 @@ typedef size_t(MLASCALL MLAS_SBGEMM_FLOAT_KERNEL)(
+     const float* Bias
+ );
+ #endif
++#endif
+
+ typedef
+ size_t
+@@ -796,8 +798,10 @@ extern "C" {
+     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelZero;
+     MLAS_GEMM_FLOAT_KERNEL MlasSgemmKernelAdd;
+ #if defined(__aarch64__) && defined(__linux__)
++#if !defined(USE_VSINPU)
+     MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelZero;
+     MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelAdd;
++#endif
+ #endif
+     MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelZero;
+     MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelAdd;
+@@ -946,8 +950,10 @@ extern "C" {
+ #define MLAS_QGEMM_THREAD_COMPLEXITY                65536
+
+ #if defined(__aarch64__) && defined(__linux__)
++#if !defined(USE_VSINPU)
+ #define MLAS_SBGEMM_THREAD_COMPLEXITY (size_t(64) * size_t(1024))
+ #endif
++#endif
+
+ //
+ // Single-threaded single precision matrix/matrix multiply operation.
+diff --git a/onnxruntime/core/mlas/lib/platform.cpp b/onnxruntime/core/mlas/lib/platform.cpp
+index b3c9461293..424c3b0441 100644
+--- a/onnxruntime/core/mlas/lib/platform.cpp
++++ b/onnxruntime/core/mlas/lib/platform.cpp
+@@ -574,7 +574,7 @@ Return Value:
+         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
+     }
+
+-#if defined(__linux__)
++#if defined(__linux__) && !defined(USE_VSINPU)
+     //
+     // Check if the processor supports ASIMD I8MM instructions.
+     //
+diff --git a/onnxruntime/core/mlas/lib/sbgemm.h b/onnxruntime/core/mlas/lib/sbgemm.h
+index de7fd72fad..4f75dbd6fa 100644
+--- a/onnxruntime/core/mlas/lib/sbgemm.h
++++ b/onnxruntime/core/mlas/lib/sbgemm.h
+@@ -31,6 +31,7 @@ Abstract:
+ --*/
+
+ #if defined(__aarch64__) && defined(__linux__)
++#if !defined(USE_VSINPU)
+
+ #pragma once
+
+@@ -396,4 +397,5 @@ MlasSBGemmBatch(const size_t M, const size_t N, const size_t K, const size_t Bat
+         }
+     );
+ }
++#endif
+ #endif  // defined(__aarch64__) && defined(__linux__)
+diff --git a/onnxruntime/core/providers/cpu/math/matmul.cc b/onnxruntime/core/providers/cpu/math/matmul.cc
+index 2c6d23e4de..61aaacdfd6 100644
+--- a/onnxruntime/core/providers/cpu/math/matmul.cc
++++ b/onnxruntime/core/providers/cpu/math/matmul.cc
+@@ -133,7 +133,7 @@ Status MatMul<T>::Compute(OpKernelContext* ctx) const {
+
+   return Status::OK();
+ }
+-#if defined(__aarch64__) && defined(__linux__)
++#if defined(__aarch64__) && defined(__linux__) && !defined(USE_VSINPU)
+ bool GemmPackBBfloat16(AllocatorPtr& alloc,
+                        const Tensor& tensor_b,
+                        bool trans_b,
+@@ -181,6 +181,7 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ Alloc
+   if (input_idx == 1) {
+     size_t packed_b_size;
+ #if defined(__aarch64__) && defined(__linux__)
++#if !defined(USE_VSINPU)
+     size_t dim1 = 0;
+     size_t dim2 = 0;
+     TensorShape b_shape = tensor.Shape();
+@@ -193,6 +194,7 @@ Status MatMul<float>::PrePack(const Tensor& tensor, int input_idx, /*out*/ Alloc
+     if (use_fastmath_mode_ && (trans_b_attr_ == 0) && ((dim1 * dim2) >= kFastMathModeKernelsizeThreshold)) {
+       is_packed = GemmPackBBfloat16(alloc, tensor, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_);
+     } else
++#endif
+ #endif
+     {
+       is_packed = GemmPackBFp32(alloc, tensor, trans_b_attr_ != 0, packed_b_, packed_b_size, b_shape_);
+@@ -259,6 +261,7 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
+   const size_t lda = helper.Lda(trans_a);
+   const size_t ldb = helper.Ldb(trans_b);
+ #if defined(__aarch64__) && defined(__linux__)
++#if !defined(USE_VSINPU)
+   if (use_fastmath_mode_ && !trans_b && ((N * K) >= kFastMathModeKernelsizeThreshold)) {
+     std::vector<MLAS_SBGEMM_DATA_PARAMS> data(max_len);
+     for (size_t i = 0; i < max_len; i++) {
+@@ -275,6 +278,7 @@ Status MatMul<float>::Compute(OpKernelContext* ctx) const {
+     }
+     MlasSBGemmBatch(M, N, K, max_len, data.data(), thread_pool);
+   } else
++#endif
+ #endif
+   {
+     std::vector<MLAS_SGEMM_DATA_PARAMS> data(max_len);
+diff --git a/onnxruntime/core/providers/cpu/math/matmul.h b/onnxruntime/core/providers/cpu/math/matmul.h
+index b9bbe36583..2f570502d2 100644
+--- a/onnxruntime/core/providers/cpu/math/matmul.h
++++ b/onnxruntime/core/providers/cpu/math/matmul.h
+@@ -31,8 +31,10 @@ class MatMul<float> final : public OpKernel {
+     trans_batch_b_ = trans_batch_b_attr != 0;
+
+ #if defined(__aarch64__) && defined(__linux__)
++#if !defined(USE_VSINPU)
+     auto config_ops = info.GetConfigOptions().GetConfigEntry(kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16);
+     use_fastmath_mode_ = (config_ops == "1") && MlasBf16AccelerationSupported();
++#endif
+ #endif
+   }
+
+@@ -57,12 +59,14 @@ class MatMul<float> final : public OpKernel {
+   bool trans_batch_b_;
+
+ #if defined(__aarch64__) && defined(__linux__)
++#if !defined(USE_VSINPU)
+   // fastmath mode state
+   bool use_fastmath_mode_;
+   // sbgemm kernel is implemented as 8x8 blocks with weights pre-packed to 4 blocks of 4x2
+   // so a minimum of 32 elements is defined to outweigh the additional prepacking overhead
+   const size_t kFastMathModeKernelsizeThreshold = 32;
+ #endif
++#endif
+ };
+
+ }  // namespace onnxruntime
+diff --git a/onnxruntime/test/mlas/unittest/test_sbgemm.cpp b/onnxruntime/test/mlas/unittest/test_sbgemm.cpp
+index f85fe97776..6039b7fa9e 100644
+--- a/onnxruntime/test/mlas/unittest/test_sbgemm.cpp
++++ b/onnxruntime/test/mlas/unittest/test_sbgemm.cpp
+@@ -16,6 +16,7 @@ Abstract:
+ --*/
+
+ #if defined(__aarch64__) && defined(__linux__)
++#if !defined(USE_VSINPU)
+
+ #include "test_sbgemm.h"
+
+@@ -138,4 +139,5 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
+   }
+   return SBGemmRegistLongExecute() > 0;
+ });
++#endif
+ #endif  // defined(__aarch64__) && defined(__linux__)
+diff --git a/onnxruntime/test/mlas/unittest/test_sbgemm.h b/onnxruntime/test/mlas/unittest/test_sbgemm.h
+index 13701e2e3d..7e432f53c2 100644
+--- a/onnxruntime/test/mlas/unittest/test_sbgemm.h
++++ b/onnxruntime/test/mlas/unittest/test_sbgemm.h
+@@ -16,6 +16,7 @@ Abstract:
+ --*/
+
+ #if defined(__aarch64__) && defined(__linux__)
++#if !defined(USE_VSINPU)
+
+ #pragma once
+
+@@ -278,4 +279,5 @@ class MlasSBGemmTest : public MlasTestBase {
+   }
+ };
+
++#endif
+ #endif  // defined(__aarch64__) && defined(__linux__)

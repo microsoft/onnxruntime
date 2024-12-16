@@ -38,7 +38,7 @@ function(get_c_cxx_api_headers HEADERS_VAR)
 
   # need to add header files for enabled EPs
   foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
-    # The header files in include/onnxruntime/core/providers/cuda directory cannot be flattened to the same directory 
+    # The header files in include/onnxruntime/core/providers/cuda directory cannot be flattened to the same directory
     # with onnxruntime_c_api.h . Most other EPs probably also do not work in this way.
     if((NOT f STREQUAL cuda) AND (NOT f STREQUAL rocm))
       file(GLOB _provider_headers CONFIGURE_DEPENDS
@@ -89,10 +89,22 @@ elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)
   # create Info.plist for the framework and podspec for CocoaPods (optional)
   set(MACOSX_FRAMEWORK_NAME "onnxruntime")
   set(MACOSX_FRAMEWORK_IDENTIFIER "com.microsoft.onnxruntime")
-  # Need to include CoreML as a weaklink for CocoaPods package if the EP is enabled
+
+  # Setup weak frameworks for macOS/iOS. 'weak' as the CoreML or WebGPU EPs are optionally enabled.
   if(onnxruntime_USE_COREML)
-    set(APPLE_WEAK_FRAMEWORK "\\\"CoreML\\\"")
+    list(APPEND _weak_frameworks "\\\"CoreML\\\"")
   endif()
+
+  if(onnxruntime_USE_WEBGPU)
+    list(APPEND _weak_frameworks "\\\"QuartzCore\\\"")
+    list(APPEND _weak_frameworks "\\\"IOSurface\\\"")
+    list(APPEND _weak_frameworks "\\\"Metal\\\"")
+  endif()
+
+  if (_weak_frameworks)
+    string(JOIN ", " APPLE_WEAK_FRAMEWORK ${_weak_frameworks})
+  endif()
+
   set(INFO_PLIST_PATH "${CMAKE_CURRENT_BINARY_DIR}/Info.plist")
   configure_file(${REPO_ROOT}/cmake/Info.plist.in ${INFO_PLIST_PATH})
   configure_file(
@@ -110,8 +122,12 @@ else()
   else()
     onnxruntime_add_shared_library(onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c )
   endif()
-  if (onnxruntime_USE_CUDA)
-    set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS " -Xlinker -rpath=\\$ORIGIN")
+  if(NOT APPLE)
+    include(CheckLinkerFlag)
+    check_linker_flag(CXX "LINKER:-rpath=\$ORIGIN" LINKER_SUPPORT_RPATH)
+    if(LINKER_SUPPORT_RPATH)
+      target_link_options(onnxruntime PRIVATE "LINKER:-rpath=\$ORIGIN")
+    endif()
   endif()
 endif()
 
@@ -127,17 +143,17 @@ target_compile_definitions(onnxruntime PRIVATE FILE_NAME=\"onnxruntime.dll\")
 
 if(UNIX)
   if (APPLE)
-    set(ONNXRUNTIME_SO_LINK_FLAG " -Xlinker -dead_strip")
+    target_link_options(onnxruntime PRIVATE "LINKER:-dead_strip")
   elseif(NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
-    set(ONNXRUNTIME_SO_LINK_FLAG " -Xlinker --version-script=${SYMBOL_FILE} -Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+    target_link_options(onnxruntime PRIVATE  "LINKER:--version-script=${SYMBOL_FILE}" "LINKER:--no-undefined" "LINKER:--gc-sections")
   endif()
 else()
-  set(ONNXRUNTIME_SO_LINK_FLAG " -DEF:${SYMBOL_FILE}")
+  target_link_options(onnxruntime PRIVATE  "-DEF:${SYMBOL_FILE}")
 endif()
 
-if (NOT WIN32)
-  if (APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "^iOS")
-    set(ONNXRUNTIME_SO_LINK_FLAG " -Wl,-exported_symbols_list,${SYMBOL_FILE}")
+
+if (APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "^iOS")
+    target_link_options(onnxruntime PRIVATE  "LINKER:-exported_symbols_list,${SYMBOL_FILE}")
     if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
       set_target_properties(onnxruntime PROPERTIES
         MACOSX_RPATH TRUE
@@ -147,10 +163,8 @@ if (NOT WIN32)
     else()
         set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
     endif()
-  elseif (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-rpath='$ORIGIN'")
-  endif()
 endif()
+
 
 
 if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_MINIMAL_BUILD)
@@ -196,17 +210,17 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${PROVIDERS_NNAPI}
   ${PROVIDERS_QNN}
   ${PROVIDERS_SNPE}
-  ${PROVIDERS_TVM}
   ${PROVIDERS_RKNPU}
   ${PROVIDERS_VSINPU}
   ${PROVIDERS_XNNPACK}
+  ${PROVIDERS_WEBGPU}
   ${PROVIDERS_WEBNN}
   ${PROVIDERS_AZURE}
   ${PROVIDERS_INTERNAL_TESTING}
   ${onnxruntime_winml}
   onnxruntime_optimizer
   onnxruntime_providers
-  ${onnxruntime_tvm_libs}
+  onnxruntime_lora
   onnxruntime_framework
   onnxruntime_graph
   onnxruntime_util
@@ -234,7 +248,9 @@ target_link_libraries(onnxruntime PRIVATE
     ${onnxruntime_EXTERNAL_LIBRARIES}
 )
 
-set_property(TARGET onnxruntime APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_SO_LINK_FLAG} ${onnxruntime_DELAYLOAD_FLAGS})
+if(WIN32)
+  target_link_options(onnxruntime PRIVATE ${onnxruntime_DELAYLOAD_FLAGS})
+endif()
 #See: https://cmake.org/cmake/help/latest/prop_tgt/SOVERSION.html
 if(NOT APPLE AND NOT WIN32)
   if(${CMAKE_SYSTEM_NAME} MATCHES "AIX")
@@ -332,6 +348,9 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
   # If it's an onnxruntime library, extract .o files from the original cmake build path to a separate directory for
   # each library to avoid any clashes with filenames (e.g. utils.o)
   foreach(_LIB ${onnxruntime_INTERNAL_LIBRARIES} )
+    if(NOT TARGET ${_LIB}) # if we didn't build from source. it may not a target
+      continue()
+    endif()
     GET_TARGET_PROPERTY(_LIB_TYPE ${_LIB} TYPE)
     if(_LIB_TYPE STREQUAL "STATIC_LIBRARY")
       set(CUR_STATIC_LIB_OBJ_DIR ${STATIC_LIB_TEMP_DIR}/$<TARGET_LINKER_FILE_BASE_NAME:${_LIB}>)
@@ -349,35 +368,95 @@ if(onnxruntime_BUILD_APPLE_FRAMEWORK)
         # make both maccatalyst and other builds do the same thing.
         set(CUR_TARGET_CMAKE_SOURCE_LIB_DIR ${CMAKE_CURRENT_BINARY_DIR}/CMakeFiles/${_LIB}.dir)
         add_custom_command(TARGET onnxruntime POST_BUILD
-                          COMMAND ar -t $<TARGET_FILE:${_LIB}> | grep "\.o$"  > ${_LIB}.object_file_list.txt
+                          COMMAND /usr/bin/ar -t $<TARGET_FILE:${_LIB}> | grep "\.o$"  > ${_LIB}.object_file_list.txt
                           COMMAND ${CMAKE_COMMAND} -E env python3 ${CMAKE_CURRENT_SOURCE_DIR}/maccatalyst_prepare_objects_for_prelink.py ${CUR_TARGET_CMAKE_SOURCE_LIB_DIR} ${CUR_STATIC_LIB_OBJ_DIR} ${CUR_STATIC_LIB_OBJ_DIR}/${_LIB}.object_file_list.txt
                           WORKING_DIRECTORY ${CUR_STATIC_LIB_OBJ_DIR})
       else()
         add_custom_command(TARGET onnxruntime POST_BUILD
-        COMMAND ar ARGS -x $<TARGET_FILE:${_LIB}>
+        COMMAND /usr/bin/ar ARGS -x $<TARGET_FILE:${_LIB}>
         WORKING_DIRECTORY ${CUR_STATIC_LIB_OBJ_DIR})
       endif()
     endif()
   endforeach()
 
+  # helper function that recurses to also handle static library dependencies of the ORT external libraries
+  set(_processed_libs)  # keep track of processed libraries to skip any duplicate dependencies
+  function(add_symlink_for_static_lib_and_dependencies lib)
+    function(process cur_target)
+      # de-alias if applicable so a consistent target name is used
+      get_target_property(alias ${cur_target} ALIASED_TARGET)
+      if(TARGET ${alias})
+        set(cur_target ${alias})
+      endif()
+
+      if(${cur_target} IN_LIST _processed_libs OR ${cur_target} IN_LIST lib_and_dependencies)
+        return()
+      endif()
+
+      list(APPEND lib_and_dependencies ${cur_target})
+
+      set(all_link_libraries)
+
+      get_property(link_libraries_set TARGET ${cur_target} PROPERTY LINK_LIBRARIES SET)
+      if(link_libraries_set)
+        get_target_property(link_libraries ${cur_target} LINK_LIBRARIES)
+        list(APPEND all_link_libraries ${link_libraries})
+      endif()
+
+      get_property(interface_link_libraries_set TARGET ${cur_target} PROPERTY INTERFACE_LINK_LIBRARIES SET)
+      if(interface_link_libraries_set)
+        get_target_property(interface_link_libraries ${cur_target} INTERFACE_LINK_LIBRARIES)
+        list(APPEND all_link_libraries ${interface_link_libraries})
+      endif()
+
+      list(REMOVE_DUPLICATES all_link_libraries)
+
+      foreach(dependency ${all_link_libraries})
+        if(TARGET ${dependency})
+          process(${dependency})
+        endif()
+      endforeach()
+
+      set(lib_and_dependencies ${lib_and_dependencies} PARENT_SCOPE)
+    endfunction()
+
+    set(lib_and_dependencies)
+    process(${lib})
+
+    foreach(_target ${lib_and_dependencies})
+      get_target_property(type ${_target} TYPE)
+      if(${type} STREQUAL "STATIC_LIBRARY")
+        # message(STATUS "Adding symlink for ${_target}")
+        add_custom_command(TARGET onnxruntime POST_BUILD
+                           COMMAND ${CMAKE_COMMAND} -E create_symlink
+                             $<TARGET_FILE:${_target}> ${STATIC_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:${_target}>)
+      endif()
+    endforeach()
+
+    list(APPEND _processed_libs ${lib_and_dependencies})
+    set(_processed_libs ${_processed_libs} PARENT_SCOPE)
+  endfunction()
+
   # for external libraries we create a symlink to the .a file
   foreach(_LIB ${onnxruntime_EXTERNAL_LIBRARIES})
+    if(NOT TARGET ${_LIB}) # if we didn't build from source it may not be a target
+      continue()
+    endif()
+
     GET_TARGET_PROPERTY(_LIB_TYPE ${_LIB} TYPE)
     if(_LIB_TYPE STREQUAL "STATIC_LIBRARY")
-      add_custom_command(TARGET onnxruntime POST_BUILD
-                         COMMAND ${CMAKE_COMMAND} -E create_symlink
-                           $<TARGET_FILE:${_LIB}> ${STATIC_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:${_LIB}>)
+      add_symlink_for_static_lib_and_dependencies(${_LIB})
     endif()
   endforeach()
 
   # do the pre-link with `ld -r` to create a single relocatable object with correct symbol visibility
   add_custom_command(TARGET onnxruntime POST_BUILD
-                     COMMAND ld ARGS -r -o ${STATIC_LIB_DIR}/prelinked_objects.o */*.o ../*.a
+                     COMMAND /usr/bin/ld ARGS -r -o ${STATIC_LIB_DIR}/prelinked_objects.o */*.o ../*.a
                      WORKING_DIRECTORY ${STATIC_LIB_TEMP_DIR})
 
   # create the static library
   add_custom_command(TARGET onnxruntime POST_BUILD
-                     COMMAND libtool -static -o ${STATIC_FRAMEWORK_DIR}/onnxruntime prelinked_objects.o
+                     COMMAND /usr/bin/libtool -static -o ${STATIC_FRAMEWORK_DIR}/onnxruntime prelinked_objects.o
                      WORKING_DIRECTORY ${STATIC_LIB_DIR})
 
   # Assemble the other pieces of the static framework

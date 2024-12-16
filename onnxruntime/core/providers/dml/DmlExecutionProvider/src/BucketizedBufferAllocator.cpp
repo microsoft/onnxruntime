@@ -41,23 +41,19 @@ namespace Dml
         D3D12_HEAP_FLAGS heapFlags,
         D3D12_RESOURCE_FLAGS resourceFlags,
         D3D12_RESOURCE_STATES initialState,
-        std::unique_ptr<DmlSubAllocator>&& subAllocator
-        )
+        std::unique_ptr<DmlSubAllocator>&& subAllocator)
         : onnxruntime::IAllocator(
-            OrtMemoryInfo(
-                "DML",
-                OrtAllocatorType::OrtDeviceAllocator,
-                OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)
-            )
-        ),
-        m_device(device),
-        m_heapProperties(heapProps),
-        m_heapFlags(heapFlags),
-        m_resourceFlags(resourceFlags),
-        m_initialState(initialState),
-        m_context(context),
-        m_subAllocator(std::move(subAllocator))
-    {
+              OrtMemoryInfo(
+                  "DML",
+                  OrtAllocatorType::OrtDeviceAllocator,
+                  OrtDevice(OrtDevice::DML, OrtDevice::MemType::DEFAULT, 0))),
+          m_device(device),
+          m_heapProperties(heapProps),
+          m_heapFlags(heapFlags),
+          m_resourceFlags(resourceFlags),
+          m_initialState(initialState),
+          m_context(context),
+          m_subAllocator(std::move(subAllocator)) {
     }
 
     /*static*/ gsl::index BucketizedBufferAllocator::GetBucketIndexFromSize(uint64_t size)
@@ -223,28 +219,4 @@ namespace Dml
     {
         m_defaultRoundingMode = roundingMode;
     }
-
-    CPUAllocator::CPUAllocator(OrtMemType memType)
-        : onnxruntime::IAllocator(
-            OrtMemoryInfo(
-                "DML CPU",
-                OrtAllocatorType::OrtDeviceAllocator,
-                OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0),
-                0,
-                memType
-            )
-        )
-    {
-    }
-
-    void* CPUAllocator::Alloc(size_t size)
-    {
-        return onnxruntime::AllocatorDefaultAlloc(size);
-    }
-
-    void CPUAllocator::Free(void* p)
-    {
-        return onnxruntime::AllocatorDefaultFree(p);
-    }
-
 } // namespace Dml

@@ -1,4 +1,5 @@
 ##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
 trigger:
   branches:
     include:
@@ -194,42 +195,6 @@ stages:
         GenerateDocumentation: false
         WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
-
-- stage: training_x64_debug
-  dependsOn: []
-  jobs:
-    - template: templates/jobs/win-ci-vs-2022-job.yml
-      parameters:
-        BuildConfig: 'Debug'
-        buildArch: x64
-        additionalBuildFlags: --enable_training --build_wheel --disable_memleak_checker
-        msbuildPlatform: x64
-        isX86: false
-        job_name_suffix: training_x64_debug
-        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        isTraining: true
-        ORT_EP_NAME: CPU
-        GenerateDocumentation: false
-        WITH_CACHE: false
-        MachinePool: 'onnxruntime-Win2022-CPU-training-AMD'
-
-- stage: training_x64_release
-  dependsOn: []
-  jobs:
-    - template: templates/jobs/win-ci-vs-2022-job.yml
-      parameters:
-        BuildConfig: 'RelWithDebInfo'
-        buildArch: x64
-        additionalBuildFlags: --enable_training --build_wheel
-        msbuildPlatform: x64
-        isX86: false
-        job_name_suffix: training_x64_release
-        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-        isTraining: true
-        ORT_EP_NAME: CPU
-        GenerateDocumentation: false
-        WITH_CACHE: false
-        MachinePool: 'onnxruntime-Win2022-CPU-training-AMD'
 
 - stage: ort_training_apis_x64_release
   dependsOn: []

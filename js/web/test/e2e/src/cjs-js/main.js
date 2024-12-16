@@ -4,15 +4,15 @@
 'use strict';
 
 const ort = require('onnxruntime-web/wasm');
-const {setupMultipleThreads, testInferenceAndValidate} = require('./shared');
+const { setupMultipleThreads, testInferenceAndValidate } = require('./shared');
 
 if (typeof SharedArrayBuffer === 'undefined') {
-  it('Browser package consuming test - single-thread - [js][commonjs]', async function() {
-    await testInferenceAndValidate(ort, {executionProviders: ['wasm']});
+  it('Browser package consuming test - single-thread - [js][commonjs]', async function () {
+    await testInferenceAndValidate(ort, { executionProviders: ['wasm'] });
   });
 } else {
-  it('Browser package consuming test - multi-thread - [js][commonjs]', async function() {
+  it('Browser package consuming test - multi-thread - [js][commonjs]', async function () {
     setupMultipleThreads(ort);
-    await testInferenceAndValidate(ort, {executionProviders: ['wasm']});
+    await testInferenceAndValidate(ort, { executionProviders: ['wasm'] });
   });
 }

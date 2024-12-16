@@ -12,50 +12,27 @@
 
 namespace onnxruntime {
 namespace webnn {
-
-// Shared functions.
-bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node& node,
-                            const logging::Logger& logger) {
-  for (const auto* node_arg : node.InputDefs()) {
-    const auto& input_name(node_arg->Name());
-    if (!Contains(initializers, input_name))
-      continue;
-
-    const auto& tensor = *initializers.at(input_name);
-    if (tensor.has_data_location() &&
-        tensor.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-      LOGS(logger, VERBOSE) << "Initializer [" << input_name
-                            << "] with external data location are not currently supported";
-      return true;
-    }
-  }
-
-  return false;
-}
-
 // Add operator related.
 
 Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
                                         const logging::Logger& logger) const {
   ORT_RETURN_IF_NOT(
-      IsOpSupported(model_builder.GetInitializerTensors(), node, model_builder.GetWebnnDeviceType(), logger),
-      "Unsupported operator ",
-      node.OpType());
+      IsOpSupported(model_builder.GetInitializerTensors(), node, model_builder.GetWebnnDeviceType(),
+                    model_builder.GetOpSupportLimits(), logger),
+      "Unsupported operator ", node.OpType());
   ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node, logger));
-  LOGS(logger, VERBOSE) << "Operator name: [" << node.Name()
-                        << "] type: [" << node.OpType() << "] was added";
   return Status::OK();
 }
 
 // Operator support related.
 
 bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
-                                  const WebnnDeviceType device_type, const logging::Logger& logger) const {
-  if (!HasSupportedInputs(node, device_type, logger))
+                                  const WebnnDeviceType device_type, const emscripten::val& wnn_limits,
+                                  const logging::Logger& logger) const {
+  if (!HasSupportedInputs(initializers, node, wnn_limits, logger))
     return false;
 
-  // We do not support external initializers for now.
-  if (HasExternalInitializer(initializers, node, logger))
+  if (!HasSupportedOutputs(node, wnn_limits, logger))
     return false;
 
   if (!HasSupportedOpSet(node, logger))
@@ -64,48 +41,54 @@ bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, cons
   return IsOpSupportedImpl(initializers, node, device_type, logger);
 }
 
-bool BaseOpBuilder::HasSupportedInputs(const Node& node, const WebnnDeviceType device_type,
+bool BaseOpBuilder::HasSupportedInputs(const InitializedTensorSet& initializers, const Node& node, const emscripten::val& wnn_limits,
                                        const logging::Logger& logger) const {
   const auto node_name = MakeString("Node [", node.Name(), "] type [", node.OpType(), "]");
   for (const auto* input : node.InputDefs()) {
-    if (!IsInputSupported(*input, node_name, logger)) {
+    if (!IsTensorShapeSupported(*input, node_name, logger, allow_empty_tensor_as_input_)) {
       return false;
     }
   }
 
-  // WebNN CPU backend (TFLite) will enable float16 input data type soon,
-  // temporarily fallback float16 input data type for WebNN CPU.
-  if (device_type == WebnnDeviceType::CPU) {
-    const auto& input = *node.InputDefs()[0];
-
-    int32_t input_type;
-    if (!GetType(input, input_type, logger))
-      return false;
-    if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16)
-      return false;
-  }
-
-  return HasSupportedInputsImpl(node, device_type, logger);
+  return HasSupportedInputsImpl(initializers, node, wnn_limits, logger);
 }
 
-bool BaseOpBuilder::HasSupportedInputsImpl(const Node& node,
-                                           const WebnnDeviceType /* device_type */,
+bool BaseOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& initializers, const Node& node,
+                                           const emscripten::val& wnn_limits,
                                            const logging::Logger& logger) const {
   // We only check the type of input 0 by default, specific op builder can override this.
   const auto& input = *node.InputDefs()[0];
-
+  const auto& op_type = node.OpType();
   int32_t input_type;
   if (!GetType(input, input_type, logger))
     return false;
 
-  if (!IsSupportedDataType(input_type, webnn_supported_data_types)) {
-    LOGS(logger, VERBOSE) << "[" << node.OpType()
-                          << "] Input type: [" << input_type
-                          << "] is not supported for now";
-    return false;
+  return IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "Input", logger);
+}
+
+bool BaseOpBuilder::HasSupportedOutputs(const Node& node, const emscripten::val& wnn_limits,
+                                        const logging::Logger& logger) const {
+  const auto node_name = MakeString("Node [", node.Name(), "] type [", node.OpType(), "]");
+  for (const auto* output : node.OutputDefs()) {
+    if (!IsTensorShapeSupported(*output, node_name, logger)) {
+      return false;
+    }
   }
 
-  return true;
+  return HasSupportedOutputsImpl(node, wnn_limits, logger);
+}
+
+bool BaseOpBuilder::HasSupportedOutputsImpl(const Node& node,
+                                            const emscripten::val& wnn_limits,
+                                            const logging::Logger& logger) const {
+  // We only check the type of output 0 by default, specific op builder can override this.
+  const auto& output = *node.OutputDefs()[0];
+  const auto& op_type = node.OpType();
+  int32_t output_type;
+  if (!GetType(output, output_type, logger))
+    return false;
+
+  return IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, "output", "Output", logger);
 }
 
 bool BaseOpBuilder::HasSupportedOpSet(const Node& node,

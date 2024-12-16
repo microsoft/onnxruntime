@@ -8,7 +8,7 @@ on:
     paths:
       - java/**
   schedule:
-    - cron: '0 0 1 * *'
+    - cron: '0 0 1,15 * *'
   workflow_dispatch:
 
 concurrency:
@@ -21,7 +21,7 @@ permissions:
 jobs:
   build:
     name: Generate Java docs
-    runs-on: ubuntu-latest
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     steps:
       - uses: actions/checkout@v4
       - name: Set up JDK 11
@@ -47,4 +47,4 @@ jobs:
         with:
           name: onnxruntime-java-apidocs
           path: _site
-          retention-days: 60
+          retention-days: 30

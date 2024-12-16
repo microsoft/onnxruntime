@@ -11,19 +11,21 @@ namespace onnxruntime {
 namespace contrib {
 namespace group_query_attention_helper {
 
-Status CheckInputs(const Tensor* query,
-                   const Tensor* key,
-                   const Tensor* value,
-                   const Tensor* past_key,
-                   const Tensor* past_value,
-                   const Tensor* cos_cache,
-                   const Tensor* sin_cache,
+template <typename T = Tensor>
+Status CheckInputs(const T* query,
+                   const T* key,
+                   const T* value,
+                   const T* past_key,
+                   const T* past_value,
+                   const T* cos_cache,
+                   const T* sin_cache,
                    void* parameters,
                    int num_heads,
                    int kv_num_heads,
-                   const Tensor* seqlens_k,
-                   const Tensor* total_seqlen,
-                   float scale) {
+                   const T* seqlens_k,
+                   const T* total_seqlen,
+                   float scale,
+                   float softcap) {
   // Note: Here S* is seqlen_past_kv_cache, S+ is seqlen_present_kv_cache
   //     past_key                   : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
   //     past_value                 : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
@@ -167,14 +169,13 @@ Status CheckInputs(const Tensor* query,
                            "Input 'past_key' and 'past_value' shall be both present or both absent.");
   }
 
-  // Check seqlens_k tensor (holding past seqlen for token gen)
-  const auto& seqlens_dim = seqlens_k->Shape().GetDims();
-  if (seqlens_dim.size() != 1 && seqlens_dim[0] != batch_size) {
+  const auto& seqlens_k_dim = seqlens_k->Shape().GetDims();
+  if (seqlens_k_dim.size() != 1 && seqlens_k_dim[0] != batch_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "seqlens_k must be shape (batch_size).");
   }
 
-  // Set present sequence length and kv_share_buffer from input total_seqlen tensor
+  // Set present sequence length from input total_seqlen tensor
   if (!onnxruntime::IsScalarOr1ElementVector(total_seqlen)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "total_sequence_length tensor must be of one element.");
@@ -194,11 +195,11 @@ Status CheckInputs(const Tensor* query,
     }
     if (cos_dims[0] < total_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "cos_cache dimension 0 should be not be less than total_sequence_length.");
+                             "cos_cache dimension 0 shall not be less than total_sequence_length.");
     }
     if (sin_dims[0] < total_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "sin_cache dimension 0 should be not be less than total_sequence_length.");
+                             "sin_cache dimension 0 shall not be less than total_sequence_length.");
     }
     if (cos_dims[1] > (head_size / 16) * 8 || cos_dims[1] % 8 != 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -218,7 +219,26 @@ Status CheckInputs(const Tensor* query,
                            "Input 'cos_cache' and 'sin_cache' shall be both present or both absent.");
   }
 
-  bool is_prompt = sequence_length != 1;
+  bool is_subsequent_prompt = false;
+  if (sequence_length > 1 && sequence_length != total_sequence_length) {
+    if (batch_size != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "batch_size must be 1 when sequence_length > 1 and past context is given.");
+    }
+    is_subsequent_prompt = true;
+  }
+
+  bool is_first_prompt;
+  if (is_subsequent_prompt) {
+    is_first_prompt = false;  // irrelevant for interactive decoding
+  } else {
+    // If not interactive, sequence_length is 1 for token gen and arbitrarily large for prompt
+    is_first_prompt = (sequence_length == total_sequence_length);
+    if (!is_first_prompt && sequence_length != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "sequence_length shall be 1 when it is not prompt.");
+    }
+  }
 
   if (parameters != nullptr) {
     GroupQueryAttentionParameters* output_parameters = reinterpret_cast<GroupQueryAttentionParameters*>(parameters);
@@ -226,6 +246,7 @@ Status CheckInputs(const Tensor* query,
     output_parameters->sequence_length = sequence_length;                  // sequence length of Q
     output_parameters->seqlen_past_kv_cache = past_sequence_length;        // max sequence length of past kv tensors
     output_parameters->seqlen_present_kv_cache = present_sequence_length;  // max sequence length of present kv tensors
+    output_parameters->total_sequence_length = total_sequence_length;      // total sequence length
     output_parameters->hidden_size = q_hidden_size;
     output_parameters->num_heads = num_heads;
     output_parameters->head_size = head_size;
@@ -234,8 +255,10 @@ Status CheckInputs(const Tensor* query,
     output_parameters->rotary_dim = rotary_dim;
     output_parameters->is_packed_qkv = is_packed_qkv;
     output_parameters->is_unidirectional = true;
-    output_parameters->is_prompt = is_prompt;
+    output_parameters->is_subsequent_prompt = is_subsequent_prompt;
+    output_parameters->is_first_prompt = is_first_prompt;
     output_parameters->scale = scale;
+    output_parameters->softcap = softcap;
     output_parameters->qkv_format = qkv_format;
     output_parameters->past_kv_format = past_kv_format;
   }
@@ -243,25 +266,27 @@ Status CheckInputs(const Tensor* query,
   return Status::OK();
 }
 
-Status CheckInputs(const Tensor* query,
-                   const Tensor* key,
-                   const Tensor* value,
-                   const Tensor* past_key,
-                   const Tensor* past_value,
-                   const Tensor* cos_cache,
-                   const Tensor* sin_cache,
+template <typename T = Tensor>
+Status CheckInputs(const T* query,
+                   const T* key,
+                   const T* value,
+                   const T* past_key,
+                   const T* past_value,
+                   const T* cos_cache,
+                   const T* sin_cache,
                    void* parameters,
                    int num_heads,
                    int kv_num_heads,
-                   const Tensor* seqlens_k,
-                   const Tensor* total_seqlen,
+                   const T* seqlens_k,
+                   const T* total_seqlen,
                    float scale,
+                   float softcap,
                    int max_threads_per_block) {
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, scale);
+  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, scale, softcap);
 }
 }  // namespace group_query_attention_helper
 }  // namespace contrib

@@ -89,7 +89,7 @@ def create_neox_decoder_masked_self_attention_graph(
                 "bias",
                 "mask_index",
                 "past",
-                "",  # relative_position_bias
+                "",  # attention_bias
                 "past_sequence_length",
             ],
             ["output", "present"],

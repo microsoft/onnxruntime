@@ -3,6 +3,7 @@
 
 #include <random>
 #include <cmath>
+#include <limits>
 #include <type_traits>
 #include "gtest/gtest.h"
 #include "test/common/dnnl_op_test_utils.h"
@@ -1374,7 +1375,7 @@ TEST(ReductionOpTest, ReduceMax_double) {
   test.Run();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM)
 TEST(ReductionOpTest, ReduceMax_half) {
   OpTester test("ReduceMax");
   test.AddAttribute("axes", std::vector<int64_t>{1, 2});
@@ -2157,7 +2158,7 @@ TEST(ReductionOpTest, ReduceMin_double) {
   test.Run();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM)
 TEST(ReductionOpTest, ReduceMin_half) {
   OpTester test("ReduceMin");
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
@@ -2355,7 +2356,7 @@ TEST(ReductionOpTest, ReduceSum_int32) {
   test.Run();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM)
 TEST(ReductionOpTest, ReduceSumHalfHalf) {
   OpTester test("ReduceSum");
   test.AddAttribute("keepdims", (int64_t)0);
@@ -2780,6 +2781,22 @@ TEST(ReductionOpTest, ReduceSum_empty_axes_input_initializer_opset_13) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
+TEST(ReductionOpTest, ReduceSum_missing_axes_input_noop_opset_13) {
+  OpTester test("ReduceSum", 13, onnxruntime::kOnnxDomain);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddAttribute("noop_with_empty_axes", (int64_t)1);  // missing axes input and noop. should be identity
+  test.AddInput<float>("data", {1, 2, 2},
+                       {1.0f, 2.0f,
+                        3.0f, 4.0f});
+  test.AddOptionalInputEdge<int64_t>();  // missing optional axes input
+  test.AddOutput<float>("reduced", {1, 2, 2},
+                        {1.0f, 2.0f,
+                         3.0f, 4.0f});
+
+  // TODO: OpenVINO doesn't support "axes" input in opset 13
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+}
+
 TEST(ReductionOpTest, ReduceSum0DTensor) {
   OpTester test("ReduceSum");
   test.AddInput<float>("data", {}, {2});
@@ -3159,19 +3176,26 @@ TEST(ReductionOpTest, ReduceProd0DTensor) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
-TEST(ReductionOpTest, ArgMax) {
+template <typename T>
+class ReductionOpTest : public ::testing::Test {
+};
+
+using ReductionOpTestTypes = ::testing::Types<float, MLFloat16>;
+TYPED_TEST_SUITE(ReductionOpTest, ReductionOpTestTypes);
+
+TYPED_TEST(ReductionOpTest, ArgMax) {
   OpTester test("ArgMax");
   test.AddAttribute("axis", (int64_t)1);
   test.AddAttribute("keepdims", (int64_t)1);
-  test.AddInput<float>("data", {3, 2, 2},
-                       {1.0f, 2.0f,
-                        3.0f, 4.0f,
+  test.AddInput<TypeParam>("data", {3, 2, 2},
+                           GetTypedArray<TypeParam>({1.0f, 2.0f,
+                                                     3.0f, 4.0f,
 
-                        5.0f, 6.0f,
-                        7.0f, 8.0f,
+                                                     5.0f, 6.0f,
+                                                     7.0f, 8.0f,
 
-                        9.0f, 10.0f,
-                        11.0f, 12.0f});
+                                                     9.0f, 10.0f,
+                                                     11.0f, 12.0f}));
   test.AddOutput<int64_t>("reduced", {3, 1, 2},
                           {1, 1,
                            1, 1,
@@ -3228,6 +3252,26 @@ TEST(ReductionOpTest, ArgMax_do_not_keepdims_2) {
   test.AddOutput<int64_t>("reduced", {},
                           {2});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});  // TensorRT: node1: at least 2 dimensions are required for input
+}
+
+TEST(ReductionOpTest, ArgMax_int64) {
+  OpTester test("ArgMax", 13);
+  test.AddAttribute("axis", (int64_t)1);
+  test.AddAttribute("keepdims", (int64_t)1);
+  test.AddInput<int64_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int64_t>("reduced", {3, 1, 2},
+                          {1, 1,
+                           1, 1,
+                           1, 1});
+  test.Run();
 }
 
 TEST(ReductionOpTest, ArgMax_int32) {
@@ -3292,6 +3336,41 @@ TEST(ReductionOpTest, ArgMax_int32_last_index_dups) {
                            0, 1,
                            1, 0});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(ReductionOpTest, ArgMax_float_first_index_random) {
+  OpTester test("ArgMax", 12);
+  test.AddAttribute("axis", static_cast<int64_t>(0));
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+
+  // Since select_last_index is 0 by default, this test should run on both CPU and CUDA
+  test.AddAttribute("select_last_index", static_cast<int64_t>(0));
+
+  constexpr size_t vector_size = 64 * 1024;
+  constexpr float max_value = std::numeric_limits<float>::infinity();
+
+  std::random_device rd;
+  std::mt19937 generator(rd());
+  std::uniform_int_distribution<int> distribution(0, static_cast<int>(vector_size) - 1);
+
+  std::vector<float> data_vec(vector_size, 0.0f);
+
+  int min_index = -1;
+
+  // Try replace 8 elements with max_value. It is fine that some elements hit same index.
+  for (int i = 0; i < 8; ++i) {
+    int index = distribution(generator);
+    data_vec[index] = max_value;
+    if (i == 0 || index < min_index) {
+      min_index = index;
+    }
+  }
+
+  test.AddInput<float>("data", {vector_size}, data_vec);
+  test.AddOutput<int64_t>("reduced", {1}, {min_index});
+
+  // Exclude OpenVINO since it failed to handle this case.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ReductionOpTest, ArgMax_int32_neg_axis) {
@@ -3495,6 +3574,63 @@ TEST(ReductionOpTest, ArgMin_do_not_keepdims_2_select_last) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(ReductionOpTest, ArgMin_uint8) {
+  OpTester test("ArgMin", 13);
+  test.AddAttribute("axis", (int64_t)0);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<uint8_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int64_t>("reduced", {2, 2},
+                          {0, 0,
+                           0, 0});
+  test.Run();
+}
+
+TEST(ReductionOpTest, ArgMin_int8) {
+  OpTester test("ArgMin", 13);
+  test.AddAttribute("axis", (int64_t)0);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<int8_t>("data", {3, 2, 2},
+                        {1, 2,
+                         3, 4,
+
+                         5, 6,
+                         7, 8,
+
+                         9, 10,
+                         11, 12});
+  test.AddOutput<int64_t>("reduced", {2, 2},
+                          {0, 0,
+                           0, 0});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(ReductionOpTest, ArgMin_int64) {
+  OpTester test("ArgMin", 13);
+  test.AddAttribute("axis", (int64_t)0);
+  test.AddAttribute("keepdims", (int64_t)0);
+  test.AddInput<int64_t>("data", {3, 2, 2},
+                         {1, 2,
+                          3, 4,
+
+                          5, 6,
+                          7, 8,
+
+                          9, 10,
+                          11, 12});
+  test.AddOutput<int64_t>("reduced", {2, 2},
+                          {0, 0,
+                           0, 0});
+  test.Run();
+}
+
 TEST(ReductionOpTest, ArgMin_int32) {
   OpTester test("ArgMin");
   test.AddAttribute("axis", (int64_t)0);
@@ -3553,6 +3689,41 @@ TEST(ReductionOpTest, ArgMin_int32_neg_axis) {
                            0, 0});
 
   test.Run();
+}
+
+TEST(ReductionOpTest, ArgMin_float_first_index_random) {
+  OpTester test("ArgMin", 13);
+  test.AddAttribute("axis", static_cast<int64_t>(0));
+  test.AddAttribute("keepdims", static_cast<int64_t>(1));
+
+  // Since select_last_index is 0 by default, this test should run on both CPU and CUDA
+  test.AddAttribute("select_last_index", static_cast<int64_t>(0));
+
+  constexpr size_t vector_size = 64 * 1024;
+  constexpr float min_value = -std::numeric_limits<float>::infinity();
+
+  std::random_device rd;
+  std::mt19937 generator(rd());
+  std::uniform_int_distribution<int> distribution(0, static_cast<int>(vector_size) - 1);
+
+  std::vector<float> data_vec(vector_size, 0.0f);
+
+  int min_index = -1;
+
+  // Try replace 8 elements with min_value. It is fine that some elements hit same index.
+  for (int i = 0; i < 8; ++i) {
+    int index = distribution(generator);
+    data_vec[index] = min_value;
+    if (i == 0 || index < min_index) {
+      min_index = index;
+    }
+  }
+
+  test.AddInput<float>("data", {vector_size}, data_vec);
+  test.AddOutput<int64_t>("reduced", {1}, {min_index});
+
+  // Exclude OpenVINO since it failed to handle this case.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_ReduceDimWithZero1) {
@@ -5510,7 +5681,7 @@ TEST(ReductionOpTest, ReduceSum_RK_parallel) {
   test.AddOutput<float>("reduced", {32}, expected);
 
   // CoreML does not provide 1e-5 precision here (it's off by 1e-4)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCoreMLExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
 TEST(ReductionOpTest, ReduceSum_RK_keepdims) {
@@ -5940,5 +6111,18 @@ TEST(ReductionOpTest, empty_set_ReduceSumSquare) {
 TEST(ReductionOpTest, empty_set_ReduceSumSquare_13) {
   test_empty_set("ReduceSumSquare", 13, false, 0.0f);
 }
+
+TEST(ReductionOpTest, MissingOptionalAxes) {
+  OpTester test("ReduceMax", 18);
+  test.AddInput<float>("data", {2, 2},
+                       {1.0f, 4.0f,
+                        3.0f, 2.0f});
+  test.AddOptionalInputEdge<int64_t>();
+  test.AddOutput<float>("reduced", {1, 1}, {4.0f});
+
+  // OpenVINO doesn't support "axes" input
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+}
+
 }  // namespace test
 }  // namespace onnxruntime

@@ -23,11 +23,11 @@ DEFAULT_BUILD_ABIS = ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"]
 
 # Onnx Runtime native library is built against NDK API 21 by default
 # It is possible to build from source for Android API levels below 21, but it is not guaranteed
-DEFAULT_ANDROID_MIN_SDK_VER = 21
+DEFAULT_ANDROID_MIN_SDK_VER = 24
 
 # Android API 24 is the default target API version for Android builds, based on Microsoft 1CS requirements
 # It is possible to build from source using API level 21 and higher as the target SDK version
-DEFAULT_ANDROID_TARGET_SDK_VER = 24
+DEFAULT_ANDROID_TARGET_SDK_VER = 34
 
 
 def _parse_build_settings(args):
@@ -79,6 +79,7 @@ def _build_aar(args):
     build_settings = _parse_build_settings(args)
     build_dir = os.path.abspath(args.build_dir)
     ops_config_path = os.path.abspath(args.include_ops_by_config) if args.include_ops_by_config else None
+    qnn_android_build = "--use_qnn" in build_settings["build_params"]
 
     # Setup temp environment for building
     temp_env = os.environ.copy()
@@ -93,6 +94,26 @@ def _build_aar(args):
     exe_dir = os.path.join(intermediates_dir, "executables", build_config)
     base_build_command = [sys.executable, BUILD_PY] + build_settings["build_params"] + ["--config=" + build_config]
     header_files_path = ""
+
+    if qnn_android_build:
+        qnn_home = args.qnn_path
+        sdk_file = os.path.join(qnn_home, "sdk.yaml")
+        qnn_sdk_version = None
+        with open(sdk_file) as f:
+            for line in f:
+                if line.strip().startswith("version:"):
+                    # yaml file has simple key: value format with version as key
+                    qnn_sdk_version = line.split(":", 1)[1].strip()
+                    break
+
+        # Note: The QNN package version does not follow Semantic Versioning (SemVer) format.
+        # only use major.minor.patch version for qnn sdk version and truncate the build_id info if any
+        # yaml file typically has version like 2.26.0
+        if qnn_sdk_version:
+            qnn_sdk_version = ".".join(qnn_sdk_version.split(".")[:3])
+            base_build_command += ["--qnn_home=" + qnn_home]
+        else:
+            raise ValueError("Error: QNN SDK version not found in sdk.yaml file.")
 
     # Build binary for each ABI, one by one
     for abi in build_settings["build_abis"]:
@@ -118,11 +139,16 @@ def _build_aar(args):
             os.symlink(os.path.join(abi_build_dir, build_config, lib_name), target_lib_name)
 
         # copy executables for each abi, in case we want to publish those as well
+        # some of them might not exist, e.g., if we skip building the tests
         abi_exe_dir = os.path.join(exe_dir, abi)
         for exe_name in ["libonnxruntime.so", "onnxruntime_perf_test", "onnx_test_runner"]:
+            src_exe_path = os.path.join(abi_build_dir, build_config, exe_name)
+            if not os.path.exists(src_exe_path):
+                continue
+
             os.makedirs(abi_exe_dir, exist_ok=True)
-            target_exe_name = os.path.join(abi_exe_dir, exe_name)
-            shutil.copyfile(os.path.join(abi_build_dir, build_config, exe_name), target_exe_name)
+            dest_exe_path = os.path.join(abi_exe_dir, exe_name)
+            shutil.copyfile(src_exe_path, dest_exe_path)
 
         # we only need to define the header files path once
         if not header_files_path:
@@ -151,7 +177,12 @@ def _build_aar(args):
             if "--enable_training_apis" in build_settings["build_params"]
             else "-DENABLE_TRAINING_APIS=0"
         ),
+        "-DreleaseVersionSuffix=" + os.getenv("RELEASE_VERSION_SUFFIX", ""),
     ]
+
+    # Add qnn specific parameters
+    if qnn_android_build:
+        gradle_command.append(f"-DqnnVersion={qnn_sdk_version}")
 
     # clean, build, and publish to a local directory
     subprocess.run([*gradle_command, "clean"], env=temp_env, shell=False, check=True, cwd=JAVA_ROOT)
@@ -176,6 +207,8 @@ def parse_args():
     parser.add_argument(
         "--android_ndk_path", type=str, default=os.environ.get("ANDROID_NDK_HOME", ""), help="Path to the Android NDK"
     )
+
+    parser.add_argument("--qnn_path", type=str, default=os.environ.get("QNN_HOME", ""), help="Path to the QNN SDK")
 
     parser.add_argument(
         "--build_dir",

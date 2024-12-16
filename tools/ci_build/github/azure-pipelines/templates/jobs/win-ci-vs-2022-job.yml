@@ -102,14 +102,14 @@ jobs:
 
   - task: NodeTool@0
     inputs:
-      versionSpec: '18.x'
+      versionSpec: '20.x'
       force32bit: ${{ parameters.isX86 }}
 
   # Our build machine doesn't have java x86
   - ${{ if eq(parameters.buildArch, 'x64') }}:
       - task: JavaToolInstaller@0
         inputs:
-          versionSpec: '11'
+          versionSpec: '17'
           jdkArchitectureOption: ${{ parameters.buildArch }}
           jdkSourceOption: 'PreInstalled'
 
@@ -121,6 +121,13 @@ jobs:
      "C:\Program Files\doxygen\bin\doxygen.exe" $(Build.SourcesDirectory)\tools\ci_build\github\Doxyfile_csharp.cfg
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'API Documentation Check and generate'
+
+  # need to set PROCESSOR_ARCHITECTURE so the x86 SDK is installed correctly
+  - task: UseDotNet@2
+    inputs:
+      version: 8.x
+    env:
+      PROCESSOR_ARCHITECTURE: ${{ parameters.buildArch }}
 
   - task: NuGetToolInstaller@0
     displayName: Use Nuget 6.10.x
@@ -209,18 +216,34 @@ jobs:
 
   - ${{ if eq(parameters.EnablePython, true) }}:
       - powershell: |
-         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
+         python3 -m pip uninstall -y onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml -qq
          Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
-
         workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
         displayName: 'Install onnxruntime wheel'
 
   - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
-      - powershell: |
-         python $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022"  --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}
-
-        workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
-        displayName: 'Run tests'
+      - ${{ if and(contains(parameters.additionalBuildFlags, 'use_cuda'), contains(parameters.additionalBuildFlags, 'use_dml')) }}:
+        - powershell: |
+           python $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022" --enable_onnx_tests ${{ parameters.additionalBuildFlags }}
+          workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
+          displayName: 'Run tests excluding CUDA tests'
+          env:
+            NO_CUDA_TEST: '1'
+            GTEST_FILTER: '-CudaEp*:CudaNhwcTypedTest*:*cpu_*models*' # Exclude CUDA EP tests under providers/cuda/ and cpu models test
+            PATH: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }};$(PATH)' # For onnxruntime4j_test to find dependent dlls
+        - powershell: |
+            python $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022" --enable_onnx_tests ${{ parameters.additionalBuildFlags }}
+          workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
+          displayName: 'Run tests excluding DML tests'
+          env:
+            NO_DML_TEST: '1'
+            GTEST_FILTER: '-*cpu_*models*'
+            PATH: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }};$(PATH)'
+      - ${{ else }}:
+        - powershell: |
+           python $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022" --enable_onnx_tests ${{ parameters.additionalBuildFlags }}
+          workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
+          displayName: 'Run tests'
 
   - ${{ if eq(parameters.GenerateDocumentation, true) }}:
     - task: PythonScript@0

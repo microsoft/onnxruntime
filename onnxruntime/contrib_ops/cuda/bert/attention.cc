@@ -59,7 +59,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* bias = context->Input<Tensor>(2);
   const Tensor* mask_index = context->Input<Tensor>(3);
   const Tensor* past = context->Input<Tensor>(kPastInputIndex);
-  const Tensor* relative_position_bias = context->Input<Tensor>(5);
+  const Tensor* attention_bias = context->Input<Tensor>(5);
   const Tensor* past_seq_len = context->Input<Tensor>(kPastSequenceLengthInputIndex);
 
   auto& device_prop = GetDeviceProp();
@@ -74,7 +74,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                   bias != nullptr ? bias->Shape() : bias_shape,
                                   mask_index,
                                   past,
-                                  relative_position_bias,
+                                  attention_bias,
                                   &parameters,
                                   device_prop.maxThreadsPerBlock,
                                   past_seq_len));
@@ -102,9 +102,12 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   const int sm = device_prop.major * 10 + device_prop.minor;
   const bool is_mask_1d_seq_len = parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN;
 
+  typedef typename ToCudaType<T>::MappedType CudaT;
+  AttentionData<CudaT> data;
+
 #if USE_FLASH_ATTENTION
   bool use_flash_attention = !disable_flash_attention_ &&
-                             (nullptr == relative_position_bias) &&
+                             (nullptr == attention_bias) &&
                              nullptr == past &&
                              nullptr == present &&
                              parameters.hidden_size == parameters.v_hidden_size &&
@@ -118,21 +121,26 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     use_flash_attention = false;
   }
   // Allocate buffers
+  size_t softmax_lse_bytes = 0;
   size_t softmax_lse_accum_bytes = 0;
   size_t out_accum_bytes = 0;
   if (use_flash_attention) {
+    softmax_lse_bytes = onnxruntime::flash::get_softmax_lse_size(sequence_length, batch_size, parameters.num_heads);
+
     using namespace std;
     auto [num_splits, slse_accum_bytes, o_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
-        parameters.batch_size, parameters.sequence_length, parameters.kv_sequence_length, parameters.num_heads,
+        parameters.batch_size, parameters.sequence_length, parameters.total_sequence_length, parameters.num_heads,
         parameters.head_size, device_prop.multiProcessorCount);
-    parameters.num_splits = static_cast<int>(num_splits);
+    data.num_splits = static_cast<int>(num_splits);
     softmax_lse_accum_bytes = slse_accum_bytes;
     out_accum_bytes = o_accum_bytes;
   }
+  auto softmax_lse_buffer = GetScratchBuffer<void>(softmax_lse_bytes, context->GetComputeStream());
   auto softmax_lse_accum_buffer = GetScratchBuffer<void>(softmax_lse_accum_bytes, context->GetComputeStream());
   auto out_accum_buffer = GetScratchBuffer<void>(out_accum_bytes, context->GetComputeStream());
 #else
   constexpr bool use_flash_attention = false;
+  auto softmax_lse_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
   auto softmax_lse_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());  // nullptr
   auto out_accum_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());          // nullptr
 #endif
@@ -146,7 +154,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
         // where past state is empty.
         bool is_mask_2d_key_padding = parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING;
         bool use_causal_fused_runner = (nullptr == mask_index || is_mask_1d_seq_len || is_mask_2d_key_padding) &&
-                                       nullptr == relative_position_bias &&
+                                       nullptr == attention_bias &&
                                        parameters.past_sequence_length == 0 &&
                                        parameters.hidden_size == parameters.v_hidden_size &&
                                        FusedMHARunnerFP16v2::IsSupported(sm, parameters.head_size, sequence_length,
@@ -169,7 +177,7 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                               (nullptr == mask_index || is_mask_1d_seq_len) &&
                               nullptr == past &&
                               nullptr == present &&
-                              nullptr == relative_position_bias &&
+                              nullptr == attention_bias &&
                               parameters.hidden_size == parameters.v_hidden_size &&
                               FusedMHARunnerFP16v2::IsSupported(sm, parameters.head_size, sequence_length,
                                                                 enable_trt_flash_attention_, false);
@@ -201,12 +209,9 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
       nullptr == present &&
       (nullptr == mask_index || parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) &&
       (sizeof(T) == 2 || parameters.sequence_length >= this->kernel_options_->MinSeqLenForEfficientAttentionFp32()) &&
+      (nullptr == attention_bias || parameters.sequence_length % (4 * sizeof(T)) == 0) &&
       has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.v_head_size);
 
-  if (use_memory_efficient_attention) {
-    bool is_good_for_rpb = relative_position_bias != nullptr && parameters.sequence_length % (4 * sizeof(T)) == 0;
-    use_memory_efficient_attention = (nullptr == relative_position_bias || is_good_for_rpb);
-  }
 #else
   constexpr bool use_memory_efficient_attention = false;
 #endif
@@ -249,6 +254,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
 
   constexpr size_t element_size = sizeof(T);
   constexpr bool use_fused_cross_attention = false;
+  constexpr bool use_cudnn_flash_attention = false;
+  constexpr bool use_lean_attention = false;
   size_t workSpaceSize = GetAttentionWorkspaceSize(element_size,
                                                    parameters.batch_size,
                                                    parameters.num_heads,
@@ -259,13 +266,13 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
                                                    parameters.total_sequence_length,
                                                    fused_runner,
                                                    use_flash_attention,
+                                                   use_lean_attention,
                                                    use_fused_cross_attention,
                                                    use_memory_efficient_attention,
+                                                   use_cudnn_flash_attention,
                                                    false);
   IAllocatorUniquePtr<void> work_space = IAllocator::MakeUniquePtr<void>(allocator, workSpaceSize, false, context->GetComputeStream());
 
-  typedef typename ToCudaType<T>::MappedType CudaT;
-  AttentionData<CudaT> data;
   data.gemm_buffer = reinterpret_cast<CudaT*>(gemm_buffer.get());
   if (nullptr != bias) {
     data.bias = reinterpret_cast<const CudaT*>(bias->Data<T>());
@@ -277,8 +284,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   if (nullptr != past) {
     data.past = reinterpret_cast<const CudaT*>(past->Data<T>());
   }
-  if (nullptr != relative_position_bias) {
-    data.relative_position_bias = reinterpret_cast<const CudaT*>(relative_position_bias->Data<T>());
+  if (nullptr != attention_bias) {
+    data.attention_bias = reinterpret_cast<const CudaT*>(attention_bias->Data<T>());
   }
   data.has_qkv_workspace = true;
   data.workspace = reinterpret_cast<CudaT*>(work_space.get());
@@ -290,6 +297,10 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.use_flash_attention = use_flash_attention;
   data.use_memory_efficient_attention = use_memory_efficient_attention;
+  if (softmax_lse_buffer != nullptr) {
+    data.softmax_lse = reinterpret_cast<CudaT*>(softmax_lse_buffer.get());
+  }
+
   if (softmax_lse_accum_buffer != nullptr) {
     data.softmax_lse_accum = reinterpret_cast<CudaT*>(softmax_lse_accum_buffer.get());
   }
@@ -297,7 +308,8 @@ Status Attention<T>::ComputeInternal(OpKernelContext* context) const {
     data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
   }
 
-  return QkvToContext<CudaT>(device_prop, cublas, context->GetComputeStream(), parameters, data);
+  cudnnHandle_t cudnn = GetCudnnHandle(context);
+  return QkvToContext<CudaT>(device_prop, cublas, cudnn, context->GetComputeStream(), parameters, data);
 }
 
 }  // namespace cuda

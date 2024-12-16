@@ -1,0 +1,377 @@
+parameters:
+- name: build_py_parameters
+  displayName: >
+    Extra parameters to pass to build.py. Don't put newlines in here.
+  type: string
+  default: ''
+
+- name: enable_linux_cpu
+  displayName: 'Whether Linux CPU package is built.'
+  type: boolean
+  default: true
+
+- name: enable_windows_cpu
+  displayName: 'Whether Windows CPU package is built.'
+  type: boolean
+  default: true
+
+- name: enable_mac_cpu
+  displayName: 'Whether Mac CPU package is built.'
+  type: boolean
+  default: true
+
+- name: enable_linux_arm
+  displayName: 'Whether Linux ARM package is built.'
+  type: boolean
+  default: true
+
+- name: enable_windows_arm64_qnn
+  displayName: 'Whether Windows ARM64 package with QNN EP is built.'
+  type: boolean
+  default: true
+
+- name: enable_windows_arm64ec_qnn
+  displayName: 'Whether Windows ARM64EC package with QNN EP is built.'
+  type: boolean
+  default: true
+
+- name: enable_windows_x64_qnn
+  displayName: 'Whether Windows x86_64 package with QNN EP is built.'
+  type: boolean
+  default: true
+
+- name: enable_linux_x64_qnn
+  displayName: 'Whether Linux x86_64 package with QNN EP is built.'
+  type: boolean
+  default: true
+
+- name: cmake_build_type
+  type: string
+  displayName: 'Linux packages cmake build type. Linux Only.'
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+# Only applies to QNN packages.
+- name: qnn_sdk_version
+  type: string
+  displayName: 'QNN SDK version. Only for QNN packages.'
+  default: 2.28.2.241116
+
+stages:
+- ${{ if eq(parameters.enable_windows_cpu, true) }}:
+  - stage: Python_Packaging_Windows_CPU
+    dependsOn: []
+    jobs:
+    - job: Windows_py_Wheels
+      pool: 'onnxruntime-Win-CPU-2022'
+      strategy:
+        matrix:
+          Python310_x64:
+            PythonVersion: '3.10'
+            MsbuildPlatform: x64
+            buildArch: x64
+          Python311_x64:
+            PythonVersion: '3.11'
+            MsbuildPlatform: x64
+            buildArch: x64
+          Python312_x64:
+            PythonVersion: '3.12'
+            MsbuildPlatform: x64
+            buildArch: x64
+          Python313_x64:
+            PythonVersion: '3.13'
+            MsbuildPlatform: x64
+            buildArch: x64
+          # Training build cannot support Win32 for now because one or more of its python
+          # dependencies does not support Win32. So, don't build a training package for Win32
+          ${{ if not(contains(parameters.build_py_parameters, '--enable_training')) }}:
+            Python310_x86:
+              PythonVersion: '3.10'
+              MsbuildPlatform: Win32
+              buildArch: x86
+            Python311_x86:
+              PythonVersion: '3.11'
+              MsbuildPlatform: Win32
+              buildArch: x86
+            Python312_x86:
+              PythonVersion: '3.12'
+              MsbuildPlatform: Win32
+              buildArch: x86
+      variables:
+        OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
+        EnvSetupScript: setup_env.bat
+        ExtraParam: ${{ parameters.build_py_parameters }}
+      timeoutInMinutes: 180
+      workspace:
+        clean: all
+
+      steps:
+      - checkout: self
+        clean: true
+        submodules: recursive
+
+      - template: ../templates/telemetry-steps.yml
+
+      - task: UsePythonVersion@0
+        inputs:
+          versionSpec: $(PythonVersion)
+          addToPath: true
+          architecture: $(buildArch)
+
+      - task: onebranch.pipeline.tsaoptions@1
+        displayName: 'OneBranch TSAOptions'
+        inputs:
+          tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
+          appendSourceBranchName: false
+
+      - template: ../templates/set-nightly-build-option-variable-step.yml
+
+      - task: BatchScript@1
+        displayName: 'setup env'
+        inputs:
+          filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\$(EnvSetupScript)'
+          modifyEnvironment: true
+          workingFolder: '$(Build.BinariesDirectory)'
+
+      - template: ../templates/download-deps.yml
+
+      - task: PythonScript@0
+        displayName: 'Update deps.txt'
+        inputs:
+          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
+          arguments: --new_dir $(Build.BinariesDirectory)/deps
+          workingDirectory: $(Build.BinariesDirectory)
+
+      - task: PowerShell@2
+        displayName: 'Install ONNX'
+        inputs:
+          filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
+          workingDirectory: '$(Build.BinariesDirectory)'
+          arguments: -cpu_arch $(buildArch) -install_prefix $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\installed -build_config ${{ parameters.cmake_build_type }}
+
+      - task: PythonScript@0
+        displayName: 'Generate cmake config'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+          arguments: >
+            --config ${{ parameters.cmake_build_type }}
+            --enable_lto
+            --build_dir $(Build.BinariesDirectory)
+            --skip_submodule_sync
+            --cmake_generator "Visual Studio 17 2022"
+            --enable_pybind
+            --enable_onnx_tests
+            ${{ parameters.build_py_parameters }}
+            --parallel --use_binskim_compliant_compile_flags --update --build
+            $(TelemetryOption)
+          workingDirectory: '$(Build.BinariesDirectory)'
+
+      # Esrp signing
+      - template: ../templates/win-esrp-dll.yml
+        parameters:
+          FolderPath: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime\capi'
+          DisplayName: 'ESRP - Sign Native dlls'
+          DoEsrp: true
+          Pattern: '*.pyd,*.dll'
+
+      - task: PythonScript@0
+        displayName: 'Build wheel'
+        inputs:
+          scriptPath: '$(Build.SourcesDirectory)\setup.py'
+          arguments: 'bdist_wheel ${{ parameters.build_py_parameters }} $(NightlyBuildOption)'
+          workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
+
+      - task: CopyFiles@2
+        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\dist'
+          Contents: '*.whl'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifact: ONNXRuntime python wheel'
+        inputs:
+          ArtifactName: onnxruntime
+
+      - script: |
+          7z x *.whl
+        workingDirectory: '$(Build.ArtifactStagingDirectory)'
+        displayName: 'unzip the package'
+
+      - task: CredScan@3
+        displayName: 'Run CredScan'
+        inputs:
+          debugMode: false
+        continueOnError: true
+
+      - task: BinSkim@4
+        displayName: 'Run BinSkim'
+        inputs:
+          AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll;-:file|$(Build.ArtifactStagingDirectory)\**\DirectML.dll'
+        continueOnError: true
+
+      - powershell: |
+         python -m pip uninstall -y onnxruntime onnxruntime-gpu -qq
+         Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
+         Remove-Item -Recurse -Force onnxruntime
+         if ("$(ExtraParam)" -contains "--use_azure") {
+           $env:path="$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\_deps\vcpkg-src\installed\x64-windows\bin;$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\_deps\vcpkg-src\installed\x86-windows\bin;$env:path"
+           python onnxruntime_test_python_azure.py
+         }
+         python onnx_backend_test_series.py
+        workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
+        displayName: 'Run Python Tests'
+
+      - template: ../templates/component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
+
+      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+        displayName: 'Clean Agent Directories'
+        condition: always()
+
+- ${{ if eq(parameters.enable_mac_cpu, true) }}:
+  - stage: Python_Packaging_MacOS
+    dependsOn: []
+    jobs:
+    - job: MacOS_py_Wheels
+      timeoutInMinutes: 360
+      workspace:
+        clean: all
+      pool:
+        vmImage: 'macOS-13'
+      variables:
+        MACOSX_DEPLOYMENT_TARGET: '13.3'
+      strategy:
+        matrix:
+          Python310:
+            PythonVersion: '3.10'
+          Python311:
+            PythonVersion: '3.11'
+          Python312:
+            PythonVersion: '3.12'
+          Python313:
+            PythonVersion: '3.13'
+
+      steps:
+      - checkout: self
+        clean: true
+        submodules: recursive
+
+      - task: UsePythonVersion@0
+        displayName: 'Use Python'
+        inputs:
+          versionSpec: $(PythonVersion)
+
+      - template: ../templates/use-xcode-version.yml
+
+      - template: ../templates/download-deps.yml
+
+      - task: PythonScript@0
+        displayName: 'Update deps.txt'
+        inputs:
+          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
+          arguments: --new_dir $(Build.BinariesDirectory)/deps
+          workingDirectory: $(Build.BinariesDirectory)
+
+      - script: |
+          set -e -x
+          export _PYTHON_HOST_PLATFORM=macosx-${{variables.MACOSX_DEPLOYMENT_TARGET}}-universal2
+          python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --build_dir $(Build.BinariesDirectory) --use_coreml --skip_submodule_sync --parallel --use_binskim_compliant_compile_flags --config Release --build_wheel ${{ parameters.build_py_parameters }} --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64" --update --build
+        displayName: 'Command Line Script'
+
+      - script: |
+          set -ex
+          python -m pip install --upgrade delocate
+          cd '$(Build.BinariesDirectory)/Release/dist'
+          ls
+          for file in *.whl
+          do
+            delocate-listdeps "$file"
+            delocate-wheel --require-archs=x86_64,arm64 -w fixed_wheels -v "$file"
+          done
+        displayName: 'delocate wheel'
+
+      - task: CopyFiles@2
+        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+        inputs:
+          SourceFolder: '$(Build.BinariesDirectory)/Release/dist/fixed_wheels'
+          Contents: '*.whl'
+          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+
+      - task: PublishBuildArtifacts@1
+        displayName: 'Publish Artifact: ONNXRuntime python wheel'
+        inputs:
+          ArtifactName: onnxruntime
+
+      - template: ../templates/component-governance-component-detection-steps.yml
+        parameters:
+          condition: 'succeeded'
+
+
+  - ${{ if eq(parameters.enable_linux_arm, true) }}:
+    - stage: Python_Packaging_Linux_ARM
+      dependsOn: []
+      jobs:
+        - template: ../templates/py-linux.yml
+          parameters:
+            arch: 'aarch64'
+            machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
+            extra_build_arg: ${{ parameters.build_py_parameters }}
+            cmake_build_type: ${{ parameters.cmake_build_type }}
+
+  - ${{ if eq(parameters.enable_linux_cpu, true) }}:
+    - stage: Python_Packaging_Linux_CPU
+      dependsOn: []
+      jobs:
+      - template: ../templates/py-linux.yml
+        parameters:
+          arch: 'x86_64'
+          machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU-Large'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}
+
+  - ${{ if eq(parameters.enable_windows_arm64_qnn, true) }}:
+    - stage: Python_Packaging_Windows_ARM64_QNN
+      dependsOn: []
+      jobs:
+      - template: ../templates/py-win-arm64-qnn.yml
+        parameters:
+          MACHINE_POOL: 'onnxruntime-qnn-windows-vs-2022-arm64'
+          QNN_SDK: ${{ parameters.qnn_sdk_version }}
+          BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
+
+  - ${{ if eq(parameters.enable_windows_arm64ec_qnn, true) }}:
+    - stage: Python_Packaging_Windows_arm64ec_QNN
+      dependsOn: []
+      jobs:
+        - template: ../templates/py-win-arm64ec-qnn.yml
+          parameters:
+            MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
+            QNN_SDK: ${{ parameters.qnn_sdk_version }}
+            BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
+
+  - ${{ if eq(parameters.enable_windows_x64_qnn, true) }}:
+    - stage: Python_Packaging_Windows_x64_QNN
+      dependsOn: []
+      jobs:
+        - template: ../templates/py-win-x64-qnn.yml
+          parameters:
+            MACHINE_POOL: 'Onnxruntime-QNNEP-Windows-2022-CPU'
+            QNN_SDK: ${{ parameters.qnn_sdk_version }}
+            BUILD_PY_PARAMETERS: ${{ parameters.build_py_parameters }}
+
+  - ${{ if eq(parameters.enable_linux_x64_qnn, true) }}:
+    - stage: Python_Packaging_Linux_x64_QNN
+      dependsOn: []
+      jobs:
+      - template: ../templates/py-linux-qnn.yml
+        parameters:
+          machine_pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+          extra_build_arg: ${{ parameters.build_py_parameters }}
+          cmake_build_type: ${{ parameters.cmake_build_type }}

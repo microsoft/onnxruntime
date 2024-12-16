@@ -28,6 +28,7 @@ using json = nlohmann::json;
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_provider_factory.h"
+#include "test/common/cuda_op_test_utils.h"
 #endif  // USE_CUDA
 #include "core/session/onnxruntime_session_options_config_keys.h"
 using namespace ONNX_NAMESPACE;
@@ -160,6 +161,7 @@ class PlannerTest : public ::testing::Test {
   ExecutionProviders execution_providers_;
   std::unique_ptr<concurrency::ThreadPool> tp_;
   DataTransferManager dtm_;
+  ExternalDataLoaderManager edlm_;
   profiling::Profiler profiler_;
   std::unique_ptr<SessionOptions> sess_options_;
   std::unique_ptr<SessionState> state_;
@@ -198,7 +200,7 @@ class PlannerTest : public ::testing::Test {
     sess_options_->enable_mem_pattern = false;
     sess_options_->use_deterministic_compute = false;
     sess_options_->enable_mem_reuse = true;
-    state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_,
+    state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_, edlm_,
                                   DefaultLoggingManager().DefaultLogger(), profiler_, *sess_options_));
   }
 
@@ -250,6 +252,7 @@ class PlannerTest : public ::testing::Test {
 
   void BindKernel(onnxruntime::Node* p_node, ::onnxruntime::KernelDef& kernel_def, KernelRegistry* reg,
                   std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map) {
+    const auto& logger = DefaultLoggingManager().DefaultLogger();
     const IExecutionProvider* ep = execution_providers_.Get(*p_node);
     ASSERT_NE(ep, nullptr);
     auto info = std::make_unique<OpKernelInfo>(
@@ -259,7 +262,7 @@ class PlannerTest : public ::testing::Test {
     op_kernel_infos_.push_back(std::move(info));
     const auto kernel_type_str_resolver = OpSchemaKernelTypeStrResolver{};
     if (!KernelRegistry::HasImplementationOf(*reg, *p_node, onnxruntime::kCpuExecutionProvider,
-                                             kernel_type_str_resolver)) {
+                                             kernel_type_str_resolver, logger)) {
       ASSERT_STATUS_OK(reg->Register(
           KernelCreateInfo(std::make_unique<KernelDef>(kernel_def),
                            [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
@@ -269,7 +272,7 @@ class PlannerTest : public ::testing::Test {
     }
 
     const KernelCreateInfo* kci;
-    ASSERT_STATUS_OK(reg->TryFindKernel(*p_node, "", kernel_type_str_resolver, &kci));
+    ASSERT_STATUS_OK(reg->TryFindKernel(*p_node, "", kernel_type_str_resolver, logger, &kci));
     kernel_create_info_map.insert({p_node->Index(), gsl::not_null<const KernelCreateInfo*>(kci)});
   }
 
@@ -281,8 +284,9 @@ class PlannerTest : public ::testing::Test {
     }
   }
 
-  void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {}, bool invoke_createPlan_explicityly = true) {
-    state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_,
+  void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {},
+                  bool invoke_createPlan_explicityly = true) {
+    state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_, edlm_,
                                   DefaultLoggingManager().DefaultLogger(), profiler_, *sess_options_));
     EXPECT_EQ(graph_.Resolve(), Status::OK());
 
@@ -893,6 +897,9 @@ TEST_F(PlannerTest, LocationPlanningForPassThroughExplicitAndImplicitSubgraphInp
   SessionOptions so;
   InferenceSession sess{so, GetEnvironment()};
 
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   auto status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
   ASSERT_TRUE(status.IsOK());
 
@@ -1035,6 +1042,9 @@ TEST_F(PlannerTest, LocationPlanningForInitializersOnlyUsedInANestedSubgraph) {
   SessionOptions so;
   InferenceSession sess{so, GetEnvironment()};
 
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   auto status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
   ASSERT_TRUE(status.IsOK());
 
@@ -1142,6 +1152,9 @@ TEST_F(PlannerTest, LocationPlanningForInitializersUsedOnDifferentDevicesInMainG
   SessionOptions so;
   InferenceSession sess{so, GetEnvironment()};
 
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   auto status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
   ASSERT_TRUE(status.IsOK());
 
@@ -1234,6 +1247,9 @@ TEST_F(PlannerTest, LocationPlanningForImplicitInputsWithoutExplicitConsumersInM
   SessionOptions so;
   InferenceSession sess{so, GetEnvironment()};
 
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   auto status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
   ASSERT_TRUE(status.IsOK());
 
@@ -1266,6 +1282,10 @@ TEST_F(PlannerTest, LocationPlanningForImplicitInputsWithoutExplicitConsumersInM
 // Test MultiStream scenario for the graph:
 // node1(CPU ep)->node2(CPU ep)->node3(CUDA ep)->node4(CPU ep)
 TEST_F(PlannerTest, MultiStream) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  SKIP_CUDA_TEST_WITH_DML;
+#endif
+
   ONNX_NAMESPACE::TensorProto tensor;
   tensor.add_dims(1);
   tensor.add_float_data(1.0f);
@@ -1284,6 +1304,7 @@ TEST_F(PlannerTest, MultiStream) {
   onnxruntime::ProviderInfo_CUDA& ep = onnxruntime::GetProviderInfo_CUDA();
   auto epFactory = ep.CreateExecutionProviderFactory(epi);
   std::unique_ptr<IExecutionProvider> execution_provider = epFactory->CreateProvider();
+
   ORT_THROW_IF_ERROR(GetExecutionProviders().Add("CUDAExecutionProvider", std::move(execution_provider)));
 
   CreatePlan({}, false);
@@ -1311,6 +1332,9 @@ TEST_F(PlannerTest, MultiStream) {
 //      node3
 // All 3 nodes are CUDA EP, node1 is in stream0, node2 is in stream1, node3 is in stream2
 TEST_F(PlannerTest, MultiStream1StreamWaitFor2Streams) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  SKIP_CUDA_TEST_WITH_DML;
+#endif
   std::unique_ptr<::onnxruntime::KernelDef> cudaKernel = KernelDefBuilder().SetName("Transpose").Provider(kCudaExecutionProvider).SinceVersion(1, 10).Build();
   std::unique_ptr<::onnxruntime::KernelDef> cudaKernelAdd = KernelDefBuilder().SetName("Add").Provider(kCudaExecutionProvider).SinceVersion(1, 10).Build();
   std::string Graph_input("Graph_input"), Arg1("Arg1"), Arg2("Arg2"), Arg3("Arg3"), node1("node1"), node2("node2"), node3("node3");
@@ -1352,6 +1376,9 @@ TEST_F(PlannerTest, MultiStream1StreamWaitFor2Streams) {
 // stream 1: node2 (CPU EP)
 // node1's output, which is consumed by both node2 and node3, is in CPU.
 TEST_F(PlannerTest, MultiStreamCudaEPNodeCPUOutput) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  SKIP_CUDA_TEST_WITH_DML;
+#endif
   MemcpyToHostInCuda_TransposeInCudaAndCpu("./testdata/multi_stream_models/memcpyToHost_same_stream_with_transpose.json");
   EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan.size(), 2) << "2 logic streams";
   EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[0]->steps_.size(), 5) << "stream 0 has 5 steps";
@@ -1373,6 +1400,11 @@ TEST_F(PlannerTest, MultiStreamCudaEPNodeCPUOutput) {
 // TODO(leca): there is a bug in the corresponding graph that node2 will be visited twice when traversing node1's output nodes
 // (see: for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) in BuildExecutionPlan()). We can just break the loop and don't need the extra variables once it is fixed
 TEST_F(PlannerTest, MultiStreamMultiOutput) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
+#endif
   std::unique_ptr<::onnxruntime::KernelDef> cudaKernel = KernelDefBuilder().SetName("RNN").Provider(kCudaExecutionProvider).SinceVersion(7).Build();
   std::string Graph_input1("Graph_input1"), Graph_input2("Graph_input2"), Graph_input3("Graph_input3"), Arg1("Arg1"), Arg2("Arg2"), Arg3("Arg3"), node1("node1"), node2("node2");
   std::vector<onnxruntime::NodeArg*> input1{Arg(Graph_input1), Arg(Graph_input2), Arg(Graph_input3)}, output1{Arg(Arg1), Arg(Arg2)}, input2{Arg(Arg1), Arg(Arg2)}, output2{Arg(Arg3)};
@@ -1410,6 +1442,9 @@ TEST_F(PlannerTest, MultiStreamMultiOutput) {
 // TODO(leca): the ideal case is there is only 1 wait step before launching node3,
 // as there is a specific order between node1 and node2 if they are in the same stream, thus node3 will only need to wait the latter one
 TEST_F(PlannerTest, MultiStream2NodesSameStreamConsumedBy1NodeInDifferentStream) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  SKIP_CUDA_TEST_WITH_DML;
+#endif
   std::unique_ptr<::onnxruntime::KernelDef> cudaKernel = KernelDefBuilder().SetName("Transpose").Provider(kCudaExecutionProvider).SinceVersion(1, 10).Build();
   std::string Graph_input1("Graph_input1"), Graph_input2("Graph_input2"), Graph_input3("Graph_input3"), Arg1("Arg1"), Arg2("Arg2"), Arg3("Arg3"), node1("node1"), node2("node2"), node3("node3");
   std::vector<onnxruntime::NodeArg*> input1{Arg(Graph_input1)}, input2{Arg(Graph_input2)}, output1{Arg(Arg1)}, output2{Arg(Arg2)}, input3{Arg(Arg1), Arg(Arg2)}, output3{Arg(Arg3)};
@@ -1447,6 +1482,9 @@ TEST_F(PlannerTest, MultiStream2NodesSameStreamConsumedBy1NodeInDifferentStream)
 
 #if !defined(__wasm__) && defined(ORT_ENABLE_STREAM)
 TEST_F(PlannerTest, ParaPlanCreation) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  SKIP_CUDA_TEST_WITH_DML;
+#endif
   TypeProto graph_in_type;
   graph_in_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
   auto* graph_in_shape = graph_in_type.mutable_tensor_type()->mutable_shape();
@@ -1888,6 +1926,10 @@ TEST_F(PlannerTest, ParaPlanCreation) {
 }
 
 TEST_F(PlannerTest, TestMultiStreamConfig) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  SKIP_CUDA_TEST_WITH_DML;
+#endif
+
   const char* type = "DeviceBasedPartitioner";
   constexpr size_t type_len = 22;
 
@@ -1961,6 +2003,10 @@ TEST_F(PlannerTest, TestMultiStreamSaveConfig) {
 
 // Load with partition config where a node is missing, session load expected to fail.
 TEST_F(PlannerTest, TestMultiStreamMissingNodeConfig) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  SKIP_CUDA_TEST_WITH_DML;
+#endif
+
   const char* config_file_path = "./testdata/multi_stream_models/conv_add_relu_single_stream_missing_node.json";
   SessionOptions sess_opt;
   sess_opt.graph_optimization_level = TransformerLevel::Default;
@@ -1981,6 +2027,9 @@ TEST_F(PlannerTest, TestMultiStreamMissingNodeConfig) {
 
 // Load with partition config where streams and devices has mismatch
 TEST_F(PlannerTest, TestMultiStreamMismatchDevice) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  SKIP_CUDA_TEST_WITH_DML;
+#endif
   const char* config_file_path = "./testdata/multi_stream_models/conv_add_relu_single_stream_mismatch_device.json";
   SessionOptions sess_opt;
   sess_opt.graph_optimization_level = TransformerLevel::Default;
@@ -2006,6 +2055,9 @@ TEST_F(PlannerTest, TestCpuIf) {
   sess_opt.graph_optimization_level = TransformerLevel::Default;
 
   InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/multi_stream_models/cpu_if.onnx"));
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   ASSERT_STATUS_OK(sess.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
   ASSERT_STATUS_OK(sess.Load());
   ASSERT_STATUS_OK(sess.Initialize());
@@ -2066,10 +2118,17 @@ TEST_F(PlannerTest, TestCpuIf) {
 //    onnx.save(model, 'issue_19480.onnx')
 //
 TEST(AllocationPlannerTest, ReusedInputCrossDifferentStreams) {
+#if defined(USE_CUDA) && defined(USE_DML)
+  SKIP_CUDA_TEST_WITH_DML;
+#endif
+
   SessionOptions sess_opt;
   sess_opt.graph_optimization_level = TransformerLevel::Default;
 
   InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/multi_stream_models/issue_19480.onnx"));
+  if (DefaultCudaExecutionProvider() == nullptr) {
+    return;
+  }
   auto status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
   status = sess.Load();
   status = sess.Initialize();

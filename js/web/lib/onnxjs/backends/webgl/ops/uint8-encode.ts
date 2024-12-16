@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {getGlsl} from '../glsl-source';
-import {WebGLInferenceHandler} from '../inference-handler';
-import {TextureData, TextureType} from '../types';
+import { getGlsl } from '../glsl-source';
+import { WebGLInferenceHandler } from '../inference-handler';
+import { TextureData, TextureType } from '../types';
 
 export const encodeAsUint8 = (inferenceHandler: WebGLInferenceHandler, input: TextureData): TextureData => {
   const outputShape = input.shape;
@@ -63,9 +63,9 @@ export const encodeAsUint8 = (inferenceHandler: WebGLInferenceHandler, input: Te
     name: 'Uint8Encode',
     inputTypes: [TextureType.unpacked],
     inputNames: ['X'],
-    output: {dims: outputShape, type: input.tensor.type, textureType: TextureType.downloadUint8AsFloat},
+    output: { dims: outputShape, type: input.tensor.type, textureType: TextureType.downloadUint8AsFloat },
     shaderSource,
-    hasMain: true
+    hasMain: true,
   };
   return inferenceHandler.executeProgram(programInfo, [input.tensor]);
 };

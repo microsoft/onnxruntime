@@ -18,11 +18,6 @@ class ShapeOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
-
-  // Operator support related.
- private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                         const WebnnDeviceType device_type, const logging::Logger& logger) const override;
 };
 
 Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
@@ -38,6 +33,7 @@ Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val dims = emscripten::val::array();
   dims.call<void>("push", rank);
   desc.set("dimensions", dims);
+  desc.set("shape", dims);
   emscripten::val shape_buffer = emscripten::val::global("BigInt64Array").new_(emscripten::val::array(input_shape));
   emscripten::val shape_constant = model_builder.GetBuilder().call<emscripten::val>("constant", desc, shape_buffer);
 
@@ -67,28 +63,6 @@ Status ShapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
-}
-
-// Operator support related.
-
-bool ShapeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
-                                       const Node& node,
-                                       const WebnnDeviceType /* device_type */,
-                                       const logging::Logger& logger) const {
-  const auto& input_defs = node.InputDefs();
-  std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger))
-    return false;
-
-  int32_t output_type = ONNX_NAMESPACE::TensorProto_DataType_INT64;
-  if (!IsSupportedDataType(output_type, webnn_supported_data_types)) {
-    LOGS(logger, VERBOSE) << "[" << node.OpType()
-                          << "] Output type: [" << output_type
-                          << "] is not supported for now";
-    return false;
-  }
-
-  return true;
 }
 
 void CreateShapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

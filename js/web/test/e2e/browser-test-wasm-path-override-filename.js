@@ -3,7 +3,7 @@
 
 'use strict';
 
-it('Browser E2E testing - WebAssembly backend (path override filename)', async function() {
+it('Browser E2E testing - WebAssembly backend (path override filename)', async function () {
   // check base URL port from test args
   if (typeof __ort_arg_port === 'undefined') {
     throw new Error('test flag --port=<PORT> is required');
@@ -24,5 +24,5 @@ it('Browser E2E testing - WebAssembly backend (path override filename)', async f
     ort.env.wasm.wasmPaths.mjs = overrideMjsUrl;
   }
 
-  await testFunction(ort, {executionProviders: ['wasm']});
+  await testFunction(ort, { executionProviders: ['wasm'] });
 });

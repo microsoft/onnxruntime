@@ -285,6 +285,7 @@ void IterateSubgraphFromNode(Graph& graph,
       PushAllOutputNode(graph, to_visit, cur, visited);
     } else if (graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Cast", {9, 13}) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "FastGelu", {1}, kMSDomain) ||
+               graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Gelu", {20}) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Gelu", {1}, kMSDomain) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "QuickGelu", {1}, kMSDomain) ||
                graph_utils::IsSupportedOptypeVersionAndDomain(*cur, "Sqrt", {6, 13})) {

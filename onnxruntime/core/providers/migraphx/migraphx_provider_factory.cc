@@ -60,6 +60,7 @@ struct MIGraphX_Provider : Provider {
     info.device_id = static_cast<OrtDevice::DeviceId>(options.device_id);
     info.target_device = "gpu";
     info.fp16_enable = options.migraphx_fp16_enable;
+    info.exhaustive_tune = options.migraphx_exhaustive_tune;
     info.int8_enable = options.migraphx_int8_enable;
     info.int8_calibration_table_name = "";
     if (options.migraphx_int8_calibration_table_name != nullptr) {
@@ -85,6 +86,7 @@ struct MIGraphX_Provider : Provider {
     migx_options.device_id = internal_options.device_id;
     migx_options.migraphx_fp16_enable = internal_options.fp16_enable;
     migx_options.migraphx_int8_enable = internal_options.int8_enable;
+    migx_options.migraphx_exhaustive_tune = internal_options.exhaustive_tune;
 
     char* dest = nullptr;
     auto str_size = internal_options.int8_calibration_table_name.size();

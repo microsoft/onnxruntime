@@ -23,6 +23,7 @@ struct MIGraphXExecutionProviderInfo {
   std::string save_model_file{"./compiled_model.mxr"};
   bool load_compiled_model{true};
   std::string load_model_file{"./compiled_model.mxr"};
+  bool exhaustive_tune{false};
 
   static MIGraphXExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const MIGraphXExecutionProviderInfo& info);

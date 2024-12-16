@@ -383,12 +383,14 @@ ModelProto Model::ToProto() const {
 
 ModelProto Model::ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name,
                                                        const std::filesystem::path& file_path,
-                                                       size_t initializer_size_threshold) const {
+                                                       size_t initializer_size_threshold,
+                                                       const Graph::OffsetAlignmentInfo& align_info) const {
   ModelProto result(model_proto_);
   const auto& graph = *graph_;
   *(result.mutable_graph()) = graph.ToGraphProtoWithExternalInitializers(external_file_name,
                                                                          file_path,
-                                                                         initializer_size_threshold);
+                                                                         initializer_size_threshold,
+                                                                         align_info);
   return result;
 }
 
@@ -552,8 +554,8 @@ static Status SaveModel(Model& model, const T& file_path) {
   model_proto.SerializeToArray(buffer, buffer_size);
 
   EM_ASM(({
-           const buffer = $0;
-           const buffer_size = $1;
+           const buffer = Number($0);
+           const buffer_size = Number($1);
            const file_path = UTF8ToString($2);
            const bytes = new Uint8Array(buffer_size);
            bytes.set(HEAPU8.subarray(buffer, buffer + buffer_size));
@@ -568,9 +570,9 @@ static Status SaveModel(Model& model, const T& file_path) {
              window.open(url, '_blank');
            }
          }),
-         reinterpret_cast<int32_t>(buffer),
-         static_cast<int32_t>(buffer_size),
-         reinterpret_cast<int32_t>(file_path.c_str()));
+         buffer,
+         buffer_size,
+         file_path.c_str());
 
   free(buffer);
   return Status::OK();
@@ -605,14 +607,16 @@ template <typename T>
 static Status SaveModelWithExternalInitializers(Model& model,
                                                 const T& file_path,
                                                 const std::filesystem::path& external_file_name,
-                                                size_t initializer_size_threshold) {
+                                                size_t initializer_size_threshold,
+                                                const Graph::OffsetAlignmentInfo& align_info) {
   int fd = 0;
   Status status = Env::Default().FileOpenWr(file_path, fd);
   ORT_RETURN_IF_ERROR(status);
 
   ORT_TRY {
     status = Model::SaveWithExternalInitializers(model, fd, file_path, external_file_name,
-                                                 initializer_size_threshold);
+                                                 initializer_size_threshold,
+                                                 align_info);
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -642,11 +646,13 @@ Status Model::Load(const PathString& file_path, std::shared_ptr<Model>& p_model,
 
 Status Model::SaveWithExternalInitializers(Model& model, const std::filesystem::path& file_path,
                                            const std::filesystem::path& external_file_name,
-                                           size_t initializer_size_threshold) {
-  return SaveModelWithExternalInitializers(model, file_path, external_file_name, initializer_size_threshold);
+                                           size_t initializer_size_threshold,
+                                           const Graph::OffsetAlignmentInfo& align_info) {
+  return SaveModelWithExternalInitializers(model, file_path, external_file_name, initializer_size_threshold,
+                                           align_info);
 }
 
-Status Model::LoadFromBytes(int count, void* p_bytes, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) {
+Status Model::LoadFromBytes(int count, const void* p_bytes, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) {
   const bool result = model_proto.ParseFromArray(p_bytes, count);
   if (!result) {
     return Status(ONNXRUNTIME, INVALID_PROTOBUF, "Protobuf parsing failed.");
@@ -759,7 +765,8 @@ Status Model::SaveWithExternalInitializers(Model& model,
                                            int fd,
                                            const std::filesystem::path& file_path,
                                            const std::filesystem::path& external_file_name,
-                                           size_t initializer_size_threshold) {
+                                           size_t initializer_size_threshold,
+                                           const Graph::OffsetAlignmentInfo& align_info) {
   if (fd < 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<fd> is less than 0.");
   }
@@ -767,7 +774,8 @@ Status Model::SaveWithExternalInitializers(Model& model,
   ORT_RETURN_IF_ERROR(model.MainGraph().Resolve());
 
   auto model_proto = model.ToGraphProtoWithExternalInitializers(external_file_name, file_path,
-                                                                initializer_size_threshold);
+                                                                initializer_size_threshold,
+                                                                align_info);
   google::protobuf::io::FileOutputStream output(fd);
   const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
   if (result) {

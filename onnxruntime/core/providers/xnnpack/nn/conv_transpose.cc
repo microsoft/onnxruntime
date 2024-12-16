@@ -7,6 +7,7 @@
 #include "core/framework/transpose_helper.h"
 #include "core/providers/utils.h"
 #include "core/providers/xnnpack/detail/utils.h"
+#include "core/providers/xnnpack/xnnpack_init.h"
 #include "core/framework/tensorprotoutils.h"
 
 namespace onnxruntime {
@@ -18,8 +19,10 @@ Status ConvTranspose::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
                               /*out*/ PrePackedWeights* /*prepacked_weights*/) {
   is_packed = false;
   // only layout of weight input is adjusted via PrePack
-  if ((conv_type_ == OpComputeType::op_compute_type_fp32 && input_idx == 1) ||
-      (conv_type_ != OpComputeType::op_compute_type_fp32 && input_idx == 3)) {  // InputTensors::IN_W
+  const bool conv_type_is_float = (conv_type_ == OpComputeType::op_compute_type_fp32 ||
+                                   conv_type_ == OpComputeType::op_compute_type_fp16);
+  if ((conv_type_is_float && input_idx == 1) ||
+      (!conv_type_is_float && input_idx == 3)) {  // InputTensors::IN_W
     auto orig_shape = tensor.Shape();
     const auto rank = orig_shape.NumDimensions();
 
@@ -129,6 +132,8 @@ Status ConvTranspose::Compute(OpKernelContext* context) const {
     reshape_fn = xnn_reshape_deconvolution2d_nhwc_qs8;
   } else if (conv_type_ == OpComputeType::op_compute_type_qu8) {
     reshape_fn = xnn_reshape_deconvolution2d_nhwc_qu8;
+  } else if (conv_type_ == OpComputeType::op_compute_type_fp16) {
+    reshape_fn = xnn_reshape_deconvolution2d_nhwc_f16;
   }
 
   status = reshape_fn(op0_.get(), N, H, W, output_pad_0, output_pad_1,
@@ -146,6 +151,8 @@ Status ConvTranspose::Compute(OpKernelContext* context) const {
     status = xnn_setup_deconvolution2d_nhwc_qs8(op0_.get(), X.Data<int8_t>(), Y->MutableData<int8_t>());
   } else if (conv_type_ == OpComputeType::op_compute_type_qu8) {
     status = xnn_setup_deconvolution2d_nhwc_qu8(op0_.get(), X.Data<uint8_t>(), Y->MutableData<uint8_t>());
+  } else if (conv_type_ == OpComputeType::op_compute_type_fp16) {
+    status = xnn_setup_deconvolution2d_nhwc_f16(op0_.get(), X.Data<MLFloat16>(), Y->MutableData<MLFloat16>());
   }
 
   if (status != xnn_status_success) {
@@ -161,15 +168,17 @@ Status ConvTranspose::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-ONNX_OPERATOR_KERNEL_EX(ConvTranspose, kMSInternalNHWCDomain, 11, kXnnpackExecutionProvider,
-                        KernelDefBuilder().TypeConstraint(
-                            "T", DataTypeImpl::GetTensorType<float>()),
-                        ConvTranspose);
-
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(ConvTranspose, kMSInternalNHWCDomain, 1, 10, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint(
-                                      "T", DataTypeImpl::GetTensorType<float>()),
+                                      "T", {DataTypeImpl::GetTensorType<float>(),
+                                            DataTypeImpl::GetTensorType<MLFloat16>()}),
                                   ConvTranspose);
+
+ONNX_OPERATOR_KERNEL_EX(ConvTranspose, kMSInternalNHWCDomain, 11, kXnnpackExecutionProvider,
+                        KernelDefBuilder().TypeConstraint(
+                            "T", {DataTypeImpl::GetTensorType<float>(),
+                                  DataTypeImpl::GetTensorType<MLFloat16>()}),
+                        ConvTranspose);
 
 ONNX_OPERATOR_KERNEL_EX(QLinearConvTranspose, kMSInternalNHWCDomain, 1, kXnnpackExecutionProvider,
                         KernelDefBuilder()

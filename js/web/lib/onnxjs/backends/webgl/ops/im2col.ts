@@ -1,11 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor} from '../../../tensor';
-import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType} from '../types';
+import { Tensor } from '../../../tensor';
+import { WebGLInferenceHandler } from '../inference-handler';
+import { ProgramInfo, ProgramInfoLoader, ProgramMetadata, TextureType } from '../types';
 
-import {ConvAttributes} from './conv';
+import { ConvAttributes } from './conv';
 
 const createIm2ColProgramMetadata = (cacheHint: string) => ({
   name: 'Im2Col',
@@ -14,16 +14,21 @@ const createIm2ColProgramMetadata = (cacheHint: string) => ({
   cacheHint,
 });
 
-const createIm2ColProgramInfo =
-    (_inferenceHandler: WebGLInferenceHandler, metadata: ProgramMetadata, x: Tensor, w: Tensor,
-     outputShape: readonly number[], attributes: ConvAttributes): ProgramInfo => {
-      const xshape = x.dims;
-      const wshape = w.dims;
+const createIm2ColProgramInfo = (
+  _inferenceHandler: WebGLInferenceHandler,
+  metadata: ProgramMetadata,
+  x: Tensor,
+  w: Tensor,
+  outputShape: readonly number[],
+  attributes: ConvAttributes,
+): ProgramInfo => {
+  const xshape = x.dims;
+  const wshape = w.dims;
 
-      const rank = outputShape.length;
-      const im2colDims = calculateIm2ColDims(xshape, wshape, outputShape, 4);
+  const rank = outputShape.length;
+  const im2colDims = calculateIm2ColDims(xshape, wshape, outputShape, 4);
 
-      const shaderSource = `
+  const shaderSource = `
         const int XC = ${xshape[1]};
         const int XH = ${xshape[2]};
         const int XW = ${xshape[3]};
@@ -68,26 +73,35 @@ const createIm2ColProgramInfo =
           return value;
         }
         `;
-      return {
-        ...metadata,
-        output: {dims: im2colDims, type: x.type, textureType: TextureType.packedLastDimension},
-        shaderSource
-      };
-    };
+  return {
+    ...metadata,
+    output: { dims: im2colDims, type: x.type, textureType: TextureType.packedLastDimension },
+    shaderSource,
+  };
+};
 
-export const createIm2ColProgramInfoLoader =
-    (inferenceHandler: WebGLInferenceHandler, x: Tensor, w: Tensor, outputShape: readonly number[],
-     attributes: ConvAttributes): ProgramInfoLoader => {
-      const metadata = createIm2ColProgramMetadata(attributes.cacheKey);
-      return {
-        ...metadata,
-        get: () => createIm2ColProgramInfo(inferenceHandler, metadata, x, w, outputShape, attributes)
-      };
-    };
+export const createIm2ColProgramInfoLoader = (
+  inferenceHandler: WebGLInferenceHandler,
+  x: Tensor,
+  w: Tensor,
+  outputShape: readonly number[],
+  attributes: ConvAttributes,
+): ProgramInfoLoader => {
+  const metadata = createIm2ColProgramMetadata(attributes.cacheKey);
+  return {
+    ...metadata,
+    get: () => createIm2ColProgramInfo(inferenceHandler, metadata, x, w, outputShape, attributes),
+  };
+};
 
-
-export const calculateIm2ColDims =
-    (inputShape: readonly number[], kernelShape: readonly number[], outputShape: readonly number[], channels = 4):
-        number[] =>
-            [outputShape[0], outputShape[2], outputShape[3],
-             Math.ceil(inputShape[1] * kernelShape[2] * kernelShape[3] / channels)];
+export const calculateIm2ColDims = (
+  inputShape: readonly number[],
+  kernelShape: readonly number[],
+  outputShape: readonly number[],
+  channels = 4,
+): number[] => [
+  outputShape[0],
+  outputShape[2],
+  outputShape[3],
+  Math.ceil((inputShape[1] * kernelShape[2] * kernelShape[3]) / channels),
+];

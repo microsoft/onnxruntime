@@ -9,7 +9,7 @@ on:
       - include/onnxruntime/core/session/**
       - orttraining/orttraining/training_api/include/**
   schedule:
-    - cron: '0 0 1 * *'
+    - cron: '0 0 1,15 * *'
   workflow_dispatch:
 
 concurrency:
@@ -22,7 +22,7 @@ permissions:
 jobs:
   build:
     name: Generate C/C++ API docs
-    runs-on: ubuntu-latest
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     steps:
       - uses: actions/checkout@v4
       - name: Install doxygen and dependencies
@@ -49,4 +49,4 @@ jobs:
         with:
           name: onnxruntime-c-apidocs
           path: _site
-          retention-days: 60
+          retention-days: 30

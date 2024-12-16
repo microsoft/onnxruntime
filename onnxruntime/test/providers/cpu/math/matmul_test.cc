@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "gtest/gtest.h"
+
 #include "test/providers/provider_test_utils.h"
 #include "test/providers/run_options_config_keys.h"
 #include "test/common/dnnl_op_test_utils.h"
@@ -37,109 +38,125 @@ template <typename T>
 std::vector<MatMulTestData<T>> GenerateTestCases() {
   std::vector<MatMulTestData<T>> test_cases;
 
+  auto real_expected_vals = [](const std::vector<int32_t>& expected_vals) {
+    if constexpr (std::is_same_v<T, int32_t>) {
+      return expected_vals;
+    } else if constexpr (std::is_same_v<T, MLFloat16>) {
+      std::vector<MLFloat16> expected_vals_fp16(expected_vals.size());
+      std::transform(expected_vals.begin(), expected_vals.end(), expected_vals_fp16.begin(),
+                     [](int32_t num) { return MLFloat16(float(num)); });
+      return expected_vals_fp16;
+    } else {
+      std::vector<T> real_expected_vals(expected_vals.size());
+      std::transform(expected_vals.begin(), expected_vals.end(), real_expected_vals.begin(),
+                     [](int32_t num) { return static_cast<T>(num); });
+      return real_expected_vals;
+    }
+  };
+
   test_cases.push_back(
       {"test padding and broadcast A > B",
        {3, 1, 1, 2},
        {2, 2, 2},
        {3, 2, 1, 2},
-       {2, 3, 6, 7, 6, 11, 26, 31, 10, 19, 46, 55}});
+       real_expected_vals({2, 3, 6, 7, 6, 11, 26, 31, 10, 19, 46, 55})});
 
   test_cases.push_back(
       {"test padding and broadcast B > A",
        {2, 3, 2},
        {3, 2, 2, 1},
        {3, 2, 3, 1},
-       {1, 3, 5, 33, 43, 53, 5, 23, 41, 85, 111, 137, 9, 43, 77, 137, 179, 221}});
+       real_expected_vals({1, 3, 5, 33, 43, 53, 5, 23, 41, 85, 111, 137, 9, 43, 77, 137, 179, 221})});
 
   test_cases.push_back(
       {"test left 1D",
        {2},
        {3, 2, 1},
        {3, 1},
-       {1, 3, 5}});
+       real_expected_vals({1, 3, 5})});
 
   test_cases.push_back(
       {"test right 1D",
        {3, 1, 2},
        {2},
        {3, 1},
-       {1, 3, 5}});
+       real_expected_vals({1, 3, 5})});
 
   test_cases.push_back(
       {"test left 1D right 2D",
        {2},
        {2, 3},
        {3},
-       {3, 4, 5}});
+       real_expected_vals({3, 4, 5})});
 
   test_cases.push_back(
       {"test scalar output",
        {3},
        {3},
        {},
-       {5}});
+       real_expected_vals({5})});
 
   test_cases.push_back(
       {"test 2D",
        {3, 4},
        {4, 3},
        {3, 3},
-       {42, 48, 54, 114, 136, 158, 186, 224, 262}});
+       real_expected_vals({42, 48, 54, 114, 136, 158, 186, 224, 262})});
 
   test_cases.push_back(
       {"test 2D special",
        {2, 2, 3},
        {3, 4},
        {2, 2, 4},
-       {20, 23, 26, 29, 56, 68, 80, 92, 92, 113, 134, 155, 128, 158, 188, 218}});
+       real_expected_vals({20, 23, 26, 29, 56, 68, 80, 92, 92, 113, 134, 155, 128, 158, 188, 218})});
 
   test_cases.push_back(
       {"test 2D special 2",
        {2, 2, 3},
        {1, 3, 4},
        {2, 2, 4},
-       {20, 23, 26, 29, 56, 68, 80, 92, 92, 113, 134, 155, 128, 158, 188, 218}});
+       real_expected_vals({20, 23, 26, 29, 56, 68, 80, 92, 92, 113, 134, 155, 128, 158, 188, 218})});
 
   test_cases.push_back(
       {"test 2D special 3",
        {2, 6},
        {1, 1, 6, 1},
        {1, 1, 2, 1},
-       {55, 145}});
+       real_expected_vals({55, 145})});
 
   test_cases.push_back(
       {"test 2D empty input",
        {3, 4},
        {4, 0},
        {3, 0},
-       {}});
+       real_expected_vals({})});
 
   test_cases.push_back(
       {"test 3D batch",
        {3, 1, 3},
        {3, 3, 2},
        {3, 1, 2},
-       {
+       real_expected_vals({
            // clang-format off
             10,  13,
            100, 112,
            298, 319,
            // clang-format on
-       }});
+       })});
 
   test_cases.push_back(
       {"test 4D batch",
        {2, 2, 1, 3},
        {2, 2, 3, 2},
        {2, 2, 1, 2},
-       {
+       real_expected_vals({
            // clang-format off
             10,  13,
            100, 112,
            298, 319,
            604, 634,
            // clang-format on
-       }});
+       })});
 
   return test_cases;
 }
@@ -189,18 +206,31 @@ TEST(MathOpTest, MatMulFloatType) {
     GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
   }
   RunMatMulTest<float>(7, false, false);
+  // Note. Xnnpack only supports matmul when Matrix B is constant
+  RunMatMulTest<float>(7, false, true);
 }
 
-TEST(MathOpTest, MatMulDoubleType) {
-  RunMatMulTest<double>(7);
-}
-
-TEST(MathOpTest, MatMulFloatTypeInitializer) {
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM) || defined(USE_XNNPACK)
+TEST(MathOpTest, MatMulFloat16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    return;
+  }
+#endif
   // TODO: Unskip when fixed #41968513
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Assertion failed: m_bufferTensorDesc.TotalTensorSizeInBytes >= ComputeByteSizeFromDimensions(nonBroadcastDimensions, dataType)";
   }
-  RunMatMulTest<float>(7, false, true);
+  RunMatMulTest<MLFloat16>(14, false, false);
+  // Note. Xnnpack only supports matmul when Matrix B is constant
+  RunMatMulTest<MLFloat16>(14, false, true);
+}
+#endif
+
+TEST(MathOpTest, MatMulDoubleType) {
+  RunMatMulTest<double>(7);
 }
 
 TEST(MathOpTest, MatMulInt32Type) {
@@ -219,7 +249,34 @@ TEST(MathOpTest, MatMulUint64Type) {
   RunMatMulTest<uint64_t>(9);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+template <typename T>
+void RunMatMulZeroKTest() {
+  // test with empty inputs and zero filled output
+  constexpr const std::array<T, 0> empty_input{};
+  const std::vector<T> expected_output(4 * 4, T{});
+  OpTester test("MatMul", 13);
+
+  test.AddInput<T>("A", {4, 0}, empty_input);
+  test.AddInput<T>("B", {0, 4}, empty_input);
+  test.AddOutput<T>("Y", {4, 4}, expected_output);
+
+  // No special case is implemented.
+  test.ConfigExcludeEps({kCoreMLExecutionProvider, kNnapiExecutionProvider,
+                         kDmlExecutionProvider, kDnnlExecutionProvider, kQnnExecutionProvider,
+                         kOpenVINOExecutionProvider})
+      .Config(run_with_tunable_op)
+      .RunWithConfig();
+}
+
+TEST(MathOpTest, MatMulZeroKFloatType) {
+  RunMatMulZeroKTest<float>();
+}
+
+TEST(MathOpTest, MatMulZeroKInt32Type) {
+  RunMatMulZeroKTest<int32_t>();
+}
+
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM) || defined(USE_XNNPACK)
 TEST(MathOpTest, MatMul_Float16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -228,8 +285,6 @@ TEST(MathOpTest, MatMul_Float16) {
     return;
   }
 #endif
-  OpTester test("MatMul", 14);
-
   std::vector<float> A{1.0f, 2.0f, 3.0f, 4.0f,
                        -1.0f, -2.0f, -3.0f, -4.0f};
   std::vector<float> B(12, 1.0f);
@@ -243,12 +298,18 @@ TEST(MathOpTest, MatMul_Float16) {
   ConvertFloatToMLFloat16(B.data(), f_B.data(), 12);
   ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
 
-  test.AddInput<MLFloat16>("A", {2, 4}, f_A);
-  test.AddInput<MLFloat16>("B", {4, 3}, f_B);
-  test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
-  test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
-      .Config(run_with_tunable_op)
-      .RunWithConfig();
+  auto run_test = [&](bool B_is_constant) {
+    // it needs Matrix B as constant to test XNNPack
+    OpTester test("MatMul", 14);
+    test.AddInput<MLFloat16>("A", {2, 4}, f_A);
+    test.AddInput<MLFloat16>("B", {4, 3}, f_B, B_is_constant);
+    test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
+    test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
+        .Config(run_with_tunable_op)
+        .RunWithConfig();
+  };
+  run_test(true);
+  run_test(false);
 }
 #endif
 

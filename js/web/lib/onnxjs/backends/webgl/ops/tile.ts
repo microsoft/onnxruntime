@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {NUMBER_TYPES} from '../../../operators';
-import {Tensor} from '../../../tensor';
-import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, ProgramMetadata, TextureType} from '../types';
+import { NUMBER_TYPES } from '../../../operators';
+import { Tensor } from '../../../tensor';
+import { WebGLInferenceHandler } from '../inference-handler';
+import { ProgramInfo, ProgramMetadata, TextureType } from '../types';
 
 export const tile = (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
   validateInputs(inputs);
@@ -16,36 +16,40 @@ export const tile = (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]):
   };
 
   const output = inferenceHandler.run(
-      {...tileProgramMetadata, get: () => createTileProgramInfo(inferenceHandler, inputs, tileProgramMetadata)},
-      inputs);
+    { ...tileProgramMetadata, get: () => createTileProgramInfo(inferenceHandler, inputs, tileProgramMetadata) },
+    inputs,
+  );
   return [output];
 };
 
-const createTileProgramInfo =
-    (_handler: WebGLInferenceHandler, inputs: Tensor[], tileProgramMetadata: ProgramMetadata): ProgramInfo => {
-      const inputShape = inputs[0].dims.slice();
-      const outputShape = new Array(inputShape.length);
+const createTileProgramInfo = (
+  _handler: WebGLInferenceHandler,
+  inputs: Tensor[],
+  tileProgramMetadata: ProgramMetadata,
+): ProgramInfo => {
+  const inputShape = inputs[0].dims.slice();
+  const outputShape = new Array(inputShape.length);
 
-      const tileOps: string[] = [];
-      for (let i = 0; i < inputShape.length; i++) {
-        outputShape[i] = inputShape[i] * inputs[1].numberData[i];
-        tileOps.push(`inputIdx[${i}] = int(mod(float(outputIdx[${i}]), ${inputShape[i]}.));`);
-      }
+  const tileOps: string[] = [];
+  for (let i = 0; i < inputShape.length; i++) {
+    outputShape[i] = inputShape[i] * inputs[1].numberData[i];
+    tileOps.push(`inputIdx[${i}] = int(mod(float(outputIdx[${i}]), ${inputShape[i]}.));`);
+  }
 
-      const rank = outputShape.length;
-      const shaderSource = `
+  const rank = outputShape.length;
+  const shaderSource = `
       float process(int outputIdx[${rank}]) {
         int inputIdx[${rank}];
         ${tileOps.join('\n')}
         return _A(inputIdx);
       }
     `;
-      return {
-        ...tileProgramMetadata,
-        output: {dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked},
-        shaderSource
-      };
-    };
+  return {
+    ...tileProgramMetadata,
+    output: { dims: outputShape, type: inputs[0].type, textureType: TextureType.unpacked },
+    shaderSource,
+  };
+};
 
 const validateInputs = (inputs: Tensor[]): void => {
   if (!inputs || inputs.length !== 2) {

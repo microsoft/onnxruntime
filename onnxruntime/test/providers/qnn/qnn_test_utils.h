@@ -33,16 +33,37 @@ struct QuantParams {
   float scale;
   QType zero_point;
 
+  inline std::pair<float, float> CalcRminRmax() const {
+    constexpr float qmin = static_cast<float>(std::numeric_limits<QType>::min());
+    constexpr float qmax = static_cast<float>(std::numeric_limits<QType>::max());
+    const float qrange = (qmax - qmin);
+    const float rrange = this->scale * qrange;
+    const float rmin = -(static_cast<float>(this->zero_point) - qmin) * this->scale;
+    const float rmax = rrange + rmin;
+
+    return {rmin, rmax};
+  }
+
+  inline bool IsSymmetric() const {
+    constexpr float qmin = static_cast<float>(std::numeric_limits<QType>::min());
+    constexpr float qmax = static_cast<float>(std::numeric_limits<QType>::max());
+    float init_zero_point = (qmin + qmax) / 2.0;
+    const QType symm_zero_point = static_cast<QType>(RoundHalfToEven(
+        std::max(qmin, std::min(qmax, init_zero_point))));
+
+    return this->zero_point == symm_zero_point;
+  }
+
   static QuantParams<QType> Compute(float rmin, float rmax, bool symmetric = false) {
     return Compute(
         rmin,
         rmax,
-        static_cast<float>(std::numeric_limits<QType>::min()),
-        static_cast<float>(std::numeric_limits<QType>::max()),
+        std::numeric_limits<QType>::min(),
+        std::numeric_limits<QType>::max(),
         symmetric);
   }
 
-  static QuantParams<QType> Compute(float rmin, float rmax, float qmin, float qmax, bool symmetric = false) {
+  static QuantParams<QType> Compute(float rmin, float rmax, QType qmin, QType qmax, bool symmetric = false) {
     // Ensure a minimum range of 0.0001 (required by QNN)
     rmax = std::max(rmax, rmin + 0.0001f);
 
@@ -56,8 +77,8 @@ struct QuantParams {
       rmin = -abs_max;
     }
 
-    float qmin_flt = qmin;
-    float qmax_flt = qmax;
+    const float qmin_flt = qmin;
+    const float qmax_flt = qmax;
     const float scale = (rmax - rmin) / (qmax_flt - qmin_flt);
     float initial_zero_point = 0.0f;
 
@@ -75,6 +96,13 @@ struct QuantParams {
     return QuantParams<QType>{scale, zero_point};
   }
 };
+
+// Utitity that converts quantization parameters from one type to another (e.g., uint8 to uint16).
+template <typename SrcQType, typename DstQType>
+inline QuantParams<DstQType> ConvertQuantParams(QuantParams<SrcQType> src_qparams) {
+  std::pair<float, float> src_rmin_rmax = src_qparams.CalcRminRmax();
+  return QuantParams<DstQType>::Compute(src_rmin_rmax.first, src_rmin_rmax.second, src_qparams.IsSymmetric());
+}
 
 // Signature for function that builds a QDQ model.
 // The parameter `output_qparams` contains quantization parameters that *can* be used for the QDQ model output.
@@ -429,13 +457,15 @@ DEF_QUANTIZE_VALUES_INT4_FUNC(UInt4x2, ParQuantizeLinearStdU4)
  * \param output_vals Initialized to the inference results.
  * \param is_qnn_ep Ture: QNN EP is used. False: CPU EP is used (default).
  * \param session_option_pairs extra session options.
+ * \param graph_checker Function called on the Graph.
  */
 void InferenceModel(const std::string& model_data, const char* log_id,
                     const ProviderOptions& provider_options,
                     ExpectedEPNodeAssignment expected_ep_assignment, const NameMLValMap& feeds,
                     std::vector<OrtValue>& output_vals,
                     bool is_qnn_ep = false,
-                    const std::unordered_map<std::string, std::string>& session_option_pairs = {});
+                    const std::unordered_map<std::string, std::string>& session_option_pairs = {},
+                    std::function<void(const Graph&)>* graph_checker = nullptr);
 
 /**
  * If the ORT_UNIT_TEST_ENABLE_QNN_SAVER environment variable is enabled (set to 1), this function modifies
@@ -487,6 +517,8 @@ struct QDQTolerance {
  * \param tolerance The percent tolerance (as fraction) QNN EP results are allowed to differ from the QDQ model
  *                  on CPU EP. This tolerance is a percentage of the output range.
  * \param log_severity The logger's severity setting.
+ * \param ep_graph_checker Function called on the Graph generated for the QNN EP's session. Used to check node
+ *                         EP assignment.
  */
 template <typename QuantType>
 inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTestQDQModelFn<QuantType>& qdq_model_fn,
@@ -495,7 +527,8 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
                                  QDQTolerance tolerance = QDQTolerance(),
                                  logging::Severity log_severity = logging::Severity::kERROR,
                                  const std::string& qnn_ctx_model_path = "",
-                                 const std::unordered_map<std::string, std::string>& session_option_pairs = {}) {
+                                 const std::unordered_map<std::string, std::string>& session_option_pairs = {},
+                                 std::function<void(const Graph&)>* qnn_ep_graph_checker = nullptr) {
   // Add kMSDomain to cover contrib op like Gelu
   const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
 
@@ -579,7 +612,7 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
     // Run QDQ model on QNN EP and collect outputs.
     // Only need to apply the extra session options to this QDQ model inference on QNN EP
     InferenceModel(qdq_model_data, "qdq_model_logger", qnn_options, expected_ep_assignment,
-                   qdq_helper.feeds_, qnn_qdq_outputs, is_qnn_ep, session_option_pairs);
+                   qdq_helper.feeds_, qnn_qdq_outputs, is_qnn_ep, session_option_pairs, qnn_ep_graph_checker);
   }
 
   if (expected_ep_assignment != ExpectedEPNodeAssignment::None) {
@@ -1033,12 +1066,16 @@ inline GetTestQDQModelFn<QuantType> BuildQDQOpTestCase(
  * \param expected_ep_assignment How many nodes are expected to be assigned to QNN (All, Some, or None).
  * \param fp32_abs_err The acceptable error between CPU EP and QNN EP.
  * \param log_severity The logger's minimum severity level.
+ * \param verify_outputs True to verify that the outputs match (within tolerance).
+ * \param ep_graph_checker Function called on the Graph generated for the EP's session. Used to check node
+ *                         EP assignment.
  */
 void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
                      float fp32_abs_err = 1e-5f,
                      logging::Severity log_severity = logging::Severity::kERROR,
-                     bool verify_outputs = true);
+                     bool verify_outputs = true,
+                     std::function<void(const Graph&)>* ep_graph_checker = nullptr);
 
 enum class BackendSupport {
   SUPPORT_UNKNOWN,

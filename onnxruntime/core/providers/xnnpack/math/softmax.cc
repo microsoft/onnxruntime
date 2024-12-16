@@ -6,8 +6,9 @@
 #include <utility>
 
 #include "core/framework/op_kernel.h"
-#include "core/providers/cpu/math/softmax_shared.h"
 #include "core/optimizer/initializer.h"
+#include "core/providers/cpu/math/softmax_shared.h"
+#include "core/providers/xnnpack/xnnpack_init.h"
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -70,6 +71,7 @@ bool Softmax::IsOnnxNodeSupported(const NodeUnit& node_unit,
     const auto* x_type = x_arg.TypeAsProto();
     if (x_type == nullptr ||
         (x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+         x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
          x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8)) {
       break;
     }
@@ -120,14 +122,16 @@ Softmax::Softmax(const OpKernelInfo& info) : XnnpackKernel{info} {
   ORT_ENFORCE(GetType(*input_defs[0], x_dtype));
   if (x_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     op_type_ = OpComputeType::op_compute_type_fp32;
+  } else if (x_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    op_type_ = OpComputeType::op_compute_type_fp16;
   } else if (x_dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
     op_type_ = OpComputeType::op_compute_type_qu8;
   } else {
     auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*input_defs[0]->TypeAsProto()));
-    ORT_THROW("unsupported Conv in softmax, we have FLOAT|UINT8, but got ", stype);
+    ORT_THROW("unsupported compute type in softmax, we have FLOAT|FLOAT16|UINT8, but got ", stype);
   }
 
-  if (op_type_ == OpComputeType::op_compute_type_fp32) {
+  if (op_type_ == OpComputeType::op_compute_type_fp32 || op_type_ == OpComputeType::op_compute_type_fp16) {
     opset_ = node.SinceVersion();
   } else {
     // Qlinearsoftmax's opset keep 1, we have to parse it by "opset"
@@ -166,24 +170,25 @@ Softmax::Softmax(const OpKernelInfo& info) : XnnpackKernel{info} {
   if (op_type_ == OpComputeType::op_compute_type_qu8) {
     // the order of input tensor, x,x_scale, x_zp, y_scale, y_zp
     OpQuantParam quant_param = ParseQuantParamForOp(info, x_dtype, 1);
-    xstatus = xnn_create_softmax_nc_qu8(channels,
-                                        channels,
-                                        channels,
-                                        quant_param[0].first[0],  // x_scale
-                                        quant_param[1].second,    // y_zp
-                                        quant_param[1].first[0],  // y_scale
-                                        0,                        // flags,
-                                        &p);
+    xstatus = xnn_create_softmax_nc_qu8(
+        quant_param[0].first[0],  // x_scale, input scale
+        quant_param[1].second,    // y_zp,  output zero point
+        quant_param[1].first[0],  // y_scale, output scale
+        0,                        // flags,
+        &p);
   } else if (op_type_ == OpComputeType::op_compute_type_fp32) {
-    xstatus = xnn_create_softmax_nc_f32(channels,
-                                        channels,
-                                        channels,
-                                        0,  // flags,
-                                        &p);
+    xstatus = xnn_create_softmax_nc_f32(
+        0,  // flags,
+        &p);
+  } else if (op_type_ == OpComputeType::op_compute_type_fp16) {
+    xstatus = xnn_create_softmax_nc_f16(
+        0,  // flags,
+        &p);
   }
 
   ORT_ENFORCE(xstatus == xnn_status_success, "xnn_create_softmax_nc_",
               OpTypeToString(op_type_), " failed. Status:", xstatus);
+  channel_dim_ = channels;
   op0_.reset(p);
 }
 
@@ -203,9 +208,14 @@ Status Softmax::Compute(OpKernelContext* ctx) const {
   // const size_t D = X_shape.SizeFromDimension(axis_); // the step D is 1
   xnn_status status = xnn_status_invalid_state;
 
-  auto reshape_fn = op_type_ == OpComputeType::op_compute_type_qu8 ? xnn_reshape_softmax_nc_qu8
-                                                                   : xnn_reshape_softmax_nc_f32;
-  status = reshape_fn(op0_.get(), N, threadpool);
+  auto reshape_fn = xnn_reshape_softmax_nc_f32;
+  if (op_type_ == OpComputeType::op_compute_type_fp16) {
+    reshape_fn = xnn_reshape_softmax_nc_f16;
+  } else if (op_type_ == OpComputeType::op_compute_type_qu8) {
+    reshape_fn = xnn_reshape_softmax_nc_qu8;
+  }
+
+  status = reshape_fn(op0_.get(), channel_dim_, channel_dim_, channel_dim_, N, threadpool);
 
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_softmax_nc_", OpTypeToString(op_type_),
@@ -214,8 +224,10 @@ Status Softmax::Compute(OpKernelContext* ctx) const {
 
   if (op_type_ == OpComputeType::op_compute_type_qu8) {
     status = xnn_setup_softmax_nc_qu8(op0_.get(), X->Data<uint8_t>(), Y->MutableData<uint8_t>());
-  } else {
+  } else if (op_type_ == op_compute_type_fp32) {
     status = xnn_setup_softmax_nc_f32(op0_.get(), X->Data<float>(), Y->MutableData<float>());
+  } else if (op_type_ == op_compute_type_fp16) {
+    status = xnn_setup_softmax_nc_f16(op0_.get(), X->Data<MLFloat16>(), Y->MutableData<MLFloat16>());
   }
 
   if (status != xnn_status_success) {
@@ -232,15 +244,18 @@ Status Softmax::Compute(OpKernelContext* ctx) const {
 }
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Softmax, kOnnxDomain, 1, 10, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                                  KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                                          DataTypeImpl::GetTensorType<MLFloat16>()}),
                                   Softmax);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(Softmax, kOnnxDomain, 11, 12, kXnnpackExecutionProvider,
-                                  KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                                  KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                                          DataTypeImpl::GetTensorType<MLFloat16>()}),
                                   Softmax);
 
 ONNX_OPERATOR_KERNEL_EX(Softmax, kOnnxDomain, 13, kXnnpackExecutionProvider,
-                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                        KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                                DataTypeImpl::GetTensorType<MLFloat16>()}),
                         Softmax);
 
 ONNX_OPERATOR_KERNEL_EX(QLinearSoftmax, kDynamicDomainByCreate, 1, kXnnpackExecutionProvider,

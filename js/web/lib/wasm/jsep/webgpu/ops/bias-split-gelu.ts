@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {TensorView} from '../../tensor-view';
-import {ShapeUtil} from '../../util';
-import {ComputeContext, ProgramInfo} from '../types';
+import { TensorView } from '../../tensor-view';
+import { ShapeUtil } from '../../util';
+import { ComputeContext, ProgramInfo } from '../types';
 
-import {inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType} from './common';
-import {erfImpl} from './unary-op';
+import { inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType } from './common';
+import { erfImpl } from './unary-op';
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (inputs[0].dims.length !== 3) {
@@ -60,8 +60,8 @@ const createBiasSplitGeluProgramInfo = (inputs: readonly TensorView[]): ProgramI
   return {
     name: 'BiasSplitGelu',
     getRunData: () => ({
-      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
-      dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)}
+      outputs: [{ dims: outputShape, dataType: inputs[0].dataType }],
+      dispatchGroup: { x: Math.ceil(outputSize / 64 /* workgroup size */) },
     }),
     getShaderSource,
   };

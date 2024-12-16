@@ -99,6 +99,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer* m,
                                              const AllocatorPtr& alloc, const AllocatorPtr& default_cpu_alloc,
                                              OrtValue& ort_value, const DataTransferManager& data_transfer_mgr,
+                                             const ExternalDataLoaderManager& external_data_loader_mgr,
                                              bool use_device_allocator_for_initializers = false,
                                              Tensor* buffered_tensor = nullptr) {
   if (bool(alloc) == (m != nullptr)) {
@@ -113,28 +114,26 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   TensorShape tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
   const DataTypeImpl* const type = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
   std::unique_ptr<Tensor> p_tensor;
-  if (m != nullptr) {
-    p_tensor = std::make_unique<Tensor>(type, tensor_shape, m->GetBuffer(), m->GetAllocInfo());
-    if (m->GetLen() < p_tensor->SizeInBytes()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error. The preallocated buffer is too small. Requires ",
-                             p_tensor->SizeInBytes(), ", Got ", m->GetLen());
-    }
-  } else {
-    if (use_device_allocator_for_initializers) {
-      void* tensor_buffer = nullptr;
-      ORT_RETURN_IF_ERROR(AllocateBufferUsingDeviceAllocatorFromShapeAndType(tensor_shape, type, alloc, tensor_buffer));
-      p_tensor = std::make_unique<Tensor>(type, tensor_shape, tensor_buffer, alloc);
-    } else {
-      // If the provided allocator is an arena-based allocator, the call to Alloc() will tap into memory from the arena
-      // (may expand it if there isn't a chunk that can be allotted to the memory request).
-      // If the provided allocator is non-arena based, the device specific Alloc() call will be used to allocate the necessary memory.
-      p_tensor = std::make_unique<Tensor>(type, tensor_shape, alloc);
-    }
-  }
 
-  if (p_tensor->Location().device.Type() == OrtDevice::CPU) {
-    // deserialize directly to CPU tensor
-    if (utils::HasExternalData(tensor_proto)) {
+  auto& memory_info = (alloc != nullptr) ? alloc->Info() : m->GetAllocInfo();
+  auto device_type = memory_info.device.Type();
+
+  if (utils::HasExternalData(tensor_proto)) {
+    auto external_data_loader = external_data_loader_mgr.GetExternalDataLoader(memory_info);
+    if (external_data_loader) {
+      // if custom external data loader is used, always allocate memory on device - p_tensor
+      ORT_RETURN_IF_ERROR(AllocateTensor(m, p_tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
+
+      ORT_RETURN_IF_ERROR(utils::LoadExtDataToTensorFromTensorProto(env, proto_path, tensor_proto,
+                                                                    *external_data_loader, *p_tensor));
+
+      auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+      ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+      return common::Status::OK();
+    } else if (device_type == OrtDevice::CPU) {
+      // for external initializer on CPU we will use mmap for large initializers so don't need to allocate memory in advance
+      p_tensor = std::make_unique<Tensor>();
+
       // NB: The file containing external data for the tensor is mmap'd. If the tensor will be used on CPU we can
       // utilize the mmap'd buffer directly by calling ExtDataTensorProtoToTensor. If we called
       // TensorProtoToTensor it would copy the data, causing unnecessary overhead
@@ -143,55 +142,121 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                                                      ext_data_deleter, buffered_tensor));
 
       ExtDataValueDeleter deleter{ext_data_deleter, p_tensor.get()};
-
       MLDataType ml_tensor_type = DataTypeImpl::GetType<Tensor>();
       ort_value.Init(p_tensor.release(), ml_tensor_type, deleter);
       return common::Status::OK();
-    }
-    ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_tensor));
-  } else {  // non-cpu tensor
-    if (tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "string tensor is not supported for copying between allocators");
-    }
+    } else {  // non-cpu tensor
+      if (tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "string tensor is not supported for copying between allocators");
+      }
 
-    // deserialize to CPU first for non-CPU allocator, then copy
-    std::unique_ptr<Tensor> p_deserialize_tensor;
-    if (use_device_allocator_for_initializers) {
-      void* tensor_buffer = nullptr;
-      ORT_RETURN_IF_ERROR(AllocateBufferUsingDeviceAllocatorFromShapeAndType(tensor_shape, type, default_cpu_alloc, tensor_buffer));
-      p_deserialize_tensor = std::make_unique<Tensor>(type, tensor_shape, tensor_buffer, default_cpu_alloc);
-    } else {
-      // If the provided allocator is an arena-based allocator, the call to Alloc() will tap into memory from the arena
-      // (may expand it if there isn't a chunk that can be allotted to the memory request).
-      // If the provided allocator is non-arena based, the device specific Alloc() call will be used to allocate the necessary memory.
-      p_deserialize_tensor = std::make_unique<Tensor>(type, tensor_shape, default_cpu_alloc);
-    }
+      // deserialize to CPU first for non-CPU allocator, then copy to device
+      // for external initializer load on non-CPU device:
+      // 1. allocate memory on device - p_tensor
+      // 2. load initializer into CPU memory - p_deserialize_tensor,
+      //    we will use mmap so no need to allocate memory on CPU in advance
+      // 3. copy tensor from CPU to device - p_deserialize_tensor -> p_tensor
+      ORT_RETURN_IF_ERROR(AllocateTensor(m, p_tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
 
-    OrtCallback ext_data_deleter;
-    std::optional<ScopedOrtCallbackInvoker> scoped_ort_callback_invoker;
-    if (utils::HasExternalData(tensor_proto)) {
+      std::unique_ptr<Tensor> p_deserialize_tensor = std::make_unique<Tensor>(type, TensorShape(), default_cpu_alloc);
+
+      OrtCallback ext_data_deleter;
+      std::optional<ScopedOrtCallbackInvoker> scoped_ort_callback_invoker;
       ORT_RETURN_IF_ERROR(ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, *p_deserialize_tensor,
                                                      ext_data_deleter, buffered_tensor));
       scoped_ort_callback_invoker = ScopedOrtCallbackInvoker(ext_data_deleter);
-    } else {
-      ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_deserialize_tensor));
-    }
-    // TODO!! Need a temp buffer allocator for non-escape buffers that maybe too big for stack allocation.
+      // TODO!! Need a temp buffer allocator for non-escape buffers that maybe too big for stack allocation.
 
-    Status copy_status = data_transfer_mgr.CopyTensor(*p_deserialize_tensor, *p_tensor);
-    if (!copy_status.IsOK()) {
-      if (copy_status.ErrorMessage().empty()) {
-        // The windows execution provider does not return any error message today for CopyTensor since it is
-        // not implemented yet. That's the reason we're adding our own error message so that we can debug better.
-        return Status(copy_status.Category(), copy_status.Code(),
-                      "Failed to copy tensor to " + p_tensor->Location().ToString());
+      return CopyTensorFromCPUToDevice(data_transfer_mgr, p_deserialize_tensor, p_tensor, ort_value);
+    }
+  } else {
+    // for internal initializer, always allocate memory on device - p_tensor
+    ORT_RETURN_IF_ERROR(AllocateTensor(m, p_tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
+
+    if (device_type == OrtDevice::CPU) {
+      // deserialize directly to CPU tensor
+      ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_tensor));
+      auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+      ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+      return common::Status::OK();
+    } else {  // non-cpu tensor
+      if (tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "string tensor is not supported for copying between allocators");
       }
-      return copy_status;
+
+      // deserialize to CPU first for non-CPU allocator, then copy
+      // for internal initializer
+      // 1. allocate memory on CPU - p_deserialize_tensor
+      // 2. deserialize tensor_probo into a preallocated tensor (p_deserialize_tensor)
+      // 3. copy tensor from CPU to device - p_deserialize_tensor -> p_tensor
+      std::unique_ptr<Tensor> p_deserialize_tensor;
+      ORT_RETURN_IF_ERROR(AllocateTensorOnDeviceOrMemory(use_device_allocator_for_initializers, tensor_shape, type, default_cpu_alloc, p_deserialize_tensor));
+
+      ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, *p_deserialize_tensor));
+      // TODO!! Need a temp buffer allocator for non-escape buffers that maybe too big for stack allocation.
+
+      return CopyTensorFromCPUToDevice(data_transfer_mgr, p_deserialize_tensor, p_tensor, ort_value);
     }
   }
-  auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-  ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+}
+
+common::Status AllocateTensor(
+    const onnxruntime::MemBuffer* m,
+    std::unique_ptr<onnxruntime::Tensor>& p_tensor,
+    const onnxruntime::DataTypeImpl* const& type,
+    onnxruntime::TensorShape& tensor_shape,
+    bool use_device_allocator_for_initializers,
+    const onnxruntime::AllocatorPtr& alloc) {
+  if (m != nullptr) {
+    p_tensor = std::make_unique<Tensor>(type, tensor_shape, m->GetBuffer(), m->GetAllocInfo());
+    if (m->GetLen() < p_tensor->SizeInBytes()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Internal error. The preallocated buffer is too small. Requires ",
+                             p_tensor->SizeInBytes(), ", Got ", m->GetLen());
+    }
+  } else {
+    return AllocateTensorOnDeviceOrMemory(use_device_allocator_for_initializers, tensor_shape, type, alloc, p_tensor);
+  }
   return common::Status::OK();
+}
+
+common::Status AllocateTensorOnDeviceOrMemory(
+    bool use_device_allocator_for_initializers,
+    onnxruntime::TensorShape& tensor_shape,
+    const onnxruntime::DataTypeImpl* const& type,
+    const onnxruntime::AllocatorPtr& alloc,
+    std::unique_ptr<onnxruntime::Tensor>& p_tensor) {
+  if (use_device_allocator_for_initializers) {
+    void* tensor_buffer = nullptr;
+    ORT_RETURN_IF_ERROR(AllocateBufferUsingDeviceAllocatorFromShapeAndType(tensor_shape, type, alloc, tensor_buffer));
+    p_tensor = std::make_unique<Tensor>(type, tensor_shape, tensor_buffer, alloc);
+  } else {
+    // If the provided allocator is an arena-based allocator, the call to Alloc() will tap into memory from the arena
+    // (may expand it if there isn't a chunk that can be allotted to the memory request).
+    // If the provided allocator is non-arena based, the device specific Alloc() call will be used to allocate the necessary memory.
+    p_tensor = std::make_unique<Tensor>(type, tensor_shape, alloc);
+  }
+  return common::Status::OK();
+}
+
+common::Status CopyTensorFromCPUToDevice(
+    const onnxruntime::DataTransferManager& data_transfer_mgr,
+    std::unique_ptr<onnxruntime::Tensor>& p_deserialize_tensor,
+    std::unique_ptr<onnxruntime::Tensor>& p_tensor,
+    OrtValue& ort_value) {
+  Status copy_status = data_transfer_mgr.CopyTensor(*p_deserialize_tensor, *p_tensor);
+  if (!copy_status.IsOK()) {
+    if (copy_status.ErrorMessage().empty()) {
+      // The windows execution provider does not return any error message today for CopyTensor since it is
+      // not implemented yet. That's the reason we're adding our own error message so that we can debug better.
+      return Status(copy_status.Category(), copy_status.Code(),
+                    "Failed to copy tensor to " + p_tensor->Location().ToString());
+    }
+    return copy_status;
+  } else {
+    auto ml_tensor = DataTypeImpl::GetType<Tensor>();
+    ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+    return common::Status::OK();
+  }
 }
 
 common::Status SaveInitializedTensors(
@@ -201,7 +266,9 @@ common::Status SaveInitializedTensors(
     const std::vector<OrtValueIndex>& initializer_allocation_order,
     ITensorAllocator& planner,
     const SaveTensorFunction& save_tensor_func,
-    const logging::Logger& logger, const DataTransferManager& data_transfer_mgr,
+    const logging::Logger& logger,
+    const DataTransferManager& data_transfer_mgr,
+    const ExternalDataLoaderManager& external_data_loader_mgr,
     const ExecutionPlanBase& exec_plan,
     const SessionOptions& session_options,
     const MemoryProfileFunction& memory_profile_func,
@@ -333,7 +400,7 @@ common::Status SaveInitializedTensors(
       }
 
       Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, (m.has_value()) ? &*m : nullptr, alloc,
-                                         default_cpu_alloc, ort_value, data_transfer_mgr,
+                                         default_cpu_alloc, ort_value, data_transfer_mgr, external_data_loader_mgr,
                                          use_device_allocator_for_initializers, p_tensor);
       if (!st.IsOK()) {
         std::ostringstream oss;

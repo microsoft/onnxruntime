@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {resolveBackend, SessionHandlerType} from './backend';
-import {ExecutionPlan} from './execution-plan';
-import {Graph} from './graph';
-import {Profiler} from './instrument';
-import {Model} from './model';
-import {Operator} from './operators';
-import {Tensor} from './tensor';
+import { resolveBackend, SessionHandlerType } from './backend';
+import { ExecutionPlan } from './execution-plan';
+import { Graph } from './graph';
+import { Profiler } from './instrument';
+import { Model } from './model';
+import { Operator } from './operators';
+import { Tensor } from './tensor';
 
 export declare namespace Session {
   export interface Config {
@@ -27,7 +27,7 @@ export class Session {
     this._initialized = false;
     this.backendHint = config.backendHint;
     this.profiler = Profiler.create(config.profiler);
-    this.context = {profiler: this.profiler, graphInputTypes: [], graphInputDims: []};
+    this.context = { profiler: this.profiler, graphInputTypes: [], graphInputDims: [] };
   }
 
   get inputNames(): readonly string[] {
@@ -48,7 +48,7 @@ export class Session {
   async loadModel(uri: string): Promise<void>;
   async loadModel(buffer: ArrayBuffer, byteOffset?: number, length?: number): Promise<void>;
   async loadModel(buffer: Uint8Array): Promise<void>;
-  async loadModel(arg: string|ArrayBuffer|Uint8Array, byteOffset?: number, length?: number): Promise<void> {
+  async loadModel(arg: string | ArrayBuffer | Uint8Array, byteOffset?: number, length?: number): Promise<void> {
     await this.profiler.event('session', 'Session.loadModel', async () => {
       // resolve backend and session handler
       const backend = await resolveBackend(this.backendHint);
@@ -59,7 +59,7 @@ export class Session {
         const isOrtFormat = arg.endsWith('.ort');
         if (typeof process !== 'undefined' && process.versions && process.versions.node) {
           // node
-          const {readFile} = require('node:fs/promises');
+          const { readFile } = require('node:fs/promises');
           const buf = await readFile(arg);
           this.initialize(buf, isOrtFormat);
         } else {
@@ -86,8 +86,9 @@ export class Session {
 
     this.profiler.event('session', 'Session.initialize', () => {
       // load graph
-      const graphInitializer =
-          this.sessionHandler.transformGraph ? this.sessionHandler as Graph.Initializer : undefined;
+      const graphInitializer = this.sessionHandler.transformGraph
+        ? (this.sessionHandler as Graph.Initializer)
+        : undefined;
       this._model.load(modelProtoBlob, graphInitializer, isOrtFormat);
 
       // graph is completely initialzied at this stage , let the interested handlers know
@@ -104,7 +105,7 @@ export class Session {
     this._initialized = true;
   }
 
-  async run(inputs: Map<string, Tensor>|Tensor[]): Promise<Map<string, Tensor>> {
+  async run(inputs: Map<string, Tensor> | Tensor[]): Promise<Map<string, Tensor>> {
     if (!this._initialized) {
       throw new Error('session not initialized yet');
     }
@@ -118,7 +119,7 @@ export class Session {
     });
   }
 
-  private normalizeAndValidateInputs(inputs: Map<string, Tensor>|Tensor[]): Tensor[] {
+  private normalizeAndValidateInputs(inputs: Map<string, Tensor> | Tensor[]): Tensor[] {
     const modelInputNames = this._model.graph.getInputNames();
 
     // normalize inputs
@@ -150,8 +151,12 @@ export class Session {
 
     // validate dims requirements
     // First session run - graph input data is not cached for the session
-    if (!this.context.graphInputTypes || this.context.graphInputTypes.length === 0 || !this.context.graphInputDims ||
-        this.context.graphInputDims.length === 0) {
+    if (
+      !this.context.graphInputTypes ||
+      this.context.graphInputTypes.length === 0 ||
+      !this.context.graphInputDims ||
+      this.context.graphInputDims.length === 0
+    ) {
       const modelInputIndices = this._model.graph.getInputIndices();
       const modelValues = this._model.graph.getValues();
 
@@ -192,19 +197,28 @@ export class Session {
   }
 
   private validateInputTensorDims(
-      graphInputDims: Array<readonly number[]>, givenInputs: Tensor[], noneDimSupported: boolean) {
+    graphInputDims: Array<readonly number[]>,
+    givenInputs: Tensor[],
+    noneDimSupported: boolean,
+  ) {
     for (let i = 0; i < givenInputs.length; i++) {
       const expectedDims = graphInputDims[i];
       const actualDims = givenInputs[i].dims;
       if (!this.compareTensorDims(expectedDims, actualDims, noneDimSupported)) {
-        throw new Error(`input tensor[${i}] check failed: expected shape '[${expectedDims.join(',')}]' but got [${
-            actualDims.join(',')}]`);
+        throw new Error(
+          `input tensor[${i}] check failed: expected shape '[${expectedDims.join(',')}]' but got [${actualDims.join(
+            ',',
+          )}]`,
+        );
       }
     }
   }
 
-  private compareTensorDims(expectedDims: readonly number[], actualDims: readonly number[], noneDimSupported: boolean):
-      boolean {
+  private compareTensorDims(
+    expectedDims: readonly number[],
+    actualDims: readonly number[],
+    noneDimSupported: boolean,
+  ): boolean {
     if (expectedDims.length !== actualDims.length) {
       return false;
     }

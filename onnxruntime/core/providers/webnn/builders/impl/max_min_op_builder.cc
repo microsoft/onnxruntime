@@ -22,8 +22,8 @@ class MaxMinOpBuilder : public BaseOpBuilder {
   // Operator support related.
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
-                              const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -47,11 +47,8 @@ Status MaxMinOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   options.set("label", node.Name());
 
   if (input_count == 1) {
-    // For 1 input, just concat the single input as workaround.
-    // TODO: use identity instead once it's available in WebNN.
-    emscripten::val inputs = emscripten::val::array();
-    inputs.call<void>("push", input0);
-    output = model_builder.GetBuilder().call<emscripten::val>("concat", inputs, 0, options);
+    // For 1 input, use identity instead.
+    output = model_builder.GetBuilder().call<emscripten::val>("identity", input0, options);
   } else {
     std::string webnn_op_name = op_type == "Max" ? "max" : "min";
 
@@ -90,31 +87,28 @@ bool MaxMinOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
   return true;
 }
 
-bool MaxMinOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
-                                             const logging::Logger& logger) const {
+bool MaxMinOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                                             const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
   int32_t input0_type;
-  int32_t input1_type;
 
-  if (!GetType(*input_defs[0], input0_type, logger) ||
-      !GetType(*input_defs[1], input1_type, logger))
+  if (!GetType(*input_defs[0], input0_type, logger))
     return false;
 
-  if (!IsSupportedDataType(input0_type, webnn_supported_data_types)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input0_type
-                          << "] is not supported for now";
-    return false;
+  for (size_t i = 1; i < input_defs.size(); i++) {
+    int32_t input_type;
+    if (!GetType(*input_defs[i], input_type, logger)) {
+      return false;
+    }
+
+    std::array<int32_t, 2> input_types{input0_type, input_type};
+    if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+      return false;
+    }
   }
 
-  if (input0_type != input1_type) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input data types should be the same.";
-    return false;
-  }
-
-  return true;
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "a", "data_0", logger);
 }
 
 void CreateMaxMinOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

@@ -74,7 +74,7 @@ namespace Dml
         bool enableGraphCapture,
         bool enableSyncSpinning,
         bool disableMemoryArena) :
-            IExecutionProvider(onnxruntime::kDmlExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0))
+            IExecutionProvider(onnxruntime::kDmlExecutionProvider, OrtDevice(OrtDevice::DML, OrtDevice::MemType::DEFAULT, 0))
     {
         D3D12_COMMAND_LIST_TYPE queueType = executionContext->GetCommandListTypeForQueue();
         if (queueType != D3D12_COMMAND_LIST_TYPE_DIRECT && queueType != D3D12_COMMAND_LIST_TYPE_COMPUTE)
@@ -95,7 +95,7 @@ namespace Dml
         const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup) const
     {
 #ifdef ENABLE_GRAPH_COMPILATION
-        return m_impl->GetCapability(graph, kernel_lookup);
+        return m_impl->GetCapability(graph, kernel_lookup, *GetLogger());
 #else
         return onnxruntime::IExecutionProvider::GetCapability(graph, kernel_lookup);
 #endif
@@ -239,7 +239,9 @@ namespace Dml
                 std::make_unique<DmlCommittedResourceAllocator>(m_d3d12Device.Get()));
             m_context->SetAllocator(m_allocator);
             // CPU Allocator used to create buffers for the MemcpyFromHost, Shape and Size operators.
-            m_cpuInputAllocator = std::make_shared<CPUAllocator>(OrtMemType::OrtMemTypeCPUInput);
+            OrtMemoryInfo memoryInfo(onnxruntime::CPU, OrtAllocatorType::OrtDeviceAllocator);
+            memoryInfo.mem_type = ::OrtMemType::OrtMemTypeCPUInput;
+            m_cpuInputAllocator = std::make_shared<onnxruntime::CPUAllocator>(memoryInfo);
         }
 
         return std::vector<onnxruntime::AllocatorPtr>{m_allocator, m_cpuInputAllocator,};
@@ -674,7 +676,7 @@ namespace Dml
 
     bool IsCpuOnDmlOperator(const onnxruntime::Node& node)
     {
-        auto cpuOnDmlOperators = std::array<const char*, 8>{
+        auto cpuOnDmlOperators = std::array<const char*, 9>{
             "SequenceAt",
             "SequenceConstruct",
             "SequenceEmpty",
@@ -682,7 +684,8 @@ namespace Dml
             "SequenceErase",
             "SequenceInsert",
             "OptionalGetElement",
-            "OptionalHasElement"
+            "OptionalHasElement",
+            "If",
         };
 
         for (auto& cpuOnDmlOperator : cpuOnDmlOperators)
@@ -873,7 +876,8 @@ namespace Dml
     std::vector<std::unique_ptr<onnxruntime::ComputeCapability>>
     ExecutionProviderImpl::GetCapability(
         const onnxruntime::GraphViewer& graph,
-        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup) const
+        const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
+        const onnxruntime::logging::Logger& logger) const
     {
         uint32_t deviceDataTypeMask = GetSupportedDeviceDataTypeMask(); // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
 
@@ -897,7 +901,7 @@ namespace Dml
         }
 
         // Get the list of nodes that should stay on the CPU
-        auto cpuPreferredNodes = GetCpuPreferredNodes(graph, kernel_lookup, tentativeNodes);
+        auto cpuPreferredNodes = GetCpuPreferredNodes(graph, kernel_lookup, tentativeNodes, logger);
 
         for (size_t nodeIndex : toplogicalOrder)
         {
@@ -991,7 +995,6 @@ namespace Dml
             srcDatas.push_back(srcAllocInfo->GetResource());
         }
 
-        const uint64_t srcOffset = 0;
         const auto srcState = D3D12_RESOURCE_STATE_UNORDERED_ACCESS; // GPU resources are always kept in UAV state
 
         // Performs a blocking call to synchronize and read back data from the GPU into the destination buffer

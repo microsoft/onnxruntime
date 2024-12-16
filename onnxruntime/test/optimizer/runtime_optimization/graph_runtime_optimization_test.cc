@@ -318,7 +318,6 @@ TEST(GraphRuntimeOptimizationTest, ConvActivation) {
       });
 }
 
-#if !defined(ORT_NEURAL_SPEED)
 TEST(GraphRuntimeOptimizationTest, FuseMatMulNBitsAndAdd) {
   SaveAndLoadRuntimeOptimizationsForModel(
       ORT_TSTR("testdata/transform/runtime_optimization/matmulnbits_add.onnx"),
@@ -332,7 +331,6 @@ TEST(GraphRuntimeOptimizationTest, FuseMatMulNBitsAndAdd) {
                   (OpCountMap{{"com.microsoft.MatMulNBits", 1}}));
       });
 }
-#endif  // !defined(ORT_NEURAL_SPEED)
 
 TEST(GraphRuntimeOptimizationTest, TestNhwcTransformer) {
   CheckNhwcTransformerIsApplied(

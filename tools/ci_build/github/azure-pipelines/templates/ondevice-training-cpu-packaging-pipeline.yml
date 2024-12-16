@@ -100,6 +100,8 @@ stages:
       job_name_suffix: 'Training_Full'
       publish_executables: '1'
       packageName: onnxruntime-training-android
+      enable_code_sign: true
+
   - template: android-java-api-aar-test.yml
     parameters:
       artifactName: 'onnxruntime-training-android-full-aar'
@@ -231,7 +233,7 @@ stages:
     - task: UsePythonVersion@0
       displayName: 'Use Python'
       inputs:
-        versionSpec: 3.8
+        versionSpec: 3.12
 
     - task: MSBuild@1
       displayName: 'Build Nuget Packages'

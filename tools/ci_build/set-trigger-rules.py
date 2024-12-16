@@ -24,21 +24,18 @@ skip_js_changes = [
     "linux-migraphx-ci-pipeline.yml",
     "linux-openvino-ci-pipeline.yml",
     "linux-qnn-ci-pipeline.yml",
+    "linux-rocm-ci-pipeline.yml",
     "mac-ci-pipeline.yml",
     "mac-coreml-ci-pipeline.yml",
     "mac-ios-ci-pipeline.yml",
     "mac-ios-packaging-pipeline.yml",
     "mac-react-native-ci-pipeline.yml",
-    "orttraining-linux-ci-pipeline.yml",
-    "orttraining-linux-gpu-ci-pipeline.yml",
-    "orttraining-linux-gpu-ortmodule-distributed-test-ci-pipeline.yml",
-    "orttraining-mac-ci-pipeline.yml",
     "win-ci-pipeline.yml",
-    "win-gpu-ci-dml-pipeline.yml",
-    "win-gpu-ci-cuda-pipeline.yml",
-    "win-gpu-ci-training-pipeline.yml",
-    "win-gpu-ci-doc-gen-pipeline.yml",
+    "win-gpu-dml-ci-pipeline.yml",
+    "win-gpu-cuda-ci-pipeline.yml",
+    "win-gpu-doc-gen-ci-pipeline.yml",
     "win-gpu-tensorrt-ci-pipeline.yml",
+    "win-gpu-webgpu-ci-pipeline.yml",
     "win-qnn-arm64-ci-pipeline.yml",
     "win-qnn-ci-pipeline.yml",
 ]
@@ -51,6 +48,8 @@ def add_trigger_filter(file_name, trigger_lines):
 
     start_marker = f"##### start trigger Don't edit it manually, Please do edit {os.path.basename(__file__)} ####"
     end_marker = "#### end trigger ####\n"
+    reminder = f"### please do rerun {os.path.basename(__file__)} ###"
+    trigger_lines.insert(0, f"{reminder}\n")
 
     if lines[0].startswith(start_marker):
         for i in range(1, len(lines)):

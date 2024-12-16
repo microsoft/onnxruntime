@@ -21,8 +21,6 @@ class ActivationOpBuilder : public BaseOpBuilder {
   // Operator support related.
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          WebnnDeviceType device_type, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
-                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -89,44 +87,6 @@ bool ActivationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initi
       LOGS(logger, VERBOSE) << "WebNN CPU backend only supports Elu's alpha == 1.0";
       return false;
     }
-  }
-
-  return true;
-}
-
-bool ActivationOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
-                                                 const logging::Logger& logger) const {
-  const auto& input = *node.InputDefs()[0];
-  const auto& op_type = node.OpType();
-  int32_t input_type;
-  if (!GetType(input, input_type, logger))
-    return false;
-
-  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types;
-  // WebNN relu op supports float32, float16, int32, int8 input data types.
-  if (op_type == "Relu") {
-    supported_data_types = {
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-        ONNX_NAMESPACE::TensorProto_DataType_INT32,
-        ONNX_NAMESPACE::TensorProto_DataType_INT8,
-    };
-    // WebNN CPU backend does not support int32 data type for relu.
-    if (device_type == WebnnDeviceType::CPU) {
-      supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_INT32);
-    }
-  } else {  // Others only support float32 and float16.
-    supported_data_types = {
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-    };
-  }
-
-  if (!IsSupportedDataType(input_type, supported_data_types)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input_type
-                          << "] is not supported for now";
-    return false;
   }
 
   return true;

@@ -87,7 +87,7 @@ class OnnxRuntimeBackend(Backend):
         """
         if device == "CUDA":
             device = "GPU"
-        return device in get_device()
+        return "-" + device in get_device() or device + "-" in get_device() or device == get_device()
 
     @classmethod
     def prepare(cls, model, device=None, **kwargs):

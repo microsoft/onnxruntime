@@ -10,9 +10,9 @@
 #include <assert.h>
 
 #include "core/common/spin_pause.h"
-#include "core/platform/ort_mutex.h"
 
 #include <mutex>
+#include <condition_variable>
 #include <atomic>
 
 namespace onnxruntime {
@@ -40,7 +40,7 @@ class Barrier {
       assert(((v + delta) & ~1) != 0);
       return;  // either count has not dropped to 0, or waiter is not waiting
     }
-    std::unique_lock<OrtMutex> l(mu_);
+    std::unique_lock<std::mutex> l(mu_);
     assert(!notified_);
     notified_ = true;
     cv_.notify_all();
@@ -55,7 +55,7 @@ class Barrier {
       unsigned int v = state_.fetch_or(1, std::memory_order_acq_rel);
       if ((v >> 1) == 0)
         return;
-      std::unique_lock<OrtMutex> l(mu_);
+      std::unique_lock<std::mutex> l(mu_);
       while (!notified_) {
         cv_.wait(l);
       }
@@ -63,8 +63,8 @@ class Barrier {
   }
 
  private:
-  OrtMutex mu_;
-  OrtCondVar cv_;
+  std::mutex mu_;
+  std::condition_variable cv_;
   std::atomic<unsigned int> state_;  // low bit is waiter flag
   bool notified_;
   const bool spin_;

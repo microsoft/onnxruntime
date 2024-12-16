@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Env} from 'onnxruntime-common';
+import { Env } from 'onnxruntime-common';
 
-import {WebGLContext} from './backends/webgl/webgl-context';
+import { WebGLContext } from './backends/webgl/webgl-context';
 
 export declare namespace Logger {
   export interface SeverityTypeMap {
@@ -16,7 +16,7 @@ export declare namespace Logger {
 
   export type Severity = keyof SeverityTypeMap;
 
-  export type Provider = 'none'|'console';
+  export type Provider = 'none' | 'console';
 
   /**
    * Logging config that used to control the behavior of logger
@@ -121,28 +121,33 @@ const SEVERITY_VALUE = {
   info: 2000,
   warning: 4000,
   error: 5000,
-  fatal: 6000
+  fatal: 6000,
 };
 
-const LOGGER_PROVIDER_MAP: {readonly [provider: string]: Readonly<LoggerProvider>} = {
+const LOGGER_PROVIDER_MAP: { readonly [provider: string]: Readonly<LoggerProvider> } = {
   ['none']: new NoOpLoggerProvider(),
-  ['console']: new ConsoleLoggerProvider()
+  ['console']: new ConsoleLoggerProvider(),
 };
 const LOGGER_DEFAULT_CONFIG = {
   provider: 'console',
   minimalSeverity: 'warning',
   logDateTime: true,
-  logSourceLocation: false
+  logSourceLocation: false,
 };
-let LOGGER_CONFIG_MAP:
-    {[category: string]: Readonly<Required<Logger.Config>>} = {['']: LOGGER_DEFAULT_CONFIG as Required<Logger.Config>};
+let LOGGER_CONFIG_MAP: { [category: string]: Readonly<Required<Logger.Config>> } = {
+  ['']: LOGGER_DEFAULT_CONFIG as Required<Logger.Config>,
+};
 
 function log(category: string): Logger.CategorizedLogger;
 function log(severity: Logger.Severity, content: string): void;
 function log(severity: Logger.Severity, category: string, content: string): void;
 function log(severity: Logger.Severity, arg1: string, arg2?: string): void;
 function log(
-    arg0: string|Logger.Severity, arg1?: string, arg2?: string|number, arg3?: number): Logger.CategorizedLogger|void {
+  arg0: string | Logger.Severity,
+  arg1?: string,
+  arg2?: string | number,
+  arg3?: number,
+): Logger.CategorizedLogger | void {
   if (arg1 === undefined) {
     // log(category: string): Logger.CategorizedLogger;
     return createCategorizedLogger(arg0);
@@ -169,7 +174,7 @@ function createCategorizedLogger(category: string): Logger.CategorizedLogger {
     info: log.info.bind(null, category),
     warning: log.warning.bind(null, category),
     error: log.error.bind(null, category),
-    fatal: log.fatal.bind(null, category)
+    fatal: log.fatal.bind(null, category),
   };
 }
 
@@ -233,9 +238,9 @@ namespace log {
       LOGGER_CONFIG_MAP[category] = {
         provider: config.provider || previousConfig.provider,
         minimalSeverity: config.minimalSeverity || previousConfig.minimalSeverity,
-        logDateTime: (config.logDateTime === undefined) ? previousConfig.logDateTime : config.logDateTime,
-        logSourceLocation: (config.logSourceLocation === undefined) ? previousConfig.logSourceLocation :
-                                                                      config.logSourceLocation
+        logDateTime: config.logDateTime === undefined ? previousConfig.logDateTime : config.logDateTime,
+        logSourceLocation:
+          config.logSourceLocation === undefined ? previousConfig.logSourceLocation : config.logSourceLocation,
       };
     }
 
@@ -261,10 +266,10 @@ export declare namespace Profiler {
     flushIntervalInMilliseconds?: number;
   }
 
-  export type EventCategory = 'session'|'node'|'op'|'backend';
+  export type EventCategory = 'session' | 'node' | 'op' | 'backend';
 
   export interface Event {
-    end(): void|Promise<void>;
+    end(): void | Promise<void>;
   }
 }
 // TODO
@@ -272,8 +277,13 @@ export declare namespace Profiler {
 
 class Event implements Profiler.Event {
   constructor(
-      public category: Profiler.EventCategory, public name: string, public startTime: number,
-      private endCallback: (e: Event) => void|Promise<void>, public timer?: WebGLQuery, public ctx?: WebGLContext) {}
+    public category: Profiler.EventCategory,
+    public name: string,
+    public startTime: number,
+    private endCallback: (e: Event) => void | Promise<void>,
+    public timer?: WebGLQuery,
+    public ctx?: WebGLContext,
+  ) {}
 
   async end() {
     return this.endCallback(this);
@@ -291,7 +301,11 @@ class Event implements Profiler.Event {
 
 class EventRecord {
   constructor(
-      public category: Profiler.EventCategory, public name: string, public startTime: number, public endTime: number) {}
+    public category: Profiler.EventCategory,
+    public name: string,
+    public startTime: number,
+    public endTime: number,
+  ) {}
 }
 
 export class Profiler {
@@ -329,8 +343,12 @@ export class Profiler {
   event<T>(category: Profiler.EventCategory, name: string, func: () => T, ctx?: WebGLContext): T;
   event<T>(category: Profiler.EventCategory, name: string, func: () => Promise<T>, ctx?: WebGLContext): Promise<T>;
 
-  event<T>(category: Profiler.EventCategory, name: string, func: () => T | Promise<T>, ctx?: WebGLContext): T
-      |Promise<T> {
+  event<T>(
+    category: Profiler.EventCategory,
+    name: string,
+    func: () => T | Promise<T>,
+    ctx?: WebGLContext,
+  ): T | Promise<T> {
     const event = this._started ? this.begin(category, name, ctx) : undefined;
     let isPromise = false;
 
@@ -340,33 +358,38 @@ export class Profiler {
     if (res && typeof (res as Promise<T>).then === 'function') {
       isPromise = true;
       return new Promise<T>((resolve, reject) => {
-        (res as Promise<T>)
-            .then(
-                async value => {  // fulfilled
-                  if (event) {
-                    await event.end();
-                  }
-                  resolve(value);
-                },
-                async reason => {  // rejected
-                  if (event) {
-                    await event.end();
-                  }
-                  reject(reason);
-                });
+        (res as Promise<T>).then(
+          async (value) => {
+            // fulfilled
+            if (event) {
+              await event.end();
+            }
+            resolve(value);
+          },
+          async (reason) => {
+            // rejected
+            if (event) {
+              await event.end();
+            }
+            reject(reason);
+          },
+        );
       });
     }
     if (!isPromise && event) {
       const eventRes = event.end();
       if (eventRes && typeof eventRes.then === 'function') {
         return new Promise<T>((resolve, reject) => {
-          (eventRes).then(
-              () => {  // fulfilled
-                resolve(res);
-              },
-              (reason) => {  // rejected
-                reject(reason);
-              });
+          eventRes.then(
+            () => {
+              // fulfilled
+              resolve(res);
+            },
+            (reason) => {
+              // rejected
+              reject(reason);
+            },
+          );
         });
       }
     }
@@ -381,10 +404,10 @@ export class Profiler {
     if (ctx === undefined) {
       const startTime = now();
       this.flush(startTime);
-      return new Event(category, name, startTime, e => this.endSync(e));
+      return new Event(category, name, startTime, (e) => this.endSync(e));
     } else {
       const timer: WebGLQuery = ctx.beginTimer();
-      return new Event(category, name, 0, async e => this.end(e), timer, ctx);
+      return new Event(category, name, 0, async (e) => this.end(e), timer, ctx);
     }
   }
 
@@ -407,18 +430,23 @@ export class Profiler {
 
   private logOneEvent(event: EventRecord) {
     Logger.verbose(
-        `Profiler.${event.category}`,
-        `${(event.endTime - event.startTime).toFixed(2)}ms on event '${event.name}' at ${event.endTime.toFixed(2)}`);
+      `Profiler.${event.category}`,
+      `${(event.endTime - event.startTime).toFixed(2)}ms on event '${event.name}' at ${event.endTime.toFixed(2)}`,
+    );
   }
 
   private flush(currentTime: number) {
-    if (this._timingEvents.length - this._flushPointer >= this._flushBatchSize ||
-        currentTime - this._flushTime >= this._flushIntervalInMilliseconds) {
+    if (
+      this._timingEvents.length - this._flushPointer >= this._flushBatchSize ||
+      currentTime - this._flushTime >= this._flushIntervalInMilliseconds
+    ) {
       // should flush when either batch size accumlated or interval elepsed
 
-      for (const previousPointer = this._flushPointer; this._flushPointer < previousPointer + this._flushBatchSize &&
-           this._flushPointer < this._timingEvents.length;
-           this._flushPointer++) {
+      for (
+        const previousPointer = this._flushPointer;
+        this._flushPointer < previousPointer + this._flushBatchSize && this._flushPointer < this._timingEvents.length;
+        this._flushPointer++
+      ) {
         this.logOneEvent(this._timingEvents[this._flushPointer]);
       }
 
@@ -444,4 +472,4 @@ export class Profiler {
 /**
  * returns a number to represent the current timestamp in a resolution as high as possible.
  */
-export const now = (typeof performance !== 'undefined' && performance.now) ? () => performance.now() : Date.now;
+export const now = typeof performance !== 'undefined' && performance.now ? () => performance.now() : Date.now;

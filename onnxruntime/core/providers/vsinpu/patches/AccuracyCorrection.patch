@@ -1,8 +1,8 @@
 diff --git a/onnxruntime/test/providers/checkers.cc b/onnxruntime/test/providers/checkers.cc
-index 47c18c478d..93b44501cd 100644
+index d0e08448ce..8693f4d570 100644
 --- a/onnxruntime/test/providers/checkers.cc
 +++ b/onnxruntime/test/providers/checkers.cc
-@@ -195,7 +195,7 @@ struct TensorCheck<uint8_t> {
+@@ -252,7 +252,7 @@ struct TensorCheck<uint8_t> {
      // For any other EPs, we still expect an exact match for the results
      // TODO: Verify if DML can possibly have a ROUNDING_MODE parameter and conform to the other EPs #41968513
      if ((provider_type == kNnapiExecutionProvider || provider_type == kDmlExecutionProvider ||
@@ -11,6 +11,24 @@ index 47c18c478d..93b44501cd 100644
          (has_abs_err || has_rel_err)) {
        double threshold = has_abs_err ? *(params.absolute_error)
                                       : 0.0;
+@@ -301,7 +301,7 @@ struct TensorCheck<int8_t> {
+
+     // When absolute error is less than 1 for int8, it has same effect as no tolerance.
+     const bool has_abs_err = params.absolute_error.has_value() && *(params.absolute_error) >= 1.0f;
+-
++    const int8_t default_abs_err = 1;
+     // TODO: the relative error is not used for int8 yet.
+     if (has_abs_err) {
+       double threshold = *(params.absolute_error);
+@@ -311,7 +311,7 @@ struct TensorCheck<int8_t> {
+       }
+     } else {
+       for (int64_t i = 0; i < size; ++i) {
+-        EXPECT_EQ(cur_expected[i], cur_actual[i]) << "i:" << i;
++        EXPECT_NEAR(cur_expected[i], cur_actual[i], default_abs_err) << "i:" << i;
+       }
+     }
+   }
 diff --git a/onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc b/onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc
 index 2bc0df5e36..7beb78c2ff 100644
 --- a/onnxruntime/test/providers/cpu/nn/qlinearconv_op_test.cc

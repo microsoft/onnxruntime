@@ -313,7 +313,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// This fetches bound outputs after running the model with RunWithBinding()
         /// </summary>
-        /// <returns>IDisposableReadOnlyCollection<OrtValue></returns>
+        /// <returns>IDisposableReadOnlyCollection{OrtValue}</returns>
         public IDisposableReadOnlyCollection<OrtValue> GetOutputValues()
         {
             var ortValues = GetOutputOrtValues();

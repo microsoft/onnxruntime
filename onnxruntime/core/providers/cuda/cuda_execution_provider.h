@@ -9,7 +9,7 @@
 
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/providers/cuda/cuda_graph.h"
 #include "core/providers/cuda/cuda_pch.h"
@@ -88,7 +88,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
 #ifndef DISABLE_CONTRIB_OPS
   // Attention kernel options parsed from sdpa_kernel cuda provider option.
   const AttentionKernelOptions* GetAttentionKernelOptions() const {
-    attention_kernel_options_.InitializeOnce(info_.sdpa_kernel, true);
+    attention_kernel_options_.InitializeOnce(info_.sdpa_kernel, true, true);
     return &attention_kernel_options_;
   }
 #endif
@@ -251,7 +251,7 @@ class CUDAExecutionProvider : public IExecutionProvider {
     std::set<std::weak_ptr<PerThreadContextMap>, std::owner_less<std::weak_ptr<PerThreadContextMap>>>
         caches_to_update_on_destruction;
     // synchronizes access to PerThreadContextState members
-    OrtMutex mutex;
+    std::mutex mutex;
   };
 
   // The execution provider maintains the PerThreadContexts in this structure.

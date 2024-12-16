@@ -5,6 +5,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/common/tensor_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -263,17 +264,17 @@ TEST(SliceTest, Slice3D) {
                        332.0f, 333.0f});
 }
 
-template <typename TInt>
+template <typename T>
 static void TestSlice1DIntData() {
-  static_assert(std::is_integral_v<TInt>);
-  RunSliceTest<TInt>({6},
-                     {0, 1, 2, 3, 4, 5},
-                     {2},
-                     {4},
-                     {0},
-                     {},
-                     {2},
-                     {2, 3});
+  // static_assert(std::is_integral_v<TInt>);
+  RunSliceTest<T>({6},
+                  GetTypedArray<T>({0.f, 1.f, 2.f, 3.f, 4.f, 5.f}),
+                  {2},
+                  {4},
+                  {0},
+                  {},
+                  {2},
+                  GetTypedArray<T>({2.f, 3.f}));
 }
 
 TEST(SliceTest, Slice1D_Int32) {
@@ -283,6 +284,21 @@ TEST(SliceTest, Slice1D_Int32) {
 TEST(SliceTest, Slice1D_Int64) {
   TestSlice1DIntData<int64_t>();
 }
+
+TEST(SliceTest, Slice1D_Float) {
+  TestSlice1DIntData<float>();
+}
+
+TEST(SliceTest, Slice1D_Float16) {
+  TestSlice1DIntData<MLFloat16>();
+}
+
+template <typename T>
+class SliceTest : public ::testing::Test {
+};
+
+using SliceTestTypes = ::testing::Types<float, MLFloat16>;
+TYPED_TEST_SUITE(SliceTest, SliceTestTypes);
 
 TEST(SliceTest, Slice1D_String) {
   RunSliceTest<std::string>({6},
@@ -296,16 +312,16 @@ TEST(SliceTest, Slice1D_String) {
 }
 
 // Only Slice V10 can run the following tests
-TEST(SliceTest, Slice1D_WithPositiveSteps) {
-  RunSliceTest<float>({6},
-                      {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f},
-                      {0},
-                      {6},
-                      {0},
-                      {2},
-                      {3},
-                      {0.0f, 2.0f, 4.0f},
-                      true);
+TYPED_TEST(SliceTest, Slice1D_WithPositiveSteps) {
+  RunSliceTest<TypeParam>({6},
+                          GetTypedArray<TypeParam>({0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f}),
+                          {0},
+                          {6},
+                          {0},
+                          {2},
+                          {3},
+                          GetTypedArray<TypeParam>({0.0f, 2.0f, 4.0f}),
+                          true);
 }
 
 // In numpy:

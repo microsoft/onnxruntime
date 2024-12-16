@@ -21,7 +21,8 @@ const os = require('os');
 const fs = require('fs');
 const path = require('path');
 const tar = require('tar');
-const {Readable} = require('stream');
+const { execFileSync } = require('child_process');
+const { Readable } = require('stream');
 
 // commandline flag:
 // --onnxruntime-node-install-cuda         Force install the CUDA EP binaries. Try to detect the CUDA version.
@@ -49,7 +50,7 @@ const ORT_VERSION = require('../package.json').version;
 const npm_config_local_prefix = process.env.npm_config_local_prefix;
 const npm_package_json = process.env.npm_package_json;
 const SKIP_LOCAL_INSTALL =
-    npm_config_local_prefix && npm_package_json && path.dirname(npm_package_json) === npm_config_local_prefix;
+  npm_config_local_prefix && npm_package_json && path.dirname(npm_package_json) === npm_config_local_prefix;
 
 const shouldInstall = FORCE_INSTALL || (!SKIP_LOCAL_INSTALL && IS_LINUX_X64 && BIN_FOLDER_EXISTS && !CUDA_DLL_EXISTS);
 if (NO_INSTALL || !shouldInstall) {
@@ -58,13 +59,28 @@ if (NO_INSTALL || !shouldInstall) {
 
 // Step.2: Download the required binaries
 const artifactUrl = {
-  11: `https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-gpu-${
-      ORT_VERSION}.tgz`,
-  12: `https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-gpu-cuda12-${
-      ORT_VERSION}.tgz`
+  get 11() {
+    // TODO: support ORT Cuda v11 binaries
+    throw new Error(`CUDA 11 binaries are not supported by this script yet.
+
+To use ONNX Runtime Node.js binding with CUDA v11 support, please follow the manual steps:
+
+1. Use "--onnxruntime-node-install-cuda=skip" to skip the auto installation.
+2. Navigate to https://aiinfra.visualstudio.com/PublicPackages/_artifacts/feed/onnxruntime-cuda-11
+3. Download the binaries for your platform and architecture
+4. Extract the following binaries to "node_modules/onnxruntime-node/bin/napi-v3/linux/x64:
+   - libonnxruntime_providers_tensorrt.so
+   - libonnxruntime_providers_shared.so
+   - libonnxruntime.so.${ORT_VERSION}
+   - libonnxruntime_providers_cuda.so
+`);
+  },
+  12: `https://github.com/microsoft/onnxruntime/releases/download/v${ORT_VERSION}/onnxruntime-linux-x64-gpu-${
+    ORT_VERSION
+  }.tgz`,
 }[INSTALL_CUDA_FLAG || tryGetCudaVersion()];
 console.log(`Downloading "${artifactUrl}"...`);
-fetch(artifactUrl).then(res => {
+fetch(artifactUrl).then((res) => {
   if (!res.ok) {
     throw new Error(`Failed to download the binaries: ${res.status} ${res.statusText}.
 
@@ -81,7 +97,8 @@ Use "--onnxruntime-node-install-cuda=skip" to skip the installation. You will st
   ]);
 
   Readable.fromWeb(res.body)
-      .pipe(tar.t({
+    .pipe(
+      tar.t({
         strict: true,
         onentry: (entry) => {
           const filename = path.basename(entry.path);
@@ -92,22 +109,40 @@ Use "--onnxruntime-node-install-cuda=skip" to skip the installation. You will st
               console.log(`Finished extracting "${filename}".`);
             });
           }
-        }
-      }))
-      .on('error', (err) => {
-        throw new Error(`Failed to extract the binaries: ${err.message}.
+        },
+      }),
+    )
+    .on('error', (err) => {
+      throw new Error(`Failed to extract the binaries: ${err.message}.
 
 Use "--onnxruntime-node-install-cuda=skip" to skip the installation. You will still be able to use ONNX Runtime, but the CUDA EP will not be available.`);
-      });
+    });
 });
-
 
 function tryGetCudaVersion() {
   // Should only return 11 or 12.
 
-  // TODO: try to get the CUDA version from the system ( `nvcc --version` )
+  // try to get the CUDA version from the system ( `nvcc --version` )
+  let ver = 12;
+  try {
+    const nvccVersion = execFileSync('nvcc', ['--version'], { encoding: 'utf8' });
+    const match = nvccVersion.match(/release (\d+)/);
+    if (match) {
+      ver = parseInt(match[1]);
+      if (ver !== 11 && ver !== 12) {
+        throw new Error(`Unsupported CUDA version: ${ver}`);
+      }
+    }
+  } catch (e) {
+    if (e?.code === 'ENOENT') {
+      console.warn('`nvcc` not found. Assuming CUDA 12.');
+    } else {
+      console.warn('Failed to detect CUDA version from `nvcc --version`:', e.message);
+    }
+  }
 
-  return 11;
+  // assume CUDA 12 if failed to detect
+  return ver;
 }
 
 function parseInstallCudaFlag() {

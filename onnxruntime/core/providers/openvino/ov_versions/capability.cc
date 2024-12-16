@@ -35,16 +35,14 @@ GetCapability::GetCapability(const GraphViewer& graph_viewer_param,
     device_type_ = "CPU";
     if (enable_qdq_optimizer) npu_qdq_optimizer_enabled = true;
   }
-#if OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 0
-  data_ops_ = new DataOps(graph_viewer_, V_2024_0, device_type_, npu_qdq_optimizer_enabled);
-#elif OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 1
-  data_ops_ = new DataOps(graph_viewer_, V_2024_1, device_type_, npu_qdq_optimizer_enabled);
-#elif OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 2
-  data_ops_ = new DataOps(graph_viewer_, V_2024_2, device_type_, npu_qdq_optimizer_enabled);
-#elif OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 3
-  data_ops_ = new DataOps(graph_viewer_, V_2024_3, device_type_, npu_qdq_optimizer_enabled);
+#if OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 4
+  data_ops_ = new DataOps(graph_viewer_, V_2024_4, device_type_, npu_qdq_optimizer_enabled);
+#elif OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 5
+  data_ops_ = new DataOps(graph_viewer_, V_2024_5, device_type_, npu_qdq_optimizer_enabled);
+#elif OPENVINO_VERSION_MAJOR == 2025 && OPENVINO_VERSION_MINOR == 0
+  data_ops_ = new DataOps(graph_viewer_, V_2025_0, device_type_, npu_qdq_optimizer_enabled);
 #else
-  data_ops_ = new DataOps(graph_viewer_, V_2024_3, device_type_, npu_qdq_optimizer_enabled);
+  data_ops_ = new DataOps(graph_viewer_, V_2025_0, device_type_, npu_qdq_optimizer_enabled);
 #endif
 }
 
@@ -59,7 +57,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
   // This is a list of initializers that nGraph considers as constants. Example weights, reshape shape etc.
   std::unordered_set<std::string> ng_required_initializers;
 
-  const auto unsupported_nodes = data_ops_->GetUnsupportedNodeIndices(ng_required_initializers);
+  const auto unsupported_nodes = data_ops_->GetUnsupportedNodeIndices(ng_required_initializers, has_external_weights_);
 #ifndef NDEBUG
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     std::cout << "No of unsupported nodes " << unsupported_nodes.size() << std::endl;

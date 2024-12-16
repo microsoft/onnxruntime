@@ -20,6 +20,7 @@
 #include "core/framework/allocation_planner.h"
 #include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"
+#include "core/framework/external_data_loader_manager.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/stream_execution_context.h"
 #include "core/framework/feeds_fetches_manager.h"
@@ -34,7 +35,7 @@
 #include "core/framework/ort_value_name_idx_map.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/onnx_protobuf.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/platform/path_lib.h"
 #include "core/platform/threadpool.h"
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
@@ -93,6 +94,7 @@ class SessionState {
                concurrency::ThreadPool* thread_pool,
                concurrency::ThreadPool* inter_op_thread_pool,
                const DataTransferManager& data_transfer_mgr,
+               const ExternalDataLoaderManager& external_data_loader_mgr,
                const logging::Logger& logger,
                profiling::Profiler& profiler,
                const SessionOptions& sess_options,
@@ -296,6 +298,8 @@ class SessionState {
 
   const DataTransferManager& GetDataTransferMgr() const noexcept { return data_transfer_mgr_; }
 
+  const ExternalDataLoaderManager& GetExternalDataLoaderMgr() const noexcept { return external_data_loader_mgr_; }
+
   InlinedVector<BufferUniquePtr>& GetMutableWeightsBuffers() noexcept { return weights_buffers_; }
 
   const NodeIndexInfo& GetNodeIndexInfo() const;
@@ -490,7 +494,7 @@ class SessionState {
   bool enable_mem_pattern_;
 
   // lock for the mem_patterns_
-  mutable OrtMutex mem_patterns_lock_;
+  mutable std::mutex mem_patterns_lock_;
   // cache for the generated mem_patterns. key is calculated based on input shapes.
   // must be a node based container as a pointer is cached.
   mutable NodeHashMap<int64_t, MemoryPatternGroup> mem_patterns_;
@@ -512,6 +516,8 @@ class SessionState {
   concurrency::ThreadPool* const inter_op_thread_pool_{};
 
   const DataTransferManager& data_transfer_mgr_;
+
+  const ExternalDataLoaderManager& external_data_loader_mgr_;
 
   const SessionOptions& sess_options_;
 
@@ -562,7 +568,7 @@ class SessionState {
   std::unique_ptr<IStreamCommandHandleRegistry> stream_handles_registry_;
 
   // lock for the device stream pool
-  mutable OrtMutex device_stream_pool_mutex_;
+  mutable std::mutex device_stream_pool_mutex_;
   mutable std::vector<std::unique_ptr<DeviceStreamCollection>> device_stream_pool_;
   // flag to indicate whether current session using any EP that create device stream dynamically.
   bool has_device_stream_enabled_ep_ = false;

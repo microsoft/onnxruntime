@@ -318,9 +318,9 @@ namespace Microsoft.ML.OnnxRuntime
     }
 
     /// <summary>
-    /// CoreML flags for use with SessionOptions
+    /// CoreML flags for use with SessionOptions.
+    /// See https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/providers/coreml/coreml_provider_factory.h
     /// </summary>
-    /// <see cref="https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/providers/coreml/coreml_provider_factory.h"/>
     [Flags]
     public enum CoreMLFlags : uint
     {
@@ -328,13 +328,16 @@ namespace Microsoft.ML.OnnxRuntime
         COREML_FLAG_USE_CPU_ONLY = 0x001,
         COREML_FLAG_ENABLE_ON_SUBGRAPH = 0x002,
         COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE = 0x004,
-        COREML_FLAG_LAST = COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE,
+        COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES = 0x008,
+        COREML_FLAG_CREATE_MLPROGRAM = 0x010,
+        COREML_FLAG_USE_CPU_AND_GPU = 0x020,
+        COREML_FLAG_LAST = COREML_FLAG_USE_CPU_AND_GPU,
     }
 
     /// <summary>
-    /// NNAPI flags for use with SessionOptions
+    /// NNAPI flags for use with SessionOptions.
+    /// See https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/providers/nnapi/nnapi_provider_factory.h
     /// </summary>
-    /// <see cref="https://github.com/microsoft/onnxruntime/blob/main/include/onnxruntime/core/providers/nnapi/nnapi_provider_factory.h"/>
     [Flags]
     public enum NnapiFlags
     {

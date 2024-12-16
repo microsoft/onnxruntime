@@ -23,7 +23,7 @@ class PackedMultiHeadAttention final : public TrtFusedAttention<T> {
                      const Tensor* bias,
                      const TensorShape& token_offset_shape,
                      const TensorShape& cu_seq_len_shape,
-                     const Tensor* relative_position_bias,
+                     const Tensor* attention_bias,
                      PackedAttentionParameters& parameters) const;
   int GetNumHeads() const { return num_heads_; }
   float GetScale() const { return scale_; }

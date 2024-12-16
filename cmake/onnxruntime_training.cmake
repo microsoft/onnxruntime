@@ -139,7 +139,7 @@ if (onnxruntime_BUILD_UNIT_TESTS)
       target_compile_options(onnxruntime_training_mnist PUBLIC "-Wno-maybe-uninitialized")
     endif()
   endif()
-  target_link_libraries(onnxruntime_training_mnist PRIVATE onnxruntime_training_runner onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
+  target_link_libraries(onnxruntime_training_mnist PRIVATE onnxruntime_training_runner onnxruntime_lora onnxruntime_training ${ONNXRUNTIME_LIBS} ${onnxruntime_EXTERNAL_LIBRARIES})
   set_target_properties(onnxruntime_training_mnist PROPERTIES FOLDER "ONNXRuntimeTest")
 
   # squeezenet

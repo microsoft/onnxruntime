@@ -25,8 +25,8 @@ class GemmOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
-                              const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -113,12 +113,12 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     if (input_defs.size() >= 3) {
       a_zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
     } else {
-      a_zero_point = model_builder.GetZeroConstant("uint8");
+      a_zero_point = model_builder.CreateOrGetConstant<uint8_t>(ONNX_NAMESPACE::TensorProto_DataType_UINT8, 0);
     }
     if (input_defs.size() >= 4) {
       b_zero_point = model_builder.GetOperand(node.InputDefs()[3]->Name());
     } else {
-      b_zero_point = model_builder.GetZeroConstant("uint8");
+      b_zero_point = model_builder.CreateOrGetConstant<uint8_t>(ONNX_NAMESPACE::TensorProto_DataType_UINT8, 0);
     }
     output = model_builder.GetBuilder().call<emscripten::val>("matmulInteger",
                                                               a,
@@ -215,8 +215,8 @@ bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializer
   return true;
 }
 
-bool GemmOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
-                                           const logging::Logger& logger) const {
+bool GemmOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                                           const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
   int32_t input0_type;  // A data type
@@ -233,35 +233,18 @@ bool GemmOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceTy
     return false;
   }
 
-  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types;
-  if (op_type == "Gemm" || op_type == "MatMul") {
-    // WebNN gemm and matmul only support float32 and float16 input data types.
-    supported_data_types = {
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-    };
-  } else if (op_type == "MatMulInteger") {
-    supported_data_types = {
-        ONNX_NAMESPACE::TensorProto_DataType_INT8,
-        ONNX_NAMESPACE::TensorProto_DataType_UINT8,
-    };
+  InlinedVector<int32_t, 4> input_types = {input0_type, input1_type};
+  if (has_input2) {
+    input_types.push_back(input2_type);
   }
-  if (!IsSupportedDataType(input0_type, supported_data_types)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input0_type
-                          << "] is not supported for now";
+  if (has_input3) {
+    input_types.push_back(input3_type);
+  }
+  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
     return false;
   }
 
-  if (input0_type != input1_type ||
-      (has_input2 && input0_type != input2_type) ||
-      (has_input3 && input0_type != input3_type)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input data types should be the same.";
-    return false;
-  }
-
-  return true;
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "a", "A", logger);
 }
 
 void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

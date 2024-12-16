@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {ProgramInfo, TextureLayout} from './types';
-import {WebGLContext} from './webgl-context';
+import { ProgramInfo, TextureLayout } from './types';
+import { WebGLContext } from './webgl-context';
 
 /* eslint-disable @typescript-eslint/naming-convention */
 export enum FunctionType {
   ValueBased,
-  Positional
+  Positional,
 }
 export interface GlslFunction<T extends FunctionType> {
   body: string;
@@ -22,18 +22,24 @@ export interface GlslPositionalFunction extends GlslFunction<FunctionType.Positi
 
 export class GlslContext {
   constructor(
-      public glContext: WebGLContext, public programInfo: ProgramInfo, public inputTextureLayouts: TextureLayout[],
-      public outputTextureLayout: TextureLayout) {}
+    public glContext: WebGLContext,
+    public programInfo: ProgramInfo,
+    public inputTextureLayouts: TextureLayout[],
+    public outputTextureLayout: TextureLayout,
+  ) {}
 }
 export abstract class GlslLib {
   constructor(public context: GlslContext) {}
-  abstract getFunctions(): {[name: string]: GlslLibRoutine};
-  abstract getCustomTypes(): {[name: string]: string};
+  abstract getFunctions(): { [name: string]: GlslLibRoutine };
+  abstract getCustomTypes(): { [name: string]: string };
 }
 
 // abstraction to represent a GLSL library routine and it's dependencies
 export class GlslLibRoutine {
-  constructor(public routineBody: string, public dependencies?: string[]) {}
+  constructor(
+    public routineBody: string,
+    public dependencies?: string[],
+  ) {}
 }
 
 // abstraction to represent a GLSL library routine and it's dependencies AS GRAPH Nodes
@@ -41,7 +47,11 @@ export class GlslLibRoutine {
 export class GlslLibRoutineNode {
   dependencies: GlslLibRoutineNode[];
   routineBody: string;
-  constructor(public name: string, routineBody?: string, dependencies?: GlslLibRoutineNode[]) {
+  constructor(
+    public name: string,
+    routineBody?: string,
+    dependencies?: GlslLibRoutineNode[],
+  ) {
     if (dependencies) {
       this.dependencies = dependencies;
     } else {
@@ -79,15 +89,22 @@ export class TopologicalSortGlslRoutines {
   }
 
   private static createOrderedNodes(
-      graphNodes: GlslLibRoutineNode[], cycleCheck: Set<string>, alreadyTraversed: Set<string>,
-      result: GlslLibRoutineNode[]) {
+    graphNodes: GlslLibRoutineNode[],
+    cycleCheck: Set<string>,
+    alreadyTraversed: Set<string>,
+    result: GlslLibRoutineNode[],
+  ) {
     for (let i = 0; i < graphNodes.length; ++i) {
       this.dfsTraverse(graphNodes[i], cycleCheck, alreadyTraversed, result);
     }
   }
 
   private static dfsTraverse(
-      root: GlslLibRoutineNode, cycleCheck: Set<string>, alreadyTraversed: Set<string>, result: GlslLibRoutineNode[]) {
+    root: GlslLibRoutineNode,
+    cycleCheck: Set<string>,
+    alreadyTraversed: Set<string>,
+    result: GlslLibRoutineNode[],
+  ) {
     // if this root has already been traversed return
     if (!root || alreadyTraversed.has(root.name)) {
       return;
@@ -95,7 +112,7 @@ export class TopologicalSortGlslRoutines {
 
     // cyclic dependency has been detected
     if (cycleCheck.has(root.name)) {
-      throw new Error('Cyclic dependency detected. Can\'t topologically sort routines needed for shader.');
+      throw new Error("Cyclic dependency detected. Can't topologically sort routines needed for shader.");
     }
 
     // hold this node to detect cycles if any

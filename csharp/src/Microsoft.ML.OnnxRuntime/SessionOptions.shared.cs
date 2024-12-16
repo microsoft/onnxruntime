@@ -147,27 +147,6 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
         /// <summary>
-        /// A helper method to construct a SessionOptions object for TVM execution.
-        /// Use only if you have the onnxruntime package specific to this Execution Provider.
-        /// </summary>
-        /// <param name="settings">settings string, comprises of comma separated key:value pairs. default is empty</param>
-        /// <returns>A SessionsOptions() object configured for execution with TVM</returns>
-        public static SessionOptions MakeSessionOptionWithTvmProvider(String settings = "")
-        {
-            SessionOptions options = new SessionOptions();
-            try
-            {
-                options.AppendExecutionProvider_Tvm(settings);
-                return options;
-            }
-            catch (Exception)
-            {
-                options.Dispose();
-                throw;
-            }
-        }
-
-        /// <summary>
         /// A helper method to construct a SessionOptions object for ROCM execution.
         /// Use only if ROCM is installed and you have the onnxruntime package specific to this Execution Provider.
         /// </summary>
@@ -397,20 +376,6 @@ namespace Microsoft.ML.OnnxRuntime
 #endif
         }
 
-        /// <summary>
-        /// Use only if you have the onnxruntime package specific to this Execution Provider.
-        /// </summary>
-        /// <param name="settings">string with TVM specific settings</param>
-        public void AppendExecutionProvider_Tvm(string settings = "")
-        {
-#if __MOBILE__
-            throw new NotSupportedException("The TVM Execution Provider is not supported in this build");
-#else
-            var utf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(settings);
-            NativeApiStatus.VerifySuccess(NativeMethods.OrtSessionOptionsAppendExecutionProvider_Tvm(handle, utf8));
-#endif
-        }
-
         private class ExecutionProviderAppender
         {
             private byte[] _utf8ProviderName;
@@ -430,16 +395,10 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Append QNN, SNPE or XNNPACK execution provider
         /// </summary>
-        /// <param name="providerName">Execution provider to add. 'QNN', 'SNPE' or 'XNNPACK' are currently supported.</param>
+        /// <param name="providerName">Execution provider to add. 'QNN', 'SNPE' 'XNNPACK', 'CoreML and 'AZURE are currently supported.</param>
         /// <param name="providerOptions">Optional key/value pairs to specify execution provider options.</param>
         public void AppendExecutionProvider(string providerName, Dictionary<string, string> providerOptions = null)
         {
-            if (providerName != "SNPE" && providerName != "XNNPACK" && providerName != "QNN" && providerName != "AZURE")
-            {
-                throw new NotSupportedException(
-                    "Only QNN, SNPE, XNNPACK and AZURE execution providers can be enabled by this method.");
-            }
-
             if (providerOptions == null)
             {
                 providerOptions = new Dictionary<string, string>();
@@ -768,8 +727,8 @@ namespace Microsoft.ML.OnnxRuntime
         private int _logVerbosityLevel = 0;
 
         /// <summary>
-        // Sets the number of threads used to parallelize the execution within nodes
-        // A value of 0 means ORT will pick a default
+        /// Sets the number of threads used to parallelize the execution within nodes
+        /// A value of 0 means ORT will pick a default
         /// </summary>
         /// <value>returns _intraOpNumThreads value</value>
         public int IntraOpNumThreads
@@ -787,9 +746,9 @@ namespace Microsoft.ML.OnnxRuntime
         private int _intraOpNumThreads = 0; // set to what is set in C++ SessionOptions by default;
 
         /// <summary>
-        // Sets the number of threads used to parallelize the execution of the graph (across nodes)
-        // If sequential execution is enabled this value is ignored
-        // A value of 0 means ORT will pick a default
+        /// Sets the number of threads used to parallelize the execution of the graph (across nodes)
+        /// If sequential execution is enabled this value is ignored
+        /// A value of 0 means ORT will pick a default
         /// </summary>
         /// <value>returns _interOpNumThreads value</value>
         public int InterOpNumThreads

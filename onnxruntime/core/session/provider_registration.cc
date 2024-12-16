@@ -132,6 +132,12 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #else
     status = create_not_supported_status();
 #endif
+  } else if (strcmp(provider_name, "WebGPU") == 0) {
+#if defined(USE_WEBGPU)
+    options->provider_factories.push_back(WebGpuProviderFactoryCreator::Create(options->value.config_options));
+#else
+    status = create_not_supported_status();
+#endif
   } else if (strcmp(provider_name, "AZURE") == 0) {
 #if defined(USE_AZURE)
     options->provider_factories.push_back(AzureProviderFactoryCreator::Create(provider_options));
@@ -148,10 +154,22 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #else
     status = create_not_supported_status();
 #endif
+  } else if (strcmp(provider_name, "VitisAI") == 0) {
+#ifdef USE_VITISAI
+    status = OrtApis::SessionOptionsAppendExecutionProvider_VitisAI(options, provider_options_keys, provider_options_values, num_keys);
+#else
+    status = create_not_supported_status();
+#endif
+  } else if (strcmp(provider_name, "CoreML") == 0) {
+#if defined(USE_COREML)
+    options->provider_factories.push_back(CoreMLProviderFactoryCreator::Create(provider_options));
+#else
+    status = create_not_supported_status();
+#endif
   } else {
     ORT_UNUSED_PARAMETER(options);
     status = OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "Unknown provider name. Currently supported values are 'OPENVINO', 'SNPE', 'XNNPACK', 'QNN', 'WEBNN' and 'AZURE'");
+                                   "Unknown provider name. Currently supported values are 'OPENVINO', 'SNPE', 'XNNPACK', 'QNN', 'WEBNN' ,'CoreML', and 'AZURE'");
   }
 
   return status;
@@ -194,15 +212,6 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Nnapi,
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(nnapi_flags);
   return CreateNotEnabledStatus("NNAPI");
-}
-#endif
-
-#ifndef USE_TVM
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tvm,
-                    _In_ OrtSessionOptions* options, _In_ const char* settings) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(settings);
-  return CreateNotEnabledStatus("Tvm");
 }
 #endif
 

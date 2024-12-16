@@ -5,7 +5,6 @@ import unittest
 
 import torch
 import torch._dynamo
-import torch.onnx._internal.exporter
 from torch import nn
 from torch.nn import functional as F
 from torch.onnx import ExportOptions
