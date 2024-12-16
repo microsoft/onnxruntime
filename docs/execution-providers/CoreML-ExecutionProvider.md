@@ -120,7 +120,7 @@ Enable CoreML EP to run on a subgraph in the body of a control flow operator (i.
 - `Default`:
 - `FastPrediction`:
 
-`ProfileComputePlan`:Profile the Core ML MLComputePlan. This logs the hardware each operator is dispatched to and the estimated execution time. Intended for developer usage but provide useful diagnostic information if performance is not as expected. can be one of the following values: (`0` by default )
+`ProfileComputePlan`:Profile the Core ML MLComputePlan. This logs the hardware each operator is dispatched to and the estimated execution time. Intended for developer usage but provides useful diagnostic information if performance is not as expected. can be one of the following values: (`0` by default )
 - `0`: Disable profile.
 - `1`: Enable profile.
 
