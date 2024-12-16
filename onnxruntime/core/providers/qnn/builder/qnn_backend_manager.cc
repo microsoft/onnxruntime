@@ -554,7 +554,7 @@ Status QnnBackendManager::CreateContext() {
 
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result));
 
-  ORT_RETURN_IF_ERROR(AddQnnContext(context));  // TODO use RAII type for context handle?
+  ORT_RETURN_IF_ERROR(AddQnnContext(context));
 
   context_created_ = true;
   return Status::OK();
@@ -565,7 +565,8 @@ Status QnnBackendManager::ReleaseContext() {
     return Status::OK();
   }
 
-  ORT_RETURN_IF_ERROR(ReleaseQnnContextMemHandles());
+  // release context mem handles
+  context_mem_handles_.clear();
 
   bool failed = false;
   for (auto context : contexts_) {
@@ -1644,27 +1645,11 @@ void* QnnBackendManager::LibFunction(void* handle, const char* symbol, std::stri
 Status QnnBackendManager::AddQnnContext(Qnn_ContextHandle_t context) {
   ORT_RETURN_IF(logger_ == nullptr, "logger_ should be set.");
 
-  auto mem_handle_manager = std::make_unique<QnnContextMemHandleManager>(GetQnnInterface(), context, *logger_);
-  auto mem_handle_record = ContextMemHandleRecord{std::move(mem_handle_manager), {}};
-  const bool inserted = context_mem_handles_.try_emplace(context, std::move(mem_handle_record)).second;
+  auto mem_handle_manager = std::make_shared<QnnContextMemHandleManager>(GetQnnInterface(), context, *logger_);
+  const bool inserted = context_mem_handles_.try_emplace(context, std::move(mem_handle_manager)).second;
   ORT_RETURN_IF_NOT(inserted, "QNN context was already added: ", context);
 
   contexts_.push_back(context);
-
-  return Status::OK();
-}
-
-Status QnnBackendManager::ReleaseQnnContextMemHandles() {
-  // remove outstanding allocation clean up callbacks
-  for (auto& [context_handle, context_mem_handle_record] : context_mem_handles_) {
-    for (const auto& [shared_memory_address, idx] :
-         context_mem_handle_record.outstanding_allocation_clean_up_callbacks) {
-      ORT_RETURN_IF_ERROR(HtpSharedMemoryAllocator::RemoveAllocationCleanUp(shared_memory_address, idx,
-                                                                            /* allocation_clean_up */ nullptr));
-    }
-  }
-
-  context_mem_handles_.clear();
 
   return Status::OK();
 }
@@ -1675,29 +1660,37 @@ Status QnnBackendManager::GetOrRegisterContextMemHandle(Qnn_ContextHandle_t cont
   const auto context_mem_handles_it = context_mem_handles_.find(context);
   ORT_RETURN_IF_NOT(context_mem_handles_it != context_mem_handles_.end(), "QNN context not found: ", context);
 
-  auto& context_mem_handle_record = context_mem_handles_it->second;
-  auto& context_mem_handle_manager = *context_mem_handle_record.mem_handle_manager;
+  auto& context_mem_handle_manager = context_mem_handles_it->second;
   bool did_register{};
-  ORT_RETURN_IF_ERROR(context_mem_handle_manager.GetOrRegister(shared_memory_address, qnn_tensor,
-                                                               mem_handle, did_register));
+  ORT_RETURN_IF_ERROR(context_mem_handle_manager->GetOrRegister(shared_memory_address, qnn_tensor,
+                                                                mem_handle, did_register));
 
   if (did_register) {
     HtpSharedMemoryAllocator::AllocationCleanUpFn allocation_clean_up =
-        [&logger = *logger_, &context_mem_handle_manager](void* shared_memory_address) {
-          auto unregister_status = context_mem_handle_manager.Unregister(shared_memory_address);
+        [&logger = *logger_,
+         weak_backend_manager = weak_from_this(),
+         weak_context_mem_handle_manager = std::weak_ptr{context_mem_handle_manager}](
+            void* shared_memory_address) {
+          // get QnnBackendManager shared_ptr to ensure that qnn_interface is still valid
+          auto backend_manager = weak_backend_manager.lock();
+          if (!backend_manager) {
+            return;
+          }
+
+          auto context_mem_handle_manager = weak_context_mem_handle_manager.lock();
+          if (!context_mem_handle_manager) {
+            return;
+          }
+
+          auto unregister_status = context_mem_handle_manager->Unregister(shared_memory_address);
           if (!unregister_status.IsOK()) {
             LOGS(logger, ERROR) << "Failed to unregister shared memory mem handle for address: "
                                 << shared_memory_address << ", error: " << unregister_status.ErrorMessage();
           }
         };
 
-    size_t allocation_clean_up_idx{};
     ORT_RETURN_IF_ERROR(HtpSharedMemoryAllocator::AddAllocationCleanUp(shared_memory_address,
-                                                                       std::move(allocation_clean_up),
-                                                                       allocation_clean_up_idx));
-
-    context_mem_handle_record.outstanding_allocation_clean_up_callbacks.emplace_back(shared_memory_address,
-                                                                                     allocation_clean_up_idx);
+                                                                       std::move(allocation_clean_up)));
   }
 
   return Status::OK();

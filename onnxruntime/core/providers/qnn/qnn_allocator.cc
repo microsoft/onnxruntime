@@ -185,21 +185,10 @@ Status HtpSharedMemoryAllocator::GetAllocationSharedMemoryInfo(void* allocation_
 }
 
 Status HtpSharedMemoryAllocator::AddAllocationCleanUp(void* allocation_address,
-                                                      AllocationCleanUpFn&& allocation_clean_up,
-                                                      size_t& allocation_clean_up_idx) {
+                                                      AllocationCleanUpFn&& allocation_clean_up) {
   auto& allocation_header = ValidateAllocationAddressAndGetHeader(allocation_address);
   return allocation_header.allocator_ptr->AddAllocationCleanUpForThisAllocator(allocation_address,
-                                                                               std::move(allocation_clean_up),
-                                                                               allocation_clean_up_idx);
-}
-
-Status HtpSharedMemoryAllocator::RemoveAllocationCleanUp(void* allocation_address,
-                                                         size_t allocation_clean_up_idx,
-                                                         AllocationCleanUpFn* allocation_clean_up) {
-  auto& allocation_header = ValidateAllocationAddressAndGetHeader(allocation_address);
-  return allocation_header.allocator_ptr->RemoveAllocationCleanUpForThisAllocator(allocation_address,
-                                                                                  allocation_clean_up_idx,
-                                                                                  allocation_clean_up);
+                                                                               std::move(allocation_clean_up));
 }
 
 Status HtpSharedMemoryAllocator::GetAllocationSharedMemoryInfoForThisAllocator(void* allocation_address,
@@ -214,8 +203,7 @@ Status HtpSharedMemoryAllocator::GetAllocationSharedMemoryInfoForThisAllocator(v
 }
 
 Status HtpSharedMemoryAllocator::AddAllocationCleanUpForThisAllocator(void* allocation_address,
-                                                                      AllocationCleanUpFn&& allocation_clean_up,
-                                                                      size_t& allocation_clean_up_idx) {
+                                                                      AllocationCleanUpFn&& allocation_clean_up) {
   ORT_RETURN_IF(allocation_clean_up == nullptr, "allocation_clean_up should not be empty.");
 
   std::scoped_lock g{allocations_mutex_};
@@ -225,33 +213,6 @@ Status HtpSharedMemoryAllocator::AddAllocationCleanUpForThisAllocator(void* allo
 
   auto& clean_up_fns = allocation_infos_it->second.clean_up_fns;
   clean_up_fns.emplace_back(std::move(allocation_clean_up));
-  allocation_clean_up_idx = clean_up_fns.size() - 1;
-  return Status::OK();
-}
-
-Status HtpSharedMemoryAllocator::RemoveAllocationCleanUpForThisAllocator(void* allocation_address,
-                                                                         size_t allocation_clean_up_idx,
-                                                                         AllocationCleanUpFn* allocation_clean_up) {
-  std::scoped_lock g{allocations_mutex_};
-  const auto allocation_infos_it = allocations_.find(allocation_address);
-  ORT_RETURN_IF(allocation_infos_it == allocations_.end(),
-                "Failed to get allocation info for address (", allocation_address, ").");
-
-  auto& clean_up_fns = allocation_infos_it->second.clean_up_fns;
-  ORT_RETURN_IF_NOT(allocation_clean_up_idx < clean_up_fns.size(),
-                    "Invalid allocation_clean_up_idx: ", allocation_clean_up_idx);
-
-  AllocationCleanUpFn& clean_up_fn = clean_up_fns[allocation_clean_up_idx];
-  ORT_RETURN_IF(clean_up_fn == nullptr,
-                "Allocation clean up has already been removed at allocation_clean_up_idx: ", allocation_clean_up_idx);
-
-  AllocationCleanUpFn removed_clean_up_fn = nullptr;
-  removed_clean_up_fn.swap(clean_up_fn);
-
-  if (allocation_clean_up != nullptr) {
-    *allocation_clean_up = std::move(removed_clean_up_fn);
-  }
-
   return Status::OK();
 }
 

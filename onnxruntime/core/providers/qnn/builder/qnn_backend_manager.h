@@ -32,7 +32,7 @@ namespace qnn {
 
 class QnnModel;
 
-class QnnBackendManager {
+class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager> {
  public:
   QnnBackendManager(std::string&& backend_path,
                     ProfilingLevel profiling_level_etw,
@@ -261,13 +261,9 @@ class QnnBackendManager {
   Qnn_LogHandle_t log_handle_ = nullptr;
   Qnn_DeviceHandle_t device_handle_ = nullptr;
   std::vector<Qnn_ContextHandle_t> contexts_;
-
-  struct ContextMemHandleRecord {
-    std::unique_ptr<QnnContextMemHandleManager> mem_handle_manager;
-    InlinedVector<std::pair<void*, size_t>> outstanding_allocation_clean_up_callbacks;
-  };
-
-  std::unordered_map<Qnn_ContextHandle_t, ContextMemHandleRecord> context_mem_handles_;
+  // Note: Using shared_ptr<QnnContextMemHandleManager> so that we can refer to it with a weak_ptr from a
+  // HtpSharedMemoryAllocator allocation cleanup callback.
+  std::unordered_map<Qnn_ContextHandle_t, std::shared_ptr<QnnContextMemHandleManager>> context_mem_handles_;
   ProfilingLevel profiling_level_etw_;
   ProfilingLevel profiling_level_;
   ProfilingLevel profiling_level_merge_;

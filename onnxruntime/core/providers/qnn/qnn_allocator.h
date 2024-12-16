@@ -45,24 +45,13 @@ class HtpSharedMemoryAllocator : public IAllocator {
   // Add allocation clean up callback to call when the allocation is freed.
   // `allocation_address` identifies the allocation. It must be an address returned by Alloc() which has not yet been freed.
   // `allocation_clean_up` is the clean up callback. This call takes ownership.
-  // `allocation_clean_up_idx` identifies this clean up callback. It can be passed to RemoveAllocationCleanUp() to remove this callback later.
-  static Status AddAllocationCleanUp(void* allocation_address, AllocationCleanUpFn&& allocation_clean_up,
-                                     size_t& allocation_clean_up_idx);
-
-  // Remove allocation clean up callback that was previously added.
-  // `allocation_address` identifies the allocation. It must be an address returned by Alloc() which has not yet been freed.
-  // `allocation_clean_up_idx` identifies this clean up callback.
-  // `allocation_clean_up` is optional and, if provided, will contain the removed allocation clean up callback.
-  static Status RemoveAllocationCleanUp(void* allocation_address, size_t allocation_clean_up_idx,
-                                        AllocationCleanUpFn* allocation_clean_up);
+  static Status AddAllocationCleanUp(void* allocation_address, AllocationCleanUpFn&& allocation_clean_up);
 
  private:
   Status GetAllocationSharedMemoryInfoForThisAllocator(void* allocation_address,
                                                        SharedMemoryInfo& allocation_info);
-  Status AddAllocationCleanUpForThisAllocator(void* allocation_address, AllocationCleanUpFn&& allocation_clean_up,
-                                              size_t& allocation_clean_up_idx);
-  Status RemoveAllocationCleanUpForThisAllocator(void* allocation_address, size_t allocation_clean_up_idx,
-                                                 AllocationCleanUpFn* allocation_clean_up);
+
+  Status AddAllocationCleanUpForThisAllocator(void* allocation_address, AllocationCleanUpFn&& allocation_clean_up);
 
   struct AllocationRecord {
     SharedMemoryInfo shared_memory_info;
