@@ -113,22 +113,6 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               << "    }\n"
                               << "    var word_offset = local_id.x * " << block_size / a.NumComponents() << ";\n"
                               << "    for (var i: u32 = 0; i < " << components_b_ << "; i++) {\n";
-    switch (a.NumComponents()) {
-      case 1:
-        shader.MainFunctionBody() << "      let a_data0 = vec4<output_element_t>(sub_a[word_offset], sub_a[word_offset + 1], sub_a[word_offset + 2], sub_a[word_offset + 3]);\n"
-                                     "      let a_data1 = vec4<output_element_t>(sub_a[word_offset + 4], sub_a[word_offset + 5], sub_a[word_offset + 6], sub_a[word_offset + 7]);\n";
-        break;
-      case 2:
-        shader.MainFunctionBody() << "      let a_data0 = vec4<output_element_t>(sub_a[word_offset], sub_a[word_offset + 1]);\n"
-                                     "      let a_data1 = vec4<output_element_t>(sub_a[word_offset + 2], sub_a[word_offset + 3]);\n";
-        break;
-      case 4:
-        shader.MainFunctionBody() << "      let a_data0 = sub_a[word_offset];\n"
-                                     "      let a_data1 = sub_a[word_offset + 1];\n";
-        break;
-      default:
-        break;
-    }
     shader.MainFunctionBody() << "      let b_value = b_data";
     if (components_b_ > 1) {
       shader.MainFunctionBody() << "[i]";
@@ -144,9 +128,21 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
         shader.MainFunctionBody() << ", ";
       }
     }
-    shader.MainFunctionBody() << ")) * scale;\n"
-                                 "      inter_results[local_id.y][local_id.x] += dot(a_data0, b_dequantized_values[0]) + dot(a_data1, b_dequantized_values[1]);\n"
-                              << "      word_offset += " << 8 / a.NumComponents() << ";\n"
+    shader.MainFunctionBody() << ")) * scale;\n";
+    switch (a.NumComponents()) {
+      case 1:
+        shader.MainFunctionBody() << "      inter_results[local_id.y][local_id.x] += dot(vec4<output_element_t>(sub_a[word_offset], sub_a[word_offset + 1], sub_a[word_offset + 2], sub_a[word_offset + 3]), b_dequantized_values[0]) + dot(vec4<output_element_t>(sub_a[word_offset + 4], sub_a[word_offset + 5], sub_a[word_offset + 6], sub_a[word_offset + 7]), b_dequantized_values[1]);\n";
+        break;
+      case 2:
+        shader.MainFunctionBody() << "      inter_results[local_id.y][local_id.x] += dot(vec4<output_element_t>(sub_a[word_offset], sub_a[word_offset + 1]), b_dequantized_values[0]) + dot(vec4<output_element_t>(sub_a[word_offset + 2], sub_a[word_offset + 3]), b_dequantized_values[1]);\n";
+        break;
+      case 4:
+        shader.MainFunctionBody() << "      inter_results[local_id.y][local_id.x] += dot(sub_a[word_offset], b_dequantized_values[0]) + dot(sub_a[word_offset + 1], b_dequantized_values[1]);\n";
+        break;
+      default:
+        break;
+    }
+    shader.MainFunctionBody() << "      word_offset += " << 8 / a.NumComponents() << ";\n"
                               << "    }\n"
                                  "    workgroupBarrier();\n"
                                  "  }\n"
@@ -329,6 +325,8 @@ Status MatMulNBitsWithLargeMProgram::GenerateShaderCode(ShaderHelper& shader) co
   const auto& y = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
 
   const uint32_t tile_m = 4;
+  ORT_ENFORCE(tile_m < WorkgroupSizeY(), "tile_m must be less than or equal to WorkgroupSizeY.");
+  ORT_ENFORCE(WorkgroupSizeX() == WorkgroupSizeY(), "WorkgroupSizeX must be equal to WorkgroupSizeY.");
   const uint32_t workgroup_size = WorkgroupSizeX() * WorkgroupSizeY();
   const uint32_t tile_size = WorkgroupSizeX() * components_b_ * 8;  // each uint32 has 8 data.
   const uint32_t a_length_per_tile = tile_size / a.NumComponents();
@@ -401,7 +399,19 @@ Status MatMulNBitsWithLargeMProgram::GenerateShaderCode(ShaderHelper& shader) co
   }
   shader.MainFunctionBody() << ")) * scale;\n";
   for (uint32_t i = 0; i < tile_m; i++) {
-    shader.MainFunctionBody() << "      inter_results[" << i << "][local_id.y][local_id.x] += dot(sub_a[" << i << "][word_offset], b_dequantized_values[0]) + dot(sub_a[" << i << "][word_offset + 1], b_dequantized_values[1]);\n";
+    switch (a.NumComponents()) {
+      case 1:
+        shader.MainFunctionBody() << "      inter_results[" << i << "][local_id.y][local_id.x] += dot(vec4<output_element_t>(sub_a[" << i << "][word_offset], sub_a[" << i << "][word_offset + 1], sub_a[" << i << "][word_offset + 2], sub_a[" << i << "][word_offset + 3]), b_dequantized_values[0]) + dot(vec4<output_element_t>(sub_a[" << i << "][word_offset + 4], sub_a[" << i << "][word_offset + 5], sub_a[" << i << "][word_offset + 6], sub_a[" << i << "][word_offset + 7]), b_dequantized_values[1]);\n";
+        break;
+      case 2:
+        shader.MainFunctionBody() << "      inter_results[" << i << "][local_id.y][local_id.x] += dot(vec4<output_element_t>(sub_a[" << i << "][word_offset], sub_a[" << i << "][word_offset + 1]), b_dequantized_values[0]) + dot(vec4<output_element_t>(sub_a[" << i << "][word_offset + 2], sub_a[" << i << "][word_offset + 3]), b_dequantized_values[1]);\n";
+        break;
+      case 4:
+        shader.MainFunctionBody() << "      inter_results[" << i << "][local_id.y][local_id.x] += dot(sub_a[" << i << "][word_offset], b_dequantized_values[0]) + dot(sub_a[" << i << "][word_offset + 1], b_dequantized_values[1]);\n";
+        break;
+      default:
+        break;
+    }
   }
   shader.MainFunctionBody() << "      word_offset += " << 8 / a.NumComponents() << ";\n"
                             << "    }\n"
@@ -459,7 +469,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
                            block_size == 32;
   const bool has_zero_points = zero_points != nullptr;
 
-  if (M > 1 && components_a == 4 && block_size == 32) {
+  if (M > 1 && block_size == 32) {
     MatMulNBitsWithLargeMProgram program{gsl::narrow<int>(components_b), has_zero_points};
     components = 1;
     const uint32_t tile_m = 4;
