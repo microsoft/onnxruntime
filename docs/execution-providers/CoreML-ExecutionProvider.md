@@ -155,8 +155,6 @@ cache_key = m.metadata_props.add()
 cache_key.key = CACHE_KEY_NAME
 cache_key.value = str(hash_file(model_path))
 
-for entry in m.metadata_props:
-    print(entry) # to verify the metadata
 onnx.save_model(m, model_path)
 ```
 
