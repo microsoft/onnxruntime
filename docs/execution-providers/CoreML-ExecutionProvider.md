@@ -68,11 +68,16 @@ To use the CoreML EP run time options, create an unsigned integer representing t
 
 ProviderOptions can be set by passing string to the `AppendExecutionProvider` method.
 ```c++
+Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
+Ort::SessionOptions so;
+std::string model_path = "/a/b/c/model.onnx";
 std::unordered_map<std::string, std::string> provider_options;
 provider_options["ModelFormat"] = std::to_string("MLProgram");
 provider_options["MLComputeUnits"] = std::to_string("ALL");
 provider_options["RequireStaticInputShapes"] = std::to_string("0");
 provider_options["EnableOnSubgraphs"] = std::to_string("0");
+so.AppendExecutionProvider("CoreML", provider_options);
+Ort::Session session(env, model_path, so);
 ```
 
 Python inference example code to use the CoreML EP run time options:
@@ -148,6 +153,7 @@ Here is an example of how to fill model hash in metadata of model:
 import onnx
 import hashlib
 
+# You can use any other hash algorithms to ensure the model and its hash-value is a one-one mapping. 
 def hash_file(file_path, algorithm='sha256', chunk_size=8192):
     hash_func = hashlib.new(algorithm)
     with open(file_path, 'rb') as file:
