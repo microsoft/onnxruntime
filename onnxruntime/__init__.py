@@ -159,7 +159,7 @@ if (
                 "libcufft.so.10",
                 "libcudart.so.11",
                 "libcudnn.so.8",
-                "libnvrtc.so.11.2",
+                "libnvrtc.so.11.2", #This is not a mistake, it links to more specific version like libnvrtc.so.11.8.89 etc.
             )
         elif (12, 0) <= cuda_version() < (13, 0):
             cuda_libs = (
