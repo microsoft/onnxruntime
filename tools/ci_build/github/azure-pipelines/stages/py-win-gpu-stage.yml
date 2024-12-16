@@ -60,6 +60,9 @@ stages:
             enabled: true
             scanOutputDirectoryOnly: true
             targetPathPattern: '+:file|*.dll;-:file|DirectML.dll'
+          codeql:
+            compiled:
+              enabled: false #Otherwise the job will run more than 6 hours and timeout
         outputs:
         - output: pipelineArtifact
           targetPath: $(Build.ArtifactStagingDirectory)
