@@ -43,4 +43,18 @@
     target_link_libraries(onnxruntime_providers_webgpu dawn::dawn_proc)
   endif()
 
+  if (WIN32 AND onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
+    # Ensure dxil.dll and dxcompiler.dll exist in the output directory $<TARGET_FILE_DIR:dxcompiler>
+    add_dependencies(onnxruntime_providers_webgpu copy_dxil_dll)
+    add_dependencies(onnxruntime_providers_webgpu dxcompiler)
+
+    # Copy dxil.dll and dxcompiler.dll to the output directory
+    add_custom_command(
+      TARGET onnxruntime_providers_webgpu
+      POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE_DIR:dxcompiler>/dxil.dll" "$<TARGET_FILE_DIR:onnxruntime_providers_webgpu>"
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE_DIR:dxcompiler>/dxcompiler.dll" "$<TARGET_FILE_DIR:onnxruntime_providers_webgpu>"
+      VERBATIM )
+  endif()
+
   set_target_properties(onnxruntime_providers_webgpu PROPERTIES FOLDER "ONNXRuntime")

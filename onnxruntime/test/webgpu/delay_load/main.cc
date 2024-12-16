@@ -63,9 +63,11 @@ int prepare_main() {
 
   // copy the required DLLs to the dlls folder
   fs::copy_file(L"onnxruntime.dll", dlls_folder / L"onnxruntime.dll");
-  fs::copy_file(L"webgpu_dawn.dll", dlls_folder / L"webgpu_dawn.dll");
   fs::copy_file(L"dxil.dll", dlls_folder / L"dxil.dll");
   fs::copy_file(L"dxcompiler.dll", dlls_folder / L"dxcompiler.dll");
+  if (fs::exists(L"webgpu_dawn.dll")) {
+    fs::copy_file(L"webgpu_dawn.dll", dlls_folder / L"webgpu_dawn.dll");
+  }
 
   // copy the test binary to the root folder
   fs::copy_file(exe_full_path, root_folder / L"test.exe");
