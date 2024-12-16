@@ -139,7 +139,7 @@ if (onnxruntime_USE_VITISAI)
   include(onnxruntime_providers_vitisai.cmake)
 endif()
 
-if (onnxruntime_USE_OPENVINO)
+if (onnxruntime_USE_OPENVINO AND (NOT onnxruntime_ENABLE_OPENVINO_INTERFACE))
   include(onnxruntime_providers_openvino.cmake)
 endif()
 
