@@ -157,7 +157,7 @@ using namespace xnnpack;
 XnnpackExecutionProvider::XnnpackExecutionProvider(const XnnpackExecutionProviderInfo& info)
     : IExecutionProvider{kXnnpackExecutionProvider} {
   int xnn_thread_pool_size = info.xnn_thread_pool_size;
-  int ort_thread_pool_size = info.session_options ? info.session_options->intra_op_param.thread_pool_size : 0;
+  int ort_thread_pool_size = info.session_options ? info.session_options->intra_op_param.thread_pool_size : 1;
   bool allow_intra_op_spinning = (info.session_options == nullptr) ||
                                  (info.session_options &&
                                   info.session_options->config_options.GetConfigOrDefault(
