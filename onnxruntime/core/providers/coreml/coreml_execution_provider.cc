@@ -71,7 +71,7 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
             user_provided_key = std::to_string(std::hash<std::string>{}(user_provided_key));
           }
           // invalid cache-key
-          if (user_provided_key.size() == 0){
+          if (user_provided_key.size() == 0) {
             user_provided_key = std::to_string(model_hash);
           }
         } else {
