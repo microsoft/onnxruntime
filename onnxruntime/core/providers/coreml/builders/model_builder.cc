@@ -405,8 +405,6 @@ std::string GetModelOutputPath(const CoreMLOptions& coreml_options,
     // onnxruntime/core/providers/coreml/coreml_execution_provider.cc::gen_metadef_name
     // int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
     // MakeString(user_provide_key, "_", COREML, "_", model_hash, "_", metadef_id);
-    ORT_ENFORCE(std::count(subgraph_name.begin(), subgraph_name.end(), '_') == 3,
-                "Unexpected graph name format: ", subgraph_name);
     std::string_view cache_key = std::string_view(subgraph_name).substr(0, subgraph_name.find_first_of("_"));
     path = MakeString(std::string(coreml_options.ModelCachePath()), "/", cache_key);
     ORT_THROW_IF_ERROR(Env::Default().CreateFolder(path));
