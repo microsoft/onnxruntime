@@ -361,8 +361,7 @@ void addOrtValueMethods(pybind11::module& m) {
             ORT_ENFORCE(ort_value->IsTensor(), "Only tensor type OrtValues are supported");
             const onnxruntime::Tensor& tensor = ort_value->Get<Tensor>();
             DLDevice device = onnxruntime::dlpack::GetDlpackDevice(*ort_value, tensor.Location().device.Id());
-            return py::make_tuple(static_cast<int>(device.device_type), device.device_id); }, "Returns a tuple of integers, (device, device index) (part of __dlpack__ protocol).")
-      ;
+            return py::make_tuple(static_cast<int>(device.device_type), device.device_id); }, "Returns a tuple of integers, (device, device index) (part of __dlpack__ protocol).");
 
   py::class_<std::vector<OrtValue>>(m, "OrtValueVector")
       .def(py::init<>())
