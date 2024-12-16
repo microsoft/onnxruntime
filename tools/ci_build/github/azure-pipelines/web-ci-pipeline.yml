@@ -50,17 +50,14 @@ variables:
     NpmPackagingMode: '$(VersionSuffix)'
 
 stages:
-- template: templates/web-ci.yml
-  parameters:
-    NpmPackagingMode: ${{ variables.NpmPackagingMode }}
-    IsReleasePipeline: false
-    PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
-    BuildStaticLib: true
-    ExtraBuildArgs: $(ExtraBuildArgs)
-    WASMTemplate: linux-wasm-ci.yml
-    UseWebPoolName: true
-    RunWebGpuTestsForDebugBuild: false
-    RunWebGpuTestsForReleaseBuild: true
-    WebGpuPoolName: 'onnxruntime-Win2022-webgpu-A10'
-    WebCpuPoolName: 'onnxruntime-Win-CPU-2022-web'
-    WithCache: false
+- stage: check_GPU_info
+  jobs:
+  - job: nvidia_smi
+    pool:
+      name: onnxruntime-Win2022-webgpu-A10
+      demands:
+      - ImageVersionOverride -equals 220.0.0
+    steps:
+    - script: |
+        nvidia-smi
+      displayName: 'Check GPU info'
