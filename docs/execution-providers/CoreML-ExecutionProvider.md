@@ -116,7 +116,7 @@ Enable CoreML EP to run on a subgraph in the body of a control flow operator (i.
 - `0`: Disable CoreML EP to run on a subgraph in the body of a control flow operator.
 - `1`: Enable CoreML EP to run on a subgraph in the body of a control flow operator.
 
-`SpecializationStrategy`:  This feature is available since MacOs>=10.15 or IOS>=18.0. This process can affect the model loading time and the prediction latency. Use this option to tailor the specialization strategy for your model. Navigate to [Apple Doc](https://developer.apple.com/documentation/coreml/mloptimizationhints-swift.struct/specializationstrategy-swift.property) for more information. Can be one of the following values: (`Default` by default )
+`SpecializationStrategy`:  This feature is available since macOS>=10.15 or iOS>=18.0. This process can affect the model loading time and the prediction latency. Use this option to tailor the specialization strategy for your model. Navigate to [Apple Doc](https://developer.apple.com/documentation/coreml/mloptimizationhints-swift.struct/specializationstrategy-swift.property) for more information. Can be one of the following values: (`Default` by default )
 - `Default`:
 - `FastPrediction`:
 
