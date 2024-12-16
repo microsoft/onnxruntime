@@ -124,6 +124,8 @@ TEST(XnnpackEP, TestNhwcConvReluClipFusion_FP16) {
   };
 
   EPVerificationParams params;
+  // TODO: make it to ExpectedEPNodeAssignment::All if more Fp16 ops are added.
+  // Now, set it to Some to pass the test in iOS pipeline
   params.ep_node_assignment = ExpectedEPNodeAssignment::Some;
   params.fp32_abs_err = 0.0002f;
   params.graph_verifier = &verify;
