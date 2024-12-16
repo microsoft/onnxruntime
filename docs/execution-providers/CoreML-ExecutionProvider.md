@@ -45,7 +45,7 @@ The CoreML EP must be explicitly registered when creating the inference session.
 Ort::Env env = Ort::Env{ORT_LOGGING_LEVEL_ERROR, "Default"};
 Ort::SessionOptions so;
 std::unordered_map<std::string, std::string> provider_options;
-provider_options["ModelFormat"]  = std::to_string("MLProgram");
+provider_options["ModelFormat"] = std::to_string("MLProgram");
 so.AppendExecutionProvider("CoreML", provider_options);
 Ort::Session session(env, model_path, so);
 ```
