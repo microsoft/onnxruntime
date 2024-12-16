@@ -129,7 +129,7 @@ Enable CoreML EP to run on a subgraph in the body of a control flow operator (i.
 - `1`: Use low precision data(float16) to accumulate data.
 
 `ModelCachePath`: The path to the directory where the Core ML model cache is stored. CoreML EP will compile the captured subgraph to CoreML format graph and saved to disk.
-For the same model, if caching is not enabled, CoreML EP will do the compiling and saving to disk every time, this may cost some time(even minutes) for complicated model. By passing a cache path and a model hash (which is different for different model), CoreML format model can be reused.(Cache disbled by default).
+For the given model, if caching is not enabled, CoreML EP will compile and save to disk every time, which may cost significant time (even minutes) for a complicated model. By providing a cache path the CoreML format model can be reused. (Cache disbled by default).
 - `""` : Disable cache. (empty string by default)
 - `"/path/to/cache"` : Enable cache. (path to cache directory, will be created if not exist)
 
