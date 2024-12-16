@@ -157,7 +157,11 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
   // temporary steps vector to handle negative steps
   std::vector<int32_t> steps_tmp;
   for (unsigned int i = 0; i < steps_raw.size(); i++) {
-    steps_tmp.push_back(static_cast<int32_t>(steps_raw[i]));
+    if (steps_raw[i] >= std::numeric_limits<int32_t>::max()) {
+      steps_tmp.push_back(std::numeric_limits<int32_t>::max());
+    } else {
+      steps_tmp.push_back(static_cast<int32_t>(steps_raw[i]));
+    }
   }
 
   if (static_cast<int64_t>(axes.size()) != input_rank) {
