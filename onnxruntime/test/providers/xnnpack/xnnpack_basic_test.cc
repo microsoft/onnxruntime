@@ -10,6 +10,7 @@
 #include "core/framework/utils.h"
 #include "core/graph/graph.h"
 #include "core/providers/xnnpack/xnnpack_execution_provider.h"
+#include "core/providers/xnnpack/xnnpack_init.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
