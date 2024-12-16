@@ -783,6 +783,7 @@ def parse_arguments():
     parser.add_argument("--use_lock_free_queue", action="store_true", help="Use lock-free task queue for threadpool.")
 
     parser.add_argument("--enable_tensorrt_interface", action="store_true", help="build ORT shared library and compatible bridge with tensorrt, but not TRT EP nor tests")
+    parser.add_argument("--enable_openvino_interface", action="store_true", help="build ORT shared library and compatible bridge with OpenVINO, but not OpenVINO EP nor tests")
 
     if not is_windows():
         parser.add_argument(
@@ -1045,6 +1046,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER="
         + ("ON" if args.use_tensorrt_builtin_parser and not args.use_tensorrt_oss_parser else "OFF"),
         "-Donnxruntime_ENABLE_TRT_INTERFACE=" + ("ON" if args.enable_tensorrt_interface else "OFF"),
+        "-Donnxruntime_ENABLE_OPENVINO_INTERFACE=" + ("ON" if args.enable_openvino_interface else "OFF"),
         # set vars for migraphx
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
@@ -1532,7 +1534,7 @@ def generate_build_tree(
             "-Donnxruntime_USE_FULL_PROTOBUF=ON",
         ]
 
-    if args.enable_tensorrt_interface:
+    if args.enable_tensorrt_interface or args.enable_openvino_interface:
         cmake_args += ["-Donnxruntime_BUILD_UNIT_TESTS=OFF"]
 
     if args.enable_lazy_tensor:
@@ -2657,6 +2659,8 @@ def main():
 
     if args.enable_tensorrt_interface:
         args.use_tensorrt, args.test = True, False
+    if args.enable_openvino_interface:
+        args.use_openvino, args.test = "CPU", False
 
     # If there was no explicit argument saying what to do, default
     # to update, build and test (for native builds).
