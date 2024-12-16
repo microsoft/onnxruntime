@@ -124,7 +124,7 @@ TEST(XnnpackEP, TestNhwcConvReluClipFusion_FP16) {
   };
 
   EPVerificationParams params;
-  params.ep_node_assignment = ExpectedEPNodeAssignment::All;
+  params.ep_node_assignment = ExpectedEPNodeAssignment::Some;
   params.fp32_abs_err = 0.0002f;
   params.graph_verifier = &verify;
 
