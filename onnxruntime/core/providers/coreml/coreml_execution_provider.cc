@@ -67,7 +67,7 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
           user_provided_key = graph_viewer.GetGraph().GetModel().MetaData().at(kCOREML_CACHE_KEY);
           if (user_provided_key.size() > 32 ||
               std::any_of(user_provided_key.begin(), user_provided_key.end(),
-                            [](unsigned char c) { return !std::isalnum(c); })) {
+                          [](unsigned char c) { return !std::isalnum(c); })) {
             user_provided_key = std::to_string(std::hash<std::string>{}(user_provided_key));
           }
         } else {
