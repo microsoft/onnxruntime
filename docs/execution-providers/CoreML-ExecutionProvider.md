@@ -133,7 +133,15 @@ For the same model, if caching is not enabled, CoreML EP will do the compiling a
 - `""` : Disable cache. (empty string by default)
 - `"/path/to/cache"` : Enable cache. (path to cache directory, will be created if not exist)
 
-The model hash is very sensitive and important to a specific model, if the model content is changed, the hash will be changed, and the cache will be invalid. If user didn't provide a model hash, CoreML EP will calculate the hash based on the model Path, and use it as the model hash. Please attention that the model hash calculated by CoreML EP is not reliable if model path is not find or even user used a same model path for different model. In such case, even the model is changed, the cache will be reused, this will produce totally wrong results.
+The cached information for the model is stored under a model hash in the cache directory. There are three ways the hash may be calculated, in order of preference.
+
+1. Read from the model metadata_props. This provides the user a way to directly control the hash, and is the recommended usage. The value must only contain alphanumeric characters. 
+2. Hash of the model url the inference session was created with.
+3. Hash of the graph inputs and node outputs if the inference session was created with in memory bytes (i.e. there was no model path). 
+
+It is critical that if the model changes either the hash value must change, or you must clear out the previous cache information. e.g. if the model url is being used for the hash (option 2 above) the updated model must be loaded from a different path to change the hash value. 
+
+ONNX Runtime does NOT have a mechanism to track model changes and does not delete the cache entries.
 
 Here is an example of how to fill model hash in metadata of model:
 ```python
