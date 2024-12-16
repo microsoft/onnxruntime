@@ -53,9 +53,9 @@ Status GetMainContextNode(const std::vector<IExecutionProvider::FusedNodeAndGrap
     // There is only one EPContext node in one filtered graph -- this is guaranteed by GetCapability
     const onnxruntime::GraphViewer& graph_viewer(fused_nodes_and_graphs[i].filtered_graph);
     ORT_RETURN_IF(graph_viewer.NumberOfNodes() != 1, "One filtered graph should has only one EPContext node!");
-    const auto& ep_context_node = graph_viewer.Nodes().begin();
-    ORT_RETURN_IF_NOT(EPCONTEXT_OP == ep_context_node->OpType(), "Should only filter in the EPContext node.");
-    utils::NodeAttrHelper node_helper(*ep_context_node);
+    const Node& ep_context_node = *graph_viewer.Nodes().begin();
+    ORT_RETURN_IF_NOT(EPCONTEXT_OP == ep_context_node.OpType(), "Should only filter in the EPContext node.");
+    utils::NodeAttrHelper node_helper(ep_context_node);
     int64_t is_main_context = node_helper.Get(MAIN_CONTEXT, static_cast<int64_t>(0));
     if (1 == is_main_context) {
       main_context_pos.push_back(static_cast<int>(i));
@@ -75,12 +75,12 @@ Status CreateNodeArgs(const std::vector<std::string>& names,
     std::string name = names[i];
     ORT_RETURN_IF(tensor_info_table.find(name) == tensor_info_table.end(), "Tensor name: ", name, " not found in tensor_info_table");
     const OnnxTensorInfo& tensor_info = tensor_info_table.at(name);
-    TypeProto tensor_type;
-    tensor_type.mutable_tensor_type()->set_elem_type(tensor_info.data_type_);
+    std::unique_ptr<TypeProto> tensor_type = TypeProto::Create();
+    tensor_type->mutable_tensor_type()->set_elem_type(tensor_info.data_type_);
     for (size_t j = 0; j < tensor_info.shape_.size(); ++j) {
-      tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(tensor_info.shape_[j]);
+      tensor_type->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(tensor_info.shape_[j]);
     }
-    auto& input_arg = graph.GetOrCreateNodeArg(name, &tensor_type);
+    auto& input_arg = graph.GetOrCreateNodeArg(name, tensor_type.get());
     node_args.push_back(&input_arg);
   }
   return Status::OK();
@@ -163,8 +163,8 @@ Status TryGetMaxSpillFillSize(const std::vector<IExecutionProvider::FusedNodeAnd
     auto index = main_context_pos_list[i];
     const onnxruntime::GraphViewer& main_ctx_graph_viewer(fused_nodes_and_graphs[index].filtered_graph);
     ORT_RETURN_IF(main_ctx_graph_viewer.NumberOfNodes() != 1, "One filtered graph should has only one EPContext node!");
-    const auto& ep_context_node = main_ctx_graph_viewer.Nodes().begin();
-    qnn::utils::NodeAttrHelper node_helper(*ep_context_node);
+    const Node& ep_context_node = *main_ctx_graph_viewer.Nodes().begin();
+    qnn::utils::NodeAttrHelper node_helper(ep_context_node);
     int64_t max_size = node_helper.Get(MAX_SIZE, static_cast<int64_t>(0));
     if (max_size > max_spill_fill_size) {
       max_spill_fill_size = max_size;

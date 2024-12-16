@@ -289,6 +289,7 @@ struct ProviderHost {
   virtual std::unique_ptr<logging::Capture> logging__Capture__construct(const logging::Logger& logger, logging::Severity severity, const char* category, logging::DataType dataType, const CodeLocation& location) = 0;
   virtual void logging__Capture__operator_delete(logging::Capture* p) noexcept = 0;
   virtual std::ostream& logging__Capture__Stream(logging::Capture* p) noexcept = 0;
+  virtual void logging__Capture__ProcessPrintf(logging::Capture* p, const char* format, va_list args) = 0;
 
   // Env
   virtual Env& Env__Default() = 0;
@@ -835,6 +836,8 @@ struct ProviderHost {
 
   virtual const NodeAttributes& Node__GetAttributes(const Node* p) noexcept = 0;
   virtual void Node__AddAttribute(Node* p, const ::std::string& attr_name, const ONNX_NAMESPACE::GraphProto& value) = 0;
+  virtual void Node__AddAttribute(Node* p, const ::std::string& attr_name, const std::string& value) = 0;
+  virtual void Node__AddAttribute(Node* p, const ::std::string& attr_name, int64_t value) = 0;
   virtual size_t Node__GetInputEdgesCount(const Node* p) noexcept = 0;
   virtual size_t Node__GetOutputEdgesCount(const Node* p) noexcept = 0;
 
@@ -943,6 +946,8 @@ struct ProviderHost {
   // Model
   virtual std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                                   const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                                                  const logging::Logger& logger) = 0;
+  virtual std::unique_ptr<Model> Model__construct(const std::string& graph_name, bool is_onnx_domain_only,
                                                   const logging::Logger& logger) = 0;
   virtual void Model__operator_delete(Model* p) = 0;
   virtual Graph& Model__MainGraph(Model* p) = 0;

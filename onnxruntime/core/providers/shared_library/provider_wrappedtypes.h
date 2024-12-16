@@ -42,6 +42,7 @@ struct Capture final {
   static void operator delete(void* p) { g_host->logging__Capture__operator_delete(reinterpret_cast<Capture*>(p)); }
 
   std::ostream& Stream() noexcept { return g_host->logging__Capture__Stream(this); }
+  void ProcessPrintf(const char* format, va_list args) { g_host->logging__Capture__ProcessPrintf(this, format, args); }
 
   Capture() = delete;
   Capture(const Capture&) = delete;
@@ -824,6 +825,12 @@ struct Node final {
   void AddAttribute(const ::std::string& attr_name, const ONNX_NAMESPACE::GraphProto& value) {
     g_host->Node__AddAttribute(this, attr_name, value);
   }
+  void AddAttribute(const std::string& attr_name, const std::string& value) {
+    g_host->Node__AddAttribute(this, attr_name, value);
+  }
+  void AddAttribute(const std::string& attr_name, int64_t value) {
+    g_host->Node__AddAttribute(this, attr_name, value);
+  }
 
   size_t GetInputEdgesCount() const noexcept { return g_host->Node__GetInputEdgesCount(this); }
   size_t GetOutputEdgesCount() const noexcept { return g_host->Node__GetOutputEdgesCount(this); }
@@ -975,6 +982,9 @@ struct Model final {
   static std::unique_ptr<Model> Create(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                        const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger) {
     return g_host->Model__construct(std::move(model_proto), model_path, local_registries, logger);
+  }
+  static std::unique_ptr<Model> Create(const std::string& graph_name, bool is_onnx_domain_only, const logging::Logger& logger) {
+    return g_host->Model__construct(graph_name, is_onnx_domain_only, logger);
   }
   static void operator delete(void* p) { g_host->Model__operator_delete(reinterpret_cast<Model*>(p)); }
   static Status Load(const PathString& file_path, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) { return g_host->Model__Load(file_path, model_proto); }

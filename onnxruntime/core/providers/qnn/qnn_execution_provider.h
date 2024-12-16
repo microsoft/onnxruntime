@@ -22,9 +22,6 @@
 
 namespace onnxruntime {
 
-// TODO: Remove. It's in provider bridge.
-void RunOnUnload(std::function<void()> function);
-
 class SharedContext {
  public:
   static SharedContext& GetInstance() {

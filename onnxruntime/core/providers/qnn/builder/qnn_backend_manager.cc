@@ -251,7 +251,7 @@ void QnnLogging(const char* format,
                                                                ::onnxruntime::logging::Category::onnxruntime,
                                                                data_type,
                                                                ORT_WHERE);
-    log_capture.ProcessPrintf(format, argument_parameter);
+    log_capture->ProcessPrintf(format, argument_parameter);
   }
 }
 
@@ -1098,6 +1098,8 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
   }
 
   bool tracelogging_provider_ep_enabled = false;
+  // TODO: Re-enable when QNN EP is a dll
+#if 0
   const Env& env = Env::Default();
   // const Env& env = GetDefaultEnv();
   auto& provider = env.GetTelemetryProvider();
@@ -1108,6 +1110,7 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
       tracelogging_provider_ep_enabled = true;
     }
   }
+#endif
 
   // ETW disabled previously, but enabled now
   if (ProfilingLevel::INVALID == profiling_level_etw_ && tracelogging_provider_ep_enabled) {
@@ -1325,6 +1328,8 @@ void QnnBackendManager::LogQnnProfileEventAsTraceLogging(
     const std::string& timingSource,
     const std::string& eventLevel,
     const char* eventIdentifier) {
+  // TODO: Re-enable when QNN EP is a dll
+#if 0
   TraceLoggingWrite(
       telemetry_provider_handle,
       "QNNProfilingEvent",
@@ -1337,6 +1342,15 @@ void QnnBackendManager::LogQnnProfileEventAsTraceLogging(
       TraceLoggingString(timingSource.c_str(), "Timing Source"),
       TraceLoggingString(eventLevel.c_str(), "Event Level"),
       TraceLoggingString(eventIdentifier, "Event Identifier"));
+#else
+  ORT_UNUSED_PARAMETER(timestamp);
+  ORT_UNUSED_PARAMETER(message);
+  ORT_UNUSED_PARAMETER(qnnScalarValue);
+  ORT_UNUSED_PARAMETER(unit);
+  ORT_UNUSED_PARAMETER(timingSource);
+  ORT_UNUSED_PARAMETER(eventLevel);
+  ORT_UNUSED_PARAMETER(eventIdentifier);
+#endif
 }
 #endif
 

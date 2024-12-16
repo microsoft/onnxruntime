@@ -67,7 +67,7 @@ class ReduceOpBuilder : public BaseOpBuilder {
   using AxesQnnIntType = uint32_t;
 
   Status GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
-                    InlinedHashSet<AxesOnnxIntType>& axes_set) const;
+                    std::set<AxesOnnxIntType>& axes_set) const;
 
   // Maps an operator type to the opset in which "axes" became an input instead of an attribute.
   static const std::array<int, REDUCE_OP_TYPE_COUNT> opset_with_axes_as_input;
@@ -83,7 +83,7 @@ const std::array<int, REDUCE_OP_TYPE_COUNT> ReduceOpBuilder::opset_with_axes_as_
 };
 
 Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
-                                   InlinedHashSet<AxesOnnxIntType>& axes_set) const {
+                                   std::set<AxesOnnxIntType>& axes_set) const {
   ReduceOpType reduce_op_type = GetReduceOpType(node_unit.OpType());
   if (reduce_op_type == ReduceOpType::REDUCE_OP_TYPE_UNKNOWN) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unknown reduce operator ", node_unit.OpType());
@@ -211,7 +211,7 @@ Status ReduceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   //
   // Handle axes param.
   //
-  InlinedHashSet<AxesOnnxIntType> axes_set;
+  std::set<AxesOnnxIntType> axes_set;
   ORT_RETURN_IF_ERROR(GetAxesSet(qnn_model_wrapper, node_unit, axes_set));
   const size_t num_axes = axes_set.size();
 

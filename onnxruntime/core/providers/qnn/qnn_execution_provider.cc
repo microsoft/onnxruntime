@@ -25,32 +25,6 @@ namespace onnxruntime {
 
 constexpr const char* QNN = "QNN";
 
-static std::unique_ptr<std::vector<std::function<void()>>> s_run_on_unload_;
-
-// TODO: Remove and use versions in EP provider bridge.
-void RunOnUnload(std::function<void()> function) {
-  static std::mutex mutex;
-  std::lock_guard<std::mutex> guard(mutex);
-  if (!s_run_on_unload_) {
-    s_run_on_unload_ = std::make_unique<std::vector<std::function<void()>>>();
-  }
-  s_run_on_unload_->push_back(std::move(function));
-}
-
-// TODO: Remove and use versions in EP provider bridge.
-struct OnUnload {
-  ~OnUnload() {
-    if (!s_run_on_unload_)
-      return;
-
-    for (auto& function : *s_run_on_unload_)
-      function();
-
-    s_run_on_unload_.reset();
-  }
-
-} g_on_unload;
-
 static void ParseProfilingLevel(std::string profiling_level_string,
                                 qnn::ProfilingLevel& profiling_level) {
   std::transform(profiling_level_string.begin(),
@@ -189,8 +163,7 @@ qnn::ProfilingLevel QNNExecutionProvider::GetProfilingLevelFromETWLevel(unsigned
 QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_options_map,
                                            const ConfigOptions* config_options)
     : IExecutionProvider{onnxruntime::kQnnExecutionProvider} {
-  // TODO: Uncomment when QNN EP is built as a DLL
-  // InitProviderOrtApi();
+  InitProviderOrtApi();
 
   if (config_options) {
     disable_cpu_ep_fallback_ = config_options->GetConfigOrDefault(
@@ -1015,7 +988,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                                           buffer_size,
                                                                           max_spill_fill_buffer_size));
     }
-    qnn_ep_context_model_ = std::make_unique<Model>("qnn_ep_context_model", false, logger);
+    qnn_ep_context_model_ = Model::Create("qnn_ep_context_model", false, logger);
     ORT_RETURN_IF_ERROR(qnn::CreateEPContextNodes(qnn_ep_context_model_.get(),
                                                   context_buffer.get(),
                                                   buffer_size,

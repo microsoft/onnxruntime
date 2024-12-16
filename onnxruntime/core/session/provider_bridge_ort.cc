@@ -396,6 +396,9 @@ struct ProviderHostImpl : ProviderHost {
   }
   void logging__Capture__operator_delete(logging::Capture* p) noexcept override { delete p; }
   std::ostream& logging__Capture__Stream(logging::Capture* p) noexcept override { return p->Stream(); }
+  void logging__Capture__ProcessPrintf(logging::Capture* p, const char* format, va_list args) override {
+    p->ProcessPrintf(format, args);
+  }
 
   // Env
   Env& Env__Default() override { return Env::Default(); }
@@ -988,6 +991,12 @@ struct ProviderHostImpl : ProviderHost {
   void Node__AddAttribute(Node* p, const ::std::string& attr_name, const ONNX_NAMESPACE::GraphProto& value) override {
     p->AddAttribute(attr_name, value);
   }
+  void Node__AddAttribute(Node* p, const ::std::string& attr_name, const std::string& value) override {
+    p->AddAttribute(attr_name, value);
+  }
+  void Node__AddAttribute(Node* p, const ::std::string& attr_name, int64_t value) override {
+    p->AddAttribute(attr_name, value);
+  }
   size_t Node__GetInputEdgesCount(const Node* p) noexcept override { return p->GetInputEdgesCount(); }
   size_t Node__GetOutputEdgesCount(const Node* p) noexcept override { return p->GetOutputEdgesCount(); }
 
@@ -1155,6 +1164,10 @@ struct ProviderHostImpl : ProviderHost {
                                           const IOnnxRuntimeOpSchemaRegistryList* local_registries,
                                           const logging::Logger& logger) override {
     return std::make_unique<Model>(model_proto, model_path, local_registries, logger);
+  }
+  std::unique_ptr<Model> Model__construct(const std::string& graph_name, bool is_onnx_domain_only,
+                                          const logging::Logger& logger) override {
+    return std::make_unique<Model>(graph_name, is_onnx_domain_only, logger);
   }
   void Model__operator_delete(Model* p) override { delete p; }
   Graph& Model__MainGraph(Model* p) override { return p->MainGraph(); }
