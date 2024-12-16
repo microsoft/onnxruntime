@@ -164,6 +164,8 @@ class SessionState {
    */
   const std::unordered_map<int, OrtValue>& GetConstantInitializedTensors() const;
 
+  const PrepackedWeightsForGraph& GetPrepackedIniitializersForGraph() const;
+
 #if !defined(DISABLE_SPARSE_TENSORS)
   bool IsSparseInitializer(int ort_value_index) const;
 #endif
@@ -366,23 +368,18 @@ class SessionState {
 
   /// <summary>
   /// Deduce the flag whether we need to enable or disable
-  /// saving for serialization mode and create the member container with
-  /// the corresponding argument.
+  /// saving for pre-packed weights serialization.
   /// </summary>
   /// <param name="saving_model"></param>
   /// <param name="saving_ort_format"></param>
-  void SetSaveModeForPrepacks(bool saving_model,
-                              bool saving_ort_format);
-
-  const PrepackedForSerialization& GetPrepackedForSerialization() const {
-    return prepacked_weights_for_serialization_;
-  }
+  /// <returns>true of false
+  bool GetSaveModeForPrepacks(bool saving_model, bool saving_ort_format);
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
   // Populate OrtValueNameIdxMap and create the graph viewer.
-  void CreateGraphInfo();
+  void CreateGraphInfo(bool save_prepacked_on);
 
   // create kernels using info in kernel_create_info_map_
   Status CreateKernels(const KernelRegistryManager& custom_registry_manager);
@@ -395,8 +392,7 @@ class SessionState {
    * Prepack the constant initialized tensors for better performance.
    * The original constant initialized tensors will be removed to save memory.
    */
-  Status PrepackConstantInitializedTensors(PrepackedForSerialization::Subgraph& prepacked_subgraph,
-                                           InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
+  Status PrepackConstantInitializedTensors(InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
                                            const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map);
 
   SessionState* GetMutableSubgraphSessionState(onnxruntime::NodeIndex index, const std::string& attribute_name);
@@ -414,8 +410,8 @@ class SessionState {
                                   _In_opt_ const Node* parent_node,
                                   const SessionOptions& session_options,
                                   bool remove_initializers,
+                                  bool save_prepacked_initializers,
                                   InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
-                                  PrepackedForSerialization::Subgraph& prepacked_subgraph,
                                   const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map = {},
                                   bool graph_info_already_created = false);
 
@@ -544,9 +540,6 @@ class SessionState {
   // the cache is valid until any session reliant on it is still in scope.
   // prepacked_weights_container_ can be nullptr if no caching is required for prepacked weights
   PrepackedWeightsContainer* const prepacked_weights_container_{};
-  // This container serves either for reading and using pre-packed weights from disk
-  // of serializing to disk
-  PrepackedForSerialization prepacked_weights_for_serialization_;
 
 #ifdef ENABLE_TRAINING
 // Needed for ORTTrainer. Should be removed along with ORTTrainer code

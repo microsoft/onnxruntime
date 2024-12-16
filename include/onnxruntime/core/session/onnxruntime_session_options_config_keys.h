@@ -250,9 +250,11 @@ static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersFil
 static const char* const kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes =
     "session.optimized_model_external_initializers_min_size_in_bytes";
 
-// Use this config when save pre-packed constant initializers to an external data file.
-// This allows to minimize ONNX model file size and memory map pre-packed initializers on
-// model load.
+// Use this config when saving pre-packed constant initializers to an external data file.
+// This allows you to memory map pre-packed initializers on model load and leave it to
+// to the OS the amount of memory consumed by the pre-packed initializers. Otherwise,
+// pre-packed data resides on the heap.
+//
 // - "0": Default is not save pre-packed initializers to a data file.
 // - "1": Save pre-packed constant initializers to an external data file.
 // Sample usage: sess_options.add_session_config_entry(kOrtSessionOptionsSavePrePackedConstantInitializers,  "1")

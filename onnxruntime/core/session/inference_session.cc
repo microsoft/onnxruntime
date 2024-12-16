@@ -2064,8 +2064,6 @@ common::Status InferenceSession::Initialize() {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
-    session_state_->SetSaveModeForPrepacks(saving_model, saving_ort_format);
-
     ORT_RETURN_IF_ERROR_SESSIONID_(
         session_state_->FinalizeSessionState(model_location_, kernel_registry_manager_,
                                              // need to keep the initializers if saving the optimized model
@@ -2104,10 +2102,6 @@ common::Status InferenceSession::Initialize() {
                   kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, "1024"));
           ModelSavingOptions model_saving_options{optimized_model_external_initializers_min_size_in_bytes};
           model_saving_options.align_offset = true;
-          const auto& prepacked_for_serialization = session_state_->GetPrepackedForSerialization();
-          model_saving_options.prepacked_for_save = (prepacked_for_serialization.IsSaveModeOn())
-                                                        ? &prepacked_for_serialization
-                                                        : nullptr;
           ORT_RETURN_IF_ERROR_SESSIONID_(Model::SaveWithExternalInitializers(*model_,
                                                                              session_options_.optimized_model_filepath,
                                                                              optimized_model_external_initializers_file_name,

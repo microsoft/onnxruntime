@@ -40,8 +40,9 @@ TEST(TensorProtoUtilsTest, SetExternalDataInformation) {
   ASSERT_EQ(tensor_proto.external_data(2).key(), "length");
   ASSERT_EQ(tensor_proto.external_data(2).value(), std::to_string(init_length));
 
-  PrepackedForSerialization prepacked_for_serialization;
-  prepacked_for_serialization.SetSaveMode(true);
+  PrepackedKeyToBlobMap key_to_blob;
+  constexpr bool save_mode_on = true;
+  PrepackedWeightsForGraph prepacked_for_graph(key_to_blob, save_mode_on);
   PrePackedWeights prepacked_weights;
   const std::string init_name = "test_initializer";
   const std::string blob_key = "test_key";
@@ -55,17 +56,18 @@ TEST(TensorProtoUtilsTest, SetExternalDataInformation) {
   prepacked_weights.buffers_.push_back(BufferUniquePtr(kData.data(), BufferDeleter(nullptr)));
   prepacked_weights.buffer_sizes_.push_back(buffer_size);
 
-  prepacked_for_serialization.MainGraph().WritePacked(init_name, blob_key, std::move(prepacked_weights));
+  prepacked_for_graph.WritePackedMaybeForSave(init_name, blob_key, std::move(prepacked_weights));
 
   constexpr const int64_t starting_offset = 300;
   int64_t external_offset = starting_offset;
   std::stringstream ss;
-  const auto* blobs_for_weight = prepacked_for_serialization.MainGraph().GetBlobsForWeight(init_name);
+  const auto* blobs_for_weight = prepacked_for_graph.GetKeysForWeightForSaving(init_name);
   ASSERT_TRUE(blobs_for_weight != nullptr);
   InlinedHashSet<std::string> blob_keys{blobs_for_weight->begin(), blobs_for_weight->end()};
-  ASSERT_TRUE(ExternalDataInfo::WritePrepackedToFileAndAddToProto(prepacked_for_serialization,
+  ASSERT_TRUE(ExternalDataInfo::WritePrepackedToFileAndAddToProto(prepacked_for_graph,
                                                                   blob_keys,
-                                                                  true, 0, ss, external_offset,
+                                                                  true, 1024 * 1024, 0,
+                                                                  ss, external_offset,
                                                                   tensor_proto));
 
   auto external_data_info = std::make_unique<ExternalDataInfo>();
@@ -80,7 +82,7 @@ TEST(TensorProtoUtilsTest, SetExternalDataInformation) {
   int64_t final_offset = starting_offset;
   for (const auto& blob_info : prepacked_infos[blob_key]) {
     int64_t offset = std::get<0>(blob_info);
-    ASSERT_GT(offset, final_offset);
+    ASSERT_EQ(offset, final_offset);
     size_t length = std::get<1>(blob_info);
     std::string checksum = std::get<2>(blob_info);  // currently "0"
     final_offset = offset + length;

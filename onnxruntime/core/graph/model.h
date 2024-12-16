@@ -20,7 +20,7 @@
 
 namespace onnxruntime {
 
-class PrepackedForSerialization;
+class PrepackedShareableWeightsContainer;
 
 namespace fbs {
 struct Model;

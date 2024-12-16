@@ -5,13 +5,13 @@
 
 namespace onnxruntime {
 
-class PrepackedForSerialization;
+class PrepackedWeightsForGraph;
 
-// These options that affect how the model initializers are saved.
+// These options affect how the model initializers are written to the external file.
 // This includes options to align external initializer offset.
 // For models running on CPU, ORT will try to use mmap to load external
 // initializers. To use mmap, external initializer need to be offset aligned.
-// ORT saves external initializers into signle data file, each initializer is
+// ORT saves external initializers into single data file, each initializer is
 // accessed with offset(start position of initializer) and length(byte length of
 // initializer) of the data file. To use mmap, each offset need to be aligned
 // which means offset need to divisible by allocation granularity(64KB for
@@ -34,11 +34,11 @@ struct ModelSavingOptions {
   int64_t align_threshold = 1048576;
   // The allocation Granularity for mmap() support.
   // Typically 64KB for Windows & 4KB for other OSes. Default to 64KB.
+#ifdef _WIN32
   int64_t allocation_granularity = 65536;
-  // Optional pointer to a container of pre-packed initializers to be
-  // embedded into the external initializers, so they can also be loaded
-  // from disk.
-  const PrepackedForSerialization* prepacked_for_save = nullptr;
+#else
+  int64_t allocation_granularity = 4096;
+#endif
 };
 
 }  // namespace onnxruntime

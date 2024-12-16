@@ -5,8 +5,6 @@
 
 #include "core/framework/allocator.h"
 
-#include <functional>
-
 namespace onnxruntime {
 
 // TODO: Do we need this class or is IAllocator::MakeUniquePtr sufficient/better
@@ -33,6 +31,6 @@ class BufferDeleter {
   AllocatorPtr alloc_{nullptr};
 };
 
-using BufferUniquePtr = std::unique_ptr<void, std::function<void(void*)>>;
+using BufferUniquePtr = std::unique_ptr<void, BufferDeleter>;
 using BufferNakedPtr = void*;
 }  // namespace onnxruntime

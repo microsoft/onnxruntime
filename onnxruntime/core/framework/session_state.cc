@@ -123,7 +123,9 @@ void SessionState::UpdateAllocatorsWithEnvAllocators(const std::vector<Allocator
   }
 }
 
-void SessionState::CreateGraphInfo() {
+void SessionState::CreateGraphInfo(bool save_prepacked_on) {
+  graph_.ConstructPrepackedSharedContainerAndSetMode(save_prepacked_on);
+
   graph_viewer_.emplace(graph_);
   // use graph_viewer_ to initialize ort_value_name_idx_map_
   LOGS(logger_, VERBOSE) << "SaveMLValueNameIndexMapping";
@@ -317,6 +319,10 @@ const std::unordered_map<int, OrtValue>& SessionState::GetConstantInitializedTen
   return constant_initialized_tensors_;
 }
 
+const PrepackedWeightsForGraph& onnxruntime::SessionState::GetPrepackedIniitializersForGraph() const {
+  return graph_.GetPrepacked();
+}
+
 #if !defined(DISABLE_SPARSE_TENSORS)
 bool SessionState::IsSparseInitializer(int ort_value_index) const {
   return sparse_initialized_tensors_.count(ort_value_index) > 0;
@@ -398,11 +404,9 @@ static std::string GenerateKeyForPrepackedWeightsMap(const std::string& op_type,
 }
 
 Status SessionState::PrepackConstantInitializedTensors(
-    PrepackedForSerialization::Subgraph& prepacked_subgraph,
     InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
     const std::unordered_map<std::string, const OrtValue*>& initializers_to_share_map) {
-  auto prepacked_constant_weights = [this, &prepacked_subgraph,
-                                     &constant_initializers_use_count, &initializers_to_share_map](
+  auto prepacked_constant_weights = [this, &constant_initializers_use_count, &initializers_to_share_map](
                                         bool should_cache_prepacked_weights_for_shared_initializers) -> Status {
     for (auto& node : GetGraphViewer().Nodes()) {
       auto kernel = GetMutableKernel(node.Index());
@@ -411,6 +415,7 @@ Status SessionState::PrepackConstantInitializedTensors(
         if (input_def->Exists()) {
           const std::string& input_name = input_def->Name();
           SessionState* st = this;
+          auto* prepacked_for_graph = &graph_.GetPrepacked();
           // subgraph can use the value from outer scope,
           // so it needs to check if current node uses constant initialized tensor from current and outer graphs
           do {
@@ -483,9 +488,9 @@ Status SessionState::PrepackConstantInitializedTensors(
 
                       // Write references to what is stored in the shared container
                       // and release memory mapped entries this container may have loaded from disk
-                      std::ignore = prepacked_subgraph.ReplaceWithReferenceIfSaving(input_name,
-                                                                                    prepacked_weights_container_key,
-                                                                                    prepacked_shared);
+                      std::ignore = prepacked_for_graph->ReplaceWithReferenceIfSaving(input_name,
+                                                                                      prepacked_weights_container_key,
+                                                                                      prepacked_shared);
 
                     } else {
                       // container doesn't contain the pre-packed weight - so write into it for sharing across
@@ -500,7 +505,7 @@ Status SessionState::PrepackConstantInitializedTensors(
                       // so we can transfer it to shared container.
                       // if there is not an entry, we replace it with references to weights_to_be_filled_in
                       // in saving mode and return std::nullopt
-                      auto prepacked_from_disk = prepacked_subgraph.ReplaceWithReferenceIfSaving(
+                      auto prepacked_from_disk = prepacked_for_graph->ReplaceWithReferenceIfSaving(
                           input_name,
                           prepacked_weights_container_key,
                           weights_to_be_filled_in);
@@ -554,14 +559,14 @@ Status SessionState::PrepackConstantInitializedTensors(
                         weights_to_be_filled_in);
 
                     // See if we can use pre-packed data from disk
-                    const auto* weights_to_use = prepacked_subgraph.GetPrepackedWeights(
+                    const auto* weights_to_use = prepacked_for_graph->GetPrepackedWeights(
                         prepacked_weights_container_key);
 
                     if (weights_to_use == nullptr) {
                       // In this case pre-packed container owns the data
-                      prepacked_subgraph.WritePacked(input_name, prepacked_weights_container_key,
-                                                     std::move(weights_to_be_filled_in));
-                      weights_to_use = prepacked_subgraph.GetPrepackedWeights(prepacked_weights_container_key);
+                      prepacked_for_graph->WritePackedMaybeForSave(input_name, prepacked_weights_container_key,
+                                                                   std::move(weights_to_be_filled_in));
+                      weights_to_use = prepacked_for_graph->GetPrepackedWeights(prepacked_weights_container_key);
                       assert(weights_to_use != nullptr);
                     }
 
@@ -589,6 +594,7 @@ Status SessionState::PrepackConstantInitializedTensors(
               }
             }
             st = st->Parent();
+            prepacked_for_graph = &st->graph_.GetPrepacked();
           } while (st);
         }
         input_idx++;
@@ -1279,12 +1285,11 @@ Status SessionState::FinalizeSessionState(const std::basic_string<PATH_CHAR_TYPE
   ComputeConstantInitializerUseCount(graph_, constant_initializers_use_count);
   return FinalizeSessionStateImpl(graph_location, kernel_registry_manager, nullptr, sess_options_,
                                   remove_initializers,
-                                  constant_initializers_use_count,
-                                  prepacked_weights_for_serialization_.MainGraph());
+                                  GetSaveModeForPrepacks(!remove_initializers, saving_ort_format),
+                                  constant_initializers_use_count);
 }
 
-void SessionState::SetSaveModeForPrepacks(bool saving_model,
-                                          bool saving_ort_format) {
+bool SessionState::GetSaveModeForPrepacks(bool saving_model, bool saving_ort_format) {
   bool save_prepacked_constant_initializers =
       sess_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsSavePrePackedConstantInitializers,
                                                       "0") == "1";
@@ -1302,7 +1307,7 @@ void SessionState::SetSaveModeForPrepacks(bool saving_model,
         << " Ignoring the flag.";
   }
 
-  prepacked_weights_for_serialization_.SetSaveMode(save_prepacked_constant_initializers);
+  return save_prepacked_constant_initializers;
 }
 
 static Status Index(const OrtValueNameIdxMap& ort_value_name_idx_map,
@@ -1435,12 +1440,12 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                               _In_opt_ const Node* parent_node,
                                               const SessionOptions& session_options,
                                               bool remove_initializers,
+                                              bool save_prepacked_initializers,
                                               InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
-                                              PrepackedForSerialization::Subgraph& prepacked_subgraph,
                                               const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map,
                                               bool graph_info_already_created) {
   if (!graph_info_already_created) {
-    CreateGraphInfo();
+    CreateGraphInfo(save_prepacked_initializers);
   }
 
 #if defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1589,21 +1594,20 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   }
 #endif
 
-  ORT_RETURN_IF_ERROR(
-      session_state_utils::SaveInitializedTensors(
-          Env::Default(), graph_location, *graph_viewer_,
-          GetAllocator(OrtDevice()),
-          ort_value_name_idx_map_, initializer_allocation_order, *tensor_allocator,
-          [this, remove_initializers](const std::string& name, int idx, const OrtValue& value, const OrtCallback& d,
-                                      bool constant, bool sparse) -> Status {
-            ORT_RETURN_IF_ERROR(AddInitializedTensor(idx, value, &d, constant, sparse));
-            if (remove_initializers) {
-              graph_.RemoveInitializedTensor(name);
-            }
-            return Status::OK();
-          },
-          logger_, data_transfer_mgr_, external_data_loader_mgr_, *p_seq_exec_plan_, session_options,
-          memory_profile_func, prepacked_subgraph, name_to_buffered_tensor_));
+  ORT_RETURN_IF_ERROR(session_state_utils::SaveInitializedTensors(
+      Env::Default(), graph_location, *graph_viewer_,
+      GetAllocator(OrtDevice()),
+      ort_value_name_idx_map_, initializer_allocation_order, *tensor_allocator,
+      [this, remove_initializers](const std::string& name, int idx, const OrtValue& value, const OrtCallback& d,
+                                  bool constant, bool sparse) -> Status {
+        ORT_RETURN_IF_ERROR(AddInitializedTensor(idx, value, &d, constant, sparse));
+        if (remove_initializers) {
+          graph_.RemoveInitializedTensor(name);
+        }
+        return Status::OK();
+      },
+      logger_, data_transfer_mgr_, external_data_loader_mgr_, *p_seq_exec_plan_, session_options,
+      memory_profile_func, name_to_buffered_tensor_, graph_.GetPrepacked()));
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)
   // Record Weight allocation info on device
@@ -1620,8 +1624,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
   ORT_RETURN_IF_ERROR(CreateKernels(kernel_registry_manager));
 
   if (!disable_prepacking) {
-    ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(prepacked_subgraph,
-                                                          constant_initializers_use_count,
+    ORT_RETURN_IF_ERROR(PrepackConstantInitializedTensors(constant_initializers_use_count,
                                                           session_options.initializers_to_share_map));
   }
 
@@ -1652,7 +1655,7 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
 
       // We need to create graph info for the subgraphs because information accumulated there
       // is used in OuterScopeNodeArgLocationAccumulator()
-      subgraph_session_state.CreateGraphInfo();
+      subgraph_session_state.CreateGraphInfo(save_prepacked_initializers);
 
       InlinedHashMap<OrtValueName, OrtDevice> subgraph_outer_scope_node_arg_to_location_map;
       ORT_RETURN_IF_ERROR(OuterScopeNodeArgLocationAccumulator(*p_seq_exec_plan_, GetOrtValueNameIdxMap(),
@@ -1660,12 +1663,10 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                                                subgraph_session_state.GetGraphViewer(),
                                                                subgraph_outer_scope_node_arg_to_location_map));
 
-      auto& next_prepacked_subgraph = prepacked_subgraph.GetOrCreateSubgraph(
-          subgraph_session_state.GetGraphViewer().GetGraph());
       ORT_RETURN_IF_ERROR(subgraph_session_state.FinalizeSessionStateImpl(
           graph_location, kernel_registry_manager, &node, subgraph_session_options, remove_initializers,
-          constant_initializers_use_count, next_prepacked_subgraph,
-          subgraph_outer_scope_node_arg_to_location_map, true));
+          save_prepacked_initializers,
+          constant_initializers_use_count, subgraph_outer_scope_node_arg_to_location_map, true));
 
       // setup all the info for handling the feeds and fetches used in subgraph execution
       auto* p_op_kernel = GetMutableKernel(node.Index());

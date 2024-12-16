@@ -28,69 +28,92 @@
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
-
-struct InspectPrepackedSubgraph {
-};
-
+namespace test {
 // This specialization is used by SessionStateTestSharedInitalizersWithPrePacking.TestPrepackedSerialization down below
 // to be called on the main graph
-template <>
-void PrepackedForSerialization::Subgraph::TestHarness<InspectPrepackedSubgraph>(InspectPrepackedSubgraph&) const {
-  auto inspect = [](const PrepackedForSerialization::Subgraph& sub) {
-    const size_t expected_subgraphs = (sub.Parent() == nullptr) ? 2U : 0U;
-    ASSERT_EQ(sub.GetSubgraphNum(), expected_subgraphs);
+static void TestSavedPrepacks(const Model& model) {
+  auto inspect = [](const Graph& graph) {
+    const auto& prepacked_for_graph = graph.GetPrepacked();
+    const auto& key_to_blob = prepacked_for_graph.GetKeyToBlob();
+    ASSERT_EQ(1U, key_to_blob.size());
+    const size_t expected_prepacks_for_writing = (graph.ParentGraph() == nullptr) ? 1U : 0U;
+    ASSERT_EQ(expected_prepacks_for_writing, prepacked_for_graph.GetNumberOfWeightsForWriting());
 
-    const size_t expected_prepacks_for_writing = (sub.Parent() == nullptr) ? 0U : 1U;
-    ASSERT_EQ(expected_prepacks_for_writing, sub.GetNumberOfWeightsForWriting());
+    const size_t expected_blobs_for_writing = (graph.ParentGraph() == nullptr) ? 1U : 0U;
+    ASSERT_EQ(expected_blobs_for_writing, prepacked_for_graph.GetNumberOfKeyedBlobsForWriting());
 
-    const size_t expected_blobs_for_writing = (sub.Parent() == nullptr) ? 0U : 1U;
-    ASSERT_EQ(expected_blobs_for_writing, sub.GetNumberOfKeyedBlobsForWriting());
-
-    if (sub.Parent() != nullptr) {
-      const auto* blob_keys = sub.GetBlobsForWeight("if_shared");
+    if (graph.ParentGraph() == nullptr) {
+      const auto* blob_keys = prepacked_for_graph.GetKeysForWeightForSaving("if_shared");
       ASSERT_TRUE(blob_keys != nullptr);
       ASSERT_EQ(blob_keys->size(), 1U);
-      const auto* prepacked_weights = sub.GetPrepackedWeights(*blob_keys->cbegin());
+      const auto* prepacked_weights = prepacked_for_graph.GetPrepackedWeights(*blob_keys->cbegin());
       ASSERT_TRUE(prepacked_weights != nullptr);
       ASSERT_EQ(prepacked_weights->buffer_sizes_.size(), 1U);
       ASSERT_EQ(prepacked_weights->buffer_sizes_[0], sizeof(float) * 2);
     }
   };
 
-  inspect(*this);
-  for (const auto& subgraph : subgraph_prepacks_) {
-    inspect(*subgraph.second);
+  const auto& main_graph = model.MainGraph();
+  inspect(main_graph);
+
+  const auto& nodes = main_graph.Nodes();
+  auto if_node_hit = std::find_if(nodes.begin(), nodes.end(),
+                                  [](const Node& node) { return node.Name() == "if"; });
+  ASSERT_FALSE(if_node_hit == nodes.end());
+  const Node& if_node = *if_node_hit;
+  for (const auto& [_, subgraph] : if_node.GetAttributeNameToSubgraphMap()) {
+    inspect(*subgraph);
   }
 }
 
-struct InspectLoadedSharedPrepacked {
-};
+static void TestLoadedSharedUserSupplied(const Model& model) {
+  auto inspect = [](const Graph& graph) {
+    const auto& prepacked_for_graph = graph.GetPrepacked();
+    constexpr size_t expected_prepacks_for_writing = 0U;
+    ASSERT_EQ(expected_prepacks_for_writing, prepacked_for_graph.GetNumberOfWeightsForWriting());
 
-template <>
-void PrepackedForSerialization::Subgraph::TestHarness<InspectLoadedSharedPrepacked>(
-    InspectLoadedSharedPrepacked&) const {
-  auto inspect = [this](const PrepackedForSerialization::Subgraph& sub) {
-    const size_t expected_subgraphs = (sub.Parent() == nullptr) ? 2U : 0U;
-    ASSERT_EQ(expected_subgraphs, sub.GetSubgraphNum());
-
-    // We are expecting to load only one shared pre-packed weight
-    // Saving is off, so we should not have any pre-packed weights for writing
-    constexpr const size_t expected_prepacks_for_writing = 0U;
-    ASSERT_EQ(expected_prepacks_for_writing, sub.GetNumberOfWeightsForWriting());
-
-    constexpr const size_t expected_blobs_for_writing = 0U;
-    ASSERT_EQ(expected_blobs_for_writing, sub.GetNumberOfKeyedBlobsForWriting());
-
-    ASSERT_EQ(0U, key_to_blobs_.size());
+    // We have not loaded anything since this initializer is user supplied
+    const auto& key_to_blob = prepacked_for_graph.GetKeyToBlob();
+    ASSERT_EQ(0U, key_to_blob.size());
   };
 
-  inspect(*this);
-  for (const auto& subgraph : subgraph_prepacks_) {
-    inspect(*subgraph.second);
+  const auto& main_graph = model.MainGraph();
+  inspect(main_graph);
+
+  const auto& nodes = main_graph.Nodes();
+  auto if_node_hit = std::find_if(nodes.begin(), nodes.end(),
+                                  [](const Node& node) { return node.Name() == "if"; });
+  ASSERT_FALSE(if_node_hit == nodes.end());
+  const Node& if_node = *if_node_hit;
+  for (const auto& [_, subgraph] : if_node.GetAttributeNameToSubgraphMap()) {
+    inspect(*subgraph);
   }
 }
 
-namespace test {
+static void TestLoadedSharedNoUserSupplied(const Model& model) {
+  auto inspect = [](const Graph& graph) {
+    const auto& prepacked_for_graph = graph.GetPrepacked();
+    constexpr size_t expected_prepacks_for_writing = 0U;
+    ASSERT_EQ(expected_prepacks_for_writing, prepacked_for_graph.GetNumberOfWeightsForWriting());
+
+    // We have not loaded anything since this initializer is user supplied
+    const auto& key_to_blob = prepacked_for_graph.GetKeyToBlob();
+    ASSERT_EQ(1U, key_to_blob.size());
+  };
+
+  const auto& main_graph = model.MainGraph();
+  inspect(main_graph);
+
+  const auto& nodes = main_graph.Nodes();
+  auto if_node_hit = std::find_if(nodes.begin(), nodes.end(),
+                                  [](const Node& node) { return node.Name() == "if"; });
+  ASSERT_FALSE(if_node_hit == nodes.end());
+  const Node& if_node = *if_node_hit;
+  for (const auto& [_, subgraph] : if_node.GetAttributeNameToSubgraphMap()) {
+    inspect(*subgraph);
+  }
+}
+
 class TestOpKernel : public OpKernel {
  public:
   TestOpKernel(const OpKernelInfo& p) : OpKernel(p) {
@@ -1115,25 +1138,15 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, TestPrepackedSerializati
                                  &prepacked_weights_container);
 
     constexpr const bool saving_model_true = true;
-    constexpr const bool saving_ort_model_false = false;
-    session_state_1.SetSaveModeForPrepacks(saving_model_true, saving_ort_model_false);
 
     ASSERT_STATUS_OK(session_state_1.FinalizeSessionState(std::basic_string<PATH_CHAR_TYPE>(),
                                                           kernel_registry_manager,
                                                           !saving_model_true));
 
-    const auto& prepacked_for_serialization = session_state_1.GetPrepackedForSerialization();
-    ASSERT_TRUE(prepacked_for_serialization.IsSaveModeOn());
-    ASSERT_EQ(prepacked_for_serialization.GetNumberOfKeyedBlobs(), 1U);
-    // In this case we have two references to this blob from two subgraphs.
-    // It would save it on disk twice, but we will de-dupe it on load.
-    const auto& main_graph = prepacked_for_serialization.MainGraph();
-    InspectPrepackedSubgraph inspector;
-    main_graph.TestHarness<InspectPrepackedSubgraph>(inspector);
+    TestSavedPrepacks(model_1);
 
     ModelSavingOptions model_saving_options{4};
     model_saving_options.align_offset = true;
-    model_saving_options.prepacked_for_save = &session_state_1.GetPrepackedForSerialization();
 
     ASSERT_STATUS_OK(Model::SaveWithExternalInitializers(model_1, model_with_external_initializers,
                                                          external_initializers_file,
@@ -1187,14 +1200,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, TestPrepackedSerializati
                                                         kernel_registry_manager,
                                                         false));
 
-    const auto& prepacked_for_serialization = session_state.GetPrepackedForSerialization();
-    ASSERT_FALSE(prepacked_for_serialization.IsSaveModeOn());
-    // Everything comes from the shared container
-    ASSERT_EQ(prepacked_for_serialization.GetNumberOfKeyedBlobs(), 0U);
-
-    InspectLoadedSharedPrepacked inspector;
-    const auto& main_graph = prepacked_for_serialization.MainGraph();
-    main_graph.TestHarness<InspectLoadedSharedPrepacked>(inspector);
+    TestLoadedSharedUserSupplied(*model);
   }
 
   // Load again, this time sharing is enabled, but no shared initializer in the map
@@ -1231,10 +1237,7 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, TestPrepackedSerializati
                                                         kernel_registry_manager,
                                                         false));
 
-    const auto& prepacked_for_serialization = session_state.GetPrepackedForSerialization();
-    ASSERT_FALSE(prepacked_for_serialization.IsSaveModeOn());
-    // Everything comes from the shared container
-    ASSERT_EQ(prepacked_for_serialization.GetNumberOfKeyedBlobs(), 1U);
+    TestLoadedSharedNoUserSupplied(*model);
   }
   // Load again, sharing is disabled
   {
@@ -1267,10 +1270,9 @@ TEST_F(SessionStateTestSharedInitalizersWithPrePacking, TestPrepackedSerializati
                                                         kernel_registry_manager,
                                                         false));
 
-    const auto& prepacked_for_serialization = session_state.GetPrepackedForSerialization();
-    ASSERT_FALSE(prepacked_for_serialization.IsSaveModeOn());
-    // Everything comes from the shared container
-    ASSERT_EQ(prepacked_for_serialization.GetNumberOfKeyedBlobs(), 1U);
+    const auto& prepacked_for_main_graph = model->MainGraph().GetPrepacked();
+    ASSERT_FALSE(prepacked_for_main_graph.IsSaveModeOn());
+    ASSERT_EQ(1U, prepacked_for_main_graph.GetKeyToBlob().size());
   }
 }
 #endif  // __wasm__

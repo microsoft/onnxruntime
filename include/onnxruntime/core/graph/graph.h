@@ -3,14 +3,15 @@
 
 #pragma once
 
+#include <filesystem>
 #include <functional>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
-#include <filesystem>
 
 #include "core/common/flatbuffers.h"
 
@@ -31,6 +32,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/function.h"
 #if !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/prepacked_weights_container.h"
 #include "core/graph/function_template.h"
 #endif
 #include "core/graph/graph_nodes.h"
@@ -1473,6 +1475,18 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
         const logging::Logger& logger,
         bool strict_shape_type_inference);
 
+  // This function constructs PrepackedSharedContainer in the root graph only
+  // and initializes a reference to it in all (sub)graphs
+  void ConstructPrepackedSharedContainerAndSetMode(bool saving_mode_one);
+
+  const PrepackedWeightsForGraph& GetPrepacked() const noexcept {
+    return *prepacked_weights_for_graph_;
+  }
+
+  PrepackedWeightsForGraph& GetPrepacked() noexcept {
+    return *prepacked_weights_for_graph_;
+  }
+
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
 
  private:
@@ -1490,24 +1504,27 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                                        std::optional<std::string_view> new_name);
 
   /// <summary>
-  /// A map that is used to keep track of pre-packed blobs to be serialized
-  /// The implementation adds pre-packed external data references to the TensorProto
-  /// that contains the initializer data. However, it may be an outerscope initializer.
-  /// Thus we need to keep track of the pre-packed blobs that are not serialized in this
-  /// graph, so the parent can make sure it is being serialized.
-  ///
-  /// The below map has <weight_name, std::vector<blob_key_name>>. This contains
-  /// the entries that are not serialized in this graph, and the parent must check in them
+  /// This function traverses the graph bottom up and externalizes
+  /// constant initializers along with their pre-packed blobs from different
+  /// kernels. Writes constant initializers to the external file with any pre-packed
+  /// blobs (if enabled and produced for this initializer) and then modifies TensorProto
+  /// entry with external data references.
   /// </summary>
-  using WeightToPrePacksMap = NodeHashMap<std::string, InlinedHashSet<std::string>>;
-
+  /// <param name="model_path">model file path from Model</param>
+  /// <param name="external_file_path">a binary file path for relative to the model file path
+  /// where the initializers data is written</param>
+  /// <param name="model_external_file_path">model file folder path with external file path appended</param>
+  /// <param name="model_saving_options">model saving options including alignment and pre-packs</param>
+  /// <param name="output_graph_proto">The graph proto to be modified</param>
+  /// <param name="external_stream">external file stream</param>
+  /// <param name="external_offset">current external file offset updated with each write</param>
+  /// <returns>Status instance</returns>
   Status ToGraphProtoWithExternalInitiallizersImpl(
       const std::filesystem::path& model_path,
       const std::filesystem::path& external_file_path,
-      const std::filesystem::path& modified_external_file_path,
+      const std::filesystem::path& model_external_file_path,
       const ModelSavingOptions& model_saving_options,
-      WeightToPrePacksMap& unprocessed_prepacks,
-      ONNX_NAMESPACE::GraphProto& graph_proto,
+      ONNX_NAMESPACE::GraphProto& output_graph_proto,
       std::ostream& external_stream,
       int64_t& external_offset) const;
 
@@ -1694,6 +1711,21 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   std::unordered_set<std::reference_wrapper<const std::string>,
                      std::hash<std::string>, std::equal_to<std::string>>
       sparse_tensor_names_;
+
+  // Prepacked blobs container that stored pre-packed initializers
+  // data that is:
+  // - mem-mapped from disk
+  // - shared within the session
+  // - shared across sessions by transferring the ownership of loaded data entries to
+  // SessionState::PrepackedWeightsContainer* if one is present.
+  // This container is optional because it is present only in the root graph.
+  std::optional<PrepackedKeyToBlobMap> prepacked_key_to_blobs_;
+
+  // This container contains a reference to the root prepacked_key_to_blobs_
+  // and also (in the save mode) records association between the initializer
+  // names and their pre-packed blobs (via keys).
+  // This is optional due to delayed construction.
+  std::optional<PrepackedWeightsForGraph> prepacked_weights_for_graph_;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // Runtime optimization storage.

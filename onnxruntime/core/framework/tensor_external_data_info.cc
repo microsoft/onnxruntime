@@ -117,23 +117,25 @@ void ExternalDataInfo::SetExternalLocationToProto(const std::filesystem::path& e
 }
 
 std::ostream& ExternalDataInfo::WritePrepackedToFileAndAddToProto(
-    const PrepackedForSerialization& prepacked_for_serialization,
-    const InlinedHashSet<std::string>& blob_keys, bool align, int64_t allocation_granularity,
+    const PrepackedWeightsForGraph& prepacked_for_graph,
+    const InlinedHashSet<std::string>& blob_keys, bool align,
+    int64_t align_threshold, int64_t allocation_granularity,
     std::ostream& os, int64_t& external_offset, ::ONNX_NAMESPACE::TensorProto& proto) {
+  size_t key_count = 0;
   for (const auto& key : blob_keys) {
     size_t prepack_count = 0;
-    const auto* prepacked_weights = prepacked_for_serialization.GetPrepackedForKey(key);
+    const auto* prepacked_weights = prepacked_for_graph.GetPrepackedWeights(key);
     ORT_ENFORCE(prepacked_weights != nullptr, "Prepacked weights not found for key ", key);
     std::stringstream prepacked_entry;
     prepacked_entry << key << "|";
     for (size_t i = 0, size = prepacked_weights->buffers_.size(); i < size; ++i) {
-      if (align) {
+      const auto size_in_bytes = prepacked_weights->buffer_sizes_[i];
+      if (align && static_cast<int64_t>(size_in_bytes) > align_threshold) {
         // return early on error
         if (!AlignAndPad(os, allocation_granularity, external_offset)) {
           return os;
         }
       }
-      const auto size_in_bytes = prepacked_weights->buffer_sizes_[i];
       if (prepack_count++ > 0) {
         prepacked_entry << "|";
       }
@@ -146,7 +148,7 @@ std::ostream& ExternalDataInfo::WritePrepackedToFileAndAddToProto(
     }
     auto* prepacked = proto.add_external_data();
     std::string prepacked_key("prepacked_");
-    prepacked_key.append(std::to_string(prepack_count));
+    prepacked_key.append(std::to_string(key_count++));
     prepacked->set_key(std::move(prepacked_key));
     prepacked->set_value(prepacked_entry.str());
   }

@@ -51,8 +51,8 @@ common::Status SaveInitializedTensors(
     const ExecutionPlanBase& exec_plan,
     const SessionOptions& session_options,
     const MemoryProfileFunction& memory_profile_func,
-    PrepackedForSerialization::Subgraph& prepacked_subgraph,
-    std::unordered_map<std::string, std::unique_ptr<Tensor>>& buffered_tensors);
+    std::unordered_map<std::string, std::unique_ptr<Tensor>>& buffered_tensors,
+    PrepackedWeightsForGraph& prepacked_for_graph);
 
 common::Status AllocateTensor(
     const onnxruntime::MemBuffer* m,

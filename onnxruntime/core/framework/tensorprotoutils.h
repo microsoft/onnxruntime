@@ -175,7 +175,7 @@ common::Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::
                                          void*& ext_data_buf, SafeInt<size_t>& ext_data_len,
                                          OrtCallback& ext_data_deleter,
                                          Tensor* buffered_tensor = nullptr,
-                                         PrepackedForSerialization::Subgraph* prepacked_blobs = nullptr);
+                                         PrepackedWeightsForGraph* prepacked_for_graph = nullptr);
 
 // Given a tensor proto with external data obtain a tensor using the specified custom external data loader.
 common::Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
