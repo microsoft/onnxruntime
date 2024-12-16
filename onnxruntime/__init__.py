@@ -100,13 +100,15 @@ def check_and_load_cuda_libs(root_directory, cuda_libs_):
                 _ = ctypes.CDLL(full_path)
                 logging.info(f"Successfully loaded: {full_path}")
             except OSError as e:
-                logging.error(f"Failed to load {full_path}: {e}")
+                logging.debug(f"Failed to load {full_path}: {e}")
 
         # If all required libraries are found, stop the search
         if set(found_libs.keys()) == cuda_libs_:
             logging.info("All required CUDA libraries found and loaded.")
             return
-    logging.error(f"Failed to load all required CUDA libraries. missing libraries: {cuda_libs_ - found_libs.keys()}")
+    logging.debug(
+        f"Failed to load CUDA libraries from site-packages/nvidia directory: {cuda_libs_ - found_libs.keys()}. They might be loaded later from standard search paths for shared libraries."
+    )
     return
 
 
