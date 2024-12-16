@@ -72,6 +72,7 @@ jobs:
         --build_dir $(Build.BinariesDirectory)
         --cmake_generator "Visual Studio 17 2022"
         --build_java
+        --build_shared_lib
         --use_qnn
         --qnn_home $(QnnSDKRootDir)
         --use_binskim_compliant_compile_flags
@@ -87,6 +88,7 @@ jobs:
         --build_dir $(Build.BinariesDirectory) ^
         --cmake_generator "Visual Studio 17 2022" ^
         --build_java ^
+        --build_shared_lib ^
         --use_qnn ^
         --qnn_home $(QnnSDKRootDir) ^
         --use_binskim_compliant_compile_flags ^

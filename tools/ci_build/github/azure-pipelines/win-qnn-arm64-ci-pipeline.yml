@@ -79,6 +79,7 @@ jobs:
         --config $(BuildConfig)
         --build_dir $(Build.BinariesDirectory)
         --cmake_generator "Visual Studio 17 2022"
+        --build_shared_lib
         --use_qnn
         --qnn_home $(QnnSDKRootDir)
         --update --build --parallel
@@ -88,6 +89,7 @@ jobs:
         --config $(BuildConfig) ^
         --build_dir $(Build.BinariesDirectory) ^
         --cmake_generator "Visual Studio 17 2022" ^
+        --build_shared_lib ^
         --use_qnn ^
         --qnn_home $(QnnSDKRootDir) ^
         --test --enable_onnx_tests
