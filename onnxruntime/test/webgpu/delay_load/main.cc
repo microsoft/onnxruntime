@@ -23,7 +23,7 @@
 //    │   └── test.exe
 //    └── onnxruntime_webgpu_delay_load_test.exe (this binary)
 //
-//    This folder structure ensures no DLLs are in the same folder as the executable.
+//    This folder structure ensures no DLLs are in the same folder as the executable (test.exe).
 //
 // 2. Launch the test binary from the root folder of the above structure.
 //
@@ -72,7 +72,7 @@ int prepare_main() {
   // copy the test binary to the root folder
   fs::copy_file(exe_full_path, root_folder / L"test.exe");
 
-  // run "onnxruntime_webgpu_delay_load_test.exe --test" from the test root folder
+  // run "test.exe --test" from the test root folder
   fs::current_path(root_folder);
   return _wsystem(L"test.exe --test");
 }

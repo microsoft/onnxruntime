@@ -25,6 +25,7 @@ std::wstring GetCurrentDllDir() {
   GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
                      reinterpret_cast<LPCWSTR>(&GetCurrentDllDir), &moduleHandle);
   if (moduleHandle == nullptr) {
+    // Failed to get the handle of the current module. Returns an empty string.
     return std::wstring{};
   }
 

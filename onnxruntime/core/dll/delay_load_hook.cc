@@ -77,9 +77,13 @@ FARPROC WINAPI delay_load_hook(unsigned dliNotify, PDelayLoadInfo pdli) {
         }
 
         path.resize(path.rfind(L'\\') + 1);
+
+        // Append the name of the DLL. Now `path` is the absolute path to the DLL to load.
         path.append(known_dlls[i].wstr);
 
-        return FARPROC(LoadLibraryExW(path.c_str(), NULL, LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR));
+        // Load the DLL
+        return FARPROC(LoadLibraryExW(path.c_str(), NULL,
+                                      LOAD_LIBRARY_SEARCH_DEFAULT_DIRS | LOAD_LIBRARY_SEARCH_DLL_LOAD_DIR));
       }
     }
   }
