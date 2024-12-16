@@ -66,7 +66,7 @@ There are several run time options available for the CoreML EP.
 
 To use the CoreML EP run time options, create an unsigned integer representing the options, and set each individual option by using the bitwise OR operator.
 
-ProviderOptions can be set by passing the unsigned integer to the `AppendExecutionProvider` method.
+ProviderOptions can be set by passing string to the `AppendExecutionProvider` method.
 ```c++
 std::unordered_map<std::string, std::string> provider_options;
 provider_options["ModelFormat"] = std::to_string("MLProgram");
@@ -127,6 +127,38 @@ Enable CoreML EP to run on a subgraph in the body of a control flow operator (i.
 `AllowLowPrecisionAccumulationOnGPU`: please refer to [Apple Doc](https://developer.apple.com/documentation/coreml/mlmodelconfiguration/allowlowprecisionaccumulationongpu).  can be one of the following values: (`0` by default )
 - `0`: Use float32 data type to accumulate data. 
 - `1`: Use low precision data(float16) to accumulate data.
+
+`ModelCachePath`: The path to the directory where the Core ML model cache is stored. CoreML EP will compile the captured subgraph to CoreML format graph and saved to disk.
+For the same model, if caching is not enabled, CoreML EP will do the compiling and saving to disk every time, this may cost some time(even minutes) for complicated model. By passing a cache path and a model hash (which is different for different model), CoreML format model can be reused.(Cache disbled by default).
+- `""` : Disable cache. (empty string by default)
+- `"/path/to/cache"` : Enable cache. (path to cache directory, will be created if not exist)
+
+The model hash is very sensitive and important to a specific model, if the model content is changed, the hash will be changed, and the cache will be invalid. If user didn't provide a model hash, CoreML EP will calculate the hash based on the model Path, and use it as the model hash. Please attention that the model hash calculated by CoreML EP is not reliable if model path is not find or even user used a same model path for different model. In such case, even the model is changed, the cache will be reused, this will produce totally wrong results.
+
+Here is an example of how to fill model hash in metadata of model:
+```python
+import onnx
+import hashlib
+
+def hash_file(file_path, algorithm='sha256', chunk_size=8192):
+    hash_func = hashlib.new(algorithm)
+    with open(file_path, 'rb') as file:
+        while chunk := file.read(chunk_size):
+            hash_func.update(chunk)
+    return hash_func.hexdigest()
+
+CACHE_KEY_NAME = "CACHE_KEY"
+model_path = "/a/b/c/model.onnx"
+m = onnx.load(model_path)
+
+cache_key = m.metadata_props.add()
+cache_key.key = CACHE_KEY_NAME
+cache_key.value = str(hash_file(model_path))
+
+for entry in m.metadata_props:
+    print(entry) # to verify the metadata
+onnx.save_model(m, model_path)
+```
 
 
 ## Configuration Options (Old API)
