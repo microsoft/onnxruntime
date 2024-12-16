@@ -63,12 +63,12 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
         while (main_graph->IsSubgraph()) {
           main_graph = main_graph->ParentGraph();
         }
-        if (main_graph->GetModel().MetaData().count("CACHE_KEY") > 0) {
-          user_provided_key = graph_viewer.GetGraph().GetModel().MetaData().at("CACHE_KEY");
+        if (main_graph->GetModel().MetaData().count(kCOREML_CACHE_KEY) > 0) {
+          user_provided_key = graph_viewer.GetGraph().GetModel().MetaData().at(kCOREML_CACHE_KEY);
         } else {
           // model_hash is a 64-bit hash value of model_path if model_path is not empty,
           // otherwise it hashes the graph input names and all the node output names.
-          // it can't guarantee the uniqueness of the key, so user should manager the key by themselves for the best.
+          // it can't guarantee the uniqueness of the key, so user should manager the key for the best.
           user_provided_key = std::to_string(model_hash);
         }
         // The string format is used by onnxruntime/core/providers/coreml/builders/model_builder.cc::GetModelOutputPath

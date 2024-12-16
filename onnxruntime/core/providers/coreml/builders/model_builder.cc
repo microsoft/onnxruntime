@@ -459,9 +459,9 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
   if (Env::Default().FolderExists(ToPathString(model_output_path_)) ||
       Env::Default().FileExists(ToPathString(model_output_path_))) {
     is_model_cached_ = true;
-    LOGS(logger, WARNING) << "Model is already cached in " << model_output_path_
-                          << " and will be reused. If you want to update the model or hit other issues, "
-                          << "please consider to clear the cache and retry.";
+    LOGS(logger, INFO) << "Model is already cached in " << model_output_path_
+                       << " and will be reused. If you want to update the model or hit other issues, "
+                       << "please consider to clear the cache and retry.";
     return;
   }
 

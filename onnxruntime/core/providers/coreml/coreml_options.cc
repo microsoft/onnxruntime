@@ -72,7 +72,7 @@ void CoreMLOptions::ValidateAndParseProviderOption(const ProviderOptions& option
       kCoremlProviderOption_SpecializationStrategy,
       kCoremlProviderOption_ProfileComputePlan,
       kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU,
-      kCoremlProviderOption_ModelCachePath,
+      kCoremlProviderOption_ModelCacheDirectory,
   };
   // Validate the options
   for (const auto& option : options) {
@@ -105,7 +105,7 @@ void CoreMLOptions::ValidateAndParseProviderOption(const ProviderOptions& option
       profile_compute_plan_ = option.second == "1";
     } else if (kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU == option.first) {
       allow_low_precision_accumulation_on_gpu_ = option.second == "1";
-    } else if (kCoremlProviderOption_ModelCachePath == option.first) {
+    } else if (kCoremlProviderOption_ModelCacheDirectory == option.first) {
       model_cache_path_ = option.second;
     }
   }
