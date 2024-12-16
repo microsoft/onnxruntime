@@ -33,14 +33,16 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
 
 class MatMulNBitsWithLargeMProgram final : public Program<MatMulNBitsWithLargeMProgram> {
  public:
-  MatMulNBitsWithLargeMProgram(int components_b, bool has_zero_points) : Program{"MatMulNBitsWithLargeM"},
-                                                                         components_b_{components_b},
-                                                                         has_zero_points_{has_zero_points} {
+  MatMulNBitsWithLargeMProgram(uint32_t tile_m, int components_b, bool has_zero_points) : Program{"MatMulNBitsWithLargeM"},
+                                                                                          tile_m_{tile_m},
+                                                                                          components_b_{components_b},
+                                                                                          has_zero_points_{has_zero_points} {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
  private:
+  uint32_t tile_m_;
   int components_b_;
   bool has_zero_points_;
 };

@@ -324,8 +324,7 @@ Status MatMulNBitsWithLargeMProgram::GenerateShaderCode(ShaderHelper& shader) co
   const auto& scales = shader.AddInput("scales", ShaderUsage::UseUniform);
   const auto& y = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
 
-  const uint32_t tile_m = 4;
-  ORT_ENFORCE(tile_m < WorkgroupSizeY(), "tile_m must be less than or equal to WorkgroupSizeY.");
+  ORT_ENFORCE(tile_m_ < WorkgroupSizeY(), "tile_m must be less than or equal to WorkgroupSizeY.");
   ORT_ENFORCE(WorkgroupSizeX() == WorkgroupSizeY(), "WorkgroupSizeX must be equal to WorkgroupSizeY.");
   const uint32_t workgroup_size = WorkgroupSizeX() * WorkgroupSizeY();
   const uint32_t tile_size = WorkgroupSizeX() * components_b_ * 8;  // each uint32 has 8 data.
@@ -339,10 +338,10 @@ Status MatMulNBitsWithLargeMProgram::GenerateShaderCode(ShaderHelper& shader) co
                                        "    return input_a_value_t(0);\n"
                                        "  }\n"
                                        "}\n"
-                                    << "var<workgroup> sub_a: array<array<input_a_value_t, " << a_length_per_tile << ">," << tile_m << ">;\n"
-                                    << "var<workgroup> inter_results: array<array<array<output_value_t, " << WorkgroupSizeX() << ">, " << WorkgroupSizeY() << ">," << tile_m << ">;\n";
+                                    << "var<workgroup> sub_a: array<array<input_a_value_t, " << a_length_per_tile << ">," << tile_m_ << ">;\n"
+                                    << "var<workgroup> inter_results: array<array<array<output_value_t, " << WorkgroupSizeX() << ">, " << WorkgroupSizeY() << ">," << tile_m_ << ">;\n";
   shader.MainFunctionBody() << "  let col = workgroup_id.x * " << WorkgroupSizeY() << ";\n"
-                            << "  let row = workgroup_id.y * " << tile_m << ";\n"
+                            << "  let row = workgroup_id.y * " << tile_m_ << ";\n"
                             << "  let batch = workgroup_id.z;\n"
                                "  let n_blocks_per_col = uniforms.input_b_shape[1];\n"
                             << "  let num_tiles =  (n_blocks_per_col - 1) / " << blocks_per_tile << " + 1;\n"
@@ -352,7 +351,7 @@ Status MatMulNBitsWithLargeMProgram::GenerateShaderCode(ShaderHelper& shader) co
                             << "    // load one tile A data into shared memory.\n"
                             << "    for (var a_offset = local_idx; a_offset < " << a_length_per_tile << "; a_offset += " << workgroup_size << ") {\n"
                             << "      let a_col = a_col_start + a_offset;\n";
-  for (uint32_t i = 0; i < tile_m; i++) {
+  for (uint32_t i = 0; i < tile_m_; i++) {
     shader.MainFunctionBody() << "      sub_a[" << i << "][a_offset] = mm_readA(batch, row + " << i << ", a_col);\n";
   }
   shader.MainFunctionBody() << "    }\n"
@@ -398,7 +397,7 @@ Status MatMulNBitsWithLargeMProgram::GenerateShaderCode(ShaderHelper& shader) co
     }
   }
   shader.MainFunctionBody() << ")) * scale;\n";
-  for (uint32_t i = 0; i < tile_m; i++) {
+  for (uint32_t i = 0; i < tile_m_; i++) {
     switch (a.NumComponents()) {
       case 1:
         shader.MainFunctionBody() << "      inter_results[" << i << "][local_id.y][local_id.x] += dot(vec4<output_element_t>(sub_a[" << i << "][word_offset], sub_a[" << i << "][word_offset + 1], sub_a[" << i << "][word_offset + 2], sub_a[" << i << "][word_offset + 3]), b_dequantized_values[0]) + dot(vec4<output_element_t>(sub_a[" << i << "][word_offset + 4], sub_a[" << i << "][word_offset + 5], sub_a[" << i << "][word_offset + 6], sub_a[" << i << "][word_offset + 7]), b_dequantized_values[1]);\n";
@@ -417,7 +416,7 @@ Status MatMulNBitsWithLargeMProgram::GenerateShaderCode(ShaderHelper& shader) co
                             << "    }\n"
                                "    workgroupBarrier();\n"
                                "  }\n"
-                            << "  if (local_id.y < " << tile_m << ") {\n"
+                            << "  if (local_id.y < " << tile_m_ << ") {\n"
                             << "    var output_value = output_value_t(0);\n"
                             << "    for (var b = 0u; b < " << WorkgroupSizeX() << "; b++) {\n"
                             << "      output_value += inter_results[local_id.y][local_id.x][b];\n"
@@ -470,12 +469,12 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const bool has_zero_points = zero_points != nullptr;
 
   if (M > 1 && block_size == 32) {
-    MatMulNBitsWithLargeMProgram program{gsl::narrow<int>(components_b), has_zero_points};
+    constexpr uint32_t tile_m = 4;
+    MatMulNBitsWithLargeMProgram program{tile_m, gsl::narrow<int>(components_b), has_zero_points};
     components = 1;
-    const uint32_t tile_m = 4;
     constexpr uint32_t workgroup_size = 64;
-    const uint32_t workgroup_y = 8;
-    const uint32_t workgroup_x = workgroup_size / workgroup_y;
+    constexpr uint32_t workgroup_y = 8;
+    constexpr uint32_t workgroup_x = workgroup_size / workgroup_y;
     program.SetWorkgroupSize(workgroup_x, workgroup_y, 1);
     program.SetDispatchGroupSize((N + workgroup_y - 1) / workgroup_y,
                                  (M + tile_m - 1) / tile_m,
