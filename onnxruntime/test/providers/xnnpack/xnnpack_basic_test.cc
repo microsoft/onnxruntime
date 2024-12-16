@@ -90,6 +90,7 @@ TEST(XnnpackEP, TestNhwcConvReluClipFusion) {
   RunAndVerifyOutputsWithEP(ort_model_path, "TestNhwcConvReluClipFusion", std::move(ep), feeds, params);
 }
 
+#ifdef XNNPACK_FP16_SUPPORTED
 TEST(XnnpackEP, TestNhwcConvReluClipFusion_FP16) {
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_conv_clip_relu_fp16.onnx";
 
@@ -124,9 +125,7 @@ TEST(XnnpackEP, TestNhwcConvReluClipFusion_FP16) {
   };
 
   EPVerificationParams params;
-  // TODO: make it to ExpectedEPNodeAssignment::All if more Fp16 ops are added.
-  // Now, set it to Some to pass the test in iOS pipeline
-  params.ep_node_assignment = ExpectedEPNodeAssignment::Some;
+  params.ep_node_assignment = ExpectedEPNodeAssignment::All;
   params.fp32_abs_err = 0.0002f;
   params.graph_verifier = &verify;
 
@@ -134,6 +133,7 @@ TEST(XnnpackEP, TestNhwcConvReluClipFusion_FP16) {
   // So far, CPU EP doensn't support Fp16 Conv fusion, so verify_outputs is skipped.
   RunAndVerifyOutputsWithEP(ort_model_path, "TestNhwcConvReluClipFusion_FP16", std::move(ep), feeds, params, {}, false);
 }
+#endif
 
 // test we can share the cpu ep allocator with the xnnpack EP
 TEST(XnnpackEP, TestAllocatorSharing) {
