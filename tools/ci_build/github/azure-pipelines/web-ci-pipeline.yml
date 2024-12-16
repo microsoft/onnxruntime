@@ -55,8 +55,6 @@ stages:
   - job: nvidia_smi
     pool:
       name: onnxruntime-Win2022-webgpu-A10
-      demands:
-      - ImageVersionOverride -equals 220.0.0
     steps:
     - script: |
         nvidia-smi
