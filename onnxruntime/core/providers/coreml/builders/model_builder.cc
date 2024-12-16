@@ -410,6 +410,8 @@ std::string GetModelOutputPath(const CoreMLOptions& coreml_options,
     std::string_view cache_key = std::string_view(subgraph_name).substr(0, subgraph_name.find_first_of("_"));
     path = MakeString(std::string(coreml_options.ModelCachePath()), "/", cache_key);
     ORT_THROW_IF_ERROR(Env::Default().CreateFolder(path));
+    // Write the model path to a file in the cache directory.
+    // This is for developers to know what the cached model is as we used a hash for the directory name.
     if (!Env::Default().FileExists(ToPathString(path + "/model.txt"))) {
       const Graph* main_graph = &graph_viewer.GetGraph();
       while (main_graph->IsSubgraph()) {
@@ -422,7 +424,7 @@ std::string GetModelOutputPath(const CoreMLOptions& coreml_options,
     }
 
     path = MakeString(path, "/", subgraph_name);
-    // Set the model cache path with equireStaticShape and ModelFormat
+    // Set the model cache path with setting of RequireStaticShape and ModelFormat
     if (coreml_options.RequireStaticShape()) {
       path += "/static_shape";
     } else {
