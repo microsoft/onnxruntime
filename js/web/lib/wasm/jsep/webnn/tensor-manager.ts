@@ -27,6 +27,7 @@ export interface TensorManager {
    * Ensure a MLTensor is created for the TensorId.
    */
   ensureTensor(
+    sessionId: number,
     tensorId: TensorId,
     dataType: MLOperandDataType,
     shape: readonly number[],
@@ -46,9 +47,9 @@ export interface TensorManager {
    */
   releaseTensorsForSession(session: number): void;
   /**
-   * Register an externally created MLTensor with a given MLContext and return a TensorId.
+   * Register an externally created MLTensor with a given session id and return a TensorId.
    */
-  registerTensor(mlContext: MLContext, mlTensor: MLTensor, dataType: MLOperandDataType, shape: number[]): TensorId;
+  registerTensor(sessionId: number, mlTensor: MLTensor, dataType: MLOperandDataType, shape: number[]): TensorId;
 }
 
 let tensorGuid = 1;
@@ -176,6 +177,7 @@ class TensorIdTracker {
   }
 
   public async ensureTensor(
+    sessionId: number,
     dataType: MLOperandDataType,
     shape: readonly number[],
     copyOld: boolean,
@@ -196,7 +198,7 @@ class TensorIdTracker {
 
     // eslint-disable-next-line no-bitwise
     const usage = typeof MLTensorUsage == 'undefined' ? undefined : MLTensorUsage.READ | MLTensorUsage.WRITE;
-    this.wrapper = await this.tensorManager.getCachedTensor(dataType, shape, usage, true, true);
+    this.wrapper = await this.tensorManager.getCachedTensor(sessionId, dataType, shape, usage, true, true);
 
     if (copyOld && this.activeUpload) {
       this.wrapper.write(this.activeUpload);
@@ -254,6 +256,14 @@ class TensorManagerImpl implements TensorManager {
 
   constructor(private backend: WebNNBackend) {}
 
+  public getMLContext(sessionId: number): MLContext {
+    const context = this.backend.getMLContext(sessionId);
+    if (!context) {
+      throw new Error('MLContext not found for session.');
+    }
+    return context;
+  }
+
   public reserveTensorId(): TensorId {
     const tensorId = createNewTensorId();
     this.tensorTrackersById.set(tensorId, new TensorIdTracker(this));
@@ -272,6 +282,7 @@ class TensorManagerImpl implements TensorManager {
   }
 
   public async ensureTensor(
+    sessionId: number,
     tensorId: TensorId,
     dataType: MLOperandDataType,
     shape: number[],
@@ -288,7 +299,7 @@ class TensorManagerImpl implements TensorManager {
     if (!tensor) {
       throw new Error('Tensor not found.');
     }
-    return tensor.ensureTensor(dataType, shape, copyOld);
+    return tensor.ensureTensor(sessionId, dataType, shape, copyOld);
   }
 
   public upload(tensorId: TensorId, data: Uint8Array): void {
@@ -323,17 +334,18 @@ class TensorManagerImpl implements TensorManager {
   }
 
   public registerTensor(
-    mlContext: MLContext,
+    sessionId: number,
     mlTensor: MLTensor,
     dataType: MLOperandDataType,
     shape: readonly number[],
   ): TensorId {
+    const context = this.getMLContext(sessionId);
     const tensorId = createNewTensorId();
     // Defaulting to READ | WRITE if usage is not provided.
     // eslint-disable-next-line no-bitwise
     const wrapper = new TensorWrapper({
-      sessionId: this.backend.currentSessionId,
-      context: mlContext,
+      sessionId,
+      context,
       tensor: mlTensor,
       dataType,
       shape,
@@ -347,13 +359,13 @@ class TensorManagerImpl implements TensorManager {
    * Get or create an MLTensor with the given data type and shape.
    */
   public async getCachedTensor(
+    sessionId: number,
     dataType: MLOperandDataType,
     shape: readonly number[],
     usage: MLTensorUsageFlags | undefined,
     writable: boolean,
     readable: boolean,
   ): Promise<TensorWrapper> {
-    const sessionId = this.backend.currentSessionId;
     for (const [index, tensor] of this.freeTensors.entries()) {
       if (tensor.sameTypeAndShape(dataType, shape)) {
         LOG_DEBUG('verbose', () => `[WebNN] Reusing tensor {dataType: ${dataType}, shape: ${shape}}`);
@@ -362,7 +374,7 @@ class TensorManagerImpl implements TensorManager {
         return wrapper;
       }
     }
-    const context = this.backend.currentContext;
+    const context = this.getMLContext(sessionId);
     LOG_DEBUG('verbose', () => `[WebNN] MLContext.createTensor {dataType: ${dataType}, shape: ${shape}}`);
     const tensor = await context.createTensor({
       dataType,
