@@ -18,7 +18,7 @@ class CoreMLOptions {
   bool profile_compute_plan_{false};
   bool allow_low_precision_accumulation_on_gpu_{false};
   // path to store the converted coreml model
-  std::string model_cache_path_;
+  std::string model_cache_directory_;
 
  public:
   explicit CoreMLOptions(uint32_t coreml_flags);
@@ -34,7 +34,7 @@ class CoreMLOptions {
   bool UseStrategy(std::string_view strategy) const { return strategy_ == strategy; }
   bool ProfileComputePlan() const { return profile_compute_plan_ && create_mlprogram_; }
 
-  std::string_view ModelCachePath() const { return model_cache_path_; }
+  std::string_view ModelCacheDirectory() const { return model_cache_directory_; }
 
  private:
   void ValidateAndParseProviderOption(const ProviderOptions& options);

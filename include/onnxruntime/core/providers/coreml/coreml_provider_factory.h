@@ -73,7 +73,7 @@ static const char* const kCoremlProviderOption_AllowLowPrecisionAccumulationOnGP
 //    3. Hash of the input/output names of the model
 
 // EP wounln't track the model change or responsible for the cache management.
-static const char* const kCoremlProviderOption_ModelCacheDirectory = "ModelCachePath";
+static const char* const kCoremlProviderOption_ModelCacheDirectory = "ModelCacheDirectory";
 
 // User provided cache-key in metadata_props.
 static const char* const kCOREML_CACHE_KEY = "CACHE_KEY";

@@ -106,7 +106,7 @@ void CoreMLOptions::ValidateAndParseProviderOption(const ProviderOptions& option
     } else if (kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU == option.first) {
       allow_low_precision_accumulation_on_gpu_ = option.second == "1";
     } else if (kCoremlProviderOption_ModelCacheDirectory == option.first) {
-      model_cache_path_ = option.second;
+      model_cache_directory_ = option.second;
     }
   }
 }

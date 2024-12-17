@@ -394,7 +394,7 @@ std::string GetModelOutputPath(const CoreMLOptions& coreml_options,
                                const GraphViewer& graph_viewer) {
   const std::string& subgraph_name = graph_viewer.Name();
   std::string path;
-  if (coreml_options.ModelCachePath().empty()) {
+  if (coreml_options.ModelCacheDirectory().empty()) {
     // path is used to create the ML Package directory for ML Program, and for the model directly otherwise.
     path = util::GetTemporaryFilePath();
     if (!coreml_options.CreateMLProgram()) {
@@ -406,7 +406,7 @@ std::string GetModelOutputPath(const CoreMLOptions& coreml_options,
     // int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
     // MakeString(user_provide_key, "_", COREML, "_", model_hash, "_", metadef_id);
     std::string_view cache_key = std::string_view(subgraph_name).substr(0, subgraph_name.find_first_of("_"));
-    path = MakeString(std::string(coreml_options.ModelCachePath()), "/", cache_key);
+    path = MakeString(std::string(coreml_options.ModelCacheDirectory()), "/", cache_key);
     ORT_THROW_IF_ERROR(Env::Default().CreateFolder(path));
     // Write the model path to a file in the cache directory.
     // This is for developers to know what the cached model is as we used a hash for the directory name.

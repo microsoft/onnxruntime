@@ -420,7 +420,7 @@ Status CompileOrReadCachedModel(NSURL* modelUrl, const CoreMLOptions& coreml_opt
   if (compiled_model_url == nil || cached_model_url == nil || compiled_model_path_from_url == nil) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, " compiled_model_url is nil or cached_model_url is nil");
   }
-  if (coreml_options.ModelCachePath().empty()) {
+  if (coreml_options.ModelCacheDirectory().empty()) {
     [compiled_model_path appendString:compiled_model_path_from_url];
     return Status::OK();
   }
@@ -479,7 +479,7 @@ Execution::~Execution() {
 
 void Execution::cleanup() {
   // we keep the compiled model if the user has set a cache path
-  if (coreml_options_.ModelCachePath().size()) {
+  if (coreml_options_.ModelCacheDirectory().size()) {
     return;
   }
   NSString* compiled_model_path = [compiled_model_url_ path];
