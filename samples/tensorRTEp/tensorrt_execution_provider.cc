@@ -1399,6 +1399,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
                             break;
                         }
                     }
+                    graph_api_->OrtGraph_ReleaseGraphViewerArray(subgraphs, subgraph_count);
                     if (!all_subgraphs_are_supported) {
                         // if not all its subgraphs are supported, we need to exclude this control flow op
                         continue;
@@ -1499,6 +1500,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const char* ep_type, const 
                     break;
 
                 }
+                graph_api_->OrtGraph_ReleaseGraphViewerArray(subgraphs, subgraph_count);
             }
 
             if (all_subgraphs_are_supported) {
@@ -3750,7 +3752,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
           }
           nodes_list_output.push_back(next_nodes_list[i]);
         }
-        graph_api_->OrtGraph_ReleaseGraphViewer(sub_graph_viewer);
+        graph_api_->OrtGraph_ReleaseGraphViewer(sub_graph_viewer, true);
       }
     }
   }

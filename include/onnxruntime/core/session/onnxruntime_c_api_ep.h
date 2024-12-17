@@ -389,13 +389,20 @@ ORT_API2_STATUS(OrtGraph_ReleaseGraph, const OrtGraph* graph);
 /** \brief Release the graph viewer instance.
  *
  * NOTE!!: Invoke this function after the use of OrtGraph_GetSubGraph. As OrtGraph_GetSubGraph allocates model instead of
- * graph, this API releases graph's owning_model explicitly which in turn will release the graph
- * (because graph is hosted in an unique_ptr in Model class)
+ * graph, should set release_model to true, then this API will releases graph's owning_model explicitly which in turn will
+ * release the graph (because graph is hosted in an unique_ptr in Model class)
  *
  * \param[in] graph The graph to release
+ * \param[in] release_model If true, release the model as well, otherwise only release the graph viewer instance
  *
  */
-ORT_API2_STATUS(OrtGraph_ReleaseGraphViewer, const OrtGraphViewer* graph);
+ORT_API2_STATUS(OrtGraph_ReleaseGraphViewer, const OrtGraphViewer* graph, bool release_model);
+
+/** \brief Release the graph viewer array.
+ *
+ * NOTE!!: Invoke this function after the use of OrtNode_GetSubgraphs.
+ */
+ORT_API2_STATUS(OrtGraph_ReleaseGraphViewerArray, const OrtGraphViewer** graph_array, size_t num_graphs);
 
 /** \brief Check are two graph actually pointing to the same graph.
  *

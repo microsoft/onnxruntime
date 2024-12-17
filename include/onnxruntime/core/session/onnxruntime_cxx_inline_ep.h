@@ -8,6 +8,29 @@ namespace PluginEP {
 
 static const OrtGraphApi* ort_graph_api = GetApi().GetGraphApi(ORT_API_VERSION);
 
+inline TensorRef::TensorRef(OrtTensorRef* tensor) : tensor_(tensor) {}
+
+inline TensorRef::~TensorRef() {
+  ort_graph_api->OrtGraph_ReleaseInitializerTensor(tensor_);
+}
+
+inline const std::vector<int64_t> TensorRef::GetShape() {
+  std::vector<int64_t> shape(tensor_->shape, tensor_->shape + tensor_->shape_len);
+  return shape;
+}
+
+inline const ONNXTensorElementDataType TensorRef::GetTensorElementType() {
+  return tensor_->data_type;
+}
+
+inline const char* TensorRef::GetData() {
+  return tensor_->data;
+}
+
+inline size_t TensorRef::GetDataLen() {
+  return tensor_->data_len;
+}
+
 inline ValueInfoRef::ValueInfoRef(OrtValueInfoRef* value_info) : value_info_(value_info) {}
 
 inline ValueInfoRef::~ValueInfoRef() {
@@ -23,46 +46,52 @@ inline const ONNXTensorElementDataType ValueInfoRef::GetTensorElementType() {
   return value_info_->data_type;
 }
 
-inline Graph::Graph(const OrtGraphViewer* graph) : graph_(graph) {}
+inline Graph::Graph(const OrtGraph* graph) : graph_(graph) {}
 
-inline const char* Graph::GetName() {
+inline void Graph::DumpOnnxModel(const std::filesystem::path& onnx_model_path) {
+  ThrowOnError(ort_graph_api->OrtGraph_DumpOnnxModel(graph_, onnx_model_path.c_str()));
+}
+
+inline GraphViewer::GraphViewer(const OrtGraphViewer* graph) : graph_(graph) {}
+
+inline const char* GraphViewer::GetName() {
   const char* graph_name = nullptr;
   ThrowOnError(ort_graph_api->OrtGraph_GetName(graph_, &graph_name));
   return graph_name;
 }
 
-inline bool Graph::IsConstantInitializer(const char* name, bool check_outer_scope) {
+inline bool GraphViewer::IsConstantInitializer(const char* name, bool check_outer_scope) {
   bool is_initializer = false;
   ThrowOnError(ort_graph_api->OrtGraph_IsConstantInitializer(graph_, name, check_outer_scope, &is_initializer));
   return is_initializer;
 }
 
-inline const std::vector<size_t> Graph::GetNodesIndexInTopologicalOrder(int execution_order) {
+inline const std::vector<size_t> GraphViewer::GetNodesIndexInTopologicalOrder(int execution_order) {
   const size_t* nodes_index = nullptr;
   size_t nodes_count = 0;
-  ThrowOnError(ort_graph_api->OrtGraph_GetNodesIndexInTopologicalOrder(graph_, execution_order, nodes_index, nodes_count));
+  ThrowOnError(ort_graph_api->OrtGraph_GetNodesIndexInTopologicalOrder(graph_, execution_order, &nodes_index, &nodes_count));
   return std::vector<size_t>(nodes_index, nodes_index + nodes_count);
 }
 
-inline bool Graph::IsSubgraph() {
+inline bool GraphViewer::IsSubgraph() {
   bool is_subgraph = false;
   ThrowOnError(ort_graph_api->OrtGraph_IsSubgraph(graph_, &is_subgraph));
   return is_subgraph;
 }
 
-inline std::shared_ptr<Node> Graph::GetParenNode() {
+inline std::shared_ptr<PluginEP::Node> GraphViewer::GetParenNode() {
   const OrtNode* parent_node = nullptr;
   ThrowOnError(ort_graph_api->OrtGraph_GetParenNode(graph_, &parent_node));
-  return std::make_shared<Node>(parent_node);
+  return std::make_shared<PluginEP::Node>(parent_node);
 }
 
-inline std::filesystem::path Graph::GetModelPath() {
+inline std::filesystem::path GraphViewer::GetModelPath() {
   const void* model_path = nullptr;
   ThrowOnError(ort_graph_api->OrtGraph_GetModelPath(graph_, &model_path));
   return *reinterpret_cast<const std::filesystem::path*>(model_path);
 }
 
-inline std::vector<std::string> Graph::GetRequiredInputs() {
+inline std::vector<std::string> GraphViewer::GetRequiredInputs() {
   const char** required_inputs = nullptr;
   size_t required_inputs_count = 0;
   ThrowOnError(ort_graph_api->OrtGraph_GetRequiredInputs(graph_, &required_inputs, &required_inputs_count));
@@ -78,7 +107,7 @@ inline std::vector<std::string> Graph::GetRequiredInputs() {
   return ret;
 }
 
-inline std::vector<std::string> Graph::GetAllInputs() {
+inline std::vector<std::string> GraphViewer::GetAllInputs() {
   const char** all_inputs = nullptr;
   size_t all_inputs_count = 0;
   ThrowOnError(ort_graph_api->OrtGraph_GetAllInputs(graph_, &all_inputs, &all_inputs_count));
@@ -94,7 +123,7 @@ inline std::vector<std::string> Graph::GetAllInputs() {
   return ret;
 }
 
-inline std::vector<std::string> Graph::GetAllInitializers() {
+inline std::vector<std::string> GraphViewer::GetAllInitializers() {
   const char** all_initializers = nullptr;
   size_t all_initializers_count = 0;
   ThrowOnError(ort_graph_api->OrtGraph_GetAllInitializers(graph_, &all_initializers, &all_initializers_count));
@@ -110,13 +139,13 @@ inline std::vector<std::string> Graph::GetAllInitializers() {
   return ret;
 }
 
-inline Ort::PluginEP::Node Graph::GetOrtNode(size_t node_index) {
+inline Ort::PluginEP::Node GraphViewer::GetOrtNode(size_t node_index) {
   const OrtNode* node = nullptr;
   ThrowOnError(ort_graph_api->OrtGraph_GetOrtNode(graph_, node_index, &node));
   return Ort::PluginEP::Node(node);
 }
 
-inline std::vector<Ort::PluginEP::Node> Graph::GetNodesConsumingInput(const char* input_name) {
+inline std::vector<Ort::PluginEP::Node> GraphViewer::GetNodesConsumingInput(const char* input_name) {
   const OrtNode** consumers = nullptr;
   size_t consumer_count = 0;
   ThrowOnError(ort_graph_api->OrtGraph_GetNodesConsumingInput(graph_, input_name, &consumers, &consumer_count));
@@ -129,64 +158,102 @@ inline std::vector<Ort::PluginEP::Node> Graph::GetNodesConsumingInput(const char
   return ret;
 }
 
-inline Ort::PluginEP::Node Graph::GetNodeProducingOutput(const char* output_name) {
+inline Ort::PluginEP::Node GraphViewer::GetNodeProducingOutput(const char* output_name) {
   const OrtNode* node = nullptr;
   ThrowOnError(ort_graph_api->OrtGraph_GetNodeProducingOutput(graph_, output_name, &node));
   return Ort::PluginEP::Node(node);
 }
 
-inline int Graph::NumberOfNodes() {
+inline int GraphViewer::NumberOfNodes() {
   int num_nodes = 0;
   ThrowOnError(ort_graph_api->OrtGraph_NumberOfNodes(graph_, &num_nodes));
   return num_nodes;
 }
 
-inline int Graph::MaxNodeIndex() {
+inline int GraphViewer::MaxNodeIndex() {
   int max_node_index = 0;
   ThrowOnError(ort_graph_api->OrtGraph_MaxNodeIndex(graph_, &max_node_index));
   return max_node_index;
 }
 
-inline size_t Graph::GetOutputSize() {
+inline size_t GraphViewer::GetOutputSize() {
   size_t output_size = 0;
   ThrowOnError(ort_graph_api->OrtGraph_GetOutputSize(graph_, &output_size));
   return output_size;
 }
 
-inline std::string Graph::GetIthOutputName(size_t i) {
+inline std::string GraphViewer::GetIthOutputName(size_t i) {
   const char* output_name = nullptr;
   ThrowOnError(ort_graph_api->OrtGraph_GetIthOutputName(graph_, i, &output_name));
   return std::string(output_name);
 }
 
-inline int32_t Graph::GetIthOutputElemType(size_t i) {
+inline int32_t GraphViewer::GetIthOutputElemType(size_t i) {
   int32_t elem_type = 0;
   ThrowOnError(ort_graph_api->OrtGraph_GetIthOutputElemType(graph_, i, &elem_type));
   return elem_type;
 }
 
-inline std::shared_ptr<ValueInfoRef> Graph::GetValueInfo(const char* name) {
+inline std::shared_ptr<TensorRef> GraphViewer::GetInitializerTensor(const char* initializer_name) {
+  OrtTensorRef* tensor = nullptr;
+  ThrowOnError(ort_graph_api->OrtGraph_GetInitializerTensor(graph_, initializer_name, &tensor));
+  return std::make_shared<TensorRef>(tensor);
+}
+
+inline std::shared_ptr<ValueInfoRef> GraphViewer::GetValueInfo(const char* name) {
   OrtValueInfoRef* value_info = nullptr;
   ThrowOnError(ort_graph_api->OrtGraph_GetValueInfo(graph_, name, &value_info));
   return std::make_shared<ValueInfoRef>(value_info);
 }
 
-// inline void Graph::DumpOnnxModel(const std::filesystem::path& onnx_model_path) {
-//   ThrowOnError(ort_graph_api->OrtGraph_DumpOnnxModel(graph_->GetGraph(), onnx_model_path.c_str()));
-// }
-
-inline std::shared_ptr<Graph> Graph::GetSubGraph(std::vector<size_t> node_indices) {
-  const OrtGraphViewer* subgraph = nullptr;
-  ThrowOnError(ort_graph_api->OrtGraph_GetSubGraph(graph_, node_indices.size(), node_indices.data(), &subgraph));
-  // TODO:yang if should release subgraph in the decstructor of Graph?
-  return std::make_shared<Graph>(subgraph);
+inline std::pair<VoidPtr, size_t> GraphViewer::SerializeToArray() {
+  void* serialized_data = nullptr;
+  size_t serialized_data_len = 0;
+  ThrowOnError(ort_graph_api->OrtGraph_SerializeToArray(graph_, &serialized_data, &serialized_data_len));
+  return std::make_pair(VoidPtr(serialized_data, [](void* ptr) { ort_graph_api->OrtFreeMem(ptr); }), serialized_data_len);
 }
 
-// inline bool Graph::IsSameGraph(const Graph& other) {
-//   bool is_same = false;
-//   ThrowOnError(ort_graph_api->OrtGraph_IsSameGraph(graph_, other.GetGraph(), &is_same));
-//   return is_same;
-// }
+inline GraphPtr GraphViewer::CreateOrUpdateEpCtxGraph(const char* node_name,
+                                          const int64_t main_context,
+                                          const int64_t embed_mode,
+                                          const char* cache_path,
+                                          char* cache_data,
+                                          size_t size,
+                                          const char* const* extra_attr_keys,
+                                          const char* const* extra_attr_values,
+                                          size_t extra_attr_num) {
+  OrtGraph* graph = nullptr;
+  ThrowOnError(ort_graph_api->OrtGraph_CreateOrUpdateEpCtxGraph(graph_,
+                                                                node_name,
+                                                                main_context,
+                                                                embed_mode,
+                                                                cache_path,
+                                                                cache_data,
+                                                                size,
+                                                                extra_attr_keys,
+                                                                extra_attr_values,
+                                                                extra_attr_num,
+                                                                &graph));
+  auto release_fn = [](Graph* graph) {
+    ThrowOnError(ort_graph_api->OrtGraph_ReleaseGraph(graph->GetGraph()));
+  };
+  return std::unique_ptr<Graph, decltype(release_fn)>(new Graph(graph), release_fn);
+}
+
+inline GraphViewerPtr GraphViewer::GetSubGraph(std::vector<size_t> node_indices) {
+  const OrtGraphViewer* subgraph = nullptr;
+  ThrowOnError(ort_graph_api->OrtGraph_GetSubGraph(graph_, node_indices.size(), node_indices.data(), &subgraph));
+  auto release_fn = [](GraphViewer* graph) {
+    ThrowOnError(ort_graph_api->OrtGraph_ReleaseGraphViewer(graph->GetGraphViewer(), true));
+  };
+  return std::unique_ptr<GraphViewer, decltype(release_fn)>(new GraphViewer(subgraph), release_fn);
+}
+
+inline bool GraphViewer::IsSameGraph(GraphViewer& other) {
+  bool is_same = false;
+  ThrowOnError(ort_graph_api->OrtGraph_IsSameGraph(graph_, other.GetGraphViewer(), &is_same));
+  return is_same;
+}
 
 inline Node::Node(const OrtNode* node) : node_(node) {}
 
