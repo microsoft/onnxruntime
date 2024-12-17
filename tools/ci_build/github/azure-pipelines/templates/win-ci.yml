@@ -417,7 +417,7 @@ stages:
               workingDirectory: '$(Build.BinariesDirectory)'
             env:
               NO_CUDA_TEST: '1'
-              GTEST_FILTER: '-CudaEp*:CudaNhwcTypedTest*' # Exclude CUDA EP tests under providers/cuda/
+              GTEST_FILTER: -*CudaNhwcTypedTest*
           - task: PythonScript@0
             displayName: 'test excludes DML'
             condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
