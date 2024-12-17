@@ -30,6 +30,7 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
 
+#ifndef ENABLE_TRAINING_CORE
 #ifndef __wasm__
 // This specialization is used by SessionStateTestSharedInitalizersWithPrePacking.TestPrepackedSerialization down below
 // to be called on the main graph
@@ -117,6 +118,7 @@ static void TestLoadedSharedNoUserSupplied(const Model& model) {
 }
 
 #endif  // __wasm__
+#endif  // ENABLE_TRAINING_CORE
 
 class TestOpKernel : public OpKernel {
  public:

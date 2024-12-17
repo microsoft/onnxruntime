@@ -1367,6 +1367,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return outer_scope_node_arg_names_;
   }
 
+  common::Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
+                                 flatbuffers::Offset<onnxruntime::fbs::Graph>& fbs_graph) const;
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
   // This function constructs PrepackedSharedContainer in the root graph only
   // and initializes a reference to it in all (sub)graphs
   void ConstructPrepackedSharedContainerAndSetMode(bool saving_mode_on);
@@ -1378,11 +1383,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   PrepackedWeightsForGraph& GetPrepacked() noexcept {
     return *prepacked_weights_for_graph_;
   }
-
-  common::Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
-                                 flatbuffers::Offset<onnxruntime::fbs::Graph>& fbs_graph) const;
-
-#endif  // !defined(ORT_MINIMAL_BUILD)
 
   /** Returns the Node containing the GraphProto for this Graph instance if IsSubgraph is true */
   const Node* ParentNode() const { return parent_node_; }
