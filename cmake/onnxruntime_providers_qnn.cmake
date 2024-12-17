@@ -20,8 +20,8 @@
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_qnn_cc_srcs})
   onnxruntime_add_shared_library_module(onnxruntime_providers_qnn ${onnxruntime_providers_qnn_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_qnn ${ONNXRUNTIME_PROVIDERS_SHARED} ${GSL_TARGET} onnx onnxruntime_common Boost::mp11 safeint_interface)
-  target_link_libraries(onnxruntime_providers_qnn PRIVATE ${ONNXRUNTIME_PROVIDERS_SHARED} ${ABSEIL_LIBS})
-  add_dependencies(onnxruntime_providers_qnn ${onnxruntime_EXTERNAL_DEPENDENCIES})
+  target_link_libraries(onnxruntime_providers_qnn PRIVATE ${ONNXRUNTIME_PROVIDERS_SHARED} ${ABSEIL_LIBS} ${CMAKE_DL_LIBS})
+  add_dependencies(onnxruntime_providers_qnn onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_include_directories(onnxruntime_providers_qnn PRIVATE ${ONNXRUNTIME_ROOT}
 	                                                       ${CMAKE_CURRENT_BINARY_DIR}
 	                                                       ${onnxruntime_QNN_HOME}/include/QNN
@@ -29,7 +29,7 @@
 
   # Set linker flags for function(s) exported by EP DLL
   if(UNIX)
-    set_property(TARGET onnxruntime_providers_qnn APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/qnn/version_script.lds -Xlinker --gc-sections")
+    set_property(TARGET onnxruntime_providers_qnn APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/qnn/version_script.lds -Xlinker --gc-sections -Xlinker -rpath=\$ORIGIN")
   elseif(WIN32)
     set_property(TARGET onnxruntime_providers_qnn APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/qnn/symbols.def")
   else()
