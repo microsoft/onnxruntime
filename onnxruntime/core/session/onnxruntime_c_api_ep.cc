@@ -775,12 +775,22 @@ ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_ReleaseGraph, const OrtGraph* ort_gra
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_ReleaseGraphViewer, const OrtGraphViewer* graph) {
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_ReleaseGraphViewer, const OrtGraphViewer* graph, bool release_model) {
   if (graph) {
     const ::onnxruntime::GraphViewer* graph_viewer = reinterpret_cast<const ::onnxruntime::GraphViewer*>(graph);
-    delete &(graph_viewer->GetGraph()).GetModel();
+    if (release_model) {
+      delete &(graph_viewer->GetGraph()).GetModel();
+    }
     delete graph_viewer;
   }
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtGraphApis::OrtGraph_ReleaseGraphViewerArray, const OrtGraphViewer** graph_viewers, size_t num_graphs) {
+  for (size_t i = 0; i < num_graphs; i++) {
+    OrtGraph_ReleaseGraphViewer(graph_viewers[i], false);
+  }
+  delete[] graph_viewers;
   return nullptr;
 }
 
@@ -1021,6 +1031,7 @@ static constexpr OrtGraphApi ort_graph_api = {
     &OrtGraphApis::OrtGraph_GetSubGraph,
     &OrtGraphApis::OrtGraph_ReleaseGraph,
     &OrtGraphApis::OrtGraph_ReleaseGraphViewer,
+    &OrtGraphApis::OrtGraph_ReleaseGraphViewerArray,
     &OrtGraphApis::OrtGraph_IsSameGraph,
     &OrtGraphApis::OrtNode_GetName,
     &OrtGraphApis::OrtNode_GetDescription,

@@ -8,6 +8,19 @@
 namespace Ort {
 namespace PluginEP {
 
+using VoidPtr = std::unique_ptr<void, std::function<void(void*)>>;
+
+struct TensorRef {
+explicit TensorRef(OrtTensorRef*);
+~TensorRef();
+const std::vector<int64_t> GetShape();
+const ONNXTensorElementDataType GetTensorElementType();
+const char* GetData();
+size_t GetDataLen();
+private:
+OrtTensorRef* tensor_;
+};
+
 struct ValueInfoRef {
 explicit ValueInfoRef(OrtValueInfoRef*);
 ~ValueInfoRef();
@@ -18,8 +31,17 @@ OrtValueInfoRef* value_info_;
 };
 
 struct Graph {
-explicit Graph(const OrtGraphViewer*);
-const OrtGraphViewer* GetGraph() { return graph_; }
+explicit Graph(const OrtGraph*);
+const OrtGraph* GetGraph() { return graph_; }
+void DumpOnnxModel(const std::filesystem::path& onnx_model_path);
+private:
+const OrtGraph* graph_;
+};
+using GraphPtr = std::unique_ptr<PluginEP::Graph, std::function<void(PluginEP::Graph*)>>;
+
+struct GraphViewer {
+explicit GraphViewer(const OrtGraphViewer*);
+const OrtGraphViewer* GetGraphViewer() { return graph_; }
 const char* GetName();
 bool IsConstantInitializer(const char* name, bool check_outer_scope);
 const std::vector<size_t> GetNodesIndexInTopologicalOrder(int execution_order);
@@ -37,17 +59,25 @@ int MaxNodeIndex();
 size_t GetOutputSize();
 std::string GetIthOutputName(size_t i);
 int32_t GetIthOutputElemType(size_t i);
-// std::shared_ptr<TensorRef> GetInitializerTensor(const char* initializer_name);
+std::shared_ptr<TensorRef> GetInitializerTensor(const char* initializer_name);
 std::shared_ptr<ValueInfoRef> GetValueInfo(const char* name);
-// void SerializeToArray(void** data, size_t* data_size);
-// void DumpOnnxModel(const std::filesystem::path& onnx_model_path);
-// CreateOrUpdateEpCtxGraph();
-std::shared_ptr<Graph> GetSubGraph(std::vector<size_t> node_indices);
-// bool IsSameGraph(const Graph& other);
+std::pair<VoidPtr, size_t> SerializeToArray();
+GraphPtr CreateOrUpdateEpCtxGraph(const char* node_name,
+                                                const int64_t main_context,
+                                                const int64_t embed_mode,
+                                                const char* cache_path,
+                                                char* cache_data,
+                                                size_t size,
+                                                const char* const* extra_attr_keys,
+                                                const char* const* extra_attr_values,
+                                                size_t extra_attr_num);
+GraphViewerPtr GetSubGraph(std::vector<size_t> node_indices);
+bool IsSameGraph(GraphViewer& other);
 
 private:
 const OrtGraphViewer* graph_;
 };
+using GraphViewerPtr = std::unique_ptr<PluginEP::GraphViewer, std::function<void(PluginEP::GraphViewer*)>>;
 
 struct Node {
 explicit Node(const OrtNode*);
@@ -74,12 +104,10 @@ int GetAttributeStringSize(std::string attribute_name);
 int64_t GetAttributeIthInt(std::string attribute_name, size_t i);
 float GetAttributeIthFloat(std::string attribute_name, size_t i);
 const std::string GetAttributeIthStr(std::string attribute_name, size_t i);
-// GetAttributeIthStrWithSize
 const std::string GetAttributeStr(std::string attribute_name);
-// GetAttributeStrWithSize
 int64_t GetAttributeInt(std::string attribute_name);
 float GetAttributeFloat(std::string attribute_name);
-// GetSubgraphs
+// TODO: add GetSubgraphs wrapper here
 private:
 const OrtNode* node_;
 };

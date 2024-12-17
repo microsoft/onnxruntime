@@ -70,7 +70,9 @@ ORT_API_STATUS_IMPL(OrtGraph_GetSubGraph, const OrtGraphViewer* graph, const int
 
 ORT_API_STATUS_IMPL(OrtGraph_ReleaseGraph, const OrtGraph* graph);
 
-ORT_API_STATUS_IMPL(OrtGraph_ReleaseGraphViewer, const OrtGraphViewer* graph);
+ORT_API_STATUS_IMPL(OrtGraph_ReleaseGraphViewer, const OrtGraphViewer* graph, bool release_model);
+
+ORT_API_STATUS_IMPL(OrtGraph_ReleaseGraphViewerArray, const OrtGraphViewer** graph_viewers, size_t num_graphs);
 
 ORT_API_STATUS_IMPL(OrtGraph_IsSameGraph, const OrtGraphViewer* graph1, const OrtGraphViewer* graph2, _Out_ bool* is_same);
 
