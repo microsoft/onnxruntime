@@ -78,15 +78,16 @@ using PrepackedKeyToBlobMap = std::unordered_map<std::string, PrePackedWeights>;
 
 /// <summary>
 /// This class has a dual purpose.
-/// When saving to disk is ON (IsSaveModeOn() true)
-/// it provides a storage container for PrePackedWeights instances.
-/// The pre-packed data is collected using PrepackConstaitInitializers instance.
-/// In this case newly pre-pack  data is used for writing to disk, unless the data loaded from disk matches.
-///
-/// If saving is OFF, it is used to contain the weights memory mapped from disk.
+/// If saving is OFF (IsSaveModeOn() false), it is used to contain the weights memory mapped from disk.
 /// Those weights are then moved to the shared container if weight sharing is enabled.
 /// If cross-session weight sharing is not enabled, the weights are stored in this container,
 /// and shared with the interested kernels.
+///
+/// When saving to disk is ON (IsSaveModeOn() true)
+/// It records the pre-packed weights blobs and associates them with the weight name.
+/// When saving the model with external initializers, the weights are written to disk along
+/// with the pre-packed blobs.
+///
 /// </summary>
 class PrepackedWeightsForGraph {
  public:

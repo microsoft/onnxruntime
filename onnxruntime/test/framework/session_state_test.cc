@@ -32,8 +32,6 @@ namespace test {
 
 #ifndef ENABLE_TRAINING_CORE
 #ifndef __wasm__
-// This specialization is used by SessionStateTestSharedInitalizersWithPrePacking.TestPrepackedSerialization down below
-// to be called on the main graph
 static void TestSavedPrepacks(const Model& model) {
   auto inspect = [](const Graph& graph) {
     const auto& prepacked_for_graph = graph.GetPrepacked();
