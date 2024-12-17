@@ -29,7 +29,7 @@
 
   # Set linker flags for function(s) exported by EP DLL
   if(UNIX)
-    set_property(TARGET onnxruntime_providers_qnn APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/qnn/version_script.lds -Xlinker --gc-sections -Xlinker -rpath=\$ORIGIN")
+    set_property(TARGET onnxruntime_providers_qnn APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/qnn/version_script.lds -Xlinker --gc-sections -Xlinker -rpath=\\$ORIGIN")
   elseif(WIN32)
     set_property(TARGET onnxruntime_providers_qnn APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/qnn/symbols.def")
   else()
