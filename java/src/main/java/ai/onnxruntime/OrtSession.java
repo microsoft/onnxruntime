@@ -1319,8 +1319,13 @@ public class OrtSession implements AutoCloseable {
      * @throws OrtException If there was an error in native code.
      */
     public void addQnn(Map<String, String> providerOptions) throws OrtException {
-      String qnnProviderName = "QNN";
-      addExecutionProvider(qnnProviderName, providerOptions);
+      if (OnnxRuntime.extractQNN()) {
+        String qnnProviderName = "QNN";
+        addExecutionProvider(qnnProviderName, providerOptions);
+      } else {
+        throw new OrtException(
+            OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find QNN shared provider");
+      }
     }
 
     /**

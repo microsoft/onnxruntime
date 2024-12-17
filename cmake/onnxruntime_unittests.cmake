@@ -1608,14 +1608,8 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
 
         # also copy other library dependencies that may be required by tests to native-test
         if(onnxruntime_USE_QNN)
-	  add_custom_command(
-	    TARGET onnxruntime_providers_qnn POST_BUILD
-	    COMMAND ${CMAKE_COMMAND} -E copy
-		$<TARGET_FILE:onnxruntime_providers_qnn>
-		$<TARGET_FILE:onnxruntime_providers_shared>
-		${QNN_LIB_FILES}
-		${JAVA_NATIVE_TEST_DIR}
-	  )
+	  add_custom_command(TARGET onnxruntime_providers_qnn POST_BUILD
+              COMMAND ${CMAKE_COMMAND} -E copy ${QNN_LIB_FILES} ${JAVA_NATIVE_TEST_DIR})
         endif()
 
         # delegate to gradle's test runner
