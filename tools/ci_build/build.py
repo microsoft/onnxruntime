@@ -1559,6 +1559,9 @@ def generate_build_tree(
                 # The "/profile" flag implies "/DEBUG:FULL /DEBUGTYPE:cv,fixup /OPT:REF /OPT:NOICF /INCREMENTAL:NO /FIXED:NO". We set it for satisfying a Microsoft internal compliance requirement. External users
                 # do not need to have it.
                 ldflags = ["/profile", "/DYNAMICBASE"]
+                # Address Sanitizer libs do not have a Qspectre version. So they two cannot be both enabled.
+                if not args.enable_address_sanitizer:
+                    cflags += ["/Qspectre"]
                 if config == "Release":
                     cflags += ["/O2", "/Ob2", "/DNDEBUG"]
                 elif config == "RelWithDebInfo":
@@ -2329,7 +2332,7 @@ def build_nuget_package(
         target_name = "/t:CreateWindowsAIPackage"
     elif use_openvino:
         execution_provider = "/p:ExecutionProvider=openvino"
-        package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.OpenVino"
+        package_name = "/p:OrtPackageId=Intel.ML.OnnxRuntime.OpenVino"
     elif use_tensorrt:
         execution_provider = "/p:ExecutionProvider=tensorrt"
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.TensorRT"

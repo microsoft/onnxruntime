@@ -340,6 +340,13 @@ bool IsDataTypeSupportedByOp(const std::string& onnx_op_type,
                              const std::string& webnn_input_output_name,
                              const std::string& onnx_input_output_name,
                              const logging::Logger& logger);
+bool IsDataTypeSupportedByWebNNOp(const std::string& onnx_op_type,
+                                  const std::string& webnn_op_type,
+                                  const int32_t onnx_data_type,
+                                  const emscripten::val& wnn_limits,
+                                  const std::string& webnn_input_output_name,
+                                  const std::string& onnx_input_output_name,
+                                  const logging::Logger& logger);
 
 bool GetBidirectionalBroadcastShape(std::vector<int64_t>& shape_a,
                                     std::vector<int64_t>& shape_b,

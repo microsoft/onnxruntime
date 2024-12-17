@@ -13,7 +13,7 @@ struct OrtApi;
 
 namespace vaip_core {
 
-#define VAIP_ORT_API_MAJOR (11u)
+#define VAIP_ORT_API_MAJOR (12u)
 #define VAIP_ORT_API_MINOR (0u)
 #define VAIP_ORT_API_PATCH (0u)
 struct OrtApiForVaip {
@@ -234,6 +234,7 @@ struct OrtApiForVaip {
   ModelProto* (*model_to_proto)(Model& model);                                                                                                        // [95]
   DllSafe<std::string> (*model_proto_serialize_as_string)(ModelProto& model_proto);                                                                   // [96]
   void (*model_proto_delete)(ModelProto* p);                                                                                                          // [97]
+  DllSafe<std::string> (*attr_proto_release_string)(AttributeProto* attr);                                                                            // [98]
 };
 
 #ifndef USE_VITISAI
