@@ -22,6 +22,8 @@ class QDQOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
+  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
   bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
@@ -116,6 +118,38 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   model_builder.AddOperand(output_defs[0]->Name(), std::move(output));
 
   return Status::OK();
+}
+
+// Operator support related.
+bool QDQOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
+                                     const Node& node,
+                                     const WebnnDeviceType /* device_type */,
+                                     const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+
+  std::vector<int64_t> input_shape;
+  std::vector<int64_t> scale_shape;
+
+  if (!GetShape(*input_defs[0], input_shape, logger) || !GetShape(*input_defs[1], scale_shape, logger)) {
+    return false;
+  }
+
+  // WebNN requires the scale_shape to be a subsample of the input_shape.
+  if (scale_shape.size() > input_shape.size()) {
+    LOGS(logger, VERBOSE) << "The rank of scale is larger than the rank of input";
+    return false;
+  }
+
+  for (size_t i = 0; i < scale_shape.size(); ++i) {
+    auto scale_dim = scale_shape[scale_shape.size() - i - 1];
+    auto input_dim = input_shape[input_shape.size() - i - 1];
+    if (input_dim % scale_dim != 0) {
+      LOGS(logger, VERBOSE) << "The shape of scale is not a subsample of the shape of input";
+      return false;
+    }
+  }
+
+  return true;
 }
 
 bool QDQOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
