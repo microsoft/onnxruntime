@@ -8,6 +8,7 @@
 
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
+#include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "core/framework/allocator.h"
 #include "core/providers/qnn/rpcmem_library.h"
@@ -19,7 +20,8 @@ class HtpSharedMemoryAllocator : public IAllocator {
   // Gets the OrtMemoryInfo value that is associated with this allocator type.
   static OrtMemoryInfo AssociatedMemoryInfo();
 
-  HtpSharedMemoryAllocator(std::shared_ptr<RpcMemLibrary> rpcmem_lib);
+  HtpSharedMemoryAllocator(std::shared_ptr<RpcMemLibrary> rpcmem_lib,
+                           const logging::Logger* logger = nullptr);
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(HtpSharedMemoryAllocator);
 
@@ -27,7 +29,7 @@ class HtpSharedMemoryAllocator : public IAllocator {
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
-  // void GetStats(AllocatorStats* stats) override;
+  // void GetStats(AllocatorStats* stats) override;  // TODO override
 
   struct SharedMemoryInfo {
     int fd;
@@ -36,15 +38,17 @@ class HtpSharedMemoryAllocator : public IAllocator {
   };
 
   // Get an allocation's shared memory info.
-  // `allocation_address` must be an address returned by Alloc() which has not yet been freed.
+  // `allocation_address` identifies the allocation. It must be an address returned by Alloc() which has not yet been
+  //   freed.
   static Status GetAllocationSharedMemoryInfo(void* allocation_address,
                                               SharedMemoryInfo& allocation_info);
 
   using AllocationCleanUpFn = std::function<void(void* allocation_address)>;
 
   // Add allocation clean up callback to call when the allocation is freed.
-  // `allocation_address` identifies the allocation. It must be an address returned by Alloc() which has not yet been freed.
-  // `allocation_clean_up` is the clean up callback. This call takes ownership.
+  // `allocation_address` identifies the allocation. It must be an address returned by Alloc() which has not yet been
+  //   freed.
+  // `allocation_clean_up` is the clean up callback. The associated allocator takes ownership of the callback.
   static Status AddAllocationCleanUp(void* allocation_address, AllocationCleanUpFn&& allocation_clean_up);
 
  private:
@@ -60,9 +64,11 @@ class HtpSharedMemoryAllocator : public IAllocator {
 
   // allocation address -> corresponding allocation record
   InlinedHashMap<const void*, AllocationRecord> allocations_;
-  std::mutex allocations_mutex_;  // synchronize access to allocation_
+  std::mutex allocations_mutex_;  // synchronize access to allocations_
 
   std::shared_ptr<RpcMemLibrary> rpcmem_lib_;
+
+  const logging::Logger& logger_;
 };
 
 }  // namespace onnxruntime::qnn

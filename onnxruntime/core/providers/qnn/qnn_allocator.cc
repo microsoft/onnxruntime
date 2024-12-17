@@ -45,7 +45,7 @@ size_t DivRoundUp(size_t a, size_t b) {  // TODO is there already a helper funct
 }
 
 bool IsAligned(const void* address, size_t alignment) {
-  assert((alignment & alignment - 1) == 0);
+  assert((alignment & alignment - 1) == 0);  // alignment must be a power of two
   return (reinterpret_cast<uintptr_t>(address) & (alignment - 1)) == 0;
 }
 
@@ -87,9 +87,11 @@ OrtMemoryInfo HtpSharedMemoryAllocator::AssociatedMemoryInfo() {
                        /* id */ 0, OrtMemTypeDefault};
 }
 
-HtpSharedMemoryAllocator::HtpSharedMemoryAllocator(std::shared_ptr<RpcMemLibrary> rpcmem_lib)
+HtpSharedMemoryAllocator::HtpSharedMemoryAllocator(std::shared_ptr<RpcMemLibrary> rpcmem_lib,
+                                                   const logging::Logger* logger)
     : IAllocator{AssociatedMemoryInfo()},
-      rpcmem_lib_{std::move(rpcmem_lib)} {
+      rpcmem_lib_{std::move(rpcmem_lib)},
+      logger_(logger != nullptr ? *logger : logging::LoggingManager::DefaultLogger()) {
   ORT_ENFORCE(rpcmem_lib_ != nullptr);
 }
 
@@ -106,7 +108,7 @@ void* HtpSharedMemoryAllocator::Alloc(size_t requested_size) {
   // allocate shared memory
   void* shared_memory_raw = rpcmem_lib_->Api().alloc(rpcmem::RPCMEM_HEAP_ID_SYSTEM, rpcmem::RPCMEM_DEFAULT_FLAGS,
                                                      static_cast<int>(shared_memory_block_size_in_bytes));
-
+  ORT_ENFORCE(shared_memory_raw != nullptr, "rpcmem_alloc() failed to allocate and returned nullptr.");
   auto shared_memory = WrapSharedMemoryWithUniquePtr(shared_memory_raw, rpcmem_lib_->Api());
 
   const size_t allocation_alignment = AllocationAlignment();
@@ -132,7 +134,7 @@ void* HtpSharedMemoryAllocator::Alloc(size_t requested_size) {
 
     std::scoped_lock g{allocations_mutex_};
     const bool inserted = allocations_.emplace(allocation_address, std::move(allocation_record)).second;
-    ORT_ENFORCE(inserted, "Allocation info already exists for address (", allocation_address, ").");
+    ORT_ENFORCE(inserted, "Allocation record already exists for address (", allocation_address, ").");
   }
 
   // initialize header
@@ -150,8 +152,6 @@ void HtpSharedMemoryAllocator::Free(void* allocation_address) {
     return;
   }
 
-  // TODO should we throw exceptions at all from Free()?
-
   auto& allocation_header = ValidateAllocationAddressAndGetHeader(allocation_address);
   ORT_ENFORCE(allocation_header.allocator_ptr == this,
               "AllocationHeader points to a different allocator (", allocation_header.allocator_ptr,
@@ -164,16 +164,28 @@ void HtpSharedMemoryAllocator::Free(void* allocation_address) {
 
   ORT_ENFORCE(!allocation_node.empty(), "Failed to get allocation info for address (", allocation_address, ").");
 
-  // take ownership of shared memory and free at end of scope
-  auto shared_memory = WrapSharedMemoryWithUniquePtr(allocation_address, rpcmem_lib_->Api());
+  // At this point, we have a valid allocation to free.
+  // Avoid throwing exceptions as this may be running from a destructor.
+  try {
+    // take ownership of shared memory and free at end of scope
+    auto shared_memory = WrapSharedMemoryWithUniquePtr(allocation_address, rpcmem_lib_->Api());
 
-  // destroy header
-  allocation_header.~AllocationHeader();
+    // destroy header
+    allocation_header.~AllocationHeader();
 
-  // clean up allocation record
-  const auto& allocation_info = allocation_node.mapped();
-  for (auto& clean_up_fn : allocation_info.clean_up_fns) {
-    clean_up_fn(allocation_address);  // TODO handle exceptions?
+    // clean up allocation record
+    const auto& allocation_record = allocation_node.mapped();
+    for (auto& clean_up_fn : allocation_record.clean_up_fns) {
+      // attempt to run each clean_up_fn even if exceptions are thrown
+      try {
+        clean_up_fn(allocation_address);
+      } catch (const std::exception& e) {
+        LOGS(logger_, ERROR) << "Caught exception while running clean up callback for address (" << allocation_address
+                             << "): " << e.what();
+      }
+    }
+  } catch(const std::exception& e) {
+    LOGS(logger_, ERROR) << "Caught exception while freeing address (" << allocation_address << "): " << e.what();
   }
 }
 
