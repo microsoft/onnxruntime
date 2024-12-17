@@ -75,9 +75,6 @@ TEST(BeamSearchTest, GptBeamSearchFp32) {
   const char* const output_names[] = {"sequences"};
 
   Ort::SessionOptions session_options;
-#if defined(USE_CUDA) && defined(USE_DML)
-  SKIP_CUDA_TEST_WITH_DML;
-#endif
 #ifdef USE_CUDA
   OrtCUDAProviderOptionsV2 cuda_options;
   cuda_options.use_tf32 = false;
@@ -171,9 +168,6 @@ TEST(BeamSearchTest, GptBeamSearchFp16) {
   bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
   if (enable_cuda || enable_rocm) {
     Ort::SessionOptions session_options;
-#if defined(USE_CUDA) && defined(USE_DML)
-    SKIP_CUDA_TEST_WITH_DML;
-#endif
 #ifdef USE_CUDA
     OrtCUDAProviderOptionsV2 cuda_options;
     cuda_options.use_tf32 = false;
