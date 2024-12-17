@@ -578,6 +578,27 @@ Status Quantize(const double double_value,
   return Status::OK();
 }
 
+const char* GetQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface, Qnn_ErrorHandle_t qnn_error_handle) {
+  // From QNN SDK: The memory is statically owned and should not be freed by the caller.
+  const char* error_msg = nullptr;
+  if (qnn_interface.errorGetMessage(qnn_error_handle, &error_msg) == QNN_SUCCESS) {
+    return error_msg;
+  }
+  return "Unknown error.";
+}
+
+std::string GetVerboseQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
+                                      Qnn_ErrorHandle_t qnn_error_handle) {
+  const char* error_msg = nullptr;
+  if (qnn_interface.errorGetVerboseMessage(qnn_error_handle, &error_msg) == QNN_SUCCESS) {
+    auto free_error_msg = gsl::finally([&qnn_interface, error_msg] {
+      qnn_interface.errorFreeVerboseMessage(error_msg);
+    });
+    return error_msg;
+  }
+  return "Unknown error.";
+}
+
 }  // namespace utils
 }  // namespace qnn
 }  // namespace onnxruntime

@@ -81,7 +81,8 @@ Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, co
     Qnn_MemHandle_t raw_mem_handle{};
     const auto register_result = qnn_interface_.memRegister(context_, &mem_descriptor, 1, &raw_mem_handle);
     ORT_RETURN_IF_NOT(register_result == QNN_SUCCESS,
-                      "qnn_interface.memRegister() failed: ", register_result);  // TODO get error message
+                      "qnn_interface.memRegister() failed: ",
+                      utils::GetVerboseQnnErrorMessage(qnn_interface_, register_result));
 
     LOGS(logger_, VERBOSE) << "Registered QNN mem handle. mem_handle: " << raw_mem_handle;
 
@@ -90,7 +91,8 @@ Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, co
 
       const auto unregister_result = qnn_interface_.memDeRegister(&raw_mem_handle, 1);
       if (unregister_result != QNN_SUCCESS) {
-        LOGS(logger_, ERROR) << "qnn_interface.memDeRegister() failed: " << unregister_result;
+        LOGS(logger_, ERROR) << "qnn_interface.memDeRegister() failed: "
+                             << utils::GetVerboseQnnErrorMessage(qnn_interface_, unregister_result);
       }
     };
 

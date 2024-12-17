@@ -22,6 +22,7 @@
 #include "core/providers/qnn/qnn_allocator.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 #include "core/providers/qnn/builder/qnn_configs_helper.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 
 #ifdef _WIN32
 #include <winmeta.h>
@@ -1404,12 +1405,7 @@ const char* QnnBackendManager::QnnProfileErrorToString(QnnProfile_Error_t error)
 }
 
 const char* QnnBackendManager::QnnErrorHandleToString(Qnn_ErrorHandle_t error) {
-  // From QNN SDK: The memory is statically owned and should not be freed by the caller.
-  const char* error_msg = nullptr;
-  if (QNN_SUCCESS == qnn_interface_.errorGetMessage(error, &error_msg)) {
-    return error_msg;
-  }
-  return "Unknown";
+  return utils::GetQnnErrorMessage(qnn_interface_, error);
 }
 
 const std::string QnnBackendManager::ExtractQnnScalarValue(const Qnn_Scalar_t& scalar) {

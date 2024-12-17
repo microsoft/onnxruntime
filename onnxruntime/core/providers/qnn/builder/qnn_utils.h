@@ -10,7 +10,9 @@
 
 #include <gsl/gsl>
 
+#include "QnnInterface.h"
 #include "QnnTypes.h"
+
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/node_unit.h"
 #include "core/util/qmath.h"
@@ -108,6 +110,14 @@ Status Quantize(const double double_value,
                 const int32_t zero_point,
                 const Qnn_DataType_t qnn_data_type,
                 int& quant_value);
+
+// Gets error message associated with QNN error handle value.
+const char* GetQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
+                               Qnn_ErrorHandle_t qnn_error_handle);
+
+// Gets verbose error message associated with QNN error handle value.
+std::string GetVerboseQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
+                                      Qnn_ErrorHandle_t qnn_error_handle);
 
 }  // namespace utils
 }  // namespace qnn
