@@ -400,7 +400,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
   }
 
-  qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
+  qnn_backend_manager_ = std::make_shared<qnn::QnnBackendManager>(
       std::move(backend_path),
       profiling_level_etw,
       profiling_level,
