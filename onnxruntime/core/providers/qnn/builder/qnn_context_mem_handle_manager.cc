@@ -91,7 +91,6 @@ Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, co
       const auto unregister_result = qnn_interface_.memDeRegister(&raw_mem_handle, 1);
       if (unregister_result != QNN_SUCCESS) {
         LOGS(logger_, ERROR) << "qnn_interface.memDeRegister() failed: " << unregister_result;
-        return;
       }
     };
 

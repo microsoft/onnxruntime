@@ -1682,6 +1682,10 @@ Status QnnBackendManager::GetOrRegisterContextMemHandle(Qnn_ContextHandle_t cont
             return;
           }
 
+          // TODO should also ensure that the QNN context handle is still valid.
+          // This *should* be true as long as the QNN contexts are not freed from anywhere other than
+          // ~QnnBackendManager(). If we are able to lock weak_backend_manager, we haven't gotten to the dtor yet.
+
           auto unregister_status = context_mem_handle_manager->Unregister(shared_memory_address);
           if (!unregister_status.IsOK()) {
             LOGS(logger, ERROR) << "Failed to unregister shared memory mem handle for address: "
