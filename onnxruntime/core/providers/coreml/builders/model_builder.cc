@@ -821,12 +821,16 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
   if (coreml_options_.AllowLowPrecision()) {
     hooked_inout_name = name + "_cast";
     if (is_input) {
-      for (size_t i = 0; i < onnx_input_names_.size();i++) {
-        onnx_input_names_[i] = hooked_inout_name;
+      for (size_t i = 0; i < onnx_input_names_.size(); i++) {
+        if (onnx_input_names_[i] == name) {
+          onnx_input_names_[i] = onnx_input_names_[i] + "_cast";
+        }
       }
     } else {
-      for (size_t i = 0; i < onnx_output_names_.size();i++) {
-        onnx_output_names_[i] = hooked_inout_name;
+      for (size_t i = 0; i < onnx_output_names_.size(); i++) {
+        if (onnx_output_names_[i] == name) {
+          onnx_output_names_[i] = onnx_output_names_[i] + "_cast";
+        }
       }
     }
   }
@@ -966,9 +970,9 @@ void ModelBuilder::InsertCastNode(const std::string& input_name, bool is_graph_i
   auto& type_shape = input_output_info_.at(input_name + "_cast");
 
   onnx::TypeProto type_proto_out;
-  auto data_type = type_shape.data_type==ONNX_NAMESPACE::TensorProto_DataType_INT64
-                          ? ONNX_NAMESPACE::TensorProto_DataType_INT32
-                          : type_shape.data_type;
+  auto data_type = type_shape.data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64
+                       ? ONNX_NAMESPACE::TensorProto_DataType_INT32
+                       : type_shape.data_type;
   const bool is_orig_dtype_float = data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT;
   onnx::TensorProto_DataType new_node_arg_data_type = is_graph_input && is_orig_dtype_float
                                                           ? ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
@@ -1019,9 +1023,6 @@ Status ModelBuilder::RegisterModelOutputs() {
 Status ModelBuilder::CreateModel() {
   PreprocessInitializers();
 
-if (coreml_options_.AllowLowPrecision()) {
-
-}
   ORT_RETURN_IF_ERROR(RegisterInitializers());
   ORT_RETURN_IF_ERROR(RegisterModelInputs());
   ORT_RETURN_IF_ERROR(ProcessNodes());
