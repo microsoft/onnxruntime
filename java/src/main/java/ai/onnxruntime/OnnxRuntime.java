@@ -256,9 +256,8 @@ final class OnnxRuntime {
   }
 
   /**
-   * Extracts the QNN provider library from the classpath resources if present, or checks to
-   * see if the QNN provider library is in the directory specified by {@link
-   * #ONNXRUNTIME_NATIVE_PATH}.
+   * Extracts the QNN provider library from the classpath resources if present, or checks to see if
+   * the QNN provider library is in the directory specified by {@link #ONNXRUNTIME_NATIVE_PATH}.
    *
    * @return True if the QNN provider library is ready for loading, false otherwise.
    */
