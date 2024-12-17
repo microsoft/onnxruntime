@@ -29,6 +29,8 @@
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
+
+#ifndef __wasm__
 // This specialization is used by SessionStateTestSharedInitalizersWithPrePacking.TestPrepackedSerialization down below
 // to be called on the main graph
 static void TestSavedPrepacks(const Model& model) {
@@ -113,6 +115,8 @@ static void TestLoadedSharedNoUserSupplied(const Model& model) {
     inspect(*subgraph);
   }
 }
+
+#endif  // __wasm__
 
 class TestOpKernel : public OpKernel {
  public:

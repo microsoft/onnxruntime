@@ -10,6 +10,7 @@
 
 #include <core/common/inlined_containers_fwd.h>
 #include "core/common/path_string.h"
+#include "core/common/safeint.h"
 #include "core/common/status.h"
 #include "core/framework/prepacked_weights_container.h"
 #include "core/graph/onnx_protobuf.h"
@@ -52,8 +53,8 @@ class ExternalDataInfo {
     // Align to the larger of the page size or the allocation granularity
     int64_t alignment_factor = std::max(static_cast<int64_t>(4096), allocation_granularity);
     // Align to the next page or alloc granularity boundary
-    int64_t new_external_offset = static_cast<int64_t>(
-                                      std::floor((external_offset + alignment_factor - 1) / alignment_factor)) *
+    SafeInt<int64_t> safe_external_offset = external_offset;
+    int64_t new_external_offset = ((safe_external_offset + alignment_factor - 1) / alignment_factor) *
                                   alignment_factor;
 
     // padding tensor with zeros for alignment

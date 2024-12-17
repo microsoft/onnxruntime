@@ -27,12 +27,12 @@
 #include "core/common/span_utils.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
+#include "core/framework/prepacked_weights_container.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/constants.h"
 #include "core/graph/function.h"
 #if !defined(ORT_MINIMAL_BUILD)
-#include "core/framework/prepacked_weights_container.h"
 #include "core/graph/function_template.h"
 #endif
 #include "core/graph/graph_nodes.h"
@@ -1367,6 +1367,18 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return outer_scope_node_arg_names_;
   }
 
+  // This function constructs PrepackedSharedContainer in the root graph only
+  // and initializes a reference to it in all (sub)graphs
+  void ConstructPrepackedSharedContainerAndSetMode(bool saving_mode_on);
+
+  const PrepackedWeightsForGraph& GetPrepacked() const noexcept {
+    return *prepacked_weights_for_graph_;
+  }
+
+  PrepackedWeightsForGraph& GetPrepacked() noexcept {
+    return *prepacked_weights_for_graph_;
+  }
+
   common::Status SaveToOrtFormat(flatbuffers::FlatBufferBuilder& builder,
                                  flatbuffers::Offset<onnxruntime::fbs::Graph>& fbs_graph) const;
 
@@ -1474,18 +1486,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
         const Node* parent_node,
         const logging::Logger& logger,
         bool strict_shape_type_inference);
-
-  // This function constructs PrepackedSharedContainer in the root graph only
-  // and initializes a reference to it in all (sub)graphs
-  void ConstructPrepackedSharedContainerAndSetMode(bool saving_mode_one);
-
-  const PrepackedWeightsForGraph& GetPrepacked() const noexcept {
-    return *prepacked_weights_for_graph_;
-  }
-
-  PrepackedWeightsForGraph& GetPrepacked() noexcept {
-    return *prepacked_weights_for_graph_;
-  }
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
 

@@ -1545,14 +1545,14 @@ Status Graph::VerifyNoDuplicateName() {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
-void Graph::ConstructPrepackedSharedContainerAndSetMode(bool saving_mode_one) {
+void Graph::ConstructPrepackedSharedContainerAndSetMode(bool saving_mode_on) {
   if (parent_graph_ == nullptr) {
     prepacked_key_to_blobs_.emplace();
-    prepacked_weights_for_graph_.emplace(*prepacked_key_to_blobs_, saving_mode_one);
+    prepacked_weights_for_graph_.emplace(*prepacked_key_to_blobs_, saving_mode_on);
   } else {
     // Subgraph
     prepacked_weights_for_graph_.emplace(parent_graph_->prepacked_weights_for_graph_->GetKeyToBlob(),
-                                         saving_mode_one);
+                                         saving_mode_on);
   }
 }
 
@@ -4145,7 +4145,9 @@ Status Graph::ToGraphProtoWithExternalInitiallizersImpl(
 
   // Used only when pre-packed weights are serialized
   InlinedHashSet<std::string> processed_weights;
-  const bool process_prepacks = prepacked_weights_for_graph_->GetNumberOfWeightsForWriting() > 0;
+  // prepacked_weights_for_graph_ is present only when SessionState is finalized.
+  const bool process_prepacks = prepacked_weights_for_graph_.has_value() &&
+                                prepacked_weights_for_graph_->GetNumberOfWeightsForWriting() > 0;
   if (process_prepacks) {
     processed_weights.reserve(graph_proto_->initializer_size());
   }
