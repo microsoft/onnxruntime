@@ -69,7 +69,7 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
     model_builder.IOBuilder().AddOperationInput(*op, "gamma", model_builder.AddConstant(op->type(), input_defs[1]->Name(), scale_tensor));
     model_builder.IOBuilder().AddOperationInput(*op, "beta", model_builder.AddConstant(op->type(), input_defs[2]->Name(), bias_tensor));
     auto input_dtype = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
-    if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    if (model_builder.IOBuilder().AllowLowPrecision() || input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
       MLFloat16 epsilon_fp16(eps);
       model_builder.IOBuilder().AddOperationInput(*op, "epsilon", model_builder.AddScalarConstant(op->type(), "epsilon", epsilon_fp16));
     } else {

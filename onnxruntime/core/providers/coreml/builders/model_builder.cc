@@ -819,11 +819,15 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
 
   std::string hooked_inout_name = name;
   if (coreml_options_.AllowLowPrecision()) {
-    hooked_inout_name = name + (is_input ? "_cast" : "_cast");
+    hooked_inout_name = name + "_cast";
     if (is_input) {
-      onnx_input_names_.back() = hooked_inout_name;
+      for (size_t i = 0; i < onnx_input_names_.size();i++) {
+        onnx_input_names_[i] = hooked_inout_name;
+      }
     } else {
-      onnx_output_names_.back() = hooked_inout_name;
+      for (size_t i = 0; i < onnx_output_names_.size();i++) {
+        onnx_output_names_[i] = hooked_inout_name;
+      }
     }
   }
 
@@ -1015,6 +1019,9 @@ Status ModelBuilder::RegisterModelOutputs() {
 Status ModelBuilder::CreateModel() {
   PreprocessInitializers();
 
+if (coreml_options_.AllowLowPrecision()) {
+
+}
   ORT_RETURN_IF_ERROR(RegisterInitializers());
   ORT_RETURN_IF_ERROR(RegisterModelInputs());
   ORT_RETURN_IF_ERROR(ProcessNodes());
