@@ -140,7 +140,7 @@ For the given model, if caching is not enabled, CoreML EP will compile and save 
 
 The cached information for the model is stored under a model hash in the cache directory. There are three ways the hash may be calculated, in order of preference.
 
-1. Read from the model metadata_props. This provides the user a way to directly control the hash, and is the recommended usage. The cache key should satisfy that, (1) The value must only contain alphanumeric characters.  (2) len(value) < 32. EP will re-hash the cache-key to satisfy these conditions.
+1. Read from the model metadata_props. This provides the user a way to directly control the hash, and is the recommended usage. The cache key should satisfy that, (1) The value must only contain alphanumeric characters.  (2) len(value) < 64. EP will re-hash the cache-key to satisfy these conditions.
 2. Hash of the model url the inference session was created with.
 3. Hash of the graph inputs and node outputs if the inference session was created with in memory bytes (i.e. there was no model path). 
 
