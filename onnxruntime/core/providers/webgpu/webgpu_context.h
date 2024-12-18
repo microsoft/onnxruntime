@@ -13,6 +13,7 @@
 #include <webgpu/webgpu_cpp.h>
 
 #include "core/common/common.h"
+#include "core/framework/library_handles.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/program_manager.h"
@@ -152,6 +153,8 @@ class WebGpuContext final {
   friend class WebGpuContextFactory;
 
   std::once_flag init_flag_;
+
+  LibraryHandles modules_;
 
   wgpu::Instance instance_;
   wgpu::Adapter adapter_;

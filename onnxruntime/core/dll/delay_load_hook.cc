@@ -24,12 +24,16 @@
 // - both USE_WEBGPU and BUILD_DAWN_MONOLITHIC_LIBRARY are defined
 // - USE_DML is defined
 //
-#if defined(_MSC_VER) && ((defined(USE_WEBGPU) && defined(BUILD_DAWN_MONOLITHIC_LIBRARY)) || defined(USE_DML))
+#define ORT_DELAY_LOAD_WEBGPU_DAWN_DLL (defined(USE_WEBGPU) && defined(BUILD_DAWN_MONOLITHIC_LIBRARY))
+#define ORT_DELAY_LOAD_DIRECTML_DLL defined(USE_DML)
+#if defined(_MSC_VER) && (ORT_DELAY_LOAD_WEBGPU_DAWN_DLL || ORT_DELAY_LOAD_DIRECTML_DLL)
 
 #include <Windows.h>
 #include <delayimp.h>
 #include <stdlib.h>
 #include <string>
+
+#include "core/platform/env.h"
 
 namespace {
 
@@ -39,10 +43,10 @@ constexpr struct {
   const char* str;
   const wchar_t* wstr;
 } known_dlls[] = {
-#if defined(USE_WEBGPU)
+#if defined(ORT_DELAY_LOAD_WEBGPU_DAWN_DLL)
     DEFINE_KNOWN_DLL(webgpu_dawn),
 #endif
-#if defined(USE_DML)
+#if defined(ORT_DELAY_LOAD_DIRECTML_DLL)
     DEFINE_KNOWN_DLL(DirectML),
 #endif
 };
@@ -55,28 +59,12 @@ FARPROC WINAPI delay_load_hook(unsigned dliNotify, PDelayLoadInfo pdli) {
         // Try to load the DLL from the same directory as onnxruntime.dll
 
         // First, get the path to onnxruntime.dll
-        DWORD pathLen = MAX_PATH;
-        std::wstring path(pathLen, L'\0');
-        HMODULE moduleHandle = nullptr;
-
-        GetModuleHandleExW(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-                           reinterpret_cast<LPCWSTR>(&delay_load_hook), &moduleHandle);
-
-        DWORD getModuleFileNameResult = GetModuleFileNameW(moduleHandle, const_cast<wchar_t*>(path.c_str()), pathLen);
-        while (getModuleFileNameResult == 0 || getModuleFileNameResult == pathLen) {
-          int ret = GetLastError();
-          if (ret == ERROR_INSUFFICIENT_BUFFER && pathLen < 32768) {
-            pathLen *= 2;
-            path.resize(pathLen);
-            getModuleFileNameResult = GetModuleFileNameW(moduleHandle, const_cast<wchar_t*>(path.c_str()), pathLen);
-          } else {
-            // Failed to get the path to onnxruntime.dll. In this case, we will just return NULL and let the system
-            // search for the DLL in the default search order.
-            return NULL;
-          }
+        auto path = Env::Default().GetRuntimePath();
+        if (path.empty()) {
+          // Failed to get the path to onnxruntime.dll. In this case, we will just return NULL and let the system
+          // search for the DLL in the default search order.
+          return NULL;
         }
-
-        path.resize(path.rfind(L'\\') + 1);
 
         // Append the name of the DLL. Now `path` is the absolute path to the DLL to load.
         path.append(known_dlls[i].wstr);
