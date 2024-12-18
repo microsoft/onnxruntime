@@ -184,6 +184,10 @@
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0" PrivateAssets="All" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0'">
+	<PackageReference Include="System.Numerics.Tensors" Version="9.0.0" />
+  </ItemGroup>
+
   <!-- debug output - makes finding/fixing any issues with the the conditions easy.  -->
   <Target Name="DumpValues" BeforeTargets="PreBuildEvent">
     <Message Text="SolutionName='$(SolutionName)'" />

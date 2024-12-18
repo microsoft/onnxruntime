@@ -8,6 +8,11 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 
+#if NET8_0
+using DotnetTensors = System.Numerics.Tensors;
+using TensorPrimitives = System.Numerics.Tensors.TensorPrimitives;
+#endif
+
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
@@ -139,6 +144,23 @@ namespace Microsoft.ML.OnnxRuntime
         {
             return new NamedOnnxValue(name, value, OnnxValueType.ONNX_TYPE_TENSOR);
         }
+
+#if NET8_0
+#pragma warning disable SYSLIB5001 // System.Numerics.Tensors is only in preview so we can continue receiving API feedback
+        /// <summary>
+        /// This is a factory method that instantiates NamedOnnxValue
+        /// and associated name with an instance of a Tensor<typeparamref name="T"/>
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="name">name</param>
+        /// <param name="value">Tensor<typeparamref name="T"/></param>
+        /// <returns></returns>
+        public static NamedOnnxValue CreateFromDotnetTensor<T>(string name, DotnetTensors.Tensor<T> value)
+        {
+            return new NamedOnnxValue(name, value, OnnxValueType.ONNX_TYPE_TENSOR);
+        }
+#pragma warning restore SYSLIB5001 // System.Numerics.Tensors is only in preview so it can continue receiving API feedback
+#endif
 
         /// <summary>
         /// This is a factory method that instantiates NamedOnnxValue.

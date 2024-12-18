@@ -4,6 +4,11 @@
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 
+#if NET8_0
+using DotnetTensors = System.Numerics.Tensors;
+using TensorPrimitives = System.Numerics.Tensors.TensorPrimitives;
+#endif
+
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
@@ -38,6 +43,22 @@ namespace Microsoft.ML.OnnxRuntime
             var ortValue = OrtValue.CreateFromTensorObject(value, out TensorElementType elementType);
             return new FixedBufferOnnxValue(ref ortValue, OnnxValueType.ONNX_TYPE_TENSOR, elementType);
         }
+
+#if NET8_0
+#pragma warning disable SYSLIB5001 // System.Numerics.Tensors is only in preview so we can continue receiving API feedback
+        /// <summary>
+        /// Creates a <see cref="FixedBufferOnnxValue"/> object from the tensor and pins its underlying buffer.
+        /// </summary>
+        /// <typeparam name="T"></typeparam>
+        /// <param name="value"></param>
+        /// <returns>a disposable instance of FixedBufferOnnxValue</returns>
+        public static FixedBufferOnnxValue CreateFromDotnetTensor<T>(DotnetTensors.Tensor<T> value) where T : unmanaged
+        {
+            var ortValue = OrtValue.CreateTensorValueFromDotnetTensorObject<T>(value);
+            return new FixedBufferOnnxValue(ref ortValue, OnnxValueType.ONNX_TYPE_TENSOR, TensorBase.GetTypeInfo(typeof(T)).ElementType);
+        }
+#pragma warning restore SYSLIB5001 // System.Numerics.Tensors is only in preview so it can continue receiving API feedback
+#endif
 
         /// <summary>
         /// This is a factory method that creates a disposable instance of FixedBufferOnnxValue
