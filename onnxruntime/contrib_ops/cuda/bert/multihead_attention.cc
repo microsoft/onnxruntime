@@ -113,6 +113,13 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   output_shape[2] = static_cast<int64_t>(parameters.v_hidden_size);
   Tensor* output = context->Output(0, output_shape);
 
+  TensorShapeVector attn_probs_shape(4);
+  attn_probs_shape[0] = static_cast<int64_t>(parameters.batch_size);
+  attn_probs_shape[1] = static_cast<int64_t>(parameters.num_heads);
+  attn_probs_shape[2] = static_cast<int64_t>(sequence_length);
+  attn_probs_shape[3] = static_cast<int64_t>(parameters.total_sequence_length);
+  Tensor* attn_probs = context->Output(3, attn_probs_shape);
+
   std::vector<int64_t> present_dims{
       parameters.batch_size, parameters.num_heads, parameters.total_sequence_length, parameters.head_size};
   TensorShape present_shape(present_dims);
@@ -172,6 +179,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                             parameters.past_sequence_length > 0 &&
                             nullptr == attention_bias &&
                             nullptr == key_padding_mask &&
+                            nullptr == attn_probs &&  // TODO: support attn_probs
                             parameters.head_size == parameters.v_head_size &&
                             onnxruntime::lean::is_supported(device_prop,
                                                             parameters.head_size,
@@ -216,6 +224,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
                              !disable_flash_attention_ &&
                              nullptr == attention_bias &&
                              nullptr == key_padding_mask &&
+                             nullptr == attn_probs &&  // TODO: support attn_probs
                              parameters.head_size == parameters.v_head_size &&
                              onnxruntime::flash::is_supported(device_prop,
                                                               parameters.head_size,
@@ -280,7 +289,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
       !is_unidirectional_ &&
       nullptr == key_padding_mask &&
       nullptr == attention_bias &&
-      nullptr == past_key && nullptr == present_key &&
+      nullptr == past_key && nullptr == present_key && nullptr == attn_probs &&
       (parameters.qkv_format == Q_K_V_BSNH || (parameters.qkv_format == Q_KV_BSNH_BSN2H && bias == nullptr)) &&
       parameters.hidden_size == parameters.v_hidden_size &&
       has_fused_cross_attention_kernel(sm, parameters.head_size, parameters.kv_sequence_length);
@@ -305,7 +314,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
       !is_unidirectional_ &&
       nullptr == attention_bias &&
       (parameters.qkv_format == Q_K_V_BSNH || parameters.qkv_format == QKV_BSN3H) &&
-      nullptr == past_key && nullptr == present_key &&
+      nullptr == past_key && nullptr == present_key && nullptr == attn_probs &&
       is_mask_none_or_1d_k_len &&
       parameters.hidden_size == parameters.v_hidden_size &&
       parameters.sequence_length == parameters.kv_sequence_length &&  // self attention only for fused runner
@@ -339,6 +348,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
       kernel_type == AttentionKernelType::AttentionKernel_Default &&
       !disable_memory_efficient_attention_ &&
       is_long_sequence &&
+      nullptr == attn_probs &&  // TODO: support attn_probs
       // Check whether the attention bias alignment is good for memory efficient attention.
       (attention_bias == nullptr || parameters.sequence_length % (4 * sizeof(T)) == 0) &&
       (nullptr == key_padding_mask || parameters.mask_type == AttentionMaskType::MASK_1D_KEY_SEQ_LEN_START) &&
@@ -369,6 +379,7 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.present_key = (nullptr == present_key) ? nullptr : reinterpret_cast<CudaT*>(present_key->MutableData<T>());
   data.present_value = (nullptr == present_value) ? nullptr : reinterpret_cast<CudaT*>(present_value->MutableData<T>());
+  data.attn_probs = (nullptr == attn_probs) ? nullptr : reinterpret_cast<CudaT*>(attn_probs->MutableData<T>());
   data.fused_runner = reinterpret_cast<void*>(fused_runner);
   data.fused_cross_attention_kernel = fused_cross_attention_kernel;
   data.use_flash_attention = use_flash_attention;
