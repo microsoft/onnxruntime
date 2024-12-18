@@ -35,11 +35,11 @@ Status GatherElementsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let output_indices = " << output.OffsetToIndices("global_idx") << ";\n"
                             << "var idx = " << indices.GetByOffset("global_idx") << ";\n"
                             << "if (idx < 0) {\n"
-                            << "  idx = idx + uniforms.axisDimLimit;\n"
+                            << "  idx = idx + uniforms.axis_dim_limit;\n"
                             << "}\n"
-                            << "var inputIndices = output_indices;\n"
-                            << input.IndicesSet("inputIndices", "uniforms.axis", "u32(idx)") << ";\n"
-                            << "let value = " << input.GetByIndices("inputIndices") << ";\n"
+                            << "var input_indices = output_indices;\n"
+                            << input.IndicesSet("input_indices", "uniforms.axis", "u32(idx)") << ";\n"
+                            << "let value = " << input.GetByIndices("input_indices") << ";\n"
                             << output.SetByOffset("global_idx", "value") << ";\n";
 
   return Status::OK();
@@ -59,7 +59,7 @@ Status GatherElements::ComputeInternal(ComputeContext& context) const {
     axis += input_rank;
   }
 
-  auto axisDimLimit = input_shape[axis];
+  auto axis_dim_limit = input_shape[axis];
 
   auto output_dims = indices_shape.AsShapeVector();
   TensorShape output_shape(output_dims);
@@ -77,7 +77,7 @@ Status GatherElements::ComputeInternal(ComputeContext& context) const {
       .AddOutputs({output_tensor})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({{static_cast<uint32_t>(output_size)},
-                            {static_cast<int32_t>(axisDimLimit)},
+                            {static_cast<int32_t>(axis_dim_limit)},
                             {static_cast<int32_t>(axis)}});
   return context.RunProgram(program);
 }
