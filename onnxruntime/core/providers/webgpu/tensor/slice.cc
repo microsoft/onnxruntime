@@ -135,14 +135,18 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
   std::vector<uint32_t> starts;
   for (unsigned int i = 0; i < starts_raw.size(); i++) {
     int64_t val = starts_raw[i];
+    std::cout << "val: " << val << std::endl;
     if (val < 0) {
       val += input_shape[axes_raw[i]];
     }
+    std::cout << "val after handling negative: " << val << std::endl;
+
     if (steps_raw[i] < 0) {
       val = std::max(static_cast<int64_t>(0), std::min(val, static_cast<int64_t>(input_shape[axes_raw[i]] - 1)));
     } else {
       val = std::max(static_cast<int64_t>(0), std::min(val, static_cast<int64_t>(input_shape[axes_raw[i]])));
     }
+    std::cout << "val after clamping: " << val << std::endl;
     starts.push_back(static_cast<uint32_t>(val));
   }
 
