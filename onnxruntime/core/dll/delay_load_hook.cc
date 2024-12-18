@@ -43,10 +43,10 @@ constexpr struct {
   const char* str;
   const wchar_t* wstr;
 } known_dlls[] = {
-#if defined(ORT_DELAY_LOAD_WEBGPU_DAWN_DLL)
+#if ORT_DELAY_LOAD_WEBGPU_DAWN_DLL
     DEFINE_KNOWN_DLL(webgpu_dawn),
 #endif
-#if defined(ORT_DELAY_LOAD_DIRECTML_DLL)
+#if ORT_DELAY_LOAD_DIRECTML_DLL
     DEFINE_KNOWN_DLL(DirectML),
 #endif
 };
