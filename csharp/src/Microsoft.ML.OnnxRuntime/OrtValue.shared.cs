@@ -12,7 +12,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 
-#if NET8_0
+#if NET8_0_OR_GREATER
 using DotnetTensors = System.Numerics.Tensors;
 using TensorPrimitives = System.Numerics.Tensors.TensorPrimitives;
 #endif
@@ -213,7 +213,7 @@ namespace Microsoft.ML.OnnxRuntime
             return MemoryMarshal.Cast<byte, T>(byteSpan);
         }
 
-#if NET8_0
+#if NET8_0_OR_GREATER
 #pragma warning disable SYSLIB5001 // System.Numerics.Tensors is only in preview so we can continue receiving API feedback
         /// <summary>
         /// Returns a ReadOnlyTensorSpan<typeparamref name="T"/> over tensor native buffer that
@@ -261,7 +261,7 @@ namespace Microsoft.ML.OnnxRuntime
             return MemoryMarshal.Cast<byte, T>(byteSpan);
         }
 
-#if NET8_0
+#if NET8_0_OR_GREATER
 #pragma warning disable SYSLIB5001 // System.Numerics.Tensors is only in preview so we can continue receiving API feedback
         /// <summary>
         /// Returns a TensorSpan<typeparamref name="T"/> over tensor native buffer.
@@ -297,7 +297,7 @@ namespace Microsoft.ML.OnnxRuntime
             return GetTensorBufferRawData(typeof(byte));
         }
 
-#if NET8_0
+#if NET8_0_OR_GREATER
 #pragma warning disable SYSLIB5001 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
         /// <summary>
         /// Provides mutable raw native buffer access.
@@ -686,7 +686,7 @@ namespace Microsoft.ML.OnnxRuntime
             return OrtValue.CreateTensorValueFromMemory(OrtMemoryInfo.DefaultInstance, new Memory<T>(data), shape);
         }
 
-#if NET8_0
+#if NET8_0_OR_GREATER
 #pragma warning disable SYSLIB5001 // System.Numerics.Tensors is only in preview so it can continue receiving API feedback
         /// <summary>
         /// This is a factory method creates a native Onnxruntime OrtValue containing a tensor.
@@ -709,7 +709,6 @@ namespace Microsoft.ML.OnnxRuntime
                 var field = tensor.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic).Where(x => x.Name == "_values").FirstOrDefault();
                 var backingData = (T[])field.GetValue(tensor);
                 GCHandle handle = GCHandle.Alloc(backingData, GCHandleType.Pinned);
-                //GCHandle handle = GCHandle.Alloc(tensor.GetPinnableReference(), GCHandleType.Pinned);
                 var memHandle = new MemoryHandle(Unsafe.AsPointer(ref tensor.GetPinnableReference()), handle);
 
                 try

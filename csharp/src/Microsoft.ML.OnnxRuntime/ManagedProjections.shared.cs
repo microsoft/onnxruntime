@@ -9,7 +9,7 @@ using System.Linq;
 using System.Reflection;
 
 
-#if NET8_0
+#if NET8_0_OR_GREATER
 using DotnetTensors = System.Numerics.Tensors;
 using TensorPrimitives = System.Numerics.Tensors.TensorPrimitives;
 #endif
@@ -173,7 +173,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <exception cref="OnnxRuntimeException"></exception>
         private static OrtValue CreateTensorProjection(NamedOnnxValue node, NodeMetadata elementMeta)
         {
-#if NET8_0
+#if NET8_0_OR_GREATER
 #pragma warning disable SYSLIB5001 // System.Numerics.Tensors is only in preview so we can continue receiving API feedback
             if (node.Value is not TensorBase && node.Value.GetType().GetGenericTypeDefinition() != typeof(DotnetTensors.Tensor<>))
             {
@@ -226,4 +226,3 @@ namespace Microsoft.ML.OnnxRuntime
         }
     }
 }
-

@@ -333,8 +333,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var inputData = tuple.Item2;
             var inputTensor = tuple.Item3;
             var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
-            var outputTensor = new DenseTensor<float>((ReadOnlySpan<int>)new[] { 1, 1001, 1, 1 });
-            var outputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("softmaxout_1", outputTensor) };
+            var outputTensor = DotnetTensors.Tensor.Create([ 1, 1001, 1, 1 ], [4]);
+            var outputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromDotnetTensor("softmaxout_1", outputTensor) };
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(inputs, outputs));
             // TODO: check exception message
             // InferenceSession::ValidateOutputs() does not check dims so far. Currently this will finally trigger an error in Softmax.
@@ -349,8 +349,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var inputData = tuple.Item2;
             var inputTensor = tuple.Item3;
             var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
-            var outputTensor = new DenseTensor<float>((ReadOnlySpan<int>)new[] { 1, 1000, 1, 1 });
-            var outputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("softmaxout_1", outputTensor) };
+            var outputTensor = DotnetTensors.Tensor.Create([1, 1001, 1, 1], [4]);
+            var outputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromDotnetTensor("softmaxout_1", outputTensor) };
             var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(inputs, new NamedOnnxValue[0]));
             Assert.Contains("[ErrorCode:InvalidArgument] At least one output should be requested.", ex.Message);
             session.Dispose();
@@ -364,7 +364,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var inputData = tuple.Item2;
             var inputTensor = tuple.Item3;
             var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
-            var outputTensor = new DenseTensor<float>((ReadOnlySpan<int>)new[] { 1, 1000, 1, 1 });
+            var outputTensor = DotnetTensors.Tensor.Create([1, 1001, 1, 1], [4]);
 
             using (var outputs = new DisposableListTest<FixedBufferOnnxValue>())
             {
