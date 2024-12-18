@@ -218,6 +218,21 @@ namespace Microsoft.ML.OnnxRuntime
             return _value as Tensor<T>;  // will return null if not castable
         }
 
+
+#if NET8_0
+#pragma warning disable SYSLIB5001 // System.Numerics.Tensors is only in preview so we can continue receiving API feedback
+        /// <summary>
+        /// Try-get value as a Tensor&lt;T&gt;.
+        /// </summary>
+        /// <typeparam name="T">Type</typeparam>
+        /// <returns>Tensor object if contained value is a Tensor. Null otherwise</returns>
+        public DotnetTensors.Tensor<T> AsDotnetTensor<T>()
+        {
+            return _value as DotnetTensors.Tensor<T>;  // will return null if not castable
+        }
+#pragma warning restore SYSLIB5001 // System.Numerics.Tensors is only in preview so it can continue receiving API feedback
+#endif
+
         /// <summary>
         /// Try-get value as an Enumerable&lt;T&gt;.
         /// T is usually a NamedOnnxValue instance that may contain

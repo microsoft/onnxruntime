@@ -6,6 +6,8 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -232,11 +234,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             var typeSpan = MemoryMarshal.Cast<byte, T>(byteSpan);
             var shape = GetTypeInfo().TensorTypeAndShapeInfo.Shape;
-            var nArray = new nint[shape.Length];
-            for (int i = 0; i < shape.Length; i++)
-            {
-                nArray[i] = (nint)shape[i];
-            }
+            var nArray = shape.Select(x => (nint)x).ToArray();
 
             return new DotnetTensors.ReadOnlyTensorSpan<T>(typeSpan, nArray, []);
         }
@@ -283,11 +281,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             var typeSpan = MemoryMarshal.Cast<byte, T>(byteSpan);
             var shape = GetTypeInfo().TensorTypeAndShapeInfo.Shape;
-            var nArray = new nint[shape.Length];
-            for (int i = 0; i < shape.Length; i++)
-            {
-                nArray[i] = (nint)shape[i];
-            }
+            var nArray = shape.Select(x => (nint)x).ToArray();
 
             return new DotnetTensors.TensorSpan<T>(typeSpan, nArray, []);
         }
@@ -314,11 +308,7 @@ namespace Microsoft.ML.OnnxRuntime
             var byteSpan = GetTensorBufferRawData(typeof(T));
 
             var shape = GetTypeInfo().TensorTypeAndShapeInfo.Shape;
-            var nArray = new nint[shape.Length];
-            for (int i = 0; i < shape.Length; i++)
-            {
-                nArray[i] = (nint)shape[i];
-            }
+            var nArray = shape.Select(x => (nint)x).ToArray();
 
             return new DotnetTensors.TensorSpan<byte>(byteSpan, nArray, []);
         }
@@ -716,7 +706,10 @@ namespace Microsoft.ML.OnnxRuntime
             }
             unsafe
             {
-                GCHandle handle = GCHandle.Alloc(tensor, GCHandleType.Pinned);
+                var field = tensor.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic).Where(x => x.Name == "_values").FirstOrDefault();
+                var backingData = (T[])field.GetValue(tensor);
+                GCHandle handle = GCHandle.Alloc(backingData, GCHandleType.Pinned);
+                //GCHandle handle = GCHandle.Alloc(tensor.GetPinnableReference(), GCHandleType.Pinned);
                 var memHandle = new MemoryHandle(Unsafe.AsPointer(ref tensor.GetPinnableReference()), handle);
 
                 try
@@ -729,11 +722,7 @@ namespace Microsoft.ML.OnnxRuntime
 
                     var bufferLengthInBytes = tensor.FlattenedLength * sizeof(T);
 
-                    var shape = new long[tensor.Rank];
-                    for (int i = 0; i < shape.Length; i++)
-                    {
-                        shape[i] = tensor.Lengths[i];
-                    }
+                    var shape = tensor.Lengths.ToArray().Select(x => (long)x).ToArray();
 
                     var typeInfo = TensorBase.GetTypeInfo(typeof(T)) ??
                         throw new OnnxRuntimeException(ErrorCode.InvalidArgument, $"Tensor of type: {typeof(T)} is not supported");

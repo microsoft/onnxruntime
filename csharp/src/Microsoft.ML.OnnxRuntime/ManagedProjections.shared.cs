@@ -6,6 +6,13 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Reflection;
+
+
+#if NET8_0
+using DotnetTensors = System.Numerics.Tensors;
+using TensorPrimitives = System.Numerics.Tensors.TensorPrimitives;
+#endif
 
 namespace Microsoft.ML.OnnxRuntime
 {
@@ -166,13 +173,41 @@ namespace Microsoft.ML.OnnxRuntime
         /// <exception cref="OnnxRuntimeException"></exception>
         private static OrtValue CreateTensorProjection(NamedOnnxValue node, NodeMetadata elementMeta)
         {
-            if (node.Value is not TensorBase)
+#if NET8_0
+#pragma warning disable SYSLIB5001 // System.Numerics.Tensors is only in preview so we can continue receiving API feedback
+            if (node.Value is not TensorBase && node.Value.GetType().GetGenericTypeDefinition() != typeof(DotnetTensors.Tensor<>))
             {
                 throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
                     $"NamedOnnxValue contains: {node.Value.GetType()}, expecting a Tensor<T>");
             }
 
+            OrtValue ortValue;
+            TensorElementType elementType;
+
+            if (node.Value is TensorBase)
+            {
+                ortValue = OrtValue.CreateFromTensorObject(node.Value as TensorBase, out elementType);
+            }
+            else
+            {
+                MethodInfo method = typeof(OrtValue).GetMethod(nameof(OrtValue.CreateTensorValueFromDotnetTensorObject), BindingFlags.Static | BindingFlags.Public);
+                Type tensorType = node.Value.GetType().GetGenericArguments()[0];
+                MethodInfo generic = method.MakeGenericMethod(tensorType);
+                ortValue = (OrtValue)generic.Invoke(null, [node.Value]);
+                elementType = TensorBase.GetTypeInfo(tensorType).ElementType;
+            }
+
+
+#pragma warning restore SYSLIB5001 // System.Numerics.Tensors is only in preview so we can continue receiving API feedback
+#else
+            if (node.Value is not TensorBase)
+            {
+                throw new OnnxRuntimeException(ErrorCode.InvalidArgument,
+                    $"NamedOnnxValue contains: {node.Value.GetType()}, expecting a Tensor<T>");
+            }
             OrtValue ortValue = OrtValue.CreateFromTensorObject(node.Value as TensorBase, out TensorElementType elementType);
+
+#endif
             try
             {
                 if (elementType != elementMeta.ElementDataType)

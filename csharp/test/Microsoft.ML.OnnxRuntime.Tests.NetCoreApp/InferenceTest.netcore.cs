@@ -74,7 +74,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
 #if NET8_0_OR_GREATER
 #pragma warning disable SYSLIB5001 // System.Numerics.Tensors is only in preview so we can continue receiving API feedback
-        [Theory(DisplayName = "CanRunInferenceOnAModel")]
+        [Theory]
         [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, true)]
         [InlineData(GraphOptimizationLevel.ORT_DISABLE_ALL, false)]
         [InlineData(GraphOptimizationLevel.ORT_ENABLE_EXTENDED, true)]
@@ -139,7 +139,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 using (var pinnedInputs = new DisposableListTest<FixedBufferOnnxValue>())
                 {
                     var inputNames = container.Select(i => i.Name).ToArray();
-                    pinnedInputs.AddRange(container.Select(i => FixedBufferOnnxValue.CreateFromTensor(i.AsTensor<float>())));
+                    pinnedInputs.AddRange(container.Select(i => FixedBufferOnnxValue.CreateFromDotnetTensor(i.AsDotnetTensor<float>())));
 
                     // output names not specified
                     using (var results = session.Run(inputNames, pinnedInputs))  // results is an IReadOnlyList<NamedOnnxValue> container
@@ -166,10 +166,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     var inputName = inputNames[0];
                     Assert.Equal(typeof(float), inputMeta[inputName].ElementType);
                     Assert.True(inputMeta[inputName].IsTensor);
-                    var longShape = Array.ConvertAll<int, long>(inputMeta[inputName].Dimensions, Convert.ToInt64);
-                    var byteSize = ShapeUtils.GetSizeForShape(longShape);
-                    pinnedInputs.Add(FixedBufferOnnxValue.CreateFromMemory<float>(memInfo, inputData,
-                        TensorElementType.Float, longShape, byteSize));
+                    var shape = inputMeta[inputName].Dimensions.Select(x => (nint)x).ToArray();
+                    pinnedInputs.Add(FixedBufferOnnxValue.CreateFromDotnetTensor(DotnetTensors.Tensor.Create(inputData, shape)));
 
 
                     // Prepare output buffer
@@ -178,11 +176,9 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     var outputName = outputNames[0];
                     Assert.Equal(typeof(float), outputMeta[outputName].ElementType);
                     Assert.True(outputMeta[outputName].IsTensor);
-                    longShape = Array.ConvertAll<int, long>(outputMeta[outputName].Dimensions, Convert.ToInt64);
-                    byteSize = ShapeUtils.GetSizeForShape(longShape);
                     float[] outputBuffer = new float[expectedOutput.Length];
-                    pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromMemory<float>(memInfo, outputBuffer,
-                        TensorElementType.Float, longShape, byteSize));
+                    shape = outputMeta[outputName].Dimensions.Select(x => (nint)x).ToArray();
+                    pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromDotnetTensor(DotnetTensors.Tensor.Create(outputBuffer, shape)));
 
                     session.Run(inputNames, pinnedInputs, outputNames, pinnedOutputs);
                     Assert.Equal(expectedOutput, outputBuffer, new FloatComparer());
@@ -196,14 +192,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         NamedOnnxValue.CreateFromDotnetTensor("softmaxout_1", DotnetTensors.Tensor.Create<float>(expectedDimensions.Select(x => (nint)x).ToArray()))
                     };
                     session.Run(container, expectedOutputValues);
-                    ValidateRunResultData(expectedOutputValues[0].AsTensor<float>(), expectedOutput, expectedDimensions);
+                    ValidateRunResultData(expectedOutputValues[0].AsDotnetTensor<float>(), expectedOutput, expectedDimensions);
                 }
 
                 // Run inference with pinned inputs and named outputs
                 using (var pinnedInputs = new DisposableListTest<FixedBufferOnnxValue>())
                 {
                     var inputNames = container.Select(i => i.Name).ToArray();
-                    pinnedInputs.AddRange(container.Select(i => FixedBufferOnnxValue.CreateFromTensor(i.AsTensor<float>())));
+                    pinnedInputs.AddRange(container.Select(i => FixedBufferOnnxValue.CreateFromDotnetTensor(i.AsDotnetTensor<float>())));
 
                     // expected inputs and outputs
                     var expectedOutputValues = new List<NamedOnnxValue>()
@@ -211,7 +207,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         NamedOnnxValue.CreateFromDotnetTensor("softmaxout_1", DotnetTensors.Tensor.Create<float>(expectedDimensions.Select(x => (nint)x).ToArray()))
                     };
                     session.Run(inputNames, pinnedInputs, expectedOutputValues);
-                    ValidateRunResultData(expectedOutputValues[0].AsTensor<float>(), expectedOutput, expectedDimensions);
+                    ValidateRunResultData(expectedOutputValues[0].AsDotnetTensor<float>(), expectedOutput, expectedDimensions);
                 }
 
                 // Run inference with named inputs and pinned outputs
@@ -222,7 +218,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         var outputTensor = DotnetTensors.Tensor.Create<float>(expectedDimensions.Select(x => (nint)x).ToArray());
                         pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromDotnetTensor(outputTensor));
                         session.Run(container, expectedOutputNames, pinnedOutputs);
-                        //ValidateRunResultData(outputTensor, expectedOutput, expectedDimensions);
+                        ValidateRunResultData(outputTensor, expectedOutput, expectedDimensions);
                     }
                 }
 
@@ -231,14 +227,149 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                                                             pinnedOutputs = new DisposableListTest<FixedBufferOnnxValue>())
                 {
                     var inputNames = container.Select(i => i.Name).ToArray();
-                    pinnedInputs.AddRange(container.Select(i => FixedBufferOnnxValue.CreateFromTensor(i.AsTensor<float>())));
+                    pinnedInputs.AddRange(container.Select(i => FixedBufferOnnxValue.CreateFromDotnetTensor(i.AsDotnetTensor<float>())));
 
                     var outputTensor = DotnetTensors.Tensor.Create<float>(expectedDimensions.Select(x => (nint)x).ToArray());
                     pinnedOutputs.Add(FixedBufferOnnxValue.CreateFromDotnetTensor(outputTensor));
 
                     session.Run(inputNames, pinnedInputs, expectedOutputNames, pinnedOutputs);
-                    //ValidateRunResultData(outputTensor, expectedOutput, expectedDimensions);
+                    ValidateRunResultData(outputTensor, expectedOutput, expectedDimensions);
                 }
+            }
+        }
+
+        [Fact]
+        public void InferenceSessionDisposedDotnetTensors()
+        {
+            var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
+
+            // Set the graph optimization level for this session.
+            using (SessionOptions options = new SessionOptions())
+            {
+                options.ProfileOutputPathPrefix = "Ort_P_";
+                options.EnableProfiling = true;
+                using (var session = new InferenceSession(model, options))
+                {
+                    var inputMeta = session.InputMetadata;
+                    var container = new List<NamedOnnxValue>();
+
+                    float[] inputData = TestDataLoader.LoadTensorFromEmbeddedResource("bench.in"); // this is the data for only one input tensor for this model
+
+                    foreach (var name in inputMeta.Keys)
+                    {
+                        Assert.Equal(typeof(float), inputMeta[name].ElementType);
+                        Assert.True(inputMeta[name].IsTensor);
+                        var tensor = DotnetTensors.Tensor.Create<float>(inputData, inputMeta[name].Dimensions.Select(x => (nint) x).ToArray());
+                        container.Add(NamedOnnxValue.CreateFromDotnetTensor<float>(name, tensor));
+                    }
+
+                    // Run inference with named inputs and outputs created with in Run()
+                    using (var results = session.Run(container))  // results is an IReadOnlyList<NamedOnnxValue> container
+                    {
+                        ValidateRunResults(results);
+                    }
+
+                    string profile_file = session.EndProfiling();
+
+                    // Profile file should have the output path prefix in it
+                    Assert.Contains("Ort_P_", profile_file);
+                }
+            }
+        }
+
+        [Fact]
+        private void ThrowWrongInputTypeDotnetTensors()
+        {
+            var tuple = OpenSessionSqueezeNet();
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var inputMeta = session.InputMetadata;
+            var container = new List<NamedOnnxValue>();
+            int[] inputDataInt = inputData.Select(x => (int)x).ToArray();
+            var tensor = DotnetTensors.Tensor.Create(inputDataInt, inputMeta["data_0"].Dimensions.Select(x => (nint)x).ToArray());
+            container.Add(NamedOnnxValue.CreateFromDotnetTensor<int>("data_0", tensor));
+            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(container));
+            var msg = ex.ToString();
+            Assert.Contains("Tensor element data type discovered", msg);
+            session.Dispose();
+        }
+
+        [Fact]
+        private void ThrowWrongOutputNameDotnetTensors()
+        {
+            var tuple = OpenSessionSqueezeNet();
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var inputTensor = tuple.Item3;
+            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
+            var outputTensor = DotnetTensors.Tensor.Create([ 1, 2 ], [2]);
+            var bad_names = new string[] { "bad_output_name" };
+            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(inputs, bad_names));
+            Assert.Contains("Output name: 'bad_output_name' is not in the metadata", ex.Message);
+            session.Dispose();
+        }
+
+        [Fact]
+        private void ThrowWrongOutputTypeDotnetTensors()
+        {
+            var tuple = OpenSessionSqueezeNet();
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var inputTensor = tuple.Item3;
+            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
+            var outputTensor = DotnetTensors.Tensor.Create( [ 1, 1000, 1, 1 ], [4]);
+            var outputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromDotnetTensor("softmaxout_1", outputTensor) };
+            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(inputs, outputs));
+            // TODO: check exception message
+            // InferenceSession::ValidateOutputs() does not check type so far. Currently this will finally trigger an error in Softmax.
+            session.Dispose();
+        }
+
+        [Fact]
+        private void ThrowWrongOutputDimensionDotnetTensors()
+        {
+            var tuple = OpenSessionSqueezeNet();
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var inputTensor = tuple.Item3;
+            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
+            var outputTensor = new DenseTensor<float>((ReadOnlySpan<int>)new[] { 1, 1001, 1, 1 });
+            var outputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("softmaxout_1", outputTensor) };
+            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(inputs, outputs));
+            // TODO: check exception message
+            // InferenceSession::ValidateOutputs() does not check dims so far. Currently this will finally trigger an error in Softmax.
+            session.Dispose();
+        }
+
+        [Fact]
+        private void ThrowNoOutputDotnetTensors()
+        {
+            var tuple = OpenSessionSqueezeNet();
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var inputTensor = tuple.Item3;
+            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
+            var outputTensor = new DenseTensor<float>((ReadOnlySpan<int>)new[] { 1, 1000, 1, 1 });
+            var outputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor("softmaxout_1", outputTensor) };
+            var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(inputs, new NamedOnnxValue[0]));
+            Assert.Contains("[ErrorCode:InvalidArgument] At least one output should be requested.", ex.Message);
+            session.Dispose();
+        }
+
+        [Fact]
+        private void ThrowInconsistentPinnedOutputsDotnetTensors()
+        {
+            var tuple = OpenSessionSqueezeNet();
+            var session = tuple.Item1;
+            var inputData = tuple.Item2;
+            var inputTensor = tuple.Item3;
+            var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor<float>("data_0", inputTensor) };
+            var outputTensor = new DenseTensor<float>((ReadOnlySpan<int>)new[] { 1, 1000, 1, 1 });
+
+            using (var outputs = new DisposableListTest<FixedBufferOnnxValue>())
+            {
+                var ex = Assert.Throws<ArgumentException>(() => session.Run(inputs, new string[] { "softmaxout_1" }, outputs));
+                Assert.StartsWith("Length of outputNames (1) must match that of outputValues (0).", ex.Message);
             }
         }
 #pragma warning restore SYSLIB5001 // System.Numerics.Tensors is only in preview so we can continue receiving API feedback
@@ -1593,6 +1724,25 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 UnloadLibrary(libraryHandle);
             }
         }
+
+#if NET8_0_OR_GREATER
+#pragma warning disable SYSLIB5001 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
+        private void ValidateRunResultData(DotnetTensors.Tensor<float> resultTensor, float[] expectedOutput, int[] expectedDimensions)
+        {
+            Assert.Equal(expectedDimensions.Length, resultTensor.Rank);
+
+            var resultDimensions = resultTensor.Lengths;
+            for (int i = 0; i < expectedDimensions.Length; i++)
+            {
+                Assert.Equal(expectedDimensions[i], resultDimensions[i]);
+            }
+
+            var resultArray = resultTensor.ToArray();
+            Assert.Equal(expectedOutput.Length, resultArray.Length);
+            Assert.Equal(expectedOutput, resultArray, new FloatComparer());
+        }
+#pragma warning restore SYSLIB5001 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
+#endif
 
         static string GetTestModelsDir()
         {
