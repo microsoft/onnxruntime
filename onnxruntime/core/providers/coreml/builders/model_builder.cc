@@ -405,9 +405,11 @@ std::string GetModelOutputPath(const CoreMLOptions& coreml_options,
     // onnxruntime/core/providers/coreml/coreml_execution_provider.cc::gen_metadef_name
     // int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
     // MakeString(user_provide_key, "_", COREML, "_", model_hash, "_", metadef_id);
-    std::string_view cache_key = std::string_view(subgraph_name).substr(0, subgraph_name.find_first_of("_"));
+    std::string_view cache_key = std::string_view(subgraph_name)
+                                     .substr(0, subgraph_name.find_first_of("_"));
     // subgraph_short_name is metadef_id
-    std::string_view subgraph_short_name = std::string_view(subgraph_name).substr(subgraph_name.find_last_of("_"));
+    std::string_view subgraph_short_name = std::string_view(subgraph_name)
+                                               .substr(subgraph_name.find_last_of("_") + 1);
     path = MakeString(std::string(coreml_options.ModelCacheDirectory()), "/", cache_key);
     ORT_THROW_IF_ERROR(Env::Default().CreateFolder(path));
     // Write the model path to a file in the cache directory.
