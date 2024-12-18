@@ -406,6 +406,8 @@ std::string GetModelOutputPath(const CoreMLOptions& coreml_options,
     // int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
     // MakeString(user_provide_key, "_", COREML, "_", model_hash, "_", metadef_id);
     std::string_view cache_key = std::string_view(subgraph_name).substr(0, subgraph_name.find_first_of("_"));
+    // subgraph_short_name is metadef_id
+    std::string_view subgraph_short_name = std::string_view(subgraph_name).substr(subgraph_name.find_last_of("_"));
     path = MakeString(std::string(coreml_options.ModelCacheDirectory()), "/", cache_key);
     ORT_THROW_IF_ERROR(Env::Default().CreateFolder(path));
     // Write the model path to a file in the cache directory.
@@ -421,21 +423,21 @@ std::string GetModelOutputPath(const CoreMLOptions& coreml_options,
       file.close();
     }
 
-    path = MakeString(path, "/", subgraph_name);
+    path = MakeString(path, "/", subgraph_short_name);
     // Set the model cache path with setting of RequireStaticShape and ModelFormat
     if (coreml_options.RequireStaticShape()) {
-      path += "/static_shape";
+      path += "_static";
     } else {
-      path += "/dynamic_shape";
+      path += "_dynamic";
     }
 
     if (coreml_options.CreateMLProgram()) {
-      path += ".mlpackage";
+      path += "_mlprogram";
     } else {
-      path += ".mlnnmodel";
+      path += "_nn";
     }
     ORT_THROW_IF_ERROR(Env::Default().CreateFolder(path));
-    path += "/mlmodel";
+    path += "/model";
   }
   return path;
 }
