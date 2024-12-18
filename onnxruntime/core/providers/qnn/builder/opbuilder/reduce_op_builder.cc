@@ -135,7 +135,7 @@ Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const Nod
       }
 
       // Get axes initializer bytes.
-      const auto& axes_tensor = qnn_model_wrapper.GetInitializerTensors().at(axes_input_name);
+      const auto& axes_tensor = qnn_model_wrapper.GetInitializerTensor(axes_input_name);
       std::vector<uint8_t> axes_bytes;
 
       ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*axes_tensor, axes_bytes));
