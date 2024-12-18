@@ -141,9 +141,16 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
     }
     std::cout << "val after handling negative: " << val << std::endl;
 
+    std::cout << "steps raw i: " << steps_raw[i] << std::endl;
     if (steps_raw[i] < 0) {
+      std::cout << "steps raw < 0" << std::endl;
+      std::cout << "axes raw i: " << axes_raw[i] << std::endl;
+      std::cout << "input shape axes raw i: " << input_shape[axes_raw[i]] << std::endl;
       val = std::max(static_cast<int64_t>(0), std::min(val, static_cast<int64_t>(input_shape[axes_raw[i]] - 1)));
     } else {
+      std::cout << "steps raw >= 0" << std::endl;
+      std::cout << "axes raw i: " << axes_raw[i] << std::endl;
+      std::cout << "input shape axes raw i: " << input_shape[axes_raw[i]] << std::endl;
       val = std::max(static_cast<int64_t>(0), std::min(val, static_cast<int64_t>(input_shape[axes_raw[i]])));
     }
     std::cout << "val after clamping: " << val << std::endl;
