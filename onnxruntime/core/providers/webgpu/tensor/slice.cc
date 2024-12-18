@@ -129,6 +129,29 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
   }
   auto steps_raw = steps_tensor == nullptr ? gsl::make_span(steps_default) : steps_tensor->DataAsSpan<int64_t>();
 
+  std::cout << "ORIGINAL INPUTS" << std::endl;
+  std::cout << "input shape: " << input_shape << std::endl;
+  std::cout << "starts: ";
+  for (auto start : starts_raw) {
+    std::cout << start << " ";
+  }
+  std::cout << std::endl;
+  std::cout << "ends: ";
+  for (auto end : ends_raw) {
+    std::cout << end << " ";
+  }
+  std::cout << std::endl;
+  std::cout << "axes: ";
+  for (auto axis : axes_raw) {
+    std::cout << axis << " ";
+  }
+  std::cout << std::endl;
+  std::cout << "steps: ";
+  for (auto step : steps_raw) {
+    std::cout << step << " ";
+  }
+  std::cout << std::endl;
+
   // PROCESS INPUTS
   std::cout << "processing inputs" << std::endl;
   std::cout << "process starts" << std::endl;
@@ -242,6 +265,28 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
   for (unsigned int i = 0; i < steps_tmp.size(); i++) {
     steps.push_back(static_cast<uint32_t>(steps_tmp[i]));
   }
+
+  std::cout << "PROCESSED INPUTS" << std::endl;
+  std::cout << "starts: ";
+  for (auto start : starts) {
+    std::cout << start << " ";
+  }
+  std::cout << std::endl;
+  std::cout << "ends: ";
+  for (auto end : ends) {
+    std::cout << end << " ";
+  }
+  std::cout << std::endl;
+  std::cout << "axes: ";
+  for (auto axis : axes) {
+    std::cout << axis << " ";
+  }
+  std::cout << std::endl;
+  std::cout << "steps: ";
+  for (auto step : steps) {
+    std::cout << step << " ";
+  }
+  std::cout << std::endl;
 
   std::cout << "calculate output dims" << std::endl;
 
