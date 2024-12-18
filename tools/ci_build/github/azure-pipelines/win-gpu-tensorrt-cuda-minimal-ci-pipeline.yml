@@ -1,0 +1,86 @@
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+#### end trigger ####
+parameters:
+- name: CudaVersion
+  displayName: CUDA version
+  type: string
+  default: '12.2'
+  values:
+    - 11.8
+    - 12.2
+
+variables:
+  - template: templates/common-variables.yml
+  - name: win_trt_folder
+    ${{ if eq(parameters.CudaVersion, '11.8') }}:
+      value: ${{ variables.win_trt_folder_cuda11 }}
+    ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      value: ${{ variables.win_trt_folder_cuda12 }}
+
+jobs:
+- job: 'build'
+  pool: 'onnxruntime-Win2022-GPU-A10'
+  variables:
+    MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
+    EnvSetupScript: setup_env_trt.bat
+    skipComponentGovernanceDetection: true
+    TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
+  timeoutInMinutes: 150
+  workspace:
+    clean: all
+  steps:
+  - template: templates/jobs/win-ci-prebuild-steps.yml
+    parameters:
+      EnvSetupScript: $(EnvSetupScript)
+      DownloadCUDA: true
+      DownloadTRT: true
+      BuildArch: 'x64'
+      BuildConfig: RelWithDebInfo
+      MachinePool: 'onnxruntime-Win2022-GPU-A10'
+      WithCache: true
+      Today: $(Today)
+
+  - template: templates/jobs/win-ci-build-steps.yml
+    parameters:
+      WithCache: True
+      Today: $(TODAY)
+      AdditionalKey: "gpu_tensorrt_cuda_minimal | RelWithDebInfo"
+      BuildPyArguments: '--config RelWithDebInfo --parallel --use_binskim_compliant_compile_flags --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "Visual Studio 17 2022" --build_wheel --enable_onnx_tests --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}" --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86 --enable_cuda_minimal_build'
+      MsbuildArguments: $(MsbuildArguments)
+      BuildArch: 'x64'
+      Platform: 'x64'
+      BuildConfig: RelWithDebInfo
+
+  - task: PythonScript@0
+    displayName: 'Build wheel'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\setup.py'
+      arguments: 'bdist_wheel'
+      workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
