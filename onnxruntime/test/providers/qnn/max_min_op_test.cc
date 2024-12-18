@@ -39,14 +39,8 @@ template <typename QType = uint8_t>
 static void RunQDQMinOrMaxOpTest(const std::string& op_type,
                                  const std::vector<TestInputDef<float>>& input_defs,
                                  ExpectedEPNodeAssignment expected_ep_assignment,
-                                 int opset = 13,
-                                 AllocatorPtr io_allocator = nullptr,
-                                 const ProviderOptions& extra_provider_options = {}) {
+                                 int opset = 13) {
   ProviderOptions provider_options;
-
-  if (!extra_provider_options.empty()) {
-    provider_options.insert(extra_provider_options.begin(), extra_provider_options.end());
-  }
 
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -54,15 +48,11 @@ static void RunQDQMinOrMaxOpTest(const std::string& op_type,
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, input_defs, {}, {}, kOnnxDomain,
-                                              io_allocator),  // baseline float32 model
-                       BuildQDQOpTestCase<QType>(op_type, input_defs, {}, {}, kOnnxDomain, /* use_contrib_qdq*/ false,
-                                                 io_allocator),  // QDQ model
+  TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, input_defs, {}, {}, kOnnxDomain),     // baseline float32 model
+                       BuildQDQOpTestCase<QType>(op_type, input_defs, {}, {}, kOnnxDomain),  // QDQ model
                        provider_options,
                        opset,
-                       expected_ep_assignment,
-                       {},
-                       logging::Severity::kVERBOSE);
+                       expected_ep_assignment);
 }
 
 //
@@ -136,25 +126,6 @@ TEST_F(QnnHTPBackendTests, Max_2Inputs) {
                                 {TestInputDef<float>({1, 3, 4, 4}, false, input_data),
                                  TestInputDef<float>({1, 3, 4, 4}, false, input_data)},
                                 ExpectedEPNodeAssignment::All, 13);
-}
-
-// Test accuracy of 8-bit Q/DQ Min with 2 inputs on HTP backend.
-TEST_F(QnnHTPBackendTests, Min_2Inputs_HtpSharedMemoryAllocator) {
-  ProviderOptions qnn_ep_options{
-      {"enable_htp_shared_memory_allocator", "1"},
-      {"backend_path", "libQnnHtp.so"},
-  };
-
-  AllocatorPtr htp_shared_memory_allocator =
-      QnnExecutionProviderWithOptions(qnn_ep_options)->CreatePreferredAllocators()[0];
-
-  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 48);
-  RunQDQMinOrMaxOpTest<uint8_t>("Min",
-                                {TestInputDef<float>({1, 3, 4, 4}, false, input_data),
-                                 TestInputDef<float>({1, 3, 4, 4}, false, input_data)},
-                                ExpectedEPNodeAssignment::All, 13,
-                                htp_shared_memory_allocator,
-                                qnn_ep_options);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
