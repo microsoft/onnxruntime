@@ -43,6 +43,7 @@ ONNX_OPERATOR_KERNEL_EX(
     Slice);
 
 Status SliceProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  std::cout << "generate shader code" << std::endl;
   const ShaderVariableHelper& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
@@ -73,14 +74,18 @@ Status SliceProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   shader.MainFunctionBody() << output.SetByOffset("global_idx", input.GetByIndices("input_indices"));
 
+  std::cout << "shader code generated" << std::endl;
   return Status::OK();
 }
 
 Status Slice::ComputeInternal(ComputeContext& context) const {
   // READ INPUTS
+  std::cout << "read input" << std::endl;
   const Tensor* input_tensor = context.Input(0);
   const TensorShape& input_shape = input_tensor->Shape();
   int64_t input_rank = static_cast<int64_t>(input_shape.NumDimensions());
+
+  std::cout << "read starts/ends from either attr or input" << std::endl;
 
   auto starts_raw = hasStartsAttr ? gsl::make_span(attr_starts_) : context.Input(1)->DataAsSpan<int64_t>();
   auto ends_raw = hasEndsAttr ? gsl::make_span(attr_ends_) : context.Input(2)->DataAsSpan<int64_t>();
@@ -92,6 +97,8 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
   const Tensor* axes_tensor = nullptr;
   const Tensor* steps_tensor = nullptr;
 
+  std::cout << "read axes and steps from input" << std::endl;
+
   if (input_count >= 4) {
     // axes provided as input
     axes_tensor = context.Input(3);
@@ -101,6 +108,8 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
     // steps provided as input
     steps_tensor = context.Input(4);
   }
+
+  std::cout << "inject defaults if axes or steps not provided" << std::endl;
 
   std::vector<int64_t> axes_default;
   if (axes_tensor == nullptr) {
@@ -121,6 +130,8 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
   auto steps_raw = steps_tensor == nullptr ? gsl::make_span(steps_default) : steps_tensor->DataAsSpan<int64_t>();
 
   // PROCESS INPUTS
+  std::cout << "processing inputs" << std::endl;
+  std::cout << "process starts" << std::endl;
   std::vector<uint32_t> starts;
   for (unsigned int i = 0; i < starts_raw.size(); i++) {
     int64_t val = starts_raw[i];
@@ -134,6 +145,8 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
     }
     starts.push_back(static_cast<uint32_t>(val));
   }
+
+  std::cout << "process ends" << std::endl;
 
   std::vector<uint32_t> ends;
   for (unsigned int i = 0; i < ends_raw.size(); i++) {
@@ -149,10 +162,14 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
     ends.push_back(static_cast<uint32_t>(val));
   }
 
+  std::cout << "process axes" << std::endl;
+
   std::vector<uint32_t> axes;
   for (unsigned int i = 0; i < axes_raw.size(); i++) {
     axes.push_back(static_cast<int32_t>(axes_raw[i]));
   }
+
+  std::cout << "process steps with INT_MAX" << std::endl;
 
   // temporary steps vector to handle negative steps
   std::vector<int32_t> steps_tmp;
@@ -163,6 +180,8 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
       steps_tmp.push_back(static_cast<int32_t>(steps_raw[i]));
     }
   }
+
+  std::cout << "insert missing dimensions" << std::endl;
 
   if (static_cast<int64_t>(axes.size()) != input_rank) {
     for (uint32_t i = 0; i < input_rank; i++) {
@@ -182,11 +201,15 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
     }
   }
 
+  std::cout << "retain the sign of the steps" << std::endl;
+
   // retain the sign of the steps
   std::vector<int32_t> signs;
   for (unsigned int i = 0; i < steps_tmp.size(); i++) {
     signs.push_back(steps_tmp[i] < 0 ? -1 : (steps_tmp[i] > 0 ? 1 : 0));
   }
+
+  std::cout << "convert negative steps to positive steps and reverse starts and ends" << std::endl;
 
   // Convert negative steps to positive steps and reverse starts and ends
   for (unsigned int i = 0; i < steps_tmp.size(); i++) {
@@ -201,11 +224,15 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
     }
   }
 
+  std::cout << "final steps vector" << std::endl;
+
   // final steps vector of type unsigned int
   std::vector<uint32_t> steps;
   for (unsigned int i = 0; i < steps_tmp.size(); i++) {
     steps.push_back(static_cast<uint32_t>(steps_tmp[i]));
   }
+
+  std::cout << "calculate output dims" << std::endl;
 
   // calculate output dims
   std::vector<int64_t> output_dims;
@@ -224,8 +251,11 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
   uint32_t output_size = static_cast<uint32_t>(output_shape.Size());
 
   if (output_size == 0) {
+    std::cout << "output size is 0" << std::endl;
     return Status::OK();
   }
+
+  std::cout << "run program" << std::endl;
 
   SliceProgram program{};
   program
