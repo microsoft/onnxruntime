@@ -206,11 +206,11 @@ Status HtpSharedMemoryAllocator::AddAllocationCleanUp(void* allocation_address,
 Status HtpSharedMemoryAllocator::GetAllocationSharedMemoryInfoForThisAllocator(void* allocation_address,
                                                                                SharedMemoryInfo& allocation_info) {
   std::scoped_lock g{allocations_mutex_};
-  const auto allocation_infos_it = allocations_.find(allocation_address);
-  ORT_RETURN_IF(allocation_infos_it == allocations_.end(),
+  const auto allocation_it = allocations_.find(allocation_address);
+  ORT_RETURN_IF(allocation_it == allocations_.end(),
                 "Failed to get allocation info for address (", allocation_address, ").");
 
-  allocation_info = allocation_infos_it->second.shared_memory_info;
+  allocation_info = allocation_it->second.shared_memory_info;
   return Status::OK();
 }
 
@@ -219,11 +219,11 @@ Status HtpSharedMemoryAllocator::AddAllocationCleanUpForThisAllocator(void* allo
   ORT_RETURN_IF(allocation_clean_up == nullptr, "allocation_clean_up should not be empty.");
 
   std::scoped_lock g{allocations_mutex_};
-  const auto allocation_infos_it = allocations_.find(allocation_address);
-  ORT_RETURN_IF(allocation_infos_it == allocations_.end(),
+  const auto allocation_it = allocations_.find(allocation_address);
+  ORT_RETURN_IF(allocation_it == allocations_.end(),
                 "Failed to get allocation info for address (", allocation_address, ").");
 
-  auto& clean_up_fns = allocation_infos_it->second.clean_up_fns;
+  auto& clean_up_fns = allocation_it->second.clean_up_fns;
   clean_up_fns.emplace_back(std::move(allocation_clean_up));
   return Status::OK();
 }
