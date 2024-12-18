@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "gtest/gtest.h"
 
 #include "test/providers/provider_test_utils.h"
@@ -348,6 +349,45 @@ TEST(MathOpTest, MatMul_bfloat16) {
   execution_providers.emplace_back(DefaultDnnlExecutionProvider());
 #endif
   test.ConfigEps(std::move(execution_providers))
+      .RunWithConfig();
+}
+#endif
+
+#if defined(USE_CUDA)
+TEST(MathOpTest, MatMul_float8E4M3FN) {
+  int min_cuda_architecture = 900;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support Float8E4M3FN";
+    return;
+  }
+  OpTester test("MatMul", 13);
+
+  // TODO add a unit test that has more than 256 elements, so that multiple blocks are used
+  // test.AddInput<MLFloat16>("A", {2, 4}, FloatsToMLFloat16s({1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f}));
+  // test.AddInput<MLFloat16>("B", {4, 3}, FloatsToMLFloat16s({1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f, 1.f}));
+  // test.AddOutput<MLFloat16>("Y", {2, 3}, FloatsToMLFloat16s({10.0f, 10.0f, 10.0f, -10.0f, -10.0f, -10.0f}));
+
+  // test.AddInput<MLFloat16>("A", {2, 2}, FloatsToMLFloat16s({1.0f, 1.0f, 1.0f, 1.0f}));
+  // test.AddInput<MLFloat16>("B", {2, 2}, FloatsToMLFloat16s({1.0f, 1.0f, 1.0f, 1.0f}));
+  // test.AddOutput<MLFloat16>("Y", {2, 2}, FloatsToMLFloat16s({2.0f, 2.0f, 2.0f, 2.0f}));
+
+  test.AddInput<MLFloat16>("A", {16, 32}, FloatsToMLFloat16s(std::vector<float>(16 * 32, 1.0f)));
+  test.AddInput<MLFloat16>("B", {32, 16}, FloatsToMLFloat16s(std::vector<float>(32 * 16, 1.0f)));
+  test.AddOutput<MLFloat16>("Y", {16, 16}, FloatsToMLFloat16s(std::vector<float>(16 * 16, 16.0f)));
+
+  // test.AddInput<MLFloat16>("B", {4, 3}, FloatsToMLFloat16s({10.f, 11.f, 12.f, 13.f, 14.f, 15.f, 16.f, 17.f, 18.f, 19.f, 20.f, 21.f}));
+  // test.AddInput<MLFloat16>("B", {4, 3}, FloatsToMLFloat16s({17.f, 19.f, 21.f, 13.f, 14.f, 15.f, 16.f, 17.f, 18.f, 19.f, 20.f, 21.f}));
+  // test.AddOutput<MLFloat16>("Y", {2, 3}, FloatsToMLFloat16s({160.0f, 170.0f, 180.0f, -160.0f, -170.0f, -180.0f}));
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+  execution_providers.emplace_back(DefaultCudaExecutionProvider());
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsGemmCudaFloat8E4M3FN, "1"));
+
+  test.ConfigEps(std::move(execution_providers))
+      .Config(std::move(so))
+      .Config(run_with_tunable_op)
       .RunWithConfig();
 }
 #endif

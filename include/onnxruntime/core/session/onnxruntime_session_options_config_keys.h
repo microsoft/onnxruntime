@@ -278,6 +278,12 @@ static const char* const kOrtSessionOptionShareEpContexts = "ep.share_ep_context
 // - "1": Gemm FastMath mode is enabled.
 static const char* const kOrtSessionOptionsMlasGemmFastMathArm64Bfloat16 = "mlas.enable_gemm_fastmath_arm64_bfloat16";
 
+// Gemm fp8 mode provides fp16 gemm acceleration with float8E4M3FN based matmul.
+// Option values:
+// - "0": Gemm fp8 mode is not enabled. [DEFAULT]
+// - "1": Gemm fp8 mode is enabled.
+static const char* const kOrtSessionOptionsGemmCudaFloat8E4M3FN = "enable_gemm_cuda_float8E4M3FN";
+
 // When converting DQ + MatMul -> MatMulNBits, the accuracy level of the MatMulNBits is controlled by this option.
 // Refer to MatMulNBits op schema for more details.
 // If not provided, default is 4.
