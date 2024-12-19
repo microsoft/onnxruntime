@@ -119,7 +119,7 @@ class PrepackedWeightsForGraph {
   // the container.
   std::optional<PrePackedWeights> ReplaceWithReferenceIfSaving(const std::string& weight_name,
                                                                const std::string& key,
-                                                               const PrePackedWeights& refer_if_absent);
+                                                               const PrePackedWeights& refer_to_if_absent);
 
   bool IsSaveModeOn() const noexcept {
     return save_mode_on_;

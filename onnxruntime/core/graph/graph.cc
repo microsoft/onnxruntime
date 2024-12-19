@@ -4097,7 +4097,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
   return result;
 }
 
-Status Graph::ToGraphProtoWithExternalInitiallizersImpl(
+Status Graph::AddExternalInitializersToGraphProtoImpl(
     const std::filesystem::path& model_path,
     const std::filesystem::path& external_file_path,
     const std::filesystem::path& model_external_file_path,
@@ -4134,7 +4134,7 @@ Status Graph::ToGraphProtoWithExternalInitiallizersImpl(
                           "Subgraph ", name, " is referred to in GetAttributeNameToSubgraphMap, but not found in node ",
                           node.Name(), " while attempting to recurse into it.");
         auto& result_subgraph = *sub_hit->mutable_g();
-        ORT_RETURN_IF_ERROR(subgraph->ToGraphProtoWithExternalInitiallizersImpl(
+        ORT_RETURN_IF_ERROR(subgraph->AddExternalInitializersToGraphProtoImpl(
             model_path, external_file_path,
             model_external_file_path, model_saving_options,
             result_subgraph,
@@ -4261,10 +4261,10 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(
   ORT_ENFORCE(external_stream.is_open(), "Failed to open for writing:", modified_external_file_path);
   int64_t external_offset = 0;
 
-  ORT_THROW_IF_ERROR(ToGraphProtoWithExternalInitiallizersImpl(model_path, external_file_path,
-                                                               modified_external_file_path, model_saving_options,
-                                                               result,
-                                                               external_stream, external_offset));
+  ORT_THROW_IF_ERROR(AddExternalInitializersToGraphProtoImpl(model_path, external_file_path,
+                                                             modified_external_file_path, model_saving_options,
+                                                             result,
+                                                             external_stream, external_offset));
 
   if (!external_stream.flush()) {
     ORT_THROW("Failed to flush file with external initializers: ", modified_external_file_path);

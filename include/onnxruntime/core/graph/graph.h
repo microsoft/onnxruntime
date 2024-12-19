@@ -1519,7 +1519,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /// <param name="external_stream">external file stream</param>
   /// <param name="external_offset">current external file offset updated with each write</param>
   /// <returns>Status instance</returns>
-  Status ToGraphProtoWithExternalInitiallizersImpl(
+  Status AddExternalInitializersToGraphProtoImpl(
       const std::filesystem::path& model_path,
       const std::filesystem::path& external_file_path,
       const std::filesystem::path& model_external_file_path,

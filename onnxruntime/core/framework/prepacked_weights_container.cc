@@ -87,11 +87,11 @@ const PrePackedWeights* PrepackedWeightsForGraph::GetPrepackedWeights(const std:
 std::optional<PrePackedWeights> PrepackedWeightsForGraph::ReplaceWithReferenceIfSaving(
     const std::string& weight_name,
     const std::string& key,
-    const PrePackedWeights& refer_if_absent) {
+    const PrePackedWeights& refer_to_if_absent) {
   auto it = key_to_blobs_.find(key);
   if (it == key_to_blobs_.end()) {
     if (save_mode_on_) {
-      key_to_blobs_.emplace(key, refer_if_absent.CreateReferringCopy());
+      key_to_blobs_.emplace(key, refer_to_if_absent.CreateReferringCopy());
       weight_prepacks_for_saving_[weight_name].insert(key);
     }
     return std::nullopt;
