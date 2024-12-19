@@ -75,7 +75,7 @@ static const char* const kCoremlProviderOption_AllowLowPrecisionAccumulationOnGP
 static const char* const kCoremlProviderOption_ModelCacheDirectory = "ModelCacheDirectory";
 
 // User provided cache-key in metadata_props.
-static const char* const kCOREML_CACHE_KEY = "CACHE_KEY";
+static const char* const kCOREML_CACHE_KEY = "COREML_CACHE_KEY";
 
 #ifdef __cplusplus
 extern "C" {
