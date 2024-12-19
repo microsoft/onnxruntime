@@ -21,9 +21,8 @@
 #include "QnnLog.h"
 #include "QnnTypes.h"
 #include "System/QnnSystemInterface.h"
-#include "core/common/status.h"
-#include "core/common/logging/logging.h"
-#include "core/common/path_string.h"
+
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 
 namespace onnxruntime {
@@ -121,18 +120,10 @@ class QnnBackendManager {
 
   const Qnn_ProfileHandle_t& GetQnnProfileHandle() { return profile_backend_handle_; }
 
-  void SetLogger(const logging::Logger* logger) {
-    if (logger_ == nullptr) {
-      logger_ = logger;
-      (void)InitializeQnnLog();
-    }
-  }
-
-  Status InitializeQnnLog();
-
-  Status UpdateQnnLogLevel(logging::Severity ort_log_level);
-
-  Status ResetQnnLogLevel();
+  // Resets the QNN log level to the given ORT log level or to the default log level if the argument is
+  // std::nullopt.
+  // IMPORTANT: This function locks the internal `logging_mutex_`.
+  Status ResetQnnLogLevel(std::optional<logging::Severity> ort_log_level = std::nullopt);
 
   // Terminate logging in the backend
   Status TerminateQnnLog() {
@@ -171,6 +162,10 @@ class QnnBackendManager {
                                    uint64_t& max_spill_fill_buffer_size);
 
  private:
+  // Sets the ORT logger and creates a corresponding QNN logger with the same log level.
+  // IMPORTANT: caller must lock the `logger_mutex_` before calling this function.
+  Status InitializeQnnLog(const logging::Logger& logger);
+
   void* LoadLib(const char* file_name, int flags, std::string& error_msg);
 
   Status LoadQnnSystemLib();
