@@ -278,6 +278,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Softplus", "softplus"},
     {"Softsign", "softsign"},
     {"Sin", "sin"},
+    {"SkipSimplifiedLayerNormalization", "layerNormalization"},
     {"Slice", "slice"},
     {"Softmax", "softmax"},
     {"Split", "split"},
