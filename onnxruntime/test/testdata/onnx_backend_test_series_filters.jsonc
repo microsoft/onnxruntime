@@ -323,7 +323,46 @@
         "^test_dequantizelinear_int4",
         "^test_dequantizelinear_uint4",
         "^test_quantizelinear_int4",
-        "^test_quantizelinear_uint4"
+        "^test_quantizelinear_uint4",
+        // onnx 1.17.0 op tests: skip until implemented in ORT
+        "^test_acos*",
+        "^test_acosh*",
+        "^test_asin*",
+        "^test_asinh*",
+        "^test_atan*",
+        "^test_atanh*",
+        "^test_basic_conv_with_padding*",
+        "^test_basic_conv_without_padding*",
+        "^test_conv*",
+        "^test_convtranspose*",
+        "^test_cos*",
+        "^test_cosh*",
+        "^test_det*",
+        "^test_dropout*",
+        "^test_elu*",
+        "^test_eyelike*",
+        "^test_globalaveragepool*",
+        "^test_globalmaxpool*",
+        "^test_gridsample*",
+        "^test_gru*",
+        "^test_hardsigmoid*",
+        "^test_hardswish*",
+        "^test_instancenorm*",
+        "^test_lppool*",
+        "^test_lstm*",
+        "^test_maxpool*",
+        "^test_maxunpool*",
+        "^test_mish*",
+        "^test_rnn*",
+        "^test_round*",
+        "^test_selu*",
+        "^test_simple_rnn*",
+        "^test_sin*",
+        "^test_sinh*",
+        "^test_softplus*",
+        "^test_softsign*",
+        "^test_tan*",
+        "^test_thresholdedrelu*"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
@@ -752,7 +791,8 @@
         "^test_reduce_prod_empty_set_cpu",
         //Bug: DML EP does not execute operators with an empty input tensor
         //TODO: Resolve as a graph implementation that returns a constant inf tensor with appropriate strides
-        "^test_reduce_min_empty_set_cpu"
+        "^test_reduce_min_empty_set_cpu",
+        "^test_resize_upsample_sizes_nearest_not_smaller_cpu"
     ],
     // ORT first supported opset 7, so models with nodes that require versions prior to opset 7 are not supported
     "tests_with_pre_opset7_dependencies": [
