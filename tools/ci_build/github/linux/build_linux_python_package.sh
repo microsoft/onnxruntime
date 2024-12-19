@@ -94,7 +94,7 @@ fi
 
 if [ "$BUILD_DEVICE" == "NPU" ]; then
     #Enable QNN EP
-    BUILD_ARGS+=("--use_qnn" "--qnn_home=/qnn_sdk")
+    BUILD_ARGS+=("--build_shared_lib" "--use_qnn" "--qnn_home=/qnn_sdk")
 fi
 
 export ONNX_ML=1

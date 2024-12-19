@@ -631,12 +631,11 @@ set(ONNXRUNTIME_TEST_LIBS
     onnxruntime_session
     ${ONNXRUNTIME_INTEROP_TEST_LIBS}
     ${onnxruntime_libs}
-    # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime
+    # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, OpenVINO, and QNN are dynamically loaded at runtime
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_VSINPU}
     ${PROVIDERS_JS}
     ${PROVIDERS_WEBGPU}
-    ${PROVIDERS_QNN}
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
@@ -707,8 +706,7 @@ endif()
 if(onnxruntime_USE_QNN AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
   list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/qnn/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_qnn)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_qnn)
-  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_qnn)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_qnn onnxruntime_providers_shared)
 endif()
 
 if(onnxruntime_USE_SNPE)
@@ -1286,7 +1284,8 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
     file(GLOB onnxruntime_qnn_ctx_gen_src CONFIGURE_DEPENDS
       ${onnxruntime_qnn_ctx_gen_src_patterns}
-      )
+    )
+
     onnxruntime_add_executable(onnxruntime_qnn_ctx_gen ${onnxruntime_qnn_ctx_gen_src})
     target_include_directories(onnxruntime_qnn_ctx_gen PRIVATE   ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
           ${eigen_INCLUDE_DIRS} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}

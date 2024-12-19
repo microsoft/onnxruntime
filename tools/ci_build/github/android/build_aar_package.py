@@ -129,7 +129,10 @@ def _build_aar(args):
         # to jnilibs/[abi] for later compiling the aar package
         abi_jnilibs_dir = os.path.join(jnilibs_dir, abi)
         os.makedirs(abi_jnilibs_dir, exist_ok=True)
-        for lib_name in ["libonnxruntime.so", "libonnxruntime4j_jni.so"]:
+        sym_link_libs = ["libonnxruntime.so", "libonnxruntime4j_jni.so"]
+        if qnn_android_build:
+            sym_link_libs.extend(["libonnxruntime_providers_shared.so", "libonnxruntime_providers_qnn.so"])
+        for lib_name in sym_link_libs:
             target_lib_name = os.path.join(abi_jnilibs_dir, lib_name)
             # If the symbolic already exists, delete it first
             # For some reason, os.path.exists will return false for a symbolic link in Linux,
@@ -141,7 +144,10 @@ def _build_aar(args):
         # copy executables for each abi, in case we want to publish those as well
         # some of them might not exist, e.g., if we skip building the tests
         abi_exe_dir = os.path.join(exe_dir, abi)
-        for exe_name in ["libonnxruntime.so", "onnxruntime_perf_test", "onnx_test_runner"]:
+        execs_to_copy = ["libonnxruntime.so", "onnxruntime_perf_test", "onnx_test_runner"]
+        if qnn_android_build:
+            execs_to_copy.extend(["libonnxruntime_providers_shared.so", "libonnxruntime_providers_qnn.so"])
+        for exe_name in execs_to_copy:
             src_exe_path = os.path.join(abi_build_dir, build_config, exe_name)
             if not os.path.exists(src_exe_path):
                 continue

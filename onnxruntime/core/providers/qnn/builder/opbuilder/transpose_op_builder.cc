@@ -4,10 +4,10 @@
 #include <string>
 #include <vector>
 
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
-#include "core/common/safeint.h"
 
 #include "base_op_builder.h"
 
@@ -45,7 +45,7 @@ Status TransposeOpBuilder::ProcessPermAttribute(QnnModelWrapper& qnn_model_wrapp
     transpose_perm[i] = rank - 1 - i;
   }
 
-  NodeAttrHelper node_helper(node_unit);
+  utils::NodeAttrHelper node_helper(node_unit);
   transpose_perm = node_helper.Get("perm", transpose_perm);
   auto perm_size = static_cast<uint32_t>(transpose_perm.size());
   std::vector<uint32_t> perm_shape{perm_size};

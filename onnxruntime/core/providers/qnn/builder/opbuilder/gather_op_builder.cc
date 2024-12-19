@@ -2,14 +2,10 @@
 // Licensed under the MIT License.
 
 #include <cassert>
-#include "core/providers/common.h"
-#include "core/providers/shared/utils/utils.h"
+#include "base_op_builder.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
-#include "core/common/safeint.h"
-
-#include "base_op_builder.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -100,7 +96,7 @@ static Status GetInpu0AxisDimValue(const QnnModelWrapper& qnn_model_wrapper,
                     "Cannot get shape for ", node_unit.OpType(), " input[0] ", input0.node_arg.Name());
 
   int64_t rank = static_cast<int64_t>(input0_shape.size());
-  NodeAttrHelper node_helper(node_unit);
+  utils::NodeAttrHelper node_helper(node_unit);
   int64_t onnx_axis = node_helper.Get("axis", default_axis_value);
   if (onnx_axis < 0) {
     onnx_axis += rank;
