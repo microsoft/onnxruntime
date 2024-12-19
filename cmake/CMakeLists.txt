@@ -890,7 +890,7 @@ if (onnxruntime_USE_QNN)
 
     if (MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
       file(GLOB QNN_LIB_FILES LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/libQnn*.so"
-	                                     "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/Qnn*.dll"
+                                         "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/Qnn*.dll"
                                              "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/libHtpPrepare.so"
                                              "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/HtpPrepare.dll")
       if (${QNN_ARCH_ABI} STREQUAL "aarch64-windows-msvc" OR ${QNN_ARCH_ABI} STREQUAL "arm64x-windows-msvc")
@@ -1054,7 +1054,10 @@ function(onnxruntime_set_compile_flags target_name)
       foreach(CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
         target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX,C>:/external:I${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY}>")
       endforeach()
-
+      if(VCPKG_INSTALLED_DIR)
+        cmake_path(NATIVE_PATH VCPKG_INSTALLED_DIR NORMALIZE VCPKG_INSTALLED_DIR_native)
+        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX,C>:SHELL:/external:I ${VCPKG_INSTALLED_DIR}>")
+      endif()
       foreach(onnxruntime_external_lib IN LISTS onnxruntime_EXTERNAL_LIBRARIES)
         #TODO: the list contains cmake keywords like "debug". We should exclude them.
         if(TARGET ${onnxruntime_external_lib})
@@ -1084,7 +1087,9 @@ function(onnxruntime_set_compile_flags target_name)
       # We do not treat warnings from 3rd-party libraries as errors. In order to do that, we need to add their header files locations to /external:I.
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX,C>:/experimental:external>" "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /experimental:external>")
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX,C>:/external:W0>" "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /external:W0>")
-      target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX,C>:/external:templates->" "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /external:templates->")
+      #if(NOT onnxruntime_USE_VCPKG)
+      #  target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX,C>:/external:templates->" "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /external:templates->")
+      #endif()
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX,C>:/external:I${CMAKE_CURRENT_SOURCE_DIR}>" "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /external:I${CMAKE_CURRENT_SOURCE_DIR}>")
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX,C>:/external:I${CMAKE_CURRENT_BINARY_DIR}>" "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /external:I${CMAKE_CURRENT_BINARY_DIR}>")
       if (onnxruntime_ENABLE_STATIC_ANALYSIS)
