@@ -26,28 +26,53 @@ class WebGpuContext;
 class ComputeContext;
 class ProgramBase;
 
+struct WebGpuContextConfig {
+  int context_id;
+  WGPUInstance instance;
+  WGPUAdapter adapter;
+  WGPUDevice device;
+  const void* dawn_proc_table;
+  ValidationMode validation_mode;
+};
+
+struct WebGpuBufferCacheConfig {
+  struct ConfigEntry {
+    BufferCacheMode mode;
+    std::string config_string;
+  };
+  ConfigEntry storage;
+  ConfigEntry uniform;
+  ConfigEntry query_resolve;
+  ConfigEntry default_entry;
+};
+
 class WebGpuContextFactory {
  public:
-  static WebGpuContext& CreateContext(int context_id,
-                                      WGPUInstance instance,
-                                      WGPUAdapter adapter,
-                                      WGPUDevice device,
-                                      ValidationMode validation_mode);
+  struct WebGpuContextInfo {
+    std::unique_ptr<WebGpuContext> context;
+    int ref_count;
+  };
+
+  static WebGpuContext& CreateContext(const WebGpuContextConfig& config);
   static WebGpuContext& GetContext(int context_id);
+
+  static void ReleaseContext(int context_id);
 
   static void Cleanup();
 
  private:
   WebGpuContextFactory() {}
 
-  static std::unordered_map<int32_t, std::unique_ptr<WebGpuContext>> contexts_;
+  static std::unordered_map<int32_t, WebGpuContextInfo> contexts_;
   static std::mutex mutex_;
+  static std::once_flag init_default_flag_;
+  static wgpu::Instance default_instance_;
 };
 
 // Class WebGpuContext includes all necessary resources for the context.
 class WebGpuContext final {
  public:
-  void Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info, const void* dawn_proc_table);
+  void Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type);
 
   Status Wait(wgpu::Future f);
 
