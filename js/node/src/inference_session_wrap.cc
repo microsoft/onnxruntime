@@ -4,7 +4,6 @@
 #include "onnxruntime_cxx_api.h"
 
 #include "common.h"
-#include "directml_load_helper.h"
 #include "inference_session_wrap.h"
 #include "run_options_helper.h"
 #include "session_options_helper.h"
@@ -19,9 +18,6 @@ Napi::FunctionReference& InferenceSessionWrap::GetTensorConstructor() {
 }
 
 Napi::Object InferenceSessionWrap::Init(Napi::Env env, Napi::Object exports) {
-#if defined(USE_DML) && defined(_WIN32)
-  LoadDirectMLDll(env);
-#endif
   // create ONNX runtime env
   Ort::InitApi();
   ORT_NAPI_THROW_ERROR_IF(

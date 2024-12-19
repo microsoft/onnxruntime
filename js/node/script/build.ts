@@ -39,6 +39,8 @@ const USE_TENSORRT = !!buildArgs.use_tensorrt;
 const USE_COREML = !!buildArgs.use_coreml;
 // --use_qnn
 const USE_QNN = !!buildArgs.use_qnn;
+// --dll_deps=
+const DLL_DEPS = buildArgs.dll_deps;
 
 // build path
 const ROOT_FOLDER = path.join(__dirname, '..');
@@ -81,6 +83,9 @@ if (USE_COREML) {
 }
 if (USE_QNN) {
   args.push('--CDUSE_QNN=ON');
+}
+if (DLL_DEPS) {
+  args.push(`--CDORT_NODEJS_DLL_DEPS=${DLL_DEPS}`);
 }
 
 // set CMAKE_OSX_ARCHITECTURES for macOS build
