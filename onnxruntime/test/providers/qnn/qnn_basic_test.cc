@@ -1100,6 +1100,11 @@ TEST_F(QnnHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
 }
 
 TEST_F(QnnHTPBackendTests, UseHtpSharedMemoryAllocatorForInputs) {
+#if !defined(__ANDROID__) && !defined(_WIN32)
+  // TODO there's probably a better way to check that we are on a Qualcomm device
+  GTEST_SKIP() << "Test should be run on Qualcomm device.";
+#endif
+
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
