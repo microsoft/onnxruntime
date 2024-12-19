@@ -423,7 +423,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
         if (IsEnabled == EVENT_CONTROL_CODE_ENABLE_PROVIDER) {
           if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)) != 0) {
             auto ortETWSeverity = etwRegistrationManager.MapLevelToSeverity();
-            (void)qnn_backend_manager_->UpdateQnnLogLevel(ortETWSeverity);
+            (void)qnn_backend_manager_->ResetQnnLogLevel(ortETWSeverity);
           }
           if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0) {
             if (Level != 0) {
@@ -439,7 +439,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 
         if (IsEnabled == EVENT_CONTROL_CODE_DISABLE_PROVIDER) {
           // (void)qnn_backend_manager_->SetProfilingLevelETW(qnn::ProfilingLevel::INVALID);
-          (void)qnn_backend_manager_->ResetQnnLogLevel();
+          (void)qnn_backend_manager_->ResetQnnLogLevel(std::nullopt);
         }
       });
   etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_provider_);
