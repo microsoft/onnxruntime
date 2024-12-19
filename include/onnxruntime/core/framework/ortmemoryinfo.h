@@ -6,6 +6,7 @@
 #include <string_view>
 
 #include "core/common/hash_combine.h"
+#include "core/framework/ortdevice.h"
 
 struct OrtMemoryInfo {
   OrtMemoryInfo() = default;  // to allow default construction of Tensor

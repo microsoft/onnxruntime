@@ -51,7 +51,7 @@ class IOBinding {
 
   /**
    * If the BindInput calls are async this function acts as a barrier to ensure all inputs are fully copied
-   * before you call the Run() method. There is no point calling Run() if you're inputs are not ready at the
+   * before you call the Run() method. There is no point calling Run() if your inputs are not ready at the
    * desired location.
    * This is a blocking call and is a wrapper over IExecutionProvider::Sync().
    * Call InferenceSession::Run() only after calling this method or else you'll end up wasting cycles inside Run().

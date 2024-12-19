@@ -8,7 +8,11 @@
 #include <type_traits>
 #include <vector>
 
+#include <gsl/gsl>
+
+#include "QnnInterface.h"
 #include "QnnTypes.h"
+
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/node_unit.h"
 #include "core/util/qmath.h"
@@ -21,6 +25,9 @@ namespace utils {
 size_t GetElementSizeByType(const Qnn_DataType_t& data_type);
 
 size_t GetElementSizeByType(ONNXTensorElementDataType elem_type);
+
+// Gets tensor data size in bytes.
+size_t GetQnnTensorDataSize(gsl::span<const uint32_t> shape, Qnn_DataType_t element_data_type);
 
 // TODO: make these work with Wrappers?
 std::ostream& operator<<(std::ostream& out, const Qnn_Param_t& qnn_param);
@@ -103,6 +110,14 @@ Status Quantize(const double double_value,
                 const int32_t zero_point,
                 const Qnn_DataType_t qnn_data_type,
                 int& quant_value);
+
+// Gets error message associated with QNN error handle value.
+const char* GetQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
+                               Qnn_ErrorHandle_t qnn_error_handle);
+
+// Gets verbose error message associated with QNN error handle value.
+std::string GetVerboseQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
+                                      Qnn_ErrorHandle_t qnn_error_handle);
 
 }  // namespace utils
 }  // namespace qnn
