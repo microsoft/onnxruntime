@@ -391,7 +391,8 @@ void CreateEmptyFile(const std::string& filename) {
 #endif  // defined(COREML_ENABLE_MLPROGRAM)
 
 std::string GetModelOutputPath(const CoreMLOptions& coreml_options,
-                               const GraphViewer& graph_viewer) {
+                               const GraphViewer& graph_viewer,
+                               const logging::Logger& logger) {
   const std::string& subgraph_name = graph_viewer.Name();
   std::string path;
   if (coreml_options.ModelCacheDirectory().empty()) {
@@ -411,7 +412,11 @@ std::string GetModelOutputPath(const CoreMLOptions& coreml_options,
     std::string_view subgraph_short_name = std::string_view(subgraph_name)
                                                .substr(subgraph_name.find_last_of("_") + 1);
     path = MakeString(std::string(coreml_options.ModelCacheDirectory()), "/", cache_key);
-    ORT_THROW_IF_ERROR(Env::Default().CreateFolder(path));
+    if (!Env::Default().CreateFolder(path).IsOK()) {
+      LOGS(logger, WARNING) << "Failed to create cache directory " << path << ". Model caching is disabled.";
+      coreml_options.DisableModelCache();
+      return GetModelOutputPath(coreml_options, graph_viewer, logger);
+    }
     // Write the model path to a file in the cache directory.
     // This is for developers to know what the cached model is as we used a hash for the directory name.
     if (!Env::Default().FileExists(ToPathString(path + "/model.txt"))) {
@@ -438,7 +443,11 @@ std::string GetModelOutputPath(const CoreMLOptions& coreml_options,
     } else {
       path += "_nn";
     }
-    ORT_THROW_IF_ERROR(Env::Default().CreateFolder(path));
+    if (!Env::Default().CreateFolder(path).IsOK()) {
+      LOGS(logger, WARNING) << "Failed to create cache directory " << path << ". Model caching is disabled.";
+      coreml_options.DisableModelCache();
+      return GetModelOutputPath(coreml_options, graph_viewer, logger);
+    }
     path += "/model";
   }
   return path;
@@ -454,7 +463,7 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
       coreml_version_(coreml_version),
       coreml_options_(coreml_options),
       create_ml_program_(coreml_options.CreateMLProgram()),
-      model_output_path_(GetModelOutputPath(coreml_options, graph_viewer)),
+      model_output_path_(GetModelOutputPath(coreml_options_, graph_viewer, logger)),  // coreml_options_ must be set before this
       onnx_input_names_(std::move(onnx_input_names)),
       onnx_output_names_(std::move(onnx_output_names)),
       coreml_model_(std::make_unique<CoreML::Specification::Model>()) {

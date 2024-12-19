@@ -68,7 +68,8 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
           if (user_provided_key.size() > 64 ||
               std::any_of(user_provided_key.begin(), user_provided_key.end(),
                           [](unsigned char c) { return !std::isalnum(c); })) {
-            user_provided_key = std::to_string(std::hash<std::string>{}(user_provided_key));
+            LOGS(logger, ERROR) << "[" << kCOREML_CACHE_KEY << ":" << user_provided_key << "] is not a valid cache key."
+                                << " It should be alphanumeric and less than 64 characters.";
           }
           // invalid cache-key
           if (user_provided_key.size() == 0) {

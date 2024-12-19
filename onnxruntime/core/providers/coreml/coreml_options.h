@@ -18,7 +18,8 @@ class CoreMLOptions {
   bool profile_compute_plan_{false};
   bool allow_low_precision_accumulation_on_gpu_{false};
   // path to store the converted coreml model
-  std::string model_cache_directory_;
+  // we may run DisableModelCache() to disable model caching
+  mutable std::string model_cache_directory_;
 
  public:
   explicit CoreMLOptions(uint32_t coreml_flags);
@@ -35,6 +36,8 @@ class CoreMLOptions {
   bool ProfileComputePlan() const { return profile_compute_plan_ && create_mlprogram_; }
 
   std::string_view ModelCacheDirectory() const { return model_cache_directory_; }
+  // mark const as model_cache_directory_ is mutable and we may update it in const functions.
+  void DisableModelCache() const { model_cache_directory_.clear(); }
 
  private:
   void ValidateAndParseProviderOption(const ProviderOptions& options);
