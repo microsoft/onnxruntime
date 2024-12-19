@@ -246,7 +246,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 #endif
 
   Status AddQnnContext(Qnn_ContextHandle_t context);
-  Status ReleaseQnnContextMemHandles();
 
  private:
   const std::string backend_path_;

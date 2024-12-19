@@ -37,17 +37,17 @@ class HtpSharedMemoryAllocator : public IAllocator {
     uint64_t total_size;
   };
 
-  // Get an allocation's shared memory info.
+  // Gets an allocation's shared memory info.
   // `allocation_address` identifies the allocation. It must be an address returned by Alloc() which has not yet been
-  //   freed.
+  // freed.
   static Status GetAllocationSharedMemoryInfo(void* allocation_address,
                                               SharedMemoryInfo& allocation_info);
 
   using AllocationCleanUpFn = std::function<void(void* allocation_address)>;
 
-  // Add allocation clean up callback to call when the allocation is freed.
+  // Adds allocation clean up callback to call when the allocation is freed.
   // `allocation_address` identifies the allocation. It must be an address returned by Alloc() which has not yet been
-  //   freed.
+  // freed.
   // `allocation_clean_up` is the clean up callback. The associated allocator takes ownership of the callback.
   static Status AddAllocationCleanUp(void* allocation_address, AllocationCleanUpFn&& allocation_clean_up);
 
