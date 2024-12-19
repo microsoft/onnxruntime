@@ -35,7 +35,7 @@
     if(CMAKE_SYSTEM_NAME STREQUAL "Android")
       string(CONCAT ONNXRUNTIME_PROVIDERS_QNN_LINK_FLAGS
 	     "${ONNXRUNTIME_PROVIDERS_QNN_LINK_FLAGS} "
-	     "-Xlinker -undefined=Provider_GetHost")
+	     "-Xlinker --allow-shlib-undefined") # Allow undefined global symbols (e.g., Provider_GetHost) in shared library
     endif()
     set_property(TARGET onnxruntime_providers_qnn APPEND_STRING PROPERTY LINK_FLAGS "${ONNXRUNTIME_PROVIDERS_QNN_LINK_FLAGS}")
   elseif(WIN32)
