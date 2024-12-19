@@ -22,69 +22,41 @@ class FusionMultiHeadAttentionMMDit(Fusion):
     def __init__(self, model: OnnxModel):
         super().__init__(model, fused_op_type="MultiHeadAttention", search_op_types=["Softmax"])
 
-    def get_num_heads(self, node: NodeProto, output_name_to_node) -> int:
+
+    def get_num_heads(self, v_node: NodeProto, output_name_to_node, input_index=0) -> int:
         """
-        Detect num_heads and hidden_size from Concat node in the following subgraph:
-                              MatMul      .. [-1] [24] ..
-                                 |         |  |  /   /
-                              Add<1536>  Concat
-                                 |      /
-                                 Reshape
-                                  |
-                               Transpose(perm=0,2,1,3)
-                                  |
-                       SimplifiedLayerNorm -- scale<64>
-                                  |
-                               (node)
+        Detect num_heads and hidden_size from Concat node in the value subgraph for Flux:
 
-        The num_heads can be read directly from the third input of Concat node.
-
-        Here we deduce num_heads=hidden_size/head_size from the following two nodes:
-        The hidden_size can be read from the bias input of Add node
-        The head_size can be read from the scale input of SimplifiedLayerNormalization node
+                        |           |
+                    MatMul        MatMul    .. [-1] [24] ..
+                        |           |        |  |  /   /
+                       Add        Add        Concat(axis=0)
+                        |           |       /
+                      Reshape       Reshape
+                        |           |
+    Transpose(perm=0,1,3,2)       Transpose(perm=0,1,3,2)
+                        |          |
+                       Concat (axis=2)
         """
-        k_proj_nodes = self.model.match_parent_path(
-            node,
-            ["SimplifiedLayerNormalization", "Transpose", "Reshape", "Add"],
-            [0, 0, 0, 0],
-            output_name_to_node=output_name_to_node,
-        )
+        nodes = self.model.match_parent_path(v_node, ["Transpose", "Reshape", "Concat"], [input_index, 0, 1],
+                                             output_name_to_node=output_name_to_node)
+        if nodes is None:
+            return 0
 
-        num_heads = 0
-        if k_proj_nodes:
-            simplified_layernorm, _transpose, _reshape, add = k_proj_nodes
-            _i, bias = self.model.get_constant_input(add)
+        concat_shape = nodes[-1]
+        if len(concat_shape.input) != 4:
+            return 0
 
-            hidden_size = 0
-            if isinstance(bias, np.ndarray) and len(bias.shape) == 1:
-                hidden_size = bias.shape[0]
+        value = self.model.get_constant_value(concat_shape.input[2])
+        if value is None:
+            return 0
 
-            weight = self.model.get_constant_value(simplified_layernorm.input[1])
-            if isinstance(weight, np.ndarray) and len(weight.shape) == 1:
-                head_size = weight.shape[0]
-                if (hidden_size % head_size) == 0:
-                    num_heads = hidden_size // head_size
+        if len(value.shape) != 1:
+            return 0
 
-        return num_heads
+        return int(value[0])
 
-    def reshape_to_3d(self, input_name: str, output_name: str) -> str:
-        # Add a shape to convert 4D BxSxNxH to 3D BxSxD, which is required by MHA operator.
-        new_dims_name = "bsnh_to_bsd_reshape_dims"
-        new_dims = self.model.get_initializer(new_dims_name)
-        if new_dims is None:
-            new_dims = numpy_helper.from_array(np.array([0, 0, -1], dtype="int64"), name=new_dims_name)
-            self.model.add_initializer(new_dims, self.this_graph_name)
-        reshape_q = helper.make_node(
-            "Reshape",
-            inputs=[input_name, new_dims_name],
-            outputs=[output_name],
-            name=self.model.create_node_name("Reshape"),
-        )
-        self.nodes_to_add.append(reshape_q)
-        self.node_name_to_graph_name[reshape_q.name] = self.this_graph_name
-        return reshape_q.output[0]
-
-    def get_num_heads_with_concat(self, transpose_k: NodeProto, output_name_to_node) -> int:
+    def get_num_heads_from_k(self, transpose_k: NodeProto, output_name_to_node, has_concat:bool) -> int:
         """
         Detect num_heads and hidden_size from Concat node in the following subgraph:
 
@@ -103,9 +75,33 @@ class FusionMultiHeadAttentionMMDit(Fusion):
                          |
                     Transpose(perm=0,1,3,2)
         """
-        nodes = self.model.match_parent_path(transpose_k, ["Concat"], [0], output_name_to_node=output_name_to_node)
+        if has_concat:
+            nodes = self.model.match_parent_path(transpose_k, ["Concat", "SimplifiedLayerNormalization"], [0, 1], output_name_to_node=output_name_to_node)
+            if nodes:
+                return self.get_num_heads(nodes[1], output_name_to_node)
 
-        return self.get_num_heads(nodes[0], output_name_to_node) if nodes else 0
+        nodes = self.model.match_parent_path(transpose_k, ["SimplifiedLayerNormalization"], [0], output_name_to_node=output_name_to_node)
+        if nodes:
+            return self.get_num_heads(nodes[0], output_name_to_node)
+
+        return 0
+
+    def reshape_to_3d(self, input_name: str, output_name: str) -> str:
+        # Add a shape to convert 4D BxSxNxH to 3D BxSxD, which is required by MHA operator.
+        new_dims_name = "bsnh_to_bsd_reshape_dims"
+        new_dims = self.model.get_initializer(new_dims_name)
+        if new_dims is None:
+            new_dims = numpy_helper.from_array(np.array([0, 0, -1], dtype="int64"), name=new_dims_name)
+            self.model.add_initializer(new_dims, self.this_graph_name)
+        reshape_q = helper.make_node(
+            "Reshape",
+            inputs=[input_name, new_dims_name],
+            outputs=[output_name],
+            name=self.model.create_node_name("Reshape"),
+        )
+        self.nodes_to_add.append(reshape_q)
+        self.node_name_to_graph_name[reshape_q.name] = self.this_graph_name
+        return reshape_q.output[0]
 
     def adjust_query_from_bnsh_to_bsd_no_concat(self, mul_q: NodeProto, output_name_to_node) -> Optional[str]:
         """
@@ -211,6 +207,9 @@ class FusionMultiHeadAttentionMMDit(Fusion):
         if not FusionUtils.check_node_attribute(transpose_b, "perm", [0, 2, 1, 3]):
             return None
 
+        if not FusionUtils.check_node_attribute(concat, "axis", 2):
+            return None
+
         # Update the graph
         sln_a.input[0] = transpose_a.input[0]
         sln_b.input[0] = transpose_b.input[0]
@@ -226,6 +225,19 @@ class FusionMultiHeadAttentionMMDit(Fusion):
         self.node_name_to_graph_name[new_concat_node.name] = self.this_graph_name
 
         return self.reshape_to_3d(new_concat_node.output[0], concat.output[0] + "_BSD")
+
+    def transpose_reshape_bnsh_to_bsd(self, q: str, output_name_to_node) -> Optional[str]:
+        transpose_q = helper.make_node(
+                "Transpose",
+                [q],
+                [q + "_BSNH"],
+                name=self.model.create_node_name("Transpose", name_prefix="Transpose_BNSH_to_BSNH"),
+                perm=[0, 2, 1, 3],
+            )
+        self.nodes_to_add.append(transpose_q)
+        self.node_name_to_graph_name[transpose_q.name] = self.this_graph_name
+
+        return self.reshape_to_3d(q + "_BSNH", q + "_BSD")
 
     def create_multihead_attention_node(
         self,
@@ -299,7 +311,8 @@ class FusionMultiHeadAttentionMMDit(Fusion):
 
         matmul_qk, mul_q, sqrt_q_2, div_q, sqrt_q, _, _, shape_q = q_nodes
 
-        if mul_q.input[0] != shape_q.input[0]:
+        q_bnsh = mul_q.input[0]
+        if q_bnsh != shape_q.input[0]:
             return
 
         k_nodes = self.model.match_parent_path(matmul_qk, ["Mul", "Transpose"], [1, 0])
@@ -320,15 +333,15 @@ class FusionMultiHeadAttentionMMDit(Fusion):
         v = matmul_s_v.input[1]
 
         # Here we sanity check the v path to make sure it is in the expected BNSH format.
-        concat = self.model.match_parent(matmul_s_v, "Concat", input_index=1, output_name_to_node=output_name_to_node)
-        if concat is not None:
+        concat_v = self.model.match_parent(matmul_s_v, "Concat", input_index=1, output_name_to_node=output_name_to_node)
+        if concat_v is not None:
             # Match v path like:
             #   -- Transpose (perm=[0,2,1,3]) ----+
             #                                     |
             #                                     v
             #   -- Transpose (perm=[0,2,1,3]) -> Concat -> (v)
             transpose_1 = self.model.match_parent(
-                concat, "Transpose", input_index=0, output_name_to_node=output_name_to_node
+                concat_v, "Transpose", input_index=0, output_name_to_node=output_name_to_node
             )
             if transpose_1 is None:
                 return
@@ -336,7 +349,7 @@ class FusionMultiHeadAttentionMMDit(Fusion):
                 return
 
             transpose_2 = self.model.match_parent(
-                concat, "Transpose", input_index=1, output_name_to_node=output_name_to_node
+                concat_v, "Transpose", input_index=1, output_name_to_node=output_name_to_node
             )
             if transpose_2 is None:
                 return
@@ -353,21 +366,24 @@ class FusionMultiHeadAttentionMMDit(Fusion):
             if not FusionUtils.check_node_attribute(transpose_1, "perm", [0, 2, 1, 3]):
                 return
 
-        if concat is not None:
-            num_heads = self.get_num_heads_with_concat(transpose_k, output_name_to_node)
-        else:
-            num_heads = self.get_num_heads(transpose_k, output_name_to_node)
-        if num_heads <= 0:
-            return
+        # Match patterns for Flux.
+        num_heads = self.get_num_heads(concat_v, output_name_to_node) if concat_v else \
+                    self.get_num_heads(matmul_s_v, output_name_to_node, input_index=1)
+
+        if num_heads == 0:
+            # Match patterns for Stable Diffusion 3.5.
+            num_heads = self.get_num_heads_from_k(transpose_k, output_name_to_node, concat_v is not None)
+            if num_heads <= 0:
+                return
 
         # Q is in BNSH format, we need to adjust it to BSD format due to limitation of MHA op.
-        if concat is not None:
+        if concat_v is not None:
             query = self.adjust_query_from_bnsh_to_bsd(mul_q, output_name_to_node)
         else:
             query = self.adjust_query_from_bnsh_to_bsd_no_concat(mul_q, output_name_to_node)
 
         if query is None:
-            return
+            query = self.transpose_reshape_bnsh_to_bsd(q_bnsh, output_name_to_node)
 
         new_node = self.create_multihead_attention_node(
             q=query,

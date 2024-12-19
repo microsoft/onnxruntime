@@ -361,18 +361,29 @@ def run_optimum_ort_pipeline(
     use_num_images_per_prompt=False,
 ):
     print("Pipeline type", type(pipe))
+    from optimum.onnxruntime.modeling_diffusion import ORTFluxPipeline
+    is_flux = isinstance(pipe, ORTFluxPipeline)
+
     prompts, negative_prompt = example_prompts()
+
+    def get_negative_prompt_kwargs(negative, use_num_images_per_prompt, is_flux):
+        negative_prompt_kwargs = {"negative_prompt": negative} if use_num_images_per_prompt else {"negative_prompt": [negative] * batch_size}
+        # Flux does not support negative prompt
+        if is_flux:
+            negative_prompt_kwargs = {}
+        return negative_prompt_kwargs
 
     def warmup():
         prompt, negative = warmup_prompts()
+        extra_kwargs = get_negative_prompt_kwargs(negative, use_num_images_per_prompt, is_flux)
         if use_num_images_per_prompt:
             pipe(
                 prompt=prompt,
                 height=height,
                 width=width,
                 num_inference_steps=steps,
-                negative_prompt=negative,
                 num_images_per_prompt=batch_count,
+                **extra_kwargs
             )
         else:
             pipe(
@@ -380,7 +391,7 @@ def run_optimum_ort_pipeline(
                 height=height,
                 width=width,
                 num_inference_steps=steps,
-                negative_prompt=[negative] * batch_size,
+                **extra_kwargs
             )
 
     # Run warm up, and measure GPU memory of two runs.
@@ -389,6 +400,8 @@ def run_optimum_ort_pipeline(
     second_run_memory = measure_gpu_memory(memory_monitor_type, warmup, start_memory)
 
     warmup()
+
+    extra_kwargs = get_negative_prompt_kwargs(negative_prompt, use_num_images_per_prompt, is_flux)
 
     latency_list = []
     for i, prompt in enumerate(prompts):
@@ -401,8 +414,8 @@ def run_optimum_ort_pipeline(
                 height=height,
                 width=width,
                 num_inference_steps=steps,
-                negative_prompt=negative_prompt,
                 num_images_per_prompt=batch_size,
+                **extra_kwargs
             ).images
         else:
             images = pipe(
@@ -410,7 +423,7 @@ def run_optimum_ort_pipeline(
                 height=height,
                 width=width,
                 num_inference_steps=steps,
-                negative_prompt=[negative_prompt] * batch_size,
+                **extra_kwargs
             ).images
         inference_end = time.time()
         latency = inference_end - inference_start

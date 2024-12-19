@@ -52,22 +52,54 @@ def is_sd_3(source_dir: Path):
 
 
 def is_sdxl(source_dir: Path):
-    return (source_dir / "text_encoder_2").exists() and not (source_dir / "text_encoder_3").exists()
+    return (
+        (source_dir / "text_encoder_2").exists()
+        and not (source_dir / "text_encoder_3").exists()
+        and not (source_dir / "transformer").exists()
+    )
 
 
-def _get_model_list(source_dir: Path):
-    is_xl = is_sdxl(source_dir)
-    is_sd3 = is_sd_3(source_dir)
-    model_list_sd3 = ["text_encoder", "text_encoder_2", "text_encoder_3", "transformer", "vae_encoder", "vae_decoder"]
-    model_list_sdxl = ["text_encoder", "text_encoder_2", "unet", "vae_encoder", "vae_decoder"]
-    model_list_sd = ["text_encoder", "unet", "vae_encoder", "vae_decoder"]
-    model_list = model_list_sd3 if is_sd3 else (model_list_sdxl if is_xl else model_list_sd)
-    return model_list
+def is_flux(source_dir: Path):
+    return (
+        (source_dir / "text_encoder_2").exists()
+        and not (source_dir / "text_encoder_3").exists()
+        and (source_dir / "transformer").exists()
+    )
+
+
+def _classify_pipeline_type(source_dir: Path):
+    # May also check _class_name in model_index.json like `StableDiffusion3Pipeline` or `FluxPipeline` etc to classify.
+    if is_sd_3(source_dir):
+        return "sd3"
+
+    if is_flux(source_dir):
+        return "flux"
+
+    if is_sdxl(source_dir):
+        return "sdxl"
+
+    # sd 1.x and 2.x
+    return "sd"
+
+
+def _get_model_list(pipeline_type: str):
+    if pipeline_type == "sd3":
+        return ["text_encoder", "text_encoder_2", "text_encoder_3", "transformer", "vae_encoder", "vae_decoder"]
+
+    if pipeline_type == "flux":
+        return ["text_encoder", "text_encoder_2", "transformer", "vae_encoder", "vae_decoder"]
+
+    if pipeline_type == "sdxl":
+        return ["text_encoder", "text_encoder_2", "unet", "vae_encoder", "vae_decoder"]
+
+    assert pipeline_type == "sd"
+    return ["text_encoder", "unet", "vae_encoder", "vae_decoder"]
 
 
 def _optimize_sd_pipeline(
     source_dir: Path,
     target_dir: Path,
+    pipeline_type: str,
     model_list: List[str],
     use_external_data_format: Optional[bool],
     float16: bool,
@@ -96,9 +128,9 @@ def _optimize_sd_pipeline(
         "vae_encoder": "vae",
         "vae_decoder": "vae",
         "text_encoder": "clip",
-        "text_encoder_2": "clip",
+        "text_encoder_2": "clip" if pipeline_type != "flux" else "bert",
         "safety_checker": "unet",
-        "text_encoder_3": "clip",
+        "text_encoder_3": "clip",  # t5?
     }
 
     model_type_class_mapping = {
@@ -266,13 +298,15 @@ def optimize_stable_diffusion_pipeline(
     target_dir = Path(output_dir)
     target_dir.mkdir(parents=True, exist_ok=True)
 
-    model_list = _get_model_list(source_dir)
+    pipeline_type = _classify_pipeline_type(source_dir)
+    model_list = _get_model_list(pipeline_type)
 
     _copy_extra_directory(source_dir, target_dir, model_list)
 
     _optimize_sd_pipeline(
         source_dir,
         target_dir,
+        pipeline_type,
         model_list,
         use_external_data_format,
         float16,

@@ -284,10 +284,12 @@ For ROCm EP, the `--tuning` is mandatory because we heavily rely on tuning to fi
 The default parameters are stable diffusion version=1.5, height=512, width=512, steps=50, batch_count=5. Run `python benchmark.py --help` for more information.
 
 #### Stable Diffusion 3.x and Flux 1.0
-Example of benchmark with optimum using CUDA provider on stable diffusion 3.5:
+Example of benchmark with optimum using CUDA provider on stable diffusion 3.5 medium and Flux 1.0:
 ```
 python benchmark.py -e optimum --height 1024 --width 1024 --steps 20 -b 1 -v 3.5M -p sd3.5_medium_onnx/fp32
 python benchmark.py -e optimum --height 1024 --width 1024 --steps 20 -b 1 -v 3.5M -p sd3.5_medium_onnx/fp16
+python benchmark.py -e optimum --height 1024 --width 1024 --steps 20 -b 1 -v Flux.1S -p flux1_schnell_onnx/fp16
+python benchmark.py -e optimum --height 1024 --width 1024 --steps 20 -b 1 -v Flux.1D -p flux1_dev_onnx/fp16
 ```
 
 ### Run Benchmark with xFormers
