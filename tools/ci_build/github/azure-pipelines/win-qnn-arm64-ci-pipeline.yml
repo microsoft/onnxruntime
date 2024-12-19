@@ -93,21 +93,21 @@ jobs:
         --test --enable_onnx_tests
     displayName: 'Run unit tests'
 
-  # - script: |
-  #    .\$(BuildConfig)\onnx_test_runner -j 1 -v -e qnn -i "backend_path|$(QnnSDKRootDir)\lib\aarch64-windows-msvc\QnnCpu.dll" $(Build.SourcesDirectory)\cmake\external\onnx\onnx\backend\test\data\node
-  #   workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
-  #   displayName: 'Run ONNX Tests'
+  - script: |
+     .\$(BuildConfig)\onnx_test_runner -j 1 -v -e qnn -i "backend_path|$(QnnSDKRootDir)\lib\aarch64-windows-msvc\QnnCpu.dll" $(Build.SourcesDirectory)\cmake\external\onnx\onnx\backend\test\data\node
+    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
+    displayName: 'Run ONNX Tests'
 
-  # - script: |
-  #    .\$(BuildConfig)\onnx_test_runner -j 1 -v -e qnn -i "backend_path|$(QnnSDKRootDir)\lib\aarch64-windows-msvc\QnnCpu.dll" C:\data\float32_models
-  #   workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
-  #   displayName: 'Run float32 model tests'
+  - script: |
+     .\$(BuildConfig)\onnx_test_runner -j 1 -v -e qnn -i "backend_path|$(QnnSDKRootDir)\lib\aarch64-windows-msvc\QnnCpu.dll" C:\data\float32_models
+    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
+    displayName: 'Run float32 model tests'
 
-  # - script: |
-  #    .\$(BuildConfig)\onnx_test_runner -j 1 -v -e qnn -i "backend_path|$(QnnSDKRootDir)\lib\aarch64-windows-msvc\QnnHtp.dll" C:\data\qdq_models
-  #   workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
-  #   displayName: 'Run QDQ model tests'
-  #   enabled: false
+  - script: |
+     .\$(BuildConfig)\onnx_test_runner -j 1 -v -e qnn -i "backend_path|$(QnnSDKRootDir)\lib\aarch64-windows-msvc\QnnHtp.dll" C:\data\qdq_models
+    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)'
+    displayName: 'Run QDQ model tests'
+    enabled: false
 
   - task: CopyFiles@2
     displayName: 'Create Artifact'
