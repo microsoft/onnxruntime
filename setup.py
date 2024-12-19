@@ -717,7 +717,7 @@ if wheel_name_suffix:
     if not (enable_training and wheel_name_suffix == "gpu"):
         # for training packages, local version is used to indicate device types
         package_name = f"{package_name}-{wheel_name_suffix}"
-    if wheel_name_suffix == "gpu" and cuda_version_major is not None:
+    if (wheel_name_suffix == "gpu" or wheel_name_suffix == "cuda") and cuda_version_major is not None:
         extras_require = {
             # Optional 'cuda_dlls' dependencies
             "cuda_dlls": [
@@ -745,39 +745,40 @@ with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 
 
+def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version):
+    sys.path.append(path.join(path.dirname(__file__), "onnxruntime", "python"))
+    from onnxruntime_collect_build_info import find_cudart_versions
+
+    version_path = path.join("onnxruntime", "capi", "build_and_package_info.py")
+    with open(version_path, "w") as f:
+        f.write(f"package_name = '{package_name}'\n")
+        f.write(f"__version__ = '{version_number}'\n")
+
+        if cuda_version:
+            f.write(f"cuda_version = '{cuda_version}'\n")
+
+            # cudart_versions are integers
+            cudart_versions = find_cudart_versions(build_env=True)
+            if cudart_versions and len(cudart_versions) == 1:
+                f.write(f"cudart_version = {cudart_versions[0]}\n")
+            else:
+                print(
+                    "Error getting cudart version. ",
+                    (
+                        "did not find any cudart library"
+                        if not cudart_versions or len(cudart_versions) == 0
+                        else "found multiple cudart libraries"
+                    ),
+                )
+        elif rocm_version:
+            f.write(f"rocm_version = '{rocm_version}'\n")
+
+
 if enable_training:
-
-    def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version):
-        sys.path.append(path.join(path.dirname(__file__), "onnxruntime", "python"))
-        from onnxruntime_collect_build_info import find_cudart_versions
-
-        version_path = path.join("onnxruntime", "capi", "build_and_package_info.py")
-        with open(version_path, "w") as f:
-            f.write(f"package_name = '{package_name}'\n")
-            f.write(f"__version__ = '{version_number}'\n")
-
-            if cuda_version:
-                f.write(f"cuda_version = '{cuda_version}'\n")
-
-                # cudart_versions are integers
-                cudart_versions = find_cudart_versions(build_env=True)
-                if cudart_versions and len(cudart_versions) == 1:
-                    f.write(f"cudart_version = {cudart_versions[0]}\n")
-                else:
-                    print(
-                        "Error getting cudart version. ",
-                        (
-                            "did not find any cudart library"
-                            if not cudart_versions or len(cudart_versions) == 0
-                            else "found multiple cudart libraries"
-                        ),
-                    )
-            elif rocm_version:
-                f.write(f"rocm_version = '{rocm_version}'\n")
-
     save_build_and_package_info(package_name, version_number, cuda_version, rocm_version)
+else:
+    save_build_and_package_info(package_name, version_number, cuda_version, None)
 
-# Setup
 setup(
     name=package_name,
     version=version_number,

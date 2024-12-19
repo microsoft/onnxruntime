@@ -82,7 +82,7 @@ def check_and_load_cuda_libs(root_directory, cuda_libs_):
     # Convert the target library names to lowercase for case-insensitive comparison
     # Convert the target library names to lowercase for case-insensitive comparison
     if cuda_libs_ is None or len(cuda_libs_) == 0:
-        logging.debug("No CUDA libraries provided for loading.")
+        logging.info("No CUDA libraries provided for loading.")
         return
     cuda_libs_ = {lib.lower() for lib in cuda_libs_}
     found_libs = {}
@@ -100,32 +100,27 @@ def check_and_load_cuda_libs(root_directory, cuda_libs_):
                 _ = ctypes.CDLL(full_path)
                 logging.info(f"Successfully loaded: {full_path}")
             except OSError as e:
-                logging.debug(f"Failed to load {full_path}: {e}")
+                logging.info(f"Failed to load {full_path}: {e}")
 
         # If all required libraries are found, stop the search
         if set(found_libs.keys()) == cuda_libs_:
             logging.info("All required CUDA libraries found and loaded.")
             return
-    logging.debug(
+    logging.info(
         f"Failed to load CUDA libraries from site-packages/nvidia directory: {cuda_libs_ - found_libs.keys()}. They might be loaded later from standard search paths for shared libraries."
     )
     return
 
 
 # Load nvidia libraries from site-packages/nvidia if the package is onnxruntime-gpu
-if (
-    __package__ == "onnxruntime-gpu"
-    # Just in case we rename the package name in the future
-    or __package__ == "onnxruntime-cuda"
-    or __package__ == "onnxruntime_gpu"
-    or __package__ == "onnxruntime_cuda"
-):
+if cuda_version is not None and cuda_version != "":
     import ctypes
     import logging
     import os
     import platform
     import site
 
+    cuda_version_ = tuple(map(int, cuda_version.split(".")))
     # Get the site-packages path where nvidia packages are installed
     site_packages_path = site.getsitepackages()[-1]
     nvidia_path = os.path.join(site_packages_path, "nvidia")
@@ -133,7 +128,7 @@ if (
     cuda_libs = ()
     if platform.system() == "Windows":  #
         # Define the list of DLL patterns, nvrtc, curand and nvJitLink are not included for Windows
-        if (11, 0) <= cuda_version < (12, 0):
+        if (11, 0) <= cuda_version_ < (12, 0):
             cuda_libs = (
                 "cublaslt64_11.dll",
                 "cublas64_11.dll",
@@ -141,7 +136,7 @@ if (
                 "cudart64_11.dll",
                 "cudnn64_8.dll",
             )
-        elif (12, 0) <= cuda_version < (13, 0):
+        elif (12, 0) <= cuda_version_ < (13, 0):
             cuda_libs = (
                 "cublaslt64_12.dll",
                 "cublas64_12.dll",
@@ -150,7 +145,7 @@ if (
                 "cudnn64_9.dll",
             )
     elif platform.system() == "Linux":
-        if (11, 0) <= cuda_version < (12, 0):
+        if (11, 0) <= cuda_version_ < (12, 0):
             # Define the patterns with optional version number and case-insensitivity
             cuda_libs = (
                 "libcublaslt.so.11",
@@ -159,9 +154,10 @@ if (
                 "libcufft.so.10",
                 "libcudart.so.11",
                 "libcudnn.so.8",
-                "libnvrtc.so.11.2",  # This is not a mistake, it links to more specific version like libnvrtc.so.11.8.89 etc.
+                "libnvrtc.so.11.2",
+                # This is not a mistake, it links to more specific version like libnvrtc.so.11.8.89 etc.
             )
-        elif (12, 0) <= cuda_version < (13, 0):
+        elif (12, 0) <= cuda_version_ < (13, 0):
             cuda_libs = (
                 "libcublaslt.so.12",
                 "libcublas.so.12",
@@ -172,5 +168,5 @@ if (
                 "libnvrtc.so.12",
             )
     else:
-        logging.debug(f"Unsupported platform: {platform.system()}")
+        logging.info(f"Unsupported platform: {platform.system()}")
     check_and_load_cuda_libs(nvidia_path, cuda_libs)
