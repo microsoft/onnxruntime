@@ -1120,12 +1120,17 @@ def generate_build_tree(
         vcpkg_toolchain_path = os.path.join(vcpkg_installation_root, 'scripts','buildsystems','vcpkg.cmake')
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", vcpkg_toolchain_path);
         if args.use_binskim_compliant_compile_flags:
-          overlay_triplets_dir = os.path.join(source_dir, 'cmake','custom-triplets');
-          vcpkg_install_options.append("--overlay-triplets=%s" % overlay_triplets_dir)
+            overlay_triplets_dir = os.path.join(source_dir, 'cmake','vcpkg_triplets', 'binskim');
+            vcpkg_install_options.append("--overlay-triplets=%s" % overlay_triplets_dir)
+        elif args.enable_address_sanitizer:
+            overlay_triplets_dir = os.path.join(source_dir, 'cmake','vcpkg_triplets', 'asan');
+            vcpkg_install_options.append("--overlay-triplets=%s" % overlay_triplets_dir)
         # VCPKG_INSTALL_OPTIONS is a CMake list. It must be joined by semicolons
         add_default_definition(cmake_extra_defines, "VCPKG_INSTALL_OPTIONS", ';'.join(vcpkg_install_options))
         # Choose the cmake triplet
-        if is_windows() and not args.build_wasm:
+        if args.build_wasm:
+           triplet = 'wasm32-emscripten'
+        elif is_windows():
           target_arch = platform.machine()
           cpu_arch = platform.architecture()[0]
           if target_arch == "AMD64":
@@ -1283,14 +1288,16 @@ def generate_build_tree(
             raise BuildError("android_ndk_path required to build for Android")
         if not args.android_sdk_path:
             raise BuildError("android_sdk_path required to build for Android")
+        android_toolchain_cmake_path = os.path.join(args.android_ndk_path, "build", "cmake", "android.toolchain.cmake")
         cmake_args += [
-            "-DCMAKE_TOOLCHAIN_FILE="
-            + os.path.join(args.android_ndk_path, "build", "cmake", "android.toolchain.cmake"),
             "-DANDROID_PLATFORM=android-" + str(args.android_api),
             "-DANDROID_ABI=" + str(args.android_abi),
             "-DANDROID_MIN_SDK=" + str(args.android_api),
         ]
-
+        if not args.use_vcpkg:
+            cmake_args.append("-DCMAKE_TOOLCHAIN_FILE=" + android_toolchain_cmake_path)
+        else:
+            cmake_args.append("-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=" + android_toolchain_cmake_path)
         if args.android_cpp_shared:
             cmake_args += ["-DANDROID_STL=c++_shared"]
 
@@ -1420,7 +1427,10 @@ def generate_build_tree(
         emscripten_cmake_toolchain_file = os.path.join(
             emsdk_dir, "upstream", "emscripten", "cmake", "Modules", "Platform", "Emscripten.cmake"
         )
-        cmake_args += ["-DCMAKE_TOOLCHAIN_FILE=" + emscripten_cmake_toolchain_file]
+        if args.use_vcpkg:
+            cmake_args.append("-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=" + emscripten_cmake_toolchain_file)
+        else:
+            cmake_args.append("-DCMAKE_TOOLCHAIN_FILE=" + emscripten_cmake_toolchain_file)
         if args.disable_wasm_exception_catching:
             # WebAssembly unittest requires exception catching to work. If this feature is disabled, we do not build
             # unit test.
@@ -1498,15 +1508,16 @@ def generate_build_tree(
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_LOCK_FREE_QUEUE", "ON")
 
     if is_windows():
-        if args.use_cache:
-            add_default_definition(
-                cmake_extra_defines, "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT", "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>"
-            )
-        else:
-            # Always enable debug info even in release build. The debug information is in separated *.pdb files that
-            # can be easily discarded when debug symbols are not needed. We enable it by default because many auditting
-            # tools need to use the symbols.
-            add_default_definition(cmake_extra_defines, "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT", "ProgramDatabase")
+        if not args.ios and not args.android and not args.build_wasm:
+            if args.use_cache:
+                add_default_definition(
+                    cmake_extra_defines, "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT", "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>"
+                )
+            else:
+                # Always enable debug info even in release build. The debug information is in separated *.pdb files that
+                # can be easily discarded when debug symbols are not needed. We enable it by default because many auditting
+                # tools need to use the symbols.
+                add_default_definition(cmake_extra_defines, "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT", "ProgramDatabase")
 
         if number_of_parallel_jobs(args) > 0:
             # https://devblogs.microsoft.com/cppblog/improved-parallelism-in-msbuild/
@@ -2579,7 +2590,10 @@ def main():
     args = parse_arguments()
 
     print(args)
-    if args.ios or args.android or args.build_wasm:
+    if args.build_wasm:
+        # No triplet for wasm64 yet
+        args.use_vcpkg = not enable_wasm_memory64
+    elif args.ios or args.android:
         # Not supported yet
         args.use_vcpkg = False
     if os.getenv("ORT_BUILD_WITH_CACHE") == "1":
