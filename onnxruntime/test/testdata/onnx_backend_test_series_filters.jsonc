@@ -355,7 +355,6 @@
         "^test_mish*",
         "^test_rnn*",
         "^test_round*",
-        "^test_reduce_max_empty_set*",
         "^test_selu*",
         "^test_simple_rnn*",
         "^test_sin*",
