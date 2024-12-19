@@ -184,7 +184,7 @@ void HtpSharedMemoryAllocator::Free(void* allocation_address) {
                              << "): " << e.what();
       }
     }
-  } catch(const std::exception& e) {
+  } catch (const std::exception& e) {
     LOGS(logger_, ERROR) << "Caught exception while freeing address (" << allocation_address << "): " << e.what();
   }
 }
