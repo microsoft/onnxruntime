@@ -29,15 +29,20 @@
 
   # Set linker flags for function(s) exported by EP DLL
   if(UNIX)
-    string(CONCAT ONNXRUNTIME_PROVIDERS_QNN_LINK_FLAGS
-           "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/qnn/version_script.lds "
-           "-Xlinker --gc-sections -Xlinker -rpath=\\$ORIGIN")
     if(CMAKE_SYSTEM_NAME STREQUAL "Android")
-      string(CONCAT ONNXRUNTIME_PROVIDERS_QNN_LINK_FLAGS
-	     "${ONNXRUNTIME_PROVIDERS_QNN_LINK_FLAGS} "
-	     "-Xlinker --allow-shlib-undefined") # Allow undefined global symbols (e.g., Provider_GetHost) in shared library
+      target_link_options(onnxruntime_providers_qnn PRIVATE
+                          "LINKER:--version-script=${ONNXRUNTIME_ROOT}/core/providers/qnn/version_script.lds"
+                          "LINKER:--gc-sections"
+                          "LINKER:-rpath=\$ORIGIN"
+                          "LINKER:-z,undefs"
+      )
+    else()
+      target_link_options(onnxruntime_providers_qnn PRIVATE
+                          "LINKER:--version-script=${ONNXRUNTIME_ROOT}/core/providers/qnn/version_script.lds"
+                          "LINKER:--gc-sections"
+                          "LINKER:-rpath=\$ORIGIN"
+      )
     endif()
-    set_property(TARGET onnxruntime_providers_qnn APPEND_STRING PROPERTY LINK_FLAGS "${ONNXRUNTIME_PROVIDERS_QNN_LINK_FLAGS}")
   elseif(WIN32)
     set_property(TARGET onnxruntime_providers_qnn APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/qnn/symbols.def")
   else()
