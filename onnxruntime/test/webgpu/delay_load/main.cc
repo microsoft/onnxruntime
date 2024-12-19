@@ -35,6 +35,10 @@ int prepare_main();
 int test_main();
 
 int wmain(int argc, wchar_t* argv[]) {
+  for (int i = 0; i < argc; i++) {
+    std::wcout << L"#ARG" << i << L": " << argv[i] << std::endl;
+  }
+
   if (argc == 2 && wcscmp(argv[1], L"--test") == 0) {
     return test_main();
   } else {
@@ -115,6 +119,7 @@ int run() {
 }
 
 int test_main() {
+  _wsystem(L"dir /s /b /a");
   HMODULE hModule = LoadLibraryA("dlls\\onnxruntime.dll");
   if (hModule == NULL) {
     std::cout << "Failed to load dlls\\onnxruntime.dll" << std::endl;
