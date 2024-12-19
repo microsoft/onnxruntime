@@ -13,12 +13,6 @@
 #include "core/providers/qnn/builder/qnn_model.h"
 #include "core/providers/qnn/builder/qnn_configs_helper.h"
 #include "HTP/QnnHtpGraph.h"
-#ifdef _WIN32
-// TODO: Reenable when QNN ep is a dll
-#if 0
-#include "core/platform/windows/logging/etw_sink.h"
-#endif
-#endif
 
 namespace onnxruntime {
 
@@ -149,11 +143,8 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool enable_HTP_FP16_precision_ = true;
   bool share_ep_contexts_ = false;
   bool enable_spill_fill_buffer_ = false;
-#ifdef _WIN32
-  // TODO: Re-enable when QNN is a DLL
-#if 0
+#if defined(_WIN32) && defined(ETW_TRACE_LOGGING_SUPPORTED)
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;
-#endif
 #endif
   qnn::ModelSettings model_settings_ = {};
 

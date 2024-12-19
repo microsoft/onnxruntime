@@ -791,5 +791,5 @@ std::string ToUTF8String(const std::wstring& s) {
 std::wstring ToWideString(const std::string& s) {
   return g_host->ToWideString(s);
 }
-#endif
+#endif  // _WIN32
 }  // namespace onnxruntime

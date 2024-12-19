@@ -6,6 +6,12 @@
 #define BUILD_QNN_EP_STATIC 0
 
 #if BUILD_QNN_EP_STATIC
+#ifdef _WIN32
+#include <winmeta.h>
+#include "core/platform/tracing.h"
+#include "core/platform/windows/logging/etw_sink.h"
+#endif
+
 // Includes when building QNN EP statically
 #include "onnx/defs/data_type_utils.h"
 #include "core/common/common.h"

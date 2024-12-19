@@ -13,14 +13,6 @@
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 
-#ifdef _WIN32
-#include <Windows.h>
-// TODO: Enable once QNN is built as a DLL
-#if 0
-#include "core/platform/windows/logging/etw_sink.h"
-#endif
-#endif  // _WIN32
-
 namespace onnxruntime {
 
 constexpr const char* QNN = "QNN";
@@ -218,8 +210,6 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   // set to invalid to indicate that ETW is no enabled when we setup QNN
   qnn::ProfilingLevel profiling_level_etw = qnn::ProfilingLevel::INVALID;
 
-// TODO: Re-enable ETW after QNN is a DLL
-#if 0
   const Env& env = GetDefaultEnv();
   auto& provider = env.GetTelemetryProvider();
   if (provider.IsEnabled()) {
@@ -231,7 +221,6 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
       }
     }
   }
-#endif
 
   // In case ETW gets disabled later
   auto profiling_level_pos = provider_options_map.find(PROFILING_LEVEL);
@@ -377,9 +366,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
       soc_model,
       enable_htp_weight_sharing);
 
-// TODO: Renable once QNN is a dll
-#if 0
-#ifdef _WIN32
+#if defined(_WIN32) && defined(ETW_TRACE_LOGGING_SUPPORTED)
   auto& etwRegistrationManager = logging::EtwRegistrationManager::Instance();
   // Register callback for ETW capture state (rundown)
   callback_ETWSink_provider_ = onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback(
@@ -400,7 +387,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
         if (IsEnabled == EVENT_CONTROL_CODE_ENABLE_PROVIDER) {
           if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)) != 0) {
             auto ortETWSeverity = etwRegistrationManager.MapLevelToSeverity();
-            (void)qnn_backend_manager_->UpdateQnnLogLevel(ortETWSeverity);
+            (void)qnn_backend_manager_->ResetQnnLogLevel(ortETWSeverity);
           }
           if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0) {
             if (Level != 0) {
@@ -421,7 +408,6 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
       });
   etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_provider_);
 #endif
-#endif
 }
 
 QNNExecutionProvider::~QNNExecutionProvider() {
@@ -434,13 +420,10 @@ QNNExecutionProvider::~QNNExecutionProvider() {
   }
 
   // Unregister the ETW callback
-#ifdef _WIN32
-  // TODO: Re-enable when QNN EP is a DLL
-#if 0
+#if defined(_WIN32) && defined(ETW_TRACE_LOGGING_SUPPORTED)
   if (callback_ETWSink_provider_ != nullptr) {
     logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_provider_);
   }
-#endif
 #endif
 }
 

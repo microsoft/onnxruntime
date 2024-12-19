@@ -37,7 +37,6 @@
 #include "core/framework/model_metadef_id_generator.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
-#include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/common/string_helper.h"
@@ -62,6 +61,10 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #endif
 
+#ifdef _WIN32
+#include "core/platform/windows/logging/etw_sink.h"
+#endif
+
 namespace ONNX_NAMESPACE {
 // We use these names in the provider API because we don't have the protobuf definitions of the RepeatedField* types
 using int64s = google::protobuf::RepeatedField<int64_t>;
@@ -77,6 +80,11 @@ namespace onnxruntime {
 using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 using IndexedSubGraph_SourceOfSchema = IndexedSubGraph::SourceOfSchema;
 using Node_EdgeEnd = Node::EdgeEnd;
+#ifdef ETW_TRACE_LOGGING_SUPPORTED
+namespace logging {
+using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwInternalCallback;
+}
+#endif
 }  // namespace onnxruntime
 
 #include "core/common/cpuid_info.h"
@@ -399,6 +407,26 @@ struct ProviderHostImpl : ProviderHost {
   void logging__Capture__ProcessPrintf(logging::Capture* p, const char* format, va_list args) override {
     p->ProcessPrintf(format, args);
   }
+
+#if defined(ETW_TRACE_LOGGING_SUPPORTED)
+  // logging::EtwRegistrationManager
+  logging::EtwRegistrationManager& logging__EtwRegistrationManager__Instance() override {
+    return logging::EtwRegistrationManager::Instance();
+  }
+  logging::Severity logging__EtwRegistrationManager__MapLevelToSeverity(logging::EtwRegistrationManager* p) override {
+    return p->MapLevelToSeverity();
+  }
+  void logging__EtwRegistrationManager__RegisterInternalCallback(
+      logging::EtwRegistrationManager* p,
+      const logging::EtwRegistrationManager_EtwInternalCallback& callback) override {
+    p->RegisterInternalCallback(callback);
+  }
+  void logging__EtwRegistrationManager__UnregisterInternalCallback(
+      logging::EtwRegistrationManager* p,
+      const logging::EtwRegistrationManager_EtwInternalCallback& callback) override {
+    p->UnregisterInternalCallback(callback);
+  }
+#endif  // defined(ETW_TRACE_LOGGING_SUPPORTED)
 
   // Env
   Env& Env__Default() override { return Env::Default(); }

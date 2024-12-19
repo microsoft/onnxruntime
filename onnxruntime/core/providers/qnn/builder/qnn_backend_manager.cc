@@ -22,11 +22,6 @@
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 #include "core/providers/qnn/builder/qnn_configs_helper.h"
 
-#ifdef _WIN32
-#include <winmeta.h>
-#include "core/platform/tracing.h"
-#endif
-
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1
 
@@ -255,7 +250,9 @@ void QnnLogging(const char* format,
   }
 }
 
-Status QnnBackendManager::InitializeQnnLog() {
+Status QnnBackendManager::InitializeQnnLog(const logging::Logger& logger) {
+  logger_ = &logger;
+
   // Set Qnn log level align with Ort log level
   auto ort_log_level = logger_->GetSeverity();
   QnnLog_Level_t qnn_log_level = MapOrtSeverityToQNNLogLevel(ort_log_level);
@@ -303,23 +300,15 @@ QnnLog_Level_t QnnBackendManager::MapOrtSeverityToQNNLogLevel(logging::Severity 
   }
 }
 
-Status QnnBackendManager::ResetQnnLogLevel() {
+Status QnnBackendManager::ResetQnnLogLevel(std::optional<logging::Severity> ort_log_level) {
   std::lock_guard<std::mutex> lock(logger_mutex_);
-
-  if (backend_setup_completed_ && logger_ != nullptr) {
-    auto ort_log_level = logger_->GetSeverity();
-    LOGS(*logger_, INFO) << "Reset Qnn log level to ORT Logger level: " << (unsigned int)ort_log_level;
-    return UpdateQnnLogLevel(ort_log_level);
+  if (!backend_setup_completed_ || logger_ == nullptr) {
+    return Status::OK();
   }
-  return Status::OK();
-}
-
-Status QnnBackendManager::UpdateQnnLogLevel(logging::Severity ort_log_level) {
   ORT_RETURN_IF(nullptr == log_handle_, "Unable to update QNN Log Level. Invalid QNN log handle.");
-  ORT_RETURN_IF(false == backend_setup_completed_, "Unable to update QNN Log Level. Backend setup not completed.");
-  ORT_RETURN_IF(nullptr == logger_, "Unable to update QNN Log Level. Invalid logger.");
 
-  QnnLog_Level_t qnn_log_level = MapOrtSeverityToQNNLogLevel(ort_log_level);
+  logging::Severity actual_log_level = ort_log_level.has_value() ? *ort_log_level : logger_->GetSeverity();
+  QnnLog_Level_t qnn_log_level = MapOrtSeverityToQNNLogLevel(actual_log_level);
 
   LOGS(*logger_, INFO) << "Updating Qnn log level to: " << qnn_log_level;
 
@@ -332,7 +321,8 @@ Status QnnBackendManager::UpdateQnnLogLevel(logging::Severity ort_log_level) {
       LOGS(*logger_, ERROR) << "Invalid log handle provided to QnnLog_setLogLevel.";
     }
   }
-  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to set log level in Qnn backend. Error: ", QnnErrorHandleToString(result));
+  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result,
+                "Failed to set log level in Qnn backend. Error: ", QnnErrorHandleToString(result));
   return Status::OK();
 }
 
@@ -823,7 +813,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
   LOGS(logger, VERBOSE) << "Backend build version: "
                         << sdk_build_version_;
 
-  SetLogger(&logger);
+  ORT_RETURN_IF_ERROR(InitializeQnnLog(logger));
   LOGS(logger, VERBOSE) << "SetLogger succeed.";
 
   ORT_RETURN_IF_ERROR(InitializeBackend());
@@ -1098,8 +1088,6 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
   }
 
   bool tracelogging_provider_ep_enabled = false;
-  // TODO: Re-enable when QNN EP is a dll
-#if 0
   const Env& env = GetDefaultEnv();
   auto& provider = env.GetTelemetryProvider();
   auto level = provider.Level();
@@ -1109,7 +1097,6 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
       tracelogging_provider_ep_enabled = true;
     }
   }
-#endif
 
   // ETW disabled previously, but enabled now
   if (ProfilingLevel::INVALID == profiling_level_etw_ && tracelogging_provider_ep_enabled) {
@@ -1327,7 +1314,7 @@ void QnnBackendManager::LogQnnProfileEventAsTraceLogging(
     const std::string& timingSource,
     const std::string& eventLevel,
     const char* eventIdentifier) {
-  // TODO: Re-enable when QNN EP is a dll
+  // TODO: Re-enable when add a method to ORT Telemetry provider to log EP profiling data.
 #if 0
   TraceLoggingWrite(
       telemetry_provider_handle,
