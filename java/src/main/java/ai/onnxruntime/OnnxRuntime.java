@@ -155,7 +155,7 @@ final class OnnxRuntime {
     if (loaded) {
       return;
     }
-    tempDirectory = isAndroid() ? null : Files.createTempDirectory("onnxruntime-java");
+    tempDirectory = Files.createTempDirectory("onnxruntime-java");
     try {
       libraryDirPathProperty = System.getProperty(ONNXRUNTIME_NATIVE_PATH);
       // Extract and prepare the shared provider library but don't try to load it,
@@ -181,9 +181,7 @@ final class OnnxRuntime {
       version = initialiseVersion();
       loaded = true;
     } finally {
-      if (tempDirectory != null) {
-        cleanUp(tempDirectory.toFile());
-      }
+      cleanUp(tempDirectory.toFile());
     }
   }
 
