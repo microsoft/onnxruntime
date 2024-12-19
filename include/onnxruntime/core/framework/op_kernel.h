@@ -7,6 +7,7 @@
 
 // It is safe to include the below header even if SHARED_PROVIDER macro is enabled
 // as it doesn't include any pb headers.
+#include "core/framework/buffer_deleter.h"
 #include "core/framework/prepacked_weights_container.h"
 
 #ifndef SHARED_PROVIDER

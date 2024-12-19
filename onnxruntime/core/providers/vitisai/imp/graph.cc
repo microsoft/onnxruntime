@@ -9,6 +9,7 @@
 #include <locale>
 #include <string>
 
+#include "core/graph/model_saving_options.h"
 #include "core/providers/shared_library/provider_api.h"
 #include "./vai_assert.h"
 
@@ -111,7 +112,9 @@ void graph_save(const Graph& graph, const std::string& filename, const std::stri
   if (initializer_size_threshold == std::numeric_limits<size_t>::max()) {
     model_proto = model->ToProto();
   } else {
-    model_proto = model->ToGraphProtoWithExternalInitializers(ToPathString(filename_dat), ToPathString(filename), initializer_size_threshold);
+    ModelSavingOptions model_saving_options{initializer_size_threshold};
+    model_proto = model->ToGraphProtoWithExternalInitializers(ToPathString(filename_dat), ToPathString(filename),
+                                                              model_saving_options);
   }
   auto& metadata = model->MetaData();
   if (!metadata.empty()) {

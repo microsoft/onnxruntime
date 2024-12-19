@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/inlined_containers.h"
+#include "core/framework/prepacked_weights.h"
+#include "core/framework/prepacked_weights_container.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "test/util/include/asserts.h"
@@ -18,6 +21,76 @@ using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace test {
+
+// Test ExternalData functionality
+TEST(TensorProtoUtilsTest, SetExternalDataInformation) {
+  ONNX_NAMESPACE::TensorProto tensor_proto;
+  const std::filesystem::path kExternalDataPath("test.bin");
+  constexpr const int64_t init_offset = 100;
+  constexpr const size_t init_length = 200;
+
+  ExternalDataInfo::SetExternalLocationToProto(kExternalDataPath, init_offset, init_length, tensor_proto);
+
+  ASSERT_EQ(tensor_proto.data_location(), ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+  ASSERT_EQ(tensor_proto.external_data_size(), 3);
+  ASSERT_EQ(tensor_proto.external_data(0).key(), "location");
+  ASSERT_EQ(tensor_proto.external_data(0).value(), ToUTF8String(kExternalDataPath.native()));
+  ASSERT_EQ(tensor_proto.external_data(1).key(), "offset");
+  ASSERT_EQ(tensor_proto.external_data(1).value(), std::to_string(init_offset));
+  ASSERT_EQ(tensor_proto.external_data(2).key(), "length");
+  ASSERT_EQ(tensor_proto.external_data(2).value(), std::to_string(init_length));
+
+  PrepackedKeyToBlobMap key_to_blob;
+  constexpr bool save_mode_on = true;
+  PrepackedWeightsForGraph prepacked_for_graph(key_to_blob, save_mode_on);
+  PrePackedWeights prepacked_weights;
+  const std::string init_name = "test_initializer";
+  const std::string blob_key = "test_key";
+
+  std::array<float, 2> kData = {1.2345f, 2.4690f};
+  const size_t buffer_size = kData.size() * sizeof(float);
+
+  prepacked_weights.buffers_.push_back(BufferUniquePtr(kData.data(), BufferDeleter(nullptr)));
+  prepacked_weights.buffer_sizes_.push_back(buffer_size);
+  // Write a second entry like this
+  prepacked_weights.buffers_.push_back(BufferUniquePtr(kData.data(), BufferDeleter(nullptr)));
+  prepacked_weights.buffer_sizes_.push_back(buffer_size);
+
+  prepacked_for_graph.WritePackedMaybeForSave(init_name, blob_key, std::move(prepacked_weights));
+
+  constexpr const int64_t starting_offset = 300;
+  int64_t external_offset = starting_offset;
+  std::stringstream ss;
+  const auto* blobs_for_weight = prepacked_for_graph.GetKeysForWeightForSaving(init_name);
+  ASSERT_TRUE(blobs_for_weight != nullptr);
+  InlinedHashSet<std::string> blob_keys{blobs_for_weight->begin(), blobs_for_weight->end()};
+  ASSERT_TRUE(ExternalDataInfo::WritePrepackedToFileAndAddToProto(prepacked_for_graph,
+                                                                  blob_keys,
+                                                                  true, 1024 * 1024, 0,
+                                                                  ss, external_offset,
+                                                                  tensor_proto));
+
+  auto external_data_info = std::make_unique<ExternalDataInfo>();
+  ASSERT_STATUS_OK(ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
+
+  // This should have prepacked_data entry with two blobs for a single key.
+  ASSERT_TRUE(external_data_info->HasPrepackedInfo());
+  auto prepacked_infos = external_data_info->TakePrepackedInfos();
+  ASSERT_EQ(prepacked_infos.size(), 1U);
+  ASSERT_TRUE(prepacked_infos.count(blob_key) > 0);
+
+  int64_t final_offset = starting_offset;
+  for (const auto& blob_info : prepacked_infos[blob_key]) {
+    int64_t offset = std::get<0>(blob_info);
+    ASSERT_EQ(offset, final_offset);
+    size_t length = std::get<1>(blob_info);
+    std::string checksum = std::get<2>(blob_info);  // currently "0"
+    final_offset = offset + length;
+    ASSERT_EQ(length, buffer_size);
+    ASSERT_EQ(checksum, "0");
+  }
+  ASSERT_EQ(final_offset, external_offset);
+}
 
 // T must be float for double, and it must match with the 'type' argument
 template <typename T>
