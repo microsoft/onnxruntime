@@ -154,27 +154,38 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
 
   // PROCESS INPUTS
   std::cout << "processing inputs" << std::endl;
+    std::cout << "process axes" << std::endl;
+
+  std::vector<uint32_t> axes;
+  for (unsigned int i = 0; i < axes_raw.size(); i++) {
+    int64_t val = axes_raw[i];
+    if (val < 0) {
+      val += input_rank;
+    }
+    axes.push_back(static_cast<int32_t>(val));
+  }
+
   std::cout << "process starts" << std::endl;
   std::vector<uint32_t> starts;
   for (unsigned int i = 0; i < starts_raw.size(); i++) {
     int64_t val = starts_raw[i];
     std::cout << "val: " << val << std::endl;
     if (val < 0) {
-      val += input_shape[axes_raw[i]];
+      val += input_shape[axes[i]];
     }
     std::cout << "val after handling negative: " << val << std::endl;
 
     std::cout << "steps raw i: " << steps_raw[i] << std::endl;
     if (steps_raw[i] < 0) {
       std::cout << "steps raw < 0" << std::endl;
-      std::cout << "axes raw i: " << axes_raw[i] << std::endl;
-      std::cout << "input shape axes raw i: " << input_shape[axes_raw[i]] << std::endl;
-      val = std::max(static_cast<int64_t>(0), std::min(val, static_cast<int64_t>(input_shape[axes_raw[i]] - 1)));
+      std::cout << "axes raw i: " << axes[i] << std::endl;
+      std::cout << "input shape axes raw i: " << input_shape[axes[i]] << std::endl;
+      val = std::max(static_cast<int64_t>(0), std::min(val, static_cast<int64_t>(input_shape[axes[i]] - 1)));
     } else {
       std::cout << "steps raw >= 0" << std::endl;
-      std::cout << "axes raw i: " << axes_raw[i] << std::endl;
-      std::cout << "input shape axes raw i: " << input_shape[axes_raw[i]] << std::endl;
-      val = std::max(static_cast<int64_t>(0), std::min(val, static_cast<int64_t>(input_shape[axes_raw[i]])));
+      std::cout << "axes raw i: " << axes[i] << std::endl;
+      std::cout << "input shape axes raw i: " << input_shape[axes[i]] << std::endl;
+      val = std::max(static_cast<int64_t>(0), std::min(val, static_cast<int64_t>(input_shape[axes[i]])));
     }
     std::cout << "val after clamping: " << val << std::endl;
     starts.push_back(static_cast<uint32_t>(val));
@@ -186,21 +197,14 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
   for (unsigned int i = 0; i < ends_raw.size(); i++) {
     int64_t val = ends_raw[i];
     if (val < 0) {
-      val += input_shape[axes_raw[i]];
+      val += input_shape[axes[i]];
     }
     if (steps_raw[i] < 0) {
-      val = std::max(static_cast<int64_t>(0), std::min(val, static_cast<int64_t>(input_shape[axes_raw[i]] - 1)));
+      val = std::max(static_cast<int64_t>(0), std::min(val, static_cast<int64_t>(input_shape[axes[i]] - 1)));
     } else {
-      val = std::max(static_cast<int64_t>(0), std::min(val, static_cast<int64_t>(input_shape[axes_raw[i]])));
+      val = std::max(static_cast<int64_t>(0), std::min(val, static_cast<int64_t>(input_shape[axes[i]])));
     }
     ends.push_back(static_cast<uint32_t>(val));
-  }
-
-  std::cout << "process axes" << std::endl;
-
-  std::vector<uint32_t> axes;
-  for (unsigned int i = 0; i < axes_raw.size(); i++) {
-    axes.push_back(static_cast<int32_t>(axes_raw[i]));
   }
 
   std::cout << "process steps with INT_MAX" << std::endl;
