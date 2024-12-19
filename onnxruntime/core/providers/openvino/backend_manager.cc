@@ -79,9 +79,6 @@ BackendManager::BackendManager(const GlobalContext& global_context,
   if (ModelHasSymbolicInputDims(subgraph)) {
     subgraph_context_.has_dynamic_input_shape = true;
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
-    ORT_ENFORCE(!global_context_.enable_qdq_optimizer,
-                "QDQ stripping should not be enabled for models with dynamic input shapes. "
-                "Set enable_qdq_optimizer to False");
     if ((GetGlobalContext().device_type.find("CPU") != std::string::npos ||
          GetGlobalContext().device_type.find("GPU") != std::string::npos) &&
         !GetGlobalContext().disable_dynamic_shapes) {
