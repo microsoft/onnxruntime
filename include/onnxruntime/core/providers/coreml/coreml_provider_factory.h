@@ -72,8 +72,6 @@ static const char* const kCoremlProviderOption_AllowLowPrecisionAccumulationOnGP
 //    1. User provided key in metadata_props if found (preferred)
 //    2. Hash of the model url the inference session was created with
 //    3. Hash of the input/output names of the model
-
-// EP wounln't track the model change or responsible for the cache management.
 static const char* const kCoremlProviderOption_ModelCacheDirectory = "ModelCacheDirectory";
 
 // User provided cache-key in metadata_props.
