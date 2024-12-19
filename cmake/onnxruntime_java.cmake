@@ -218,10 +218,10 @@ if (ANDROID)
   if (onnxruntime_USE_QNN)
     add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
                        $<TARGET_FILE:onnxruntime_providers_shared>
-                       ${ANDROID_PACKAGE_ABI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime>)
+                       ${ANDROID_PACKAGE_ABI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime_providers_shared>)
     add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
                        $<TARGET_FILE:onnxruntime_providers_qnn>
-                       ${ANDROID_PACKAGE_ABI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime>)
+                       ${ANDROID_PACKAGE_ABI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime_providers_qnn>)
   endif()
 
   # Generate the Android AAR package
