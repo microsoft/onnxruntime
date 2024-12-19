@@ -133,7 +133,7 @@ if (
     cuda_libs = ()
     if platform.system() == "Windows":  #
         # Define the list of DLL patterns, nvrtc, curand and nvJitLink are not included for Windows
-        if (11, 0) <= cuda_version() < (12, 0):
+        if (11, 0) <= cuda_version < (12, 0):
             cuda_libs = (
                 "cublaslt64_11.dll",
                 "cublas64_11.dll",
@@ -141,7 +141,7 @@ if (
                 "cudart64_11.dll",
                 "cudnn64_8.dll",
             )
-        elif (12, 0) <= cuda_version() < (13, 0):
+        elif (12, 0) <= cuda_version < (13, 0):
             cuda_libs = (
                 "cublaslt64_12.dll",
                 "cublas64_12.dll",
@@ -150,7 +150,7 @@ if (
                 "cudnn64_9.dll",
             )
     elif platform.system() == "Linux":
-        if (11, 0) <= cuda_version() < (12, 0):
+        if (11, 0) <= cuda_version < (12, 0):
             # Define the patterns with optional version number and case-insensitivity
             cuda_libs = (
                 "libcublaslt.so.11",
@@ -161,7 +161,7 @@ if (
                 "libcudnn.so.8",
                 "libnvrtc.so.11.2",  # This is not a mistake, it links to more specific version like libnvrtc.so.11.8.89 etc.
             )
-        elif (12, 0) <= cuda_version() < (13, 0):
+        elif (12, 0) <= cuda_version < (13, 0):
             cuda_libs = (
                 "libcublaslt.so.12",
                 "libcublas.so.12",
