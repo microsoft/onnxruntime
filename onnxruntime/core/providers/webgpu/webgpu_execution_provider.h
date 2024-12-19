@@ -22,32 +22,22 @@ enum class BufferCacheMode;
 class WebGpuProfiler;
 }  // namespace webgpu
 
-struct WebGpuExecutionProviderInfo {
-  WebGpuExecutionProviderInfo(DataLayout data_layout, bool enable_graph_capture)
+struct WebGpuExecutionProviderConfig {
+  WebGpuExecutionProviderConfig(DataLayout data_layout, bool enable_graph_capture)
       : data_layout{data_layout},
-        enable_graph_capture{enable_graph_capture},
-        backend_type{},
-        storage_buffer_cache_mode{},
-        uniform_buffer_cache_mode{},
-        query_resolve_buffer_cache_mode{},
-        default_buffer_cache_mode{} {}
-  WebGpuExecutionProviderInfo(WebGpuExecutionProviderInfo&&) = default;
-  WebGpuExecutionProviderInfo& operator=(WebGpuExecutionProviderInfo&&) = default;
-  ORT_DISALLOW_COPY_AND_ASSIGNMENT(WebGpuExecutionProviderInfo);
+        enable_graph_capture{enable_graph_capture} {}
+  WebGpuExecutionProviderConfig(WebGpuExecutionProviderConfig&&) = default;
+  WebGpuExecutionProviderConfig& operator=(WebGpuExecutionProviderConfig&&) = default;
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(WebGpuExecutionProviderConfig);
 
   DataLayout data_layout;
   bool enable_graph_capture;
-  int backend_type;
-  webgpu::BufferCacheMode storage_buffer_cache_mode;
-  webgpu::BufferCacheMode uniform_buffer_cache_mode;
-  webgpu::BufferCacheMode query_resolve_buffer_cache_mode;
-  webgpu::BufferCacheMode default_buffer_cache_mode;
   std::vector<std::string> force_cpu_node_names;
 };
 
 class WebGpuExecutionProvider : public IExecutionProvider {
  public:
-  WebGpuExecutionProvider(int context_id, webgpu::WebGpuContext& context, WebGpuExecutionProviderInfo&& info);
+  WebGpuExecutionProvider(int context_id, webgpu::WebGpuContext& context, WebGpuExecutionProviderConfig&& config);
   ~WebGpuExecutionProvider() override;
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(

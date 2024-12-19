@@ -17,25 +17,25 @@ using namespace onnxruntime::webgpu::options;
 namespace onnxruntime {
 
 struct WebGpuProviderFactory : IExecutionProviderFactory {
-  WebGpuProviderFactory(int context_id, webgpu::WebGpuContext& context, WebGpuExecutionProviderInfo&& webgpu_ep_info)
-      : context_id_{context_id}, context_{context}, info_{std::move(webgpu_ep_info)} {
+  WebGpuProviderFactory(int context_id, webgpu::WebGpuContext& context, WebGpuExecutionProviderConfig&& webgpu_ep_config)
+      : context_id_{context_id}, context_{context}, config_{std::move(webgpu_ep_config)} {
   }
 
   std::unique_ptr<IExecutionProvider> CreateProvider() override {
-    return std::make_unique<WebGpuExecutionProvider>(context_id_, context_, std::move(info_));
+    return std::make_unique<WebGpuExecutionProvider>(context_id_, context_, std::move(config_));
   }
 
  private:
   int context_id_;
   webgpu::WebGpuContext& context_;
-  WebGpuExecutionProviderInfo info_;
+  WebGpuExecutionProviderConfig config_;
 };
 
 std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(const ConfigOptions& config_options) {
   //
-  // STEP.1 - prepare WebGpuExecutionProviderInfo
+  // STEP.1 - prepare WebGpuExecutionProviderConfig
   //
-  WebGpuExecutionProviderInfo webgpu_ep_info{
+  WebGpuExecutionProviderConfig webgpu_ep_config{
       // preferred layout is NHWC by default
       DataLayout::NHWC,
       // graph capture feature is disabled by default
@@ -45,109 +45,33 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
   std::string preferred_layout_str;
   if (config_options.TryGetConfigEntry(kPreferredLayout, preferred_layout_str)) {
     if (preferred_layout_str == kPreferredLayout_NHWC) {
-      webgpu_ep_info.data_layout = DataLayout::NHWC;
+      webgpu_ep_config.data_layout = DataLayout::NHWC;
     } else if (preferred_layout_str == kPreferredLayout_NCHW) {
-      webgpu_ep_info.data_layout = DataLayout::NCHW;
+      webgpu_ep_config.data_layout = DataLayout::NCHW;
     } else {
       ORT_THROW("Invalid preferred layout: ", preferred_layout_str);
     }
   }
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP preferred layout: " << int(webgpu_ep_info.data_layout) << " (parsed from \""
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP preferred layout: " << int(webgpu_ep_config.data_layout) << " (parsed from \""
                         << preferred_layout_str << "\")";
 
   std::string enable_graph_capture_str;
   if (config_options.TryGetConfigEntry(kEnableGraphCapture, enable_graph_capture_str)) {
     if (enable_graph_capture_str == kEnableGraphCapture_ON) {
-      webgpu_ep_info.enable_graph_capture = true;
+      webgpu_ep_config.enable_graph_capture = true;
     } else if (enable_graph_capture_str == kEnableGraphCapture_OFF) {
-      webgpu_ep_info.enable_graph_capture = false;
+      webgpu_ep_config.enable_graph_capture = false;
     } else {
       ORT_THROW("Invalid enable graph capture: ", enable_graph_capture_str);
     }
   }
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP graph capture enable: " << webgpu_ep_info.enable_graph_capture;
-
-  std::string backend_type_str;
-  if (config_options.TryGetConfigEntry(kDawnBackendType, backend_type_str)) {
-#ifdef _WIN32
-    // Setup Windows default backend type based on the build configuration
-#if defined(onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
-    webgpu_ep_info.backend_type = static_cast<int>(WGPUBackendType_D3D12);
-#elif defined(onnxruntime_ENABLE_DAWN_BACKEND_VULKAN)
-    webgpu_ep_info.backend_type = static_cast<int>(WGPUBackendType_Vulkan);
-#endif
-#endif
-    if (backend_type_str == kDawnBackendType_D3D12) {
-      webgpu_ep_info.backend_type = static_cast<int>(WGPUBackendType_D3D12);
-    } else if (backend_type_str == kDawnBackendType_Vulkan) {
-      webgpu_ep_info.backend_type = static_cast<int>(WGPUBackendType_Vulkan);
-    } else {
-      ORT_THROW("Invalid Dawn backend type: ", backend_type_str);
-    }
-  }
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP Dawn backend type: " << webgpu_ep_info.backend_type;
-
-  auto parse_buffer_cache_mode = [&config_options](const std::string& config_entry_str,
-                                                   webgpu::BufferCacheMode default_value) -> webgpu::BufferCacheMode {
-    std::string buffer_cache_mode_str;
-    if (config_options.TryGetConfigEntry(config_entry_str, buffer_cache_mode_str)) {
-      if (buffer_cache_mode_str == kBufferCacheMode_Disabled) {
-        return webgpu::BufferCacheMode::Disabled;
-      } else if (buffer_cache_mode_str == kBufferCacheMode_LazyRelease) {
-        return webgpu::BufferCacheMode::LazyRelease;
-      } else if (buffer_cache_mode_str == kBufferCacheMode_Simple) {
-        return webgpu::BufferCacheMode::Simple;
-      } else if (buffer_cache_mode_str == kBufferCacheMode_Bucket) {
-        return webgpu::BufferCacheMode::Bucket;
-      } else {
-        ORT_THROW("Invalid buffer cache mode: ", config_entry_str);
-      }
-    } else {
-      return default_value;
-    }
-  };
-
-  webgpu_ep_info.storage_buffer_cache_mode = parse_buffer_cache_mode(kStorageBufferCacheMode, webgpu::BufferCacheMode::Bucket);
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP storage buffer cache mode: " << webgpu_ep_info.storage_buffer_cache_mode;
-
-  webgpu_ep_info.uniform_buffer_cache_mode = parse_buffer_cache_mode(kUniformBufferCacheMode, webgpu::BufferCacheMode::Simple);
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP uniform buffer cache mode: " << webgpu_ep_info.uniform_buffer_cache_mode;
-
-  webgpu_ep_info.query_resolve_buffer_cache_mode = parse_buffer_cache_mode(kQueryResolveBufferCacheMode, webgpu::BufferCacheMode::Disabled);
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP query resolve buffer cache mode: " << webgpu_ep_info.query_resolve_buffer_cache_mode;
-
-  webgpu_ep_info.default_buffer_cache_mode = parse_buffer_cache_mode(kDefaultBufferCacheMode, webgpu::BufferCacheMode::Disabled);
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP default buffer cache mode: " << webgpu_ep_info.default_buffer_cache_mode;
-
-  webgpu::ValidationMode validation_mode =
-#ifndef NDEBUG
-      webgpu::ValidationMode::Full  // for debug build, enable full validation by default
-#else
-      webgpu::ValidationMode::Basic  // for release build, enable basic validation by default
-#endif  // !NDEBUG
-      ;
-  std::string validation_mode_str;
-  if (config_options.TryGetConfigEntry(kValidationMode, validation_mode_str)) {
-    if (validation_mode_str == kValidationMode_Disabled) {
-      validation_mode = webgpu::ValidationMode::Disabled;
-    } else if (validation_mode_str == kValidationMode_wgpuOnly) {
-      validation_mode = webgpu::ValidationMode::WGPUOnly;
-    } else if (validation_mode_str == kValidationMode_basic) {
-      validation_mode = webgpu::ValidationMode::Basic;
-    } else if (validation_mode_str == kValidationMode_full) {
-      validation_mode = webgpu::ValidationMode::Full;
-    } else {
-      ORT_THROW("Invalid validation mode: ", validation_mode_str);
-    }
-  }
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP graph capture enable: " << webgpu_ep_config.enable_graph_capture;
 
   // parse force CPU node names
   // The force CPU node names are separated by EOL (\n or \r\n) in the config entry.
   // each line is a node name that will be forced to run on CPU.
   std::string force_cpu_node_names_str;
   if (config_options.TryGetConfigEntry(kForceCpuNodeNames, force_cpu_node_names_str)) {
-    std::vector<std::string> force_cpu_node_names;
-
     // split the string by EOL (\n or \r\n)
     std::istringstream ss(force_cpu_node_names_str);
     std::string line;
@@ -157,14 +81,13 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
         continue;
       }
 
-      force_cpu_node_names.push_back(line);
+      webgpu_ep_config.force_cpu_node_names.push_back(line);
     }
-
-    webgpu_ep_info.force_cpu_node_names = std::move(force_cpu_node_names);
   }
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP force CPU node count: " << webgpu_ep_config.force_cpu_node_names.size();
 
   //
-  // STEP.2 - prepare WebGpuContext
+  // STEP.2 - prepare WebGpuContextConfig
   //
   int context_id = 0;
   std::string context_id_str;
@@ -204,14 +127,110 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
                 std::from_chars(dawn_proc_table_str.data(), dawn_proc_table_str.data() + dawn_proc_table_str.size(), dawn_proc_table).ec);
   }
 
-  auto& context = webgpu::WebGpuContextFactory::CreateContext(context_id,
-                                                              reinterpret_cast<WGPUInstance>(webgpu_instance),
-                                                              reinterpret_cast<WGPUAdapter>(webgpu_adapter),
-                                                              reinterpret_cast<WGPUDevice>(webgpu_device),
-                                                              validation_mode);
-  context.Initialize(webgpu_ep_info, reinterpret_cast<const void*>(dawn_proc_table));
+  webgpu::ValidationMode validation_mode =
+#ifndef NDEBUG
+      webgpu::ValidationMode::Full  // for debug build, enable full validation by default
+#else
+      webgpu::ValidationMode::Basic  // for release build, enable basic validation by default
+#endif  // !NDEBUG
+      ;
+  std::string validation_mode_str;
+  if (config_options.TryGetConfigEntry(kValidationMode, validation_mode_str)) {
+    if (validation_mode_str == kValidationMode_Disabled) {
+      validation_mode = webgpu::ValidationMode::Disabled;
+    } else if (validation_mode_str == kValidationMode_wgpuOnly) {
+      validation_mode = webgpu::ValidationMode::WGPUOnly;
+    } else if (validation_mode_str == kValidationMode_basic) {
+      validation_mode = webgpu::ValidationMode::Basic;
+    } else if (validation_mode_str == kValidationMode_full) {
+      validation_mode = webgpu::ValidationMode::Full;
+    } else {
+      ORT_THROW("Invalid validation mode: ", validation_mode_str);
+    }
+  }
 
-  return std::make_shared<WebGpuProviderFactory>(context_id, context, std::move(webgpu_ep_info));
+  webgpu::WebGpuContextConfig context_config{
+      context_id,
+      reinterpret_cast<WGPUInstance>(webgpu_instance),
+      reinterpret_cast<WGPUAdapter>(webgpu_adapter),
+      reinterpret_cast<WGPUDevice>(webgpu_device),
+      reinterpret_cast<const void*>(dawn_proc_table),
+      validation_mode,
+  };
+
+  //
+  // STEP.3 - prepare parameters for WebGPU context initialization.
+  //
+
+  int backend_type = 0;
+#ifdef _WIN32
+  // Setup Windows default backend type based on the build configuration
+#if defined(DAWN_ENABLE_D3D12)
+  backend_type = static_cast<int>(WGPUBackendType_D3D12);
+#elif defined(DAWN_ENABLE_VULKAN)
+  backend_type = static_cast<int>(WGPUBackendType_Vulkan);
+#endif
+#endif
+
+  std::string backend_type_str;
+  if (config_options.TryGetConfigEntry(kDawnBackendType, backend_type_str)) {
+    if (backend_type_str == kDawnBackendType_D3D12) {
+      backend_type = static_cast<int>(WGPUBackendType_D3D12);
+    } else if (backend_type_str == kDawnBackendType_Vulkan) {
+      backend_type = static_cast<int>(WGPUBackendType_Vulkan);
+    } else {
+      ORT_THROW("Invalid Dawn backend type: ", backend_type_str);
+    }
+  }
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP Dawn backend type: " << backend_type;
+
+  // buffer cache modes
+  auto parse_buffer_cache_mode = [&config_options](const std::string& config_entry_str,
+                                                   webgpu::BufferCacheMode default_value) -> webgpu::BufferCacheMode {
+    std::string buffer_cache_mode_str;
+    if (config_options.TryGetConfigEntry(config_entry_str, buffer_cache_mode_str)) {
+      if (buffer_cache_mode_str == kBufferCacheMode_Disabled) {
+        return webgpu::BufferCacheMode::Disabled;
+      } else if (buffer_cache_mode_str == kBufferCacheMode_LazyRelease) {
+        return webgpu::BufferCacheMode::LazyRelease;
+      } else if (buffer_cache_mode_str == kBufferCacheMode_Simple) {
+        return webgpu::BufferCacheMode::Simple;
+      } else if (buffer_cache_mode_str == kBufferCacheMode_Bucket) {
+        return webgpu::BufferCacheMode::Bucket;
+      } else {
+        ORT_THROW("Invalid buffer cache mode: ", config_entry_str);
+      }
+    } else {
+      return default_value;
+    }
+  };
+
+  webgpu::WebGpuBufferCacheConfig buffer_cache_config;
+
+  buffer_cache_config.storage.mode = parse_buffer_cache_mode(kStorageBufferCacheMode, webgpu::BufferCacheMode::Bucket);
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP storage buffer cache mode: " << buffer_cache_config.storage.mode;
+
+  buffer_cache_config.uniform.mode = parse_buffer_cache_mode(kUniformBufferCacheMode, webgpu::BufferCacheMode::Simple);
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP uniform buffer cache mode: " << buffer_cache_config.uniform.mode;
+
+  buffer_cache_config.query_resolve.mode = parse_buffer_cache_mode(kQueryResolveBufferCacheMode, webgpu::BufferCacheMode::Disabled);
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP query resolve buffer cache mode: " << buffer_cache_config.query_resolve.mode;
+
+  buffer_cache_config.default_entry.mode = parse_buffer_cache_mode(kDefaultBufferCacheMode, webgpu::BufferCacheMode::Disabled);
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP default buffer cache mode: " << buffer_cache_config.default_entry.mode;
+
+  //
+  // STEP.4 - start initialization.
+  //
+
+  // Load the Dawn library and create the WebGPU instance and adapter.
+  auto& context = webgpu::WebGpuContextFactory::CreateContext(context_config);
+
+  // Create WebGPU device and initialize the context.
+  context.Initialize(buffer_cache_config, backend_type);
+
+  // Create WebGPU EP factory.
+  return std::make_shared<WebGpuProviderFactory>(context_id, context, std::move(webgpu_ep_config));
 }
 
 }  // namespace onnxruntime
