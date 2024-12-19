@@ -3,14 +3,15 @@
 
 #pragma once
 
+#include <filesystem>
 #include <functional>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
-#include <filesystem>
 
 #include "core/common/flatbuffers.h"
 
@@ -19,13 +20,14 @@
 #include "core/common/common.h"
 #include "core/common/path_string.h"
 #include "core/common/const_pointer_container.h"
+#include "core/common/inlined_containers_fwd.h"
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/common/inlined_containers.h"
 #endif
-#include "core/common/inlined_containers_fwd.h"
 #include "core/common/span_utils.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
+#include "core/framework/prepacked_weights_container.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/constants.h"
@@ -41,6 +43,7 @@ namespace onnxruntime {
 class Graph;
 struct IndexedSubGraph;
 class Model;
+struct ModelSavingOptions;
 class OpSignature;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -1153,29 +1156,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
   ONNX_NAMESPACE::GraphProto ToGraphProto() const;
 
-  // Options to align external initializer offset.
-  // For models running on CPU, ORT will try to use mmap to load external initializers.
-  // To use mmap, external initializer need to be offset aligned.
-  // ORT saves external initializers into signle data file, each initializer is accessed with
-  // offset(start position of initializer) and length(byte length of initializer) of the data file.
-  // To use mmap, each offset need to be aligned which means offset need to divisible by
-  // allocation granularity(64KB for windows and 4K for other OSes).
-  // With align_offset to true, ORT will align offset for large initializer when
-  // save ONNX model with external data file.
-  struct OffsetAlignmentInfo {
-    // Offset will always be page aligned and allocation granularity aligned for mmap support.
-    // This is done by padding previous tensor data with zeros keeping same length.
-    bool align_offset = false;
-    // Alignment threshold for size of data.
-    // Having a low threshold will waste file space for small initializers.
-    // Only when tensor's data size is > the page_align_threshold it will be force aligned.
-    // Default to 1MB.
-    int64_t align_threshold = 1048576;
-    // The allocation Granularity for mmap() support.
-    // Typically 64KB for Windows & 4KB for other OSes. Default to 64KB.
-    int64_t allocation_granularity = 65536;
-  };
-
   /** Gets the GraphProto representation of this Graph
   @param external_file_path File path of the binary file to use for initializers.
   @param model_file_path path of the model file.
@@ -1186,15 +1166,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   */
   ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
                                                                   const std::filesystem::path& model_file_path,
-                                                                  size_t initializer_size_threshold,
-                                                                  const OffsetAlignmentInfo& align_info) const;
-
-  ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
-                                                                  const std::filesystem::path& model_file_path,
-                                                                  size_t initializer_size_threshold) const {
-    OffsetAlignmentInfo default_options;
-    return ToGraphProtoWithExternalInitializers(external_file_path, model_file_path, initializer_size_threshold, default_options);
-  }
+                                                                  const ModelSavingOptions& model_saving_options) const;
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;
@@ -1400,6 +1372,18 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+  // This function constructs PrepackedSharedContainer in the root graph only
+  // and initializes a reference to it in all (sub)graphs
+  void ConstructPrepackedSharedContainerAndSetMode(bool saving_mode_on);
+
+  const PrepackedWeightsForGraph& GetPrepacked() const noexcept {
+    return *prepacked_weights_for_graph_;
+  }
+
+  PrepackedWeightsForGraph& GetPrepacked() noexcept {
+    return *prepacked_weights_for_graph_;
+  }
+
   /** Returns the Node containing the GraphProto for this Graph instance if IsSubgraph is true */
   const Node* ParentNode() const { return parent_node_; }
 
@@ -1518,6 +1502,31 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   */
   Status AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& constant_node_proto,
                                        std::optional<std::string_view> new_name);
+
+  /// <summary>
+  /// This function traverses the graph bottom up and externalizes
+  /// constant initializers along with their pre-packed blobs from different
+  /// kernels. Writes constant initializers to the external file with any pre-packed
+  /// blobs (if enabled and produced for this initializer) and then modifies TensorProto
+  /// entry with external data references.
+  /// </summary>
+  /// <param name="model_path">model file path from Model</param>
+  /// <param name="external_file_path">a binary file path for relative to the model file path
+  /// where the initializers data is written</param>
+  /// <param name="model_external_file_path">model file folder path with external file path appended</param>
+  /// <param name="model_saving_options">model saving options including alignment and pre-packs</param>
+  /// <param name="output_graph_proto">The graph proto to be modified</param>
+  /// <param name="external_stream">external file stream</param>
+  /// <param name="external_offset">current external file offset updated with each write</param>
+  /// <returns>Status instance</returns>
+  Status AddExternalInitializersToGraphProtoImpl(
+      const std::filesystem::path& model_path,
+      const std::filesystem::path& external_file_path,
+      const std::filesystem::path& model_external_file_path,
+      const ModelSavingOptions& model_saving_options,
+      ONNX_NAMESPACE::GraphProto& output_graph_proto,
+      std::ostream& external_stream,
+      int64_t& external_offset) const;
 
 #endif
 
@@ -1702,6 +1711,21 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   std::unordered_set<std::reference_wrapper<const std::string>,
                      std::hash<std::string>, std::equal_to<std::string>>
       sparse_tensor_names_;
+
+  // Prepacked blobs container that stored pre-packed initializers
+  // data that is:
+  // - mem-mapped from disk
+  // - shared within the session
+  // - shared across sessions by transferring the ownership of loaded data entries to
+  // SessionState::PrepackedWeightsContainer* if one is present.
+  // This container is optional because it is present only in the root graph.
+  std::optional<PrepackedKeyToBlobMap> prepacked_key_to_blobs_;
+
+  // This container contains a reference to the root prepacked_key_to_blobs_
+  // and also (in the save mode) records association between the initializer
+  // names and their pre-packed blobs (via keys).
+  // This is optional due to delayed construction.
+  std::optional<PrepackedWeightsForGraph> prepacked_weights_for_graph_;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // Runtime optimization storage.

@@ -164,6 +164,8 @@ class SessionState {
    */
   const std::unordered_map<int, OrtValue>& GetConstantInitializedTensors() const;
 
+  const PrepackedWeightsForGraph& GetPrepackedIniitializersForGraph() const;
+
 #if !defined(DISABLE_SPARSE_TENSORS)
   bool IsSparseInitializer(int ort_value_index) const;
 #endif
@@ -364,11 +366,20 @@ class SessionState {
 
   const SessionOptions& GetSessionOptions() const { return sess_options_; }
 
+  /// <summary>
+  /// Deduce the flag whether we need to enable or disable
+  /// saving for pre-packed weights serialization.
+  /// </summary>
+  /// <param name="saving_model"></param>
+  /// <param name="saving_ort_format"></param>
+  /// <returns>true of false
+  bool GetSaveModeForPrepacks(bool saving_model, bool saving_ort_format);
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SessionState);
 
   // Populate OrtValueNameIdxMap and create the graph viewer.
-  void CreateGraphInfo();
+  void CreateGraphInfo(bool save_prepacked_on);
 
   // create kernels using info in kernel_create_info_map_
   Status CreateKernels(const KernelRegistryManager& custom_registry_manager);
@@ -399,6 +410,7 @@ class SessionState {
                                   _In_opt_ const Node* parent_node,
                                   const SessionOptions& session_options,
                                   bool remove_initializers,
+                                  bool save_prepacked_initializers,
                                   InlinedHashMap<std::string, size_t>& constant_initializers_use_count,
                                   const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map = {},
                                   bool graph_info_already_created = false);

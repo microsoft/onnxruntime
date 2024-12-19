@@ -9,6 +9,7 @@
 
 #include "core/common/const_pointer_container.h"
 #include "core/framework/allocator.h"
+#include "core/framework/prepacked_weights_container.h"
 #include "core/framework/tensor.h"
 #include "core/framework/tensor_allocator.h"
 #include "core/framework/session_options.h"
@@ -50,7 +51,8 @@ common::Status SaveInitializedTensors(
     const ExecutionPlanBase& exec_plan,
     const SessionOptions& session_options,
     const MemoryProfileFunction& memory_profile_func,
-    std::unordered_map<std::string, std::unique_ptr<Tensor>>& buffered_tensors);
+    std::unordered_map<std::string, std::unique_ptr<Tensor>>& buffered_tensors,
+    PrepackedWeightsForGraph& prepacked_for_graph);
 
 common::Status AllocateTensor(
     const onnxruntime::MemBuffer* m,
