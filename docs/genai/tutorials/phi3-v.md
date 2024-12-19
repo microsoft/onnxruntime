@@ -102,13 +102,7 @@ You can download the models here:
 
 3. Install the generate() API
 
-   * CUDA 11
-
-   ```bash
-   pip install onnxruntime-genai-cuda --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-cuda-11/pypi/simple/
-   ```
-
-   * CUDA 12
+   Note: this package uses CUDA 12. To use CUDA 11, you need to [build and install from source](../howto/build-from-source.md).
 
    ```bash
    pip install onnxruntime-genai-cuda
