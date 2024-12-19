@@ -38,6 +38,7 @@ struct BaseAttentionTestData {
 
   std::vector<float> present_key_data;
   std::vector<float> present_value_data;
+  std::vector<float> attention_probs_data;
 
   std::vector<AttentionKernelType> skip_kernel_types;  // skip some kernels if they do not supported this test case.
 };
@@ -57,30 +58,30 @@ struct PackedAttentionTestData : public BaseAttentionTestData {
 void GetAttentionWeight(std::vector<float>& weight_data, int elements = 64 * 3 * 64, int offset = 0, int step = 1);
 void GetAttentionBias(std::vector<float>& bias_data, int elements = 3 * 64, int offset = 0, int step = 1);
 
-void GetCrossAttentionData_HeadSize40(AttentionTestData& data);
-void GetCrossAttentionData_HeadSize40_NoBias(AttentionTestData& data);
-void GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(AttentionTestData& data, bool is_mask_1d);
-void GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding_NoBias(AttentionTestData& data, bool is_mask_1d);
-void GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(AttentionTestData& data);
-void GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding_NoBias(AttentionTestData& data);
+void GetCrossAttentionData_HeadSize40(AttentionTestData& data, bool get_attention_probs = false);
+void GetCrossAttentionData_HeadSize40_NoBias(AttentionTestData& data, bool get_attention_probs = false);
+void GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding(AttentionTestData& data, bool is_mask_1d, bool get_attention_probs = false);
+void GetCrossAttentionData_Batch2_HeadSize32_RightSidePadding_NoBias(AttentionTestData& data, bool is_mask_1d, bool get_attention_probs = false);
+void GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding(AttentionTestData& data, bool get_attention_probs = false);
+void GetCrossAttentionData_Batch1_HeadSize32_LeftSidePadding_NoBias(AttentionTestData& data, bool get_attention_probs = false);
 
-void GetCrossAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedKV(AttentionTestData& data);
+void GetCrossAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedKV(AttentionTestData& data, bool get_attention_probs = false);
 void GetSelfAttentionData_Batch2_HeadSize32_NoBias_NoMask_PackedQKV(AttentionTestData& data);
 
-void GetCrossAttentionData_HeadSize16_8(AttentionTestData& data);
-void GetCrossAttentionData_HeadSize16_8_NoBias(AttentionTestData& data);
-void GetCrossAttentionData_HeadSize16(AttentionTestData& data);
-void GetCrossAttentionData_HeadSize16_NoBias(AttentionTestData& data);
+void GetCrossAttentionData_HeadSize16_8(AttentionTestData& data, bool get_attention_probs = false);
+void GetCrossAttentionData_HeadSize16_8_NoBias(AttentionTestData& data, bool get_attention_probs = false);
+void GetCrossAttentionData_HeadSize16(AttentionTestData& data, bool get_attention_probs = false);
+void GetCrossAttentionData_HeadSize16_NoBias(AttentionTestData& data, bool get_attention_probs = false);
 
-void GetCrossAttentionData_HeadSize8(AttentionTestData& data);
-void GetCrossAttentionData_HeadSize8_NoBias(AttentionTestData& data);
+void GetCrossAttentionData_HeadSize8(AttentionTestData& data, bool get_attention_probs = false);
+void GetCrossAttentionData_HeadSize8_NoBias(AttentionTestData& data, bool get_attention_probs = false);
 
 void GetCrossAttentionDataWithPast(AttentionTestData& data);
 void GetSelfAttentionData_WithPast_WithAttnBias_ForT5(AttentionTestData& data);
 
 void GetCrossAttentionData_DiffSequenceLengths(AttentionTestData& data);
-void GetCrossAttentionData_DiffSequenceLengths_HeadSize8(AttentionTestData& data);
-void GetCrossAttentionData_DiffSequenceLengths_HeadSize8_NoBias(AttentionTestData& data);
+void GetCrossAttentionData_DiffSequenceLengths_HeadSize8(AttentionTestData& data, bool get_attention_probs = false);
+void GetCrossAttentionData_DiffSequenceLengths_HeadSize8_NoBias(AttentionTestData& data, bool get_attention_probs = false);
 void GetSelfAttentionData_WithPastAndPresent_NoMask_NoAttnBias(AttentionTestData& data);
 void GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias(AttentionTestData& data);
 void GetSelfAttentionData_WithPastAndPresent_HeadSize8_NoMask_NoAttnBias_NoBias(AttentionTestData& data);
