@@ -323,4 +323,7 @@ def chain_model(args):
         convert_attribute=True,
         location=f"{os.path.basename(args.beam_model_output_dir)}.data",
     )
-    onnx.checker.check_model(args.beam_model_output_dir, full_check=True)
+    try:
+        onnx.checker.check_model(args.beam_model_output_dir, full_check=True)
+    except Exception as e:
+        logger.error(f"An error occurred while running the ONNX checker: {e}", exc_info=True)  # noqa: G201

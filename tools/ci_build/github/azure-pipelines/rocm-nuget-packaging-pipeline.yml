@@ -85,10 +85,10 @@ stages:
   - job: Linux_C_API_Packaging_ROCm_x64
     workspace:
       clean: all
-    timeoutInMinutes: 240
+    timeoutInMinutes: 480
     pool: onnxruntime-Ubuntu2204-AMD-CPU
     variables:
-      RocmVersion: '5.6'
+      RocmVersion: '6.2'
       RocmVersionPatchSuffix: ''
     steps:
     - checkout: self                           # due to checkout multiple repos, the root directory is $(Build.SourcesDirectory)/onnxruntime
@@ -255,7 +255,7 @@ stages:
     - task: UsePythonVersion@0
       displayName: 'Use Python'
       inputs:
-        versionSpec: 3.8
+        versionSpec: 3.12
 
     - task: MSBuild@1
       displayName: 'Build Nuget Packages'
@@ -340,14 +340,3 @@ stages:
     SpecificArtifact: ${{ parameters.specificArtifact }}
     CustomOpArtifactName: 'onnxruntime-linux-x64-rocm'
     BuildId: ${{ parameters.BuildId }}
-
-- template: templates/publish-nuget-steps.yml
-  parameters:
-    download_artifacts_steps:
-      - template: templates/flex-downloadPipelineArtifact.yml
-        parameters:
-          StepName: 'Download Pipeline Artifact - Signed NuGet ROCm Package'
-          ArtifactName: 'drop-signed-nuget-ROCm'
-          targetPath: '$(Build.BinariesDirectory)/nuget-artifact/final-package'
-          SpecificArtifact: ${{ parameters.specificArtifact }}
-          BuildId: ${{ parameters.BuildId }}

@@ -23,7 +23,7 @@ parameters:
   displayName: 'Stage that the initial stage of react-native-ci depends on'
   type: string
   default: ''
-  
+
 - name: enable_code_sign
   displayName: Use GPG to sign the jars
   type: boolean
@@ -58,9 +58,9 @@ stages:
     steps:
     - template: use-xcode-version.yml
     - task: UsePythonVersion@0
-      displayName: Use python 3.9
+      displayName: Use python 3.12
       inputs:
-        versionSpec: "3.9"
+        versionSpec: "3.12"
         addToPath: true
         architecture: "x64"
 
@@ -113,9 +113,9 @@ stages:
       condition: always()
     - template: use-xcode-version.yml
     - task: UsePythonVersion@0
-      displayName: Use python 3.9
+      displayName: Use python 3.12
       inputs:
-        versionSpec: "3.9"
+        versionSpec: "3.12"
         addToPath: true
         architecture: "x64"
 
@@ -128,7 +128,7 @@ stages:
 
     - task: NodeTool@0
       inputs:
-        versionSpec: '18.x'
+        versionSpec: '20.x'
 
     - script:
         brew install coreutils ninja npm yarn
@@ -261,8 +261,6 @@ stages:
             publishJUnitResults: true
             testResultsFiles: '**/TEST-*.xml'
             testRunTitle: 'React Native Android Instrumented Test results'
-            javaHomeOption: 'path'
-            jdkDirectory: '$(JAVA_HOME_11_X64)'
             sonarQubeRunAnalysis: false
             spotBugsAnalysis: false
           displayName: Run React Native Android Instrumented Tests

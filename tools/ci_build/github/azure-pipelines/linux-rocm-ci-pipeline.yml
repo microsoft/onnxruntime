@@ -37,9 +37,7 @@ variables:
   - name: render
     value: 109
   - name: RocmVersion
-    value: 6.1
-  - name: RocmVersionPatchSuffix
-    value: ".3"
+    value: 6.1.3
 
 jobs:
 - job: Linux_Build
@@ -66,7 +64,7 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/rocm-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)$(RocmVersionPatchSuffix)"
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
       Repository: onnxruntimerocm-cibuild-rocm$(RocmVersion)
 
   - task: Cache@2
@@ -166,7 +164,7 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/rocm-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)$(RocmVersionPatchSuffix)"
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
       Repository: onnxruntimerocm-cibuild-rocm$(RocmVersion)
 
   - task: CmdLine@2
@@ -231,7 +229,11 @@ jobs:
           -e KERNEL_EXPLORER_TEST_USE_CUPY=1 \
           -e CUPY_CACHE_DIR=/build/Release \
           onnxruntimerocm-cibuild-rocm$(RocmVersion) \
-            pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100
+          /bin/bash -c "
+            set -ex; \
+            python --version; \
+            ls /opt/miniconda/envs/rocm-ci/lib/; \
+            pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run kernel explorer tests'
     condition: succeededOrFailed()

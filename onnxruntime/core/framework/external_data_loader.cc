@@ -32,7 +32,7 @@ common::Status LoadWebAssemblyExternalData(const Env& env,
                                if (typeof Module == 'undefined' || !Module.MountedFiles) {
                                  return 1;  // "Module.MountedFiles" is not available.
                                }
-                               let fileName = UTF8ToString($0 >>> 0);
+                               let fileName = UTF8ToString(Number($0 >>> 0));
                                if (fileName.startsWith('./')) {
                                  fileName = fileName.substring(2);
                                }
@@ -40,9 +40,9 @@ common::Status LoadWebAssemblyExternalData(const Env& env,
                                if (!fileData) {
                                  return 2;  // File not found in preloaded files.
                                }
-                               const offset = $1 >>> 0;
-                               const length = $2 >>> 0;
-                               const dataIdOrBuffer = $3 >>> 0;
+                               const offset = Number($1 >>> 0);
+                               const length = Number($2 >>> 0);
+                               const dataIdOrBuffer = Number($3 >>> 0);
                                const loadType = $4;
 
                                if (offset + length > fileData.byteLength) {

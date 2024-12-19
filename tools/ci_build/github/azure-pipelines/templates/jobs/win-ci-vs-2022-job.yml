@@ -102,14 +102,14 @@ jobs:
 
   - task: NodeTool@0
     inputs:
-      versionSpec: '18.x'
+      versionSpec: '20.x'
       force32bit: ${{ parameters.isX86 }}
 
   # Our build machine doesn't have java x86
   - ${{ if eq(parameters.buildArch, 'x64') }}:
       - task: JavaToolInstaller@0
         inputs:
-          versionSpec: '11'
+          versionSpec: '17'
           jdkArchitectureOption: ${{ parameters.buildArch }}
           jdkSourceOption: 'PreInstalled'
 
@@ -216,7 +216,7 @@ jobs:
 
   - ${{ if eq(parameters.EnablePython, true) }}:
       - powershell: |
-         python3 -m pip uninstall -y ort-nightly-gpu ort-nightly onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml ort-nightly-directml -qq
+         python3 -m pip uninstall -y onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml -qq
          Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
 
         workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'

@@ -6,7 +6,7 @@ Licensed under the MIT License.
 /*
 Kernel implementation for blocking repeated n-grams.
 */
-
+#include <limits>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "contrib_ops/cuda/bert/ngram_repeat_block_impl.h"
 
@@ -48,7 +48,7 @@ __global__ void banRepeatedTokens(const int64_t* __restrict__ tokens,
   }
   if (is_banned == true) {
     auto token_to_be_banned = tokens_shm[col + no_repeat_ngram_size - 1];
-    lprobs[lprob_start + token_to_be_banned] = -INFINITY;
+    lprobs[lprob_start + token_to_be_banned] = -std::numeric_limits<float>::infinity();
   }
 }
 

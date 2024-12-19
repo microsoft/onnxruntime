@@ -1159,7 +1159,8 @@ def test_generate_artifacts_external_data_one_file():
         assert os.path.exists(os.path.join(temp_dir, "checkpoint"))
 
 
-def test_generate_artifacts_external_data_separate_files():
+@pytest.mark.parametrize("loss", [loss_t for loss_t in artifacts.LossType])
+def test_generate_artifacts_external_data_separate_files(loss):
     with tempfile.TemporaryDirectory() as temp_dir:
         _, simple_net = _get_models("cpu", 32, 28, 10, 10)
 
@@ -1176,7 +1177,7 @@ def test_generate_artifacts_external_data_separate_files():
         artifacts.generate_artifacts(
             os.path.join(temp_dir, "simple_net.onnx"),
             requires_grad=requires_grad_params,
-            loss=artifacts.LossType.CrossEntropyLoss,
+            loss=loss,
             optimizer=artifacts.OptimType.AdamW,
             artifact_directory=temp_dir,
         )

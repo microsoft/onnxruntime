@@ -288,11 +288,9 @@ const char* GetDeviceName(const OrtDevice& device) {
     case OrtDevice::CPU:
       return CPU;
     case OrtDevice::GPU:
-#ifdef USE_DML
-      return DML;
-#else
       return CUDA;
-#endif
+    case OrtDevice::DML:
+      return DML;
     case OrtDevice::FPGA:
       return "FPGA";
     case OrtDevice::NPU:
@@ -1062,12 +1060,6 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         } else if (option.first == "precision") {
           OV_provider_options_map[option.first] = option.second;
           continue;
-        } else if (option.first == "enable_npu_fast_compile") {
-          if (!(option.second == "True" || option.second == "true" ||
-                option.second == "False" || option.second == "false")) {
-            ORT_THROW("Invalid value passed for enable_npu_fast_compile: ", option.second);
-          }
-          OV_provider_options_map[option.first] = option.second;
         } else if (option.first == "enable_opencl_throttling") {
           if (!(option.second == "True" || option.second == "true" ||
                 option.second == "False" || option.second == "false")) {
@@ -1103,13 +1095,13 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         } else if (option.first == "num_streams") {
           OV_provider_options_map[option.first] = option.second;
           continue;
+        } else if (option.first == "load_config") {
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else if (option.first == "cache_dir") {
           OV_provider_options_map[option.first] = option.second;
           continue;
         } else if (option.first == "context") {
-          OV_provider_options_map[option.first] = option.second;
-          continue;
-        } else if (option.first == "export_ep_ctx_blob") {
           OV_provider_options_map[option.first] = option.second;
           continue;
         } else if (option.first == "enable_qdq_optimizer") {
@@ -1133,16 +1125,6 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         LOGS_DEFAULT(WARNING) << "Failed to create " << type << ". Please refer https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements to ensure all dependencies are met.";
       }
     }
-#endif
-  } else if (type == kTvmExecutionProvider) {
-#if USE_TVM
-    onnxruntime::tvm::TvmEPOptions info{};
-    const auto it = provider_options_map.find(type);
-    if (it != provider_options_map.end()) {
-      info = onnxruntime::tvm::TvmEPOptionsHelper::FromProviderOptions(it->second);
-    }
-
-    return onnxruntime::TVMProviderFactoryCreator::Create(info)->CreateProvider();
 #endif
   } else if (type == kVitisAIExecutionProvider) {
 #ifdef USE_VITISAI
@@ -1199,6 +1181,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         kOrtSessionOptionsConfigNnapiEpPartitioningStopOps);
     return onnxruntime::NnapiProviderFactoryCreator::Create(0, partitioning_stop_ops_list)->CreateProvider();
 #endif
+  } else if (type == kVSINPUExecutionProvider) {
+#ifdef USE_VSINPU
+    return onnxruntime::VSINPUProviderFactoryCreator::Create()->CreateProvider();
+#endif
   } else if (type == kRknpuExecutionProvider) {
 #ifdef USE_RKNPU
     return onnxruntime::RknpuProviderFactoryCreator::Create()->CreateProvider();
@@ -1219,6 +1205,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 
         if (flags_str.find("COREML_FLAG_USE_CPU_ONLY") != std::string::npos) {
           coreml_flags |= COREMLFlags::COREML_FLAG_USE_CPU_ONLY;
+        } else if (flags_str.find("COREML_FLAG_USE_CPU_AND_GPU") != std::string::npos) {
+          coreml_flags |= COREMLFlags::COREML_FLAG_USE_CPU_AND_GPU;
         }
 
         if (flags_str.find("COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES") != std::string::npos) {
@@ -1228,6 +1216,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         if (flags_str.find("COREML_FLAG_CREATE_MLPROGRAM") != std::string::npos) {
           coreml_flags |= COREMLFlags::COREML_FLAG_CREATE_MLPROGRAM;
         }
+      } else {
+        // read from provider_options
+        return onnxruntime::CoreMLProviderFactoryCreator::Create(options)->CreateProvider();
       }
     }
 
@@ -1583,7 +1574,8 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def_static("cann", []() { return OrtDevice::NPU; })
       .def_static("fpga", []() { return OrtDevice::FPGA; })
       .def_static("npu", []() { return OrtDevice::NPU; })
-      .def_static("dml", []() { return OrtDevice::GPU; })
+      .def_static("dml", []() { return OrtDevice::DML; })
+      .def_static("webgpu", []() { return OrtDevice::GPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");

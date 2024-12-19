@@ -12,27 +12,6 @@
 
 namespace onnxruntime {
 namespace webnn {
-
-// Shared functions.
-bool HasExternalInitializer(const InitializedTensorSet& initializers, const Node& node,
-                            const logging::Logger& logger) {
-  for (const auto* node_arg : node.InputDefs()) {
-    const auto& input_name(node_arg->Name());
-    if (!Contains(initializers, input_name))
-      continue;
-
-    const auto& tensor = *initializers.at(input_name);
-    if (tensor.has_data_location() &&
-        tensor.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-      LOGS(logger, VERBOSE) << "Initializer [" << input_name
-                            << "] with external data location are not currently supported";
-      return true;
-    }
-  }
-
-  return false;
-}
-
 // Add operator related.
 
 Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
@@ -42,8 +21,6 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
                     model_builder.GetOpSupportLimits(), logger),
       "Unsupported operator ", node.OpType());
   ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node, logger));
-  LOGS(logger, VERBOSE) << "Operator name: [" << node.Name()
-                        << "] type: [" << node.OpType() << "] was added";
   return Status::OK();
 }
 
@@ -52,14 +29,10 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
 bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
                                   const WebnnDeviceType device_type, const emscripten::val& wnn_limits,
                                   const logging::Logger& logger) const {
-  if (!HasSupportedInputs(node, wnn_limits, logger))
+  if (!HasSupportedInputs(initializers, node, wnn_limits, logger))
     return false;
 
-  if (!HasSupportedOutputsImpl(node, wnn_limits, logger))
-    return false;
-
-  // We do not support external initializers for now.
-  if (HasExternalInitializer(initializers, node, logger))
+  if (!HasSupportedOutputs(node, wnn_limits, logger))
     return false;
 
   if (!HasSupportedOpSet(node, logger))
@@ -68,19 +41,19 @@ bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, cons
   return IsOpSupportedImpl(initializers, node, device_type, logger);
 }
 
-bool BaseOpBuilder::HasSupportedInputs(const Node& node, const emscripten::val& wnn_limits,
+bool BaseOpBuilder::HasSupportedInputs(const InitializedTensorSet& initializers, const Node& node, const emscripten::val& wnn_limits,
                                        const logging::Logger& logger) const {
   const auto node_name = MakeString("Node [", node.Name(), "] type [", node.OpType(), "]");
   for (const auto* input : node.InputDefs()) {
-    if (!IsInputSupported(*input, node_name, logger)) {
+    if (!IsTensorShapeSupported(*input, node_name, logger, allow_empty_tensor_as_input_)) {
       return false;
     }
   }
 
-  return HasSupportedInputsImpl(node, wnn_limits, logger);
+  return HasSupportedInputsImpl(initializers, node, wnn_limits, logger);
 }
 
-bool BaseOpBuilder::HasSupportedInputsImpl(const Node& node,
+bool BaseOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& initializers, const Node& node,
                                            const emscripten::val& wnn_limits,
                                            const logging::Logger& logger) const {
   // We only check the type of input 0 by default, specific op builder can override this.
@@ -91,6 +64,18 @@ bool BaseOpBuilder::HasSupportedInputsImpl(const Node& node,
     return false;
 
   return IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "Input", logger);
+}
+
+bool BaseOpBuilder::HasSupportedOutputs(const Node& node, const emscripten::val& wnn_limits,
+                                        const logging::Logger& logger) const {
+  const auto node_name = MakeString("Node [", node.Name(), "] type [", node.OpType(), "]");
+  for (const auto* output : node.OutputDefs()) {
+    if (!IsTensorShapeSupported(*output, node_name, logger)) {
+      return false;
+    }
+  }
+
+  return HasSupportedOutputsImpl(node, wnn_limits, logger);
 }
 
 bool BaseOpBuilder::HasSupportedOutputsImpl(const Node& node,

@@ -32,7 +32,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: 2.26.0.240828
+  default: 2.28.2.241116
 
 jobs:
 - job: Build_QNN_EP
@@ -63,9 +63,6 @@ jobs:
 
   - script: |
       set -e -x
-      rm -rf /tmp/scripts
-      cp -r tools/ci_build/github/linux/docker/inference/x86_64/python/cpu/scripts /tmp
-      /tmp/scripts/install_protobuf.sh -p $(Build.BinariesDirectory)/installed -d cmake/deps.txt
       python3 tools/ci_build/build.py \
         --config Release \
         --android \
@@ -78,7 +75,7 @@ jobs:
         --use_qnn \
         --qnn_home $(QnnSDKRootDir) \
         --cmake_generator=Ninja \
-        --skip_tests --path_to_protoc_exe $(Build.BinariesDirectory)/installed/bin/protoc
+        --skip_tests
     displayName: Build QNN EP
 
   - script: |

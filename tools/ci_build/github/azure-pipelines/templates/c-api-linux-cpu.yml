@@ -5,9 +5,6 @@ parameters:
   type: string
   default: ''
 
-- name: BaseImage
-  type: string
-
 - name: OnnxruntimeArch
   type: string
 
@@ -50,7 +47,7 @@ jobs:
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
           Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu
-          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=${{parameters.BaseImage}}"
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
           Repository: onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging
 
     - ${{ if eq(parameters.OnnxruntimeArch, 'aarch64') }}:
@@ -58,16 +55,17 @@ jobs:
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/inference/aarch64/default/cpu/Dockerfile
           Context: tools/ci_build/github/linux/docker/inference/aarch64/default/cpu
-          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=${{parameters.BaseImage}}"
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
           Repository: onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging
           UpdateDepsTxt: false
 
     - task: CmdLine@2
       inputs:
         script: |
+          set -e -x
           mkdir -p $HOME/.onnx
           docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
-          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging /bin/bash -c "python3.9 \
+          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging /bin/bash -c "python3.12 \
           /onnxruntime_src/tools/ci_build/build.py --enable_lto --build_java --build_nodejs --build_dir /build --config Release \
           --skip_submodule_sync --parallel --use_binskim_compliant_compile_flags --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/installed"
         workingDirectory: $(Build.SourcesDirectory)

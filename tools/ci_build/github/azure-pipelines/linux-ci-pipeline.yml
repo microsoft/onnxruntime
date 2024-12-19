@@ -54,7 +54,7 @@ stages:
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
           Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu
-          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=registry.access.redhat.com/ubi8/ubi"
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
           Repository: onnxruntimecpubuildcentos8x64
 
       - template: templates/linux-build-step-with-cache.yml
@@ -82,22 +82,20 @@ stages:
                     onnxruntimecpubuildcentos8x64 \
                     /bin/bash -c '
                       set -ex; \
-                      python3.9 /onnxruntime_src/tools/ci_build/build.py \
+                      python3.12 /onnxruntime_src/tools/ci_build/build.py \
                         --build_dir /build --cmake_generator 'Ninja' \
                         --config Debug \
                         --skip_submodule_sync \
                         --build_shared_lib \
                         --parallel --use_binskim_compliant_compile_flags \
-                        --build_csharp \
                         --enable_onnx_tests --enable_address_sanitizer \
                         --update --build;
-                      LD_PRELOAD=/usr/lib64/libasan.so.6 python3.9 /onnxruntime_src/tools/ci_build/build.py \
+                      python3.12 /onnxruntime_src/tools/ci_build/build.py \
                         --build_dir /build --cmake_generator 'Ninja' \
                         --config Debug \
                         --skip_submodule_sync \
                         --build_shared_lib \
                         --parallel --use_binskim_compliant_compile_flags \
-                        --build_csharp \
                         --enable_onnx_tests --enable_address_sanitizer \
                         --test;
                       '
@@ -151,7 +149,7 @@ stages:
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
           Context: tools/ci_build/github/linux/docker/
-          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u ) --build-arg BASEIMAGE=registry.access.redhat.com/ubi8/ubi"
+          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
           Repository: onnxruntimecpubuild
 
       - task: PythonScript@0
@@ -219,7 +217,7 @@ stages:
                     /bin/bash -c "
                       set -ex; \
                       ccache -s; \
-                      /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+                      /opt/python/cp310-cp310/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                         --build_dir /build --cmake_generator 'Ninja' \
                         --config Release \
                         --skip_submodule_sync \
@@ -301,6 +299,7 @@ stages:
       machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
       with_cache: true
       cmake_build_type: Release
+      python_exe_path: '/opt/python/cp310-cp310/bin/python3.10'
 
 - stage: arm64_test
   dependsOn: ['arm64_build']
@@ -308,4 +307,27 @@ stages:
   - template: templates/py-packaging-linux-test-cpu.yml
     parameters:
       arch: 'aarch64'
+      ep: 'cpu'
+      machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
+
+- stage: arm64_build_xnnpack
+  dependsOn: []
+  jobs:
+  - template: templates/py-linux.yml
+    parameters:
+      arch: 'aarch64'
+      machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'
+      with_cache: true
+      cmake_build_type: Release
+      ep: 'XNNPack'
+      extra_build_arg: '--use_xnnpack'
+      python_exe_path: '/opt/python/cp310-cp310/bin/python3.10'
+
+- stage: arm64_test_xnnpack
+  dependsOn: ['arm64_build_xnnpack']
+  jobs:
+  - template: templates/py-packaging-linux-test-cpu.yml
+    parameters:
+      arch: 'aarch64'
+      ep: 'XNNPack'
       machine_pool: 'onnxruntime-linux-ARM64-CPU-2019'

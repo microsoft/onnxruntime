@@ -63,6 +63,7 @@
 #ifdef MLAS_TARGET_AMD64_IX86
 #include "core/optimizer/qdq_transformer/avx2_weight_s8_to_u8.h"
 #endif
+#include "core/optimizer/qdq_transformer/bias_quantization.h"
 #include "core/optimizer/qdq_transformer/clip_quantizelinear.h"
 #include "core/optimizer/qdq_transformer/ensure_unique_dq_for_node_unit.h"
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
@@ -189,6 +190,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     TransformerLevel level,
     const SessionOptions& session_options,
     const IExecutionProvider& cpu_execution_provider, /*required by constant folding*/
+    const logging::Logger& logger,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable,
     [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool,
     std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors) {
@@ -243,6 +245,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       if (!disable_quant_qdq) {
         transformers.emplace_back(std::make_unique<QDQPropagationTransformer>());
+        transformers.emplace_back(std::make_unique<BiasQuantization>());
 
         // EnsureUniqueDQForNodeUnit is actually a required graph transformation. The unique DQ per QDQ node unit input
         // condition that it ensures is important for the partitioning that happens after Level1 optimizers are run.
@@ -402,7 +405,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       }
 
       auto cpu_registry = cpu_execution_provider.GetKernelRegistry();
-      auto nhwc_transformer = std::make_unique<NhwcTransformer>(std::move(cpu_allocator), std::move(cpu_registry));
+      auto nhwc_transformer = std::make_unique<NhwcTransformer>(std::move(cpu_allocator), std::move(cpu_registry),
+                                                                logger);
       if (nhwc_transformer->IsActive()) {
         transformers.emplace_back(std::move(nhwc_transformer));
       }
@@ -435,6 +439,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
     const SessionOptions& session_options,
     const SatApplyContextVariant& apply_context,
     const IExecutionProvider& cpu_execution_provider,
+    const logging::Logger& logger,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable,
     [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool,
     std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors) {
@@ -488,7 +493,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
 #ifndef DISABLE_CONTRIB_OPS
         AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
         auto cpu_registry = cpu_execution_provider.GetKernelRegistry();
-        auto nhwc_transformer = std::make_unique<NhwcTransformer>(std::move(cpu_allocator), std::move(cpu_registry));
+        auto nhwc_transformer = std::make_unique<NhwcTransformer>(std::move(cpu_allocator), std::move(cpu_registry),
+                                                                  logger);
         if (nhwc_transformer->IsActive()) {
           transformers.emplace_back(std::move(nhwc_transformer));
         }

@@ -3,6 +3,7 @@
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -73,17 +74,6 @@ TEST(ConcatOpTest, Concat1D_2) {
            {kTensorrtExecutionProvider,  // TensorRT: no support for dynamic shape tensor
             kNnapiExecutionProvider,     // NNAPI: concat does not support 0 size input
             kQnnExecutionProvider});     // QNN: not support dynamic shape tensor
-}
-
-template <typename T>
-static std::vector<T> GetTypedArray(std::vector<float> inputs, [[maybe_unused]] T v = T(0.f)) {
-  if constexpr (std::is_same<T, float>::value) {
-    return inputs;
-  } else {
-    std::vector<T> inputs_fp16(inputs.size());
-    ConvertFloatToMLFloat16(inputs.data(), inputs_fp16.data(), inputs.size());
-    return inputs_fp16;
-  }
 }
 
 TYPED_TEST(ConcatOpTest, Concat2D_1) {

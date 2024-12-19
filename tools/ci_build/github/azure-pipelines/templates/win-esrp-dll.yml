@@ -67,6 +67,7 @@ steps:
 
 - task: PowerShell@2
   displayName: 'Signature validation for signed file(s)'
+  condition: and(succeeded(), eq('${{ parameters.DoEsrp }}', true))
   inputs:
     targetType: 'inline'
     script: |

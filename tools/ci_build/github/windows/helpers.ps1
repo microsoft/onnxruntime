@@ -638,7 +638,7 @@ function Install-ONNX {
     $temp_dir = Get-TempDirectory
     $new_requirements_text_file = Join-Path $temp_dir "new_requirements.txt"
     Write-Host "Installing python packages..."
-    Get-Content "$src_root\tools\ci_build\github\linux\docker\inference\x86_64\python\cpu\scripts\requirements.txt" | Select-String -pattern 'onnx' -notmatch | Out-File $new_requirements_text_file
+    Get-Content "$src_root\tools\ci_build\github\linux\python\requirements.txt" | Select-String -pattern 'onnx' -notmatch | Out-File $new_requirements_text_file
 
     [string[]]$pip_args = "-m", "pip", "install", "-qq", "--disable-pip-version-check", "-r", $new_requirements_text_file
     &"python.exe" $pip_args

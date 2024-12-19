@@ -18,7 +18,12 @@ stages:
       vmImage: "macOS-13"
 
     variables:
+      # Note: Keep the Xcode version and iOS simulator version compatible.
+      # Check the table here to see what iOS simulator versions are supported by a particular Xcode version:
+      # https://developer.apple.com/support/xcode/
       xcodeVersion: "14.3.1"
+      iosSimulatorRuntimeVersion: "16.4"
+
       ortPodVersion: $[stageDependencies.IosPackaging_SetCommonVariables.j.outputs['SetCommonVariables.ORT_POD_VERSION']]
 
       ${{ if eq(parameters.packageVariant, 'Full') }}:
@@ -57,13 +62,13 @@ stages:
 
     - task: UsePythonVersion@0
       inputs:
-        versionSpec: "3.9"
+        versionSpec: "3.12"
         addToPath: true
         architecture: "x64"
 
     - template: ../use-xcode-version.yml
-
-    - template: ../install-appcenter.yml
+      parameters:
+        xcodeVersion: $(xcodeVersion)
 
     - script: |
         pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
@@ -80,6 +85,8 @@ stages:
           --build-settings-file "${{ variables.buildSettingsFile }}" \
           ${{ variables.optionalIncludeOpsByConfigOption }}
       displayName: "Build macOS/iOS framework and assemble pod package files"
+      env:
+        ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION: $(iosSimulatorRuntimeVersion)
 
     - script: |
         python tools/ci_build/github/apple/test_apple_packages.py \
@@ -91,6 +98,8 @@ stages:
           --prepare_test_project_only
       displayName: "Assemble test project for App Center"
 
+    # Xcode tasks require absolute paths because it searches for the paths and files relative to
+    # the root directory and not relative to the working directory
     - task: Xcode@5
       inputs:
         actions: 'build-for-testing'
@@ -98,8 +107,6 @@ stages:
         xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/apple_package_test.xcworkspace'
         sdk: 'iphoneos'
         scheme: 'ios_package_test'
-        xcodeVersion: 'specifyPath'
-        xcodeDeveloperDir: '/Applications/Xcode_${{ variables.xcodeVersion }}.app/Contents/Developer'
         signingOption: 'manual'
         signingIdentity: '$(APPLE_CERTIFICATE_SIGNING_IDENTITY)'
         provisioningProfileUuid: '$(APPLE_PROV_PROFILE_UUID)'
@@ -109,15 +116,68 @@ stages:
       displayName: 'Build App Center iPhone arm64 tests'
 
     - script: |
+        zip -r --symlinks $(Build.ArtifactStagingDirectory)/package_tests.zip ios_package_testUITests-Runner.app
+      workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData/Build/Products/Debug-iphoneos'
+      displayName: "Create .zip file of the tests"
+
+    - script: |
+        python $(Build.SourcesDirectory)/onnxruntime/test/platform/apple/generate_ipa_export_options_plist.py \
+          --dest_file "exportOptions.plist" \
+          --apple_team_id $(APPLE_TEAM_ID) \
+          --provisioning_profile_uuid $(APPLE_PROV_PROFILE_UUID)
+      workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
+      displayName: "Generate .plist file for the .ipa file"
+
+    # Task only generates an .xcarchive file if the plist export options are included, but does
+    # not produce an IPA file.
+    # Source code: https://github.com/microsoft/azure-pipelines-tasks/blob/master/Tasks/XcodeV5/xcode.ts
+    - task: Xcode@5
+      inputs:
+        actions: 'archive'
+        xcWorkspacePath: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/apple_package_test.xcworkspace'
+        packageApp: true
+        archivePath: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
+        exportOptions: 'plist'
+        exportOptionsPlist: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/exportOptions.plist'
+        configuration: 'Debug'
+        sdk: 'iphoneos'
+        scheme: 'ios_package_test'
+        args: '-derivedDataPath $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData'
+        workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
+        useXcpretty: false
+      displayName: 'Create archive for the .ipa file'
+
+    # Use script step because exporting the .ipa file using the Xcode@5 task was too brittle (Xcode@5 is designed
+    # to handle both the .xcarchive step and the .ipa step in the same step -- ran into countless issues with signing
+    # and the .plist file)
+    - script: |
+        xcodebuild -exportArchive \
+          -archivePath ios_package_test.xcarchive \
+          -exportOptionsPlist exportOptions.plist \
+          -exportPath $(Build.ArtifactStagingDirectory)/test_ipa
+      workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
+      displayName: "Create .ipa file"
+
+    # Publish the BrowserStack artifacts first so that if the next step fails, the artifacts will still be published
+    # so that users can attempt to locally debug
+    - publish: "$(Build.ArtifactStagingDirectory)"
+      artifact: "browserstack_test_artifacts_${{ lower(parameters.packageVariant) }}"
+      displayName: "Publish BrowserStack test artifacts"
+
+    - script: |
         set -e -x
-        appcenter test run xcuitest \
-          --app "AI-Frameworks/ORT-Mobile-iOS" \
-          --devices $(app_center_test_devices) \
-          --test-series "master" \
-          --locale "en_US" \
-          --build-dir $(Build.BinariesDirectory)/app_center_test/apple_package_test/DerivedData/Build/Products/Debug-iphoneos \
-          --token $(app_center_api_token)
-      displayName: "Run E2E tests on App Center"
+        pip install requests
+        python $(Build.SourcesDirectory)/tools/python/upload_and_run_browserstack_tests.py \
+          --test_platform xcuitest \
+          --app_path "$(Build.ArtifactStagingDirectory)/test_ipa/ios_package_test.ipa" \
+          --test_path "$(Build.ArtifactStagingDirectory)/package_tests.zip" \
+          --devices "iPhone 15-17"
+      displayName: Run E2E tests using Browserstack
+      workingDirectory: $(Build.BinariesDirectory)/app_center_test/apple_package_test
+      timeoutInMinutes: 15
+      env:
+        BROWSERSTACK_ID: $(browserstack_username)
+        BROWSERSTACK_TOKEN: $(browserstack_access_key)
 
     - script: |
         set -e -x

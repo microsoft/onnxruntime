@@ -28,7 +28,7 @@ using onnxruntime::common::Status;
 namespace onnxruntime {
 
 // Models can only be parsed and built serially in the same process
-OrtMutex g_mutex;
+std::mutex g_mutex;
 
 class Memcpy final : public OpKernel {
  public:
@@ -1288,15 +1288,15 @@ CANNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewe
 
       const KernelCreateInfo* cann_kernel_def = kernel_lookup.LookUpKernel(node);
       if (cann_kernel_def == nullptr) {
-        LOGS_DEFAULT(INFO) << "CANN kernel not found in registries for Op type: " << node.OpType()
-                           << " node name: " << node.Name();
+        LOGS(*GetLogger(), INFO) << "CANN kernel not found in registries for Op type: " << node.OpType()
+                                 << " node name: " << node.Name();
         continue;
       }
 
       candidates.push_back(node.Index());
     }
 
-    auto cpu_nodes = GetCpuPreferredNodes(graph_viewer, kernel_lookup, candidates);
+    auto cpu_nodes = GetCpuPreferredNodes(graph_viewer, kernel_lookup, candidates, *GetLogger());
     for (auto& node_index : candidates) {
       if (cpu_nodes.count(node_index) > 0)
         continue;
@@ -1389,7 +1389,7 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
       if (modelIDs_.find(filename) != modelIDs_.end()) {
         modelID = modelIDs_[filename];
       } else {
-        std::lock_guard<OrtMutex> lock(g_mutex);
+        std::lock_guard<std::mutex> lock(g_mutex);
 
         if (cann::FileExist(filename_with_suffix)) {
           CANN_RETURN_IF_ERROR(aclmdlLoadFromFile(filename_with_suffix.c_str(), &modelID));

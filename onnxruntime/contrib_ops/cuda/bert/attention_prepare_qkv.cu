@@ -384,6 +384,7 @@ Status PrepareQkv_MHA_WithPast_NoBias(contrib::AttentionParameters& parameters,
 
   if (data.use_memory_efficient_attention ||
       data.use_flash_attention ||
+      data.use_lean_attention ||
       data.kernel_type == AttentionKernelType::AttentionKernel_CudnnFlashAttention) {
     // Use oiginal Query (BSNH) since there is no bias.
     data.q = const_cast<T*>(data.query);

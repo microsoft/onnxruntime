@@ -38,7 +38,7 @@
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 20
+#define ORT_API_VERSION 21
 
 #ifdef __cplusplus
 extern "C" {
@@ -626,8 +626,13 @@ typedef struct OrtMIGraphXProviderOptions {
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options
- *
- * \see OrtApi::SessionOptionsAppendExecutionProvider_OpenVINO
+ *  \brief This Struct is frozen since ORT 1.13.0. Its maintained part of Legacy API for compatibility.
+ *  \brief For latest OpenVINO Provider Options update to the ProviderOptions map.
+ *  \brief Latest OpenVINO Provider Options are listed in the
+ *  \htmlonly
+ *  <a href="https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#summary-of-options">onnxruntime document.</a>
+ *  \endhtmlonly
+ * \see OrtApi::SessionOptionsAppendExecutionProvider()
  */
 typedef struct OrtOpenVINOProviderOptions {
 #ifdef __cplusplus
@@ -3651,13 +3656,20 @@ struct OrtApi {
    *     - "73"
    *     - "75"
    *   "device_id": The ID of the device to use when setting 'htp_arch'. Defaults to "0" (for single device).
-       "enable_htp_fp16_precision": Used for float32 model for HTP backend.
-       Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
-         - "0": With fp32 precision.
-         - "1": Default. With fp16 precision.
-       "enable_htp_weight_sharing": Enable QNN weight sharing feature while compiling multiple graphs into one QNN context.
-         - "0": Default. Disabled.
-         - "1": Enabled.
+   *   "enable_htp_fp16_precision": Used for float32 model for HTP backend.
+   *   Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
+   *     - "0": With fp32 precision.
+   *     - "1": Default. With fp16 precision.
+   *   "enable_htp_weight_sharing": Enable QNN weight sharing feature while compiling multiple graphs into one QNN context.
+   *     - "0": Default. Disabled.
+   *     - "1": Enabled.
+   *   "offload_graph_io_quantization": Offload graph input quantization and graph output dequantization to another
+   *   execution provider (typically CPU EP).
+   *     - "0": Default. Disabled. QNN EP will handle quantization and dequantization of graph I/O.
+   *     - "1": Enabled.
+   *   "enable_htp_spill_fill_buffer": Enable HTP spill fill buffer setting. The flag is used while generating context binary.
+   *     - "0": Default. Disabled.
+   *     - "1": Enabled.
    *
    * SNPE supported keys:
    *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",
@@ -3783,7 +3795,7 @@ struct OrtApi {
 
   /** \brief Release an OrtCANNProviderOptions
    *
-   * \param[in] the pointer of OrtCANNProviderOptions which will been deleted
+   * \param[in] input The pointer of OrtCANNProviderOptions which will been deleted
    *
    * \since Version 1.13.
    */
@@ -4603,6 +4615,8 @@ struct OrtApi {
    * \param[in] num_keys
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.17.
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_OpenVINO_V2,
                   _In_ OrtSessionOptions* options,
@@ -4620,6 +4634,8 @@ struct OrtApi {
    * \param[in] num_keys
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.18.
    */
   ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_VitisAI,
                   _In_ OrtSessionOptions* options,
@@ -4633,7 +4649,10 @@ struct OrtApi {
    *  \param[in] mem_info OrtMemoryInfo instance
    *  \param[in] count_or_bytes How many bytes is this scratch buffer
    *  \param[out] out A pointer to the scrach buffer
+   *
    *  \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.18.
    */
   ORT_API2_STATUS(KernelContext_GetScratchBuffer, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* mem_info, _In_ size_t count_or_bytes, _Outptr_ void** out);
 
@@ -4644,6 +4663,8 @@ struct OrtApi {
    * \param[out] out A pointer to OrtAllocator
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.18.
    */
   ORT_API2_STATUS(KernelInfoGetAllocator, _In_ const OrtKernelInfo* info, _In_ OrtMemType mem_type, _Outptr_ OrtAllocator** out);
 
@@ -4665,6 +4686,8 @@ struct OrtApi {
    * \param[in] num_external_initializer_files Number of external files
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.18.
    */
   ORT_API2_STATUS(AddExternalInitializersFromFilesInMemory, _In_ OrtSessionOptions* options,
                   _In_reads_(num_external_initializer_files) const ORTCHAR_T* const* external_initializer_file_names,
@@ -4685,6 +4708,10 @@ struct OrtApi {
    *            The data would still be copied to device if required by the model at inference time.
    * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
    *                  OrtApi::ReleaseLoraAdapter.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.20.
    */
   ORT_API2_STATUS(CreateLoraAdapter, const ORTCHAR_T* adapter_file_path, _In_ OrtAllocator* allocator,
                   _Outptr_ OrtLoraAdapter** out);
@@ -4701,6 +4728,10 @@ struct OrtApi {
    *            The data would still be copied to device if required by the model at inference time.
    * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
    *                  OrtApi::ReleaseLoraAdapter.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.20.
    */
   ORT_API2_STATUS(CreateLoraAdapterFromArray, _In_ const void* bytes, size_t num_bytes, _In_ OrtAllocator* allocator,
                   _Outptr_ OrtLoraAdapter** out);
@@ -4720,8 +4751,33 @@ struct OrtApi {
    *
    * \param[in] options OrtRunOptions instance
    * \param[in] adapter OrtLoraAdapter instance
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.20.
    */
   ORT_API2_STATUS(RunOptionsAddActiveLoraAdapter, _Inout_ OrtRunOptions* options, _In_ const OrtLoraAdapter* adapter);
+
+  /// @}
+  /// \name OrtEpDynamicOptions
+  /// @{
+
+  /** \brief Set DynamicOptions for EPs (Execution Providers)
+   *
+   * Valid options can be found in `include\onnxruntime\core\session\onnxruntime_session_options_config_keys.h`
+   * Look for `kOrtEpDynamicOptions`
+   *
+   * \param[in] sess OrtSession
+   * \param[in] keys Array of null terminated UTF8 encoded strings of EP dynamic option keys
+   * \param[in] values Array of null terminated UTF8 encoded string of EP dynamic option values
+   * \param[in] kv_len Number of elements in the keys and values arrays
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.20.
+   */
+  ORT_API2_STATUS(SetEpDynamicOptions, _Inout_ OrtSession* sess, _In_reads_(kv_len) const char* const* keys,
+                  _In_reads_(kv_len) const char* const* values, _In_ size_t kv_len);
 };
 
 /*

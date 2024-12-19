@@ -86,27 +86,6 @@ if (onnxruntime_BUILD_BENCHMARKS)
   onnxruntime_fetchcontent_makeavailable(google_benchmark)
 endif()
 
-if (NOT WIN32)
-  FetchContent_Declare(
-    google_nsync
-    URL ${DEP_URL_google_nsync}
-    URL_HASH SHA1=${DEP_SHA1_google_nsync}
-    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/nsync/nsync_1.26.0.patch
-    FIND_PACKAGE_ARGS NAMES nsync unofficial-nsync
-  )
-  #nsync tests failed on Mac Build
-  set(NSYNC_ENABLE_TESTS OFF CACHE BOOL "" FORCE)
-  onnxruntime_fetchcontent_makeavailable(google_nsync)
-
-  if (google_nsync_SOURCE_DIR)
-    add_library(nsync::nsync_cpp ALIAS nsync_cpp)
-    target_include_directories(nsync_cpp PUBLIC ${google_nsync_SOURCE_DIR}/public)
-  endif()
-  if(TARGET unofficial::nsync::nsync_cpp AND NOT TARGET nsync::nsync_cpp)
-    message(STATUS "Aliasing unofficial::nsync::nsync_cpp to nsync::nsync_cpp")
-    add_library(nsync::nsync_cpp ALIAS unofficial::nsync::nsync_cpp)
-  endif()
-endif()
 
 if(onnxruntime_USE_MIMALLOC)
   FetchContent_Declare(
@@ -636,17 +615,39 @@ if (onnxruntime_USE_COREML)
 endif()
 
 if (onnxruntime_USE_WEBGPU)
-  FetchContent_Declare(
-    dawn
-    URL ${DEP_URL_dawn}
-    URL_HASH SHA1=${DEP_SHA1_dawn}
-    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
-  )
+  if (onnxruntime_CUSTOM_DAWN_SRC_PATH)
+    # use the custom dawn source path if provided
+    #
+    # specified as:
+    # build.py --use_webgpu --cmake_extra_defines "onnxruntime_CUSTOM_DAWN_SRC_PATH=<PATH_TO_DAWN_SRC_ROOT>"
+    FetchContent_Declare(
+      dawn
+      SOURCE_DIR ${onnxruntime_CUSTOM_DAWN_SRC_PATH}
+    )
+  else()
+    FetchContent_Declare(
+      dawn
+      URL ${DEP_URL_dawn}
+      URL_HASH SHA1=${DEP_SHA1_dawn}
+      # All previous patches are merged into the upstream dawn project. We don't need to apply any patches right now.
+      # if we need to apply patches in the future, we can uncomment the following line.
+      # PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
+    )
+  endif()
 
-  # use dawn::dawn_native and dawn::dawn_proc instead of the monolithic dawn::webgpu_dawn to minimize binary size
-  set(DAWN_BUILD_MONOLITHIC_LIBRARY OFF CACHE BOOL "" FORCE)
+  if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
+    set(DAWN_BUILD_MONOLITHIC_LIBRARY ON CACHE BOOL "" FORCE)
+    set(DAWN_ENABLE_INSTALL ON CACHE BOOL "" FORCE)
+
+    if (onnxruntime_USE_EXTERNAL_DAWN)
+      message(FATAL_ERROR "onnxruntime_USE_EXTERNAL_DAWN and onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY cannot be enabled at the same time.")
+    endif()
+  else()
+    # use dawn::dawn_native and dawn::dawn_proc instead of the monolithic dawn::webgpu_dawn to minimize binary size
+    set(DAWN_BUILD_MONOLITHIC_LIBRARY OFF CACHE BOOL "" FORCE)
+    set(DAWN_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+  endif()
   set(DAWN_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
-  set(DAWN_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
   set(DAWN_ENABLE_NULL OFF CACHE BOOL "" FORCE)
   set(DAWN_FETCH_DEPENDENCIES ON CACHE BOOL "" FORCE)
 
@@ -675,13 +676,34 @@ if (onnxruntime_USE_WEBGPU)
     set(DAWN_USE_BUILT_DXC ON CACHE BOOL "" FORCE)
     set(TINT_BUILD_HLSL_WRITER ON CACHE BOOL "" FORCE)
 
-    # Vulkan may optionally be included in a Windows build. Exclude until we have an explicit use case that requires it.
-    set(DAWN_ENABLE_VULKAN OFF CACHE BOOL "" FORCE)
+    if ((NOT onnxruntime_ENABLE_DAWN_BACKEND_VULKAN) AND (NOT onnxruntime_ENABLE_DAWN_BACKEND_D3D12))
+      message(FATAL_ERROR "At least one of onnxruntime_ENABLE_DAWN_BACKEND_VULKAN or onnxruntime_ENABLE_DAWN_BACKEND_D3D12 must be enabled when using Dawn on Windows.")
+    endif()
+    if (onnxruntime_ENABLE_DAWN_BACKEND_VULKAN)
+      set(DAWN_ENABLE_VULKAN ON CACHE BOOL "" FORCE)
+      set(TINT_BUILD_SPV_WRITER ON CACHE BOOL "" FORCE)
+    else()
+      set(DAWN_ENABLE_VULKAN OFF CACHE BOOL "" FORCE)
+    endif()
+    if (onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
+      set(DAWN_ENABLE_D3D12 ON CACHE BOOL "" FORCE)
+    else()
+      set(DAWN_ENABLE_D3D12 OFF CACHE BOOL "" FORCE)
+    endif()
+    # We are currently always using the D3D12 backend.
+    set(DAWN_ENABLE_D3D11 OFF CACHE BOOL "" FORCE)
   endif()
 
   onnxruntime_fetchcontent_makeavailable(dawn)
 
-  list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::dawn_native dawn::dawn_proc)
+  if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::webgpu_dawn)
+  else()
+    if (NOT onnxruntime_USE_EXTERNAL_DAWN)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::dawn_native)
+    endif()
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::dawn_proc)
+  endif()
 endif()
 
 set(onnxruntime_LINK_DIRS)

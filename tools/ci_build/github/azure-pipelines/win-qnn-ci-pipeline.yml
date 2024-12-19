@@ -33,7 +33,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: 2.26.0.240828
+  default: 2.28.2.241116
 
 jobs:
 - job: 'build'
@@ -54,7 +54,7 @@ jobs:
 
   - task: UsePythonVersion@0
     inputs:
-      versionSpec: '3.8'
+      versionSpec: '3.12'
       addToPath: true
       architecture: $(buildArch)
 

@@ -134,7 +134,8 @@ void InferenceModel(const std::string& model_data, const char* log_id,
                     ExpectedEPNodeAssignment expected_ep_assignment, const NameMLValMap& feeds,
                     std::vector<OrtValue>& output_vals,
                     bool is_qnn_ep,
-                    const std::unordered_map<std::string, std::string>& session_option_pairs) {
+                    const std::unordered_map<std::string, std::string>& session_option_pairs,
+                    std::function<void(const Graph&)>* graph_checker) {
   SessionOptions so;
   so.session_logid = log_id;
   for (auto key_value : session_option_pairs) {
@@ -164,6 +165,10 @@ void InferenceModel(const std::string& model_data, const char* log_id,
     ASSERT_EQ(ep_nodes, 0) << "No nodes are supposed to be assigned to " << provider_type;
   } else {
     ASSERT_GT(ep_nodes, 0) << "No nodes were assigned to " << provider_type;
+  }
+
+  if (graph_checker) {
+    (*graph_checker)(graph);
   }
 
   const auto& outputs = graph.GetOutputs();
@@ -383,6 +388,7 @@ bool ReduceOpHasAxesInput(const std::string& op_type, int opset_version) {
       {"ReduceMean", 18},
       {"ReduceProd", 18},
       {"ReduceSum", 13},
+      {"ReduceL2", 18},
   };
 
   const auto it = opset_with_axes_as_input.find(op_type);

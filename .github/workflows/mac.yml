@@ -20,7 +20,7 @@ env:
 
 jobs:
   ARM64-Xcode16:
-    runs-on: macos-14
+    runs-on: macos-15
 
     env:
       xcode_version: 16
@@ -60,11 +60,15 @@ jobs:
           --use_xnnpack \
           --use_binskim_compliant_compile_flags
 
-  ARM64-Xcode16-targeting-iphonesimulator-x86_64:
-    runs-on: macos-14
+  ARM64-Xcode16-targeting-iphonesimulator:
+    runs-on: macos-15
 
     env:
       xcode_version: 16
+
+    strategy:
+      matrix:
+        target_arch: [x86_64, arm64]
 
     timeout-minutes: 60
 
@@ -87,16 +91,14 @@ jobs:
 
     - uses: actions/checkout@v4
 
-    # Note: Setting onnxruntime_BUILD_UNIT_TESTS=OFF as a workaround for
-    # https://github.com/microsoft/onnxruntime/issues/22245.
-    - name: Build
+    - name: Build for iphonesimulator ${{ matrix.target_arch }}
       shell: bash
       run: |
         python ./tools/ci_build/build.py \
           --build_dir ./build \
           --update \
           --build --parallel \
-          --skip_tests \
+          --test \
           --build_apple_framework \
           --use_xcode \
           --use_coreml \
@@ -105,8 +107,7 @@ jobs:
           --ios \
           --apple_deploy_target=13.0 \
           --apple_sysroot=iphonesimulator \
-          --osx_arch=x86_64 \
-          --cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF
+          --osx_arch=${{ matrix.target_arch }}
 
   Vcpkg:
     runs-on: macos-13

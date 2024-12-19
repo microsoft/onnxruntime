@@ -144,7 +144,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override {
-    std::lock_guard<OrtMutex> lock(Base::s_.mutex);
+    std::lock_guard<std::mutex> lock(Base::s_.mutex);
 
     ORT_RETURN_IF_ERROR(Base::UpdateState(context, true));
     if (Base::s_.Y->Shape().Size() == 0) {
@@ -342,7 +342,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
   };
 
   struct FusionPlanCache {
-    mutable OrtMutex mutex;
+    mutable std::mutex mutex;
     using HashKey = uint32_t;
     std::unordered_map<HashKey, FusionPlanCacheItem> cache_directory_;
 
@@ -351,7 +351,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
 
     FusionPlanCacheItem& FindOrCreateFusionPlanCache(HashKey key,
                                                      std::function<Status(FusedConvFusionData& fusion)> factory) {
-      std::lock_guard<OrtMutex> lock(mutex);
+      std::lock_guard<std::mutex> lock(mutex);
       auto iter = cache_directory_.find(key);
       if (iter == cache_directory_.end()) {
         cache_directory_[key].fusion = std::make_unique<FusedConvFusionData>();

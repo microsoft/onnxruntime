@@ -88,15 +88,14 @@ bool ExpandOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
     LOGS(logger, VERBOSE) << "Cannot get shape.";
     return false;
   }
+  if (std::any_of(new_shape.begin(), new_shape.end(), [](int64_t dimension) { return dimension == 0; })) {
+    LOGS(logger, VERBOSE) << "WebNN expand does not support new shape with 0 dimension.";
+    return false;
+  }
 
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger)) {
     LOGS(logger, VERBOSE) << "Cannot get input's shape.";
-    return false;
-  }
-
-  if (input_shape.empty()) {
-    LOGS(logger, VERBOSE) << "Expand does not support empty input's shape.";
     return false;
   }
 

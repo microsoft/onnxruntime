@@ -291,11 +291,7 @@ def save_results(results, filename):
 
     installed_packages = pkg_resources.working_set
     installed_packages_list = sorted(
-        [
-            f"{i.key}=={i.version}"
-            for i in installed_packages
-            if i.key in ["ort-nightly-gpu", "ort-nightly", "onnxruntime", "onnxruntime-gpu"]
-        ]
+        [f"{i.key}=={i.version}" for i in installed_packages if i.key in ["onnxruntime", "onnxruntime-gpu"]]
     )
     ort_pkg_name = ""
     ort_pkg_version = ""

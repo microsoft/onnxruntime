@@ -1,3 +1,20 @@
+parameters:
+- name: CudaVersion
+  displayName: CUDA version
+  type: string
+  default: '12.2'
+  values:
+    - 11.8
+    - 12.2
+
+variables:
+  - template: templates/common-variables.yml
+  - name: win_trt_folder
+    ${{ if eq(parameters.CudaVersion, '11.8') }}:
+      value: ${{ variables.win_trt_folder_cuda11 }}
+    ${{ if eq(parameters.CudaVersion, '12.2') }}:
+      value: ${{ variables.win_trt_folder_cuda12 }}
+
 stages:
 - ${{ if or(startsWith(variables['System.CollectionUri'], 'https://dev.azure.com/aiinfra/'),startsWith(variables['System.CollectionUri'], 'https://aiinfra.visualstudio.com/')) }}:
   - template: templates/web-ci.yml
@@ -206,7 +223,7 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_cuda.bat
         buildArch: x64
-        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}" --enable_cuda_profiling --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
@@ -226,7 +243,7 @@ stages:
         BuildConfig: 'RelWithDebInfo'
         EnvSetupScript: setup_env_trt.bat
         buildArch: x64
-        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v11.8" --enable_cuda_profiling --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\TensorRT-10.4.0.26.Windows10.x86_64.cuda-11.8" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+        additionalBuildFlags: --enable_pybind --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}" --enable_cuda_profiling --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}" --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo
@@ -377,7 +394,7 @@ stages:
 
     - task: UsePythonVersion@0
       inputs:
-        versionSpec: '3.8'
+        versionSpec: '3.12'
         addToPath: true
         architecture: x64
 
@@ -411,7 +428,7 @@ stages:
     steps:
     - task: UsePythonVersion@0
       inputs:
-        versionSpec: "3.9"
+        versionSpec: "3.12"
         addToPath: true
         architecture: "x64"
 
@@ -447,7 +464,7 @@ stages:
     steps:
     - task: UsePythonVersion@0
       inputs:
-        versionSpec: "3.9"
+        versionSpec: "3.12"
         addToPath: true
         architecture: "x64"
 

@@ -14,6 +14,7 @@
 //
 
 import fs from 'fs';
+import { bootstrap as globalAgentBootstrap } from 'global-agent';
 import https from 'https';
 import jszip from 'jszip';
 import path from 'path';
@@ -110,6 +111,11 @@ console.log(
     buildId ? `build "${buildId}"` : 'latest "main" branch'
   } ===`,
 );
+
+// Bootstrap global-agent to honor the proxy settings in
+// environment variables, e.g. GLOBAL_AGENT_HTTPS_PROXY.
+// See https://github.com/gajus/global-agent/blob/v3.0.0/README.md#environment-variables for details.
+globalAgentBootstrap();
 
 const filter = buildId
   ? `&buildIds=${buildId}`

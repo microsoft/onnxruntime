@@ -25,8 +25,8 @@ class GemmOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                              const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -113,12 +113,12 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     if (input_defs.size() >= 3) {
       a_zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
     } else {
-      a_zero_point = model_builder.GetZeroConstant(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+      a_zero_point = model_builder.CreateOrGetConstant<uint8_t>(ONNX_NAMESPACE::TensorProto_DataType_UINT8, 0);
     }
     if (input_defs.size() >= 4) {
       b_zero_point = model_builder.GetOperand(node.InputDefs()[3]->Name());
     } else {
-      b_zero_point = model_builder.GetZeroConstant(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+      b_zero_point = model_builder.CreateOrGetConstant<uint8_t>(ONNX_NAMESPACE::TensorProto_DataType_UINT8, 0);
     }
     output = model_builder.GetBuilder().call<emscripten::val>("matmulInteger",
                                                               a,
@@ -215,8 +215,8 @@ bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializer
   return true;
 }
 
-bool GemmOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                                           const logging::Logger& logger) const {
+bool GemmOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                                           const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
   int32_t input0_type;  // A data type

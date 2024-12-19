@@ -3,9 +3,7 @@
 REM Run benchmark in Windows for developing purpose. For official benchmark, please use run_benchmark.sh.
 REM Settings are different from run_benchmark.sh: no cli, batch and sequence, input counts, average over 100, no fp16, less models etc.
 
-REM Please install PyTorch (see https://pytorch.org/) before running this benchmark. Like the following:
-REM   GPU:   conda install pytorch torchvision cudatoolkit=10.1 -c pytorch
-REM   CPU:   conda install pytorch torchvision cpuonly -c pytorch
+REM Please install PyTorch (see https://pytorch.org/) before running this benchmark.
 
 REM When use_package=true, you need not copy other files to run benchmarks except this sh file.
 REM Otherwise, it will use python script (*.py) files in this directory.
@@ -21,12 +19,12 @@ set run_torchscript=false
 
 REM Devices to test.
 REM Attention: You cannot run both CPU and GPU at the same time: gpu need onnxruntime-gpu, and CPU need onnxruntime.
-set run_gpu_fp32=false
-set run_gpu_fp16=false
-set run_cpu_fp32=true
-set run_cpu_int8=true
+set run_gpu_fp32=true
+set run_gpu_fp16=true
+set run_cpu_fp32=false
+set run_cpu_int8=false
 
-set average_over=100
+set average_over=1000
 
 REM Enable optimizer (use script instead of OnnxRuntime for graph optimization)
 set use_optimizer=true
@@ -36,7 +34,7 @@ set sequence_length=8 128
 
 REM Number of inputs (input_ids, token_type_ids, attention_mask) for ONNX model.
 REM Note that different input count might lead to different performance
-set input_counts=1
+set input_counts=3
 
 REM Pretrained transformers models can be a subset of: bert-base-cased roberta-base gpt2 distilgpt2 distilbert-base-uncased
 set models_to_test=bert-base-cased
@@ -57,7 +55,6 @@ if %run_cpu_int8% == true if %run_gpu_fp32% == true echo cannot test cpu and gpu
 if %run_cpu_int8% == true if %run_gpu_fp16% == true echo cannot test cpu and gpu at same time & goto :EOF
 
 if %run_install% == true (
-  pip uninstall --yes ort_nightly
   pip uninstall --yes onnxruntime
   pip uninstall --yes onnxruntime-gpu
   if %run_cpu_fp32% == true (
@@ -70,7 +67,6 @@ if %run_install% == true (
     )
   )
 
-  pip install --upgrade onnxconverter_common
   pip install --upgrade transformers
 )
 

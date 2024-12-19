@@ -233,7 +233,7 @@ stages:
     - task: UsePythonVersion@0
       displayName: 'Use Python'
       inputs:
-        versionSpec: 3.8
+        versionSpec: 3.12
 
     - task: MSBuild@1
       displayName: 'Build Nuget Packages'

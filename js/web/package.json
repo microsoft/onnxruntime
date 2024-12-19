@@ -7,7 +7,7 @@
     "type": "git"
   },
   "author": "fs-eire",
-  "version": "1.20.0",
+  "version": "1.21.0",
   "jsdelivr": "dist/ort.min.js",
   "dependencies": {
     "flatbuffers": "^1.12.0",
@@ -78,25 +78,21 @@
       "types": "./types.d.ts"
     },
     "./all": {
-      "node": null,
       "import": "./dist/ort.all.bundle.min.mjs",
       "require": "./dist/ort.all.min.js",
       "types": "./types.d.ts"
     },
     "./wasm": {
-      "node": null,
-      "import": "./dist/ort.wasm.min.mjs",
+      "import": "./dist/ort.wasm.bundle.min.mjs",
       "require": "./dist/ort.wasm.min.js",
       "types": "./types.d.ts"
     },
     "./webgl": {
-      "node": null,
       "import": "./dist/ort.webgl.min.mjs",
       "require": "./dist/ort.webgl.min.js",
       "types": "./types.d.ts"
     },
     "./webgpu": {
-      "node": null,
       "import": "./dist/ort.webgpu.bundle.min.mjs",
       "require": "./dist/ort.webgpu.min.js",
       "types": "./types.d.ts"

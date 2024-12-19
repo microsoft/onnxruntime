@@ -5,6 +5,7 @@
 
 #include <cub/cub.cuh>
 
+
 #include "core/providers/cuda/shared_inc/cuda_utils.h"
 #include "core/providers/cuda/cu_inc/common.cuh"
 
@@ -19,7 +20,10 @@ struct TopOne {
   int32_t key;
   T value;
 
-  __device__ __host__ __forceinline__ TopOne(int32_t key = -1, T value = NumericLimits<T>::Min()) : key(key), value(value) {
+  __device__ __host__ __forceinline__ TopOne() : key(-1), value(NumericLimits<T>::Lowest()) {
+  }
+
+  __device__ __host__ __forceinline__ TopOne(int32_t key, T value) : key(key), value(value) {
   }
 
   __device__ __forceinline__ void Reduce(int32_t k, T v) {

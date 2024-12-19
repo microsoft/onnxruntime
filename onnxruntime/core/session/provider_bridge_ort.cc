@@ -41,6 +41,7 @@
 
 #include "core/session/onnxruntime_c_api.h"
 #include "core/common/string_helper.h"
+#include <utility>
 
 #ifdef ENABLE_TRAINING
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
@@ -278,8 +279,9 @@ struct ProviderHostImpl : ProviderHost {
 
   std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                      const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                                     gsl::span<const NodeIndex> tentative_nodes) override {
-    return onnxruntime::GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes);
+                                                     gsl::span<const NodeIndex> tentative_nodes,
+                                                     const logging::Logger& logger) override {
+    return onnxruntime::GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes, logger);
   }
 
   Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ bool* p_data, size_t expected_size) override { return utils::UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
@@ -495,6 +497,7 @@ struct ProviderHostImpl : ProviderHost {
   void AttributeProto__set_name(ONNX_NAMESPACE::AttributeProto* p, const ::std::string& value) override { return p->set_name(value); }
   void AttributeProto__set_type(ONNX_NAMESPACE::AttributeProto* p, ONNX_NAMESPACE::AttributeProto_AttributeType value) override { return p->set_type(value); }
   ONNX_NAMESPACE::TensorProto* AttributeProto__add_tensors(ONNX_NAMESPACE::AttributeProto* p) override { return p->add_tensors(); }
+  std::string* AttributeProto__release_s(ONNX_NAMESPACE::AttributeProto* p) override { return p->release_s(); }
 
   // GraphProto (wrapped)
   std::unique_ptr<ONNX_NAMESPACE::GraphProto> GraphProto__construct() override { return std::make_unique<ONNX_NAMESPACE::GraphProto>(); }
@@ -704,6 +707,12 @@ struct ProviderHostImpl : ProviderHost {
   // ConfigOptions (wrapped)
   std::optional<std::string> ConfigOptions__GetConfigEntry(const ConfigOptions* p, const std::string& config_key) override {
     return p->GetConfigEntry(config_key);
+  }
+
+  // ConfigOptions (wrapped)
+  std::string ConfigOptions__GetConfigOrDefault(const ConfigOptions* p, const std::string& config_key,
+                                                const std::string& default_value) override {
+    return p->GetConfigOrDefault(config_key, default_value);
   }
 
   // OrtRunOptions (wrapped)
@@ -1050,8 +1059,8 @@ struct ProviderHostImpl : ProviderHost {
   }
 
   std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
-  QDQ__GetAllNodeUnits(const GraphViewer* graph_viewer) override {
-    return QDQ::GetAllNodeUnits(*graph_viewer);
+  QDQ__GetAllNodeUnits(const GraphViewer* graph_viewer, const logging::Logger& logger) override {
+    return QDQ::GetAllNodeUnits(*graph_viewer, logger);
   }
 
   // Model (wrapped)
@@ -1149,8 +1158,8 @@ struct ProviderHostImpl : ProviderHost {
 
   // GraphViewer (wrapped)
   void GraphViewer__operator_delete(GraphViewer* p) override { delete p; }
-  std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* graph_viewer, const logging::Logger& logger) override {
-    return std::make_unique<Model>(graph_viewer->Name(), true, ModelMetaData(), PathString(),
+  std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* graph_viewer, const logging::Logger& logger, const ModelMetaData& metadata = ModelMetaData()) override {
+    return std::make_unique<Model>(graph_viewer->Name(), true, metadata, PathString(),
 #if !defined(ORT_MINIMAL_BUILD)
                                    IOnnxRuntimeOpSchemaRegistryList({graph_viewer->GetSchemaRegistry()}), graph_viewer->DomainToVersionMap(),
 #else
@@ -1205,6 +1214,7 @@ struct ProviderHostImpl : ProviderHost {
     GraphViewerToProto(*p, graph_proto, include_initializers, include_outer_scope_args, static_cast<ExecutionOrder>(execution_order));
   }
   const Node* GraphViewer__GetProducerNode(const GraphViewer* p, const std::string& node_arg_name) const override { return p->GetProducerNode(node_arg_name); }
+  IOnnxRuntimeOpSchemaCollectionPtr GraphViewer__GetSchemaRegistry(const GraphViewer* p) const override { return p->GetSchemaRegistry(); }
 
   // OpKernel (direct)
   const Node& OpKernel__Node(const OpKernel* p) override { return p->OpKernel::Node(); }
@@ -1783,12 +1793,6 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
   if (legacy_ov_options->device_type != nullptr)
     ov_options_converted_map["device_type"] = legacy_ov_options->device_type;
 
-  if (legacy_ov_options->enable_npu_fast_compile) {
-    ov_options_converted_map["enable_npu_fast_compile"] = "false";
-  } else {
-    ov_options_converted_map["enable_npu_fast_compile"] = "true";
-  }
-
   if (legacy_ov_options->num_of_threads != '\0')
     ov_options_converted_map["num_of_threads"] = std::to_string(legacy_ov_options->num_of_threads);
 
@@ -1809,51 +1813,24 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
     ov_options_converted_map["disable_dynamic_shapes"] = "true";
   }
 
+  if (legacy_ov_options->enable_npu_fast_compile) {
+    LOGS_DEFAULT(WARNING) << "enable_npu_fast_compile option is deprecated. Skipping this option";
+  }
   // Add new provider option below
   ov_options_converted_map["num_streams"] = "1";
-  ov_options_converted_map["export_ep_ctx_blob"] = "false";
+  ov_options_converted_map["load_config"] = "";
   ov_options_converted_map["model_priority"] = "DEFAULT";
   ov_options_converted_map["enable_qdq_optimizer"] = "false";
   return ov_options_converted_map;
 }
 
-std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(const OrtOpenVINOProviderOptions* provider_options) {
-  ProviderOptions ov_options_converted_map = onnxruntime::OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(provider_options);
-  return s_library_openvino.Get().CreateExecutionProviderFactory(&ov_options_converted_map);
-}
-
-void ORTSessionOptionsToOrtOpenVINOProviderOptions(ProviderOptions& ov_options,
-                                                   const SessionOptions* session_options) {
-  bool disable_cpu_fallback = session_options->config_options.GetConfigOrDefault(
-                                  kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
-  if (disable_cpu_fallback)
-    ov_options["disable_cpu_fallback"] = "true";
-
-  // values from session options will override the providerOptions Value
-  bool so_epctx_enable = session_options->config_options.GetConfigOrDefault(
-                             kOrtSessionOptionEpContextEnable, "0") == "1";
-  if (so_epctx_enable)
-    ov_options["so_export_ep_ctx_blob"] = "true";
-
-  std::string so_cache_path = session_options->config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "").c_str();
-  ov_options["so_epctx_path"] = so_cache_path;
-
-  // Default embedMode is 1. Saving the compiled model contents as a Epctx node attribute
-  bool so_epctx_embed_mode = session_options->config_options.GetConfigOrDefault(
-                                 kOrtSessionOptionEpContextEmbedMode, "1") == "0";
-  if (so_epctx_embed_mode) {
-    // defaults to true
-    ov_options["so_epctx_embed_mode"] = "false";
-  }
-}
-
-std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(ProviderOptions* provider_options_map,
-                                                                                  const SessionOptions* session_options) {
+std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(
+    const ProviderOptions* provider_options_map, const SessionOptions* session_options) {
   // Append session options applicable for EP to EP Provider options.
-  if (session_options) {
-    onnxruntime::ORTSessionOptionsToOrtOpenVINOProviderOptions(*provider_options_map, session_options);
-  }
-  return s_library_openvino.Get().CreateExecutionProviderFactory(provider_options_map);
+  std::pair<const ProviderOptions*, const ConfigOptions&> config_buffer = {provider_options_map,
+                                                                           session_options->config_options};
+  const void* obj = reinterpret_cast<const void*>(&config_buffer);
+  return s_library_openvino.Get().CreateExecutionProviderFactory(obj);
 }
 
 std::shared_ptr<IExecutionProviderFactory> DnnlProviderFactoryCreator::Create(const OrtDnnlProviderOptions* dnnl_options) {
@@ -2106,9 +2083,11 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_MIGraphX, _In
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options, _In_ const OrtOpenVINOProviderOptions* provider_options) {
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_OpenVINO, _In_ OrtSessionOptions* options,
+                    _In_ const OrtOpenVINOProviderOptions* provider_options) {
   API_IMPL_BEGIN
-  auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(provider_options);
+  const onnxruntime::ProviderOptions ov_options_converted_map = onnxruntime::OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(provider_options);
+  auto factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(&ov_options_converted_map, &(options->value));
   if (!factory) {
     return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_OpenVINO: Failed to load shared library");
   }
@@ -2264,7 +2243,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
       new_tensorrt_options.trt_ep_context_file_path = (context_cache_path.size() == 0) ? nullptr : context_cache_path.c_str();
       LOGS_DEFAULT(VERBOSE) << "User specified context cache path: " << context_cache_path;
 
-      embed_mode = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "1");
+      embed_mode = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "0");
       if ("1" == embed_mode) {
         new_tensorrt_options.trt_ep_context_embed_mode = 1;
       } else if ("0" == embed_mode) {

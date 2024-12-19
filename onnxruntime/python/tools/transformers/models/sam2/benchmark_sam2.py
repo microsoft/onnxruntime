@@ -90,26 +90,23 @@ class TestConfig:
         else:
             return decoder_shape_dict(self.height, self.width, self.num_labels, self.num_points, self.num_masks)
 
-    def random_inputs(self):
+    def random_inputs(self) -> Mapping[str, torch.Tensor]:
+        dtype = self.dtype
         if self.component == "image_encoder":
-            return {
-                "image": torch.randn(
-                    self.batch_size, 3, self.height, self.width, dtype=torch.float32, device=self.device
-                )
-            }
+            return {"image": torch.randn(self.batch_size, 3, self.height, self.width, dtype=dtype, device=self.device)}
         else:
             return {
-                "image_features_0": torch.rand(1, 32, 256, 256, dtype=torch.float32, device=self.device),
-                "image_features_1": torch.rand(1, 64, 128, 128, dtype=torch.float32, device=self.device),
-                "image_embeddings": torch.rand(1, 256, 64, 64, dtype=torch.float32, device=self.device),
+                "image_features_0": torch.rand(1, 32, 256, 256, dtype=dtype, device=self.device),
+                "image_features_1": torch.rand(1, 64, 128, 128, dtype=dtype, device=self.device),
+                "image_embeddings": torch.rand(1, 256, 64, 64, dtype=dtype, device=self.device),
                 "point_coords": torch.randint(
-                    0, 1024, (self.num_labels, self.num_points, 2), dtype=torch.float32, device=self.device
+                    0, 1024, (self.num_labels, self.num_points, 2), dtype=dtype, device=self.device
                 ),
                 "point_labels": torch.randint(
                     0, 1, (self.num_labels, self.num_points), dtype=torch.int32, device=self.device
                 ),
-                "input_masks": torch.zeros(self.num_labels, 1, 256, 256, dtype=torch.float32, device=self.device),
-                "has_input_masks": torch.ones(self.num_labels, dtype=torch.float32, device=self.device),
+                "input_masks": torch.zeros(self.num_labels, 1, 256, 256, dtype=dtype, device=self.device),
+                "has_input_masks": torch.ones(self.num_labels, dtype=dtype, device=self.device),
                 "original_image_size": torch.tensor([self.height, self.width], dtype=torch.int32, device=self.device),
             }
 
@@ -314,7 +311,7 @@ def run_test(
         width=args.width,
         device=device,
         use_tf32=True,
-        enable_cuda_graph=False,
+        enable_cuda_graph=enable_cuda_graph,
         dtype=dtypes[args.dtype],
         prefer_nhwc=args.prefer_nhwc,
         repeats=args.repeats,

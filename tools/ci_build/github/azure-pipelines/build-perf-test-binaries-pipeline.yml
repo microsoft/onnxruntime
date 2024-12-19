@@ -34,11 +34,8 @@ stages:
 # build Python packages
 # Linux GPU only
 - ${{ if parameters.BuildPythonPackages }}:
-  - template: templates/py-packaging-stage.yml
+  - template: stages/py-gpu-packaging-stage.yml
     parameters:
       enable_linux_gpu: true
-      enable_linux_cpu: false
-      enable_windows_cpu: false
       enable_windows_gpu: false
-      enable_mac_cpu: false
-      enable_linux_arm: false
+      cuda_version: 12.2

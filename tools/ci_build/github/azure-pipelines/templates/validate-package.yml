@@ -11,11 +11,11 @@ steps:
     - task: UsePythonVersion@0
       displayName: 'Use Python'
       inputs:
-        versionSpec: 3.8
+        versionSpec: 3.12
 
     - task: PythonScript@0
       displayName: 'Validate Package'
       inputs:
         scriptPath: '${{parameters.ScriptPath}}'
         arguments: '--package_type ${{parameters.PackageType}} --package_name ${{parameters.PackageName}} --package_path ${{parameters.PackagePath}} --platforms_supported ${{parameters.PlatformsSupported}} --verify_nuget_signing ${{parameters.VerifyNugetSigning}}'
-        workingDirectory: ${{parameters.workingDirectory}} 
+        workingDirectory: ${{parameters.workingDirectory}}

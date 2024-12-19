@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "core/framework/to_tensor_proto_element_type.h"
 #include "test/providers/provider_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -176,17 +177,6 @@ TEST(SplitOperatorTest, Axis0UnequalSplitFloat) {
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider});
   // CoreML EP, etc. requires split to be an input. Same applies to below sets of tests.
   RunTest<float>(axis, splits, input, outputs, {kTensorrtExecutionProvider}, false, true);
-}
-
-template <typename T>
-std::vector<T> GetTypedArray(std::vector<float> inputs, [[maybe_unused]] T v = T(0.f)) {
-  if constexpr (std::is_same<T, float>::value) {
-    return inputs;
-  } else {
-    std::vector<T> inputs_fp16(inputs.size());
-    ConvertFloatToMLFloat16(inputs.data(), inputs_fp16.data(), inputs.size());
-    return inputs_fp16;
-  }
 }
 
 TEST(SplitOperatorTest, Axis0UnequalSplitString) {

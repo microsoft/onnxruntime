@@ -35,7 +35,7 @@ inline GEMM(T, ScalarT) {
   GemmParams<T> params;
   params.tuning_ctx = tuning_ctx;
   params.stream = stream;
-  params.handle = handle;
+  params.handle = (rocblas_handle)handle;
 
   params.opa = opa;
   params.opb = opb;
@@ -75,7 +75,7 @@ inline BATCHED_GEMM(T, ScalarT) {
   BatchedGemmParams<T> params;
   params.tuning_ctx = tuning_ctx;
   params.stream = stream;
-  params.handle = handle;
+  params.handle = (rocblas_handle)handle;
 
   params.opa = opa;
   params.opb = opb;
@@ -116,7 +116,7 @@ inline STRIDED_BATCHED_GEMM(T, ScalarT) {
   StridedBatchedGemmParams<T> params;
   params.tuning_ctx = tuning_ctx;
   params.stream = stream;
-  params.handle = handle;
+  params.handle = (rocblas_handle)handle;
 
   params.opa = opa;
   params.opb = opb;

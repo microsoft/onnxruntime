@@ -58,7 +58,7 @@ Status GemmFastGelu<T>::ComputeInternal(OpKernelContext* ctx) const {
   using onnxruntime::rocm::tunable::blas::BlasOp;
 
   return blas::row_major::GemmFastGelu(
-      GetTuningContext(), ctx->GetComputeStream(), GetRocblasHandle(ctx),
+      GetTuningContext(), ctx->GetComputeStream(), GetHipblasHandle(ctx),
       transa ? BlasOp::Trans : BlasOp::NonTrans,
       transb ? BlasOp::Trans : BlasOp::NonTrans,
       helper.M(), helper.N(), helper.K(),
