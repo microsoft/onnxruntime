@@ -472,6 +472,7 @@ def parse_arguments():
     parser.add_argument(
         "--use_vcpkg",
         action="store_true",
+        default=is_windows() and ("VCPKG_INSTALLATION_ROOT" in os.environ),
         help="Use vcpkg to search dependencies. Requires CMAKE_TOOLCHAIN_FILE for vcpkg.cmake",
     )
 
@@ -1109,6 +1110,34 @@ def generate_build_tree(
             "-DRISCV_QEMU_PATH:PATH=" + args.riscv_qemu_path,
             "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, "cmake", "riscv64.toolchain.cmake"),
         ]
+    if args.use_vcpkg:
+        # Setup CMake flags for vcpkg
+        vcpkg_install_options = ['--x-feature=tests']
+        vcpkg_installation_root = os.environ.get("VCPKG_INSTALLATION_ROOT")
+        if vcpkg_installation_root is None:
+            run_subprocess(["git", "clone", "https://github.com/microsoft/vcpkg.git", "--recursive"], cwd=build_dir)
+            vcpkg_installation_root = os.path.join(build_dir, 'vcpkg')
+        vcpkg_toolchain_path = os.path.join(vcpkg_installation_root, 'scripts','buildsystems','vcpkg.cmake')
+        add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", vcpkg_toolchain_path);
+        if args.use_binskim_compliant_compile_flags:
+          overlay_triplets_dir = os.path.join(source_dir, 'cmake','custom-triplets');
+          vcpkg_install_options.append("--overlay-triplets=%s" % overlay_triplets_dir)
+        # VCPKG_INSTALL_OPTIONS is a CMake list. It must be joined by semicolons
+        add_default_definition(cmake_extra_defines, "VCPKG_INSTALL_OPTIONS", ';'.join(vcpkg_install_options))
+        # Choose the cmake triplet
+        if is_windows() and not args.build_wasm:
+          target_arch = platform.machine()
+          cpu_arch = platform.architecture()[0]
+          if target_arch == "AMD64":
+            if cpu_arch == "32bit" or args.x86:
+                triplet = "x86-windows-static" if args.enable_msvc_static_runtime  else "x86-windows-static-md"
+            else:
+                triplet = "x64-windows-static" if args.enable_msvc_static_runtime  else "x64-windows-static-md"
+          elif target_arch == "ARM64":
+            triplet = "arm64-windows-static" if args.enable_msvc_static_runtime  else "arm64-windows-static-md"
+          else:
+            raise BuildError("unknown python arch")
+        add_default_definition(cmake_extra_defines, "VCPKG_TARGET_TRIPLET", triplet)       
 
     # By default on Windows we currently support only cross compiling for ARM/ARM64
     # (no native compilation supported through this script).
@@ -1659,7 +1688,7 @@ def generate_build_tree(
                 f"-DCMAKE_BUILD_TYPE={config}",
                 (
                     f"-DCMAKE_PREFIX_PATH={build_dir}/{config}/installed"
-                    if preinstalled_dir.exists() and not (args.arm64 or args.arm64ec or args.arm)
+                    if preinstalled_dir.exists() and not (args.arm64 or args.arm64ec or args.arm or args.use_vcpkg)
                     else ""
                 ),
             ],
@@ -2550,7 +2579,9 @@ def main():
     args = parse_arguments()
 
     print(args)
-
+    if args.ios or args.android or args.build_wasm:
+        # Not supported yet
+        args.use_vcpkg = False
     if os.getenv("ORT_BUILD_WITH_CACHE") == "1":
         args.use_cache = True
 
