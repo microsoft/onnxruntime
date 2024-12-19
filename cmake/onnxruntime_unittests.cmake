@@ -228,8 +228,12 @@ function(AddTest)
           list(APPEND TEST_NODE_FLAGS "--experimental-wasm-simd")
         endif()
 
+        if (onnxruntime_ENABLE_WEBASSEMBLY_RELAXED_SIMD)
+          message(WARNING "Use system `node` to test Wasm relaxed SIMD. Please make sure to install node v21 or newer.")
+          set(NODE_EXECUTABLE node)
+          set(TEST_NODE_FLAGS)
         # prefer Node from emsdk so the version is more deterministic
-        if (DEFINED ENV{EMSDK_NODE})
+        elseif (DEFINED ENV{EMSDK_NODE})
           set(NODE_EXECUTABLE $ENV{EMSDK_NODE})
         else()
           # warning as we don't know what node version is being used and whether things like the TEST_NODE_FLAGS
