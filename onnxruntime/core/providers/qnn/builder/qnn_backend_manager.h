@@ -24,6 +24,7 @@
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/common/path_string.h"
+#include "core/providers/qnn/builder/qnn_context_mem_handle_manager.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 
 namespace onnxruntime {
@@ -31,7 +32,7 @@ namespace qnn {
 
 class QnnModel;
 
-class QnnBackendManager {
+class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager> {
  public:
   QnnBackendManager(std::string&& backend_path,
                     ProfilingLevel profiling_level_etw,
@@ -170,6 +171,10 @@ class QnnBackendManager {
                                    uint64_t buffer_length,
                                    uint64_t& max_spill_fill_buffer_size);
 
+  Status GetOrRegisterContextMemHandle(Qnn_ContextHandle_t context, void* shared_memory_address,
+                                       const Qnn_Tensor_t& qnn_tensor,
+                                       Qnn_MemHandle_t& mem_handle);
+
  private:
   void* LoadLib(const char* file_name, int flags, std::string& error_msg);
 
@@ -240,6 +245,9 @@ class QnnBackendManager {
       const char* eventIdentifier);
 #endif
 
+  Status AddQnnContext(Qnn_ContextHandle_t context);
+  Status ReleaseQnnContextMemHandles();
+
  private:
   const std::string backend_path_;
   std::mutex logger_mutex_;
@@ -253,6 +261,9 @@ class QnnBackendManager {
   Qnn_LogHandle_t log_handle_ = nullptr;
   Qnn_DeviceHandle_t device_handle_ = nullptr;
   std::vector<Qnn_ContextHandle_t> contexts_;
+  // Note: Using shared_ptr<QnnContextMemHandleManager> so that we can refer to it with a weak_ptr from a
+  // HtpSharedMemoryAllocator allocation cleanup callback.
+  std::unordered_map<Qnn_ContextHandle_t, std::shared_ptr<QnnContextMemHandleManager>> context_mem_handles_;
   ProfilingLevel profiling_level_etw_;
   ProfilingLevel profiling_level_;
   ProfilingLevel profiling_level_merge_;
