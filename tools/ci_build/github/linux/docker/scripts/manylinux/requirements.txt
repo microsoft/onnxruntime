@@ -4,7 +4,7 @@ mypy
 pytest
 setuptools>=68.2.2
 wheel
-onnx==1.16.1
+onnx==1.17.0
 protobuf==4.21.12
 sympy==1.12 ; python_version < '3.9'
 sympy==1.13 ; python_version >= '3.9'

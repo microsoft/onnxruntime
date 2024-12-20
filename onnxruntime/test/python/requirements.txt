@@ -1,2 +1,2 @@
-onnx==1.16.1
+onnx==1.17.0
 pytest
