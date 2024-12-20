@@ -67,7 +67,7 @@ FARPROC WINAPI delay_load_hook(unsigned dliNotify, PDelayLoadInfo pdli) {
         // Try to load the DLL from the same directory as onnxruntime.dll
 
         // First, get the path to onnxruntime.dll
-        auto path = Env::Default().GetRuntimePath();
+        auto path = onnxruntime::Env::Default().GetRuntimePath();
         if (path.empty()) {
           // Failed to get the path to onnxruntime.dll. In this case, we will just return NULL and let the system
           // search for the DLL in the default search order.
