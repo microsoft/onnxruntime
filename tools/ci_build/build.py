@@ -1119,12 +1119,14 @@ def generate_build_tree(
             vcpkg_installation_root = os.path.join(build_dir, 'vcpkg')
         vcpkg_toolchain_path = os.path.join(vcpkg_installation_root, 'scripts','buildsystems','vcpkg.cmake')
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", vcpkg_toolchain_path);
-        if args.use_binskim_compliant_compile_flags:
-            overlay_triplets_dir = os.path.join(source_dir, 'cmake','vcpkg_triplets', 'binskim');
-            vcpkg_install_options.append("--overlay-triplets=%s" % overlay_triplets_dir)
-        elif args.enable_address_sanitizer:
+        # The enable_address_sanitizer and use_binskim_compliant_compile_flags can be enabled independently. Then there would be 4 different combinations. Here we only accept 3.
+        if args.enable_address_sanitizer:
             overlay_triplets_dir = os.path.join(source_dir, 'cmake','vcpkg_triplets', 'asan');
             vcpkg_install_options.append("--overlay-triplets=%s" % overlay_triplets_dir)
+        elif args.use_binskim_compliant_compile_flags:
+            overlay_triplets_dir = os.path.join(source_dir, 'cmake','vcpkg_triplets', 'binskim');
+            vcpkg_install_options.append("--overlay-triplets=%s" % overlay_triplets_dir)
+        
         # VCPKG_INSTALL_OPTIONS is a CMake list. It must be joined by semicolons
         add_default_definition(cmake_extra_defines, "VCPKG_INSTALL_OPTIONS", ';'.join(vcpkg_install_options))
         # Choose the cmake triplet
@@ -2592,7 +2594,8 @@ def main():
     print(args)
     if args.build_wasm:
         # No triplet for wasm64 yet
-        args.use_vcpkg = not enable_wasm_memory64
+        # args.use_vcpkg = not args.enable_wasm_memory64
+        args.use_vcpkg = False
     elif args.ios or args.android:
         # Not supported yet
         args.use_vcpkg = False
