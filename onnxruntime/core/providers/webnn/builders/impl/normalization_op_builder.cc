@@ -62,7 +62,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
 
   const size_t bias_input_index = op_type == "SkipSimplifiedLayerNormalization" ? 3 : 2;
   emscripten::val bias = emscripten::val::undefined();
-  if (input_defs.size() > bias_input_index && input_defs[bias_input_index]->Exists()) {
+  if (TensorExists(input_defs, bias_input_index)) {
     // Bias input exists, and bias's shape should be the same as scale's shape.
     std::vector<int64_t> bias_shape;
     ORT_RETURN_IF_NOT(GetShape(*input_defs[bias_input_index], bias_shape, logger), "Cannot get bias shape");
@@ -153,7 +153,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       }
 
       // SkipSimplifiedLayerNormalization's output input_skip_bias_sum is the sum of input, skip, and bias.
-      if (op_type == "SkipSimplifiedLayerNormalization" && output_defs.size() > 3 && output_defs[3]->Exists()) {
+      if (op_type == "SkipSimplifiedLayerNormalization" && TensorExists(output_defs, 3)) {
         emscripten::val skip = model_builder.GetOperand(input_defs[1]->Name());
         common_options.set("label", node.Name() + "_add_skip");
         input_skip_bias_sum = model_builder.GetBuilder().call<emscripten::val>("add", input, skip, common_options);
@@ -243,12 +243,14 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initi
 
   const auto& output_defs = node.OutputDefs();
   if (op_type == "SkipSimplifiedLayerNormalization") {
-    for (size_t i = 1; i < output_defs.size(); i++) {
-      if (output_defs[i]->Exists() && i < 3) {
-        // Output mean and inv_std_var are used for training mode, which is not supported.
-        const auto output_name = i == 1 ? "mean" : "inv_std_var";
-        LOGS(logger, VERBOSE) << "SkipSimplifiedLayerNormalization's output: " << output_name << " is not supported.";
-      }
+    if (output_defs.size() > 4) {
+      LOGS(logger, VERBOSE) << "SkipSimplifiedLayerNormalization output count must not exceed 4.";
+      return false;
+    }
+    if (TensorExists(output_defs, 1) || TensorExists(output_defs, 2)) {
+      // Output mean and inv_std_var are used for training mode, which is not supported.
+      LOGS(logger, VERBOSE) << "SkipSimplifiedLayerNormalization's output mean and inv_std_var are not supported.";
+      return false;
     }
   } else {
     if (output_defs.size() != 1) {
@@ -275,9 +277,9 @@ bool NormalizationOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& 
   int32_t input2_type;  // B data type
   int32_t input3_type;  // mean data type
   int32_t input4_type;  // var data type
-  bool has_input2 = input_defs.size() > 2 && input_defs[2]->Exists();
-  bool has_input3 = input_defs.size() > 3 && input_defs[3]->Exists();
-  bool has_input4 = input_defs.size() > 3 && input_defs[4]->Exists();
+  bool has_input2 = TensorExists(input_defs, 2);
+  bool has_input3 = TensorExists(input_defs, 3);
+  bool has_input4 = TensorExists(input_defs, 4);
 
   if (!GetType(*input_defs[0], input0_type, logger) ||
       !GetType(*input_defs[1], input1_type, logger) ||
