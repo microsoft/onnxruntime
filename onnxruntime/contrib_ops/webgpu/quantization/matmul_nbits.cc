@@ -60,7 +60,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& scales = shader.AddInput("scales", ShaderUsage::UseUniform);
   const auto& y = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
 
-  if ((is_intel_ || tile_m_ > 1) && block_size_ == 32) {
+  if (block_size_ == 32) {
     const uint32_t workgroup_size = WorkgroupSizeX() * WorkgroupSizeY();
     const uint32_t tile_size = WorkgroupSizeX() * components_b_ * 8;  // each uint32 has 8 data.
     const uint32_t a_length_per_tile = tile_size / a.NumComponents();
@@ -408,14 +408,12 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const uint32_t components_b = GetMaxComponents(blob_size_in_words);
   uint32_t components = GetMaxComponents(N);
 
-  const bool is_intel = context.AdapterInfo().vendor == std::string_view{"intel"} &&
-                        context.AdapterInfo().architecture == std::string_view{"gen-12lp"};
   const bool has_zero_points = zero_points != nullptr;
 
   // TODO: Support output_number > 1. Some cases are failed when output_number > 1.
   constexpr uint32_t output_number = 1;
   const uint32_t tile_m = M > kMinMForTileOptimization ? 4 : 1;
-  MatMulNBitsProgram program{output_number, block_size, tile_m, gsl::narrow<int>(components_b), has_zero_points, is_intel};
+  MatMulNBitsProgram program{output_number, block_size, tile_m, gsl::narrow<int>(components_b), has_zero_points};
   if (M > kMinMForTileOptimization && block_size == 32) {
     components = 1;
     constexpr uint32_t workgroup_size = 64;
@@ -426,7 +424,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
                                  (M + tile_m - 1) / tile_m,
                                  batch_count);
     program.CacheHint("T_M" + std::to_string(tile_m));
-  } else if (is_intel && block_size == 32) {
+  } else if (block_size == 32) {
     components = 1;
     constexpr uint32_t workgroup_size = 128;
     const uint32_t workgroup_y = N % 8 == 0 ? 8 : N % 4 == 0 ? 4
