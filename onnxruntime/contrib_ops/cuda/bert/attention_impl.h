@@ -81,6 +81,7 @@ struct AttentionData {
   T* present = nullptr;
   T* present_key = nullptr;
   T* present_value = nullptr;
+  T* attn_probs = nullptr;
 
   void* fused_runner = nullptr;
   const void* fused_cross_attention_kernel = nullptr;
