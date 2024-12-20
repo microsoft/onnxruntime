@@ -118,6 +118,7 @@ int test_main() {
   HMODULE hModule = LoadLibraryA("dlls\\onnxruntime.dll");
   if (hModule == NULL) {
     std::cout << "Failed to load dlls\\onnxruntime.dll" << std::endl;
+    std::cout << "Error code: " << GetLastError() << std::endl;
     return 1;
   }
 
