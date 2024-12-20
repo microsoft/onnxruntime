@@ -38,6 +38,7 @@
 #include "core/framework/utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/graph/model_saving_options.h"
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/layout_transformation/layout_transformation.h"
@@ -2099,13 +2100,12 @@ common::Status InferenceSession::Initialize() {
           const size_t optimized_model_external_initializers_min_size_in_bytes =
               ParseStringWithClassicLocale<size_t>(session_options_.config_options.GetConfigOrDefault(
                   kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, "1024"));
-          Graph::OffsetAlignmentInfo align_info;
-          align_info.align_offset = true;
+          ModelSavingOptions model_saving_options{optimized_model_external_initializers_min_size_in_bytes};
+          model_saving_options.align_offset = true;
           ORT_RETURN_IF_ERROR_SESSIONID_(Model::SaveWithExternalInitializers(*model_,
                                                                              session_options_.optimized_model_filepath,
                                                                              optimized_model_external_initializers_file_name,
-                                                                             optimized_model_external_initializers_min_size_in_bytes,
-                                                                             align_info));
+                                                                             model_saving_options));
         }
       }
     }
