@@ -1,0 +1,6 @@
+set(VCPKG_TARGET_ARCHITECTURE arm64)
+set(VCPKG_CRT_LINKAGE dynamic)
+set(VCPKG_LIBRARY_LINKAGE static)
+set(VCPKG_C_FLAGS "-fsanitize=address")
+set(VCPKG_CXX_FLAGS "-fsanitize=address")
+set(VCPKG_LINKER_FLAGS "-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -fsanitize=address")
