@@ -360,7 +360,7 @@ TEST(XnnpackEP, TestQDQSoftMax_axisZero_v13) {
                {ExpectedEPNodeAssignment::None});
 }
 
-TEST(XnnpackEP, DISABLED_TestSoftMax_axisLast) {  // error: Expected equality of these values
+TEST(XnnpackEP, TestSoftMax_axisLast) {  // error: Expected equality of these values
   const std::vector<int64_t> input_shape = {1, 2, 3, 5};
   int64_t axis = input_shape.size() - 1;
   auto modelCreater = [input_shape, axis](ModelTestBuilder& builder) {
@@ -379,7 +379,7 @@ TEST(XnnpackEP, DISABLED_TestSoftMax_axisLast) {  // error: Expected equality of
                {ExpectedEPNodeAssignment::All});
 }
 
-TEST(XnnpackEP, DISABLED_TestQDQSoftMax_axisLast) {  // error: Expected equality of these values
+TEST(XnnpackEP, TestQDQSoftMax_axisLast) {  // error: Expected equality of these values
   RunModelTest(BuildQDQSoftMaxTestCase<uint8_t, uint8_t>(
                    {1, 2, 3, 5} /* input_shape */,
                    static_cast<int64_t>(3) /* axis */,

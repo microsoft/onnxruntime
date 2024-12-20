@@ -1396,6 +1396,8 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"resize_upsample_sizes_nearest", "result differs"});
     broken_tests->insert({"resize_upsample_sizes_nearest_axes_2_3", "result differs"});
     broken_tests->insert({"resize_upsample_sizes_nearest_axes_3_2", "result differs"});
+    broken_tests->insert({"convtranspose_group_2", "group attribute (new of opset(22)) not supported"});
+    broken_tests->insert({"convtranspose_group_2_image_3", "group attribute (new of opset(22)) not supported"});
   }
 
 #ifdef DISABLE_CONTRIB_OPS
