@@ -162,13 +162,8 @@ final class OnnxRuntime {
       // the ONNX Runtime native library will load it
       extractProviderLibrary(ONNXRUNTIME_LIBRARY_SHARED_NAME);
 
-      if (isAndroid()) {
-        // On Android, we only need to load onnxruntime4j_jni with System.loadLibrary
-        System.loadLibrary(ONNXRUNTIME_JNI_LIBRARY_NAME);
-      } else {
-        load(ONNXRUNTIME_LIBRARY_NAME);
-        load(ONNXRUNTIME_JNI_LIBRARY_NAME);
-      }
+      load(ONNXRUNTIME_LIBRARY_NAME);
+      load(ONNXRUNTIME_JNI_LIBRARY_NAME);
 
       ortApiHandle = initialiseAPIBase(ORT_API_VERSION_14);
       if (ortApiHandle == 0L) {
