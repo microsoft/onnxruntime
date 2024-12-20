@@ -120,6 +120,21 @@ int run() {
 
 int test_main() {
   _wsystem(L"dir /s /b /a");
+  _wsystem(L"where user32.dll");
+  _wsystem(L"where dbghelp.dll");
+  _wsystem(L"where win32u.dll");
+  _wsystem(L"where ucrtbase.dll");
+  _wsystem(L"where gdi32.dll");
+  _wsystem(L"where combase.dll");
+  _wsystem(L"where gdi32full.dll");
+  _wsystem(L"where rpcrt4.dll");
+  _wsystem(L"where msvcp_win.dll");
+  _wsystem(L"where oleaut32.dll");
+  _wsystem(L"where advapi32.dll");
+  _wsystem(L"where msvcrt.dll");
+  _wsystem(L"where sechost.dll");
+  _wsystem(L"where msvcp140_1d.dll");
+  _wsystem(L"where imm32.dll");
   HMODULE hModule = LoadLibraryA("dlls\\onnxruntime.dll");
   if (hModule == NULL) {
     std::cout << "Failed to load dlls\\onnxruntime.dll" << std::endl;

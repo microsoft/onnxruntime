@@ -252,3 +252,9 @@ jobs:
     inputs:
       pathtoPublish: '$(Build.SourcesDirectory)/docs/ContribOperators.md'
       artifactName: 'ContribOperators.md'
+
+  - task: PublishBuildArtifacts@1
+    condition: always()
+    inputs:
+      pathtoPublish: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}\webgpu_delay_load_test_root'
+      artifactName: 'drop-test-webgpu-delay-load'
