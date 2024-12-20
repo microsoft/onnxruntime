@@ -13,7 +13,7 @@ namespace webgpu {
 template <typename T>
 class PadProgram final : public Program<PadProgram<T> > {
  public:
-  PadProgram(const Mode mode, bool dim_value_zero) : Program{"Pad"}, mode_{mode}, dim_value_zero_{dim_value_zero} {}
+  PadProgram(const Mode mode, bool dim_value_zero) : Program<PadProgram<T> >{"Pad"}, mode_{mode}, dim_value_zero_{dim_value_zero} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 

@@ -137,7 +137,7 @@ Status Pad<T>::ComputeInternal(ComputeContext& context) const {
   std::vector<int32_t> lower_pads(dimension_count);
   for (auto i = 0; i < dimension_count; i++) {
     int64_t lower_pad = (*p_pads)[i] + (*p_slices)[i];
-    int64_t upper_pad = (*p_pads)[i + dimension_count] + (*p_slices)[i + dimension_count];
+    int64_t upper_pad = (*p_pads)[static_cast<int64_t>(i) + dimension_count] + (*p_slices)[static_cast<int64_t>(i) + dimension_count];
     lower_pads[i] = static_cast<int32_t>(lower_pad);
     output_dims[i] += lower_pad + upper_pad;
   }
