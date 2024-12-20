@@ -58,23 +58,22 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       [&]() {
         HashValue model_hash;
         int metadef_id = metadef_id_generator_.GenerateId(graph_viewer, model_hash);
-        std::string user_provided_key;
+
         const Graph* main_graph = &graph_viewer.GetGraph();
         while (main_graph->IsSubgraph()) {
           main_graph = main_graph->ParentGraph();
         }
-        if (main_graph->GetModel().MetaData().count(kCOREML_CACHE_KEY) > 0) {
-          user_provided_key = graph_viewer.GetGraph().GetModel().MetaData().at(kCOREML_CACHE_KEY);
-          if (user_provided_key.size() > 64 ||
-              std::any_of(user_provided_key.begin(), user_provided_key.end(),
-                          [](unsigned char c) { return !std::isalnum(c); })) {
-            LOGS(logger, ERROR) << "[" << kCOREML_CACHE_KEY << ":" << user_provided_key << "] is not a valid cache key."
-                                << " It should be alphanumeric and less than 64 characters.";
-          }
-          // invalid cache-key
-          if (user_provided_key.size() == 0) {
-            user_provided_key = std::to_string(model_hash);
-          }
+        // use model_hash as the key if user doesn't provide one
+        std::string user_provided_key = main_graph->GetModel().MetaData().count(kCOREML_CACHE_KEY) > 0
+                                            ? graph_viewer.GetGraph().GetModel().MetaData().at(kCOREML_CACHE_KEY)
+                                            : std::to_string(model_hash);
+
+        if (user_provided_key.size() > 64 ||
+            std::any_of(user_provided_key.begin(), user_provided_key.end(),
+                        [](unsigned char c) { return !std::isalnum(c); })) {
+          LOGS(logger, ERROR) << "[" << kCOREML_CACHE_KEY << ":" << user_provided_key << "] is not a valid cache key."
+                              << " It should be alphanumeric and less than 64 characters.";
+
         } else {
           // model_hash is a 64-bit hash value of model_path if model_path is not empty,
           // otherwise it hashes the graph input names and all the node output names.

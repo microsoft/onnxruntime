@@ -425,9 +425,12 @@ std::string GetModelOutputPath(const CoreMLOptions& coreml_options,
         main_graph = main_graph->ParentGraph();
       }
       std::ofstream file(path + "/model.txt");
-      ORT_ENFORCE(file.is_open(), "Failed to open file ", path + "/model.txt");
-      file << main_graph->ModelPath().string();
-      file.close();
+      if (!file.is_open()) {
+        LOGS(logger, ERROR) << "Failed to open file " << path + "/model.txt";
+      } else {
+        file << main_graph->ModelPath().string();
+        file.close();
+      }
     }
 
     path = MakeString(path, "/", subgraph_short_name);
