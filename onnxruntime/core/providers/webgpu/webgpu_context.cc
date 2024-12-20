@@ -532,8 +532,8 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
                                                   0,
                                                   query_read_buffer.GetSize(),
                                                   wgpu::CallbackMode::WaitAnyOnly,
-                                                  [](wgpu::MapAsyncStatus status, const char* message) {
-                                                    ORT_ENFORCE(status == wgpu::MapAsyncStatus::Success, "Failed to download data from buffer: ", message);
+                                                  [](wgpu::MapAsyncStatus status, wgpu::StringView message) {
+                                                    ORT_ENFORCE(status == wgpu::MapAsyncStatus::Success, "Failed to download data from buffer: ", std::string_view{message});
                                                   })) == Status::OK());
       auto mapped_data = static_cast<const uint64_t*>(query_read_buffer.GetConstMappedRange());
 
