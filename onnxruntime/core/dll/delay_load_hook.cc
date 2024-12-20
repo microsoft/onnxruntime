@@ -24,8 +24,16 @@
 // - both USE_WEBGPU and BUILD_DAWN_MONOLITHIC_LIBRARY are defined
 // - USE_DML is defined
 //
-#define ORT_DELAY_LOAD_WEBGPU_DAWN_DLL (defined(USE_WEBGPU) && defined(BUILD_DAWN_MONOLITHIC_LIBRARY))
-#define ORT_DELAY_LOAD_DIRECTML_DLL defined(USE_DML)
+#if defined(USE_WEBGPU) && defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
+#define ORT_DELAY_LOAD_WEBGPU_DAWN_DLL 1
+#else
+#define ORT_DELAY_LOAD_WEBGPU_DAWN_DLL 0
+#endif
+#if defined(USE_DML)
+#define ORT_DELAY_LOAD_DIRECTML_DLL 1
+#else
+#define ORT_DELAY_LOAD_DIRECTML_DLL 0
+#endif
 #if defined(_MSC_VER) && (ORT_DELAY_LOAD_WEBGPU_DAWN_DLL || ORT_DELAY_LOAD_DIRECTML_DLL)
 
 #include <Windows.h>
