@@ -413,7 +413,7 @@ std::string GetModelOutputPath(const CoreMLOptions& coreml_options,
                                                .substr(subgraph_name.find_last_of("_") + 1);
     path = MakeString(std::string(coreml_options.ModelCacheDirectory()), "/", cache_key);
     if (!Env::Default().CreateFolder(path).IsOK()) {
-      LOGS(logger, WARNING) << "Failed to create cache directory " << path << ". Model caching is disabled.";
+      LOGS(logger, ERROR) << "Failed to create cache directory " << path << ". Model caching is disabled.";
       coreml_options.DisableModelCache();
       return GetModelOutputPath(coreml_options, graph_viewer, logger);
     }
@@ -444,7 +444,7 @@ std::string GetModelOutputPath(const CoreMLOptions& coreml_options,
       path += "_nn";
     }
     if (!Env::Default().CreateFolder(path).IsOK()) {
-      LOGS(logger, WARNING) << "Failed to create cache directory " << path << ". Model caching is disabled.";
+      LOGS(logger, ERROR) << "Failed to create cache directory " << path << ". Model caching is disabled.";
       coreml_options.DisableModelCache();
       return GetModelOutputPath(coreml_options, graph_viewer, logger);
     }

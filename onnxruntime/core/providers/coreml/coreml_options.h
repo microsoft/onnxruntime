@@ -36,7 +36,8 @@ class CoreMLOptions {
   bool ProfileComputePlan() const { return profile_compute_plan_ && create_mlprogram_; }
 
   std::string_view ModelCacheDirectory() const { return model_cache_directory_; }
-  // mark const as model_cache_directory_ is mutable and we may update it in const functions.
+  // The options specified by the user are const, but if there's an error setting up caching we disable it
+  // so that the EP can still be used. The error is logged for the user to investigate.
   void DisableModelCache() const { model_cache_directory_.clear(); }
 
  private:
