@@ -16,7 +16,6 @@
 #include "core/common/logging/sinks/clog_sink.h"
 
 #include "core/graph/model.h"
-#include "core/providers/shared/utils/utils.h"
 #include "core/session/environment.h"
 #include "core/common/logging/logging.h"
 
@@ -29,6 +28,24 @@ static void CheckStatus(const Status& status) {
     std::string msg = status.ErrorMessage();
     throw Ort::Exception(std::move(msg), OrtErrorCode::ORT_FAIL);
   }
+}
+
+static int64_t GetNodeAttr(const Node& node, const std::string& attr_name, int64_t default_val) {
+  const auto& attributes = node.GetAttributes();
+  if (auto entry = attributes.find(attr_name); entry != attributes.end()) {
+    return entry->second.i();
+  }
+
+  return default_val;
+}
+
+static const std::string& GetNodeAttr(const Node& node, const std::string& attr_name, const std::string& default_val) {
+  const auto& attributes = node.GetAttributes();
+  if (auto entry = attributes.find(attr_name); entry != attributes.end()) {
+    return entry->second.s();
+  }
+
+  return default_val;
 }
 
 // from the last context cache Onnx model, find the EPContext node with main_context=1,
@@ -44,11 +61,10 @@ static void GetLastContextBinaryFileName(const std::basic_string<ORTCHAR_T> last
   auto& ctx_graph = ctx_model->MainGraph();
   for (auto& node : ctx_graph.Nodes()) {
     if (node.OpType() == "EPContext") {
-      NodeAttrHelper node_helper(node);
-      int64_t is_main_context = node_helper.Get("main_context", static_cast<int64_t>(0));
-      max_size = node_helper.Get("max_size", static_cast<int64_t>(0));
+      int64_t is_main_context = GetNodeAttr(node, "main_context", static_cast<int64_t>(0));
+      max_size = GetNodeAttr(node, "max_size", static_cast<int64_t>(0));
       if (1 == is_main_context) {
-        last_ctx_bin_file = node_helper.Get("ep_cache_context", "");
+        last_ctx_bin_file = GetNodeAttr(node, "ep_cache_context", "");
         return;
       }
     }
@@ -72,10 +88,9 @@ static void UpdateEpContextModel(const std::vector<std::basic_string<ORTCHAR_T>>
 
     for (auto& node : ctx_graph.Nodes()) {
       if (node.OpType() == "EPContext") {
-        NodeAttrHelper node_helper(node);
-        int64_t is_main_context = node_helper.Get("main_context", static_cast<int64_t>(0));
+        int64_t is_main_context = GetNodeAttr(node, "main_context", static_cast<int64_t>(0));
         if (1 == is_main_context) {
-          std::string old_qnn_ctx_binary_file_name = node_helper.Get("ep_cache_context", "");
+          std::string old_qnn_ctx_binary_file_name = GetNodeAttr(node, "ep_cache_context", "");
           auto file_path = path.replace_filename(old_qnn_ctx_binary_file_name);
           std::remove(file_path.string().c_str());
           node.ClearAttribute("ep_cache_context");

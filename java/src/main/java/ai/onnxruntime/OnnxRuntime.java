@@ -76,6 +76,9 @@ final class OnnxRuntime {
   /** The short name of the ONNX runtime TensorRT provider library */
   static final String ONNXRUNTIME_LIBRARY_TENSORRT_NAME = "onnxruntime_providers_tensorrt";
 
+  /** The short name of the ONNX runtime QNN provider library */
+  static final String ONNXRUNTIME_LIBRARY_QNN_NAME = "onnxruntime_providers_qnn";
+
   /** The OS & CPU architecture string */
   private static final String OS_ARCH_STR = initOsArch();
 
@@ -152,7 +155,7 @@ final class OnnxRuntime {
     if (loaded) {
       return;
     }
-    tempDirectory = isAndroid() ? null : Files.createTempDirectory("onnxruntime-java");
+    tempDirectory = Files.createTempDirectory("onnxruntime-java");
     try {
       libraryDirPathProperty = System.getProperty(ONNXRUNTIME_NATIVE_PATH);
       // Extract and prepare the shared provider library but don't try to load it,
@@ -161,6 +164,7 @@ final class OnnxRuntime {
 
       load(ONNXRUNTIME_LIBRARY_NAME);
       load(ONNXRUNTIME_JNI_LIBRARY_NAME);
+
       ortApiHandle = initialiseAPIBase(ORT_API_VERSION_14);
       if (ortApiHandle == 0L) {
         throw new IllegalStateException(
@@ -172,9 +176,7 @@ final class OnnxRuntime {
       version = initialiseVersion();
       loaded = true;
     } finally {
-      if (tempDirectory != null) {
-        cleanUp(tempDirectory.toFile());
-      }
+      cleanUp(tempDirectory.toFile());
     }
   }
 
@@ -253,6 +255,16 @@ final class OnnxRuntime {
   }
 
   /**
+   * Extracts the QNN provider library from the classpath resources if present, or checks to see if
+   * the QNN provider library is in the directory specified by {@link #ONNXRUNTIME_NATIVE_PATH}.
+   *
+   * @return True if the QNN provider library is ready for loading, false otherwise.
+   */
+  static boolean extractQNN() {
+    return extractProviderLibrary(ONNXRUNTIME_LIBRARY_QNN_NAME);
+  }
+
+  /**
    * Extracts a shared provider library from the classpath resources if present, or checks to see if
    * that library is in the directory specified by {@link #ONNXRUNTIME_NATIVE_PATH}.
    *
@@ -260,10 +272,6 @@ final class OnnxRuntime {
    * @return True if the library is ready for loading by ORT's native code, false otherwise.
    */
   static synchronized boolean extractProviderLibrary(String libraryName) {
-    // Android does not need to extract library and it has no shared provider library
-    if (isAndroid()) {
-      return false;
-    }
     // Check if we've already extracted or check this provider, and it's ready
     if (extractedSharedProviders.contains(libraryName)) {
       return true;
@@ -310,12 +318,6 @@ final class OnnxRuntime {
    * @throws IOException If the file failed to read or write.
    */
   private static void load(String library) throws IOException {
-    // On Android, we simply use System.loadLibrary
-    if (isAndroid()) {
-      System.loadLibrary("onnxruntime4j_jni");
-      return;
-    }
-
     // 1) The user may skip loading of this library:
     String skip = System.getProperty("onnxruntime.native." + library + ".skip");
     if (Boolean.TRUE.toString().equalsIgnoreCase(skip)) {
