@@ -22,6 +22,11 @@ SD_MODELS = {
     "2.0": "stabilityai/stable-diffusion-2",
     "2.1": "stabilityai/stable-diffusion-2-1",
     "xl-1.0": "stabilityai/stable-diffusion-xl-refiner-1.0",
+    "3.0M": "stabilityai/stable-diffusion-3-medium-diffusers",
+    "3.5M": "stabilityai/stable-diffusion-3.5-medium",
+    "3.5L": "stabilityai/stable-diffusion-3.5-large",
+    "Flux.1S": "black-forest-labs/FLUX.1-schnell",
+    "Flux.1D": "black-forest-labs/FLUX.1-dev",
 }
 
 PROVIDERS = {
@@ -322,33 +327,12 @@ def get_optimum_ort_pipeline(
     disable_safety_checker: bool = True,
     use_io_binding: bool = False,
 ):
-    from optimum.onnxruntime import ORTStableDiffusionPipeline, ORTStableDiffusionXLPipeline
+    from optimum.onnxruntime import ORTPipelineForText2Image
 
     if directory is not None and os.path.exists(directory):
-        if "xl" in model_name:
-            pipeline = ORTStableDiffusionXLPipeline.from_pretrained(
-                directory,
-                provider=provider,
-                session_options=None,
-                use_io_binding=False,  # Not supported by Optimum version 1.17.1 at the time of verification.
-            )
-        else:
-            pipeline = ORTStableDiffusionPipeline.from_pretrained(
-                directory,
-                provider=provider,
-                use_io_binding=use_io_binding,
-            )
-    elif "xl" in model_name:
-        pipeline = ORTStableDiffusionXLPipeline.from_pretrained(
-            model_name,
-            export=True,
-            provider=provider,
-            session_options=None,
-            use_io_binding=False,  # Not supported by Optimum version 1.17.1 at the time of verification.
-        )
-        pipeline.save_pretrained(directory)
+        pipeline = ORTPipelineForText2Image.from_pretrained(directory, provider=provider, use_io_binding=use_io_binding)
     else:
-        pipeline = ORTStableDiffusionPipeline.from_pretrained(
+        pipeline = ORTPipelineForText2Image.from_pretrained(
             model_name,
             export=True,
             provider=provider,
@@ -376,31 +360,41 @@ def run_optimum_ort_pipeline(
     memory_monitor_type,
     use_num_images_per_prompt=False,
 ):
-    from optimum.onnxruntime import ORTStableDiffusionPipeline, ORTStableDiffusionXLPipeline
+    print("Pipeline type", type(pipe))
+    from optimum.onnxruntime.modeling_diffusion import ORTFluxPipeline
 
-    assert isinstance(pipe, (ORTStableDiffusionPipeline, ORTStableDiffusionXLPipeline))
+    is_flux = isinstance(pipe, ORTFluxPipeline)
 
     prompts, negative_prompt = example_prompts()
 
+    def get_negative_prompt_kwargs(negative, use_num_images_per_prompt, is_flux) -> dict:
+        # Flux does not support negative prompt
+        negative_prompt_kwargs = (
+            (
+                {"negative_prompt": negative}
+                if use_num_images_per_prompt
+                else {"negative_prompt": [negative] * batch_size}
+            )
+            if not is_flux
+            else {}
+        )
+
+        return negative_prompt_kwargs
+
     def warmup():
         prompt, negative = warmup_prompts()
+        extra_kwargs = get_negative_prompt_kwargs(negative, use_num_images_per_prompt, is_flux)
         if use_num_images_per_prompt:
             pipe(
                 prompt=prompt,
                 height=height,
                 width=width,
                 num_inference_steps=steps,
-                negative_prompt=negative,
                 num_images_per_prompt=batch_count,
+                **extra_kwargs,
             )
         else:
-            pipe(
-                prompt=[prompt] * batch_size,
-                height=height,
-                width=width,
-                num_inference_steps=steps,
-                negative_prompt=[negative] * batch_size,
-            )
+            pipe(prompt=[prompt] * batch_size, height=height, width=width, num_inference_steps=steps, **extra_kwargs)
 
     # Run warm up, and measure GPU memory of two runs.
     # The first run has algo search for cuDNN/MIOpen, so it might need more memory.
@@ -408,6 +402,11 @@ def run_optimum_ort_pipeline(
     second_run_memory = measure_gpu_memory(memory_monitor_type, warmup, start_memory)
 
     warmup()
+
+    extra_kwargs = get_negative_prompt_kwargs(negative_prompt, use_num_images_per_prompt, is_flux)
+    # Fix the random seed so that we can inspect the output quality easily.
+    if torch.cuda.is_available():
+        extra_kwargs["generator"] = torch.Generator(device="cuda").manual_seed(123)
 
     latency_list = []
     for i, prompt in enumerate(prompts):
@@ -420,16 +419,12 @@ def run_optimum_ort_pipeline(
                 height=height,
                 width=width,
                 num_inference_steps=steps,
-                negative_prompt=negative_prompt,
                 num_images_per_prompt=batch_size,
+                **extra_kwargs,
             ).images
         else:
             images = pipe(
-                prompt=[prompt] * batch_size,
-                height=height,
-                width=width,
-                num_inference_steps=steps,
-                negative_prompt=[negative_prompt] * batch_size,
+                prompt=[prompt] * batch_size, height=height, width=width, num_inference_steps=steps, **extra_kwargs
             ).images
         inference_end = time.time()
         latency = inference_end - inference_start
