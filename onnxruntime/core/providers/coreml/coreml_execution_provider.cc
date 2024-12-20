@@ -64,6 +64,9 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
           main_graph = main_graph->ParentGraph();
         }
         // use model_hash as the key if user doesn't provide one
+        // model_hash is a 64-bit hash value of model_path if model_path is not empty,
+        // otherwise it hashes the graph input names and all the node output names.
+        // it can't guarantee the uniqueness of the key, so user should manager the key for the best.
         std::string user_provided_key = main_graph->GetModel().MetaData().count(kCOREML_CACHE_KEY) > 0
                                             ? graph_viewer.GetGraph().GetModel().MetaData().at(kCOREML_CACHE_KEY)
                                             : std::to_string(model_hash);
@@ -74,10 +77,7 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
           LOGS(logger, ERROR) << "[" << kCOREML_CACHE_KEY << ":" << user_provided_key << "] is not a valid cache key."
                               << " It should be alphanumeric and less than 64 characters.";
 
-        } else {
-          // model_hash is a 64-bit hash value of model_path if model_path is not empty,
-          // otherwise it hashes the graph input names and all the node output names.
-          // it can't guarantee the uniqueness of the key, so user should manager the key for the best.
+        } else if (user_provided_key.empty()) {  // user passed a empty string
           user_provided_key = std::to_string(model_hash);
         }
         // The string format is used by onnxruntime/core/providers/coreml/builders/model_builder.cc::GetModelOutputPath
