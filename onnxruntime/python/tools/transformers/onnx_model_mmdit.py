@@ -26,7 +26,6 @@ class MmditOnnxModel(BertOnnxModel):
             hidden_size (int, optional): hidden dimension. Defaults to 0 (detect the parameter automatically).
         """
         assert (num_heads == 0 and hidden_size == 0) or (num_heads > 0 and hidden_size % num_heads == 0)
-
         super().__init__(model, num_heads=num_heads, hidden_size=hidden_size)
 
     def postprocess(self):
@@ -95,8 +94,6 @@ class MmditOnnxModel(BertOnnxModel):
         # if (options is None) or options.enable_bias_skip_layer_norm:
         #     # Fuse SkipLayerNormalization and Add Bias before it.
         #     self.fuse_add_bias_skip_layer_norm()
-        # if progress_bar:
-        #     progress_bar.update(1)
 
         self.postprocess()
         if progress_bar:

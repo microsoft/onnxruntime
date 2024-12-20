@@ -362,15 +362,23 @@ def run_optimum_ort_pipeline(
 ):
     print("Pipeline type", type(pipe))
     from optimum.onnxruntime.modeling_diffusion import ORTFluxPipeline
+
     is_flux = isinstance(pipe, ORTFluxPipeline)
 
     prompts, negative_prompt = example_prompts()
 
-    def get_negative_prompt_kwargs(negative, use_num_images_per_prompt, is_flux):
-        negative_prompt_kwargs = {"negative_prompt": negative} if use_num_images_per_prompt else {"negative_prompt": [negative] * batch_size}
+    def get_negative_prompt_kwargs(negative, use_num_images_per_prompt, is_flux) -> dict:
         # Flux does not support negative prompt
-        if is_flux:
-            negative_prompt_kwargs = {}
+        negative_prompt_kwargs = (
+            (
+                {"negative_prompt": negative}
+                if use_num_images_per_prompt
+                else {"negative_prompt": [negative] * batch_size}
+            )
+            if not is_flux
+            else {}
+        )
+
         return negative_prompt_kwargs
 
     def warmup():
@@ -383,16 +391,10 @@ def run_optimum_ort_pipeline(
                 width=width,
                 num_inference_steps=steps,
                 num_images_per_prompt=batch_count,
-                **extra_kwargs
+                **extra_kwargs,
             )
         else:
-            pipe(
-                prompt=[prompt] * batch_size,
-                height=height,
-                width=width,
-                num_inference_steps=steps,
-                **extra_kwargs
-            )
+            pipe(prompt=[prompt] * batch_size, height=height, width=width, num_inference_steps=steps, **extra_kwargs)
 
     # Run warm up, and measure GPU memory of two runs.
     # The first run has algo search for cuDNN/MIOpen, so it might need more memory.
@@ -402,6 +404,9 @@ def run_optimum_ort_pipeline(
     warmup()
 
     extra_kwargs = get_negative_prompt_kwargs(negative_prompt, use_num_images_per_prompt, is_flux)
+    # Fix the random seed so that we can inspect the output quality easily.
+    if torch.cuda.is_available():
+        extra_kwargs["generator"] = torch.Generator(device="cuda").manual_seed(123)
 
     latency_list = []
     for i, prompt in enumerate(prompts):
@@ -415,15 +420,11 @@ def run_optimum_ort_pipeline(
                 width=width,
                 num_inference_steps=steps,
                 num_images_per_prompt=batch_size,
-                **extra_kwargs
+                **extra_kwargs,
             ).images
         else:
             images = pipe(
-                prompt=[prompt] * batch_size,
-                height=height,
-                width=width,
-                num_inference_steps=steps,
-                **extra_kwargs
+                prompt=[prompt] * batch_size, height=height, width=width, num_inference_steps=steps, **extra_kwargs
             ).images
         inference_end = time.time()
         latency = inference_end - inference_start
