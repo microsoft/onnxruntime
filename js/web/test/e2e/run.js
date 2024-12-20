@@ -79,10 +79,8 @@ async function main() {
 
   // perform exports testing
   {
-    fs.copySync(PACKAGES_TO_INSTALL[0], path.join(TEST_E2E_RUN_FOLDER, 'exports', 'onnxruntime-common.tgz'));
-    fs.copySync(PACKAGES_TO_INSTALL[1], path.join(TEST_E2E_RUN_FOLDER, 'exports', 'onnxruntime-web.tgz'));
     const testExportsMain = require(path.join(TEST_E2E_RUN_FOLDER, './exports/main'));
-    await testExportsMain(PRESERVE);
+    await testExportsMain(PRESERVE, PACKAGES_TO_INSTALL);
   }
 
   // prepare .wasm files for path override testing

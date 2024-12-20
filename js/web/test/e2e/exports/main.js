@@ -13,14 +13,18 @@ const treeKill = require('tree-kill');
  *
  * @param {string[]} packagesToInstall
  */
-module.exports = async function main(PRESERVE) {
+module.exports = async function main(PRESERVE, PACKAGES_TO_INSTALL) {
   console.log('Running exports tests...');
 
   // testcases/nextjs-default
   {
     const wd = path.join(__dirname, 'testcases/nextjs-default');
     if (!PRESERVE) {
-      await runShellCmd('npm install ../../onnxruntime-common.tgz ../../onnxruntime-web.tgz', { wd });
+      if (PACKAGES_TO_INSTALL.length === 0) {
+        await runShellCmd('npm ci', { wd });
+      } else {
+        await runShellCmd(`npm install ${PACKAGES_TO_INSTALL.map((i) => `"${i}"`).join(' ')}`, { wd });
+      }
     }
 
     const launchBrowserAndRunTests = async (logPrefix, port = 3000) => {
