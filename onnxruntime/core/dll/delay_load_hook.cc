@@ -24,6 +24,15 @@
 // - both USE_WEBGPU and BUILD_DAWN_MONOLITHIC_LIBRARY are defined
 // - USE_DML is defined
 //
+#if !defined(USE_WEBGPU)
+static_assert(false, "USE_WEBGPU is not defined");
+#endif
+#if !defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
+static_assert(false, "BUILD_DAWN_MONOLITHIC_LIBRARY is not defined");
+#endif
+#if defined(USE_DML)
+static_assert(false, "USE_DML is defined");
+#endif
 #if defined(USE_WEBGPU) && defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
 #define ORT_DELAY_LOAD_WEBGPU_DAWN_DLL 1
 #else
