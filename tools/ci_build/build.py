@@ -1112,39 +1112,42 @@ def generate_build_tree(
         ]
     if args.use_vcpkg:
         # Setup CMake flags for vcpkg
-        vcpkg_install_options = ['--x-feature=tests']
+        vcpkg_install_options = ["--x-feature=tests"]
         vcpkg_installation_root = os.environ.get("VCPKG_INSTALLATION_ROOT")
         if vcpkg_installation_root is None:
-            run_subprocess(["git", "clone", "https://github.com/microsoft/vcpkg.git", "--recursive"], cwd=build_dir)
-            vcpkg_installation_root = os.path.join(build_dir, 'vcpkg')
-        vcpkg_toolchain_path = os.path.join(vcpkg_installation_root, 'scripts','buildsystems','vcpkg.cmake')
-        add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", vcpkg_toolchain_path);
+            vcpkg_installation_root = os.path.join(build_dir, "vcpkg")            
+            if not os.path.exists(vcpkg_installation_root):
+                run_subprocess(["git", "clone", "https://github.com/microsoft/vcpkg.git", "--recursive"], cwd=build_dir)
+        vcpkg_toolchain_path = os.path.join(vcpkg_installation_root, "scripts", "buildsystems", "vcpkg.cmake")
+        add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", vcpkg_toolchain_path)
         # The enable_address_sanitizer and use_binskim_compliant_compile_flags can be enabled independently. Then there would be 4 different combinations. Here we only accept 3.
         if args.enable_address_sanitizer:
-            overlay_triplets_dir = os.path.join(source_dir, 'cmake','vcpkg_triplets', 'asan');
+            overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg_triplets", "asan")
             vcpkg_install_options.append("--overlay-triplets=%s" % overlay_triplets_dir)
         elif args.use_binskim_compliant_compile_flags:
-            overlay_triplets_dir = os.path.join(source_dir, 'cmake','vcpkg_triplets', 'binskim');
+            overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg_triplets", "binskim")
             vcpkg_install_options.append("--overlay-triplets=%s" % overlay_triplets_dir)
-        
+
         # VCPKG_INSTALL_OPTIONS is a CMake list. It must be joined by semicolons
-        add_default_definition(cmake_extra_defines, "VCPKG_INSTALL_OPTIONS", ';'.join(vcpkg_install_options))
+        add_default_definition(cmake_extra_defines, "VCPKG_INSTALL_OPTIONS", ";".join(vcpkg_install_options))
         # Choose the cmake triplet
+        triplet = None
         if args.build_wasm:
-           triplet = 'wasm32-emscripten'
+            triplet = "wasm32-emscripten"
         elif is_windows():
-          target_arch = platform.machine()
-          cpu_arch = platform.architecture()[0]
-          if target_arch == "AMD64":
-            if cpu_arch == "32bit" or args.x86:
-                triplet = "x86-windows-static" if args.enable_msvc_static_runtime  else "x86-windows-static-md"
+            target_arch = platform.machine()
+            cpu_arch = platform.architecture()[0]
+            if target_arch == "AMD64":
+                if cpu_arch == "32bit" or args.x86:
+                    triplet = "x86-windows-static" if args.enable_msvc_static_runtime else "x86-windows-static-md"
+                else:
+                    triplet = "x64-windows-static" if args.enable_msvc_static_runtime else "x64-windows-static-md"
+            elif target_arch == "ARM64":
+                triplet = "arm64-windows-static" if args.enable_msvc_static_runtime else "arm64-windows-static-md"
             else:
-                triplet = "x64-windows-static" if args.enable_msvc_static_runtime  else "x64-windows-static-md"
-          elif target_arch == "ARM64":
-            triplet = "arm64-windows-static" if args.enable_msvc_static_runtime  else "arm64-windows-static-md"
-          else:
-            raise BuildError("unknown python arch")
-        add_default_definition(cmake_extra_defines, "VCPKG_TARGET_TRIPLET", triplet)       
+                raise BuildError("unknown python arch")
+        if triplet:
+            add_default_definition(cmake_extra_defines, "VCPKG_TARGET_TRIPLET", triplet)
 
     # By default on Windows we currently support only cross compiling for ARM/ARM64
     # (no native compilation supported through this script).
@@ -1513,7 +1516,9 @@ def generate_build_tree(
         if not args.ios and not args.android and not args.build_wasm:
             if args.use_cache:
                 add_default_definition(
-                    cmake_extra_defines, "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT", "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>"
+                    cmake_extra_defines,
+                    "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT",
+                    "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>",
                 )
             else:
                 # Always enable debug info even in release build. The debug information is in separated *.pdb files that
