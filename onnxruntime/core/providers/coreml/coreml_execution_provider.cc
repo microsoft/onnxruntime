@@ -63,12 +63,13 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
         while (main_graph->IsSubgraph()) {
           main_graph = main_graph->ParentGraph();
         }
+        const auto& metadata = main_graph->GetModel().MetaData();
         // use model_hash as the key if user doesn't provide one
         // model_hash is a 64-bit hash value of model_path if model_path is not empty,
         // otherwise it hashes the graph input names and all the node output names.
         // it can't guarantee the uniqueness of the key, so user should manager the key for the best.
-        std::string user_provided_key = main_graph->GetModel().MetaData().count(kCOREML_CACHE_KEY) > 0
-                                            ? graph_viewer.GetGraph().GetModel().MetaData().at(kCOREML_CACHE_KEY)
+        std::string user_provided_key = metadata.count(kCOREML_CACHE_KEY) > 0
+                                            ? metadata.at(kCOREML_CACHE_KEY)
                                             : std::to_string(model_hash);
 
         if (user_provided_key.size() > 64 ||
