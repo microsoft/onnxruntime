@@ -20,13 +20,41 @@ extern TensorrtLogger& GetTensorrtLogger(bool verbose_log);
  *  Note: Please see more details about "EPContext" contrib op in contrib_defs.cc
  */
 bool GraphHasCtxNode(const GraphViewer& graph_viewer) {
+  // LOGS_DEFAULT(VERBOSE) << "*#* graph_viewer.MaxNodeIndex()=" << graph_viewer.MaxNodeIndex();
   for (int i = 0; i < graph_viewer.MaxNodeIndex(); ++i) {
     auto node = graph_viewer.GetNode(i);
+    // if (!node) {
+    //   LOGS_DEFAULT(VERBOSE) << "#*# Node at index " << i << " is null!";
+    //   continue;
+    // }
+    // if (!node->Name().empty()) {
+    //   LOGS_DEFAULT(VERBOSE) << "*#* node->Name()=" << node->Name() << " node->OpType()=" << node->OpType();
+    // }
     if (node != nullptr && node->OpType() == EPCONTEXT_OP) {
       return true;
     }
   }
   return false;
+}
+
+int FindCtxNodeInGraph(const GraphViewer& graph_viewer) {
+// Assumes there's only 1 context node in this subgraph (graph_viewer) 
+  // LOGS_DEFAULT(VERBOSE) << "*#* graph_viewer.MaxNodeIndex()=" << graph_viewer.MaxNodeIndex();
+  for (int i = 0; i < graph_viewer.MaxNodeIndex(); ++i) {
+    auto node = graph_viewer.GetNode(i);
+    // if (!node) {
+    //   LOGS_DEFAULT(VERBOSE) << "#*# Node at index " << i << " is null!";
+    //   continue;
+    // }
+    // if (!node->Name().empty()) {
+    //   LOGS_DEFAULT(VERBOSE) << "*#* node->Name()=" << node->Name() << " node->OpType()=" << node->OpType();
+    // }
+    if (node != nullptr && node->OpType() == EPCONTEXT_OP) {
+      LOGS_DEFAULT(VERBOSE) << "*#* context node found at index=" << i;
+      return i;
+    }
+  }
+  return -1;
 }
 
 const std::filesystem::path& GetModelPath(const GraphViewer& graph_viewer) {
@@ -64,6 +92,10 @@ void UpdateCtxNodeModelEngineContext(ONNX_NAMESPACE::ModelProto* model_proto,
 /*
  * Create "EP context node" model where engine information is embedded
  */
+// ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
+// std::unique_ptr<GraphViewer> CreateCtxModel(const GraphViewer& graph_viewer,
+// std::unique_ptr<Graph> CreateCtxModel(const GraphViewer& graph_viewer,
+// Status CreateCtxModel(const GraphViewer& graph_viewer,
 ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
                                            const std::string engine_cache_path,
                                            char* engine_data,
@@ -134,6 +166,93 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
   return model_proto.release();
+}
+
+std::unique_ptr<Model> CreateCtxModel2(const GraphViewer& graph_viewer,
+                                           const std::string fused_subgraph_name,
+                                           const std::string engine_cache_path,
+                                           char* engine_data,
+                                           size_t size,
+                                           const int64_t embed_mode,
+                                           const std::string compute_capability,
+                                           const std::string onnx_model_path,
+                                           const logging::Logger* logger) {
+  LOGS_DEFAULT(VERBOSE) << "*#* In CreateCtxModel2";
+  auto model_build = graph_viewer.CreateModel(*logger);
+  auto& graph_build = model_build->MainGraph();
+
+  // Get graph inputs and outputs
+  std::vector<onnxruntime::NodeArg*> inputs, outputs;
+  for (auto input : graph_viewer.GetInputs()) {
+    auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
+    inputs.push_back(&n_input);
+  }
+
+  for (auto output : graph_viewer.GetOutputs()) {
+    auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
+    outputs.push_back(&n_output);
+  }
+
+  // Create EP context node attributes
+  auto attr_0 = ONNX_NAMESPACE::AttributeProto::Create();  // embed_mode
+  auto attr_1 = ONNX_NAMESPACE::AttributeProto::Create();  // ep_cache_context
+  auto attr_2 = ONNX_NAMESPACE::AttributeProto::Create();  // hardware_architecture
+  auto attr_3 = ONNX_NAMESPACE::AttributeProto::Create();  // onnx_model_filename
+  std::string engine_data_str = "";
+  attr_0->set_name(EMBED_MODE);
+  attr_0->set_type(onnx::AttributeProto_AttributeType_INT);
+  attr_0->set_i(embed_mode);
+  attr_1->set_name(EP_CACHE_CONTEXT);
+  attr_1->set_type(onnx::AttributeProto_AttributeType_STRING);
+  if (embed_mode) {
+    if (size > 0) {
+      engine_data_str.assign(engine_data, size);
+    }
+    attr_1->set_s(engine_data_str);
+    LOGS_DEFAULT(WARNING) << EPCONTEXT_WARNING;
+  } else {
+    attr_1->set_s(engine_cache_path);
+  }
+  attr_2->set_name(COMPUTE_CAPABILITY);
+  attr_2->set_type(onnx::AttributeProto_AttributeType_STRING);
+  attr_2->set_s(compute_capability);
+  attr_3->set_name(ONNX_MODEL_FILENAME);
+  attr_3->set_type(onnx::AttributeProto_AttributeType_STRING);
+  attr_3->set_s(std::filesystem::path(onnx_model_path).filename().string());
+
+  auto node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
+  constexpr int num_attributes = 4;
+  node_attributes->reserve(num_attributes);
+  node_attributes->emplace(EMBED_MODE, *attr_0);
+  node_attributes->emplace(EP_CACHE_CONTEXT, *attr_1);
+  node_attributes->emplace(COMPUTE_CAPABILITY, *attr_2);
+  node_attributes->emplace(ONNX_MODEL_FILENAME, *attr_3);
+
+  // Create EP context node
+  //graph_build.AddNode(EPCONTEXT_OP, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
+  LOGS_DEFAULT(VERBOSE) << "*#* fused_subgraph_name=" << fused_subgraph_name;
+  graph_build.AddNode(fused_subgraph_name, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
+  LOGS_DEFAULT(VERBOSE) << "*#* graph_build.GetNode(0)->Name()" << graph_build.GetNode(0)->Name();
+  ORT_ENFORCE(graph_build.Resolve().IsOK());
+
+  // Serialize modelproto to string
+  // auto new_graph_viewer = graph_build.CreateGraphViewer();
+  // std::unique_ptr<Model> model = new_graph_viewer->CreateModel(*logger);
+  // auto model_proto = model->ToProto();
+  // new_graph_viewer->ToProto(*model_proto->mutable_graph(), true, true);
+  // model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+
+  // return model_proto.release();
+  // return std::unique_ptr<Graph>(graph_build);
+  // return std::make_unique<Graph>(graph_build);
+  // return std::make_unique<Graph>(std::move(graph_build));
+  // return std::move(graph_build);
+  // trt_ep_context_models.emplace("node name", std::move(model_build));
+  // trt_ep_context_models.emplace_back(std::move(model_build));
+  // return Status::OK();
+  // return std::unique_ptr<Model>(model_build);
+  // return std::move(model_build); // Transfer ownership
+  return model_build;
 }
 
 /*
@@ -266,11 +385,11 @@ bool IsWeightStrippedEngineCache(std::filesystem::path& engine_cache_path) {
   return engine_cache_path.stem().extension().string() == ".stripped";
 }
 
-Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph_viewer) {
-  if (!ValidateEPCtxNode(graph_viewer)) {
+Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph_viewer, const int ctx_node_idx) {
+  if (!ValidateEPCtxNode(graph_viewer, ctx_node_idx)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "It's not a valid EP Context node");
   }
-  auto node = graph_viewer.GetNode(0);
+  auto node = graph_viewer.GetNode(ctx_node_idx);
   auto& attrs = node->GetAttributes();
 
   const int64_t embed_mode = attrs.at(EMBED_MODE).i();
@@ -380,14 +499,26 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
 /*
  * The sanity check for EP context contrib op.
  */
-bool TensorRTCacheModelHandler::ValidateEPCtxNode(const GraphViewer& graph_viewer) {
+bool TensorRTCacheModelHandler::ValidateEPCtxNode(const GraphViewer& graph_viewer, const int ctx_node_idx) {
   assert(graph_viewer.NumberOfNodes() == 1);
-  assert(graph_viewer.GetNode(0)->OpType() == EPCONTEXT_OP);
-  auto node = graph_viewer.GetNode(0);
+  assert(graph_viewer.GetNode(ctx_node_idx)->OpType() == EPCONTEXT_OP);
+  auto node = graph_viewer.GetNode(ctx_node_idx);
+  LOGS_DEFAULT(VERBOSE) << "*#* node->Name()=" << node->Name();
   auto& attrs = node->GetAttributes();
+  // print node info
+  if (!node) {
+     LOGS_DEFAULT(VERBOSE) << "*#* node is null";
+     return false;
+  }
+  LOGS_DEFAULT(VERBOSE) << (node && !node->Name().empty() 
+              ? "*#* Node Name: " + node->Name() 
+              : "*#* Node has empty name.");
+  LOGS_DEFAULT(VERBOSE) << (node && !node->OpType().empty() 
+              ? "*#* Node Name: " + node->OpType()
+              : "*#* Node has empty OpType.");
 
   // Show the warning if compute capability is not matched
-  if (attrs.count(COMPUTE_CAPABILITY) > 0) {
+  if (attrs.find(COMPUTE_CAPABILITY)!=attrs.end() && attrs.count(COMPUTE_CAPABILITY) > 0) {
     std::string model_compute_capability = attrs.at(COMPUTE_CAPABILITY).s();
     // Verify if engine was compiled with ampere+ hardware compatibility enabled
     if (model_compute_capability == "80+") {
@@ -414,4 +545,130 @@ bool TensorRTCacheModelHandler::ValidateEPCtxNode(const GraphViewer& graph_viewe
 
   return true;
 }
+
+// Status SetGraphInputOutputInfo(const GraphViewer& graph_viewer,
+//                                          const onnxruntime::Node& fused_node,
+//                                          const logging::Logger& logger) {
+//   auto graph_initializers = graph_viewer.GetAllInitializedTensors();
+//   for (auto graph_ini : graph_initializers) {
+//     initializer_inputs_.emplace(graph_ini.first);
+//   }
+//   auto input_defs = fused_node.InputDefs();
+
+//   ORT_RETURN_IF_ERROR(ParseGraphInputOrOutput(input_defs, input_names_, inputs_info_,
+//                                               model_input_index_map_, logger, true));
+
+//   auto output_defs = fused_node.OutputDefs();
+//   ORT_RETURN_IF_ERROR(ParseGraphInputOrOutput(output_defs, output_names_, outputs_info_,
+//                                               model_output_index_map_, logger));
+
+//   return Status::OK();
+// }
+
+// Status SetupTrtInputOutput(const logging::Logger& logger) {
+//   LOGS(logger, VERBOSE) << "Setting up QNN input/output for graph: " << graph_info_->Name();
+
+//   auto result = SetupTensors(qnn_input_infos_, graph_info_->InputTensors());
+
+//   if (Status::OK() != result) {
+//     LOGS(logger, ERROR) << "Failed to setup QNN input output tensors for graph: " << graph_info_->Name();
+//     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to setup QNN input tensors!");
+//   }
+
+//   result = SetupTensors(qnn_output_infos_, graph_info_->OutputTensors(), false);
+//   if (Status::OK() != result) {
+//     LOGS(logger, ERROR) << "Failed to setup QNN input output tensors for graph: " << graph_info_->Name();
+//     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to setup QNN output tensors!");
+//   }
+
+//   return Status::OK();
+// }
+
+// Status LoadCachedTrtContextFromBuffer(char* buffer, uint64_t buffer_length,
+//                                       std::string node_name,
+//                                       std::unordered_map<std::string, std::unique_ptr<FusedNodeAndGraph>> trt_models) {
+//   LOGS_DEFAULT(VERBOSE) << buffer;
+//   return Status::OK();
+// }
+
+// Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
+//                                 const onnxruntime::PathString& ctx_onnx_model_path,
+//                                 std::unordered_map<std::string, std::unique_ptr<FusedNodeAndGraph>>& trt_models) {
+//   ORT_RETURN_IF_NOT(EPCONTEXT_OP == main_context_node.OpType(), "Should only filter in the EPContext node.");
+//   NodeAttrHelper node_helper(main_context_node);
+//   bool is_embed_mode = node_helper.Get(EMBED_MODE, true);
+//   if (is_embed_mode) {
+//     const std::string& context_binary = node_helper.Get(EP_CACHE_CONTEXT, "");
+//     return LoadCachedTrtContextFromBuffer(const_cast<char*>(context_binary.c_str()),
+//                                                                static_cast<uint64_t>(context_binary.length()),
+//                                                                main_context_node.Name(),
+//                                                                trt_models);
+//   }
+
+//   std::filesystem::path folder_path = std::filesystem::path(ctx_onnx_model_path).parent_path();
+//   std::string external_trt_ctx_binary_file_name = node_helper.Get(EP_CACHE_CONTEXT, "");
+//   ORT_RETURN_IF(external_trt_ctx_binary_file_name.empty(), "The file path in ep_cache_context should not be empty.");
+// #ifdef _WIN32
+//   onnxruntime::PathString external_qnn_context_binary_path = onnxruntime::ToPathString(external_qnn_ctx_binary_file_name);
+//   auto ctx_file_path = std::filesystem::path(external_qnn_context_binary_path.c_str());
+//   ORT_RETURN_IF(ctx_file_path.is_absolute(), "External mode should set ep_cache_context field with a relative path, but it is an absolute path: ",
+//                 external_qnn_ctx_binary_file_name);
+//   auto relative_path = ctx_file_path.lexically_normal().make_preferred().wstring();
+//   if (relative_path.find(L"..", 0) != std::string::npos) {
+//     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context field has '..'. It's not allowed to point outside the directory.");
+//   }
+
+//   std::filesystem::path context_binary_path = folder_path.append(relative_path);
+// #else
+//   ORT_RETURN_IF(external_trt_ctx_binary_file_name[0] == '/',
+//                 "External mode should set ep_cache_context field with a relative path, but it is an absolute path: ",
+//                 external_trt_ctx_binary_file_name);
+//   if (external_trt_ctx_binary_file_name.find("..", 0) != std::string::npos) {
+//     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context field has '..'. It's not allowed to point outside the directory.");
+//   }
+//   std::filesystem::path context_binary_path = folder_path.append(external_trt_ctx_binary_file_name);
+//   std::string file_full_path = context_binary_path.string();
+// #endif
+//   if (!std::filesystem::is_regular_file(context_binary_path)) {
+//     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "The file path in ep_cache_context does not exist or is not accessible.");
+//   }
+
+//   size_t buffer_size{0};
+//   std::ifstream cache_file(context_binary_path.string().c_str(), std::ifstream::binary);
+//   ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to open cache file.");
+
+//   cache_file.seekg(0, cache_file.end);
+//   buffer_size = static_cast<size_t>(cache_file.tellg());
+//   ORT_RETURN_IF(0 == buffer_size, "Empty cache file encountered.");
+
+//   cache_file.seekg(0, cache_file.beg);
+//   std::unique_ptr<char[]> buffer = std::make_unique<char[]>(buffer_size);
+//   ORT_RETURN_IF(nullptr == buffer, "Failed to allocate memory for cache file.");
+//   // Load file into buffer
+//   const auto& read_result = cache_file.read(buffer.get(), buffer_size);
+//   ORT_RETURN_IF(!read_result, "Failed to read contents from cached context file.");
+//   cache_file.close();
+//   return LoadCachedTrtContextFromBuffer(const_cast<char*>(context_binary.c_str()),
+//                                                           static_cast<uint64_t>(context_binary.length()),
+//                                                           main_context_node.Name(),
+//                                                           trt_models);
+// }
+
+// Status LoadTrtCtxFromOnnxGraph(const onnxruntime::GraphViewer& graph_viewer,
+//                                const onnxruntime::PathString& ctx_onnx_model_path,
+//                                std::unordered_map<std::string, std::unique_ptr<FusedNodeAndGraph>>& trt_models,
+//                                const logging::Logger& logger) {
+//   ORT_RETURN_IF(graph_viewer.NumberOfNodes() != 1, "One filtered graph should has only one EPContext node!");
+//   Status status = GetEpContextFromMainNode(*graph_viewer.Nodes().begin(), ctx_onnx_model_path,
+//                                            trt_models);
+
+//   // This is the protocol with customer that status with INVALID_GRAPH will be generated if failed to load context model
+//   if (!status.IsOK()) {
+//     LOGS(logger, ERROR) << "Failed to load from EpContext model. " << status.ErrorMessage();
+//     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Failed to load from EpContext model. ", status.ErrorMessage());
+//   }
+
+//   return Status::OK();
+// }
+
 }  // namespace onnxruntime

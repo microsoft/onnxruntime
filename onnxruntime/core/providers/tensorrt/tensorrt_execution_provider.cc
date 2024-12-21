@@ -1344,6 +1344,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     timing_cache_enable_ = info.timing_cache_enable;
     force_timing_cache_match_ = info.force_timing_cache;
     detailed_build_log_ = info.detailed_build_log;
+    // EPCTX TODO combine session option with trt options
     dump_ep_context_model_ = info.dump_ep_context_model;
     ep_context_file_path_ = info.ep_context_file_path;
     ep_context_embed_mode_ = info.ep_context_embed_mode;
@@ -1952,6 +1953,13 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
     node_set.insert(node_index[index]);
   }
 
+  std::ostringstream oss;
+  oss << "*#* node_set=";
+  for (const auto& value : node_set) {
+      oss << value << " ";
+  }
+  LOGS_DEFAULT(VERBOSE) << oss.str();
+
   // Get parent graph output names
   std::unordered_set<std::string> graph_output_names;
   for (const auto* output_arg : graph.GetOutputs()) {
@@ -2467,15 +2475,52 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   strncpy(model_path_, path_string.c_str(), sizeof(model_path_) - 1);
 #endif
   model_path_[sizeof(model_path_) - 1] = '\0';
+  LOGS_DEFAULT(VERBOSE) << "*#* graph.NumberOfNodes()=" << graph.NumberOfNodes();
+  LOGS_DEFAULT(VERBOSE) << "*#* TRTGenerateId(graph)" << TRTGenerateId(graph);
 
   // If the model consists of only a single "EPContext" contrib op, it means TRT EP can fetch the precompiled engine info from the node and
   // load the engine directly without having to go through the processes of graph proto reconstruction, calling TRT parser and engine compilation.
   // So, simply return the ComputeCapability here.
-  if (graph.NumberOfNodes() == 1 && GraphHasCtxNode(graph)) {
-    SubGraph_t supported_node_vector = {{0}, true};
-    std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, TRTGenerateId(graph), 0);
-    result.push_back(ComputeCapability::Create(std::move(sub_graph)));
-    return result;
+  if (GraphHasCtxNode(graph)) {
+    if (graph.NumberOfNodes() == 1) {
+      SubGraph_t supported_node_vector = {{0}, true};
+      std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, TRTGenerateId(graph), 0);
+      result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+      return result;
+    } else {
+      SubGraphCollection_t supported_node_vectors = {
+        {{0}, true},
+        {{1}, true},
+        {{2}, true},
+        {{3}, true},
+        {{4}, true},
+        };
+
+      for (auto supported_node_vector: supported_node_vectors) {
+        auto subgraph_idx = supported_node_vector.first[0];
+        std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, TRTGenerateId(graph), subgraph_idx);
+
+        // Print supported_node_vector of std::pair<std::vector<long unsigned int>, bool>
+        std::ostringstream oss;
+        oss << "First: [";
+        for (auto item: supported_node_vector.first) {
+          oss << item << ", ";
+        }
+        LOGS_DEFAULT(VERBOSE) << "*#* supported_node_vector=" << oss.str() << "], Second (bool): " << supported_node_vector.second;
+        oss.str("");
+        // Print sub_graph nodes of type std::unique_ptr<IndexedSubGraph> -> Nodes()
+        const auto nodes = sub_graph->Nodes(); //std::vector<const Node*> Nodes()
+        for (const auto node: nodes) {
+          oss << node << ", ";
+        }
+        // Log the formatted string
+        LOGS_DEFAULT(VERBOSE) << "*#* sub_graph: Nodes=[" << oss.str() << "]";
+
+        result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+      }
+      return result;
+    }
+    
   }
 
   // Generate unique kernel name for TRT graph
@@ -2506,6 +2551,13 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
    */
   for (const auto& index : nodes_vector) {
     const auto& node = graph.GetNode(node_index[index]);
+    if (!node) {
+      LOGS_DEFAULT(VERBOSE) << "*#* Node at index " << node_index[index] << " is null!";
+      continue;
+    }
+    if (!node->Name().empty()) {
+      LOGS_DEFAULT(VERBOSE) << "*#* node->Name()=" << node->Name() << " node->OpType()=" << node->OpType();
+    }
     bool supported_node = true;
 
     /* If current node is control flow op, we take different approach based on following four cases:
@@ -2541,9 +2593,20 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     if (exclude_set.find(node->OpType()) != exclude_set.end()) {
       supported_node = false;
     }
+    // supported_node = supported_node || GraphHasCtxNode(node);
 
+    LOGS_DEFAULT(VERBOSE) << "*#* supported_node=" << supported_node;
+    bool is_context_node = node->OpType() == "EPContext";
+    LOGS_DEFAULT(VERBOSE) << "*#* Node " << index << " is_context_node=" << is_context_node;
+    
+    // std::vector<std::pair<std::vector<long unsigned int>, bool> >
     if (supported_node) {
-      if (new_subgraph) {
+      if (is_context_node) {
+        parser_nodes_vector.emplace_back();
+        // Mark Context node is supported 
+        parser_nodes_vector.back().second = true;
+        new_subgraph = true;
+      } else if (new_subgraph) {
         parser_nodes_vector.emplace_back();
         // Mark all new graphs as "UnKnown" which will later be parsed by TRT parser
         parser_nodes_vector.back().second = false;
@@ -2556,7 +2619,42 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   }
 
   bool early_termination = false;
+  // print parser_nodes_vector
+  std::ostringstream oss;
+  for (const auto& pair : parser_nodes_vector) {
+    oss << "[Vector: [";
+    for (size_t i = 0; i < pair.first.size(); ++i) {
+        oss << pair.first[i];
+        if (i < pair.first.size() - 1) {
+            oss << ", ";
+        }
+    }
+    oss << "]";
+
+    // Print the second element (bool)
+    oss << ", " << (pair.second ? "true" : "false") << "]";
+  }
+  LOGS_DEFAULT(VERBOSE) << "*#* print parser_nodes_vector" << oss.str(); // std::vector<std::pair<std::vector<long unsigned int>, bool> >
+  
   supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
+  
+  // Print supported_nodes_vector
+  for (const auto& pair : supported_nodes_vector) {
+    // Print the first element (std::vector<unsigned long>)
+    oss << "[Vector: [";
+    for (size_t i = 0; i < pair.first.size(); ++i) {
+        oss << pair.first[i];
+        if (i < pair.first.size() - 1) {
+            oss << ", ";
+        }
+    }
+    oss << "]";
+
+    // Print the second element (bool)
+    oss << ", " << (pair.second ? "true" : "false") << "]";
+  }
+  LOGS_DEFAULT(VERBOSE) << "*#* print supported_nodes_vector" << oss.str(); // std::vector<std::pair<std::vector<long unsigned int>, bool> >
+  
   if (early_termination) {
     supported_nodes_vector.clear();
   }
@@ -2588,6 +2686,23 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
       supported_nodes_vector = consolidated_supported_nodes_vector;
     }
   }
+
+  // Print supported_nodes_vector
+  for (const auto& pair : supported_nodes_vector) {
+    // Print the first element (std::vector<unsigned long>)
+    oss << "[Vector: [";
+    for (size_t i = 0; i < pair.first.size(); ++i) {
+        oss << pair.first[i];
+        if (i < pair.first.size() - 1) {
+            oss << ", ";
+        }
+    }
+    oss << "]";
+
+    // Print the second element (bool)
+    oss << ", " << (pair.second ? "true" : "false") << "]";
+  }
+  LOGS_DEFAULT(VERBOSE) << "*#* After consolidation, print supported_nodes_vector" << oss.str(); // std::vector<std::pair<std::vector<long unsigned int>, bool> >
 
   // Handle the case where the graph is subgraph of control flow op.
   // The purpose is to make control flow op as well as its subgraphs run on TRT.
@@ -2767,6 +2882,102 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
 
 common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                                   std::vector<NodeComputeInfo>& node_compute_funcs) {
+  LOGS_DEFAULT(VERBOSE) << "*#* TensorrtExecutionProvider::Compile";
+  // bool is_trt_ctx_model = GraphHasCtxNode(fused_nodes_and_graphs);
+  // // verify where to get context configs from 
+  // bool context_cache_enabled_ = true; 
+  // onnxruntime::PathString context_cache_path = "";
+  // bool is_ctx_file_exist = false;
+  // bool share_ep_contexts_ = true;
+  // std::string context_cache_path_cfg_ = "";
+
+  // if (is_trt_ctx_model || context_cache_enabled_) {
+  //   const onnxruntime::GraphViewer& graph_viewer_0(fused_nodes_and_graphs[0].filtered_graph);
+  //   is_ctx_file_exist = qnn::ValidateContextCacheFilePath(is_trt_ctx_model,
+  //                                                         context_cache_path_cfg_,
+  //                                                         graph_viewer_0.ModelPath().native(),
+  //                                                         context_cache_path);
+  // }
+
+  // ORT_RETURN_IF(is_ctx_file_exist && !is_trt_ctx_model && context_cache_enabled_,
+  //               "The inference session is created from normal ONNX model. And an EP context model file is provided and existed. ",
+  //               "Please remove the EP context model manually if you want to re-generate it.");
+
+  // if (is_trt_ctx_model) {
+  //   // Get TensorRT Model from EP shared contexts
+  //   // if (share_ep_contexts_ && SharedContext::GetInstance().HasSharedTrtModels()) {
+  //   //   if (EpSharedContextsHasAllGraphs(fused_nodes_and_graphs, logger)) {
+  //   //     for (auto fused_node_and_graph : fused_nodes_and_graphs) {
+  //   //       const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
+  //   //       const auto& ep_context_node = graph_viewer.Nodes().begin();
+  //   //       const Node& fused_node = fused_node_and_graph.fused_node;
+  //   //       const std::string& graph_meta_id = fused_node.Name();
+  //   //       std::string key = ep_context_node->Name();
+  //   //       auto trt_model_shared = SharedContext::GetInstance().GetSharedTrtModel(key);
+  //   //       ORT_RETURN_IF(nullptr == trt_model_shared, "Graph: " + key + " not found from shared EP contexts.");
+  //   //       // ORT_RETURN_IF_ERROR(qnn_model_shared->SetGraphInputOutputInfo(graph_viewer, fused_node, logger));
+  //   //       // ORT_RETURN_IF_ERROR(qnn_model_shared->SetupQnnInputOutput(logger));
+  //   //       // qnn_models_.emplace(graph_meta_id, std::move(qnn_model_shared));
+
+  //   //       // ORT_RETURN_IF_ERROR(SetGraphInputOutputInfo(trt_model_shared, graph_viewer, fused_node, logger));
+  //   //       // ORT_RETURN_IF_ERROR(SetupTrtInputOutput(trt_model_shared, logger));
+  //   //       // trt_model_shared.emplace(graph_meta_id, std::move(trt_model_shared));
+  //   //       // ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
+  //   //     }
+  //   //     return Status::OK();
+  //   //   }
+  //   // }
+
+  //   std::unordered_map<std::string, std::unique_ptr<FusedNodeAndGraph>> trt_models;
+
+  //   std::vector<int> main_context_pos_list;
+  //   ORT_RETURN_IF_ERROR(qnn::GetMainContextNode(fused_nodes_and_graphs, main_context_pos_list));
+
+  //   for (auto main_context_pos : main_context_pos_list) {
+  //     const onnxruntime::GraphViewer& main_ctx_graph_viewer(fused_nodes_and_graphs[main_context_pos].filtered_graph);
+  //     // Create QNN context from the cached binary, deserialize the QNN graph from the binary
+  //     ORT_RETURN_IF_ERROR(LoadTrtCtxFromOnnxGraph(main_ctx_graph_viewer,
+  //                                                 context_cache_path,
+  //                                                 trt_models,
+  //                                                 logger));
+  //   }
+
+  //   // for (auto fused_node_and_graph : fused_nodes_and_graphs) {
+  //   //   const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
+  //   //   const auto& ep_context_node = graph_viewer.Nodes().begin();
+  //   //   const Node& fused_node = fused_node_and_graph.fused_node;
+  //   //   const std::string& graph_meta_id = fused_node.Name();
+  //   //   std::string key = ep_context_node->Name();
+  //   //   ORT_RETURN_IF(trt_models.find(key) == trt_models.end(), key + " key name not exist in table trt_models.");
+  //   //   auto trt_models = std::move(trt_models[key]);
+  //   //   ORT_RETURN_IF_ERROR(trt_models->SetGraphInputOutputInfo(graph_viewer, fused_node, logger));
+  //   //   ORT_RETURN_IF_ERROR(trt_models->SetupQnnInputOutput(logger));
+
+  //   //   // fused node name is QNNExecutionProvider_QNN_[hash_id]_[id]
+  //   //   // the name here must be same with context->node_name in compute_info
+  //   //   trt_models.emplace(graph_meta_id, std::move(trt_models));
+  //   //   trt_models.erase(key);
+
+  //   //   ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
+  //   // }
+
+  //   // if (share_ep_contexts_ && trt_models.size() > 0) {
+  //   //   // std::vector<std::unique_ptr<qnn::QnnModel>> shared_qnn_models;
+  //   //   std::unordered_map<std::string, std::unique_ptr<FusedNodeAndGraph>> shared_trt_models;
+
+  //   //   for (auto& [key, value] : trt_models) {
+  //   //     shared_trt_models.push_back(std::move(trt_models[key]));
+  //   //   }
+  //   //   std::string duplicate_graph_names;
+  //   //   bool has_duplicate_graph = SharedContext::GetInstance().SetSharedTrtModel(std::move(shared_trt_models),
+  //   //                                                                             duplicate_graph_names);
+  //   //   ORT_RETURN_IF(has_duplicate_graph, "Duplicate graph names detect across sessions: " + duplicate_graph_names);
+  //   // }
+
+  // } // end of is_trt_ctx_model
+
+  LOGS_DEFAULT(VERBOSE) << "*#* fused_nodes_and_graphs.size()=" << fused_nodes_and_graphs.size();
+  
   for (auto& fused_node_graph : fused_nodes_and_graphs) {
     const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
     const Node& fused_node = fused_node_graph.fused_node;
@@ -2786,20 +2997,73 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       output_map[output_defs[i]->Name()] = i;
     }
 
+    // Print current nodes in subgraph
+    // std::ostringstream oss;
+    // oss << "*#* Checking nodes of graph_body_viewer. graph_body_viewer.MaxNodeIndex()=" << graph_body_viewer.MaxNodeIndex() << "\n Nodes: [";
+    // for (int i = 0; i < graph_body_viewer.MaxNodeIndex(); ++i) {
+    //   const auto node = graph_body_viewer.GetNode(i);
+    //   if (!node) {
+    //     oss << " null \n";
+    //     continue;
+    //   }
+    //   if (!node->Name().empty() && !node->OpType().empty()) {
+    //     oss << " node->Name()=" << node->Name() << " node->OpType()=" << node->OpType() << "\n";
+    //   } else {
+    //     oss << " Either Name() or OpType() is empty\n";
+    //   }
+    // }
+    // LOGS_DEFAULT(VERBOSE) << oss.str() << "]";
+    LOGS_DEFAULT(VERBOSE) << "*#* fused_node.Index()=" << fused_node.Index() << " Address of graph_body_viewer: " << &graph_body_viewer;
+
     Status status;
-    if (GraphHasCtxNode(graph_body_viewer)) {
+    // if (GraphHasCtxNode(graph_body_viewer)) {
+    int ctx_node_idx = FindCtxNodeInGraph(graph_body_viewer);
+    if (ctx_node_idx >= 0) {
+      LOGS_DEFAULT(VERBOSE) << "*#* Calling CreateNodeComputeInfoFromPrecompiledEngine";
       status = CreateNodeComputeInfoFromPrecompiledEngine(graph_body_viewer,
                                                           fused_node,
+                                                          ctx_node_idx,
                                                           input_map,
                                                           output_map,
-                                                          node_compute_funcs);
+                                                          node_compute_funcs
+                                                          );
+      // Should have embed info
+      // LOGS_DEFAULT(VERBOSE) << "*#* Create a new model from graph_body_viewer and add to trt_ep_context_models";  
+      // LOGS_DEFAULT(VERBOSE) << "*#* Checking nodes of graph_body_viewer after CreateNodeComputeInfoFromPrecompiledEngine";  
+      // LOGS_DEFAULT(VERBOSE) << "*#* graph_body_viewer.MaxNodeIndex()=" << graph_body_viewer.MaxNodeIndex();
+      // LOGS_DEFAULT(VERBOSE) << "*#* Checking nodes of ctx_model_ptr";
+      // auto ctx_model_ptr = graph_body_viewer.CreateModel(*GetLogger()); // Creates model without nodes
+      // auto& graph = ctx_model_ptr->MainGraph();
+      // // LOGS_DEFAULT(VERBOSE) << "*#* graph.MaxNodeIndex()=" << graph.MaxNodeIndex();
+      // for (int i = 0; i < graph_body_viewer.MaxNodeIndex(); ++i) {
+      //   auto node = graph_body_viewer.GetNode(i);
+      //   if (!node) {
+      //     LOGS_DEFAULT(WARNING) << "Node at index " << i << " is null!";
+      //     continue;
+      //   }
+      //   if (node != nullptr && node->OpType() == EPCONTEXT_OP) {
+      //     if (!node->Name().empty()) {
+      //       LOGS_DEFAULT(VERBOSE) << "*#* node->Name()=" << node->Name() << " node->OpType()=" << node->OpType();
+      //     }
+      //     // graph.AddNode(*node);
+      //   }
+      // }
+      // LOGS_DEFAULT(VERBOSE) << "*#* graph.MaxNodeIndex()=" << graph.MaxNodeIndex();
+      // Segmentation fault here?
+      // LOGS_DEFAULT(VERBOSE) << "*#* before trt_ep_context_models.emplace_back";
+      // trt_ep_context_models.emplace_back(std::move(ctx_model_ptr));
+      // LOGS_DEFAULT(VERBOSE) << "*#* After adding ctx_model_ptr, trt_ep_context_models.size()=" << trt_ep_context_models.size();
     } else {
+      LOGS_DEFAULT(VERBOSE) << "*#* Calling CreateNodeComputeInfoFromGraph"; 
       status = CreateNodeComputeInfoFromGraph(graph_body_viewer, fused_node, input_map, output_map, node_compute_funcs);
+      // LOGS_DEFAULT(VERBOSE) << "*#* After CreateNodeComputeInfoFromPrecompiledEngine graph_body_viewer.MaxNodeIndex()=" << graph_body_viewer.MaxNodeIndex(); 
+      
     }
     if (status != Status::OK()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
     }
   }
+  
   return Status::OK();
 }
 
@@ -3280,6 +3544,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
           auto engine_build_stop = std::chrono::steady_clock::now();
           LOGS_DEFAULT(INFO) << "TensorRT engine build for " << trt_node_name_with_precision << " took: " << std::chrono::duration_cast<std::chrono::milliseconds>(engine_build_stop - engine_build_start).count() << "ms" << std::endl;
         }
+        LOGS_DEFAULT(VERBOSE) << "*#* engine_cache_enable_=" << engine_cache_enable_;  
         if (engine_cache_enable_) {
           // Serialize engine profile if it has explicit profiles
           if (has_explicit_profile) {
@@ -3317,6 +3582,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
             LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized timing cache " + timing_cache_path;
           }
         }
+        LOGS_DEFAULT(VERBOSE) << "*#* for static shape, dump_ep_context_model_=" << dump_ep_context_model_;  
         // dump EP context node model
         if (dump_ep_context_model_) {
           // "ep_cache_context" node attribute should be a relative path to context model directory
@@ -3328,15 +3594,62 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
           if (engine_cache_enable_ && engine_hw_compatible_) {
             compute_capability_hw_compat = "80+";
           }
-          std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto{CreateCtxModel(graph_body_viewer,
-                                                                                 ep_cache_context_attr_,
-                                                                                 reinterpret_cast<char*>(serialized_engine->data()),
-                                                                                 serialized_engine->size(),
-                                                                                 ep_context_embed_mode_,
-                                                                                 compute_capability_hw_compat,
-                                                                                 model_path_,
-                                                                                 GetLogger())};
-          DumpCtxModel(model_proto.get(), ctx_model_path_);
+          LOGS_DEFAULT(VERBOSE) << "*#* static shape, bool dump_ep_context_model_=" << dump_ep_context_model_;  
+          // Old Context model
+          // std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto{CreateCtxModel(graph_body_viewer,
+          //                                                                        ep_cache_context_attr_,
+          //                                                                        reinterpret_cast<char*>(serialized_engine->data()),
+          //                                                                        serialized_engine->size(),
+          //                                                                        ep_context_embed_mode_,
+          //                                                                        compute_capability_hw_compat,
+          //                                                                        model_path_,
+          //                                                                        GetLogger())};
+          // DumpCtxModel(model_proto.get(), ctx_model_path_);
+
+          // New context model
+          // std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto{CreateCtxModel(graph_body_viewer,
+          //                                                                        ep_cache_context_attr_,
+          //                                                                        reinterpret_cast<char*>(serialized_engine->data()),
+          //                                                                        serialized_engine->size(),
+          //                                                                        ep_context_embed_mode_,
+          //                                                                        compute_capability_hw_compat,
+          //                                                                        model_path_,
+          //                                                                        GetLogger())};
+          // std::unique_ptr<GraphViewer> new_graph_viewer = CreateCtxModel(graph_body_viewer,
+          // trt_ep_context_nodes = CreateCtxModel(graph_body_viewer, // *#* TODO Need to understand what happens when there's multiple context nodes
+          auto trt_ep_context_model_ptr = CreateCtxModel2(graph_body_viewer,
+                                              fused_node.Name(),
+                                              ep_cache_context_attr_,
+                                              reinterpret_cast<char*>(serialized_engine->data()),
+                                              serialized_engine->size(),
+                                              ep_context_embed_mode_,
+                                              compute_capability_hw_compat,
+                                              model_path_,
+                                              GetLogger());
+          auto& graph = trt_ep_context_model_ptr->MainGraph();
+          LOGS_DEFAULT(VERBOSE) << "*#* graph.Nodes().size()=" << graph.Nodes().size();
+          trt_ep_context_models.emplace_back(std::move(trt_ep_context_model_ptr));
+          // auto new_graph_viewer = trt_ep_context_nodes->CreateGraphViewer();
+          // std::unique_ptr<Model> model = new_graph_viewer->CreateModel(*GetLogger());
+          // auto model_proto = model->ToProto();
+          // new_graph_viewer->ToProto(*model_proto->mutable_graph(), true, true);
+          // model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+          // model_proto = model_proto.release();                                                
+          // std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_ptr{model_proto};
+          // EPCTX TODO populate trt_ep_context_nodes for static shape
+          // auto& subgraph = fused_node.filtered_graph.get();
+          // auto local_registries = IOnnxRuntimeOpSchemaRegistryList{subgraph.GetSchemaRegistry()};
+          // // auto model = onnxruntime::Model::CreateFromProto(model_proto, GetLogger());
+          // auto model = Model::Create(model_proto, subgraph.ModelPath(), &local_registries, GetLogger())
+          // const auto& graph = model_proto.get()->graph();
+          
+          // const auto& graph = model->MainGraph();
+          // for (const auto& node : graph.Nodes()) {
+          //   LOGS_DEFAULT(VERBOSE) << "*#* node->Name" << node->Name();
+          //   // trt_ep_context_nodes.push_back(graph.GetNode(node.Index()));
+          //   trt_ep_context_nodes.push_back(node);
+          // }
+          // DumpCtxModel(model_proto.get(), ctx_model_path_);
         }
       }
     }
@@ -3434,17 +3747,42 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     if (engine_cache_enable_ && engine_hw_compatible_) {
       compute_capability_hw_compat = "80+";
     }
-    model_proto_.reset(CreateCtxModel(graph_body_viewer,
-                                      ep_cache_context_attr_,
-                                      nullptr,
-                                      0,
-                                      ep_context_embed_mode_,
-                                      compute_capability_hw_compat,
-                                      model_path_,
-                                      GetLogger()));
-    if (ep_context_embed_mode_ == 0) {
-      DumpCtxModel(model_proto_.get(), ctx_model_path_);
-    }
+    LOGS_DEFAULT(VERBOSE) << "*#* dynamic shape";
+    // model_proto_.reset(CreateCtxModel(graph_body_viewer,
+    //                                   ep_cache_context_attr_,
+    //                                   nullptr,
+    //                                   0,
+    //                                   ep_context_embed_mode_,
+    //                                   compute_capability_hw_compat,
+    //                                   model_path_,
+    //                                   GetLogger()));
+    auto trt_ep_context_model_ptr = CreateCtxModel2(graph_body_viewer,
+                                                    fused_node.Name(),
+                                                                    ep_cache_context_attr_,
+                                                                    nullptr,
+                                                                    0,
+                                                                    ep_context_embed_mode_,
+                                                                    compute_capability_hw_compat,
+                                                                    model_path_,
+                                                                    GetLogger());
+    
+    trt_ep_context_models.emplace_back(std::move(trt_ep_context_model_ptr));
+    // std::unique_ptr<Model> ctx_model = new_graph_viewer->CreateModel(*GetLogger());
+    // auto ctx_model_proto_ = ctx_model->ToProto();
+    // new_graph_viewer->ToProto(*model_proto_->mutable_graph(), true, true);
+    // ctx_model_proto_->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+    // // model_proto_.reset(ctx_model_proto_);
+    // model_proto_ = std::move(ctx_model_proto_);
+    // const auto& graph = model->MainGraph();
+    // for (const auto& node : graph.Nodes()) {
+    //   LOGS_DEFAULT(VERBOSE) << "*#* node->Name" << node->Name();
+    //   // trt_ep_context_nodes.push_back(graph.GetNode(node.Index()));
+    //   trt_ep_context_nodes.push_back(node);
+    // }
+    // if (ep_context_embed_mode_ == 0) {
+    //   DumpCtxModel(model_proto_.get(), ctx_model_path_);
+    // }
+    // TODO populate trt_ep_context_nodes for dynamic shape
   }
 
   // Create function state
@@ -4035,11 +4373,60 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   return Status::OK();
 }
 
+std::string PrintGraphNodes(const GraphViewer& graph_body_viewer) {
+    std::ostringstream oss; // Create a new ostringstream instance
+
+    // Append the message and graph details
+    oss << "graph_body_viewer.MaxNodeIndex()=" << graph_body_viewer.MaxNodeIndex() << "\n";
+    oss << "graph_body_viewer.NumberOfNodes()=" << graph_body_viewer.NumberOfNodes() << "\n";
+    oss << "Nodes: [";
+
+    // Iterate over the nodes in the graph
+    for (int i = 0; i < graph_body_viewer.MaxNodeIndex(); ++i) {
+        const auto node = graph_body_viewer.GetNode(i);
+        if (!node) {
+            oss << "null,";
+            continue;
+        }
+        if (!node->Name().empty() && !node->OpType().empty()) {
+            oss << "node->Name()=" << node->Name() << " node->OpType()=" << node->OpType() << ",";
+        } else {
+            oss << "[Either Name() or OpType() is empty],";
+        }
+    }
+
+    oss << "]";
+    return oss.str();
+}
+
 Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const GraphViewer& graph_body_viewer,
                                                                              const Node& fused_node,
+                                                                             const int ctx_node_idx,
                                                                              std::unordered_map<std::string, size_t>& input_map,
                                                                              std::unordered_map<std::string, size_t>& output_map,
                                                                              std::vector<NodeComputeInfo>& node_compute_funcs) {
+  // Print subgraph
+  // graph_body_viewer is virtually empty
+  auto model = graph_body_viewer.CreateModel(*GetLogger());
+  auto model_proto = model->ToProto();
+
+  if (dump_subgraphs_) {
+    // Dump TensorRT subgraphs
+    std::fstream dump(fused_node.Name() + ".onnx", std::ios::out | std::ios::trunc | std::ios::binary);
+    model_proto->SerializeToOstream(dump);
+    std::string subgraph_str;
+    model_proto->SerializeToString(subgraph_str);
+    // LOGS_DEFAULT(VERBOSE) << "*#* Subgraph " << fused_node.Name() << ": " << subgraph_str;
+    LOGS_DEFAULT(VERBOSE) << "*#* Subgraph " << fused_node.Name() << ": \n" 
+    << "fused_node.GetAttributes().size()=" << fused_node.GetAttributes().size();
+  }
+  // Print nodes in graph_body_viewer
+  LOGS_DEFAULT(VERBOSE) << "*#* graph_body_viewer before priority toposort: " << PrintGraphNodes(graph_body_viewer);
+
+  graph_body_viewer.ToProto(*model_proto->mutable_graph(), true, true, 1 /*priority-based topological sort*/);
+  
+  LOGS_DEFAULT(VERBOSE) << "*#* graph_body_viewer after priority toposort: " << PrintGraphNodes(graph_body_viewer);
+
   std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
   std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
   std::unordered_map<std::string, size_t> input_indexes;   // TRT engine input name -> ORT kernel context input index
@@ -4056,7 +4443,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
                                                            onnx_model_bytestream_,
                                                            onnx_model_bytestream_size_,
                                                            detailed_build_log_);
-  auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer);
+  auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer, ctx_node_idx);
   if (status != Status::OK()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
   }
@@ -4358,6 +4745,45 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
 
   node_compute_funcs.push_back(compute_info);
   return Status::OK();
+}
+
+// static bool EpSharedContextsHasAllGraphs(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
+//                                          const logging::Logger& logger) {
+//   for (auto fused_node_and_graph : fused_nodes_and_graphs) {
+//     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
+//     const auto& ep_context_node = graph_viewer.Nodes().begin();
+//     NodeAttrHelper node_helper(*ep_context_node);
+//     std::string cache_source = node_helper.Get(qnn::SOURCE, "");
+
+
+//     const std::string& graph_name = ep_context_node->Name();
+//     bool has_shared_trt_model = SharedContext::GetInstance().HasTrtModel(graph_name);
+//     if (!has_shared_trt_model) {
+//       LOGS(logger, VERBOSE) << "Graph: " << graph_name << " from EpContext node not found from shared EP contexts.";
+//       return false;
+//     }
+//   }
+
+//   return true;
+// }
+
+const InlinedVector<const Node*> TensorrtExecutionProvider::GetEpContextNodes() const {
+  LOGS_DEFAULT(VERBOSE) << "*#* trt_ep_context_models.size()=" << trt_ep_context_models.size();
+  InlinedVector<const Node*> ep_context_nodes;
+  if (!trt_ep_context_models.empty()) {
+    for (const auto& context_model: trt_ep_context_models) {
+      const auto& graph = context_model->MainGraph();
+      LOGS_DEFAULT(VERBOSE) << "*#* graph.Nodes().size()=" << graph.Nodes().size();
+      LOGS_DEFAULT(VERBOSE) << "*#* graph.MaxNodeIndex()=" << graph.MaxNodeIndex();
+      for (const auto& node: graph.Nodes()) {
+        LOGS_DEFAULT(VERBOSE) << "*#* node->Name()=" << node->Name() << " node->OpType()=" << node->OpType();
+        // if (node.IsEpContextNode()) { // Check if it's an EP context node
+        ep_context_nodes.push_back(node);
+      }
+    }
+  }
+  LOGS_DEFAULT(VERBOSE) << "*#* ep_context_nodes.size()=" << ep_context_nodes.size();
+  return ep_context_nodes;
 }
 
 void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const {
