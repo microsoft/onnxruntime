@@ -181,6 +181,10 @@ inline bool IsEmptyTensor(const InitializedTensorSet& initializers, const std::s
   return std::any_of(dims.begin(), dims.end(), [](auto d) { return d == 0; });
 }
 
+inline bool TensorExists(const ConstPointerContainer<std::vector<NodeArg*>>& defs, size_t tensor_index) noexcept {
+  return tensor_index < defs.size() && defs[tensor_index]->Exists();
+}
+
 bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_name,
                             const logging::Logger& logger, bool allow_empty_input = false);
 
@@ -278,6 +282,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Softplus", "softplus"},
     {"Softsign", "softsign"},
     {"Sin", "sin"},
+    {"SkipSimplifiedLayerNormalization", "layerNormalization"},
     {"Slice", "slice"},
     {"Softmax", "softmax"},
     {"Split", "split"},
