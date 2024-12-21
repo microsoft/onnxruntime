@@ -239,6 +239,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
 
   if (is_profiling_) {
     PendingKernelInfo pending_kernel_info(context.KernelContext().GetNodeName(),
+                                          context.KernelContext().GetOpType(),
                                           program.Name(),
                                           key,
                                           inputs,
