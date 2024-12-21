@@ -96,7 +96,6 @@ def register():
 
     _reg(DynamicTimeWarping, namespace="onnxruntime")
 
-    # @torch.onnx.symbolic_helper.parse_args("v", "i", "i", "i")
     def UnfoldTensor(g, self, dim, size, step):
         dim = int(symbolic_helper._maybe_get_const(dim, "i"))
         size = int(symbolic_helper._maybe_get_const(size, "i"))

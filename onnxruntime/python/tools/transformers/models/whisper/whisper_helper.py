@@ -236,7 +236,6 @@ class WhisperHelper:
                 m = add_cache_indirection_to_mha(m, past_seq_len_name)
             
             if output_qk:
-                # m = add_output_qk_to_mha(m, dtype=TensorProto.FLOAT, skip_node_idxs=list(range(0, 2*num_layers, 2)))
                 m = add_output_qk_to_mha(m, skip_node_idxs=list(range(0, 2*num_layers, 2)))
 
         m.save_model_to_file(optimized_model_path, use_external_data_format, all_tensors_to_one_file=True)
