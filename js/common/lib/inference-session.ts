@@ -223,6 +223,8 @@ export declare namespace InferenceSession {
   export interface CudaExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'cuda';
     deviceId?: number;
+    arenaExtendStrategy?: 0|1;
+    gpuMemLimit?: number;
   }
   export interface DmlExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'dml';
