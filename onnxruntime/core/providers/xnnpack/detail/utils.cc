@@ -9,6 +9,7 @@
 
 #include "core/common/common.h"
 #include "core/common/safeint.h"
+#include "core/framework/float16.h"
 #include "core/framework/node_unit.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph.h"
@@ -267,9 +268,17 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& node_un
             ORT_ENFORCE(utils::HasExternalData(value) == false,
                         "External data is not supported for the scalar min/max Clip values");
 
-            value_to_set = utils::HasRawData(value)
-                               ? *reinterpret_cast<const float*>(value.raw_data().data())
-                               : value.float_data()[0];
+            int32_t arg_type;
+            if (GetType(arg, arg_type) && arg_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+              // arg is of type FP16
+              value_to_set = utils::HasRawData(value)
+                                 ? (*reinterpret_cast<const MLFloat16*>(value.raw_data().data())).ToFloat()
+                                 : value.float_data()[0];
+            } else {
+              value_to_set = utils::HasRawData(value)
+                                 ? *reinterpret_cast<const float*>(value.raw_data().data())
+                                 : value.float_data()[0];
+            }
           }
         }
       };
