@@ -155,6 +155,9 @@ final class OnnxRuntime {
     if (loaded) {
       return;
     }
+    // TODO: Remove
+    logger.setLevel(Level.FINE);
+
     tempDirectory = Files.createTempDirectory("onnxruntime-java");
     try {
       libraryDirPathProperty = System.getProperty(ONNXRUNTIME_NATIVE_PATH);
