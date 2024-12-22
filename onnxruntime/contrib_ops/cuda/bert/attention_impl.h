@@ -84,7 +84,7 @@ Status QkvToContext(
 
 template <typename T, typename QK>
 Status LaunchDecoderMaskedMultiHeadAttention(
-    const DecoderMaskedMultiHeadAttentionParams& parameters,
+    const DecoderMaskedMultiHeadAttentionParameters& parameters,
     cudaStream_t stream,
     const int head_size);
 

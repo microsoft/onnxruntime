@@ -41,7 +41,7 @@ using namespace decoder_masked_self_attention_details;
       <<<grid, THDS_PER_BLOCK, dynamic_block_memory, stream>>>(params)
 
 template <typename T, typename QK, int head_size>
-void mmha_launch_kernel(const DecoderMaskedMultiHeadAttentionParams& params, cudaStream_t stream) {
+void mmha_launch_kernel(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream) {
   constexpr int THREADS_PER_VALUE = ThreadsPerValue<T, head_size>::value;
   int total_sequence_length = params.total_sequence_length;
 
@@ -55,10 +55,10 @@ void mmha_launch_kernel(const DecoderMaskedMultiHeadAttentionParams& params, cud
 }
 
 // Instantiate templates
-template void mmha_launch_kernel<float, float, 64>(const DecoderMaskedMultiHeadAttentionParams& params, cudaStream_t stream);
-template void mmha_launch_kernel<float, half, 64>(const DecoderMaskedMultiHeadAttentionParams& params, cudaStream_t stream);
-template void mmha_launch_kernel<uint16_t, float, 64>(const DecoderMaskedMultiHeadAttentionParams& params, cudaStream_t stream);
-template void mmha_launch_kernel<uint16_t, half, 64>(const DecoderMaskedMultiHeadAttentionParams& params, cudaStream_t stream);
+template void mmha_launch_kernel<float, float, 64>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+template void mmha_launch_kernel<float, half, 64>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+template void mmha_launch_kernel<uint16_t, float, 64>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
+template void mmha_launch_kernel<uint16_t, half, 64>(const DecoderMaskedMultiHeadAttentionParameters& params, cudaStream_t stream);
 
 }  // namespace cuda
 }  // namespace contrib

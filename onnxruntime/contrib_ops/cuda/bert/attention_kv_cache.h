@@ -67,7 +67,8 @@ Status LaunchConcatNewToPastKV(const int batch_size,
                                T* present_key,
                                T* present_value,
                                cudaStream_t stream,
-                               const int max_threads_per_block);
+                               const int max_threads_per_block,
+                               const bool past_only);
 
 template <typename T>
 Status LaunchConcatKVInPlace(int batch_size,

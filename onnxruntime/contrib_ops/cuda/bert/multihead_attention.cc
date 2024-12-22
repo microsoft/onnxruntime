@@ -419,7 +419,6 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   }
 
   typedef typename ToCudaType<QK>::MappedType CudaQK;
-  AttentionData<CudaT> data;
   data.bias = (nullptr == bias) ? nullptr : reinterpret_cast<const CudaT*>(bias->Data<T>());
   data.query = reinterpret_cast<const CudaT*>(query->Data<T>());
   data.key = (nullptr == key) ? nullptr : reinterpret_cast<const CudaT*>(key->Data<T>());

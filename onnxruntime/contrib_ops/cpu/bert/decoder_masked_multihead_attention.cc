@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "attention_cpu_base.h"
-#include "attention_utils.h"
-#include "core/platform/env_var_utils.h"
+#include "contrib_ops/cpu/bert/attention_cpu_base.h"
+#include "contrib_ops/cpu/bert/attention_parameters.h"
+#include "contrib_ops/cpu/bert/attention_utils.h"
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 #include "contrib_ops/cpu/bert/decoder_masked_multihead_attention.h"
+#include "core/platform/env_var_utils.h"
 
 using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
@@ -65,7 +66,7 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
   const Tensor* cache_indir = context->Input<Tensor>(kCacheIndirectionInputIndex);
   const Tensor* bias = context->Input<Tensor>(kBiasIndex);
 
-  DecoderMaskedMultiHeadAttentionParams parameters;
+  DecoderMaskedMultiHeadAttentionParameters parameters;
 
   bool is_unidirectional = false;
   ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
@@ -76,6 +77,7 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
                                                                       attention_bias,
                                                                       past_key,
                                                                       past_value,
+                                                                      cache_indir,
                                                                       past_seq_len,
                                                                       &parameters,
                                                                       num_heads_,
@@ -188,9 +190,9 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
     return ApplyAttention(Q.GetMutable<Tensor>()->MutableData<T>(),
                           key->Data<T>(),
                           value->Data<T>(),
-                          mask_index, nullptr /* past */, past_key, past_value, output, present_key, present_value,
+                          mask_index, nullptr /* past */, past_key, past_value, output, present_key, present_value, output_qk,
                           batch_size, 1 /* sequence_length */, parameters.kv_sequence_length,
-                          head_size, v_head_size, v_hidden_size, attention_bias, context, output_qk);
+                          head_size, v_head_size, v_hidden_size, attention_bias, context);
   }
 
   OrtValue K, V;
@@ -204,9 +206,9 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
     return ApplyAttention(Q.GetMutable<Tensor>()->MutableData<T>(),
                           K.GetMutable<Tensor>()->MutableData<T>(),
                           V.GetMutable<Tensor>()->MutableData<T>(),
-                          mask_index, nullptr /* past */, past_key, past_value, output, present_key, present_value,
+                          mask_index, nullptr /* past */, past_key, past_value, output, present_key, present_value, output_qk,
                           batch_size, 1 /* sequence_length */, parameters.kv_sequence_length,
-                          head_size, v_head_size, v_hidden_size, attention_bias, context, output_qk,
+                          head_size, v_head_size, v_hidden_size, attention_bias, context,
                           parameters.past_sequence_length, true /* past_present_share_buffer */);
   }
 

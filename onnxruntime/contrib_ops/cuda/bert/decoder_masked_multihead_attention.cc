@@ -4,6 +4,7 @@
 #include "core/providers/cuda/cuda_common.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "core/platform/env_var_utils.h"
+#include "contrib_ops/cpu/bert/attention_parameters.h"
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/decoder_masked_multihead_attention.h"
@@ -73,7 +74,7 @@ Status DecoderMaskedMultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* 
   const Tensor* bias = context->Input<Tensor>(kBiasIndex);
 
   auto& device_prop = GetDeviceProp();
-  DecoderMaskedMultiHeadAttentionParams parameters;
+  DecoderMaskedMultiHeadAttentionParameters parameters;
 
   parameters.kv_data_in_flight = ParseEnvironmentVariableWithDefault<bool>(
       attention::kDecoderMaskedAttentionLoadKVDataInFlight, false);

@@ -540,7 +540,7 @@ Status EfficientAttention(
 
 template <typename T, typename QK>
 Status LaunchDecoderMaskedMultiHeadAttention(
-  const DecoderMaskedMultiHeadAttentionParams& parameters,
+  const DecoderMaskedMultiHeadAttentionParameters& parameters,
   cudaStream_t stream,
   const int head_size) {
 
@@ -614,7 +614,7 @@ Status DecoderMaskedMultiHeadAttention(
          parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING);
   assert(parameters.head_size == parameters.v_head_size);
 
-  DecoderMaskedMultiHeadAttentionParams p;
+  DecoderMaskedMultiHeadAttentionParameters p;
   p.is_mha = true;
   p.is_cross_attention = (data.past_key == nullptr && data.present_key == nullptr);
   p.is_packed_qkv = false;
@@ -1082,22 +1082,22 @@ template Status QkvToContext<half, float>(
     AttentionData<half>& data);
 
 template Status LaunchDecoderMaskedMultiHeadAttention<float, float>(
-  const DecoderMaskedMultiHeadAttentionParams& parameters,
+  const DecoderMaskedMultiHeadAttentionParameters& parameters,
   cudaStream_t stream,
   const int head_size);
 
 template Status LaunchDecoderMaskedMultiHeadAttention<float, half>(
-  const DecoderMaskedMultiHeadAttentionParams& parameters,
+  const DecoderMaskedMultiHeadAttentionParameters& parameters,
   cudaStream_t stream,
   const int head_size);
 
 template Status LaunchDecoderMaskedMultiHeadAttention<uint16_t, float>(
-  const DecoderMaskedMultiHeadAttentionParams& parameters,
+  const DecoderMaskedMultiHeadAttentionParameters& parameters,
   cudaStream_t stream,
   const int head_size);
 
 template Status LaunchDecoderMaskedMultiHeadAttention<uint16_t, half>(
-  const DecoderMaskedMultiHeadAttentionParams& parameters,
+  const DecoderMaskedMultiHeadAttentionParameters& parameters,
   cudaStream_t stream,
   const int head_size);
 
