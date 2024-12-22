@@ -412,7 +412,7 @@ Status TopKImpl(const CudaKernel* kernel, bool use_deterministic_compute,
   if (aligned_dimension <= GridDim::maxThreadsPerBlock) {
     BitonicTopK<CudaT><<<N, GridDim::maxThreadsPerBlock, aligned_dimension * sizeof(KV<CudaT>), stream>>>(
         input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, aligned_K, largest, sorted, dimension,
-        aligned_dimension, NumericLimits<T>::Min(), NumericLimits<T>::Max());
+        aligned_dimension, NumericLimits<CudaT>::Lowest(), NumericLimits<CudaT>::Max());
   } else if (K <= BT * 16 || 0 == sorted) {
     if (use_deterministic_compute) {
       static std::once_flag log_warning;
@@ -425,19 +425,19 @@ Status TopKImpl(const CudaKernel* kernel, bool use_deterministic_compute,
     if (BT * 2 >= K || 0 == sorted) {
       RadixTopK<CudaT, BT, 2><<<N, BT, 256 * sizeof(uint32_t), stream>>>(
           input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT,
-          NumericLimits<T>::Min(), NumericLimits<T>::Max());
+          NumericLimits<CudaT>::Lowest(), NumericLimits<CudaT>::Max());
     } else if (BT * 4 >= K) {
       RadixTopK<CudaT, BT, 4><<<N, BT, 256 * sizeof(uint32_t), stream>>>(
           input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT,
-          NumericLimits<T>::Min(), NumericLimits<T>::Max());
+          NumericLimits<CudaT>::Lowest(), NumericLimits<CudaT>::Max());
     } else if (BT * 8 >= K) {
       RadixTopK<CudaT, BT, 8><<<N, BT, 256 * sizeof(uint32_t), stream>>>(
           input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT,
-          NumericLimits<T>::Min(), NumericLimits<T>::Max());
+          NumericLimits<CudaT>::Lowest(), NumericLimits<CudaT>::Max());
     } else {
       RadixTopK<CudaT, BT, 16><<<N, BT, 256 * sizeof(uint32_t), stream>>>(
           input_x_ptr, output_v_ptr, output_i, elem_nums, size, axis, K, largest, sorted, dimension, XPT,
-          NumericLimits<T>::Min(), NumericLimits<T>::Max());
+          NumericLimits<CudaT>::Lowest(), NumericLimits<CudaT>::Max());
     }
   } else {
     auto input_key_buffer = kernel->GetScratchBuffer<CudaT>(dimension, ort_stream);

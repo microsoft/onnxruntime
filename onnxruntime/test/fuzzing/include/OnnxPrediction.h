@@ -51,6 +51,13 @@ class OnnxPrediction {
   //
   OnnxPrediction(const std::vector<char>& model_data, Ort::Env& env);
 
+#if !defined(_WIN32) && !defined(_WIN64)
+  // Helper function to convert std::wstring to std::string
+  std::string wstring_to_string(const std::wstring& wstr) {
+    std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
+    return converter.to_bytes(wstr);
+  }
+#endif
   // Data to run prediction on
   //
   template <typename T>
@@ -80,7 +87,7 @@ class OnnxPrediction {
       input_value = Ort::Value::CreateTensor(alloc.GetInfo(),
                                              input_data[curr_input_index].get(), data_size_in_bytes, shapeInfo.data(), shapeInfo.size(), elem_type);
     } else {
-      throw std::exception("only floats are implemented");
+      throw std::runtime_error("only floats are implemented");
     }
 
     // Insert data into the next input type

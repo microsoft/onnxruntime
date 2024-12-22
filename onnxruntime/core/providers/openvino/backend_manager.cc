@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <cassert>
 #include <fstream>
+#include <regex>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -24,6 +25,11 @@ GlobalContext& BackendManager::GetGlobalContext() {
   return global_context_;
 }
 
+ov::CompiledModel& BackendManager::GetOVCompiledModel() {
+  ov::CompiledModel& ov_ptr = concrete_backend_->GetOVCompiledModel();
+  return (ov_ptr);
+}
+
 BackendManager::BackendManager(const GlobalContext& global_context,
                                const onnxruntime::Node& fused_node,
                                const onnxruntime::GraphViewer& subgraph,
@@ -34,7 +40,7 @@ BackendManager::BackendManager(const GlobalContext& global_context,
   openvino_sdk_version_ = std::to_string(global_context_.OpenVINO_Version.at(0)) + "." +
                           std::to_string(global_context_.OpenVINO_Version.at(1));
   if (ep_ctx_handle_.CheckForOVEPCtxNode(subgraph, openvino_sdk_version_)) {
-    if (ep_ctx_handle_.ImportBlobFromEPCtxModel(subgraph) != Status::OK())
+    if (ep_ctx_handle_.ImportBlobFromEPCtxModel(subgraph, global_context_.ep_context_embed_mode) != Status::OK())
       ORT_THROW("Import blob from model failed");
   }
 
@@ -64,7 +70,10 @@ BackendManager::BackendManager(const GlobalContext& global_context,
     i++;
   }
   subgraph_context_.subgraph_name = fused_node.Name();
-  model_proto_ = GetModelProtoFromFusedNode(fused_node, subgraph, logger);
+  std::unique_ptr<onnx::ModelProto> model_proto;
+  if (!ep_ctx_handle_.IsValidOVEPCtxGraph()) {
+    model_proto = GetModelProtoFromFusedNode(fused_node, subgraph, logger);
+  }
   std::string device_type = openvino_ep::BackendManager::GetGlobalContext().device_type;
 
   if (ModelHasSymbolicInputDims(subgraph)) {
@@ -73,22 +82,25 @@ BackendManager::BackendManager(const GlobalContext& global_context,
     ORT_ENFORCE(!global_context_.enable_qdq_optimizer,
                 "QDQ stripping should not be enabled for models with dynamic input shapes. "
                 "Set enable_qdq_optimizer to False");
-    if (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
-        GetGlobalContext().device_type.find("GPU") != std::string::npos) {
-      if (!GetGlobalContext().disable_dynamic_shapes) {
-        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Starting backend initialization. "
-                           << "Creating backend Dynamic Shapes";
-        try {
-          concrete_backend_ = BackendFactory::MakeBackend(*model_proto_,
-                                                          GetGlobalContext(),
-                                                          subgraph_context_,
-                                                          ep_ctx_handle_);
-        } catch (std::string const& msg) {
-          ORT_THROW(msg);
-        }
-        LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
-                           << "Backend created for graph " << subgraph_context_.subgraph_name;
+    if ((GetGlobalContext().device_type.find("CPU") != std::string::npos ||
+         GetGlobalContext().device_type.find("GPU") != std::string::npos) &&
+        !GetGlobalContext().disable_dynamic_shapes) {
+      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Starting backend initialization. "
+                         << "Creating backend Dynamic Shapes";
+      try {
+        concrete_backend_ = BackendFactory::MakeBackend(model_proto,
+                                                        GetGlobalContext(),
+                                                        subgraph_context_,
+                                                        ep_ctx_handle_);
+      } catch (std::string const& msg) {
+        ORT_THROW(msg);
       }
+      LOGS_DEFAULT(INFO) << "[OpenVINO-EP] "
+                         << "Backend created for graph " << subgraph_context_.subgraph_name;
+    } else {
+      // Only cache model_proto in global to rewrite the model with input shapes at runtime.
+      // For dynamic backend creation
+      model_proto_ = std::move(model_proto);
     }
   } else {
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has concrete input dims. "
@@ -99,33 +111,58 @@ BackendManager::BackendManager(const GlobalContext& global_context,
 
     // OV NPU plugin is supported with fallback to OV CPU upon compilation failures.
     try {
-      concrete_backend_ = BackendFactory::MakeBackend(*model_proto_,
+      concrete_backend_ = BackendFactory::MakeBackend(model_proto,
                                                       GetGlobalContext(),
                                                       subgraph_context_,
                                                       ep_ctx_handle_);
     } catch (const OnnxRuntimeException& ex) {
+      std::string exception_str = ex.what();
+      bool eligible_for_cpu_fallback = device_type.find("NPU") != std::string::npos &&
+                                       !GetGlobalContext().disable_cpu_fallback &&
+                                       !ep_ctx_handle_.IsValidOVEPCtxGraph();
 #if defined(OPENVINO_DISABLE_NPU_FALLBACK)
-      ORT_THROW(ex.what());
+      eligible_for_cpu_fallback = false;
 #else
-      if (device_type.find("NPU") != std::string::npos &&
-          !GetGlobalContext().disable_cpu_fallback) {
-        LOGS_DEFAULT(WARNING) << ex.what();
+      if (eligible_for_cpu_fallback) {
+        LOGS_DEFAULT(VERBOSE) << exception_str;
         LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
                               << "Falling back to OV CPU for execution";
         GetGlobalContext().device_type = "CPU";
         GetGlobalContext().precision_str = "FP32";
         try {
-          concrete_backend_ = BackendFactory::MakeBackend(*model_proto_,
+          concrete_backend_ = BackendFactory::MakeBackend(model_proto,
                                                           GetGlobalContext(),
                                                           subgraph_context_,
                                                           ep_ctx_handle_);
         } catch (std::string const& msg) {
           ORT_THROW(msg);
         }
-      } else {
-        ORT_THROW(ex.what());
       }
 #endif
+      if (!eligible_for_cpu_fallback) {
+        if (device_type.find("NPU") != std::string::npos &&
+            exception_str.find("intel_npu") != std::string::npos) {
+          // Handle NPU device related errors
+#ifndef NDEBUG
+          ORT_THROW(exception_str + "\nModel needs to be recompiled\n");
+#else
+          std::string error_message = "UNKNOWN NPU ERROR";
+          std::string error_code = "code 0x0";
+          std::regex error_message_pattern(R"(\bZE_\w*\b)");
+          std::regex error_code_pattern("code 0x[0-9a-fA-F]+");
+          std::smatch matches;
+          if (std::regex_search(exception_str, matches, error_message_pattern)) {
+            error_message = matches[0];
+          }
+          if (std::regex_search(exception_str, matches, error_code_pattern)) {
+            error_code = matches[0];
+          }
+          throw std::runtime_error(error_message + ", " + error_code + "\nModel needs to be recompiled\n");
+#endif
+        } else {
+          ORT_THROW(exception_str);
+        }
+      }
     }
   }
   if (global_context_.export_ep_ctx_blob && !ep_ctx_handle_.IsValidOVEPCtxGraph()) {
@@ -155,32 +192,28 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
   auto compiled_model = concrete_backend_->GetOVCompiledModel();
   std::string graph_name = "";
   // Epctx file path from SO is mapped to cache_dir variable for OVEP for readability
-  if (global_context_.cache_dir != "") {
+  if (!global_context_.cache_dir.empty()) {
     graph_name = global_context_.cache_dir;
   } else {
     graph_name = global_context_.onnx_model_path_name;
     // Remove extension so we can append suffix to form the complete name of output graph
-    graph_name = [&]() {
-      size_t dot = graph_name.find_last_of(".");
-      if (dot == std::string::npos) return graph_name;
-      return graph_name.substr(0, dot);
-    }();
-    graph_name = graph_name + "_ctx.onnx";
+    size_t dot = global_context_.onnx_model_path_name.find_last_of(".");
+    graph_name = graph_name.substr(0, dot);
+    if (dot != std::string::npos) graph_name += "_ctx.onnx";
   }
+
   // If embed_mode, then pass on the serialized blob
   // If not embed_mode, dump the blob here and only pass on the path to the blob
   if (global_context_.ep_context_embed_mode) {
     std::ostringstream model_blob_stream;
     compiled_model.export_model(model_blob_stream);
-    model_blob_str = model_blob_stream.str();
-    ORT_ENFORCE(model_blob_str.size() != 0);
+    model_blob_str = std::move(model_blob_stream).str();
+    if (model_blob_str.empty()) {
+      ORT_THROW("Model blob stream is empty after exporting the compiled model.");
+    }
   } else {
     // Remove extension so we can append suffix to form the complete name of output graph
-    auto blob_name = [&]() {
-      size_t dot = graph_name.find_last_of(".");
-      if (dot == std::string::npos) return graph_name;
-      return graph_name.substr(0, dot);
-    }();
+    auto blob_name = graph_name.substr(0, graph_name.find_last_of("."));
     std::ofstream blob_file(blob_name + ".blob",
                             std::ios::out | std::ios::trunc | std::ios::binary);
     if (!blob_file) {
@@ -194,7 +227,7 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
                                                       graph_name,
                                                       logger,
                                                       global_context_.ep_context_embed_mode,
-                                                      model_blob_str,
+                                                      std::move(model_blob_str),
                                                       openvino_sdk_version_));
 
   return Status::OK();
@@ -365,10 +398,10 @@ std::string MakeMapKeyString(const std::vector<std::vector<int64_t>>& shapes,
   return key;
 }
 
-std::shared_ptr<ONNX_NAMESPACE::ModelProto>
+std::unique_ptr<ONNX_NAMESPACE::ModelProto>
 BackendManager::ReWriteInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_proto,
                                       const std::vector<std::vector<int64_t>>& input_shapes) {
-  auto model_copy = std::shared_ptr<ONNX_NAMESPACE::ModelProto>(ONNX_NAMESPACE::ModelProto::Create());
+  auto model_copy = ONNX_NAMESPACE::ModelProto::Create();
   std::string proto_str;
   model_proto.SerializeToString(proto_str);
   model_copy->ParseFromString(proto_str);
@@ -422,14 +455,12 @@ void BackendManager::Compute(OrtKernelContext* context) {
   // if disable_dynamic_shapes is set to true then execution of dynamic model is done
   // by rewriting the model to static shaped model at runtime based on input shape.
   // disable_dynamic_shapes is always set to true for OV NPU plugin.
-  bool use_dynamic_backend = true;
   if (subgraph_context_.has_dynamic_input_shape &&
       !GetGlobalContext().disable_dynamic_shapes &&
       (GetGlobalContext().device_type.find("CPU") != std::string::npos ||
        GetGlobalContext().device_type.find("GPU") != std::string::npos)) {
     concrete_backend_->Infer(context);
-    use_dynamic_backend = false;
-  } else if (use_dynamic_backend && subgraph_context_.has_dynamic_input_shape) {
+  } else if (subgraph_context_.has_dynamic_input_shape) {
     std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(ctx);
     auto key = MakeMapKeyString(tensor_shapes, GetGlobalContext().device_type);
     std::shared_ptr<IBackend> dynamic_backend;
@@ -441,7 +472,7 @@ void BackendManager::Compute(OrtKernelContext* context) {
                          << "Backend created for graph " << subgraph_context_.subgraph_name;
       auto modelproto_with_concrete_shapes = ReWriteInputShapeInfo(*model_proto_, tensor_shapes);
       try {
-        dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes,
+        dynamic_backend = BackendFactory::MakeBackend(modelproto_with_concrete_shapes,
                                                       GetGlobalContext(),
                                                       subgraph_context_,
                                                       ep_ctx_handle_);
@@ -460,7 +491,7 @@ void BackendManager::Compute(OrtKernelContext* context) {
           GetGlobalContext().precision_str = "FP32";
           key = MakeMapKeyString(tensor_shapes, GetGlobalContext().device_type);
           try {
-            dynamic_backend = BackendFactory::MakeBackend(*modelproto_with_concrete_shapes,
+            dynamic_backend = BackendFactory::MakeBackend(modelproto_with_concrete_shapes,
                                                           GetGlobalContext(),
                                                           subgraph_context_,
                                                           ep_ctx_handle_);

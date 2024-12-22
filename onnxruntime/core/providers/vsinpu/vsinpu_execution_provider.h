@@ -43,11 +43,11 @@ class VSINPUExecutionProvider : public IExecutionProvider {
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                  std::vector<NodeComputeInfo>& node_compute_funcs) override;
-  OrtMutex& GetMutex() { return mutex_; }
+  std::mutex& GetMutex() { return mutex_; }
 
  private:
   int device_id_;
-  OrtMutex mutex_;
+  std::mutex mutex_;
 };
 
 }  // namespace onnxruntime

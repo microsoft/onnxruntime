@@ -53,8 +53,11 @@ struct GroupQueryAttentionParameters : AttentionParameters {
   int local_window_size;
   bool kv_share_buffer;
   bool is_packed_qkv;
-  bool is_prompt;  // determines if seqlens_k is past or kv sequence length tensor
+  bool is_subsequent_prompt;  // indicates whether we have past context and seqlen > 1
+  bool is_first_prompt;       // indicates whether this is first decoding step
   bool rotary_interleaved;
+  bool use_smooth_softmax;
+  float softcap;
   AttentionQkvFormat past_kv_format;
   int zeros_count;
   int* zero_ptr;

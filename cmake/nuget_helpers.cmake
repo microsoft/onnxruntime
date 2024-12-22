@@ -19,7 +19,7 @@ function(package_version id out packages_config)
     set(${out} ${version} PARENT_SCOPE)
 endfunction()
 
-# Downloads the nuget packages based on packages.config 
+# Downloads the nuget packages based on packages.config
 function(
     add_fetch_nuget_target
     nuget_target # Target to be written to
@@ -33,13 +33,13 @@ function(
     # Retrieve the latest version of nuget
     include(ExternalProject)
     ExternalProject_Add(nuget_exe
-    PREFIX nuget_exe
-    URL "https://dist.nuget.org/win-x86-commandline/v5.3.0/nuget.exe"
-    DOWNLOAD_NO_EXTRACT 1
-    CONFIGURE_COMMAND ""
-    BUILD_COMMAND ""
-    UPDATE_COMMAND ""
-    INSTALL_COMMAND "")
+                        PREFIX nuget_exe
+                        URL "https://dist.nuget.org/win-x86-commandline/latest/nuget.exe"
+                        DOWNLOAD_NO_EXTRACT 1
+                        CONFIGURE_COMMAND ""
+                        BUILD_COMMAND ""
+                        UPDATE_COMMAND ""
+                        INSTALL_COMMAND "")
 
     set(NUGET_CONFIG ${PROJECT_SOURCE_DIR}/../NuGet.config)
     set(PACKAGES_CONFIG ${PROJECT_SOURCE_DIR}/../packages.config)

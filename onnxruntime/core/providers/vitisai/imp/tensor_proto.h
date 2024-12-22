@@ -6,9 +6,13 @@
 #include "vaip/dll_safe.h"
 
 namespace vaip {
-gsl::span<const char> tensor_proto_as_raw(const ONNX_NAMESPACE::TensorProto& tensor);
+gsl::span<const char> tensor_proto_as_raw(const onnxruntime::Graph& graph, const ONNX_NAMESPACE::TensorProto& tensor);
 vaip_core::DllSafe<std::vector<int64_t>> tensor_proto_get_shape(const ONNX_NAMESPACE::TensorProto& tensor);
 const std::string& tensor_proto_get_name(const ONNX_NAMESPACE::TensorProto& tensor);
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_i4(const std::string& name, const std::vector<int64_t>& shape,
+                                                 const std::vector<int8_t>& data);
+ONNX_NAMESPACE::TensorProto* tensor_proto_new_u4(const std::string& name, const std::vector<int64_t>& shape,
+                                                 const std::vector<uint8_t>& data);
 ONNX_NAMESPACE::TensorProto* tensor_proto_new_i8(const std::string& name, const std::vector<int64_t>& shape,
                                                  const std::vector<int8_t>& data);
 ONNX_NAMESPACE::TensorProto* tensor_proto_new_u8(const std::string& name, const std::vector<int64_t>& shape,

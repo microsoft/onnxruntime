@@ -48,6 +48,7 @@ enum AttentionKernelType {
   AttentionKernel_CutlassMemoryEfficientAttention,
   AttentionKernel_FlashAttention,
   AttentionKernel_CudnnFlashAttention,
+  AttentionKernel_LeanAttention,
   AttentionKernel_FtCausalAttention,
   AttentionKernel_Default
 };
@@ -69,12 +70,14 @@ enum class AttentionBackend : int {
   CUDNN_FLASH_ATTENTION = 8,  // reserved for cuDNN flash attention.
   MATH = 16,                  // unfused kernel cannot be disabled right now.
 
-  // The following kernels might be deprecated in the future.
+  // The following TRT kernels might be deprecated in the future.
   TRT_FLASH_ATTENTION = 32,
   TRT_CROSS_ATTENTION = 64,
   TRT_CAUSAL_ATTENTION = 128,
 
-  FT_CAUSAL_ATTENTION = 256,  // FasterTransformer's decoder masked multihead attention
+  // Experimental kernels
+  LEAN_ATTENTION = 256,
+  FT_CAUSAL_ATTENTION = 512,  // FasterTransformer's decoder masked multihead attention
 };
 
 // Environment variable to enable debug information of attention kernel to be printed. Default is 0 (disabled).
@@ -101,6 +104,9 @@ constexpr const char* kDisableMemoryEfficientAttention = "ORT_DISABLE_MEMORY_EFF
 
 // Environment variable to enable or disable flash attention. Default is 0 (enabled).
 constexpr const char* kDisableFlashAttention = "ORT_DISABLE_FLASH_ATTENTION";
+
+// Environment variable to enable or disable lean attention. Default is 0 (disabled).
+constexpr const char* kEnableLeanAttention = "ORT_ENABLE_LEAN_ATTENTION";
 
 // Environment variable to enable or disable FasterTransformer's decoder masked multi-head attention. Default is 0 (enabled).
 constexpr const char* kDisableFtCausalAttention = "ORT_DISABLE_FT_CAUSAL_ATTENTION";

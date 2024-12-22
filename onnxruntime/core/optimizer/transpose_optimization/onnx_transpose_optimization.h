@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <gsl/gsl>
 #include <unordered_map>
 #include <vector>
 
@@ -59,7 +60,7 @@ struct OptimizerCtx {
 /// <returns>{0}</returns>
 inline std::vector<size_t> FirstInput(OptimizerCtx&, api::NodeRef&) { return {0}; }
 
-std::vector<int64_t> InvertPerm(const std::vector<int64_t>& perm);
+std::vector<int64_t> InvertPerm(gsl::span<const int64_t> perm);
 
 // Transpose all inputs and all outputs
 bool HandleSimpleNode(HandlerArgs& args);
@@ -69,6 +70,9 @@ bool HandleSimpleNodeBroadcast(HandlerArgs& args);
 
 // Transposes all inputs and all outputs. Updates axis attribute.
 bool HandleSimpleNodeWithAxis(HandlerArgs& args, std::optional<int64_t> default_axis = std::nullopt);
+
+bool HandleConcat(HandlerArgs& args);
+bool HandleSoftHardMax(HandlerArgs& args);
 
 // base handlers that are used by extended handlers. add from transpose_optimizer.cc as needed.
 bool HandleReduceOps(HandlerArgs& args);

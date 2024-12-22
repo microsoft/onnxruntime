@@ -25,6 +25,7 @@ namespace contrib {
 
 REGISTER_CONTRIB_KERNELS(float)
 REGISTER_CONTRIB_KERNELS(double)
+REGISTER_CONTRIB_KERNELS(MLFloat16)
 
 }  // namespace contrib
 }  // namespace onnxruntime

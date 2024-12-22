@@ -26,6 +26,7 @@ const MATCHERS = [
   /class ONNX_OPERATOR_KERNEL_CLASS_NAME\(\s*(?<ep>\w+),\s*(?<opsetDomain>\w+),\s*(?<opsetVersion>\d+),\s*(?<op>\w+)\)/g,
   /class ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_CLASS_NAME\(\s*(?<ep>\w+),\s*(?<opsetDomain>\w+),\s*(?<opsetVersionStart>\d+),\s*(?<opsetVersionEnd>\d+),\s*(?<type>\w+),\s*(?<op>\w+)\)/g,
   /class ONNX_OPERATOR_TYPED_KERNEL_CLASS_NAME\(\s*(?<ep>\w+),\s*(?<opsetDomain>\w+),\s*(?<opsetVersion>\d+),\s*(?<type>\w+),\s*(?<op>\w+)\)/g,
+  /class ONNX_OPERATOR_TWO_TYPED_KERNEL_CLASS_NAME\(\s*(?<ep>\w+),\s*(?<opsetDomain>\w+),\s*(?<opsetVersion>\d+),\s*(?<type1>\w+),\s*(?<type2>\w+),\s*(?<op>\w+)\)/g,
 ];
 /* eslint-enable max-len */
 

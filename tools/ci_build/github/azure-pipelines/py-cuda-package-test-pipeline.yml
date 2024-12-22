@@ -1,35 +1,23 @@
-parameters:
-  - name: build_id
-    type: string
-    default: 'latest'
-  - name: project
-    type: string
-    default: 'Lotus'
-  - name: pipeline
-    type: string
-    default: 'Python-CUDA-Packaging-Pipeline'
-
 resources:
-  repositories:
-    - repository: manylinux
-      type: Github
-      endpoint: Microsoft
-      name: pypa/manylinux
-      ref: 5eda9aded5462201e6310105728d33016e637ea7
+  pipelines:
+  - pipeline: build
+    source: 'Python-CUDA-Packaging-Pipeline'
+    trigger: true
+    branch: main # branch to pick the artifact, Used only for manual triggered pipeline runs for testing the pipeline itself
 
 stages:
   # ****The following Stage depend on all previous tags. ***
   # GPU resources are very limited,
   # To utilize gpu resource more efficiently, run GPU job only after all cpus jobs succeed
-  - stage: Linux_Test_GPU_x86_64_stage
+  - stage: Linux_Test_CUDA_x86_64_stage
     dependsOn:
     jobs:
-      - template: stages/jobs/py-linux-cuda-package-test-job.yml
+      - template: templates/py-packaging-linux-test-cuda.yml
         parameters:
-          CudaVersion: '12.2'
+          arch: 'x86_64'
           machine_pool: 'Onnxruntime-Linux-GPU'
+          python_wheel_suffix: '_gpu'
           timeout: 480
-          build_id: ${{ parameters.build_id }}
-          project: ${{ parameters.project }}
-          pipeline: ${{ parameters.pipeline }}
+          docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20241120.3
+          cuda_version: '12.2'
 

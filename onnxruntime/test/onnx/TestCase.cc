@@ -25,7 +25,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/common.h"
 #include "core/platform/env.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/platform/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/allocator.h"
@@ -288,12 +288,12 @@ class OnnxTestCase : public ITestCase {
  private:
   std::string test_case_name_;
   mutable std::vector<std::string> debuginfo_strings_;
-  mutable onnxruntime::OrtMutex m_;
+  mutable std::mutex m_;
 
   std::vector<std::filesystem::path> test_data_dirs_;
 
   std::string GetDatasetDebugInfoString(size_t dataset_id) const override {
-    std::lock_guard<OrtMutex> l(m_);
+    std::lock_guard<std::mutex> l(m_);
     if (dataset_id < debuginfo_strings_.size()) {
       return debuginfo_strings_[dataset_id];
     }
@@ -488,7 +488,7 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
   if (st.IsOK()) {  // has an all-in-one input file
     std::ostringstream oss;
     {
-      std::lock_guard<OrtMutex> l(m_);
+      std::lock_guard<std::mutex> l(m_);
       oss << debuginfo_strings_[id];
     }
     ORT_TRY {
@@ -503,7 +503,7 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
     }
 
     {
-      std::lock_guard<OrtMutex> l(m_);
+      std::lock_guard<std::mutex> l(m_);
       debuginfo_strings_[id] = oss.str();
     }
     return;
@@ -1026,7 +1026,13 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"dequantizelinear_int4", "Bug with model input name 'zero_point' not matching node's input name", {}},
       {"dequantizelinear_uint4", "Bug with model input name 'zero_point' not matching node's input name", {}},
       {"quantizelinear_int4", "Bug with model input name 'zero_point' not matching node's input name", {}},
-      {"quantizelinear_uint4", "Bug with model input name 'zero_point' not matching node's input name", {}}});
+      {"quantizelinear_uint4", "Bug with model input name 'zero_point' not matching node's input name", {}},
+      {"qlinearmatmul_2D_int8_float16", "fp16 type ont supported by CPU EP", {}},
+      {"qlinearmatmul_2D_int8_float32", "result diff", {}},
+      {"qlinearmatmul_2D_uint8_float16", "fp16 type ont supported by CPU EP", {}},
+      {"qlinearmatmul_3D_int8_float16", "fp16 type ont supported by CPU EP", {}},
+      {"qlinearmatmul_3D_int8_float32", "result diff", {}},
+      {"qlinearmatmul_3D_uint8_float16", "fp16 type ont supported by CPU EP", {}}});
 
   // Some EPs may fail to pass some specific testcases.
   // For example TenosrRT EP may fail on FLOAT16 related testcases if GPU doesn't support float16.

@@ -49,7 +49,7 @@ public enum OrtLoggingLevel {
    * @return The Java enum.
    */
   public static OrtLoggingLevel mapFromInt(int logLevel) {
-    if ((logLevel > 0) && (logLevel < values.length)) {
+    if ((logLevel >= 0) && (logLevel < values.length)) {
       return values[logLevel];
     } else {
       logger.warning("Unknown logging level " + logLevel + " setting to ORT_LOGGING_LEVEL_VERBOSE");

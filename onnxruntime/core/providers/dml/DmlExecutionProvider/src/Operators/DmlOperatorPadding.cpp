@@ -123,5 +123,6 @@ DML_OP_DEFINE_CREATION_FUNCTION(Pad11, VersionedKernel<DmlOperatorPadding, 11>);
 DML_OP_DEFINE_CREATION_FUNCTION(Pad13, VersionedKernel<DmlOperatorPadding, 13>);
 DML_OP_DEFINE_CREATION_FUNCTION(Pad18, VersionedKernel<DmlOperatorPadding, 18>);
 DML_OP_DEFINE_CREATION_FUNCTION(Pad19, VersionedKernel<DmlOperatorPadding, 19>);
+DML_OP_DEFINE_CREATION_FUNCTION(Pad21, VersionedKernel<DmlOperatorPadding, 21>);
 
 } // namespace Dml

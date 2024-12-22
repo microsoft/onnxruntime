@@ -10,6 +10,7 @@
 #include <utility>
 
 #include "openvino/openvino.hpp"
+#include "openvino/runtime/intel_npu/properties.hpp"
 #include "openvino/pass/convert_fp32_to_fp16.hpp"
 #include "openvino/frontend/manager.hpp"
 
@@ -53,7 +54,7 @@ class OVCore {
                             ov::AnyMap& device_config,
                             const std::string& name);
   // OV Interface for Import model Stream
-  OVExeNetwork ImportModel(std::shared_ptr<std::istringstream> model_stream,
+  OVExeNetwork ImportModel(const std::string& model_string,
                            std::string hw_target,
                            const ov::AnyMap& device_config,
                            bool embed_mode,

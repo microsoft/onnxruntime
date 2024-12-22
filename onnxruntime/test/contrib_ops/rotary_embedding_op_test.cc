@@ -67,6 +67,7 @@ static void RunTest(
                                                                       : 0;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
   bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get()) && !disable_dml;
+  bool enable_webgpu = nullptr != DefaultWebGpuExecutionProvider().get();
 
   if (enable_cuda && !disable_cuda) {
     execution_providers.push_back(DefaultCudaExecutionProvider());
@@ -74,8 +75,11 @@ static void RunTest(
   if (enable_dml && !disable_dml) {
     execution_providers.push_back(DefaultDmlExecutionProvider());
   }
-  if (tensor_type == TensorType::kFloat && !disable_cpu) {
+  if ((tensor_type == TensorType::kFloat || tensor_type == TensorType::kFloat16) && !disable_cpu) {
     execution_providers.push_back(DefaultCpuExecutionProvider());
+  }
+  if (enable_webgpu) {
+    execution_providers.push_back(DefaultWebGpuExecutionProvider());
   }
   if (execution_providers.size() == 0) {
     // Return early if CI pipeline does not support EP (e.g. CUDA EP for CPU CI pipeline)
@@ -135,28 +139,8 @@ static void RunTests(const std::vector<float>& input_data,
                      int max_sequence_length = 0,
                      int64_t interleaved = 0,
                      int64_t is_packed_batching = 0,
-                     bool use_float16 = true,
-                     bool disable_dml = false) {
-  // FP32 test for CPU
-  RunTest(input_data,
-          position_ids,
-          cos_cache,
-          sin_cache,
-          output_data,
-          batch_size,
-          sequence_length,
-          head_size,
-          rotary_embedding_dim,
-          num_heads,
-          max_sequence_length,
-          interleaved,
-          is_packed_batching,
-          TensorType::kFloat,
-          false, /* disable_cpu */
-          true,  /* disable_cuda */
-          true /* disable_dml */);
-
-  // FP32 test for CUDA and DML
+                     bool use_float16 = true) {
+  // FP32 test for CPU, CUDA and DML
   RunTest(input_data,
           position_ids,
           cos_cache,
@@ -173,9 +157,9 @@ static void RunTests(const std::vector<float>& input_data,
           TensorType::kFloat,
           false, /* disable_cpu */
           false, /* disable_cuda */
-          disable_dml || false /* disable_dml */);
+          false /* disable_dml */);
 
-  // FP16 test for CUDA and DML
+  // FP16 test for CPU, CUDA and DML
   if (use_float16) {
     RunTest(input_data,
             position_ids,
@@ -191,26 +175,9 @@ static void RunTests(const std::vector<float>& input_data,
             interleaved,
             is_packed_batching,
             TensorType::kFloat16,
-            true,  /* disable_cpu */
+            false, /* disable_cpu */
             false, /* disable_cuda*/
-            disable_dml || false /* disable_dml */);
-
-    // RunTest(input_data,
-    //         position_ids,
-    //         cos_cache,
-    //         sin_cache,
-    //         output_data,
-    //         batch_size,
-    //         sequence_length,
-    //         head_size,
-    //         rotary_embedding_dim,
-    //         num_heads,
-    //         max_sequence_length,
-    //         interleaved,
-    //         TensorType::kBFloat16,
-    //         true,  /* disable_cpu */
-    //         false, /* disable_cuda*/
-    //         false /* disable_dml */);
+            false /* disable_dml */);
   }
 }
 
@@ -743,9 +710,8 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi) {
            num_heads,
            max_sequence_length,
            interleaved,
-           0,    // is_packed_batching
-           true, /*use_fp16*/
-           true /*disable_dml*/);
+           0,  // is_packed_batching
+           true /*use_fp16*/);
 }
 
 TEST(RotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi_Packed_Batching) {
@@ -785,9 +751,8 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi_Packed_B
            num_heads,
            max_sequence_length,
            interleaved,
-           1,    // is_packed_batching
-           true, /*use_fp16*/
-           true /*disable_dml*/);
+           1,  // is_packed_batching
+           true /*use_fp16*/);
 }
 
 }  // namespace test

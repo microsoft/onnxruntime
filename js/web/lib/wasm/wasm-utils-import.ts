@@ -135,11 +135,9 @@ const embeddedWasmModule: EmscriptenModuleFactory<OrtWasmModule> | undefined =
   BUILD_DEFS.IS_ESM && BUILD_DEFS.DISABLE_DYNAMIC_IMPORT
     ? // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
       require(
-        !BUILD_DEFS.DISABLE_TRAINING
-          ? '../../dist/ort-training-wasm-simd-threaded.mjs'
-          : !BUILD_DEFS.DISABLE_JSEP
-            ? '../../dist/ort-wasm-simd-threaded.jsep.mjs'
-            : '../../dist/ort-wasm-simd-threaded.mjs',
+        !BUILD_DEFS.DISABLE_JSEP
+          ? '../../dist/ort-wasm-simd-threaded.jsep.mjs'
+          : '../../dist/ort-wasm-simd-threaded.mjs',
       ).default
     : undefined;
 
@@ -163,11 +161,9 @@ export const importWasmModule = async (
   if (BUILD_DEFS.DISABLE_DYNAMIC_IMPORT) {
     return [undefined, embeddedWasmModule!];
   } else {
-    const wasmModuleFilename = !BUILD_DEFS.DISABLE_TRAINING
-      ? 'ort-training-wasm-simd-threaded.mjs'
-      : !BUILD_DEFS.DISABLE_JSEP
-        ? 'ort-wasm-simd-threaded.jsep.mjs'
-        : 'ort-wasm-simd-threaded.mjs';
+    const wasmModuleFilename = !BUILD_DEFS.DISABLE_JSEP
+      ? 'ort-wasm-simd-threaded.jsep.mjs'
+      : 'ort-wasm-simd-threaded.mjs';
     const wasmModuleUrl = urlOverride ?? normalizeUrl(wasmModuleFilename, prefixOverride);
     // need to preload if all of the following conditions are met:
     // 1. not in Node.js.

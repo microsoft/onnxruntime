@@ -22,16 +22,14 @@ jobs:
     ${{ parameters.machine_pool }}
   strategy:
     matrix:
-      Python38:
-        PythonVersion: '3.8'
-      Python39:
-        PythonVersion: '3.9'
       Python310:
         PythonVersion: '3.10'
       Python311:
         PythonVersion: '3.11'
       Python312:
         PythonVersion: '3.12'
+      Python313:
+        PythonVersion: '3.13'
   steps:
   - checkout: none
 

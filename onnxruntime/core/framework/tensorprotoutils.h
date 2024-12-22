@@ -3,25 +3,42 @@
 
 #pragma once
 
-#include <vector>
-#include <type_traits>
-#include <string>
 #include <filesystem>
+#include <string>
+#include <type_traits>
+#include <vector>
 
 #ifndef SHARED_PROVIDER
 #include "core/common/common.h"
 #include "core/common/status.h"
 #include "core/common/safeint.h"
-#include "core/framework/endian_utils.h"
 #include "core/framework/allocator.h"
-#include "core/framework/ort_value.h"
+#include "core/framework/endian_utils.h"
+#include "core/framework/external_data_loader.h"
 #include "core/framework/mem_buffer.h"
+#include "core/framework/ort_value.h"
+#include "core/framework/prepacked_weights_container.h"
 #include "core/framework/tensor_external_data_info.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/platform/env.h"
 
 namespace onnxruntime {
 namespace utils {
+/**
+ * This function is used to get the external data info from the given tensor proto.
+ * @param tensor_proto       given initializer tensor
+ * @param tensor_proto_dir   directory of the tensor proto file
+ * @param external_file_path output external file path
+ * @param file_offset        output tensor offset
+ * @param tensor_byte_size   output tensor byte size
+ * @returns                  Status::OK() if the function is executed successfully
+ */
+Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                           const std::filesystem::path& tensor_proto_dir,
+                           std::basic_string<ORTCHAR_T>& external_file_path,
+                           onnxruntime::FileOffsetType& file_offset,
+                           SafeInt<size_t>& tensor_byte_size,
+                           ExternalDataInfo::PrepackedInfos* prepacked_infos = nullptr);
 /**
  * This function is used to convert the endianess of Tensor data.
  * Mostly, will be used in big endian system to support the model file
@@ -157,7 +174,14 @@ common::Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::
                                          const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                          void*& ext_data_buf, SafeInt<size_t>& ext_data_len,
                                          OrtCallback& ext_data_deleter,
-                                         Tensor* buffered_tensor = nullptr);
+                                         Tensor* buffered_tensor = nullptr,
+                                         PrepackedWeightsForGraph* prepacked_for_graph = nullptr);
+
+// Given a tensor proto with external data obtain a tensor using the specified custom external data loader.
+common::Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
+                                                  const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                                  const IExternalDataLoader& ext_data_loader,
+                                                  Tensor& tensor);
 
 // Convert the AttributeProto from a Constant node into a TensorProto that can be used as an initializer
 // If AttributeProto contains a TensorProto, this tensor proto is converted as is including the case when the

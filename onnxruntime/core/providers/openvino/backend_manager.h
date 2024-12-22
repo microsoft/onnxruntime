@@ -30,6 +30,7 @@ class BackendManager {
   GlobalContext& GetGlobalContext();
   Status ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphViewer& subgraph,
                                        const logging::Logger& logger);
+  ov::CompiledModel& GetOVCompiledModel();
 
  private:
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> GetModelProtoFromFusedNode(
@@ -43,7 +44,7 @@ class BackendManager {
   std::shared_ptr<ONNX_NAMESPACE::ModelProto>
   ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_proto);
 
-  std::shared_ptr<ONNX_NAMESPACE::ModelProto>
+  std::unique_ptr<ONNX_NAMESPACE::ModelProto>
   ReWriteInputShapeInfo(const ONNX_NAMESPACE::ModelProto& model_proto,
                         const std::vector<std::vector<int64_t>>& input_shapes);
 

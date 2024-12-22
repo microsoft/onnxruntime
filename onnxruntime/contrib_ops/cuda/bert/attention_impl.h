@@ -56,6 +56,7 @@ size_t GetAttentionWorkspaceSize(
     size_t total_sequence_length,
     void* fused_runner,
     bool use_flash_attention,
+    bool use_lean_attention,
     bool use_fused_cross_attention,
     bool use_memory_efficient_attention,
     bool use_cudnn_flash_attention,

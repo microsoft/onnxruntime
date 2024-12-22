@@ -121,7 +121,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       // CSE will not merge them.
       transformers.emplace_back(std::make_unique<ConstantSharing>(compatible_eps));
       // LayerNormFusion must be applied before CommonSubexpressionElimination as the latter will break the pattern when 2 LayerNormFusion share the same input.
-      transformers.emplace_back(std::make_unique<LayerNormFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<LayerNormFusion>(compatible_eps, level, true));
       // Remove duplicate nodes. Must be applied before any recompute transformations.
       if (config.gelu_recompute || config.attn_dropout_recompute || config.transformer_layer_recompute) {
         transformers.emplace_back(std::make_unique<CommonSubexpressionEliminationApplyOnce>(compatible_eps));
@@ -129,7 +129,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
         transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>(compatible_eps));
       }
 
-      transformers.emplace_back(std::make_unique<GeluFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<GeluFusion>(compatible_eps, level, true));
 #if defined(USE_CUDA) || defined(USE_ROCM)
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps,
                                                                             true /* skip_device_check*/));

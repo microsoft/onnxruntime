@@ -21,33 +21,32 @@ class LogicalOpBuilder : public BaseOpBuilder {
   // Operator support related.
   bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
-                              const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
 
 Status LogicalOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                                const logging::Logger& /* logger */) const {
+  const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
-  emscripten::val input0 = model_builder.GetOperand(node.InputDefs()[0]->Name());
-  emscripten::val input1 = model_builder.GetOperand(node.InputDefs()[1]->Name());
+  emscripten::val input0 = model_builder.GetOperand(input_defs[0]->Name());
+  emscripten::val input1 = emscripten::val::undefined();
+
   emscripten::val output = emscripten::val::object();
   emscripten::val options = emscripten::val::object();
   options.set("label", node.Name());
-  if (op_type == "Equal") {
-    output = model_builder.GetBuilder().call<emscripten::val>("equal", input0, input1, options);
-  } else if (op_type == "Greater") {
-    output = model_builder.GetBuilder().call<emscripten::val>("greater", input0, input1, options);
-  } else if (op_type == "GreaterOrEqual") {
-    output = model_builder.GetBuilder().call<emscripten::val>("greaterOrEqual", input0, input1, options);
-  } else if (op_type == "Less") {
-    output = model_builder.GetBuilder().call<emscripten::val>("lesser", input0, input1, options);
-  } else if (op_type == "LessOrEqual") {
-    output = model_builder.GetBuilder().call<emscripten::val>("lesserOrEqual", input0, input1, options);
+
+  std::string webnn_op_type;
+  ORT_RETURN_IF_NOT(GetWebNNOpType(op_type, webnn_op_type), "Cannot get WebNN op type");
+
+  if (input_defs.size() == 1) {
+    // Not
+    output = model_builder.GetBuilder().call<emscripten::val>(webnn_op_type.c_str(), input0, options);
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "LogicalOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
+    input1 = model_builder.GetOperand(input_defs[1]->Name());
+    output = model_builder.GetBuilder().call<emscripten::val>(webnn_op_type.c_str(), input0, input1, options);
   }
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
@@ -61,39 +60,38 @@ bool LogicalOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initiali
   const auto& name = node.Name();
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
-  if (input_defs.size() < 2) {
-    LOGS(logger, VERBOSE) << op_type << " [" << name << "] requires at least 2 inputs, actual: "
-                          << input_defs.size();
+
+  size_t expected_input_count = (op_type == "Not") ? 1 : 2;
+  if (input_defs.size() != expected_input_count) {
+    LOGS(logger, VERBOSE) << op_type << " [" << name << "] expected input count: "
+                          << expected_input_count << ", actual: " << input_defs.size();
     return false;
   }
+
   return true;
 }
 
-bool LogicalOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType /* device_type */,
-                                              const logging::Logger& logger) const {
+bool LogicalOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                                              const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
   int32_t input0_type;
   int32_t input1_type;
 
-  if (!GetType(*input_defs[0], input0_type, logger) ||
-      !GetType(*input_defs[1], input1_type, logger))
+  if (!GetType(*input_defs[0], input0_type, logger))
     return false;
 
-  if (!IsSupportedDataType(input0_type, webnn_supported_data_types)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input0_type
-                          << "] is not supported for now";
-    return false;
+  if (op_type != "Not") {
+    if (!GetType(*input_defs[1], input1_type, logger))
+      return false;
+    std::array<int32_t, 2> input_types{input0_type, input1_type};
+    if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+      return false;
+    }
   }
 
-  if (input0_type != input1_type) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input data types should be the same.";
-    return false;
-  }
-
-  return true;
+  std::string onnx_input_name = op_type == "Not" ? "X" : "A";
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "a", onnx_input_name, logger);
 }
 
 void CreateLogicalOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
@@ -102,11 +100,15 @@ void CreateLogicalOpBuilder(const std::string& op_type, OpBuilderRegistrations& 
 
   static std::vector<std::string> op_types =
       {
+          "And",
           "Equal",
           "Greater",
           "GreaterOrEqual",
           "Less",
           "LessOrEqual",
+          "Not",
+          "Or",
+          "Xor",
       };
 
   op_registrations.builders.push_back(std::make_unique<LogicalOpBuilder>());

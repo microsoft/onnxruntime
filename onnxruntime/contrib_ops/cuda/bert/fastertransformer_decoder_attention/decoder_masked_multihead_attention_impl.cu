@@ -300,6 +300,9 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
       if (params.attention_bias != nullptr) {
         qk = add_vec(qk, reinterpret_cast<T*>(params.attention_bias)[attn_bias_offset + tlength]);
       }
+      if (params.mask != nullptr && params.mask[bi_total_seq_length + params.past_sequence_length] == 0) {
+        qk += params.mask_filter_value;
+      }
       qk_max = qk;
       qk_smem[tlength] = qk;
     }
@@ -536,7 +539,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
 
   if (params.out_qk != nullptr) {
     // store cross qk before softmax, out_qk has shape [B(batchxbeam), #Head, 1, total_sequence_length]
-    QK* target = (reinterpret_cast<QK*>(params.out_qk)) + ((int64_t)bhi * tlength);
+    QK* target = (reinterpret_cast<QK*>(params.out_qk)) + (static_cast<int64_t>(bhi) * (sum_tlength + 1));
     for (int ti = tidx; ti <= sum_tlength; ti += THREADS_PER_BLOCK) {
       target[ti] = static_cast<QK>(qk_smem[ti]);
     }

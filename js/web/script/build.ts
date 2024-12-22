@@ -56,7 +56,6 @@ const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_JSEP': 'false',
   'BUILD_DEFS.DISABLE_WASM': 'false',
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
-  'BUILD_DEFS.DISABLE_TRAINING': 'true',
   'BUILD_DEFS.DISABLE_DYNAMIC_IMPORT': 'false',
 
   'BUILD_DEFS.IS_ESM': 'false',
@@ -253,7 +252,7 @@ async function buildBundle(options: esbuild.BuildOptions) {
  *
  * The distribution code is split into multiple files:
  *  - [output-name][.min].[m]js
- *  - ort[-training]-wasm-simd-threaded[.jsep].mjs
+ *  - ort-wasm-simd-threaded[.jsep].mjs
  */
 async function buildOrt({
   isProduction = false,
@@ -592,14 +591,14 @@ async function main() {
     // ort[.min].[m]js
     await addAllWebBuildTasks({
       outputName: 'ort',
-      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true' },
+      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true' },
     });
     // ort.bundle.min.mjs
     await buildOrt({
       isProduction: true,
       outputName: 'ort.bundle',
       format: 'esm',
-      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true', 'BUILD_DEFS.DISABLE_DYNAMIC_IMPORT': 'true' },
+      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true', 'BUILD_DEFS.DISABLE_DYNAMIC_IMPORT': 'true' },
     });
 
     // ort.webgpu[.min].[m]js
@@ -620,6 +619,13 @@ async function main() {
       outputName: 'ort.wasm',
       define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true', 'BUILD_DEFS.DISABLE_WEBGL': 'true' },
     });
+    // ort.wasm.bundle.min.mjs
+    await buildOrt({
+      isProduction: true,
+      outputName: 'ort.wasm.bundle',
+      format: 'esm',
+      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true', 'BUILD_DEFS.DISABLE_WEBGL': 'true' },
+    });
     // ort.webgl[.min].[m]js
     await addAllWebBuildTasks({
       outputName: 'ort.webgl',
@@ -628,16 +634,6 @@ async function main() {
         'BUILD_DEFS.DISABLE_JSEP': 'true',
         'BUILD_DEFS.DISABLE_WASM': 'true',
         'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
-      },
-    });
-    // ort.training.wasm[.min].[m]js
-    await addAllWebBuildTasks({
-      outputName: 'ort.training.wasm',
-      define: {
-        ...DEFAULT_DEFINE,
-        'BUILD_DEFS.DISABLE_TRAINING': 'false',
-        'BUILD_DEFS.DISABLE_JSEP': 'true',
-        'BUILD_DEFS.DISABLE_WEBGL': 'true',
       },
     });
   }

@@ -189,8 +189,10 @@ TEST_F(QnnHTPBackendTests, LayerNorm1D_LastAxis_StaticScale_StaticBias_AU8_WU8_B
 }
 
 TEST_F(QnnHTPBackendTests, LayerNorm1D_QNN2_24_ImplicitBias_ValidationBug) {
-  // QNN 2.24 LayerNorm fails validation (intermittent) if the bias input is not provided. QNN EP will provide an
-  // explicit bias of all zeros to get around this bug.
+  // QNN 2.24 to 2.27: LayerNorm fails validation (intermittent) if the bias input is not provided. QNN EP will provide
+  // an explicit bias of all zeros to get around this bug.
+  // QNN 2.28.0: Validation bug is fixed, but get accuracy errors.
+  // QNN 2.28.2: All fixed.
   for (size_t i = 0; i < 15; i++) {  // Run it multiple times since this is an intermittent bug.
     RunLayerNormQDQTest<uint16_t, uint8_t>(TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRange(0.0f, 1.0f, 6)),
                                            TestInputDef<float>({3}, true, GetFloatDataInRange(0.0f, 1.0f, 3)),
@@ -201,8 +203,9 @@ TEST_F(QnnHTPBackendTests, LayerNorm1D_QNN2_24_ImplicitBias_ValidationBug) {
   }
 }
 
-// Test accuracy of 16-bit QDQ LayerNorm with a static scale input.
 TEST_F(QnnHTPBackendTests, LayerNorm1D_LastAxis_StaticScale_AU16_WU8) {
+  // QNN 2.28.0: Get accuracy errors.
+  // QNN 2.28.2: All fixed.
   RunLayerNormQDQTest<uint16_t, uint8_t>(TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRange(0.0f, 10.0f, 6)),
                                          TestInputDef<float>({3}, true, GetFloatDataInRange(0.0f, 1.0f, 3)),  // Static
                                          TestInputDef<float>(),
@@ -213,7 +216,7 @@ TEST_F(QnnHTPBackendTests, LayerNorm1D_LastAxis_StaticScale_AU16_WU8) {
 
 // Test accuracy of 8-bit QDQ LayerNorm with a dynamic scale input.
 //
-// TODO(adrianlizarraga): Fails to finalize with QNN SDK 2.22.
+// TODO(adrianlizarraga): Fails to finalize with QNN SDK 2.22. Still fails on QNN SDK 2.28.2.
 // Verbose logs:
 // Starting stage: Graph Transformations and Optimizations
 // C:\...\QNN\HTP\HTP\src\hexagon\prepare\graph_prepare.cc:203:ERROR:could not create op: q::flat_to_vtcm

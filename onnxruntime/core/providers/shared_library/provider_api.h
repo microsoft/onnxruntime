@@ -123,6 +123,7 @@ struct ValueInfoProto;
 struct ValueInfoProtos;  // RepeatedPtrField
 struct FunctionProto;
 struct InferenceContext;
+struct OpSchema;
 class GraphInferencer;
 using InferenceFunction = std::function<void(InferenceContext&)>;
 }  // namespace ONNX_NAMESPACE
@@ -220,6 +221,7 @@ using NameMLValMap = std::unordered_map<std::string, OrtValue>;
 #include "core/providers/cpu/math/einsum_utils/einsum_compute_preprocessor.h"
 #include "core/providers/cpu/cpu_provider_shared.h"
 #include "core/framework/data_transfer.h"
+#include "core/framework/external_data_loader.h"
 #include "core/framework/execution_provider.h"
 #include "provider_interfaces.h"
 #include "provider_wrappedtypes.h"
@@ -292,7 +294,8 @@ std::unique_ptr<IDataTransfer> CreateGPUDataTransfer();
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                                   gsl::span<const NodeIndex> tentative_nodes);
+                                                   gsl::span<const NodeIndex> tentative_nodes,
+                                                   const logging::Logger& logger);
 
 std::string GetEnvironmentVar(const std::string& var_name);
 
@@ -369,8 +372,8 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt4x2>() {
 
 namespace QDQ {
 inline std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
-GetAllNodeUnits(const GraphViewer* graph_viewer) {
-  return g_host->QDQ__GetAllNodeUnits(graph_viewer);
+GetAllNodeUnits(const GraphViewer* graph_viewer, const logging::Logger& logger) {
+  return g_host->QDQ__GetAllNodeUnits(graph_viewer, logger);
 }
 }  // namespace QDQ
 

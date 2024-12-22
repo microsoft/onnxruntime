@@ -6,6 +6,7 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include <memory>
 
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/span_utils.h"
@@ -140,7 +141,8 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        double relative_per_sample_tolerance,
                        std::unique_ptr<GraphTransformer> transformer,
                        const std::function<void(SessionOptions&)>& add_session_options,
-                       const InlinedHashSet<std::string>& disabled_optimizers) {
+                       const InlinedHashSet<std::string>& disabled_optimizers,
+                       std::unique_ptr<IExecutionProvider> ep) {
   // Build the model for this test.
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = opset_version;
@@ -157,6 +159,7 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
   // Serialize the model to a string.
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
+  std::shared_ptr<IExecutionProvider> ep_shared = ep ? std::move(ep) : nullptr;
 
   auto run_model = [&](TransformerLevel level, std::vector<OrtValue>& fetches,
                        std::unique_ptr<GraphTransformer> transformer = nullptr) {
@@ -170,6 +173,10 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
       add_session_options(session_options);
     }
     InferenceSessionWrapper session{session_options, GetEnvironment()};
+    if (ep_shared) {
+      ASSERT_STATUS_OK(session.RegisterExecutionProvider(ep_shared));
+    }
+
     ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
     if (transformer) {
       ASSERT_STATUS_OK(session.RegisterGraphTransformer(std::move(transformer), level));

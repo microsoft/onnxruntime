@@ -4,6 +4,7 @@
 import { InferenceSession as InferenceSessionImpl } from './inference-session-impl.js';
 import { OnnxModelOptions } from './onnx-model.js';
 import { OnnxValue, OnnxValueDataLocation } from './onnx-value.js';
+import { TryGetGlobalType } from './type-helper.js';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
 
@@ -282,7 +283,7 @@ export declare namespace InferenceSession {
     extends WebNNExecutionProviderName,
       Omit<WebNNContextOptions, 'deviceType'>,
       Required<Pick<WebNNContextOptions, 'deviceType'>> {
-    context: unknown /* MLContext */;
+    context: TryGetGlobalType<'MLContext'>;
   }
 
   /**
@@ -291,8 +292,8 @@ export declare namespace InferenceSession {
    * @see https://www.w3.org/TR/webnn/#dom-ml-createcontext-gpudevice
    */
   export interface WebNNOptionsWebGpu extends WebNNExecutionProviderName {
-    context: unknown /* MLContext */;
-    gpuDevice: unknown /* GPUDevice */;
+    context: TryGetGlobalType<'MLContext'>;
+    gpuDevice: TryGetGlobalType<'GPUDevice'>;
   }
 
   /**
@@ -320,6 +321,7 @@ export declare namespace InferenceSession {
      * COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE = 0x004
      * COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES = 0x008
      * COREML_FLAG_CREATE_MLPROGRAM = 0x010
+     * COREML_FLAG_USE_CPU_AND_GPU = 0x020
      * ```
      *
      * See include/onnxruntime/core/providers/coreml/coreml_provider_factory.h for more details.
@@ -333,6 +335,7 @@ export declare namespace InferenceSession {
      * This setting is available only in ONNXRuntime (react-native).
      */
     useCPUOnly?: boolean;
+    useCPUAndGPU?: boolean;
     /**
      * Specify whether to enable CoreML EP on subgraph.
      *

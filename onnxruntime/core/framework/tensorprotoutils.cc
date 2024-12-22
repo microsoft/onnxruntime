@@ -165,37 +165,6 @@ Status UnpackTensorWithRawData(const void* raw_data, size_t raw_data_len, size_t
 DEFINE_INT4_UNPACK_TENSOR_WITH_RAW_DATA_IMPL(Int4x2)
 DEFINE_INT4_UNPACK_TENSOR_WITH_RAW_DATA_IMPL(UInt4x2)
 
-static Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                  const std::filesystem::path& tensor_proto_dir,
-                                  std::basic_string<ORTCHAR_T>& external_file_path,
-                                  onnxruntime::FileOffsetType& file_offset,
-                                  SafeInt<size_t>& tensor_byte_size) {
-  ORT_RETURN_IF_NOT(onnxruntime::utils::HasExternalData(tensor_proto),
-                    "Tensor does not have external data to read from.");
-
-  ORT_RETURN_IF(!onnxruntime::utils::HasDataType(tensor_proto) || onnxruntime::utils::HasString(tensor_proto),
-                "External data type cannot be UNDEFINED or STRING.");
-
-  std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
-  ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
-
-  const auto& location = external_data_info->GetRelPath();
-
-  external_file_path = location == onnxruntime::utils::kTensorProtoMemoryAddressTag ? std::filesystem::path(location)
-                                                                                    : (tensor_proto_dir / location);
-
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
-  const size_t external_data_length = external_data_info->GetLength();
-  ORT_RETURN_IF_NOT(external_data_length == 0 || external_data_length == tensor_byte_size,
-                    "TensorProto: ", tensor_proto.name(),
-                    " external data size mismatch. Computed size: ", *&tensor_byte_size,
-                    ", external_data.length: ", external_data_length);
-
-  file_offset = external_data_info->GetOffset();
-
-  return Status::OK();
-}
-
 // Read external data for tensor in unint8_t* form and return Status::OK() if the data is read successfully.
 // Uses the tensor_proto_dir to construct the full path for external data. If tensor_proto_dir == nullptr
 // then uses the current directory instead.
@@ -260,6 +229,42 @@ Status TensorProtoToOrtValueImpl(const Env& env, const std::filesystem::path& mo
 }  // namespace
 
 namespace utils {
+
+Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                           const std::filesystem::path& tensor_proto_dir,
+                           std::basic_string<ORTCHAR_T>& external_file_path,
+                           onnxruntime::FileOffsetType& file_offset,
+                           SafeInt<size_t>& tensor_byte_size,
+                           ExternalDataInfo::PrepackedInfos* prepacked_infos) {
+  ORT_RETURN_IF_NOT(onnxruntime::utils::HasExternalData(tensor_proto),
+                    "Tensor does not have external data to read from.");
+
+  ORT_RETURN_IF(!onnxruntime::utils::HasDataType(tensor_proto) || onnxruntime::utils::HasString(tensor_proto),
+                "External data type cannot be UNDEFINED or STRING.");
+
+  std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
+  ORT_RETURN_IF_ERROR(onnxruntime::ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info));
+
+  const auto& location = external_data_info->GetRelPath();
+
+  external_file_path = location == onnxruntime::utils::kTensorProtoMemoryAddressTag ? std::filesystem::path(location)
+                                                                                    : (tensor_proto_dir / location);
+
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
+  const size_t external_data_length = external_data_info->GetLength();
+  ORT_RETURN_IF_NOT(external_data_length == 0 || external_data_length == tensor_byte_size,
+                    "TensorProto: ", tensor_proto.name(),
+                    " external data size mismatch. Computed size: ", *&tensor_byte_size,
+                    ", external_data.length: ", external_data_length);
+
+  file_offset = external_data_info->GetOffset();
+
+  if (prepacked_infos != nullptr && external_data_info->HasPrepackedInfo()) {
+    *prepacked_infos = external_data_info->TakePrepackedInfos();
+  }
+
+  return Status::OK();
+}
 
 void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::string&& param) {
   tensor_proto.set_raw_data(std::move(param));
@@ -988,7 +993,8 @@ static Status GetFileContent(const Env& env, const std::filesystem::path& file_p
 Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& model_path,
                                  const ONNX_NAMESPACE::TensorProto& tensor_proto, void*& ext_data_buf,
                                  SafeInt<size_t>& ext_data_len, OrtCallback& ext_data_deleter,
-                                 Tensor* buffered_tensor) {
+                                 Tensor* buffered_tensor,
+                                 PrepackedWeightsForGraph* prepacked_info) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
   if (!model_path.empty()) {
@@ -997,8 +1003,13 @@ Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& mo
   std::basic_string<ORTCHAR_T> external_data_file_path;
   FileOffsetType file_offset;
   SafeInt<size_t> raw_data_safe_len = 0;
+  std::optional<ExternalDataInfo::PrepackedInfos> prepacked_infos;
+  if (prepacked_info != nullptr) {
+    prepacked_infos.emplace();
+  }
   ORT_RETURN_IF_ERROR(
-      GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset, raw_data_safe_len));
+      GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset,
+                          raw_data_safe_len, (prepacked_info != nullptr) ? &*prepacked_infos : nullptr));
 
   if (external_data_file_path == onnxruntime::utils::kTensorProtoMemoryAddressTag) {
     // the value in location is the memory address of the data
@@ -1022,59 +1033,12 @@ Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& mo
     ext_data_buf = buffer.release();
     ext_data_len = raw_data_safe_len;
 
-    // In WebAssembly, try use a simplified preloaded file map in WebAssembly when available.
-    auto err_code = EM_ASM_INT(({
-                                 // If available, "Module.MountedFiles" is a Map for all preloaded files.
-                                 if (typeof Module == 'undefined' || !Module.MountedFiles) {
-                                   return 1;  // "Module.MountedFiles" is not available.
-                                 }
-                                 let fileName = UTF8ToString($0 >>> 0);
-                                 if (fileName.startsWith('./')) {
-                                   fileName = fileName.substring(2);
-                                 }
-                                 const fileData = Module.MountedFiles.get(fileName);
-                                 if (!fileData) {
-                                   return 2;  // File not found in preloaded files.
-                                 }
-                                 const offset = $1 >>> 0;
-                                 const length = $2 >>> 0;
-                                 const buffer = $3 >>> 0;
-
-                                 if (offset + length > fileData.byteLength) {
-                                   return 3;  // Out of bounds.
-                                 }
-
-                                 try {
-                                   // Copy the file data (fileData,offset,length) into WebAssembly memory
-                                   // (HEAPU8,buffer,length).
-                                   HEAPU8.set(fileData.subarray(offset, offset + length), buffer);
-                                   return 0;
-                                 } catch {
-                                   return 4;
-                                 }
-                               }),
-                               external_data_file_path.c_str(),
-                               static_cast<int32_t>(file_offset),
-                               static_cast<int32_t>(raw_data_safe_len),
-                               ext_data_buf);
-    const char* err_msg;
-    switch (err_code) {
-      case 0:
-        return Status::OK();
-      case 1:
-        err_msg = "Module.MountedFiles is not available.";
-        break;
-      case 2:
-        err_msg = "File not found in preloaded files.";
-        break;
-      case 3:
-        err_msg = "Out of bounds.";
-        break;
-      default:
-        err_msg = "Unknown error occurred in memory copy.";
-    }
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to load external data file \"", external_data_file_path,
-                           "\", error: ", err_msg);
+    ORT_RETURN_IF_ERROR(LoadWebAssemblyExternalData(env,
+                                                    external_data_file_path,
+                                                    file_offset,
+                                                    ext_data_len,
+                                                    ExternalDataLoadType::CPU,
+                                                    ext_data_buf));
 #else
     // The GetFileContent function doesn't report error if the requested data range is invalid. Therefore we need to
     // manually check file size first.
@@ -1089,10 +1053,62 @@ Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& mo
     ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path.c_str(), file_offset, raw_data_safe_len,
                                        ext_data_buf, ext_data_deleter));
     ext_data_len = raw_data_safe_len;
+
+    if (prepacked_info != nullptr && !prepacked_infos->empty()) {
+      for (const auto& [key, blobs] : *prepacked_infos) {
+        PrePackedWeights prepacked_weights;
+        prepacked_weights.buffers_.reserve(blobs.size());
+        prepacked_weights.buffer_sizes_.reserve(blobs.size());
+        for (const auto& blob : blobs) {
+          const auto blob_offset = std::get<0>(blob);
+          const auto blob_length = std::get<1>(blob);
+          SafeInt<FileOffsetType> end_of_blob{blob_offset};
+          end_of_blob += blob_length;
+          ORT_RETURN_IF(blob_offset < 0 || static_cast<uintmax_t>(end_of_blob) > file_length,
+                        "Pre-packed blob: ", key, " offset: ", blob_offset, " file_length: ", file_length,
+                        " is out of bounds and can not read in full");
+          void* data_ptr;
+          OrtCallback data_deleter;
+          ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path.c_str(), blob_offset, blob_length,
+                                             data_ptr, data_deleter));
+          IAllocatorUniquePtr<void> data_ptr_unique{data_ptr, OrtCallbackInvoker(data_deleter)};
+          prepacked_weights.buffers_.push_back(std::move(data_ptr_unique));
+          prepacked_weights.buffer_sizes_.push_back(blob_length);
+        }
+        if (!blobs.empty()) {
+          prepacked_info->InsertPrepackedWeights(key, std::move(prepacked_weights));
+        }
+      }
+    }
 #endif
   }
 
   return Status::OK();
+}
+
+Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem::path& model_path,
+                                          const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                          const IExternalDataLoader& ext_data_loader,
+                                          Tensor& tensor) {
+  ORT_ENFORCE(utils::HasExternalData(tensor_proto));
+  std::basic_string<ORTCHAR_T> tensor_proto_dir;
+  if (!model_path.empty()) {
+    ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
+  }
+  std::basic_string<ORTCHAR_T> external_data_file_path;
+  FileOffsetType file_offset;
+  SafeInt<size_t> raw_data_safe_len = 0;
+  ORT_RETURN_IF_ERROR(
+      GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset, raw_data_safe_len));
+
+  ORT_RETURN_IF(file_offset < 0 || raw_data_safe_len != tensor.SizeInBytes(),
+                "External initializer: ", tensor_proto.name(), " offset: ", file_offset,
+                " size to read: ", static_cast<size_t>(raw_data_safe_len),
+                " does not match the tensor size: ", tensor.SizeInBytes());
+  ORT_RETURN_IF(external_data_file_path == onnxruntime::utils::kTensorProtoMemoryAddressTag,
+                "Memory address tag is not supported by custom external data loader.");
+
+  return ext_data_loader.LoadTensor(env, external_data_file_path, file_offset, raw_data_safe_len, tensor);
 }
 
 #define CASE_PROTO(X, Y)                                                                                            \

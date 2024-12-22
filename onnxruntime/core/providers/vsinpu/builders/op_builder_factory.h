@@ -53,6 +53,8 @@
 #include "impl/cast_op_builder.h"
 #include "impl/dropout_op_builder.h"
 #include "impl/slice_op_builder.h"
+#include "impl/split_op_builder.h"
+#include "impl/pad_op_builder.h"
 namespace onnxruntime {
 namespace vsi {
 namespace npu {
@@ -110,7 +112,15 @@ static const std::map<std::string, createIOpBuildItemFunc> reg = {
     REGISTER_OP_BUILDER("Resize", ResizeOpBuilder),
     REGISTER_OP_BUILDER("Cast", CastOpBuilder),
     REGISTER_OP_BUILDER("Dropout", DropoutOpBuilder),
-    REGISTER_OP_BUILDER("Slice", SliceOpBuilder)
+    REGISTER_OP_BUILDER("Slice", SliceOpBuilder),
+    REGISTER_OP_BUILDER("Split", SplitOpBuilder),
+    REGISTER_OP_BUILDER("Neg", NegOpBuilder),
+    REGISTER_OP_BUILDER("Not", NotOpBuilder),
+    REGISTER_OP_BUILDER("Ceil", CeilOpBuilder),
+    REGISTER_OP_BUILDER("Round", RoundOpBuilder),
+    REGISTER_OP_BUILDER("Min", MinOpBuilder),
+    REGISTER_OP_BUILDER("Max", MaxOpBuilder),
+    REGISTER_OP_BUILDER("Pad", PadOpBuilder)
 #undef REGISTER_OP_BUILDER
 };
 

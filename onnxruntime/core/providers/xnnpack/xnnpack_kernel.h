@@ -48,7 +48,7 @@ class XnnpackKernel : public OpKernel {
         // auto_code_cache.reset(&code_cache_);
 #endif
         // status = xnn_init_weights_cache(&weights_cache_);
-        xnn_weights_cache_t weights_cache = nullptr;
+        xnn_weights_cache_t weights_cache_provider = nullptr;
         status = xnn_create_weights_cache(&weights_cache, 0);
         ORT_ENFORCE(status == xnn_status_success, "Failed to create XNNPACK weights cache");
         auto_weights_cache.reset(weights_cache);
@@ -57,7 +57,7 @@ class XnnpackKernel : public OpKernel {
     }
 
     // std::unique_ptr<xnn_code_cache, decltype(&xnn_release_code_cache)> auto_code_cache;
-    std::unique_ptr<xnn_weights_cache, decltype(&xnn_delete_weights_cache)> auto_weights_cache;
+    std::unique_ptr<xnn_weights_cache_provider, decltype(&xnn_delete_weights_cache)> auto_weights_cache;
 
     // private:
     // #if defined(XNN_CACHE_ENABLE) && XNN_PLATFORM_JIT

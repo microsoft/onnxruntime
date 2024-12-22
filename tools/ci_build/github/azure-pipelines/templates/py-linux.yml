@@ -26,8 +26,16 @@ parameters:
   type: string
   default: ''
 
+- name: ep
+  type: string
+  default: 'cpu'
+
+- name: python_exe_path
+  type: string
+  default: ''
+
 jobs:
-- job: Linux_py_Wheels_${{ parameters.arch }}
+- job: Linux_py_Wheels_${{ parameters.arch }}_${{parameters.ep}}
   timeoutInMinutes: 240
   workspace:
     clean: all
@@ -42,9 +50,15 @@ jobs:
       value: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
     - name: extra_build_args
       ${{ if ne(parameters.extra_build_arg, '') }}:
-        value: -x ${{ parameters.extra_build_arg }}
+        value: '-x ${{ parameters.extra_build_arg }}'
       ${{ if eq(parameters.extra_build_arg, '') }}:
         value: ''
+    - name: python_exe_path
+      ${{ if ne(parameters.python_exe_path, '') }}:
+        value: '-p ${{ parameters.python_exe_path }}'
+      ${{ if eq(parameters.python_exe_path, '') }}:
+        value: ''
+
   steps:
     - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
       displayName: 'Clean Agent Directories'
@@ -78,7 +92,7 @@ jobs:
             inputs:
               targetType: filePath
               filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
-              arguments: -i onnxruntimecpubuildpython${{ parameters.arch }} -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} $(extra_build_args)
+              arguments: -i onnxruntimecpubuildpython${{ parameters.arch }} -d "${{ parameters.device }}" -c ${{ parameters.cmake_build_type }} $(extra_build_args) $(python_exe_path)
             ${{ if eq(parameters.with_cache, 'true') }}:
               env:
                 ADDITIONAL_DOCKER_PARAMETER: "--volume $(ORT_CACHE_DIR):/cache -e CCACHE_DIR=/cache -e ORT_BUILD_WITH_CACHE=1"
@@ -87,12 +101,12 @@ jobs:
       displayName: 'Publish Artifact: ONNXRuntime python wheel'
       inputs:
         PathtoPublish: '$(Build.BinariesDirectory)/dist'
-        ArtifactName: onnxruntime
+        ArtifactName: onnxruntime-${{ parameters.ep }}
 
     - task: PublishPipelineArtifact@0
       displayName: 'Publish Test Binaries'
       inputs:
-        artifactName: 'drop-linux-cpu-${{ parameters.arch }}'
+        artifactName: 'drop-linux-cpu-${{ parameters.arch }}-${{ parameters.ep }}'
         targetPath: '$(Build.BinariesDirectory)/${{ parameters.cmake_build_type }}'
 
     - template: component-governance-component-detection-steps.yml

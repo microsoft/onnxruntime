@@ -32,9 +32,9 @@ class BaseOpBuilder : public IOpBuilder {
       : allow_empty_tensor_as_input_(allow_empty_tensor_as_input) {
   }
 
-  // currently we only support float
-  static bool IsInputFloat(const Node& node, size_t idx, const OpBuilderInputParams& input_params,
-                           const logging::Logger& logger);
+  // currently we support float/float16
+  static bool IsInputDtypeSupport(const Node& node, size_t idx, const OpBuilderInputParams& input_params,
+                                  const logging::Logger& logger);
 
  private:
   virtual bool IsOpSupportedImpl(const Node& /*node*/, const OpBuilderInputParams& /*input_params*/,

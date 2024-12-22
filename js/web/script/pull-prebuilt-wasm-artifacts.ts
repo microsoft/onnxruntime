@@ -14,6 +14,7 @@
 //
 
 import fs from 'fs';
+import { bootstrap as globalAgentBootstrap } from 'global-agent';
 import https from 'https';
 import jszip from 'jszip';
 import path from 'path';
@@ -111,6 +112,11 @@ console.log(
   } ===`,
 );
 
+// Bootstrap global-agent to honor the proxy settings in
+// environment variables, e.g. GLOBAL_AGENT_HTTPS_PROXY.
+// See https://github.com/gajus/global-agent/blob/v3.0.0/README.md#environment-variables for details.
+globalAgentBootstrap();
+
 const filter = buildId
   ? `&buildIds=${buildId}`
   : '&definitions=161' +
@@ -149,11 +155,9 @@ downloadJson(
           void jszip.loadAsync(buffer).then((zip) => {
             extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.wasm', folderName);
             extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.jsep.wasm', folderName);
-            extractFile(zip, WASM_FOLDER, 'ort-training-wasm-simd-threaded.wasm', folderName);
 
             extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.mjs', folderName);
             extractFile(zip, WASM_FOLDER, 'ort-wasm-simd-threaded.jsep.mjs', folderName);
-            extractFile(zip, WASM_FOLDER, 'ort-training-wasm-simd-threaded.mjs', folderName);
           });
         });
       },

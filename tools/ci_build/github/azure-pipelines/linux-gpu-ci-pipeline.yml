@@ -1,4 +1,5 @@
 ##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
 trigger:
   branches:
     include:
@@ -48,9 +49,9 @@ parameters:
 variables:
   - name: docker_base_image
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20240531.1
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241120.3
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20240719.1
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20241120.3
 
   - name: Repository
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
@@ -174,13 +175,14 @@ stages:
             -e NVIDIA_TF32_OVERRIDE=0 \
             $(Repository) \
             /bin/bash -c '
+              set -e
               nvidia-smi; \
               /sbin/ldconfig -N -v $(sed "s/:/ /" <<< $LD_LIBRARY_PATH) 2>/dev/null | grep -E "libcudart.so|libcudnn.so|libnvinfer.so"; \
               cat /usr/local/cuda/include/cuda.h | grep -m1 CUDA_VERSION; \
               cat /usr/include/cudnn_version.h | grep CUDNN_MAJOR -m1 -A 2; \
-              ln -s /opt/python/cp38-cp38/bin/python3 /tmp/python3; \
-              /tmp/python3 -m pip install /build/Release/dist/*.whl; \
-              /tmp/python3 -u -c "from onnxruntime.capi._pybind_state import (OrtDevice as C_OrtDevice) ; \
+              export PATH=/opt/python/cp312-cp312/bin:$PATH; \
+              python3 -m pip install /build/Release/dist/*.whl; \
+              python3 -u -c "from onnxruntime.capi._pybind_state import (OrtDevice as C_OrtDevice) ; \
                         ort_device = C_OrtDevice(C_OrtDevice.cuda(), C_OrtDevice.default_memory(), 0); \
                         print(ort_device); print(ort_device.device_type(), C_OrtDevice.cuda()); \
                         assert(ort_device.device_type()==1); assert(C_OrtDevice.cuda()==1);" \
@@ -203,13 +205,13 @@ stages:
             /bin/bash -c '
               set -ex; \
               cp /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt /tmp/requirements.txt; \
-              ln -s /opt/python/cp38-cp38/bin/python3 /tmp/python3; \
-              /tmp/python3 -m pip install -r /tmp/requirements.txt; \
-              /tmp/python3 -m pip install /build/Release/dist/*.whl; \
+              export PATH=/opt/python/cp312-cp312/bin:$PATH; \
+              python3 -m pip install -r /tmp/requirements.txt; \
+              python3 -m pip install /build/Release/dist/*.whl; \
               cd /build/Release && xargs -a /build/Release/perms.txt chmod a+x; \
               cd /onnxruntime_src/java && /onnxruntime_src/java/gradlew cmakeCheck -DcmakeBuildDir=/build/Release -DUSE_CUDA=1; \
               cd /tmp; \
-              /tmp/python3 /onnxruntime_src/tools/ci_build/build.py \
+              python3 /onnxruntime_src/tools/ci_build/build.py \
                 --build_dir /build --config Release --test --skip_submodule_sync --build_shared_lib --parallel --use_binskim_compliant_compile_flags --build_wheel --enable_onnx_tests \
                 --enable_transformers_tool_test --use_cuda --cuda_version=${{parameters.CudaVersion}} --cuda_home=/usr/local/cuda --cudnn_home=/usr/local/cuda \
                 --enable_pybind --build_java --ctest_path "" ; \

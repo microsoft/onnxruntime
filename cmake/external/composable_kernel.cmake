@@ -1,10 +1,12 @@
-set(PATCH ${PROJECT_SOURCE_DIR}/patches/composable_kernel/Fix_Clang_Build.patch)
+set(PATCH_CLANG ${PROJECT_SOURCE_DIR}/patches/composable_kernel/Fix_Clang_Build.patch)
+set(PATCH_GFX12X ${PROJECT_SOURCE_DIR}/patches/composable_kernel/Add_gfx12x_support.patch)
 
 include(FetchContent)
 FetchContent_Declare(composable_kernel
   URL ${DEP_URL_composable_kernel}
   URL_HASH SHA1=${DEP_SHA1_composable_kernel}
-  PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PATCH}
+  PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PATCH_CLANG} &&
+                ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PATCH_GFX12X}
 )
 
 FetchContent_GetProperties(composable_kernel)

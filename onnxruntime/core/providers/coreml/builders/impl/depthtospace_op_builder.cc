@@ -67,7 +67,9 @@ Status DepthToSpaceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       // we checked shape was static in IsOpSupportedImpl so this should never fail
       std::vector<int64_t> input_shape;
       ORT_RETURN_IF_NOT(GetStaticShape(*input_defs[0], input_shape, logger), "Failed to get input shape");
-      const int32_t elem_type = static_cast<int32_t>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+      auto input_dtype = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
+
+      const int32_t elem_type = static_cast<int32_t>(input_dtype);
 
       // reshape to [b * c // (blocksize ** 2), blocksize, blocksize, h, w]
       auto reshape1 = model_builder.CreateOperation(node, "reshape", "pre");
@@ -142,6 +144,20 @@ bool DepthToSpaceOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderI
       // we need to manually implement the logic with a Reshape, so we need to know the shape to do that
       LOGS(logger, VERBOSE) << "DepthToSpace: CRD mode requires static shape";
       return false;
+    }
+
+    if (mode == "DCR" && input_params.coreml_version < 7) {
+      int32_t input_type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+      GetType(*input_defs[0], input_type, logger);
+
+      if (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+        // In CoreML version 6 (e.g., on an iOS 16 simulator) with DCR mode and float16 input, the output is all zeros
+        // in this unit test: TensorOpTest/1.DepthToSpaceTest_4.
+        // However, CoreML version 7 is fine.
+        // Don't support CoreML version < 7, DCR mode, and float16 input.
+        LOGS(logger, VERBOSE) << "DepthToSpace: DCR mode with float16 input requires at least CoreML version 7.";
+        return false;
+      }
     }
   } else {
     if (mode != "DCR") {

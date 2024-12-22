@@ -1,12 +1,15 @@
 import copy
 import logging
 from collections import OrderedDict
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
 
 import numpy
 import torch
 
 from onnxruntime import InferenceSession, RunOptions
+
+# Type alias
+ShapeDict = Mapping[str, Union[Tuple, List[int]]]
 
 logger = logging.getLogger(__name__)
 
@@ -262,7 +265,7 @@ class CudaSession:
             )
             self.output_tensors[self.buffer_sharing[name]] = tensor
 
-    def allocate_buffers(self, shape_dict: Dict[str, Union[Tuple[int], List[int]]]):
+    def allocate_buffers(self, shape_dict: ShapeDict):
         """Allocate tensors for I/O Binding"""
         if self.enable_cuda_graph:
             for name, shape in shape_dict.items():
@@ -346,7 +349,7 @@ class GpuBinding(CudaSession):
         self,
         ort_session: InferenceSession,
         device: torch.device,
-        shape_dict: Dict[str, Union[Tuple[int], List[int]]],
+        shape_dict: ShapeDict,
         enable_gpu_graph: bool = False,
         gpu_graph_id: int = -1,
         stream: int = 0,
@@ -406,7 +409,7 @@ class GpuBindingManager:
 
     def get_binding(
         self,
-        shape_dict: Dict[str, Union[Tuple[int], List[int]]],
+        shape_dict: ShapeDict,
         use_cuda_graph: bool = False,
         buffer_sharing: Optional[Dict[str, str]] = None,
     ) -> GpuBinding:

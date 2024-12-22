@@ -25,13 +25,14 @@
 #include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/coreml/model/objc_str_utils.h"
 #include "core/providers/coreml/shape_utils.h"
+#include "core/providers/coreml/coreml_options.h"
 
 // force the linker to create a dependency on the CoreML framework so that in MAUI usage we don't need
 // to manually do this
 asm(".linker_option \"-framework\", \"CoreML\"");
 
-using namespace onnxruntime;
-using namespace onnxruntime::coreml;
+namespace onnxruntime {
+namespace coreml {
 
 namespace {
 /**
@@ -120,6 +121,10 @@ Status CreateInputFeatureProvider(const std::unordered_map<std::string, OnnxTens
         data_type = MLMultiArrayDataTypeFloat32;
         break;
       }
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+        data_type = MLMultiArrayDataTypeFloat16;
+        break;
+      }
       case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
         data_type = MLMultiArrayDataTypeInt32;
         break;
@@ -174,6 +179,16 @@ Status CreateInputFeatureProvider(const std::unordered_map<std::string, OnnxTens
   return Status::OK();
 }
 
+template <typename T>
+void StridedCopy(const T* src_buffer, T* dst_buffer, size_t block_size,
+                 size_t num_blocks, size_t src_stride, size_t dst_stride) {
+  for (size_t idx = 0; idx < num_blocks; ++idx) {
+    std::copy_n(src_buffer, block_size, dst_buffer);
+    src_buffer += src_stride;
+    dst_buffer += dst_stride;
+  }
+}
+
 Status CopyMLMultiArrayBuffer(const void* mlmultiarray_buffer, void* tensor_buffer,
                               const MLMultiArray* array,
                               const int64_t num_blocks, const int64_t block_size, const int64_t stride,
@@ -196,25 +211,21 @@ Status CopyMLMultiArrayBuffer(const void* mlmultiarray_buffer, void* tensor_buff
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
       const auto* src_buffer = static_cast<const float*>(mlmultiarray_buffer);
       auto* dst_buffer = static_cast<float*>(tensor_buffer);
-      const auto block_byte_size = block_size * sizeof(float);
+      StridedCopy<float>(src_buffer, dst_buffer, block_size, num_blocks, stride, block_size);
 
-      for (int64_t idx = 0; idx < num_blocks; ++idx) {
-        memcpy(dst_buffer, src_buffer, block_byte_size);
-        src_buffer += stride;
-        dst_buffer += block_size;
-      }
+      break;
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+      const auto* src_buffer = static_cast<const uint16_t*>(mlmultiarray_buffer);
+      auto* dst_buffer = static_cast<uint16_t*>(tensor_buffer);
+      StridedCopy<uint16_t>(src_buffer, dst_buffer, block_size, num_blocks, stride, block_size);
+
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
       const auto* src_buffer = static_cast<const int32_t*>(mlmultiarray_buffer);
       auto* dst_buffer = static_cast<int32_t*>(tensor_buffer);
-      const auto block_byte_size = block_size * sizeof(int32_t);
-
-      for (int64_t idx = 0; idx < num_blocks; ++idx) {
-        memcpy(dst_buffer, src_buffer, block_byte_size);
-        src_buffer += stride;
-        dst_buffer += block_size;
-      }
+      StridedCopy<int32_t>(src_buffer, dst_buffer, block_size, num_blocks, stride, block_size);
 
       break;
     }
@@ -246,213 +257,6 @@ Status CopyMLMultiArrayBuffer(const void* mlmultiarray_buffer, void* tensor_buff
   return Status::OK();
 }
 }  // namespace
-
-NS_ASSUME_NONNULL_BEGIN
-
-// Execution for a CoreML model, it performs
-// 1. Compile the model by given path for execution
-// 2. Predict using given OnnxTensorFeatureProvider input and copy the output data back ORT
-// 3. The compiled model will be removed in dealloc or removed using cleanup function
-@interface CoreMLExecution : NSObject {
-  NSString* coreml_model_path_;
-  NSString* compiled_model_path_;
-  const logging::Logger* logger_;
-  uint32_t coreml_flags_;
-}
-
-- (instancetype)initWithPath:(const std::string&)path
-                      logger:(const logging::Logger&)logger
-                coreml_flags:(uint32_t)coreml_flags;
-- (void)cleanup;
-- (void)dealloc;
-- (Status)loadModel API_AVAILABLE_COREML3;
-- (Status)predict:(const std::unordered_map<std::string, OnnxTensorData>&)inputs
-                  outputs:(const std::unordered_map<std::string, OnnxTensorInfo>&)outputs
-    getOutputTensorDataFn:(const GetOutputTensorMutableRawDataFn&)get_output_tensor_mutable_raw_data_fn
-    API_AVAILABLE_COREML3;
-
-@property(nullable) MLModel* model API_AVAILABLE_COREML3;
-
-@end
-
-@implementation CoreMLExecution
-
-- (instancetype)initWithPath:(const std::string&)path
-                      logger:(const logging::Logger&)logger
-                coreml_flags:(uint32_t)coreml_flags {
-  if (self = [super init]) {
-    coreml_model_path_ = util::Utf8StringToNSString(path.c_str());
-    logger_ = &logger;
-    coreml_flags_ = coreml_flags;
-  }
-  return self;
-}
-
-- (void)cleanup {
-  NSError* error = nil;
-  if (compiled_model_path_ != nil) {
-    [[NSFileManager defaultManager] removeItemAtPath:compiled_model_path_ error:&error];
-    if (error != nil) {
-      LOGS(*logger_, ERROR) << "Failed cleaning up the compiled model: " << [compiled_model_path_ UTF8String]
-                            << ", error message: " << [[error localizedDescription] UTF8String];
-    }
-    compiled_model_path_ = nil;
-  }
-
-#if !defined(NDEBUG)
-  std::string path_override = Env::Default().GetEnvironmentVar(util::kOverrideModelOutputDirectoryEnvVar);
-  if (!path_override.empty()) {
-    // don't cleanup
-    coreml_model_path_ = nil;
-  }
-#endif
-
-  if (coreml_model_path_ != nil) {
-    error = nil;
-    [[NSFileManager defaultManager] removeItemAtPath:coreml_model_path_ error:&error];
-    if (error != nil) {
-      LOGS(*logger_, ERROR) << "Failed cleaning up the coreml model: " << [coreml_model_path_ UTF8String]
-                            << ", error message: " << [[error localizedDescription] UTF8String];
-    }
-    coreml_model_path_ = nil;
-  }
-}
-
-- (void)dealloc {
-  [self cleanup];
-}
-
-- (Status)loadModel {
-  NSURL* modelUrl = [NSURL URLWithString:coreml_model_path_];
-  if (modelUrl == nil) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create model URL from path");
-  }
-
-  // TODO: Update this to version with callback handler as the API used here is deprecated.
-  // https://developer.apple.com/documentation/coreml/mlmodel/3929553-compilemodelaturl
-  // As we call loadModel during EP Compile there shouldn't be an issue letting the actual compile run in the
-  // background. We will have to check for completion in `predict` and block until it is done.
-  NSError* error = nil;
-  NSURL* compileUrl = [MLModel compileModelAtURL:modelUrl error:&error];
-
-  if (error != nil) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error compiling model: ",
-                           [[error localizedDescription] UTF8String]);
-  }
-
-  compiled_model_path_ = [compileUrl path];
-
-  MLModelConfiguration* config = [MLModelConfiguration alloc];
-  config.computeUnits = (coreml_flags_ & COREML_FLAG_USE_CPU_ONLY)
-                            ? MLComputeUnitsCPUOnly
-                            : MLComputeUnitsAll;
-  _model = [MLModel modelWithContentsOfURL:compileUrl configuration:config error:&error];
-
-  if (error != nil || _model == nil) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create MLModel",
-                           (error != nil) ? MakeString(", error: ", [[error localizedDescription] UTF8String]) : "");
-  }
-
-  return Status::OK();
-}
-
-- (Status)predict:(const std::unordered_map<std::string, OnnxTensorData>&)inputs
-                  outputs:(const std::unordered_map<std::string, OnnxTensorInfo>&)outputs
-    getOutputTensorDataFn:(const GetOutputTensorMutableRawDataFn&)get_output_tensor_mutable_raw_data_fn {
-  Status status = Status::OK();
-  ORT_TRY {
-    if (_model == nil) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Model is not loaded");
-    }
-
-    id<MLFeatureProvider> input_features;
-    InlinedVector<std::unique_ptr<int32_t[]>> conversion_buffers;
-    ORT_RETURN_IF_ERROR(CreateInputFeatureProvider(inputs, *logger_, &input_features, conversion_buffers));
-
-    MLPredictionOptions* options = [[MLPredictionOptions alloc] init];
-    NSError* error = nil;
-    id<MLFeatureProvider> output_features = [_model predictionFromFeatures:input_features
-                                                                   options:options
-                                                                     error:&error];
-
-    if (error != nil) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error executing model: ",
-                             [[error localizedDescription] UTF8String]);
-    }
-
-    for (const auto& [output_name, output_tensor_info] : outputs) {
-      MLFeatureValue* output_value =
-          [output_features featureValueForName:util::Utf8StringToNSString(output_name.c_str())];
-
-      if (output_value == nil) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "output_features has no value for ", output_name);
-      }
-
-      MLMultiArray* data = [output_value multiArrayValue];
-
-      const auto coreml_static_output_shape = [data]() {
-        InlinedVector<int64_t> result;
-        result.reserve(data.shape.count);
-        for (NSNumber* dim in data.shape) {
-          const auto dim_value = dim.longLongValue;
-          result.push_back(dim_value);
-        }
-        return result;
-      }();
-
-      const auto static_output_shape = GetStaticOutputShape(output_tensor_info.shape, coreml_static_output_shape,
-                                                            *logger_);
-
-      void* output_buffer = get_output_tensor_mutable_raw_data_fn(output_name, output_tensor_info.data_type,
-                                                                  static_output_shape);
-
-      if (const size_t num_elements = data.count; num_elements > 0) {
-        if (const auto shape_size = ShapeSize(static_output_shape);
-            shape_size < 0 || num_elements != static_cast<size_t>(shape_size)) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                 "CoreML MLMultiArray count (", num_elements, ") and shape size (", shape_size,
-                                 ") do not match");
-        }
-
-        // support a non-contiguous array, provided only one dimension is not contiguous
-        int64_t num_blocks = 0;
-        int64_t block_size = 0;
-        int64_t stride = 0;
-
-        ORT_RETURN_IF_ERROR(GetMLMultiArrayCopyInfo(data, num_blocks, block_size, stride));
-
-        __block Status copy_status;
-        const auto* tensor_info = &output_tensor_info;
-        // `getBytesWithHandler` replaces deprecated `.dataPointer` on new versions
-        if (@available(macOS 12.3, iOS 15.4, *)) {
-          [data getBytesWithHandler:^(const void* bytes, NSInteger size) {
-            copy_status = CopyMLMultiArrayBuffer(bytes, output_buffer, data,
-                                                 num_blocks, block_size, stride, tensor_info);
-          }];
-        } else {
-          copy_status = CopyMLMultiArrayBuffer(data.dataPointer, output_buffer, data,
-                                               num_blocks, block_size, stride, tensor_info);
-        }
-
-        ORT_RETURN_IF_ERROR(copy_status);
-      }
-    }
-  }
-  ORT_CATCH(const std::exception& e) {
-    ORT_HANDLE_EXCEPTION([&]() {
-      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exception: ", e.what());
-    });
-  }
-
-  return status;
-}
-
-@end
-
-NS_ASSUME_NONNULL_END
-
-namespace onnxruntime {
-namespace coreml {
 
 Status GetMLMultiArrayCopyInfo(const MLMultiArray* _Nonnull array,
                                int64_t& num_blocks, int64_t& block_size, int64_t& stride) {
@@ -497,12 +301,62 @@ Status GetMLMultiArrayCopyInfo(const MLMultiArray* _Nonnull array,
   return Status::OK();
 }
 
+// since __clang_major__ >= 15, MLComputePlan is introduced in <CoreML/CoreML.h>
+// We are actually ensure the MacOS/IOS version and Xcode version is greater than `macOS 14.4, iOS 17.4`.
+// The macro API_AVAILABLE should also be fine.
+// Otherwise, the compiler will complain `MLComputePlan` is not defined.
+// we define __clang_analyzer__ here is for bypass static analysis
+void ProfileComputePlan(NSURL* compileUrl, MLModelConfiguration* config) {
+#if defined(__APPLE__) && defined(__clang__) && __clang_major__ >= 15 && !defined(__clang_analyzer__)
+  if (@available(macOS 14.4, iOS 17.4, *)) {
+    [MLComputePlan loadContentsOfURL:compileUrl
+                       configuration:config
+                   completionHandler:^(MLComputePlan* _Nullable computePlan, NSError* _Nullable error) {
+                     if (!computePlan) {
+                       NSLog(@"Error loading compute plan: %@", error);
+                       // Handle error.
+                       return;
+                     }
+                     MLModelStructureProgram* program = computePlan.modelStructure.program;
+                     if (!program) {
+                       NSLog(@"Error loading program from compute plan., this is not a mlprogram model");
+                       return;
+                     }
+
+                     MLModelStructureProgramFunction* mainFunction = program.functions[@"main"];
+                     if (!mainFunction) {
+                       NSLog(@"Error loading main function from program");
+                       return;
+                     }
+
+                     NSArray<MLModelStructureProgramOperation*>* operations = mainFunction.block.operations;
+                     NSLog(@"Number of operations, 'const' node is included. : %lu", operations.count);
+                     for (MLModelStructureProgramOperation* operation in operations) {
+                       // Get the compute device usage for the operation.
+                       MLComputePlanDeviceUsage* computeDeviceUsage = [computePlan computeDeviceUsageForMLProgramOperation:operation];
+                       id<MLComputeDeviceProtocol> preferredDevice = computeDeviceUsage.preferredComputeDevice;
+                       // Get the estimated cost of executing the operation.
+                       MLComputePlanCost* estimatedCost = [computePlan estimatedCostOfMLProgramOperation:operation];
+                       if (![operation.operatorName isEqualToString:@"const"]) {
+                         NSLog(@"Operation: %@, Device Usage: %@, Estimated Cost: %f", operation.operatorName, preferredDevice, estimatedCost.weight);
+                       }
+                     }
+                   }];
+  } else {
+    NSLog(@"iOS 17.4+/macOS 14.4+ or later is required to use the compute plan API");
+  }
+#endif
+}
+
 // Internal Execution class
-// This class will bridge Model (c++) with CoreMLExecution (objective c++)
+// This class is part of the model class and handles the calls into CoreML. Specifically, it performs
+// 1. Compile the model by given path for execution
+// 2. Predict using given OnnxTensorFeatureProvider input and copy the output data back ORT
+// 3. The compiled model will be removed in dealloc or removed using cleanup function
 class Execution {
  public:
-  Execution(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags);
-  ~Execution() {};
+  Execution(const std::string& path, const logging::Logger& logger, const CoreMLOptions& coreml_options);
+  ~Execution();
 
   Status LoadModel();
   Status Predict(const std::unordered_map<std::string, OnnxTensorData>& inputs,
@@ -510,30 +364,129 @@ class Execution {
                  const GetOutputTensorMutableRawDataFn& get_output_tensor_mutable_raw_data_fn);
 
  private:
-  bool model_loaded{false};
-  CoreMLExecution* execution_;
+  void cleanup();
+  NSString* coreml_model_path_{nil};
+  NSString* compiled_model_path_{nil};
+  const logging::Logger& logger_;
+  CoreMLOptions coreml_options_;
+  MLModel* model_{nil};
 };
 
-Execution::Execution(const std::string& path, const logging::Logger& logger, uint32_t coreml_flags) {
+Execution::Execution(const std::string& path, const logging::Logger& logger, const CoreMLOptions& coreml_options)
+    : logger_(logger),
+      coreml_options_(coreml_options) {
   @autoreleasepool {
-    execution_ = [[CoreMLExecution alloc] initWithPath:path
-                                                logger:logger
-                                          coreml_flags:coreml_flags];
+    coreml_model_path_ = util::Utf8StringToNSString(path.c_str());
+  }
+}
+
+Execution::~Execution() {
+  @autoreleasepool {
+    cleanup();
+  }
+}
+
+void Execution::cleanup() {
+  NSError* error = nil;
+  if (compiled_model_path_ != nil) {
+    [[NSFileManager defaultManager] removeItemAtPath:compiled_model_path_ error:&error];
+    if (error != nil) {
+      LOGS(logger_, ERROR) << "Failed cleaning up the compiled model: " << [compiled_model_path_ UTF8String]
+                           << ", error message: " << [[error localizedDescription] UTF8String];
+    }
+    compiled_model_path_ = nil;
+  }
+
+#if !defined(NDEBUG)
+  std::string path_override = Env::Default().GetEnvironmentVar(util::kOverrideModelOutputDirectoryEnvVar);
+  if (!path_override.empty()) {
+    // don't cleanup
+    coreml_model_path_ = nil;
+  }
+#endif
+
+  if (coreml_model_path_ != nil) {
+    error = nil;
+    [[NSFileManager defaultManager] removeItemAtPath:coreml_model_path_ error:&error];
+    if (error != nil) {
+      LOGS(logger_, ERROR) << "Failed cleaning up the coreml model: " << [coreml_model_path_ UTF8String]
+                           << ", error message: " << [[error localizedDescription] UTF8String];
+    }
+    coreml_model_path_ = nil;
   }
 }
 
 Status Execution::LoadModel() {
-  if (model_loaded) {
+  if (model_ != nil) {
     return Status::OK();
   }
 
   if (HAS_COREML3_OR_LATER) {
-    Status status{};
     @autoreleasepool {
-      status = [execution_ loadModel];
+      NSError* error = nil;
+
+      NSURL* modelUrl = [NSURL URLWithString:coreml_model_path_];
+      if (modelUrl == nil) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create model URL from path");
+      }
+
+      // TODO: Update this to version with callback handler as the API used here is deprecated.
+      // https://developer.apple.com/documentation/coreml/mlmodel/3929553-compilemodelaturl
+      // As we call loadModel during EP Compile there shouldn't be an issue letting the actual compile run in the
+      // background. We will have to check for completion in `predict` and block until it is done.
+      NSURL* compileUrl = [MLModel compileModelAtURL:modelUrl error:&error];
+      if (error != nil) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error compiling model: ",
+                               [[error localizedDescription] UTF8String]);
+      }
+
+      compiled_model_path_ = [compileUrl path];
+
+      MLModelConfiguration* config = [[MLModelConfiguration alloc] init];
+      uint32_t coreml_compute_unit = coreml_options_.ComputeUnits();
+      if (coreml_compute_unit & COREML_FLAG_USE_CPU_ONLY) {
+        config.computeUnits = MLComputeUnitsCPUOnly;
+      } else if (coreml_compute_unit & COREML_FLAG_USE_CPU_AND_GPU) {
+        config.computeUnits = MLComputeUnitsCPUAndGPU;
+      } else if (coreml_compute_unit & COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE) {
+        config.computeUnits = MLComputeUnitsCPUAndNeuralEngine;  // Apple Neural Engine
+      } else {
+        config.computeUnits = MLComputeUnitsAll;
+      }
+
+      if (coreml_options_.AllowLowPrecisionAccumulationOnGPU()) {
+        config.allowLowPrecisionAccumulationOnGPU = YES;
+      }
+
+// Set the specialization strategy to FastPrediction  for macOS 10.15+
+// since __clang_major__ >= 15, optimizationHints is introduced in <CoreML/CoreML.h>
+// Same as above comments for why we are checking __clang_major__.
+// we define __clang_analyzer__ here is for bypass static analysis
+#if defined(__APPLE__) && defined(__clang__) && __clang_major__ >= 15 && !defined(__clang_analyzer__)
+      if (HAS_COREML8_OR_LATER) {
+        MLOptimizationHints* optimizationHints = [[MLOptimizationHints alloc] init];
+        if (coreml_options_.UseStrategy("FastPrediction")) {
+          optimizationHints.specializationStrategy = MLSpecializationStrategyFastPrediction;
+          config.optimizationHints = optimizationHints;
+        } else if (coreml_options_.UseStrategy("Default")) {
+          optimizationHints.specializationStrategy = MLSpecializationStrategyDefault;
+          config.optimizationHints = optimizationHints;
+        }
+      }
+#endif
+      if (coreml_options_.ProfileComputePlan()) {
+        ProfileComputePlan(compileUrl, config);
+      }
+
+      model_ = [MLModel modelWithContentsOfURL:compileUrl configuration:config error:&error];
+
+      if (error != nil || model_ == nil) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create MLModel",
+                               (error != nil) ? MakeString(", error: ", [[error localizedDescription] UTF8String]) : "");
+      }
+
+      return Status::OK();
     }
-    model_loaded = status.IsOK();
-    return status;
   }
 
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Execution::LoadModel requires macos 10.15+ or ios 13+");
@@ -542,13 +495,94 @@ Status Execution::LoadModel() {
 Status Execution::Predict(const std::unordered_map<std::string, OnnxTensorData>& inputs,
                           const std::unordered_map<std::string, OnnxTensorInfo>& outputs,
                           const GetOutputTensorMutableRawDataFn& get_output_tensor_mutable_raw_data_fn) {
-  ORT_RETURN_IF_NOT(model_loaded, "Execution::Predict requires Execution::LoadModel");
-
   if (HAS_COREML3_OR_LATER) {
     @autoreleasepool {
-      return [execution_ predict:inputs
-                         outputs:outputs
-           getOutputTensorDataFn:get_output_tensor_mutable_raw_data_fn];
+      Status status = Status::OK();
+      ORT_TRY {
+        if (model_ == nil) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Model is not loaded");
+        }
+
+        id<MLFeatureProvider> input_features;
+        InlinedVector<std::unique_ptr<int32_t[]>> conversion_buffers;
+        ORT_RETURN_IF_ERROR(CreateInputFeatureProvider(inputs, logger_, &input_features, conversion_buffers));
+
+        MLPredictionOptions* options = [[MLPredictionOptions alloc] init];
+        NSError* error = nil;
+        id<MLFeatureProvider> output_features = [model_ predictionFromFeatures:input_features
+                                                                       options:options
+                                                                         error:&error];
+
+        if (error != nil) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Error executing model: ",
+                                 [[error localizedDescription] UTF8String]);
+        }
+
+        for (const auto& [output_name, output_tensor_info] : outputs) {
+          MLFeatureValue* output_value =
+              [output_features featureValueForName:util::Utf8StringToNSString(output_name.c_str())];
+
+          if (output_value == nil) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "output_features has no value for ", output_name);
+          }
+
+          MLMultiArray* data = [output_value multiArrayValue];
+
+          const auto coreml_static_output_shape = [data]() {
+            InlinedVector<int64_t> result;
+            result.reserve(data.shape.count);
+            for (NSNumber* dim in data.shape) {
+              const auto dim_value = dim.longLongValue;
+              result.push_back(dim_value);
+            }
+            return result;
+          }();
+
+          const auto static_output_shape = GetStaticOutputShape(output_tensor_info.shape, coreml_static_output_shape,
+                                                                logger_);
+
+          void* output_buffer = get_output_tensor_mutable_raw_data_fn(output_name, output_tensor_info.data_type,
+                                                                      static_output_shape);
+
+          if (const size_t num_elements = data.count; num_elements > 0) {
+            if (const auto shape_size = ShapeSize(static_output_shape);
+                shape_size < 0 || num_elements != static_cast<size_t>(shape_size)) {
+              return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                                     "CoreML MLMultiArray count (", num_elements, ") and shape size (", shape_size,
+                                     ") do not match");
+            }
+
+            // support a non-contiguous array, provided only one dimension is not contiguous
+            int64_t num_blocks = 0;
+            int64_t block_size = 0;
+            int64_t stride = 0;
+
+            ORT_RETURN_IF_ERROR(GetMLMultiArrayCopyInfo(data, num_blocks, block_size, stride));
+
+            __block Status copy_status;
+            const auto* tensor_info = &output_tensor_info;
+            // `getBytesWithHandler` replaces deprecated `.dataPointer` on new versions
+            if (@available(macOS 12.3, iOS 15.4, *)) {
+              [data getBytesWithHandler:^(const void* bytes, NSInteger size) {
+                copy_status = CopyMLMultiArrayBuffer(bytes, output_buffer, data,
+                                                     num_blocks, block_size, stride, tensor_info);
+              }];
+            } else {
+              copy_status = CopyMLMultiArrayBuffer(data.dataPointer, output_buffer, data,
+                                                   num_blocks, block_size, stride, tensor_info);
+            }
+
+            ORT_RETURN_IF_ERROR(copy_status);
+          }
+        }
+      }
+      ORT_CATCH(const std::exception& e) {
+        ORT_HANDLE_EXCEPTION([&]() {
+          status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Exception: ", e.what());
+        });
+      }
+
+      return status;
     }
   }
 
@@ -562,8 +596,8 @@ Model::Model(const std::string& path,
              std::unordered_set<std::string>&& scalar_outputs,
              std::unordered_set<std::string>&& int64_outputs,
              const logging::Logger& logger,
-             uint32_t coreml_flags)
-    : execution_(std::make_unique<Execution>(path, logger, coreml_flags)),
+             const CoreMLOptions& coreml_options)
+    : execution_(std::make_unique<Execution>(path, logger, coreml_options)),
       model_input_names_(std::move(model_input_names)),
       model_output_names_(std::move(model_output_names)),
       input_output_info_(std::move(input_output_info)),

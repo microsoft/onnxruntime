@@ -29,6 +29,8 @@ const ONNXRUNTIME_GENERATOR = buildArgs['onnxruntime-generator'];
 const REBUILD = !!buildArgs.rebuild;
 // --use_dml
 const USE_DML = !!buildArgs.use_dml;
+// --use_webgpu
+const USE_WEBGPU = !!buildArgs.use_webgpu;
 // --use_cuda
 const USE_CUDA = !!buildArgs.use_cuda;
 // --use_tensorrt
@@ -37,6 +39,8 @@ const USE_TENSORRT = !!buildArgs.use_tensorrt;
 const USE_COREML = !!buildArgs.use_coreml;
 // --use_qnn
 const USE_QNN = !!buildArgs.use_qnn;
+// --dll_deps=
+const DLL_DEPS = buildArgs.dll_deps;
 
 // build path
 const ROOT_FOLDER = path.join(__dirname, '..');
@@ -65,6 +69,9 @@ if (ONNXRUNTIME_GENERATOR && typeof ONNXRUNTIME_GENERATOR === 'string') {
 if (USE_DML) {
   args.push('--CDUSE_DML=ON');
 }
+if (USE_WEBGPU) {
+  args.push('--CDUSE_WEBGPU=ON');
+}
 if (USE_CUDA) {
   args.push('--CDUSE_CUDA=ON');
 }
@@ -76,6 +83,9 @@ if (USE_COREML) {
 }
 if (USE_QNN) {
   args.push('--CDUSE_QNN=ON');
+}
+if (DLL_DEPS) {
+  args.push(`--CDORT_NODEJS_DLL_DEPS=${DLL_DEPS}`);
 }
 
 // set CMAKE_OSX_ARCHITECTURES for macOS build

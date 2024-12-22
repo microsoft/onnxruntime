@@ -20,9 +20,7 @@ if (!BUILD_DEFS.DISABLE_WEBGL) {
 }
 
 if (!BUILD_DEFS.DISABLE_WASM) {
-  const wasmBackend = BUILD_DEFS.DISABLE_TRAINING
-    ? require('./backend-wasm-inference').wasmBackend
-    : require('./backend-wasm-training').wasmBackend;
+  const wasmBackend = require('./backend-wasm').wasmBackend;
   if (!BUILD_DEFS.DISABLE_JSEP) {
     registerBackend('webgpu', wasmBackend, 5);
     registerBackend('webnn', wasmBackend, 5);

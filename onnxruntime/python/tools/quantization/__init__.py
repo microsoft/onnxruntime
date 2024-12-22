@@ -10,6 +10,7 @@ from .quant_utils import QuantFormat, QuantType, write_calibration_table  # noqa
 from .quantize import DynamicQuantConfig  # noqa: F401
 from .quantize import QuantizationMode  # noqa: F401
 from .quantize import StaticQuantConfig  # noqa: F401
+from .quantize import get_qdq_config  # noqa: F401
 from .quantize import quantize  # noqa: F401
 from .quantize import quantize_dynamic  # noqa: F401
 from .quantize import quantize_static  # noqa: F401

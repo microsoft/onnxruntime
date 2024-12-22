@@ -1,6 +1,7 @@
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 #include "vitisai_execution_provider.h"
+#include "vitisai_profiler.h"
 
 // Standard headers/libs.
 #include <cassert>
@@ -25,8 +26,6 @@ constexpr const char* VITISAI = "VITISAI";
 VitisAIExecutionProvider::VitisAIExecutionProvider(
     const ProviderOptions& info)
     : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider}, info_(info) {
-  CreateKernelRegistry();
-
   auto it = info_.find("ep_context_enable");
   ep_ctx_enabled_ = it != info_.end() && it->second == "1";
   it = info_.find("ep_context_embed_mode");
@@ -37,14 +36,6 @@ VitisAIExecutionProvider::VitisAIExecutionProvider(
   LOGS_DEFAULT(VERBOSE) << "EP Context cache enabled: " << ep_ctx_enabled_;
   LOGS_DEFAULT(VERBOSE) << "EP context cache embed mode: " << ep_ctx_embed_mode_;
   LOGS_DEFAULT(VERBOSE) << "User specified EP context cache path: " << ep_ctx_model_path_cfg_;
-}
-
-void VitisAIExecutionProvider::CreateKernelRegistry() {
-  for (const auto& domain : get_domains_vitisaiep()) {
-    for (const auto* op : domain->custom_ops_) {
-      vitisai_optypes_.insert(domain->domain_ + ":" + op->GetName(op));
-    }
-  }
 }
 
 std::shared_ptr<KernelRegistry> VitisAIExecutionProvider::GetKernelRegistry() const { return get_kernel_registry_vitisaiep(); }
@@ -60,7 +51,7 @@ const InlinedVector<const Node*> VitisAIExecutionProvider::GetEpContextNodes() c
   return ep_context_node_ptrs;
 }
 std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCapability(
-    const onnxruntime::GraphViewer& graph_viewer, const IKernelLookup& /*kernel_lookup*/) const {
+    const onnxruntime::GraphViewer& graph_viewer, const IKernelLookup& kernel_lookup) const {
   if (graph_viewer.IsSubgraph()) {
     // VITIS AI EP not support sungraph. Assigned to CPU.
     return {};
@@ -70,7 +61,7 @@ std::vector<std::unique_ptr<ComputeCapability>> VitisAIExecutionProvider::GetCap
     return {};
   }
   execution_providers_ = std::make_unique<my_ep_t>(compile_onnx_model(graph_viewer, *GetLogger(), info_));
-  auto result = vaip::GetComputeCapabilityOps(graph_viewer, execution_providers_.get(), vitisai_optypes_);
+  auto result = vaip::GetComputeCapabilityOps(graph_viewer, execution_providers_.get(), kernel_lookup);
   size_t index = 0u;
   for (auto& ep : **execution_providers_) {
     result.emplace_back(vaip::XirSubgraphToComputeCapability1(graph_viewer, ep.get(), index));
@@ -86,7 +77,17 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndG
     auto& attrs = fused_node_graph.fused_node.get().GetAttributes();
     assert(attrs.count("index"));
     size_t index = attrs.at("index").i();
-    (**this->execution_providers_)[index]->set_fused_node(&fused_node_graph.fused_node.get());
+    auto& ep = (**this->execution_providers_)[index];
+    ep->set_fused_node(&fused_node_graph.fused_node.get());
+    if (ep->get_meta_def_fallback_CPU()) {
+      auto& subgraph = fused_node_graph.filtered_graph.get();
+      auto& logger = logging::LoggingManager::DefaultLogger();
+      auto model_proto = subgraph.CreateModel(logger)->ToProto();
+      subgraph.ToProto(*model_proto->mutable_graph(), true, true);
+      auto local_registries = IOnnxRuntimeOpSchemaRegistryList{subgraph.GetSchemaRegistry()};
+      auto model = Model::Create(std::move(*model_proto), subgraph.ModelPath(), &local_registries, logger);
+      ep->set_model(model.release());
+    }
     compute_info.create_state_func = [this, index](ComputeContext* context, FunctionState* state) {
       auto* p = (**this->execution_providers_)[index]->compile().release();
       *state = p;
@@ -107,4 +108,36 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndG
   return Status::OK();
 }
 
+common::Status VitisAIExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
+  InlinedVector<const Node*> ep_context_node_ptrs;
+  auto get_config_entry = [](const void* state, const char* entry_name) -> vaip_core::DllSafe<std::string> {
+    const onnxruntime::RunOptions& run_options = *static_cast<const onnxruntime::RunOptions*>(state);
+    auto ret = run_options.GetConfigOptions().GetConfigEntry(std::string(entry_name));
+    if (ret) {
+      return vaip_core::DllSafe<std::string>(new std::string(ret.value()));
+    } else {
+      return {};
+    };
+  };
+  auto error_code = vitisai_ep_on_run_start(**execution_providers_, (const void*)&run_options, get_config_entry);
+  if (error_code) {
+    std::string error_msg = "vitisai_ep_on_run_start ret: " + std::to_string(error_code);
+    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, error_msg);
+  }
+  return Status::OK();
+}
+
+common::Status VitisAIExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> keys,
+                                                             gsl::span<const char* const> values) {
+  auto error_code = vitisai_ep_set_ep_dynamic_options(**execution_providers_, keys.data(), values.data(), std::min(keys.size(), values.size()));
+  if (error_code) {
+    std::string error_msg = "vitisai_ep_set_ep_dynamic_options ret: " + std::to_string(error_code);
+    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, error_msg);
+  }
+  return Status::OK();
+}
+
+std::unique_ptr<profiling::EpProfiler> VitisAIExecutionProvider::GetProfiler() {
+  return std::make_unique<profiling::VitisaiProfiler>();
+}
 }  // namespace onnxruntime

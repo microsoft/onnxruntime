@@ -26,11 +26,11 @@ class Unsqueeze final : public JsKernel, public UnsqueezeBase {
     if (num_inputs == 2) {  // axes is an input
       const Tensor* axes_tensor = context->Input<Tensor>(1);
       ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
-      ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 1,
-                  "An axes tensor must be a vector tensor.");
-      auto nDims = static_cast<size_t>(axes_tensor->Shape()[0]);
-      const auto* data = axes_tensor->Data<int64_t>();
-      axes.assign(data, data + nDims);
+      ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 0 ||
+                      axes_tensor->Shape().NumDimensions() == 1,
+                  "An axes tensor must be a scalar or a vector tensor.");
+      auto data_span = axes_tensor->template DataAsSpan<int64_t>();
+      axes.assign(data_span.begin(), data_span.end());
     } else {
       axes.assign(axes_.begin(), axes_.end());
     }

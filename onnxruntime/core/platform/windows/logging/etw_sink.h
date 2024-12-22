@@ -24,7 +24,7 @@
 
 #include "core/common/logging/capture.h"
 #include "core/common/logging/isink.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 
 namespace onnxruntime {
 namespace logging {
@@ -98,9 +98,9 @@ class EtwRegistrationManager {
       _In_opt_ PVOID CallbackContext);
 
   std::vector<const EtwInternalCallback*> callbacks_;
-  OrtMutex callbacks_mutex_;
-  mutable OrtMutex provider_change_mutex_;
-  OrtMutex init_mutex_;
+  std::mutex callbacks_mutex_;
+  mutable std::mutex provider_change_mutex_;
+  std::mutex init_mutex_;
   InitializationStatus initialization_status_ = InitializationStatus::NotInitialized;
   bool is_enabled_;
   UCHAR level_;

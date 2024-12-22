@@ -155,7 +155,7 @@ Using `Show Code Coverage Coloring` will allow you to visually inspect which lin
 This project uses [lintrunner](https://github.com/suo/lintrunner) for linting. It provides a consistent linting experience locally and in CI. You can install the dependencies and initialize with
 
 ```sh
-pip install lintrunner lintrunner-adapters
+pip install -r requirements-lintrunner.txt
 lintrunner init
 ```
 
@@ -164,22 +164,16 @@ dependencies to run linters locally.
 If you want to see what lintrunner init will install, run
 `lintrunner init --dry-run`.
 
-To lint local changes:
-
-```bash
-lintrunner
-```
-
-To format files and apply suggestions:
+To format local changes:
 
 ```bash
 lintrunner -a
 ```
 
-To lint all files:
+To format all files:
 
 ```bash
-lintrunner --all-files
+lintrunner -a --all-files
 ```
 
 To show help text:

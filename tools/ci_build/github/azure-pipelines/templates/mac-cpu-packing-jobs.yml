@@ -31,13 +31,13 @@ jobs:
   workspace:
     clean: all
   variables:
-    MACOSX_DEPLOYMENT_TARGET: '11.0'
+    MACOSX_DEPLOYMENT_TARGET: '13.3'
     ALLOW_RELEASED_ONNX_OPSET_ONLY: ${{ parameters.AllowReleasedOpsetOnly }}
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
     PROTO_CACHE_DIR: $(Pipeline.Workspace)/ccache_proto
     ORT_CACHE_DIR: $(Pipeline.Workspace)/ccache_ort
   pool:
-    vmImage: 'macOS-latest'
+    vmImage: 'macOS-13'
   timeoutInMinutes: 300
   steps:
   - checkout: self
@@ -45,24 +45,23 @@ jobs:
     submodules: none
 
   - task: UsePythonVersion@0
-    displayName: Use Python 3.11
+    displayName: Use Python 3.10
     inputs:
-      versionSpec: 3.11
+      versionSpec: 3.10
+
   - task: NodeTool@0
     inputs:
-      versionSpec: '18.x'
+      versionSpec: '20.x'
 
   - task: JavaToolInstaller@0
     inputs:
-      versionSpec: "11"
+      versionSpec: "17"
       jdkArchitectureOption: "x64"
       jdkSourceOption: 'PreInstalled'
 
   - template: set-version-number-variables-step.yml
 
   - template: use-xcode-version.yml
-    parameters:
-      xcodeVersion: 14.2
 
   - template: download-deps.yml
 
@@ -73,32 +72,19 @@ jobs:
       arguments: --new_dir $(Build.BinariesDirectory)/deps
       workingDirectory: $(Build.BinariesDirectory)
 
-  - template: mac-build-step-with-cache.yml
-    parameters:
-      WithCache: ${{ parameters.WithCache }}
-      Today: $(TODAY)
-      AdditionalKey: ' protobuf | "$(Agent.OS)" | $(Build.SourcesDirectory)/cmake/deps.txt, $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x86_64/python/cpu/scripts/install_protobuf.sh'
-      CacheDir: $(PROTO_CACHE_DIR)
-      ChangeEveryCommit: false
-      BuildStep:
-        - script: |
-            set -e -x
-            pushd .
-            $(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/inference/x86_64/python/cpu/scripts/install_protobuf.sh -d $(Build.SourcesDirectory)/cmake/deps.txt -p $(Build.BinariesDirectory)/installed
-            popd
-            export PATH=$(Build.BinariesDirectory)/installed/bin:$PATH
-            export ONNX_ML=1
-            export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=OFF -DONNX_WERROR=OFF"
-            python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
-          displayName: 'Install dependencies'
-          env:
-            CCACHE_DIR: $(PROTO_CACHE_DIR)
+  - script: |
+      set -e -x
+      export PATH=$(Build.BinariesDirectory)/installed/bin:$PATH
+      export ONNX_ML=1
+      export CMAKE_ARGS="-DONNX_GEN_PB_TYPE_STUBS=ON -DONNX_WERROR=OFF"
+      python3 -m pip install -r '$(Build.SourcesDirectory)/tools/ci_build/github/linux/docker/scripts/requirements.txt'
+
 
   - ${{ if eq(parameters.MacosArch, 'universal2') }}:
     - template: mac-cpu-packaging-steps.yml
       parameters:
         MacosArch: ${{ parameters.MacosArch }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --use_coreml --use_webgpu --cmake_extra_defines CMAKE_OSX_ARCHITECTURES="arm64;x86_64"
         BuildJava: false
         BuildNodejs: false
         WithCache: ${{ parameters.WithCache }}
@@ -110,7 +96,7 @@ jobs:
     - template: mac-cpu-packaging-steps.yml
       parameters:
         MacosArch: ${{ parameters.MacosArch }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --use_webgpu --cmake_extra_defines CMAKE_OSX_ARCHITECTURES=arm64
         BuildJava: true
         BuildNodejs: true
         WithCache: ${{ parameters.WithCache }}
@@ -122,7 +108,7 @@ jobs:
     - template: mac-cpu-packaging-steps.yml
       parameters:
         MacosArch: ${{ parameters.MacosArch }}
-        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml
+        AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }} --build_nodejs --build_java --use_coreml --use_webgpu
         BuildJava: true
         BuildNodejs: true
         WithCache: ${{ parameters.WithCache }}

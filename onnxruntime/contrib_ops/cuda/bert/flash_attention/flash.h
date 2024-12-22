@@ -74,6 +74,7 @@ struct Flash_fwd_params : public Qkv_params {
   // The scaling factors for the kernel.
   float scale_softmax = 0.0;
   float scale_softmax_log2 = 0.0;
+  float softcap = 0.0;
 
   // array of length b+1 holding starting offset of each sequence.
   int* __restrict__ cu_seqlens_q = nullptr;
@@ -120,6 +121,8 @@ struct Flash_fwd_params : public Qkv_params {
   bool is_seqlens_k_cumulative = true;
 
   bool is_rotary_interleaved = false;
+
+  bool smooth_softmax = false;
 
   int num_splits = 0;  // For split-KV version
 

@@ -1,0 +1,30 @@
+parameters:
+- name: JarFileDirectory
+  type: string
+  default: ''
+
+- name: JarFileName
+  type: string
+  default: ''
+
+steps:
+  - task: PowerShell@2
+    displayName: 'ESRP Jar - Extract Jar File'
+    inputs:
+      targetType: filePath
+      filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\jar_esrp_dll.ps1
+      arguments: extract '${{ parameters.JarFileDirectory }}' '${{ parameters.JarFileName }}'
+      workingDirectory: '$(Build.BinariesDirectory)'
+
+  - template: win-esrp-dll.yml
+    parameters:
+      FolderPath: '${{ parameters.JarFileDirectory }}\jar_extracted_full_files'
+      DisplayName: 'ESRP Jar - Sign Dlls'
+
+  - task: PowerShell@2
+    displayName: 'ESRP Jar - Repack Jar File'
+    inputs:
+      targetType: filePath
+      filePath: $(Build.SourcesDirectory)\tools\ci_build\github\windows\jar_esrp_dll.ps1
+      arguments: repack '${{ parameters.JarFileDirectory }}' '${{ parameters.JarFileName }}'
+      workingDirectory: '$(Build.BinariesDirectory)'

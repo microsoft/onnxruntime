@@ -1,4 +1,5 @@
 ##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
 trigger:
   branches:
     include:
@@ -32,5 +33,5 @@ jobs:
   parameters:
     AgentPool : 'Linux-CPU-2019'
     JobName: 'Linux_CI_Dev'
-    RunDockerBuildArgs: '-o ubuntu22.04 -p 3.10 -d openvino -v 2024.0.0 -x "--use_openvino CPU --build_wheel"'
+    RunDockerBuildArgs: '-o ubuntu22.04 -p 3.10 -d openvino -v 2024.5.0 -x "--use_openvino CPU --build_wheel"'
     TimeoutInMinutes: 120

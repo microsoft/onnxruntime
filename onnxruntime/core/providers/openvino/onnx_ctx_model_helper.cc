@@ -4,6 +4,7 @@
 #include <string>
 #include <fstream>
 #include <vector>
+#include <algorithm>
 
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
 
@@ -18,85 +19,103 @@ Status EPCtxHandler::ExportEPCtxModel(const GraphViewer& graph_viewer,
                                       const std::string& graph_name,
                                       const logging::Logger& logger,
                                       const bool& ep_context_embed_mode,
-                                      const std::string& model_blob_str,
+                                      std::string&& model_blob_str,
                                       const std::string& openvino_sdk_version) const {
-  auto model_build = graph_viewer.CreateModel(logger);
+  auto& metadata = graph_viewer.GetGraph().GetModel().MetaData();
+  auto model_build = graph_viewer.CreateModel(logger, metadata);
   auto& graph_build = model_build->MainGraph();
 
   // Get graph inputs and outputs
-  std::vector<onnxruntime::NodeArg*> inputs, outputs;
-  for (auto input : graph_viewer.GetInputs()) {
-    auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
-    inputs.push_back(&n_input);
-  }
-  for (auto output : graph_viewer.GetOutputs()) {
-    auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
-    outputs.push_back(&n_output);
-  }
+  const auto& viewer_inputs = graph_viewer.GetInputs();
+  const auto& viewer_outputs = graph_viewer.GetOutputs();
+  std::vector<onnxruntime::NodeArg*> inputs(viewer_inputs.size()), outputs(viewer_outputs.size());
+  auto transform_f = [&](const onnxruntime::NodeArg* iter) { return &graph_build.GetOrCreateNodeArg(iter->Name(), iter->TypeAsProto()); };
+  auto fill_vectors = [transform_f](auto& src, auto& dst) {
+    std::transform(src.begin(), src.end(), dst.begin(), transform_f);
+  };
+  fill_vectors(viewer_inputs, inputs);
+  fill_vectors(viewer_outputs, outputs);
 
   // Create EP context node attributes
-  auto attr_0 = ONNX_NAMESPACE::AttributeProto::Create();
-  auto attr_1 = ONNX_NAMESPACE::AttributeProto::Create();
-  auto attr_2 = ONNX_NAMESPACE::AttributeProto::Create();
-  auto attr_3 = ONNX_NAMESPACE::AttributeProto::Create();
-
-  // embed mode
-  attr_0->set_name(EMBED_MODE);
-  attr_0->set_type(onnx::AttributeProto_AttributeType_INT);
-  attr_0->set_i(ep_context_embed_mode);
-  // ep context
-  attr_1->set_name(EP_CACHE_CONTEXT);
-  attr_1->set_type(onnx::AttributeProto_AttributeType_STRING);
-  attr_1->set_s(model_blob_str);
-  // sdk version
-  attr_2->set_name(EP_SDK_VER);
-  attr_2->set_type(onnx::AttributeProto_AttributeType_STRING);
-  attr_2->set_s(openvino_sdk_version);
-  // source
-  attr_3->set_name(SOURCE);
-  attr_3->set_type(onnx::AttributeProto_AttributeType_STRING);
-  attr_3->set_s(kOpenVINOExecutionProvider);
-
   auto node_attributes = ONNX_NAMESPACE::NodeAttributes::Create();
   node_attributes->reserve(4);
-  node_attributes->emplace(EMBED_MODE, *attr_0);
-  node_attributes->emplace(EP_CACHE_CONTEXT, *attr_1);
-  node_attributes->emplace(EP_SDK_VER, *attr_2);
-  node_attributes->emplace(SOURCE, *attr_3);
+  {
+    // Create EP context node attributes
 
+    // embed mode
+    auto embed_mode_attr = ONNX_NAMESPACE::AttributeProto::Create();
+    embed_mode_attr->set_name(EMBED_MODE);
+    embed_mode_attr->set_type(onnx::AttributeProto_AttributeType_INT);
+    embed_mode_attr->set_i(ep_context_embed_mode);
+    node_attributes->emplace(EMBED_MODE, std::move(*embed_mode_attr));
+
+    // ep context
+    auto ep_cache_context_attr = ONNX_NAMESPACE::AttributeProto::Create();
+    ep_cache_context_attr->set_name(EP_CACHE_CONTEXT);
+    ep_cache_context_attr->set_type(onnx::AttributeProto_AttributeType_STRING);
+    ep_cache_context_attr->set_s(std::move(model_blob_str));
+    node_attributes->emplace(EP_CACHE_CONTEXT, std::move(*ep_cache_context_attr));
+
+    // sdk version
+    auto sdk_version_attr = ONNX_NAMESPACE::AttributeProto::Create();
+    sdk_version_attr->set_name(EP_SDK_VER);
+    sdk_version_attr->set_type(onnx::AttributeProto_AttributeType_STRING);
+    sdk_version_attr->set_s(openvino_sdk_version);
+    node_attributes->emplace(EP_SDK_VER, std::move(*sdk_version_attr));
+
+    // source
+    auto source_attr = ONNX_NAMESPACE::AttributeProto::Create();
+    source_attr->set_name(SOURCE);
+    source_attr->set_type(onnx::AttributeProto_AttributeType_STRING);
+    source_attr->set_s(kOpenVINOExecutionProvider);
+    node_attributes->emplace(SOURCE, std::move(*source_attr));
+  }
   // Create EP context node
-  graph_build.AddNode(graph_name, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), kMSDomain);
+  graph_build.AddNode(graph_name, EPCONTEXT_OP, "", inputs, outputs, std::move(*node_attributes), kMSDomain);
   ORT_ENFORCE(graph_build.Resolve().IsOK());
 
-  // Serialize modelproto to string
-  auto new_graph_viewer = graph_build.CreateGraphViewer();
-  auto model = new_graph_viewer->CreateModel(logger);
-  auto model_proto = model->ToProto();
-  new_graph_viewer->ToProto(*model_proto->mutable_graph(), true, true);
-  model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  {
+    // Serialize modelproto to string
+    auto model_proto = model_build->ToProto();
+    model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
-  // Finally, dump the model
-  std::ofstream epctx_onnx_model(graph_name,
-                                 std::ios::out | std::ios::trunc | std::ios::binary);
-  if (!epctx_onnx_model) {
-    ORT_THROW("Unable to create epctx onnx model file ");
+    // Finally, dump the model
+    std::ofstream epctx_onnx_model(graph_name,
+                                   std::ios::out | std::ios::trunc | std::ios::binary);
+    if (!epctx_onnx_model) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to create epctx onnx model file");
+    }
+
+    if (!model_proto->SerializeToOstream(epctx_onnx_model)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to serialize model to file");
+    }
   }
-  model_proto->SerializeToOstream(epctx_onnx_model);
-
   LOGS_DEFAULT(VERBOSE) << "[OpenVINO EP] Export blob as EPContext Node";
 
   return Status::OK();
 }
 
-Status EPCtxHandler::ImportBlobFromEPCtxModel(const GraphViewer& graph_viewer) {
+Status EPCtxHandler::ImportBlobFromEPCtxModel(const GraphViewer& graph_viewer, bool& ep_context_embed_mode) {
   auto node = graph_viewer.GetNode(0);
   auto& attrs = node->GetAttributes();
   ORT_ENFORCE(attrs.count(EP_CACHE_CONTEXT) > 0);
-  model_stream_ = std::make_shared<std::istringstream>(attrs.at(EP_CACHE_CONTEXT).s());
+
+  ep_cache_context_attribute_ = &attrs.at(EP_CACHE_CONTEXT);
+
+  ep_context_embed_mode = static_cast<bool>(attrs.at(EMBED_MODE).i());
   LOGS_DEFAULT(VERBOSE) << "[OpenVINO EP] Read blob from EPContext Node";
 
   is_valid_ep_ctx_graph_ = true;
   return Status::OK();
+}
+
+const std::string& EPCtxHandler::GetModelBlobStream() const {
+  static std::string empty;
+  if (ep_cache_context_attribute_ != nullptr) {
+    return ep_cache_context_attribute_->s();
+  } else {
+    return empty;
+  }
 }
 
 bool EPCtxHandler::CheckForOVEPCtxNode(const GraphViewer& graph_viewer, std::string openvino_sdk_version) const {

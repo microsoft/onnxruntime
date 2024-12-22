@@ -18,6 +18,8 @@ Abstract:
     the parameters and the quantized data in a blob.
 --*/
 
+#include "core/common/common.h"
+
 #include "mlas_q4.h"
 #include "mlasi.h"
 

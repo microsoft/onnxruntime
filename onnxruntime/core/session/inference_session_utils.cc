@@ -236,7 +236,8 @@ Status JsonConfigParser::ParseRunOptionsFromModelProto(RunOptions& /*run_options
 
 Status ParseTuningResultsFromModelMetadata(const onnxruntime::ModelMetadata& metadata,
                                            std::vector<TuningResults>& results,
-                                           bool& key_found) {
+                                           bool& key_found,
+                                           const logging::Logger& logger) {
   results.clear();
   key_found = false;
   auto it = metadata.custom_metadata_map.find(kTuningResultsKeys);
@@ -245,7 +246,7 @@ Status ParseTuningResultsFromModelMetadata(const onnxruntime::ModelMetadata& met
   }
 
   key_found = true;
-  LOGS_DEFAULT(INFO) << "Found tuning results in the model file to be used while loading the model";
+  LOGS(logger, INFO) << "Found tuning results in the model file to be used while loading the model";
 
   Status status;
   ORT_TRY {

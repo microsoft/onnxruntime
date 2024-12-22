@@ -159,7 +159,7 @@ TEST(InternalTestingEP, PreventSaveOfModelWithCompiledOps) {
 
 // the internal NHWC operators are only included as part of contrib ops currently. as the EP requests the NHWC
 // version of the ONNX operator when matching a static kernel, those are required.
-#if !defined(DISABLE_CONTRIB_OPS)
+#if !defined(DISABLE_CONTRIB_OPS) && !defined(USE_ROCM)
 TEST(InternalTestingEP, TestMixOfStaticAndCompiledKernels) {
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "transform/fusion/conv_relu_opset12.onnx";
 
@@ -196,7 +196,7 @@ TEST(InternalTestingEP, TestMixOfStaticAndCompiledKernels) {
 
   // Error message should come from the Conv implementation with the statically registered kernel
   ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Run(feeds, output_names, &fetches),
-                                      "Non-zero status code returned while running Conv node. Name:'Conv' "
+                                      "Non-zero status code returned while running Conv node. Name:'_token_2' "
                                       "Status Message: TODO: add NHWC implementation here.");
 }
 
@@ -242,7 +242,7 @@ TEST(InternalTestingEP, TestNhwcConversionOfStaticKernels) {
     std::vector<OrtValue> fetches;
 
     ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(session.Run(feeds, output_names, &fetches),
-                                        "Non-zero status code returned while running Conv node. Name:'Conv' "
+                                        "Non-zero status code returned while running Conv node. Name:'_token_2' "
                                         "Status Message: TODO: add NHWC implementation here.");
   };
 
@@ -255,10 +255,6 @@ TEST(InternalTestingEP, TestNhwcConversionOfStaticKernels) {
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "squeezenet/model_opset11.with_runtime_opt.ort";
   run_test(ort_model_path);
 }
-
-// This test can be deprecated now as the code logic has been changed so the model is not applicable
-// TEST(InternalTestingEP, TestRegisterAllocatorHandlesUsageInMultipleSessions) {
-//}
 
 // make sure allocators returned by SessionState::GetAllocator are valid when IExecutionProvider::ReplaceAllocator
 // is used. if something is off InferenceSession::Initialize will fail.

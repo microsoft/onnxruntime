@@ -31,8 +31,6 @@ class ReductionOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
-                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -141,56 +139,6 @@ bool ReductionOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializ
   // If the optional input 'axes' is provided, it must be an initializer.
   if (!axes_name.empty() && !Contains(initializers, axes_name)) {
     LOGS(logger, VERBOSE) << "Input axes of " << op_type << " must be a constant";
-    return false;
-  }
-
-  return true;
-}
-
-bool ReductionOpBuilder::HasSupportedInputsImpl(const Node& node, const WebnnDeviceType device_type,
-                                                const logging::Logger& logger) const {
-  const auto& input = *node.InputDefs()[0];
-  const auto& op_type = node.OpType();
-  int32_t input_type;
-  if (!GetType(input, input_type, logger))
-    return false;
-
-  std::unordered_set<ONNX_NAMESPACE::TensorProto_DataType> supported_data_types;
-  if (op_type == "ReduceL1" || op_type == "ReduceProd" ||
-      op_type == "ReduceSum" || op_type == "ReduceSumSquare") {
-    supported_data_types = {
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-        ONNX_NAMESPACE::TensorProto_DataType_INT32,
-        ONNX_NAMESPACE::TensorProto_DataType_UINT32,
-        ONNX_NAMESPACE::TensorProto_DataType_INT64,
-        ONNX_NAMESPACE::TensorProto_DataType_UINT64,
-    };
-
-    if (device_type == WebnnDeviceType::CPU) {
-      // WebNN CPU backend doesn't support uint32 and uint64 for reduceL1,
-      // reduceProd, reduceSum and reduceSumSquare.
-      supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT32);
-      supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT64);
-    }
-  } else if (op_type == "ReduceL2" || op_type == "ReduceLogSum" ||
-             op_type == "ReduceLogSumExp" || op_type == "ReduceMean") {
-    supported_data_types = {
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-        ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-    };
-  } else {  // ReduceMax and ReduceMin
-    supported_data_types = webnn_supported_data_types;
-    // WebNN CPU backend doesn't support uint32, uint64 for reduceMax and reduceMin.
-    if (device_type == WebnnDeviceType::CPU) {
-      supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT32);
-      supported_data_types.erase(ONNX_NAMESPACE::TensorProto_DataType_UINT64);
-    }
-  }
-  if (!IsSupportedDataType(input_type, supported_data_types)) {
-    LOGS(logger, VERBOSE) << "[" << op_type
-                          << "] Input type: [" << input_type
-                          << "] is not supported for now";
     return false;
   }
 

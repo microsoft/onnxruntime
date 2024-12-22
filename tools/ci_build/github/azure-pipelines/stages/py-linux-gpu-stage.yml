@@ -1,0 +1,113 @@
+parameters:
+- name: arch
+  type: string
+
+- name: machine_pool
+  type: string
+
+- name: extra_build_arg
+  type: string
+  default: ''
+
+- name: cmake_build_type
+  type: string
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+- name: docker_base_image
+  type: string
+
+- name: cuda_version
+  type: string
+  default: '11.8'
+  values:
+   - 11.8
+   - 12.2
+
+stages:
+- stage: Linux_py_GPU_Wheels_${{ parameters.arch }}
+  dependsOn: []
+  jobs:
+  - job: Linux_py_GPU_Wheels_${{ parameters.arch }}
+    timeoutInMinutes: 240
+    workspace:
+      clean: all
+    pool:
+      name: ${{ parameters.machine_pool }}
+      os: linux
+    templateContext:
+      codeSignValidation:
+        enabled: true
+        break: true
+      psscriptanalyzer:
+        enabled: true
+      sdl:
+        binskim:
+          enabled: true
+          scanOutputDirectoryOnly: true
+          targetPathPattern: '\".*.so\"'
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)/dist
+        artifactName: onnxruntime_gpu
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)/${{ parameters.cmake_build_type }}
+        artifactName: linux_gpu_wheel_${{ parameters.arch }}
+    variables:
+      # The build machine pool doesn't have dotnet, so it can't run CG.
+      - name: skipComponentGovernanceDetection
+        value: true
+      - name: extra_build_args
+        ${{ if ne(parameters.extra_build_arg, '') }}:
+          value: -x ${{ parameters.extra_build_arg }}
+        ${{ if eq(parameters.extra_build_arg, '') }}:
+          value: ''
+      - template: ../templates/common-variables.yml
+      - name: trt_version
+        ${{ if eq(parameters.cuda_version, '11.8') }}:
+          value: ${{ variables.linux_trt_version_cuda11 }}
+        ${{ if eq(parameters.cuda_version, '12.2') }}:
+          value: ${{ variables.linux_trt_version_cuda12 }}
+    steps:
+      - checkout: self
+        clean: true
+        submodules: recursive
+
+      - template: ../templates/set-nightly-build-option-variable-step.yml
+
+      - template: ../templates/get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda/Dockerfile
+          Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda
+          DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg TRT_VERSION=${{ variables.trt_version }} --build-arg BUILD_UID=$( id -u )"
+          Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
+
+
+      - task: Bash@3
+        displayName: 'Build Python Wheel'
+        inputs:
+          targetType: filePath
+          filePath: tools/ci_build/github/linux/run_python_dockerbuild.sh
+          arguments: -i onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }} -d "GPU" -c ${{ parameters.cmake_build_type }} $(extra_build_args)
+
+      - script: |
+          set -e -x
+          mv $(Build.BinariesDirectory)/${{ parameters.cmake_build_type }} ./${{ parameters.cmake_build_type }} 
+          mv $(Build.BinariesDirectory)/dist ./dist
+          pushd dist
+          find . -name \*.whl -exec unzip -qq -o {} \;
+          rm -r onnxruntime
+          popd
+          pushd ${{ parameters.cmake_build_type }} 
+          find . -name \*.whl -exec unzip -qq -o {} \;
+          popd
+        workingDirectory: '$(Build.ArtifactStagingDirectory)'
+        displayName: 'Move files'
+
+
+      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
+        displayName: 'Clean Agent Directories'
+        condition: always()

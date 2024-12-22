@@ -57,6 +57,7 @@ stages:
     PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
     PackageName: 'onnxruntime-react-native'
     InitialStageDependsOn: 'Precheck_and_extract_commit'
+    enable_code_sign: false
 
 - stage: Download_Node_Package_And_Publish_Validation_Script
   dependsOn:
