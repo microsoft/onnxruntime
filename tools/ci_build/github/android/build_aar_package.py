@@ -128,7 +128,7 @@ def _build_aar(args):
         # TODO: Remove
         abi_build_dir_files = os.listdir(abi_build_dir)
         print("[REMOVE]: {abi_build_dir=} contents:")
-        print(abi_jnilibs_dir_files)
+        print(abi_build_dir_files)
 
         # create symbolic links for libonnxruntime.so and libonnxruntime4j_jni.so
         # to jnilibs/[abi] for later compiling the aar package
