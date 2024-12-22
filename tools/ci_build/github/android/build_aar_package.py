@@ -167,7 +167,7 @@ def _build_aar(args):
 
             os.makedirs(abi_exe_dir, exist_ok=True)
             dest_exe_path = os.path.join(abi_exe_dir, exe_name)
-            print(f"[REMOVE]: Copying {src_exe_path} to {dst_exe_path}")
+            print(f"[REMOVE]: Copying {src_exe_path} to {dest_exe_path}")
             shutil.copyfile(src_exe_path, dest_exe_path)
 
         # TODO: Remove
