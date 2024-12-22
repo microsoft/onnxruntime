@@ -758,18 +758,19 @@ def save_build_and_package_info(package_name, version_number, cuda_version, rocm
             f.write(f"cuda_version = '{cuda_version}'\n")
 
             # cudart_versions are integers
-            cudart_versions = find_cudart_versions(build_env=True)
-            if cudart_versions and len(cudart_versions) == 1:
-                f.write(f"cudart_version = {cudart_versions[0]}\n")
-            else:
-                print(
-                    "Error getting cudart version. ",
-                    (
-                        "did not find any cudart library"
-                        if not cudart_versions or len(cudart_versions) == 0
-                        else "found multiple cudart libraries"
-                    ),
-                )
+            if platform.system().lower() == "linux":
+                cudart_versions = find_cudart_versions(build_env=True)
+                if cudart_versions and len(cudart_versions) == 1:
+                    f.write(f"cudart_version = {cudart_versions[0]}\n")
+                else:
+                    print(
+                        "Error getting cudart version. ",
+                        (
+                            "did not find any cudart library"
+                            if not cudart_versions or len(cudart_versions) == 0
+                            else "found multiple cudart libraries"
+                        ),
+                    )
         elif rocm_version:
             f.write(f"rocm_version = '{rocm_version}'\n")
 
