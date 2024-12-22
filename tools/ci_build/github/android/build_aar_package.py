@@ -125,11 +125,6 @@ def _build_aar(args):
 
         subprocess.run(abi_build_command, env=temp_env, shell=False, check=True, cwd=REPO_DIR)
 
-        # TODO: Remove
-        abi_build_dir_files = os.listdir(abi_build_dir)
-        print("[REMOVE]: {abi_build_dir=} contents:")
-        print(abi_build_dir_files)
-
         # create symbolic links for libonnxruntime.so and libonnxruntime4j_jni.so
         # to jnilibs/[abi] for later compiling the aar package
         abi_jnilibs_dir = os.path.join(jnilibs_dir, abi)
@@ -144,14 +139,7 @@ def _build_aar(args):
             # add double check with os.path.islink
             if os.path.exists(target_lib_name) or os.path.islink(target_lib_name):
                 os.remove(target_lib_name)
-            print(f"[REMOVE]: Making sym link from {os.path.join(abi_build_dir, build_config, lib_name)} to "
-                  f"{target_lib_name}")
             os.symlink(os.path.join(abi_build_dir, build_config, lib_name), target_lib_name)
-
-        # TODO: Remove
-        abi_jnilibs_dir_files = os.listdir(abi_jnilibs_dir)
-        print("[REMOVE]: {abi_jnilibs_dir=} contents:")
-        print(abi_jnilibs_dir_files)
 
         # copy executables for each abi, in case we want to publish those as well
         # some of them might not exist, e.g., if we skip building the tests
@@ -162,18 +150,11 @@ def _build_aar(args):
         for exe_name in execs_to_copy:
             src_exe_path = os.path.join(abi_build_dir, build_config, exe_name)
             if not os.path.exists(src_exe_path):
-                print(f"[REMOVE]: Source exe path does not exist: {src_exe_path}")
                 continue
 
             os.makedirs(abi_exe_dir, exist_ok=True)
             dest_exe_path = os.path.join(abi_exe_dir, exe_name)
-            print(f"[REMOVE]: Copying {src_exe_path} to {dest_exe_path}")
             shutil.copyfile(src_exe_path, dest_exe_path)
-
-        # TODO: Remove
-        abi_exe_dir_files = os.listdir(abi_exe_dir)
-        print("[REMOVE]: {abi_exe_dir=} contents:")
-        print(abi_exe_dir_files)
 
         # we only need to define the header files path once
         if not header_files_path:

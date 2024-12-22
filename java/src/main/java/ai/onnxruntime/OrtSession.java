@@ -1319,8 +1319,10 @@ public class OrtSession implements AutoCloseable {
      * @throws OrtException If there was an error in native code.
      */
     public void addQnn(Map<String, String> providerOptions) throws OrtException {
-      if (OnnxRuntime.extractQNN()) {
-        String qnnProviderName = "QNN";
+      String qnnProviderName = "QNN";
+      if (OnnxRuntime.isAndroid()) {
+        addExecutionProvider(qnnProviderName, providerOptions);
+      } else if (OnnxRuntime.extractQNN()) {
         addExecutionProvider(qnnProviderName, providerOptions);
       } else {
         throw new OrtException(

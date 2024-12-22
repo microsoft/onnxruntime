@@ -155,17 +155,16 @@ final class OnnxRuntime {
     if (loaded) {
       return;
     }
-    // TODO: Remove
-    logger.setLevel(Level.FINE);
-
-    tempDirectory = Files.createTempDirectory("onnxruntime-java");
+    tempDirectory = isAndroid() ? null : Files.createTempDirectory("onnxruntime-java");
     try {
       libraryDirPathProperty = System.getProperty(ONNXRUNTIME_NATIVE_PATH);
       // Extract and prepare the shared provider library but don't try to load it,
       // the ONNX Runtime native library will load it
       extractProviderLibrary(ONNXRUNTIME_LIBRARY_SHARED_NAME);
 
-      load(ONNXRUNTIME_LIBRARY_NAME);
+      if (!isAndroid()) {
+        load(ONNXRUNTIME_LIBRARY_NAME);
+      }
       load(ONNXRUNTIME_JNI_LIBRARY_NAME);
 
       ortApiHandle = initialiseAPIBase(ORT_API_VERSION_14);
@@ -179,7 +178,9 @@ final class OnnxRuntime {
       version = initialiseVersion();
       loaded = true;
     } finally {
-      cleanUp(tempDirectory.toFile());
+      if (tempDirectory != null) {
+        cleanUp(tempDirectory.toFile());
+      }
     }
   }
 
@@ -275,6 +276,10 @@ final class OnnxRuntime {
    * @return True if the library is ready for loading by ORT's native code, false otherwise.
    */
   static synchronized boolean extractProviderLibrary(String libraryName) {
+    // Android does not need to extract provider libraries.
+    if (isAndroid()) {
+      return false;
+    }
     // Check if we've already extracted or check this provider, and it's ready
     if (extractedSharedProviders.contains(libraryName)) {
       return true;
@@ -321,6 +326,12 @@ final class OnnxRuntime {
    * @throws IOException If the file failed to read or write.
    */
   private static void load(String library) throws IOException {
+    // On Android, we simply use System.loadLibrary
+    if (isAndroid()) {
+      System.loadLibrary(library);
+      return;
+    }
+
     // 1) The user may skip loading of this library:
     String skip = System.getProperty("onnxruntime.native." + library + ".skip");
     if (Boolean.TRUE.toString().equalsIgnoreCase(skip)) {
