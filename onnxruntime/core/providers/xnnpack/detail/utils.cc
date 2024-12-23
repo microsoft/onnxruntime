@@ -241,12 +241,12 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& node_un
   def.attributes = node_unit.GetNode().GetAttributes();
 
   // use infinity as the default as that's what xnnpack uses if min/max are not set
-  float min = -std::numeric_limits<float>::infinity();
+  float min = std::numeric_limits<float>::infinity();
   float max = std::numeric_limits<float>::infinity();
 
   const auto& activation_type = activation.OpType();
   if (activation_type == "Clip") {
-    min = std::numeric_limits<float>::min();
+    min = std::numeric_limits<float>::lowest();
     max = std::numeric_limits<float>::max();
     bool min_max_are_attributes = activation.SinceVersion() == 1 || activation.SinceVersion() == 6;
 
@@ -274,10 +274,15 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& node_un
               value_to_set = utils::HasRawData(value)
                                  ? (*reinterpret_cast<const MLFloat16*>(value.raw_data().data())).ToFloat()
                                  : value.float_data()[0];
-            } else {
+            } else if (GetType(arg, arg_type) && arg_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
               value_to_set = utils::HasRawData(value)
                                  ? *reinterpret_cast<const float*>(value.raw_data().data())
                                  : value.float_data()[0];
+            } else {
+              // double isn't currently supported.
+              // And input and output of Clip must be float number.
+              // https://onnx.ai/onnx/operators/onnx__Clip.html
+              ORT_NOT_IMPLEMENTED("Clip min/max must be FP16 or FP32");
             }
           }
         }
