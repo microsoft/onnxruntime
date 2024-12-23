@@ -128,7 +128,6 @@ TEST(XnnpackEP, TestNhwcConvReluFusion_FP16) {
   params.graph_verifier = &verify;
 
   auto ep = DefaultXnnpackExecutionProvider();
-  // So far, CPU EP doensn't support Fp16 Conv fusion, so verify_outputs is skipped.
   RunAndVerifyOutputsWithEP(ort_model_path, "TestNhwcConvReluFusion_FP16", std::move(ep), feeds, params);
 };
 
@@ -172,7 +171,7 @@ TEST(XnnpackEP, TestNhwcConvReluClipFusion_FP16) {
   params.graph_verifier = &verify;
 
   auto ep = DefaultXnnpackExecutionProvider();
-  // So far, CPU EP doensn't support Fp16 Conv fusion, so verify_outputs is skipped.
+  // So far, CPU EP doesn't support Fp16 Conv fusion, so verify_outputs is skipped.
   RunAndVerifyOutputsWithEP(ort_model_path, "TestNhwcConvReluClipFusion_FP16", std::move(ep), feeds, params, {}, false);
 }
 #endif

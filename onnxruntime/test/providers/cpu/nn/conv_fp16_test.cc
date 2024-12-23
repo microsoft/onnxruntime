@@ -56,12 +56,12 @@ void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
     } else if (attributes.domain == onnxruntime::kMSInternalNHWCDomain) {
       op = "Conv";
       tester = std::make_unique<OpTester>(op, opset, attributes.domain);
-    } else if (attributes.domain == onnxruntime::kOnnxDomain) {  
+    } else if (attributes.domain == onnxruntime::kOnnxDomain) {
       op = "FusedConv";
     } else {
       ORT_THROW("Unsupported domain: ", attributes.domain);
     }
-    
+
     tester->AddAttribute("activation", attributes.activation);
 
     if (!attributes.activation_parameters.empty()) {
@@ -1176,7 +1176,7 @@ TEST(ConvFp16Test, Pointwise_Relu) {
   };
   run_test(attrs);
   attrs.domain = kMSInternalNHWCDomain;
-  attrs.excluded_providers = {kCpuExecutionProvider};   
+  attrs.excluded_providers = {kCpuExecutionProvider};
   run_test(attrs);
 }
 
