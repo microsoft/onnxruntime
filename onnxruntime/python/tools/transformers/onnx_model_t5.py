@@ -801,7 +801,7 @@ class T5OnnxModel(BertOnnxModel):
                             "Gather",
                             inputs=[node_name + "_Output", "Constant_Index_1"],
                             outputs=[node_name + "_Output_Gather_1"],
-                            name=node_name,
+                            name=self.create_node_name("Gather", name_prefix="Added_Gather_"),
                             axis=0,
                         )
 
