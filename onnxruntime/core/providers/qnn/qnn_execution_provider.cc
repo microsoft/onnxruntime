@@ -403,7 +403,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 
         if (IsEnabled == EVENT_CONTROL_CODE_DISABLE_PROVIDER) {
           // (void)qnn_backend_manager_->SetProfilingLevelETW(qnn::ProfilingLevel::INVALID);
-          (void)qnn_backend_manager_->ResetQnnLogLevel();
+          (void)qnn_backend_manager_->ResetQnnLogLevel(std::nullopt);
         }
       });
   etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_provider_);

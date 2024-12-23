@@ -1039,6 +1039,24 @@ Status QnnBackendManager::DestroyHTPPowerConfigID(uint32_t htp_power_config_id) 
   return Status::OK();
 }
 
+Status QnnBackendManager::TerminateQnnLog() {
+  std::lock_guard<std::mutex> lock(logger_mutex_);
+  if (logger_ == nullptr) {
+    return Status::OK();
+  }
+
+  if (nullptr != qnn_interface_.logFree && nullptr != log_handle_) {
+    auto ret_val = qnn_interface_.logFree(log_handle_);
+
+    // Reset QNN log handle to nullptr so other threads that are waiting on logger_mutex_ know it was freed.
+    log_handle_ = nullptr;
+    ORT_RETURN_IF(QNN_SUCCESS != ret_val,
+                  "Unable to terminate logging in the backend.");
+  }
+
+  return Status::OK();
+}
+
 void QnnBackendManager::ReleaseResources() {
   if (!backend_setup_completed_) {
     return;
@@ -1064,7 +1082,6 @@ void QnnBackendManager::ReleaseResources() {
     ORT_THROW("Failed to ShutdownBackend.");
   }
 
-  std::lock_guard<std::mutex> lock(logger_mutex_);
   result = TerminateQnnLog();
   if (Status::OK() != result) {
     ORT_THROW("Failed to TerminateQnnLog.");
