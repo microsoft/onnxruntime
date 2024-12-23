@@ -241,7 +241,7 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& node_un
   def.attributes = node_unit.GetNode().GetAttributes();
 
   // use infinity as the default as that's what xnnpack uses if min/max are not set
-  float min = std::numeric_limits<float>::infinity();
+  float min = -std::numeric_limits<float>::infinity();
   float max = std::numeric_limits<float>::infinity();
 
   const auto& activation_type = activation.OpType();
