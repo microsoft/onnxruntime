@@ -34,7 +34,7 @@
                           "LINKER:--version-script=${ONNXRUNTIME_ROOT}/core/providers/qnn/version_script.lds"
                           "LINKER:--gc-sections"
                           "LINKER:-rpath=\$ORIGIN"
-                          "LINKER:--undefined=Provider_GetHost"
+                          "LINKER:-u,_Provider_GetHost"
       )
     else()
       target_link_options(onnxruntime_providers_qnn PRIVATE
