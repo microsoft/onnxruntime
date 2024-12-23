@@ -1115,7 +1115,7 @@ def generate_build_tree(
         vcpkg_install_options = ["--x-feature=tests"]
         vcpkg_installation_root = os.environ.get("VCPKG_INSTALLATION_ROOT")
         if vcpkg_installation_root is None:
-            vcpkg_installation_root = os.path.join(build_dir, "vcpkg")            
+            vcpkg_installation_root = os.path.join(os.path.abspath(build_dir), "vcpkg")            
             if not os.path.exists(vcpkg_installation_root):
                 run_subprocess(["git", "clone", "https://github.com/microsoft/vcpkg.git", "--recursive"], cwd=build_dir)
         vcpkg_toolchain_path = os.path.join(vcpkg_installation_root, "scripts", "buildsystems", "vcpkg.cmake")
@@ -1147,7 +1147,7 @@ def generate_build_tree(
             else:
                 raise BuildError("unknown python arch")
         if triplet:
-            add_default_definition(cmake_extra_defines, "VCPKG_TARGET_TRIPLET", triplet)
+            add_default_definition(cmake_extra_defines, "VCPKG_TARGET_TRIPLET", triplet)            
 
     # By default on Windows we currently support only cross compiling for ARM/ARM64
     # (no native compilation supported through this script).
