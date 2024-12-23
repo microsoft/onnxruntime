@@ -239,7 +239,7 @@ def optimize_by_fusion(
      Returns:
         object of an optimizer class.
     """
-    if model_type not in ["bert", "swin", "unet", "vae", "clip", "sam2", "mmdit"] and (
+    if model_type not in ["bert", "t5", "swin", "unet", "vae", "clip", "sam2", "mmdit"] and (
         num_heads == 0 or hidden_size == 0
     ):
         logger.warning(f"Please specify parameters of num_heads and hidden_size for model_type {model_type}")
