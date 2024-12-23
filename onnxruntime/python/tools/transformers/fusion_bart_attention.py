@@ -596,6 +596,7 @@ class FusionBartAttention(FusionAttention):
                     past_v=past_v,
                     present_k=present_k,
                     present_v=present_v,
+                    causal=decoder_attention,
                 )
                 self.use_multi_head_attention = use_multi_head_attention_ground_truth
             if new_node is None:

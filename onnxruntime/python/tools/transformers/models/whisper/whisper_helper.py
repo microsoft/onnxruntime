@@ -420,6 +420,7 @@ class WhisperHelper:
                 inputs[name] = np.array([1.0], dtype=ort_to_np[dtype])
             else:
                 inputs[name] = np.array([inputs[name]], dtype=ort_to_np[dtype])
+
         ort_outputs = ort_session.run(None, inputs)[0][:, 0, :]
         ort_transcription = processor.batch_decode(ort_outputs, skip_special_tokens=True)
         expected_transcription_options = WhisperHelper.select_transcription_options(batch_size, prompt_mode)

@@ -93,6 +93,10 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
             ]
         return output_names
 
+    def dynamic_axes(self, input_names, output_names):
+        dynamic_axes = get_model_dynamic_axes(self.config, input_names, output_names)
+        return dynamic_axes
+
     def inputs(self, use_fp16_inputs: bool, use_int32_inputs: bool, return_dict: bool = False):
         inputs = get_sample_encoder_decoder_init_inputs(
             self.config,
@@ -202,7 +206,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         inputs = self.inputs(use_fp16_inputs=use_fp16_inputs, use_int32_inputs=use_int32_inputs)
         input_names = self.input_names()
         output_names = self.output_names()
-        dynamic_axes = get_model_dynamic_axes(self.config, input_names, output_names)
+        dynamic_axes = self.dynamic_axes(input_names, output_names)
 
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory() as tmp_dir_name:

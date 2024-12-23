@@ -97,6 +97,13 @@ class WhisperDecoder(torch.nn.Module):
             ]
         return output_names
 
+    def dynamic_axes(self, input_names, output_names):
+        dynamic_axes = get_model_dynamic_axes(self.config, input_names, output_names)
+        if "input_ids" in dynamic_axes and not self.no_beam_search_op:
+            # Set dynamic axes for `input_ids` when using beam search op to {0: "batch_size"} only
+            del dynamic_axes["input_ids"][1]
+        return dynamic_axes
+
     def inputs(self, use_fp16_inputs: bool, use_int32_inputs: bool, return_dict: bool = False):
         inputs = get_sample_decoder_inputs(
             self.config,
@@ -224,7 +231,7 @@ class WhisperDecoder(torch.nn.Module):
         inputs = self.inputs(use_fp16_inputs=use_fp16_inputs, use_int32_inputs=use_int32_inputs)
         input_names = self.input_names()
         output_names = self.output_names()
-        dynamic_axes = get_model_dynamic_axes(self.config, input_names, output_names)
+        dynamic_axes = self.dynamic_axes(input_names, output_names)
 
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory() as tmp_dir_name:

@@ -1247,10 +1247,18 @@ def find_past_seq_len_usage(subg: GraphProto):
                 continue
             shape_tensor_name, shape_index_name = (node.input[0], node.input[1])
             ini_gather_indices = None
-            for tensor in subg.initializer:
-                if tensor.name == shape_index_name:
-                    ini_gather_indices = tensor
-                    break
+            if "Constant_" in shape_index_name:
+                # If shape_index_name refers to a Constant node
+                for const_node in subg.node:
+                    if const_node.op_type == "Constant" and const_node.output[0] == shape_index_name:
+                        ini_gather_indices = const_node.attribute[0].t
+                        break
+            else:
+                # If shape_index_name refers to an initializer
+                for tensor in subg.initializer:
+                    if tensor.name == shape_index_name:
+                        ini_gather_indices = tensor
+                        break
             if ini_gather_indices is None:
                 continue
             gather_indices_arr = onnx.numpy_helper.to_array(ini_gather_indices)

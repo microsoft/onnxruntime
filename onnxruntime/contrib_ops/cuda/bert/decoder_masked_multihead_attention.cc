@@ -6,9 +6,11 @@
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
 #include "contrib_ops/cpu/bert/multihead_attention_helper.h"
+#include "contrib_ops/cpu/utils/dump_tensor.h"
 #include "contrib_ops/cuda/bert/attention_impl.h"
 #include "contrib_ops/cuda/bert/decoder_masked_multihead_attention.h"
 #include "contrib_ops/cuda/bert/fastertransformer_decoder_attention/decoder_masked_multihead_attention_impl.h"
+#include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 
 using namespace onnxruntime::cuda;
 using namespace ::onnxruntime::common;
@@ -98,6 +100,19 @@ Status DecoderMaskedMultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* 
                                                                       past_present_share_buffer_,
                                                                       kDecoderMaskedMultiHeadAttention,
                                                                       device_prop.maxThreadsPerBlock));
+
+  DUMP_STRING_INIT();
+  DUMP_STRING("Batch size = ", parameters.batch_size);
+  DUMP_STRING("Sequence length = ", parameters.sequence_length);
+  DUMP_STRING("Past sequence length = ", parameters.past_sequence_length);
+  DUMP_STRING("KV sequence length = ", parameters.kv_sequence_length);
+  DUMP_STRING("Total sequence length = ", parameters.total_sequence_length);
+  DUMP_STRING("Max sequence length = ", parameters.max_sequence_length);
+  DUMP_STRING("Hidden size = ", parameters.hidden_size);
+  DUMP_STRING("Head size = ", parameters.head_size);
+  DUMP_STRING("Num heads = ", parameters.num_heads);
+  DUMP_STRING("Buffer sharing = ", (parameters.past_present_share_buffer == true));
+  DUMP_STRING("QKV format = ", parameters.qkv_format);
 
   if (bias) {
     const T* bias_data = bias->Data<T>();

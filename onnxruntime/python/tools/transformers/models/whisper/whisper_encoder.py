@@ -36,6 +36,18 @@ class WhisperEncoder(torch.nn.Module):
         outputs = self.encoder(audio_features)
         return outputs if self.model_impl == "openai" else outputs.last_hidden_state
 
+    def input_names(self):
+        input_names = ["audio_features"]
+        return input_names
+
+    def output_names(self):
+        output_names = ["encoder_hidden_states"]
+        return output_names
+
+    def dynamic_axes(self, input_names, output_names):
+        dynamic_axes = get_model_dynamic_axes(self.config, input_names, output_names)
+        return dynamic_axes
+
     def export_onnx(
         self,
         onnx_model_path: str,
@@ -66,9 +78,9 @@ class WhisperEncoder(torch.nn.Module):
             use_fp16=use_fp16_inputs,
         )
 
-        input_names = ["audio_features"]
-        output_names = ["encoder_hidden_states"]
-        dynamic_axes = get_model_dynamic_axes(self.config, input_names, output_names)
+        input_names = self.input_names()
+        output_names = self.output_names()
+        dynamic_axes = self.dynamic_axes(input_names, output_names)
 
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory() as tmp_dir_name:
