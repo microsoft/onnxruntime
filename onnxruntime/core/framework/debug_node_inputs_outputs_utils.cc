@@ -59,10 +59,10 @@ bool FilterNode(const NodeDumpOptions& dump_options, const Node& node) {
 }
 
 template <typename T>
-void DumpTensorToStdOut(const Tensor& tensor, const NodeDumpOptions& dump_options) {
+void DumpTensorToStdOut(const Tensor& tensor, const NodeDumpOptions& dump_options, TensorStatisticsData& tensor_statistics) {
   onnxruntime::utils::PrintCpuTensor<T>(tensor, dump_options.snippet_threshold, dump_options.snippet_edge_items);
   if (dump_options.dump_flags & NodeDumpOptions::DumpFlags::StatisticsData) {
-    onnxruntime::utils::PrintCpuTensorStats<T>(tensor);
+    onnxruntime::utils::PrintCpuTensorStats<T>(tensor, tensor_statistics);
   }
 }
 
@@ -295,10 +295,10 @@ void InsertNodePlacementToSqliteDb(const NodeDumpContext& dump_context, const No
 
 void DumpCpuTensor(
     const NodeDumpOptions& dump_options,
-    const Tensor& tensor, const TensorMetadata& tensor_metadata) {
+    const Tensor& tensor, const TensorMetadata& tensor_metadata, TensorStatisticsData& tensor_statistics) {
   switch (dump_options.data_destination) {
     case NodeDumpOptions::DataDestination::StdOut: {
-      DispatchOnTensorType(tensor.DataType(), DumpTensorToStdOut, tensor, dump_options);
+      DispatchOnTensorType(tensor.DataType(), DumpTensorToStdOut, tensor, dump_options, tensor_statistics);
       break;
     }
     case NodeDumpOptions::DataDestination::TensorProtoFiles: {
@@ -321,7 +321,7 @@ void DumpCpuTensor(
 
 void DumpTensor(
     const NodeDumpOptions& dump_options,
-    const Tensor& tensor, TensorMetadata& tensor_metadata,
+    const Tensor& tensor, TensorMetadata& tensor_metadata, TensorStatisticsData& tensor_statistics,
     const SessionState& session_state) {
   // check tensor is on CPU before dumping it
   auto& tensor_location = tensor.Location();
@@ -329,7 +329,7 @@ void DumpTensor(
       tensor_location.mem_type == OrtMemTypeCPUInput ||
       tensor_location.mem_type == OrtMemTypeCPUOutput) {
     tensor_metadata.device_type = "CPU";
-    DumpCpuTensor(dump_options, tensor, tensor_metadata);
+    DumpCpuTensor(dump_options, tensor, tensor_metadata, tensor_statistics);
   } else {
     std::cout << tensor_location << "\n";
 
@@ -345,7 +345,7 @@ void DumpTensor(
       auto status = data_transfer_mgr.CopyTensor(tensor, cpu_tensor);
       if (status == common::Status::OK()) {
         tensor_metadata.device_type = "GPU";
-        DumpCpuTensor(dump_options, cpu_tensor, tensor_metadata);
+        DumpCpuTensor(dump_options, cpu_tensor, tensor_metadata, tensor_statistics);
       } else {
         std::cout << " failed to transfer data to cpu.\n";
       }
@@ -447,6 +447,15 @@ static void PrintIf(bool boolean_expression, const std::string& message) {
   }
 }
 
+void PrintUpcastMessageOnce() {
+  static bool hasPrinted = false;
+
+  if (!hasPrinted) {
+    std::cout << "The following nodes need remain in fp32 during converting model to half precision:" << std::endl;
+    hasPrinted = true;
+  }
+}
+
 void DumpNodeInputs(
     const NodeDumpOptions& dump_options,
     const NodeDumpContext& dump_context,
@@ -477,6 +486,7 @@ void DumpNodeInputs(
   const auto& input_defs = node.InputDefs();
   TensorMetadata tensor_metadata;
 
+  bool potential_half_overflow = false;
   for (auto i = 0, end = context.InputCount(); i < end; ++i) {
     if (input_defs[i]->Exists()) {
       std::cout << "Input " << i << " Name: " << input_defs[i]->Name() << "\n";
@@ -495,7 +505,20 @@ void DumpNodeInputs(
               tensor_metadata.name = input_defs[i]->Name();
               tensor_metadata.step = dump_context.iteration;
               tensor_metadata.consumer = node.Name() + ":" + std::to_string(i);
-              DumpTensor(dump_options, *tensor, tensor_metadata, session_state);
+
+              TensorStatisticsData tensor_statistics;
+              DumpTensor(dump_options, *tensor, tensor_metadata, tensor_statistics, session_state);
+
+              // Print tensor statistics to stderr if outside the range [-65504, 65504] (overflow if cast to float16)
+              if (tensor_statistics.is_available && (tensor_statistics.min < -65504.0 || tensor_statistics.max > 65504.0)) {
+                potential_half_overflow = true;
+#ifndef NDEBUG
+                std::cerr << "Input " << i << " Name: " << input_defs[i]->Name()
+                          << ", Min=" << tensor_statistics.min
+                          << ", Max=" << tensor_statistics.max
+                          << std::endl;
+#endif
+              }
             }
           } else {
             std::cout << " is empty optional tensor.\n";
@@ -510,6 +533,15 @@ void DumpNodeInputs(
     } else {
       std::cout << "Input " << i << " is optional and was not provided.\n";
     }
+  }
+
+  if (potential_half_overflow) {
+#ifndef NDEBUG
+    std::cerr << node.OpType() << " node: " << node.Name() << " has overflow in inputs if using half" << std::endl;
+#else
+    PrintUpcastMessageOnce();
+    std::cerr << node.Name() << std::endl;
+#endif
   }
 }
 
@@ -549,6 +581,7 @@ void DumpNodeOutputs(
   const auto& output_defs = node.OutputDefs();
   TensorMetadata tensor_metadata;
 
+  bool potential_half_overflow = false;
   for (auto i = 0, end = context.OutputCount(); i < end; ++i) {
     if (output_defs[i]->Exists()) {
       std::cout << "Output " << i << " Name: " << output_defs[i]->Name() << "\n";
@@ -566,7 +599,20 @@ void DumpNodeOutputs(
               tensor_metadata.name = output_defs[i]->Name();
               tensor_metadata.step = dump_context.iteration;
               tensor_metadata.producer = node.Name() + ":" + std::to_string(i);
-              DumpTensor(dump_options, *tensor, tensor_metadata, session_state);
+
+              TensorStatisticsData tensor_statistics;
+              DumpTensor(dump_options, *tensor, tensor_metadata, tensor_statistics, session_state);
+
+              // Print tensor statistics to stderr if outside the range [-65504, 65504] (overflow if cast to float16)
+              if (tensor_statistics.is_available && (tensor_statistics.min < -65504.0 || tensor_statistics.max > 65504.0)) {
+                potential_half_overflow = true;
+#ifndef NDEBUG
+                std::cerr << "Output " << i << " Name: " << output_defs[i]->Name()
+                          << ", Min=" << tensor_statistics.min
+                          << ", Max=" << tensor_statistics.max
+                          << std::endl;
+#endif
+              }
             }
           } else {
             std::cout << " is empty optional tensor.\n";
@@ -580,6 +626,15 @@ void DumpNodeOutputs(
       }
     } else {
       std::cout << "Output " << i << " is optional and was not produced.\n";
+    }
+
+    if (potential_half_overflow) {
+#ifndef NDEBUG
+      std::cerr << node.OpType() << " node: " << node.Name() << " has overflow in inputs if using half" << std::endl;
+#else
+      PrintUpcastMessageOnce();
+      std::cerr << node.Name() << std::endl;
+#endif
     }
 
     std::cout << std::endl;
