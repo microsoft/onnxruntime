@@ -93,7 +93,7 @@ TEST(XnnpackEP, TestNhwcConvReluClipFusion) {
 
 #ifdef XNNPACK_FP16_SUPPORTED
 // This test can be removed if Mlas implemented FP16 Clip fusion.
-// Now TestNhwcConvReluClipFusion_FP16 skipped output verification
+// Now TestNhwcConvReluClipFusion_FP16 skips output verification
 TEST(XnnpackEP, TestNhwcConvReluFusion_FP16) {
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_conv_relu_model_fp16.onnx";
 
