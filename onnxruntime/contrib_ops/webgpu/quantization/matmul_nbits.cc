@@ -81,8 +81,8 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                    "  let row = output_indices[1];\n"
                                    "  let batch = output_indices[0];\n";
     } else {
-      ORT_ENFORCE(tile_m_ < WorkgroupSizeY(), "tile_m must be less than or equal to WorkgroupSizeY.");
-      ORT_ENFORCE(WorkgroupSizeX() == WorkgroupSizeY(), "WorkgroupSizeX must be equal to WorkgroupSizeY.");
+      ORT_ENFORCE(tile_m_ <= WorkgroupSizeY(), "tile_m must be less than or equal to WorkgroupSizeY.");
+      ORT_ENFORCE(WorkgroupSizeX() >= WorkgroupSizeY(), "WorkgroupSizeX must be greater than or equal to WorkgroupSizeY.");
 
       shader.AdditionalImplementation() << "fn mm_readA(batch : u32, row : u32, col : u32) -> input_a_value_t {\n"
                                            "  if (row < uniforms.input_a_shape[1] && col < uniforms.input_a_shape[2]) {\n"
@@ -201,7 +201,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                 << "    }\n"
                                    "  }\n";
     } else {
-      shader.MainFunctionBody() << "  if (local_id.y < " << tile_m_ << ") {\n"
+      shader.MainFunctionBody() << "  if (local_id.y < " << tile_m_ << " && local_id.x < " << WorkgroupSizeY() << ") {\n"
                                 << "    var output_value = output_value_t(0);\n"
                                 << "    for (var b = 0u; b < " << WorkgroupSizeX() << "; b++) {\n"
                                 << "      output_value += inter_results[local_id.y][local_id.x][b];\n"
