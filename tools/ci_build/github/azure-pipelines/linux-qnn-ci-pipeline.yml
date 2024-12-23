@@ -63,7 +63,7 @@ jobs:
           python3 tools/ci_build/build.py \
             --build_dir build \
             --config Release \
-            --use_binskim_compliant_compile_flags \
+            --use_binskim_compliant_compile_flags --use_vcpkg \
             --build_java \
             --use_qnn \
             --qnn_home $(QnnSDKRootDir) \
@@ -75,7 +75,7 @@ jobs:
           python3 tools/ci_build/build.py \
             --build_dir build \
             --config Release \
-            --use_binskim_compliant_compile_flags \
+            --use_binskim_compliant_compile_flags --use_vcpkg \
             --build_java \
             --use_qnn \
             --qnn_home $(QnnSDKRootDir) \

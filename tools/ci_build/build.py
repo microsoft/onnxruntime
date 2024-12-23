@@ -472,7 +472,7 @@ def parse_arguments():
     parser.add_argument(
         "--use_vcpkg",
         action="store_true",
-        default=is_windows() and ("VCPKG_INSTALLATION_ROOT" in os.environ),
+        default="VCPKG_INSTALLATION_ROOT" in os.environ,
         help="Use vcpkg to search dependencies. Requires CMAKE_TOOLCHAIN_FILE for vcpkg.cmake",
     )
 
@@ -1120,7 +1120,7 @@ def generate_build_tree(
                 run_subprocess(["git", "clone", "https://github.com/microsoft/vcpkg.git", "--recursive"], cwd=build_dir)
         vcpkg_toolchain_path = os.path.join(vcpkg_installation_root, "scripts", "buildsystems", "vcpkg.cmake")
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", vcpkg_toolchain_path)
-        # The enable_address_sanitizer and use_binskim_compliant_compile_flags can be enabled independently. Then there would be 4 different combinations. Here we only accept 3.
+        # The enable_address_sanitizer and use_binskim_compliant_compile_flags flags cannot be both enabled
         if args.enable_address_sanitizer:
             overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg_triplets", "asan")
             vcpkg_install_options.append("--overlay-triplets=%s" % overlay_triplets_dir)
@@ -2598,11 +2598,11 @@ def main():
 
     print(args)
     if args.build_wasm:
-        # No triplet for wasm64 yet
-        # args.use_vcpkg = not args.enable_wasm_memory64
+        # No custom triplet for the wasm builds yet
         args.use_vcpkg = False
-    elif args.ios or args.android:
+    elif args.ios or args.android or args.use_xnnpack:
         # Not supported yet
+        # XNNPack needs a newer version of cpuinfo
         args.use_vcpkg = False
     if os.getenv("ORT_BUILD_WITH_CACHE") == "1":
         args.use_cache = True
