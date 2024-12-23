@@ -29,10 +29,20 @@
 
   # Set linker flags for function(s) exported by EP DLL
   if(UNIX)
-    target_link_options(onnxruntime_providers_qnn PRIVATE
-                        "LINKER:--version-script=${ONNXRUNTIME_ROOT}/core/providers/qnn/version_script.lds"
-                        "LINKER:--gc-sections"
-                        "LINKER:-rpath=\$ORIGIN")
+    if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+      target_link_options(onnxruntime_providers_qnn PRIVATE
+                          "LINKER:--version-script=${ONNXRUNTIME_ROOT}/core/providers/qnn/version_script.lds"
+                          "LINKER:--gc-sections"
+                          "LINKER:-rpath=\$ORIGIN"
+                          "LINKER:--undefined=Provider_GetHost"
+      )
+    else()
+      target_link_options(onnxruntime_providers_qnn PRIVATE
+                          "LINKER:--version-script=${ONNXRUNTIME_ROOT}/core/providers/qnn/version_script.lds"
+                          "LINKER:--gc-sections"
+                          "LINKER:-rpath=\$ORIGIN"
+      )
+    endif()
   elseif(WIN32)
     set_property(TARGET onnxruntime_providers_qnn APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/qnn/symbols.def")
   else()

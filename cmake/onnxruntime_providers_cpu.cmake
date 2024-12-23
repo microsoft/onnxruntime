@@ -241,12 +241,6 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
       target_link_options(onnxruntime_providers_shared PRIVATE
                           "LINKER:--version-script=${ONNXRUNTIME_ROOT}/core/providers/shared/version_script.lds"
                           "LINKER:--gc-sections")
-      if(CMAKE_SYSTEM_NAME STREQUAL "Android")
-        # Need to link libonnxruntime_providers_<EP>.so with libonnxruntime_providers_shared.so on Android
-        # because dlopen with RTLD_GLOBAL does not bring all symbols to global scope.
-        # See: https://github.com/android/ndk/issues/201
-        set(ONNXRUNTIME_PROVIDERS_SHARED onnxruntime_providers_shared)
-      endif()
     endif()
   elseif(WIN32)
   set_property(TARGET onnxruntime_providers_shared APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/shared/symbols.def")
