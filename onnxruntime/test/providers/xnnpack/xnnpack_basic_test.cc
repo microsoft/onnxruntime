@@ -92,6 +92,47 @@ TEST(XnnpackEP, TestNhwcConvReluClipFusion) {
 }
 
 #ifdef XNNPACK_FP16_SUPPORTED
+// This test can be removed if Mlas implemented FP16 Clip fusion.
+// Now TestNhwcConvReluClipFusion_FP16 skipped output verification
+TEST(XnnpackEP, TestNhwcConvReluFusion_FP16) {
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "conv_relu_model_fp16.onnx";
+
+  RandomValueGenerator generator;
+  TensorShape input_shape_x{1, 16, 16, 192};
+  std::vector<MLFloat16> input_x = generator.Uniform<MLFloat16>(input_shape_x.GetDims(), -128, 128);
+
+  OrtValue ml_value_x;
+  CreateMLValue<MLFloat16>(input_shape_x.GetDims(), input_x.data(), OrtMemoryInfo(), &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("model_input", ml_value_x));
+
+  std::function<void(const Graph&)> verify = [](const Graph& graph) -> void {
+    ASSERT_EQ(graph.NumberOfNodes(), 2) << "Transpose nodes should have been removed, and "
+                                           "Conv+Relu should have been fused, leaving 2 nodes.";
+    auto node_iter = graph.Nodes().begin();
+    auto check_node = [](const Node& node, const std::string& fusion_type) {
+      const auto& attr = node.GetAttributes();
+      auto activation = attr.find("activation");
+      ASSERT_NE(activation, attr.cend()) << "Fused node should have activation attribute";
+      ASSERT_EQ(activation->second.s(), fusion_type);
+    };
+
+    ++node_iter;
+    check_node(*node_iter, "Relu");
+  };
+
+  EPVerificationParams params;
+  params.ep_node_assignment = ExpectedEPNodeAssignment::Some;
+  params.fp32_abs_err = 0.5f;
+  params.graph_verifier = &verify;
+
+  auto ep = DefaultXnnpackExecutionProvider();
+  // So far, CPU EP doensn't support Fp16 Conv fusion, so verify_outputs is skipped.
+  RunAndVerifyOutputsWithEP(ort_model_path, "TestNhwcConvReluFusion_FP16", std::move(ep), feeds, params);
+};
+
+// Now, this Test is mainly check whether Xnnpack Clip fusion works.
 TEST(XnnpackEP, TestNhwcConvReluClipFusion_FP16) {
   const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_conv_clip_relu_fp16.onnx";
 
@@ -126,8 +167,8 @@ TEST(XnnpackEP, TestNhwcConvReluClipFusion_FP16) {
   };
 
   EPVerificationParams params;
-  params.ep_node_assignment = ExpectedEPNodeAssignment::All;
-  params.fp32_abs_err = 0.0002f;
+  params.ep_node_assignment = ExpectedEPNodeAssignment::Some;
+  params.fp32_abs_err = 0.5f;
   params.graph_verifier = &verify;
 
   auto ep = DefaultXnnpackExecutionProvider();

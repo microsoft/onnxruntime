@@ -26,6 +26,7 @@ struct ConvOpAndTestAttributes {
   std::unordered_set<std::string> excluded_providers;
   string activation = "";
   vector<float> activation_parameters = {};
+  string domain = onnxruntime::kMSDomain;
 };
 
 /*
@@ -48,7 +49,19 @@ void TestConvFp16Op(const ConvOpAndTestAttributes& attributes,
                     int opset = 11) {
   std::unique_ptr<OpTester> tester;
   if (!attributes.activation.empty()) {
-    tester = std::make_unique<OpTester>("NhwcFusedConv", 1, onnxruntime::kMSDomain);
+    std::string_view op;
+    if (attributes.domain == onnxruntime::kMSDomain) {
+      op = "NhwcFusedConv";
+      tester = std::make_unique<OpTester>(op, 1, attributes.domain);
+    } else if (attributes.domain == onnxruntime::kMSInternalNHWCDomain) {
+      op = "Conv";
+      tester = std::make_unique<OpTester>(op, opset, attributes.domain);
+    } else if (attributes.domain == onnxruntime::kOnnxDomain) {  
+      op = "FusedConv";
+    } else {
+      ORT_THROW("Unsupported domain: ", attributes.domain);
+    }
+    
     tester->AddAttribute("activation", attributes.activation);
 
     if (!attributes.activation_parameters.empty()) {
@@ -1127,7 +1140,7 @@ TEST(ConvFp16Test, Pointwise_Relu) {
       vector<int64_t>{1, 1},        // kernel_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
-      {},                           // excluded EPs
+      {kXnnpackExecutionProvider},  // excluded EPs
       "Relu"                        // activation
   };
 
@@ -1157,8 +1170,14 @@ TEST(ConvFp16Test, Pointwise_Relu) {
       MLFloat16(0.f), MLFloat16(0.f),
       MLFloat16(17.5f), MLFloat16(9.5f)};
 
-  TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
-  TestConvFp16Op(attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
+  auto run_test = [&](const ConvOpAndTestAttributes& test_attrs) {
+    TestConvFp16Op(test_attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape);
+    TestConvFp16Op(test_attrs, {X, W}, {X_shape, W_shape}, expected_vals, Y_shape, true);
+  };
+  run_test(attrs);
+  attrs.domain = kMSInternalNHWCDomain;
+  attrs.excluded_providers = {kCpuExecutionProvider};   
+  run_test(attrs);
 }
 
 TEST(ConvFp16Test, Conv2D_HardSigmoid) {
