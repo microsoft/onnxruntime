@@ -357,6 +357,18 @@ TEST(CoreMLExecutionProviderTest, TestModelCache) {
     // the cache folder name should be the first part of the subgraph name
     ASSERT_EQ(std::filesystem::exists("./tmp/" + subgraph_name), true);
   }
+  {
+    // test with invalid model cache directory, caching shall be disabled
+    out_string.clear();
+    metadata_props->set_key(kCOREML_CACHE_KEY);
+    metadata_props->set_value("");
+    model.SerializeToString(&out_string);
+    gsl::span<const std::byte> model_data{reinterpret_cast<const std::byte*>(out_string.data()), out_string.size()};
+    RunAndVerifyOutputsWithEP(model_data, CurrentTestName(),
+                              MakeCoreMLExecutionProvider("MLProgram", "CPUOnly", ORT_TSTR("/")),
+                              feeds,
+                              verification_params);
+  }
 #else
   TestModelLoad(model_data, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
 #endif
