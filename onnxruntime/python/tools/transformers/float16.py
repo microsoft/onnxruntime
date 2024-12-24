@@ -143,6 +143,8 @@ DEFAULT_OP_BLOCK_LIST = [
     "Upsample",
 ]
 
+# Some operators do not support float16 in CUDA. This is not a full list, just some common operators in transformers.
+BF16_OP_BLACK_LIST = ["SkipSimplifiedLayerNormalization", "Attention", "MultiHeadAttention"]
 
 # Some operators has data type fixed as float for some inputs. Key is op_type, value is list of input indices
 # Note that DirectML allows float16 gamma and beta in GroupNorm. Use force_fp16_inputs parameter could overwrite this.
@@ -154,14 +156,19 @@ class InitializerTracker:
 
     def __init__(self, initializer: TensorProto):
         self.initializer = initializer
+        self.bf16_nodes = []
         self.fp32_nodes = []
         self.fp16_nodes = []
 
-    def add_node(self, node: NodeProto, is_node_blocked):
-        if is_node_blocked:
+    def add_node(self, node: NodeProto, dtype: int):
+        if dtype == TensorProto.FLOAT:
             self.fp32_nodes.append(node)
-        else:
+        elif dtype == TensorProto.BFLOAT16:
+            self.bf16_nodes.append(node)
+        elif dtype == TensorProto.FLOAT16:
             self.fp16_nodes.append(node)
+        else:
+            raise ValueError("Invalid dtype")
 
 
 def convert_float_to_float16(
@@ -333,11 +340,19 @@ def convert_float_to_float16(
                     for i, input_name in enumerate(n.input):
                         if input_name in fp32_initializers:
                             # For Resize/GroupNorm, only the first input can be float16
-                            use_fp32_weight = is_node_blocked or (
-                                i in ALWAYS_FLOAT_INPUTS.get(n.op_type, [])
-                                and i not in force_fp16_inputs_dict.get(n.op_type, [])
-                            )
-                            fp32_initializers[input_name].add_node(n, use_fp32_weight)
+                            if i in ALWAYS_FLOAT_INPUTS.get(n.op_type, []) and i not in force_fp16_inputs_dict.get(
+                                n.op_type, []
+                            ):
+                                dtype = TensorProto.FLOAT
+                            elif is_node_blocked:
+                                dtype = (
+                                    TensorProto.BFLOAT16
+                                    if (use_bfloat16_as_blocked_nodes_dtype and n.op_type not in BF16_OP_BLACK_LIST)
+                                    else TensorProto.FLOAT
+                                )
+                            else:
+                                dtype = TensorProto.FLOAT16
+                            fp32_initializers[input_name].add_node(n, dtype)
 
                     if is_node_blocked:
                         node_list.append(n)
@@ -404,15 +419,21 @@ def convert_float_to_float16(
 
         queue = next_level
 
+    initializers_to_be_casted_to_bf16: Dict[str, TensorProto] = {}
     for value in fp32_initializers.values():
         # By default, to avoid precision loss, do not convert an initializer to fp16 when it is used only by fp32 nodes.
         if force_fp16_initializers or value.fp16_nodes:
             value.initializer = convert_tensor_float_to_float16(value.initializer, min_positive_val, max_finite_val)
             value_info_list.append(make_value_info_from_tensor(value.initializer))
-            if value.fp32_nodes and not force_fp16_initializers:
+            if (value.fp32_nodes or value.bf16_nodes) and not force_fp16_initializers:
                 logger.info(
-                    f"initializer is used by both fp32 and fp16 nodes. Consider add these nodes to block list:{value.fp16_nodes}"
+                    f"initializer is used by both fp32/bf16 and fp16 nodes. Consider add these nodes to block list:{value.fp16_nodes}"
                 )
+        elif value.bf16_nodes:
+            # If float initializer is only used by bfloat16 nodes, need to convert it to bfloat16.
+            # However, numpy does not support bfloat16, so we will add a Cast node to conver it later.
+            initializers_to_be_casted_to_bf16[value.initializer.name] = value.initializer
+            continue
 
     # Some operators have data type fixed as float for some input. Add a float16 to float cast for those inputs.
     for node in mixed_float_type_node_list:
@@ -435,14 +456,16 @@ def convert_float_to_float16(
                     node.input[i] = output_name
                     break
 
-    accuracy_type = TensorProto.BFLOAT16 if use_bfloat16_as_blocked_nodes_dtype else TensorProto.FLOAT
     # process the nodes in block list that doesn't support tensor(float16)
     for node in node_list:
         # if input's name is in the value_info_list meaning input is tensor(float16) type,
-        # insert a float16 to float Cast node before the node,
+        # insert a float16 to target type (float or bfloat16) Cast node before the node,
         # change current node's input name and create new value_info for the new name
+        use_bf16 = use_bfloat16_as_blocked_nodes_dtype and node.op_type not in BF16_OP_BLACK_LIST
+        accuracy_type = TensorProto.BFLOAT16 if use_bf16 else TensorProto.FLOAT
         for i in range(len(node.input)):
             input_name = node.input[i]
+            is_input_converted = False
             for value_info in value_info_list:
                 if input_name == value_info.name:
                     # create new value_info for current node's new input name
@@ -457,9 +480,24 @@ def convert_float_to_float16(
                     model.graph.node.extend(new_node)
                     # change current node's input name
                     node.input[i] = output_name
+                    is_input_converted = True
                     break
-        # if output's name is in the value_info_list meaning output is tensor(float16) type, insert a float to
-        # float16 Cast node after the node, change current node's output name and create new value_info for the new name
+
+            # For bfloat16 nodes, we need to convert float initializers to bfloat16.
+            if (not is_input_converted) and use_bf16 and (input_name in initializers_to_be_casted_to_bf16):
+                output_name = node.name + "_input_cast_" + str(i)
+                value_info = helper.make_tensor_value_info(
+                    name=output_name, elem_type=accuracy_type, shape=initializers_to_be_casted_to_bf16[input_name].dims
+                )
+                new_value_info = model.graph.value_info.add()
+                new_value_info.CopyFrom(value_info)
+                node_name = node.name + "_input_cast" + str(i)
+                new_node = [helper.make_node("Cast", [input_name], [output_name], to=accuracy_type, name=node_name)]
+                model.graph.node.extend(new_node)
+                node.input[i] = output_name
+
+        # if output's name is in the value_info_list meaning output is tensor(float16) type, insert a Cast (to float16)
+        # node after it, change current node's output name and create new value_info for the new name.
         for i in range(len(node.output)):
             output = node.output[i]
             for value_info in value_info_list:

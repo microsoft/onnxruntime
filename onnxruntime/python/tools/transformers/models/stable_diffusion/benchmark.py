@@ -9,6 +9,7 @@ import os
 import statistics
 import sys
 import time
+from pathlib import Path
 
 import __init__  # noqa: F401. Walk-around to run this script directly
 import coloredlogs
@@ -473,7 +474,8 @@ def run_optimum_ort(
     load_end = time.time()
     print(f"Model loading took {load_end - load_start} seconds")
 
-    image_filename_prefix = get_image_filename_prefix("optimum", model_name, batch_size, disable_safety_checker)
+    full_model_name = model_name + "_" + Path(directory).name if directory else model_name
+    image_filename_prefix = get_image_filename_prefix("optimum", full_model_name, batch_size, disable_safety_checker)
     result = run_optimum_ort_pipeline(
         pipe,
         batch_size,

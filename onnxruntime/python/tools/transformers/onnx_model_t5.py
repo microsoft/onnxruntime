@@ -895,38 +895,3 @@ class T5OnnxModel(BertOnnxModel):
         self.adjust_rel_pos_bis_length_input()
 
         self.prune_graph()
-
-    def convert_mixed_precision(self, force_dense_output_fp32: bool = True, keep_io_types=True):
-        """
-           Convert model to mixed precision (float32 and float16).
-           This shall be done after the model is fully optimized and pruned.
-
-        Args:
-           force_dense_output_fp32: force the output MatMul in MatMul-Rel-MatMul to float32.
-           keep_io_types: keep graph input/output data type.
-        """
-
-        node_block_list = []
-
-        output_name_to_node_map = self.output_name_to_node()
-        # See https://github.com/huggingface/transformers/issues/20287#issuecomment-1342219429
-        if force_dense_output_fp32:
-            for node in self.nodes():
-                if node.op_type == "SkipSimplifiedLayerNormalization":
-                    parent, i = self.match_first_parent(node, "MatMul", output_name_to_node=output_name_to_node_map)
-                    if parent:
-                        if parent.name:
-                            node_block_list.append(parent.name)
-                        else:
-                            logger.warning(f"Node has no name. Its first output is {parent.output[0]}")
-
-        parameters = {
-            "keep_io_types": keep_io_types,
-            "op_block_list": ["SimplifiedLayerNormalization", "SkipSimplifiedLayerNormalization"],
-            "node_block_list": node_block_list,
-        }
-
-        logger.info(f"mixed precision parameters: {parameters}")
-        self.convert_float_to_float16(use_symbolic_shape_infer=True, **parameters)
-
-        return parameters

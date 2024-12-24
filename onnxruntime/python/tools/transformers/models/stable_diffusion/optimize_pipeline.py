@@ -104,6 +104,7 @@ def _optimize_sd_pipeline(
     model_list: List[str],
     use_external_data_format: Optional[bool],
     float16: bool,
+    bfloat16: bool,
     force_fp32_ops: List[str],
     enable_runtime_optimization: bool,
     args,
@@ -116,6 +117,7 @@ def _optimize_sd_pipeline(
         model_list (List[str]): list of directory names with onnx model.
         use_external_data_format (Optional[bool]): use external data format.
         float16 (bool): use half precision
+        bfloat16 (bool): use bfloat16 as fallback if float16 is also provided.
         force_fp32_ops(List[str]): operators that are forced to run in float32.
         enable_runtime_optimization(bool): run graph optimization using Onnx Runtime.
 
@@ -160,7 +162,7 @@ def _optimize_sd_pipeline(
     #   export ORT_DEBUG_NODE_IO_DUMP_STATISTICS_DATA=1
     #   export ORT_DEBUG_NODE_IO_DUMP_INPUT_DATA=1
     #   export ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA=1
-    #   python benchmark.py --height 1024 --width 1024 --steps 4 -b 1 -v Flux.1S -p flux1_schnell_onnx/fp32_opt -e optimum >dump.txt 2>err.txt
+    #   python benchmark.py --height 1024 --width 1024 --steps 4 -b 1 -v Flux.1S -p flux1_schnell_onnx/fp32_opt -e optimum >stdout.txt 2>stderr.txt
     # Warning: The node name might change in different export settings. We used python 3.10 and the following packages:
     #   diffusers==0.31.0  transformers==4.46.3 optimum==1.24.0.dev0 torch==2.5.1 onnx==1.17.0 protobuf==5.29.2
     flux_node_block_list = {
@@ -199,6 +201,7 @@ def _optimize_sd_pipeline(
             "/decoder/mid_block/attentions.0/Softmax",
         ],
         "transformer": [
+            "/transformer_blocks.18/Mul_5",
             "/transformer_blocks.18/Add_7",
             "/Concat_1",
             "LayerNorm_76",
@@ -282,6 +285,8 @@ def _optimize_sd_pipeline(
         ],
     }
 
+    sd3_node_block_list = {"text_encoder_3": flux_node_block_list["text_encoder_2"]}
+
     if force_fp32_ops:
         for fp32_operator in force_fp32_ops:
             parts = fp32_operator.split(":")
@@ -337,15 +342,23 @@ def _optimize_sd_pipeline(
         )
 
         if float16:
-            if is_flux_pipeline and name in flux_node_block_list:
+            model_node_block_list = (
+                flux_node_block_list if is_flux_pipeline else sd3_node_block_list if pipeline_type == "sd3" else {}
+            )
+            if name in model_node_block_list:
+                # Opset 12 does not support bfloat16.
+                # By default, optimum exports T5 model with opset 12. So we need to check the opset version.
+                use_bfloat16 = bfloat16
+                for opset in m.model.opset_import:
+                    if opset.domain in ["", "ai.onnx"] and opset.version < 13:
+                        logger.warning("onnx model requires opset 13 or higher to use bfloat16. Fall back to float32.")
+                        use_bfloat16 = False
+
                 m.convert_float_to_float16(
                     keep_io_types=False,
-                    node_block_list=flux_node_block_list[name],
+                    node_block_list=model_node_block_list[name],
+                    use_bfloat16_as_blocked_nodes_dtype=use_bfloat16,
                 )
-            elif model_type == "t5":
-                assert isinstance(m, T5OnnxModel)
-                # TODO: follow t5 model in Flux model to use node block list instead.
-                m.convert_mixed_precision(force_dense_output_fp32=True, keep_io_types=True)
             # For SD-XL, use FP16 in VAE decoder will cause NaN and black image so we keep it in FP32.
             elif pipeline_type in ["sdxl"] and name in ["vae_decoder"]:
                 logger.info("Skip converting %s to float16 to avoid NaN", name)
@@ -454,6 +467,7 @@ def optimize_stable_diffusion_pipeline(
         model_list,
         use_external_data_format,
         float16,
+        args.bfloat16,
         args.force_fp32_ops,
         enable_runtime_optimization,
         args,
@@ -488,9 +502,17 @@ def parse_arguments(argv: Optional[List[str]] = None):
         "--float16",
         required=False,
         action="store_true",
-        help="Output models of half or mixed precision.",
+        help="Output models of float16, except some nodes falls back to float32 or bfloat16 to avoid overflow.",
     )
     parser.set_defaults(float16=False)
+
+    parser.add_argument(
+        "--bfloat16",
+        required=False,
+        action="store_true",
+        help="Allow bfloat16 as fallback if --float16 is also provided.",
+    )
+    parser.set_defaults(bfloat16=False)
 
     parser.add_argument(
         "--force_fp32_ops",
@@ -544,6 +566,7 @@ def parse_arguments(argv: Optional[List[str]] = None):
 
 def main(argv: Optional[List[str]] = None):
     args = parse_arguments(argv)
+
     logger.info("Arguments: %s", str(args))
     optimize_stable_diffusion_pipeline(
         args.input, args.output, args.overwrite, args.use_external_data_format, args.float16, args.inspect, args

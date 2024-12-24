@@ -214,17 +214,19 @@ optimum-cli export onnx --model stabilityai/stable-diffusion-xl-base-1.0 --task 
 
 #### Stable Diffusion 3.x and Flux 1.0
 
-Stable Diffusion 3.x and Flux 1.0 requires transformers >= 4.45, and optimum > 1.23.3:
+Stable Diffusion 3.x and Flux 1.0 requires transformers >= 4.45, and optimum > 1.23.3.
+The default opset version is 12 for T5. To support bfloat16, please set `--opset` verison explicitly like below example.
+
 ```
 git clone https://github.com/huggingface/optimum
 cd optimum
 pip install -e .
 
-optimum-cli export onnx --model stabilityai/stable-diffusion-3-medium-diffusers ./sd3_onnx/fp32
-optimum-cli export onnx --model stabilityai/stable-diffusion-3.5-medium ./sd3.5_medium_onnx/fp32
-optimum-cli export onnx --model stabilityai/stable-diffusion-3.5-large ./sd3.5_large_onnx/fp32
-optimum-cli export onnx --model black-forest-labs/FLUX.1-schnell ./flux1_schnell_onnx/fp32
-optimum-cli export onnx --model black-forest-labs/FLUX.1-dev ./flux1_dev_onnx/fp32
+optimum-cli export onnx --model stabilityai/stable-diffusion-3-medium-diffusers ./sd3_onnx/fp32 --opset 15
+optimum-cli export onnx --model stabilityai/stable-diffusion-3.5-medium ./sd3.5_medium_onnx/fp32 --opset 15
+optimum-cli export onnx --model stabilityai/stable-diffusion-3.5-large ./sd3.5_large_onnx/fp32 --opset 15
+optimum-cli export onnx --model black-forest-labs/FLUX.1-schnell ./flux1_schnell_onnx/fp32 --opset 15
+optimum-cli export onnx --model black-forest-labs/FLUX.1-dev ./flux1_dev_onnx/fp32 --opset 15
 ```
 
 ### Optimize ONNX Pipeline
@@ -242,9 +244,12 @@ cd onnxruntime/onnxruntime/python/tools/transformers/models/stable_diffusion
 python optimize_pipeline.py -i ./sdxl_onnx/fp32 -o ./sdxl_onnx/fp16 --float16
 python optimize_pipeline.py -i ./sd3_onnx/fp32 -o ./sd3_onnx/fp16 --float16
 python optimize_pipeline.py -i ./sd3.5_medium_onnx/fp32 -o ./sd3.5_medium_onnx/fp16 --float16
-python optimize_pipeline.py -i ./flux1_schnell_onnx/fp32 -o ./flux1_schnell_onnx/fp16 --float16
-python optimize_pipeline.py -i ./flux1_dev_onnx/fp32 -o ./flux1_dev_onnx/fp16 --float16
+python optimize_pipeline.py -i ./sd3.5_large_onnx/fp32 -o ./sd3.5_large_onnx/fp16 --float16
+python optimize_pipeline.py -i ./flux1_schnell_onnx/fp32 -o ./flux1_schnell_onnx/fp16 --float16 --bfloat16
+python optimize_pipeline.py -i ./flux1_dev_onnx/fp32 -o ./flux1_dev_onnx/fp16 --float16 --bfloat16
 ```
+When converting model to float16, some nodes has overflow risk and we can force those nodes to run in either float32 or bfloat16.
+Option `--bfloat16` enables the later. If an operator does not support bfloat16, it will fallback to float32.
 
 For SDXL model, it is recommended to use a machine with 48 GB or more memory to optimize.
 
@@ -288,6 +293,7 @@ Example of benchmark with optimum using CUDA provider on stable diffusion 3.5 me
 ```
 python benchmark.py -e optimum --height 1024 --width 1024 --steps 20 -b 1 -v 3.5M -p sd3.5_medium_onnx/fp32
 python benchmark.py -e optimum --height 1024 --width 1024 --steps 20 -b 1 -v 3.5M -p sd3.5_medium_onnx/fp16
+python benchmark.py -e optimum --height 1024 --width 1024 --steps 20 -b 1 -v 3.5L -p sd3.5_large_onnx/fp16
 python benchmark.py -e optimum --height 1024 --width 1024 --steps 20 -b 1 -v Flux.1S -p flux1_schnell_onnx/fp16
 python benchmark.py -e optimum --height 1024 --width 1024 --steps 20 -b 1 -v Flux.1D -p flux1_dev_onnx/fp16
 ```
