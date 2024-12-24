@@ -185,3 +185,13 @@ const MLAS_HALFGEMM_DISPATCH MlasHalfGemmDispatchNeon = {
     MLAS_HALF_GEMM_KERNEL_NEON::KernelMaxM,
     32 // kernel may read beyond buffer end by 32 bytes
 };
+
+const MLAS_HGEMM_DISPATCH MlasHGemmDispatchNeon = [](){
+    MLAS_HGEMM_DISPATCH d;
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
+    d.HTransposePackB = hgemm_neon::HTransposePackB_Kernel;
+    d.HGemmKernel_TransposeB = hgemm_neon::HGemm_TransposeB_Kernel;
+    d.HGemmKernel_TransposePackB = hgemm_neon::HGemm_TransposePackB_Kernel;
+#endif
+    return d;
+}();
