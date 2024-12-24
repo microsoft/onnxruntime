@@ -748,6 +748,19 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       preferred_data_layout_{config.data_layout},
       force_cpu_node_names_{std::move(config.force_cpu_node_names)},
       enable_graph_capture_{config.enable_graph_capture} {
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+        enable_pix_capture_ = true;//config.enable_pix_capture;
+#else
+        if (config.enable_pix_capture) {
+          ORT_THROW("Support PIX capture requires extra build flags (--enable_pix_capture)");
+        }
+#endif // ENABLE_PIX_FOR_WEBGPU_EP
+
+  // Using PIX to profile ORT requires 'present' to define frame boundary. Creating a trivial
+  // window and surface to 'present' for PIX frame capture.
+  if (IsPIXCaptureEnabled()) {
+    context_.CreateSurfaceForPIXCapture();
+  }
 }
 
 std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
@@ -822,7 +835,12 @@ std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTran
 }
 
 WebGpuExecutionProvider::~WebGpuExecutionProvider() {
+  if (IsPIXCaptureEnabled()) {
+    context_.DestroySurfaceAndWindow();
+  }
+
   WebGpuContextFactory::ReleaseContext(context_id_);
+
 }
 
 std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
@@ -864,6 +882,10 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
 
   if (context_.ValidationMode() >= ValidationMode::Basic) {
     return context_.PopErrorScope();
+  }
+
+  if (IsPIXCaptureEnabled()) {
+    context_.GeneratePIXFrame();
   }
 
   return Status::OK();
