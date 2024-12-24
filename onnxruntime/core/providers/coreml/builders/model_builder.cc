@@ -412,26 +412,8 @@ std::string GetModelOutputPath(const CoreMLOptions& coreml_options,
     std::string_view subgraph_short_name = std::string_view(subgraph_name)
                                                .substr(subgraph_name.find_last_of("_") + 1);
     path = MakeString(std::string(coreml_options.ModelCacheDirectory()), "/", cache_key);
-    if (!Env::Default().CreateFolder(path).IsOK()) {
-      LOGS(logger, ERROR) << "Failed to create cache directory " << path << ". Model caching is disabled.";
-      coreml_options.DisableModelCache();
-      return GetModelOutputPath(coreml_options, graph_viewer, logger);
-    }
-    // Write the model path to a file in the cache directory.
-    // This is for developers to know what the cached model is as we used a hash for the directory name.
-    if (!Env::Default().FileExists(ToPathString(path + "/model.txt"))) {
-      const Graph* main_graph = &graph_viewer.GetGraph();
-      while (main_graph->IsSubgraph()) {
-        main_graph = main_graph->ParentGraph();
-      }
-      std::ofstream file(path + "/model.txt");
-      if (!file.is_open()) {
-        LOGS(logger, ERROR) << "Failed to open file " << path + "/model.txt";
-      } else {
-        file << main_graph->ModelPath().string();
-        file.close();
-      }
-    }
+
+    std::string model_file_path = path + "/model.txt";
 
     path = MakeString(path, "/", subgraph_short_name);
     // Set the model cache path with setting of RequireStaticShape and ModelFormat
@@ -447,11 +429,26 @@ std::string GetModelOutputPath(const CoreMLOptions& coreml_options,
       path += "_nn";
     }
     if (!Env::Default().CreateFolder(path).IsOK()) {
-      LOGS(logger, ERROR) << "Failed to create cache directory " << path << ". Model caching is disabled.";
+      LOGS(logger, ERROR) << "Failed to create cache directory `" << path << "`. Model caching is disabled.";
       coreml_options.DisableModelCache();
       return GetModelOutputPath(coreml_options, graph_viewer, logger);
     }
     path += "/model";
+    // Write the model path to a file in the cache directory.
+    // This is for developers to know what the cached model is as we used a hash for the directory name.
+    if (!Env::Default().FileExists(ToPathString(model_file_path))) {
+      const Graph* main_graph = &graph_viewer.GetGraph();
+      while (main_graph->IsSubgraph()) {
+        main_graph = main_graph->ParentGraph();
+      }
+      std::ofstream file(model_file_path);
+      if (!file.is_open()) {
+        LOGS(logger, ERROR) << "Failed to open file " << model_file_path;
+      } else {
+        file << main_graph->ModelPath().string();
+        file.close();
+      }
+    }
   }
   return path;
 }
