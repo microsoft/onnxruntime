@@ -3,6 +3,10 @@
 
 #pragma once
 
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+#include <GLFW/glfw3.h>
+#endif // ENABLE_PIX_FOR_WEBGPU_EP
+
 #include <memory>
 #include <mutex>
 
@@ -123,6 +127,12 @@ class WebGpuContext final {
 
   Status Run(ComputeContext& context, const ProgramBase& program);
 
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+  void CreateSurfaceForPIXCapture();
+  void GeneratePIXFrame();
+  void DestroySurfaceAndWindow();
+#endif // ENABLE_PIX_FOR_WEBGPU_EP
+
  private:
   enum class TimestampQueryType {
     None = 0,
@@ -208,6 +218,11 @@ class WebGpuContext final {
 
   uint64_t gpu_timestamp_offset_ = 0;
   bool is_profiling_ = false;
+
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+  wgpu::Surface surface_;
+  GLFWwindow* window_;
+#endif // ENABLE_PIX_FOR_WEBGPU_EP
 };
 
 }  // namespace webgpu
