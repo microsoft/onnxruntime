@@ -9,6 +9,10 @@
 #include "dawn/native/DawnNative.h"
 #endif
 
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+#include <webgpu/webgpu_glfw.h>
+#endif // ENABLE_PIX_FOR_WEBGPU_EP
+
 #include "core/common/common.h"
 #include "core/common/path_string.h"
 #include "core/platform/env.h"
@@ -640,6 +644,54 @@ void WebGpuContext::Flush() {
   current_command_encoder_ = nullptr;
   num_pending_dispatches_ = 0;
 }
+
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+void WebGpuContext::CreateSurfaceForPIXCapture() {
+    // Trivial window size for surface texture creation and provide frame concept for PIX.
+    static constexpr uint32_t kWidth = 512u;
+    static constexpr uint32_t kHeight = 512u;
+
+    if (!glfwInit()) {
+      ORT_ENFORCE("Failed to init glfw for PIX capture");
+    }
+
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+
+    window_ =
+      glfwCreateWindow(kWidth, kHeight, "WebGPU window", nullptr, nullptr);
+
+    surface_ = wgpu::glfw::CreateSurfaceForWindow(instance_, window_);
+    wgpu::TextureFormat format;
+    wgpu::SurfaceCapabilities capabilities;
+    surface_.GetCapabilities(Adapter(), &capabilities);
+    format = capabilities.formats[0];
+
+    wgpu::SurfaceConfiguration config;
+    config.device = Device();
+    config.format = format;
+    config.width = kWidth;
+    config.height = kHeight;
+
+    surface_.Configure(&config);
+}
+
+void WebGpuContext::GeneratePIXFrame() {
+  wgpu::SurfaceTexture surfaceTexture;
+  surface_.GetCurrentTexture(&surfaceTexture);
+
+  // Call present to trigger dxgi_swapchain present. PIX
+  // take this as a frame boundary.
+  surface_.Present();
+}
+
+void WebGpuContext::DestroySurfaceAndWindow() {
+  surface_.Unconfigure();
+
+  glfwDestroyWindow(window_);
+  window_ = nullptr;
+}
+#endif //ENABLE
 
 std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo> WebGpuContextFactory::contexts_;
 std::mutex WebGpuContextFactory::mutex_;
