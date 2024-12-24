@@ -51,7 +51,7 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val scale = model_builder.GetOperand(input_defs[1]->Name());
   emscripten::val zero_point = emscripten::val::null();
 
-  if (input_defs.size() == 3 && input_defs[2]->Exists()) {
+  if (TensorExists(input_defs, 2)) {
     zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
     has_zero_point = true;
   } else {
@@ -159,7 +159,7 @@ bool QDQOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initial
   int32_t input0_type = 0;  // input data type
   int32_t input1_type = 0;  // x_scale data type
   int32_t input2_type = 0;  // x_zero_point data type
-  bool has_input2 = input_defs.size() > 2 && input_defs[2]->Exists();
+  bool has_input2 = TensorExists(input_defs, 2);
 
   if (!GetType(*input_defs[0], input0_type, logger) ||
       !GetType(*input_defs[1], input1_type, logger) ||
