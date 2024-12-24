@@ -370,7 +370,6 @@ TEST(CoreMLExecutionProviderTest, TestModelCache) {
                               verification_params);
     // this folder can't be created
     ASSERT_EQ(std::filesystem::exists("/" + subgraph_name), false);
-
   }
 #else
   TestModelLoad(model_data, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
