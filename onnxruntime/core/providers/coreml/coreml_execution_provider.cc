@@ -67,6 +67,7 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
                   [](unsigned char c) { return !std::isalnum(c); })) {
     LOGS(logger, ERROR) << "[" << kCOREML_CACHE_KEY << ":" << user_provided_key << "] is not a valid cache key."
                         << " It should be alphanumeric and less than 64 characters.";
+    user_provided_key = "";
   }
   const auto gen_metadef_name =
       [&]() {
