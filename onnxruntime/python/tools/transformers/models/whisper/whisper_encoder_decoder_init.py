@@ -14,6 +14,7 @@ from typing import List, Optional
 import numpy as np
 import onnx
 import torch
+from float16 import convert_float_to_float16
 from onnx import ModelProto, ValueInfoProto
 from onnx_model import OnnxModel
 from past_helper import PastKeyValuesHelper
@@ -38,18 +39,18 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         self.no_beam_search_op = no_beam_search_op
 
         self.encoder = WhisperEncoder(config, model, model_impl)
-        self.decoder = WhisperDecoder(config, model, model_impl)
+        self.decoder = WhisperDecoder(config, model, model_impl, no_beam_search_op)
 
         self.max_source_positions = self.config.max_source_positions
         self.num_heads = self.config.decoder_attention_heads
         self.head_size = self.config.d_model // self.num_heads
 
-    def forward_for_beam_search_op(self, audio_features: torch.Tensor, decoder_input_ids: torch.Tensor):
+    def hf_forward_for_beam_search_op(self, audio_features: torch.Tensor, decoder_input_ids: torch.Tensor):
         encoder_hidden_states = self.encoder(audio_features)
         logits, present_key_values = self.decoder(decoder_input_ids, encoder_hidden_states)
         return logits, encoder_hidden_states, present_key_values
 
-    def forward_for_no_beam_search_op(self, audio_features: torch.Tensor):
+    def hf_forward_for_no_beam_search_op(self, audio_features: torch.Tensor):
         encoder_hidden_states = self.encoder(audio_features)
 
         # Get cross attention KV caches and return them for this model
@@ -63,10 +64,35 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
 
         return encoder_hidden_states, present_cross_attention_key_value_caches
 
+    def oai_forward_for_beam_search_op(self, audio_features: torch.Tensor, decoder_input_ids: torch.Tensor):
+        encoder_hidden_states = self.encoder(audio_features)
+        logits, present_key_values = self.decoder(decoder_input_ids, encoder_hidden_states)
+        return logits, encoder_hidden_states, present_key_values
+
+    def oai_forward_for_no_beam_search_op(self, audio_features: torch.Tensor):
+        encoder_hidden_states = self.encoder(audio_features)
+
+        # Get cross attention KV caches and return them for this model
+        # We do this because these MatMuls are only run once before their outputs are being re-used in the decoder
+        present_cross_attention_key_value_caches = []
+        for block in self.decoder.model.decoder.blocks:
+            cross_attn_key_cache = block.cross_attn.key(encoder_hidden_states).view(-1, self.max_source_positions, self.num_heads, self.head_size).transpose(1, 2)
+            cross_attn_value_cache = block.cross_attn.value(encoder_hidden_states).view(-1, self.max_source_positions, self.num_heads, self.head_size).transpose(1, 2)
+            present_cross_attention_key_value_caches.append(cross_attn_key_cache)
+            present_cross_attention_key_value_caches.append(cross_attn_value_cache)
+
+        return encoder_hidden_states, present_cross_attention_key_value_caches
+
     def forward(self, audio_features: torch.Tensor, decoder_input_ids: Optional[torch.Tensor] = None):
+        if self.model_impl == "openai":
+            if self.no_beam_search_op:
+                return self.oai_forward_for_no_beam_search_op(audio_features)
+            return self.oai_forward_for_beam_search_op(audio_features, decoder_input_ids)
+
+        # Hugging Face implementation
         if self.no_beam_search_op:
-            return self.forward_for_no_beam_search_op(audio_features)
-        return self.forward_for_beam_search_op(audio_features, decoder_input_ids)
+            return self.hf_forward_for_no_beam_search_op(audio_features)
+        return self.hf_forward_for_beam_search_op(audio_features, decoder_input_ids)
 
     def input_names(self):
         if self.no_beam_search_op:
@@ -169,6 +195,18 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         model.graph.output.extend(reordered_outputs)
         return model
 
+    def fix_layernorm_weights(self, model: ModelProto, use_fp16_inputs: bool):
+        if self.model_impl == "openai" and use_fp16_inputs:
+            # Cast ONNX model to float16 to ensure LayerNorm weights are converted from
+            # float32 to float16 since exported model already has float16 weights everywhere
+            # except for LayerNorm ops. This happens because OpenAI always upcasts to float32
+            # when computing LayerNorm.
+            #
+            # Reference:
+            # https://github.com/openai/whisper/blob/90db0de1896c23cbfaf0c58bc2d30665f709f170/whisper/model.py#L41
+            model = convert_float_to_float16(model)
+        return model
+
     def export_onnx(
         self,
         onnx_model_path: str,
@@ -229,6 +267,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
 
             model = onnx.load_model(out_path, load_external_data=use_external_data_format)
             model = self.fix_outputs(model)
+            model = self.fix_layernorm_weights(model, use_fp16_inputs)
             OnnxModel.save(
                 model,
                 onnx_model_path,
@@ -281,7 +320,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
             out = self.forward(**inputs)
             pt_outputs.append(out[0].detach().cpu().numpy())
             pt_outputs.append(out[1].detach().cpu().numpy())
-            
+
             (self_attn_kv_caches, cross_attn_kv_caches) = group_past_key_values(out[2])
             pt_outputs.extend([self_attn_kv_cache.detach().cpu().numpy() for self_attn_kv_cache in self_attn_kv_caches])
             pt_outputs.extend([cross_attn_kv_cache.detach().cpu().numpy() for cross_attn_kv_cache in cross_attn_kv_caches])

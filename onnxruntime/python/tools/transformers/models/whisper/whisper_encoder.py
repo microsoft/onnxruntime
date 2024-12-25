@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path
 from typing import List
 
+import numpy as np
 import onnx
 import torch
 from onnx_model import OnnxModel
@@ -141,7 +142,7 @@ class WhisperEncoder(torch.nn.Module):
         pt_outputs = self.forward(inputs["audio_features"]).detach().cpu().numpy()
 
         # Run ONNX model
-        sess = ort.InferenceSession(onnx_model_path, providers=[provider])
+        sess = InferenceSession(onnx_model_path, providers=[provider])
         ort_outputs = sess.run(None, {"audio_features": inputs["audio_features"].detach().cpu().numpy()})[0]
         
         # Calculate output difference

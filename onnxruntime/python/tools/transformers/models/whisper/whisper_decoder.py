@@ -14,13 +14,14 @@ from typing import List, Optional, Tuple, Union
 import numpy as np
 import onnx
 import torch
+from float16 import convert_float_to_float16
 from google.protobuf.internal.containers import RepeatedCompositeFieldContainer
 from io_binding_helper import TypeHelper
 from onnx import ModelProto, ValueInfoProto
 from onnx_model import OnnxModel
 from past_helper import PastKeyValuesHelper
 from transformers import WhisperConfig, file_utils
-from whisper_inputs import convert_inputs_for_ort, get_model_dynamic_axes, get_sample_decoder_inputs
+from whisper_inputs import convert_inputs_for_ort, get_model_dynamic_axes, get_sample_decoder_inputs, group_past_key_values
 
 from onnxruntime import InferenceSession
 
@@ -37,14 +38,15 @@ class WhisperDecoder(torch.nn.Module):
         self.model_impl = model_impl
         self.no_beam_search_op = no_beam_search_op
 
-        self.decoder = model.decoder if model_impl == "openai" else model.model.decoder
-        self.proj_out = model.proj_out
+        self.decoder = None if model_impl == "openai" else model.model.decoder
+        self.proj_out = None if model_impl == "openai" else model.proj_out
+        self.model = model if model_impl == "openai" else None
 
         self.max_source_positions = self.config.max_source_positions
         self.num_heads = self.config.decoder_attention_heads
         self.head_size = self.config.d_model // self.num_heads
 
-    def forward(self, decoder_input_ids: torch.Tensor, encoder_hidden_states: Optional[torch.Tensor] = None, past_key_values: Optional[List[Tuple[torch.Tensor]]] = None):
+    def hf_forward(self, decoder_input_ids: torch.Tensor, encoder_hidden_states: Optional[torch.Tensor] = None, past_key_values: Optional[List[Tuple[torch.Tensor]]] = None):
         outputs = self.decoder(
             encoder_hidden_states=encoder_hidden_states,
             input_ids=decoder_input_ids,
@@ -66,6 +68,92 @@ class WhisperDecoder(torch.nn.Module):
 
         # Return present_self_* for decoder-with-past since past_cross_* and present_cross_* are identical
         return logits, present_self
+
+    def oai_forward(self, decoder_input_ids: torch.Tensor, encoder_hidden_states: Optional[torch.Tensor] = None, past_key_values: Optional[List[Tuple[torch.Tensor]]] = None):
+        past_kv_cache = {}
+        if past_key_values is not None:
+            # Convert past KV caches (BxNxSxH --> BxSxNxH --> BxSxD) for OpenAI's forward pass
+            self_attn_kv_caches, cross_attn_kv_caches = group_past_key_values(past_key_values)
+            self_attn_kv_caches = [past_kv.transpose(1, 2) for past_kv in self_attn_kv_caches]
+            self_attn_kv_caches = [past_kv.reshape(past_kv.shape[:2] + (-1,)) for past_kv in self_attn_kv_caches]
+            cross_attn_kv_caches = [past_kv.transpose(1, 2) for past_kv in cross_attn_kv_caches]
+            cross_attn_kv_caches = [past_kv.reshape(past_kv.shape[:2] + (-1,)) for past_kv in cross_attn_kv_caches]
+
+            for idx, block in enumerate(self.model.decoder.blocks):
+                past_kv_cache[block.attn.key] = self_attn_kv_caches[2 * idx]
+                past_kv_cache[block.attn.value] = self_attn_kv_caches[2 * idx + 1]
+                past_kv_cache[block.cross_attn.key] = cross_attn_kv_caches[2 * idx]
+                past_kv_cache[block.cross_attn.value] = cross_attn_kv_caches[2 * idx + 1]
+
+        # Install OpenAI's hooks on the forward pass of each nn.Linear for key and value
+        # since the hooks will capture the output of the key and value MatMuls, which
+        # represent the current keys and values.
+        #
+        # For OpenAI's forward pass, the hook function will also perform the concat
+        # operation (past_kv + curr_kv --> pres_kv) if needed. However, the ONNX model
+        # will not contain this concat operation because the present KV caches aren't
+        # returned by OpenAI's forward pass.
+        kv_cache, hooks = self.model.install_kv_cache_hooks()
+
+        # Run forward pass
+        # NOTE: There is a bug with openai-whisper==20240930 with the introduction of SDPA.
+        # In the Whisper codebase, the following line
+        #
+        # is_causal = mask is not None and n_ctx > 1
+        #
+        # has been added where `mask` is a torch tensor. The right-hand side evaluates to `tensor(True/False)`
+        # but `is_causal` only accepts the boolean value. The fix is to apply `.item()` after the right-hand
+        # side has been evaluated. In other words, the line should be
+        #
+        # is_causal = (mask is not None and n_ctx > 1).item()
+        #
+        # instead.
+        logits = self.model.decoder(x=decoder_input_ids, xa=encoder_hidden_states, kv_cache=past_kv_cache)
+
+        # Re-do concat operation on self attention KV caches for ONNX export (if past self attention KV caches exist)
+        if past_key_values is not None:
+            for block in self.model.decoder.blocks:
+                kv_cache[block.attn.key] = torch.cat(
+                    [past_kv_cache[block.attn.key], kv_cache[block.attn.key]], dim=1
+                ).detach()
+                kv_cache[block.attn.value] = torch.cat(
+                    [past_kv_cache[block.attn.value], kv_cache[block.attn.value]], dim=1
+                ).detach()
+
+        present_self, present_cross = [], []
+        for block in self.model.decoder.blocks:
+            # Group self and cross values
+            present_self.append(kv_cache[block.attn.key])
+            present_self.append(kv_cache[block.attn.value])
+            if past_key_values is None:
+                # Return present_self_* and present_cross_* for decoder-init
+                present_cross.append(kv_cache[block.cross_attn.key])
+                present_cross.append(kv_cache[block.cross_attn.value])
+
+        # Convert present KV caches (BxSxD --> BxSxNxH --> BxNxSxH) after OpenAI's forward pass
+        present_self = [
+            present_kv.reshape(present_kv.shape[:2] + (-1, self.head_size)).transpose(1, 2) for present_kv in present_self
+        ]
+        present_cross = [
+            present_kv.reshape(present_kv.shape[:2] + (-1, self.head_size)).transpose(1, 2) for present_kv in present_cross
+        ]
+
+        # Remove OpenAI's hooks since they can persist after this function completes
+        for hook in hooks:
+            hook.remove()
+
+        if past_key_values is None:
+            # Return present_self_* and present_cross_* for decoder-init
+            present_key_values = PastKeyValuesHelper.group_by_layer(present_self + present_cross, len(present_self) // 2)
+            return logits, present_key_values
+
+        # Return present_self_* for decoder-with-past since past_cross_* and present_cross_* are identical
+        return logits, present_self
+
+    def forward(self, decoder_input_ids: torch.Tensor, encoder_hidden_states: Optional[torch.Tensor] = None, past_key_values: Optional[List[Tuple[torch.Tensor]]] = None):
+        if self.model_impl == "openai":
+            return self.oai_forward(decoder_input_ids, encoder_hidden_states, past_key_values)
+        return self.hf_forward(decoder_input_ids, encoder_hidden_states, past_key_values)
 
     def input_names(self):
         if self.first_pass:
@@ -185,6 +273,18 @@ class WhisperDecoder(torch.nn.Module):
         model.graph.output.extend(reordered_outputs)
         return model
 
+    def fix_layernorm_weights(self, model: ModelProto, use_fp16_inputs: bool):
+        if self.model_impl == "openai" and use_fp16_inputs:
+            # Cast ONNX model to float16 to ensure LayerNorm weights are converted from
+            # float32 to float16 since exported model already has float16 weights everywhere
+            # except for LayerNorm ops. This happens because OpenAI always upcasts to float32
+            # when computing LayerNorm.
+            #
+            # Reference:
+            # https://github.com/openai/whisper/blob/90db0de1896c23cbfaf0c58bc2d30665f709f170/whisper/model.py#L41
+            model = convert_float_to_float16(model)
+        return model
+
     def export_onnx(
         self,
         onnx_model_path: str,
@@ -254,6 +354,7 @@ class WhisperDecoder(torch.nn.Module):
 
             model = onnx.load_model(out_path, load_external_data=use_external_data_format)
             model = self.fix_inputs_and_outputs(model)
+            model = self.fix_layernorm_weights(model, use_fp16_inputs)
             OnnxModel.save(
                 model,
                 onnx_model_path,

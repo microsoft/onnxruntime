@@ -91,6 +91,7 @@ class WhisperHelper:
             model_impl (str): library to load model from
             cache_dir (str): cache directory
             device (torch.device): device to run the model
+            dtype (torch.dtype): dtype to run the model
             merge_encoder_and_decoder_init (bool, optional): Whether merge encoder and decoder initialization into one ONNX model. Defaults to True.
             no_beam_search_op (bool, optional): Whether to use beam search op or not. Defaults to False.
             output_qk (bool, optional): Whether to output QKs to calculate batched jump times for word-level timestamps. Defaults to False.
@@ -107,10 +108,16 @@ class WhisperHelper:
         else:
             # Load from OpenAI
             import whisper
-            model = whisper.load_model(model_name_or_path, device, download_root=cache_dir, in_memory=True)
+            if not os.path.exists(model_name_or_path):
+                name_or_path = model_name_or_path.split("/")[-1][8:]
+            else:
+                name_or_path = model_name_or_path
+            model = whisper.load_model(name_or_path, device, download_root=cache_dir, in_memory=True)
 
         # Set PyTorch model properties
-        model.eval().to(device=device, dtype=dtype)
+        model.eval().to(device=device)
+        if model_impl == "hf":
+            model.to(dtype=dtype)
         config = WhisperConfig.from_pretrained(model_name_or_path, cache_dir=cache_dir)
 
         # Load each component of PyTorch model
@@ -143,6 +150,7 @@ class WhisperHelper:
         """Export model component to ONNX
 
         Args:
+            model (class): PyTorch class to export
             onnx_model_path (str): path to save ONNX model
             provider (str): provider to use for verifying parity on ONNX model
             verbose (bool): print verbose information.
@@ -234,7 +242,7 @@ class WhisperHelper:
                 # `cache_indirection` inputs
                 m, past_seq_len_name = fix_past_sequence_length(m)
                 m = add_cache_indirection_to_mha(m, past_seq_len_name)
-            
+
             if output_qk:
                 m = add_output_qk_to_mha(m, skip_node_idxs=list(range(0, 2*num_layers, 2)))
 
@@ -294,7 +302,7 @@ class WhisperHelper:
             # https://huggingface.co/docs/transformers/model_doc/whisper#transformers.WhisperForConditionalGeneration.generate.prompt_ids
             # prompt_ids input requires a tensor of rank 1
             for i in range(batch_size):
-                inputs["prompt_ids"] = torch.from_numpy(prompt_ids[i])
+                inputs["prompt_ids"] = torch.from_numpy(prompt_ids[i]).to(device=device)
                 inputs["input_features"] = input_features_[i].to(device)
                 pt_output = pt_model.generate(**inputs).detach().cpu().numpy()
                 pt_outputs.append(pt_output)
@@ -435,10 +443,20 @@ class WhisperHelper:
 
         if not parity:
             for i in range(batch_size):
-                if pt_outputs[i].shape != ort_outputs[i].shape:
-                    diff = pt_outputs[i] - ort_outputs[i][:, : len(pt_outputs[i])]
+                pt_shape = pt_outputs[i].shape
+                ort_shape = ort_outputs[i].shape
+                diff = None
+
+                if pt_shape != ort_shape:
+                    if len(pt_shape) == len(ort_shape):
+                        # Hugging Face impl. + Beam Search op: PyTorch = (26,) and ORT = (30,)
+                        diff = pt_outputs[i] - ort_outputs[i][:, : len(pt_outputs[i])]
+                    else:
+                        # OpenAI impl. + Beam Search op: PyTorch = (1, 30) and ORT = (30,)
+                        diff = pt_outputs[i][0] - ort_outputs[i]
                 else:
                     diff = pt_outputs[i] - ort_outputs[i]
+
                 max_diff_i = max(diff.min(), diff.max(), key=abs)
                 max_diff = max(max_diff, max_diff_i)
 

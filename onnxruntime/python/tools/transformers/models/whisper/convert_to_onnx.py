@@ -525,7 +525,7 @@ def main(argv=None):
         # Wrap parity check in try-except to allow export to continue in case this produces an error
         try:
             with torch.no_grad():
-                # Verify batched decoding with prompts for whisper openai implementation
+                # Verify batched decoding with prompts for OpenAI implementation
                 if args.model_impl == "openai" and args.use_forced_decoder_ids:
                     max_diff = WhisperHelper.verify_onnx(
                         args.model_name_or_path, cache_dir, ort_session, device, batch_size=2, prompt_mode=True

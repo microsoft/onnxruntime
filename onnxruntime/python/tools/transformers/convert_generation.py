@@ -1241,10 +1241,13 @@ def find_past_seq_len_usage(subg: GraphProto):
                 output_name_to_node[output_name] = node
 
     for node in subg.node:
-        # find "Shape(past_key_self..) --> Gather(*, 2)"
+        # find "past_key_self_0 --> [Transpose(past_key_self_0) --> Reshape(past_key_self_0)] --> Shape(past_key_self_0) --> Gather(*, 2)"
+        # where [Transpose(past_key_self_0) --> Reshape(past_key_self_0)] may or may not exist
         if node.op_type == "Gather":
             if not node.input[1] or not node.input[0]:
                 continue
+
+            # Find Gather node's index value
             shape_tensor_name, shape_index_name = (node.input[0], node.input[1])
             ini_gather_indices = None
             if "Constant_" in shape_index_name:
@@ -1262,21 +1265,51 @@ def find_past_seq_len_usage(subg: GraphProto):
             if ini_gather_indices is None:
                 continue
             gather_indices_arr = onnx.numpy_helper.to_array(ini_gather_indices)
-            if gather_indices_arr.size == 1 and gather_indices_arr.item() == 2 and node.input[0] in output_name_to_node:
+
+            if gather_indices_arr.size == 1 and gather_indices_arr.item() in {1, 2} and node.input[0] in output_name_to_node:
                 shape_node = output_name_to_node[shape_tensor_name]
+                if not(shape_node.op_type == "Shape" and shape_node.input[0]):
+                    continue
+
                 if (
-                    shape_node.op_type == "Shape"
-                    and shape_node.input[0]
-                    and shape_node.input[0] in graph_input_names
+                    shape_node.input[0] in graph_input_names
                     and (
                         shape_node.input[0].startswith("past_key_self_")
                         or shape_node.input[0].startswith("past_value_self_")
                     )
+                    and gather_indices_arr.item() == 2
                 ):
+                    # "past_key_self_0 --> Shape(past_key_self_0) --> Gather(*, 2)"
                     tensor_names_to_rename.add(node.output[0])
                     nodes_to_remove.append(node)
                     if len(input_name_to_nodes[shape_node.output[0]]) == 1:
                         nodes_to_remove.append(shape_node)
+                        continue
+
+                if shape_node.input[0] not in output_name_to_node:
+                    continue
+                reshape_node = output_name_to_node[shape_node.input[0]]
+                if not(reshape_node.op_type == "Reshape" and reshape_node.input[0]):
+                    continue
+                transpose_node = output_name_to_node[reshape_node.input[0]]
+                if not(transpose_node.op_type == "Transpose" and transpose_node.input[0]):
+                    continue
+
+                if (
+                    transpose_node.input[0] in graph_input_names
+                    and (
+                        transpose_node.input[0].startswith("past_key_self_")
+                        or transpose_node.input[0].startswith("past_value_self_")
+                    )
+                    and gather_indices_arr.item() == 1
+                ):
+                    # "past_key_self_0 --> Transpose(past_key_self_0) --> Reshape(past_key_self_0) --> Shape(past_key_self_0) --> Gather(*, 2)"
+                    tensor_names_to_rename.add(node.output[0])
+                    nodes_to_remove.extend([node, shape_node, reshape_node])
+                    if len(input_name_to_nodes[transpose_node.output[0]]) == 1:
+                        nodes_to_remove.append(transpose_node)
+                        continue
+
     return tensor_names_to_rename, nodes_to_remove
 
 
@@ -1402,14 +1435,25 @@ def fix_past_sequence_length(model: ModelProto):
         ["Unsqueeze", "Gather", "Shape"],
         [1, 0, 0],
     )
+    long_right_path = model.match_parent_path(
+        base_path[-1],
+        ["Unsqueeze", "Gather", "Shape", "Reshape", "Transpose"],
+        [1, 0, 0, 0, 0],
+    )
     if left_path is None or right_path is None or left_path[-2:] != right_path[-2:]:
         return
 
-    # Remove `past_key_self_0 --> Shape --> Gather` connection
+    # Remove `past_key_self_0 --> [Transpose --> Reshape] --> Shape --> Gather` connection
+    # where `Transpose --> Reshape` part may or may not exist. The OpenAI implementation of
+    # Whisper has an extra `Transpose --> Reshape` connection to remove.
     constant_node = list(filter(lambda n: n.output[0] == left_path[-2].input[1], model.model.graph.node))[0]
     model.model.graph.node.remove(left_path[-2])
     model.model.graph.node.remove(left_path[-1])
     model.model.graph.node.remove(constant_node)
+    if long_right_path is not None:
+        # Remove `Transpose --> Reshape` part
+        model.model.graph.node.remove(long_right_path[-2])
+        model.model.graph.node.remove(long_right_path[-1])
 
     # Add `past_sequence_length` as model input
     past_seq_len_name = "past_sequence_length"
@@ -1755,7 +1799,7 @@ def update_decoder_subgraph_output_cross_attention(subg: GraphProto):
     num_layers = (len(subg.output) - output_self_present_0) // 2
     input_cross_past_0 = 2 * num_layers + input_self_past_0
     past_key_cross_inputs = {subg.input[layer * 2 + input_cross_past_0].name: layer for layer in range(num_layers)}
-    print(f"    --past_key_cross_inputs={past_key_cross_inputs}")
+    print(f"    -- past_key_cross_inputs = {past_key_cross_inputs}")
 
     input_past_key_cross_0_shape = shape_of(subg.input[input_cross_past_0])
     print(f"past_key_cross_0_shape is {input_past_key_cross_0_shape}")
@@ -1824,9 +1868,9 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: ModelP
     tensor_names_to_rename, nodes_to_remove = find_past_seq_len_usage(subg)
     if len(tensor_names_to_rename) > 0:
         for name_to_rename in tensor_names_to_rename:
-            print(f"Found tensor name {name_to_rename} to be renamed to {target_squeezed_past_seq_name}")
+            print(f"Found tensor name `{name_to_rename}` to be renamed to `{target_squeezed_past_seq_name}`")
         for nr in nodes_to_remove:
-            print(f"Found node to removed: type:{nr.op_type}, name:{nr.name}")
+            print(f"Found node to remove: type = {nr.op_type}, name = {nr.name}")
 
         squeeze_node = onnx.helper.make_node(
             "Squeeze",
