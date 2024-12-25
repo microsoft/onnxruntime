@@ -61,7 +61,6 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& y = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
 
   if (block_size_ == 32) {
-    const uint32_t workgroup_size = WorkgroupSizeX() * WorkgroupSizeY();
     const uint32_t tile_size = WorkgroupSizeX() * components_b_ * 8;  // each uint32 has 8 data.
     const uint32_t a_length_per_tile = tile_size / a.NumComponents();
     const uint32_t blocks_per_tile = tile_size / block_size_;
@@ -73,7 +72,6 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                            "    return input_a_value_t(0);\n"
                                            "  }\n"
                                            "}\n"
-                                        << "var<workgroup> sub_a: array<input_a_value_t, " << a_length_per_tile << ">;\n"
                                         << "var<workgroup> inter_results: array<array<output_value_t, " << WorkgroupSizeX() << ">, " << WorkgroupSizeY() << ">;\n";
       std::string offset = "workgroup_idx * " + std::to_string(WorkgroupSizeY());
       shader.MainFunctionBody() << "  let output_indices = " << y.OffsetToIndices(offset) << ";\n"
@@ -91,7 +89,6 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                            "    return input_a_value_t(0);\n"
                                            "  }\n"
                                            "}\n"
-                                        << "var<workgroup> sub_a: array<array<input_a_value_t, " << a_length_per_tile << ">," << tile_m_ << ">;\n"
                                         << "var<workgroup> inter_results: array<array<array<output_value_t, " << WorkgroupSizeX() << ">, " << WorkgroupSizeY() << ">," << tile_m_ << ">;\n";
       shader.MainFunctionBody() << "  let col = workgroup_id.x * " << WorkgroupSizeY() << ";\n"
                                 << "  let row = workgroup_id.y * " << tile_m_ << ";\n"
@@ -102,18 +99,6 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               // Loop over shared dimension.
                               << "  for (var tile: u32 = 0; tile < num_tiles; tile += 1) {\n"
                               << "    let a_col_start = tile * " << a_length_per_tile << ";\n"
-                              << "    // load one tile A data into shared memory.\n"
-                              << "    for (var a_offset = local_idx; a_offset < " << a_length_per_tile << "; a_offset += " << workgroup_size << ") {\n"
-                              << "      let a_col = a_col_start + a_offset;\n";
-    if (tile_m_ == 1) {
-      shader.MainFunctionBody() << "      sub_a[a_offset] = mm_readA(batch, row, a_col);\n";
-    } else {
-      for (uint32_t i = 0; i < tile_m_; i++) {
-        shader.MainFunctionBody() << "      sub_a[" << i << "][a_offset] = mm_readA(batch, row + " << i << ", a_col);\n";
-      }
-    }
-    shader.MainFunctionBody() << "    }\n"
-                                 "    workgroupBarrier();\n"
                                  // Each thread processes one block.
                                  "    let b_row = col + local_id.y;\n"
                               << "    let block = tile * " << blocks_per_tile << " + local_id.x;\n";
@@ -137,8 +122,21 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               << "      scale = " << scales.GetByOffset("b_row * n_blocks_per_col + block") << ";\n"
                               << "      b_data = " << b.GetByIndices("input_b_indices_t(b_row, block, 0)") << ";\n"
                               << "    }\n"
-                              << "    var word_offset = local_id.x * " << block_size_ / a.NumComponents() << ";\n"
-                              << "    for (var i: u32 = 0; i < " << components_b_ << "; i++) {\n";
+                              << "    var word_offset = (local_id.x * " << block_size_ / a.NumComponents() << ") % sg_size;\n";
+    if (tile_m_ == 1) {
+      shader.MainFunctionBody() << "    let a_datal = mm_readA(batch, row, a_col_start + sg_id);\n"
+                                   "    let a_datah = mm_readA(batch, row, a_col_start + 32 + sg_id);\n";
+    } else {
+      shader.MainFunctionBody() << "    let a_datal0 = mm_readA(batch, row, a_col_start + sg_id);\n"
+                                   "    let a_datah0 = mm_readA(batch, row, a_col_start + 32 + sg_id);\n"
+                                << "    let a_datal1 = mm_readA(batch, row + 1, a_col_start + sg_id);\n"
+                                   "    let a_datah1 = mm_readA(batch, row + 1, a_col_start + 32 + sg_id);\n"
+                                   "    let a_datal2 = mm_readA(batch, row + 2, a_col_start + sg_id);\n"
+                                   "    let a_datah2 = mm_readA(batch, row + 2, a_col_start + 32 + sg_id);\n"
+                                   "    let a_datal3 = mm_readA(batch, row + 3, a_col_start + sg_id);\n"
+                                   "    let a_datah3 = mm_readA(batch, row + 3, a_col_start + 32 + sg_id);\n";
+    }
+    shader.MainFunctionBody() << "    for (var i: u32 = 0; i < " << components_b_ << "; i++) {\n";
     shader.MainFunctionBody() << "      let b_value = b_data";
     if (components_b_ > 1) {
       shader.MainFunctionBody() << "[i]";
@@ -164,7 +162,11 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
           shader.MainFunctionBody() << "      inter_results[local_id.y][local_id.x] += dot(vec4<output_element_t>(sub_a[word_offset], sub_a[word_offset + 1]), b_dequantized_values[0]) + dot(vec4<output_element_t>(sub_a[word_offset + 2], sub_a[word_offset + 3]), b_dequantized_values[1]);\n";
           break;
         case 4:
-          shader.MainFunctionBody() << "      inter_results[local_id.y][local_id.x] += dot(sub_a[word_offset], b_dequantized_values[0]) + dot(sub_a[word_offset + 1], b_dequantized_values[1]);\n";
+          shader.MainFunctionBody() << "      let al0 = subgroupShuffle(a_datal, word_offset);\n"
+                                       "      let ah0 = subgroupShuffle(a_datah, word_offset);\n"
+                                       "      let al1 = subgroupShuffle(a_datal, word_offset + 1);\n"
+                                       "      let ah1 = subgroupShuffle(a_datah, word_offset + 1);\n"
+                                       "      inter_results[local_id.y][local_id.x] += dot(select(ah0, al0, local_id.x < 4), b_dequantized_values[0]) + dot(select(ah1, al1, local_id.x < 4), b_dequantized_values[1]);\n";
           break;
         default:
           break;
@@ -179,7 +181,23 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
             shader.MainFunctionBody() << "      inter_results[" << i << "][local_id.y][local_id.x] += dot(vec4<output_element_t>(sub_a[" << i << "][word_offset], sub_a[" << i << "][word_offset + 1]), b_dequantized_values[0]) + dot(vec4<output_element_t>(sub_a[" << i << "][word_offset + 2], sub_a[" << i << "][word_offset + 3]), b_dequantized_values[1]);\n";
             break;
           case 4:
-            shader.MainFunctionBody() << "      inter_results[" << i << "][local_id.y][local_id.x] += dot(sub_a[" << i << "][word_offset], b_dequantized_values[0]) + dot(sub_a[" << i << "][word_offset + 1], b_dequantized_values[1]);\n";
+            if (i == 0) {
+              shader.MainFunctionBody() << "      var ";
+            }
+            shader.MainFunctionBody() << "      al0 = subgroupShuffle(a_datal" << i << ", word_offset);\n";
+            if (i == 0) {
+              shader.MainFunctionBody() << "      var ";
+            }
+            shader.MainFunctionBody() << "      ah0 = subgroupShuffle(a_datah" << i << ", word_offset);\n";
+            if (i == 0) {
+              shader.MainFunctionBody() << "      var ";
+            }
+            shader.MainFunctionBody() << "      al1 = subgroupShuffle(a_datal" << i << ", word_offset + 1);\n";
+            if (i == 0) {
+              shader.MainFunctionBody() << "      var ";
+            }
+            shader.MainFunctionBody() << "      ah1 = subgroupShuffle(a_datah" << i << ", word_offset + 1);\n";
+            shader.MainFunctionBody() << "      inter_results[" << i << "][local_id.y][local_id.x] += dot(select(ah0, al0, local_id.x < 4), b_dequantized_values[0]) + dot(select(ah1, al1, local_id.x < 4), b_dequantized_values[1]);\n";
             break;
           default:
             break;
@@ -416,8 +434,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   MatMulNBitsProgram program{output_number, block_size, tile_m, gsl::narrow<int>(components_b), has_zero_points};
   if (M > kMinMForTileOptimization && block_size == 32) {
     components = 1;
-    constexpr uint32_t workgroup_size = 64;
-    constexpr uint32_t workgroup_y = 8;
+    constexpr uint32_t workgroup_size = 32;
+    constexpr uint32_t workgroup_y = 4;
     constexpr uint32_t workgroup_x = workgroup_size / workgroup_y;
     program.SetWorkgroupSize(workgroup_x, workgroup_y, 1);
     program.SetDispatchGroupSize((N + workgroup_y - 1) / workgroup_y,
@@ -426,9 +444,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     program.CacheHint("T_M" + std::to_string(tile_m));
   } else if (block_size == 32) {
     components = 1;
-    constexpr uint32_t workgroup_size = 128;
-    const uint32_t workgroup_y = N % 8 == 0 ? 8 : N % 4 == 0 ? 4
-                                                             : 1;
+    constexpr uint32_t workgroup_size = 32;
+    const uint32_t workgroup_y = N % 4 == 0 ? 4 : 1;
     const uint32_t workgroup_x = workgroup_size / workgroup_y;
     program.SetWorkgroupSize(workgroup_x, workgroup_y, 1);
     program.SetDispatchGroupSize(data_size / components / workgroup_y);
