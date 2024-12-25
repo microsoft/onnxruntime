@@ -278,12 +278,7 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& node_un
               value_to_set = utils::HasRawData(value)
                                  ? *reinterpret_cast<const float*>(value.raw_data().data())
                                  : value.float_data()[0];
-            } else {
-              // double isn't currently supported.
-              // And input and output of Clip must be float number.
-              // https://onnx.ai/onnx/operators/onnx__Clip.html
-              ORT_NOT_IMPLEMENTED("Clip min/max must be FP16 or FP32");
-            }
+            } 
           }
         }
       };
