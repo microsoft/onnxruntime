@@ -468,6 +468,31 @@ stages:
     - script: |
         docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
+           onnxruntimepackagestest_ompffmpeg \
+            bash -c '
+              set -ex; \
+              pushd /workspace/onnxruntime/python/tools/transformers/ ; \
+              python3 -m pip install --upgrade pip ; \
+              pushd models/whisper ; \
+              python3 -m pip install -r requirements.txt ; \
+              popd ; \
+              python3 -m pip install /ort-artifact/*.whl ; \
+              python3 -m pip uninstall -y torch ; \
+              python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp16-hf --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp16-hf --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk --separate_encoder_and_decoder_init ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp16-hf --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --collect_cross_qk --output_cross_qk --use_forced_decoder_ids ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp16-oai --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp16-oai --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk --separate_encoder_and_decoder_init ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp16-oai --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --collect_cross_qk --output_cross_qk --use_forced_decoder_ids ; \
+              popd ; \
+            '
+      displayName: 'Test Whisper export flag combinations'
+      workingDirectory: $(Build.SourcesDirectory)
+
+    - script: |
+        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+           -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            -v $(Agent.TempDirectory)/whisper_large_v3:/whisper_large_v3 \
            onnxruntimepackagestest_ompffmpeg \
             bash -c '
