@@ -118,7 +118,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                "  if (global_id.y < uniforms.M && w + local_id.x < uniforms.K) {\n"
                                "    tileQ[TILE_SIZE * local_id.y + local_id.x] = q[qOffset + local_id.y * uniforms.K + w + local_id.x];\n"
                                "  }\n"
-                               "  if (n + local_id.y < uniforms.N && w + local_id.x < uniforms.K) {\n"
+                               "  if (n + local_id.y < total_sequence_length && w + local_id.x < uniforms.K) {\n"
                                "    var idx = TILE_SIZE * local_id.y + local_id.x;\n";
 
   if ((feed_past_key_ && has_present_key_) || past_present_share_buffer_) {
@@ -136,7 +136,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   if (has_present_key_) {
     if (past_present_share_buffer_) {
-      shader.MainFunctionBody() << "    if (n + local_id.y >= past_sequence_length && n + local_id.y < uniforms.kv_sequence_length + past_sequence_length) {\n";
+      shader.MainFunctionBody() << "    if (n + local_id.y >= past_sequence_length && n + local_id.y < total_sequence_length) {\n";
     } else {
       shader.MainFunctionBody() << "    if (n + local_id.y < uniforms.kv_sequence_length + past_sequence_length) {\n";
     }
@@ -212,7 +212,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
                             {static_cast<float>(alpha)},
                             {static_cast<uint32_t>(past_sequence_length)},
                             {static_cast<uint32_t>(parameters.kv_sequence_length_)},
-                            {static_cast<uint32_t>(seqlen_k == nullptr ? total_sequence_length : parameters.seqlen_present_kv_cache_)},
+                            {static_cast<uint32_t>(total_sequence_length)},
                             {static_cast<uint32_t>(parameters.n_reps)}})
       .SetOverridableConstants({{static_cast<uint32_t>(tile_size)}});
 
@@ -267,8 +267,12 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  }\n"
                             << "}\n";
   if (seqlen_k_) {
-    shader.MainFunctionBody() << "for (var total_seq_id: u32 = seq_causal_length; total_seq_id + local_offset < uniforms.total_sequence_length_comp; total_seq_id++) {\n"
-                              << "   x[offset + total_seq_id] = x_value_t(x_element_t(0));\n"
+    if (present_past_share_buffer_) {
+      shader.MainFunctionBody() << "for (var total_seq_id: u32 = seq_causal_length; total_seq_id + local_offset < total_sequence_length; total_seq_id++) {\n";
+    } else {
+      shader.MainFunctionBody() << "for (var total_seq_id: u32 = seq_causal_length; total_seq_id + local_offset < uniforms.total_sequence_length_comp; total_seq_id++) {\n";
+    }
+    shader.MainFunctionBody() << "   x[offset + total_seq_id] = x_value_t(x_element_t(0));\n"
                               << "}\n";
   }
 
@@ -276,7 +280,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tensor* probs, int32_t batch_size, int32_t num_heads, int32_t past_sequence_length, int32_t sequence_length, int32_t total_sequence_length,
-                             const Tensor* seqlen_k, bool is_first_prompt) {
+                             const Tensor* seqlen_k, bool is_first_prompt, bool past_present_share_buffer) {
   const int components = seqlen_k != nullptr ? 1 : (total_sequence_length % 4 == 0 ? 4 : (total_sequence_length % 2 == 0 ? 2 : 1));
   int work_group_size = 64;
   const int total_sequence_length_comp = (total_sequence_length + components - 1) / components;
@@ -285,7 +289,7 @@ Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tenso
   }
   const int elementsPerThread = (total_sequence_length_comp + work_group_size - 1) / work_group_size;
 
-  InPlaceSoftmaxProgram program{"InPlaceSoftmax", work_group_size, components, is_first_prompt, seqlen_k};
+  InPlaceSoftmaxProgram program{"InPlaceSoftmax", work_group_size, components, is_first_prompt, seqlen_k, past_present_share_buffer};
   if (seqlen_k != nullptr) {
     program.AddInput({seqlen_k, ProgramTensorMetadataDependency::TypeAndRank});
   }
@@ -335,7 +339,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   shader.MainFunctionBody() << "var value = probs_element_t(0);\n"
-                            << "for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {\n"
+                            << "for (var w: u32 = 0u; w < total_sequence_length; w += TILE_SIZE) {\n"
                             << "  if (m < uniforms.M && w + local_id.x < uniforms.K) {\n"
                             << "    tileQ[TILE_SIZE * local_id.y + local_id.x] = probs[offsetA + w + local_id.x];\n"
                             << "  }\n"
@@ -357,7 +361,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   if (has_present_value_) {
     if (past_present_share_buffer_) {
-      shader.MainFunctionBody() << "    if (w + local_id.y >= past_sequence_length && w + local_id.y < uniforms.kv_sequence_length + past_sequence_length) {\n";
+      shader.MainFunctionBody() << "    if (w + local_id.y >= past_sequence_length && w + local_id.y < total_sequence_length) {\n";
     } else {
       shader.MainFunctionBody() << "    if (w + local_id.y < uniforms.kv_sequence_length + past_sequence_length) {\n";
     }
@@ -424,7 +428,7 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
                             {static_cast<uint32_t>(parameters.v_hidden_size_ * parameters.n_reps)},
                             {static_cast<uint32_t>(past_sequence_length)},
                             {static_cast<uint32_t>(parameters.kv_sequence_length_)},
-                            {static_cast<uint32_t>(seqlen_k == nullptr ? total_sequence_length : parameters.seqlen_present_kv_cache_)},
+                            {static_cast<uint32_t>(total_sequence_length)},
                             {static_cast<uint32_t>(parameters.n_reps)}})
       .SetOverridableConstants({{static_cast<uint32_t>(tile_size)}});
 
@@ -436,7 +440,7 @@ Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const T
                       WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k) {
   const int output_count = std::min({context.OutputCount(), 1 + (past_key != nullptr ? 1 : 0) + (past_value != nullptr ? 1 : 0)});
   const int past_sequence_length = output_count > 1 ? parameters.past_sequence_length_ : 0;
-  const int total_sequence_length = past_sequence_length + parameters.kv_sequence_length_;
+  const int total_sequence_length = parameters.is_gqa_ && parameters.past_present_share_buffer_ ? parameters.seqlen_present_kv_cache_ : (past_sequence_length + parameters.kv_sequence_length_);
 
   const TensorShapeVector probs_dims({parameters.batch_size_, parameters.num_heads_,
                                       parameters.sequence_length_, total_sequence_length});
@@ -446,7 +450,7 @@ Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const T
                                             parameters, past_sequence_length, total_sequence_length, seqlen_k));
 
   ORT_RETURN_IF_ERROR(ComputeInPlaceSoftmax(context, &probs,
-                                            parameters.batch_size_, parameters.num_heads_, parameters.past_sequence_length_, parameters.sequence_length_, total_sequence_length, seqlen_k, parameters.is_first_prompt_));
+                                            parameters.batch_size_, parameters.num_heads_, parameters.past_sequence_length_, parameters.sequence_length_, total_sequence_length, seqlen_k, parameters.is_first_prompt_, parameters.past_present_share_buffer_));
 
   ORT_RETURN_IF_ERROR(ComputeVxAttentionScore(context, output_count, &probs, V, past_value, output, present_value,
                                               parameters, past_sequence_length, total_sequence_length, seqlen_k));
