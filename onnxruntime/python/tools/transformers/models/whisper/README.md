@@ -182,7 +182,7 @@ python3 -m models.whisper.benchmark \
     --benchmark-type hf-ort \
     --audio-path 1272-141231-0002.mp3 \
     --model-name openai/whisper-large-v3-turbo \
-    --hf-ort-dir-path ./whisper-large-v2-onnx/ \
+    --hf-ort-dir-path ./whisper-large-v3-turbo-onnx/ \
     --precision fp32 \
     --device cpu
 ```
@@ -193,7 +193,7 @@ python3 -m models.whisper.benchmark \
     --benchmark-type ort \
     --audio-path 1272-141231-0002.mp3 \
     --model-name openai/whisper-large-v3-turbo \
-    --ort-model-path ./wlarge-fp32/whisper-large-v2_beamsearch.onnx \
+    --ort-model-path ./wlarge-fp32/whisper-large-v3-turbo_beamsearch.onnx \
     --precision fp32 \
     --device cpu
 ```
@@ -215,7 +215,7 @@ python3 -m models.whisper.benchmark \
     --benchmark-type ort \
     --audio-path 1272-141231-0002.mp3 \
     --model-name openai/whisper-large-v3-turbo \
-    --ort-model-path ./wlarge-fp32/whisper-large-v2_all.onnx \
+    --ort-model-path ./wlarge-fp32/whisper-large-v3-turbo_all.onnx \
     --precision fp32 \
     --device cpu
 ```
@@ -231,8 +231,8 @@ python3 -m models.whisper.benchmark_all \
     --audio-path ./whisper-test-audios/ \
     --hf-pt-eager \
     --hf-pt-compile \
-    --hf-ort-dir-path ./whisper-large-v2-onnx/ \
-    --ort-model-path ./wlarge-fp32/whisper-large-v2_all.onnx \
+    --hf-ort-dir-path ./whisper-large-v3-turbo-onnx/ \
+    --ort-model-path ./wlarge-fp32/whisper-large-v3-turbo_all.onnx \
     --model-name openai/whisper-large-v3-turbo \
     --precision fp32 \
     --device cpu
