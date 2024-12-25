@@ -13,6 +13,8 @@ from typing import List
 import numpy as np
 import onnx
 import torch
+from float16 import convert_float_to_float16
+from onnx import ModelProto
 from onnx_model import OnnxModel
 from transformers import WhisperConfig
 from whisper_inputs import get_model_dynamic_axes, get_sample_encoder_inputs
@@ -48,6 +50,18 @@ class WhisperEncoder(torch.nn.Module):
     def dynamic_axes(self, input_names, output_names):
         dynamic_axes = get_model_dynamic_axes(self.config, input_names, output_names)
         return dynamic_axes
+
+    def fix_layernorm_weights(self, model: ModelProto, use_fp16_inputs: bool):
+        if self.model_impl == "openai" and use_fp16_inputs:
+            # Cast ONNX model to float16 to ensure LayerNorm weights are converted from
+            # float32 to float16 since exported model already has float16 weights everywhere
+            # except for LayerNorm ops. This happens because OpenAI always upcasts to float32
+            # when computing LayerNorm.
+            #
+            # Reference:
+            # https://github.com/openai/whisper/blob/90db0de1896c23cbfaf0c58bc2d30665f709f170/whisper/model.py#L41
+            model = convert_float_to_float16(model)
+        return model
 
     def export_onnx(
         self,
@@ -102,14 +116,14 @@ class WhisperEncoder(torch.nn.Module):
                 verbose=verbose,
             )
 
-            if use_external_data_format:
-                model = onnx.load_model(out_path, load_external_data=use_external_data_format)
-                OnnxModel.save(
-                    model,
-                    onnx_model_path,
-                    save_as_external_data=True,
-                    all_tensors_to_one_file=True,
-                )
+            model = onnx.load_model(out_path, load_external_data=use_external_data_format)
+            model = self.fix_layernorm_weights(model, use_fp16_inputs)
+            OnnxModel.save(
+                model,
+                onnx_model_path,
+                save_as_external_data=use_external_data_format,
+                all_tensors_to_one_file=True,
+            )
 
         self.verify_onnx(onnx_model_path, provider, use_fp16_inputs)
 

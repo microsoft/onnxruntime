@@ -292,7 +292,7 @@ class TestBeamSearchWhisper(unittest.TestCase):
         self.pytorch_folder = "cache_models"
         self.onnx_folder = "onnx_models"
         self.decoder_onnx_path = os.path.join(".", self.onnx_folder, "whisper-tiny_decoder.onnx")
-        self.encoder_onnx_path = os.path.join(".", self.onnx_folder, "whisper-tiny_encoder_decoder_init.onnx")
+        self.encoder_onnx_path = os.path.join(".", self.onnx_folder, "whisper-tiny_encoder.onnx")
         self.beam_search_onnx_path = os.path.join(".", self.onnx_folder, "whisper-tiny_beamsearch.onnx")
         self.enable_cuda = torch.cuda.is_available() and "CUDAExecutionProvider" in get_available_providers()
 
