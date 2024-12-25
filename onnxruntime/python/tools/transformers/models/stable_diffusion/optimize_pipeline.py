@@ -194,6 +194,7 @@ def _optimize_sd_pipeline(
             "SkipLayerNorm_43",
             "SkipLayerNorm_44",
             "SkipLayerNorm_45",
+            "/encoder/block.23/layer.1/DenseReluDense/wo/MatMul",
             "SkipLayerNorm_46",
         ],
         "vae_decoder": [

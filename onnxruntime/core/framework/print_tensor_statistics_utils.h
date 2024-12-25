@@ -30,7 +30,7 @@ void PrintFloatStats(const T* data, size_t count) {
   size_t zero = 0;
   size_t subnormal = 0;
   for (size_t i = 0; i < count; i++) {
-    switch (my_fpclassify(*data)) {
+    switch (my_fpclassify(data[i])) {
       case FP_INFINITE:
         inf++;
         break;
