@@ -143,7 +143,7 @@ DEFAULT_OP_BLOCK_LIST = [
     "Upsample",
 ]
 
-# Some operators do not support float16 in CUDA. This is not a full list, just some common operators in transformers.
+# Some operators do not support bfloat16 in CUDA. This is not a full list, just some common operators in transformers.
 BF16_OP_BLACK_LIST = ["SkipSimplifiedLayerNormalization", "Attention", "MultiHeadAttention"]
 
 # Some operators has data type fixed as float for some inputs. Key is op_type, value is list of input indices
@@ -201,6 +201,9 @@ def convert_float_to_float16(
                                        Default to false, which will convert only the one needed to avoid precision loss.
         force_fp16_inputs(Dict[str, List[int]]): Force the conversion of the inputs of some operators to float16, even if
                                                  this script's preference it to keep them in float32.
+        use_bfloat16_as_blocked_nodes_dtype(bool): use bfloat16 as the data type for blocked nodes. Default to False.
+                                                   If the node does not support bfloat16, it will remain in float.
+
     Raises:
         ValueError: input type is not ModelProto.
 
