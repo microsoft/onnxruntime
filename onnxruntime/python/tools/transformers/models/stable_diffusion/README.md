@@ -215,7 +215,7 @@ optimum-cli export onnx --model stabilityai/stable-diffusion-xl-base-1.0 --task 
 #### Stable Diffusion 3.x and Flux 1.0
 
 Stable Diffusion 3.x and Flux 1.0 requires transformers >= 4.45, and optimum > 1.23.3.
-The default opset version is 12 for T5. To support bfloat16, please set `--opset` verison explicitly like below example.
+The default opset version for T5 is 12, which does not support bfloat16. To support bfloat16, please set opset version explicitly like below example.
 
 ```
 git clone https://github.com/huggingface/optimum
@@ -291,11 +291,17 @@ The default parameters are stable diffusion version=1.5, height=512, width=512, 
 #### Stable Diffusion 3.x and Flux 1.0
 Example of benchmark with optimum using CUDA provider on stable diffusion 3.5 medium and Flux 1.0:
 ```
-python benchmark.py -e optimum --height 1024 --width 1024 --steps 20 -b 1 -v 3.5M -p sd3.5_medium_onnx/fp32
-python benchmark.py -e optimum --height 1024 --width 1024 --steps 20 -b 1 -v 3.5M -p sd3.5_medium_onnx/fp16
-python benchmark.py -e optimum --height 1024 --width 1024 --steps 20 -b 1 -v 3.5L -p sd3.5_large_onnx/fp16
-python benchmark.py -e optimum --height 1024 --width 1024 --steps 20 -b 1 -v Flux.1S -p flux1_schnell_onnx/fp16
-python benchmark.py -e optimum --height 1024 --width 1024 --steps 20 -b 1 -v Flux.1D -p flux1_dev_onnx/fp16
+python benchmark.py -e optimum --height 1024 --width 1024 --steps 30 -b 1 -v 3.0M -p sd3_onnx/fp32
+python benchmark.py -e optimum --height 1024 --width 1024 --steps 30 -b 1 -v 3.5M -p sd3.5_medium_onnx/fp16
+python benchmark.py -e optimum --height 1024 --width 1024 --steps 30 -b 1 -v 3.5L -p sd3.5_large_onnx/fp16
+python benchmark.py -e optimum --height 1024 --width 1024 --steps 4 -b 1 -v Flux.1S -p flux1_schnell_onnx/fp16
+python benchmark.py -e optimum --height 1024 --width 1024 --steps 30 -b 1 -v Flux.1D -p flux1_dev_onnx/fp16
+```
+
+Benchmark PyTorch eager mode performance:
+```
+python benchmark.py -e torch --height 1024 --width 1024 --steps 30 -b 1 -v 3.5L
+python benchmark.py -e torch --height 1024 --width 1024 --steps 30 -b 1 -v Flux.1D
 ```
 
 ### Run Benchmark with xFormers

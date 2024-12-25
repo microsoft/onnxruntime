@@ -96,6 +96,16 @@ def get_ort_pipeline(model_name: str, directory: str, provider, disable_safety_c
 
 
 def get_torch_pipeline(model_name: str, disable_safety_checker: bool, enable_torch_compile: bool, use_xformers: bool):
+    if "FLUX" in model_name:
+        from diffusers import FluxPipeline
+
+        return FluxPipeline.from_pretrained(model_name, torch_dtype=torch.bfloat16).to("cuda")
+
+    if "stable-diffusion-3" in model_name:
+        from diffusers import StableDiffusion3Pipeline
+
+        return StableDiffusion3Pipeline.from_pretrained(model_name, torch_dtype=torch.bfloat16).to("cuda")
+
     from diffusers import DDIMScheduler, StableDiffusionPipeline
     from torch import channels_last, float16
 
@@ -199,6 +209,25 @@ def run_ort_pipeline(
     }
 
 
+def get_negative_prompt_kwargs(negative_prompt, use_num_images_per_prompt, is_flux, batch_size) -> dict:
+    # Flux does not support negative prompt
+    kwargs = (
+        (
+            {"negative_prompt": negative_prompt}
+            if use_num_images_per_prompt
+            else {"negative_prompt": [negative_prompt] * batch_size}
+        )
+        if not is_flux
+        else {}
+    )
+
+    # Fix the random seed so that we can inspect the output quality easily.
+    if torch.cuda.is_available():
+        kwargs["generator"] = torch.Generator(device="cuda").manual_seed(123)
+
+    return kwargs
+
+
 def run_torch_pipeline(
     pipe,
     batch_size: int,
@@ -213,16 +242,14 @@ def run_torch_pipeline(
 ):
     prompts, negative_prompt = example_prompts()
 
-    # total 2 runs of warm up, and measure GPU memory for CUDA EP
+    import diffusers
+
+    is_flux = isinstance(pipe, diffusers.FluxPipeline)
+
     def warmup():
         prompt, negative = warmup_prompts()
-        pipe(
-            prompt=[prompt] * batch_size,
-            height=height,
-            width=width,
-            num_inference_steps=steps,
-            negative_prompt=[negative] * batch_size,
-        )
+        extra_kwargs = get_negative_prompt_kwargs(negative, False, is_flux, batch_size)
+        pipe(prompt=[prompt] * batch_size, height=height, width=width, num_inference_steps=steps, **extra_kwargs)
 
     # Run warm up, and measure GPU memory of two runs (The first run has cuDNN algo search so it might need more memory)
     first_run_memory = measure_gpu_memory(memory_monitor_type, warmup, start_memory)
@@ -238,13 +265,14 @@ def run_torch_pipeline(
             break
         torch.cuda.synchronize()
         inference_start = time.time()
+        extra_kwargs = get_negative_prompt_kwargs(negative_prompt, False, is_flux, batch_size)
         images = pipe(
             prompt=[prompt] * batch_size,
             height=height,
             width=width,
             num_inference_steps=steps,
-            negative_prompt=[negative_prompt] * batch_size,
             generator=None,  # torch.Generator
+            **extra_kwargs,
         ).images
 
         torch.cuda.synchronize()
@@ -368,23 +396,9 @@ def run_optimum_ort_pipeline(
 
     prompts, negative_prompt = example_prompts()
 
-    def get_negative_prompt_kwargs(negative, use_num_images_per_prompt, is_flux) -> dict:
-        # Flux does not support negative prompt
-        negative_prompt_kwargs = (
-            (
-                {"negative_prompt": negative}
-                if use_num_images_per_prompt
-                else {"negative_prompt": [negative] * batch_size}
-            )
-            if not is_flux
-            else {}
-        )
-
-        return negative_prompt_kwargs
-
     def warmup():
         prompt, negative = warmup_prompts()
-        extra_kwargs = get_negative_prompt_kwargs(negative, use_num_images_per_prompt, is_flux)
+        extra_kwargs = get_negative_prompt_kwargs(negative, use_num_images_per_prompt, is_flux, batch_size)
         if use_num_images_per_prompt:
             pipe(
                 prompt=prompt,
@@ -404,10 +418,7 @@ def run_optimum_ort_pipeline(
 
     warmup()
 
-    extra_kwargs = get_negative_prompt_kwargs(negative_prompt, use_num_images_per_prompt, is_flux)
-    # Fix the random seed so that we can inspect the output quality easily.
-    if torch.cuda.is_available():
-        extra_kwargs["generator"] = torch.Generator(device="cuda").manual_seed(123)
+    extra_kwargs = get_negative_prompt_kwargs(negative_prompt, use_num_images_per_prompt, is_flux, batch_size)
 
     latency_list = []
     for i, prompt in enumerate(prompts):
