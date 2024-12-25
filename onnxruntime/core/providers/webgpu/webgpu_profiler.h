@@ -21,10 +21,16 @@ class WebGpuProfiler final : public onnxruntime::profiling::EpProfiler {
   }
   void Stop(uint64_t) override {
   }
+
+  void SetCaptureTool(onnxruntime::profiling::CaptureTool tool) override;
+  void StartCapture() override;
+  void EndCapture() override;
+  const std::unordered_set<onnxruntime::profiling::CaptureTool>& GetSupportedCaptureToolSet() override;
   inline bool Enabled() const { return enabled_; }
   inline onnxruntime::profiling::Events& Events() { return events_; }
 
  private:
+  void ValidateCaptureTool();
   WebGpuContext& context_;
   bool enabled_{false};
   onnxruntime::profiling::Events events_;  // cached GPU events

@@ -148,6 +148,9 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
       query_type_ = TimestampQueryType::None;
     }
   });
+#if defined (ENABLE_PIX_FOR_WEBGPU_EP)
+  supported_capture_tool_set_.emplace(onnxruntime::profiling::CaptureTool::Pix);
+#endif // ENABLE_PIX_FOR_WEBGPU_EP
 }
 
 Status WebGpuContext::Wait(wgpu::Future f) {
@@ -692,6 +695,48 @@ void WebGpuContext::DestroySurfaceAndWindow() {
   window_ = nullptr;
 }
 #endif //ENABLE
+void WebGpuContext::ValidateCaptureTool() {
+  if (GetCaptureTool() == onnxruntime::profiling::CaptureTool::Invalid) {
+    ORT_THROW("Start Capture without valid tools");
+  }
+
+  if (!supported_capture_tool_set_.count(GetCaptureTool())) {
+    ORT_THROW("Capture Tool does not support for WebGPU EP");
+  }
+}
+
+void WebGpuContext::SetCaptureTool(onnxruntime::profiling::CaptureTool tool) {
+  capture_tool_ = tool;
+}
+
+void WebGpuContext::StartCapture() {
+  ValidateCaptureTool();
+
+  switch (GetCaptureTool()) {
+    case onnxruntime::profiling::CaptureTool::Pix:
+      CreateSurfaceForPIXCapture();
+    break;
+    default:
+      ORT_THROW("WebGPU EP: Use not supported capture tool");
+  }
+}
+
+void WebGpuContext::EndCapture() {
+  ValidateCaptureTool();
+
+  switch (GetCaptureTool()) {
+    case onnxruntime::profiling::CaptureTool::Pix:
+      GeneratePIXFrame();
+      DestroySurfaceAndWindow();
+    break;
+    default:
+      ORT_THROW("WebGPU EP: Use not supported capture tool");
+  }
+}
+
+const CaptureToolSet& WebGpuContext::GetSupportedCaptureToolSet() {
+  return supported_capture_tool_set_;
+}
 
 std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo> WebGpuContextFactory::contexts_;
 std::mutex WebGpuContextFactory::mutex_;

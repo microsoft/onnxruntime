@@ -23,7 +23,7 @@ profiling::Profiler::~Profiler() {}
   ORT_ENFORCE(enabled_);
   auto start_time = std::chrono::high_resolution_clock::now();
   auto ts = TimeDiffMicroSeconds(profiling_start_time_, start_time);
-  for (const auto& ep_profiler : ep_profilers_) {
+  for (const auto& [_, ep_profiler] : ep_profilers_map_) {
     ep_profiler->Start(ts);
   }
   return start_time;
@@ -48,7 +48,7 @@ void Profiler::StartProfiling(const logging::Logger* custom_logger) {
   profile_with_logger_ = true;
   custom_logger_ = custom_logger;
   profiling_start_time_ = std::chrono::high_resolution_clock::now();
-  for (const auto& ep_profiler : ep_profilers_) {
+  for (const auto& [_, ep_profiler] : ep_profilers_map_) {
     ep_profiler->StartProfiling(profiling_start_time_);
   }
 }
@@ -61,7 +61,7 @@ void Profiler::StartProfiling(const std::basic_string<T>& file_name) {
 #endif
   profile_stream_file_ = ToUTF8String(file_name);
   profiling_start_time_ = std::chrono::high_resolution_clock::now();
-  for (const auto& ep_profiler : ep_profilers_) {
+  for (const auto& [_, ep_profiler] : ep_profilers_map_) {
     ep_profiler->StartProfiling(profiling_start_time_);
   }
 }
@@ -97,7 +97,7 @@ void Profiler::EndTimeAndRecordEvent(EventCategory category,
     }
   }
 
-  for (const auto& ep_profiler : ep_profilers_) {
+  for (const auto& [_, ep_profiler] : ep_profilers_map_) {
     ep_profiler->Stop(ts);
   }
 }
@@ -118,7 +118,7 @@ std::string Profiler::EndProfiling() {
   std::lock_guard<std::mutex> lock(mutex_);
   profile_stream_ << "[\n";
 
-  for (const auto& ep_profiler : ep_profilers_) {
+  for (const auto& [_, ep_profiler] : ep_profilers_map_) {
     ep_profiler->EndProfiling(profiling_start_time_, events_);
   }
 
@@ -155,6 +155,53 @@ std::string Profiler::EndProfiling() {
 #endif
   enabled_ = false;  // will not collect profile after writing.
   return profile_stream_file_;
+}
+
+void Profiler::SetCaptureTool(CaptureTool tool, const std::optional<std::string>& provider_type) {
+  for (const auto& [ep_type, ep_profiler] : ep_profilers_map_) {
+    if (provider_type) {
+      if (ep_type == provider_type) {
+        ep_profiler->SetCaptureTool(tool);
+        break;
+      }
+    } else {
+      ep_profiler->SetCaptureTool(tool);
+    }
+  }
+}
+
+void Profiler::StartCapture(const std::optional<std::string>& provider_type) {
+  for (const auto& [ep_type, ep_profiler] : ep_profilers_map_) {
+    if (provider_type) {
+      if (ep_type == provider_type) {
+        ep_profiler->StartCapture();
+        break;
+      }
+    } else {
+      ep_profiler->StartCapture();
+    }
+  }
+}
+
+void Profiler::EndCapture(const std::optional<std::string>& provider_type) {
+  for (const auto& [ep_type, ep_profiler] : ep_profilers_map_) {
+    if (provider_type) {
+      if (ep_type == provider_type) {
+        ep_profiler->EndCapture();
+        break;
+      }
+    } else {
+      ep_profiler->EndCapture();
+    }
+  }
+}
+
+const std::unordered_set<CaptureTool>& Profiler::GetSupportedCaptureToolSet(const std::string& provider_type) {
+  if (!ep_profilers_map_.count(provider_type)) {
+    ORT_THROW("Query cpature tool support ability with invalid provider type: ", provider_type);
+  }
+
+  return ep_profilers_map_[provider_type]->GetSupportedCaptureToolSet();
 }
 
 }  // namespace profiling

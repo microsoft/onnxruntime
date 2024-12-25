@@ -17,6 +17,7 @@
 #include <webgpu/webgpu_cpp.h>
 
 #include "core/common/common.h"
+#include "core/common/profiler_common.h"
 #include "core/framework/library_handles.h"
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/buffer_manager.h"
@@ -72,10 +73,13 @@ class WebGpuContextFactory {
   static std::once_flag init_default_flag_;
   static wgpu::Instance default_instance_;
 };
+using CaptureToolSet = std::unordered_set<onnxruntime::profiling::CaptureTool>;
 
 // Class WebGpuContext includes all necessary resources for the context.
 class WebGpuContext final {
  public:
+
+
   void Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type);
 
   Status Wait(wgpu::Future f);
@@ -129,6 +133,12 @@ class WebGpuContext final {
   void CollectProfilingData(profiling::Events& events);
   void EndProfiling(TimePoint, profiling::Events& events, profiling::Events& cached_events);
 
+  onnxruntime::profiling::CaptureTool GetCaptureTool() const { return capture_tool_; }
+  void SetCaptureTool(onnxruntime::profiling::CaptureTool tool);
+  void StartCapture();
+  void EndCapture();
+  const CaptureToolSet& GetSupportedCaptureToolSet();
+
   Status Run(ComputeContext& context, const ProgramBase& program);
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
@@ -154,6 +164,7 @@ class WebGpuContext final {
   std::vector<wgpu::FeatureName> GetAvailableRequiredFeatures(const wgpu::Adapter& adapter) const;
   wgpu::RequiredLimits GetRequiredLimits(const wgpu::Adapter& adapter) const;
   void WriteTimestamp(uint32_t query_index);
+  void ValidateCaptureTool();
 
   struct PendingKernelInfo {
     PendingKernelInfo(std::string_view kernel_name,
@@ -222,6 +233,9 @@ class WebGpuContext final {
   uint64_t gpu_timestamp_offset_ = 0;
   bool is_profiling_ = false;
 
+  onnxruntime::profiling::CaptureTool capture_tool_{onnxruntime::profiling::CaptureTool::Invalid};
+
+  CaptureToolSet supported_capture_tool_set_;
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   wgpu::Surface surface_;
   GLFWwindow* window_;

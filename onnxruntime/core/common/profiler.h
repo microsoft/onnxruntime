@@ -7,6 +7,9 @@
 #include <fstream>
 #include <initializer_list>
 #include <iostream>
+#include <optional>
+#include <unordered_map>
+#include <string>
 #include <tuple>
 
 #include "core/common/profiler_common.h"
@@ -86,6 +89,27 @@ class Profiler {
   */
   std::string EndProfiling();
 
+
+  /*
+  Choose a tool for frame/stream capture.
+  */
+  void SetCaptureTool(CaptureTool tool, const std::optional<std::string>& provider_type);
+
+  /*
+  Start capturing frames/streams.
+  */
+  void StartCapture(const std::optional<std::string>& provider_type);
+
+  /*
+  End capturing frames/streams.
+  */
+  void EndCapture(const std::optional<std::string>& provider_type);
+
+  /*
+  Query supported capture tools.
+  */
+  const std::unordered_set<CaptureTool>& GetSupportedCaptureToolSet(const std::string& provider_type);
+
   static Profiler& Instance() {
 #ifdef ENABLE_STATIC_PROFILER_INSTANCE
     ORT_ENFORCE(instance_ != nullptr);
@@ -110,11 +134,11 @@ class Profiler {
     global_max_num_events_.store(new_max_num_events);
   }
 
-  void AddEpProfilers(std::unique_ptr<EpProfiler> ep_profiler) {
+  void AddEpProfilers(const std::string& provider_type, std::unique_ptr<EpProfiler> ep_profiler) {
     if (ep_profiler) {
-      ep_profilers_.push_back(std::move(ep_profiler));
+      ep_profilers_map_.insert({provider_type, std::move(ep_profiler)});
       if (enabled_) {
-        ep_profilers_.back()->StartProfiling(profiling_start_time_);
+        ep_profilers_map_[provider_type]->StartProfiling(profiling_start_time_);
       }
     }
   }
@@ -155,7 +179,7 @@ class Profiler {
   static Profiler* instance_;
 #endif
 
-  std::vector<std::unique_ptr<EpProfiler>> ep_profilers_;
+  std::unordered_map<std::string, std::unique_ptr<EpProfiler>> ep_profilers_map_;
 };
 
 }  // namespace profiling

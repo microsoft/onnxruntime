@@ -6,7 +6,7 @@
 #include "core/common/common.h"
 
 #include <string>
-#include <unordered_map>
+#include <unordered_set>
 
 namespace onnxruntime {
 namespace profiling {
@@ -17,6 +17,11 @@ enum EventCategory {
   KERNEL_EVENT,
   API_EVENT,
   EVENT_CATEGORY_MAX
+};
+
+enum class CaptureTool {
+  Pix,
+  Invalid
 };
 
 // Event descriptions for the above session events.
@@ -74,6 +79,7 @@ struct EventRecord {
 };
 
 using Events = std::vector<EventRecord>;
+using CaptureToolSet = std::unordered_set<CaptureTool>;
 
 // Execution Provider Profiler
 class EpProfiler {
@@ -81,8 +87,19 @@ class EpProfiler {
   virtual ~EpProfiler() = default;
   virtual bool StartProfiling(TimePoint profiling_start_time) = 0;      // called when profiling starts
   virtual void EndProfiling(TimePoint start_time, Events& events) = 0;  // called when profiling ends, save all captures numbers to "events"
+  virtual void StartCapture() {}                                        // called when capture starts
+  virtual void EndCapture() {}                                          // called when capture ends.
   virtual void Start(uint64_t){};                                       // called before op start, accept an id as argument to identify the op
   virtual void Stop(uint64_t){};                                        // called after op stop, accept an id as argument to identify the op
+  virtual const CaptureToolSet& GetSupportedCaptureToolSet() {                  // called to query profiler supported capture tool.
+    return capture_tool_set_;
+  }
+
+  virtual void SetCaptureTool(CaptureTool tool) { capture_tool_ = tool; }       // choose a cpature tool for StartCapture() and EndCapture()
+  const CaptureTool GetCaptureTool() const { return capture_tool_; }    // return current capture tool.
+ private:
+  CaptureTool capture_tool_{CaptureTool::Invalid};
+  CaptureToolSet capture_tool_set_{};
 };
 
 // Demangle C++ symbols
