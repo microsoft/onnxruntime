@@ -163,8 +163,7 @@ def _optimize_sd_pipeline(
     #   export ORT_DEBUG_NODE_IO_DUMP_INPUT_DATA=1
     #   export ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA=1
     #   python benchmark.py --height 1024 --width 1024 --steps 4 -b 1 -v Flux.1S -p flux1_schnell_onnx/fp32_opt -e optimum >stdout.txt 2>stderr.txt
-    # Warning: The node name might change in different export settings. We used python 3.10 and the following packages:
-    #   diffusers==0.31.0  transformers==4.46.3 optimum==1.24.0.dev0 torch==2.5.1 onnx==1.17.0 protobuf==5.29.2
+    # Warning: The node name might change in different export settings. See benchmark_flux.sh for the settings.
     flux_node_block_list = {
         "text_encoder_2": [
             "/encoder/block.10/layer.1/DenseReluDense/wo/MatMul",
