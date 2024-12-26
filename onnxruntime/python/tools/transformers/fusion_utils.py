@@ -127,6 +127,19 @@ class FusionUtils:
 
         return parent_can_be_removed
 
+    def get_squeeze_or_unsqueeze_axes(self, node: NodeProto) -> Optional[ndarray]:
+        assert node.op_type in ["Squeeze", "Unsqueeze"]
+
+        # For opset >= 13, axes is an input instead of an attribute.
+        if len(node.input) > 1:
+            return self.model.get_constant_value(node.input[1])
+
+        axes = None
+        for attr in node.attribute:
+            if attr.name == "axes":
+                axes = helper.get_attribute_value(attr)
+        return axes
+
     @staticmethod
     def check_node_attribute(node, attribute_name: str, expected_value, default_value=None):
         """Verify that a node has expected value for an attribute.
