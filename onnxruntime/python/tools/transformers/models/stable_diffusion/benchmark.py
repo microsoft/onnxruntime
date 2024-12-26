@@ -99,12 +99,20 @@ def get_torch_pipeline(model_name: str, disable_safety_checker: bool, enable_tor
     if "FLUX" in model_name:
         from diffusers import FluxPipeline
 
-        return FluxPipeline.from_pretrained(model_name, torch_dtype=torch.bfloat16).to("cuda")
+        pipe = FluxPipeline.from_pretrained(model_name, torch_dtype=torch.bfloat16).to("cuda")
+        if enable_torch_compile:
+            pipe.transformer.to(memory_format=torch.channels_last)
+            pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune", fullgraph=True)
+        return pipe
 
     if "stable-diffusion-3" in model_name:
         from diffusers import StableDiffusion3Pipeline
 
-        return StableDiffusion3Pipeline.from_pretrained(model_name, torch_dtype=torch.bfloat16).to("cuda")
+        pipe = StableDiffusion3Pipeline.from_pretrained(model_name, torch_dtype=torch.bfloat16).to("cuda")
+        if enable_torch_compile:
+            pipe.transformer.to(memory_format=torch.channels_last)
+            pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune", fullgraph=True)
+        return pipe
 
     from diffusers import DDIMScheduler, StableDiffusionPipeline
     from torch import channels_last, float16
@@ -132,9 +140,9 @@ def get_torch_pipeline(model_name: str, disable_safety_checker: bool, enable_tor
     return pipe
 
 
-def get_image_filename_prefix(engine: str, model_name: str, batch_size: int, disable_safety_checker: bool):
+def get_image_filename_prefix(engine: str, model_name: str, batch_size: int, steps: int, disable_safety_checker: bool):
     short_model_name = model_name.split("/")[-1].replace("stable-diffusion-", "sd")
-    return f"{engine}_{short_model_name}_b{batch_size}" + ("" if disable_safety_checker else "_safe")
+    return f"{engine}_{short_model_name}_b{batch_size}_s{steps}" + ("" if disable_safety_checker else "_safe")
 
 
 def run_ort_pipeline(
@@ -271,7 +279,6 @@ def run_torch_pipeline(
             height=height,
             width=width,
             num_inference_steps=steps,
-            generator=None,  # torch.Generator
             **extra_kwargs,
         ).images
 
@@ -323,7 +330,7 @@ def run_ort(
     load_end = time.time()
     print(f"Model loading took {load_end - load_start} seconds")
 
-    image_filename_prefix = get_image_filename_prefix("ort", model_name, batch_size, disable_safety_checker)
+    image_filename_prefix = get_image_filename_prefix("ort", model_name, batch_size, steps, disable_safety_checker)
     result = run_ort_pipeline(
         pipe,
         batch_size,
@@ -486,7 +493,9 @@ def run_optimum_ort(
     print(f"Model loading took {load_end - load_start} seconds")
 
     full_model_name = model_name + "_" + Path(directory).name if directory else model_name
-    image_filename_prefix = get_image_filename_prefix("optimum", full_model_name, batch_size, disable_safety_checker)
+    image_filename_prefix = get_image_filename_prefix(
+        "optimum", full_model_name, batch_size, steps, disable_safety_checker
+    )
     result = run_optimum_ort_pipeline(
         pipe,
         batch_size,
@@ -591,7 +600,7 @@ def run_ort_trt_static(
 
     warmup()
 
-    image_filename_prefix = get_image_filename_prefix("ort_trt", short_name, batch_size, disable_safety_checker)
+    image_filename_prefix = get_image_filename_prefix("ort_trt", short_name, batch_size, steps, disable_safety_checker)
 
     latency_list = []
     prompts, negative_prompt = example_prompts()
@@ -730,7 +739,7 @@ def run_tensorrt_static(
 
     warmup()
 
-    image_filename_prefix = get_image_filename_prefix("trt", model_name, batch_size, disable_safety_checker)
+    image_filename_prefix = get_image_filename_prefix("trt", model_name, batch_size, steps, disable_safety_checker)
 
     latency_list = []
     prompts, negative_prompt = example_prompts()
@@ -885,7 +894,7 @@ def run_tensorrt_static_xl(
     warmup()
 
     model_name = pipeline_info.name()
-    image_filename_prefix = get_image_filename_prefix("trt", model_name, batch_size, disable_safety_checker)
+    image_filename_prefix = get_image_filename_prefix("trt", model_name, batch_size, steps, disable_safety_checker)
 
     latency_list = []
     prompts, negative_prompt = example_prompts()
@@ -980,7 +989,7 @@ def run_ort_trt_xl(
     warmup()
 
     model_name = pipeline.pipeline_info.name()
-    image_filename_prefix = get_image_filename_prefix("ort_trt", model_name, batch_size, disable_safety_checker)
+    image_filename_prefix = get_image_filename_prefix("ort_trt", model_name, batch_size, steps, disable_safety_checker)
 
     latency_list = []
     prompts, negative_prompt = example_prompts()
@@ -1048,7 +1057,7 @@ def run_torch(
     load_end = time.time()
     print(f"Model loading took {load_end - load_start} seconds")
 
-    image_filename_prefix = get_image_filename_prefix("torch", model_name, batch_size, disable_safety_checker)
+    image_filename_prefix = get_image_filename_prefix("torch", model_name, batch_size, steps, disable_safety_checker)
 
     if not enable_torch_compile:
         with torch.inference_mode():
