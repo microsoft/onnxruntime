@@ -226,6 +226,30 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
       }
     }
   }
+
+  if (ctx.getNumOutputs() > 3) {  // has attention_probs output
+    // Output 3 has shape (batch_size, num_heads, sequence_length, total_sequence_length)
+    if (hasInputShape(ctx, 0) && hasInputShape(ctx, past_key_index)) {
+      auto& query_shape = getInputShape(ctx, 0);
+      auto& key_shape = getInputShape(ctx, 1);
+      auto& key_seqlen_dim = key_shape.dim()[1];
+      auto& past_seqlen_dim = getInputShape(ctx, past_key_index).dim()[2];
+      if (key_seqlen_dim.has_dim_value() && past_seqlen_dim.has_dim_value()) {
+        auto kv_sequence_length = key_seqlen_dim.dim_value();
+        auto past_sequence_length = past_seqlen_dim.dim_value();
+        int64_t total_sequence_length = kv_sequence_length + past_sequence_length;
+        auto num_heads = getAttribute(ctx, "num_heads", 0);
+
+        ONNX_NAMESPACE::TensorShapeProto attention_probs_shape;
+        *attention_probs_shape.add_dim() = query_shape.dim()[0];
+        attention_probs_shape.add_dim()->set_dim_value(num_heads);
+        *attention_probs_shape.add_dim() = query_shape.dim()[1];
+        attention_probs_shape.add_dim()->set_dim_value(total_sequence_length);
+        updateOutputShape(ctx, 3, attention_probs_shape);
+        propagateElemTypeFromInputToOutput(ctx, 0, 3);
+      }
+    }
+  }
 }
 
 // Type and shape inference for group query attention and sparse attention.
@@ -1032,6 +1056,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "present_value",
                 "present state for cross attention value with shape (batch_size, num_heads, kv_sequence_length, head_size)"
                 "or present state for self attention value with shape (batch_size, num_heads, total_sequence_length, head_size)",
+                "T",
+                OpSchema::Optional)
+        .Output(3,
+                "attention_probs",
+                "Attention probabilities with shape (batch_size, num_heads, sequence_length, total_sequence_length)",
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float)", "tensor(float16)"}, "Constrain input and output to float tensors.")

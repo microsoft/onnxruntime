@@ -29,6 +29,7 @@ class AttentionCPUBase : public AttentionBase {
                         Tensor* output,            // output tensor
                         Tensor* present_key,       // present K output tensor (if separating present KV)
                         Tensor* present_value,     // present V output tensor (if separating present KV)
+                        Tensor* attn_probs,        // attention probabilities output tensor (optional)
                         int batch_size,            // batch size (B)
                         int sequence_length,       // sequence length of Q (S)
                         int kv_sequence_length,    // sequence length of K or V (L)
@@ -102,10 +103,17 @@ class AttentionCPUBase : public AttentionBase {
     }
 
     // Compute the attention score.
-    size_t bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * total_sequence_length * sizeof(T);
-    auto attention_probs = allocator->Alloc(bytes);
+    void* attention_probs = nullptr;
+    T* attn_probs_data = nullptr;
+    if (attn_probs == nullptr) {
+      size_t bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * total_sequence_length * sizeof(T);
+      attention_probs = allocator->Alloc(bytes);
+      attn_probs_data = static_cast<T*>(attention_probs);
+    } else {
+      attn_probs_data = attn_probs->MutableData<T>();
+    }
     BufferUniquePtr scratch_buffer(attention_probs, BufferDeleter(allocator));
-    ComputeAttentionProbs<T>(static_cast<T*>(attention_probs), Q, K,
+    ComputeAttentionProbs<T>(attn_probs_data, Q, K,
                              static_cast<T*>(mask_data),
                              batch_size, sequence_length, kv_sequence_length, past_sequence_length,
                              qk_head_size == 0 ? v_head_size : qk_head_size, past_data, past_key_data, present_data,
@@ -117,7 +125,7 @@ class AttentionCPUBase : public AttentionBase {
         allocator->Alloc(SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * v_head_size * sizeof(T));
     BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(std::move(allocator)));
 
-    ComputeVxAttentionScore(output->MutableData<T>(), static_cast<T*>(out_tmp_data), static_cast<T*>(attention_probs),
+    ComputeVxAttentionScore(output->MutableData<T>(), static_cast<T*>(out_tmp_data), attn_probs_data,
                             V, batch_size, sequence_length, kv_sequence_length, past_sequence_length, v_head_size,
                             v_hidden_size, past_data, past_value_data, present_data, present_value_data, tp,
                             past_present_share_buffer, max_sequence_length);
