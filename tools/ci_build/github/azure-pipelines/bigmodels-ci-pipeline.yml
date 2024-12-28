@@ -479,12 +479,30 @@ stages:
               python3 -m pip install /ort-artifact/*.whl ; \
               python3 -m pip uninstall -y torch ; \
               python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
-              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp16-hf --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk ; \
-              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp16-hf --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk --separate_encoder_and_decoder_init ; \
-              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp16-hf --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --collect_cross_qk --output_cross_qk --use_forced_decoder_ids ; \
-              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp16-oai --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk ; \
-              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp16-oai --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk --separate_encoder_and_decoder_init ; \
-              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp16-oai --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --collect_cross_qk --output_cross_qk --use_forced_decoder_ids ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp32-cpu-hf --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp32-cpu-hf --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp32-cpu-hf --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk --separate_encoder_and_decoder_init ; \
+              rm -rf wtiny-fp32-cpu-hf ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp32-cpu-oai --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp32-cpu-oai --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp32-cpu-oai --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk --separate_encoder_and_decoder_init ; \
+              rm -rf wtiny-fp32-cpu-oai ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp32-cuda-hf --precision fp32 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp32-cuda-hf --precision fp32 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --output_cross_qk ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp32-cuda-hf --precision fp32 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk --separate_encoder_and_decoder_init ; \
+              rm -rf wtiny-fp32-cuda-hf ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp32-cuda-oai --precision fp32 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp32-cuda-oai --precision fp32 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --output_cross_qk ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp32-cuda-oai --precision fp32 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk --separate_encoder_and_decoder_init ; \
+              rm -rf wtiny-fp32-cuda-oai ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp16-cuda-hf --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp16-cuda-hf --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk --separate_encoder_and_decoder_init ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp16-cuda-hf --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --collect_cross_qk --output_cross_qk --use_forced_decoder_ids ; \
+              rm -rf wtiny-fp16-cuda-hf ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp16-cuda-oai --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp16-cuda-oai --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk --separate_encoder_and_decoder_init ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp16-cuda-oai --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --collect_cross_qk --output_cross_qk --use_forced_decoder_ids ; \
+              rm -rf wtiny-fp16-cuda-oai ; \
               popd ; \
             '
       displayName: 'Test Whisper export flag combinations'

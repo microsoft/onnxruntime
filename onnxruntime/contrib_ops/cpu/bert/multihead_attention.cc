@@ -1,10 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "attention_cpu_base.h"
-#include "multihead_attention.h"
-#include "multihead_attention_helper.h"
-#include "attention_utils.h"
+#include "contrib_ops/cpu/bert/attention_common.h"
+#include "contrib_ops/cpu/bert/attention_cpu_base.h"
+#include "contrib_ops/cpu/bert/multihead_attention.h"
+#include "contrib_ops/cpu/bert/multihead_attention_helper.h"
+#include "contrib_ops/cpu/bert/attention_utils.h"
 
 #include "core/common/common.h"
 #include "core/framework/tensorprotoutils.h"
@@ -48,6 +49,8 @@ MultiHeadAttention<T>::MultiHeadAttention(const OpKernelInfo& info) : OpKernel(i
   l2_cache_size_ = env.GetL2CacheSize();
 
   disable_flash_ = ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFlashAttention, false);
+
+  disable_ft_causal_attention_ = ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFtCausalAttention, false);
 }
 
 template <typename T>
@@ -71,7 +74,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   }
 
   AttentionParameters parameters = {};
-  bool past_present_share_buffer = past_sequence_length != nullptr && cache_indirection != nullptr;
+  bool past_present_share_buffer = past_key != nullptr && past_sequence_length != nullptr && cache_indirection != nullptr;
   ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
                                                                       key,
                                                                       value,
@@ -101,11 +104,12 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   DUMP_CPU_STRING("Num heads = ", parameters.num_heads);
   DUMP_CPU_STRING("Buffer sharing = ", (parameters.past_present_share_buffer == true));
   DUMP_CPU_STRING("QKV format = ", parameters.qkv_format);
+  DUMP_CPU_STRING("Beam width = ", parameters.beam_width);
 
   const int batch_size = parameters.batch_size;
   const int q_sequence_length = parameters.sequence_length;
   const int kv_sequence_length = parameters.kv_sequence_length;
-  const int total_kv_sequence_length = parameters.total_sequence_length;
+  const int total_sequence_length = parameters.total_sequence_length;
   int qk_head_size = parameters.head_size;
   int v_head_size = parameters.v_head_size;
   int qk_hidden_size = parameters.hidden_size;
@@ -124,20 +128,28 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   // If optional outputs aren't needed, present_k, present_v, and output_qk will be null
   std::vector<int64_t> present_k_shape({static_cast<int64_t>(batch_size),
                                         static_cast<int64_t>(num_heads_),
-                                        static_cast<int64_t>(total_kv_sequence_length),
+                                        static_cast<int64_t>(parameters.max_sequence_length),
                                         static_cast<int64_t>(qk_head_size)});
   std::vector<int64_t> present_v_shape({static_cast<int64_t>(batch_size),
                                         static_cast<int64_t>(num_heads_),
-                                        static_cast<int64_t>(total_kv_sequence_length),
+                                        static_cast<int64_t>(parameters.max_sequence_length),
                                         static_cast<int64_t>(v_head_size)});
   std::vector<int64_t> output_qk_shape({static_cast<int64_t>(batch_size),
                                         static_cast<int64_t>(num_heads_),
                                         static_cast<int64_t>(q_sequence_length),
-                                        static_cast<int64_t>(total_kv_sequence_length)});
+                                        static_cast<int64_t>(total_sequence_length)});
   Tensor* present_k = context->Output(1, present_k_shape);
   Tensor* present_v = context->Output(2, present_v_shape);
   Tensor* output_qk = context->Output(3, output_qk_shape);
 
+  bool use_dmmha_self_attention = parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH && parameters.past_present_share_buffer && parameters.past_sequence_length > 0;
+  bool use_dmmha_cross_attention = parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH && past_key == nullptr && past_value == nullptr && nullptr != past_sequence_length && parameters.past_sequence_length != *((*past_sequence_length).template Data<int32_t>());
+  bool use_decoder_masked_multihead_attention = !disable_ft_causal_attention_ &&
+                                                (use_dmmha_self_attention || use_dmmha_cross_attention) &&
+                                                parameters.sequence_length == 1 &&
+                                                parameters.head_size == parameters.v_head_size &&
+                                                (parameters.mask_type == AttentionMaskType::MASK_2D_KEY_PADDING || parameters.mask_type == AttentionMaskType::MASK_NONE) &&
+                                                nullptr != past_sequence_length && nullptr != cache_indirection;
   AllocatorPtr allocator;
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
@@ -145,11 +157,17 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   ORT_RETURN_IF_ERROR(MaybeTransposeToBNSHAndAddBias<T>(
       context, allocator, batch_size, num_heads_, q_sequence_length, qk_head_size, query, bias, q_bias_offset, Q));
 
-  if (parameters.qkv_format == Q_K_V_BSNH_BNSH_BNSH) {
+  if (parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH) {
     // For cross attention with k and v in BNSH format, we assume that bias for key and value are zeros.
     // So we don't need to add bias for key and value here.
     assert(past_key == nullptr);
     assert(past_value == nullptr);
+
+    if (use_decoder_masked_multihead_attention) {
+      parameters.total_sequence_length = parameters.kv_sequence_length;
+      parameters.max_sequence_length = parameters.kv_sequence_length;
+    }
+
     return ApplyAttention(Q.GetMutable<Tensor>()->MutableData<T>(),
                           key->Data<T>(),
                           value->Data<T>(),
@@ -218,7 +236,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     args.buffer_size_per_thread = (static_cast<size_t>(args.q_block_size) * 2 +
                                    static_cast<size_t>(args.q_block_size) * static_cast<size_t>(args.kv_block_size) +
                                    static_cast<size_t>(args.q_block_size) * static_cast<size_t>(args.v_head_size)) *
-                                  sizeof(float);
+                                   sizeof(float);
     size_t buffer_bytes = args.buffer_size_per_thread * args.thread_count;
     IAllocatorUniquePtr<void> buffer = IAllocator::MakeUniquePtr<void>(allocator, buffer_bytes);
 
@@ -231,6 +249,17 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
 
     MlasFlashAttention(&args, tp);
     return Status::OK();
+  }
+
+  if (use_decoder_masked_multihead_attention) {
+   return ApplyAttentionWithBeams(Q.GetMutable<Tensor>()->MutableData<T>(),
+                                  K.GetMutable<Tensor>()->MutableData<T>(),
+                                  V.GetMutable<Tensor>()->MutableData<T>(),
+                                  key_padding_mask, past_key, past_value, output, present_k, present_v,
+                                  batch_size, *((*past_sequence_length).template Data<int32_t>()), parameters.max_sequence_length,
+                                  qk_head_size, v_head_size, attn_bias, parameters.broadcast_attn_bias_dim_0,
+                                  parameters.broadcast_attn_bias_dim_1, cache_indirection, context,
+                                  parameters.beam_width, output_qk);
   }
 
   // Compute the attention score and apply the score to V

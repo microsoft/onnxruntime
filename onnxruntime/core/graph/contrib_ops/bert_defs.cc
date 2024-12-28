@@ -879,7 +879,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "past state for key with shape (batch_size, num_heads, past_sequence_length, head_size) for self attention"
                "When past_present_share_buffer is set, "
                "its shape is (batch_size, num_heads, max_sequence_length, head_size). "
-               // The re-ordering happens only for CUDA EP at the moment. We probably shall support 4 or 5D shape or
+               // The re-ordering happens only for CUDA EP at the moment. We probably shall support 4D or 5D shape or
                // attribute to distinguish whether it is re-ordered or not.
                "The keys buffer is re-ordered in such a way that its virtual sub-tensor of shape "
                "(batch_size, num_heads, max_sequence_length, head_size) which may be perceived as being of shape "

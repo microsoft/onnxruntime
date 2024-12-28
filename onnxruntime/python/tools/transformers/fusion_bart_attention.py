@@ -591,7 +591,7 @@ class FusionBartAttention(FusionAttention):
                     hidden_size=hidden_size,
                     first_input=root_input,
                     output=attention_last_node.output[0],
-                    add_qk_str=add_qk_str,
+                    add_qk_str=None,  # deprecate and use is_unidirectional attr instead
                     past_k=past_k,
                     past_v=past_v,
                     present_k=present_k,

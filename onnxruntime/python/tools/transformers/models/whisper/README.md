@@ -21,7 +21,7 @@ In addition to the above packages, you will need to install `ffmpeg` on your mac
 
 ## Exporting Whisper
 
-It is recommended to export Whisper for ONNX Runtime GenAI as you will get much more granular control over the generation loop and you can produce word-level timestamps. The alternative option is to export Whisper with the beam search op in the ONNX model, which does not provide these extra benefits.
+It is recommended to export Whisper for ONNX Runtime GenAI as you will get much more granular control over the generation loop and you can produce word-level timestamps. The alternative option is to export Whisper with the beam search op in the ONNX model, which does not provide these extra benefits and may have additional limitations.
 
 To see all available options:
 ```
@@ -66,7 +66,7 @@ $ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --o
 $ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --precision fp32 --provider cuda --use_gpu --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk
 ```
 
-Export + Optimize for FP16 GPU
+Export + Optimize for FP16 CUDA
 ```
 # From source:
 $ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --precision fp16 --provider cuda --use_gpu --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk
@@ -132,7 +132,9 @@ $ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --o
 $ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --use_external_data_format --optimize_onnx --precision fp32
 ```
 
-Export + Optimize for FP16 and GPU
+Note: FP32 CPU is not compatible with `--output_cross_qk`.
+
+Export + Optimize for FP16 GPU
 ```
 # From source:
 $ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --use_external_data_format --optimize_onnx --precision fp16 --use_gpu --provider cuda
@@ -149,6 +151,8 @@ $ python3 -m models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --o
 # From wheel:
 $ python3 -m onnxruntime.transformers.models.whisper.convert_to_onnx -m openai/whisper-large-v3-turbo --output whisper-turbo --use_external_data_format --precision int8 --quantize_embedding_layer
 ```
+
+Note: INT8 CPU is not compatible with `--output_cross_qk`.
 
 ## Benchmark Whisper
 
