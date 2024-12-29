@@ -621,6 +621,22 @@ TEST(MathOpTest, Sub_Broadcast_Scalar) {
   run(true);
 }
 
+TEST(MathOpTest, Mul_int8) {
+  OpTester test("Mul", 14);
+  test.AddInput<int8_t>("A", {3}, {1, 2, 3});
+  test.AddInput<int8_t>("B", {3}, {4, -3, 6});
+  test.AddOutput<int8_t>("C", {3}, {4, -6, 18});
+  test.Run();
+}
+
+TEST(MathOpTest, Mul_int16) {
+  OpTester test("Mul", 14);
+  test.AddInput<int16_t>("A", {3}, {1, 2, 3});
+  test.AddInput<int16_t>("B", {3}, {4, -3, 6});
+  test.AddOutput<int16_t>("C", {3}, {4, -6, 18});
+  test.Run();
+}
+
 TEST(MathOpTest, Mul_int32) {
   OpTester test("Mul");
   test.AddInput<int32_t>("A", {3}, {1, 2, 3});
@@ -634,6 +650,38 @@ TEST(MathOpTest, Mul_int64) {
   test.AddInput<int64_t>("A", {3}, {3, 6, -3});
   test.AddInput<int64_t>("B", {3}, {4, -3, -2});
   test.AddOutput<int64_t>("C", {3}, {12, -18, 6});
+  test.Run();
+}
+
+TEST(MathOpTest, Mul_uint8) {
+  OpTester test("Mul", 14);
+  test.AddInput<uint8_t>("A", {3}, {1, 2, 3});
+  test.AddInput<uint8_t>("B", {3}, {4, 3, 6});
+  test.AddOutput<uint8_t>("C", {3}, {4, 6, 18});
+  test.Run();
+}
+
+TEST(MathOpTest, Mul_uint16) {
+  OpTester test("Mul", 14);
+  test.AddInput<uint16_t>("A", {3}, {1, 2, 3});
+  test.AddInput<uint16_t>("B", {3}, {4, 3, 6});
+  test.AddOutput<uint16_t>("C", {3}, {4, 6, 18});
+  test.Run();
+}
+
+TEST(MathOpTest, Mul_uint32) {
+  OpTester test("Mul", 14);
+  test.AddInput<uint32_t>("A", {3}, {1, 2, 3});
+  test.AddInput<uint32_t>("B", {3}, {4, 3, 6});
+  test.AddOutput<uint32_t>("C", {3}, {4, 6, 18});
+  test.Run();
+}
+
+TEST(MathOpTest, Mul_uint64) {
+  OpTester test("Mul", 14);
+  test.AddInput<uint64_t>("A", {3}, {1, 2, 3});
+  test.AddInput<uint64_t>("B", {3}, {4, 3, 6});
+  test.AddOutput<uint64_t>("C", {3}, {4, 6, 18});
   test.Run();
 }
 
