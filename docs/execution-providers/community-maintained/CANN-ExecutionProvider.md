@@ -256,6 +256,7 @@ void output_postprocess(std::vector<Ort::Value>& output_tensors) {
  */
 void inference() {
   const auto& api = Ort::GetApi();
+  Ort::Env env(ORT_LOGGING_LEVEL_WARNING);
 
   // Enable cann graph in cann provider option.
   OrtCANNProviderOptions* cann_options = nullptr;
@@ -276,7 +277,7 @@ void inference() {
   api.SessionOptionsAppendExecutionProvider_CANN(
       static_cast<OrtSessionOptions*>(session_options), cann_options);
 
-  Ort::Session session(Ort::Env(), model_path, session_options);
+  Ort::Session session(env, model_path, session_options);
 
   Ort::AllocatorWithDefaultOptions allocator;
 
