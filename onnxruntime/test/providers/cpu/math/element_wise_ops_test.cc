@@ -183,6 +183,22 @@ TEST(MathOpTest, DimWithZeroHandling) {
   run(test5);
 }
 
+TEST(MathOpTest, Add_int8) {
+  OpTester test("Add", 14);
+  test.AddInput<int8_t>("A", {3}, {1, 2, 3});
+  test.AddInput<int8_t>("B", {3}, {4, 5, 6});
+  test.AddOutput<int8_t>("C", {3}, {5, 7, 9});
+  test.Run();
+}
+
+TEST(MathOpTest, Add_int16) {
+  OpTester test("Add", 14);
+  test.AddInput<int16_t>("A", {3}, {1, 2, 3});
+  test.AddInput<int16_t>("B", {3}, {4, 5, 6});
+  test.AddOutput<int16_t>("C", {3}, {5, 7, 9});
+  test.Run();
+}
+
 TEST(MathOpTest, Add_int32) {
   OpTester test("Add");
   test.AddInput<int32_t>("A", {3}, {1, 2, 3});
@@ -196,6 +212,38 @@ TEST(MathOpTest, Add_int64) {
   test.AddInput<int64_t>("A", {3}, {1, 2, 3});
   test.AddInput<int64_t>("B", {3}, {4, 5, 6});
   test.AddOutput<int64_t>("C", {3}, {5, 7, 9});
+  test.Run();
+}
+
+TEST(MathOpTest, Add_uint8) {
+  OpTester test("Add", 14);
+  test.AddInput<uint8_t>("A", {3}, {1, 2, 3});
+  test.AddInput<uint8_t>("B", {3}, {4, 5, 6});
+  test.AddOutput<uint8_t>("C", {3}, {5, 7, 9});
+  test.Run();
+}
+
+TEST(MathOpTest, Add_uint16) {
+  OpTester test("Add", 14);
+  test.AddInput<uint16_t>("A", {3}, {1, 2, 3});
+  test.AddInput<uint16_t>("B", {3}, {4, 5, 6});
+  test.AddOutput<uint16_t>("C", {3}, {5, 7, 9});
+  test.Run();
+}
+
+TEST(MathOpTest, Add_uint32) {
+  OpTester test("Add", 14);
+  test.AddInput<uint32_t>("A", {3}, {1, 2, 3});
+  test.AddInput<uint32_t>("B", {3}, {4, 5, 6});
+  test.AddOutput<uint32_t>("C", {3}, {5, 7, 9});
+  test.Run();
+}
+
+TEST(MathOpTest, Add_uint64) {
+  OpTester test("Add", 14);
+  test.AddInput<uint64_t>("A", {3}, {1, 2, 3});
+  test.AddInput<uint64_t>("B", {3}, {4, 5, 6});
+  test.AddOutput<uint64_t>("C", {3}, {5, 7, 9});
   test.Run();
 }
 
@@ -567,6 +615,22 @@ TEST(MathOpTest, Add_Invalid_Broadcast) {
 //   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 // }
 
+TEST(MathOpTest, Sub_int8) {
+  OpTester test("Sub", 14);
+  test.AddInput<int8_t>("A", {3}, {1, 5, 6});
+  test.AddInput<int8_t>("B", {3}, {4, 5, 3});
+  test.AddOutput<int8_t>("C", {3}, {-3, 0, 3});
+  test.Run();
+}
+
+TEST(MathOpTest, Sub_int16) {
+  OpTester test("Sub", 14);
+  test.AddInput<int16_t>("A", {3}, {1, 5, 6});
+  test.AddInput<int16_t>("B", {3}, {4, 5, 3});
+  test.AddOutput<int16_t>("C", {3}, {-3, 0, 3});
+  test.Run();
+}
+
 TEST(MathOpTest, Sub_int32) {
   OpTester test("Sub");
   test.AddInput<int32_t>("A", {3}, {1, 4, 3});
@@ -580,6 +644,38 @@ TEST(MathOpTest, Sub_int64) {
   test.AddInput<int64_t>("A", {3}, {1, 5, 6});
   test.AddInput<int64_t>("B", {3}, {4, 5, 3});
   test.AddOutput<int64_t>("C", {3}, {-3, 0, 3});
+  test.Run();
+}
+
+TEST(MathOpTest, Sub_uint8) {
+  OpTester test("Sub", 14);
+  test.AddInput<uint8_t>("A", {3}, {4, 5, 6});
+  test.AddInput<uint8_t>("B", {3}, {1, 5, 3});
+  test.AddOutput<uint8_t>("C", {3}, {3, 0, 3});
+  test.Run();
+}
+
+TEST(MathOpTest, Sub_uint16) {
+  OpTester test("Sub", 14);
+  test.AddInput<uint16_t>("A", {3}, {4, 5, 6});
+  test.AddInput<uint16_t>("B", {3}, {1, 5, 3});
+  test.AddOutput<uint16_t>("C", {3}, {3, 0, 3});
+  test.Run();
+}
+
+TEST(MathOpTest, Sub_uint32) {
+  OpTester test("Sub", 14);
+  test.AddInput<uint32_t>("A", {3}, {4, 5, 6});
+  test.AddInput<uint32_t>("B", {3}, {1, 5, 3});
+  test.AddOutput<uint32_t>("C", {3}, {3, 0, 3});
+  test.Run();
+}
+
+TEST(MathOpTest, Sub_uint64) {
+  OpTester test("Sub", 14);
+  test.AddInput<uint64_t>("A", {3}, {4, 5, 6});
+  test.AddInput<uint64_t>("B", {3}, {1, 5, 3});
+  test.AddOutput<uint64_t>("C", {3}, {3, 0, 3});
   test.Run();
 }
 
@@ -704,6 +800,22 @@ TEST(MathOpTest, Mul) {
 #endif
 }
 
+TEST(MathOpTest, Div_int8) {
+  OpTester test("Div", 14);
+  test.AddInput<int8_t>("A", {3}, {4, 8, 8});
+  test.AddInput<int8_t>("B", {3}, {1, 3, 2});
+  test.AddOutput<int8_t>("C", {3}, {4, 2, 4});
+  test.Run();
+}
+
+TEST(MathOpTest, Div_int16) {
+  OpTester test("Div", 14);
+  test.AddInput<int16_t>("A", {3}, {4, 8, 8});
+  test.AddInput<int16_t>("B", {3}, {1, 3, 2});
+  test.AddOutput<int16_t>("C", {3}, {4, 2, 4});
+  test.Run();
+}
+
 TEST(MathOpTest, Div_int32) {
   OpTester test("Div");
   test.AddInput<int32_t>("A", {3}, {4, 8, 8});
@@ -720,6 +832,38 @@ TEST(MathOpTest, Div_int64) {
   test.AddOutput<int64_t>("C", {3}, {2, 2, 2});
   // ov parser accuracy mismatch for div
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});  // TensorRT parser:elementwise inputs must not be Int32
+}
+
+TEST(MathOpTest, Div_uint8) {
+  OpTester test("Div", 14);
+  test.AddInput<uint8_t>("A", {3}, {4, 8, 8});
+  test.AddInput<uint8_t>("B", {3}, {1, 3, 2});
+  test.AddOutput<uint8_t>("C", {3}, {4, 2, 4});
+  test.Run();
+}
+
+TEST(MathOpTest, Div_uint16) {
+  OpTester test("Div", 14);
+  test.AddInput<uint16_t>("A", {3}, {4, 8, 8});
+  test.AddInput<uint16_t>("B", {3}, {1, 3, 2});
+  test.AddOutput<uint16_t>("C", {3}, {4, 2, 4});
+  test.Run();
+}
+
+TEST(MathOpTest, Div_uint32) {
+  OpTester test("Div", 14);
+  test.AddInput<uint32_t>("A", {3}, {4, 8, 8});
+  test.AddInput<uint32_t>("B", {3}, {1, 3, 2});
+  test.AddOutput<uint32_t>("C", {3}, {4, 2, 4});
+  test.Run();
+}
+
+TEST(MathOpTest, Div_uint64) {
+  OpTester test("Div", 14);
+  test.AddInput<uint64_t>("A", {3}, {4, 8, 8});
+  test.AddInput<uint64_t>("B", {3}, {2, 3, 4});
+  test.AddOutput<uint64_t>("C", {3}, {2, 2, 2});
+  test.Run();
 }
 
 TEST(MathOpTest, Div) {
