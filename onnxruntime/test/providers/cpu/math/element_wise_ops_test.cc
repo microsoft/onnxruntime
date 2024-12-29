@@ -2651,6 +2651,21 @@ TEST(MathOpTest, Less_Scalar1) {
   test.Run();
 }
 
+TEST(MathOpTest, Less_int8_Scalar1) {
+  OpTester test("Less", 9);
+  test.AddInput<int8_t>("A", {4}, {1, 0, 2, -1});
+  test.AddInput<int8_t>("B", {1}, {1});
+  test.AddOutput<bool>("C", {4}, {false, true, false, true});
+  test.Run();
+}
+TEST(MathOpTest, Less_int16_Scalar1) {
+  OpTester test("Less", 9);
+  test.AddInput<int16_t>("A", {4}, {1, 0, 2, -1});
+  test.AddInput<int16_t>("B", {1}, {1});
+  test.AddOutput<bool>("C", {4}, {false, true, false, true});
+  test.Run();
+}
+
 TEST(MathOpTest, Less_int64_Scalar1) {
   OpTester test("Less", 9);
   test.AddInput<int64_t>("A", {4}, {1, 0, 2, -1});
@@ -2658,6 +2673,38 @@ TEST(MathOpTest, Less_int64_Scalar1) {
   test.AddOutput<bool>("C", {4}, {false, true, false, true});
   test.Run();
 }
+
+TEST(MathOpTest, Less_uint8_Scalar1) {
+  OpTester test("Less", 9);
+  test.AddInput<uint8_t>("A", {4}, {1, 0, 2, 3});
+  test.AddInput<uint8_t>("B", {1}, {2});
+  test.AddOutput<bool>("C", {4}, {true, true, false, false});
+  test.Run();
+}
+TEST(MathOpTest, Less_uint16_Scalar1) {
+  OpTester test("Less", 9);
+  test.AddInput<uint16_t>("A", {4}, {1, 0, 2, 3});
+  test.AddInput<uint16_t>("B", {1}, {2});
+  test.AddOutput<bool>("C", {4}, {true, true, false, false});
+  test.Run();
+}
+
+TEST(MathOpTest, Less_uint32_Scalar1) {
+  OpTester test("Less", 9);
+  test.AddInput<uint32_t>("A", {4}, {1, 0, 2, 3});
+  test.AddInput<uint32_t>("B", {1}, {2});
+  test.AddOutput<bool>("C", {4}, {true, true, false, false});
+  test.Run();
+}
+
+TEST(MathOpTest, Less_uint64_Scalar1) {
+  OpTester test("Less", 9);
+  test.AddInput<uint64_t>("A", {4}, {1, 0, 2, 3});
+  test.AddInput<uint64_t>("B", {1}, {2});
+  test.AddOutput<bool>("C", {4}, {true, true, false, false});
+  test.Run();
+}
+
 TEST(MathOpTest, Less_broadcastAB) {
   OpTester test("Less", 9);
   test.AddInput<int32_t>("A", {4, 2}, {10, 11, 12, 13, 14, 15, 16, 17});
@@ -3171,6 +3218,24 @@ TEST(MathOpTest, Equal_bool_scalar1) {
   test.Run();
 }
 
+TEST(MathOpTest, Equal_int8) {
+  OpTester test("Equal", 11);
+  std::vector<int64_t> dims{4};
+  test.AddInput<int8_t>("A", dims, {1, 0, -1, -1});
+  test.AddInput<int8_t>("B", dims, {1, 1, 2, -1});
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+  test.Run();
+}
+
+TEST(MathOpTest, Equal_int16) {
+  OpTester test("Equal", 11);
+  std::vector<int64_t> dims{4};
+  test.AddInput<int16_t>("A", dims, {1, 0, -1, -1});
+  test.AddInput<int16_t>("B", dims, {1, 1, 2, -1});
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+  test.Run();
+}
+
 TEST(MathOpTest, Equal_int32) {
   OpTester test("Equal");
   std::vector<int64_t> dims{4};
@@ -3185,6 +3250,42 @@ TEST(MathOpTest, Equal_int64) {
   std::vector<int64_t> dims{4};
   test.AddInput<int64_t>("A", dims, {1, 0, -1, -1});
   test.AddInput<int64_t>("B", dims, {1, 1, 2, -1});
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+  test.Run();
+}
+
+TEST(MathOpTest, Equal_uint8) {
+  OpTester test("Equal", 11);
+  std::vector<int64_t> dims{4};
+  test.AddInput<uint8_t>("A", dims, {1, 0, 1, 1});
+  test.AddInput<uint8_t>("B", dims, {1, 1, 2, 1});
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+  test.Run();
+}
+
+TEST(MathOpTest, Equal_uint16) {
+  OpTester test("Equal", 11);
+  std::vector<int64_t> dims{4};
+  test.AddInput<uint16_t>("A", dims, {1, 0, 1, 1});
+  test.AddInput<uint16_t>("B", dims, {1, 1, 2, 1});
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+  test.Run();
+}
+
+TEST(MathOpTest, Equal_uint32) {
+  OpTester test("Equal", 11);
+  std::vector<int64_t> dims{4};
+  test.AddInput<uint32_t>("A", dims, {1, 0, 1, 1});
+  test.AddInput<uint32_t>("B", dims, {1, 1, 2, 1});
+  test.AddOutput<bool>("C", dims, {true, false, false, true});
+  test.Run();
+}
+
+TEST(MathOpTest, Equal_uint64) {
+  OpTester test("Equal", 11);
+  std::vector<int64_t> dims{4};
+  test.AddInput<uint64_t>("A", dims, {1, 0, 1, 1});
+  test.AddInput<uint64_t>("B", dims, {1, 1, 2, 1});
   test.AddOutput<bool>("C", dims, {true, false, false, true});
   test.Run();
 }
