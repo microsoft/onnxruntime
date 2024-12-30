@@ -280,6 +280,7 @@ TEST(CoreMLExecutionProviderTest, TestModelCache) {
     in.close();
   }
 
+  std::string out_string;
 #if defined(__APPLE__)
   std::vector<int64_t> dims_mul_x = {3, 2, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
@@ -300,7 +301,6 @@ TEST(CoreMLExecutionProviderTest, TestModelCache) {
   };
   EPVerificationParams verification_params{.graph_verifier = &graph_verifier};
 
-  std::string out_string;
   auto* metadata_props = model.add_metadata_props();
   metadata_props->set_key(kCOREML_CACHE_KEY);
   {  // test with valid model cache directory
@@ -372,6 +372,8 @@ TEST(CoreMLExecutionProviderTest, TestModelCache) {
     ASSERT_EQ(std::filesystem::exists("/" + subgraph_name), false);
   }
 #else
+  model.SerializeToString(&out_string);
+  gsl::span<const std::byte> model_data{reinterpret_cast<const std::byte*>(out_string.data()), out_string.size()};
   TestModelLoad(model_data, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
 #endif
 }
