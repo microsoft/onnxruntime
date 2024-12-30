@@ -72,6 +72,8 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                            "    return input_a_value_t(0);\n"
                                            "  }\n"
                                            "}\n"
+                                        << "var<workgroup> sub_b: array<array<input_b_value_t, " << WorkgroupSizeX() << ">, " << WorkgroupSizeY() << ">;\n"
+                                        << "var<workgroup> sub_scale: array<array<output_value_t, " << WorkgroupSizeX() << ">, " << WorkgroupSizeY() << ">;\n"
                                         << "var<workgroup> inter_results: array<array<output_value_t, " << WorkgroupSizeX() << ">, " << WorkgroupSizeY() << ">;\n";
       std::string offset = "workgroup_idx * " + std::to_string(WorkgroupSizeY());
       shader.MainFunctionBody() << "  let output_indices = " << y.OffsetToIndices(offset) << ";\n"
@@ -86,6 +88,8 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                            "    return input_a_value_t(0);\n"
                                            "  }\n"
                                            "}\n"
+                                        << "var<workgroup> sub_b: array<array<input_b_value_t, " << WorkgroupSizeX() << ">, " << WorkgroupSizeY() << ">;\n"
+                                        << "var<workgroup> sub_scale: array<array<output_value_t, " << WorkgroupSizeX() << ">, " << WorkgroupSizeY() << ">;\n"
                                         << "var<workgroup> inter_results: array<array<array<output_value_t, " << WorkgroupSizeX() << ">, " << WorkgroupSizeY() << ">," << tile_m_ << ">;\n";
       shader.MainFunctionBody() << "  let col = workgroup_id.x * " << WorkgroupSizeY() << ";\n"
                                 << "  let row = workgroup_id.y * " << tile_m_ << ";\n"
@@ -95,12 +99,21 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               << "  let num_tiles =  (n_blocks_per_col - 1) / " << blocks_per_tile << " + 1;\n"
                               // Loop over shared dimension.
                               << "  for (var tile: u32 = 0; tile < num_tiles; tile += 1) {\n"
+                              << "    // load one tile B/scale data into shared memory.\n"
+                                  // Each thread processes one block.
+                                 "    let b_col = col + local_id.y;\n"
+                              << "    let block = tile * " << blocks_per_tile << " + local_id.x;\n"
+                              << "    if (b_col < uniforms.input_b_shape[0] && block < n_blocks_per_col) {\n"
+                              << "      sub_b[local_id.y][local_id.x] = " << b.GetByIndices("input_b_indices_t(b_col, block, 0)") << ";\n"
+                              << "      sub_scale[local_id.y][local_id.x] = " << scales.GetByOffset("b_col * n_blocks_per_col + block") << ";\n"
+                              << "    } else {\n"
+                                 "      sub_b[local_id.y][local_id.x] = input_b_value_t(0);\n"
+                                 "      sub_scale[local_id.y][local_id.x] = output_value_t(0);\n"
+                                 "    }\n"
+                                 "    workgroupBarrier();\n"
                               << "    let a_col_start = tile * " << a_length_per_tile << ";\n"
-                                 // Each thread processes one block.
                                  "    let in_y = (local_idx % 32) / 4;\n"
-                                 "    let in_x = (local_idx / 32) * 4 + local_idx % 4;\n"
-                                 "    let b_col = col + in_y;\n"
-                              << "    let block = tile * " << blocks_per_tile << " + in_x;\n";
+                                 "    let in_x = (local_idx / 32) * 4 + local_idx % 4;\n";
     if (has_zero_points_) {
       const auto& zero_points = shader.AddInput("zero_points", ShaderUsage::UseUniform);
       shader.MainFunctionBody() << "    let zero_point_bytes_per_col = (n_blocks_per_col + 1) / 2;\n"
@@ -115,12 +128,8 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
       // The default zero point is 8 for unsigned 4-bit quantization.
       shader.MainFunctionBody() << "    let zero_point = output_element_t(8.0);\n";
     }
-    shader.MainFunctionBody() << "    var scale = output_element_t(0);\n"
-                                 "    var b_data = input_b_value_t(0);\n"
-                              << "    if (block < n_blocks_per_col) {\n"
-                              << "      scale = " << scales.GetByOffset("b_col * n_blocks_per_col + block") << ";\n"
-                              << "      b_data = " << b.GetByIndices("input_b_indices_t(b_col, block, 0)") << ";\n"
-                              << "    }\n"
+    shader.MainFunctionBody() << "    let scale = sub_scale[in_y][in_x];\n"
+                                 "    let b_data = sub_b[in_y][in_x];\n"
                               << "    var word_offset = (local_idx % 4) * " << block_size_ / a.NumComponents() << ";\n";
     if (tile_m_ == 1) {
       shader.MainFunctionBody() << "    let a_data = mm_readA(batch, row, a_col_start + local_idx);\n";
@@ -190,7 +199,6 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
     shader.MainFunctionBody() << "      word_offset += " << 8 / a.NumComponents() << ";\n"
                               << "    }\n"
-                                 "    workgroupBarrier();\n"
                                  "  }\n";
     if (tile_m_ == 1) {
       shader.MainFunctionBody() << "  if (local_idx < " << WorkgroupSizeY() << ") {\n"
