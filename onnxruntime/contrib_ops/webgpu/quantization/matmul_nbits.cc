@@ -97,12 +97,14 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               << "  for (var tile: u32 = 0; tile < num_tiles; tile += 1) {\n"
                               << "    let a_col_start = tile * " << a_length_per_tile << ";\n"
                                  // Each thread processes one block.
-                                 "    let b_row = col + local_id.y;\n"
-                              << "    let block = tile * " << blocks_per_tile << " + local_id.x;\n";
+                                 "    let in_y = (local_idx % 32) / 4;\n"
+                                 "    let in_x = (local_idx / 32) * 4 + local_idx % 4;\n"
+                                 "    let b_col = col + in_y;\n"
+                              << "    let block = tile * " << blocks_per_tile << " + in_x;\n";
     if (has_zero_points_) {
       const auto& zero_points = shader.AddInput("zero_points", ShaderUsage::UseUniform);
       shader.MainFunctionBody() << "    let zero_point_bytes_per_col = (n_blocks_per_col + 1) / 2;\n"
-                                   "    let zero_point_byte_count = b_row * zero_point_bytes_per_col + (block >> 0x1u);\n"
+                                   "    let zero_point_byte_count = b_col * zero_point_bytes_per_col + (block >> 0x1u);\n"
                                    "    let zero_point_word_index = zero_point_byte_count >> 0x2u;\n"
                                    "    let zero_point_byte_offset = zero_point_byte_count & 0x3u;\n"
                                    "    let zero_point_nibble_offset: u32 = block & 0x1u;\n"
@@ -116,17 +118,17 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.MainFunctionBody() << "    var scale = output_element_t(0);\n"
                                  "    var b_data = input_b_value_t(0);\n"
                               << "    if (block < n_blocks_per_col) {\n"
-                              << "      scale = " << scales.GetByOffset("b_row * n_blocks_per_col + block") << ";\n"
-                              << "      b_data = " << b.GetByIndices("input_b_indices_t(b_row, block, 0)") << ";\n"
+                              << "      scale = " << scales.GetByOffset("b_col * n_blocks_per_col + block") << ";\n"
+                              << "      b_data = " << b.GetByIndices("input_b_indices_t(b_col, block, 0)") << ";\n"
                               << "    }\n"
-                              << "    var word_offset = local_id.x * " << block_size_ / a.NumComponents() << ";\n";
+                              << "    var word_offset = (local_idx % 4) * " << block_size_ / a.NumComponents() << ";\n";
     if (tile_m_ == 1) {
-      shader.MainFunctionBody() << "    let a_data = mm_readA(batch, row, a_col_start + sg_id);\n";
+      shader.MainFunctionBody() << "    let a_data = mm_readA(batch, row, a_col_start + local_idx);\n";
     } else {
-      shader.MainFunctionBody() << "    let a_data0 = mm_readA(batch, row, a_col_start + sg_id);\n"
-                                << "    let a_data1 = mm_readA(batch, row + 1, a_col_start + sg_id);\n"
-                                   "    let a_data2 = mm_readA(batch, row + 2, a_col_start + sg_id);\n"
-                                   "    let a_data3 = mm_readA(batch, row + 3, a_col_start + sg_id);\n";
+      shader.MainFunctionBody() << "    let a_data0 = mm_readA(batch, row, a_col_start + local_idx);\n"
+                                << "    let a_data1 = mm_readA(batch, row + 1, a_col_start + local_idx);\n"
+                                   "    let a_data2 = mm_readA(batch, row + 2, a_col_start + local_idx);\n"
+                                   "    let a_data3 = mm_readA(batch, row + 3, a_col_start + local_idx);\n";
     }
     shader.MainFunctionBody() << "    for (var i: u32 = 0; i < " << components_b_ << "; i++) {\n";
     shader.MainFunctionBody() << "      let b_value = b_data";
@@ -156,7 +158,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
         case 4:
           shader.MainFunctionBody() << "      let a0 = subgroupShuffle(a_data, word_offset);\n"
                                        "      let a1 = subgroupShuffle(a_data, word_offset + 1);\n"
-                                       "      inter_results[local_id.y][local_id.x] += dot(a0, b_dequantized_values[0]) + dot(a1, b_dequantized_values[1]);\n";
+                                       "      inter_results[in_y][in_x] += dot(a0, b_dequantized_values[0]) + dot(a1, b_dequantized_values[1]);\n";
           break;
         default:
           break;
@@ -179,7 +181,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
               shader.MainFunctionBody() << "      var ";
             }
             shader.MainFunctionBody() << "      a1 = subgroupShuffle(a_data" << i << ", word_offset + 1);\n";
-            shader.MainFunctionBody() << "      inter_results[" << i << "][local_id.y][local_id.x] += dot(a0, b_dequantized_values[0]) + dot(a1, b_dequantized_values[1]);\n";
+            shader.MainFunctionBody() << "      inter_results[" << i << "][in_y][in_x] += dot(a0, b_dequantized_values[0]) + dot(a1, b_dequantized_values[1]);\n";
             break;
           default:
             break;
@@ -418,7 +420,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   MatMulNBitsProgram program{output_number, block_size, tile_m, gsl::narrow<int>(components_b), has_zero_points};
   if (M > kMinMForTileOptimization && block_size == 32) {
     components = 1;
-    constexpr uint32_t workgroup_size = 32;
+    constexpr uint32_t workgroup_size = 64;
     constexpr uint32_t workgroup_y = 8;
     constexpr uint32_t workgroup_x = workgroup_size / workgroup_y;
     program.SetWorkgroupSize(workgroup_x, workgroup_y, 1);
@@ -428,7 +430,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     program.CacheHint("T_M" + std::to_string(tile_m));
   } else if (block_size == 32) {
     components = 1;
-    constexpr uint32_t workgroup_size = 32;
+    constexpr uint32_t workgroup_size = 64;
     const uint32_t workgroup_y = N % 8 == 0 ? 8 : 1;
     const uint32_t workgroup_x = workgroup_size / workgroup_y;
     program.SetWorkgroupSize(workgroup_x, workgroup_y, 1);
