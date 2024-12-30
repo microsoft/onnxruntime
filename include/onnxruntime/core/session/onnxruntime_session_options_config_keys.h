@@ -300,3 +300,13 @@ static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "sessio
 // “Default”: OS determines the scheduling priority and processor performance to service this workload. [Default]
 // “Efficient”: OS treats this workload is efficiency oriented with low scheduling priority and efficient processor performance.
 static const char* const kOrtEpDynamicOptionsWorkloadType = "ep.dynamic.workload_type";
+
+// Create an Inference Session that will use the Model Builder API to create/update the model.
+// This flag will create the session but not fully initialize it. A model, if provided, will be loaded.
+// A session logger will be created, and execution providers will be registered.
+// Any device specific allocators and IDataTransfer objects will be registered.
+// This allows CreateAllocator to return device specific allocators registered by EPs.
+// FUTURE: This will also allow CopyTensors to utilize the IDataTransfer objects
+// "0": Disabled. [DEFAULT]
+// "1": Enable Model Builder Session
+static const char* const kOrtSessionOptionsEnableModelBuilder = "session.model_builder_session";

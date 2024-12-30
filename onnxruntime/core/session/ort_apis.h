@@ -533,4 +533,25 @@ ORT_API_STATUS_IMPL(RunOptionsAddActiveLoraAdapter, _Inout_ OrtRunOptions* optio
 
 ORT_API_STATUS_IMPL(SetEpDynamicOptions, _Inout_ OrtSession* sess, _In_reads_(kv_len) const char* const* keys,
                     _In_reads_(kv_len) const char* const* values, _In_ size_t kv_len);
+
+ORT_API(const OrtModelBuilderApi*, GetModelBuilderApi);
+
+ORT_API_STATUS_IMPL(CreateTensorWithDataAndDeleterAsOrtValue, _In_ OrtAllocator* deleter,
+                    _In_ void* p_data, size_t p_data_len,
+                    _In_ const int64_t* shape, size_t shape_len,
+                    ONNXTensorElementDataType type,
+                    _Outptr_ OrtValue** out);
+
+ORT_API_STATUS_IMPL(SessionGetOpsetForDomain, _In_ const OrtSession* session, _In_ const char* domain,
+                    _Out_ int* opset);
+
+// APIs to create/edit type info
+ORT_API_STATUS_IMPL(CreateTensorTypeInfo, _In_ const OrtTensorTypeAndShapeInfo* tensor_info,
+                    _Out_ OrtTypeInfo** type_info);
+ORT_API_STATUS_IMPL(CreateSparseTensorTypeInfo, _In_ const OrtTensorTypeAndShapeInfo* tensor_info,
+                    _Out_ OrtTypeInfo** type_info);
+ORT_API_STATUS_IMPL(CreateMapTypeInfo, ONNXTensorElementDataType map_key_type, _In_ const OrtTypeInfo* map_value_type,
+                    _Out_ OrtTypeInfo** type_info);
+ORT_API_STATUS_IMPL(CreateSequenceTypeInfo, _In_ const OrtTypeInfo* sequence_type, _Out_ OrtTypeInfo** type_info);
+ORT_API_STATUS_IMPL(CreateOptionalTypeInfo, _In_ const OrtTypeInfo* contained_type, _Out_ OrtTypeInfo** type_info);
 }  // namespace OrtApis

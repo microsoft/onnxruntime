@@ -996,6 +996,57 @@ inline size_t ConstSessionImpl<T>::GetOverridableInitializerCount() const {
 }
 
 template <typename T>
+inline std::vector<std::string> ConstSessionImpl<T>::GetInputNames() const {
+  AllocatorWithDefaultOptions allocator;
+
+  auto num_inputs = GetInputCount();
+  std::vector<std::string> input_names;
+  input_names.reserve(num_inputs);
+
+  for (size_t i = 0; i < num_inputs; ++i) {
+    char* name = nullptr;
+    ThrowOnError(GetApi().SessionGetInputName(this->p_, i, allocator, &name));
+    input_names.push_back(name);
+  }
+
+  return input_names;
+}
+
+template <typename T>
+inline std::vector<std::string> ConstSessionImpl<T>::GetOutputNames() const {
+  AllocatorWithDefaultOptions allocator;
+
+  auto num_inputs = GetOutputCount();
+  std::vector<std::string> output_names;
+  output_names.reserve(num_inputs);
+
+  for (size_t i = 0; i < num_inputs; ++i) {
+    char* name = nullptr;
+    ThrowOnError(GetApi().SessionGetOutputName(this->p_, i, allocator, &name));
+    output_names.push_back(name);
+  }
+
+  return output_names;
+}
+
+template <typename T>
+inline std::vector<std::string> ConstSessionImpl<T>::GetOverridableInitializerNames() const {
+  AllocatorWithDefaultOptions allocator;
+
+  auto num_initializers = GetOverridableInitializerCount();
+  std::vector<std::string> initializer_names;
+  initializer_names.reserve(num_initializers);
+
+  for (size_t i = 0; i < num_initializers; ++i) {
+    char* name = nullptr;
+    ThrowOnError(GetApi().SessionGetOverridableInitializerName(this->p_, i, allocator, &name));
+    initializer_names.push_back(name);
+  }
+
+  return initializer_names;
+}
+
+template <typename T>
 inline AllocatedStringPtr ConstSessionImpl<T>::GetInputNameAllocated(size_t index, OrtAllocator* allocator) const {
   char* out;
   ThrowOnError(GetApi().SessionGetInputName(this->p_, index, allocator, &out));
@@ -1052,6 +1103,13 @@ inline TypeInfo ConstSessionImpl<T>::GetOverridableInitializerTypeInfo(size_t in
 }
 
 template <typename T>
+inline int ConstSessionImpl<T>::GetOpset(const std::string& domain) const {
+  int opset;
+  ThrowOnError(GetApi().SessionGetOpsetForDomain(this->p_, domain.c_str(), &opset));
+  return opset;
+}
+
+template <typename T>
 inline std::vector<Value> SessionImpl<T>::Run(const RunOptions& run_options, const char* const* input_names, const Value* input_values, size_t input_count,
                                               const char* const* output_names, size_t output_count) {
   std::vector<Value> output_values;
@@ -1096,6 +1154,13 @@ inline AllocatedStringPtr SessionImpl<T>::EndProfilingAllocated(OrtAllocator* al
 template <typename T>
 inline void SessionImpl<T>::SetEpDynamicOptions(const char* const* keys, const char* const* values, size_t kv_len) {
   ThrowOnError(GetApi().SetEpDynamicOptions(this->p_, keys, values, kv_len));
+}
+
+template <typename T>
+inline void SessionImpl<T>::FinalizeModelBuilderSession(const ModelBuilderAPI::Model& model, const SessionOptions& options,
+                                                        OrtPrepackedWeightsContainer* prepacked_weights_container) {
+  ThrowOnError(GetModelBuilderApi().ApplyModelToModelBuilderSession(this->p_, model));
+  ThrowOnError(GetModelBuilderApi().FinalizeModelBuilderSession(this->p_, options, prepacked_weights_container));
 }
 
 }  // namespace detail
@@ -1143,6 +1208,30 @@ inline Session::Session(const Env& env, const void* model_data, size_t model_dat
   ThrowOnError(GetApi().CreateSessionFromArrayWithPrepackedWeightsContainer(env, model_data, model_data_length, options,
                                                                             prepacked_weights_container, &this->p_));
 }
+
+inline Session::Session(const Env& env, const ModelBuilderAPI::Model& model, const SessionOptions& options) {
+  ThrowOnError(GetModelBuilderApi().CreateSessionFromModel(env, model.GetConst(), options, &this->p_));
+}
+
+// static
+inline Session Session::CreateModelBuilderSession(const Env& env, const ORTCHAR_T* model_path,
+                                                  const SessionOptions& options) {
+  OrtSession* session = nullptr;
+  ThrowOnError(GetModelBuilderApi().CreateModelBuilderSession(env, model_path, options, &session));
+  return Session(session);
+}
+
+// static
+inline Session Session::CreateModelBuilderSession(const Env& env, const void* model_data, size_t model_data_length,
+                                                  const SessionOptions& options) {
+  OrtSession* session = nullptr;
+  ThrowOnError(GetModelBuilderApi().CreateModelBuilderSessionFromArray(env, model_data, model_data_length, options,
+                                                                       &session));
+  return Session(session);
+}
+
+void FinalizeModelBuilderSession(const ModelBuilderAPI::Model& model, const SessionOptions& options,
+                                 OrtPrepackedWeightsContainer* prepacked_weights_container);
 
 inline AllocatedStringPtr ModelMetadata::GetProducerNameAllocated(OrtAllocator* allocator) const {
   char* out;
@@ -1211,6 +1300,57 @@ inline int64_t ModelMetadata::GetVersion() const {
   return out;
 }
 
+inline TensorTypeAndShapeInfo::TensorTypeAndShapeInfo(ONNXTensorElementDataType element_type,
+                                                      const std::vector<int64_t>& dims,
+                                                      const std::vector<std::string>* symbolic_dims) {
+  ThrowOnError(GetApi().CreateTensorTypeAndShapeInfo(&p_));
+  ThrowOnError(GetApi().SetTensorElementType(p_, element_type));
+  ThrowOnError(GetApi().SetDimensions(p_, dims.data(), dims.size()));
+
+  if (symbolic_dims) {
+    std::vector<const char*> symbolic_dims_cstr;
+    symbolic_dims_cstr.reserve(symbolic_dims->size());
+    std::transform(symbolic_dims->begin(), symbolic_dims->end(), std::back_inserter(symbolic_dims_cstr),
+                   [](const std::string& s) { return s.c_str(); });
+    ThrowOnError(GetApi().SetSymbolicDimensions(p_, symbolic_dims_cstr.data(), symbolic_dims_cstr.size()));
+  }
+}
+
+// static
+inline TypeInfo TypeInfo::CreateTensorInfo(ConstTensorTypeAndShapeInfo tensor_type_and_shape_info) {
+  OrtTypeInfo* output = nullptr;
+  ThrowOnError(GetApi().CreateTensorTypeInfo(tensor_type_and_shape_info, &output));
+  return TypeInfo{output};
+}
+
+// static
+inline TypeInfo TypeInfo::CreateSparseTensorInfo(ConstTensorTypeAndShapeInfo sparse_tensor_type_and_shape_info) {
+  OrtTypeInfo* output = nullptr;
+  ThrowOnError(GetApi().CreateSparseTensorTypeInfo(sparse_tensor_type_and_shape_info, &output));
+  return TypeInfo{output};
+}
+
+// static
+inline TypeInfo TypeInfo::CreateSequenceTypeInfo(ConstTypeInfo sequence_type) {
+  OrtTypeInfo* output;
+  ThrowOnError(GetApi().CreateSequenceTypeInfo(sequence_type, &output));
+  return TypeInfo{output};
+}
+
+// static
+inline TypeInfo TypeInfo::CreateMapTypeInfo(ONNXTensorElementDataType key_type, ConstTypeInfo value_type) {
+  OrtTypeInfo* output;
+  ThrowOnError(GetApi().CreateMapTypeInfo(key_type, value_type, &output));
+  return TypeInfo{output};
+}
+
+// static
+inline TypeInfo TypeInfo::CreateOptionalTypeInfo(ConstTypeInfo contained_type) {
+  OrtTypeInfo* output;
+  ThrowOnError(GetApi().CreateOptionalTypeInfo(contained_type, &output));
+  return TypeInfo{output};
+}
+
 namespace detail {
 
 template <typename T>
@@ -1245,8 +1385,15 @@ inline void TensorTypeAndShapeInfoImpl<T>::GetSymbolicDimensions(const char** va
 }
 
 template <typename T>
+inline std::vector<const char*> TensorTypeAndShapeInfoImpl<T>::GetSymbolicDimensions() const {
+  std::vector<const char*> out(GetDimensionsCount(), nullptr);
+  ThrowOnError(GetApi().GetSymbolicDimensions(this->p_, out.data(), out.size()));
+  return out;
+}
+
+template <typename T>
 inline std::vector<int64_t> TensorTypeAndShapeInfoImpl<T>::GetShape() const {
-  std::vector<int64_t> out(GetDimensionsCount(), 0);
+  std::vector<int64_t> out(GetDimensionsCount(), -1);
   ThrowOnError(GetApi().GetDimensions(this->p_, out.data(), out.size()));
   return out;
 }
@@ -1560,14 +1707,25 @@ void ValueImpl<T>::FillSparseTensorBlockSparse(const OrtMemoryInfo* data_mem_inf
 }  // namespace detail
 
 template <typename T>
-inline Value Value::CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_data_element_count, const int64_t* shape, size_t shape_len) {
+inline Value Value::CreateTensor(const OrtMemoryInfo* info, T* p_data, size_t p_data_element_count,
+                                 const int64_t* shape, size_t shape_len) {
   return CreateTensor(info, p_data, p_data_element_count * sizeof(T), shape, shape_len, TypeToTensorType<T>::type);
 }
 
-inline Value Value::CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count, const int64_t* shape, size_t shape_len,
+inline Value Value::CreateTensor(const OrtMemoryInfo* info, void* p_data, size_t p_data_byte_count,
+                                 const int64_t* shape, size_t shape_len,
                                  ONNXTensorElementDataType type) {
   OrtValue* out;
   ThrowOnError(GetApi().CreateTensorWithDataAsOrtValue(info, p_data, p_data_byte_count, shape, shape_len, type, &out));
+  return Value{out};
+}
+
+inline Value Value::CreateTensor(OrtAllocator* deleter, void* p_data, size_t p_data_byte_count,
+                                 const int64_t* shape, size_t shape_len,
+                                 ONNXTensorElementDataType type) {
+  OrtValue* out;
+  ThrowOnError(GetApi().CreateTensorWithDataAndDeleterAsOrtValue(deleter, p_data, p_data_byte_count,
+                                                                 shape, shape_len, type, &out));
   return Value{out};
 }
 
@@ -1576,7 +1734,8 @@ inline Value Value::CreateTensor(OrtAllocator* allocator, const int64_t* shape, 
   return CreateTensor(allocator, shape, shape_len, TypeToTensorType<T>::type);
 }
 
-inline Value Value::CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len, ONNXTensorElementDataType type) {
+inline Value Value::CreateTensor(OrtAllocator* allocator, const int64_t* shape, size_t shape_len,
+                                 ONNXTensorElementDataType type) {
   OrtValue* out;
   ThrowOnError(GetApi().CreateTensorAsOrtValue(allocator, shape, shape_len, type, &out));
   return Value{out};
@@ -1594,7 +1753,8 @@ inline Value Value::CreateSparseTensor(const OrtMemoryInfo* info, void* p_data, 
                                        const Shape& values_shape, ONNXTensorElementDataType type) {
   OrtValue* out;
   ThrowOnError(GetApi().CreateSparseTensorWithValuesAsOrtValue(info, p_data, dense_shape.shape, dense_shape.shape_len,
-                                                               values_shape.shape, values_shape.shape_len, type, &out));
+                                                               values_shape.shape, values_shape.shape_len, type,
+                                                               &out));
   return Value{out};
 }
 
@@ -2167,4 +2327,138 @@ inline const OrtOpAttr* ShapeInferContext::GetAttrHdl(const char* attr_name) con
   return attr_hdl;
 }
 
+namespace ModelBuilderAPI {
+inline std::vector<const char*> StringsToCharPtrs(const std::vector<std::string>& strings) {
+  std::vector<const char*> ptrs;
+  ptrs.reserve(strings.size());
+  std::transform(strings.begin(), strings.end(), std::back_inserter(ptrs),
+                 [](const std::string& s) { return s.c_str(); });
+
+  return ptrs;
+}
+
+// static
+inline void Node::Init(const std::string& operator_name, const std::string& operator_domain,
+                       const std::string& node_name,
+                       const std::vector<std::string>& input_names,
+                       const std::vector<std::string>& output_names,
+                       std::vector<OpAttr>& attributes,
+                       OrtNode*& node) {
+  auto inputs = StringsToCharPtrs(input_names);
+  auto outputs = StringsToCharPtrs(output_names);
+
+  std::vector<OrtOpAttr*> attributes_ptrs;
+  attributes_ptrs.reserve(attributes.size());
+  std::transform(attributes.begin(), attributes.end(), std::back_inserter(attributes_ptrs),
+                 [](OpAttr& attr) -> OrtOpAttr* { return attr; });
+
+  ThrowOnError(GetModelBuilderApi().CreateNode(operator_name.c_str(), operator_domain.c_str(), node_name.c_str(),
+                                               inputs.data(), inputs.size(),
+                                               outputs.data(), outputs.size(),
+                                               attributes_ptrs.data(), attributes_ptrs.size(),
+                                               &node));
+
+  // Node now owns the attributes
+  std::for_each(attributes.begin(), attributes.end(), [](OpAttr& attr) { attr.release(); });
+}
+
+inline Node::Node(const std::string& operator_name, const std::string& operator_domain,
+                  const std::string& node_name,
+                  const std::vector<std::string>& input_names,
+                  const std::vector<std::string>& output_names,
+                  std::vector<OpAttr>& attributes) {
+  Init(operator_name, operator_domain, node_name, input_names, output_names, attributes, p_);
+}
+
+inline Node::Node(const std::string& operator_name, const std::string& operator_domain,
+                  const std::string& node_name,
+                  const std::vector<std::string>& input_names,
+                  const std::vector<std::string>& output_names) {
+  std::vector<OpAttr> empty_attributes;
+  Init(operator_name, operator_domain, node_name, input_names, output_names, empty_attributes, p_);
+}
+
+inline Graph::Graph() {
+  ThrowOnError(GetModelBuilderApi().CreateGraph(&p_));
+}
+
+inline Model::Model(const std::vector<DomainOpsetPair>& opsets) {
+  std::vector<const char*> domains;
+  std::vector<int> versions;
+  domains.reserve(opsets.size());
+  versions.reserve(opsets.size());
+
+  for (const auto& pair : opsets) {
+    domains.push_back(pair.first.c_str());
+    versions.push_back(pair.second);
+  }
+
+  ThrowOnError(GetModelBuilderApi().CreateModel(domains.data(), versions.data(), opsets.size(), &p_));
+}
+
+inline ValueInfo::ValueInfo(const std::string& name, const ConstTypeInfo& type_info) {
+  ThrowOnError(GetModelBuilderApi().CreateValueInfo(name.c_str(), type_info, &p_));
+}
+namespace detail {
+template <>
+inline std::string ValueInfoImpl<OrtValueInfo>::Name() const {
+  const char* name = nullptr;
+  ThrowOnError(GetModelBuilderApi().GetValueInfoName(this->p_, &name));
+  return name;
+}
+
+template <>
+inline ConstTypeInfo ValueInfoImpl<OrtValueInfo>::TypeInfo() const {
+  const OrtTypeInfo* type_info = nullptr;
+  ThrowOnError(GetModelBuilderApi().GetValueInfoTypeInfo(this->p_, &type_info));
+  return ConstTypeInfo{type_info};
+}
+
+template <>
+inline void GraphImpl<OrtGraph>::SetInputs(std::vector<ValueInfo>& inputs) {
+  std::vector<OrtValueInfo*> inputs_ptrs;
+  inputs_ptrs.reserve(inputs.size());
+
+  // Graph takes ownership.
+  std::transform(inputs.begin(), inputs.end(), std::back_inserter(inputs_ptrs),
+                 [](ValueInfo& vi) -> OrtValueInfo* { return vi.release(); });
+
+  ThrowOnError(GetModelBuilderApi().SetGraphInputs(p_, inputs_ptrs.data(), inputs_ptrs.size()));
+
+  // Graph now owns the inputs
+  std::for_each(inputs.begin(), inputs.end(), [](ValueInfo& vi) { vi.release(); });
+}
+
+template <>
+inline void GraphImpl<OrtGraph>::SetOutputs(std::vector<ValueInfo>& outputs) {
+  std::vector<OrtValueInfo*> outputs_ptrs;
+  outputs_ptrs.reserve(outputs.size());
+  std::transform(outputs.begin(), outputs.end(), std::back_inserter(outputs_ptrs),
+                 [](ValueInfo& vi) -> OrtValueInfo* { return vi; });
+
+  ThrowOnError(GetModelBuilderApi().SetGraphOutputs(p_, outputs_ptrs.data(), outputs_ptrs.size()));
+
+  // Graph now owns the outputs
+  std::for_each(outputs.begin(), outputs.end(), [](ValueInfo& vi) { vi.release(); });
+}
+
+template <>
+inline void GraphImpl<OrtGraph>::AddInitializer(const std::string& name, Value& initializer, bool data_is_external) {
+  // Graph takes ownership of `initializer`
+  ThrowOnError(GetModelBuilderApi().AddInitializerToGraph(p_, name.c_str(), initializer.release(), data_is_external));
+}
+
+template <>
+inline void GraphImpl<OrtGraph>::AddNode(Node& node) {
+  // Graph takes ownership of `node`
+  ThrowOnError(GetModelBuilderApi().AddNodeToGraph(p_, node.release()));
+}
+
+template <>
+inline void ModelImpl<OrtModel>::AddGraph(Graph& graph) {
+  // Model takes ownership of `graph`
+  ThrowOnError(GetModelBuilderApi().AddGraphToModel(p_, graph.release()));
+}
+}  // namespace detail
+}  // namespace ModelBuilderAPI
 }  // namespace Ort

@@ -20,7 +20,7 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/allocator_adapters.h"
-#include "core/session/api_utils.h"
+#include "core/session/utils.h"
 #include "core/session/custom_ops.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_apis.h"

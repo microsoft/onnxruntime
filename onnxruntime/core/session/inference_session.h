@@ -46,6 +46,9 @@ namespace ONNX_NAMESPACE {
 class ModelProto;
 }  // namespace ONNX_NAMESPACE
 
+// OrtModelBuilderApi Model. Used to dynamically construct a model via C API at runtime.
+struct OrtModel;
+
 namespace onnxruntime {  // forward declarations
 class CustomRegistry;
 class Environment;
@@ -319,6 +322,27 @@ class InferenceSession {
    * @return OK if success.
    */
   [[nodiscard]] common::Status Load();
+
+  /**
+   * Load an OrtModel that was dynamically constructed via OrtModelBuilderApi.
+   *
+   * @param graph_api_model OrtModel from OrtModelBuilderApi
+   * @return OK if success.
+   */
+  [[nodiscard]] common::Status Load(const OrtModel& graph_api_model);
+
+  /**
+   * Apply updates from an OrtModel that was created via OrtModelBuilderApi.
+   * This can:
+   *   - add nodes at the start and end of the model
+   *   - add initializers
+   *   - update the graph inputs/outputs
+   *
+   * @param graph_api_model OrtModel from OrtModelBuilderApi
+   * @return OK if success.
+   */
+  [[nodiscard]] common::Status ApplyUpdates(const OrtModel& graph_api_model);
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   /**
@@ -544,6 +568,8 @@ class InferenceSession {
    * @param prepacked_weights_container PrepackedWeightsContainer instance
    */
   Status AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container);
+
+  const Model& GetModel() const;
 
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
