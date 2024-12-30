@@ -100,7 +100,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               // Loop over shared dimension.
                               << "  for (var tile: u32 = 0; tile < num_tiles; tile += 1) {\n"
                               << "    // load one tile B/scale data into shared memory.\n"
-                                  // Each thread processes one block.
+                                 // Each thread processes one block.
                                  "    let b_col = col + local_id.y;\n"
                               << "    let block = tile * " << blocks_per_tile << " + local_id.x;\n"
                               << "    if (b_col < uniforms.input_b_shape[0] && block < n_blocks_per_col) {\n"
@@ -112,8 +112,26 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                  "    }\n"
                                  "    workgroupBarrier();\n"
                               << "    let a_col_start = tile * " << a_length_per_tile << ";\n"
-                                 "    let in_y = (local_idx % 32) / 4;\n"
-                                 "    let in_x = (local_idx / 32) * 4 + local_idx % 4;\n";
+                              << "    var in_y = (local_idx % 32) / 4;\n"
+                                 "    var in_x = (local_idx / 32) * 4 + local_idx % 4;\n"
+                              << "    var word_offset = (local_idx % 4) * " << block_size_ / a.NumComponents() << ";\n"
+                                 "    if (sg_size == 8u) {\n"
+                                 "      in_y = local_idx % 8;\n"
+                                 "      in_x = local_idx / 8;\n"
+                              << "      word_offset = 0u;\n"
+                                 "    } else if (sg_size == 16u) {\n"
+                                 "      in_y = (local_idx % 16) / 2;\n"
+                                 "      in_x = (local_idx / 16) * 2 + local_idx % 2;\n"
+                              << "      word_offset = (local_idx % 2) * " << block_size_ / a.NumComponents() << ";\n"
+                                 "    } else if (sg_size == 32u) {\n"
+                                 "      in_y = (local_idx % 32) / 4;\n"
+                                 "      in_x = (local_idx / 32) * 4 + local_idx % 4;\n"
+                              << "      word_offset = (local_idx % 4) * " << block_size_ / a.NumComponents() << ";\n"
+                                 "    } else if (sg_size == 64u) {\n"
+                                 "      in_y = local_idx / 8;\n"
+                                 "      in_x = local_idx % 8;\n"
+                              << "      word_offset = (local_idx % 8) * " << block_size_ / a.NumComponents() << ";\n"
+                              << "    }\n";
     if (has_zero_points_) {
       const auto& zero_points = shader.AddInput("zero_points", ShaderUsage::UseUniform);
       shader.MainFunctionBody() << "    let zero_point_bytes_per_col = (n_blocks_per_col + 1) / 2;\n"
@@ -129,8 +147,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
       shader.MainFunctionBody() << "    let zero_point = output_element_t(8.0);\n";
     }
     shader.MainFunctionBody() << "    let scale = sub_scale[in_y][in_x];\n"
-                                 "    let b_data = sub_b[in_y][in_x];\n"
-                              << "    var word_offset = (local_idx % 4) * " << block_size_ / a.NumComponents() << ";\n";
+                                 "    let b_data = sub_b[in_y][in_x];\n";
     if (tile_m_ == 1) {
       shader.MainFunctionBody() << "    let a_data = mm_readA(batch, row, a_col_start + local_idx);\n";
     } else {
