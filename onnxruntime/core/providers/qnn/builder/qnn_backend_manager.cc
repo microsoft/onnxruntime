@@ -255,7 +255,9 @@ void QnnLogging(const char* format,
   }
 }
 
-Status QnnBackendManager::InitializeQnnLog() {
+Status QnnBackendManager::InitializeQnnLog(const logging::Logger& logger) {
+  logger_ = &logger;
+
   // Set Qnn log level align with Ort log level
   auto ort_log_level = logger_->GetSeverity();
   QnnLog_Level_t qnn_log_level = MapOrtSeverityToQNNLogLevel(ort_log_level);
@@ -303,23 +305,15 @@ QnnLog_Level_t QnnBackendManager::MapOrtSeverityToQNNLogLevel(logging::Severity 
   }
 }
 
-Status QnnBackendManager::ResetQnnLogLevel() {
+Status QnnBackendManager::ResetQnnLogLevel(std::optional<logging::Severity> ort_log_level) {
   std::lock_guard<std::mutex> lock(logger_mutex_);
-
-  if (backend_setup_completed_ && logger_ != nullptr) {
-    auto ort_log_level = logger_->GetSeverity();
-    LOGS(*logger_, INFO) << "Reset Qnn log level to ORT Logger level: " << (unsigned int)ort_log_level;
-    return UpdateQnnLogLevel(ort_log_level);
+  if (!backend_setup_completed_ || logger_ == nullptr) {
+    return Status::OK();
   }
-  return Status::OK();
-}
-
-Status QnnBackendManager::UpdateQnnLogLevel(logging::Severity ort_log_level) {
   ORT_RETURN_IF(nullptr == log_handle_, "Unable to update QNN Log Level. Invalid QNN log handle.");
-  ORT_RETURN_IF(false == backend_setup_completed_, "Unable to update QNN Log Level. Backend setup not completed.");
-  ORT_RETURN_IF(nullptr == logger_, "Unable to update QNN Log Level. Invalid logger.");
 
-  QnnLog_Level_t qnn_log_level = MapOrtSeverityToQNNLogLevel(ort_log_level);
+  logging::Severity actual_log_level = ort_log_level.has_value() ? *ort_log_level : logger_->GetSeverity();
+  QnnLog_Level_t qnn_log_level = MapOrtSeverityToQNNLogLevel(actual_log_level);
 
   LOGS(*logger_, INFO) << "Updating Qnn log level to: " << qnn_log_level;
 
@@ -332,7 +326,8 @@ Status QnnBackendManager::UpdateQnnLogLevel(logging::Severity ort_log_level) {
       LOGS(*logger_, ERROR) << "Invalid log handle provided to QnnLog_setLogLevel.";
     }
   }
-  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to set log level in Qnn backend. Error: ", QnnErrorHandleToString(result));
+  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result,
+                "Failed to set log level in Qnn backend. Error: ", QnnErrorHandleToString(result));
   return Status::OK();
 }
 
@@ -619,6 +614,9 @@ std::unique_ptr<unsigned char[]> QnnBackendManager::GetContextBinaryBuffer(uint6
 Status QnnBackendManager::GetMaxSpillFillBufferSize(unsigned char* buffer,
                                                     uint64_t buffer_length,
                                                     uint64_t& max_spill_fill_buffer_size) {
+  max_spill_fill_buffer_size = 0;
+  // spill fill starts from 2.28
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 21)
   bool result = nullptr == qnn_sys_interface_.systemContextCreate ||
                 nullptr == qnn_sys_interface_.systemContextGetBinaryInfo ||
                 nullptr == qnn_sys_interface_.systemContextFree;
@@ -672,6 +670,10 @@ Status QnnBackendManager::GetMaxSpillFillBufferSize(unsigned char* buffer,
       LOGS(*logger_, VERBOSE) << "Unknown context binary graph info version.";
     }
   }
+#else
+  ORT_UNUSED_PARAMETER(buffer);
+  ORT_UNUSED_PARAMETER(buffer_length);
+#endif
 
   LOGS(*logger_, VERBOSE) << "Get max spill fill buffer size completed.";
   return Status::OK();
@@ -705,16 +707,23 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
   ORT_RETURN_IF(nullptr == binary_info, "Qnn cached binary info is nullptr.");
   uint32_t graph_count = 0;
   QnnSystemContext_GraphInfo_t* graphs_info = nullptr;
-  if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_3) {
-    graph_count = binary_info->contextBinaryInfoV3.numGraphs;
-    graphs_info = binary_info->contextBinaryInfoV3.graphs;
-  } else if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_2) {
-    graph_count = binary_info->contextBinaryInfoV2.numGraphs;
-    graphs_info = binary_info->contextBinaryInfoV2.graphs;
-  } else if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_1) {
+  if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_1) {
     graph_count = binary_info->contextBinaryInfoV1.numGraphs;
     graphs_info = binary_info->contextBinaryInfoV1.graphs;
-  } else {
+  }
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 15)  // starts from 2.22
+  else if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_2) {
+    graph_count = binary_info->contextBinaryInfoV2.numGraphs;
+    graphs_info = binary_info->contextBinaryInfoV2.graphs;
+  }
+#endif
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 21)  // starts from 2.28
+  else if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_3) {
+    graph_count = binary_info->contextBinaryInfoV3.numGraphs;
+    graphs_info = binary_info->contextBinaryInfoV3.graphs;
+  }
+#endif
+  else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported context binary info version.");
   }
 
@@ -809,7 +818,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
   LOGS(logger, VERBOSE) << "Backend build version: "
                         << sdk_build_version_;
 
-  SetLogger(&logger);
+  ORT_RETURN_IF_ERROR(InitializeQnnLog(logger));
   LOGS(logger, VERBOSE) << "SetLogger succeed.";
 
   ORT_RETURN_IF_ERROR(InitializeBackend());
@@ -1035,6 +1044,24 @@ Status QnnBackendManager::DestroyHTPPowerConfigID(uint32_t htp_power_config_id) 
   return Status::OK();
 }
 
+Status QnnBackendManager::TerminateQnnLog() {
+  std::lock_guard<std::mutex> lock(logger_mutex_);
+  if (logger_ == nullptr) {
+    return Status::OK();
+  }
+
+  if (nullptr != qnn_interface_.logFree && nullptr != log_handle_) {
+    auto ret_val = qnn_interface_.logFree(log_handle_);
+
+    // Reset QNN log handle to nullptr so other threads that are waiting on logger_mutex_ know it was freed.
+    log_handle_ = nullptr;
+    ORT_RETURN_IF(QNN_SUCCESS != ret_val,
+                  "Unable to terminate logging in the backend.");
+  }
+
+  return Status::OK();
+}
+
 void QnnBackendManager::ReleaseResources() {
   if (!backend_setup_completed_) {
     return;
@@ -1060,7 +1087,6 @@ void QnnBackendManager::ReleaseResources() {
     ORT_THROW("Failed to ShutdownBackend.");
   }
 
-  std::lock_guard<std::mutex> lock(logger_mutex_);
   result = TerminateQnnLog();
   if (Status::OK() != result) {
     ORT_THROW("Failed to TerminateQnnLog.");

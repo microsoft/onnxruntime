@@ -1,6 +1,7 @@
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 #include "vitisai_execution_provider.h"
+#include "vitisai_profiler.h"
 
 // Standard headers/libs.
 #include <cassert>
@@ -134,5 +135,9 @@ common::Status VitisAIExecutionProvider::SetEpDynamicOptions(gsl::span<const cha
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, error_msg);
   }
   return Status::OK();
+}
+
+std::unique_ptr<profiling::EpProfiler> VitisAIExecutionProvider::GetProfiler() {
+  return std::make_unique<profiling::VitisaiProfiler>();
 }
 }  // namespace onnxruntime

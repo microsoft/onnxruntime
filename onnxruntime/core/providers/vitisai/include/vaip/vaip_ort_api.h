@@ -13,7 +13,7 @@ struct OrtApi;
 
 namespace vaip_core {
 
-#define VAIP_ORT_API_MAJOR (11u)
+#define VAIP_ORT_API_MAJOR (13u)
 #define VAIP_ORT_API_MINOR (0u)
 #define VAIP_ORT_API_PATCH (0u)
 struct OrtApiForVaip {
@@ -234,6 +234,15 @@ struct OrtApiForVaip {
   ModelProto* (*model_to_proto)(Model& model);                                                                                                        // [95]
   DllSafe<std::string> (*model_proto_serialize_as_string)(ModelProto& model_proto);                                                                   // [96]
   void (*model_proto_delete)(ModelProto* p);                                                                                                          // [97]
+  DllSafe<std::string> (*attr_proto_release_string)(AttributeProto* attr);                                                                            // [98]
+  bool (*is_profiling_enabled)(void* session_options);                                                                                                // [99]                                                                                        // [98]
+  TensorProto* (*tensor_proto_new_i4)(const std::string& name,
+                                      const std::vector<int64_t>& shape,
+                                      const std::vector<int8_t>& data);  // [100]
+  TensorProto* (*tensor_proto_new_u4)(const std::string& name,
+                                      const std::vector<int64_t>& shape,
+                                      const std::vector<uint8_t>& data);                  // [101]
+  void (*graph_remove_initialized_tensor)(Graph& graph, const std::string& tensor_name);  // [102]
 };
 
 #ifndef USE_VITISAI
