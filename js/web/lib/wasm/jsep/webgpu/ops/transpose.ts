@@ -13,18 +13,18 @@ export interface TransposeAttributes extends AttributeWithCacheKey {
   readonly perm: number[];
 }
 
-const validateInputs = (inputs: readonly TensorView[], perm: number[]): void => {
+const validateInputs = (inputs: readonly TensorView[], perm: readonly number[]): void => {
   if (!inputs || inputs.length !== 1) {
     throw new Error('Transpose requires 1 input.');
   }
 
-  if (perm.length != 0 && perm.length !== inputs[0].dims.length) {
-    throw new Error('perm size: ' + perm.length + ' does not match input rank: ' + inputs[0].dims.length);
+  if (perm.length !== 0 && perm.length !== inputs[0].dims.length) {
+    throw new Error(`perm size ${perm.length} does not match input rank ${inputs[0].dims.length}`);
   }
 };
 
 const getAdjustedPerm = (inputRank: number, perm: number[]): number[] =>
-  perm.length != 0 ? perm : [...new Array(inputRank).keys()].reverse();
+  perm.length !== 0 ? perm : [...new Array(inputRank).keys()].reverse();
 
 const getOutputShape = (inputShape: readonly number[], perm: number[]): readonly number[] =>
   ShapeUtil.sortBasedOnPerm(inputShape, getAdjustedPerm(inputShape.length, perm));
