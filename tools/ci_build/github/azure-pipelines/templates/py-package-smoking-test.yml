@@ -57,6 +57,3 @@ jobs:
       workingDirectory: $(Pipeline.Workspace)/build/onnxruntime
     displayName: Test Package Installation
 
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
