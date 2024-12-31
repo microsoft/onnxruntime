@@ -190,6 +190,31 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
           break;
       }
     } else {
+      shader.MainFunctionBody() << "      if (sg_size == 8u) {\n";
+      for (uint32_t i = 0; i < tile_m_; i++) {
+        switch (a.NumComponents()) {
+          case 1:
+            shader.MainFunctionBody() << "        inter_results[" << i << "][local_id.y][local_id.x] += dot(vec4<output_element_t>(sub_a[" << i << "][word_offset], sub_a[" << i << "][word_offset + 1], sub_a[" << i << "][word_offset + 2], sub_a[" << i << "][word_offset + 3]), b_dequantized_values[0]) + dot(vec4<output_element_t>(sub_a[" << i << "][word_offset + 4], sub_a[" << i << "][word_offset + 5], sub_a[" << i << "][word_offset + 6], sub_a[" << i << "][word_offset + 7]), b_dequantized_values[1]);\n";
+            break;
+          case 2:
+            shader.MainFunctionBody() << "        inter_results[" << i << "][local_id.y][local_id.x] += dot(vec4<output_element_t>(sub_a[" << i << "][word_offset], sub_a[" << i << "][word_offset + 1]), b_dequantized_values[0]) + dot(vec4<output_element_t>(sub_a[" << i << "][word_offset + 2], sub_a[" << i << "][word_offset + 3]), b_dequantized_values[1]);\n";
+            break;
+          case 4:
+            if (i == 0) {
+              shader.MainFunctionBody() << "        var ";
+            }
+            shader.MainFunctionBody() << "        a0 = subgroupShuffle(a_data" << i << ", i * 2);\n";
+            if (i == 0) {
+              shader.MainFunctionBody() << "        var ";
+            }
+            shader.MainFunctionBody() << "        a1 = subgroupShuffle(a_data" << i << ", i * 2 + 1);\n";
+            shader.MainFunctionBody() << "        inter_results[" << i << "][in_y][in_x] += dot(a0, b_dequantized_values[0]) + dot(a1, b_dequantized_values[1]);\n";
+            break;
+          default:
+            break;
+        }
+      }
+      shader.MainFunctionBody() << "      } else if (sg_size == 16u) {\n";
       for (uint32_t i = 0; i < tile_m_; i++) {
         switch (a.NumComponents()) {
           case 1:
@@ -200,27 +225,52 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
             break;
           case 4:
             if (i == 0) {
-              shader.MainFunctionBody() << "      var ";
+              shader.MainFunctionBody() << "        var ";
             }
-            shader.MainFunctionBody() << "      a0 = subgroupShuffle(a_data" << i << ", i * 2);\n";
+            shader.MainFunctionBody() << "        a0 = subgroupShuffle(a_data" << i << ", i * 2);\n";
             if (i == 0) {
-              shader.MainFunctionBody() << "      var ";
+              shader.MainFunctionBody() << "        var ";
             }
-            shader.MainFunctionBody() << "      a00 = subgroupShuffle(a_data" << i << ", i * 2 + 8);\n";
+            shader.MainFunctionBody() << "        a00 = subgroupShuffle(a_data" << i << ", i * 2 + 8);\n";
             if (i == 0) {
-              shader.MainFunctionBody() << "      var ";
+              shader.MainFunctionBody() << "        var ";
             }
-            shader.MainFunctionBody() << "      a1 = subgroupShuffle(a_data" << i << ", i * 2 + 1);\n";
+            shader.MainFunctionBody() << "        a1 = subgroupShuffle(a_data" << i << ", i * 2 + 1);\n";
             if (i == 0) {
-              shader.MainFunctionBody() << "      var ";
+              shader.MainFunctionBody() << "        var ";
             }
-            shader.MainFunctionBody() << "      a11 = subgroupShuffle(a_data" << i << ", i * 2 + 9);\n";
-            shader.MainFunctionBody() << "      inter_results[" << i << "][in_y][in_x] += dot(select(a00, a0, local_idx % 2 == 0), b_dequantized_values[0]) + dot(select(a11, a1, local_idx % 2 == 0), b_dequantized_values[1]);\n";
+            shader.MainFunctionBody() << "        a11 = subgroupShuffle(a_data" << i << ", i * 2 + 9);\n";
+            shader.MainFunctionBody() << "        inter_results[" << i << "][in_y][in_x] += dot(select(a00, a0, local_idx % 2 == 0), b_dequantized_values[0]) + dot(select(a11, a1, local_idx % 2 == 0), b_dequantized_values[1]);\n";
             break;
           default:
             break;
         }
       }
+      shader.MainFunctionBody() << "      } else {\n";
+      for (uint32_t i = 0; i < tile_m_; i++) {
+        switch (a.NumComponents()) {
+          case 1:
+            shader.MainFunctionBody() << "        inter_results[" << i << "][local_id.y][local_id.x] += dot(vec4<output_element_t>(sub_a[" << i << "][word_offset], sub_a[" << i << "][word_offset + 1], sub_a[" << i << "][word_offset + 2], sub_a[" << i << "][word_offset + 3]), b_dequantized_values[0]) + dot(vec4<output_element_t>(sub_a[" << i << "][word_offset + 4], sub_a[" << i << "][word_offset + 5], sub_a[" << i << "][word_offset + 6], sub_a[" << i << "][word_offset + 7]), b_dequantized_values[1]);\n";
+            break;
+          case 2:
+            shader.MainFunctionBody() << "        inter_results[" << i << "][local_id.y][local_id.x] += dot(vec4<output_element_t>(sub_a[" << i << "][word_offset], sub_a[" << i << "][word_offset + 1]), b_dequantized_values[0]) + dot(vec4<output_element_t>(sub_a[" << i << "][word_offset + 2], sub_a[" << i << "][word_offset + 3]), b_dequantized_values[1]);\n";
+            break;
+          case 4:
+            if (i == 0) {
+              shader.MainFunctionBody() << "        var ";
+            }
+            shader.MainFunctionBody() << "        a0 = subgroupShuffle(a_data" << i << ", word_offset);\n";
+            if (i == 0) {
+              shader.MainFunctionBody() << "        var ";
+            }
+            shader.MainFunctionBody() << "        a1 = subgroupShuffle(a_data" << i << ", word_offset + 1);\n";
+            shader.MainFunctionBody() << "        inter_results[" << i << "][in_y][in_x] += dot(a0, b_dequantized_values[0]) + dot(a1, b_dequantized_values[1]);\n";
+            break;
+          default:
+            break;
+        }
+      }
+      shader.MainFunctionBody() << "      }\n";
     }
     shader.MainFunctionBody() << "      word_offset += " << 8 / a.NumComponents() << ";\n"
                               << "    }\n"
