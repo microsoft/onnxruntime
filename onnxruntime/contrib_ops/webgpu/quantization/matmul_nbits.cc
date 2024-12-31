@@ -202,12 +202,20 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
             if (i == 0) {
               shader.MainFunctionBody() << "      var ";
             }
-            shader.MainFunctionBody() << "      a0 = subgroupShuffle(a_data" << i << ", word_offset);\n";
+            shader.MainFunctionBody() << "      a0 = subgroupShuffle(a_data" << i << ", i * 2);\n";
             if (i == 0) {
               shader.MainFunctionBody() << "      var ";
             }
-            shader.MainFunctionBody() << "      a1 = subgroupShuffle(a_data" << i << ", word_offset + 1);\n";
-            shader.MainFunctionBody() << "      inter_results[" << i << "][in_y][in_x] += dot(a0, b_dequantized_values[0]) + dot(a1, b_dequantized_values[1]);\n";
+            shader.MainFunctionBody() << "      a00 = subgroupShuffle(a_data" << i << ", i * 2 + 8);\n";
+            if (i == 0) {
+              shader.MainFunctionBody() << "      var ";
+            }
+            shader.MainFunctionBody() << "      a1 = subgroupShuffle(a_data" << i << ", i * 2 + 1);\n";
+            if (i == 0) {
+              shader.MainFunctionBody() << "      var ";
+            }
+            shader.MainFunctionBody() << "      a11 = subgroupShuffle(a_data" << i << ", i * 2 + 9);\n";
+            shader.MainFunctionBody() << "      inter_results[" << i << "][in_y][in_x] += dot(select(a00, a0, local_idx % 2 == 0), b_dequantized_values[0]) + dot(select(a11, a1, local_idx % 2 == 0), b_dequantized_values[1]);\n";
             break;
           default:
             break;
