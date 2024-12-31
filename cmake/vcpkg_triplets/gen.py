@@ -98,6 +98,7 @@ for enable_binskim in [True, False]:
                     cxxflags = cflags.copy()
                     f.write('set(VCPKG_C_FLAGS "%s")\n' % " ".join(cflags))
                     f.write('set(VCPKG_CXX_FLAGS "%s")\n' % " ".join(cxxflags))
+                    f.write('set(VCPKG_CMAKE_SYSTEM_NAME Linux)\n')
                     if ldflags:
                         f.write('set(VCPKG_LINKER_FLAGS "%s")\n' % " ".join(ldflags))
                      
