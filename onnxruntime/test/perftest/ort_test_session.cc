@@ -349,7 +349,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
                                                                    kCoremlProviderOption_EnableOnSubgraphs,
                                                                    kCoremlProviderOption_SpecializationStrategy,
                                                                    kCoremlProviderOption_ProfileComputePlan,
-                                                                   kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU};
+                                                                   kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU,
+                                                                   kCoremlProviderOption_ModelCacheDirectory};
     ParseSessionConfigs(ov_string, provider_options, available_keys);
 
     std::unordered_map<std::string, std::string> available_options = {
@@ -373,6 +374,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
                  (provider_option.second == "0" || provider_option.second == "1")) {
       } else if (provider_option.first == kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU &&
                  (provider_option.second == "0" || provider_option.second == "1")) {
+      } else if (provider_option.first == kCoremlProviderOption_ModelCacheDirectory) {
       } else {
         ORT_THROW("Invalid value for option ", provider_option.first, ": ", provider_option.second);
       }

@@ -138,6 +138,7 @@ namespace perftest {
       "\t    [CoreML only] [SpecializationStrategy]:[Default FastPrediction].\n"
       "\t    [CoreML only] [ProfileComputePlan]:[0 1].\n"
       "\t    [CoreML only] [AllowLowPrecisionAccumulationOnGPU]:[0 1].\n"
+      "\t    [CoreML only] [ModelCacheDirectory]:[path../a/b/c].\n"
       "\t    [Example] [For CoreML EP] -e coreml -i \"ModelFormat|MLProgram MLComputeUnits|CPUAndGPU\"\n"
       "\n"
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"

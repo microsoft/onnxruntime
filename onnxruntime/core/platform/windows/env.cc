@@ -483,6 +483,16 @@ bool WindowsEnv::FolderExists(const std::string& path) const {
   return (attributes != INVALID_FILE_ATTRIBUTES) && (attributes & FILE_ATTRIBUTE_DIRECTORY);
 }
 
+bool WindowsEnv::FileExists(const std::wstring& path) const {
+  DWORD attributes = GetFileAttributesW(path.c_str());
+  return (attributes != INVALID_FILE_ATTRIBUTES) && (attributes & FILE_ATTRIBUTE_NORMAL);
+}
+
+bool WindowsEnv::FileExists(const std::string& path) const {
+  DWORD attributes = GetFileAttributesA(path.c_str());
+  return (attributes != INVALID_FILE_ATTRIBUTES) && (attributes & FILE_ATTRIBUTE_NORMAL);
+}
+
 common::Status WindowsEnv::CreateFolder(const std::wstring& path) const {
   size_t pos = 0;
   do {
