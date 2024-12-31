@@ -20,9 +20,6 @@ stages:
     pool: 'onnxruntime-Win-CPU-2022'
 
     steps:
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
     # https://learn.microsoft.com/en-us/azure/devops/pipelines/yaml-schema/resources-pipelines-pipeline?view=azure-pipelines#pipeline-resource-metadata-as-predefined-variables
     - script: |
         echo $(resources.pipeline.build.sourceBranch)

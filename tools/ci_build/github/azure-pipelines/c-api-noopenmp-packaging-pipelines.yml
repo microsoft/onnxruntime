@@ -216,9 +216,6 @@ stages:
       clean: all
     pool: 'onnxruntime-Win2022-GPU-dml-A10'
     steps:
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - NuGet DirectML'
       inputs:

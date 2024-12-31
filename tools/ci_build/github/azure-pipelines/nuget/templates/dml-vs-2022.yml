@@ -56,9 +56,6 @@ stages:
       - checkout: self
         clean: true
         submodules: recursive
-      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-        displayName: 'Clean Agent Directories'
-        condition: always()
 
       - powershell: |
           if($env:TELEMETRYGUID)

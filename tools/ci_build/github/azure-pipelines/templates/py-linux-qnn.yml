@@ -48,9 +48,6 @@ jobs:
       ${{ if eq(parameters.extra_build_arg, '') }}:
         value: ''
   steps:
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
 
     - checkout: self
       clean: true

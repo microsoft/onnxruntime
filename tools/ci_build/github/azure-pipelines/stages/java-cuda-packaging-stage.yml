@@ -82,9 +82,6 @@ stages:
     - template: ../templates/component-governance-component-detection-steps.yml
       parameters:
         condition: 'succeeded'
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
   - job: Final_Jar_Testing_Windows_GPU
     dependsOn:
       Jar_Packaging_GPU
@@ -134,9 +131,6 @@ stages:
     - template: ../templates/component-governance-component-detection-steps.yml
       parameters:
         condition: 'succeeded'
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
   - job: Final_Jar_Testing_Linux_GPU
     dependsOn:
       Jar_Packaging_GPU
@@ -191,6 +185,3 @@ stages:
     - template: ../templates/component-governance-component-detection-steps.yml
       parameters:
         condition: 'succeeded'
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()

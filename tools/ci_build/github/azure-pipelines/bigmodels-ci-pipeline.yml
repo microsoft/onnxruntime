@@ -59,9 +59,6 @@ stages:
       clean: all
     pool: onnxruntime-Ubuntu2204-AMD-CPU
     steps:
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
 
     - checkout: self
       clean: true
@@ -308,9 +305,6 @@ stages:
       demands:
       - WorkFolder -equals /mnt/storage/
     steps:
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
 
     - checkout: self
       clean: true
@@ -421,9 +415,6 @@ stages:
       clean: all
     pool: Onnxruntime-Linux-A10-24G
     steps:
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
 
     - checkout: self
       clean: true

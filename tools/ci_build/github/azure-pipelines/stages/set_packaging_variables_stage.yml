@@ -10,9 +10,6 @@ stages:
       name: 'onnxruntime-Ubuntu2204-AMD-CPU'
     steps:
     - checkout: none
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
     - bash: |
         # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
         set +x
@@ -57,9 +54,6 @@ stages:
       BuildTime: $[stageDependencies.Setup.Set_Variables.outputs['Set_Build_Time.BuildTime']]
     steps:
     - checkout: none
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
     - bash: echo $(MyVar)
     - bash: echo $(BuildTime)
     - bash: echo $(BuildDate)
