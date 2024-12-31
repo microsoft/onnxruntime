@@ -70,6 +70,9 @@ endif()
 onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
 
 if(MSVC)
+  # The following source file is only needed for the EPs that use delayloading. Namely, DML and WebGPU.
+  target_sources(onnxruntime_pybind11_state PRIVATE "${ONNXRUNTIME_ROOT}/core/dll/delay_load_hook.cc")
+
   target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
   target_compile_options(onnxruntime_pybind11_state PRIVATE "/bigobj")
 endif()
