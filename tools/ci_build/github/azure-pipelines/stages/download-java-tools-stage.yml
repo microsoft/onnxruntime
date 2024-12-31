@@ -7,9 +7,6 @@ stages:
       name: 'onnxruntime-Ubuntu2204-AMD-CPU'
     steps:
     - checkout: none
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
     - task: CmdLine@2
       displayName: Download Java Tools
       inputs:
