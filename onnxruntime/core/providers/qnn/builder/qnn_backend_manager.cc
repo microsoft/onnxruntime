@@ -241,7 +241,7 @@ void QnnLogging(const char* format,
   const auto data_type = ::onnxruntime::logging::DataType::SYSTEM;
 
   if (logger.OutputIsEnabled(severity, data_type)) {
-    auto log_capture = ::onnxruntime::logging::Capture::Create(logger,
+    auto log_capture = ::onnxruntime::logging::Capture__Create(logger,
                                                                severity,
                                                                ::onnxruntime::logging::Category::onnxruntime,
                                                                data_type,

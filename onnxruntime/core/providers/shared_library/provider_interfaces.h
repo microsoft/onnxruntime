@@ -288,7 +288,11 @@ struct ProviderHost {
   virtual const logging::Logger& logging__LoggingManager__DefaultLogger() = 0;
 
   // logging::Capture
-  virtual std::unique_ptr<logging::Capture> logging__Capture__construct(const logging::Logger& logger, logging::Severity severity, const char* category, logging::DataType dataType, const CodeLocation& location) = 0;
+  virtual std::unique_ptr<logging::Capture> logging__Capture__construct(const logging::Logger& logger,
+                                                                        logging::Severity severity,
+                                                                        const char* category,
+                                                                        logging::DataType data_type,
+                                                                        const CodeLocation& location) = 0;
   virtual void logging__Capture__operator_delete(logging::Capture* p) noexcept = 0;
   virtual std::ostream& logging__Capture__Stream(logging::Capture* p) noexcept = 0;
   virtual void logging__Capture__ProcessPrintf(logging::Capture* p, const char* format, va_list args) = 0;

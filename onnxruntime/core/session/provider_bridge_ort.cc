@@ -399,8 +399,11 @@ struct ProviderHostImpl : ProviderHost {
   const logging::Logger& logging__LoggingManager__DefaultLogger() override { return logging::LoggingManager::DefaultLogger(); }
 
   // logging::Capture (wrapped)
-  std::unique_ptr<logging::Capture> logging__Capture__construct(const logging::Logger& logger, logging::Severity severity, const char* category, logging::DataType dataType, const CodeLocation& location) override {
-    return std::make_unique<logging::Capture>(logger, severity, category, dataType, location);
+  std::unique_ptr<logging::Capture> logging__Capture__construct(const logging::Logger& logger,
+                                                                logging::Severity severity, const char* category,
+                                                                logging::DataType data_type,
+                                                                const CodeLocation& location) override {
+    return std::make_unique<logging::Capture>(logger, severity, category, data_type, location);
   }
   void logging__Capture__operator_delete(logging::Capture* p) noexcept override { delete p; }
   std::ostream& logging__Capture__Stream(logging::Capture* p) noexcept override { return p->Stream(); }

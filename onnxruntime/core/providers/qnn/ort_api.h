@@ -49,3 +49,28 @@
 
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
+
+#include <memory>
+
+namespace onnxruntime {
+std::unique_ptr<ONNX_NAMESPACE::TypeProto> TypeProto__Create();
+
+#if BUILD_QNN_EP_STATIC
+using Node_EdgeEnd = Node::EdgeEnd;
+#endif
+
+std::unique_ptr<Node_EdgeEnd> Node_EdgeEnd__Create(const Node& node, int src_arg_index, int dst_arg_index);
+std::unique_ptr<NodeUnit> NodeUnit__Create(gsl::span<const Node* const> dq_nodes,
+                                           const Node& target_node,
+                                           gsl::span<const Node* const> q_nodes,
+                                           NodeUnit::Type unit_type,
+                                           gsl::span<const NodeUnitIODef> inputs,
+                                           gsl::span<const NodeUnitIODef> outputs,
+                                           size_t input_edge_count,
+                                           gsl::span<const Node_EdgeEnd* const> output_edges);
+
+namespace logging {
+std::unique_ptr<Capture> Capture__Create(const Logger& logger, logging::Severity severity, const char* category,
+                                         logging::DataType dataType, const CodeLocation& location);
+}  // namespace logging
+}  // namespace onnxruntime

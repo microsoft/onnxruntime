@@ -75,7 +75,7 @@ Status CreateNodeArgs(const std::vector<std::string>& names,
     std::string name = names[i];
     ORT_RETURN_IF(tensor_info_table.find(name) == tensor_info_table.end(), "Tensor name: ", name, " not found in tensor_info_table");
     const OnnxTensorInfo& tensor_info = tensor_info_table.at(name);
-    std::unique_ptr<TypeProto> tensor_type = TypeProto::Create();
+    std::unique_ptr<TypeProto> tensor_type = TypeProto__Create();
     tensor_type->mutable_tensor_type()->set_elem_type(tensor_info.data_type_);
     for (size_t j = 0; j < tensor_info.shape_.size(); ++j) {
       tensor_type->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(tensor_info.shape_[j]);

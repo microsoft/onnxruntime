@@ -347,13 +347,13 @@ static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
     auto q_cur_edge = q_node->OutputEdgesBegin();
     auto q_end_edge = q_node->OutputEdgesEnd();
     for (; q_cur_edge != q_end_edge; ++q_cur_edge) {
-      auto output_edge = Node_EdgeEnd::Create(q_cur_edge->GetNode(), 0, q_cur_edge->GetDstArgIndex());
+      auto output_edge = Node_EdgeEnd__Create(q_cur_edge->GetNode(), 0, q_cur_edge->GetDstArgIndex());
       output_edges.push_back(output_edge.get());
       output_edges_holder.push_back(std::move(output_edge));
     }
   }
 
-  std::unique_ptr<NodeUnit> custom_node_unit = NodeUnit::Create(dq_nodes, target_node,
+  std::unique_ptr<NodeUnit> custom_node_unit = NodeUnit__Create(dq_nodes, target_node,
                                                                 q_nodes, NodeUnit::Type::QDQGroup,
                                                                 inputs, outputs, num_dqs, output_edges);
   const auto* conv_op_builder = qnn::GetOpBuilder(custom_node_unit->OpType());
