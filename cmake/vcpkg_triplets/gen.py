@@ -55,6 +55,9 @@ for enable_binskim in [True, False]:
                     # TODO: should it be a cmake list separated by semicolons?
                     f.write('set(VCPKG_C_FLAGS "%s")\n' % " ".join(cflags))
                     f.write('set(VCPKG_CXX_FLAGS "%s")\n' % " ".join(cxxflags))
+                    f.write(
+                        "list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DBENCHMARK_ENABLE_WERROR=OFF)\n"
+                    )
                     if ldflags:
                         f.write('set(VCPKG_LINKER_FLAGS "%s")\n' % " ".join(ldflags))
 
@@ -90,7 +93,7 @@ for enable_binskim in [True, False]:
                     cflags = []
                     if enable_binskim:
                         cflags += ["-Wp,-D_FORTIFY_SOURCE=2", "-Wp,-D_GLIBCXX_ASSERTIONS", "-fstack-protector-strong"]
-                        if target_ABI == 'x64':
+                        if target_ABI == "x64":
                             cflags += ["-fstack-clash-protection", "-fcf-protection"]
                     elif enable_asan:
                         cflags += ["-fsanitize=address"]
@@ -98,7 +101,9 @@ for enable_binskim in [True, False]:
                     cxxflags = cflags.copy()
                     f.write('set(VCPKG_C_FLAGS "%s")\n' % " ".join(cflags))
                     f.write('set(VCPKG_CXX_FLAGS "%s")\n' % " ".join(cxxflags))
-                    f.write('set(VCPKG_CMAKE_SYSTEM_NAME Linux)\n')
+                    f.write("set(VCPKG_CMAKE_SYSTEM_NAME Linux)\n")
+                    f.write(
+                        "list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DBENCHMARK_ENABLE_WERROR=OFF)\n"
+                    )
                     if ldflags:
                         f.write('set(VCPKG_LINKER_FLAGS "%s")\n' % " ".join(ldflags))
-                     
