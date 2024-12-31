@@ -61,9 +61,6 @@ jobs:
     clean: all
   pool: onnxruntime-tensorrt-linuxbuild-T4
   steps:
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
 
   - checkout: self
     clean: true
