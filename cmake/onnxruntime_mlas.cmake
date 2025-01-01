@@ -43,6 +43,8 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/cast.cpp
   ${MLAS_SRC_DIR}/rotary_embedding.h
   ${MLAS_SRC_DIR}/rotary_embedding.cpp
+  ${MLAS_SRC_DIR}/qsoftmax.cpp
+  ${MLAS_SRC_DIR}/qsoftmax_kernel_naive.cpp
 )
 
 target_sources(onnxruntime_mlas PRIVATE
@@ -169,6 +171,10 @@ function(setup_mlas_source_for_windows)
     file(GLOB_RECURSE mlas_platform_srcs_avx2 CONFIGURE_DEPENDS
       "${MLAS_SRC_DIR}/intrinsics/avx2/*.cpp"
     )
+    set(mlas_platform_srcs_avx2
+      ${mlas_platform_srcs_avx2}
+      "${MLAS_SRC_DIR}/qsoftmax_kernel_avx2.cpp"
+    )
     set_source_files_properties(${mlas_platform_srcs_avx2} PROPERTIES COMPILE_FLAGS "/arch:AVX2")
 
     target_sources(onnxruntime_mlas PRIVATE
@@ -177,6 +183,7 @@ function(setup_mlas_source_for_windows)
       ${mlas_platform_srcs_avx2}
       ${MLAS_SRC_DIR}/qgemm_kernel_amx.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_avx2.cpp
+      ${MLAS_SRC_DIR}/qsoftmax_kernel_avx512.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse.cpp
       ${MLAS_SRC_DIR}/qgemm_kernel_sse41.cpp
       ${MLAS_SRC_DIR}/intrinsics/avx512/quantize_avx512f.cpp
@@ -581,6 +588,7 @@ else()
           ${MLAS_SRC_DIR}/intrinsics/avx2/qladd_avx2.cpp
           ${MLAS_SRC_DIR}/intrinsics/avx2/qdwconv_avx2.cpp
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx2.cpp
+          ${MLAS_SRC_DIR}/qsoftmax_kernel_avx2.cpp
         )
         if(CMAKE_CXX_COMPILER_VERSION GREATER_EQUAL 13.1 AND NOT(APPLE))
           set(mlas_platform_srcs_avx2
@@ -621,6 +629,7 @@ endif()
 
         set(mlas_platform_srcs_avx512vnni
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_avx512vnni.cpp
+          ${MLAS_SRC_DIR}/qsoftmax_kernel_avx512.cpp
         )
         set_source_files_properties(${mlas_platform_srcs_avx512vnni} PROPERTIES COMPILE_FLAGS "-mfma -mavx512vnni -mavx512bw -mavx512dq -mavx512vl -mavx512f")
 
