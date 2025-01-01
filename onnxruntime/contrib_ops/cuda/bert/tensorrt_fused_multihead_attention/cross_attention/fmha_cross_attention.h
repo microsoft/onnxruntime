@@ -116,31 +116,31 @@ struct Fused_multihead_attention_params_mhca {
   }
 };
 
-extern unsigned char cubin_fmha_mhca_fp16_128_64_sm75_cu_cubin[];
-extern unsigned char cubin_fmha_mhca_fp16_128_64_sm80_cu_cubin[];
-extern unsigned char cubin_fmha_mhca_fp16_128_64_sm86_cu_cubin[];
-extern unsigned char cubin_fmha_mhca_fp16_128_64_sm89_cu_cubin[];
+extern const unsigned char cubin_fmha_mhca_fp16_128_64_sm75_cu_cubin[];
+extern const unsigned char cubin_fmha_mhca_fp16_128_64_sm80_cu_cubin[];
+extern const unsigned char cubin_fmha_mhca_fp16_128_64_sm86_cu_cubin[];
+extern const unsigned char cubin_fmha_mhca_fp16_128_64_sm89_cu_cubin[];
 
-extern unsigned char cubin_fmha_mhca_fp16_128_128_sm80_cu_cubin[];
-extern unsigned char cubin_fmha_mhca_fp16_128_128_sm86_cu_cubin[];
-extern unsigned char cubin_fmha_mhca_fp16_128_128_sm89_cu_cubin[];
+extern const unsigned char cubin_fmha_mhca_fp16_128_128_sm80_cu_cubin[];
+extern const unsigned char cubin_fmha_mhca_fp16_128_128_sm86_cu_cubin[];
+extern const unsigned char cubin_fmha_mhca_fp16_128_128_sm89_cu_cubin[];
 
-extern unsigned char cubin_fmha_mhca_fp16_128_256_sm80_cu_cubin[];
-extern unsigned char cubin_fmha_mhca_fp16_128_256_sm86_cu_cubin[];
-extern unsigned char cubin_fmha_mhca_fp16_128_256_sm89_cu_cubin[];
+extern const unsigned char cubin_fmha_mhca_fp16_128_256_sm80_cu_cubin[];
+extern const unsigned char cubin_fmha_mhca_fp16_128_256_sm86_cu_cubin[];
+extern const unsigned char cubin_fmha_mhca_fp16_128_256_sm89_cu_cubin[];
 
-extern uint32_t cubin_fmha_mhca_fp16_128_64_sm75_cu_cubin_len;
-extern uint32_t cubin_fmha_mhca_fp16_128_64_sm80_cu_cubin_len;
-extern uint32_t cubin_fmha_mhca_fp16_128_64_sm86_cu_cubin_len;
-extern uint32_t cubin_fmha_mhca_fp16_128_64_sm89_cu_cubin_len;
+extern const uint32_t cubin_fmha_mhca_fp16_128_64_sm75_cu_cubin_len;
+extern const uint32_t cubin_fmha_mhca_fp16_128_64_sm80_cu_cubin_len;
+extern const uint32_t cubin_fmha_mhca_fp16_128_64_sm86_cu_cubin_len;
+extern const uint32_t cubin_fmha_mhca_fp16_128_64_sm89_cu_cubin_len;
 
-extern uint32_t cubin_fmha_mhca_fp16_128_128_sm80_cu_cubin_len;
-extern uint32_t cubin_fmha_mhca_fp16_128_128_sm86_cu_cubin_len;
-extern uint32_t cubin_fmha_mhca_fp16_128_128_sm89_cu_cubin_len;
+extern const uint32_t cubin_fmha_mhca_fp16_128_128_sm80_cu_cubin_len;
+extern const uint32_t cubin_fmha_mhca_fp16_128_128_sm86_cu_cubin_len;
+extern const uint32_t cubin_fmha_mhca_fp16_128_128_sm89_cu_cubin_len;
 
-extern uint32_t cubin_fmha_mhca_fp16_128_256_sm80_cu_cubin_len;
-extern uint32_t cubin_fmha_mhca_fp16_128_256_sm86_cu_cubin_len;
-extern uint32_t cubin_fmha_mhca_fp16_128_256_sm89_cu_cubin_len;
+extern const uint32_t cubin_fmha_mhca_fp16_128_256_sm80_cu_cubin_len;
+extern const uint32_t cubin_fmha_mhca_fp16_128_256_sm86_cu_cubin_len;
+extern const uint32_t cubin_fmha_mhca_fp16_128_256_sm89_cu_cubin_len;
 
 static const struct FusedMultiHeadCrossAttentionKernelMetaInfoV2 {
   Data_type mDataType;
