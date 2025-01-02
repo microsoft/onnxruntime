@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "webgpu_context.h"
 #include <memory>
 #include <cmath>
 
@@ -8,6 +9,10 @@
 #if !defined(USE_EXTERNAL_DAWN)
 #include "dawn/native/DawnNative.h"
 #endif
+
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+#include <webgpu/webgpu_glfw.h>
+#endif // ENABLE_PIX_FOR_WEBGPU_EP
 
 #include "core/common/common.h"
 #include "core/common/path_string.h"
@@ -144,6 +149,12 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
       query_type_ = TimestampQueryType::None;
     }
   });
+
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+  // set pix frame generator
+  pix_frame_generator_ = std::make_unique<WebGpuPIXFrameGenerator>();
+  pix_frame_generator_->Initialize(this);
+#endif // ENABLE_PIX_FOR_WEBGPU_EP
 }
 
 Status WebGpuContext::Wait(wgpu::Future f) {
@@ -640,6 +651,70 @@ void WebGpuContext::Flush() {
   current_command_encoder_ = nullptr;
   num_pending_dispatches_ = 0;
 }
+
+
+
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+void WebGpuPIXFrameGenerator::Initialize(WebGpuContext* context) {
+    // Trivial window size for surface texture creation and provide frame concept for PIX.
+    static constexpr uint32_t kWidth = 512u;
+    static constexpr uint32_t kHeight = 512u;
+
+    if (!glfwInit()) {
+      ORT_ENFORCE("Failed to init glfw for PIX capture");
+    }
+
+    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+
+    window_ =
+      glfwCreateWindow(kWidth, kHeight, "WebGPU window", nullptr, nullptr);
+
+    ORT_ENFORCE(window_ != nullptr, "PIX Capture: Failed to create Window for capturing frames.");
+
+    surface_ = wgpu::glfw::CreateSurfaceForWindow(context->Instance(), window_);
+    ORT_ENFORCE(surface_.Get() != nullptr, "PIX Capture: Failed to create surface for capturing frames.");
+
+    wgpu::TextureFormat format;
+    wgpu::SurfaceCapabilities capabilities;
+    surface_.GetCapabilities(context->Adapter(), &capabilities);
+    format = capabilities.formats[0];
+
+    wgpu::SurfaceConfiguration config;
+    config.device = context->Device();
+    config.format = format;
+    config.width = kWidth;
+    config.height = kHeight;
+
+    surface_.Configure(&config);
+}
+
+void WebGpuPIXFrameGenerator::GeneratePIXFrame() {
+  ORT_ENFORCE(surface_.Get() != nullptr, "PIX Capture: Cannot do present on null surface for capturing frames");
+  wgpu::SurfaceTexture surfaceTexture;
+  surface_.GetCurrentTexture(&surfaceTexture);
+
+  // Call present to trigger dxgi_swapchain present. PIX
+  // take this as a frame boundary.
+  surface_.Present();
+}
+
+WebGpuPIXFrameGenerator::~WebGpuPIXFrameGenerator() {
+  if (surface_.Get()) {
+    surface_.Unconfigure();
+  }
+
+  if (window_) {
+    glfwDestroyWindow(window_);
+    window_ = nullptr;
+  }
+}
+
+void WebGpuContext::GeneratePIXFrame() {
+  pix_frame_generator_->GeneratePIXFrame();
+}
+
+#endif // ENABLE_PIX_FOR_WEBGPU_EP
 
 std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo> WebGpuContextFactory::contexts_;
 std::mutex WebGpuContextFactory::mutex_;
