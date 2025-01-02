@@ -193,6 +193,10 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${pybind11_lib}
 )
 
+if(onnxruntime_BUILD_QNN_EP_STATIC_LIB)
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_providers_qnn)
+endif()
+
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}
     ${pybind11_dep}
@@ -996,13 +1000,16 @@ if (onnxruntime_USE_COREML)
 endif()
 
 if (onnxruntime_USE_QNN)
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
+  if(NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy
         $<TARGET_FILE:onnxruntime_providers_qnn>
         $<TARGET_FILE:onnxruntime_providers_shared>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  )
+    )
+  endif()
+
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy

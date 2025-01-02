@@ -3,16 +3,16 @@
 
 #pragma once
 
-#define BUILD_QNN_EP_STATIC 0
+#if BUILD_QNN_EP_STATIC_LIB
+// Includes when building QNN EP statically
 
-#if BUILD_QNN_EP_STATIC
 #ifdef _WIN32
+#include <Windows.h>
 #include <winmeta.h>
 #include "core/platform/tracing.h"
 #include "core/platform/windows/logging/etw_sink.h"
 #endif
 
-// Includes when building QNN EP statically
 #include "onnx/defs/data_type_utils.h"
 #include "core/common/common.h"
 #include "core/common/status.h"
@@ -51,14 +51,27 @@
 #include "core/session/onnxruntime_run_options_config_keys.h"
 
 #include <memory>
+#include <vector>
 
 namespace onnxruntime {
-std::unique_ptr<ONNX_NAMESPACE::TypeProto> TypeProto__Create();
-
-#if BUILD_QNN_EP_STATIC
+#if BUILD_QNN_EP_STATIC_LIB
 using Node_EdgeEnd = Node::EdgeEnd;
 #endif
 
+#if BUILD_QNN_EP_STATIC_LIB
+void RunOnUnload(std::function<void()> function);
+inline const Env& GetDefaultEnv() { return Env::Default(); }
+#endif
+
+void InitOrtCppApi();
+const ConfigOptions& RunOptions__GetConfigOptions(const RunOptions& run_options);
+
+std::unique_ptr<IndexedSubGraph>& ComputeCapability__SubGraph(ComputeCapability& compute_cability);
+std::vector<NodeIndex>& IndexedSubGraph__Nodes(IndexedSubGraph& indexed_sub_graph);
+std::vector<const Node*> Graph__Nodes(const Graph& graph);
+std::unique_ptr<Model> Model__Create(const std::string& graph_name, bool is_onnx_domain_only, const logging::Logger& logger);
+std::unique_ptr<ModelMetadefIdGenerator> ModelMetadefIdGenerator__Create();
+std::unique_ptr<ONNX_NAMESPACE::TypeProto> TypeProto__Create();
 std::unique_ptr<Node_EdgeEnd> Node_EdgeEnd__Create(const Node& node, int src_arg_index, int dst_arg_index);
 std::unique_ptr<NodeUnit> NodeUnit__Create(gsl::span<const Node* const> dq_nodes,
                                            const Node& target_node,
@@ -68,6 +81,9 @@ std::unique_ptr<NodeUnit> NodeUnit__Create(gsl::span<const Node* const> dq_nodes
                                            gsl::span<const NodeUnitIODef> outputs,
                                            size_t input_edge_count,
                                            gsl::span<const Node_EdgeEnd* const> output_edges);
+
+std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
+GetQDQNodeUnits(const GraphViewer& graph_viewer, const logging::Logger& logger);
 
 namespace logging {
 std::unique_ptr<Capture> Capture__Create(const Logger& logger, logging::Severity severity, const char* category,

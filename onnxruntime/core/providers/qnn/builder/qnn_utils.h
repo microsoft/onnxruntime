@@ -215,6 +215,7 @@ Status PermuteShape(gsl::span<const T> input_shape, gsl::span<const P> perm, gsl
   return Status::OK();
 }
 
+// TODO: Move to ort_api.h
 /**
  * Wrapping onnxruntime::Node for retrieving attribute values
  */

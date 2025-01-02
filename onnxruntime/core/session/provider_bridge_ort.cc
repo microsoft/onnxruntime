@@ -1800,12 +1800,16 @@ static ProviderLibrary s_library_tensorrt(LIBRARY_PREFIX ORT_TSTR("onnxruntime_p
 #endif
 );
 static ProviderLibrary s_library_migraphx(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_migraphx") LIBRARY_EXTENSION);
+
+// QNN EP can be built either as a static library or a shared library.
+#if !BUILD_QNN_EP_STATIC_LIB
 static ProviderLibrary s_library_qnn(LIBRARY_PREFIX ORT_TSTR("onnxruntime_providers_qnn") LIBRARY_EXTENSION
 #ifndef _WIN32
                                      ,
-                                     false /* unload - On Linux if we unload the vitisai shared provider we crash */
+                                     false /* unload - On Linux if we unload the qnn shared provider we crash */
 #endif
 );
+#endif  // !BUILD_QNN_EP_STATIC_LIB
 
 void UnloadSharedProviders() {
   s_library_dnnl.Unload();
@@ -1818,7 +1822,9 @@ void UnloadSharedProviders() {
   s_library_rocm.Unload();
   s_library_shared.Unload();
   s_library_migraphx.Unload();
+#if !BUILD_QNN_EP_STATIC_LIB
   s_library_qnn.Unload();
+#endif  // !BUILD_QNN_EP_STATIC_LIB
 }
 
 // Used by test code
@@ -1989,6 +1995,7 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
   return ov_options_converted_map;
 }
 
+#if !BUILD_QNN_EP_STATIC_LIB
 std::shared_ptr<IExecutionProviderFactory> QNNProviderFactoryCreator::Create(const ProviderOptions& provider_options_map,
                                                                              const SessionOptions* session_options) {
   const ConfigOptions* config_options = nullptr;
@@ -2000,6 +2007,7 @@ std::shared_ptr<IExecutionProviderFactory> QNNProviderFactoryCreator::Create(con
   const void* arg = reinterpret_cast<const void*>(&configs_array);
   return s_library_qnn.Get().CreateExecutionProviderFactory(arg);
 }
+#endif  // !BUILD_QNN_EP_STATIC_LIB
 
 std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(
     const ProviderOptions* provider_options_map, const SessionOptions* session_options) {

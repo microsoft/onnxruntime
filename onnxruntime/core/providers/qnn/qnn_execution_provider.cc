@@ -155,8 +155,8 @@ qnn::ProfilingLevel QNNExecutionProvider::GetProfilingLevelFromETWLevel(unsigned
 QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_options_map,
                                            const ConfigOptions* config_options)
     : IExecutionProvider{onnxruntime::kQnnExecutionProvider} {
-  InitProviderOrtApi();
-  metadef_id_generator_ = ModelMetadefIdGenerator::Create();
+  InitOrtCppApi();
+  metadef_id_generator_ = ModelMetadefIdGenerator__Create();
 
   if (config_options) {
     disable_cpu_ep_fallback_ = config_options->GetConfigOrDefault(
@@ -452,7 +452,7 @@ static void LogNodeSupport(const logging::Logger& logger,
     oss << "\tREASON : " << support_status.ErrorMessage() << std::endl;
   }
 
-  std::unique_ptr<logging::Capture> log_capture = logging::Capture::Create(logger, log_severity,
+  std::unique_ptr<logging::Capture> log_capture = logging::Capture__Create(logger, log_severity,
                                                                            logging::Category::onnxruntime,
                                                                            log_data_type, call_site);
   log_capture->Stream()
@@ -683,7 +683,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
   std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
 
-  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(&graph_viewer, logger);
+  std::tie(node_unit_holder, node_unit_map) = GetQDQNodeUnits(graph_viewer, logger);
 
   // remove is_qnn_ctx_model related code
   const auto supported_nodes = GetSupportedNodes(graph_viewer, node_unit_map,
@@ -726,11 +726,14 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     bool is_valid_partition = true;
     size_t nodes_in_partition = 0;
 
-    if (partition && partition->SubGraph()) {
-      nodes_in_partition = partition->SubGraph()->Nodes().size();
+    if (partition && ComputeCapability__SubGraph(*partition)) {
+      const auto& subgraph = ComputeCapability__SubGraph(*partition);
+      const auto& subgraph_nodes = IndexedSubGraph__Nodes(*subgraph);
+
+      nodes_in_partition = subgraph_nodes.size();
 
       if (nodes_in_partition == 1 && !is_qnn_ctx_model) {
-        const Node* node = graph_viewer.GetNode(partition->SubGraph()->Nodes()[0]);
+        const Node* node = graph_viewer.GetNode(subgraph_nodes[0]);
 
         if (!node) {
           LOGS(logger, ERROR) << "QNN EP: Invalid node in partition of one node.";
@@ -972,7 +975,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                                           buffer_size,
                                                                           max_spill_fill_buffer_size));
     }
-    qnn_ep_context_model_ = Model::Create("qnn_ep_context_model", false, logger);
+    qnn_ep_context_model_ = Model__Create("qnn_ep_context_model", false, logger);
     ORT_RETURN_IF_ERROR(qnn::CreateEPContextNodes(qnn_ep_context_model_.get(),
                                                   context_buffer.get(),
                                                   buffer_size,
@@ -991,7 +994,7 @@ const InlinedVector<const Node*> QNNExecutionProvider::GetEpContextNodes() const
   InlinedVector<const Node*> ep_context_nodes;
   if (qnn_ep_context_model_) {
     const auto& graph = qnn_ep_context_model_->MainGraph();
-    for (const Node* node : graph.Nodes()) {
+    for (gsl::not_null<const Node*> node : Graph__Nodes(graph)) {
       ep_context_nodes.push_back(graph.GetNode(node->Index()));
     }
   }
@@ -1099,7 +1102,7 @@ Status QNNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_optio
     return Status::OK();
   }
 
-  const ConfigOptions& config_options = run_options.GetConfigOptions();
+  const ConfigOptions& config_options = RunOptions__GetConfigOptions(run_options);
 
   std::string htp_perf_mode = "";
   qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;
@@ -1136,7 +1139,7 @@ Status QNNExecutionProvider::OnRunEnd(bool /*sync_stream*/, const onnxruntime::R
     return Status::OK();
   }
 
-  const ConfigOptions& config_options = run_options.GetConfigOptions();
+  const ConfigOptions& config_options = RunOptions__GetConfigOptions(run_options);
 
   std::string htp_perf_mode = "";
   qnn::HtpPerformanceMode htp_performance_mode = qnn::HtpPerformanceMode::kHtpDefault;

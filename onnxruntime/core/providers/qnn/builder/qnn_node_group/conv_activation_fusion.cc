@@ -313,12 +313,9 @@ static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
   inputs.reserve(num_dqs);
   for (const Node* dq_node : dq_nodes) {
     const auto dq_inputs = dq_node->InputDefs();
-    const auto& dq_attrs = dq_node->GetAttributes();
+    qnn::utils::NodeAttrHelper dq_attrs(*dq_node);
 
-    std::optional<int64_t> axis;
-    if (auto entry = dq_attrs.find("axis"); entry != dq_attrs.end()) {
-      axis = entry->second().i();
-    }
+    std::optional<int64_t> axis = dq_attrs.GetInt64("axis");
 
     // quantization scale and zp are always the input[1, 2]
     NodeUnitIODef::QuantParam quant_param{*dq_inputs[1], dq_inputs.size() == 3 ? dq_inputs[2] : nullptr, axis};
@@ -331,13 +328,10 @@ static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
   std::vector<const Node_EdgeEnd*> output_edges;
   for (const Node* q_node : q_nodes) {
     const auto q_inputs = q_node->InputDefs();
-    const auto& q_attrs = q_node->GetAttributes();
+    qnn::utils::NodeAttrHelper q_attrs(*q_node);
     const auto q_outputs = q_node->OutputDefs();
 
-    std::optional<int64_t> axis;
-    if (auto entry = q_attrs.find("axis"); entry != q_attrs.end()) {
-      axis = entry->second().i();
-    }
+    std::optional<int64_t> axis = q_attrs.GetInt64("axis");
 
     // quantization scale and zp are always the input[1, 2]
     NodeUnitIODef::QuantParam quant_param{*q_inputs[1], q_inputs.size() == 3 ? q_inputs[2] : nullptr, axis};

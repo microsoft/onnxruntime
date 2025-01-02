@@ -1331,8 +1331,7 @@ void QnnBackendManager::LogQnnProfileEventAsTraceLogging(
     const std::string& timingSource,
     const std::string& eventLevel,
     const char* eventIdentifier) {
-  // TODO: Re-enable when add a method to ORT Telemetry provider to log EP profiling data.
-#if 0
+#if BUILD_QNN_EP_STATIC_LIB
   TraceLoggingWrite(
       telemetry_provider_handle,
       "QNNProfilingEvent",
@@ -1346,6 +1345,7 @@ void QnnBackendManager::LogQnnProfileEventAsTraceLogging(
       TraceLoggingString(eventLevel.c_str(), "Event Level"),
       TraceLoggingString(eventIdentifier, "Event Identifier"));
 #else
+  // TODO(adrianlizarraga): Re-enable when add a method to ORT Telemetry provider to log EP profiling data.
   ORT_UNUSED_PARAMETER(timestamp);
   ORT_UNUSED_PARAMETER(message);
   ORT_UNUSED_PARAMETER(qnnScalarValue);

@@ -22,6 +22,17 @@ struct QNNProviderFactory : IExecutionProviderFactory {
   const ConfigOptions* config_options_;
 };
 
+#if BUILD_QNN_EP_STATIC_LIB
+std::shared_ptr<IExecutionProviderFactory> QNNProviderFactoryCreator::Create(const ProviderOptions& provider_options_map,
+                                                                             const SessionOptions* session_options) {
+  const ConfigOptions* config_options = nullptr;
+  if (session_options != nullptr) {
+    config_options = &session_options->config_options;
+  }
+
+  return std::make_shared<onnxruntime::QNNProviderFactory>(provider_options_map, config_options);
+}
+#else
 struct QNN_Provider : Provider {
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* param) override {
     if (param == nullptr) {
@@ -44,12 +55,15 @@ struct QNN_Provider : Provider {
   void Initialize() override {}
   void Shutdown() override {}
 } g_provider;
+#endif  // BUILD_QNN_EP_STATIC_LIB
 
 }  // namespace onnxruntime
 
+#if !BUILD_QNN_EP_STATIC_LIB
 extern "C" {
 
 ORT_API(onnxruntime::Provider*, GetProvider) {
   return &onnxruntime::g_provider;
 }
 }
+#endif  // !BUILD_QNN_EP_STATIC_LIB
