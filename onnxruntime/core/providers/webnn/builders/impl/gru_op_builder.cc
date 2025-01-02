@@ -33,7 +33,7 @@ class GruOpBuilder : public BaseOpBuilder {
 };
 
 void GruOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
-  if (node.InputDefs().size() > 4 && node.InputDefs()[4]->Exists()) {
+  if (TensorExists(node.InputDefs(), 4)) {
     model_builder.AddInitializerToSkip(node.InputDefs()[4]->Name());  // sequence_lens
     model_builder.AddInputToSkip(node.InputDefs()[4]->Name());
   }
@@ -56,7 +56,7 @@ Status GruOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   options.set("label", node.Name());
   options.set("layout", emscripten::val("zrn"));
 
-  if (input_defs.size() > 3 && input_defs[3]->Exists()) {
+  if (TensorExists(input_defs, 3)) {
     emscripten::val bias = model_builder.GetOperand(input_defs[3]->Name());
     emscripten::val split_options = emscripten::val::object();
     split_options.set("label", node.Name() + "_split");
@@ -68,7 +68,7 @@ Status GruOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
     options.set("recurrentBias", splitted_biases[1]);
   }
 
-  if (input_defs.size() > 5 && input_defs[5]->Exists()) {
+  if (TensorExists(input_defs, 5)) {
     options.set("initialHiddenState", model_builder.GetOperand(input_defs[5]->Name()));
   }
 
@@ -76,8 +76,8 @@ Status GruOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const No
   options.set("resetAfter", linear_before_reset);
 
   const auto& output_defs = node.OutputDefs();
-  bool has_Y = output_defs.size() > 0 && output_defs[0]->Exists();
-  bool has_Y_h = output_defs.size() > 1 && output_defs[1]->Exists();
+  bool has_Y = TensorExists(output_defs, 0);
+  bool has_Y_h = TensorExists(output_defs, 1);
   options.set("returnSequence", has_Y);
 
   std::string direction = helper.Get("direction", "forward");
@@ -134,7 +134,7 @@ bool GruOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, c
   }
   int32_t steps = static_cast<int32_t>(input_shape[0]);
 
-  if (input_defs.size() > 4 && input_defs[4]->Exists()) {
+  if (TensorExists(input_defs, 4)) {
     if (!Contains(initializers, input_defs[4]->Name())) {
       LOGS(logger, ERROR) << "GRU: sequence_lens must be constant";
       return false;
@@ -196,8 +196,8 @@ bool GruOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initial
   int32_t input_R_type = 0;          // recurrent weight data type
   int32_t input_B_type = 0;          // bias data type
   int32_t input_initial_h_type = 0;  // initial hidden state data type
-  bool has_input_B = input_defs.size() > 3 && input_defs[3]->Exists();
-  bool has_input_initial_h = input_defs.size() > 5 && input_defs[5]->Exists();
+  bool has_input_B = TensorExists(input_defs, 3);
+  bool has_input_initial_h = TensorExists(input_defs, 5);
 
   if (!GetType(*input_defs[0], input_X_type, logger) ||
       !GetType(*input_defs[1], input_W_type, logger) ||
@@ -229,8 +229,8 @@ bool GruOpBuilder::HasSupportedOutputsImpl(const Node& node,
   const auto& op_type = node.OpType();
   int32_t Y_type = 0;
   int32_t Y_h_type = 0;
-  bool has_Y = output_defs.size() > 0 && output_defs[0]->Exists();
-  bool has_Y_h = output_defs.size() > 1 && output_defs[1]->Exists();
+  bool has_Y = TensorExists(output_defs, 0);
+  bool has_Y_h = TensorExists(output_defs, 1);
 
   bool Y_supported = has_Y && GetType(*output_defs[0], Y_type, logger);
   bool Y_h_supported = has_Y_h && GetType(*output_defs[1], Y_h_type, logger);

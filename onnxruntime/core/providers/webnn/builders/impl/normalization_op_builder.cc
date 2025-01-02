@@ -34,6 +34,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
                                                      const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
+  const auto& output_defs = node.OutputDefs();
   ORT_RETURN_IF_NOT(input_defs.size() >= 2, op_type, " requires at least two inputs.");
 
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
@@ -45,7 +46,8 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
   options.set("label", node.Name());
 
   std::vector<int64_t> scale_shape;
-  ORT_RETURN_IF_NOT(GetShape(*input_defs[1], scale_shape, logger), "Cannot get scale shape");
+  const size_t scale_input_index = op_type == "SkipSimplifiedLayerNormalization" ? 2 : 1;
+  ORT_RETURN_IF_NOT(GetShape(*input_defs[scale_input_index], scale_shape, logger), "Cannot get scale shape");
   const auto scale_size = scale_shape.size();
   // Except LayerNormalization, other normalization ops' scale input should be 1-D.
   if (op_type == "LayerNormalization") {
@@ -55,19 +57,17 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     ORT_RETURN_IF_NOT(scale_size == 1, "The scale size should be one.");
   }
 
-  if (input_defs.size() >= 3 && !input_defs[2]->Name().empty()) {
-    // Bias input exists, and bias's shape should be the same as scale's shape.
-    std::vector<int64_t> bias_shape;
-    ORT_RETURN_IF_NOT(GetShape(*input_defs[2], bias_shape, logger), "Cannot get bias shape");
-    ORT_RETURN_IF_NOT(bias_shape == scale_shape, "The bias' shape should be equal to scale's shape.");
-  }
-
-  emscripten::val scale = model_builder.GetOperand(input_defs[1]->Name());
+  emscripten::val scale = model_builder.GetOperand(input_defs[scale_input_index]->Name());
   options.set("scale", scale);
 
-  if (input_defs.size() >= 3 && !input_defs[2]->Name().empty()) {
-    // Bias input exists, and bias's shape is the same as scale's shape.
-    emscripten::val bias = model_builder.GetOperand(input_defs[2]->Name());
+  const size_t bias_input_index = op_type == "SkipSimplifiedLayerNormalization" ? 3 : 2;
+  emscripten::val bias = emscripten::val::undefined();
+  if (TensorExists(input_defs, bias_input_index)) {
+    // Bias input exists, and bias's shape should be the same as scale's shape.
+    std::vector<int64_t> bias_shape;
+    ORT_RETURN_IF_NOT(GetShape(*input_defs[bias_input_index], bias_shape, logger), "Cannot get bias shape");
+    ORT_RETURN_IF_NOT(bias_shape == scale_shape, "The bias' shape should be equal to scale's shape.");
+    bias = model_builder.GetOperand(input_defs[bias_input_index]->Name());
     options.set("bias", bias);
   }
 
@@ -76,6 +76,8 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
   options.set("epsilon", epsilon);
 
   emscripten::val output = emscripten::val::undefined();
+  // SkipSimplifiedLayerNormalization's output: input_skip_bias_sum.
+  emscripten::val input_skip_bias_sum = emscripten::val::undefined();
   if (op_type == "BatchNormalization") {
     ORT_RETURN_IF_NOT(input_defs.size() == 5, "BatchNormalization requires five inputs.");
     emscripten::val mean = model_builder.GetOperand(input_defs[3]->Name());
@@ -85,7 +87,9 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     }
 
     output = model_builder.GetBuilder().call<emscripten::val>("batchNormalization", input, mean, variance, options);
-  } else if (op_type == "LayerNormalization" || op_type == "SimplifiedLayerNormalization") {
+  } else if (op_type == "LayerNormalization" ||
+             op_type == "SimplifiedLayerNormalization" ||
+             op_type == "SkipSimplifiedLayerNormalization") {
     int64_t axis = helper.Get("axis", -1);
     axis = HandleNegativeAxis(axis, rank);
     std::vector<uint32_t> axes(rank - SafeInt<uint32_t>(axis));
@@ -94,13 +98,17 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
     if (op_type == "LayerNormalization") {
       options.set("axes", emscripten::val::array(axes));
       output = model_builder.GetBuilder().call<emscripten::val>("layerNormalization", input, options);
-    } else {  // SimplifiedLayerNormalization
+    } else {  // SimplifiedLayerNormalization or SkipSimplifiedLayerNormalization
       /**
-      WebNN doesn't support SimplifiedLayerNormalization. So decompose it into a series of ops:
-      X --> Pow --> ReduceMean --> Add --> Sqrt --> Div -> Mul
-            ^          ^           ^                ^      ^
-            |          |           |                |      |
-           Y:2        axis     B:epsilon           A:X  A:scale
+      WebNN doesn't support SimplifiedLayerNormalization or SkipSimplifiedLayerNormalization.
+      So decompose it into a series of ops:
+          X --> Pow --> ReduceMean --> Add --> Sqrt --> Div -> Mul -> Add (optional)
+                ^          ^           ^                ^      ^       ^
+                |          |           |                |      |       |
+               Y:2        axis     B:epsilon           A:X  A:scale  B:bias
+
+      If it is SkipSimplifiedLayerNormalization and its output input_skip_bias_sum exists,
+      input_skip_bias_sum = X + skip + bias (if it exists)
       */
 
       int32_t input_type;
@@ -137,6 +145,25 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       // Mul
       common_options.set("label", node.Name() + "_mul");
       output = model_builder.GetBuilder().call<emscripten::val>("mul", scale, div, common_options);
+
+      // Add (if bias exits)
+      if (!bias.isUndefined()) {
+        common_options.set("label", node.Name() + "_add_bias");
+        output = model_builder.GetBuilder().call<emscripten::val>("add", output, bias, common_options);
+      }
+
+      // SkipSimplifiedLayerNormalization's output input_skip_bias_sum is the sum of input, skip, and bias.
+      if (op_type == "SkipSimplifiedLayerNormalization" && TensorExists(output_defs, 3)) {
+        emscripten::val skip = model_builder.GetOperand(input_defs[1]->Name());
+        common_options.set("label", node.Name() + "_add_skip");
+        input_skip_bias_sum = model_builder.GetBuilder().call<emscripten::val>("add", input, skip, common_options);
+        if (!bias.isUndefined()) {
+          common_options.set("label", node.Name() + "_add_skip_bias");
+          input_skip_bias_sum = model_builder.GetBuilder().call<emscripten::val>(
+              "add", input_skip_bias_sum, bias, common_options);
+        }
+        model_builder.AddOperand(output_defs[3]->Name(), std::move(input_skip_bias_sum));
+      }
     }
   } else if (op_type == "InstanceNormalization") {
     // WebNN spec only supports 4D input for instanceNormalization.
@@ -188,7 +215,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported normalization op: ", op_type);
   }
-  model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
+  model_builder.AddOperand(output_defs[0]->Name(), std::move(output));
 
   return Status::OK();
 }
@@ -215,9 +242,21 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initi
   }
 
   const auto& output_defs = node.OutputDefs();
-  if (output_defs.size() != 1) {
-    LOGS(logger, VERBOSE) << op_type << " output count must be one.";
-    return false;
+  if (op_type == "SkipSimplifiedLayerNormalization") {
+    if (output_defs.size() > 4) {
+      LOGS(logger, VERBOSE) << "SkipSimplifiedLayerNormalization output count must not exceed 4.";
+      return false;
+    }
+    if (TensorExists(output_defs, 1) || TensorExists(output_defs, 2)) {
+      // Output mean and inv_std_var are used for training mode, which is not supported.
+      LOGS(logger, VERBOSE) << "SkipSimplifiedLayerNormalization's output mean and inv_std_var are not supported.";
+      return false;
+    }
+  } else {
+    if (output_defs.size() != 1) {
+      LOGS(logger, VERBOSE) << op_type << " output count must be one.";
+      return false;
+    }
   }
 
   if (op_type == "BatchNormalization" && helper.Get("training_mode", 0)) {
@@ -238,9 +277,9 @@ bool NormalizationOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& 
   int32_t input2_type;  // B data type
   int32_t input3_type;  // mean data type
   int32_t input4_type;  // var data type
-  bool has_input2 = input_defs.size() > 2 && input_defs[2]->Exists();
-  bool has_input3 = input_defs.size() > 3 && input_defs[3]->Exists();
-  bool has_input4 = input_defs.size() > 3 && input_defs[4]->Exists();
+  bool has_input2 = TensorExists(input_defs, 2);
+  bool has_input3 = TensorExists(input_defs, 3);
+  bool has_input4 = TensorExists(input_defs, 4);
 
   if (!GetType(*input_defs[0], input0_type, logger) ||
       !GetType(*input_defs[1], input1_type, logger) ||
@@ -277,6 +316,7 @@ void CreateNormalizationOpBuilder(const std::string& op_type, OpBuilderRegistrat
           "InstanceNormalization",
           "LayerNormalization",
           "SimplifiedLayerNormalization",
+          "SkipSimplifiedLayerNormalization",
       };
 
   op_registrations.builders.push_back(std::make_unique<NormalizationOpBuilder>());
