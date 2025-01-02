@@ -129,7 +129,7 @@ jobs:
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
       CleanTargetFolder: true
       OverWrite: true
-    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    condition: and(succeeded(), and(ne(variables['Build.Reason'], 'PullRequest'), eq(variables['QnnLibKind'], 'dynamic_lib')))
 
   - task: PublishBuildArtifacts@1
     displayName: 'Publish Artifact'
@@ -137,4 +137,4 @@ jobs:
       PathtoPublish: '$(Build.ArtifactStagingDirectory)'
       ArtifactName: 'internal_release'
       publishLocation: 'Container'
-    condition: and(succeeded(), ne(variables['Build.Reason'], 'PullRequest'))
+    condition: and(succeeded(), and(ne(variables['Build.Reason'], 'PullRequest'), eq(variables['QnnLibKind'], 'dynamic_lib')))
