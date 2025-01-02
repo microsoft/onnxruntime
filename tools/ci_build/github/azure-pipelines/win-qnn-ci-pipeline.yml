@@ -36,7 +36,7 @@ parameters:
   default: 2.28.2.241116
 
 jobs:
-- job: 'build'
+- job: 'BUILD_QNN_EP'
   pool: 'Onnxruntime-QNNEP-Windows-2022-CPU'
   variables:
     MsbuildArguments: '-detailedsummary -maxcpucount -consoleloggerparameters:PerformanceSummary'
@@ -52,9 +52,9 @@ jobs:
     clean: all
   strategy:
     matrix:
-      QNN_EP_SHARED_LIB:
+      DYNAMIC_LIB:
         QnnLibKind: 'dynamic_lib'
-      QNN_EP_STATIC_LIB:
+      STATIC_LIB:
         QnnLibKind: 'static_lib'
   steps:
 
