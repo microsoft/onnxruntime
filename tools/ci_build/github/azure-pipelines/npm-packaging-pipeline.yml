@@ -48,7 +48,7 @@ stages:
     RunWebGpuTestsForDebugBuild: false
     RunWebGpuTestsForReleaseBuild: true
     WebGpuPoolName: 'onnxruntime-Win2022-VS2022-webgpu-A10'
-    WebCpuPoolName: 'Azure-Pipelines-EO-Windows2022-aiinfra'
+    WebCpuPoolName: 'onnxruntime-Win2022-VS2022-webgpu-A10'
 
 - template: templates/react-native-ci.yml
   parameters:
