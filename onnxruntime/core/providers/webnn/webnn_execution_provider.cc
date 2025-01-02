@@ -88,7 +88,8 @@ WebNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_view
     ORT_THROW("Failed to create WebNN builder.");
   }
 
-  const auto node_groups = webnn::GetSupportedNodes(graph_viewer, wnn_builder, wnn_device_type_, wnn_limits_, logger);
+  const auto node_groups = webnn::GetSupportedNodes(
+      graph_viewer, wnn_builder, wnn_device_type_, wnn_limits_, fused_node_map_, logger);
   wnn_builder = emscripten::val::undefined();
 
   if (node_groups.empty()) {
@@ -218,8 +219,8 @@ common::Status WebNNExecutionProvider::Compile(const std::vector<FusedNodeAndGra
     Node& fused_node = fused_node_and_graph.fused_node;
     const onnxruntime::GraphViewer& graph_viewer(fused_node_and_graph.filtered_graph);
 
-    webnn::ModelBuilder builder(graph_viewer, *GetLogger(), wnn_context_,
-                                preferred_layout_, wnn_device_type_, wnn_limits_);
+    webnn::ModelBuilder builder(graph_viewer, *GetLogger(), wnn_context_, preferred_layout_,
+                                wnn_device_type_, wnn_limits_, fused_node_map_);
     std::unique_ptr<webnn::Model> model;
     ORT_RETURN_IF_ERROR(builder.Compile(model));
 

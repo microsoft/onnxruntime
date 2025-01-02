@@ -26,7 +26,8 @@ class NormalizationOpBuilder : public BaseOpBuilder {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
   bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
+                              const emscripten::val& wnn_limits, bool& /* is_fusable */,
+                              const logging::Logger& logger) const override;
 };
 
 Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
@@ -268,7 +269,7 @@ bool NormalizationOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initi
 }
 
 bool NormalizationOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                                                    const emscripten::val& wnn_limits,
+                                                    const emscripten::val& wnn_limits, bool& /* is_fusable */,
                                                     const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();

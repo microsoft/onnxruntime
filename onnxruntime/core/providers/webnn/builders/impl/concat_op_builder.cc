@@ -22,7 +22,8 @@ class ConcatOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
   bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
+                              const emscripten::val& wnn_limits, bool& /* is_fusable */,
+                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -56,7 +57,8 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 bool ConcatOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                                             const emscripten::val& wnn_limits, const logging::Logger& logger) const {
+                                             const emscripten::val& wnn_limits, bool& /* is_fusable */,
+                                             const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
   int32_t input0_type;

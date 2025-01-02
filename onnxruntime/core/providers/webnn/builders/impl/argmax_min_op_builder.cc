@@ -22,6 +22,8 @@ class ArgMaxMinOpBuilder : public BaseOpBuilder {
   // Operator support related.
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          WebnnDeviceType device_type, const logging::Logger& logger) const override;
+  bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
+                               bool& is_fusable, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -43,8 +45,16 @@ Status ArgMaxMinOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   emscripten::val options = emscripten::val::object();
   options.set("keepDimensions", keep_dims == 1);
-  // TODO(Honry): check whether int64 output data type is supported by WebNN opSupportLimits() API.
-  options.set("outputDataType", "int64");
+  std::string output_type = "int64";
+  // If ArgMax/ArgMin is fused with Cast (to int32), the output type should be int32.
+  const auto& fused_nodes = model_builder.GetFusedNodes();
+  for (const auto& pair : fused_nodes) {
+    if (pair.second == node.Index()) {
+      output_type = "int32";
+    }
+  }
+
+  options.set("outputDataType", output_type);
   options.set("label", node.Name());
   emscripten::val output = emscripten::val::object();
 
@@ -73,6 +83,24 @@ bool ArgMaxMinOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initia
     return false;
 
   return true;
+}
+
+bool ArgMaxMinOpBuilder::HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
+                                                 bool& is_fusable, const logging::Logger& logger) const {
+  const auto& output_defs = node.OutputDefs();
+  const auto& op_type = node.OpType();
+  int32_t output_type = 0;
+
+  if (!GetType(*output_defs[0], output_type, logger))
+    return false;
+
+  // Check if the next node is Cast and fusable.
+  if (node.GetOutputEdgesCount() == 1) {
+    const auto& next_node = node.OutputEdgesBegin()->GetNode();
+    is_fusable = IsCastFusable(next_node, true, logger);
+  }
+
+  return IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, "output", "reduced", logger);
 }
 
 void CreateArgMaxMinOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

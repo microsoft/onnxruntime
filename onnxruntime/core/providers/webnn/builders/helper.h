@@ -32,6 +32,11 @@ enum class WebnnDeviceType {
   NPU,
 };
 
+struct WebnnNodeInfo {
+  bool supported;  // whether the node is supported by WebNN.
+  bool fusable;    // whether the node is fusable with its preceding or successive node.
+};
+
 WebnnDeviceType DeviceTypeFromString(const std::string_view& device_type);
 
 // Collects all the initializer tensors in the subGraph and its ancestor graphs.
@@ -185,15 +190,17 @@ inline bool TensorExists(const ConstPointerContainer<std::vector<NodeArg*>>& def
   return tensor_index < defs.size() && defs[tensor_index]->Exists();
 }
 
+bool FindCastFusableNodeIndex(const Node& node, const bool is_prec_node, NodeIndex& index);
+bool IsCastFusable(const Node& node, const bool is_prec_node, const logging::Logger& logger);
 bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_name,
                             const logging::Logger& logger, bool allow_empty_input = false);
 
 // Get a list of groups of supported nodes, each group represents a subgraph supported by WebNN EP.
-std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer,
-                                                      const emscripten::val& wnn_builder,
-                                                      const WebnnDeviceType device_type,
-                                                      const emscripten::val& wnn_limits,
-                                                      const logging::Logger& logger);
+std::vector<std::vector<NodeIndex>> GetSupportedNodes(
+    const GraphViewer& graph_viewer, const emscripten::val& wnn_builder,
+    const WebnnDeviceType device_type, const emscripten::val& wnn_limits,
+    InlinedHashMap<NodeIndex, NodeIndex>& fused_node_map,
+    const logging::Logger& logger);
 static const InlinedHashMap<std::string, std::string> op_map = {
     {"Abs", "abs"},
     {"Add", "add"},

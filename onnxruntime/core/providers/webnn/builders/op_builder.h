@@ -30,7 +30,7 @@ class IOpBuilder {
   // Check if an operator is supported.
   virtual bool IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
                              const WebnnDeviceType device_type, const emscripten::val& wnn_limits,
-                             const logging::Logger& logger) const = 0;
+                             bool& is_fusable, const logging::Logger& logger) const = 0;
 };
 
 }  // namespace webnn

@@ -26,9 +26,10 @@ class LstmOpBuilder : public BaseOpBuilder {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const WebnnDeviceType /*device_type*/, const logging::Logger& logger) const override;
   bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
+                              const emscripten::val& wnn_limits, bool& /* is_fusable */,
+                              const logging::Logger& logger) const override;
   bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                               const logging::Logger& logger) const override;
+                               bool& /* is_fusable */, const logging::Logger& logger) const override;
 };
 
 void LstmOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
@@ -199,7 +200,8 @@ bool LstmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, 
 }
 
 bool LstmOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                                           const emscripten::val& wnn_limits, const logging::Logger& logger) const {
+                                           const emscripten::val& wnn_limits, bool& /* is_fusable */,
+                                           const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
   int32_t input0_type = 0;  // input data type
@@ -245,9 +247,8 @@ bool LstmOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initia
   return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
 }
 
-bool LstmOpBuilder::HasSupportedOutputsImpl(const Node& node,
-                                            const emscripten::val& wnn_limits,
-                                            const logging::Logger& logger) const {
+bool LstmOpBuilder::HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
+                                            bool& /* is_fusable */, const logging::Logger& logger) const {
   const auto& output_defs = node.OutputDefs();
   const auto& op_type = node.OpType();
   int32_t Y_type = 0;

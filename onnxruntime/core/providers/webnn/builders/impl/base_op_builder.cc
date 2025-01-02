@@ -16,10 +16,6 @@ namespace webnn {
 
 Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node& node,
                                         const logging::Logger& logger) const {
-  ORT_RETURN_IF_NOT(
-      IsOpSupported(model_builder.GetInitializerTensors(), node, model_builder.GetWebnnDeviceType(),
-                    model_builder.GetOpSupportLimits(), logger),
-      "Unsupported operator ", node.OpType());
   ORT_RETURN_IF_ERROR(AddToModelBuilderImpl(model_builder, node, logger));
   return Status::OK();
 }
@@ -28,20 +24,25 @@ Status BaseOpBuilder::AddToModelBuilder(ModelBuilder& model_builder, const Node&
 
 bool BaseOpBuilder::IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
                                   const WebnnDeviceType device_type, const emscripten::val& wnn_limits,
-                                  const logging::Logger& logger) const {
-  if (!HasSupportedInputs(initializers, node, wnn_limits, logger))
-    return false;
-
-  if (!HasSupportedOutputs(node, wnn_limits, logger))
-    return false;
-
+                                  bool& is_fusable, const logging::Logger& logger) const {
   if (!HasSupportedOpSet(node, logger))
     return false;
 
-  return IsOpSupportedImpl(initializers, node, device_type, logger);
+  if (!IsOpSupportedImpl(initializers, node, device_type, logger))
+    return false;
+
+  // Don't change the order of the following two calls, in order to check the is_fusable flag.
+  if (!HasSupportedInputs(initializers, node, wnn_limits, is_fusable, logger))
+    return false;
+
+  if (!HasSupportedOutputs(node, wnn_limits, is_fusable, logger))
+    return false;
+
+  return true;
 }
 
-bool BaseOpBuilder::HasSupportedInputs(const InitializedTensorSet& initializers, const Node& node, const emscripten::val& wnn_limits,
+bool BaseOpBuilder::HasSupportedInputs(const InitializedTensorSet& initializers, const Node& node,
+                                       const emscripten::val& wnn_limits, bool& is_fusable,
                                        const logging::Logger& logger) const {
   const auto node_name = MakeString("Node [", node.Name(), "] type [", node.OpType(), "]");
   for (const auto* input : node.InputDefs()) {
@@ -50,11 +51,11 @@ bool BaseOpBuilder::HasSupportedInputs(const InitializedTensorSet& initializers,
     }
   }
 
-  return HasSupportedInputsImpl(initializers, node, wnn_limits, logger);
+  return HasSupportedInputsImpl(initializers, node, wnn_limits, is_fusable, logger);
 }
 
 bool BaseOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& initializers, const Node& node,
-                                           const emscripten::val& wnn_limits,
+                                           const emscripten::val& wnn_limits, bool& /* is_fusable */,
                                            const logging::Logger& logger) const {
   // We only check the type of input 0 by default, specific op builder can override this.
   const auto& input = *node.InputDefs()[0];
@@ -67,7 +68,7 @@ bool BaseOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& initializ
 }
 
 bool BaseOpBuilder::HasSupportedOutputs(const Node& node, const emscripten::val& wnn_limits,
-                                        const logging::Logger& logger) const {
+                                        bool& is_fusable, const logging::Logger& logger) const {
   const auto node_name = MakeString("Node [", node.Name(), "] type [", node.OpType(), "]");
   for (const auto* output : node.OutputDefs()) {
     if (!IsTensorShapeSupported(*output, node_name, logger)) {
@@ -75,11 +76,12 @@ bool BaseOpBuilder::HasSupportedOutputs(const Node& node, const emscripten::val&
     }
   }
 
-  return HasSupportedOutputsImpl(node, wnn_limits, logger);
+  return HasSupportedOutputsImpl(node, wnn_limits, is_fusable, logger);
 }
 
 bool BaseOpBuilder::HasSupportedOutputsImpl(const Node& node,
                                             const emscripten::val& wnn_limits,
+                                            bool& /* is_fusable */,
                                             const logging::Logger& logger) const {
   // We only check the type of output 0 by default, specific op builder can override this.
   const auto& output = *node.OutputDefs()[0];
