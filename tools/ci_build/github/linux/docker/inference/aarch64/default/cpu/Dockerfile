@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 # This file is used by Zip-Nuget Packaging NoContribOps Pipeline,Zip-Nuget-Java Packaging Pipeline
-FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_aarch64_ubi8_gcc12_dotnet:20241120.3
+FROM onnxruntimebuildcache.azurecr.io/artifact/4cb52e54-39ee-48a0-bdee-8769e66888cb/buddy/internal/azureml/onnxruntime/build/cpu_aarch64_ubi8_gcc12_dotnet:20241231.7
 
 ENV PATH=/opt/rh/gcc-toolset-12/root/usr/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 ENV LANG=en_US.UTF-8
