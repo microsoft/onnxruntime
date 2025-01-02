@@ -8,15 +8,9 @@
   endif()
 
   file(GLOB_RECURSE
-    onnxruntime_providers_qnn_ep_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/core/providers/qnn/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/qnn/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/providers/qnn/builder/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/qnn/builder/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/providers/qnn/builder/qnn_node_group/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/qnn/builder/qnn_node_group/*.cc"
-    "${ONNXRUNTIME_ROOT}/core/providers/qnn/builder/opbuilder/*.h"
-    "${ONNXRUNTIME_ROOT}/core/providers/qnn/builder/opbuilder/*.cc"
+       onnxruntime_providers_qnn_ep_srcs CONFIGURE_DEPENDS
+       "${ONNXRUNTIME_ROOT}/core/providers/qnn/*.h"
+       "${ONNXRUNTIME_ROOT}/core/providers/qnn/*.cc"
   )
 
   if(onnxruntime_BUILD_QNN_EP_STATIC_LIB)
@@ -24,6 +18,7 @@
     # Build QNN EP as a static library
     #
     set(onnxruntime_providers_qnn_srcs ${onnxruntime_providers_qnn_ep_srcs})
+    source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_qnn_srcs})
     onnxruntime_add_static_library(onnxruntime_providers_qnn ${onnxruntime_providers_qnn_srcs})
     onnxruntime_add_include_to_target(onnxruntime_providers_qnn onnxruntime_common onnxruntime_framework onnx
                                                                 onnx_proto protobuf::libprotobuf-lite
@@ -46,9 +41,9 @@
     # Build QNN EP as a shared library
     #
     file(GLOB_RECURSE
-      onnxruntime_providers_qnn_shared_lib_srcs CONFIGURE_DEPENDS
-      "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
-      "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
+         onnxruntime_providers_qnn_shared_lib_srcs CONFIGURE_DEPENDS
+         "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
+         "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
     )
     set(onnxruntime_providers_qnn_srcs ${onnxruntime_providers_qnn_ep_srcs}
 	                               ${onnxruntime_providers_qnn_shared_lib_srcs})

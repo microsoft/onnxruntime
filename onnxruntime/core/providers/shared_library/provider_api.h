@@ -10,7 +10,9 @@
 #define SHARED_PROVIDER 1
 
 #ifdef _WIN32
+#if !defined(VER_PRODUCTBUILD)
 #include <ntverp.h>
+#endif  // !defined(VER_PRODUCTBUILD)
 
 // ETW requires Windows 10 SDK or later
 // https://stackoverflow.com/questions/2665755/how-can-i-determine-the-version-of-the-windows-sdk-installed-on-my-computer
