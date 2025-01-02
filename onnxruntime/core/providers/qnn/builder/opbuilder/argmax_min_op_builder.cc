@@ -54,7 +54,7 @@ Status ArgMaxMinOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mode
   param_tensor_names.push_back(axis_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
 
-  utils::NodeAttrHelper node_helper(node_unit);
+  NodeAttrHelper node_helper(node_unit);
   auto select_last_index = node_helper.Get("select_last_index", static_cast<int32_t>(0));
   if (select_last_index != 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN ArgMax/ArgMin only support select_last_index=0.");

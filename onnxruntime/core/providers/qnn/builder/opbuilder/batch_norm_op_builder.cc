@@ -541,7 +541,7 @@ Status BatchNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     std::vector<double> scale_double_tensor;
     std::vector<double> bias_double_tensor;
 
-    utils::NodeAttrHelper node_helper(node_unit);
+    NodeAttrHelper node_helper(node_unit);
     const float epsilon = node_helper.Get("epsilon", 1e-05f);  // Default is 1e-05 according to ONNX spec.
 
     double scale_rmax = std::numeric_limits<double>::min();

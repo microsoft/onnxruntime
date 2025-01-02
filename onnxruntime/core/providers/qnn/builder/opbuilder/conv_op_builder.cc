@@ -92,7 +92,7 @@ Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                 "QNN EP: Data type ", input_data_type->c_str(),
                 " is not supported for Conv operator in CPU backend.");
 
-  utils::NodeAttrHelper node_helper(node_unit);
+  NodeAttrHelper node_helper(node_unit);
   auto auto_pad = node_helper.Get("auto_pad", std::string("NOTSET"));
   ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER",
                 "QNN Conv operators do not support 'auto_pad' value: ", auto_pad.c_str());
@@ -530,7 +530,7 @@ Status ConvOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   OnnxConvType conv_type = {};
   ORT_RETURN_IF_ERROR(GetOnnxConvType(node_unit.OpType(), conv_type));
 
-  utils::NodeAttrHelper node_helper(node_unit);
+  NodeAttrHelper node_helper(node_unit);
   std::vector<std::string> param_tensor_names;
 
   const auto& input_0 = node_unit.Inputs()[0];

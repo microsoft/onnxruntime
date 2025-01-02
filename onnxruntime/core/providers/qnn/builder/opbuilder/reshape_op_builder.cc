@@ -35,7 +35,7 @@ Status ReshapeOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                        std::vector<std::string>& input_names,
                                        bool do_op_validation) const {
   if (do_op_validation) {
-    utils::NodeAttrHelper node_helper(node_unit);
+    NodeAttrHelper node_helper(node_unit);
     auto allowzero = node_helper.Get("allowzero", static_cast<int64_t>(0));
     if (0 != allowzero) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Reshape doesn't support dynamic shape!");

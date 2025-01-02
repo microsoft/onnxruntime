@@ -93,7 +93,7 @@ Status SplitOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wr
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN doesn't support dynamic split");
     }
   } else {
-    utils::NodeAttrHelper node_helper(node_unit);
+    NodeAttrHelper node_helper(node_unit);
     if (node_helper.HasAttr("split")) {
       auto split_lengths = node_helper.Get("split", std::vector<int64_t>{0});
       ConvertSplitLengthsToSplitIndices(split_lengths, split_index);

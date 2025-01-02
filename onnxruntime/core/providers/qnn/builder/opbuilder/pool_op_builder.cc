@@ -33,7 +33,7 @@ class PoolOpBuilder : public BaseOpBuilder {
                                   QnnQuantParamsWrapper& quant_param) const override ORT_MUST_USE_RESULT;
 
  private:
-  Status SetCommonPoolParams(const utils::NodeAttrHelper& node_helper, std::vector<uint32_t>& filter_size,
+  Status SetCommonPoolParams(const NodeAttrHelper& node_helper, std::vector<uint32_t>& filter_size,
                              std::vector<uint32_t>& pad_amount, std::vector<uint32_t>& stride,
                              int32_t& ceil_mode,
                              std::vector<uint32_t>&& input_shape,
@@ -73,7 +73,7 @@ Status PoolOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     return Status::OK();
   }
 
-  utils::NodeAttrHelper node_helper(node_unit);
+  NodeAttrHelper node_helper(node_unit);
   auto dilation_values = node_helper.Get("dilations", std::vector<int32_t>{1, 1});
   if (dilation_values != std::vector<int32_t>{1, 1}) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN does not support Dilation attribute");
@@ -88,7 +88,7 @@ Status PoolOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   return Status::OK();
 }
 
-Status PoolOpBuilder::SetCommonPoolParams(const utils::NodeAttrHelper& node_helper,
+Status PoolOpBuilder::SetCommonPoolParams(const NodeAttrHelper& node_helper,
                                           std::vector<uint32_t>& filter_size,
                                           std::vector<uint32_t>& pad_amount, std::vector<uint32_t>& strides,
                                           int32_t& ceil_mode,
@@ -149,7 +149,7 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
                                                   std::vector<std::string>&& input_names,
                                                   const logging::Logger& logger,
                                                   bool do_op_validation) const {
-  utils::NodeAttrHelper node_helper(node_unit);
+  NodeAttrHelper node_helper(node_unit);
   // Get the NCHW from input data, use HW for the pool filter size and pool stride
   const auto& inputs = node_unit.Inputs();
   std::vector<uint32_t> input_shape;

@@ -85,6 +85,52 @@ std::unique_ptr<NodeUnit> NodeUnit__Create(gsl::span<const Node* const> dq_nodes
 std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
 GetQDQNodeUnits(const GraphViewer& graph_viewer, const logging::Logger& logger);
 
+/**
+ * Wrapping onnxruntime::Node for retrieving attribute values
+ */
+class NodeAttrHelper {
+ public:
+  explicit NodeAttrHelper(const Node& node);
+
+  // Get the attributes from the target node of the node_unit
+  explicit NodeAttrHelper(const NodeUnit& node_unit);
+
+  /*
+   * Get with default
+   */
+  float Get(const std::string& key, float def_val) const;
+  std::vector<float> Get(const std::string& key, const std::vector<float>& def_val) const;
+
+  int64_t Get(const std::string& key, int64_t def_val) const;
+  std::vector<int64_t> Get(const std::string& key, const std::vector<int64_t>& def_val) const;
+
+  const std::string& Get(const std::string& key, const std::string& def_val) const;
+
+  // Convert the i() or ints() of the attribute from int64_t to int32_t
+  int32_t Get(const std::string& key, int32_t def_val) const;
+  std::vector<int32_t> Get(const std::string& key, const std::vector<int32_t>& def_val) const;
+
+  // Convert the i() or ints() of the attribute from int64_t to uint32_t
+  uint32_t Get(const std::string& key, uint32_t def_val) const;
+  std::vector<uint32_t> Get(const std::string& key, const std::vector<uint32_t>& def_val) const;
+
+  /*
+   * Get without default.
+   */
+  std::optional<float> GetFloat(const std::string& key) const;
+  std::optional<std::vector<float>> GetFloats(const std::string& key) const;
+
+  std::optional<int64_t> GetInt64(const std::string& key) const;
+  std::optional<std::vector<int64_t>> GetInt64s(const std::string& key) const;
+
+  std::optional<std::string> GetString(const std::string& key) const;
+
+  bool HasAttr(const std::string& key) const;
+
+ private:
+  const NodeAttributes& node_attributes_;
+};
+
 namespace logging {
 std::unique_ptr<Capture> Capture__Create(const Logger& logger, logging::Severity severity, const char* category,
                                          logging::DataType dataType, const CodeLocation& location);

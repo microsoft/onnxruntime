@@ -38,7 +38,7 @@ std::unique_ptr<IQnnNodeGroup> HardSigmoidMulFusion::TryFusion(
     return nullptr;
   }
 
-  utils::NodeAttrHelper hs_attr_helper(hardsigmoid_node_unit);
+  NodeAttrHelper hs_attr_helper(hardsigmoid_node_unit);
   float alpha = hs_attr_helper.Get("alpha", 0.2f);
   float beta = hs_attr_helper.Get("beta", 0.5f);
   constexpr float req_alpha = 1.0f / 6.0f;

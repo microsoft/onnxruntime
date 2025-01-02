@@ -137,7 +137,7 @@ Status SimpleOpBuilder::ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper,
   const std::string& op_type = node_unit.OpType();
 
   if (op_type == "GridSample") {
-    utils::NodeAttrHelper node_helper(node_unit);
+    NodeAttrHelper node_helper(node_unit);
     std::string mode = node_helper.Get("mode", "linear");
     ORT_RETURN_IF_NOT(utils::ArrayHasString(gridsample_supported_modes, mode), "GridSample does not support mode ",
                       mode.c_str());
@@ -187,7 +187,7 @@ Status ProcessNodeAttribute(QnnModelWrapper& qnn_model_wrapper,
                             const std::string& qnn_param_key,
                             std::vector<std::string>& param_tensor_names,
                             const float default_value = 1.0f) {
-  utils::NodeAttrHelper node_helper(node_unit);
+  NodeAttrHelper node_helper(node_unit);
   float attr_value = node_helper.Get(onnx_attr_key, default_value);
   Qnn_Scalar_t attr_qnn_scalar = QNN_SCALAR_INIT;
   attr_qnn_scalar.dataType = QNN_DATATYPE_FLOAT_32;
@@ -203,7 +203,7 @@ Status ProcessNodeAttribute(QnnModelWrapper& qnn_model_wrapper,
 Status ProcessBlockSizeAttribute(QnnModelWrapper& qnn_model_wrapper,
                                  const NodeUnit& node_unit,
                                  std::vector<std::string>& param_tensor_names) {
-  utils::NodeAttrHelper node_helper(node_unit);
+  NodeAttrHelper node_helper(node_unit);
   uint32_t block_size = node_helper.Get("blocksize", static_cast<uint32_t>(0));
   std::vector<uint32_t> block_size_shape{2};
   std::vector<uint32_t> block_size_data(2, block_size);
@@ -218,7 +218,7 @@ Status ProcessBlockSizeAttribute(QnnModelWrapper& qnn_model_wrapper,
 Status ProcessModeAttribute(QnnModelWrapper& qnn_model_wrapper,
                             const NodeUnit& node_unit,
                             std::vector<std::string>& param_tensor_names) {
-  utils::NodeAttrHelper node_helper(node_unit);
+  NodeAttrHelper node_helper(node_unit);
   std::string mode = node_helper.Get("mode", "DCR");
   Qnn_Scalar_t mode_qnn_scalar = QNN_SCALAR_INIT;
   mode_qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
@@ -241,7 +241,7 @@ Status ProcessModeAttribute(QnnModelWrapper& qnn_model_wrapper,
 Status ProcessAlphaAttributeAsInput(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
                                     const std::string input_name) {
-  utils::NodeAttrHelper node_helper(node_unit);
+  NodeAttrHelper node_helper(node_unit);
   QnnQuantParamsWrapper quantize_param;
   Qnn_DataType_t qnn_data_type = QNN_DATATYPE_FLOAT_32;
   union {
@@ -288,7 +288,7 @@ Status ProcessAlphaAttributeAsInput(QnnModelWrapper& qnn_model_wrapper,
 Status ProcessGridSampleAttributes(QnnModelWrapper& qnn_model_wrapper,
                                    const NodeUnit& node_unit,
                                    std::vector<std::string>& param_tensor_names) {
-  utils::NodeAttrHelper node_helper(node_unit);
+  NodeAttrHelper node_helper(node_unit);
   int64_t align_corners = node_helper.Get("align_corners", static_cast<int64_t>(0));
   Qnn_Scalar_t align_corners_qnn_scalar = QNN_SCALAR_INIT;
   align_corners_qnn_scalar.dataType = QNN_DATATYPE_BOOL_8;
@@ -368,7 +368,7 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     param_tensor_names.push_back(axis_param.GetParamTensorName());
     qnn_model_wrapper.AddParamWrapper(std::move(axis_param));
 
-    utils::NodeAttrHelper node_helper(node_unit);
+    NodeAttrHelper node_helper(node_unit);
     int64_t norm_p_order = node_helper.Get("p", static_cast<int64_t>(2));
     ORT_RETURN_IF(norm_p_order != 2, "QNN EP only supports LpNormalization with 'p' attribute equal to 2.");
   }

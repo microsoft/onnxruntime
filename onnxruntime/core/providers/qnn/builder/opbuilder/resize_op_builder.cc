@@ -117,7 +117,7 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   }
 
   const bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
-  utils::NodeAttrHelper node_helper(node_unit);
+  NodeAttrHelper node_helper(node_unit);
 
   // QNN doesn't support anti-aliasing (added in opset 18)
   if (node_unit.SinceVersion() >= 18) {
@@ -253,7 +253,7 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                                                     const logging::Logger& logger,
                                                     bool do_op_validation) const {
   std::vector<std::string> param_tensor_names;
-  utils::NodeAttrHelper node_helper(node_unit);
+  NodeAttrHelper node_helper(node_unit);
 
   const auto& input_0 = node_unit.Inputs()[0];
   std::vector<uint32_t> input_shape;

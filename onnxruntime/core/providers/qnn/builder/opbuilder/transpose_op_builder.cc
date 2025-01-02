@@ -45,7 +45,7 @@ Status TransposeOpBuilder::ProcessPermAttribute(QnnModelWrapper& qnn_model_wrapp
     transpose_perm[i] = rank - 1 - i;
   }
 
-  utils::NodeAttrHelper node_helper(node_unit);
+  NodeAttrHelper node_helper(node_unit);
   transpose_perm = node_helper.Get("perm", transpose_perm);
   auto perm_size = static_cast<uint32_t>(transpose_perm.size());
   std::vector<uint32_t> perm_shape{perm_size};

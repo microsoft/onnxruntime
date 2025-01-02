@@ -350,7 +350,7 @@ struct OnnxAttrInfo {
 };
 
 template <typename ValType>
-inline ValType GetOnnxAttr(const qnn::utils::NodeAttrHelper& node_helper, const OnnxAttrInfo<ValType>& attr_info) {
+inline ValType GetOnnxAttr(const NodeAttrHelper& node_helper, const OnnxAttrInfo<ValType>& attr_info) {
   return node_helper.Get(attr_info.name, attr_info.default_val);
 }
 

@@ -96,7 +96,7 @@ static Status GetInpu0AxisDimValue(const QnnModelWrapper& qnn_model_wrapper,
                     "Cannot get shape for ", node_unit.OpType(), " input[0] ", input0.node_arg.Name());
 
   int64_t rank = static_cast<int64_t>(input0_shape.size());
-  utils::NodeAttrHelper node_helper(node_unit);
+  NodeAttrHelper node_helper(node_unit);
   int64_t onnx_axis = node_helper.Get("axis", default_axis_value);
   if (onnx_axis < 0) {
     onnx_axis += rank;

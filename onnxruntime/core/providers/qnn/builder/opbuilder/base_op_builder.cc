@@ -466,7 +466,7 @@ Status BaseOpBuilder::ProcessAxisAttribute(const QnnModelWrapper& qnn_model_wrap
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
 
   auto rank = static_cast<int32_t>(input_shape.size());
-  utils::NodeAttrHelper node_helper(node_unit);
+  NodeAttrHelper node_helper(node_unit);
   int32_t onnx_axis = node_helper.Get("axis", default_axis_value);
   if (onnx_axis < 0) {
     onnx_axis += rank;

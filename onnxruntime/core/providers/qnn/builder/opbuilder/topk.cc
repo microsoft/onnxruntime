@@ -48,7 +48,7 @@ Status TopKOpBuilder::ExplictOpCheck(QnnModelWrapper& qnn_model_wrapper, const N
   if (!qnn_model_wrapper.IsInitializerInput(input_1)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "The number of top elements to retrieve must be specified as constant input.");
   }
-  utils::NodeAttrHelper node_helper(node_unit);
+  NodeAttrHelper node_helper(node_unit);
   auto largest = node_helper.Get("largest", 1);
   auto sorted = node_helper.Get("sorted", 1);
   if (0 == sorted) {

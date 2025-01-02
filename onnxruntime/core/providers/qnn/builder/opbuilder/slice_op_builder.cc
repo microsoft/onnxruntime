@@ -58,7 +58,7 @@ void SliceOpBuilder::GetDataFromAttribute(const NodeUnit& node_unit,
                                           TensorShapeVector& raw_starts,
                                           TensorShapeVector& raw_ends,
                                           TensorShapeVector& raw_axes) const {
-  utils::NodeAttrHelper node_helper(node_unit);
+  NodeAttrHelper node_helper(node_unit);
   auto starts = node_helper.Get("starts", std::vector<int64_t>{0});
   raw_starts.assign(starts.begin(), starts.end());
   auto ends = node_helper.Get("ends", std::vector<int64_t>{0});

@@ -19,7 +19,7 @@ bool GraphHasEpContextNode(const onnxruntime::GraphViewer& graph_viewer) {
   // and the source is QNN or QNNExecutionProvider.
   for (const auto& node : graph_viewer.Nodes()) {
     if (EPCONTEXT_OP == node.OpType()) {
-      utils::NodeAttrHelper node_helper(node);
+      NodeAttrHelper node_helper(node);
       std::string cache_source = node_helper.Get(SOURCE, "");
 
       std::transform(cache_source.begin(),
@@ -55,7 +55,7 @@ Status GetMainContextNode(const std::vector<IExecutionProvider::FusedNodeAndGrap
     ORT_RETURN_IF(graph_viewer.NumberOfNodes() != 1, "One filtered graph should has only one EPContext node!");
     const Node& ep_context_node = *graph_viewer.Nodes().begin();
     ORT_RETURN_IF_NOT(EPCONTEXT_OP == ep_context_node.OpType(), "Should only filter in the EPContext node.");
-    utils::NodeAttrHelper node_helper(ep_context_node);
+    NodeAttrHelper node_helper(ep_context_node);
     int64_t is_main_context = node_helper.Get(MAIN_CONTEXT, static_cast<int64_t>(0));
     if (1 == is_main_context) {
       main_context_pos.push_back(static_cast<int>(i));
@@ -92,7 +92,7 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
                                 QnnModelLookupTable& qnn_models,
                                 int64_t max_spill_fill_size) {
   ORT_RETURN_IF_NOT(EPCONTEXT_OP == main_context_node.OpType(), "Should only filter in the EPContext node.");
-  utils::NodeAttrHelper node_helper(main_context_node);
+  NodeAttrHelper node_helper(main_context_node);
   bool is_embed_mode = node_helper.Get(EMBED_MODE, true);
   if (is_embed_mode) {
     const std::string& context_binary = node_helper.Get(EP_CACHE_CONTEXT, "");
@@ -164,7 +164,7 @@ Status TryGetMaxSpillFillSize(const std::vector<IExecutionProvider::FusedNodeAnd
     const onnxruntime::GraphViewer& main_ctx_graph_viewer(fused_nodes_and_graphs[index].filtered_graph);
     ORT_RETURN_IF(main_ctx_graph_viewer.NumberOfNodes() != 1, "One filtered graph should has only one EPContext node!");
     const Node& ep_context_node = *main_ctx_graph_viewer.Nodes().begin();
-    qnn::utils::NodeAttrHelper node_helper(ep_context_node);
+    NodeAttrHelper node_helper(ep_context_node);
     int64_t max_size = node_helper.Get(MAX_SIZE, static_cast<int64_t>(0));
     if (max_size > max_spill_fill_size) {
       max_spill_fill_size = max_size;

@@ -98,7 +98,7 @@ Status ReduceOpBuilder::GetAxesSet(QnnModelWrapper& qnn_model_wrapper, const Nod
 
   const int opset_axes_as_input = ReduceOpBuilder::opset_with_axes_as_input[reduce_op_type];
   const int opset = node_unit.SinceVersion();
-  utils::NodeAttrHelper node_helper(node_unit);
+  NodeAttrHelper node_helper(node_unit);
 
   // Extract the axes values from either the attribute or initializer input (depending on opset).
   if (opset < opset_axes_as_input) {  // Axes is in ONNX node attribute.
@@ -205,7 +205,7 @@ Status ReduceOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper, const 
 Status ReduceOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
                                                     std::vector<std::string>&& input_names,
                                                     const logging::Logger& logger, bool do_op_validation) const {
-  utils::NodeAttrHelper node_attr_helper(node_unit);
+  NodeAttrHelper node_attr_helper(node_unit);
   std::vector<std::string> param_tensor_names;
 
   //

@@ -313,7 +313,7 @@ static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
   inputs.reserve(num_dqs);
   for (const Node* dq_node : dq_nodes) {
     const auto dq_inputs = dq_node->InputDefs();
-    qnn::utils::NodeAttrHelper dq_attrs(*dq_node);
+    NodeAttrHelper dq_attrs(*dq_node);
 
     std::optional<int64_t> axis = dq_attrs.GetInt64("axis");
 
@@ -328,7 +328,7 @@ static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
   std::vector<const Node_EdgeEnd*> output_edges;
   for (const Node* q_node : q_nodes) {
     const auto q_inputs = q_node->InputDefs();
-    qnn::utils::NodeAttrHelper q_attrs(*q_node);
+    NodeAttrHelper q_attrs(*q_node);
     const auto q_outputs = q_node->OutputDefs();
 
     std::optional<int64_t> axis = q_attrs.GetInt64("axis");
