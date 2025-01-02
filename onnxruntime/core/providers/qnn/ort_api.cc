@@ -31,39 +31,6 @@ struct OnUnload {
 } g_on_unload;
 #endif  // BUILD_QNN_EP_STATIC_LIB
 
-void InitOrtCppApi() {
-#if BUILD_QNN_EP_STATIC_LIB
-  // Do nothing. Including "onnxruntime_cxx_api.h" normally initializes the global api_ object.
-#else
-  // Call util function in provider bridge that initializes the global api_ object.
-  InitProviderOrtApi();
-#endif
-}
-
-const ConfigOptions& RunOptions__GetConfigOptions(const RunOptions& run_options) {
-#if BUILD_QNN_EP_STATIC_LIB
-  return run_options.config_options;
-#else
-  return run_options.GetConfigOptions();
-#endif
-}
-
-std::unique_ptr<IndexedSubGraph>& ComputeCapability__SubGraph(ComputeCapability& compute_cability) {
-#if BUILD_QNN_EP_STATIC_LIB
-  return compute_cability.sub_graph;
-#else
-  return compute_cability.SubGraph();
-#endif
-}
-
-std::vector<NodeIndex>& IndexedSubGraph__Nodes(IndexedSubGraph& indexed_sub_graph) {
-#if BUILD_QNN_EP_STATIC_LIB
-  return indexed_sub_graph.nodes;
-#else
-  return indexed_sub_graph.Nodes();
-#endif
-}
-
 std::vector<const Node*> Graph__Nodes(const Graph& graph) {
 #if BUILD_QNN_EP_STATIC_LIB
   std::vector<const Node*> nodes;
@@ -76,38 +43,6 @@ std::vector<const Node*> Graph__Nodes(const Graph& graph) {
   return nodes;
 #else
   return graph.Nodes();
-#endif
-}
-
-std::unique_ptr<Model> Model__Create(const std::string& graph_name, bool is_onnx_domain_only, const logging::Logger& logger) {
-#if BUILD_QNN_EP_STATIC_LIB
-  return std::make_unique<Model>(graph_name, is_onnx_domain_only, logger);
-#else
-  return Model::Create(graph_name, is_onnx_domain_only, logger);
-#endif
-}
-
-std::unique_ptr<ModelMetadefIdGenerator> ModelMetadefIdGenerator__Create() {
-#if BUILD_QNN_EP_STATIC_LIB
-  return std::make_unique<ModelMetadefIdGenerator>();
-#else
-  return ModelMetadefIdGenerator::Create();
-#endif
-}
-
-std::unique_ptr<ONNX_NAMESPACE::TypeProto> TypeProto__Create() {
-#if BUILD_QNN_EP_STATIC_LIB
-  return std::make_unique<ONNX_NAMESPACE::TypeProto>();
-#else
-  return ONNX_NAMESPACE::TypeProto::Create();
-#endif
-}
-
-std::unique_ptr<Node_EdgeEnd> Node_EdgeEnd__Create(const Node& node, int src_arg_index, int dst_arg_index) {
-#if BUILD_QNN_EP_STATIC_LIB
-  return std::make_unique<Node_EdgeEnd>(node, src_arg_index, dst_arg_index);
-#else
-  return Node_EdgeEnd::Create(node, src_arg_index, dst_arg_index);
 #endif
 }
 
@@ -129,15 +64,6 @@ std::unique_ptr<NodeUnit> NodeUnit__Create(gsl::span<const Node* const> dq_nodes
                                     inputs, outputs, input_edge_count, output_edge_set);
 #else
   return NodeUnit::Create(dq_nodes, target_node, q_nodes, unit_type, inputs, outputs, input_edge_count, output_edges);
-#endif
-}
-
-std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
-GetQDQNodeUnits(const GraphViewer& graph_viewer, const logging::Logger& logger) {
-#if BUILD_QNN_EP_STATIC_LIB
-  return QDQ::GetAllNodeUnits(graph_viewer, logger);
-#else
-  return QDQ::GetAllNodeUnits(&graph_viewer, logger);
 #endif
 }
 
@@ -299,15 +225,4 @@ std::optional<std::string> NodeAttrHelper::GetString(const std::string& key) con
 bool NodeAttrHelper::HasAttr(const std::string& key) const {
   return node_attributes_.find(key) != node_attributes_.end();
 }
-
-namespace logging {
-std::unique_ptr<Capture> Capture__Create(const Logger& logger, logging::Severity severity, const char* category,
-                                         logging::DataType data_type, const CodeLocation& location) {
-#if BUILD_QNN_EP_STATIC_LIB
-  return std::make_unique<Capture>(logger, severity, category, data_type, location);
-#else
-  return Capture::Create(logger, severity, category, data_type, location);
-#endif
-}
-}  // namespace logging
 }  // namespace onnxruntime
