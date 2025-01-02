@@ -19,6 +19,7 @@
 #include <gsl/gsl>
 
 #include "core/providers/qnn/ort_api.h"
+#include "core/providers/qnn/qnn_telemetry.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 #include "core/providers/qnn/builder/qnn_configs_helper.h"
 
@@ -1105,10 +1106,9 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
   }
 
   bool tracelogging_provider_ep_enabled = false;
-  const Env& env = GetDefaultEnv();
-  auto& provider = env.GetTelemetryProvider();
-  auto level = provider.Level();
+  auto& provider = QnnTelemetry::Instance();
   if (provider.IsEnabled()) {
+    auto level = provider.Level();
     auto keyword = provider.Keyword();
     if ((keyword & static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0 && level >= 5) {
       tracelogging_provider_ep_enabled = true;
@@ -1331,29 +1331,8 @@ void QnnBackendManager::LogQnnProfileEventAsTraceLogging(
     const std::string& timingSource,
     const std::string& eventLevel,
     const char* eventIdentifier) {
-#if BUILD_QNN_EP_STATIC_LIB
-  TraceLoggingWrite(
-      telemetry_provider_handle,
-      "QNNProfilingEvent",
-      TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)),
-      TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
-      TraceLoggingValue(timestamp, "Timestamp"),
-      TraceLoggingString(message.c_str(), "Message"),
-      TraceLoggingString(qnnScalarValue.c_str(), "Value"),
-      TraceLoggingString(unit.c_str(), "Unit of Measurement"),
-      TraceLoggingString(timingSource.c_str(), "Timing Source"),
-      TraceLoggingString(eventLevel.c_str(), "Event Level"),
-      TraceLoggingString(eventIdentifier, "Event Identifier"));
-#else
-  // TODO(adrianlizarraga): Re-enable when add a method to ORT Telemetry provider to log EP profiling data.
-  ORT_UNUSED_PARAMETER(timestamp);
-  ORT_UNUSED_PARAMETER(message);
-  ORT_UNUSED_PARAMETER(qnnScalarValue);
-  ORT_UNUSED_PARAMETER(unit);
-  ORT_UNUSED_PARAMETER(timingSource);
-  ORT_UNUSED_PARAMETER(eventLevel);
-  ORT_UNUSED_PARAMETER(eventIdentifier);
-#endif
+  QnnTelemetry& qnn_telemetry = QnnTelemetry::Instance();
+  qnn_telemetry.LogQnnProfileEvent(timestamp, message, qnnScalarValue, unit, timingSource, eventLevel, eventIdentifier);
 }
 #endif
 

@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <unordered_set>
 #include "core/providers/qnn/ort_api.h"
+#include "core/providers/qnn/qnn_telemetry.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
@@ -210,8 +211,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   // set to invalid to indicate that ETW is no enabled when we setup QNN
   qnn::ProfilingLevel profiling_level_etw = qnn::ProfilingLevel::INVALID;
 
-  const Env& env = GetDefaultEnv();
-  auto& provider = env.GetTelemetryProvider();
+  auto& provider = qnn::QnnTelemetry::Instance();
   if (provider.IsEnabled()) {
     auto level = provider.Level();
     auto keyword = provider.Keyword();
@@ -398,6 +398,10 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
                 //    Then disable/enable ETW Tracing with the code below uncommented a few times
                 // auto profiling_level_etw = GetProfilingLevelFromETWLevel(Level);
                 // (void)qnn_backend_manager_->SetProfilingLevelETW(profiling_level_etw);
+                //
+                // NOTE(1/2/2025): It is possible that the above was not working in part because it is using the
+                // *logging ETW* subsystem to modify profiling, which should use an entirely different
+                // ETW provider (see QnnTelemetry). Should add callbacks for profiling to the QnnTelemetry ETW provider.
               }
             }
           }
