@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
+#include <utility>
 #include "core/providers/qnn/builder/qnn_utils.h"
 
 namespace onnxruntime {
@@ -264,7 +265,8 @@ Status BaseOpBuilder::SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& 
   return Status::OK();
 }
 
-// Internal function to transpose input from either (N,C,H,W,D) or (C,N,H,W,D) to (H,W,D,C,N).
+// Internal function to transpose data of rank 5 with the given permutation.
+// Example: transpose input from either (N,C,H,W,D) or (C,N,H,W,D) to (H,W,D,C,N).
 static Status TransposeDataRank5(const TensorShape& input_shape,
                                  gsl::span<const size_t> perm,
                                  size_t elem_byte_size,

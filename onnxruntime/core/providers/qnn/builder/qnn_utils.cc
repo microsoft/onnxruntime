@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "qnn_utils.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 
 #include <functional>
 #include <numeric>
