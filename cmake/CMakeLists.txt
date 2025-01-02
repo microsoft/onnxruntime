@@ -1040,6 +1040,11 @@ if (onnxruntime_USE_WEBGPU)
     list(APPEND ORT_PROVIDER_FLAGS -DDAWN_ENABLE_D3D12=1)
   endif()
   if (onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP)
+    if (NOT onnxruntime_ENABLE_DAWN_BACKEND_D3D12 OR NOT WIN32)
+      message(
+        FATAL_ERROR
+        "Option onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP can only be set on windows with onnxruntime_ENABLE_DAWN_BACKEND_D3D12 is enabled.")
+    endif()
     add_compile_definitions(ENABLE_PIX_FOR_WEBGPU_EP)
   endif()
 endif()

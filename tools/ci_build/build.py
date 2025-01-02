@@ -1078,7 +1078,8 @@ def generate_build_tree(
         "-Donnxruntime_ARMNN_BN_USE_CPU=" + ("OFF" if args.armnn_bn else "ON"),
         "-Donnxruntime_USE_JSEP=" + ("ON" if args.use_jsep else "OFF"),
         "-Donnxruntime_USE_WEBGPU=" + ("ON" if args.use_webgpu else "OFF"),
-        "-Donnxruntime_ENABLE_PIX_FOR_WEBGPU_EP=" + ("ON" if args.enable_pix_capture else "OFF"),
+        "-Donnxruntime_ENABLE_PIX_FOR_WEBGPU_EP="
+        + ("ON" if args.enable_pix_capture and args.use_webgpu and is_windows() else "OFF"),
         "-Donnxruntime_USE_EXTERNAL_DAWN=" + ("ON" if args.use_external_dawn else "OFF"),
         # Training related flags
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + ("ON" if args.enable_nvtx_profile else "OFF"),
