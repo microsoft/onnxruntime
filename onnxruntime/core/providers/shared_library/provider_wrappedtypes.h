@@ -51,10 +51,11 @@ struct Capture final {
   void operator=(const Capture&) = delete;
 };
 
-#if defined(ETW_TRACE_LOGGING_SUPPORTED)
+#if defined(_WIN32)
 struct EtwRegistrationManager final {
   using EtwInternalCallback = EtwRegistrationManager_EtwInternalCallback;
   static EtwRegistrationManager& Instance() { return g_host->logging__EtwRegistrationManager__Instance(); }
+  static bool SupportsETW() { return g_host->logging__EtwRegistrationManager__SupportsETW(); }
   Severity MapLevelToSeverity() { return g_host->logging__EtwRegistrationManager__MapLevelToSeverity(this); }
   void RegisterInternalCallback(const EtwInternalCallback& callback) {
     g_host->logging__EtwRegistrationManager__RegisterInternalCallback(this, callback);
@@ -63,7 +64,7 @@ struct EtwRegistrationManager final {
     g_host->logging__EtwRegistrationManager__UnregisterInternalCallback(this, callback);
   }
 };
-#endif  // defined(ETW_TRACE_LOGGING_SUPPORTED)
+#endif  // defined(_WIN32)
 
 }  // namespace logging
 }  // namespace onnxruntime

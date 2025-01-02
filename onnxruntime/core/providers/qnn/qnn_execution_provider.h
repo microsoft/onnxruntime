@@ -143,7 +143,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool enable_HTP_FP16_precision_ = true;
   bool share_ep_contexts_ = false;
   bool enable_spill_fill_buffer_ = false;
-#if defined(_WIN32) && defined(ETW_TRACE_LOGGING_SUPPORTED)
+#if defined(_WIN32)
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;
 #endif
   qnn::ModelSettings model_settings_ = {};

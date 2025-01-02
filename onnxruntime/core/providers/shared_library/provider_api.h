@@ -10,24 +10,8 @@
 #define SHARED_PROVIDER 1
 
 #ifdef _WIN32
-#if !defined(VER_PRODUCTBUILD)
-#include <ntverp.h>
-#endif  // !defined(VER_PRODUCTBUILD)
-
-// ETW requires Windows 10 SDK or later
-// https://stackoverflow.com/questions/2665755/how-can-i-determine-the-version-of-the-windows-sdk-installed-on-my-computer
-#if VER_PRODUCTBUILD > 9600
-// ETW trace logging uses Windows 10 SDK's TraceLoggingProvider.h
-#define ETW_TRACE_LOGGING_SUPPORTED 1
-#endif  // VER_PRODUCTBUILD > 9600
-
-#ifdef ETW_TRACE_LOGGING_SUPPORTED
 #include <Windows.h>
-// TraceLoggingProvider.h must follow Windows.h
-#include <TraceLoggingProvider.h>
 #include <evntrace.h>
-#include <winmeta.h>
-#endif  // defined(ETW_TRACE_LOGGING_SUPPORTED)
 #endif  // defined(_WIN32)
 
 #include <vector>
@@ -175,7 +159,7 @@ struct CPUIDInfo;
 namespace logging {
 struct Logger;
 struct Capture;
-#ifdef ETW_TRACE_LOGGING_SUPPORTED
+#ifdef _WIN32
 struct EtwRegistrationManager;
 using EtwRegistrationManager_EtwInternalCallback = std::function<void(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level,
                                                                       ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,

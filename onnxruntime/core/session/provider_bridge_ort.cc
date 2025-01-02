@@ -80,7 +80,7 @@ namespace onnxruntime {
 using IndexedSubGraph_MetaDef = IndexedSubGraph::MetaDef;
 using IndexedSubGraph_SourceOfSchema = IndexedSubGraph::SourceOfSchema;
 using Node_EdgeEnd = Node::EdgeEnd;
-#ifdef ETW_TRACE_LOGGING_SUPPORTED
+#ifdef _WIN32
 namespace logging {
 using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwInternalCallback;
 }
@@ -411,10 +411,13 @@ struct ProviderHostImpl : ProviderHost {
     p->ProcessPrintf(format, args);
   }
 
-#if defined(ETW_TRACE_LOGGING_SUPPORTED)
+#if defined(_WIN32)
   // logging::EtwRegistrationManager
   logging::EtwRegistrationManager& logging__EtwRegistrationManager__Instance() override {
     return logging::EtwRegistrationManager::Instance();
+  }
+  bool logging__EtwRegistrationManager__SupportsETW() override {
+    return logging::EtwRegistrationManager::SupportsETW();
   }
   logging::Severity logging__EtwRegistrationManager__MapLevelToSeverity(logging::EtwRegistrationManager* p) override {
     return p->MapLevelToSeverity();
@@ -429,7 +432,7 @@ struct ProviderHostImpl : ProviderHost {
       const logging::EtwRegistrationManager_EtwInternalCallback& callback) override {
     p->UnregisterInternalCallback(callback);
   }
-#endif  // defined(ETW_TRACE_LOGGING_SUPPORTED)
+#endif  // defined(_WIN32)
 
   // Env
   Env& Env__Default() override { return Env::Default(); }

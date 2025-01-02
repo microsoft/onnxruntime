@@ -297,9 +297,10 @@ struct ProviderHost {
   virtual std::ostream& logging__Capture__Stream(logging::Capture* p) noexcept = 0;
   virtual void logging__Capture__ProcessPrintf(logging::Capture* p, const char* format, va_list args) = 0;
 
-#if defined(ETW_TRACE_LOGGING_SUPPORTED)
+#if defined(_WIN32)
   // logging::EtwRegistrationManager
   virtual logging::EtwRegistrationManager& logging__EtwRegistrationManager__Instance() = 0;
+  virtual bool logging__EtwRegistrationManager__SupportsETW() = 0;
   virtual logging::Severity logging__EtwRegistrationManager__MapLevelToSeverity(logging::EtwRegistrationManager* p) = 0;
   virtual void logging__EtwRegistrationManager__RegisterInternalCallback(
       logging::EtwRegistrationManager* p,
@@ -307,7 +308,7 @@ struct ProviderHost {
   virtual void logging__EtwRegistrationManager__UnregisterInternalCallback(
       logging::EtwRegistrationManager* p,
       const logging::EtwRegistrationManager_EtwInternalCallback& callback) = 0;
-#endif  // defined(ETW_TRACE_LOGGING_SUPPORTED)
+#endif  // defined(_WIN32)
 
   // Env
   virtual Env& Env__Default() = 0;
