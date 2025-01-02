@@ -133,11 +133,10 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
       }
       shader.MainFunctionBody() << "    let scale = sub_scale[in_y][in_x];\n"
                                    "    let b_data = sub_b[in_y][in_x];\n";
-      shader.MainFunctionBody() << "    let a_col_start = tile * " << a_length_per_tile << ";\n"
-                                << "    let a_data0 = mm_readA(batch, row, a_col_start + local_idx);\n"
-                                << "    let a_data1 = mm_readA(batch, row + 1, a_col_start + local_idx);\n"
-                                   "    let a_data2 = mm_readA(batch, row + 2, a_col_start + local_idx);\n"
-                                   "    let a_data3 = mm_readA(batch, row + 3, a_col_start + local_idx);\n";
+      shader.MainFunctionBody() << "    let a_col_start = tile * " << a_length_per_tile << ";\n";
+      for (uint32_t i = 0; i < tile_m_; i++) {
+        shader.MainFunctionBody() << "    let a_data" << i << " = mm_readA(batch, row + " << i << ", a_col_start + local_idx);\n";
+      }
 
       shader.MainFunctionBody() << "    if (sg_size == 8u) {\n";
       shader.MainFunctionBody() << "      for (var i: u32 = 0; i < 4; i++) {\n";
@@ -570,7 +569,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   // TODO: Support output_number > 1. Some cases are failed when output_number > 1.
   constexpr uint32_t output_number = 1;
   const uint32_t tile_m = M > kMinMForTileOptimization ? 4 : 1;
-  MatMulNBitsProgram program{output_number, block_size, tile_m, gsl::narrow<int>(components_b), has_zero_points, true};
+  const bool use_subgroup = context.Device().HasFeature(wgpu::FeatureName::Subgroups);
+  MatMulNBitsProgram program{output_number, block_size, tile_m, gsl::narrow<int>(components_b), has_zero_points, use_subgroup};
   if (M > kMinMForTileOptimization && block_size == 32) {
     components = 1;
     constexpr uint32_t workgroup_size = 64;
@@ -580,7 +580,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     program.SetDispatchGroupSize((N + workgroup_y - 1) / workgroup_y,
                                  (M + tile_m - 1) / tile_m,
                                  batch_count);
-    program.CacheHint("T_M" + std::to_string(tile_m));
+    program.CacheHint("T_M" + std::to_string(tile_m) + "Subgroup" + std::to_string(use_subgroup));
   } else if (block_size == 32) {
     components = 1;
     constexpr uint32_t workgroup_size = 64;
