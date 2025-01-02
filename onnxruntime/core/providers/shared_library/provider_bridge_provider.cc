@@ -353,6 +353,12 @@ std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
 }
 #endif
 
+#ifdef BUILD_TENSORRT_STANDALONE_CUDA
+std::unique_ptr<IAllocator> CreateCUDAOrtAllocator(OrtAllocator* alloc) {
+  return g_host->CreateCUDAOrtAllocator(alloc);
+}
+#endif
+
 #ifdef USE_MIGRAPHX
 std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name) {
   return g_host->CreateMIGraphXAllocator(device_id, name);
