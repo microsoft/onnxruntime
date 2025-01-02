@@ -81,6 +81,7 @@ def _is_qnn_android_build(build_settings):
             return True
     return False
 
+
 def _build_aar(args):
     build_settings = _parse_build_settings(args)
     build_dir = os.path.abspath(args.build_dir)

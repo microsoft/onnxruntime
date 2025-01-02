@@ -596,7 +596,7 @@ def parse_arguments():
         const="dynamic_lib",  # If provide --use_qnn without an arg, defaults to a dynamic library.
         type=_qnn_verify_library_kind,
         help="Build with QNN support. Specify 'dynamic_lib' or 'static_lib' to build QNN EP "
-             "as a dynamic or static library, respectively.",
+        "as a dynamic or static library, respectively.",
     )
     parser.add_argument("--qnn_home", help="Path to QNN SDK dir.")
     parser.add_argument("--use_rknpu", action="store_true", help="Build with RKNPU.")
