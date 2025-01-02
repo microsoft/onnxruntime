@@ -169,9 +169,7 @@ if (onnxruntime_ENABLE_LAZY_TENSOR)
   endif()
 endif()
 
-target_link_libraries(onnxruntime_pybind11_state PRIVATE
-    onnxruntime_session
-    ${onnxruntime_libs}
+set(onnxruntime_pybind11_state_static_providers
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_VSINPU}
     ${PROVIDERS_XNNPACK}
@@ -183,6 +181,16 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_WEBGPU}
     ${PROVIDERS_AZURE}
+)
+
+if(onnxruntime_BUILD_QNN_EP_STATIC_LIB)
+  list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_qnn)
+endif()
+
+target_link_libraries(onnxruntime_pybind11_state PRIVATE
+    onnxruntime_session
+    ${onnxruntime_libs}
+    ${onnxruntime_pybind11_state_static_providers}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -195,10 +203,6 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_flatbuffers
     ${pybind11_lib}
 )
-
-if(onnxruntime_BUILD_QNN_EP_STATIC_LIB)
-  target_link_libraries(onnxruntime_pybind11_state PRIVATE onnxruntime_providers_qnn)
-endif()
 
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}

@@ -142,7 +142,6 @@ set(JAVA_PACKAGE_JNI_DIR ${JAVA_NATIVE_JNI_DIR}/${JAVA_PACKAGE_DIR})
 file(MAKE_DIRECTORY ${JAVA_PACKAGE_LIB_DIR})
 file(MAKE_DIRECTORY ${JAVA_PACKAGE_JNI_DIR})
 
-
 # On Windows TARGET_LINKER_FILE_NAME is the .lib, TARGET_FILE_NAME is the .dll
 if (WIN32)
   #Our static analysis plugin set /p:LinkCompiled=false

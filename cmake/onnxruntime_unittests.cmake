@@ -1296,8 +1296,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
     file(GLOB onnxruntime_qnn_ctx_gen_src CONFIGURE_DEPENDS
       ${onnxruntime_qnn_ctx_gen_src_patterns}
-    )
-
+      )
     onnxruntime_add_executable(onnxruntime_qnn_ctx_gen ${onnxruntime_qnn_ctx_gen_src})
     target_include_directories(onnxruntime_qnn_ctx_gen PRIVATE   ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
           ${eigen_INCLUDE_DIRS} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
