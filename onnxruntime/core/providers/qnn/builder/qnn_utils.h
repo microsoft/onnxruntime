@@ -129,16 +129,26 @@ Status Quantize(const double double_value,
 
 size_t ShapeSizeCalc(gsl::span<const uint32_t> shape, size_t start, size_t end);
 
+// Computes the quantization parameters (scales and offsets) for the given data.
+// Supports both per-tensor and per-channel quantization. Must provide an axis argument
+// for per-channel quantization.
+// The offsets use the QNN convention where offset = -zero_point.
 Status GetDataQuantParams(gsl::span<const float> data, gsl::span<const uint32_t> shape,
                           /*out*/ gsl::span<float> scales, /*out*/ gsl::span<int32_t> offsets,
                           Qnn_DataType_t data_type, bool symmetric = false,
                           std::optional<int64_t> axis = std::nullopt);
 
+// Quantizes the given float data using the provided quantization parameters (scales and offsets).
+// Supports both per-tensor and per-channel quantization. Must provide an axis argument
+// for per-channel quantization.
+// The provided offsets must use the QNN convention where offset = -zero_point.
 Status QuantizeData(gsl::span<const float> data, gsl::span<const uint32_t> shape,
                     gsl::span<const float> scales, gsl::span<const int32_t> offsets,
                     /*out*/ gsl::span<uint8_t> quant_bytes, Qnn_DataType_t data_type,
                     std::optional<int64_t> axis = std::nullopt);
 
+// Quantizes (per-tensor) the given float data using the provided scale and offset.
+// The provided offset must use the QNN convention where offset = -zero_point.
 template <typename QuantType>
 inline Status QuantizeData(gsl::span<const float> data, float scale, int32_t offset,
                            /*out*/ gsl::span<uint8_t> quant_bytes) {
