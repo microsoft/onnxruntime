@@ -1320,14 +1320,11 @@ public class OrtSession implements AutoCloseable {
      */
     public void addQnn(Map<String, String> providerOptions) throws OrtException {
       String qnnProviderName = "QNN";
-      if (OnnxRuntime.isAndroid()) {
-        addExecutionProvider(qnnProviderName, providerOptions);
-      } else if (OnnxRuntime.extractQNN()) {
-        addExecutionProvider(qnnProviderName, providerOptions);
-      } else {
-        throw new OrtException(
-            OrtException.OrtErrorCode.ORT_EP_FAIL, "Failed to find QNN shared provider");
-      }
+
+      // QNN can either be built as a shared or static library. extractQNN() will extract the
+      // (lib)onnxruntime_providers_qnn(.so/.dll) from classpath resources if present.
+      OnnxRuntime.extractQNN();
+      addExecutionProvider(qnnProviderName, providerOptions);
     }
 
     /**
