@@ -75,11 +75,17 @@ def _parse_build_settings(args):
     return build_settings
 
 
+def _is_qnn_android_build(build_settings):
+    for build_arg in build_settings["build_params"]:
+        if build_arg.startswith("--use_qnn"):
+            return True
+    return False
+
 def _build_aar(args):
     build_settings = _parse_build_settings(args)
     build_dir = os.path.abspath(args.build_dir)
     ops_config_path = os.path.abspath(args.include_ops_by_config) if args.include_ops_by_config else None
-    qnn_android_build = "--use_qnn" in build_settings["build_params"]
+    qnn_android_build = _is_qnn_android_build(build_settings)
 
     # Setup temp environment for building
     temp_env = os.environ.copy()
