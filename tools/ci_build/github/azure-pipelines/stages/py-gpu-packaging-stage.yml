@@ -68,9 +68,9 @@ stages:
           cmake_build_type: ${{ parameters.cmake_build_type }}
           cuda_version: ${{ parameters.cuda_version }}
           ${{ if eq(parameters.cuda_version, '11.8') }}:
-            docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241120.3
+            docker_base_image: onnxruntimebuildcache.azurecr.io/artifact/4cb52e54-39ee-48a0-bdee-8769e66888cb/buddy/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241231.7
           ${{ if eq(parameters.cuda_version, '12.2') }}:
-            docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20241120.3
+            docker_base_image: onnxruntimebuildcache.azurecr.io/artifact/4cb52e54-39ee-48a0-bdee-8769e66888cb/buddy/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20241231.7
 
   - ${{ if eq(parameters.enable_windows_dml, true) }}:
     - ${{ each python_version in parameters.PythonVersions }}:

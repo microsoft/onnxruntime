@@ -142,9 +142,9 @@ stages:
       value: false
     - name: docker_base_image
       ${{ if eq(parameters.CudaVersion, '11.8') }}:
-        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241120.3
+        value: onnxruntimebuildcache.azurecr.io/artifact/4cb52e54-39ee-48a0-bdee-8769e66888cb/buddy/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241231.7
       ${{ if eq(parameters.CudaVersion, '12.2') }}:
-        value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20241120.3
+        value: onnxruntimebuildcache.azurecr.io/artifact/4cb52e54-39ee-48a0-bdee-8769e66888cb/buddy/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20241231.7
     timeoutInMinutes: 60
 
     steps:
