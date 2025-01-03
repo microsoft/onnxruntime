@@ -352,6 +352,9 @@ GetAllNodeUnits(const GraphViewer& graph_viewer, const logging::Logger& logger) 
     add_node_unit_to_map(qdq_selection.dq_nodes, qdq_unit.get());
     add_node_unit_to_map(qdq_selection.q_nodes, qdq_unit.get());
     add_node_unit_to_map({qdq_selection.target_node}, qdq_unit.get());
+    if (qdq_selection.redundant_clip_node.has_value()) {
+      add_node_unit_to_map({qdq_selection.redundant_clip_node.value()}, qdq_unit.get());
+    }
 
     node_unit_holder.push_back(std::move(qdq_unit));
   }
