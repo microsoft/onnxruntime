@@ -7,13 +7,15 @@
 #include "core/framework/session_options.h"
 #include "core/framework/model_metadef_id_generator.h"
 #include "core/graph/model.h"
-#include <string>
 #include "core/providers/qnn/builder/qnn_backend_manager.h"
 #include "core/providers/qnn/builder/qnn_model.h"
 #include "core/providers/qnn/builder/qnn_configs_helper.h"
+#include "core/providers/qnn/rpcmem_library.h"
 #include "HTP/QnnHtpGraph.h"
+#include <memory>
 #include <vector>
 #include <set>
+#include <string>
 #include <unordered_map>
 #ifdef _WIN32
 #include "core/platform/windows/logging/etw_sink.h"
@@ -22,67 +24,6 @@
 namespace onnxruntime {
 
 void RunOnUnload(std::function<void()> function);
-
-class SharedContext {
- public:
-  static SharedContext& GetInstance() {
-    static SharedContext instance_;
-    return instance_;
-  }
-
-  bool HasSharedQnnModels() {
-    const std::lock_guard<std::mutex> lock(mtx_);
-    return !shared_qnn_models_.empty();
-  }
-
-  bool HasQnnModel(const std::string& model_name) {
-    auto it = find_if(shared_qnn_models_.begin(), shared_qnn_models_.end(),
-                      [&model_name](const std::unique_ptr<qnn::QnnModel>& qnn_model) { return qnn_model->Name() == model_name; });
-    return it != shared_qnn_models_.end();
-  }
-
-  std::unique_ptr<qnn::QnnModel> GetSharedQnnModel(const std::string& model_name) {
-    const std::lock_guard<std::mutex> lock(mtx_);
-    auto it = find_if(shared_qnn_models_.begin(), shared_qnn_models_.end(),
-                      [&model_name](const std::unique_ptr<qnn::QnnModel>& qnn_model) { return qnn_model->Name() == model_name; });
-    if (it == shared_qnn_models_.end()) {
-      return nullptr;
-    }
-    auto qnn_model = std::move(*it);
-    shared_qnn_models_.erase(it);
-    return qnn_model;
-  }
-
-  bool SetSharedQnnModel(std::vector<std::unique_ptr<qnn::QnnModel>>&& shared_qnn_models,
-                         std::string& duplicate_graph_names) {
-    const std::lock_guard<std::mutex> lock(mtx_);
-    bool graph_exist = false;
-    for (auto& shared_qnn_model : shared_qnn_models) {
-      auto& model_name = shared_qnn_model->Name();
-      auto it = find_if(shared_qnn_models_.begin(), shared_qnn_models_.end(),
-                        [&model_name](const std::unique_ptr<qnn::QnnModel>& qnn_model) { return qnn_model->Name() == model_name; });
-      if (it == shared_qnn_models_.end()) {
-        shared_qnn_models_.push_back(std::move(shared_qnn_model));
-      } else {
-        duplicate_graph_names.append(model_name + " ");
-        graph_exist = true;
-      }
-    }
-
-    return graph_exist;
-  }
-
- private:
-  SharedContext() = default;
-  ~SharedContext() = default;
-  SharedContext(const SharedContext&) = delete;
-  SharedContext& operator=(const SharedContext&) = delete;
-
-  std::vector<std::unique_ptr<qnn::QnnModel>> shared_qnn_models_;
-  // Producer sessions can be in parallel
-  // Consumer sessions have to be after producer sessions initialized
-  std::mutex mtx_;
-};
 
 // Logical device representation.
 class QNNExecutionProvider : public IExecutionProvider {
@@ -113,6 +54,8 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
 
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
+
  private:
   std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                     const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
@@ -132,9 +75,13 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   qnn::ProfilingLevel GetProfilingLevelFromETWLevel(unsigned char level);
 
+  bool IsHtpSharedMemoryAllocatorAvailable() const { return rpcmem_library_ != nullptr; }
+
  private:
   qnn::HtpGraphFinalizationOptimizationMode htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
-  std::unique_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
+  // Note: Using shared_ptr<QnnBackendManager> so that we can refer to it with a weak_ptr from a
+  // HtpSharedMemoryAllocator allocation cleanup callback.
+  std::shared_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
   std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models_;
   bool context_cache_enabled_ = false;
   std::string context_cache_path_cfg_ = "";
@@ -154,6 +101,10 @@ class QNNExecutionProvider : public IExecutionProvider {
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;
 #endif
   qnn::ModelSettings model_settings_ = {};
+
+  // Whether this is set depends on a session option enabling it and if the RPCMEM dynamic library is available.
+  // This is potentially shared with HtpSharedMemoryAllocator which may be returned by CreatePreferredAllocators().
+  std::shared_ptr<qnn::RpcMemLibrary> rpcmem_library_ = nullptr;
 
   class PerThreadContext final {
    public:

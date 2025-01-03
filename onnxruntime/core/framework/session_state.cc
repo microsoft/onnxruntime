@@ -101,7 +101,7 @@ SessionState::SessionState(Graph& graph,
     for (auto& ep : execution_providers_) {
       auto allocators = ep->CreatePreferredAllocators();
       for (auto& alloc : allocators) {
-        allocators_->insert({alloc->Info().device, alloc});  // DONT overwrite existing key
+        allocators_->insert({alloc->Info().device, alloc});  // DON'T overwrite existing key
       }
     }
   }
