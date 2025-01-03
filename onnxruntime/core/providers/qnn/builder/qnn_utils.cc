@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/qnn/builder/qnn_utils.h"
+
 #include <functional>
 #include <numeric>
 #include <string>
@@ -9,7 +11,8 @@
 
 #include "core/common/common.h"
 #include "core/framework/data_types.h"
-#include "qnn_utils.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/providers/cpu/tensor/transpose.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 
 namespace onnxruntime {
@@ -568,6 +571,109 @@ Status Quantize(const double double_value,
   ORT_RETURN_IF_ERROR(GetQminQmax(qnn_data_type, qmin, qmax));
   quant_value = Saturate(qmax, qmin, static_cast<int>(std::round((double_value / scale) - zero_point)));
   return Status::OK();
+}
+
+// NCHW shape to channel last
+Status NchwShapeToNhwc(const std::vector<uint32_t>& nchw_shape, std::vector<uint32_t>& nhwc_shape) {
+  ORT_RETURN_IF_NOT(nchw_shape.size() == 4, "shape should have 4 dimension NCHW.");
+  nhwc_shape[0] = nchw_shape[0];
+  nhwc_shape[1] = nchw_shape[2];
+  nhwc_shape[2] = nchw_shape[3];
+  nhwc_shape[3] = nchw_shape[1];
+
+  return Status::OK();
+}
+
+// NCHW shape to HWCN shape, required for Conv weight
+Status NchwShapeToHwcn(const std::vector<uint32_t>& nchw_shape, std::vector<uint32_t>& hwcn_shape) {
+  if (nchw_shape.size() == 4) {
+    hwcn_shape[0] = nchw_shape[2];
+    hwcn_shape[1] = nchw_shape[3];
+    hwcn_shape[2] = nchw_shape[1];
+    hwcn_shape[3] = nchw_shape[0];
+  } else if (nchw_shape.size() == 5) {
+    hwcn_shape[0] = nchw_shape[2];
+    hwcn_shape[1] = nchw_shape[3];
+    hwcn_shape[2] = nchw_shape[4];
+    hwcn_shape[3] = nchw_shape[1];
+    hwcn_shape[4] = nchw_shape[0];
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported rank! only support 4 or 5.");
+  }
+
+  return Status::OK();
+}
+
+// CNHW shape to HWCN shape, required for Conv weight
+Status CnhwShapeToHwcn(const std::vector<uint32_t>& cnhw_shape, std::vector<uint32_t>& hwcn_shape) {
+  if (cnhw_shape.size() == 4) {
+    hwcn_shape[0] = cnhw_shape[2];
+    hwcn_shape[1] = cnhw_shape[3];
+    hwcn_shape[2] = cnhw_shape[0];
+    hwcn_shape[3] = cnhw_shape[1];
+  } else if (cnhw_shape.size() == 5) {
+    hwcn_shape[0] = cnhw_shape[2];
+    hwcn_shape[1] = cnhw_shape[3];
+    hwcn_shape[2] = cnhw_shape[4];
+    hwcn_shape[3] = cnhw_shape[0];
+    hwcn_shape[4] = cnhw_shape[1];
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported rank! only support 4 or 5.");
+  }
+
+  return Status::OK();
+}
+
+namespace {
+Status TransposeInitializer(const QnnModelWrapper& qnn_model_wrapper, const onnx::TensorProto& initializer,
+                            const std::vector<size_t>& perm, std::vector<uint8_t>& transposed_data) {
+  const DataTypeImpl* tensor_dtype = DataTypeImpl::TensorTypeFromONNXEnum(initializer.data_type())->GetElementType();
+  const auto tensor_shape_dims = onnxruntime::utils::GetTensorShapeFromTensorProto(initializer);
+  TensorShape tensor_shape{tensor_shape_dims};
+  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+  Tensor in_tensor = Tensor(tensor_dtype, tensor_shape, cpu_allocator);
+
+  auto rank = perm.size();
+  std::vector<int64_t> new_tensor_shape_dims;
+  std::vector<size_t> permutations;
+  new_tensor_shape_dims.reserve(rank);
+  permutations.reserve(rank);
+  for (int64_t p : perm) {
+    permutations.push_back(p);
+    new_tensor_shape_dims.push_back(tensor_shape_dims[p]);
+  }
+
+  TensorShape new_tensor_shape(new_tensor_shape_dims);
+  Tensor out_tensor = Tensor(tensor_dtype, new_tensor_shape, cpu_allocator);
+  ORT_RETURN_IF_ERROR(onnxruntime::utils::TensorProtoToTensor(
+      Env::Default(), qnn_model_wrapper.GetGraphViewer().ModelPath(), initializer, in_tensor));
+  ORT_RETURN_IF_ERROR(Transpose::DoTranspose(permutations, in_tensor, out_tensor));
+  onnx::TensorProto new_tensor_proto = onnxruntime::utils::TensorToTensorProto(out_tensor, "test");
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(new_tensor_proto, transposed_data));
+
+  return Status::OK();
+}
+}  // namespace
+
+Status TransposeFromNchwToHwcn(const QnnModelWrapper& qnn_model_wrapper, const onnx::TensorProto& initializer,
+                               std::vector<uint8_t>& transposed_data, bool is_3d) {
+  auto& perm = is_3d ? nchw2hwcn_perm_3d : nchw2hwcn_perm;
+  return TransposeInitializer(qnn_model_wrapper, initializer, perm, transposed_data);
+}
+
+Status TransposeFromCnhwToHwcn(const QnnModelWrapper& qnn_model_wrapper, const onnx::TensorProto& initializer,
+                               std::vector<uint8_t>& transposed_data, bool is_3d) {
+  auto& perm = is_3d ? cnhw2hwcn_perm_3d : cnhw2hwcn_perm;
+  return TransposeInitializer(qnn_model_wrapper, initializer, perm, transposed_data);
+}
+
+Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper, std::vector<uint32_t>& data_shape,
+                             const onnx::TensorProto& initializer, std::vector<uint8_t>& transposed_data) {
+  auto tmp = data_shape[0];
+  data_shape[0] = data_shape[1];
+  data_shape[1] = tmp;
+  std::vector<size_t> two_dim_trans_perm{1, 0};
+  return TransposeInitializer(qnn_model_wrapper, initializer, two_dim_trans_perm, transposed_data);
 }
 
 }  // namespace utils
