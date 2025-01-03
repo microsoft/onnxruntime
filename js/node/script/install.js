@@ -19,6 +19,7 @@
 // Step.1: Check if we should exit early
 const os = require('os');
 const fs = require('fs');
+const https = require('https');
 const path = require('path');
 const tar = require('tar');
 const { execFileSync } = require('child_process');
@@ -80,44 +81,62 @@ To use ONNX Runtime Node.js binding with CUDA v11 support, please follow the man
   }.tgz`,
 }[INSTALL_CUDA_FLAG || tryGetCudaVersion()];
 console.log(`Downloading "${artifactUrl}"...`);
-fetch(artifactUrl).then((res) => {
-  if (!res.ok) {
-    throw new Error(`Failed to download the binaries: ${res.status} ${res.statusText}.
+
+const FILES = new Set([
+  'libonnxruntime_providers_tensorrt.so',
+  'libonnxruntime_providers_shared.so',
+  `libonnxruntime.so.${ORT_VERSION}`,
+  'libonnxruntime_providers_cuda.so',
+]);
+
+downloadAndExtract(artifactUrl, BIN_FOLDER, FILES);
+
+async function downloadAndExtract(url, dest, files) {
+  return new Promise((resolve, reject) => {
+    https.get(url, (res) => {
+      const { statusCode } = res;
+      const contentType = res.headers['content-type'];
+
+      if (statusCode === 301 || statusCode === 302) {
+        downloadAndExtract(res.headers.location, dest, files).then(
+          (value) => resolve(value),
+          (reason) => reject(reason),
+        );
+        return;
+      } else if (statusCode !== 200) {
+        throw new Error(`Failed to download the binaries: ${res.statusCode} ${res.statusMessage}.
 
 Use "--onnxruntime-node-install-cuda=skip" to skip the installation. You will still be able to use ONNX Runtime, but the CUDA EP will not be available.`);
-  }
+      }
 
-  // Extract the binaries
+      if (!contentType || !/^application\/octet-stream/.test(contentType)) {
+        throw new Error(`unexpected content type: ${contentType}`);
+      }
 
-  const FILES = new Set([
-    'libonnxruntime_providers_tensorrt.so',
-    'libonnxruntime_providers_shared.so',
-    `libonnxruntime.so.${ORT_VERSION}`,
-    'libonnxruntime_providers_cuda.so',
-  ]);
-
-  Readable.fromWeb(res.body)
-    .pipe(
-      tar.t({
-        strict: true,
-        onentry: (entry) => {
-          const filename = path.basename(entry.path);
-          if (entry.type === 'File' && FILES.has(filename)) {
-            console.log(`Extracting "${filename}" to "${BIN_FOLDER}"...`);
-            entry.pipe(fs.createWriteStream(path.join(BIN_FOLDER, filename)));
-            entry.on('finish', () => {
-              console.log(`Finished extracting "${filename}".`);
-            });
-          }
-        },
-      }),
-    )
-    .on('error', (err) => {
-      throw new Error(`Failed to extract the binaries: ${err.message}.
+      res
+        .pipe(
+          tar.t({
+            strict: true,
+            onentry: (entry) => {
+              const filename = path.basename(entry.path);
+              if (entry.type === 'File' && files.has(filename)) {
+                console.log(`Extracting "${filename}" to "${dest}"...`);
+                entry.pipe(fs.createWriteStream(path.join(dest, filename)));
+                entry.on('finish', () => {
+                  console.log(`Finished extracting "${filename}".`);
+                });
+              }
+            },
+          }),
+        )
+        .on('error', (err) => {
+          throw new Error(`Failed to extract the binaries: ${err.message}.
 
 Use "--onnxruntime-node-install-cuda=skip" to skip the installation. You will still be able to use ONNX Runtime, but the CUDA EP will not be available.`);
+        });
     });
-});
+  });
+}
 
 function tryGetCudaVersion() {
   // Should only return 11 or 12.
