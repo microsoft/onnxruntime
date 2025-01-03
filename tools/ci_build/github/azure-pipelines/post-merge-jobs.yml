@@ -25,7 +25,7 @@ stages:
       BuildStaticLib: true
       ExtraBuildArgs: ''
       UseWebPoolName: true
-      WebCpuPoolName: 'Onnxruntime-Win-CPU-2022'
+      WebCpuPoolName: 'onnxruntime-Win2022-VS2022-webgpu-A10'
 
 # The follow section has 15 different build jobs that can be divided into 3 groups:
 # 1. Default CPU build with normal win32 linking, without ORT extension
