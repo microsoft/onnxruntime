@@ -13,6 +13,23 @@ stages:
     - download: build
       displayName: 'Download Pipeline Artifact - onnxruntime_gpu'
       artifact: 'onnxruntime_gpu'
+    - download: build
+      displayName: 'Download Pipeline Artifact - Win GPU 3.10'
+      artifact: 'win_gpu_wheel_3.10'
+      patterns: '*.whl'
+    - download: build
+      displayName: 'Download Pipeline Artifact - Win GPU 3.11'
+      artifact: 'win_gpu_wheel_3.11'
+      patterns: '*.whl'
+    - download: build
+      displayName: 'Download Pipeline Artifact - Win GPU 3.12'
+      artifact: 'win_gpu_wheel_3.12'
+      patterns: '*.whl'
+    - download: build
+      displayName: 'Download Pipeline Artifact - Win GPU 3.13'
+      artifact: 'win_gpu_wheel_3.13'
+      patterns: '*.whl'
+      
     - task: UsePythonVersion@0
       displayName: 'Use Python 3.x'
     - script: 'pip install twine==3.4.2'
