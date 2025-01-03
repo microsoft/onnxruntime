@@ -75,6 +75,9 @@ struct LeakyRelu<MLFloat16> : public ElementWiseRangedTransform<MLFloat16> {
 //    MlasTanhActivation,
 //    MlasLogisticActivation,
 //    MlasClipActivation,
+//          Once it's added, please update TestNhwcConvReluClipFusion_FP16
+//          in xnnpack_basic_test.cc
+//          to enable outputs verification for Clip activation.
 //    MlasHardSigmoidActivation,
 
 }  // namespace functors
