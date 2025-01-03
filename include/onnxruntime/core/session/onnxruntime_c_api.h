@@ -5161,7 +5161,7 @@ struct OrtModelBuilderApi {
    * Pre-existing memory:
    *    Use CreateTensorWithDataAsOrtValue or CreateTensorWithDataAndDeleterAsOrtValue to create an OrtValue
    *    with a tensor that contains a pointer to the existing data.
-   *    User must keep pointer valid for lifetime of the inference session.
+   *    If using CreateTensorWithDataAsOrtValue you must keep the pointer valid for lifetime of the inference session.
    *    Set `data_is_external` to true.
    *
    * Allocated memory:

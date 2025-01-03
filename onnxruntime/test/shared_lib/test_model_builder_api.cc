@@ -131,14 +131,14 @@ struct TestAllocator : public OrtAllocator {
 // Uses the ORT C++ api for the rest for simplicity
 TEST(ModelBuilderAPITest, Basic_CApi) {
   const auto& api = Ort::GetApi();
-  const auto& graph_api = Ort::GetModelBuilderApi();
+  const auto& model_builder_api = Ort::GetModelBuilderApi();
 
   TestAllocator deleter;
 
   // return void so we can use ASSERT_* in the lambda
   const auto build_model = [&](bool use_constant_node, OrtModel*& model) -> void {
     OrtGraph* graph = nullptr;
-    Ort::ThrowOnError(graph_api.CreateGraph(&graph));
+    Ort::ThrowOnError(model_builder_api.CreateGraph(&graph));
 
     //
     // Create OrtModel with a Gemm. X input is 3x2, Y input is 2x3, Z output is 3x3.
@@ -164,7 +164,7 @@ TEST(ModelBuilderAPITest, Basic_CApi) {
 
     // create ValueInfo and release the type info as CreateValueInfo takes a copy.
     OrtValueInfo* input_value_info = nullptr;
-    Ort::ThrowOnError(graph_api.CreateValueInfo("X", input_type_info, &input_value_info));
+    Ort::ThrowOnError(model_builder_api.CreateValueInfo("X", input_type_info, &input_value_info));
     api.ReleaseTypeInfo(input_type_info);  // input_value_info took a copy
     tensor_type_info = nullptr;
 
@@ -180,13 +180,15 @@ TEST(ModelBuilderAPITest, Basic_CApi) {
     api.ReleaseTensorTypeAndShapeInfo(tensor_type_info);  // input_type_info took a copy
 
     OrtValueInfo* output_value_info = nullptr;
-    Ort::ThrowOnError(graph_api.CreateValueInfo("Z", output_type_info, &output_value_info));
+    Ort::ThrowOnError(model_builder_api.CreateValueInfo("Z", output_type_info, &output_value_info));
     api.ReleaseTypeInfo(output_type_info);
 
     std::vector<OrtValueInfo*> graph_inputs = {input_value_info};
     std::vector<OrtValueInfo*> graph_outputs = {output_value_info};
-    Ort::ThrowOnError(graph_api.SetGraphInputs(graph, graph_inputs.data(), graph_inputs.size()));
-    Ort::ThrowOnError(graph_api.SetGraphOutputs(graph, graph_outputs.data(), graph_outputs.size()));
+    Ort::ThrowOnError(model_builder_api.SetGraphInputs(graph, graph_inputs.data(), graph_inputs.size()));
+    Ort::ThrowOnError(model_builder_api.SetGraphOutputs(graph, graph_outputs.data(), graph_outputs.size()));
+    input_value_info = nullptr;  // graph now owns the input/output values
+    output_value_info = nullptr;
 
     //
     // Gemm node
@@ -200,11 +202,11 @@ TEST(ModelBuilderAPITest, Basic_CApi) {
     const std::string gemm_output_name = use_constant_node ? "Z_temp" : "Z";
     std::vector<const char*> node_output_names = {gemm_output_name.c_str()};
     std::vector<OrtOpAttr*> node_attributes{alpha_attr};
-    OrtNode* node = CreateNode(graph_api, "Gemm", "Gemm1", node_input_names, node_output_names, node_attributes);
+    OrtNode* node = CreateNode(model_builder_api, "Gemm", "Gemm1", node_input_names, node_output_names, node_attributes);
 
     api.ReleaseOpAttr(alpha_attr);  // CreateNode copies all OrtOpAttr instances
 
-    Ort::ThrowOnError(graph_api.AddNodeToGraph(graph, node));
+    Ort::ThrowOnError(model_builder_api.AddNodeToGraph(graph, node));
     node = nullptr;  // graph now owns node
 
     // Y input
@@ -226,7 +228,7 @@ TEST(ModelBuilderAPITest, Basic_CApi) {
                                                      ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
                                                      &y_tensor));
 
-    Ort::ThrowOnError(graph_api.AddInitializerToGraph(graph, "Y", y_tensor, /*data is external*/ true));
+    Ort::ThrowOnError(model_builder_api.AddInitializerToGraph(graph, "Y", y_tensor, /*data is external*/ true));
     y_tensor = nullptr;  // graph now owns
 
     if (use_constant_node) {
@@ -237,20 +239,20 @@ TEST(ModelBuilderAPITest, Basic_CApi) {
       float max = 60.0f;
       Ort::ThrowOnError(api.CreateOpAttr("value", &max, sizeof(max), ORT_OP_ATTR_FLOAT, &value_attr));
 
-      node = CreateNode(graph_api, "Constant", "clip_max", {}, {"max"}, {value_attr});
-      Ort::ThrowOnError(graph_api.AddNodeToGraph(graph, node));
+      node = CreateNode(model_builder_api, "Constant", "clip_max", {}, {"max"}, {value_attr});
+      Ort::ThrowOnError(model_builder_api.AddNodeToGraph(graph, node));
       node = nullptr;  // graph now owns node
 
-      node = CreateNode(graph_api, "Clip", "Clip1", {gemm_output_name.c_str(), "", "max"}, {"Z"});
-      Ort::ThrowOnError(graph_api.AddNodeToGraph(graph, node));
+      node = CreateNode(model_builder_api, "Clip", "Clip1", {gemm_output_name.c_str(), "", "max"}, {"Z"});
+      Ort::ThrowOnError(model_builder_api.AddNodeToGraph(graph, node));
       node = nullptr;  // graph now owns node
     }
 
     std::vector<const char*> domain_names = {onnxruntime::kOnnxDomain};
     std::vector<int> opset_versions = {18};
-    Ort::ThrowOnError(graph_api.CreateModel(domain_names.data(), opset_versions.data(), domain_names.size(),
-                                            &model));
-    Ort::ThrowOnError(graph_api.AddGraphToModel(model, graph));
+    Ort::ThrowOnError(model_builder_api.CreateModel(domain_names.data(), opset_versions.data(), domain_names.size(),
+                                                    &model));
+    Ort::ThrowOnError(model_builder_api.AddGraphToModel(model, graph));
     graph = nullptr;  // model now owns
   };
 
