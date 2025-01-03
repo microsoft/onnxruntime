@@ -59,7 +59,7 @@ stages:
           binskim:
             enabled: true
             scanOutputDirectoryOnly: true
-            targetPathPattern: '+:file|*.dll;-:file|DirectML.dll'
+            analyzeTargetGlob: '+:file|*.pyd;+:file|*.dll;-:file|DirectML.dll'
         outputs:
         - output: pipelineArtifact
           targetPath: $(Build.ArtifactStagingDirectory)
@@ -121,7 +121,7 @@ stages:
           - template: ../templates/set-nightly-build-option-variable-step.yml
 
           - task: PythonScript@0
-            displayName: 'Generate cmake config'
+            displayName: 'Build'
             inputs:
               scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
               arguments: >
@@ -131,7 +131,7 @@ stages:
                 --cmake_generator "$(VSGenerator)"
                 --enable_pybind
                 --enable_onnx_tests
-                --parallel --use_binskim_compliant_compile_flags --update --build
+                --parallel 8 --use_binskim_compliant_compile_flags --update --build
                 $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }} ${{ variables.trt_build_flag }}
               workingDirectory: '$(Build.BinariesDirectory)'
 
