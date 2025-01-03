@@ -1320,6 +1320,10 @@ public class OrtSession implements AutoCloseable {
      */
     public void addQnn(Map<String, String> providerOptions) throws OrtException {
       String qnnProviderName = "QNN";
+
+      // QNN can either be built as a shared or static library. extractQNN() will extract the
+      // (lib)onnxruntime_providers_qnn(.so/.dll) from classpath resources if present.
+      OnnxRuntime.extractQNN();
       addExecutionProvider(qnnProviderName, providerOptions);
     }
 

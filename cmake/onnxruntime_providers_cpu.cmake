@@ -239,7 +239,9 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   set_property(TARGET onnxruntime_providers_shared APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/core/providers/shared/exported_symbols.lst")
   elseif(UNIX)
     if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
-      set_property(TARGET onnxruntime_providers_shared APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/shared/version_script.lds -Xlinker --gc-sections")
+      target_link_options(onnxruntime_providers_shared PRIVATE
+                          "LINKER:--version-script=${ONNXRUNTIME_ROOT}/core/providers/shared/version_script.lds"
+                          "LINKER:--gc-sections")
     endif()
   elseif(WIN32)
   set_property(TARGET onnxruntime_providers_shared APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/shared/symbols.def")

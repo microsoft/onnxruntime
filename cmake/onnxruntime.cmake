@@ -199,17 +199,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_BUILD_JAVA)
   endforeach()
 endif()
 
-# This list is a reversed topological ordering of library dependencies.
-# Earlier entries may depend on later ones. Later ones should not depend on earlier ones.
-set(onnxruntime_INTERNAL_LIBRARIES
-  onnxruntime_session
-  ${onnxruntime_libs}
+set(onnxruntime_INTERNAL_PROVIDER_LIBRARIES
   ${PROVIDERS_ACL}
   ${PROVIDERS_ARMNN}
   ${PROVIDERS_COREML}
   ${PROVIDERS_DML}
   ${PROVIDERS_NNAPI}
-  ${PROVIDERS_QNN}
   ${PROVIDERS_SNPE}
   ${PROVIDERS_RKNPU}
   ${PROVIDERS_VSINPU}
@@ -218,6 +213,18 @@ set(onnxruntime_INTERNAL_LIBRARIES
   ${PROVIDERS_WEBNN}
   ${PROVIDERS_AZURE}
   ${PROVIDERS_INTERNAL_TESTING}
+)
+
+if (onnxruntime_BUILD_QNN_EP_STATIC_LIB)
+  list(APPEND onnxruntime_INTERNAL_PROVIDER_LIBRARIES onnxruntime_providers_qnn)
+endif()
+
+# This list is a reversed topological ordering of library dependencies.
+# Earlier entries may depend on later ones. Later ones should not depend on earlier ones.
+set(onnxruntime_INTERNAL_LIBRARIES
+  onnxruntime_session
+  ${onnxruntime_libs}
+  ${onnxruntime_INTERNAL_PROVIDER_LIBRARIES}
   ${onnxruntime_winml}
   onnxruntime_optimizer
   onnxruntime_providers

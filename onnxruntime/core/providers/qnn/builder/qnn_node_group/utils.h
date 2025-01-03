@@ -7,8 +7,7 @@
 #include <string_view>
 #include <unordered_map>
 
-#include "core/graph/graph_viewer.h"
-#include "core/framework/node_unit.h"
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_node_group.h"
 
 namespace onnxruntime {

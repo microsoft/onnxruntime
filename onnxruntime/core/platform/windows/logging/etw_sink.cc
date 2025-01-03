@@ -64,6 +64,10 @@ EtwRegistrationManager& EtwRegistrationManager::Instance() {
   return instance;
 }
 
+bool EtwRegistrationManager::SupportsETW() {
+  return true;
+}
+
 bool EtwRegistrationManager::IsEnabled() const {
   std::lock_guard<std::mutex> lock(provider_change_mutex_);
   return is_enabled_;
@@ -248,5 +252,19 @@ void EtwSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id,
 }
 }  // namespace logging
 }  // namespace onnxruntime
+#else
+// ETW is not supported on this platform but should still define a dummy EtwRegistrationManager
+// so that it can be used in the EP provider bridge.
+namespace onnxruntime {
+namespace logging {
+EtwRegistrationManager& EtwRegistrationManager::Instance() {
+  static EtwRegistrationManager instance;
+  return instance;
+}
 
+bool EtwRegistrationManager::SupportsETW() {
+  return false;
+}
+}  // namespace logging
+}  // namespace onnxruntime
 #endif  // ETW_TRACE_LOGGING_SUPPORTED

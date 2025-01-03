@@ -6,9 +6,8 @@
 #include <limits>
 #include <optional>
 #include <string>
-#include "core/graph/graph_utils.h"
-#include "core/framework/node_unit.h"
-#include "core/providers/shared/utils/utils.h"
+
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_node_group/utils.h"
@@ -110,8 +109,8 @@ static bool CanClipBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
   float clip_min = std::numeric_limits<float>::lowest();
   float clip_max = std::numeric_limits<float>::max();
 
-  if (!onnxruntime::GetClipMinMax(qnn_model_wrapper.GetGraphViewer(), clip_node_unit.GetNode(),
-                                  clip_min, clip_max, logger)) {
+  if (!qnn::utils::GetClipMinMax(qnn_model_wrapper.GetGraphViewer(), clip_node_unit.GetNode(),
+                                 clip_min, clip_max, logger)) {
     return false;
   }
 
@@ -174,7 +173,7 @@ static bool CanActivationBeRemoved(const QnnModelWrapper& qnn_model_wrapper,
 static std::vector<const Node*> FindParentDQNodes(const GraphViewer& graph_viewer, const Node& node) {
   // Get all parent DQ nodes sorted by destination argument index.
   std::vector<const Node*> parents(node.InputDefs().size(), nullptr);
-  for (auto it = node.InputEdgesBegin(); it != node.InputEdgesEnd(); it++) {
+  for (auto it = node.InputEdgesBegin(); it != node.InputEdgesEnd(); ++it) {
     if (it->GetNode().OpType().compare(DEQUANTIZE_LINEAR) == 0) {
       parents[it->GetDstArgIndex()] = &(it->GetNode());
     }
@@ -314,12 +313,9 @@ static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
   inputs.reserve(num_dqs);
   for (const Node* dq_node : dq_nodes) {
     const auto dq_inputs = dq_node->InputDefs();
-    const auto& dq_attrs = dq_node->GetAttributes();
+    NodeAttrHelper dq_attrs(*dq_node);
 
-    std::optional<int64_t> axis;
-    if (auto entry = dq_attrs.find("axis"); entry != dq_attrs.end()) {
-      axis = entry->second.i();
-    }
+    std::optional<int64_t> axis = dq_attrs.GetInt64("axis");
 
     // quantization scale and zp are always the input[1, 2]
     NodeUnitIODef::QuantParam quant_param{*dq_inputs[1], dq_inputs.size() == 3 ? dq_inputs[2] : nullptr, axis};
@@ -328,16 +324,14 @@ static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
 
   // Populate NodeUnit outputs and output edges
   std::vector<NodeUnitIODef> outputs;
-  Node::EdgeSet output_edges;
+  std::vector<std::unique_ptr<Node_EdgeEnd>> output_edges_holder;
+  std::vector<const Node_EdgeEnd*> output_edges;
   for (const Node* q_node : q_nodes) {
     const auto q_inputs = q_node->InputDefs();
-    const auto& q_attrs = q_node->GetAttributes();
+    NodeAttrHelper q_attrs(*q_node);
     const auto q_outputs = q_node->OutputDefs();
 
-    std::optional<int64_t> axis;
-    if (auto entry = q_attrs.find("axis"); entry != q_attrs.end()) {
-      axis = entry->second.i();
-    }
+    std::optional<int64_t> axis = q_attrs.GetInt64("axis");
 
     // quantization scale and zp are always the input[1, 2]
     NodeUnitIODef::QuantParam quant_param{*q_inputs[1], q_inputs.size() == 3 ? q_inputs[2] : nullptr, axis};
@@ -347,22 +341,25 @@ static Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper,
     auto q_cur_edge = q_node->OutputEdgesBegin();
     auto q_end_edge = q_node->OutputEdgesEnd();
     for (; q_cur_edge != q_end_edge; ++q_cur_edge) {
-      output_edges.insert(Node::EdgeEnd{q_cur_edge->GetNode(), 0, q_cur_edge->GetDstArgIndex()});
+      auto output_edge = Node_EdgeEnd__Create(q_cur_edge->GetNode(), 0, q_cur_edge->GetDstArgIndex());
+      output_edges.push_back(output_edge.get());
+      output_edges_holder.push_back(std::move(output_edge));
     }
   }
 
-  NodeUnit custom_node_unit(dq_nodes, target_node, q_nodes, NodeUnit::Type::QDQGroup,
-                            inputs, outputs, num_dqs, output_edges);
-  const auto* conv_op_builder = qnn::GetOpBuilder(custom_node_unit.OpType());
+  std::unique_ptr<NodeUnit> custom_node_unit = NodeUnit__Create(dq_nodes, target_node,
+                                                                q_nodes, NodeUnit::Type::QDQGroup,
+                                                                inputs, outputs, num_dqs, output_edges);
+  const auto* conv_op_builder = qnn::GetOpBuilder(custom_node_unit->OpType());
   if (conv_op_builder == nullptr) {
     return Status::OK();
   }
 
   if (validate) {
-    return conv_op_builder->IsOpSupported(qnn_model_wrapper, custom_node_unit, logger);
+    return conv_op_builder->IsOpSupported(qnn_model_wrapper, *custom_node_unit, logger);
   }
 
-  return conv_op_builder->AddToModelBuilder(qnn_model_wrapper, custom_node_unit, logger, validate);
+  return conv_op_builder->AddToModelBuilder(qnn_model_wrapper, *custom_node_unit, logger, validate);
 }
 
 // Traverses graph to check if the given NodeUnit is part of a valid DQ* -> Conv -> Relu/Clip -> Q sequence.
