@@ -1106,6 +1106,7 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
   }
 
   bool tracelogging_provider_ep_enabled = false;
+#ifdef _WIN32
   auto& provider = QnnTelemetry::Instance();
   if (provider.IsEnabled()) {
     auto level = provider.Level();
@@ -1114,6 +1115,7 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
       tracelogging_provider_ep_enabled = true;
     }
   }
+#endif  // defined(_WIN32)
 
   // ETW disabled previously, but enabled now
   if (ProfilingLevel::INVALID == profiling_level_etw_ && tracelogging_provider_ep_enabled) {

@@ -211,6 +211,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   // set to invalid to indicate that ETW is no enabled when we setup QNN
   qnn::ProfilingLevel profiling_level_etw = qnn::ProfilingLevel::INVALID;
 
+#ifdef _WIN32
   auto& provider = qnn::QnnTelemetry::Instance();
   if (provider.IsEnabled()) {
     auto level = provider.Level();
@@ -221,6 +222,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
       }
     }
   }
+#endif  // defined(_WIN32)
 
   // In case ETW gets disabled later
   auto profiling_level_pos = provider_options_map.find(PROFILING_LEVEL);
