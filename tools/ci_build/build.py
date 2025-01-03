@@ -2265,6 +2265,8 @@ def build_python_wheel(
             args.append("--use_rocm")
             if rocm_version:
                 args.append(f"--rocm_version={rocm_version}")
+            if use_migraphx:
+                args.append("--use_migraphx")
         elif use_migraphx:
             args.append("--use_migraphx")
         elif use_openvino:

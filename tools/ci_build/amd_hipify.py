@@ -187,4 +187,4 @@ if __name__ == "__main__":
     parser.add_argument("src", help="src")
     args = parser.parse_args()
 
-    hipify(args.hipify_perl, args.src, args.output)
+    hipify(os.path.join(os.path.dirname(__file__), "hipify-perl"), args.src, args.output)

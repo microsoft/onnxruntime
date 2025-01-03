@@ -57,7 +57,8 @@ struct ATenOperator {
     c10::IValue i_value;
     // Create the torch tensor from this DLPack no matter we need it or not below,
     // so that the dlpack's deleter will be triggered when torch tensor is out of scope.
-    at::Tensor tensor = at::fromDLPack(dlpack);
+    // work-around upstream pytorch changing fromDLPack to take non-const pointer
+    at::Tensor tensor = at::fromDLPack(const_cast<DLManagedTensor*>(dlpack));
     switch (elem_kinds[index]) {
       case c10::TypeKind::TensorType: {
         i_value = is_optional ? c10::IValue(c10::optional<at::Tensor>(tensor)) : c10::IValue(tensor);
