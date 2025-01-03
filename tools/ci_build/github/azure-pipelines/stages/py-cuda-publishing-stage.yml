@@ -38,5 +38,12 @@ stages:
       displayName: 'Twine Authenticate '
       inputs:
         artifactFeed: PublicPackages/${{ parameters.artifact_feed }}
-    - script: find $(Pipeline.Workspace) -name \*.whl
+    - script: find $(Pipeline.Workspace) -name \*win_amd64.whl -exec mv {} $(Pipeline.Workspace)/build/onnxruntime_gpu \;
+      displayName: 'Merge files together'
 
+    - script: 'python -m twine upload -r ${{ parameters.artifact_feed }} --config-file $(PYPIRC_PATH) --non-interactive --skip-existing *.whl'
+      workingDirectory: '$(Pipeline.Workspace)/build/onnxruntime_gpu'
+      displayName: 'Uploading wheels to ${{ parameters.artifact_feed }}'
+      retryCountOnTaskFailure: 3
+      env:
+        SYSTEM_ACCESSTOKEN: $(System.AccessToken)
