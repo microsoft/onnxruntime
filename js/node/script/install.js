@@ -23,7 +23,12 @@ const https = require('https');
 const path = require('path');
 const tar = require('tar');
 const { execFileSync } = require('child_process');
-const { Readable } = require('stream');
+const { bootstrap: globalAgentBootstrap } = require('global-agent');
+
+// Bootstrap global-agent to honor the proxy settings in
+// environment variables, e.g. GLOBAL_AGENT_HTTPS_PROXY.
+// See https://github.com/gajus/global-agent/blob/v3.0.0/README.md#environment-variables for details.
+globalAgentBootstrap();
 
 // commandline flag:
 // --onnxruntime-node-install-cuda         Force install the CUDA EP binaries. Try to detect the CUDA version.
