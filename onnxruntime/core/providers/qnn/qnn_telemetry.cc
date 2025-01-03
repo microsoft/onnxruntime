@@ -142,7 +142,7 @@ void QnnTelemetry::LogQnnProfileEvent(uint64_t timestamp,
                                       const std::string& unit,
                                       const std::string& timingSource,
                                       const std::string& eventLevel,
-                                      const char* eventIdentifier) {
+                                      const char* eventIdentifier) const {
   TraceLoggingWrite(
       telemetry_provider_handle,
       "QNNProfilingEvent",
@@ -159,9 +159,7 @@ void QnnTelemetry::LogQnnProfileEvent(uint64_t timestamp,
 
 void QnnTelemetry::RegisterInternalCallback(const EtwInternalCallback& callback) {
 #if BUILD_QNN_EP_STATIC_LIB
-  const Env& env = GetDefaultEnv();
-  auto& provider = env.GetTelemetryProvider();
-  provider.RegisterInternalCallback(callback);
+  WindowsTelemetry::RegisterInternalCallback(callback);
 #else
   std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
   callbacks_.push_back(&callback);
@@ -170,9 +168,7 @@ void QnnTelemetry::RegisterInternalCallback(const EtwInternalCallback& callback)
 
 void QnnTelemetry::UnregisterInternalCallback(const EtwInternalCallback& callback) {
 #if BUILD_QNN_EP_STATIC_LIB
-  const Env& env = GetDefaultEnv();
-  auto& provider = env.GetTelemetryProvider();
-  provider.UnregisterInternalCallback(callback);
+  WindowsTelemetry::UnregisterInternalCallback(callback);
 #else
   std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
   auto new_end = std::remove_if(callbacks_.begin(), callbacks_.end(),

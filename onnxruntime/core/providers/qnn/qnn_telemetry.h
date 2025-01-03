@@ -14,6 +14,8 @@
 #include <string>
 #include <vector>
 
+#include "core/providers/qnn/ort_api.h"
+
 #if !BUILD_QNN_EP_STATIC_LIB
 TRACELOGGING_DECLARE_PROVIDER(telemetry_provider_handle);
 #endif
@@ -25,9 +27,8 @@ namespace qnn {
 /// Singleton class used to log QNN profiling events to the ONNX Runtime telemetry tracelogging provider.
 ///
 /// When QNN EP is a DLL, we must define our own tracelogging provider handle via TRACELOGGING_DEFINE_PROVIDER.
-/// This is required because documentation states that separate DLLs cannot share the same tracelogging provider
-/// handle.
-/// See: https://learn.microsoft.com/en-us/windows/win32/api/traceloggingprovider/nf-traceloggingprovider-tracelogging_define_provider#remarks
+/// TraceLogging documentation states that separate DLLs cannot share the same tracelogging provider handle. See:
+/// https://learn.microsoft.com/en-us/windows/win32/api/traceloggingprovider/nf-traceloggingprovider-tracelogging_define_provider#remarks
 ///
 /// When QNN EP is a static library, we use the tracelogging provider handle already defined
 /// in core/platform/windows/telemetry.h/.cc. In this case, we forward method calls to the
@@ -51,7 +52,7 @@ class QnnTelemetry {
                           const std::string& unit,
                           const std::string& timingSource,
                           const std::string& eventLevel,
-                          const char* eventIdentifier);
+                          const char* eventIdentifier) const;
 
   using EtwInternalCallback = std::function<void(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level,
                                                  ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,
@@ -64,6 +65,7 @@ class QnnTelemetry {
  private:
   QnnTelemetry();
   ~QnnTelemetry();
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnTelemetry);
 
 #if !BUILD_QNN_EP_STATIC_LIB
   static std::mutex mutex_;
