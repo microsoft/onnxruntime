@@ -39,13 +39,6 @@ stages:
       name: ${{ parameters.machine_pool }}
       os: linux
     templateContext:
-      sdl:
-        binskim:
-          preReleaseVersion: '4.3.1'
-          # The tool failed with error: No usable version of libssl was found
-          enabled: false
-          scanOutputDirectoryOnly: true
-          analyzeTargetGlob: '+:file|$(BUILD.STAGINGDIRECTORY)/**/*.so'
       outputs:
       - output: pipelineArtifact
         targetPath: $(Build.ArtifactStagingDirectory)/dist
