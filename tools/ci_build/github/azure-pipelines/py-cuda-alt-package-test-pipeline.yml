@@ -22,7 +22,7 @@ stages:
           trt_version: '10.7.0.23-1.cuda11.8'
           cuda_version: '11.8'
 
-  - stage: Linux_Test_CUDA_Alt_x86_64_stage
+  - stage: Republish_Wheels
     dependsOn:
     jobs:
     - job: Python_Publishing_GPU

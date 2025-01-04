@@ -21,7 +21,7 @@ stages:
           docker_base_image: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20241120.3
           cuda_version: '12.2'
 
-  - stage: Linux_Test_CUDA_Alt_x86_64_stage
+  - stage: Republish_Wheels
     dependsOn:
     jobs:
     - job: Python_Publishing_GPU
