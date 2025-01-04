@@ -223,6 +223,15 @@ export declare namespace InferenceSession {
   export interface CudaExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'cuda';
     deviceId?: number;
+    gpuMemLimit?: number;
+
+    /**
+     * Arena extend strategy. See
+     * https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/core/framework/arena_extend_strategy.h
+     *
+     * This setting is available only in ONNXRuntime (Node.js binding)
+     */
+    arenaExtendStrategy?: 0 | 1;
   }
   export interface DmlExecutionProviderOption extends ExecutionProviderOption {
     readonly name: 'dml';

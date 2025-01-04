@@ -41,6 +41,10 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
     Napi::Value epValue = epList[i];
     std::string name;
     int deviceId = 0;
+#ifdef USE_CUDA
+    onnxruntime::ArenaExtendStrategy arenaExtendStrategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
+    size_t gpuMemLimit = std::numeric_limits<size_t>::max();
+#endif
 #ifdef USE_COREML
     int coreMlFlags = 0;
 #endif
@@ -59,6 +63,16 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
       if (obj.Has("deviceId")) {
         deviceId = obj.Get("deviceId").As<Napi::Number>();
       }
+#ifdef USE_CUDA
+      if (obj.Has("arenaExtendStrategy")) {
+        arenaExtendStrategy = static_cast<onnxruntime::ArenaExtendStrategy>(
+            obj.Get("arenaExtendStrategy").As<Napi::Number>().Uint32Value());
+      }
+      if (obj.Has("gpuMemLimit")) {
+        gpuMemLimit = static_cast<size_t>(
+            obj.Get("gpuMemLimit").As<Napi::Number>().DoubleValue());
+      }
+#endif
 #ifdef USE_COREML
       if (obj.Has("coreMlFlags")) {
         coreMlFlags = obj.Get("coreMlFlags").As<Napi::Number>();
@@ -86,6 +100,8 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
       OrtCUDAProviderOptionsV2* options;
       Ort::GetApi().CreateCUDAProviderOptions(&options);
       options->device_id = deviceId;
+      options->arena_extend_strategy = arenaExtendStrategy;
+      options->gpu_mem_limit = gpuMemLimit;
       sessionOptions.AppendExecutionProvider_CUDA_V2(*options);
       Ort::GetApi().ReleaseCUDAProviderOptions(options);
 #endif
