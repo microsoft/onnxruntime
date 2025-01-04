@@ -39,16 +39,17 @@ stages:
       name: ${{ parameters.machine_pool }}
       os: linux
     templateContext:
-      codeSignValidation:
-        enabled: true
-        break: true
-      psscriptanalyzer:
-        enabled: true
       sdl:
+        codeSignValidation:
+          enabled: true
+          break: true
+        psscriptanalyzer:
+          enabled: true
         binskim:
+          preReleaseVersion: '4.3.1'	
           enabled: true
           scanOutputDirectoryOnly: true
-          targetPathPattern: '\".*.so\"'
+          analyzeTargetGlob: '+:file|$(BUILD.STAGINGDIRECTORY)\**\*.so'
       outputs:
       - output: pipelineArtifact
         targetPath: $(Build.ArtifactStagingDirectory)/dist
@@ -57,9 +58,6 @@ stages:
         targetPath: $(Build.ArtifactStagingDirectory)/${{ parameters.cmake_build_type }}
         artifactName: linux_gpu_wheel_${{ parameters.arch }}
     variables:
-      # The build machine pool doesn't have dotnet, so it can't run CG.
-      - name: skipComponentGovernanceDetection
-        value: true
       - name: extra_build_args
         ${{ if ne(parameters.extra_build_arg, '') }}:
           value: -x ${{ parameters.extra_build_arg }}

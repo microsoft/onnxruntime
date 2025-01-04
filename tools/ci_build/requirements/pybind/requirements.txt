@@ -1,7 +1,7 @@
 setuptools
 wheel
 pytest
-numpy>=1.19.0
+numpy
 sympy>=1.10
 packaging
 cerberus
