@@ -55,6 +55,7 @@ dot_accumulate_1blk(
     __m512i sum_16_epi32 = _mm512_madd_epi16(one_32_epi16, sum_32_epi16);
     __m512 sum_16_ps = _mm512_cvtepi32_ps(sum_16_epi32);
     acc = _mm512_fmadd_ps(sum_16_ps, _mm512_set1_ps(combined_scale), acc);
+    // acc = _mm512_fmadd_ps(sum_16_ps, load_broadcast_512(combined_scale), acc);
 }
 
 static MLAS_FORCEINLINE void
@@ -152,7 +153,9 @@ Q4Int8GemmR2xC4BlkLen128Avx512(
     size_t CountN,
     size_t BlockCountK,
     const float* Bias,
-    size_t ldc
+    size_t ldc,
+    const float* ScaledZPA,
+    const float* ScaledZPB
 )
 {
     constexpr size_t BlkBitWidth4 = 4;
@@ -160,6 +163,7 @@ Q4Int8GemmR2xC4BlkLen128Avx512(
     constexpr size_t NRows2 = 2;
     constexpr size_t SubblkLen = 128;
     const size_t PerBlkSubblkCount = BlkLen / SubblkLen;
+
     const size_t BlkDataSizeInBytes = MlasQNBitBlkDataSizeInBytes(BlkBitWidth4, BlkLen);
     const size_t SubblkDataSizeInBytes = BlkDataSizeInBytes / PerBlkSubblkCount;
 
@@ -176,6 +180,7 @@ Q4Int8GemmR2xC4BlkLen128Avx512(
         const float* BiasPtr = Bias;
         auto* SumPtr = C + m * ldc;
 
+        const float* scaled_zp_b = ScaledZPB;
         for (size_t n = 0; n < CountN; n += NCols4) {
             const std::byte* QuantAPtr = QuantA + m * lda;
             const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
@@ -187,6 +192,11 @@ Q4Int8GemmR2xC4BlkLen128Avx512(
                 _mm512_setzero_ps(), _mm512_setzero_ps(), _mm512_setzero_ps(), _mm512_setzero_ps(),
                 _mm512_setzero_ps(), _mm512_setzero_ps(), _mm512_setzero_ps(), _mm512_setzero_ps()
             };
+
+            const float* scaled_zp_a = ScaledZPA + m * BlockCountK;
+            accumulate_scaled_zp_prod_r1_c4(acc[0], acc[1], acc[2], acc[3], scaled_zp_a, scaled_zp_b, BlockCountK);
+            accumulate_scaled_zp_prod_r1_c4(acc[4], acc[5], acc[6], acc[7], scaled_zp_a + BlockCountK, scaled_zp_b, BlockCountK);
+            scaled_zp_b += 4 * BlockCountK;
 
             // process 1 blks of 64 4b weights a time
             for (size_t k = 0; k < BlockCountK; ++k) {
@@ -264,7 +274,9 @@ Q4Int8GemmR2xC1BlkLen128Avx512(
     size_t CountN,
     size_t BlockCountK,
     const float* Bias,
-    size_t ldc
+    size_t ldc,
+    const float* ScaledZPA,
+    const float* ScaledZPB
 )
 {
     constexpr size_t BlkBitWidth4 = 4;
@@ -289,6 +301,7 @@ Q4Int8GemmR2xC1BlkLen128Avx512(
         const float* BiasPtr = Bias;
         float* SumPtr = C + m * ldc;
 
+        const float* scaled_zp_b = ScaledZPB;
         for (size_t n = 0; n < CountN; n++) {
             const std::byte* QuantAPtr = QuantA + m * lda;
             const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
@@ -298,6 +311,11 @@ Q4Int8GemmR2xC1BlkLen128Avx512(
 
             __m512 acc0 = _mm512_setzero_ps(), acc1 = _mm512_setzero_ps();
 
+            const float* scaled_zp_a = ScaledZPA + m * BlockCountK;
+            accumulate_scaled_zp_prod_r1_c1(acc0, scaled_zp_a, scaled_zp_b, BlockCountK);
+            accumulate_scaled_zp_prod_r1_c1(acc1, scaled_zp_a + BlockCountK, scaled_zp_b, BlockCountK);
+            scaled_zp_b += BlockCountK;
+
             for (size_t k = 0; k < BlockCountK; ++k) {
                 for (size_t kk = 0; kk < PerBlkSubblkCount; kk++) {
                     const __m512i av00_64_epi8 = _mm512_loadu_si512((const __m512i*)QuantAPtr);
@@ -305,8 +323,7 @@ Q4Int8GemmR2xC1BlkLen128Avx512(
                     const __m512i av10_64_epi8 = _mm512_loadu_si512((const __m512i*)(QuantAPtr + lda));
                     const __m512i av11_64_epi8 = _mm512_loadu_si512((const __m512i*)(QuantAPtr + lda + SubblkLen / 2));
 
-                    accumulate_blklen128_r2c1blk1_avx512<vnni>(av00_64_epi8, av01_64_epi8, av10_64_epi8, av11_64_epi8,
-                      QuantBDataPtr, QuantAScalePtr, QuantAScalePtr + BlockCountK, QuantBScalePtr, acc0, acc1);
+                    accumulate_blklen128_r2c1blk1_avx512<vnni>(av00_64_epi8, av01_64_epi8, av10_64_epi8, av11_64_epi8, QuantBDataPtr, QuantAScalePtr, QuantAScalePtr + BlockCountK, QuantBScalePtr, acc0, acc1);
 
                     // increment block pointers
                     QuantAPtr += SubblkLen;
@@ -345,7 +362,9 @@ Q4Int8GemmR1xC4BlkLen128Avx512(
     size_t CountN,
     size_t BlockCountK,
     const float* Bias,
-    size_t ldc
+    size_t ldc,
+    const float* ScaledZPA,
+    const float* ScaledZPB
 )
 {
     constexpr size_t BlkBitWidth4 = 4;
@@ -370,6 +389,7 @@ Q4Int8GemmR1xC4BlkLen128Avx512(
         const float* BiasPtr = Bias;
         auto* SumPtr = C + m * ldc;
 
+        const float* scaled_zp_b = ScaledZPB;
         for (size_t n = 0; n < CountN; n += NCols4) {
             const std::byte* QuantAPtr = QuantA + m * lda;
             const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
@@ -378,6 +398,11 @@ Q4Int8GemmR1xC4BlkLen128Avx512(
             const float* QuantBScalePtr = QuantBScaleColPtr;
 
             __m512 acc[NCols4] = {_mm512_setzero_ps(), _mm512_setzero_ps(), _mm512_setzero_ps(), _mm512_setzero_ps()};
+
+            const float* scaled_zp_a = ScaledZPA;
+            accumulate_scaled_zp_prod_r1_c4(acc[0], acc[1], acc[2], acc[3], scaled_zp_a, scaled_zp_b, BlockCountK);
+            scaled_zp_b += 4 * BlockCountK;
+
             for (size_t k = 0; k < BlockCountK; ++k) {
                 for (size_t kk = 0; kk < PerBlkSubblkCount; kk++) {
                     const __m512i av0_64_epi8 = _mm512_loadu_si512((const __m512i*)QuantAPtr);
@@ -424,7 +449,9 @@ Q4Int8GemmR1xC1BlkLen128Avx512(
     size_t CountN,
     size_t BlockCountK,
     const float* Bias,
-    size_t ldc
+    size_t ldc,
+    const float* ScaledZPA,
+    const float* ScaledZPB
 )
 {
     constexpr size_t BlkBitWidth4 = 4;
@@ -449,6 +476,7 @@ Q4Int8GemmR1xC1BlkLen128Avx512(
         const float* BiasPtr = Bias;
         auto* SumPtr = C + m * ldc;
 
+        const float* scaled_zp_b = ScaledZPB;
         for (size_t n = 0; n < CountN; n++) {
             const std::byte* QuantAPtr = QuantA + m * lda;
             const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
@@ -456,6 +484,10 @@ Q4Int8GemmR1xC1BlkLen128Avx512(
             const float* QuantBScalePtr = QuantBScaleColPtr;
 
             __m512 acc0 = _mm512_setzero_ps();
+            const float* scaled_zp_a = ScaledZPA;
+            accumulate_scaled_zp_prod_r1_c1(acc0, scaled_zp_a, scaled_zp_b, BlockCountK);
+            scaled_zp_b += BlockCountK;
+
             for (size_t k = 0; k < BlockCountK; ++k) {
                 for (size_t kk = 0; kk < PerBlkSubblkCount; kk++) {
                     const __m512i av0_64_epi8 = _mm512_loadu_si512((const __m512i*)QuantAPtr);
@@ -500,7 +532,9 @@ MlasQ4Int8GemmKernelBlkLen128Avx512(
     size_t CountN,
     size_t BlockCountK,
     const float* Bias,
-    size_t ldc
+    size_t ldc,
+    const float* ScaledZPA,
+    const float* ScaledZPB
 )
 {
     constexpr size_t BlkBitWidth4 = 4;
@@ -529,7 +563,9 @@ MlasQ4Int8GemmKernelBlkLen128Avx512(
             multipleCols,
             BlockCountK,
             Bias,
-            ldc
+            ldc,
+            ScaledZPA,
+            ScaledZPB
         );
     }
     if (remainingCols > 0 && multipleRows > 0) {
@@ -544,7 +580,10 @@ MlasQ4Int8GemmKernelBlkLen128Avx512(
             remainingCols,
             BlockCountK,
             Bias ? Bias + multipleCols : nullptr,
-            ldc);
+            ldc,
+            ScaledZPA,
+            ScaledZPB + multipleCols * StrideQuantBScale
+        );
     }
 
     if (remainingRows > 0 && multipleCols > 0) {
@@ -559,7 +598,10 @@ MlasQ4Int8GemmKernelBlkLen128Avx512(
             multipleCols,
             BlockCountK,
             Bias,
-            ldc);
+            ldc,
+            ScaledZPA + multipleRows * lda_scale,
+            ScaledZPB
+        );
     }
 
     if (remainingCols > 0 && remainingRows > 0) {
@@ -574,7 +616,10 @@ MlasQ4Int8GemmKernelBlkLen128Avx512(
             remainingCols,
             BlockCountK,
             Bias ? Bias + multipleCols : nullptr,
-            ldc);
+            ldc,
+            ScaledZPA + multipleRows * lda_scale,
+            ScaledZPB + multipleCols * StrideQuantBScale
+        );
     }
 
     return CountM;
