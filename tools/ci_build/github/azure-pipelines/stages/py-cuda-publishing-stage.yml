@@ -11,37 +11,21 @@ stages:
     steps:
     - checkout: none
     - download: build
-      displayName: 'Download Pipeline Artifact - onnxruntime_gpu'
-      artifact: 'onnxruntime_gpu'
-    - download: build
-      displayName: 'Download Pipeline Artifact - Win GPU 3.10'
-      artifact: 'win_gpu_wheel_3.10'
-      patterns: '*.whl'
-    - download: build
-      displayName: 'Download Pipeline Artifact - Win GPU 3.11'
-      artifact: 'win_gpu_wheel_3.11'
-      patterns: '*.whl'
-    - download: build
-      displayName: 'Download Pipeline Artifact - Win GPU 3.12'
-      artifact: 'win_gpu_wheel_3.12'
-      patterns: '*.whl'
-    - download: build
-      displayName: 'Download Pipeline Artifact - Win GPU 3.13'
-      artifact: 'win_gpu_wheel_3.13'
-      patterns: '*.whl'
+      displayName: 'Download Pipeline Artifact'
+      artifact: 'whl'
       
     - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.13'
       displayName: 'Use Python 3.x'
-    - script: 'pip install twine==3.4.2'
+    - script: 'pip install twine==6.0.1'
       displayName: 'Install Twine'
     - task: TwineAuthenticate@1
       displayName: 'Twine Authenticate '
       inputs:
         artifactFeed: PublicPackages/${{ parameters.artifact_feed }}
-    - script: find $(Pipeline.Workspace) -name \*win_amd64.whl -exec mv {} $(Pipeline.Workspace)/build/onnxruntime_gpu \;
-      displayName: 'Merge files together'
 
     - script: 'python -m twine upload -r ${{ parameters.artifact_feed }} --config-file $(PYPIRC_PATH) --non-interactive *.whl'
-      workingDirectory: '$(Pipeline.Workspace)/build/onnxruntime_gpu'
+      workingDirectory: '$(Pipeline.Workspace)/build/whl'
       displayName: 'Uploading wheels to ${{ parameters.artifact_feed }}'
 
