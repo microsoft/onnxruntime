@@ -127,6 +127,36 @@ module.exports = async function main(PRESERVE, PACKAGES_TO_INSTALL) {
       }
     } // test dev mode
 
+    // test dev mode (Turbopack)
+    {
+      console.log('Testing Next.js default (dev mode with turbopack)...');
+      const npmRunDevEvent = new EventEmitter();
+      const npmRunDev = runShellCmd('npm run dev -- --turbopack', {
+        wd,
+        event: npmRunDevEvent,
+        ready: '✓ Ready in',
+        ignoreExitCode: true,
+      });
+
+      let testResults;
+      npmRunDevEvent.on('serverReady', async () => {
+        try {
+          testResults = await launchBrowserAndRunTests('default:dev:turbopack');
+        } finally {
+          console.log('Killing the server...');
+          // kill the server as the last step
+          npmRunDevEvent.emit('kill');
+        }
+      });
+
+      await npmRunDev;
+
+      console.log('Next.js default test (dev mode with turbopack) result:', testResults);
+      if (testResults.some((r) => !r.success)) {
+        throw new Error('Next.js default test (dev mode with turbopack) failed.');
+      }
+    } // test dev mode
+
     // test prod mode
     {
       console.log('Testing Next.js default (prod mode)...');
