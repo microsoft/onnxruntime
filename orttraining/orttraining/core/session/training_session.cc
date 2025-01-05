@@ -5,6 +5,7 @@
 
 #include "core/framework/data_transfer_utils.h"
 #include "core/graph/model.h"
+#include "core/graph/model_saving_options.h"
 #include "core/session/IOBinding.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/providers/cpu/controlflow/utils.h"
@@ -1003,7 +1004,8 @@ Status TrainingSession::SaveWithExternalInitializers(const PathString& model_uri
   std::remove(ToUTF8String(model_uri).c_str());
   std::remove(external_file_name.c_str());
 
-  return Model::SaveWithExternalInitializers(*model_, model_uri, external_file_name, initializer_size_threshold);
+  ModelSavingOptions model_saving_options{initializer_size_threshold};
+  return Model::SaveWithExternalInitializers(*model_, model_uri, external_file_name, model_saving_options);
 }
 
 Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveOption opt) {
