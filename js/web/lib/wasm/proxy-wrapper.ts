@@ -12,7 +12,7 @@ import {
 } from './proxy-messages';
 import * as core from './wasm-core-impl';
 import { initializeWebAssembly } from './wasm-factory';
-import { importProxyWorker } from './wasm-utils-import';
+import { importProxyWorker, inferWasmPathFromScriptSrc } from './wasm-utils-import';
 
 const isProxy = (): boolean => !!env.wasm.proxy && typeof document !== 'undefined';
 let proxyWorker: Worker | undefined;
@@ -98,7 +98,18 @@ export const initializeWebAssemblyAndOrtRuntime = async (): Promise<void> => {
           proxyWorker.onmessage = onProxyWorkerMessage;
           initWasmCallbacks = [resolve, reject];
           const message: OrtWasmMessage = { type: 'init-wasm', in: env };
-          if (BUILD_DEFS.IS_ESM && !message.in!.wasm.wasmPaths && BUILD_DEFS.ESM_IMPORT_META_URL?.startsWith('file:')) {
+          if (!BUILD_DEFS.ENABLE_BUNDLE_WASM_JS && !message.in!.wasm.wasmPaths && objectUrl) {
+            // if the proxy worker is loaded from a blob URL, we need to set the wasm path
+            const inferredWasmPath = inferWasmPathFromScriptSrc();
+            if (inferredWasmPath) {
+              message.in!.wasm.wasmPaths = inferredWasmPath;
+            }
+          }
+          if (
+            BUILD_DEFS.ENABLE_BUNDLE_WASM_JS &&
+            !message.in!.wasm.wasmPaths &&
+            BUILD_DEFS.ESM_IMPORT_META_URL?.startsWith('file:')
+          ) {
             // if `import.meta.url` is a file URL, it means it is overwriten by the bundler. in this case, unless the
             // overrided wasm path is set, we need to use the bundler preferred URL format:
             // new URL('filename', import.meta.url)

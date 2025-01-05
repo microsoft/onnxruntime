@@ -50,6 +50,18 @@ const getScriptSrc = (): string | undefined => {
 export const scriptSrc = getScriptSrc();
 
 /**
+ * Infer the wasm path from the script source URL.
+ *
+ * @returns The inferred wasm path, or undefined if the script source URL is not available or is a blob URL.
+ */
+export const inferWasmPathFromScriptSrc = (): string | undefined => {
+  if (scriptSrc && !scriptSrc.startsWith('blob:')) {
+    return scriptSrc.substring(0, scriptSrc.lastIndexOf('/') + 1);
+  }
+  return undefined;
+};
+
+/**
  * Check if the given filename with prefix is from the same origin.
  */
 const isSameOrigin = (filename: string, prefixOverride?: string) => {
