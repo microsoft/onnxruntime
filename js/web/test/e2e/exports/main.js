@@ -41,9 +41,9 @@ module.exports = async function main(PRESERVE, PACKAGES_TO_INSTALL) {
 
         for await (const flags of [
           [false, false],
-          //[false, true],
-          //[true, false],
-          //[true, true],
+          [false, true],
+          [true, false],
+          [true, true],
         ]) {
           const [multiThread, proxy] = flags;
           console.log(`[${logPrefix}] Running test with multi-thread: ${multiThread}, proxy: ${proxy}...`);
@@ -190,13 +190,5 @@ async function runShellCmd(cmd, { wd = __dirname, event = null, ready = null, ig
         console.log('killing process...');
       });
     }
-  });
-}
-
-async function delay(ms) {
-  return new Promise(function (resolve) {
-    setTimeout(function () {
-      resolve();
-    }, ms);
   });
 }
