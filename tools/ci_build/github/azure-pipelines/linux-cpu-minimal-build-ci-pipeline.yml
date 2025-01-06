@@ -58,9 +58,6 @@ jobs:
     test_data_directory: $(Build.SourcesDirectory)/.test_data
 
   steps:
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
 
   - checkout: self
     clean: true

@@ -142,8 +142,9 @@ class TensorWrapper {
     return this.mlContext.readTensor(this.mlTensor);
   }
 
-  public sameTypeAndShape(dataType: MLOperandDataType, shape: readonly number[]): boolean {
+  public canReuseTensor(context: MLContext, dataType: MLOperandDataType, shape: readonly number[]): boolean {
     return (
+      this.mlContext === context &&
       this.dataType === dataType &&
       this.tensorShape.length === shape.length &&
       this.tensorShape.every((v, i) => v === shape[i])
@@ -182,8 +183,9 @@ class TensorIdTracker {
     shape: readonly number[],
     copyOld: boolean,
   ): Promise<MLTensor> {
+    const context = this.tensorManager.getMLContext(sessionId);
     if (this.wrapper) {
-      if (this.wrapper.sameTypeAndShape(dataType, shape)) {
+      if (this.wrapper.canReuseTensor(context, dataType, shape)) {
         return this.wrapper.tensor;
       } else {
         if (copyOld) {
@@ -366,15 +368,15 @@ class TensorManagerImpl implements TensorManager {
     writable: boolean,
     readable: boolean,
   ): Promise<TensorWrapper> {
+    const context = this.getMLContext(sessionId);
     for (const [index, tensor] of this.freeTensors.entries()) {
-      if (tensor.sameTypeAndShape(dataType, shape)) {
+      if (tensor.canReuseTensor(context, dataType, shape)) {
         LOG_DEBUG('verbose', () => `[WebNN] Reusing tensor {dataType: ${dataType}, shape: ${shape}}`);
         const wrapper = this.freeTensors.splice(index, 1)[0];
         wrapper.sessionId = sessionId;
         return wrapper;
       }
     }
-    const context = this.getMLContext(sessionId);
     LOG_DEBUG('verbose', () => `[WebNN] MLContext.createTensor {dataType: ${dataType}, shape: ${shape}}`);
     const tensor = await context.createTensor({
       dataType,
