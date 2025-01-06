@@ -113,7 +113,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       ORT_RETURN_IF_NOT(GetType(*input_defs[0], input_type, logger), "Cannot get input type");
       emscripten::val common_options = emscripten::val::object();
 
-      // If it is SkipSimplifiedLayerNormalization, add the skip, bias (if it exits) to the input.
+      // If it is SkipSimplifiedLayerNormalization, add the skip and bias (if it exists) to the input.
       if (op_type == "SkipSimplifiedLayerNormalization") {
         emscripten::val skip = model_builder.GetOperand(input_defs[1]->Name());
         common_options.set("label", node.Name() + "_add_skip");
@@ -161,7 +161,7 @@ Status NormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder
       common_options.set("label", node.Name() + "_mul");
       output = model_builder.GetBuilder().call<emscripten::val>("mul", scale, div, common_options);
 
-      // Add (if bias exits)
+      // Add (if bias exists)
       if (!bias.isUndefined()) {
         common_options.set("label", node.Name() + "_add_bias");
         output = model_builder.GetBuilder().call<emscripten::val>("add", output, bias, common_options);
