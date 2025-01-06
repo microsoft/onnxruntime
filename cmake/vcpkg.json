@@ -32,12 +32,12 @@
     "nlohmann-json",
     {
       "name": "nsync",
-      "platform": "!windows"
-    },
-    {
-      "name": "nsync",
       "platform": "!windows",
       "version>=": "1.26.0"
+    },
+    {
+      "name": "onnx",
+      "version>=": "1.16.2"
     },
     "optional-lite",
     {
@@ -66,12 +66,6 @@
       "platform": "windows"
     }
   ],
-  "overrides": [
-    {
-      "name": "flatbuffers",
-      "version": "23.5.26"
-    }
-  ],
   "features": {
     "tests": {
       "description": "Build ONNXRuntime unit tests",
@@ -80,5 +74,11 @@
         "gtest"
       ]
     }
-  }
+  },
+  "overrides": [
+    {
+      "name": "flatbuffers",
+      "version": "23.5.26"
+    }
+  ]
 }
