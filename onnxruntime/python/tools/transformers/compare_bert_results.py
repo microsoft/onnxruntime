@@ -93,6 +93,7 @@ def run_test(
     segment_ids_name,
     input_mask_name,
     mask_type,
+    dictionary_size: int = 1024,
 ):
     # Try deduce input names from optimized model.
     input_ids, segment_ids, input_mask = get_bert_inputs(
@@ -113,6 +114,7 @@ def run_test(
         average_sequence_length,
         True,  # random sequence length
         mask_type,
+        dictionary_size=dictionary_size,
     )
 
     baseline_results, baseline_latency, output_names = run_model(

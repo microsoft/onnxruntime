@@ -58,7 +58,6 @@ class BasicBackend : public IBackend {
   GlobalContext& global_context_;
   SubGraphContext subgraph_context_;
   mutable std::mutex compute_lock_;
-  std::shared_ptr<const OVNetwork> ie_cnn_network_;
   OVExeNetwork exe_network_;
   std::map<std::string, std::shared_ptr<ov::Node>> const_outputs_map_;
   std::unique_ptr<InferRequestsQueue> inferRequestsQueue_;

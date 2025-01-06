@@ -5,6 +5,7 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <limits>
 
 #include "core/common/common.h"
 #include "core/common/safeint.h"
@@ -239,8 +240,8 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& node_un
   def.attributes = node_unit.GetNode().GetAttributes();
 
   // use infinity as the default as that's what xnnpack uses if min/max are not set
-  float min = -INFINITY;
-  float max = INFINITY;
+  float min = -std::numeric_limits<float>::infinity();
+  float max = std::numeric_limits<float>::infinity();
 
   const auto& activation_type = activation.OpType();
   if (activation_type == "Clip") {

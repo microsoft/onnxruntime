@@ -29,8 +29,8 @@ class ConvOpBuilder : public BaseOpBuilder {
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const WebnnDeviceType device_type, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                              const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
 void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
@@ -311,12 +311,12 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     if (input_defs.size() >= 3) {
       x_zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
     } else {
-      x_zero_point = model_builder.GetZeroConstant(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+      x_zero_point = model_builder.CreateOrGetConstant<uint8_t>(ONNX_NAMESPACE::TensorProto_DataType_UINT8, 0);
     }
     if (input_defs.size() >= 4) {
       w_zero_point = model_builder.GetOperand(node.InputDefs()[3]->Name());
     } else {
-      w_zero_point = model_builder.GetZeroConstant(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
+      w_zero_point = model_builder.CreateOrGetConstant<uint8_t>(ONNX_NAMESPACE::TensorProto_DataType_UINT8, 0);
     }
     output = model_builder.GetBuilder().call<emscripten::val>("conv2dInteger",
                                                               input, x_zero_point, filter, w_zero_point, options);
@@ -397,16 +397,16 @@ bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   return true;
 }
 
-bool ConvOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                                           const logging::Logger& logger) const {
+bool ConvOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                                           const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
   int32_t input0_type;  // input data type
   int32_t input1_type;  // weight data type
   int32_t input2_type;  // bias or x_zero_point data type
   int32_t input3_type;  // w_zero_point data type
-  bool has_input2 = input_defs.size() > 2 && input_defs[2]->Exists();
-  bool has_input3 = input_defs.size() > 3 && input_defs[3]->Exists();
+  bool has_input2 = TensorExists(input_defs, 2);
+  bool has_input3 = TensorExists(input_defs, 3);
 
   if (!GetType(*input_defs[0], input0_type, logger) ||
       !GetType(*input_defs[1], input1_type, logger) ||

@@ -22,7 +22,7 @@ Abstract:
 #include <cassert>
 
 #include "qnbitgemm.h"
-#include "sqnbitgemm_kernel_neon.h"
+#include "qnbitgemm_kernel_neon.h"
 
 namespace sqnbitgemm_neon
 {
@@ -608,7 +608,7 @@ Q4BitBlkDequantBForSgemm_CompFp32_Impl(
 }  // namespace
 
 void
-Q4BitBlkDequantBForSgemm_CompFp32(
+SQ4BitBlkDequantBForSgemm_CompFp32(
     size_t BlkLen,
     float* FpData,
     const std::byte* QuantBData,
