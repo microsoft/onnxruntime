@@ -10,7 +10,7 @@ export default function OnnxTestBar() {
     setOrtState(1);
     setOrtLog('Loading model...');
     try {
-      const { createTestSession } = await import('../app/onnx-helper');
+      const { createTestSession } = await import('./onnx-helper');
       await createTestSession(document.getElementById('cb-mt').checked, document.getElementById('cb-px').checked);
       setOrtState(2);
       setOrtLog('Model loaded.');
@@ -25,7 +25,7 @@ export default function OnnxTestBar() {
     setOrtState(4);
     setOrtLog('Running model test...');
     try {
-      const { runTestSessionAndValidate } = await import('../app/onnx-helper');
+      const { runTestSessionAndValidate } = await import('./onnx-helper');
       const testResult = await runTestSessionAndValidate();
       setOrtState(5);
       setOrtLog(`Test result: ${testResult}`);
