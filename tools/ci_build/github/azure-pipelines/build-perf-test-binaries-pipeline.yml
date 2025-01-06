@@ -36,6 +36,5 @@ stages:
 - ${{ if parameters.BuildPythonPackages }}:
   - template: stages/py-gpu-packaging-stage.yml
     parameters:
-      enable_linux_gpu: true
-      enable_windows_gpu: false
+      enable_linux_cuda: true
       cuda_version: 12.2
