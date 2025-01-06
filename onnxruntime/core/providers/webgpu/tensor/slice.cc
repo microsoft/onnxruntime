@@ -52,7 +52,7 @@ Status SliceProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "var input_indices: input_indices_t;\n"
                             << "var carry = 0u;\n";
 
-  for (auto i = input.Rank() - 1; i >= 0; i--) {
+  for (auto i = input.Rank(); i >= 0; i--) {
     std::string input_shape_i = absl::StrCat("input_shape_", i);
     std::string steps_i = absl::StrCat("steps_", i);
     std::string starts_i = absl::StrCat("starts_", i);
