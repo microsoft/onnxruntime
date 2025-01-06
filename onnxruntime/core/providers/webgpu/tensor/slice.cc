@@ -154,7 +154,7 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
 
   // PROCESS INPUTS
   std::cout << "processing inputs" << std::endl;
-    std::cout << "process axes" << std::endl;
+  std::cout << "process axes" << std::endl;
 
   std::vector<uint32_t> axes;
   for (unsigned int i = 0; i < axes_raw.size(); i++) {
