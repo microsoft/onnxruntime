@@ -193,9 +193,6 @@ TEST(SliceTest, Slice2D_OneAxis) {
 }
 
 TEST(SliceTest, Slice2D_TwoAxes) {
-  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Not covered by WebGPU test suite";
-  }
   RunSliceTest<float>({6, 4},
                       {00.0f, 01.0f, 02.0f, 03.0f,
                        10.0f, 11.0f, 12.0f, 13.0f,

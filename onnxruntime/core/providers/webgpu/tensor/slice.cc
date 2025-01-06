@@ -52,7 +52,7 @@ Status SliceProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "var input_indices: input_indices_t;\n"
                             << "var carry = 0u;\n";
 
-  for (auto i = input.Rank(); i >= 0; i--) {
+  for (auto i = input.Rank() - 1; i >= 0; i--) {
     std::string input_shape_i = absl::StrCat("input_shape_", i);
     std::string steps_i = absl::StrCat("steps_", i);
     std::string starts_i = absl::StrCat("starts_", i);
@@ -292,6 +292,39 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
   }
   std::cout << std::endl;
 
+  std::cout << "reorder inputs in order of axis" << std::endl;
+
+  std::vector<int32_t> signs_reordered;
+  std::vector<uint32_t> steps_reordered, starts_reordered;
+  for (unsigned int i = 0; i < axes.size(); i++) {
+    signs_reordered.push_back(0);
+    steps_reordered.push_back(0);
+    starts_reordered.push_back(0);
+  }
+  for (unsigned int i = 0; i < axes.size(); i++) {
+    int32_t dim = axes[i];
+    signs_reordered[dim] = signs[i];
+    steps_reordered[dim] = steps[i];
+    starts_reordered[dim] = starts[i];
+  }
+
+  std::cout << "REORDERED INPUTS" << std::endl;
+  std::cout << "signs_reordered: ";
+  for (auto sign : signs_reordered) {
+    std::cout << sign << " ";
+  }
+  std::cout << std::endl;
+  std::cout << "steps_reordered: ";
+  for (auto step : steps_reordered) {
+    std::cout << step << " ";
+  }
+  std::cout << std::endl;
+  std::cout << "starts_reordered: ";
+  for (auto start : starts_reordered) {
+    std::cout << start << " ";
+  }
+  std::cout << std::endl;
+
   std::cout << "calculate output dims" << std::endl;
 
   // calculate output dims
@@ -322,7 +355,7 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
       .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddOutputs({output_tensor})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({{output_size}, {starts}, {steps}, {signs}});
+      .AddUniformVariables({{output_size}, {starts_reordered}, {steps_reordered}, {signs_reordered}});
   return context.RunProgram(program);
 }
 
