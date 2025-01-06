@@ -46,7 +46,7 @@ extern "C" {
 
 //! @}
 // SAL2 Definitions
-#ifndef _WIN32
+#ifndef _MSC_VER
 #define _In_
 #define _In_z_
 #define _In_opt_

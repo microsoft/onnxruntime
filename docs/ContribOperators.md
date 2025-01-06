@@ -1625,7 +1625,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(int8), tensor(int16), tensor(int32), tensor(int64), tensor(uint8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(float16), tensor(float), tensor(double)</dt>
+<dt><tt>T</tt> : tensor(int8), tensor(int16), tensor(int32), tensor(int64), tensor(uint8), tensor(uint16), tensor(uint32), tensor(uint64), tensor(float16), tensor(float), tensor(double), tensor(bfloat16)</dt>
 <dd>Constrain input and output types.</dd>
 </dl>
 

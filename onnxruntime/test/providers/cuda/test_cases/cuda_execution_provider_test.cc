@@ -19,7 +19,7 @@ namespace cuda {
 namespace test {
 // TODO: Since the "DeferredRelease" has been migrated to CudaStream class,
 // we should migrate this test from CudaEP unit test to CudaStream unit test.
-TEST(CudaEpTestDeferredRelease, WithArena) {
+TEST(TestDeferredRelease, WithArena) {
   // Create CUDA EP.
   CUDAExecutionProviderInfo info;
   CUDAExecutionProvider ep(info);
@@ -52,7 +52,7 @@ TEST(CudaEpTestDeferredRelease, WithArena) {
   ORT_THROW_IF_ERROR(ep.OnRunEnd(true, run_opts));
 }
 
-TEST(CudaEpTestDeferredRelease, WithoutArena) {
+TEST(TestDeferredRelease, WithoutArena) {
   // Create CUDA EP.
   CUDAExecutionProviderInfo info;
   CUDAExecutionProvider ep(info);

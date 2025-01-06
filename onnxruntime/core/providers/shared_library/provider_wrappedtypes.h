@@ -934,6 +934,8 @@ struct NodeUnit final {
   Node::EdgeConstIterator OutputEdgesEnd() const { return g_host->NodeUnit__OutputEdgesEnd(this); }
 };
 
+struct ModelSavingOptions;
+
 struct Model final {
   static std::unique_ptr<Model> Create(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
                                        const IOnnxRuntimeOpSchemaRegistryList* local_registries, const logging::Logger& logger) {
@@ -945,7 +947,12 @@ struct Model final {
   Graph& MainGraph() { return g_host->Model__MainGraph(this); }
 
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> ToProto() { return g_host->Model__ToProto(this); }
-  std::unique_ptr<ONNX_NAMESPACE::ModelProto> ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name, const std::filesystem::path& file_path, size_t initializer_size_threshold) { return g_host->Model__ToGraphProtoWithExternalInitializers(this, external_file_name, file_path, initializer_size_threshold); }
+  std::unique_ptr<ONNX_NAMESPACE::ModelProto> ToGraphProtoWithExternalInitializers(
+      const std::filesystem::path& external_file_name,
+      const std::filesystem::path& file_path, const ModelSavingOptions& model_saving_options) {
+    return g_host->Model__ToGraphProtoWithExternalInitializers(this, external_file_name, file_path,
+                                                               model_saving_options);
+  }
   const ModelMetaData& MetaData() const noexcept { return g_host->Model__MetaData(this); }
 
   Model() = delete;
@@ -1468,6 +1475,9 @@ struct OrtRunOptions final {
 struct OrtSessionOptions final {
   const std::unordered_map<std::string, std::string>& GetConfigOptions() const {
     return onnxruntime::g_host->SessionOptions__GetConfigOptionsMap(this);
+  }
+  bool GetEnableProfiling() const {
+    return onnxruntime::g_host->SessionOptions__GetEnableProfiling(this);
   }
   PROVIDER_DISALLOW_ALL(OrtSessionOptions)
 };
