@@ -428,6 +428,7 @@ if __name__ == "__main__":
     else:
         profile_file = arguments.input
     from profile_result_processor import process_results
+
     results = process_results(profile_file, arguments)
 
     for line in results:
