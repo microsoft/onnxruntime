@@ -337,6 +337,7 @@ def group_node_results(sess_time):
     return lines
 
 
+
 def process_results(profile_file, args):
     profile_records = load_profile_json(profile_file)
 
