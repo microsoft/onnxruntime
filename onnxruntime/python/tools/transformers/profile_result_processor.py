@@ -38,14 +38,6 @@ def parse_arguments(argv=None):
     )
 
     parser.add_argument(
-        "--basic_optimization",
-        required=False,
-        action="store_true",
-        help="Enable only basic graph optimizations. By default, all optimizations are enabled in OnnxRuntime",
-    )
-    parser.set_defaults(basic_optimization=False)
-
-    parser.add_argument(
         "--kernel_time_only",
         required=False,
         action="store_true",
