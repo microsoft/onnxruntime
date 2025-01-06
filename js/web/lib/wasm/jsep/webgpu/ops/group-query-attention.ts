@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 
 import { TensorView } from '../../tensor-view';
-import { ShapeUtil } from '../../util';
-
 import { createAttributeWithCacheKey } from '../attribute-with-cache-key';
 import { ComputeContext } from '../types';
 
@@ -87,7 +85,7 @@ export const validateInputs = (
   let kvSequenceLength = sequenceLength;
 
   let pastSequenceLength = 0;
-  const packedQKV = !key || key === null ||  key.dims.length === 0 || ShapeUtil.size(key.dims) === 0;
+  const packedQKV = !key || key === null ||  key.dims.length === 0;
   const headSize = !packedQKV
     ? Math.floor(hiddenSize / attributes.numHeads)
     : Math.floor(hiddenSize / (attributes.numHeads + 2 * attributes.kvNumHeads));
@@ -121,7 +119,7 @@ export const validateInputs = (
   }
 
   let qkvFormat: AttentionQkvFormat = AttentionQkvFormat.qkvBNSH;
-  if (!packedQKV) {
+  if (key && key.dims.length > 0) {
     if (query.dims.length !== 3) {
       throw new Error('Input "query" is expected to have 3 dimensions when key is given');
     }
