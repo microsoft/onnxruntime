@@ -3,11 +3,13 @@
 
 #include "core/providers/qnn/builder/qnn_utils.h"
 
+#include <algorithm>
 #include <functional>
+#include <limits>
+#include <map>
 #include <numeric>
 #include <string>
 #include <vector>
-#include <map>
 
 #include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_def.h"

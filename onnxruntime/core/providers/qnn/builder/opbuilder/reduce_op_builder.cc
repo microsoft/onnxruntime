@@ -2,8 +2,9 @@
 // Licensed under the MIT License.
 
 #include <algorithm>
-#include <string>
 #include <array>
+#include <set>
+#include <string>
 #include <vector>
 
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"

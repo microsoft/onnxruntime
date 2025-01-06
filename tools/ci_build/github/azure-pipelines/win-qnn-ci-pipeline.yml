@@ -52,8 +52,8 @@ jobs:
     clean: all
   strategy:
     matrix:
-      DYNAMIC_LIB:
-        QnnLibKind: 'dynamic_lib'
+      SHARED_LIB:
+        QnnLibKind: 'shared_lib'
       STATIC_LIB:
         QnnLibKind: 'static_lib'
   steps:

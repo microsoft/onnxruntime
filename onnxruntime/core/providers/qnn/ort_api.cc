@@ -3,6 +3,10 @@
 
 #include "core/providers/qnn/ort_api.h"
 
+#include <algorithm>
+#include <memory>
+#include <utility>
+
 namespace onnxruntime {
 
 #if BUILD_QNN_EP_STATIC_LIB

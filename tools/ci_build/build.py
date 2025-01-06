@@ -129,7 +129,7 @@ def _openvino_verify_device_type(device_read):
 
 
 def _qnn_verify_library_kind(library_kind):
-    choices = ["dynamic_lib", "static_lib"]
+    choices = ["shared_lib", "static_lib"]
     if library_kind not in choices:
         print("\nYou have specified an invalid library kind for QNN EP.")
         print(f"The invalid library kind was: {library_kind}")
@@ -593,10 +593,10 @@ def parse_arguments():
     parser.add_argument(
         "--use_qnn",
         nargs="?",
-        const="dynamic_lib",  # If provide --use_qnn without an arg, defaults to a dynamic library.
+        const="shared_lib",  # If provide --use_qnn without an arg, defaults to a shared library.
         type=_qnn_verify_library_kind,
-        help="Build with QNN support. Specify 'dynamic_lib' or 'static_lib' to build QNN EP "
-        "as a dynamic or static library, respectively.",
+        help="Build with QNN support. Specify 'shared_lib' or 'static_lib' to build QNN EP "
+        "as a shared or static library, respectively.",
     )
     parser.add_argument("--qnn_home", help="Path to QNN SDK dir.")
     parser.add_argument("--use_rknpu", action="store_true", help="Build with RKNPU.")
@@ -2369,7 +2369,7 @@ def build_nuget_package(
     elif use_rocm:
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm"
     elif use_qnn:
-        if use_qnn != "dynamic_lib":
+        if use_qnn != "shared_lib":
             raise BuildError("Currently NuGet packages with QNN require QNN EP to be built as a shared library.")
         execution_provider = "/p:ExecutionProvider=qnn"
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.QNN"

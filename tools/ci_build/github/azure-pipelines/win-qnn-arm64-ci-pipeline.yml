@@ -48,8 +48,8 @@ jobs:
     clean: all
   strategy:
     matrix:
-      DYNAMIC_LIB:
-        QnnLibKind: 'dynamic_lib'
+      SHARED_LIB:
+        QnnLibKind: 'shared_lib'
       STATIC_LIB:
         QnnLibKind: 'static_lib'
   steps:
@@ -129,7 +129,7 @@ jobs:
       TargetFolder: '$(Build.ArtifactStagingDirectory)'
       CleanTargetFolder: true
       OverWrite: true
-    condition: and(succeeded(), and(ne(variables['Build.Reason'], 'PullRequest'), eq(variables['QnnLibKind'], 'dynamic_lib')))
+    condition: and(succeeded(), and(ne(variables['Build.Reason'], 'PullRequest'), eq(variables['QnnLibKind'], 'shared_lib')))
 
   - task: PublishBuildArtifacts@1
     displayName: 'Publish Artifact'
@@ -137,4 +137,4 @@ jobs:
       PathtoPublish: '$(Build.ArtifactStagingDirectory)'
       ArtifactName: 'internal_release'
       publishLocation: 'Container'
-    condition: and(succeeded(), and(ne(variables['Build.Reason'], 'PullRequest'), eq(variables['QnnLibKind'], 'dynamic_lib')))
+    condition: and(succeeded(), and(ne(variables['Build.Reason'], 'PullRequest'), eq(variables['QnnLibKind'], 'shared_lib')))

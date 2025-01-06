@@ -23,7 +23,6 @@
     onnxruntime_add_include_to_target(onnxruntime_providers_qnn onnxruntime_common onnxruntime_framework onnx
                                                                 onnx_proto protobuf::libprotobuf-lite
                                                                 flatbuffers::flatbuffers Boost::mp11)
-    target_link_libraries(onnxruntime_providers_qnn)
     add_dependencies(onnxruntime_providers_qnn onnx ${onnxruntime_EXTERNAL_DEPENDENCIES})
     set_target_properties(onnxruntime_providers_qnn PROPERTIES CXX_STANDARD_REQUIRED ON)
     set_target_properties(onnxruntime_providers_qnn PROPERTIES FOLDER "ONNXRuntime")

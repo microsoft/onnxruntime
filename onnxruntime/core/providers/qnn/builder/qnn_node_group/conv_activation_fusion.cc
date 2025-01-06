@@ -6,6 +6,8 @@
 #include <limits>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
