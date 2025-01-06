@@ -119,7 +119,7 @@ export const validateInputs = (
   }
 
   let qkvFormat: AttentionQkvFormat = AttentionQkvFormat.qkvBNSH;
-  if (key && key.dims.length > 0) {
+  if (packedQKV) {
     if (query.dims.length !== 3) {
       throw new Error('Input "query" is expected to have 3 dimensions when key is given');
     }
