@@ -13,8 +13,6 @@ Example of importing profile result file from onnxruntime_perf_test:
     python profiler.py --input profile_2021-10-25_12-02-41.json
 """
 
-NODES_TYPE_CONTAINING_SUBGRAPH = ["Scan", "Loop", "If"]
-
 
 def parse_arguments(argv=None):
     parser = argparse.ArgumentParser()
@@ -173,6 +171,7 @@ def run_profile(onnx_model_path, use_gpu, provider, basic_optimization, thread_n
 
     profile_file = session.end_profiling()
     return profile_file
+
 
 def get_dim_from_type_proto(dim):
     return getattr(dim, dim.WhichOneof("value")) if type(dim.WhichOneof("value")) == str else None  # noqa: E721
@@ -428,6 +427,7 @@ if __name__ == "__main__":
     else:
         profile_file = arguments.input
     from profile_result_processor import process_results
+
     results = process_results(profile_file, arguments)
 
     for line in results:
