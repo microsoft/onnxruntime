@@ -76,6 +76,37 @@ inline void InitOrtCppApi() {
 #endif
 }
 
+/// <summary>
+/// Creates an onnxruntime or onnx object. Works for both static and shared library builds of QNN EP.
+/// <!-- Example: auto model = Factory<Model>::Create(/* args ... */); -->
+/// Example: auto model = Factory&lt;Model&gt;::Create(/* args ... */);
+/// </summary>
+/// <typeparam name="T">Type of the object to create</typeparam>
+template <typename T>
+struct Factory {
+  template <typename... Params>
+  static inline std::unique_ptr<T> Create(Params&&... params) {
+#if BUILD_QNN_EP_STATIC_LIB
+    return std::make_unique<T>(std::forward<Params>(params)...);
+#else
+    return T::Create(std::forward<Params>(params)...);
+#endif
+  }
+};
+
+// Specialization of Factory for creating NodeUnit objects.
+template <>
+struct Factory<NodeUnit> {
+  static std::unique_ptr<NodeUnit> Create(gsl::span<const Node* const> dq_nodes,
+                                          const Node& target_node,
+                                          gsl::span<const Node* const> q_nodes,
+                                          NodeUnit::Type unit_type,
+                                          gsl::span<const NodeUnitIODef> inputs,
+                                          gsl::span<const NodeUnitIODef> outputs,
+                                          size_t input_edge_count,
+                                          gsl::span<const Node_EdgeEnd* const> output_edges);
+};
+
 inline const ConfigOptions& RunOptions__GetConfigOptions(const RunOptions& run_options) {
 #if BUILD_QNN_EP_STATIC_LIB
   return run_options.config_options;
@@ -101,48 +132,6 @@ inline std::vector<NodeIndex>& IndexedSubGraph__Nodes(IndexedSubGraph& indexed_s
 }
 
 std::vector<const Node*> Graph__Nodes(const Graph& graph);
-
-inline std::unique_ptr<Model> Model__Create(const std::string& graph_name, bool is_onnx_domain_only,
-                                            const logging::Logger& logger) {
-#if BUILD_QNN_EP_STATIC_LIB
-  return std::make_unique<Model>(graph_name, is_onnx_domain_only, logger);
-#else
-  return Model::Create(graph_name, is_onnx_domain_only, logger);
-#endif
-}
-
-inline std::unique_ptr<ModelMetadefIdGenerator> ModelMetadefIdGenerator__Create() {
-#if BUILD_QNN_EP_STATIC_LIB
-  return std::make_unique<ModelMetadefIdGenerator>();
-#else
-  return ModelMetadefIdGenerator::Create();
-#endif
-}
-
-inline std::unique_ptr<ONNX_NAMESPACE::TypeProto> TypeProto__Create() {
-#if BUILD_QNN_EP_STATIC_LIB
-  return std::make_unique<ONNX_NAMESPACE::TypeProto>();
-#else
-  return ONNX_NAMESPACE::TypeProto::Create();
-#endif
-}
-
-inline std::unique_ptr<Node_EdgeEnd> Node_EdgeEnd__Create(const Node& node, int src_arg_index, int dst_arg_index) {
-#if BUILD_QNN_EP_STATIC_LIB
-  return std::make_unique<Node_EdgeEnd>(node, src_arg_index, dst_arg_index);
-#else
-  return Node_EdgeEnd::Create(node, src_arg_index, dst_arg_index);
-#endif
-}
-
-std::unique_ptr<NodeUnit> NodeUnit__Create(gsl::span<const Node* const> dq_nodes,
-                                           const Node& target_node,
-                                           gsl::span<const Node* const> q_nodes,
-                                           NodeUnit::Type unit_type,
-                                           gsl::span<const NodeUnitIODef> inputs,
-                                           gsl::span<const NodeUnitIODef> outputs,
-                                           size_t input_edge_count,
-                                           gsl::span<const Node_EdgeEnd* const> output_edges);
 
 inline std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
 GetQDQNodeUnits(const GraphViewer& graph_viewer, const logging::Logger& logger) {

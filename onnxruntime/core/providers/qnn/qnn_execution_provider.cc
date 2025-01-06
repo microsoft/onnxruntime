@@ -157,7 +157,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
                                            const ConfigOptions* config_options)
     : IExecutionProvider{onnxruntime::kQnnExecutionProvider} {
   InitOrtCppApi();
-  metadef_id_generator_ = ModelMetadefIdGenerator__Create();
+  metadef_id_generator_ = Factory<ModelMetadefIdGenerator>::Create();
 
   if (config_options) {
     disable_cpu_ep_fallback_ = config_options->GetConfigOrDefault(
@@ -983,7 +983,7 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                                           buffer_size,
                                                                           max_spill_fill_buffer_size));
     }
-    qnn_ep_context_model_ = Model__Create("qnn_ep_context_model", false, logger);
+    qnn_ep_context_model_ = Factory<Model>::Create(std::string{"qnn_ep_context_model"}, false, logger);
     ORT_RETURN_IF_ERROR(qnn::CreateEPContextNodes(qnn_ep_context_model_.get(),
                                                   context_buffer.get(),
                                                   buffer_size,

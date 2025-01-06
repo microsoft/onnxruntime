@@ -50,14 +50,14 @@ std::vector<const Node*> Graph__Nodes(const Graph& graph) {
 #endif
 }
 
-std::unique_ptr<NodeUnit> NodeUnit__Create(gsl::span<const Node* const> dq_nodes,
-                                           const Node& target_node,
-                                           gsl::span<const Node* const> q_nodes,
-                                           NodeUnit::Type unit_type,
-                                           gsl::span<const NodeUnitIODef> inputs,
-                                           gsl::span<const NodeUnitIODef> outputs,
-                                           size_t input_edge_count,
-                                           gsl::span<const Node_EdgeEnd* const> output_edges) {
+std::unique_ptr<NodeUnit> Factory<NodeUnit>::Create(gsl::span<const Node* const> dq_nodes,
+                                                    const Node& target_node,
+                                                    gsl::span<const Node* const> q_nodes,
+                                                    NodeUnit::Type unit_type,
+                                                    gsl::span<const NodeUnitIODef> inputs,
+                                                    gsl::span<const NodeUnitIODef> outputs,
+                                                    size_t input_edge_count,
+                                                    gsl::span<const Node_EdgeEnd* const> output_edges) {
 #if BUILD_QNN_EP_STATIC_LIB
   Node::EdgeSet output_edge_set;
   for (const Node_EdgeEnd* edge_end : output_edges) {
