@@ -1,13 +1,17 @@
-import argparse
-import json
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+# --------------------------------------------------------------------------
 
-"""
-This profiler result processor print out the kernel time spent on each Node of the model.
+"""This profiler result processor print out the kernel time spent on each Node of the model.
 Example of importing profile result file from onnxruntime_perf_test:
     python profile_result_processor.py --input profile_2021-10-25_12-02-41.json
 """
 
-NODES_TYPE_CONTAINING_SUBGRAPH = ["Scan", "Loop", "If"]
+import argparse
+import json
+
+_NODES_TYPE_CONTAINING_SUBGRAPH = frozenset(("Scan", "Loop", "If"))
 
 
 def parse_arguments(argv=None):
