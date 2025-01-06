@@ -92,7 +92,7 @@ def parse_kernel_results(sess_time, threshold=0):
             kernel_name = item["name"]
 
             op_name = item["args"]["op_name"]
-            if op_name in NODES_TYPE_CONTAINING_SUBGRAPH:
+            if op_name in _NODES_TYPE_CONTAINING_SUBGRAPH:
                 continue
 
             # Handle MemcpyHostToDevice and MemcpyDeviceToHost here
@@ -183,7 +183,7 @@ def parse_node_results(sess_time, kernel_time_only=False, threshold=0):
                 continue
 
             op_name = item["args"]["op_name"]
-            if op_name in NODES_TYPE_CONTAINING_SUBGRAPH:
+            if op_name in _NODES_TYPE_CONTAINING_SUBGRAPH:
                 continue
 
             if node_name in node_time:
@@ -258,7 +258,7 @@ def group_node_results(sess_time):
             op_name = item["args"]["op_name"]
 
             # TODO: shall we have a separated group for nodes with subgraph?
-            if op_name in NODES_TYPE_CONTAINING_SUBGRAPH:
+            if op_name in _NODES_TYPE_CONTAINING_SUBGRAPH:
                 continue
 
             if "provider" not in item["args"]:
