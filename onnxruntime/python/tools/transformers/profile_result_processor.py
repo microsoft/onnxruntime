@@ -75,7 +75,6 @@ def parse_kernel_results(sess_time, threshold=0):
 
     Args:
         sess_time (List[Dict]): profile data
-        kernel_time_only (bool, optional): Only include items for kernel time. Defaults to False.
         threshold (int, optional): Minimum ratio of duration among all. Defaults to 0.
 
     Returns:
@@ -119,7 +118,7 @@ def parse_kernel_results(sess_time, threshold=0):
 
     # Output items with run time ratio > thresholds, and sorted by duration in the descending order.
     lines = []
-    lines.append(f"\nTop expensive kernels with Time% >= {threshold*100:.2f}:")
+    lines.append(f"\nTop expensive kernels with Time% >= {threshold * 100:.2f}:")
     lines.append("-" * 64)
     lines.append("Total(μs)\tTime%\tCalls\tAvg(μs)\tKernel")
     for kernel_name, duration in sorted(kernel_time.items(), key=lambda x: x[1], reverse=True):
@@ -220,7 +219,7 @@ def parse_node_results(sess_time, kernel_time_only=False, threshold=0):
         )
 
     # Output items with run time ratio > thresholds, and sorted by duration in the descending order.
-    lines.append(f"\nTop expensive nodes with Time% >= {threshold*100:.2f}:")
+    lines.append(f"\nTop expensive nodes with Time% >= {threshold * 100:.2f}:")
     lines.append("-" * 64)
     lines.append("Total(μs)\tTime%\tAvg(μs)\tCalls\tProvider\tNode")
     for node_name, duration in sorted(node_time.items(), key=lambda x: x[1], reverse=True):
@@ -242,8 +241,6 @@ def group_node_results(sess_time):
 
     Args:
         sess_time (List[Dict]): profile data
-        kernel_time_only (bool): Only include items for kernel time.
-        use_gpu (bool): GPU is used in profiling or not.
 
     Returns:
         List[str]: lines of string for output.
@@ -335,7 +332,6 @@ def group_node_results(sess_time):
         )
 
     return lines
-
 
 
 def process_results(profile_file, args):
