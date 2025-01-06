@@ -27,7 +27,7 @@ module.exports = async function main(PRESERVE, PACKAGES_TO_INSTALL) {
   {
     await installOrtPackages('vite-default', PRESERVE, PACKAGES_TO_INSTALL);
 
-    await runDevTest('vite-default', '➜  Local:', 5173);
-    await runProdTest('vite-default', '➜  Local:', 4173);
+    await runDevTest('vite-default', '\x1b[32m➜\x1b[39m  \x1b[1mLocal\x1b[22m:', 5173);
+    await runProdTest('vite-default', '\x1b[32m➜\x1b[39m  \x1b[1mLocal\x1b[22m:', 4173);
   }
 };
