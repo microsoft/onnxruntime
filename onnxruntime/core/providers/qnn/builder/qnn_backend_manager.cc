@@ -48,6 +48,14 @@ static Qnn_Version_t GetQnnInterfaceApiVersion(const QnnSystemInterface_t* qnn_i
   return qnn_interface->systemApiVersion;
 }
 
+static char* DlError() {
+#ifdef _WIN32
+  return "";
+#else
+  return ::dlerror();
+#endif
+}
+
 template <typename F, class T>
 Status QnnBackendManager::GetQnnInterfaceProvider(const char* lib_path,
                                                   const char* interface_provider_name,
@@ -1693,7 +1701,10 @@ Status QnnBackendManager::GetOrRegisterContextMemHandle(Qnn_ContextHandle_t cont
          weak_backend_manager = weak_from_this(),
          weak_context_mem_handle_manager = std::weak_ptr{context_mem_handle_manager}](
             void* shared_memory_address) {
-          // get QnnBackendManager shared_ptr to ensure that qnn_interface is still valid
+          // Get QnnBackendManager shared_ptr to ensure that:
+          // - QNN interface is still valid.
+          // - QNN context handle is still valid. This should be true as long as QNN contexts are not freed from
+          //   anywhere other than the destructor.
           auto backend_manager = weak_backend_manager.lock();
           if (!backend_manager) {
             return;
@@ -1703,10 +1714,6 @@ Status QnnBackendManager::GetOrRegisterContextMemHandle(Qnn_ContextHandle_t cont
           if (!context_mem_handle_manager) {
             return;
           }
-
-          // TODO should also ensure that the QNN context handle is still valid.
-          // This *should* be true as long as the QNN contexts are not freed from anywhere other than
-          // ~QnnBackendManager(). If we are able to lock weak_backend_manager, we haven't gotten to the dtor yet.
 
           auto unregister_status = context_mem_handle_manager->Unregister(shared_memory_address);
           if (!unregister_status.IsOK()) {

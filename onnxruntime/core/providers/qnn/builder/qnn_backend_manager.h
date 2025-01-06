@@ -70,41 +70,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
         enable_htp_weight_sharing_(config.enable_htp_weight_sharing) {
   }
 
- public:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
 
   ~QnnBackendManager();
-  char* DlError() {
-#ifdef _WIN32
-    return "";
-#else
-    return ::dlerror();
-#endif
-  }
-
-  Status LoadBackend();
-
-  Status InitializeBackend();
-
-  Status CreateDevice();
-
-  Status ReleaseDevice();
-
-  Status ShutdownBackend();
-
-  Status InitializeProfiling();
-
-  Status ReleaseProfilehandle();
-
-  Status CreateContext();
-
-  Status ReleaseContext();
-
-  Status ResetContext() {
-    ORT_RETURN_IF_ERROR(ReleaseContext());
-
-    return CreateContext();
-  }
 
   std::unique_ptr<unsigned char[]> GetContextBinaryBuffer(uint64_t& written_buffer_size);
 
@@ -170,6 +138,24 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
                                        Qnn_MemHandle_t& mem_handle);
 
  private:
+  Status LoadBackend();
+
+  Status InitializeBackend();
+
+  Status CreateDevice();
+
+  Status ReleaseDevice();
+
+  Status ShutdownBackend();
+
+  Status InitializeProfiling();
+
+  Status ReleaseProfilehandle();
+
+  Status CreateContext();
+
+  Status ReleaseContext();
+
   // Sets the ORT logger and creates a corresponding QNN logger with the same log level.
   // NOTE: caller must lock the `logger_mutex_` before calling this function.
   Status InitializeQnnLog(const logging::Logger& logger);
