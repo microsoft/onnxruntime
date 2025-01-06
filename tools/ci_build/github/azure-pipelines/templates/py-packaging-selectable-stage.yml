@@ -272,9 +272,6 @@ stages:
         parameters:
           condition: 'succeeded'
 
-      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-        displayName: 'Clean Agent Directories'
-        condition: always()
 
   - ${{ if eq(parameters.enable_linux_gpu, true) }}:
     - job: Linux_py_GPU_Wheels
@@ -530,6 +527,3 @@ stages:
         parameters:
           condition: 'succeeded'
 
-      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-        displayName: 'Clean Agent Directories'
-        condition: always()

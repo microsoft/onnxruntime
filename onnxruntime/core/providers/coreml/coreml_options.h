@@ -17,6 +17,9 @@ class CoreMLOptions {
   std::string strategy_;
   bool profile_compute_plan_{false};
   bool allow_low_precision_accumulation_on_gpu_{false};
+  // path to store the converted coreml model
+  // we may run DisableModelCache() to disable model caching
+  mutable std::string model_cache_directory_;
 
  public:
   explicit CoreMLOptions(uint32_t coreml_flags);
@@ -31,6 +34,11 @@ class CoreMLOptions {
   bool AllowLowPrecisionAccumulationOnGPU() const { return allow_low_precision_accumulation_on_gpu_; }
   bool UseStrategy(std::string_view strategy) const { return strategy_ == strategy; }
   bool ProfileComputePlan() const { return profile_compute_plan_ && create_mlprogram_; }
+
+  std::string_view ModelCacheDirectory() const { return model_cache_directory_; }
+  // The options specified by the user are const, but if there's an error setting up caching we disable it
+  // so that the EP can still be used. The error is logged for the user to investigate.
+  void DisableModelCache() const { model_cache_directory_.clear(); }
 
  private:
   void ValidateAndParseProviderOption(const ProviderOptions& options);

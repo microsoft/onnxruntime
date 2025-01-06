@@ -72,9 +72,6 @@ stages:
     pool: onnxruntime-Ubuntu2204-AMD-CPU
 
     steps:
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
 
     - checkout: self
       clean: true
@@ -140,7 +137,7 @@ stages:
       skipComponentGovernanceDetection: true
     workspace:
       clean: all
-    pool: onnxruntime-Linux-GPU-T4
+    pool: Onnxruntime-Linux-A10-24G
     steps:
     - checkout: self
       clean: true

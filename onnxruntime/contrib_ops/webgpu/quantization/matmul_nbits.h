@@ -14,13 +14,12 @@ using namespace onnxruntime::webgpu;
 
 class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
  public:
-  MatMulNBitsProgram(uint32_t output_number, uint32_t block_size, uint32_t tile_m, int components_b, bool has_zero_points, bool is_intel) : Program{"MatMulNBits"},
-                                                                                                                                            output_number_{output_number},
-                                                                                                                                            block_size_{block_size},
-                                                                                                                                            tile_m_{tile_m},
-                                                                                                                                            components_b_{components_b},
-                                                                                                                                            has_zero_points_{has_zero_points},
-                                                                                                                                            is_intel_{is_intel} {
+  MatMulNBitsProgram(uint32_t output_number, uint32_t block_size, uint32_t tile_m, int components_b, bool has_zero_points) : Program{"MatMulNBits"},
+                                                                                                                             output_number_{output_number},
+                                                                                                                             block_size_{block_size},
+                                                                                                                             tile_m_{tile_m},
+                                                                                                                             components_b_{components_b},
+                                                                                                                             has_zero_points_{has_zero_points} {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -32,7 +31,6 @@ class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
   uint32_t tile_m_;
   int components_b_;
   bool has_zero_points_;
-  bool is_intel_;
 };
 
 class MatMulNBits final : public WebGpuKernel {

@@ -742,7 +742,7 @@ bool EinsumOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* init
   const auto& op_type = node.OpType();
   int32_t input0_type;
   int32_t input1_type;
-  bool has_input1 = input_defs.size() > 1 && input_defs[1]->Exists();
+  bool has_input1 = TensorExists(input_defs, 1);
 
   if (!GetType(*input_defs[0], input0_type, logger) ||
       (has_input1 && !GetType(*input_defs[1], input1_type, logger))) {

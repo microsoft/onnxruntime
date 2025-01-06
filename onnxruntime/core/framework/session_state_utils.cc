@@ -68,18 +68,19 @@ struct ExtDataValueDeleter {
 // buffered_tensor is not null, buffered_tensor holds the real buffer pointed
 // by tensor_proto. buffered_tensor must be the owner of the buffer and deleter
 // should release the buffer when tensor_proto is released.
-static inline common::Status ExtDataTensorProtoToTensor(const Env& env,
-                                                        const std::basic_string<PATH_CHAR_TYPE>& proto_path,
-                                                        const ONNX_NAMESPACE::TensorProto& tensor_proto,
-                                                        Tensor& tensor, OrtCallback& ext_data_deleter,
-                                                        Tensor* buffered_tensor = nullptr) {
+static common::Status ExtDataTensorProtoToTensor(const Env& env,
+                                                 const std::basic_string<PATH_CHAR_TYPE>& proto_path,
+                                                 const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                                 Tensor& tensor, OrtCallback& ext_data_deleter,
+                                                 PrepackedWeightsForGraph& prepacked_for_graph,
+                                                 Tensor* buffered_tensor = nullptr) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
 
   void* ext_data_buf = nullptr;
   SafeInt<size_t> ext_data_len = 0;
   ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(env, proto_path.c_str(), tensor_proto,
                                                        ext_data_buf, ext_data_len, ext_data_deleter,
-                                                       buffered_tensor));
+                                                       buffered_tensor, &prepacked_for_graph));
 
   // NB: creating a do-nothing allocator per tensor is wasteful; can perhaps be
   // avoided if the Tensor class implements the do-nothing behavior when given a
@@ -100,6 +101,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                                              const AllocatorPtr& alloc, const AllocatorPtr& default_cpu_alloc,
                                              OrtValue& ort_value, const DataTransferManager& data_transfer_mgr,
                                              const ExternalDataLoaderManager& external_data_loader_mgr,
+                                             PrepackedWeightsForGraph& prepacked_for_graph,
                                              bool use_device_allocator_for_initializers = false,
                                              Tensor* buffered_tensor = nullptr) {
   if (bool(alloc) == (m != nullptr)) {
@@ -127,8 +129,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       ORT_RETURN_IF_ERROR(utils::LoadExtDataToTensorFromTensorProto(env, proto_path, tensor_proto,
                                                                     *external_data_loader, *p_tensor));
 
-      auto ml_tensor = DataTypeImpl::GetType<Tensor>();
-      ort_value.Init(p_tensor.release(), ml_tensor, ml_tensor->GetDeleteFunc());
+      Tensor::InitOrtValue(std::move(*p_tensor), ort_value);
       return common::Status::OK();
     } else if (device_type == OrtDevice::CPU) {
       // for external initializer on CPU we will use mmap for large initializers so don't need to allocate memory in advance
@@ -139,7 +140,8 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       // TensorProtoToTensor it would copy the data, causing unnecessary overhead
       OrtCallback ext_data_deleter;
       ORT_RETURN_IF_ERROR(ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, *p_tensor,
-                                                     ext_data_deleter, buffered_tensor));
+                                                     ext_data_deleter, prepacked_for_graph,
+                                                     buffered_tensor));
 
       ExtDataValueDeleter deleter{ext_data_deleter, p_tensor.get()};
       MLDataType ml_tensor_type = DataTypeImpl::GetType<Tensor>();
@@ -163,8 +165,9 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       OrtCallback ext_data_deleter;
       std::optional<ScopedOrtCallbackInvoker> scoped_ort_callback_invoker;
       ORT_RETURN_IF_ERROR(ExtDataTensorProtoToTensor(env, proto_path, tensor_proto, *p_deserialize_tensor,
-                                                     ext_data_deleter, buffered_tensor));
-      scoped_ort_callback_invoker = ScopedOrtCallbackInvoker(ext_data_deleter);
+                                                     ext_data_deleter, prepacked_for_graph,
+                                                     buffered_tensor));
+      scoped_ort_callback_invoker.emplace(ext_data_deleter);
       // TODO!! Need a temp buffer allocator for non-escape buffers that maybe too big for stack allocation.
 
       return CopyTensorFromCPUToDevice(data_transfer_mgr, p_deserialize_tensor, p_tensor, ort_value);
@@ -272,13 +275,14 @@ common::Status SaveInitializedTensors(
     const ExecutionPlanBase& exec_plan,
     const SessionOptions& session_options,
     const MemoryProfileFunction& memory_profile_func,
-    std::unordered_map<std::string, std::unique_ptr<Tensor>>& buffered_tensors) {
+    std::unordered_map<std::string, std::unique_ptr<Tensor>>& buffered_tensors,
+    PrepackedWeightsForGraph& prepacked_for_graph) {
   LOGS(logger, INFO) << "Saving initialized tensors.";
   ORT_ENFORCE(ort_value_name_idx_map.MaxIdx() > -1, "OrtValue indexes should have been populated.");
 
   // Determine if an intializer was supplied by the user for the purpose of sharing and if it requires a cross-device
   // copy. In case a cross-device copy is required, sharing cannot be accomplished since we allocate our own buffer
-  // for the destn device which cannot be shared between sessions.
+  // for the destination device which cannot be shared between sessions.
   auto use_user_supplied_initializer =
       [&session_options, &exec_plan, &logger, &ort_value_name_idx_map](const std::string& name) -> bool {
     bool retval = false;
@@ -401,6 +405,7 @@ common::Status SaveInitializedTensors(
 
       Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, (m.has_value()) ? &*m : nullptr, alloc,
                                          default_cpu_alloc, ort_value, data_transfer_mgr, external_data_loader_mgr,
+                                         prepacked_for_graph,
                                          use_device_allocator_for_initializers, p_tensor);
       if (!st.IsOK()) {
         std::ostringstream oss;
