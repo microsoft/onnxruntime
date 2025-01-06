@@ -1,0 +1,26 @@
+name: WebAssembly
+
+on: [push]
+
+jobs:
+  Vcpkg:
+    runs-on: ubuntu-latest
+    container:
+      image: emscripten/emsdk:3.1.74
+    steps:
+      - uses: actions/checkout@v4
+      - name: "Run apt"
+        run: |
+          sudo apt update -y
+          sudo apt install -y pkg-config
+
+      - name: "Run vcpkg(wasm32-emscripten)"
+        uses: lukka/run-vcpkg@v11.5
+        with:
+          vcpkgDirectory: "/usr/local/share/vcpkg" # VCPKG_INSTALLATION_ROOT
+          runVcpkgInstall: true
+          vcpkgJsonGlob: "cmake/vcpkg.json"
+          vcpkgConfigurationJsonGlob: "cmake/vcpkg-configuration.json"
+        env:
+          VCPKG_INSTALLED_DIR: "${{ github.workspace }}/.build"
+          VCPKG_DEFAULT_TRIPLET: "wasm32-emscripten"
