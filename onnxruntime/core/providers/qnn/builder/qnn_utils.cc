@@ -65,7 +65,7 @@ size_t GetElementSizeByType(ONNXTensorElementDataType elem_type) {
   return pos->second;
 }
 
-size_t GetQnnTensorDataSize(gsl::span<const uint32_t> shape, Qnn_DataType_t element_type) {
+size_t GetQnnTensorDataSizeInBytes(gsl::span<const uint32_t> shape, Qnn_DataType_t element_type) {
   ORT_ENFORCE(!shape.empty(), "Empty shape not allowed.");  // TODO can we just treat empty shape as a scalar?
   SafeInt<size_t> data_length = GetElementSizeByType(element_type);
   return std::accumulate(shape.begin(), shape.end(), data_length, std::multiplies<>{});

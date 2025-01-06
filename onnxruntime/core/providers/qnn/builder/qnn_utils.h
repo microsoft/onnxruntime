@@ -26,8 +26,7 @@ size_t GetElementSizeByType(const Qnn_DataType_t& data_type);
 
 size_t GetElementSizeByType(ONNXTensorElementDataType elem_type);
 
-// Gets tensor data size in bytes.
-size_t GetQnnTensorDataSize(gsl::span<const uint32_t> shape, Qnn_DataType_t element_data_type);
+size_t GetQnnTensorDataSizeInBytes(gsl::span<const uint32_t> shape, Qnn_DataType_t element_data_type);
 
 // TODO: make these work with Wrappers?
 std::ostream& operator<<(std::ostream& out, const Qnn_Param_t& qnn_param);

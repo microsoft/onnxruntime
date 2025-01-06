@@ -322,8 +322,8 @@ Status QnnModel::SetupTensors(std::vector<QnnTensorInfo>& qnn_tensor_infos,
   qnn_tensor_infos.resize(tensor_count);
 
   for (auto& tensor_wrapper : tensor_wrappers) {
-    const size_t length = utils::GetQnnTensorDataSize(tensor_wrapper.GetTensorDims(),
-                                                      tensor_wrapper.GetTensorDataType());
+    const size_t length = utils::GetQnnTensorDataSizeInBytes(tensor_wrapper.GetTensorDims(),
+                                                             tensor_wrapper.GetTensorDataType());
     const auto& tensor_name = tensor_wrapper.GetName();
     auto qnn_index = is_input ? GetGraphInputIndex(tensor_name) : GetOutputIndex(tensor_name);
     auto ort_index = is_input ? GetOrtInputIndex(tensor_name) : qnn_index;

@@ -31,7 +31,7 @@ Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, co
   const auto qnn_tensor_data_type = GetQnnTensorDataType(qnn_tensor);
 
   const size_t qnn_tensor_data_size =
-      utils::GetQnnTensorDataSize(gsl::span{qnn_tensor_dims, size_t{qnn_tensor_rank}}, qnn_tensor_data_type);
+      utils::GetQnnTensorDataSizeInBytes(gsl::span{qnn_tensor_dims, size_t{qnn_tensor_rank}}, qnn_tensor_data_type);
 
   {
     std::scoped_lock g{mem_handles_mutex_};
