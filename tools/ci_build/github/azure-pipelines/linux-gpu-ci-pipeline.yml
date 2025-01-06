@@ -203,6 +203,10 @@ stages:
               set -ex; \
               cp /onnxruntime_src/tools/ci_build/github/linux/docker/scripts/manylinux/requirements.txt /tmp/requirements.txt; \
               export PATH=/opt/python/cp312-cp312/bin:$PATH; \
+              export CUDNN_FRONTEND_LOG_FLIE=stdout; \
+              export CUDNN_FRONTEND_LOG_INFO=1; \
+              export CUDNN_LOGLEVEL_DBG=3; \
+              export CUDNN_LOGDEST_DBG=stdout; \
               python3 -m pip install -r /tmp/requirements.txt; \
               python3 -m pip install /build/Release/dist/*.whl; \
               cd /build/Release && xargs -a /build/Release/perms.txt chmod a+x; \
