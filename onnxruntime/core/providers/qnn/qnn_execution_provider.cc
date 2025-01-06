@@ -400,17 +400,17 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
   }
 
-  qnn_backend_manager_ = std::make_shared<qnn::QnnBackendManager>(
-      std::move(backend_path),
-      profiling_level_etw,
-      profiling_level,
-      std::move(profiling_file_path),
-      context_priority,
-      std::move(qnn_saver_path),
-      device_id_,
-      htp_arch,
-      soc_model,
-      enable_htp_weight_sharing);
+  qnn_backend_manager_ = qnn::QnnBackendManager::Create(
+      qnn::QnnBackendManagerConfig{backend_path,
+                                   profiling_level_etw,
+                                   profiling_level,
+                                   profiling_file_path,
+                                   context_priority,
+                                   qnn_saver_path,
+                                   device_id_,
+                                   htp_arch,
+                                   soc_model,
+                                   enable_htp_weight_sharing});
 
 #ifdef _WIN32
   auto& etwRegistrationManager = logging::EtwRegistrationManager::Instance();

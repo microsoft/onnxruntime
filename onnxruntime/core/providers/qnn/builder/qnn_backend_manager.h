@@ -32,29 +32,45 @@ namespace qnn {
 
 class QnnModel;
 
+// configuration values for QnnBackendManager creation
+struct QnnBackendManagerConfig {
+  std::string backend_path;
+  ProfilingLevel profiling_level_etw;
+  ProfilingLevel profiling_level;
+  std::string profiling_file_path;
+  ContextPriority context_priority;
+  std::string qnn_saver_path;
+  uint32_t device_id;
+  QnnHtpDevice_Arch_t htp_arch;
+  uint32_t soc_model;
+  bool enable_htp_weight_sharing;
+};
+
 class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager> {
+ private:
+  // private tag to pass to constructor to ensure that constructor cannot be directly called externally
+  struct PrivateConstructorTag {};
+
  public:
-  QnnBackendManager(std::string&& backend_path,
-                    ProfilingLevel profiling_level_etw,
-                    ProfilingLevel profiling_level,
-                    std::string&& profiling_file_path,
-                    ContextPriority context_priority,
-                    std::string&& qnn_saver_path,
-                    uint32_t device_id,
-                    QnnHtpDevice_Arch_t htp_arch,
-                    uint32_t soc_model,
-                    bool enable_htp_weight_sharing)
-      : backend_path_(backend_path),
-        profiling_level_etw_(profiling_level_etw),
-        profiling_level_(profiling_level),
-        profiling_file_path_(profiling_file_path),
-        context_priority_(context_priority),
-        qnn_saver_path_(qnn_saver_path),
-        device_id_(device_id),
-        htp_arch_(htp_arch),
-        soc_model_(soc_model),
-        enable_htp_weight_sharing_(enable_htp_weight_sharing) {
+  static std::shared_ptr<QnnBackendManager> Create(const QnnBackendManagerConfig& config) {
+    return std::make_shared<QnnBackendManager>(config, PrivateConstructorTag{});
   }
+
+  // Note: creation should be done via Create()
+  QnnBackendManager(const QnnBackendManagerConfig& config, PrivateConstructorTag)
+      : backend_path_(config.backend_path),
+        profiling_level_etw_(config.profiling_level_etw),
+        profiling_level_(config.profiling_level),
+        profiling_file_path_(config.profiling_file_path),
+        context_priority_(config.context_priority),
+        qnn_saver_path_(config.qnn_saver_path),
+        device_id_(config.device_id),
+        htp_arch_(config.htp_arch),
+        soc_model_(config.soc_model),
+        enable_htp_weight_sharing_(config.enable_htp_weight_sharing) {
+  }
+
+ public:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
 
   ~QnnBackendManager();
