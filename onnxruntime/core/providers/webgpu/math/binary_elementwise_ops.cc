@@ -193,10 +193,7 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
         .AddIndices(reshaped_output_shape)
         .AddIndices(reshaped_lhs_shape)
         .AddIndices(reshaped_rhs_shape)
-        .CacheHint("V" + absl::StrJoin({reshaped_lhs_shape.NumDimensions(),
-                                        reshaped_rhs_shape.NumDimensions(),
-                                        reshaped_output_shape.NumDimensions()},
-                                       ";"));
+        .CacheHint("V");
   } else {
     // Mode Broadcast
     // cache hint: "B"
