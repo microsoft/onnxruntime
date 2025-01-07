@@ -4,7 +4,7 @@
 import { Env } from 'onnxruntime-common';
 
 import type { OrtWasmModule } from './wasm-types';
-import { importWasmModule, inferWasmPathFromScriptSrc } from './wasm-utils-import';
+import { importWasmModule, inferWasmPathPrefixFromScriptSrc } from './wasm-utils-import';
 
 let wasm: OrtWasmModule | undefined;
 let initialized = false;
@@ -157,10 +157,10 @@ export const initializeWebAssembly = async (flags: Env.WebAssemblyFlags): Promis
         // if mjs path is specified, use it as the base path for the .wasm file.
         config.locateFile = (fileName) => new URL(fileName, mjsPathOverride).href;
       } else if (objectUrl) {
-        const inferredWasmPath = inferWasmPathFromScriptSrc();
-        if (inferredWasmPath) {
+        const inferredWasmPathPrefix = inferWasmPathPrefixFromScriptSrc();
+        if (inferredWasmPathPrefix) {
           // if the wasm module is preloaded, use the inferred wasm path as the base path for the .wasm file.
-          config.locateFile = (fileName) => inferredWasmPath + fileName;
+          config.locateFile = (fileName) => inferredWasmPathPrefix + fileName;
         }
       }
 

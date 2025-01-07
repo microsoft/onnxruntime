@@ -50,11 +50,11 @@ const getScriptSrc = (): string | undefined => {
 export const scriptSrc = getScriptSrc();
 
 /**
- * Infer the wasm path from the script source URL.
+ * Infer the wasm path prefix from the script source URL.
  *
- * @returns The inferred wasm path, or undefined if the script source URL is not available or is a blob URL.
+ * @returns The inferred wasm path prefix, or undefined if the script source URL is not available or is a blob URL.
  */
-export const inferWasmPathFromScriptSrc = (): string | undefined => {
+export const inferWasmPathPrefixFromScriptSrc = (): string | undefined => {
   if (scriptSrc && !scriptSrc.startsWith('blob:')) {
     return scriptSrc.substring(0, scriptSrc.lastIndexOf('/') + 1);
   }
@@ -189,7 +189,7 @@ export const importWasmModule = async (
   prefixOverride: string | undefined,
   isMultiThreaded: boolean,
 ): Promise<[undefined | string, EmscriptenModuleFactory<OrtWasmModule>]> => {
-  if (!urlOverride && !prefixOverride && embeddedWasmModule) {
+  if (!urlOverride && !prefixOverride && embeddedWasmModule && scriptSrc && isSameOrigin(scriptSrc)) {
     return [undefined, embeddedWasmModule];
   } else {
     const wasmModuleFilename = !BUILD_DEFS.DISABLE_JSEP

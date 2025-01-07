@@ -13,7 +13,7 @@ const { NODEJS_TEST_CASES, BROWSER_TEST_CASES, BUNDLER_TEST_CASES } = require('.
 
 // commandline arguments
 const parsedArgs = minimist(process.argv.slice(2));
-const BROWSER = parsedArgs.browser || 'Chrome_default';
+const BROWSER = parsedArgs.browser || 'Chrome_headless';
 // Preserve the existing test folder
 // When this flag is set, the test folder will not be cleared before running the tests.
 // NPM install will not be run again.
