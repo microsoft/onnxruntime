@@ -32,6 +32,9 @@ project.xcworkspace
 .gradle
 local.properties
 android.iml
+.cxx/
+*.keystore
+!debug.keystore
 
 # Cocoapods
 #
