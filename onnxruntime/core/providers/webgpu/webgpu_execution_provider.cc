@@ -749,12 +749,12 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       force_cpu_node_names_{std::move(config.force_cpu_node_names)},
       enable_graph_capture_{config.enable_graph_capture} {
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
-        enable_pix_capture_ = config.enable_pix_capture;
+  enable_pix_capture_ = config.enable_pix_capture;
 #else
-        if (config.enable_pix_capture) {
-          ORT_THROW("Support PIX capture requires extra build flags (--enable_pix_capture)");
-        }
-#endif // ENABLE_PIX_FOR_WEBGPU_EP
+  if (config.enable_pix_capture) {
+    ORT_THROW("Support PIX capture requires extra build flags (--enable_pix_capture)");
+  }
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 }
 
 std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
@@ -865,9 +865,9 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     context_.CollectProfilingData(profiler_->Events());
   }
 
- if (IsPIXCaptureEnabled()) {
-  context_.GeneratePIXFrame();
- }
+  if (IsPIXCaptureEnabled()) {
+    context_.GeneratePIXFrame();
+  }
 
   return Status::OK();
 }
