@@ -2488,36 +2488,61 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
       result.push_back(ComputeCapability::Create(std::move(sub_graph)));
       return result;
     } else {
-      SubGraphCollection_t supported_node_vectors = {
-        {{0}, true},
-        {{1}, true},
-        {{2}, true},
-        {{3}, true},
-        {{4}, true},
-        };
+      const size_t number_of_ort_nodes = graph.NumberOfNodes();
+      SubGraphCollection_t supported_node_vectors;
+      std::vector<long unsigned int> subgraph_indices;
+      const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);
+      for (size_t i = 0; i < number_of_ort_nodes; i++) {
+        const auto& node = graph.GetNode(node_index[i]);
+        const bool is_context_node = node && !node->OpType().empty() && node->OpType() == "EPContext";
+        if (is_context_node) {
+          // Add previous nonempty subgraph
+          if (subgraph_indices.size() > 0) {
+            supported_node_vectors.emplace_back(subgraph_indices, true); 
+          }
+          // Add epcontext node, which is always just 1 node
+          supported_node_vectors.emplace_back(std::vector<long unsigned int>{i}, true); 
+          subgraph_indices = {};
+        } else {
+          subgraph_indices.emplace_back(i);
+        }
+        if (i == number_of_ort_nodes - 1 && !is_context_node) {
+          supported_node_vectors.emplace_back(subgraph_indices, true); 
+        }
+      }
+      // SubGraphCollection_t supported_node_vectors = {
+      //   {{0}, true},
+      //   {{1}, true},
+      //   {{2}, true},
+      //   {{3}, true},
+      //   {{4}, true},
+      //   };
 
+      std::ostringstream oss;
       for (auto supported_node_vector: supported_node_vectors) {
         auto subgraph_idx = supported_node_vector.first[0];
         std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, TRTGenerateId(graph), subgraph_idx);
 
         // Print supported_node_vector of std::pair<std::vector<long unsigned int>, bool>
-        std::ostringstream oss;
-        oss << "First: [";
+        
+        oss << "supported_node_vector={";
         for (auto item: supported_node_vector.first) {
           oss << item << ", ";
         }
-        LOGS_DEFAULT(VERBOSE) << "*#* supported_node_vector=" << oss.str() << "], Second (bool): " << supported_node_vector.second;
-        oss.str("");
+        oss << "}, " << supported_node_vector.second << " ";
+        oss << "Subgraph nodes=[";
         // Print sub_graph nodes of type std::unique_ptr<IndexedSubGraph> -> Nodes()
         const auto nodes = sub_graph->Nodes(); //std::vector<const Node*> Nodes()
         for (const auto node: nodes) {
           oss << node << ", ";
         }
-        // Log the formatted string
-        LOGS_DEFAULT(VERBOSE) << "*#* sub_graph: Nodes=[" << oss.str() << "]";
+        oss << "] \n";
+        // End of print
 
         result.push_back(ComputeCapability::Create(std::move(sub_graph)));
       }
+      // Log the formatted string
+      LOGS_DEFAULT(VERBOSE) << "*#* " << oss.str();
       return result;
     }
     

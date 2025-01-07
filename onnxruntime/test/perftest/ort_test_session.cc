@@ -57,6 +57,16 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     : rand_engine_(rd()), input_names_(m.GetInputCount()), input_names_str_(m.GetInputCount()), input_length_(m.GetInputCount()) {
   Ort::SessionOptions session_options;
 
+  // Set any extra session configuration entries provided by the user via command-line arguments.
+  //
+  // Some session config entries can also be set via dedicated command-line options.
+  // If the user uses multiple command-line options to set the same session config entry,
+  // we'll print a warning. Note that the dedicated command-line options will take precedence.
+  const auto& user_session_configs = performance_test_config.run_config.session_config_entries;
+  for (auto& it : user_session_configs) {
+    session_options.AddConfigEntry(it.first.c_str(), it.second.c_str());
+  }
+
   provider_name_ = performance_test_config.machine_config.provider_type_name;
   if (provider_name_ == onnxruntime::kDnnlExecutionProvider) {
 #ifdef USE_DNNL
@@ -649,16 +659,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   else
     session_options.DisableMemPattern();
   session_options.SetExecutionMode(performance_test_config.run_config.execution_mode);
-
-  // Set any extra session configuration entries provided by the user via command-line arguments.
-  //
-  // Some session config entries can also be set via dedicated command-line options.
-  // If the user uses multiple command-line options to set the same session config entry,
-  // we'll print a warning. Note that the dedicated command-line options will take precedence.
-  const auto& user_session_configs = performance_test_config.run_config.session_config_entries;
-  for (auto& it : user_session_configs) {
-    session_options.AddConfigEntry(it.first.c_str(), it.second.c_str());
-  }
 
   auto warn_dup_config_entry = [&user_session_configs](const char* key) -> void {
     if (user_session_configs.find(key) != user_session_configs.end()) {
