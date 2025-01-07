@@ -1117,7 +1117,7 @@ void QnnBackendManager::ReleaseResources() {
 
   result = TerminateQnnLog();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(INFO) << "Failed to TerminateQnnLog.";
+    LOGS_DEFAULT(ERROR) << "Failed to TerminateQnnLog.";
   }
 
   if (backend_lib_handle_) {
