@@ -220,12 +220,12 @@ class QnnModelWrapper {
                                  QnnQuantParamsWrapper(), std::move(cast_output_shape));
     ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(cast_output)), "Failed to add tensor.");
     ORT_RETURN_IF_NOT(CreateQnnNode(cast_output_name,
-                                                      QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                      "Cast",
-                                                      {input_name},
-                                                      {cast_output_name},
-                                                      {},
-                                                      do_op_validation),
+                                    QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                    "Cast",
+                                    {input_name},
+                                    {cast_output_name},
+                                    {},
+                                    do_op_validation),
                       "Failed to add node.");
 
     return Status::OK();
