@@ -1097,7 +1097,7 @@ void QnnBackendManager::ReleaseResources() {
 
   auto result = ReleaseContext();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(INFO) << "Failed to ReleaseContext.";
+    LOGS_DEFAULT(ERROR) << "Failed to ReleaseContext.";
   }
 
   result = ReleaseProfilehandle();
