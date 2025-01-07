@@ -862,9 +862,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
   if (status.IsOK()) {
     LOGS(logger, VERBOSE) << "QNN SetupBackend succeed";
     backend_setup_completed_ = true;
-  }
-  else
-  {
+  } else {
     LOGS_DEFAULT(INFO) << "Failed to setup so cleaning up";
     ReleaseResources();
   }
