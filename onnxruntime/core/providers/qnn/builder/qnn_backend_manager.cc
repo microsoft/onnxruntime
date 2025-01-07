@@ -863,7 +863,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
     LOGS(logger, VERBOSE) << "QNN SetupBackend succeed";
     backend_setup_completed_ = true;
   } else {
-    LOGS_DEFAULT(INFO) << "Failed to setup so cleaning up";
+    LOGS_DEFAULT(WARNING) << "Failed to setup so cleaning up";
     ReleaseResources();
   }
 
