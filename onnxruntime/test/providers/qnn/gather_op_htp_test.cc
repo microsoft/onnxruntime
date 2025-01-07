@@ -119,6 +119,15 @@ TEST_F(QnnHTPBackendTests, GatherOp_IndicesStaticInt32_Axis0) {
                                        ExpectedEPNodeAssignment::All);
 }
 
+// negative indices
+TEST_F(QnnHTPBackendTests, GatherOp_IndicesStaticInt32_NegativeIndices) {
+  RunQDQGatherOpTest<uint8_t, int32_t>(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f}),
+                                       TestInputDef<int32_t>({2, 2}, true, {-1, 1, 1, 2}),
+                                       {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
+                                       13,
+                                       ExpectedEPNodeAssignment::All);
+}
+
 // Test creates a DQ -> Gather -> Q -> DQ graph, and checks that all
 // nodes are supported by the QNN EP, and that the inference results are as accurate as CPU EP.
 //
@@ -173,6 +182,7 @@ static void RunOpTest(const std::string& op_type,
                   fp32_abs_err);
 }
 
+// Non-QDQ model, Gather with static input and dynamic int64 indices
 TEST_F(QnnHTPBackendTests, GatherOp_IndicesStaticInt64) {
   RunOpTest<float, int64_t>("Gather",
                             TestInputDef<float>({3, 2}, true, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f}),
