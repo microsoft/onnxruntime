@@ -1112,7 +1112,7 @@ void QnnBackendManager::ReleaseResources() {
 
   result = ShutdownBackend();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(INFO) << "Failed to ShutdownBackend.";
+    LOGS_DEFAULT(ERROR) << "Failed to ShutdownBackend.";
   }
 
   result = TerminateQnnLog();
