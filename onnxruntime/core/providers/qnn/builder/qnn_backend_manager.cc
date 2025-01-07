@@ -1102,7 +1102,7 @@ void QnnBackendManager::ReleaseResources() {
 
   result = ReleaseProfilehandle();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(INFO) << "Failed to ReleaseProfilehandle.";
+    LOGS_DEFAULT(ERROR) << "Failed to ReleaseProfilehandle.";
   }
 
   result = ReleaseDevice();
