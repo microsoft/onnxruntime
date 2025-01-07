@@ -72,7 +72,7 @@ class WebGpuContextFactory {
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
 // PIX(https://devblogs.microsoft.com/pix/introduction/) is a profiling tool
 // provides by Microsoft. It has ability to do GPU capture to profile gpu
-// behaviour among different GPU vendors. It works on Windows only.
+// behavior among different GPU vendors. It works on Windows only.
 //
 // GPU capture(present-to-present) provided by PIX uses present as a frame boundary to
 // capture and generate a valid frame infos. But ORT WebGPU EP doesn't have any present logic
