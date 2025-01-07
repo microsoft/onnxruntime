@@ -265,6 +265,33 @@ Status BaseOpBuilder::SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& 
   return Status::OK();
 }
 
+static Status GetTransposeStrides(const TensorShape& input_shape,
+                                  gsl::span<const size_t> perm,
+                                  gsl::span<size_t> input_strides,
+                                  gsl::span<size_t> output_strides) {
+  const size_t rank = input_shape.NumDimensions();
+  ORT_RETURN_IF_NOT(perm.size() == rank, "Expected perm size of ", rank);
+  ORT_RETURN_IF_NOT(input_strides.size() == rank, "Expected input_strides size of ", rank);
+  ORT_RETURN_IF_NOT(output_strides.size() == rank, "Expected output_strides size of ", rank);
+  std::vector<int64_t> output_shape_dims(rank);
+  ORT_RETURN_IF_ERROR((qnn::utils::PermuteShape<int64_t, size_t>(input_shape.GetDims(), perm, output_shape_dims)));
+  const TensorShape output_shape = TensorShape::FromExistingBuffer(output_shape_dims);
+
+  for (size_t i = 0; i < rank; ++i) {
+    int64_t stride = (i < rank - 1) ? input_shape.SizeFromDimension(i + 1) : 1;
+    ORT_RETURN_IF_NOT(stride > 0, "Expected positive shape dims when computing strides.");
+    input_strides[i] = static_cast<size_t>(stride);
+  }
+
+  for (size_t i = 0; i < rank; ++i) {
+    int64_t stride = (i < rank - 1) ? output_shape.SizeFromDimension(i + 1) : 1;
+    ORT_RETURN_IF_NOT(stride > 0, "Expected positive shape dims when computing strides.");
+    output_strides[i] = static_cast<size_t>(stride);
+  }
+
+  return Status::OK();
+}
+
 // Internal function to transpose data of rank 5 with the given permutation.
 // Example: transpose input from either (N,C,H,W,D) or (C,N,H,W,D) to (H,W,D,C,N).
 static Status TransposeDataRank5(const TensorShape& input_shape,
@@ -272,44 +299,28 @@ static Status TransposeDataRank5(const TensorShape& input_shape,
                                  size_t elem_byte_size,
                                  gsl::span<const uint8_t> input_buffer,
                                  gsl::span<uint8_t> output_buffer) {
-  const size_t rank = input_shape.NumDimensions();
-  ORT_RETURN_IF_NOT(rank == 5 && perm.size() == 5, "Invalid input tensor rank");
+  std::array<size_t, 5> input_strides = {};
+  std::array<size_t, 5> output_strides = {};
+  ORT_RETURN_IF_ERROR(GetTransposeStrides(input_shape, perm, input_strides, output_strides));
+
   std::vector<size_t> perm_inverse(perm.size());
   ORT_RETURN_IF_ERROR(qnn::utils::InvertPerm<size_t>(perm, perm_inverse));
-
-  std::vector<int64_t> output_shape_dims(rank);
-  ORT_RETURN_IF_ERROR((qnn::utils::PermuteShape<int64_t, size_t>(input_shape.GetDims(), perm, output_shape_dims)));
-  const TensorShape output_shape = TensorShape::FromExistingBuffer(output_shape_dims);
-
-  std::array<size_t, 5> src_strides = {};
-  for (size_t i = 0; i < rank; ++i) {
-    int64_t stride = (i < rank - 1) ? input_shape.SizeFromDimension(i + 1) : 1;
-    ORT_RETURN_IF_NOT(stride > 0, "Expected positive shape dims when computing strides.");
-    src_strides[i] = static_cast<size_t>(stride);
-  }
-
-  std::array<size_t, 5> dst_strides = {};
-  for (size_t i = 0; i < rank; ++i) {
-    int64_t stride = (i < rank - 1) ? output_shape.SizeFromDimension(i + 1) : 1;
-    ORT_RETURN_IF_NOT(stride > 0, "Expected positive shape dims when computing strides.");
-    dst_strides[i] = static_cast<size_t>(stride);
-  }
 
   for (int64_t d0 = 0; d0 < input_shape[0]; ++d0) {
     for (int64_t d1 = 0; d1 < input_shape[1]; ++d1) {
       for (int64_t d2 = 0; d2 < input_shape[2]; ++d2) {
         for (int64_t d3 = 0; d3 < input_shape[3]; ++d3) {
           for (int64_t d4 = 0; d4 < input_shape[4]; ++d4) {
-            const size_t src_elem_index = ((d0 * src_strides[0]) +
-                                           (d1 * src_strides[1]) +
-                                           (d2 * src_strides[2]) +
-                                           (d3 * src_strides[3]) +
-                                           (d4 * src_strides[4]));
-            const size_t dst_elem_index = ((d0 * dst_strides[perm_inverse[0]]) +
-                                           (d1 * dst_strides[perm_inverse[1]]) +
-                                           (d2 * dst_strides[perm_inverse[2]]) +
-                                           (d3 * dst_strides[perm_inverse[3]]) +
-                                           (d4 * dst_strides[perm_inverse[4]]));
+            const size_t src_elem_index = ((d0 * input_strides[0]) +
+                                           (d1 * input_strides[1]) +
+                                           (d2 * input_strides[2]) +
+                                           (d3 * input_strides[3]) +
+                                           (d4 * input_strides[4]));
+            const size_t dst_elem_index = ((d0 * output_strides[perm_inverse[0]]) +
+                                           (d1 * output_strides[perm_inverse[1]]) +
+                                           (d2 * output_strides[perm_inverse[2]]) +
+                                           (d3 * output_strides[perm_inverse[3]]) +
+                                           (d4 * output_strides[perm_inverse[4]]));
 
             const size_t src_byte_index = src_elem_index * elem_byte_size;
             const size_t dst_byte_index = dst_elem_index * elem_byte_size;
@@ -367,37 +378,26 @@ Status BaseOpBuilder::TransposeFromNchwToHwcn(const QnnModelWrapper& qnn_model_w
                                               bool is_3d) const {
   auto onnx_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(initializer.data_type());
   const size_t elem_byte_size = qnn::utils::GetElementSizeByType(onnx_type);
-  ORT_RETURN_IF_NOT(elem_byte_size != 0, "Can't get element byte size from given ONNX type");
-
   std::vector<int64_t> input_shape = qnn::utils::GetInitializerShape<int64_t>(initializer);
-  ORT_RETURN_IF_NOT((is_3d && input_shape.size() == 5) || (!is_3d && input_shape.size() == 4),
-                    "Unexpected rank: only support rank 4 or rank 5 input shapes");
-
-  if (!is_3d) {
-    input_shape.push_back(1);  // Make it 3D by making shape (N,C,H,W,1)
-  }
-
   std::vector<uint8_t> input_buffer;
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(initializer, input_buffer));
   transposed_data.resize(input_buffer.size());
-
-  return TransposeDataRank5(TensorShape::FromExistingBuffer(input_shape),
-                            nchw2hwcn_perm_3d,
-                            elem_byte_size,
-                            input_buffer,
-                            transposed_data);
+  return TransposeFromNchwToHwcn(std::move(input_shape), elem_byte_size, input_buffer, transposed_data, is_3d);
 }
 
-Status BaseOpBuilder::TransposeFromNchwToHwcn(std::vector<int64_t> input_shape_dims,
+Status BaseOpBuilder::TransposeFromNchwToHwcn(std::vector<int64_t>&& original_input_shape_dims,
                                               size_t elem_byte_size,
                                               gsl::span<const uint8_t> input_buffer,
                                               gsl::span<uint8_t> output_buffer,
                                               bool is_3d) const {
+  std::vector<int64_t> input_shape_dims = std::move(original_input_shape_dims);
   const size_t rank = input_shape_dims.size();
-  ORT_RETURN_IF_NOT((is_3d && rank == 5) || (!is_3d && rank == 4), "Invalid input tensor rank");
-  ORT_RETURN_IF_NOT(input_buffer.size() == output_buffer.size(),
-                    "Expected input_buffer.size() == output_buffer.size()");
-  ORT_RETURN_IF_NOT(elem_byte_size != 0, "Can't get element byte size from given ONNX type");
+  ORT_RETURN_IF_NOT((is_3d && rank == 5) || (!is_3d && rank == 4), "Only support input of rank 4 or 5 but got rank ",
+                    rank);
+  ORT_RETURN_IF_NOT(output_buffer.size() == input_buffer.size(),
+                    "Expected output buffer's size to equal the input buffer's size: ",
+                    output_buffer.size(), " != ", input_buffer.size());
+  ORT_RETURN_IF_NOT(elem_byte_size != 0, "Invalid element byte size due to potentially unsupported type");
 
   if (!is_3d) {
     input_shape_dims.push_back(1);  // Make it 3D by making shape (N,C,H,W,1)
@@ -416,37 +416,26 @@ Status BaseOpBuilder::TransposeFromCnhwToHwcn(const QnnModelWrapper& qnn_model_w
                                               bool is_3d) const {
   auto onnx_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(initializer.data_type());
   const size_t elem_byte_size = qnn::utils::GetElementSizeByType(onnx_type);
-  ORT_RETURN_IF_NOT(elem_byte_size != 0, "Can't get element byte size from given ONNX type");
-
   std::vector<int64_t> input_shape = qnn::utils::GetInitializerShape<int64_t>(initializer);
-  ORT_RETURN_IF_NOT((is_3d && input_shape.size() == 5) || (!is_3d && input_shape.size() == 4),
-                    "Unexpected rank: only support rank 4 or rank 5 input shapes");
-
-  if (!is_3d) {
-    input_shape.push_back(1);  // Make it 3D by making shape (C,N,H,W,1)
-  }
-
   std::vector<uint8_t> input_buffer;
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(initializer, input_buffer));
   transposed_data.resize(input_buffer.size());
-
-  return TransposeDataRank5(TensorShape::FromExistingBuffer(input_shape),
-                            cnhw2hwcn_perm_3d,
-                            elem_byte_size,
-                            input_buffer,
-                            transposed_data);
+  return TransposeFromCnhwToHwcn(std::move(input_shape), elem_byte_size, input_buffer, transposed_data, is_3d);
 }
 
-Status BaseOpBuilder::TransposeFromCnhwToHwcn(std::vector<int64_t> input_shape_dims,
+Status BaseOpBuilder::TransposeFromCnhwToHwcn(std::vector<int64_t>&& original_input_shape_dims,
                                               size_t elem_byte_size,
                                               gsl::span<const uint8_t> input_buffer,
                                               gsl::span<uint8_t> output_buffer,
                                               bool is_3d) const {
+  std::vector<int64_t> input_shape_dims = std::move(original_input_shape_dims);
   const size_t rank = input_shape_dims.size();
-  ORT_RETURN_IF_NOT((is_3d && rank == 5) || (!is_3d && rank == 4), "Invalid input tensor rank");
-  ORT_RETURN_IF_NOT(input_buffer.size() == output_buffer.size(),
-                    "Expected input_buffer.size() == output_buffer.size()");
-  ORT_RETURN_IF_NOT(elem_byte_size != 0, "Can't get element byte size from given ONNX type");
+  ORT_RETURN_IF_NOT((is_3d && rank == 5) || (!is_3d && rank == 4), "Only support input of rank 4 or 5 but got rank ",
+                    rank);
+  ORT_RETURN_IF_NOT(output_buffer.size() == input_buffer.size(),
+                    "Expected output buffer's size to equal the input buffer's size: ",
+                    output_buffer.size(), " != ", input_buffer.size());
+  ORT_RETURN_IF_NOT(elem_byte_size != 0, "Invalid element byte size due to potentially unsupported type");
 
   if (!is_3d) {
     input_shape_dims.push_back(1);  // Make it 3D by making shape (C,N,H,W,1)

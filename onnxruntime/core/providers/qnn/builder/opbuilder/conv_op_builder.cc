@@ -429,12 +429,6 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
         return static_cast<int64_t>(dim);
       });
 
-      std::vector<uint8_t> original_tensor_bytes;
-      ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_info.initializer_tensor, original_tensor_bytes));
-      unpacked_tensor.resize(original_tensor_bytes.size());
-      size_t elem_byte_size = qnn::utils::GetElementSizeByType(
-          static_cast<ONNX_NAMESPACE::TensorProto_DataType>(input_info.initializer_tensor->data_type()));
-
       // The reshape (unsqueeze) may require us to shift the quant parameter's axis.
       if (input_info.quant_param.IsPerChannel()) {
         ORT_RETURN_IF_ERROR(input_info.quant_param.HandleUnsqueeze<uint32_t>(input_info.shape, shape_2d));
@@ -443,10 +437,21 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
       //
       // Get transposed initializer bytes.
       //
+      std::vector<uint8_t> original_tensor_bytes;
+      ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_info.initializer_tensor,
+                                                                  original_tensor_bytes));
+      unpacked_tensor.resize(original_tensor_bytes.size());
+      const size_t elem_byte_size = qnn::utils::GetElementSizeByType(
+          static_cast<ONNX_NAMESPACE::TensorProto_DataType>(input_info.initializer_tensor->data_type()));
+      ORT_RETURN_IF(elem_byte_size == 0, "Can't get element byte size from given ONNX type for initializer ",
+                    input1_name.c_str());
+
       if (conv_type == OnnxConvType::kConv) {
-        ORT_RETURN_IF_ERROR(TransposeFromNchwToHwcn(shape_2d_int64, elem_byte_size, original_tensor_bytes, unpacked_tensor));
+        ORT_RETURN_IF_ERROR(TransposeFromNchwToHwcn(std::move(shape_2d_int64), elem_byte_size, original_tensor_bytes,
+                                                    unpacked_tensor, /*is_3d*/ false));
       } else if (conv_type == OnnxConvType::kConvTranspose) {
-        ORT_RETURN_IF_ERROR(TransposeFromCnhwToHwcn(shape_2d_int64, elem_byte_size, original_tensor_bytes, unpacked_tensor));
+        ORT_RETURN_IF_ERROR(TransposeFromCnhwToHwcn(std::move(shape_2d_int64), elem_byte_size, original_tensor_bytes,
+                                                    unpacked_tensor, /*is_3d*/ false));
       } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unexpected convolution op type: ", node_unit.OpType().c_str());
       }

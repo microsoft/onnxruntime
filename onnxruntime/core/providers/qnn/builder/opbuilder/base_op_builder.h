@@ -272,8 +272,7 @@ class BaseOpBuilder : public IOpBuilder {
                                  const onnx::TensorProto& initializer,
                                  std::vector<uint8_t>& transposed_data,
                                  bool is_3d = false) const;
-
-  Status TransposeFromNchwToHwcn(std::vector<int64_t> input_shape_dims,
+  Status TransposeFromNchwToHwcn(std::vector<int64_t>&& input_shape_dims,
                                  size_t elem_byte_size,
                                  gsl::span<const uint8_t> input_buffer,
                                  gsl::span<uint8_t> output_buffer,
@@ -283,7 +282,7 @@ class BaseOpBuilder : public IOpBuilder {
                                  const onnx::TensorProto& initializer,
                                  std::vector<uint8_t>& transposed_data,
                                  bool is_3d = false) const;
-  Status TransposeFromCnhwToHwcn(std::vector<int64_t> input_shape_dims,
+  Status TransposeFromCnhwToHwcn(std::vector<int64_t>&& input_shape_dims,
                                  size_t elem_byte_size,
                                  gsl::span<const uint8_t> input_buffer,
                                  gsl::span<uint8_t> output_buffer,
