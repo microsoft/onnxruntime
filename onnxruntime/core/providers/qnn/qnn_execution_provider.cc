@@ -460,9 +460,9 @@ static void LogNodeSupport(const logging::Logger& logger,
     oss << "\tREASON : " << support_status.ErrorMessage() << std::endl;
   }
 
-  std::unique_ptr<logging::Capture> log_capture = logging::Capture__Create(logger, log_severity,
-                                                                           logging::Category::onnxruntime,
-                                                                           log_data_type, call_site);
+  auto log_capture = Factory<logging::Capture>::Create(logger, log_severity,
+                                                       logging::Category::onnxruntime,
+                                                       log_data_type, call_site);
   log_capture->Stream()
       << (support_status.IsOK() ? "Validation PASSED " : "Validation FAILED ") << "for " << num_nodes
       << " nodes in " << qnn_node_group.Type() << " (" << qnn_node_group.GetTargetNodeUnit()->OpType() << ") :"
