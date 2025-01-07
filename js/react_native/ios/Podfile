@@ -1,7 +1,7 @@
 require_relative '../node_modules/react-native/scripts/react_native_pods'
 require_relative '../node_modules/@react-native-community/cli-platform-ios/native_modules'
 
-platform :ios, '15.6'
+platform :ios, '13.0'
 
 pre_install do |installer|
   # Custom pre-install script or commands
