@@ -15,7 +15,8 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     1, 9,
     kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()),
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", WebGpuSupportedFloatTypes()),
     Slice);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -23,7 +24,12 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     10, 10,
     kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()).InputMemoryType(OrtMemTypeCPU, 1).InputMemoryType(OrtMemTypeCPU, 2).InputMemoryType(OrtMemTypeCPU, 3).InputMemoryType(OrtMemTypeCPU, 4),
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", WebGpuSupportedFloatTypes())
+        .InputMemoryType(OrtMemTypeCPU, 1)
+        .InputMemoryType(OrtMemTypeCPU, 2)
+        .InputMemoryType(OrtMemTypeCPU, 3)
+        .InputMemoryType(OrtMemTypeCPU, 4),
     Slice);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(
@@ -31,7 +37,12 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
     kOnnxDomain,
     11, 12,
     kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()).InputMemoryType(OrtMemTypeCPU, 1).InputMemoryType(OrtMemTypeCPU, 2).InputMemoryType(OrtMemTypeCPU, 3).InputMemoryType(OrtMemTypeCPU, 4),
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", WebGpuSupportedFloatTypes())
+        .InputMemoryType(OrtMemTypeCPU, 1)
+        .InputMemoryType(OrtMemTypeCPU, 2)
+        .InputMemoryType(OrtMemTypeCPU, 3)
+        .InputMemoryType(OrtMemTypeCPU, 4),
     Slice);
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -39,7 +50,12 @@ ONNX_OPERATOR_KERNEL_EX(
     kOnnxDomain,
     13,
     kWebGpuExecutionProvider,
-    (*KernelDefBuilder::Create()).TypeConstraint("T", WebGpuSupportedFloatTypes()).InputMemoryType(OrtMemTypeCPU, 1).InputMemoryType(OrtMemTypeCPU, 2).InputMemoryType(OrtMemTypeCPU, 3).InputMemoryType(OrtMemTypeCPU, 4),
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", WebGpuSupportedFloatTypes())
+        .InputMemoryType(OrtMemTypeCPU, 1)
+        .InputMemoryType(OrtMemTypeCPU, 2)
+        .InputMemoryType(OrtMemTypeCPU, 3)
+        .InputMemoryType(OrtMemTypeCPU, 4),
     Slice);
 
 Status SliceProgram::GenerateShaderCode(ShaderHelper& shader) const {
@@ -51,7 +67,7 @@ Status SliceProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "var input_indices: input_indices_t;\n"
                             << "var carry = 0u;\n";
 
-  for (auto i = input.Rank() - 1; i >= 0; i--) {
+  for (int i = input.Rank() - 1; i >= 0; i--) {
     std::string input_shape_i = absl::StrCat("input_shape_", i);
     std::string steps_i = absl::StrCat("steps_", i);
     std::string starts_i = absl::StrCat("starts_", i);
