@@ -306,7 +306,7 @@ QnnLog_Level_t QnnBackendManager::MapOrtSeverityToQNNLogLevel(logging::Severity 
 }
 
 Status QnnBackendManager::ResetQnnLogLevel(std::optional<logging::Severity> ort_log_level) {
-  std::lock_guard<std::mutex> lock(logger_mutex_);
+  std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
   if (!backend_setup_completed_ || logger_ == nullptr) {
     return Status::OK();
   }
@@ -796,7 +796,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
                                        bool load_from_cached_context,
                                        bool need_load_system_lib) {
-  std::lock_guard<std::mutex> lock(logger_mutex_);
+  std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
   if (backend_setup_completed_) {
     LOGS(logger, VERBOSE) << "Backend setup already!";
     return Status::OK();
@@ -1073,7 +1073,7 @@ Status QnnBackendManager::DestroyHTPPowerConfigID(uint32_t htp_power_config_id) 
 }
 
 Status QnnBackendManager::TerminateQnnLog() {
-  std::lock_guard<std::mutex> lock(logger_mutex_);
+  std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
   if (logger_ == nullptr) {
     return Status::OK();
   }
