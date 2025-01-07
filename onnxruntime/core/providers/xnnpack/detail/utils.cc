@@ -278,6 +278,8 @@ std::unique_ptr<IndexedSubGraph::MetaDef> FuseActivation(const NodeUnit& node_un
               value_to_set = utils::HasRawData(value)
                                  ? *reinterpret_cast<const float*>(value.raw_data().data())
                                  : value.float_data()[0];
+            } else {
+              ORT_THROW("Now, only FP32 and FP16 are supported to fuse activation in Xnnpack EP", arg_type);
             }
           }
         }
