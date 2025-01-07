@@ -1123,7 +1123,7 @@ void QnnBackendManager::ReleaseResources() {
   if (backend_lib_handle_) {
     result = UnloadLib(backend_lib_handle_);
     if (Status::OK() != result) {
-      LOGS_DEFAULT(INFO) << "Failed to unload backend library.";
+      LOGS_DEFAULT(ERROR) << "Failed to unload backend library.";
     }
   }
 
