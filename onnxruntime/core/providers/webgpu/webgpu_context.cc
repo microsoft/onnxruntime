@@ -22,7 +22,7 @@
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
 #include <webgpu/webgpu_glfw.h>
-#endif // ENABLE_PIX_FOR_WEBGPU_EP
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
 #include "core/common/common.h"
 #include "core/common/path_string.h"
@@ -173,7 +173,7 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
   // set pix frame generator
   pix_frame_generator_ = std::make_unique<WebGpuPIXFrameGenerator>();
   pix_frame_generator_->Initialize(this);
-#endif // ENABLE_PIX_FOR_WEBGPU_EP
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 }
 
 Status WebGpuContext::Wait(wgpu::Future f) {
@@ -691,41 +691,38 @@ void WebGpuContext::Flush() {
   num_pending_dispatches_ = 0;
 }
 
-
-
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
 void WebGpuPIXFrameGenerator::Initialize(WebGpuContext* context) {
-    // Trivial window size for surface texture creation and provide frame concept for PIX.
-    static constexpr uint32_t kWidth = 512u;
-    static constexpr uint32_t kHeight = 512u;
+  // Trivial window size for surface texture creation and provide frame concept for PIX.
+  static constexpr uint32_t kWidth = 512u;
+  static constexpr uint32_t kHeight = 512u;
 
-    if (!glfwInit()) {
-      ORT_ENFORCE("Failed to init glfw for PIX capture");
-    }
+  if (!glfwInit()) {
+    ORT_ENFORCE("Failed to init glfw for PIX capture");
+  }
 
-    glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+  glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
-
-    window_ =
+  window_ =
       glfwCreateWindow(kWidth, kHeight, "WebGPU window", nullptr, nullptr);
 
-    ORT_ENFORCE(window_ != nullptr, "PIX Capture: Failed to create Window for capturing frames.");
+  ORT_ENFORCE(window_ != nullptr, "PIX Capture: Failed to create Window for capturing frames.");
 
-    surface_ = wgpu::glfw::CreateSurfaceForWindow(context->Instance(), window_);
-    ORT_ENFORCE(surface_.Get() != nullptr, "PIX Capture: Failed to create surface for capturing frames.");
+  surface_ = wgpu::glfw::CreateSurfaceForWindow(context->Instance(), window_);
+  ORT_ENFORCE(surface_.Get() != nullptr, "PIX Capture: Failed to create surface for capturing frames.");
 
-    wgpu::TextureFormat format;
-    wgpu::SurfaceCapabilities capabilities;
-    surface_.GetCapabilities(context->Adapter(), &capabilities);
-    format = capabilities.formats[0];
+  wgpu::TextureFormat format;
+  wgpu::SurfaceCapabilities capabilities;
+  surface_.GetCapabilities(context->Adapter(), &capabilities);
+  format = capabilities.formats[0];
 
-    wgpu::SurfaceConfiguration config;
-    config.device = context->Device();
-    config.format = format;
-    config.width = kWidth;
-    config.height = kHeight;
+  wgpu::SurfaceConfiguration config;
+  config.device = context->Device();
+  config.format = format;
+  config.width = kWidth;
+  config.height = kHeight;
 
-    surface_.Configure(&config);
+  surface_.Configure(&config);
 }
 
 void WebGpuPIXFrameGenerator::GeneratePIXFrame() {
@@ -753,7 +750,7 @@ void WebGpuContext::GeneratePIXFrame() {
   pix_frame_generator_->GeneratePIXFrame();
 }
 
-#endif // ENABLE_PIX_FOR_WEBGPU_EP
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
 std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo> WebGpuContextFactory::contexts_;
 std::mutex WebGpuContextFactory::mutex_;

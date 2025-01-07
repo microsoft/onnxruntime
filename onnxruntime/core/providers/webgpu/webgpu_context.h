@@ -5,7 +5,7 @@
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
 #include <GLFW/glfw3.h>
-#endif // ENABLE_PIX_FOR_WEBGPU_EP
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
 #include <memory>
 #include <mutex>
@@ -70,37 +70,37 @@ class WebGpuContextFactory {
 };
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
-  // PIX(https://devblogs.microsoft.com/pix/introduction/) is a profiling tool
-  // provides by Microsoft. It has ability to do GPU capture to profile gpu
-  // behaviour among different GPU vendors. It works on Windows only.
-  //
-  // GPU capture(present-to-present) provided by PIX uses present as a frame boundary to
-  // capture and generate a valid frame infos. But ORT WebGPU EP doesn't have any present logic
-  // and hangs PIX GPU Capture forever.
-  //
-  // To make PIX works with ORT WebGPU EP on Windows, WebGpuPIXFrameGenerator class includes codes
-  // to create a trivial window through glfw, config surface with Dawn device and call present in
-  // proper place to trigger frame boundary for PIX GPU Capture.
-  //
-  // WebGpuPIXFrameGenerator is an friend class because:
-  // - It should only be used in WebGpuContext class implementation.
-  // - It requires instance and device from WebGpuContext.
-  //
-  // The lifecycle of WebGpuPIXFrameGenerator instance should be nested into WebGpuContext lifecycle.
-  // WebGpuPIXFrameGenerator instance should be created during WebGpuContext creation and be destroyed during
-  // WebGpuContext destruction.
-  class WebGpuPIXFrameGenerator {
-   public:
-    WebGpuPIXFrameGenerator() = default;
-    ~WebGpuPIXFrameGenerator();
-    void Initialize(WebGpuContext* context);
-    void GeneratePIXFrame();
+// PIX(https://devblogs.microsoft.com/pix/introduction/) is a profiling tool
+// provides by Microsoft. It has ability to do GPU capture to profile gpu
+// behaviour among different GPU vendors. It works on Windows only.
+//
+// GPU capture(present-to-present) provided by PIX uses present as a frame boundary to
+// capture and generate a valid frame infos. But ORT WebGPU EP doesn't have any present logic
+// and hangs PIX GPU Capture forever.
+//
+// To make PIX works with ORT WebGPU EP on Windows, WebGpuPIXFrameGenerator class includes codes
+// to create a trivial window through glfw, config surface with Dawn device and call present in
+// proper place to trigger frame boundary for PIX GPU Capture.
+//
+// WebGpuPIXFrameGenerator is an friend class because:
+// - It should only be used in WebGpuContext class implementation.
+// - It requires instance and device from WebGpuContext.
+//
+// The lifecycle of WebGpuPIXFrameGenerator instance should be nested into WebGpuContext lifecycle.
+// WebGpuPIXFrameGenerator instance should be created during WebGpuContext creation and be destroyed during
+// WebGpuContext destruction.
+class WebGpuPIXFrameGenerator {
+ public:
+  WebGpuPIXFrameGenerator() = default;
+  ~WebGpuPIXFrameGenerator();
+  void Initialize(WebGpuContext* context);
+  void GeneratePIXFrame();
 
-   private:
-    wgpu::Surface surface_;
-    GLFWwindow* window_;
-  };
-#endif // ENABLE_PIX_FOR_WEBGPU_EP
+ private:
+  wgpu::Surface surface_;
+  GLFWwindow* window_;
+};
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
 // Class WebGpuContext includes all necessary resources for the context.
 class WebGpuContext final {
@@ -176,7 +176,7 @@ class WebGpuContext final {
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   void GeneratePIXFrame();
-#endif // ENABLE_PIX_FOR_WEBGPU_EP
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
  private:
   enum class TimestampQueryType {
@@ -269,7 +269,7 @@ class WebGpuContext final {
   // Friend class to access WebGpuContext private members.
   friend class WebGpuPIXFrameGenerator;
   std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;
-#endif // ENABLE_PIX_FOR_WEBGPU_EP
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 };
 
 }  // namespace webgpu
