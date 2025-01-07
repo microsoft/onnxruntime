@@ -148,6 +148,40 @@ TEST_F(QnnHTPBackendTests, DISABLED_GatherOp_IndicesStaticInt32_Axis1) {
                                        ExpectedEPNodeAssignment::All);
 }
 
+// Runs a non-QDQ model on HTP and compares output to CPU EP.
+template <typename InputType1 = float, typename InputType2 = float>
+static void RunOpTest(const std::string& op_type,
+                      const TestInputDef<InputType1>& input_def_1,
+                      const TestInputDef<InputType2>& input_defs_2,
+                      const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
+                      int opset_version,
+                      ExpectedEPNodeAssignment expected_ep_assignment,
+                      const std::string& op_domain = kOnnxDomain,
+                      float fp32_abs_err = 1e-3f) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  // Runs model with a Q/DQ binary op and compares the outputs of the CPU and QNN EPs.
+  RunQnnModelTest(BuildOpTestCase<InputType1, InputType2>(op_type, {input_def_1}, {input_defs_2}, attrs, op_domain),
+                  provider_options,
+                  opset_version,
+                  expected_ep_assignment,
+                  fp32_abs_err);
+}
+
+TEST_F(QnnHTPBackendTests, GatherOp_IndicesStaticInt64) {
+  RunOpTest<float, int64_t>("Gather",
+                            TestInputDef<float>({3, 2}, true, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f}),
+                            TestInputDef<int64_t>({2, 2}, false, {0, 1, 1, 2}),
+                            {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
+                            13,
+                            ExpectedEPNodeAssignment::All);
+}
+
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 }  // namespace test
 }  // namespace onnxruntime
