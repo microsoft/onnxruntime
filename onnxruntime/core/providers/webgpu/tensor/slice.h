@@ -25,16 +25,15 @@ class SliceProgram final : public Program<SliceProgram> {
 class Slice final : public WebGpuKernel {
  public:
   Slice(const OpKernelInfo& info) : WebGpuKernel(info) {
-    hasStartsAttr = info.GetAttrs("starts", attr_starts_).IsOK();
-    hasEndsAttr = info.GetAttrs("ends", attr_ends_).IsOK();
-    hasAxesAttr = info.GetAttrs("axes", attr_axes_).IsOK();
+    info.GetAttrs("starts", attr_starts_).IsOK();
+    info.GetAttrs("ends", attr_ends_).IsOK();
+    info.GetAttrs("axes", attr_axes_).IsOK();
   }
 
   Status ComputeInternal(ComputeContext& context) const override;
 
  private:
   std::vector<int64_t> attr_starts_, attr_ends_, attr_axes_;
-  bool hasStartsAttr, hasEndsAttr, hasAxesAttr;
 };
 
 }  // namespace webgpu

@@ -98,8 +98,8 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
   const TensorShape& input_shape = input_tensor->Shape();
   int64_t input_rank = static_cast<int64_t>(input_shape.NumDimensions());
 
-  auto starts_raw = hasStartsAttr ? gsl::make_span(attr_starts_) : context.Input(1)->DataAsSpan<int64_t>();
-  auto ends_raw = hasEndsAttr ? gsl::make_span(attr_ends_) : context.Input(2)->DataAsSpan<int64_t>();
+  auto starts_raw = attr_starts_.empty() ? context.Input(1)->DataAsSpan<int64_t>() : gsl::make_span(attr_starts_);
+  auto ends_raw = attr_ends_.empty() ? context.Input(2)->DataAsSpan<int64_t>() : gsl::make_span(attr_ends_);
 
   ORT_ENFORCE(starts_raw.size() == ends_raw.size(), "starts and ends must have the same size");
 
@@ -126,7 +126,7 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
       axes_default.push_back(i);
     }
   }
-  auto axes_raw = hasAxesAttr ? gsl::make_span(attr_axes_) : (axes_tensor == nullptr ? gsl::make_span(axes_default) : axes_tensor->DataAsSpan<int64_t>());
+  auto axes_raw = attr_axes_.empty() ? (axes_tensor == nullptr ? gsl::make_span(axes_default) : axes_tensor->DataAsSpan<int64_t>()) : gsl::make_span(attr_axes_);
 
   std::vector<int64_t> steps_default;
   if (steps_tensor == nullptr) {
