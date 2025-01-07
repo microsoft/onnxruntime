@@ -154,8 +154,6 @@ static Status ProcessIndicesInput(QnnModelWrapper& qnn_model_wrapper,
   std::vector<uint32_t> cast_output_shape(indices_info.shape);
   if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
     LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_name;
-    //input_names.push_back(input_name);
-    //return Status::OK();
   } else {
     QnnTensorWrapper input_tensorwrapper(input_name, tensor_type, indices_info.qnn_data_type, QnnQuantParamsWrapper(),
                                          std::move(indices_info.shape), std::move(qnn_indices_bytes));
