@@ -1107,7 +1107,7 @@ void QnnBackendManager::ReleaseResources() {
 
   result = ReleaseDevice();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(INFO) << "Failed to ReleaseDevice.";
+    LOGS_DEFAULT(ERROR) << "Failed to ReleaseDevice.";
   }
 
   result = ShutdownBackend();
