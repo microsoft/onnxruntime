@@ -802,44 +802,74 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
     return Status::OK();
   }
 
+  Status status = Status::OK();
   if (qnn_saver_path_.empty()) {
-    ORT_RETURN_IF_ERROR(LoadBackend());
+    status = LoadBackend();
   } else {
-    ORT_RETURN_IF_ERROR(LoadQnnSaverBackend());
+    status = LoadQnnSaverBackend();
+  }
+  if (status.IsOK()) {
+    LOGS(logger, VERBOSE) << "LoadBackend succeed.";
   }
 
-  LOGS(logger, VERBOSE) << "LoadBackend succeed.";
-
-  if (load_from_cached_context || need_load_system_lib) {
-    ORT_RETURN_IF_ERROR(LoadQnnSystemLib());
+  if (status.IsOK() && (load_from_cached_context || need_load_system_lib)) {
+    status = LoadQnnSystemLib();
   }
 
-  sdk_build_version_ = GetBackendBuildId();
-  LOGS(logger, VERBOSE) << "Backend build version: "
-                        << sdk_build_version_;
+  if (status.IsOK()) {
+    sdk_build_version_ = GetBackendBuildId();
+    LOGS(logger, VERBOSE) << "Backend build version: "
+                          << sdk_build_version_;
+  }
 
-  ORT_RETURN_IF_ERROR(InitializeQnnLog(logger));
-  LOGS(logger, VERBOSE) << "SetLogger succeed.";
+  if (status.IsOK()) {
+    status = InitializeQnnLog(logger);
+  }
+  if (status.IsOK()) {
+    LOGS(logger, VERBOSE) << "SetLogger succeed.";
+  }
 
-  ORT_RETURN_IF_ERROR(InitializeBackend());
-  LOGS(logger, VERBOSE) << "InitializeBackend succeed.";
+  if (status.IsOK()) {
+    status = InitializeBackend();
+  }
+  if (status.IsOK()) {
+    LOGS(logger, VERBOSE) << "InitializeBackend succeed.";
+  }
 
-  ORT_RETURN_IF_ERROR(CreateDevice());
-  LOGS(logger, VERBOSE) << "CreateDevice succeed.";
+  if (status.IsOK()) {
+    status = CreateDevice();
+  }
+  if (status.IsOK()) {
+    LOGS(logger, VERBOSE) << "CreateDevice succeed.";
+  }
 
-  ORT_RETURN_IF_ERROR(InitializeProfiling());
-  LOGS(logger, VERBOSE) << "InitializeProfiling succeed.";
+  if (status.IsOK()) {
+    status = InitializeProfiling();
+  }
+  if (status.IsOK()) {
+    LOGS(logger, VERBOSE) << "InitializeProfiling succeed.";
+  }
 
   if (!load_from_cached_context) {
-    ORT_RETURN_IF_ERROR(CreateContext());
-    LOGS(logger, VERBOSE) << "CreateContext succeed.";
+    if (status.IsOK()) {
+      status = CreateContext();
+    }
+    if (status.IsOK()) {
+      LOGS(logger, VERBOSE) << "CreateContext succeed.";
+    }
   }
 
-  LOGS(logger, VERBOSE) << "QNN SetupBackend succeed";
+  if (status.IsOK()) {
+    LOGS(logger, VERBOSE) << "QNN SetupBackend succeed";
+    backend_setup_completed_ = true;
+  }
+  else
+  {
+    LOGS_DEFAULT(INFO) << "Failed to setup so cleaning up";
+    ReleaseResources();
+  }
 
-  backend_setup_completed_ = true;
-
-  return Status::OK();
+  return status;
 }
 
 Status QnnBackendManager::CreateHtpPowerCfgId(uint32_t device_id, uint32_t core_id, uint32_t& htp_power_config_id) {
@@ -1069,33 +1099,33 @@ void QnnBackendManager::ReleaseResources() {
 
   auto result = ReleaseContext();
   if (Status::OK() != result) {
-    ORT_THROW("Failed to ReleaseContext.");
+    LOGS_DEFAULT(INFO) << "Failed to ReleaseContext.";
   }
 
   result = ReleaseProfilehandle();
   if (Status::OK() != result) {
-    ORT_THROW("Failed to ReleaseProfilehandle.");
+    LOGS_DEFAULT(INFO) << "Failed to ReleaseProfilehandle.";
   }
 
   result = ReleaseDevice();
   if (Status::OK() != result) {
-    ORT_THROW("Failed to ReleaseDevice.");
+    LOGS_DEFAULT(INFO) << "Failed to ReleaseDevice.";
   }
 
   result = ShutdownBackend();
   if (Status::OK() != result) {
-    ORT_THROW("Failed to ShutdownBackend.");
+    LOGS_DEFAULT(INFO) << "Failed to ShutdownBackend.";
   }
 
   result = TerminateQnnLog();
   if (Status::OK() != result) {
-    ORT_THROW("Failed to TerminateQnnLog.");
+    LOGS_DEFAULT(INFO) << "Failed to TerminateQnnLog.";
   }
 
   if (backend_lib_handle_) {
     result = UnloadLib(backend_lib_handle_);
     if (Status::OK() != result) {
-      ORT_THROW("Failed to unload backend library.");
+      LOGS_DEFAULT(INFO) << "Failed to unload backend library.";
     }
   }
 
