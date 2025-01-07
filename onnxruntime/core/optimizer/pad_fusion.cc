@@ -10,7 +10,7 @@ namespace onnxruntime {
 
 bool VerifyNotCastChild(const Node& child_node) {
   if (!graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "Conv", {1, 11}) &&
-      !graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "AveragePool", {1, 7, 10, 11, 19}) &&
+      !graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "AveragePool", {7, 10, 11, 19}) &&
       !graph_utils::IsSupportedOptypeVersionAndDomain(child_node, "MaxPool", {1, 8, 10, 11, 12})) {
     return false;
   }
@@ -31,11 +31,32 @@ bool VerifyNotCastChild(const Node& child_node) {
     return false;
   }
 
+  if (child_node.OpType() == "AveragePool") {
+    // in case there's already padding and count_include_pad is 0, fusion can't be performed
+    auto has_pad = false;
+    if (child_node.GetAttributes().find("pads") != child_node.GetAttributes().end()) {
+      auto const& pads_values = child_node.GetAttributes().at("pads").ints();
+      if (!pads_values.empty()) {
+        has_pad = std::any_of(pads_values.begin(), pads_values.end(), [](int64_t value) { return value != 0; });
+      }
+    }
+    if (has_pad && child_node.GetAttributes().find("count_include_pad") != child_node.GetAttributes().end()) {
+      if (child_node.GetAttributes().at("count_include_pad").i() == 0) {
+        return false;
+      }
+    }
+  }
+
   return true;
 }
 
 void UpdatePaddingAttribute(Node& child_node, const std::vector<int64_t>& pads_values, const uint32_t pads_size) {
-  if (child_node.GetAttributes().find("pads") == child_node.GetAttributes().end()) {
+  auto reset_pads = true;
+  if (child_node.GetAttributes().find("pads") != child_node.GetAttributes().end()) {
+    /* pads can be empty, overwrite pads attribute in this case */
+    reset_pads = child_node.GetAttributes().at("pads").ints().empty();
+  }
+  if (reset_pads) {
     std::vector<int64_t> pads(pads_size - 4, 0);
     child_node.AddAttribute("pads", pads);
   }
@@ -48,6 +69,10 @@ void UpdatePaddingAttribute(Node& child_node, const std::vector<int64_t>& pads_v
     uint32_t mirrored_child_index = child_index + (child_pads_size / 2);
     uint32_t mirrored_pad_index = pads_index + (pads_size / 2);
     child_pads->Set(mirrored_child_index, child_pads->Get(mirrored_child_index) + pads_values[mirrored_pad_index]);
+  }
+
+  if (child_node.OpType() == "AveragePool") {
+    child_node.AddAttribute("count_include_pad", static_cast<int64_t>(1));
   }
 }
 /*
