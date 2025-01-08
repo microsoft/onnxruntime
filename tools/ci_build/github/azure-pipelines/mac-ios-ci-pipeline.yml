@@ -39,7 +39,7 @@ jobs:
     # Note: Keep the Xcode version and iOS simulator version compatible.
     # Check the table here to see what iOS simulator versions are supported by a particular Xcode version:
     # https://developer.apple.com/support/xcode/
-    XCODE_VERSION: 14.3.1
+    XCODE_VERSION: 15.3.0
     IOS_SIMULATOR_RUNTIME_VERSION: 16.4
   timeoutInMinutes: 150
   steps:
