@@ -281,8 +281,8 @@ bool ValidateUnidirMask(std::vector<T> mask_data, int64_t w, bool& is_undirectio
     is_undirectional = true;
 
     const T* p = mask_data.data();
-    for (int i = 0; i < w; i++) {
-      for (int j = 0; j < w; j++) {
+    for (int64_t i = 0; i < w; i++) {
+      for (int64_t j = 0; j < w; j++) {
         if (*p != static_cast<T>(1)) {
           is_one = false;
         }
