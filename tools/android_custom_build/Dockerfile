@@ -55,7 +55,7 @@ WORKDIR /workspace
 
 # install Android SDK and tools
 ENV ANDROID_HOME=~/android-sdk
-ENV NDK_VERSION=27.0.12077973
+ENV NDK_VERSION=27.2.12479018
 ENV ANDROID_NDK_HOME=${ANDROID_HOME}/ndk/${NDK_VERSION}
 
 RUN aria2c -q -d /tmp -o cmdline-tools.zip \
