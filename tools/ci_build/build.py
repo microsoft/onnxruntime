@@ -1111,11 +1111,12 @@ def generate_build_tree(
             "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, "cmake", "riscv64.toolchain.cmake"),
         ]
     if args.use_vcpkg:
+        # TODO: set VCPKG_PLATFORM_TOOLSET_VERSION
         # Setup CMake flags for vcpkg
         vcpkg_install_options = ["--x-feature=tests"]
         vcpkg_installation_root = os.environ.get("VCPKG_INSTALLATION_ROOT")
         if vcpkg_installation_root is None:
-            vcpkg_installation_root = os.path.join(os.path.abspath(build_dir), "vcpkg")            
+            vcpkg_installation_root = os.path.join(os.path.abspath(build_dir), "vcpkg")
             if not os.path.exists(vcpkg_installation_root):
                 run_subprocess(["git", "clone", "https://github.com/microsoft/vcpkg.git", "--recursive"], cwd=build_dir)
         vcpkg_toolchain_path = os.path.join(vcpkg_installation_root, "scripts", "buildsystems", "vcpkg.cmake")
@@ -1123,9 +1124,15 @@ def generate_build_tree(
         # The enable_address_sanitizer and use_binskim_compliant_compile_flags flags cannot be both enabled
         if args.enable_address_sanitizer:
             overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg_triplets", "asan")
-            vcpkg_install_options.append("--overlay-triplets=%s" % overlay_triplets_dir)
+            if args.disable_rtti:
+                overlay_triplets_dir += "_nortti"
         elif args.use_binskim_compliant_compile_flags:
             overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg_triplets", "binskim")
+            if args.disable_rtti:
+                overlay_triplets_dir += "_nortti"
+        elif args.disable_rtti:
+            overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg_triplets", "nortti")
+        if overlay_triplets_dir:
             vcpkg_install_options.append("--overlay-triplets=%s" % overlay_triplets_dir)
 
         # VCPKG_INSTALL_OPTIONS is a CMake list. It must be joined by semicolons
@@ -1147,7 +1154,7 @@ def generate_build_tree(
             else:
                 raise BuildError("unknown python arch")
         if triplet:
-            add_default_definition(cmake_extra_defines, "VCPKG_TARGET_TRIPLET", triplet)            
+            add_default_definition(cmake_extra_defines, "VCPKG_TARGET_TRIPLET", triplet)
 
     # By default on Windows we currently support only cross compiling for ARM/ARM64
     # (no native compilation supported through this script).
