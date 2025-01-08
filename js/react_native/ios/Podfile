@@ -16,8 +16,13 @@ def shared
   config = use_native_modules!
 
   # Check both symbol and string keys with default value
-  use_react_native!(:path => config[:reactNativePath] || config["reactNativePath"] || '../node_modules/react-native')
-
+  use_react_native!(
+    :path => config[:reactNativePath] || config["reactNativePath"] || '../node_modules/react-native',
+    # Hermes is now enabled by default. Disable by setting this flag to false.
+    # Upcoming versions of React Native may rely on get_default_flags(), but
+    # we make it explicit here to aid in the React Native upgrade process.
+    :hermes_enabled => false
+  )
   # Comment the next line if you don't want to use dynamic frameworks
   use_frameworks!
 
