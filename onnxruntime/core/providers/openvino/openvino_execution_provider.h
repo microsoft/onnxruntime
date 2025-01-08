@@ -90,7 +90,7 @@ struct OpenVINOExecutionProviderInfo {
   bool export_ep_ctx_blob_{false};
   bool enable_qdq_optimizer_{false};
   bool disable_cpu_fallback_{false};
-  bool so_epctx_embed_mode_{true};
+  bool so_epctx_embed_mode_{false};
 
   OpenVINOExecutionProviderInfo() = delete;
 
@@ -159,7 +159,7 @@ struct OpenVINOExecutionProviderInfo {
       device_type_ = std::move(dev_type);
     } else if (dev_type.find("HETERO") == 0 || dev_type.find("MULTI") == 0 || dev_type.find("AUTO") == 0) {
       std::vector<std::string> devices = parseDevices(dev_type, available_devices);
-      device_type_ = dev_type;
+      device_type_ = std::move(dev_type);
     } else {
       ORT_THROW("Invalid device string: " + dev_type);
     }
@@ -199,8 +199,8 @@ class OpenVINOExecutionProvider : public IExecutionProvider {
 #endif
  private:
   std::unique_ptr<openvino_ep::GlobalContext> global_context_;
-  openvino_ep::EPCtxHandler ep_ctx_handle_{};
   std::shared_ptr<openvino_ep::BackendManager> backend_manager_;
+  openvino_ep::EPCtxHandler ep_ctx_handle_{};
 };
 
 }  // namespace onnxruntime

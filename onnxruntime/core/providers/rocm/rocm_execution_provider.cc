@@ -2493,7 +2493,7 @@ ROCMExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
   // For ROCM EP, exclude the subgraph that is preferred to be placed in CPU
   // These are usually shape related computation subgraphs
   // Following logic can be extended for other EPs
-  auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes);
+  auto cpu_nodes = GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes, logger);
   std::vector<std::unique_ptr<ComputeCapability>> result;
   for (auto& node_index : candidates) {
     if (cpu_nodes.count(node_index) > 0)

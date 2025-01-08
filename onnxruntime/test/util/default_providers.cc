@@ -122,12 +122,6 @@ std::unique_ptr<IExecutionProvider> DefaultOpenVINOExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultCudaExecutionProvider() {
 #ifdef USE_CUDA
-#ifdef USE_DML
-  const std::string no_cuda_ep_test = Env::Default().GetEnvironmentVar("NO_CUDA_TEST");
-  if (no_cuda_ep_test == "1") {
-    return nullptr;
-  }
-#endif
   OrtCUDAProviderOptionsV2 provider_options{};
   provider_options.do_copy_in_default_stream = true;
   provider_options.use_tf32 = false;
@@ -181,14 +175,6 @@ std::unique_ptr<IExecutionProvider> DnnlExecutionProviderWithOptions(const OrtDn
 #endif
   return nullptr;
 }
-
-// std::unique_ptr<IExecutionProvider> DefaultTvmExecutionProvider() {
-// #ifdef USE_TVM
-//   return TVMProviderFactoryCreator::Create("")->CreateProvider();
-// #else
-//   return nullptr;
-// #endif
-// }
 
 std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider() {
 // The NNAPI EP uses a stub implementation on non-Android platforms so cannot be used to execute a model.
@@ -253,14 +239,14 @@ std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider(bool use_mlpr
   // The test will create a model but execution of it will obviously fail.
 #if defined(USE_COREML) && defined(__APPLE__)
   // We want to run UT on CPU only to get output value without losing precision
-  uint32_t coreml_flags = 0;
-  coreml_flags |= COREML_FLAG_USE_CPU_ONLY;
+  auto option = ProviderOptions();
+  option[kCoremlProviderOption_MLComputeUnits] = "CPUOnly";
 
   if (use_mlprogram) {
-    coreml_flags |= COREML_FLAG_CREATE_MLPROGRAM;
+    option[kCoremlProviderOption_ModelFormat] = "MLProgram";
   }
 
-  return CoreMLProviderFactoryCreator::Create(coreml_flags)->CreateProvider();
+  return CoreMLProviderFactoryCreator::Create(option)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(use_mlprogram);
   return nullptr;
@@ -334,12 +320,6 @@ std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider() {
 
 std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider() {
 #ifdef USE_DML
-#ifdef USE_CUDA
-  const std::string no_dml_ep_test = Env::Default().GetEnvironmentVar("NO_DML_TEST");
-  if (no_dml_ep_test == "1") {
-    return nullptr;
-  }
-#endif
   ConfigOptions config_options{};
   if (auto factory = DMLProviderFactoryCreator::CreateFromDeviceOptions(config_options, nullptr, false, false)) {
     return factory->CreateProvider();

@@ -19,6 +19,9 @@ namespace webnn {
 class CumSumOpBuilder : public BaseOpBuilder {
   // Add operator related.
 
+ public:
+  void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
+
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
@@ -30,8 +33,13 @@ class CumSumOpBuilder : public BaseOpBuilder {
 };
 
 // Add operator related.
-Status CumSumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
-                                              const Node& node,
+
+void CumSumOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
+  // Skip axis.
+  model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
+}
+
+Status CumSumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                               const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
@@ -39,10 +47,14 @@ Status CumSumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get input shape");
   const auto input_rank = input_shape.size();
 
-  NodeAttrHelper helper(node);
-  int64_t axis = helper.Get("axis", 0);
-  axis = HandleNegativeAxis(axis, input_rank);
+  const auto& initializers = model_builder.GetInitializerTensors();
+  const std::string axis_name = GetTensorName(input_defs, 1);
+  const auto axis_tensor = *initializers.at(axis_name);
+  emscripten::val axis = emscripten::val::undefined();
+  ORT_RETURN_IF_NOT(ReadScalarTensorData(axis_tensor, axis, logger), "Cannot get axis value");
+  int64_t webnn_axis = HandleNegativeAxis(axis.as<int64_t>(), input_rank);
 
+  NodeAttrHelper helper(node);
   const auto exclusive = helper.Get("exclusive", 0);
   const auto reverse = helper.Get("reverse", 0);
 
@@ -52,13 +64,14 @@ Status CumSumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   options.set("label", node.Name());
 
   emscripten::val output = emscripten::val::object();
-  output = model_builder.GetBuilder().call<emscripten::val>("cumulativeSum", input, gsl::narrow<uint32_t>(axis), options);
+  output = model_builder.GetBuilder().call<emscripten::val>("cumulativeSum", input, gsl::narrow<uint32_t>(webnn_axis),
+                                                            options);
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
 }
 
 // Operator support related.
-bool CumSumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
+bool CumSumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
                                         const Node& node,
                                         WebnnDeviceType /* device_type */,
                                         const logging::Logger& logger) const {
@@ -67,6 +80,13 @@ bool CumSumOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
   std::vector<int64_t> input_shape;
   if (!GetShape(*input_defs[0], input_shape, logger))
     return false;
+
+  const std::string axis_name = GetTensorName(input_defs, 1);
+  // Inputs contain optional 'axis' input.
+  if (!Contains(initializers, axis_name)) {
+    LOGS(logger, VERBOSE) << "The axis must be a constant initializer.";
+    return false;
+  }
 
   return true;
 }

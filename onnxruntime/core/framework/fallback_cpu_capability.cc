@@ -41,7 +41,8 @@ static bool IsSmallInitializer(const onnxruntime::GraphViewer& graph, const Node
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                                   gsl::span<const NodeIndex> tentative_nodes) {
+                                                   gsl::span<const NodeIndex> tentative_nodes,
+                                                   const logging::Logger& logger) {
   // automatic conversion from const std::vector&
   const auto& ordered_nodes = graph.GetNodesInTopologicalOrder();
   InlinedVector<size_t> node_id_to_order_map(graph.MaxNodeIndex());
@@ -83,7 +84,7 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
             auto consumer_nodes = graph.GetConsumerNodes(node_arg.Name());
             for (auto& consumer_node : consumer_nodes) {
               candidates.push(consumer_node->Index());
-              LOGS_DEFAULT(INFO) << "Candidate for fallback CPU execution: " << consumer_node->Name();
+              LOGS(logger, INFO) << "Candidate for fallback CPU execution: " << consumer_node->Name();
             }
           }
           return Status::OK();
@@ -159,9 +160,9 @@ std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewe
 
     if (place_in_cpu) {
       cpu_nodes.insert(cur);
-      LOGS_DEFAULT(INFO) << "ORT optimization- Force fallback to CPU execution for node: " << node->Name()
-                         << " because the CPU execution path is deemed faster than overhead involved with execution on other EPs "
-                         << " capable of executing this node";
+      LOGS(logger, INFO) << "ORT optimization- Force fallback to CPU execution for node: " << node->Name()
+                         << " because the CPU execution path is deemed faster than overhead involved with execution "
+                            "on other EPs capable of executing this node";
       for (auto* output : node->OutputDefs()) {
         cpu_output_args.insert(output);
       }

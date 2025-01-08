@@ -491,18 +491,6 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
   // the number of times these are run to reduce the CI time.
   provider_names.erase(provider_name_cpu);
 #endif
-
-#if defined(USE_CUDA) && defined(USE_DML)
-  const std::string no_cuda_ep_test = Env::Default().GetEnvironmentVar("NO_CUDA_TEST");
-  if (no_cuda_ep_test == "1") {
-    provider_names.erase(provider_name_cuda);
-  }
-  const std::string no_dml_ep_test = Env::Default().GetEnvironmentVar("NO_DML_TEST");
-  if (no_dml_ep_test == "1") {
-    provider_names.erase(provider_name_dml);
-  }
-#endif
-
   std::vector<std::basic_string<ORTCHAR_T>> v;
   // Permanently exclude following tests because ORT support only opset starting from 7,
   // Please make no more changes to the list

@@ -22,8 +22,8 @@ class GatherOpBuilder : public BaseOpBuilder {
   // Operator support related.
   bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                              const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -69,8 +69,8 @@ bool GatherOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializ
   return true;
 }
 
-bool GatherOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                                             const logging::Logger& logger) const {
+bool GatherOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                                             const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input = *node.InputDefs()[0];
   const auto& indices = *node.InputDefs()[1];
   const auto& op_type = node.OpType();

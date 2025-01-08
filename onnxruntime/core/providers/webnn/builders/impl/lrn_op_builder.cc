@@ -29,7 +29,8 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                            const Node& node,
                                            const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto input_data_type = input_defs[0]->TypeAsProto()->tensor_type().elem_type();
+  int32_t input_data_type;
+  ORT_RETURN_IF_NOT(GetType(*input_defs[0], input_data_type, logger), "Cannot get input type");
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
   const auto node_name = node.Name();
   emscripten::val wnn_builder = model_builder.GetBuilder();
@@ -42,10 +43,10 @@ Status LRNOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   // Prepare WebNN constants for alpha, beta, bias attributes.
   // Assume T is float, because input_data_type has been limited to float32 and float16 in 'hasSupportedInitsImpl'.
-  emscripten::val alpha_constant = model_builder.CreateOrGetScalarConstant<float>(input_data_type, alpha);
-  emscripten::val beta_constant = model_builder.CreateOrGetScalarConstant<float>(input_data_type, beta);
-  emscripten::val bias_constant = model_builder.CreateOrGetScalarConstant<float>(input_data_type, bias);
-  emscripten::val pow1_constant = model_builder.CreateOrGetScalarConstant<float>(input_data_type, 2);
+  emscripten::val alpha_constant = model_builder.CreateOrGetConstant<float>(input_data_type, alpha);
+  emscripten::val beta_constant = model_builder.CreateOrGetConstant<float>(input_data_type, beta);
+  emscripten::val bias_constant = model_builder.CreateOrGetConstant<float>(input_data_type, bias);
+  emscripten::val pow1_constant = model_builder.CreateOrGetConstant<float>(input_data_type, 2);
 
   /**
       WebNN doesn't support LRN. So decompose it into a series of ops:

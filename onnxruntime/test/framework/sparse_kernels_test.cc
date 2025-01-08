@@ -1457,9 +1457,6 @@ TEST(SparseTensorConversionTests, CsrConversion) {
 
 #ifdef USE_CUDA
   auto cuda_provider = DefaultCudaExecutionProvider();
-  if (cuda_provider == nullptr) {
-    return;
-  }
   auto cuda_allocator = cuda_provider->CreatePreferredAllocators()[0];
   {
     auto cuda_transfer = cuda_provider->GetDataTransfer();
@@ -1687,9 +1684,6 @@ TEST(SparseTensorConversionTests, CooConversion) {
 
 #ifdef USE_CUDA
   auto cuda_provider = DefaultCudaExecutionProvider();
-  if (cuda_provider == nullptr) {
-    return;
-  }
   auto cuda_allocator = cuda_provider->CreatePreferredAllocators()[0];
   {
     auto cuda_transfer = cuda_provider->GetDataTransfer();
