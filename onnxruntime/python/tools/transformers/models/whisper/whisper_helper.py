@@ -236,8 +236,8 @@ class WhisperHelper:
 
         # Add `past_sequence_length`, `cache_indirection`, and `output_qk` to `MultiHeadAttention` ops
         if is_decoder and no_beam_search_op:
-            if (is_float16 and provider == "cuda") or (not is_float16 and provider == "cpu"):
-                # FP16 CUDA and FP32 CPU use the `DecoderMaskedMultiHeadAttention` kernel
+            if provider == "cuda":  # FP32 CPU can be supported here once the DMMHA CPU kernel bugs are fixed
+                # FP16 CUDA, FP32 CUDA, and FP32 CPU use the `DecoderMaskedMultiHeadAttention` kernel
                 # via `MultiHeadAttention`, which requires the `past_sequence_length` and
                 # `cache_indirection` inputs
                 m, past_seq_len_name = fix_past_sequence_length(m)

@@ -71,7 +71,7 @@ MultiHeadAttention<T, QK>::MultiHeadAttention(const OpKernelInfo& info)
 
   enable_cudnn_flash_attention_ = sizeof(T) == 2 && kernel_options_->UseCudnnFlashAttention();
 
-  disable_ft_causal_attention_ = sizeof(T) != 2 || !kernel_options_->UseFtCausalAttention();
+  disable_ft_causal_attention_ = !kernel_options_->UseFtCausalAttention();
 
   // Allocate cache buffers
   constexpr size_t cache_bytes = sizeof(int32_t) * (static_cast<size_t>(kCumulatedSequenceLengthCacheMaxBatchSize) + 1);
@@ -185,6 +185,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   int sm = device_prop.major * 10 + device_prop.minor;
 
   AttentionKernelType kernel_type = AttentionKernelType::AttentionKernel_Default;
+  cudaStream_t stream = Stream(context);
 
   bool use_dmmha_self_attention = parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH && parameters.past_present_share_buffer && parameters.past_sequence_length > 0;
   bool use_dmmha_cross_attention = parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH_BNSH_BNSH && past_key == nullptr && past_value == nullptr && nullptr != past_sequence_length && parameters.past_sequence_length != *((*past_sequence_length).template Data<int32_t>());
@@ -200,6 +201,27 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   if (use_decoder_masked_multihead_attention) {
     // Kernel only works for token generation with beam search
     kernel_type = AttentionKernelType::AttentionKernel_FtCausalAttention;
+
+    // No production use-case will incur this copy cost as the implementation of
+    // DecoderMaskedMultiHeadAttention is written in such a way that the past and present buffers
+    // must be shared to have parity in the outputs.
+    // This is just to circumvent the OpTester's limitation of not being able to bind a specific
+    // buffer to inputs/outputs.
+    auto* past_key_data = (past_key == nullptr) ? nullptr : past_key->Data<T>();
+    auto* past_value_data = (past_value == nullptr) ? nullptr : past_value->Data<T>();
+    auto* present_key_data = (present_key == nullptr) ? nullptr : present_key->MutableData<T>();
+    auto* present_value_data = (present_value == nullptr) ? nullptr : present_value->MutableData<T>();
+
+    if (present_key_data != past_key_data) {
+      DUMP_STRING("Copying past_key to present_key for OpTester");
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_key_data, past_key_data, past_key->SizeInBytes(),
+                                           cudaMemcpyDeviceToDevice, stream));
+    }
+    if (present_value_data != past_value_data) {
+      DUMP_STRING("Copying past_value to present_value for OpTester");
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(present_value_data, past_value_data, past_value->SizeInBytes(),
+                                           cudaMemcpyDeviceToDevice, stream));
+    }
   }
 
   typedef typename ToCudaType<T>::MappedType CudaT;
@@ -450,7 +472,6 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
 
   // Cache of cumulated sequence length that could help when sequence length does not change (for example, image model).
   // The cache will be initialized only once, and become readonly after that.
-  cudaStream_t stream = Stream(context);
   if ((data.fused_cross_attention_kernel != nullptr || data.fused_runner != nullptr) && data.mask_index == nullptr) {
     data.cumulated_sequence_length_q_cache = this->cumulated_sequence_length_q_cache_.TryGet(
         parameters.batch_size, parameters.sequence_length, stream);

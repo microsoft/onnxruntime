@@ -573,7 +573,7 @@ Status LaunchDecoderMaskedMultiHeadAttention(
 
   DUMP_STRING("parameters.attention_bias is null = ", (parameters.attention_bias == nullptr));
   DUMP_STRING("Scale = ", parameters.scale);
-  DUMP_STRING("Mask = ", parameters.mask);
+  DUMP_STRING("Mask is null = ", (parameters.mask == nullptr));
   DUMP_STRING("Mask filter value = ", parameters.mask_filter_value);
 
   DUMP_STRING("Beam width = ", parameters.beam_width);

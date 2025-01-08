@@ -207,7 +207,8 @@ void MultiHeadAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& c
       }
 
       auto past_present_share_buffer = getAttribute(ctx, "past_present_share_buffer", 0);
-      if (past_present_share_buffer) {
+      bool dmmha_buffer_sharing = hasInputShape(ctx, 6) && hasInputShape(ctx, 8) && hasInputShape(ctx, 9);  // equal to MHA op's definition for past_present_share_buffer
+      if (past_present_share_buffer || dmmha_buffer_sharing) {
         propagateElemTypeFromInputToOutput(ctx, past_key_index, 1);
         propagateElemTypeFromInputToOutput(ctx, static_cast<size_t>(past_key_index) + 1, 2);
       } else {

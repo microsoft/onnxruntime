@@ -125,21 +125,21 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   const int k_bias_offset = qk_hidden_size;
   const int v_bias_offset = 2 * qk_hidden_size;
 
-  // If optional outputs aren't needed, present_k, present_v, and output_qk will be null
-  std::vector<int64_t> present_k_shape({static_cast<int64_t>(batch_size),
-                                        static_cast<int64_t>(num_heads_),
-                                        static_cast<int64_t>(parameters.max_sequence_length),
-                                        static_cast<int64_t>(qk_head_size)});
-  std::vector<int64_t> present_v_shape({static_cast<int64_t>(batch_size),
-                                        static_cast<int64_t>(num_heads_),
-                                        static_cast<int64_t>(parameters.max_sequence_length),
-                                        static_cast<int64_t>(v_head_size)});
+  // If optional outputs aren't needed, present_key, present_value, and output_qk will be null
+  std::vector<int64_t> present_key_shape({static_cast<int64_t>(batch_size),
+                                          static_cast<int64_t>(num_heads_),
+                                          static_cast<int64_t>(parameters.max_sequence_length),
+                                          static_cast<int64_t>(qk_head_size)});
+  std::vector<int64_t> present_value_shape({static_cast<int64_t>(batch_size),
+                                            static_cast<int64_t>(num_heads_),
+                                            static_cast<int64_t>(parameters.max_sequence_length),
+                                            static_cast<int64_t>(v_head_size)});
   std::vector<int64_t> output_qk_shape({static_cast<int64_t>(batch_size),
                                         static_cast<int64_t>(num_heads_),
                                         static_cast<int64_t>(q_sequence_length),
                                         static_cast<int64_t>(total_sequence_length)});
-  Tensor* present_k = context->Output(1, present_k_shape);
-  Tensor* present_v = context->Output(2, present_v_shape);
+  Tensor* present_key = context->Output(1, present_key_shape);
+  Tensor* present_value = context->Output(2, present_value_shape);
   Tensor* output_qk = context->Output(3, output_qk_shape);
 
   bool use_dmmha_self_attention = parameters.qkv_format == AttentionQkvFormat::Q_K_V_BSNH && parameters.past_present_share_buffer && parameters.past_sequence_length > 0;
@@ -172,7 +172,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                           key->Data<T>(),
                           value->Data<T>(),
                           key_padding_mask, nullptr /* past */, past_key, past_value,
-                          output, present_k, present_v, output_qk,
+                          output, present_key, present_value, output_qk,
                           batch_size, q_sequence_length, kv_sequence_length,
                           qk_head_size, v_head_size, v_hidden_size, attn_bias, context);
   }
@@ -193,8 +193,8 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
       past_value == nullptr &&
       past_sequence_length == nullptr &&
       cache_indirection == nullptr &&
-      present_k == nullptr &&
-      present_v == nullptr &&
+      present_key == nullptr &&
+      present_value == nullptr &&
       output_qk == nullptr &&
       l2_cache_size_ > 0) {
     MlasFlashAttentionThreadedArgs args;
@@ -252,14 +252,33 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
   }
 
   if (use_decoder_masked_multihead_attention) {
-   return ApplyAttentionWithBeams(Q.GetMutable<Tensor>()->MutableData<T>(),
-                                  K.GetMutable<Tensor>()->MutableData<T>(),
-                                  V.GetMutable<Tensor>()->MutableData<T>(),
-                                  key_padding_mask, past_key, past_value, output, present_k, present_v,
-                                  batch_size, *((*past_sequence_length).template Data<int32_t>()), parameters.max_sequence_length,
-                                  qk_head_size, v_head_size, attn_bias, parameters.broadcast_attn_bias_dim_0,
-                                  parameters.broadcast_attn_bias_dim_1, cache_indirection, context,
-                                  parameters.beam_width, output_qk);
+    // No production use-case will incur this copy cost as the implementation of
+    // DecoderMaskedMultiHeadAttention is written in such a way that the past and present buffers
+    // must be shared to have parity in the outputs.
+    // This is just to circumvent the OpTester's limitation of not being able to bind a specific
+    // buffer to inputs/outputs.
+    auto* past_key_data = (past_key == nullptr) ? nullptr : past_key->Data<T>();
+    auto* past_value_data = (past_value == nullptr) ? nullptr : past_value->Data<T>();
+    auto* present_key_data = (present_key == nullptr) ? nullptr : present_key->MutableData<T>();
+    auto* present_value_data = (present_value == nullptr) ? nullptr : present_value->MutableData<T>();
+
+    if (present_key_data != past_key_data) {
+      DUMP_CPU_STRING("Copying past_key to present_key for OpTester");
+      memcpy(present_key_data, past_key_data, past_key->SizeInBytes());
+    }
+    if (present_value_data != past_value_data) {
+      DUMP_CPU_STRING("Copying past_value to present_value for OpTester");
+      memcpy(present_value_data, past_value_data, past_value->SizeInBytes());
+    }
+
+    return ApplyAttentionWithBeams(Q.GetMutable<Tensor>()->MutableData<T>(),
+                                   K.GetMutable<Tensor>()->MutableData<T>(),
+                                   V.GetMutable<Tensor>()->MutableData<T>(),
+                                   key_padding_mask, past_key, past_value, output, present_key, present_value,
+                                   batch_size, *((*past_sequence_length).template Data<int32_t>()), parameters.max_sequence_length,
+                                   qk_head_size, v_head_size, attn_bias, parameters.broadcast_attn_bias_dim_0,
+                                   parameters.broadcast_attn_bias_dim_1, cache_indirection, context,
+                                   parameters.beam_width, output_qk);
   }
 
   // Compute the attention score and apply the score to V
@@ -267,7 +286,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
                         K.GetMutable<Tensor>()->MutableData<T>(),
                         V.GetMutable<Tensor>()->MutableData<T>(),
                         key_padding_mask, nullptr /* past */, past_key, past_value,
-                        output, present_k, present_v, output_qk,
+                        output, present_key, present_value, output_qk,
                         batch_size, q_sequence_length, kv_sequence_length,
                         qk_head_size, v_head_size, v_hidden_size, attn_bias, context);
 }
