@@ -17,15 +17,14 @@
     "ONNX Runtime"
   ],
   "devDependencies": {
-    "@rnx-kit/align-deps": "^3.0.2",
     "@types/jest": "^27.4.0",
     "@types/react": "^18.0.9",
     "@types/react-native": "^0.67.7",
-    "jest": "^26.6.3",
+    "jest": "^27.4.7",
     "pod-install": "^0.1.36",
     "prettier": "^2.6.2",
-    "react": "18.1.0",
-    "react-native": "^0.70.0",
+    "react": "^18.1.0",
+    "react-native": "^0.70.15",
     "react-native-builder-bob": "^0.18.2"
   },
   "peerDependencies": {
@@ -92,9 +91,7 @@
     "unpack-libs": "cd e2e && yarn add --no-lockfile file:./onnxruntime-react-native.tgz",
     "prepack": "tsc --build ./tsconfig.scripts.json && node ./scripts/prepack",
     "pods": "cd e2e && pod-install --quiet",
-    "e2e": "yarn --cwd e2e",
-    "check-dependencies": "rnx-align-deps",
-    "fix-dependencies": "rnx-align-deps --write"
+    "e2e": "yarn --cwd e2e"
   },
   "types": "dist/typescript/index.d.ts",
   "name": "onnxruntime-react-native",
@@ -102,25 +99,5 @@
   "bugs": {
     "url": "https://github.com/Microsoft/onnxruntime/issues"
   },
-  "packageManager": "yarn@1.22.19",
-  "rnx-kit": {
-    "kitType": "library",
-    "alignDeps": {
-      "requirements": {
-        "development": [
-          "react-native@0.70"
-        ],
-        "production": [
-          "react-native@*"
-        ]
-      },
-      "capabilities": [
-        "core",
-        "core-android",
-        "core-ios",
-        "jest",
-        "react"
-      ]
-    }
-  }
+  "packageManager": "yarn@1.22.19"
 }

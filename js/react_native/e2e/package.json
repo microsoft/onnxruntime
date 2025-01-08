@@ -6,39 +6,19 @@
   "scripts": {
     "android": "react-native run-android",
     "ios": "react-native run-ios",
-    "start": "react-native start",
-    "check-dependencies": "rnx-align-deps",
-    "fix-dependencies": "rnx-align-deps --write"
+    "start": "react-native start"
   },
   "dependencies": {
-    "react": "18.1.0",
-    "react-native": "^0.70.0",
-    "react-native-fs": "^2.18.0"
+    "react": "^18.1.0",
+    "react-native": "^0.70.15",
+    "react-native-fs": "^2.20.0"
   },
   "devDependencies": {
     "@babel/core": "^7.17.0",
     "@babel/runtime": "^7.17.0",
-    "@rnx-kit/align-deps": "^3.0.2",
     "babel-plugin-module-resolver": "^4.0.0",
     "detox": "^20.7.0",
-    "jest": "^26.6.3",
-    "metro-react-native-babel-preset": "^0.72.1"
-  },
-  "rnx-kit": {
-    "kitType": "app",
-    "alignDeps": {
-      "requirements": [
-        "react-native@0.70"
-      ],
-      "capabilities": [
-        "babel-preset-react-native",
-        "core",
-        "core-android",
-        "core-ios",
-        "filesystem",
-        "jest",
-        "react"
-      ]
-    }
+    "jest": "^29",
+    "metro-react-native-babel-preset": "0.72.4"
   }
 }
