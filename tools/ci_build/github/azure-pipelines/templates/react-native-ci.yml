@@ -108,9 +108,6 @@ stages:
       runCodesignValidationInjection: false
     timeoutInMinutes: 90
     steps:
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: Clean Agent Directories
-      condition: always()
     - template: use-xcode-version.yml
     - task: UsePythonVersion@0
       displayName: Use python 3.12

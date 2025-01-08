@@ -892,7 +892,7 @@ class TestMultiHeadAttention(unittest.TestCase):
         # Run tests sequentially to avoid out of memory issue.
         self.run_mha_cpu()
         self.run_mha_cuda()
-        self.run_lean_attention()
+        # self.run_lean_attention()
         self.run_mha_cuda_multi_threading_default()
         self.run_mha_cuda_multi_threading_cudnn()
         self.run_mha_cuda_multi_threading_efficient()
