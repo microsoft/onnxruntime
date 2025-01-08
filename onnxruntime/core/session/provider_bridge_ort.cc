@@ -2233,6 +2233,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
     std::string context_cache_path = "";
     std::string embed_mode = "";
     if (options) {
+      LOGS_DEFAULT(WARNING) << "Propagating EP context options from session option since tensorrt options are empty";
       context_cache_enabled = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
       new_tensorrt_options.trt_dump_ep_context_model = context_cache_enabled;
       LOGS_DEFAULT(VERBOSE) << "Context cache enable: " << context_cache_enabled;
@@ -2246,13 +2247,18 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
         new_tensorrt_options.trt_ep_context_embed_mode = 1;
       } else if ("0" == embed_mode) {
         new_tensorrt_options.trt_ep_context_embed_mode = 0;
+        new_tensorrt_options.trt_engine_cache_enable = 1; // Enable engine cache if not embedded mode
       } else {
         LOGS_DEFAULT(VERBOSE) << "Invalid ep.context_embed_mode: " << embed_mode << " only 0 or 1 allowed. Set to 1.";
       }
       LOGS_DEFAULT(VERBOSE) << "User specified context cache embed mode: " << embed_mode;
+      
     }
     factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&new_tensorrt_options);
   } else {
+    if (ep_context_cache_enabled_from_provider_options && ep_context_cache_enabled_from_sess_options) {
+      LOGS_DEFAULT(WARNING) << "Provider options provided EP context configs, the EP Context configs from session options will be ignored";
+    }
     factory = onnxruntime::TensorrtProviderFactoryCreator::Create(tensorrt_options);
   }
 #else
