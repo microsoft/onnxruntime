@@ -3619,7 +3619,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
           if (engine_cache_enable_ && engine_hw_compatible_) {
             compute_capability_hw_compat = "80+";
           }
-          LOGS_DEFAULT(VERBOSE) << "*#* static shape, bool dump_ep_context_model_=" << dump_ep_context_model_;  
+          LOGS_DEFAULT(VERBOSE) << "*#* static shape, dump_ep_context_model_=" << dump_ep_context_model_;  
           // Old Context model
           // std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto{CreateCtxModel(graph_body_viewer,
           //                                                                        ep_cache_context_attr_,
