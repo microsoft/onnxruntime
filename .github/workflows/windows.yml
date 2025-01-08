@@ -101,6 +101,8 @@ jobs:
             --cmake_extra_defines "VCPKG_TARGET_TRIPLET=x64-windows" `
             --cmake_extra_defines "VCPKG_INSTALLED_DIR:PATH=${{ github.workspace }}/.build" `
             --cmake_extra_defines "VCPKG_INSTALL_OPTIONS=--x-feature=tests"
+        env:
+          VCPKG_OVERLAY_TRIPLETS: "${{ github.workspace }}/cmake/vcpkg-triplets"
         shell: pwsh
 
       - name: "Run vcpkg(arm64-windows)"
@@ -131,4 +133,6 @@ jobs:
             --cmake_extra_defines "VCPKG_TARGET_TRIPLET=arm64-windows" `
             --cmake_extra_defines "VCPKG_INSTALLED_DIR:PATH=${{ github.workspace }}/.build" `
             --cmake_extra_defines "VCPKG_INSTALL_OPTIONS=--x-feature=tests"
+        env:
+          VCPKG_OVERLAY_TRIPLETS: "${{ github.workspace }}/cmake/vcpkg-triplets"
         shell: pwsh

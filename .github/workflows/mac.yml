@@ -167,6 +167,8 @@ jobs:
           --cmake_extra_defines "VCPKG_TARGET_TRIPLET=x64-osx" \
           --cmake_extra_defines "VCPKG_INSTALLED_DIR:PATH=${{ github.workspace }}/.build" \
           --cmake_extra_defines "VCPKG_INSTALL_OPTIONS=--x-feature=tests"
+      env:
+        VCPKG_OVERLAY_TRIPLETS: "${{ github.workspace }}/cmake/vcpkg-triplets"
       shell: bash
 
     - name: "Run vcpkg(arm64-osx)"
@@ -198,6 +200,8 @@ jobs:
           --cmake_extra_defines "VCPKG_TARGET_TRIPLET=arm64-osx" \
           --cmake_extra_defines "VCPKG_INSTALLED_DIR:PATH=${{ github.workspace }}/.build" \
           --cmake_extra_defines "VCPKG_INSTALL_OPTIONS=--x-feature=tests"
+      env:
+        VCPKG_OVERLAY_TRIPLETS: "${{ github.workspace }}/cmake/vcpkg-triplets"
       shell: bash
 
   Objective-C-StaticAnalysis:
