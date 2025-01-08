@@ -16,7 +16,7 @@ constexpr int D_DIM = 2;
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
 struct Qkv_params {
-  using index_t = uint32_t;
+  using index_t = int64_t;
   // The QKV matrices.
   void* __restrict__ q_ptr = nullptr;
   void* __restrict__ k_ptr = nullptr;
@@ -74,10 +74,14 @@ struct Flash_fwd_params : public Qkv_params {
   // The scaling factors for the kernel.
   float scale_softmax = 0.0;
   float scale_softmax_log2 = 0.0;
+  float softcap = 0.0;
 
   // array of length b+1 holding starting offset of each sequence.
   int* __restrict__ cu_seqlens_q = nullptr;
   int* __restrict__ cu_seqlens_k = nullptr;
+
+  // If provided, the actual length of each k sequence.
+  int* __restrict__ seqused_k = nullptr;
 
   int* __restrict__ blockmask = nullptr;
 
@@ -100,6 +104,11 @@ struct Flash_fwd_params : public Qkv_params {
   // The indices to index into the KV cache.
   int* __restrict__ cache_batch_idx = nullptr;
 
+  // Paged KV cache
+  int* __restrict__ block_table = nullptr;
+  index_t block_table_batch_stride = 0;
+  int page_block_size = 0;
+
   // Local window size
   int window_size_left = -1;
   int window_size_right = -1;
@@ -113,7 +122,12 @@ struct Flash_fwd_params : public Qkv_params {
 
   bool is_rotary_interleaved = false;
 
+  bool smooth_softmax = false;
+
   int num_splits = 0;  // For split-KV version
+
+  void* __restrict__ alibi_slopes_ptr = nullptr;
+  index_t alibi_slopes_batch_stride = 0;
 
   const cudaDeviceProp* dprops = nullptr;
 };

@@ -95,6 +95,10 @@ void RegisterCollectiveOps() {
             "Whether to normalize routing weights",
             AttributeProto::INT,
             static_cast<int64_t>(0))
+      .Attr("use_sparse_mixer",
+            "Whether to use sparse mixer",
+            AttributeProto::INT,
+            static_cast<int64_t>(0))
       .Attr("local_experts_start_index",
             "The start index of local experts",
             AttributeProto::INT,

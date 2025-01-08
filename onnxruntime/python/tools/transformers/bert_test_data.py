@@ -168,11 +168,11 @@ def output_test_data(directory: str, inputs: Dict[str, np.ndarray]):
         try:
             os.mkdir(directory)
         except OSError:
-            print("Creation of the directory %s failed" % directory)
+            print(f"Creation of the directory {directory} failed")
         else:
-            print("Successfully created the directory %s " % directory)
+            print(f"Successfully created the directory {directory} ")
     else:
-        print("Warning: directory %s existed. Files will be overwritten." % directory)
+        print(f"Warning: directory {directory} existed. Files will be overwritten.")
 
     for index, (name, data) in enumerate(inputs.items()):
         tensor = numpy_helper.from_array(data, name)
@@ -250,6 +250,7 @@ def generate_test_data(
     average_sequence_length: int,
     random_sequence_length: bool,
     mask_type: int,
+    dictionary_size: int = 10000,
 ):
     """Create given number of input data for testing
 
@@ -270,7 +271,6 @@ def generate_test_data(
         List[Dict[str,numpy.ndarray]]: list of test cases, where each test case is a dictionary
                                        with input name as key and a tensor as value
     """
-    dictionary_size = 10000
     all_inputs = fake_test_data(
         batch_size,
         sequence_length,

@@ -8,6 +8,19 @@ namespace onnxruntime {
 namespace contrib {
 namespace js {
 
+// LayerNormalization used to be a contrib op
+// that (incorrectly) used kOnnxDomain so we need to version it
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    LayerNormalization,
+    kOnnxDomain,
+    1,
+    16,
+    kJsExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", onnxruntime::js::JsepSupportedFloatTypes())
+        .TypeConstraint("U", onnxruntime::js::JsepSupportedFloatTypes()),
+    onnxruntime::js::LayerNorm<false>);
+
 ONNX_OPERATOR_KERNEL_EX(
     SimplifiedLayerNormalization,
     kOnnxDomain,

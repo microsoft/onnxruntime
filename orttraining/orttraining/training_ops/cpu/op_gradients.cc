@@ -3,7 +3,7 @@
 
 #include "orttraining/training_ops/cpu/op_gradients.h"
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/math/element_wise_ops.h"

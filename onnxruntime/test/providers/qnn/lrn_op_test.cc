@@ -135,8 +135,8 @@ TEST_F(QnnHTPBackendTests, LRNSize3) {
                            0.75f,    // beta
                            1.0f,     // bias
                            13,       // opset
-                           // Need to use tolerance of 0.405% of output range after QNN SDK 2.17
-                           QDQTolerance(0.00405f));
+                           // Need to use tolerance of 0.8% of output range after QNN SDK 2.22
+                           QDQTolerance(0.008f));
 }
 
 TEST_F(QnnHTPBackendTests, LRNSize5) {
@@ -147,8 +147,8 @@ TEST_F(QnnHTPBackendTests, LRNSize5) {
                            0.75f,    // beta
                            1.0f,     // bias
                            13,       // opset
-                           // Need to use tolerance of 0.407% of output range after QNN SDK 2.17
-                           QDQTolerance(0.00407f));
+                           // Need to use tolerance of 0.8% of output range after QNN SDK 2.22
+                           QDQTolerance(0.008f));
 }
 
 TEST_F(QnnHTPBackendTests, LRN_size_larger_than_channel) {

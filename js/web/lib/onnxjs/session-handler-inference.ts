@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {InferenceSession, InferenceSessionHandler, SessionHandler, Tensor} from 'onnxruntime-common';
+import { InferenceSession, InferenceSessionHandler, SessionHandler, Tensor } from 'onnxruntime-common';
 
-import {Session} from './session';
-import {Tensor as OnnxjsTensor} from './tensor';
+import { Session } from './session';
+import { Tensor as OnnxjsTensor } from './tensor';
 
 export class OnnxjsSessionHandler implements InferenceSessionHandler {
   constructor(private session: Session) {
@@ -16,17 +16,24 @@ export class OnnxjsSessionHandler implements InferenceSessionHandler {
   inputNames: readonly string[];
   outputNames: readonly string[];
   async run(
-      feeds: SessionHandler.FeedsType, _fetches: SessionHandler.FetchesType,
-      _options: InferenceSession.RunOptions): Promise<SessionHandler.ReturnType> {
+    feeds: SessionHandler.FeedsType,
+    _fetches: SessionHandler.FetchesType,
+    _options: InferenceSession.RunOptions,
+  ): Promise<SessionHandler.ReturnType> {
     const inputMap = new Map<string, OnnxjsTensor>();
     for (const name in feeds) {
       if (Object.hasOwnProperty.call(feeds, name)) {
         const feed = feeds[name];
         inputMap.set(
-            name,
-            new OnnxjsTensor(
-                feed.dims, feed.type as OnnxjsTensor.DataType, undefined, undefined,
-                feed.data as OnnxjsTensor.NumberType));
+          name,
+          new OnnxjsTensor(
+            feed.dims,
+            feed.type as OnnxjsTensor.DataType,
+            undefined,
+            undefined,
+            feed.data as OnnxjsTensor.NumberType,
+          ),
+        );
       }
     }
     const outputMap = await this.session.run(inputMap);

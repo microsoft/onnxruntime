@@ -3,8 +3,11 @@
 
 #include "max_pool.h"
 
+#include <limits>
+
 #include "core/graph/graph.h"
 #include "core/providers/utils.h"
+#include "core/providers/xnnpack/xnnpack_init.h"
 #include "core/framework/tensorprotoutils.h"
 
 // to sanity check output shape
@@ -54,6 +57,10 @@ bool MaxPool::IsOnnxNodeSupported(const NodeUnit& node_unit,
     // input of maxpool could be fp16/fp32/fp64,i8/u8 according to ONNX
     if (x_type == nullptr ||
         (x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+// because pool_fp16_op_test can be enabled by other preprocessor, for example, COREML_ENABLE_MLPROGRAM
+#ifdef XNNPACK_FP16_SUPPORTED
+         x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 &&
+#endif
          x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_UINT8 &&
          x_type->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_INT8)) {
       break;
@@ -163,8 +170,8 @@ MaxPool::MaxPool(const OpKernelInfo& info)
   auto input_dtype = X_arg.TypeAsProto()->tensor_type().elem_type();
   xnn_status status = xnn_status_invalid_state;
   struct xnn_operator* p = nullptr;
-  float foutput_min = clip_min_max_ ? clip_min_max_->first : -INFINITY;
-  float foutput_max = clip_min_max_ ? clip_min_max_->second : INFINITY;
+  float foutput_min = clip_min_max_ ? clip_min_max_->first : -std::numeric_limits<float>::infinity();
+  float foutput_max = clip_min_max_ ? clip_min_max_->second : std::numeric_limits<float>::infinity();
   if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     maxpool_type_ = OpComputeType::op_compute_type_fp32;
     status = xnn_create_max_pooling2d_nhwc_f32(input_padding_top, input_padding_right,
@@ -172,7 +179,6 @@ MaxPool::MaxPool(const OpKernelInfo& info)
                                                pooling_height, pooling_width,
                                                stride_height, stride_width,
                                                dilation_height, dilation_width,
-                                               C, C, C,  // channels, input_pixel_stride, output_pixel_stride
                                                foutput_min, foutput_max, flags, &p);
   } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
     maxpool_type_ = OpComputeType::op_compute_type_qu8;
@@ -183,7 +189,6 @@ MaxPool::MaxPool(const OpKernelInfo& info)
                                               pooling_height, pooling_width,
                                               stride_height, stride_width,
                                               dilation_height, dilation_width,
-                                              C, C, C,  // channels, input_pixel_stride, output_pixel_stride
                                               output_min, output_max, flags, &p);
   } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
     maxpool_type_ = OpComputeType::op_compute_type_qs8;
@@ -194,11 +199,18 @@ MaxPool::MaxPool(const OpKernelInfo& info)
                                               pooling_height, pooling_width,
                                               stride_height, stride_width,
                                               dilation_height, dilation_width,
-                                              C, C, C,  // channels, input_pixel_stride, output_pixel_stride
                                               output_min, output_max, flags, &p);
+  } else if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    maxpool_type_ = OpComputeType::op_compute_type_fp16;
+    status = xnn_create_max_pooling2d_nhwc_f16(input_padding_top, input_padding_right,
+                                               input_padding_bottom, input_padding_left,
+                                               pooling_height, pooling_width,
+                                               stride_height, stride_width,
+                                               dilation_height, dilation_width,
+                                               foutput_min, foutput_max, flags, &p);
   } else {
     auto stype = DataTypeImpl::ToString(DataTypeImpl::TypeFromProto(*X_arg.TypeAsProto()));
-    ORT_THROW("unsupported Conv in maxpool, we have FLOAT|UINT8, but got ", stype);
+    ORT_THROW("unsupported Conv in maxpool, we have FLOAT|UINT8|FLOAT16, but got ", stype);
   }
   ORT_ENFORCE(status == xnn_status_success, "xnn_create_max_pooling2d_nhwc_",
               OpTypeToString(maxpool_type_), "failed. Status:", status);
@@ -213,6 +225,7 @@ Status MaxPool::Compute(OpKernelContext* context) const {
   int64_t N = X_shape[0];
   int64_t H = X_shape[1];
   int64_t W = X_shape[2];
+  int64_t C = X_shape[3];
 
   // set the N dim to the correct value
   TensorShapeVector output_dims{output_dims_};
@@ -227,13 +240,16 @@ Status MaxPool::Compute(OpKernelContext* context) const {
   pthreadpool_t threadpool = GetThreadPool();
 
   auto reshape_fn = xnn_reshape_max_pooling2d_nhwc_f32;
-  if (maxpool_type_ == OpComputeType::op_compute_type_qu8)
+  if (maxpool_type_ == OpComputeType::op_compute_type_qu8) {
     reshape_fn = xnn_reshape_max_pooling2d_nhwc_u8;
-  else if (maxpool_type_ == OpComputeType::op_compute_type_qs8) {
+  } else if (maxpool_type_ == OpComputeType::op_compute_type_qs8) {
     reshape_fn = xnn_reshape_max_pooling2d_nhwc_s8;
+  } else if (maxpool_type_ == OpComputeType::op_compute_type_fp16) {
+    reshape_fn = xnn_reshape_max_pooling2d_nhwc_f16;
   }
 
   auto status = reshape_fn(op0_.get(), N, H, W,
+                           C, C, C,  // channels, input_pixel_stride, output_pixel_stride
                            /*output_height_out=*/nullptr, /*output_width_out=*/nullptr,
                            threadpool);
   if (status != xnn_status_success) {
@@ -245,8 +261,10 @@ Status MaxPool::Compute(OpKernelContext* context) const {
     status = xnn_setup_max_pooling2d_nhwc_f32(op0_.get(), X.Data<float>(), Y->MutableData<float>());
   } else if (maxpool_type_ == OpComputeType::op_compute_type_qu8) {
     status = xnn_setup_max_pooling2d_nhwc_u8(op0_.get(), X.Data<uint8_t>(), Y->MutableData<uint8_t>());
-  } else {
+  } else if (maxpool_type_ == OpComputeType::op_compute_type_qs8) {
     status = xnn_setup_max_pooling2d_nhwc_s8(op0_.get(), X.Data<int8_t>(), Y->MutableData<int8_t>());
+  } else if (maxpool_type_ == OpComputeType::op_compute_type_fp16) {
+    status = xnn_setup_max_pooling2d_nhwc_f16(op0_.get(), X.Data<MLFloat16>(), Y->MutableData<MLFloat16>());
   }
 
   if (status != xnn_status_success) {
@@ -264,18 +282,21 @@ Status MaxPool::Compute(OpKernelContext* context) const {
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(MaxPool, kMSInternalNHWCDomain, 8, 9, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                                          DataTypeImpl::GetTensorType<MLFloat16>(),
                                                                           DataTypeImpl::GetTensorType<uint8_t>(),
                                                                           DataTypeImpl::GetTensorType<int8_t>()}),
                                   MaxPool);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(MaxPool, kMSInternalNHWCDomain, 10, 10, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                                          DataTypeImpl::GetTensorType<MLFloat16>(),
                                                                           DataTypeImpl::GetTensorType<uint8_t>(),
                                                                           DataTypeImpl::GetTensorType<int8_t>()}),
                                   MaxPool);
 
 ONNX_OPERATOR_VERSIONED_KERNEL_EX(MaxPool, kMSInternalNHWCDomain, 11, 11, kXnnpackExecutionProvider,
                                   KernelDefBuilder().TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                                          DataTypeImpl::GetTensorType<MLFloat16>(),
                                                                           DataTypeImpl::GetTensorType<uint8_t>(),
                                                                           DataTypeImpl::GetTensorType<int8_t>()}),
                                   MaxPool);
@@ -283,8 +304,10 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(MaxPool, kMSInternalNHWCDomain, 11, 11, kXnnpa
 ONNX_OPERATOR_KERNEL_EX(MaxPool, kMSInternalNHWCDomain, 12, kXnnpackExecutionProvider,
                         KernelDefBuilder()
                             .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                  DataTypeImpl::GetTensorType<MLFloat16>(),
                                                   DataTypeImpl::GetTensorType<uint8_t>(),
                                                   DataTypeImpl::GetTensorType<int8_t>()}),
                         MaxPool);
+
 }  // namespace xnnpack
 }  // namespace onnxruntime

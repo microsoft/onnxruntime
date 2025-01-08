@@ -221,7 +221,9 @@ static _winml::ImageTensorDescription CreateImageTensorDescriptor(
     THROW_HR(E_NOTIMPL);
   }
 
-  if (pixelRange != winml::LearningModelPixelRange::ZeroTo255 && pixelRange != winml::LearningModelPixelRange::ZeroToOne && pixelRange != winml::LearningModelPixelRange::MinusOneToOne) {
+  if (pixelRange != winml::LearningModelPixelRange::ZeroTo255 &&
+      pixelRange != winml::LearningModelPixelRange::ZeroToOne &&
+      pixelRange != winml::LearningModelPixelRange::MinusOneToOne) {
     THROW_HR(E_NOTIMPL);
   }
 
@@ -331,12 +333,11 @@ std::optional<ImageFeatureValue::ImageResourceMetadata> ImageFeatureValue::GetIn
     // The the widths and heights of input data must be the same. Or the
     // tensorDescriptor cannot describ the shape of the inputs.
     if (spImageDescriptor->Width() == MAXUINT32 &&
-            !(std::adjacent_find(m_widths.begin(), m_widths.end(), std::not_equal_to<uint32_t>()) == m_widths.end())) {
+        !(std::adjacent_find(m_widths.begin(), m_widths.end(), std::not_equal_to<uint32_t>()) == m_widths.end())) {
       THROW_HR(E_INVALIDARG);
     }
     if (spImageDescriptor->Height() == MAXUINT32 &&
-            !(std::adjacent_find(m_heights.begin(), m_heights.end(), std::not_equal_to<uint32_t>()) == m_heights.end()
-            )) {
+        !(std::adjacent_find(m_heights.begin(), m_heights.end(), std::not_equal_to<uint32_t>()) == m_heights.end())) {
       THROW_HR(E_INVALIDARG);
     }
     descriptorWidth = (spImageDescriptor->Width() == MAXUINT32) ? m_widths[0] : spImageDescriptor->Width();
@@ -354,12 +355,11 @@ std::optional<ImageFeatureValue::ImageResourceMetadata> ImageFeatureValue::GetIn
       return {};
     }
     if (-1 == shape.GetAt(3) &&
-            !(std::adjacent_find(m_widths.begin(), m_widths.end(), std::not_equal_to<uint32_t>()) == m_widths.end())) {
+        !(std::adjacent_find(m_widths.begin(), m_widths.end(), std::not_equal_to<uint32_t>()) == m_widths.end())) {
       THROW_HR(E_INVALIDARG);
     }
     if (-1 == shape.GetAt(2) &&
-            !(std::adjacent_find(m_heights.begin(), m_heights.end(), std::not_equal_to<uint32_t>()) == m_heights.end()
-            )) {
+        !(std::adjacent_find(m_heights.begin(), m_heights.end(), std::not_equal_to<uint32_t>()) == m_heights.end())) {
       THROW_HR(E_INVALIDARG);
     }
     descriptorWidth = (-1 == shape.GetAt(3)) ? m_widths[0] : static_cast<uint32_t>(shape.GetAt(3));

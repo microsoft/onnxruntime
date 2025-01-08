@@ -137,7 +137,7 @@ class Gpt2Tester:
         self.has_position_ids = position_ids is not None
         self.has_attention_mask = attention_mask is not None
 
-        # Emtpy past state for first inference
+        # Empty past state for first inference
         self.past = []
         past_shape = [
             2,

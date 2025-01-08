@@ -56,6 +56,7 @@ struct DMLProviderFactory : IExecutionProviderFactory {
       python_api_(python_api) {
     graph_capture_enabled_ = ConfigValueIsTrue(config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableGraphCapture, "0"));
     cpu_sync_spinning_enabled_ = ConfigValueIsTrue(config_options.GetConfigOrDefault(kOrtSessionOptionsConfigEnableCpuSyncSpinning, "0"));
+    disable_memory_arena_ = ConfigValueIsTrue(config_options.GetConfigOrDefault(kOrtSessionOptionsConfigDisableMemoryArena, "0"));
   }
 
   ~DMLProviderFactory() override {}
@@ -70,6 +71,7 @@ struct DMLProviderFactory : IExecutionProviderFactory {
   bool metacommands_enabled_ = true;
   bool graph_capture_enabled_ = false;
   bool cpu_sync_spinning_enabled_ = false;
+  bool disable_memory_arena_ = false;
   bool python_api_ = false;
 };
 
@@ -91,7 +93,7 @@ std::unique_ptr<IExecutionProvider> DMLProviderFactory::CreateProvider() {
     execution_context = wil::MakeOrThrow<Dml::ExecutionContext>(d3d12_device.Get(), dml_device_.Get(), cmd_queue_.Get(), cpu_sync_spinning_enabled_, false);
   }
 
-  auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), execution_context.Get(), metacommands_enabled_, graph_capture_enabled_, cpu_sync_spinning_enabled_);
+  auto provider = Dml::CreateExecutionProvider(dml_device_.Get(), execution_context.Get(), metacommands_enabled_, graph_capture_enabled_, cpu_sync_spinning_enabled_, disable_memory_arena_);
   return provider;
 }
 

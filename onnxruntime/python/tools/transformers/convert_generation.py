@@ -1624,7 +1624,7 @@ def update_decoder_subgraph_share_buffer_and_use_decoder_masked_mha(subg: ModelP
             ]
 
             nis.extend([node.input[4] if len(node.input) > 4 else ""])  # 2D mask
-            nis.extend([node.input[5] if len(node.input) > 5 else ""])  # relative_position_bias
+            nis.extend([node.input[5] if len(node.input) > 5 else ""])  # attention_bias
             nis.extend([node.input[6] if len(node.input) > 6 else ""])  # past_key
             nis.extend([node.input[7] if len(node.input) > 7 else ""])  # past_value
             nis.extend(["past_sequence_length"])  # past_sequence_length

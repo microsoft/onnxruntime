@@ -359,10 +359,14 @@ TEST_F(MockCAPITestsFixture, CppLogMacroBypassCApiCall) {
 #undef TEST_MAIN
 #define TEST_MAIN main_no_link_  // there is a UI test app for iOS.
 
-// IOS tests require this function to be defined.
+// iOS tests require ortenv_setup() and ortenv_teardown() to be defined.
 // See onnxruntime/test/xctest/xcgtest.mm
-void ortenv_setup() {
+extern "C" void ortenv_setup() {
   // Do nothing. These logging tests do not require an env to be setup initially.
+}
+
+extern "C" void ortenv_teardown() {
+  // Do nothing.
 }
 
 #endif  // TARGET_OS_SIMULATOR || TARGET_OS_IOS

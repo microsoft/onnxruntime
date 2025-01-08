@@ -465,15 +465,13 @@ static NodeArg* ExtractEmbedding(Graph& graph,
     if (!CheckEmbeddingData(data, batch_size, element_count)) {
       return nullptr;
     }
-
-    initializer.set_raw_data(data, gsl::narrow<size_t>(element_count) * sizeof(float));
+    utils::SetRawDataInTensorProto(initializer, data, gsl::narrow<size_t>(element_count) * sizeof(float));
   } else {  // data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16
     const MLFloat16* data = old_initializer.data<MLFloat16>();
     if (!CheckEmbeddingData(data, batch_size, element_count)) {
       return nullptr;
     }
-
-    initializer.set_raw_data(data, gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
+    utils::SetRawDataInTensorProto(initializer, data, gsl::narrow<size_t>(element_count) * sizeof(MLFloat16));
   }
 
   NodeArg& node_arg = graph_utils::AddInitializer(graph, initializer);
@@ -825,6 +823,12 @@ Status EmbedLayerNormFusion::ApplyImpl(Graph& graph, bool& modified, int graph_l
         !graph_utils::IsSupportedProvider(layer_norm_node, GetCompatibleExecutionProviders())) {
       continue;
     }
+
+    // The third input (beta) is optional in LayerNormalization-17 of onnx domain. Make sure 3 inputs are available.
+    if (!(layer_norm_node.InputDefs().size() == 3 && layer_norm_node.InputDefs()[2]->Exists())) {
+      continue;
+    }
+
     // Find Attention after LayerNormalization
     const Node* p_attention = graph_utils::FirstChildByType(layer_norm_node, "Attention");
     if (p_attention == nullptr) {

@@ -31,7 +31,14 @@ Integrate models using `ORTModule`.
 
 There are two modes to enable the memory optimizations:
 - Transformer layerwise recompute, e.g. aggressively recompute all supported nodes within each transformer layer (usually including attention and mlp sublayers), enabled by `export ORTMODULE_MEMORY_OPT_LEVEL=1`. In this mode, `ORTMODULE_MEMORY_OPT_CONFIG` env values passed by users are not respected.
-- Manual selected subgraph recompute, enabled by `export ORTMODULE_MEMORY_OPT_LEVEL=0` and `export ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,...`. This is an advanced usage, that allows users to find the most suitable graphs to recompute, at the cost of overhead to look for the best plans.
+- Manual selected subgraph recompute, enabled by `export ORTMODULE_MEMORY_OPT_LEVEL=0` and `export ORTMODULE_MEMORY_OPT_CONFIG=<config file path>`. This is an advanced usage, that allows users to find the most suitable graphs to recompute, at the cost of overhead to look for the best plans. The format for its content is:
+	```
+	[
+		"<plan1 config>",
+		"<plan2 config>",
+		...
+	]
+	```
 
 ### Mode 1 - Simple Usage (Transformer Layerwise Recompute)
 
@@ -39,7 +46,7 @@ There are two modes to enable the memory optimizations:
 1. Set memory optimization level to be TRANSFORMER_LAYERWISE_RECOMPUTE, by `export ORTMODULE_MEMORY_OPT_LEVEL=1`
 2. Run the training as usual; check the logs, you could find something like this if the current log level <= LogLevel.INFO:
 	```
-	Memory Optimizer     :  ON   :  Memory Optimization Level: [TRANSFORMER_LAYERWISE_RECOMPUTE], Optimization Config: [Reshape+Where+:1:-1,BiasSoftmax+:1:-1,Cast+:1:-1,BiasGelu+:1:-1,FusedMatMul+:1:-1,Add+:1:-1,Reshape+Unsqueeze+Unsqueeze+Cast+Sub+Mul+Cast+:1:-1]
+	Memory Optimizer     :  ON   :  Memory Optimization Level: [TRANSFORMER_LAYERWISE_RECOMPUTE], Optimization Config: mem_opt.json
 									Configs                                              Freq  Max Saving(Bytes)  Saving Symbolic(Bytes)
 	- Plan 1            :  ON   :  Reshape+Where+:1:-1                                  1     134,217,728        128.0*inputs_input_ids_dim0*inputs_input_ids_dim1**2
 	- Plan 2            :  ON   :  BiasSoftmax+:1:-1                                    1     134,086,656        128.0*inputs_input_ids_dim0*inputs_input_ids_dim1*(inputs_input_ids_dim1 - 1)
@@ -59,7 +66,7 @@ There are two modes to enable the memory optimizations:
 1. Be noted `ORTMODULE_MEMORY_OPT_LEVEL` is by default be 0. Run the training as usual; then stop it after training a few steps.
 2. Check the logs, you could find something like this if the current log level <= LogLevel.INFO::
 	```
-	Memory Optimizer     :  OFF  :  Enable with env ORTMODULE_MEMORY_OPT_LEVEL=1 or ORTMODULE_MEMORY_OPT_CONFIG=<plan1 config>,<plan2 config>,...
+	Memory Optimizer     :  OFF  :  Enable with env ORTMODULE_MEMORY_OPT_LEVEL=1 or ORTMODULE_MEMORY_OPT_CONFIG=<config file path>
 									Configs                                              Freq  Max Saving(Bytes)  Saving Symbolic(Bytes)
 	- Plan 1            :  OFF  :  Reshape+Where+:1:-1                                  1     134,217,728        128.0*inputs_input_ids_dim0*inputs_input_ids_dim1**2
 	- Plan 2            :  OFF  :  BiasSoftmax+:1:-1                                    1     134,086,656        128.0*inputs_input_ids_dim0*inputs_input_ids_dim1*(inputs_input_ids_dim1 - 1)
@@ -73,8 +80,15 @@ There are two modes to enable the memory optimizations:
 3. As shown above, `Config` is a string representative for a re-computable subgraph. All are disabled for recompute in this case.
 4. Set environment variable `ORTMODULE_MEMORY_OPT_CONFIG` to enable some of the subgraphs to do recompute.
 	```bash
-	# Use comma as a separator for enabling more than one subgraphs.
-	export ORTMODULE_MEMORY_OPT_CONFIG="BiasGelu+:1:1"
+	export ORTMODULE_MEMORY_OPT_CONFIG="mem_opt.json"
+
+	# Content of mem_opt.json:
+	[
+		"BiasGelu+:1:1",
+		"Dropout+:1:-1"
+	]
+	# Use comma as a separator for enabling more than one subgraphs in the json file.
+
 	# Explanation:
 	#  > BiasGelu+ is the subgraph string representative;
 	#  > 1 in the middle indicates 'Recompute' is enabled (0, on the contrary indicates it's disabled)
@@ -83,7 +97,7 @@ There are two modes to enable the memory optimizations:
 	```
 5. Then run the training again, and you will see logs like this:
 	```
-	Memory Optimizer     :  ON   :  Memory Optimization Level: [USER_SPECIFIED], Optimization Config: [BiasGelu+:1:-1]
+	Memory Optimizer     :  ON   :  Memory Optimization Level: [USER_SPECIFIED], Optimization Config: mem_opt.json
 									Configs                                              Freq  Max Saving(Bytes)  Saving Symbolic(Bytes)
 	- Plan 1            :  OFF  :  Reshape+Where+:1:-1                                  1     134,217,728        128.0*inputs_input_ids_dim0*inputs_input_ids_dim1**2
 	- Plan 2            :  OFF  :  BiasSoftmax+:1:-1                                    1     134,086,656        128.0*inputs_input_ids_dim0*inputs_input_ids_dim1*(inputs_input_ids_dim1 - 1)
@@ -127,7 +141,7 @@ MemoryInsight Summary - User config: not provided
 |6      |For each row options are mutually exclusive, only one of them can be enabled.                                                    |
 |       |                                                                                                                                 |
 |       |>>Option 1     : Recompute subgraph FusedMatMul+Add+Reshape+                                                                     |
-|       |  Status       : Disabled. Enable with export ORTMODULE_MEMORY_OPT_CONFIG=FusedMatMul+Add+Reshape+:1:-1                          |
+|       |  Status       : Disabled.                           |
 |       |  Stashed Activations:                                                                                                           |
 |       |   - ReuseFreq :  Output 0(6),                                                                                                   |
 |       |   - Output 0  : [((inputs_input_ids_dim0)*(inputs_input_ids_dim1)*(32)*(240))], byte/elem: 2, 100% saved                        |
@@ -135,26 +149,26 @@ MemoryInsight Summary - User config: not provided
 |5      |For each row options are mutually exclusive, only one of them can be enabled.                                                    |
 |       |                                                                                                                                 |
 |       |>>Option 1     : Recompute subgraph FusedMatMul+                                                                                 |
-|       |  Status       : Disabled. Enable with export ORTMODULE_MEMORY_OPT_CONFIG=FusedMatMul+:1:-1                                      |
+|       |  Status       : Disabled.                                       |
 |       |  Stashed Activations:                                                                                                           |
 |       |   - Output 0  : [((inputs_input_ids_dim0)*(inputs_input_ids_dim1)*(10240))], byte/elem: 2, 100% saved                           |
 |_ _ _ _|_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _|
 |5      |For each row options are mutually exclusive, only one of them can be enabled.                                                    |
 |       |                                                                                                                                 |
 |       |>>Option 1     : Recompute subgraph Cast+                                                                                        |
-|       |  Status       : Disabled. Enable with export ORTMODULE_MEMORY_OPT_CONFIG=Cast+:1:-1                                             |
+|       |  Status       : Disabled.                                              |
 |       |  Stashed Activations:                                                                                                           |
 |       |   - Output 0  : [((inputs_input_ids_dim0)*(32)*(inputs_input_ids_dim1)*(inputs_input_ids_dim1))], byte/elem: 2, 100% saved      |
 |_ _ _ _|_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _|
 |1      |For each row options are mutually exclusive, only one of them can be enabled.                                                    |
 |       |                                                                                                                                 |
 |       |>>Option 1     : Recompute subgraph Reshape+Unsqueeze+Unsqueeze+Cast+Sub+Mul+Cast+                                               |
-|       |  Status       : Disabled. Enable with export ORTMODULE_MEMORY_OPT_CONFIG=Reshape+Unsqueeze+Unsqueeze+Cast+Sub+Mul+Cast+:1:-1    |
+|       |  Status       : Disabled.     |
 |       |  Stashed Activations:                                                                                                           |
 |       |   - Output 0  : [((inputs_input_ids_dim0)*(1)*(1)*(inputs_input_ids_dim1))], byte/elem: 4, 100% saved                           |
 |       |                                                                                                                                 |
 |       |>>Option 2     : RecomputeWithCompromise subgraph Cast+                                                                          |
-|       |  Status       : Disabled. Enable with export ORTMODULE_MEMORY_OPT_CONFIG=Cast+:2:-1                                             |
+|       |  Status       : Disabled.                                              |
 |       |  Stashed Activations:                                                                                                           |
 |       |   - Output 0  : [((inputs_input_ids_dim0)*(1)*(1)*(inputs_input_ids_dim1))], byte/elem: 4, 50% saved                            |
 |_ _ _ _|_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _|

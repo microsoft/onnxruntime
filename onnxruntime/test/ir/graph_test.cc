@@ -388,7 +388,7 @@ TEST_F(GraphTest, UnusedValueInfoSerializes) {
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
   model->MainGraph().SetGraphProtoSyncNeeded();
-  EXPECT_TRUE(Model::Save(*model, "graph_with_unused_value_info.onnx").IsOK());
+  EXPECT_TRUE(Model::Save(*model, ORT_TSTR("graph_with_unused_value_info.onnx")).IsOK());
 }
 
 TEST_F(GraphTest, WrongOpset) {
@@ -464,7 +464,7 @@ TEST_F(GraphTest, LocalCustomRegistry) {
 
 // Tests the case where function op and function body ops belong to different domains.
 // Tests that such a model can be loaded successfully, function body initialization is
-// successful and domain and verison mapping for each node is successful (by verifying
+// successful and domain and version mapping for each node is successful (by verifying
 // op schema for each of the function body nodes can be found).
 TEST_F(GraphTest, FunctionOpsetImportTest) {
   std::shared_ptr<Model> model;
@@ -481,7 +481,7 @@ TEST_F(GraphTest, FunctionOpsetImportTest) {
       // phase .i.e. Init function body only if none of EPs have a kernel matching the function op
       // then this check will not hold true and should be removed.
 
-      // We delay the funciton instantiate untill partition the graph
+      // We delay the function instantiate until partition the graph
       // this check is no longer valid anymore.
       /*ASSERT_TRUE(!schema->HasFunction() && !schema->HasContextDependentFunction());*/
       continue;
@@ -762,7 +762,7 @@ TEST_F(GraphTest, GraphConstruction_CheckIsAcyclic) {
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  EXPECT_TRUE(Model::Save(model, "graph_1.onnx").IsOK());
+  EXPECT_TRUE(Model::Save(model, ORT_TSTR("graph_1.onnx")).IsOK());
   std::shared_ptr<Model> model2;
   EXPECT_TRUE(Model::Load(ORT_TSTR("graph_1.onnx"), model2, nullptr, *logger_).IsOK());
 
@@ -1476,7 +1476,7 @@ TEST_F(GraphTest, GraphConstruction_TypeInference) {
   EXPECT_EQ("node_4_out_1", graph.GetOutputs()[0]->Name());
   EXPECT_EQ(2u, graph.GetInputs().size());
 
-  EXPECT_TRUE(Model::Save(model, "model_x.onnx").IsOK());
+  EXPECT_TRUE(Model::Save(model, ORT_TSTR("model_x.onnx")).IsOK());
   std::shared_ptr<Model> loaded_model;
   EXPECT_TRUE(Model::Load(ORT_TSTR("model_x.onnx"), loaded_model, nullptr, *logger_).IsOK());
   EXPECT_EQ(2u, loaded_model->MainGraph().GetInputs().size());
@@ -1782,8 +1782,8 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
       {initializer_name, ort_value}};
 
   // We do not need actual files there since we are not going to load it.
-  const auto tensor_data_dir_path = Path::Parse(ToPathString("."));
-  const auto tensor_data_dir_relative_path = Path::Parse(ToPathString("external_data.bin"));
+  const auto tensor_data_dir_path = ORT_TSTR(".");
+  const auto tensor_data_dir_relative_path = ORT_TSTR("external_data.bin");
 
   const auto tensor_proto =
       [&]() {
@@ -1792,7 +1792,7 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
         tensor_proto.add_dims(tensor_data.size());
         tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
         tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
-        SetTensorProtoExternalData("location", ToUTF8String(tensor_data_dir_relative_path.ToPathString()),
+        SetTensorProtoExternalData("location", ToUTF8String(tensor_data_dir_relative_path),
                                    tensor_proto);
         SetTensorProtoExternalData("offset", "0", tensor_proto);
         SetTensorProtoExternalData("length", std::to_string(tensor_data.size() * sizeof(int32_t)), tensor_proto);
@@ -1827,7 +1827,7 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
     ASSERT_FALSE(utils::HasExternalData(*with_data));
     const auto& original_tensor = ort_value.Get<Tensor>();
     Tensor replaced_tensor(original_tensor.DataType(), data_shape, std::make_shared<CPUAllocator>());
-    ASSERT_STATUS_OK(utils::TensorProtoToTensor(Env::Default(), tensor_data_dir_path.ToPathString().c_str(), *with_data,
+    ASSERT_STATUS_OK(utils::TensorProtoToTensor(Env::Default(), tensor_data_dir_path, *with_data,
                                                 replaced_tensor));
     ASSERT_EQ(original_tensor.GetElementType(), replaced_tensor.GetElementType());
     const auto original_span = original_tensor.DataAsSpan<int32_t>();

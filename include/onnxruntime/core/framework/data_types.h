@@ -9,12 +9,13 @@
 #include <type_traits>
 #include <map>
 #include <unordered_map>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/common.h"
 #include "core/common/exceptions.h"
 #include "core/framework/endian.h"
 #include "core/framework/float8.h"
 #include "core/framework/float16.h"
+#include "core/framework/int4.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/framework/to_tensor_proto_element_type.h"
 
@@ -207,6 +208,7 @@ class DataTypeImpl {
   static const std::vector<MLDataType>& AllTensorTypes();  // up to IR4 (no float 8), deprecated
   static const std::vector<MLDataType>& AllTensorTypesIRv4();
   static const std::vector<MLDataType>& AllTensorTypesIRv9();
+  static const std::vector<MLDataType>& AllTensorTypesIRv10();
 
   static const std::vector<MLDataType>& AllFixedSizeTensorTypes();  // up to IR4 (no float 8), deprecated
   static const std::vector<MLDataType>& AllFixedSizeTensorTypesIRv4();
@@ -280,7 +282,8 @@ struct IsAnyOf<T, H, Tail...> {
 template <typename T>
 struct IsTensorContainedType : public IsAnyOf<T, float, uint8_t, int8_t, uint16_t, int16_t,
                                               int32_t, int64_t, std::string, bool, MLFloat16,
-                                              double, uint32_t, uint64_t, BFloat16
+                                              double, uint32_t, uint64_t, BFloat16,
+                                              Int4x2, UInt4x2
 #if !defined(DISABLE_FLOAT8_TYPES)
                                               ,
                                               Float8E4M3FN, Float8E4M3FNUZ, Float8E5M2, Float8E5M2FNUZ
@@ -917,7 +920,8 @@ class OpaqueType : public NonTensorType<T> {
  *        Base class for primitive Tensor contained types
  *
  * \details This class contains an integer constant that can be
- *          used for input data type dispatching
+ *          used for input data type dispatching. This class also stores the number of subelements per size units.
+ *          Example: For int4, the size unit is 1 byte and the number of subelements is 2.
  *
  */
 class PrimitiveDataTypeBase : public DataTypeImpl {
@@ -934,12 +938,21 @@ class PrimitiveDataTypeBase : public DataTypeImpl {
     return data_type_;
   }
 
+  int32_t GetNumSubElems() const {
+    return num_sub_elems_;
+  }
+
+  bool HasSubElems() const {
+    return num_sub_elems_ > 1;
+  }
+
  protected:
-  PrimitiveDataTypeBase(size_t size, int32_t data_type)
-      : DataTypeImpl{GeneralType::kPrimitive, size}, data_type_{data_type} {}
+  PrimitiveDataTypeBase(size_t size, int32_t data_type, int32_t num_sub_elems)
+      : DataTypeImpl{GeneralType::kPrimitive, size}, data_type_{data_type}, num_sub_elems_{num_sub_elems} {}
 
  private:
   const int32_t data_type_;
+  const int32_t num_sub_elems_;  // > 1 for subbyte primitives, 1 for normal primitives.
 };
 
 /**
@@ -965,9 +978,9 @@ class PrimitiveDataType : public PrimitiveDataTypeBase {
   }
 
  private:
-  PrimitiveDataType()
+  explicit PrimitiveDataType(int32_t num_sub_elems)
       : PrimitiveDataTypeBase{sizeof(T),
-                              utils::ToTensorProtoElementType<T>()} {
+                              utils::ToTensorProtoElementType<T>(), num_sub_elems} {
   }
 };
 
@@ -1074,15 +1087,30 @@ inline const PrimitiveDataTypeBase* DataTypeImpl::AsPrimitiveDataType() const {
     return SequenceTensorType<ELEM_TYPE>::Type();               \
   }
 
-#define ORT_REGISTER_PRIM_TYPE(TYPE)               \
-  template <>                                      \
-  MLDataType PrimitiveDataType<TYPE>::Type() {     \
-    static PrimitiveDataType<TYPE> prim_data_type; \
-    return &prim_data_type;                        \
-  }                                                \
-  template <>                                      \
-  MLDataType DataTypeImpl::GetType<TYPE>() {       \
-    return PrimitiveDataType<TYPE>::Type();        \
+#define ORT_REGISTER_PRIM_TYPE(TYPE)                  \
+  template <>                                         \
+  MLDataType PrimitiveDataType<TYPE>::Type() {        \
+    static PrimitiveDataType<TYPE> prim_data_type(1); \
+    return &prim_data_type;                           \
+  }                                                   \
+  template <>                                         \
+  MLDataType DataTypeImpl::GetType<TYPE>() {          \
+    return PrimitiveDataType<TYPE>::Type();           \
+  }
+
+// Registers a subbyte primitive.
+// Examples:
+//   - Int4x2 stores 2 packed 4-bit elements in 1 byte: ORT_*_SUBBYTE_TYPE(Int4x2, 2)
+//   - [not supported] Int3x8 could store 8 packed 3-bit elements in 3 bytes: ORT_*_SUBBYTE_TYPE(Int3x8, 8)
+#define ORT_REGISTER_PRIM_SUBBYTE_TYPE(TYPE, NUM_SUB_ELEMS)       \
+  template <>                                                     \
+  MLDataType PrimitiveDataType<TYPE>::Type() {                    \
+    static PrimitiveDataType<TYPE> prim_data_type(NUM_SUB_ELEMS); \
+    return &prim_data_type;                                       \
+  }                                                               \
+  template <>                                                     \
+  MLDataType DataTypeImpl::GetType<TYPE>() {                      \
+    return PrimitiveDataType<TYPE>::Type();                       \
   }
 
 #define ORT_REGISTER_OPAQUE_TYPE(CPPType, Domain, Name)   \

@@ -205,7 +205,7 @@ Optimizer::Optimizer(const ModelIdentifiers& model_identifiers,
       // by invoking ConstructOptimizerStateAndInputs().
       ORT_THROW_IF_ERROR(ConstructOptimizerStateAndInputs());
     } else {
-      delay_optimizer_state_contruction_ = true;
+      delay_optimizer_state_construction_ = true;
     }
   } else {
     ORT_THROW_IF_ERROR(LoadStateDict(state_->optimizer_checkpoint_state));
@@ -256,7 +256,7 @@ void Optimizer::Initialize(const ModelIdentifiers& model_identifiers,
 }
 
 Status Optimizer::Step() {
-  if (delay_optimizer_state_contruction_) {
+  if (delay_optimizer_state_construction_) {
     ORT_RETURN_IF_ERROR(ConstructOptimizerStateAndInputs());
   }
 
@@ -343,7 +343,7 @@ Status Optimizer::ConstructOptimizerStateAndInputs() {
   ORT_RETURN_IF_ERROR(GenerateMomentumNamedStates(state_->optimizer_checkpoint_state));
   ORT_RETURN_IF_ERROR(ConstructInputs());
 
-  delay_optimizer_state_contruction_ = false;
+  delay_optimizer_state_construction_ = false;
 
   return Status::OK();
 }

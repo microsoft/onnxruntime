@@ -2,8 +2,8 @@
 // Licensed under the MIT License.
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import type {InferenceSession} from 'onnxruntime-common';
-import {NativeModules} from 'react-native';
+import type { InferenceSession } from 'onnxruntime-common';
+import { NativeModules } from 'react-native';
 
 /**
  * model loading information
@@ -29,7 +29,9 @@ interface ModelLoadInfo {
  * JSIBlob is a blob object that exchange ArrayBuffer by OnnxruntimeJSIHelper.
  */
 export type JSIBlob = {
-  blobId: string; offset: number; size: number;
+  blobId: string;
+  offset: number;
+  size: number;
 };
 
 /**
@@ -48,7 +50,7 @@ interface EncodedTensor {
    * the JSIBlob object of the buffer data of the tensor.
    * if data is string array, it won't be stored as JSIBlob.
    */
-  readonly data: JSIBlob|string[];
+  readonly data: JSIBlob | string[];
 }
 
 /**
@@ -61,13 +63,13 @@ export declare namespace Binding {
   type SessionOptions = InferenceSession.SessionOptions;
   type RunOptions = InferenceSession.RunOptions;
 
-  type FeedsType = {[name: string]: EncodedTensor};
+  type FeedsType = { [name: string]: EncodedTensor };
 
   // SessionHanlder FetchesType is different from native module's one.
   // It's because Java API doesn't support preallocated output values.
   type FetchesType = string[];
 
-  type ReturnType = {[name: string]: EncodedTensor};
+  type ReturnType = { [name: string]: EncodedTensor };
 
   interface InferenceSession {
     loadModel(modelPath: string, options: SessionOptions): Promise<ModelLoadInfoType>;
@@ -78,7 +80,7 @@ export declare namespace Binding {
 }
 
 // export native binding
-const {Onnxruntime, OnnxruntimeJSIHelper} = NativeModules;
+const { Onnxruntime, OnnxruntimeJSIHelper } = NativeModules;
 export const binding = Onnxruntime as Binding.InferenceSession;
 
 // install JSI helper global functions
@@ -86,22 +88,28 @@ OnnxruntimeJSIHelper.install();
 
 declare global {
   // eslint-disable-next-line no-var
-  var jsiOnnxruntimeStoreArrayBuffer: ((buffer: ArrayBuffer) => JSIBlob)|undefined;
+  var jsiOnnxruntimeStoreArrayBuffer: ((buffer: ArrayBuffer) => JSIBlob) | undefined;
   // eslint-disable-next-line no-var
-  var jsiOnnxruntimeResolveArrayBuffer: ((blob: JSIBlob) => ArrayBuffer)|undefined;
+  var jsiOnnxruntimeResolveArrayBuffer: ((blob: JSIBlob) => ArrayBuffer) | undefined;
 }
 
 export const jsiHelper = {
-  storeArrayBuffer: globalThis.jsiOnnxruntimeStoreArrayBuffer || (() => {
-                      throw new Error(
-                          'jsiOnnxruntimeStoreArrayBuffer is not found, ' +
-                          'please make sure OnnxruntimeJSIHelper installation is successful.');
-                    }),
-  resolveArrayBuffer: globalThis.jsiOnnxruntimeResolveArrayBuffer || (() => {
-                        throw new Error(
-                            'jsiOnnxruntimeResolveArrayBuffer is not found, ' +
-                            'please make sure OnnxruntimeJSIHelper installation is successful.');
-                      }),
+  storeArrayBuffer:
+    globalThis.jsiOnnxruntimeStoreArrayBuffer ||
+    (() => {
+      throw new Error(
+        'jsiOnnxruntimeStoreArrayBuffer is not found, ' +
+          'please make sure OnnxruntimeJSIHelper installation is successful.',
+      );
+    }),
+  resolveArrayBuffer:
+    globalThis.jsiOnnxruntimeResolveArrayBuffer ||
+    (() => {
+      throw new Error(
+        'jsiOnnxruntimeResolveArrayBuffer is not found, ' +
+          'please make sure OnnxruntimeJSIHelper installation is successful.',
+      );
+    }),
 };
 
 // Remove global functions after installation

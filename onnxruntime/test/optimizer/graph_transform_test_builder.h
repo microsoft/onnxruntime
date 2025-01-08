@@ -6,11 +6,14 @@
 #include <type_traits>
 #include <vector>
 
+#include "core/common/span_utils.h"
 #include "core/common/type_utils.h"
 #include "core/graph/graph.h"
 #include "core/framework/framework_common.h"
+#include "core/framework/int4.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/framework/tensorprotoutils.h"
 #include "test/framework/test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
@@ -45,6 +48,12 @@ struct IsTypeQuantLinearCompatible<int16_t> : std::true_type {};
 template <>
 struct IsTypeQuantLinearCompatible<uint16_t> : std::true_type {};
 
+template <>
+struct IsTypeQuantLinearCompatible<Int4x2> : std::true_type {};
+
+template <>
+struct IsTypeQuantLinearCompatible<UInt4x2> : std::true_type {};
+
 template <typename T>
 struct IsTypeDequantLinearCompatible : utils::IsByteType<T> {};
 
@@ -56,6 +65,12 @@ struct IsTypeDequantLinearCompatible<uint16_t> : std::true_type {};
 
 template <>
 struct IsTypeDequantLinearCompatible<int32_t> : std::true_type {};
+
+template <>
+struct IsTypeDequantLinearCompatible<Int4x2> : std::true_type {};
+
+template <>
+struct IsTypeDequantLinearCompatible<UInt4x2> : std::true_type {};
 
 class ModelTestBuilder {
  public:
@@ -195,21 +210,20 @@ class ModelTestBuilder {
     return &graph_.GetOrCreateNodeArg(name, &type_proto);
   }
 
+  /// <summary>
+  /// Makes an initializer from the provided shape, element type, and raw data bytes.
+  /// </summary>
+  /// <param name="shape">Initializer shape</param>
+  /// <param name="elem_type">ONNX tensor element data type</param>
+  /// <param name="raw_data">Raw data bytes</param>
+  /// <returns>NodeArg pointer</returns>
+  NodeArg* MakeInitializer(gsl::span<const int64_t> shape, ONNX_NAMESPACE::TensorProto_DataType elem_type,
+                           gsl::span<const std::byte> raw_data);
+
   template <typename T>
   NodeArg* MakeInitializer(const std::vector<int64_t>& shape, const std::vector<T>& data) {
-    std::string name = graph_.GenerateNodeArgName("constant");
-    ONNX_NAMESPACE::TensorProto tensor_proto;
-    tensor_proto.set_name(name);
-    tensor_proto.set_data_type(utils::ToTensorProtoElementType<T>());
-    tensor_proto.set_raw_data(data.data(), data.size() * sizeof(T));
-
-    for (auto& dim : shape) {
-      tensor_proto.add_dims(dim);
-    }
-
-    graph_.AddInitializedTensor(tensor_proto);
-
-    return &graph_.GetOrCreateNodeArg(name, nullptr);
+    gsl::span<const std::byte> raw_data = ReinterpretAsSpan<const std::byte, const T>(data);
+    return MakeInitializer(shape, utils::ToTensorProtoElementType<T>(), raw_data);
   }
 
   // Special handle for std::vector<bool>.
@@ -220,7 +234,7 @@ class ModelTestBuilder {
     tensor_proto.set_data_type(utils::ToTensorProtoElementType<bool>());
     std::unique_ptr<bool[]> data_buffer = std::make_unique<bool[]>(data.size());
     for (size_t i = 0; i < data.size(); ++i) data_buffer[i] = data[i];
-    tensor_proto.set_raw_data(data_buffer.get(), data.size());
+    utils::SetRawDataInTensorProto(tensor_proto, data_buffer.get(), data.size());
 
     for (auto& dim : shape) {
       tensor_proto.add_dims(dim);
@@ -310,8 +324,10 @@ class ModelTestBuilder {
                         bool use_ms_domain = false) {
     std::vector<NodeArg*> input_args;
     input_args.push_back(input_arg);
-    input_args.push_back(Make1DInitializer<float>(input_scales));
-    input_args.push_back(Make1DInitializer<T>(input_zero_points));
+
+    std::vector<int64_t> qparams_shape = {static_cast<int64_t>(input_scales.size())};
+    input_args.push_back(MakeInitializer<float>(qparams_shape, input_scales));
+    input_args.push_back(MakeInitializer<T>(qparams_shape, input_zero_points));
 
     std::string domain = use_ms_domain ? kMSDomain : "";
     return AddNode("QuantizeLinear", input_args, {output_arg}, domain, attributes);
@@ -342,6 +358,24 @@ class ModelTestBuilder {
     return AddNode("QuantizeLinear", input_args, {output_arg}, domain, attributes);
   }
 
+  /// <summary>
+  /// Adds a Q node with a configurable zero-point type.
+  /// Takes in an int64_t zero_point value, which is large enough to represent all ONNX zero-point types.
+  /// </summary>
+  /// <param name="input_arg">First input to the Q node</param>
+  /// <param name="input_scale">Input scale value</param>
+  /// <param name="input_zero_point">Input zero point value</param>
+  /// <param name="zero_point_type">Input zero point's type</param>
+  /// <param name="output_arg">Q node's output node arg</param>
+  /// <param name="use_ms_domain">True to use the 'com.microsoft' domain</param>
+  /// <returns>Reference to the new Q node</returns>
+  Node& AddQuantizeLinearNode(NodeArg* input_arg,
+                              float input_scale,
+                              int64_t input_zero_point,
+                              ONNX_NAMESPACE::TensorProto_DataType zero_point_type,
+                              NodeArg* output_arg,
+                              bool use_ms_domain = false);
+
   template <typename T>
   typename std::enable_if<IsTypeDequantLinearCompatible<T>::value, Node&>::type
   AddDequantizeLinearNode(NodeArg* input_arg,
@@ -368,8 +402,10 @@ class ModelTestBuilder {
                           bool use_ms_domain = false) {
     std::vector<NodeArg*> input_args;
     input_args.push_back(input_arg);
-    input_args.push_back(Make1DInitializer<float>(input_scales));
-    input_args.push_back(Make1DInitializer<T>(input_zero_points));
+
+    std::vector<int64_t> qparams_shape = {static_cast<int64_t>(input_scales.size())};
+    input_args.push_back(MakeInitializer<float>(qparams_shape, input_scales));
+    input_args.push_back(MakeInitializer<T>(qparams_shape, input_zero_points));
 
     std::string domain = use_ms_domain ? kMSDomain : "";
     return AddNode("DequantizeLinear", input_args, {output_arg}, domain, attributes);
@@ -399,6 +435,24 @@ class ModelTestBuilder {
     std::string domain = use_ms_domain ? kMSDomain : "";
     return AddNode("DequantizeLinear", input_args, {output_arg}, domain, attributes);
   }
+
+  /// <summary>
+  /// Adds a DQ node with a configurable zero-point type.
+  /// Takes in an int64_t zero_point value, which is large enough to represent all ONNX zero-point types.
+  /// </summary>
+  /// <param name="input_arg">First input to the DQ node</param>
+  /// <param name="input_scale">Input scale value</param>
+  /// <param name="input_zero_point">Input zero point value</param>
+  /// <param name="zero_point_type">Input zero point's type</param>
+  /// <param name="output_arg">DQ node's output node arg</param>
+  /// <param name="use_ms_domain">True to use the 'com.microsoft' domain</param>
+  /// <returns>Reference to the new DQ node</returns>
+  Node& AddDequantizeLinearNode(NodeArg* input_arg,
+                                float input_scale,
+                                int64_t input_zero_point,
+                                ONNX_NAMESPACE::TensorProto_DataType zero_point_type,
+                                NodeArg* output_arg,
+                                bool use_ms_domain = false);
 
   template <typename TWeight>
   Node& AddQLinearConvNode(NodeArg* input_arg,
@@ -501,7 +555,8 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        double relative_per_sample_tolerance = 0.0,
                        std::unique_ptr<GraphTransformer> transformer = nullptr,
                        const std::function<void(SessionOptions&)>& add_session_options = {},
-                       const InlinedHashSet<std::string>& disabled_optimizers = {});
+                       const InlinedHashSet<std::string>& disabled_optimizers = {},
+                       std::unique_ptr<IExecutionProvider> ep = nullptr);
 
 void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& build_test_case,
                        const std::function<void(InferenceSessionWrapper& session)>& check_transformed_graph,

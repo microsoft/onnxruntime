@@ -4,6 +4,7 @@ plugins {
 	id 'signing'
 	id 'jacoco'
 	id "com.diffplug.spotless" version "6.25.0"
+	id "net.linguica.maven-settings" version "0.5"
 }
 
 allprojects {
@@ -19,6 +20,12 @@ version = rootProject.file('../VERSION_NUMBER').text.trim()
 def cmakeBuildDir = System.properties['cmakeBuildDir']
 def useCUDA = System.properties['USE_CUDA']
 def useROCM = System.properties['USE_ROCM']
+
+def adoArtifact = project.findProperty('adoArtifact')
+def adoAccessToken = project.findProperty('adoAccessToken')
+// Only publish to ADO feed if all two properties are set
+def publishToAdo = adoArtifact != null && adoAccessToken != null
+
 boolean enableTrainingApis = (System.properties['ENABLE_TRAINING_APIS'] ?: "0") == "1"
 def cmakeJavaDir = "${cmakeBuildDir}/java"
 def cmakeNativeLibDir = "${cmakeJavaDir}/native-lib"
@@ -37,18 +44,24 @@ def trainingDescription = 'ONNX Runtime Training is a training and inference pac
 	'(Open Neural Network Exchange) models. This package is targeted for Learning on The Edge aka On-Device Training ' +
 	'See https://github.com/microsoft/onnxruntime-training-examples/tree/master/on_device_training for more details.'
 
-java {
-	sourceCompatibility = JavaVersion.VERSION_1_8
-	targetCompatibility = JavaVersion.VERSION_1_8
+// We need to have a custom settings.xml so codeql can bypass the need for settings.security.xml
+mavenSettings {
+	userSettingsFileName = "${projectDir}/settings.xml"
 }
 
-// This jar tasks serves as a CMAKE signalling
+java {
+	sourceCompatibility = JavaVersion.VERSION_17
+	targetCompatibility = JavaVersion.VERSION_17
+}
+
+// This jar tasks serves as a CMAKE signaling
 // mechanism. The jar will be overwritten by allJar task
 jar {
 }
 
 // Add explicit sources jar with pom file.
-task sourcesJar(type: Jar, dependsOn: classes) {
+tasks.register('sourcesJar', Jar) {
+	dependsOn classes
 	archiveClassifier = "sources"
 	from sourceSets.main.allSource
 	into("META-INF/maven/$project.group/$mavenArtifactId") {
@@ -58,7 +71,8 @@ task sourcesJar(type: Jar, dependsOn: classes) {
 }
 
 // Add explicit javadoc jar with pom file
-task javadocJar(type: Jar, dependsOn: javadoc) {
+tasks.register('javadocJar', Jar) {
+	dependsOn javadoc
 	archiveClassifier = "javadoc"
 	from javadoc.destinationDir
 	into("META-INF/maven/$project.group/$mavenArtifactId") {
@@ -82,7 +96,7 @@ spotless {
 
 compileJava {
 	dependsOn spotlessJava
-	options.compilerArgs += ["-h", "${project.buildDir}/headers/"]
+	options.compilerArgs += ["-h", "${layout.buildDirectory.get().toString()}/headers/"]
 	if (!JavaVersion.current().isJava8()) {
 		// Ensures only methods present in Java 8 are used
 		options.compilerArgs.addAll(['--release', '8'])
@@ -128,7 +142,7 @@ if (cmakeBuildDir != null) {
 	// generate tasks to be called from cmake
 
 	// Overwrite jar location
-	task allJar(type: Jar) {
+	tasks.register('allJar', Jar) {
 		manifest {
 			attributes('Automatic-Module-Name': project.group,
 					'Implementation-Title': 'onnxruntime',
@@ -143,23 +157,23 @@ if (cmakeBuildDir != null) {
 		from cmakeNativeLibDir
 	}
 
-	task cmakeBuild(type: Copy) {
-		from project.buildDir
+	tasks.register('cmakeBuild', Copy) {
+		from layout.buildDirectory.get()
 		include 'libs/**'
 		include 'docs/**'
 		into cmakeBuildOutputDir
+		dependsOn(allJar, sourcesJar, javadocJar, javadoc)
 	}
-	cmakeBuild.dependsOn allJar
-	cmakeBuild.dependsOn sourcesJar
-	cmakeBuild.dependsOn javadocJar
-	cmakeBuild.dependsOn javadoc
 
-	task cmakeCheck(type: Copy) {
-		from project.buildDir
+	tasks.register('cmakeCheck', Copy) {
+		group = 'verification'
+		from layout.buildDirectory.get()
 		include 'reports/**'
 		into cmakeBuildOutputDir
+		dependsOn(check)
 	}
-	cmakeCheck.dependsOn check
+} else {
+	println "cmakeBuildDir is not set. Skipping cmake tasks."
 }
 
 dependencies {
@@ -185,7 +199,19 @@ test {
 	if (cmakeBuildDir != null) {
 		workingDir cmakeBuildDir
 	}
-	systemProperties System.getProperties().subMap(['USE_CUDA', 'USE_ROCM', 'USE_TENSORRT', 'USE_DNNL', 'USE_OPENVINO', 'USE_COREML', 'USE_DML', 'JAVA_FULL_TEST', 'ENABLE_TRAINING_APIS'])
+	systemProperties System.getProperties().subMap([
+		'ENABLE_TRAINING_APIS',
+		'JAVA_FULL_TEST',
+		'USE_COREML',
+		'USE_CUDA',
+		'USE_DML',
+		'USE_DNNL',
+		'USE_OPENVINO',
+		'USE_ROCM',
+		'USE_TENSORRT',
+		'USE_QNN',
+		'USE_XNNPACK',
+		])
 	testLogging {
 		events "passed", "skipped", "failed"
 		showStandardStreams = true
@@ -198,7 +224,7 @@ jacocoTestReport {
 	reports {
 		xml.required = true
 		csv.required = true
-		html.destination file("${buildDir}/jacocoHtml")
+		html.outputLocation = layout.buildDirectory.dir("jacocoHtml")
 	}
 }
 
@@ -206,9 +232,14 @@ publishing {
 	publications {
 		maven(MavenPublication) {
 			groupId = project.group
-			artifactId = mavenArtifactId
-
-			from components.java
+			if(publishToAdo) {
+				artifactId = 'onnxruntime_gpu'
+				artifact (adoArtifact)
+			} else {
+				artifactId = mavenArtifactId
+				from components.java
+			}
+			version = project.version
 			pom {
 				name = enableTrainingApis ? 'onnxruntime-training' : 'onnx-runtime'
 				description = enableTrainingApis ? trainingDescription : defaultDescription
@@ -239,24 +270,41 @@ publishing {
 		}
 	}
 	repositories {
-		maven {
-			url 'https://oss.sonatype.org/service/local/staging/deploy/maven2/'
-			credentials {
-				username mavenUser
-				password mavenPwd
+		if (publishToAdo) {
+			maven {
+				url "https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/${System.getenv('ADOFeedName')}/maven/v1"
+				name System.getenv('ADOFeedName')
+				authentication {
+					basic(BasicAuthentication)
+				}
+				credentials {
+					username  'aiinfra'
+					password "${project.findProperty('adoAccessToken')}"
+				}
+			}
+		} else {
+			maven {
+				url 'https://oss.sonatype.org/service/local/staging/deploy/maven2/'
+				credentials {
+					username mavenUser
+					password mavenPwd
+				}
 			}
 		}
 	}
 }
-
 // Generates a task signMavenPublication that will
 // build all artifacts.
 signing {
 	// Queries env vars:
 	// ORG_GRADLE_PROJECT_signingKey
 	// ORG_GRADLE_PROJECT_signingPassword but can be changed to properties
-	def signingKey = findProperty("signingKey")
-	def signingPassword = findProperty("signingPassword")
-	useInMemoryPgpKeys(signingKey, signingPassword)
-	sign publishing.publications.maven
+		def signingKey = findProperty("signingKey")
+		def signingPassword = findProperty("signingPassword")
+		// Skip signing if no key is provided
+		if (signingKey != null && signingPassword != null) {
+			useInMemoryPgpKeys(signingKey, signingPassword)
+			sign publishing.publications.maven
+			sign publishing.publications.mavenAdo
+		}
 }

@@ -6,7 +6,7 @@
 
 #import <react/RCTBridgeModule.h>
 
-@interface MNISTDataHandler : NSObject<RCTBridgeModule>
+@interface MNISTDataHandler : NSObject <RCTBridgeModule>
 @end
 
 #endif /* MNISTDataHandler_h */

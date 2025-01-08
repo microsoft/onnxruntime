@@ -10,7 +10,7 @@
 #include <memory>
 #include <chrono>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/providers/cuda/cuda_allocator.h"

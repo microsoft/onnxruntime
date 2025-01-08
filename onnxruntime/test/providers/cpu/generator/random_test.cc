@@ -178,7 +178,7 @@ TEST(Random, InvalidDType) {
     test.AddAttribute("shape", dims);
 
     test.AddOutput<double>("Y", dims, expected_output);
-    test.Run(OpTester::ExpectResult::kExpectFailure, "Attribute dtype does not specify a valid type.");
+    test.Run(OpTester::ExpectResult::kExpectFailure, "Node (node1) Op (RandomNormal) [TypeInferenceError] Attribute dtype does not specify a valid type in .");
   }
 
   {
@@ -194,7 +194,7 @@ TEST(Random, InvalidDType) {
     test.AddAttribute("shape", dims);
 
     test.AddOutput<double>("Y", dims, expected_output);
-    test.Run(OpTester::ExpectResult::kExpectFailure, "Attribute dtype does not specify a valid type.");
+    test.Run(OpTester::ExpectResult::kExpectFailure, "Node (node1) Op (RandomUniform) [TypeInferenceError] Attribute dtype does not specify a valid type in .");
   }
 
   {
@@ -210,7 +210,7 @@ TEST(Random, InvalidDType) {
 
     test.AddInput<int32_t>("X", dims, input);
     test.AddOutput<double>("Y", dims, expected_output);
-    test.Run(OpTester::ExpectResult::kExpectFailure, "Attribute dtype does not specify a valid type.");
+    test.Run(OpTester::ExpectResult::kExpectFailure, "Node (node1) Op (RandomNormalLike) [TypeInferenceError] Attribute dtype does not specify a valid type in .");
   }
 
   {
@@ -226,7 +226,7 @@ TEST(Random, InvalidDType) {
 
     test.AddInput<int32_t>("X", dims, input);
     test.AddOutput<double>("Y", dims, expected_output);
-    test.Run(OpTester::ExpectResult::kExpectFailure, "Attribute dtype does not specify a valid type.");
+    test.Run(OpTester::ExpectResult::kExpectFailure, "Node (node1) Op (RandomUniformLike) [TypeInferenceError] Attribute dtype does not specify a valid type in .");
   }
 }
 
@@ -256,7 +256,7 @@ TEST(Random, MultinomialGoodCase) {
   const std::vector<int64_t> output_dims{batch_size, num_samples};
 #ifdef _WIN32
   const std::vector<int64_t> expected_output{2, 0, 0, 2, 2, 2, 0, 2, 2, 1, 1, 2, 1, 1, 1, 1, 2, 1, 2, 0};
-#elif defined(__MACH__) || defined(__ANDROID__) || defined(__FreeBSD__) || defined(__wasm__)
+#elif defined(__MACH__) || defined(__ANDROID__) || defined(__FreeBSD__) || defined(__wasm__) || (defined(_AIX) && defined(__clang__))
   const std::vector<int64_t> expected_output{1, 1, 2, 2, 0, 2, 2, 2, 0, 2, 1, 1, 2, 0, 2, 2, 0, 2, 1, 1};
 #else
   const std::vector<int64_t> expected_output{2, 0, 0, 1, 0, 1, 2, 0, 1, 0, 0, 1, 1, 0, 1, 0, 2, 0, 2, 0};
@@ -294,7 +294,7 @@ TEST(Random, MultinomialDefaultDType) {
 #ifdef _WIN32
   const std::vector<int32_t> expected_output_1{2, 0, 0, 2, 2, 2, 0, 2, 2, 1, 1, 2, 1, 1, 1, 1, 2, 1, 2, 0};
   const std::vector<int32_t> expected_output_2{0, 0, 1, 0, 2, 2, 2, 0, 2, 1, 2, 1, 0, 2, 0, 2, 2, 1, 2, 1};
-#elif defined(__MACH__) || defined(__ANDROID__) || defined(__FreeBSD__) || defined(__wasm__)
+#elif defined(__MACH__) || defined(__ANDROID__) || defined(__FreeBSD__) || defined(__wasm__) || (defined(_AIX) && defined(__clang__))
   const std::vector<int32_t> expected_output_1{1, 1, 2, 2, 0, 2, 2, 2, 0, 2, 1, 1, 2, 0, 2, 2, 0, 2, 1, 1};
   const std::vector<int32_t> expected_output_2{1, 0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 2, 0, 1, 1, 0, 2, 2, 2, 1};
 #else

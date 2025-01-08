@@ -23,7 +23,9 @@ struct TreeNodeElementId {
   }
   struct hash_fn {
     std::size_t operator()(const TreeNodeElementId& key) const {
-      return static_cast<std::size_t>(static_cast<uint64_t>(key.tree_id) << 32 | static_cast<uint64_t>(key.node_id));
+      // unordered_map has poor performance on Windows when inserting consecutive keys.
+      // keys are usually inserted with key.node_id being incremented at each iteration.
+      return static_cast<std::size_t>(static_cast<uint64_t>(key.tree_id) | static_cast<uint64_t>(key.node_id) << 32);
     }
   };
 };
@@ -76,6 +78,40 @@ union PtrOrWeight {
   } weight_data;
 };
 
+enum NODE_MODE_ORT : uint8_t {
+  LEAF = 1,
+  BRANCH_LEQ = 2,
+  BRANCH_LT = 4,
+  BRANCH_GTE = 6,
+  BRANCH_GT = 8,
+  BRANCH_EQ = 10,
+  BRANCH_NEQ = 12,
+  BRANCH_MEMBER = 14,
+};
+
+inline NODE_MODE_ORT Convert_NODE_MODE_ONNX_to_ORT(NODE_MODE_ONNX node_mode) {
+  switch (node_mode) {
+    case NODE_MODE_ONNX::LEAF:
+      return NODE_MODE_ORT::LEAF;
+    case NODE_MODE_ONNX::BRANCH_LEQ:
+      return NODE_MODE_ORT::BRANCH_LEQ;
+    case NODE_MODE_ONNX::BRANCH_LT:
+      return NODE_MODE_ORT::BRANCH_LT;
+    case NODE_MODE_ONNX::BRANCH_GTE:
+      return NODE_MODE_ORT::BRANCH_GTE;
+    case NODE_MODE_ONNX::BRANCH_GT:
+      return NODE_MODE_ORT::BRANCH_GT;
+    case NODE_MODE_ONNX::BRANCH_EQ:
+      return NODE_MODE_ORT::BRANCH_EQ;
+    case NODE_MODE_ONNX::BRANCH_NEQ:
+      return NODE_MODE_ORT::BRANCH_NEQ;
+    case NODE_MODE_ONNX::BRANCH_MEMBER:
+      return NODE_MODE_ORT::BRANCH_MEMBER;
+    default:
+      ORT_THROW("Unexpected value for node_mode");
+  };
+}
+
 template <typename T>
 struct TreeNodeElement {
   int feature_id;
@@ -96,10 +132,10 @@ struct TreeNodeElement {
   // weight in array `TreeEnsembleCommon::weights_`. If the number of targets or classes is one, the weight is also
   // stored in `value_or_unique_weight`.
   PtrOrWeight<T> truenode_or_weight;
-  uint8_t flags;
+  NODE_MODE_ORT flags;
 
-  inline NODE_MODE mode() const { return NODE_MODE(flags & 0xF); }
-  inline bool is_not_leaf() const { return !(flags & NODE_MODE::LEAF); }
+  inline NODE_MODE_ORT mode() const { return NODE_MODE_ORT(flags & 0xF); }
+  inline bool is_not_leaf() const { return !(flags & NODE_MODE_ORT::LEAF); }
   inline bool is_missing_track_true() const { return flags & MissingTrack::kTrue; }
 };
 
@@ -326,11 +362,10 @@ class TreeAggregatorMin : public TreeAggregator<InputType, ThresholdType, Output
 template <typename InputType, typename ThresholdType, typename OutputType>
 class TreeAggregatorMax : public TreeAggregator<InputType, ThresholdType, OutputType> {
  public:
-  TreeAggregatorMax<InputType, ThresholdType, OutputType>(size_t n_trees,
-                                                          const int64_t& n_targets_or_classes,
-                                                          POST_EVAL_TRANSFORM post_transform,
-                                                          const std::vector<ThresholdType>& base_values) : TreeAggregator<InputType, ThresholdType, OutputType>(n_trees, n_targets_or_classes,
-                                                                                                                                                                post_transform, base_values) {}
+  TreeAggregatorMax(size_t n_trees,
+                    const int64_t& n_targets_or_classes,
+                    POST_EVAL_TRANSFORM post_transform,
+                    const std::vector<ThresholdType>& base_values) : TreeAggregator<InputType, ThresholdType, OutputType>(n_trees, n_targets_or_classes, post_transform, base_values) {}
 
   // 1 output
 

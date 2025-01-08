@@ -20,6 +20,7 @@ from llama_inputs import (
     get_merged_sample_with_past_kv_inputs,
     get_sample_inputs,
     get_sample_with_past_kv_inputs,
+    verify_ort_inputs,
 )
 from llama_torch import setup_torch_model
 from transformers import AutoConfig
@@ -112,8 +113,6 @@ def verify_parity(
         use_buffer_share=args.use_buffer_share,
         past_seq_len=past_sequence_length,
         max_seq_len=max_sequence_length,
-        device=args.execution_provider,
-        device_id=int(args.rank),
     )
 
     ep = f"{args.execution_provider.upper()}ExecutionProvider"
@@ -124,6 +123,7 @@ def verify_parity(
         sess_options=ort.SessionOptions(),
         providers=[ep],
     )
+    inputs = verify_ort_inputs(ort_model, inputs)
 
     # Add IO bindings for non-CPU execution providers
     if args.execution_provider != "cpu":

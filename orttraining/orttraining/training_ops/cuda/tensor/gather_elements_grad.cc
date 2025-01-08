@@ -21,7 +21,10 @@ namespace cuda {
 ONNX_OPERATOR_KERNEL_EX(GatherElementsGrad, kMSDomain, 1, kCudaExecutionProvider,
                         CREATE_GATHER_ELEMENTS_GRAD_KERNEL_DEF
                             .InputMemoryType(OrtMemTypeCPUInput, 1)  // 'GatherElements' data shape needs to be on CPU
-                            .TypeConstraint("T", DataTypeImpl::AllIEEEFloatTensorTypes())
+                            .TypeConstraint("T", {DataTypeImpl::GetTensorType<float>(),
+                                                  DataTypeImpl::GetTensorType<double>(),
+                                                  DataTypeImpl::GetTensorType<MLFloat16>(),
+                                                  DataTypeImpl::GetTensorType<BFloat16>()})
                             .TypeConstraint("I", DataTypeImpl::GetTensorType<int64_t>())
                             .TypeConstraint("Tind", std::vector<MLDataType>{DataTypeImpl::GetTensorType<int32_t>(),
                                                                             DataTypeImpl::GetTensorType<int64_t>()}),
@@ -94,9 +97,8 @@ Status GatherElementsGrad::ComputeInternal(OpKernelContext* context) const {
 #endif
   CoalesceDimensions(data_shape_vec, indices_shape_vec, p_indices_strides_vec, axis, args);
 
-  // Use element size instead of concrete types so we can specialize less template functions to reduce binary size.
-  int dtype = GetElementType(dY->DataType()->Size());
-  // GatherElementsGrad supports half, float and double only for now, it's element size will not but INT8.
+  const int dtype = dY->GetElementType();
+  // GatherElementsGrad supports half, bfloat16, float and double only for now, it's element size will not but INT8.
   if (dtype == ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED || dtype == ONNX_NAMESPACE::TensorProto_DataType_INT8) {
     ORT_THROW("Unsupported element size by the GatherElementsGrad CUDA kernel");
   }
@@ -108,7 +110,7 @@ Status GatherElementsGrad::ComputeInternal(OpKernelContext* context) const {
     });
   }
 
-  utils::MLTypeCallDispatcher<MLFloat16, float, double> t_disp(dtype);
+  utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double> t_disp(dtype);
   return t_disp.InvokeRet<Status, ComputeImpl>(Stream(context), dY->DataRaw(), indices_tensor->DataRaw(),
                                                dX->MutableDataRaw(),
                                                indices_tensor->DataType()->Size(), args);

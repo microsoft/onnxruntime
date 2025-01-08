@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/platform/windows/telemetry.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/common/logging/logging.h"
 #include "onnxruntime_config.h"
 
@@ -57,18 +57,18 @@ TRACELOGGING_DEFINE_PROVIDER(telemetry_provider_handle, "Microsoft.ML.ONNXRuntim
 #pragma warning(pop)
 #endif
 
-OrtMutex WindowsTelemetry::mutex_;
-OrtMutex WindowsTelemetry::provider_change_mutex_;
+std::mutex WindowsTelemetry::mutex_;
+std::mutex WindowsTelemetry::provider_change_mutex_;
 uint32_t WindowsTelemetry::global_register_count_ = 0;
 bool WindowsTelemetry::enabled_ = true;
 uint32_t WindowsTelemetry::projection_ = 0;
 UCHAR WindowsTelemetry::level_ = 0;
 UINT64 WindowsTelemetry::keyword_ = 0;
-std::vector<WindowsTelemetry::EtwInternalCallback> WindowsTelemetry::callbacks_;
-OrtMutex WindowsTelemetry::callbacks_mutex_;
+std::vector<const WindowsTelemetry::EtwInternalCallback*> WindowsTelemetry::callbacks_;
+std::mutex WindowsTelemetry::callbacks_mutex_;
 
 WindowsTelemetry::WindowsTelemetry() {
-  std::lock_guard<OrtMutex> lock(mutex_);
+  std::lock_guard<std::mutex> lock(mutex_);
   if (global_register_count_ == 0) {
     // TraceLoggingRegister is fancy in that you can only register once GLOBALLY for the whole process
     HRESULT hr = TraceLoggingRegisterEx(telemetry_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
@@ -79,27 +79,30 @@ WindowsTelemetry::WindowsTelemetry() {
 }
 
 WindowsTelemetry::~WindowsTelemetry() {
-  std::lock_guard<OrtMutex> lock(mutex_);
+  std::lock_guard<std::mutex> lock(mutex_);
   if (global_register_count_ > 0) {
     global_register_count_ -= 1;
     if (global_register_count_ == 0) {
       TraceLoggingUnregister(telemetry_provider_handle);
     }
   }
+
+  std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
+  callbacks_.clear();
 }
 
 bool WindowsTelemetry::IsEnabled() const {
-  std::lock_guard<OrtMutex> lock(provider_change_mutex_);
+  std::lock_guard<std::mutex> lock(provider_change_mutex_);
   return enabled_;
 }
 
 UCHAR WindowsTelemetry::Level() const {
-  std::lock_guard<OrtMutex> lock(provider_change_mutex_);
+  std::lock_guard<std::mutex> lock(provider_change_mutex_);
   return level_;
 }
 
 UINT64 WindowsTelemetry::Keyword() const {
-  std::lock_guard<OrtMutex> lock(provider_change_mutex_);
+  std::lock_guard<std::mutex> lock(provider_change_mutex_);
   return keyword_;
 }
 
@@ -108,8 +111,17 @@ UINT64 WindowsTelemetry::Keyword() const {
 // }
 
 void WindowsTelemetry::RegisterInternalCallback(const EtwInternalCallback& callback) {
-  std::lock_guard<OrtMutex> lock(callbacks_mutex_);
-  callbacks_.push_back(callback);
+  std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
+  callbacks_.push_back(&callback);
+}
+
+void WindowsTelemetry::UnregisterInternalCallback(const EtwInternalCallback& callback) {
+  std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
+  auto new_end = std::remove_if(callbacks_.begin(), callbacks_.end(),
+                                [&callback](const EtwInternalCallback* ptr) {
+                                  return ptr == &callback;
+                                });
+  callbacks_.erase(new_end, callbacks_.end());
 }
 
 void NTAPI WindowsTelemetry::ORT_TL_EtwEnableCallback(
@@ -120,7 +132,7 @@ void NTAPI WindowsTelemetry::ORT_TL_EtwEnableCallback(
     _In_ ULONGLONG MatchAllKeyword,
     _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
     _In_opt_ PVOID CallbackContext) {
-  std::lock_guard<OrtMutex> lock(provider_change_mutex_);
+  std::lock_guard<std::mutex> lock(provider_change_mutex_);
   enabled_ = (IsEnabled != 0);
   level_ = Level;
   keyword_ = MatchAnyKeyword;
@@ -131,9 +143,9 @@ void NTAPI WindowsTelemetry::ORT_TL_EtwEnableCallback(
 void WindowsTelemetry::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword,
                                        ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData,
                                        PVOID CallbackContext) {
-  std::lock_guard<OrtMutex> lock(callbacks_mutex_);
+  std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
   for (const auto& callback : callbacks_) {
-    callback(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
+    (*callback)(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
   }
 }
 
@@ -210,23 +222,23 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                                           const std::string& model_graph_name,
                                           const std::unordered_map<std::string, std::string>& model_metadata,
                                           const std::string& loaded_from, const std::vector<std::string>& execution_provider_ids,
-                                          bool use_fp16) const {
+                                          bool use_fp16, bool captureState) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
 
   // build the strings we need
 
-  std::string domain_to_verison_string;
+  std::string domain_to_version_string;
   bool first = true;
   for (auto& i : domain_to_version_map) {
     if (first) {
       first = false;
     } else {
-      domain_to_verison_string += ',';
+      domain_to_version_string += ',';
     }
-    domain_to_verison_string += i.first;
-    domain_to_verison_string += '=';
-    domain_to_verison_string += std::to_string(i.second);
+    domain_to_version_string += i.first;
+    domain_to_version_string += '=';
+    domain_to_version_string += std::to_string(i.second);
   }
 
   std::string model_metadata_string;
@@ -253,27 +265,52 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
     execution_provider_string += i;
   }
 
-  TraceLoggingWrite(telemetry_provider_handle,
-                    "SessionCreation",
-                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
-                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
-                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
-                    TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
-                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
-                    // Telemetry info
-                    TraceLoggingUInt8(0, "schemaVersion"),
-                    TraceLoggingUInt32(session_id, "sessionId"),
-                    TraceLoggingInt64(ir_version, "irVersion"),
-                    TraceLoggingUInt32(projection_, "OrtProgrammingProjection"),
-                    TraceLoggingString(model_producer_name.c_str(), "modelProducerName"),
-                    TraceLoggingString(model_producer_version.c_str(), "modelProducerVersion"),
-                    TraceLoggingString(model_domain.c_str(), "modelDomain"),
-                    TraceLoggingBool(use_fp16, "usefp16"),
-                    TraceLoggingString(domain_to_verison_string.c_str(), "domainToVersionMap"),
-                    TraceLoggingString(model_graph_name.c_str(), "modelGraphName"),
-                    TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
-                    TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
-                    TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"));
+  // Difference is MeasureEvent & isCaptureState, but keep in sync otherwise
+  if (!captureState) {
+    TraceLoggingWrite(telemetry_provider_handle,
+                      "SessionCreation",
+                      TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                      TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+                      TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                      TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
+                      TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                      // Telemetry info
+                      TraceLoggingUInt8(0, "schemaVersion"),
+                      TraceLoggingUInt32(session_id, "sessionId"),
+                      TraceLoggingInt64(ir_version, "irVersion"),
+                      TraceLoggingUInt32(projection_, "OrtProgrammingProjection"),
+                      TraceLoggingString(model_producer_name.c_str(), "modelProducerName"),
+                      TraceLoggingString(model_producer_version.c_str(), "modelProducerVersion"),
+                      TraceLoggingString(model_domain.c_str(), "modelDomain"),
+                      TraceLoggingBool(use_fp16, "usefp16"),
+                      TraceLoggingString(domain_to_version_string.c_str(), "domainToVersionMap"),
+                      TraceLoggingString(model_graph_name.c_str(), "modelGraphName"),
+                      TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
+                      TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
+                      TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"));
+  } else {
+    TraceLoggingWrite(telemetry_provider_handle,
+                      "SessionCreation_CaptureState",
+                      TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                      TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+                      // Not a measure event
+                      TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
+                      TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                      // Telemetry info
+                      TraceLoggingUInt8(0, "schemaVersion"),
+                      TraceLoggingUInt32(session_id, "sessionId"),
+                      TraceLoggingInt64(ir_version, "irVersion"),
+                      TraceLoggingUInt32(projection_, "OrtProgrammingProjection"),
+                      TraceLoggingString(model_producer_name.c_str(), "modelProducerName"),
+                      TraceLoggingString(model_producer_version.c_str(), "modelProducerVersion"),
+                      TraceLoggingString(model_domain.c_str(), "modelDomain"),
+                      TraceLoggingBool(use_fp16, "usefp16"),
+                      TraceLoggingString(domain_to_version_string.c_str(), "domainToVersionMap"),
+                      TraceLoggingString(model_graph_name.c_str(), "modelGraphName"),
+                      TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
+                      TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
+                      TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"));
+  }
 }
 
 void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,

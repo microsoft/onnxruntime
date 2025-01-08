@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {flatbuffers} from 'flatbuffers';
+import { flatbuffers } from 'flatbuffers';
 
-import {Graph} from './graph';
-import {OpSet} from './opset';
-import {onnxruntime} from './ort-schema/flatbuffers/ort-generated';
-import {onnx} from './ort-schema/protobuf/onnx';
-import {LongUtil} from './util';
+import { Graph } from './graph';
+import { OpSet } from './opset';
+import { onnxruntime } from './ort-schema/flatbuffers/ort-generated';
+import { onnx } from './ort-schema/protobuf/onnx';
+import { LongUtil } from './util';
 
 import ortFbs = onnxruntime.experimental.fbs;
 
@@ -16,7 +16,7 @@ export class Model {
   constructor() {}
 
   load(buf: Uint8Array, graphInitializer?: Graph.Initializer, isOrtFormat?: boolean): void {
-    let onnxError: Error|undefined;
+    let onnxError: Error | undefined;
     if (!isOrtFormat) {
       // isOrtFormat === false || isOrtFormat === undefined
       try {
@@ -48,8 +48,10 @@ export class Model {
       throw new Error('only support ONNX model with IR_VERSION>=3');
     }
 
-    this._opsets =
-        modelProto.opsetImport.map(i => ({domain: i.domain as string, version: LongUtil.longToNumber(i.version!)}));
+    this._opsets = modelProto.opsetImport.map((i) => ({
+      domain: i.domain as string,
+      version: LongUtil.longToNumber(i.version!),
+    }));
 
     this._graph = Graph.from(modelProto.graph!, graphInitializer);
   }
@@ -64,7 +66,7 @@ export class Model {
     this._opsets = [];
     for (let i = 0; i < ortModel.opsetImportLength(); i++) {
       const opsetId = ortModel.opsetImport(i)!;
-      this._opsets.push({domain: opsetId?.domain() as string, version: LongUtil.longToNumber(opsetId.version()!)});
+      this._opsets.push({ domain: opsetId?.domain() as string, version: LongUtil.longToNumber(opsetId.version()!) });
     }
 
     this._graph = Graph.from(ortModel.graph()!, graphInitializer);

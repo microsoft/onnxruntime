@@ -1,5 +1,6 @@
 /*
  * Copyright (c) 2019, 2023 Oracle and/or its affiliates. All rights reserved.
+ * SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -256,6 +257,19 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setSes
   const OrtApi* api = (const OrtApi*)apiHandle;
   OrtSessionOptions* options = (OrtSessionOptions*) optionsHandle;
   checkOrtStatus(jniEnv,api,api->SetSessionLogVerbosityLevel(options,logLevel));
+}
+
+/*
+ * Class:     ai_onnxruntime_OrtSession_SessionOptions
+ * Method:    setDeterministicCompute
+ * Signature: (JJZ)V
+ */
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_setDeterministicCompute
+    (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong optionsHandle, jboolean isDeterministic) {
+  (void) jobj; // Required JNI parameters not needed by functions which don't need to access their host object.
+  const OrtApi* api = (const OrtApi*)apiHandle;
+  OrtSessionOptions* options = (OrtSessionOptions*) optionsHandle;
+  checkOrtStatus(jniEnv,api,api->SetDeterministicCompute(options, isDeterministic));
 }
 
 /*
@@ -644,12 +658,13 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addDir
  * Signature: (JJI)V
  */
 JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addACL
-  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jint useArena) {
+  (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong handle, jboolean enableFastMath) {
   (void)jobj;
   #ifdef USE_ACL
-    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,OrtSessionOptionsAppendExecutionProvider_ACL((OrtSessionOptions*) handle,useArena));
+    checkOrtStatus(jniEnv,(const OrtApi*)apiHandle,
+      OrtSessionOptionsAppendExecutionProvider_ACL((OrtSessionOptions*) handle, enableFastMath));
   #else
-    (void)apiHandle;(void)handle;(void)useArena; // Parameters used when ACL is defined.
+    (void)apiHandle;(void)handle;(void)enableFastMath; // Parameters used when ACL is defined.
     throwOrtException(jniEnv,convertErrorCode(ORT_INVALID_ARGUMENT),"This binary was not compiled with ACL support.");
   #endif
 }

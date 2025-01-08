@@ -13,13 +13,15 @@
 #include "orttraining/core/optimizer/memory_optimizer/recompute_analysis.h"
 #include "core/common/string_utils.h"
 #include "core/framework/data_types.h"
+#include "core/graph/graph_utils.h"
 #include "core/optimizer/utils.h"
 
 namespace onnxruntime::optimizer::memory_optimizer {
 
 namespace {
 
-constexpr int32_t MAXIMUM_RECOMPUTE_NODE_COUNT = 50;
+// We don't usually need maximum recompute node count from our existing use cases, so loose the constraints here.
+constexpr size_t MAXIMUM_RECOMPUTE_NODE_COUNT = std::numeric_limits<size_t>::max();
 
 static size_t GetElementSize(const ONNX_NAMESPACE::DataType& tensor_type) {
   const ONNX_NAMESPACE::TypeProto& type_proto = ONNX_NAMESPACE::Utils::DataTypeUtils::ToTypeProto(tensor_type);
@@ -58,404 +60,429 @@ using OpsetToIgnorableIndicesMap = InlinedHashMap<int, IgnorableInputIndices>;
  * Most recent revisited for ONNX v1.15.0 release - https://github.com/onnx/onnx/blob/b86cc54efce19530fb953e4b21f57e6b3888534c/docs/Operators.md
  *
  * We defined supported list explicitly instead of using a excluding list for the following reasons:
- * 1. Some ops generate indeterministic results (for example using random number generator). We need evaluate whether
+ * 1. Some ops generate non-deterministic results (for example using random number generator). We need evaluate whether
  *   this is a problem for recompute before adding the support, instead of fixing this after we find and try to
- *   fix convergence issues (which will be very hard if we have multiple indeterministic operators by default supported.)
+ *   fix convergence issues (which will be very hard if we have multiple non-deterministic operators by default supported.)
  * 2. Some ops schema will be changed in new opsets, we need also check manually whether it is applicable to recompute
  *   or not.
  * 3. Some ops are not supported in older opsets, we need to check whether it is applicable to recompute or not.
  */
+InlinedHashMap<int, InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>> InitializeRecomputableOpTable() {
+  InlinedHashMap<int, InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>> recomputable_op_table_map;
+
+  constexpr const int basic_op_level = static_cast<int>(ProbeLevel::Basic);
+  recomputable_op_table_map.insert({basic_op_level, InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>()});
+  auto& basic_recomputable_op_table = recomputable_op_table_map.at(basic_op_level);
+
+  basic_recomputable_op_table.insert({
+      {
+          utils::GetFullQualifiedOpName("Add", kOnnxDomain),
+          {
+              {1, {}},
+              {6, {}},
+              {7, {}},
+              {13, {}},
+              {14, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("BatchNormalization", kOnnxDomain),
+          {
+              {1, {}},
+              {6, {}},
+              {7, {}},
+              {9, {}},
+              {14, {}},
+              {15, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("BiasGelu", kMSDomain),
+          {
+              {1, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("BiasDropout", kMSDomain),
+          {
+              {1, {3, 4}},  // ignore ratio (optional) and training mode (optional)
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("BitmaskBiasDropout", kMSDomain),
+          {
+              {1, {3, 4}},  // ignore ratio (optional) and training mode (optional)
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("BitmaskDropout", kMSDomain),
+          {
+              {1, {1, 2}},  // ignore ratio (optional) and training mode (optional)
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Cast", kOnnxDomain),
+          {
+              {1, {}},
+              {6, {}},
+              {9, {}},
+              {13, {}},
+              {19, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("ConcatTraining", kMSDomain),
+          {
+              {1, {}},
+
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("ConstantOfShape", kOnnxDomain),
+          {
+              {9, {0}},  // ignore the `input`, e.g. the shape of the expected output tensor
+              {20, {0}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Cos", kOnnxDomain),
+          {
+              {7, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("CumSum", kOnnxDomain),
+          {
+              // The axis input is trivial
+              {11, {1}},
+              {14, {1}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Dropout", kOnnxDomain),
+          {
+              // ONNX Dropout 1, 6, 7, 10 do not have seed attribute, so we remove them from the recompute support.
+              {12, {1, 2}},  // ignore ratio and training_mode
+              {13, {1, 2}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Div", kOnnxDomain),
+          {
+              {1, {}},
+              {6, {}},
+              {7, {}},
+              {13, {}},
+              {14, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Einsum", kOnnxDomain),
+          {
+              {12, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Equal", kOnnxDomain),
+          {
+              {1, {}},
+              {7, {}},
+              {11, {}},
+              {13, {}},
+              {19, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Expand", kOnnxDomain),
+          {
+              {8, {1}},  // Ignore the shape.
+              {13, {1}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("FastGelu", kMSDomain),
+          {
+              {1, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("FlattenAndUnpad", kMSDomain),
+          {
+              {1, {1}},  // ignore the indices
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Gather", kOnnxDomain),
+          {
+              {1, {1}},  // ignore the indices
+              {11, {1}},
+              {13, {1}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Gelu", kOnnxDomain),
+          {
+              {20, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Gelu", kMSDomain),
+          {
+              {1, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Gemm", kOnnxDomain),
+          {
+              {1, {}},
+              {6, {}},
+              {7, {}},
+              {9, {}},
+              {11, {}},
+              {13, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Less", kOnnxDomain),
+          {
+              {1, {}},
+              {7, {}},
+              {9, {}},
+              {13, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("MemcpyFromHost", kOnnxDomain),
+          {
+              {1, {0}},  // Ignore CPU input.
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Mul", kOnnxDomain),
+          {
+              {1, {}},
+              {6, {}},
+              {7, {}},
+              {13, {}},
+              {14, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Neg", kOnnxDomain),
+          {
+              {1, {}},
+              {6, {}},
+              {13, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("NonZero", kOnnxDomain),
+          {
+              {9, {}},
+              {13, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("PadAndUnflatten", kMSDomain),
+          {
+              {1, {1, 2}},  // ignore the indices and unflatten_dims
+          },
+      },
+      {
+          // Be noted, NOT all PythonOp will be allowed to recompute, there will be further check.
+          utils::GetFullQualifiedOpName("PythonOp", kMSDomain),
+          {
+              {1, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Range", kOnnxDomain),
+          {
+              {11, {0, 1, 2}},  // ignore start, end, delta, because they are scalars.
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Reshape", kOnnxDomain),
+          {
+              {1, {}},
+              {5, {}},  // ignore the shape.
+              {13, {}},
+              {14, {}},
+              {19, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Sin", kOnnxDomain),
+          {
+              {7, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Slice", kOnnxDomain),
+          {
+              {1, {}},
+              {10, {1, 2, 3, 4}},  // ignore starts, ends, axes (optional) and steps (optional)
+              {11, {1, 2, 3, 4}},
+              {13, {1, 2, 3, 4}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Split", kOnnxDomain),
+          {
+              {1, {1}},  // ignore split (optional)
+              {2, {}},
+              {11, {}},
+              {13, {1}},  // ignore the split (optional)
+              {18, {1}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Squeeze", kOnnxDomain),
+          {
+              {1, {}},
+              {11, {}},
+              {13, {1}},  // ignore the axes (optional)
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Sub", kOnnxDomain),
+          {
+              {1, {}},
+              {6, {}},
+              {7, {}},
+              {13, {}},
+              {14, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Tile", kOnnxDomain),
+          {
+              {1, {1, 2}},
+              {6, {1}},
+              {13, {1}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Transpose", kOnnxDomain),
+          {
+              {1, {}},
+              {13, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Trilu", kOnnxDomain),
+          {
+              {14, {1}},  // ignore k (optional)
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("QuickGelu", kMSDomain),
+          {
+              {1, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Unsqueeze", kOnnxDomain),
+          {
+              {1, {}},
+              {11, {}},
+              {13, {1}},  // ignore the axes (optional)
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Where", kOnnxDomain),
+          {
+              {9, {}},
+              {16, {}},
+          },
+      },
+
+  });
+
+  constexpr const int advanced_op_level = static_cast<int>(ProbeLevel::Advanced);
+  recomputable_op_table_map.insert({advanced_op_level, InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>()});
+  auto& advanced_recomputable_op_table = recomputable_op_table_map.at(advanced_op_level);
+  // Append basic_recomputable_op_table to advanced_recomputable_op_table.
+  advanced_recomputable_op_table.insert(recomputable_op_table_map.at(basic_op_level).begin(),
+                                        recomputable_op_table_map.at(basic_op_level).end());
+
+  advanced_recomputable_op_table.insert({
+      {
+          utils::GetFullQualifiedOpName("BiasSoftmax", kMSDomain),
+          {
+              {1, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("BiasSoftmaxDropout", kMSDomain),
+          {
+              {1, {2}},  // ignore ratio (optional)
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("LayerNormalization", kOnnxDomain),
+          {
+              // Opset 1 in ONNX official does not have LayerNormalization,
+              // while our contrib op defined LayerNormalization in opset 1 in ONNX domain.
+              {1, {}},
+              {17, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("MatMul", kOnnxDomain),
+          {
+              {1, {}},
+              {9, {}},
+              {13, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("FusedMatMul", kMSDomain),
+          {
+              {1, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("SimplifiedLayerNormalization", kOnnxDomain),
+          {
+              // Opset 1 in ONNX official does not have SimplifiedLayerNormalization,
+              // while our contrib op defined SimplifiedLayerNormalization in opset 1 in ONNX domain.
+              {1, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("SkipLayerNormalization", kMSDomain),
+          {
+              {1, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("SkipSimplifiedLayerNormalization", kMSDomain),
+          {
+              {1, {}},
+          },
+      },
+      {
+          utils::GetFullQualifiedOpName("Softmax", kOnnxDomain),
+          {
+              {1, {}},
+              {11, {}},
+              {13, {}},
+          },
+      },
+  });
+
+  return recomputable_op_table_map;
+}
+
 const InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>& GetAllowedRecomputeOps(int probe_op_level) {
-  static InlinedHashMap<int, InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>> recomputable_op_table_map;
-  if (recomputable_op_table_map.find(probe_op_level) != recomputable_op_table_map.end()) {
-    return recomputable_op_table_map.at(probe_op_level);
-  }
+  static InlinedHashMap<int, InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>>
+      recomputable_op_table_map = InitializeRecomputableOpTable();
 
-  recomputable_op_table_map.insert({probe_op_level, InlinedHashMap<std::string, OpsetToIgnorableIndicesMap>()});
-  auto& recomputable_op_table = recomputable_op_table_map.at(probe_op_level);
-  if (probe_op_level >= static_cast<int>(ProbeLevel::Basic)) {
-    recomputable_op_table.insert({
-        {
-            utils::GetFullQualifiedOpName("Add", kOnnxDomain),
-            {
-                {1, {}},
-                {6, {}},
-                {7, {}},
-                {13, {}},
-                {14, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("BatchNormalization", kOnnxDomain),
-            {
-                {1, {}},
-                {6, {}},
-                {7, {}},
-                {9, {}},
-                {14, {}},
-                {15, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("BiasGelu", kMSDomain),
-            {
-                {1, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("BiasDropout", kMSDomain),
-            {
-                {1, {3, 4}},  // ignore ratio (optional) and training mode (optional)
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("BitmaskBiasDropout", kMSDomain),
-            {
-                {1, {3, 4}},  // ignore ratio (optional) and training mode (optional)
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("BitmaskDropout", kMSDomain),
-            {
-                {1, {1, 2}},  // ignore ratio (optional) and training mode (optional)
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Cast", kOnnxDomain),
-            {
-                {1, {}},
-                {6, {}},
-                {9, {}},
-                {13, {}},
-                {19, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("ConcatTraining", kMSDomain),
-            {
-                {1, {}},
+  ORT_ENFORCE(recomputable_op_table_map.find(probe_op_level) != recomputable_op_table_map.end(),
+              "Cannot get recomputable op table, probe level: ", probe_op_level);
 
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("ConstantOfShape", kOnnxDomain),
-            {
-                {9, {0}},  // ignore the `input`, e.g. the shape of the expected output tensor
-                {20, {0}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Cos", kOnnxDomain),
-            {
-                {7, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("CumSum", kOnnxDomain),
-            {
-                // The axis input is trivial
-                {11, {1}},
-                {14, {1}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Dropout", kOnnxDomain),
-            {
-                // ONNX Dropout 1, 6, 7, 10 do not have seed attribute, so we remove them from the recompute support.
-                {12, {1, 2}},  // ignore ratio and training_mode
-                {13, {1, 2}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Div", kOnnxDomain),
-            {
-                {1, {}},
-                {6, {}},
-                {7, {}},
-                {13, {}},
-                {14, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Einsum", kOnnxDomain),
-            {
-                {12, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Equal", kOnnxDomain),
-            {
-                {1, {}},
-                {7, {}},
-                {11, {}},
-                {13, {}},
-                {19, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Expand", kOnnxDomain),
-            {
-                {8, {1}},  // Ignore the shape.
-                {13, {1}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("FastGelu", kMSDomain),
-            {
-                {1, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("FlattenAndUnpad", kMSDomain),
-            {
-                {1, {1}},  // ignore the indices
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Gather", kOnnxDomain),
-            {
-                {1, {1}},  // ignore the indices
-                {11, {1}},
-                {13, {1}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Gelu", kOnnxDomain),
-            {
-                {20, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Gelu", kMSDomain),
-            {
-                {1, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Gemm", kOnnxDomain),
-            {
-                {1, {}},
-                {6, {}},
-                {7, {}},
-                {9, {}},
-                {11, {}},
-                {13, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Less", kOnnxDomain),
-            {
-                {1, {}},
-                {7, {}},
-                {9, {}},
-                {13, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Mul", kOnnxDomain),
-            {
-                {1, {}},
-                {6, {}},
-                {7, {}},
-                {13, {}},
-                {14, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Neg", kOnnxDomain),
-            {
-                {1, {}},
-                {6, {}},
-                {13, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("NonZero", kOnnxDomain),
-            {
-                {9, {}},
-                {13, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("PadAndUnflatten", kMSDomain),
-            {
-                {1, {1, 2}},  // ignore the indices and unflatten_dims
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Range", kOnnxDomain),
-            {
-                {11, {0, 1, 2}},  // ignore start, end, delta, because they are scalars.
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Reshape", kOnnxDomain),
-            {
-                {1, {}},
-                {5, {}},  // ignore the shape.
-                {13, {}},
-                {14, {}},
-                {19, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Sin", kOnnxDomain),
-            {
-                {7, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Slice", kOnnxDomain),
-            {
-                {1, {}},
-                {10, {1, 2, 3, 4}},  // ignore starts, ends, axes (optional) and steps (optional)
-                {11, {1, 2, 3, 4}},
-                {13, {1, 2, 3, 4}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Split", kOnnxDomain),
-            {
-                {1, {1}},  // ignore split (optional)
-                {2, {}},
-                {11, {}},
-                {13, {1}},  // ignore the split (optional)
-                {18, {1}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Squeeze", kOnnxDomain),
-            {
-                {1, {}},
-                {11, {}},
-                {13, {1}},  // ignore the axes (optional)
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Sub", kOnnxDomain),
-            {
-                {1, {}},
-                {6, {}},
-                {7, {}},
-                {13, {}},
-                {14, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Tile", kOnnxDomain),
-            {
-                {1, {1, 2}},
-                {6, {1}},
-                {13, {1}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Transpose", kOnnxDomain),
-            {
-                {1, {}},
-                {13, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Trilu", kOnnxDomain),
-            {
-                {14, {1}},  // ignore k (optional)
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("QuickGelu", kMSDomain),
-            {
-                {1, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Unsqueeze", kOnnxDomain),
-            {
-                {1, {}},
-                {11, {}},
-                {13, {1}},  // ignore the axes (optional)
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Where", kOnnxDomain),
-            {
-                {9, {}},
-                {16, {}},
-            },
-        },
-
-    });
-  }
-
-  if (probe_op_level >= static_cast<int>(ProbeLevel::Advanced)) {
-    recomputable_op_table.insert({
-        {
-            utils::GetFullQualifiedOpName("BiasSoftmax", kMSDomain),
-            {
-                {1, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("BiasSoftmaxDropout", kMSDomain),
-            {
-                {1, {2}},  // ignore ratio (optional)
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("LayerNormalization", kOnnxDomain),
-            {
-                // Opset 1 in ONNX official does not have LayerNormalization,
-                // while our contrib op defined LayerNormalization in opset 1 in ONNX domain.
-                {1, {}},
-                {17, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("MatMul", kOnnxDomain),
-            {
-                {1, {}},
-                {9, {}},
-                {13, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("FusedMatMul", kMSDomain),
-            {
-                {1, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("SimplifiedLayerNormalization", kOnnxDomain),
-            {
-                // Opset 1 in ONNX official does not have SimplifiedLayerNormalization,
-                // while our contrib op defined SimplifiedLayerNormalization in opset 1 in ONNX domain.
-                {1, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("SkipLayerNormalization", kMSDomain),
-            {
-                {1, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("SkipSimplifiedLayerNormalization", kMSDomain),
-            {
-                {1, {}},
-            },
-        },
-        {
-            utils::GetFullQualifiedOpName("Softmax", kOnnxDomain),
-            {
-                {1, {}},
-                {11, {}},
-                {13, {}},
-            },
-        },
-    });
-  }
-
-  return recomputable_op_table;
+  return recomputable_op_table_map.at(probe_op_level);
 }
 
 /**
@@ -467,6 +494,24 @@ bool IsRecomputable(const Node& node, ProbeLevel probe_level) {
   if (it == op_table.end()) {
     return false;
   }
+
+  // If node is PythonOp, we check whether it is a per-defined deterministic op.
+  if (node.OpType() == "PythonOp") {
+    const auto* func_name_attr = graph_utils::GetNodeAttribute(node, "func_name");
+    if (func_name_attr != nullptr) {
+      static const std::set<std::string> deterministic_python_ops = {
+          "flash_attn.bert_padding.IndexFirstAxis",
+          "flash_attn.bert_padding.IndexPutFirstAxis",
+          "flash_attn.flash_attn_interface.FlashAttnFunc",
+          "flash_attn.flash_attn_interface.FlashAttnVarlenFunc",
+          "orttraining_test_ortmodule_api.test_layerwise_recompute_determinstic.<locals>.DropoutFunction",
+      };
+      return deterministic_python_ops.find(func_name_attr->s()) != deterministic_python_ops.end();
+    }
+
+    return false;
+  }
+
   return it->second.count(node.SinceVersion());
 }
 
@@ -483,8 +528,7 @@ const InlinedVector<int>& GetIgnorableInputIndices(const Node& node, ProbeLevel 
  *
  * @param entry_node The entry node to start the subgraph matching (bottom-up), usually the last node of found subgraphs.
  * @param probe_config The probe config to control recomputable subgraph detecting.
- * @param node_output_index_candidates Candidate output indices of "node", which are consumed by both fw and bw ops.
- * @param fw_op_output_arg_used_map The activation usage (in fw and bw) mapping.
+ * @param candidate_output_args_map Candidate node to output map.
  * @param node_index_to_its_order_in_topological_sort_map The mapping of node index to its order in topological sort.
  *   Used to re-order the collected subgraph nodes.
  * @param nodes_in_topological_order Collected vector of nodes of found subgraph, in the order of the topological
@@ -500,8 +544,8 @@ const InlinedVector<int>& GetIgnorableInputIndices(const Node& node, ProbeLevel 
  */
 Status SelectRecomputeSubgraph(const Node& entry_node,
                                const ProbeConfig& probe_config,
-                               const InlinedVector<size_t>& node_output_index_candidates,
-                               const ActivationUsedMap& fw_op_output_arg_used_map,
+                               const InlinedHashMap<const Node*, InlinedVector<size_t>>&
+                                   candidate_output_args_map,
                                const InlinedHashMap<NodeIndex, ptrdiff_t>&
                                    node_index_to_its_order_in_topological_sort_map,
                                const logging::Logger& logger,
@@ -510,6 +554,7 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
                                bool& can_compromise_stashed_activation,
                                float& save_ratio) {
   const ProbeLevel probe_level = probe_config.probe_level;
+  const InlinedVector<size_t>& node_output_index_candidates = candidate_output_args_map.at(&entry_node);
 
   can_compromise_stashed_activation = false;
 
@@ -575,7 +620,7 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
         }
       } else {
         if (!is_recomputable) {
-          if (fw_op_output_arg_used_map.at(cur_output_arg_name).second) {
+          if (candidate_output_args_map.count(curr_node) > 0) {
             MO_LOG_DEBUG_INFO(logger, "Node " + curr_node->Name() + "(" + curr_node->OpType() +
                                           ") is **NOT** in recompute op list, but its output [" +
                                           cur_output_arg_name +
@@ -592,7 +637,7 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
           }
         }
 
-        if (fw_op_output_arg_used_map.at(cur_output_arg_name).second) {
+        if (candidate_output_args_map.count(curr_node) > 0) {
           MO_LOG_DEBUG_INFO(logger, "Node " + curr_node->Name() + "(" + curr_node->OpType() + ") " +
                                         "is in recompute op list, while its output [" + cur_output_arg_name +
                                         "] is used in backward, we don't need trace bottom-up further. Entry node: " +
@@ -643,9 +688,10 @@ Status SelectRecomputeSubgraph(const Node& entry_node,
             bool all_constant_dim = true;
             int64_t num_elem = 1;
             for (int k = 0, dim_size = output_shape->dim_size(); k < dim_size; ++k) {
-              if (!output_shape->dim(k).has_dim_value()) {
-                all_constant_dim = false;
+              if (output_shape->dim(k).has_dim_value()) {
                 num_elem *= output_shape->dim(k).dim_value();
+              } else {
+                all_constant_dim = false;
               }
             }
             if (all_constant_dim && num_elem < 1 * 1024 * 1024) {
@@ -744,7 +790,6 @@ Status ParseProbeConfigFromString(std::string_view recompute_probe_config, Probe
 std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const GraphViewer& graph_viewer,
                                                          const Node& node,
                                                          const ProbeConfig& probe_config,
-                                                         const ActivationUsedMap& fw_op_output_arg_used_map,
                                                          const InlinedHashMap<NodeIndex, ptrdiff_t>&
                                                              node_index_to_its_order_in_topological_sort_map,
                                                          const InlinedHashMap<const Node*, InlinedVector<size_t>>&
@@ -786,8 +831,7 @@ std::unique_ptr<NodeRecomputePlan> CheckNodeForRecompute(const GraphViewer& grap
   float save_ratio = 1.f;
   ORT_ENFORCE(SelectRecomputeSubgraph(node,
                                       probe_config,
-                                      candidate_output_args_map.at(&node),
-                                      fw_op_output_arg_used_map,
+                                      candidate_output_args_map,
                                       node_index_to_its_order_in_topological_sort_map,
                                       logger,
                                       nodes_in_topological_order,

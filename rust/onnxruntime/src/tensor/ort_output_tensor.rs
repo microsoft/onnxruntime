@@ -70,7 +70,7 @@ impl Drop for OrtOutputTensor {
     }
 }
 
-/// An Ouput tensor with the ptr and the item that will copy from the ptr.
+/// An Output tensor with the ptr and the item that will copy from the ptr.
 #[derive(Debug)]
 pub struct WithOutputTensor<'a, T> {
     #[allow(dead_code)]

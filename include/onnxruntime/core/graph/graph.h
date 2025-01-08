@@ -3,38 +3,31 @@
 
 #pragma once
 
+#include <filesystem>
 #include <functional>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 
-#ifdef _WIN32
-#pragma warning(push)
-// disable some warnings from protobuf to pass Windows build
-#pragma warning(disable : 4244)
-#endif
-
-#ifdef _WIN32
-#pragma warning(pop)
-#endif
-
 #include "core/common/flatbuffers.h"
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #include "core/common/common.h"
+#include "core/common/path_string.h"
 #include "core/common/const_pointer_container.h"
+#include "core/common/inlined_containers_fwd.h"
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/common/inlined_containers.h"
 #endif
-#include "core/common/inlined_containers_fwd.h"
-#include "core/common/path.h"
 #include "core/common/span_utils.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
+#include "core/framework/prepacked_weights_container.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/constants.h"
@@ -50,6 +43,7 @@ namespace onnxruntime {
 class Graph;
 struct IndexedSubGraph;
 class Model;
+struct ModelSavingOptions;
 class OpSignature;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -147,7 +141,7 @@ class Node {
   const std::string& Domain() const noexcept { return domain_; }
 
   /** Gets the path of the owning model if any. */
-  const Path& ModelPath() const noexcept;
+  const std::filesystem::path& ModelPath() const noexcept;
 
   /** Gets the Node's execution priority.
   @remarks Lower value means higher priority  */
@@ -580,6 +574,13 @@ class Node {
             gsl::span<NodeArg* const> output_args,
             const NodeAttributes* attributes,
             std::string_view domain);
+  void Init(std::string_view name,
+            std::string_view op_type,
+            std::string_view description,
+            gsl::span<NodeArg* const> input_args,
+            gsl::span<NodeArg* const> output_args,
+            NodeAttributes&& attributes,
+            std::string_view domain);
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -693,7 +694,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   const std::string& Description() const noexcept;
 
   /** Gets the path of the owning model, if any. */
-  const Path& ModelPath() const;
+  const std::filesystem::path& ModelPath() const;
 
   /** Returns true if this is a subgraph or false if it is a high-level graph. */
   bool IsSubgraph() const { return parent_graph_ != nullptr; }
@@ -964,6 +965,13 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   Node& AddNode(const std::string& name,
                 const std::string& op_type,
                 const std::string& description,
+                gsl::span<NodeArg* const> input_args,
+                gsl::span<NodeArg* const> output_args,
+                NodeAttributes&& attributes,
+                const std::string& domain = kOnnxDomain);
+  Node& AddNode(const std::string& name,
+                const std::string& op_type,
+                const std::string& description,
                 std::initializer_list<NodeArg*> input_args,
                 std::initializer_list<NodeArg*> output_args,
                 const NodeAttributes* attributes = nullptr,
@@ -1149,14 +1157,16 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   ONNX_NAMESPACE::GraphProto ToGraphProto() const;
 
   /** Gets the GraphProto representation of this Graph
-  @params external_file_name name of the binary file to use for initializers
+  @param external_file_path File path of the binary file to use for initializers.
+  @param model_file_path path of the model file.
   @param initializer_size_threshold initializers larger or equal to this threshold (in bytes) are saved
   in the external file. Initializer smaller than this threshold are included in the onnx file.
+  @param align_info offset alignment info.
   @returns GraphProto serialization of the graph.
   */
-  ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
-                                                                  const PathString& file_path,
-                                                                  size_t initializer_size_threshold) const;
+  ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
+                                                                  const std::filesystem::path& model_file_path,
+                                                                  const ModelSavingOptions& model_saving_options) const;
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;
@@ -1362,6 +1372,18 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+  // This function constructs PrepackedSharedContainer in the root graph only
+  // and initializes a reference to it in all (sub)graphs
+  void ConstructPrepackedSharedContainerAndSetMode(bool saving_mode_on);
+
+  const PrepackedWeightsForGraph& GetPrepacked() const noexcept {
+    return *prepacked_weights_for_graph_;
+  }
+
+  PrepackedWeightsForGraph& GetPrepacked() noexcept {
+    return *prepacked_weights_for_graph_;
+  }
+
   /** Returns the Node containing the GraphProto for this Graph instance if IsSubgraph is true */
   const Node* ParentNode() const { return parent_node_; }
 
@@ -1416,6 +1438,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   RuntimeOptimizationRecordContainer& MutableRuntimeOptimizations() {
     return runtime_optimizations_;
   }
+
+  // We don't run Graph::Resolve() on an ORT format model, but a compiling EP may copy initializers to its
+  // compiled model during partitioning, leaving them unused in the ORT Graph. To allow the memory to be freed
+  // we need to manually run the cleanup that would usually happen as part of Graph::Resolve.
+  Status RemovedUnusedInitializersOrtFormat();
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   // This friendship relationship should only be used to call Graph::Graph and
@@ -1475,6 +1502,31 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   */
   Status AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& constant_node_proto,
                                        std::optional<std::string_view> new_name);
+
+  /// <summary>
+  /// This function traverses the graph bottom up and externalizes
+  /// constant initializers along with their pre-packed blobs from different
+  /// kernels. Writes constant initializers to the external file with any pre-packed
+  /// blobs (if enabled and produced for this initializer) and then modifies TensorProto
+  /// entry with external data references.
+  /// </summary>
+  /// <param name="model_path">model file path from Model</param>
+  /// <param name="external_file_path">a binary file path for relative to the model file path
+  /// where the initializers data is written</param>
+  /// <param name="model_external_file_path">model file folder path with external file path appended</param>
+  /// <param name="model_saving_options">model saving options including alignment and pre-packs</param>
+  /// <param name="output_graph_proto">The graph proto to be modified</param>
+  /// <param name="external_stream">external file stream</param>
+  /// <param name="external_offset">current external file offset updated with each write</param>
+  /// <returns>Status instance</returns>
+  Status AddExternalInitializersToGraphProtoImpl(
+      const std::filesystem::path& model_path,
+      const std::filesystem::path& external_file_path,
+      const std::filesystem::path& model_external_file_path,
+      const ModelSavingOptions& model_saving_options,
+      ONNX_NAMESPACE::GraphProto& output_graph_proto,
+      std::ostream& external_stream,
+      int64_t& external_offset) const;
 
 #endif
 
@@ -1549,12 +1601,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   common::Status PerformTypeAndShapeInferencing(const ResolveOptions& options);
 
-  // Recursively find all subgraphs including nested subgraphs
-  void FindAllSubgraphs(std::vector<Graph*>& subgraphs);
-
-  // Iterate this Graph instance and all subgraphs, calling the provided function for each.
-  common::Status ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::function<Status(Graph&)> func);
-
   common::Status InferAndVerifyTypeMatch(Node& node, const ONNX_NAMESPACE::OpSchema& op, const ResolveOptions& options);
 
   // perform type and shape inferencing on the subgraph and Resolve to validate
@@ -1584,9 +1630,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // Implementation for initializer replacement
   Status ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initializer, bool is_external);
 
-  // Clear all unused initializers and NodeArgs
-  void CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
-
   std::vector<NodeArg*> CreateNodeArgs(const google::protobuf::RepeatedPtrField<std::string>& names,
                                        const ArgNameToTypeMap& name_to_type_map);
 
@@ -1595,6 +1638,16 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+  // Recursively find all subgraphs including nested subgraphs
+  void FindAllSubgraphs(std::vector<Graph*>& subgraphs);
+
+  // Iterate this Graph instance and all subgraphs, calling the provided function for each.
+  common::Status ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::function<Status(Graph&)> func);
+
+  // Clear all unused initializers and NodeArgs
+  void CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
+
   Status PopulateNodeArgToProducerConsumerLookupsFromNodes();
 
   template <typename TInstance>
@@ -1658,6 +1711,21 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   std::unordered_set<std::reference_wrapper<const std::string>,
                      std::hash<std::string>, std::equal_to<std::string>>
       sparse_tensor_names_;
+
+  // Prepacked blobs container that stored pre-packed initializers
+  // data that is:
+  // - mem-mapped from disk
+  // - shared within the session
+  // - shared across sessions by transferring the ownership of loaded data entries to
+  // SessionState::PrepackedWeightsContainer* if one is present.
+  // This container is optional because it is present only in the root graph.
+  std::optional<PrepackedKeyToBlobMap> prepacked_key_to_blobs_;
+
+  // This container contains a reference to the root prepacked_key_to_blobs_
+  // and also (in the save mode) records association between the initializer
+  // names and their pre-packed blobs (via keys).
+  // This is optional due to delayed construction.
+  std::optional<PrepackedWeightsForGraph> prepacked_weights_for_graph_;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // Runtime optimization storage.

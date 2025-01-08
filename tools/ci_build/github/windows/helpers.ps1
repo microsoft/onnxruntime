@@ -419,7 +419,7 @@ function Install-Abseil {
     }
 
     # Run cmake to generate Visual Studio sln file
-    [string[]]$cmake_args = ".", "-DABSL_PROPAGATE_CXX_STD=ON", "-DCMAKE_BUILD_TYPE=$build_config", "-DBUILD_TESTING=OFF", "-DABSL_USE_EXTERNAL_GOOGLETEST=ON", "-DCMAKE_PREFIX_PATH=$install_prefix",  "-DCMAKE_INSTALL_PREFIX=$install_prefix"
+    [string[]]$cmake_args = ".", "-DABSL_PROPAGATE_CXX_STD=ON", "-DCMAKE_BUILD_TYPE=$build_config", "-DBUILD_TESTING=OFF", "-DABSL_USE_EXTERNAL_GOOGLETEST=ON",  "-DCMAKE_INSTALL_PREFIX=$install_prefix"
     $cmake_args += $cmake_extra_args
 
     &$cmake_path $cmake_args
@@ -492,7 +492,7 @@ function Install-UTF8-Range {
     cd *
 
     # Run cmake to generate Visual Studio sln file
-    [string[]]$cmake_args = ".", "-Dutf8_range_ENABLE_TESTS=OFF", "-Dutf8_range_ENABLE_INSTALL=ON", "-DCMAKE_BUILD_TYPE=$build_config", "-DBUILD_TESTING=OFF", "-DCMAKE_PREFIX_PATH=$install_prefix",  "-DCMAKE_INSTALL_PREFIX=$install_prefix"
+    [string[]]$cmake_args = ".", "-Dutf8_range_ENABLE_TESTS=OFF", "-Dutf8_range_ENABLE_INSTALL=ON", "-DCMAKE_BUILD_TYPE=$build_config", "-DBUILD_TESTING=OFF", "-DCMAKE_INSTALL_PREFIX=$install_prefix"
     $cmake_args += $cmake_extra_args
 
     &$cmake_path $cmake_args
@@ -580,7 +580,7 @@ function Install-Protobuf {
     }
 
     # Run cmake to generate Visual Studio sln file
-    [string[]]$cmake_args = ".", "-Dprotobuf_DISABLE_RTTI=ON", "-DCMAKE_BUILD_TYPE=$build_config", "-Dprotobuf_BUILD_TESTS=OFF", "-Dprotobuf_USE_EXTERNAL_GTEST=ON", "-DBUILD_SHARED_LIBS=OFF", "-DCMAKE_PREFIX_PATH=$install_prefix",  "-DCMAKE_INSTALL_PREFIX=$install_prefix", "-Dprotobuf_MSVC_STATIC_RUNTIME=OFF", "-Dprotobuf_ABSL_PROVIDER=package"
+    [string[]]$cmake_args = ".", "-Dprotobuf_DISABLE_RTTI=ON", "-DCMAKE_BUILD_TYPE=$build_config", "-Dprotobuf_BUILD_TESTS=OFF", "-Dprotobuf_USE_EXTERNAL_GTEST=ON", "-DBUILD_SHARED_LIBS=OFF",   "-DCMAKE_INSTALL_PREFIX=$install_prefix", "-Dprotobuf_MSVC_STATIC_RUNTIME=OFF", "-Dprotobuf_ABSL_PROVIDER=package"
     $cmake_args += $cmake_extra_args
 
     &$cmake_path $cmake_args
@@ -635,16 +635,18 @@ function Install-ONNX {
     if ($lastExitCode -ne 0) {
       exit $lastExitCode
     }
-
+    $temp_dir = Get-TempDirectory
+    $new_requirements_text_file = Join-Path $temp_dir "new_requirements.txt"
     Write-Host "Installing python packages..."
-    [string[]]$pip_args = "-m", "pip", "install", "-qq", "--disable-pip-version-check", "setuptools>=68.2.2", "wheel", "numpy", "protobuf==$protobuf_version"
+    Get-Content "$src_root\tools\ci_build\github\linux\python\requirements.txt" | Select-String -pattern 'onnx' -notmatch | Out-File $new_requirements_text_file
+
+    [string[]]$pip_args = "-m", "pip", "install", "-qq", "--disable-pip-version-check", "-r", $new_requirements_text_file
     &"python.exe" $pip_args
     if ($lastExitCode -ne 0) {
       exit $lastExitCode
     }
 
     $url=Get-DownloadURL -name onnx -src_root $src_root
-    $temp_dir = Get-TempDirectory
     $onnx_src_dir = Join-Path $temp_dir "onnx"
     $download_finished = DownloadAndExtract -Uri $url -InstallDirectory $onnx_src_dir -Force
     if(-Not $download_finished){
@@ -684,7 +686,7 @@ function Install-ONNX {
     if($build_config -eq 'Debug'){
        $Env:DEBUG='1'
     }
-    $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=OFF -DCMAKE_PREFIX_PATH=$install_prefix"
+    $Env:CMAKE_ARGS="-DONNX_USE_PROTOBUF_SHARED_LIBS=OFF -DProtobuf_USE_STATIC_LIBS=ON -DONNX_USE_LITE_PROTO=OFF"
 
     python.exe "setup.py" "bdist_wheel"
 

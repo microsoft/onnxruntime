@@ -42,6 +42,31 @@ static Status ValidateRocBlasVersion(const std::string& value) {
   return Status::OK();
 }
 
+std::string RocmTuningResultsValidator::GetOrtBuildConfig() const {
+  std::ostringstream oss;
+#ifdef USE_COMPOSABLE_KERNEL
+  oss << "USE_CK=" << 1 << "|";
+#ifdef USE_COMPOSABLE_KERNEL_CK_TILE
+  oss << "USE_CKTILE=" << 1 << "|";
+#endif
+#else
+  oss << "USE_CK=" << 0 << "|";
+#endif
+
+#ifdef USE_ROCBLAS_EXTENSION_API
+  oss << "USE_ROCBLAS_EXTENSION_API=" << 1 << "|";
+#else
+  oss << "USE_ROCBLAS_EXTENSION_API=" << 0 << "|";
+#endif
+
+#ifdef USE_HIPBLASLT
+  oss << "USE_HIPBLASLT=" << 1 << "|";
+#else
+  oss << "USE_HIPBLASLT=" << 0 << "|";
+#endif
+  return oss.str();
+}
+
 std::string RocmTuningResultsValidator::GetDeviceModel() const {
   return ep_->GetDeviceProp().name;
 }
@@ -60,28 +85,6 @@ RocmTuningResultsValidator::RocmTuningResultsValidator(ROCMExecutionProvider* ep
       "DEVICE_MODEL",
       [this]() { return GetDeviceModel(); },
       [this](const std::string& value) { return ValidateDeviceModel(value); });
-}
-
-std::string RocmTuningResultsValidator::GetOrtBuildConfig() const {
-  std::ostringstream oss;
-#ifdef USE_COMPOSABLE_KERNEL
-  oss << "USE_CK=" << 1 << "|";
-#else
-  oss << "USE_CK=" << 0 << "|";
-#endif
-
-#ifdef USE_ROCBLAS_EXTENSION_API
-  oss << "USE_ROCBLAS_EXTENSION_API=" << 1 << "|";
-#else
-  oss << "USE_ROCBLAS_EXTENSION_API=" << 0 << "|";
-#endif
-
-#ifdef USE_HIPBLASLT
-  oss << "USE_HIPBLASLT=" << 1 << "|";
-#else
-  oss << "USE_HIPBLASLT=" << 0 << "|";
-#endif
-  return oss.str();
 }
 
 RocmTuningContext::RocmTuningContext(ROCMExecutionProvider* ep, TunableOpInfo* info)

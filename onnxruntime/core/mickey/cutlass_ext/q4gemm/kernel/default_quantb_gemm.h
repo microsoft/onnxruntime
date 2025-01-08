@@ -69,7 +69,7 @@
 
 #if defined(CUTLASS_ARCH_WMMA_ENABLED)
 #include "cutlass/epilogue/threadblock/default_epilogue_wmma_tensor_op.h"
-#endif //CUTLASS_ARCH_WMMA_ENABLED
+#endif  // CUTLASS_ARCH_WMMA_ENABLED
 
 ////////////////////////////////////////////////////////////////////////////////
 namespace cutlass {
@@ -139,12 +139,10 @@ template <
     /// Permute operand B
     typename PermuteBLayout = layout::NoPermute,
     ///
-    typename Enable = void
->
+    typename Enable = void>
 struct DefaultQuantBGemm;
 
 ////////////////////////////////////////////////////////////////////////////////
-
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -204,8 +202,7 @@ template <
     /// Permute operand A
     typename PermuteALayout,
     /// Permute operand B
-    typename PermuteBLayout
->
+    typename PermuteBLayout>
 struct DefaultQuantBGemm<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAlignmentB,
                          ElementQScale, ElementQOffset, LayoutQMeta, QuantBlocking,
                          ElementC, LayoutC, ElementAccumulator,
@@ -213,10 +210,8 @@ struct DefaultQuantBGemm<ElementA, LayoutA, kAlignmentA, ElementB, LayoutB, kAli
                          InstructionShape, EpilogueOutputOp, ThreadblockSwizzle, Stages,
                          SplitKSerial, Operator, GatherA, GatherB, ScatterD,
                          PermuteDLayout, PermuteALayout, PermuteBLayout> {
-
-  static_assert((platform::is_same<LayoutC, layout::RowMajor>::value
-             || platform::is_same<LayoutC, layout::AffineRankN<2>>::value),
-             "Epilogue in the kernel level must be row major");
+  static_assert((platform::is_same<LayoutC, layout::RowMajor>::value || platform::is_same<LayoutC, layout::AffineRankN<2>>::value),
+                "Epilogue in the kernel level must be row major");
 
   /// Define the threadblock-scoped matrix multiply-accumulate
   using Mma = typename cutlass::gemm::threadblock::DefaultQuantBMma<

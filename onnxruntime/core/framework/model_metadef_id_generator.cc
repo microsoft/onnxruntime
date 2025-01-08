@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 #include <unordered_map>
 #include "model_metadef_id_generator.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/graph/graph_viewer.h"
 #include "core/framework/murmurhash3.h"
 
@@ -11,8 +11,8 @@ int ModelMetadefIdGenerator::GenerateId(const onnxruntime::GraphViewer& graph_vi
                                         HashValue& model_hash) const {
   // if the EP is shared across multiple sessions there's a very small potential for concurrency issues.
   // use a lock when generating an id to be paranoid
-  static OrtMutex mutex;
-  std::lock_guard<OrtMutex> lock(mutex);
+  static std::mutex mutex;
+  std::lock_guard<std::mutex> lock(mutex);
   model_hash = 0;
 
   // find the top level graph
@@ -40,7 +40,7 @@ int ModelMetadefIdGenerator::GenerateId(const onnxruntime::GraphViewer& graph_vi
 
     // prefer path the model was loaded from
     // this may not be available if the model was loaded from a stream or in-memory bytes
-    const auto& model_path_str = main_graph.ModelPath().ToPathString();
+    const auto model_path_str = main_graph.ModelPath().string();
     if (!model_path_str.empty()) {
       MurmurHash3::x86_128(model_path_str.data(), gsl::narrow_cast<int32_t>(model_path_str.size()), hash[0], &hash);
     } else {

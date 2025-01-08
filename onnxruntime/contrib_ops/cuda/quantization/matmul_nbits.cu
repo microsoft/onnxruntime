@@ -26,11 +26,11 @@ __device__ __forceinline__ T WarpUniform(T value) {
     };
   } p;
   p.value = value;
-  p.asInt = __shfl_sync(0xffffffff, (unsigned)p.asInt, 0);
+  p.asInt = WARP_SHFL((unsigned)p.asInt, 0);
   return p.value;
 }
 
-#if !defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530
+#if (!defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530) && !defined(__HIPCC__)
 // Convert 8 4bits integer stored in one uint32_t to 8 halfs.
 // 8 4bits with order 0,1,2,3,4,5,6,7,8 will be converted to 8 halfs with order 0,4,1,5,2,6,3,7
 __device__ __forceinline__ void Convert8xInt4To8xHalfs(uint32_t value, half2* half_2x4) {
@@ -169,7 +169,8 @@ __device__ __forceinline__ void AccumulateEightElements(uint32_t values_quant, f
 }
 
 constexpr int kColsPerThreadBlock = 8;
-constexpr int kWarpSize = 32;
+constexpr int kElementsPerThreadPerIteration = 8;
+constexpr int kWarpSize = GPU_WARP_SIZE;
 
 // kernel for 4bits quantized gemv, i.e., computing A(1,K) x B(K, N)
 // B(K, N) is quantized blockwise with 4bits and stored as [N, (K + block_size - 1)/block_size, blob]
@@ -177,7 +178,7 @@ constexpr int kWarpSize = 32;
 // Each thread block computes [1, K] x [kColsPerThreadBlock, (K + block_size - 1)/block_size, blob],
 //     i.e., computing kColsPerThreadBlock per block and a warp reduce (1, K) x (K)
 template <class T, int block_size, bool has_zero_point>
-__global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt4Kernel(
+__global__ void __launch_bounds__(kWarpSize * kColsPerThreadBlock) MatMulFloatInt4Kernel(
     T* output,
     const T* a_data,
     const uint8_t* b_data_quant,
@@ -192,7 +193,7 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
   const int lane_id = threadIdx.x;
   const int warp_id = WarpUniform(threadIdx.y);
   const int n_id = n_block_id * kColsPerThreadBlock + warp_id;
-  constexpr int k_per_iter = 256;
+  constexpr int k_per_iter = kWarpSize * kElementsPerThreadPerIteration;
 
   extern __shared__ char shared_buffer[];
   // load scale to shared buffer
@@ -262,8 +263,8 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloatInt
 
   float sum = (float)(sums[0] + sums[1] + sums[2] + sums[3] + sums[4] + sums[5] + sums[6] + sums[7]);
   // warp reduction
-  for (int i = 16; i > 0; i = i / 2) {
-    sum += __shfl_down_sync(0xffffffff, sum, i);
+  for (int i = kWarpSize / 2; i > 0; i = i / 2) {
+    sum += WARP_SHFL_DOWN(sum, i);
   }
 
   if (lane_id == 0) {
@@ -288,7 +289,7 @@ bool TryMatMul4Bits(
     return false;
   }
   dim3 blocks((n + kColsPerThreadBlock - 1) / kColsPerThreadBlock, m);
-  dim3 threads(kWarpSize, kColsPerThreadBlock);
+  dim3 threads(GPU_WARP_SIZE_HOST, kColsPerThreadBlock);
   int blocks_per_K = (k + block_size - 1) / block_size;
   int shared_mem_size = sizeof(T) * blocks_per_K * kColsPerThreadBlock +
                         (zero_points != nullptr ? (blocks_per_K + 1) / 2 * kColsPerThreadBlock * 2 : 0);

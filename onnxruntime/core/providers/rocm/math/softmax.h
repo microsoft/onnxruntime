@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/providers/rocm/rocm_kernel.h"
 
 namespace onnxruntime {

@@ -7,6 +7,7 @@
 #include <string>
 #include <variant>
 #include <vector>
+#include <type_traits>
 
 #include "core/framework/customregistry.h"
 #include "core/framework/prepacked_weights_container.h"
@@ -690,8 +691,14 @@ class BaseTester {
       if (!is_optional_type_tensor || (is_optional_type_tensor && values != nullptr)) {
         // In case values is nullptr for optional type tensor, it means we are creating
         // an optional type tensor which is None and we hence skip values count validation
-        ORT_ENFORCE(shape.Size() == values_count, values_count, " input values doesn't match tensor size of ",
-                    shape.Size());
+        if constexpr (std::is_same_v<T, Int4x2> || std::is_same_v<T, UInt4x2>) {
+          const int64_t expected_values_count = T::CalcNumInt4Pairs(shape.Size());
+          ORT_ENFORCE(expected_values_count == values_count, values_count,
+                      " input values doesn't match tensor size of ", expected_values_count);
+        } else {
+          ORT_ENFORCE(shape.Size() == values_count, values_count, " input values doesn't match tensor size of ",
+                      shape.Size());
+        }
 
         // If it is an optional tensor type with no values (i.e.) None,
         // we won't even pass it in to Run() as part of the feeds,

@@ -1,4 +1,4 @@
-﻿// Copyright (c) Microsoft Corporation. All rights reserved.
+// Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
 #pragma once
@@ -1422,6 +1422,20 @@ inline std::vector<OperatorField> GetFields(const DML_RESAMPLE2_OPERATOR_DESC& d
         OperatorField(&DML_RESAMPLE2_OPERATOR_SCHEMA.Fields[7], ToOperatorFieldType(static_cast<const FLOAT*>(desc.OutputPixelOffsets), desc.DimensionCount)),
     };
 }
+inline std::vector<OperatorField> GetFields(const DML_RESAMPLE3_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_RESAMPLE3_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
+        OperatorField(&DML_RESAMPLE3_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+        OperatorField(&DML_RESAMPLE3_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<UINT>(desc.InterpolationMode))),
+        OperatorField(&DML_RESAMPLE3_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<UINT>(desc.RoundingDirection))),
+        OperatorField(&DML_RESAMPLE3_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<UINT>(desc.DimensionCount))),
+        OperatorField(&DML_RESAMPLE3_OPERATOR_SCHEMA.Fields[5], ToOperatorFieldType(static_cast<const FLOAT*>(desc.Scales), desc.DimensionCount)),
+        OperatorField(&DML_RESAMPLE3_OPERATOR_SCHEMA.Fields[6], ToOperatorFieldType(static_cast<const FLOAT*>(desc.InputPixelOffsets), desc.DimensionCount)),
+        OperatorField(&DML_RESAMPLE3_OPERATOR_SCHEMA.Fields[7], ToOperatorFieldType(static_cast<const FLOAT*>(desc.OutputPixelOffsets), desc.DimensionCount)),
+        OperatorField(&DML_RESAMPLE3_OPERATOR_SCHEMA.Fields[8], ToOperatorFieldType(static_cast<UINT>(desc.Antialiased))),
+    };
+}
 inline std::vector<OperatorField> GetFields(const DML_RESAMPLE_GRAD1_OPERATOR_DESC& desc)
 {
     return {
@@ -1498,6 +1512,32 @@ inline std::vector<OperatorField> GetFields(const DML_MATRIX_MULTIPLY_INTEGER_TO
         OperatorField(&DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_SCHEMA.Fields[5], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.BZeroPointTensor))),
         OperatorField(&DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_SCHEMA.Fields[6], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.BiasTensor))),
         OperatorField(&DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_SCHEMA.Fields[7], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+    };
+}
+inline std::vector<OperatorField> GetFields(const DML_FOLD_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_FOLD_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
+        OperatorField(&DML_FOLD_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+        OperatorField(&DML_FOLD_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<UINT>(desc.DimensionCount))),
+        OperatorField(&DML_FOLD_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const UINT*>(desc.WindowSizes), desc.DimensionCount)),
+        OperatorField(&DML_FOLD_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<const UINT*>(desc.Strides), desc.DimensionCount)),
+        OperatorField(&DML_FOLD_OPERATOR_SCHEMA.Fields[5], ToOperatorFieldType(static_cast<const UINT*>(desc.Dilations), desc.DimensionCount)),
+        OperatorField(&DML_FOLD_OPERATOR_SCHEMA.Fields[6], ToOperatorFieldType(static_cast<const UINT*>(desc.StartPadding), desc.DimensionCount)),
+        OperatorField(&DML_FOLD_OPERATOR_SCHEMA.Fields[7], ToOperatorFieldType(static_cast<const UINT*>(desc.EndPadding), desc.DimensionCount)),
+    };
+}
+inline std::vector<OperatorField> GetFields(const DML_UNFOLD_OPERATOR_DESC& desc)
+{
+    return {
+        OperatorField(&DML_UNFOLD_OPERATOR_SCHEMA.Fields[0], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.InputTensor))),
+        OperatorField(&DML_UNFOLD_OPERATOR_SCHEMA.Fields[1], ToOperatorFieldType(static_cast<const DML_TENSOR_DESC*>(desc.OutputTensor))),
+        OperatorField(&DML_UNFOLD_OPERATOR_SCHEMA.Fields[2], ToOperatorFieldType(static_cast<UINT>(desc.DimensionCount))),
+        OperatorField(&DML_UNFOLD_OPERATOR_SCHEMA.Fields[3], ToOperatorFieldType(static_cast<const UINT*>(desc.WindowSizes), desc.DimensionCount)),
+        OperatorField(&DML_UNFOLD_OPERATOR_SCHEMA.Fields[4], ToOperatorFieldType(static_cast<const UINT*>(desc.Strides), desc.DimensionCount)),
+        OperatorField(&DML_UNFOLD_OPERATOR_SCHEMA.Fields[5], ToOperatorFieldType(static_cast<const UINT*>(desc.Dilations), desc.DimensionCount)),
+        OperatorField(&DML_UNFOLD_OPERATOR_SCHEMA.Fields[6], ToOperatorFieldType(static_cast<const UINT*>(desc.StartPadding), desc.DimensionCount)),
+        OperatorField(&DML_UNFOLD_OPERATOR_SCHEMA.Fields[7], ToOperatorFieldType(static_cast<const UINT*>(desc.EndPadding), desc.DimensionCount)),
     };
 }
 inline std::vector<OperatorField> GetFields(const DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_DESC& desc)
@@ -1912,11 +1952,14 @@ inline const DML_OPERATOR_SCHEMA& GetSchema(DML_OPERATOR_TYPE operatorType)
     case DML_OPERATOR_ROI_ALIGN_GRAD: return DML_ROI_ALIGN_GRAD_OPERATOR_SCHEMA;
     case DML_OPERATOR_BATCH_NORMALIZATION_TRAINING: return DML_BATCH_NORMALIZATION_TRAINING_OPERATOR_SCHEMA;
     case DML_OPERATOR_RESAMPLE2: return DML_RESAMPLE2_OPERATOR_SCHEMA;
+    case DML_OPERATOR_RESAMPLE3: return DML_RESAMPLE3_OPERATOR_SCHEMA;
     case DML_OPERATOR_RESAMPLE_GRAD1: return DML_RESAMPLE_GRAD1_OPERATOR_SCHEMA;
     case DML_OPERATOR_DIAGONAL_MATRIX1: return DML_DIAGONAL_MATRIX1_OPERATOR_SCHEMA;
     case DML_OPERATOR_MULTIHEAD_ATTENTION: return DML_MULTIHEAD_ATTENTION_OPERATOR_SCHEMA;
     case DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING: return DML_QUANTIZED_LINEAR_AVERAGE_POOLING_OPERATOR_SCHEMA;
     case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT: return DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_SCHEMA;
+    case DML_OPERATOR_FOLD: return DML_FOLD_OPERATOR_SCHEMA;
+    case DML_OPERATOR_UNFOLD: return DML_UNFOLD_OPERATOR_SCHEMA;
     case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2: return DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA;
     case DML_OPERATOR_MULTIHEAD_ATTENTION1: return DML_MULTIHEAD_ATTENTION1_OPERATOR_SCHEMA;
     case DML_OPERATOR_QUANTIZE: return DML_QUANTIZE_OPERATOR_SCHEMA;
@@ -2095,11 +2138,14 @@ inline const bool IsValidOperator(DML_OPERATOR_TYPE operatorType)
     case DML_OPERATOR_ROI_ALIGN_GRAD:
     case DML_OPERATOR_BATCH_NORMALIZATION_TRAINING:
     case DML_OPERATOR_RESAMPLE2:
+    case DML_OPERATOR_RESAMPLE3:
     case DML_OPERATOR_RESAMPLE_GRAD1:
     case DML_OPERATOR_DIAGONAL_MATRIX1:
     case DML_OPERATOR_MULTIHEAD_ATTENTION:
     case DML_OPERATOR_QUANTIZED_LINEAR_AVERAGE_POOLING:
     case DML_OPERATOR_MATRIX_MULTIPLY_INTEGER_TO_FLOAT:
+    case DML_OPERATOR_FOLD:
+    case DML_OPERATOR_UNFOLD:
     case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2:
     case DML_OPERATOR_MULTIHEAD_ATTENTION1:
     case DML_OPERATOR_QUANTIZE:
@@ -2695,6 +2741,10 @@ inline AbstractOperatorDesc ConvertOperatorDesc(const DML_OPERATOR_DESC& opDesc)
         return AbstractOperatorDesc(
             &DML_RESAMPLE2_OPERATOR_SCHEMA,
             GetFields(*static_cast<const DML_RESAMPLE2_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_RESAMPLE3:
+        return AbstractOperatorDesc(
+            &DML_RESAMPLE3_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_RESAMPLE3_OPERATOR_DESC*>(opDesc.Desc)));
     case DML_OPERATOR_RESAMPLE_GRAD1:
         return AbstractOperatorDesc(
             &DML_RESAMPLE_GRAD1_OPERATOR_SCHEMA,
@@ -2715,6 +2765,14 @@ inline AbstractOperatorDesc ConvertOperatorDesc(const DML_OPERATOR_DESC& opDesc)
         return AbstractOperatorDesc(
             &DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_SCHEMA,
             GetFields(*static_cast<const DML_MATRIX_MULTIPLY_INTEGER_TO_FLOAT_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_FOLD:
+        return AbstractOperatorDesc(
+            &DML_FOLD_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_FOLD_OPERATOR_DESC*>(opDesc.Desc)));
+    case DML_OPERATOR_UNFOLD:
+        return AbstractOperatorDesc(
+            &DML_UNFOLD_OPERATOR_SCHEMA,
+            GetFields(*static_cast<const DML_UNFOLD_OPERATOR_DESC*>(opDesc.Desc)));
     case DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2:
         return AbstractOperatorDesc(
             &DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_SCHEMA,

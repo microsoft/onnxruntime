@@ -15,7 +15,7 @@
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <SignAssembly>true</SignAssembly>
     <AssemblyOriginatorKeyFile>..\..\OnnxRuntime.snk</AssemblyOriginatorKeyFile>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>net8.0</TargetFramework>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(IsLinuxBuild)'=='true'">
@@ -38,11 +38,11 @@
 
   <ItemGroup>
     <PackageReference Include="Google.Protobuf" Version="3.21.12" /> <!-- should match version ORT native build uses -->
-    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="15.8.0" />
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.0" />
     <!-- use Newtonsoft.Json dependency of Microsoft.NET.Test.Sdk at a more recent version -->
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
-    <PackageReference Include="xunit" Version="2.4.1" />
-    <PackageReference Include="xunit.runner.visualstudio" Version="2.4.3" />
+    <PackageReference Include="xunit" Version="2.9.0" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
     <PackageReference Include="$(PACKAGENAME)" Version="$(CurrentOnnxRuntimeVersion)" />
   </ItemGroup>
   <ItemGroup>
@@ -81,6 +81,14 @@
       <Visible>false</Visible>
     </None>
     <None Include="$(OnnxRuntimeCSharpRoot)\..\onnxruntime\test\testdata\custom_op_library\custom_op_test.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(OnnxRuntimeCSharpRoot)\..\onnxruntime\test\testdata\lora\two_params_lora_model.onnx">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <Visible>false</Visible>
+    </None>
+    <None Include="$(OnnxRuntimeCSharpRoot)\..\onnxruntime\test\testdata\lora\two_params_lora_model.onnx_adapter">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>

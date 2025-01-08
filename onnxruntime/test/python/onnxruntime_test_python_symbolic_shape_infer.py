@@ -28,7 +28,6 @@ else:
     from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
 
 import unittest
-from pathlib import Path
 
 
 def unique_element(lst):
@@ -41,6 +40,8 @@ skipped_models = ["SSD-MobilenetV1", "SSD-int8", "Inception-1-int8"]
 
 class TestSymbolicShapeInference(unittest.TestCase):
     def test_symbolic_shape_infer(self):
+        from pathlib import Path
+
         cwd = os.getcwd()
         test_model_dir = os.path.join(cwd, "..", "models")
         for filename in Path(test_model_dir).rglob("*.onnx"):
@@ -591,6 +592,55 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
 
         expected_shapes = [
             helper.make_tensor_value_info("output_f32", TensorProto.FLOAT, ["b", 2, 3, 4]),
+        ]
+        self._check_shapes(graph, inferred.graph, expected_shapes)
+
+    def test_matmulnbits(self):
+        """
+        Test ORT MatMulNBits op.
+        Check that the output shape is propagated from the inputs and that the output data
+        type comes from the first input.
+        """
+        b_np = numpy.random.randint(0, 255, (4, 1, 8), numpy.uint8)
+        b = numpy_helper.from_array(b_np, name="b")
+        scale_np = numpy.random.rand(4).astype(numpy.float32)
+        scale = numpy_helper.from_array(scale_np, name="scale")
+        zero_point_np = numpy.random.randint(0, 255, (4), numpy.uint8)
+        zero_point = numpy_helper.from_array(zero_point_np, name="zero_point")
+
+        initializers = [b, scale, zero_point]
+
+        kwargs = {"K": 10, "N": 4, "block_size": 16}
+
+        nodes = [
+            helper.make_node(
+                "MatMulNBits",
+                inputs=[
+                    "input_f32",
+                    "b",
+                    "scale",
+                    "zero_point",
+                ],
+                outputs=["output_f32"],
+                **kwargs,
+            ),
+        ]
+
+        inputs = [
+            helper.make_tensor_value_info("input_f32", TensorProto.FLOAT, ["x", 2, 3, 10]),
+        ]
+
+        outputs = [
+            helper.make_tensor_value_info("output_f32", TensorProto.UNDEFINED, None),
+        ]
+
+        graph = helper.make_graph(nodes, "MatMulNBits_Test", inputs, outputs, initializers)
+        model = helper.make_model(graph)
+
+        inferred = SymbolicShapeInference.infer_shapes(model, auto_merge=True)
+
+        expected_shapes = [
+            helper.make_tensor_value_info("output_f32", TensorProto.FLOAT, ["x", 2, 3, 4]),
         ]
         self._check_shapes(graph, inferred.graph, expected_shapes)
 

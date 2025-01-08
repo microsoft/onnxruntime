@@ -3,6 +3,7 @@
 #include <absl/base/config.h>
 
 #include "core/framework/allocator.h"
+#include "core/framework/allocator_utils.h"
 
 #include "test_utils.h"
 #include "gtest/gtest.h"
@@ -15,12 +16,10 @@ TEST(AllocatorTest, CPUAllocatorTest) {
   ASSERT_STREQ(cpu_arena->Info().name, CPU);
   EXPECT_EQ(cpu_arena->Info().id, 0);
 
-  // arena is disabled for CPUExecutionProvider on x86 and JEMalloc
-#if (defined(__amd64__) || defined(_M_AMD64) || defined(__aarch64__) || defined(_M_ARM64)) && !defined(USE_JEMALLOC) && !defined(USE_MIMALLOC) && !defined(ABSL_HAVE_ADDRESS_SANITIZER)
-  EXPECT_EQ(cpu_arena->Info().alloc_type, OrtAllocatorType::OrtArenaAllocator);
-#else
-  EXPECT_EQ(cpu_arena->Info().alloc_type, OrtAllocatorType::OrtDeviceAllocator);
-#endif
+  const auto expected_allocator_type = DoesCpuAllocatorSupportArenaUsage()
+                                           ? OrtAllocatorType::OrtArenaAllocator
+                                           : OrtAllocatorType::OrtDeviceAllocator;
+  EXPECT_EQ(cpu_arena->Info().alloc_type, expected_allocator_type);
 
   size_t size = 1024;
   auto bytes = cpu_arena->Alloc(size);

@@ -12,7 +12,7 @@
 #include "contrib_ops/cuda/bert/transformer_cuda_common.h"
 #include <cuda_runtime.h>
 #include "contrib_ops/cuda/transformers/generation_cuda_impl.h"
-#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cpu/transformers/logits_processor.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
 #include "contrib_ops/cpu/transformers/subgraph_t5_decoder.h"
@@ -53,7 +53,7 @@ namespace GenerationCudaDeviceHelper {
 // e.g In the case of past(fp32) -> cast to fp16 -> Attention(fp16), the reorder
 // function will use the fp32 chunk size and cause the model silently generates
 // the incorrect results.
-// TODO: Fix this issue. Either retrive the Attention op type from the graph or
+// TODO: Fix this issue. Either retrieve the Attention op type from the graph or
 // check the type of past state as graph input should be same as Attention op type.
 // It might be better to forcefully require the same type since cast node generates
 // extra overhead.
@@ -332,7 +332,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                      const transformers::IGenerationParameters* parameters,  // parameters
                      int step,                                               // iteration counter
                      Stream* ort_stream,                                     // cuda stream (for CUDA only)
-                     const transformers::IConsoleDumper* dumper) {           // tensor dumper
+                     const IConsoleDumper* dumper) {                         // tensor dumper
 
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxNestedRangeCreator processLogitsRange("ProcessLogits", profile::Color::Red);
@@ -824,7 +824,7 @@ Status GreedySearchProcessLogits(
     bool do_sampling,                                       // whether to do sampling
     int step,                                               // iteration counter
     Stream* stream,                                         // cuda stream (for CUDA only)
-    const transformers::IConsoleDumper* dumper) {           // tensor dumper
+    const IConsoleDumper* dumper) {                         // tensor dumper
 
 #ifdef ENABLE_NVTX_PROFILE
   profile::NvtxNestedRangeCreator processLogitsRange("ProcessLogits", profile::Color::Red);
@@ -1242,7 +1242,7 @@ Status UpdateDecoderFeeds(
     bool past_present_share_buffer,
     bool need_cache_indir,
     transformers::Sequences& sequences,
-    const transformers::IConsoleDumper* dumper) {
+    const IConsoleDumper* dumper) {
   // last_outputs: logits, present_key_self_0, present_value_self_0, ...
   // next_inputs: input_ids,
   //              encoder_attention_mask, encoder_hidden_states,
@@ -1264,16 +1264,14 @@ Status UpdateDecoderFeeds(
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(input_ids_data, beam_next_tokens.data(), beam_next_tokens.size_bytes(),
                                          cudaMemcpyHostToDevice, cuda_stream));
   } else {
-    for (int i = 0; i < batch_beam_size; i++) {
-      gsl::span<const int32_t> sequence = sequences.GetSequence(i);
-      const int32_t* sequence_data = sequence.data();
-      CUDA_RETURN_IF_ERROR(
-          cudaMemcpyAsync(input_ids_data + static_cast<ptrdiff_t>(i) * current_length,
-                          sequence_data,
-                          current_length * sizeof(int32_t),
-                          cudaMemcpyHostToDevice,
-                          cuda_stream));
-    }
+    // We expect sequences to point directly to device memory
+    int max_length = sequences.GetMaxLength();
+    auto sequences_buffer = sequences.GetCurrentDeviceSequences();
+    CUDA_RETURN_IF_ERROR(
+        cudaMemcpy2DAsync(input_ids_data, current_length * sizeof(int32_t),
+                          sequences_buffer.data(), max_length * sizeof(int32_t),
+                          current_length * sizeof(int32_t), batch_beam_size,
+                          cudaMemcpyDeviceToDevice, cuda_stream));
   }
   next_inputs[0] = input_ids;
 
@@ -1448,7 +1446,7 @@ template Status ProcessLogits<float>(
     const transformers::IGenerationParameters* parameters,
     int step,
     Stream* ort_stream,
-    const transformers::IConsoleDumper* dumper);
+    const IConsoleDumper* dumper);
 
 template Status GreedySearchProcessLogits<float>(
     const OrtValue& logits,
@@ -1462,7 +1460,7 @@ template Status GreedySearchProcessLogits<float>(
     bool do_sampling,
     int step,
     Stream* ort_stream,
-    const transformers::IConsoleDumper* dumper);
+    const IConsoleDumper* dumper);
 
 template Status DeviceCopy<float>(
     gsl::span<float> target,
@@ -1519,7 +1517,7 @@ template Status ProcessLogits<MLFloat16>(
     const transformers::IGenerationParameters* parameters,
     int step,
     Stream* ort_stream,
-    const transformers::IConsoleDumper* dumper);
+    const IConsoleDumper* dumper);
 
 template Status GreedySearchProcessLogits<MLFloat16>(
     const OrtValue& logits,
@@ -1533,7 +1531,7 @@ template Status GreedySearchProcessLogits<MLFloat16>(
     bool do_sampling,
     int step,
     Stream* ort_stream,
-    const transformers::IConsoleDumper* dumper);
+    const IConsoleDumper* dumper);
 
 template Status UpdateGptFeeds<MLFloat16>(
     AllocatorPtr allocator,
@@ -1572,7 +1570,7 @@ template Status UpdateDecoderFeeds<float>(
     bool past_present_share_buffer,
     bool need_cache_indir,
     transformers::Sequences& sequences,
-    const transformers::IConsoleDumper* dumper);
+    const IConsoleDumper* dumper);
 
 template Status UpdateDecoderFeeds<MLFloat16>(
     AllocatorPtr allocator,
@@ -1592,7 +1590,7 @@ template Status UpdateDecoderFeeds<MLFloat16>(
     bool past_present_share_buffer,
     bool need_cache_indir,
     transformers::Sequences& sequences,
-    const transformers::IConsoleDumper* dumper);
+    const IConsoleDumper* dumper);
 
 template Status ExpandBuffer<int32_t>(
     Stream* ort_stream,

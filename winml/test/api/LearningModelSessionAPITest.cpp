@@ -315,7 +315,7 @@ static void NamedDimensionOverride() {
   LearningModelDevice device(nullptr);
   WINML_EXPECT_NO_THROW(device = LearningModelDevice(LearningModelDeviceKind::Cpu));
 
-  // the model input shape. the batch size, n, is overriden to 5
+  // the model input shape. the batch size, n, is overridden to 5
   uint32_t n = 5;
   int64_t c = 3, h = 720, w = 720;
 

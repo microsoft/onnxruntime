@@ -46,7 +46,7 @@ static const std::unordered_map<std::string, std::vector<int>> stage1_fp32_node_
 };
 
 // Currently the list here is same as stage1 above due to empty FP32_Nodes.
-// It's possibile we will have more FP32 nodes added, this map will also be extended.
+// It's possible we will have more FP32 nodes added, this map will also be extended.
 static const std::unordered_map<std::string, std::vector<int>> stage2_fp32_node_args = {
     {"Dropout", {1}},
     {"DropoutGrad", {2}},

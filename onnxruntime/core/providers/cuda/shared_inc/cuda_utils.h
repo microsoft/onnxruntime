@@ -10,8 +10,9 @@
 #include <memory>
 #include <type_traits>
 #include <vector>
+#include <limits>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/framework/float16.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
 
@@ -35,7 +36,7 @@ enum class BroadcastIndexType : int32_t {
 template <typename T>
 class IConstantBuffer {
  public:
-  virtual ~IConstantBuffer(){};
+  virtual ~IConstantBuffer() {};
   virtual const T* GetBuffer(cudaStream_t stream, size_t count) = 0;
 };
 
@@ -120,7 +121,7 @@ constexpr int kNumBitsPerBitmaskElement = std::numeric_limits<BitmaskElementType
 
 template <typename T>
 struct NumericLimits {
-  __inline__ __host__ __device__ static T Min() {
+  __inline__ __host__ __device__ static T Lowest() {
     return std::numeric_limits<T>::lowest();
   }
   __inline__ __host__ __device__ static T Max() {
@@ -129,42 +130,17 @@ struct NumericLimits {
 };
 
 template <>
-struct NumericLimits<MLFloat16> {
-  __inline__ __host__ __device__ static half Min() {
-    return -65504.0;
-  }
-  __inline__ __host__ __device__ static half Max() {
-    return 65504.0;
-  }
-};
-
-template <>
 struct NumericLimits<half> {
-  __inline__ __host__ __device__ static half Min() {
-    return -65504.0;
+  __inline__ __host__ __device__ static half Lowest() {
+    return -65504.0f;
   }
+
   __inline__ __host__ __device__ static half Max() {
-    return 65504.0;
-  }
-};
-
-template <>
-struct NumericLimits<float> {
-  __inline__ __host__ __device__ static float Min() {
-    return -INFINITY;
-  }
-  __inline__ __host__ __device__ static float Max() {
-    return INFINITY;
-  }
-};
-
-template <>
-struct NumericLimits<double> {
-  __inline__ __host__ __device__ static double Min() {
-    return -HUGE_VAL;
-  }
-  __inline__ __host__ __device__ static double Max() {
-    return HUGE_VAL;
+#ifdef CUDART_MAX_NORMAL_FP16  // defined in cuda 12.3 or later
+    return CUDART_MAX_NORMAL_FP16;
+#else
+    return 65504.0f;
+#endif
   }
 };
 
@@ -193,6 +169,17 @@ struct Channels<LAYOUT_NCHW> {
   static constexpr size_t H = 2;
   static constexpr size_t W = 3;
 };
+
+// Calculates ceil(a / b). User must be careful to ensure that there
+// is no overflow or underflow in the calculation.
+template <typename T>
+constexpr T divUp(T a, T b) { return (a + b - (T)1) / b; }
+
+// Rounds a up to the next highest multiple of b. User must be careful
+// to ensure that there is no overflow or underflow in the calculation
+// of divUp.
+template <typename T>
+constexpr T roundUp(T a, T b) { return divUp<T>(a, b) * b; }
 
 }  // namespace cuda
 }  // namespace onnxruntime

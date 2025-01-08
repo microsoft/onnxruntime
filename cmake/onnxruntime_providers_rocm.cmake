@@ -8,7 +8,7 @@
 
   find_package(HIP)
   find_package(hiprand REQUIRED)
-  find_package(rocblas REQUIRED)
+  find_package(hipblas REQUIRED)
   find_package(MIOpen REQUIRED)
   find_package(hipfft REQUIRED)
 
@@ -49,7 +49,10 @@
 
   find_library(RCCL_LIB rccl REQUIRED)
   find_library(ROCTRACER_LIB roctracer64 REQUIRED)
-  set(ONNXRUNTIME_ROCM_LIBS roc::rocblas MIOpen hip::hipfft ${RCCL_LIB} ${ROCTRACER_LIB})
+  find_package(rocm_smi REQUIRED)
+  set(ONNXRUNTIME_ROCM_LIBS roc::hipblas MIOpen hip::hipfft ${ROCM_SMI_LIBRARY} ${RCCL_LIB} ${ROCTRACER_LIB})
+  include_directories(${ROCM_SMI_INCLUDE_DIR})
+  link_directories(${ROCM_SMI_LIB_DIR})
 
   file(GLOB_RECURSE onnxruntime_providers_rocm_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/rocm/*.h"
@@ -113,6 +116,7 @@
   auto_set_source_files_hip_language(${onnxruntime_providers_rocm_src})
   onnxruntime_add_shared_library_module(onnxruntime_providers_rocm ${onnxruntime_providers_rocm_src})
   target_compile_options(onnxruntime_providers_rocm PRIVATE -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1)
+  target_link_options(onnxruntime_providers_rocm PRIVATE -T ${REPO_ROOT}/cmake/hip_fatbin_insert)
 
   if(NOT MSVC)
     target_compile_options(onnxruntime_providers_rocm PRIVATE -Wno-sign-compare)
@@ -151,6 +155,7 @@
 
   set_target_properties(onnxruntime_providers_rocm PROPERTIES LINKER_LANGUAGE CXX)
   set_target_properties(onnxruntime_providers_rocm PROPERTIES FOLDER "ONNXRuntime")
+  target_compile_definitions(onnxruntime_providers_rocm PRIVATE HIPBLAS_V2)
 
   if (onnxruntime_ENABLE_TRAINING)
     target_include_directories(onnxruntime_providers_rocm PRIVATE ${ORTTRAINING_ROOT} ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining ${MPI_CXX_INCLUDE_DIRS})
@@ -204,11 +209,14 @@
       device_softmax_instance
     )
     target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_COMPOSABLE_KERNEL)
+    if (onnxruntime_USE_COMPOSABLE_KERNEL_CK_TILE)
+      target_link_libraries(onnxruntime_providers_rocm PUBLIC onnxruntime_composable_kernel_fmha)
+      target_compile_definitions(onnxruntime_providers_rocm PRIVATE USE_COMPOSABLE_KERNEL_CK_TILE)
+    endif()
   endif()
 
   if(UNIX)
     set_property(TARGET onnxruntime_providers_rocm APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/rocm/version_script.lds -Xlinker --gc-sections")
-    target_link_libraries(onnxruntime_providers_rocm PRIVATE nsync::nsync_cpp)
   else()
     message(FATAL_ERROR "onnxruntime_providers_rocm unknown platform, need to specify shared library exports for it")
   endif()
@@ -216,8 +224,13 @@
   if (onnxruntime_ENABLE_ATEN)
     target_compile_definitions(onnxruntime_providers_rocm PRIVATE ENABLE_ATEN)
   endif()
-
+  file(GLOB ONNXRUNTIME_ROCM_PROVIDER_PUBLIC_HEADERS CONFIGURE_DEPENDS
+        "${REPO_ROOT}/include/onnxruntime/core/providers/rocm/*.h"
+      )
+  set_target_properties(onnxruntime_providers_rocm PROPERTIES
+    PUBLIC_HEADER "${ONNXRUNTIME_ROCM_PROVIDER_PUBLIC_HEADERS}")
   install(TARGETS onnxruntime_providers_rocm
+          PUBLIC_HEADER DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core/providers/rocm
           ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})

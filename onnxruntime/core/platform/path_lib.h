@@ -228,11 +228,9 @@ inline std::basic_string<PATH_CHAR_TYPE> GetLastComponent(const std::basic_strin
   typename std::basic_string<PATH_CHAR_TYPE>::size_type pos = input.length();
   PATH_CHAR_TYPE sep = GetPathSep<PATH_CHAR_TYPE>();
   // remove trailing backslash
-  for (; pos > 1 && input[pos - 1] == sep; --pos)
-    ;
+  for (; pos > 1 && input[pos - 1] == sep; --pos);
   input.resize(pos);
-  for (; pos != 0 && input[pos - 1] != sep; --pos)
-    ;
+  for (; pos != 0 && input[pos - 1] != sep; --pos);
   return input.substr(pos);
 }
 
@@ -281,7 +279,7 @@ void LoopDir(const std::string& dir_name, T func) {
   ORT_TRY {
     struct dirent* dp;
     while ((dp = readdir(dir)) != nullptr) {
-      std::basic_string<PATH_CHAR_TYPE> filename = ConcatPathComponent<PATH_CHAR_TYPE>(dir_name, dp->d_name);
+      std::basic_string<PATH_CHAR_TYPE> filename = ConcatPathComponent(dir_name, dp->d_name);
       if (stat(filename.c_str(), &stats) != 0) {
         continue;
       }

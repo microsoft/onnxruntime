@@ -1,3 +1,10 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License. See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
+from __future__ import annotations
+
 import uuid
 from pathlib import Path
 
@@ -217,10 +224,13 @@ class TestDataFeeds(CalibrationDataReader):
         self.iter_next = iter(self.data_feeds)
 
 
-def input_feeds_neg_one_zero_one(n, name2shape):
+def input_feeds_neg_one_zero_one(n, name2shape, seed=None):
     """
     randomize n feed according to shape, its values are from -1, 0, and 1
     """
+    if seed is not None:
+        np.random.seed(seed)
+
     input_data_list = []
     for _i in range(n):
         inputs = {}
@@ -229,6 +239,120 @@ def input_feeds_neg_one_zero_one(n, name2shape):
         input_data_list.extend([inputs])
     dr = TestDataFeeds(input_data_list)
     return dr
+
+
+def input_feeds_neg_one_zero_one_list(n, name2shape, seed=None):
+    """
+    randomize n feed according to shape, its values are from -1, 0, and 1
+    """
+    if seed is not None:
+        np.random.seed(seed)
+
+    input_data_list = []
+    for _i in range(n):
+        inputs = {}
+        for name, shape in name2shape.items():
+            inputs.update({name: np.random.randint(-1, 2, shape).astype(np.float32)})
+        input_data_list.extend([inputs])
+    return input_data_list
+
+
+class GenerateCalibrationData(CalibrationDataReader):
+    def __init__(self, data_list, input_nodes, input_shapes, no_tensor_num, in_dtypes, inputs_conv_channel_last=None):
+        print("Generating calibration dataset from " + str(data_list))
+        print("input nodes are ", input_nodes, "input shapes are ", input_shapes)
+        if inputs_conv_channel_last:
+            print(f"Inputs that will be converted to channel last: {inputs_conv_channel_last}")
+
+        self.enum_data_dicts = []
+        self.input_nodes = input_nodes
+        self.input_shapes = input_shapes
+        self.inputs_conv_channel_last = inputs_conv_channel_last
+        self.calibration_dataset = data_list
+
+    def __len__(self):
+        return len(self.calibration_dataset)
+
+    def get_next(self):
+        feed_dict = {}
+        inp = next(self.calibration_dataset, None)
+        if inp is not None:
+            for i in range(len(self.input_nodes)):
+                input_data = inp[i].reshape(self.input_shapes[i])
+                if self.inputs_conv_channel_last is not None and self.input_nodes[i] in self.inputs_conv_channel_last:
+                    input_data = np.moveaxis(input_data, 1, -1)
+                dict_item = {self.input_nodes[i]: input_data}
+                feed_dict.update(dict_item)
+            return feed_dict
+        else:
+            return None
+
+
+class StridedDataReader(GenerateCalibrationData):
+    def __init__(
+        self,
+        data_list,
+        input_nodes,
+        input_shapes,
+        no_tensor_num,
+        in_dtypes,
+        inputs_conv_channel_last=None,
+        stride=1,
+        start_index=0,
+        end_index=None,
+    ):
+        super().__init__(data_list, input_nodes, input_shapes, no_tensor_num, in_dtypes, inputs_conv_channel_last)
+
+        self.stride = max(1, stride)  # Ensure stride is at least 1
+        self.start_index = start_index
+        self.end_index = (
+            end_index if end_index is not None else len(self.calibration_dataset)
+        )  # Default to the end of the dataset
+        self.enum_data_dicts = iter([])
+
+    def get_next(self):
+        iter_data = next(self.enum_data_dicts, None)
+        if iter_data:
+            return iter_data
+
+        self.enum_data_dicts = None
+        if self.start_index < self.end_index:
+            print(f"start index is {self.start_index}")
+            data = self.load_serial()
+
+            self.start_index += self.stride
+            self.enum_data_dicts = iter(data)
+
+            return next(self.enum_data_dicts, None)
+        else:
+            return None
+
+    def load_serial(self):
+        batch_data = []
+        end_loop = min(self.end_index, self.start_index + self.stride)
+        for i in range(self.start_index, end_loop):
+            print(f"debugging the load serial index {i}")
+            data_item = self.calibration_dataset[i]
+            processed_item = self.process_data_item(data_item)
+            batch_data.append(processed_item)
+        return batch_data
+
+    def process_data_item(self, data_item):
+        feed_dict = {}
+        for _, node in enumerate(self.input_nodes):
+            # input_data = data_item[i].reshape(self.input_shapes[i])
+            feed_dict[node] = data_item["input"]
+        return feed_dict
+
+    def set_range(self, start_index, end_index=None):
+        self.start_index = start_index
+        self.end_index = end_index if end_index is not None else len(self.calibration_dataset)
+        self.enum_data_dicts = iter([])
+
+    def rewind(self):
+        """Rewind the data reader to the beginning of the dataset."""
+        self.start_index = 0
+        self.enum_data_dicts = iter([])
 
 
 def check_op_type_order(testcase, model_to_check, ops):
@@ -544,3 +668,29 @@ def generate_random_initializer(initializer_name, tensor_shape, tensor_dtype, me
     tensor = np.random.normal(mean, dev, tensor_shape).astype(tensor_dtype)
     init = onnx.numpy_helper.from_array(tensor, initializer_name)
     return init
+
+
+def get_tensor_consumers_and_producers(
+    model: onnx.ModelProto,
+) -> tuple[dict[str, list[onnx.NodeProto]], dict[str, onnx.NodeProto]]:
+    """
+    Returns a tuple containing the following python dictionaries:
+      - consumers: maps a tensor name to the list of nodes that have that tensor as an input.
+      - producers: maps a tensor name to the node that generates this tensor as an output.
+    """
+    consumers: dict[str, list[onnx.NodeProto]] = {}
+    producers: dict[str, onnx.NodeProto] = {}
+    for node in model.graph.node:
+        # Iterate through node's inputs to build the consumers dictionary.
+        for input_name in node.input:
+            if input_name:
+                if input_name not in consumers:
+                    consumers[input_name] = []
+
+                consumers[input_name].append(node)
+
+        # Iterate through node's outputs to build the producers dictionary.
+        for output_name in node.output:
+            producers[output_name] = node
+
+    return (consumers, producers)

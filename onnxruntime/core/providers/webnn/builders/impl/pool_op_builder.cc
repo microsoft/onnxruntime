@@ -59,6 +59,7 @@ Status PoolOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   }
 
   emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
   NodeAttrHelper helper(node);
 
   const auto kernel_shape = helper.Get("kernel_shape", std::vector<int32_t>{0, 0});

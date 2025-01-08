@@ -451,8 +451,19 @@ public:
         // logic for some corner test case
         // Same applies to min and max value.
         opDesc.MinMaxDataType = this->m_inputTensorDescs[0].GetDmlDataType();
-        CastToClampedScalarUnion<double>(opDesc.MinMaxDataType, -DBL_MAX, /*out*/&opDesc.Min);
-        CastToClampedScalarUnion<double>(opDesc.MinMaxDataType, DBL_MAX, /*out*/&opDesc.Max);
+
+        if (opDesc.MinMaxDataType == DML_TENSOR_DATA_TYPE_FLOAT16 || opDesc.MinMaxDataType == DML_TENSOR_DATA_TYPE_FLOAT32 || opDesc.MinMaxDataType == DML_TENSOR_DATA_TYPE_FLOAT64)
+        {
+            CastToClampedScalarUnion<double>(opDesc.MinMaxDataType, -DBL_MAX, /*out*/&opDesc.Min);
+            CastToClampedScalarUnion<double>(opDesc.MinMaxDataType, DBL_MAX, /*out*/&opDesc.Max);
+        }
+        else
+        {
+            // It's not safe to use DBL_MAX for non-float datatypes because not all integer can be represented in the range.
+            // For example, static_cast<int64_t>(static_cast<double>(INT64_MAX)) will yield a negative number.
+            CastToClampedScalarUnion<int64_t>(opDesc.MinMaxDataType, -INT64_MAX, /*out*/&opDesc.Min);
+            CastToClampedScalarUnion<uint64_t>(opDesc.MinMaxDataType, UINT64_MAX, /*out*/&opDesc.Max);
+        }
 
         if (kernelInfo.IsInputValid(1))
         {
@@ -528,6 +539,7 @@ public:
         std::vector<uint32_t> outputShape = kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0);
         const uint32_t outputShapeDimCount = gsl::narrow_cast<uint32_t>(outputShape.size());
         const DML_TENSOR_DATA_TYPE inputDataType = m_inputTensorDescs[0].GetDmlDataType();
+        const DML_TENSOR_DATA_TYPE outputDataType = m_outputTensorDescs[0].GetDmlDataType();
         bool hasZeroPointTensor = kernelInfo.IsInputValid(2);
 
         uint32_t axis = 0;
@@ -598,6 +610,141 @@ public:
         opDesc.ZeroPointTensor = hasZeroPointTensor ? &inputDescs[2] : nullptr;
         opDesc.OutputTensor = &outputDescs[0];
         SetDmlOperatorDesc({ApiTraits::OperatorDescTraits<TOperatorDesc>::Type, &opDesc}, kernelInfo);
+    }
+};
+
+template <typename TOperatorDesc>
+class DmlOperatorQuantization21 : public DmlOperator
+{
+public:
+    DmlOperatorQuantization21(const MLOperatorKernelCreationContext& kernelInfo) : DmlOperator(kernelInfo)
+    {
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetInputCount() == 2 || kernelInfo.GetInputCount() == 3);
+        ML_CHECK_VALID_ARGUMENT(kernelInfo.GetOutputCount() == 1);
+
+        Initialize(kernelInfo, std::nullopt, std::nullopt);
+
+        std::vector<uint32_t> outputShape = kernelInfo.GetTensorShapeDescription().GetOutputTensorShape(0);
+        const uint32_t outputShapeDimCount = gsl::narrow_cast<uint32_t>(outputShape.size());
+        const DML_TENSOR_DATA_TYPE inputDataType = m_inputTensorDescs[0].GetDmlDataType();
+        const DML_TENSOR_DATA_TYPE outputDataType = m_outputTensorDescs[0].GetDmlDataType();
+        bool hasZeroPointTensor = kernelInfo.IsInputValid(2);
+
+        std::vector<DML_TENSOR_DESC> inputDescs = GetDmlInputDescs();
+        std::vector<DML_TENSOR_DESC> outputDescs = GetDmlOutputDescs();
+
+        std::vector<DML_TENSOR_DESC> quantizationTensors;
+        quantizationTensors.push_back(inputDescs[1]);
+
+        const bool isSignedQuantization =
+            inputDataType == DML_TENSOR_DATA_TYPE_INT4 ||
+            outputDataType == DML_TENSOR_DATA_TYPE_INT4 ||
+            inputDataType == DML_TENSOR_DATA_TYPE_INT8 ||
+            outputDataType == DML_TENSOR_DATA_TYPE_INT8;
+
+        if (hasZeroPointTensor || isSignedQuantization)
+        {
+            if (hasZeroPointTensor)
+            {
+                quantizationTensors.push_back(inputDescs[2]);
+            }
+
+            TOperatorDesc opDesc = {};
+            opDesc.InputTensor = &inputDescs[0];
+            opDesc.QuantizationType = hasZeroPointTensor ? DML_QUANTIZATION_TYPE_SCALE_ZERO_POINT : DML_QUANTIZATION_TYPE_SCALE;
+            opDesc.QuantizationTensorCount = static_cast<uint32_t>(quantizationTensors.size());
+            opDesc.QuantizationTensors = quantizationTensors.data();
+            opDesc.OutputTensor = &outputDescs[0];
+            SetDmlOperatorDesc({ApiTraits::OperatorDescTraits<TOperatorDesc>::Type, &opDesc}, kernelInfo);
+        }
+        else
+        {
+            // For unsigned quantization, DML uses the midpoint of the datatype when zero point isn't provided (e.g. 8 for uint4 and 128 for uint8)
+            // since this is the most sane default in theory that represents the midpoint of the quantization. This is also the default used by various
+            // other frameworks and quantization tools. But because ONNX uses a default zero point of 0 no matter if it's signed or unsigned, we need
+            // to generate a constant zero point tensor with a value of 0 to override dml's default value when it isn't provided.
+            auto zeroPointDataType = std::is_same_v<TOperatorDesc, DML_QUANTIZE_OPERATOR_DESC> ? outputDataType : inputDataType;
+
+            // DML doesn't support int4 FILL_VALUE_CONSTANT yet, so simply create an int8 scalar and reinterpret it to an int4 tensor
+            auto zeroPointInt8DataType = zeroPointDataType == DML_TENSOR_DATA_TYPE_INT4 ? DML_TENSOR_DATA_TYPE_INT8 : DML_TENSOR_DATA_TYPE_UINT8;
+
+            TensorDesc scalarTensorDesc(zeroPointInt8DataType, std::vector<uint32_t>(m_inputTensorDescs[1].GetDimensionCount(), 1));
+            DML_TENSOR_DESC scalarDmlTensorDesc = scalarTensorDesc.GetDmlDesc();
+
+            // Create a tensor full of zeros
+            DML_FILL_VALUE_CONSTANT_OPERATOR_DESC zeroPointConstantDesc = {};
+            zeroPointConstantDesc.ValueDataType = zeroPointInt8DataType;
+            zeroPointConstantDesc.OutputTensor = &scalarDmlTensorDesc;
+            DML_OPERATOR_DESC zeroPointConstantDmlDesc = { DML_OPERATOR_FILL_VALUE_CONSTANT, &zeroPointConstantDesc };
+
+            // Broadcast the zero point tensor to match the scale tensor
+            TensorDesc broadcastedScalarTensorDesc(zeroPointDataType, m_inputTensorDescs[1].GetSizes(), std::vector<uint32_t>(m_inputTensorDescs[1].GetDimensionCount(), 0));
+            quantizationTensors.push_back(broadcastedScalarTensorDesc.GetDmlDesc());
+
+            // Create the quantize/dequantize operator
+            TOperatorDesc quantizationOpDesc = {};
+            quantizationOpDesc.InputTensor = &inputDescs[0];
+            quantizationOpDesc.QuantizationType = DML_QUANTIZATION_TYPE_SCALE_ZERO_POINT;
+            quantizationOpDesc.QuantizationTensorCount = static_cast<uint32_t>(quantizationTensors.size());
+            quantizationOpDesc.QuantizationTensors = quantizationTensors.data();
+            quantizationOpDesc.OutputTensor = &outputDescs[0];
+            DML_OPERATOR_DESC quantizationOpDmlDesc = { ApiTraits::OperatorDescTraits<TOperatorDesc>::Type, &quantizationOpDesc };
+
+            std::array<const DML_OPERATOR_DESC*, 2> opDescs = {
+                &zeroPointConstantDmlDesc,
+                &quantizationOpDmlDesc,
+            };
+
+            std::vector<DML_INPUT_GRAPH_EDGE_DESC> inputEdges;
+            inputEdges.reserve(2);
+
+            std::vector<DML_INTERMEDIATE_GRAPH_EDGE_DESC> intermediateEdges;
+            intermediateEdges.reserve(1);
+
+            std::vector<DML_OUTPUT_GRAPH_EDGE_DESC> outputEdges;
+            outputEdges.reserve(1);
+
+            // Create an edge between the input tensor and the quantization operator
+            DML_INPUT_GRAPH_EDGE_DESC inputToQuantizeEdge{};
+            inputToQuantizeEdge.GraphInputIndex = 0;
+            inputToQuantizeEdge.ToNodeIndex = 1;
+            inputToQuantizeEdge.ToNodeInputIndex = 0;
+            inputEdges.push_back(inputToQuantizeEdge);
+
+            // Create an edge between the scale and the quantization operator
+            DML_INPUT_GRAPH_EDGE_DESC scaleToQuantizeEdge{};
+            scaleToQuantizeEdge.GraphInputIndex = 1;
+            scaleToQuantizeEdge.ToNodeIndex = 1;
+            scaleToQuantizeEdge.ToNodeInputIndex = 1;
+            inputEdges.push_back(scaleToQuantizeEdge);
+
+            // Create an edge between the generated zero point tensor and the quantization operator
+            DML_INTERMEDIATE_GRAPH_EDGE_DESC zeroPointToQuantizeEdge{};
+            zeroPointToQuantizeEdge.FromNodeIndex = 0;
+            zeroPointToQuantizeEdge.FromNodeOutputIndex = 0;
+            zeroPointToQuantizeEdge.ToNodeIndex = 1;
+            zeroPointToQuantizeEdge.ToNodeInputIndex = 2;
+            intermediateEdges.push_back(zeroPointToQuantizeEdge);
+
+            // Create an edge between the output of the quantization operator and the output of the graph
+            DML_OUTPUT_GRAPH_EDGE_DESC quantizeToOutputEdge{};
+            quantizeToOutputEdge.FromNodeIndex = 1;
+            quantizeToOutputEdge.FromNodeOutputIndex = 0;
+            quantizeToOutputEdge.GraphOutputIndex = 0;
+            outputEdges.push_back(quantizeToOutputEdge);
+
+            // Create the graph
+            MLOperatorGraphDesc operatorGraphDesc = {};
+            operatorGraphDesc.inputEdgeCount = gsl::narrow_cast<uint32_t>(inputEdges.size());
+            operatorGraphDesc.inputEdges = inputEdges.data();
+            operatorGraphDesc.intermediateEdgeCount = gsl::narrow_cast<uint32_t>(intermediateEdges.size());
+            operatorGraphDesc.intermediateEdges = intermediateEdges.data();
+            operatorGraphDesc.outputEdgeCount = gsl::narrow_cast<uint32_t>(outputEdges.size());
+            operatorGraphDesc.outputEdges = outputEdges.data();
+            operatorGraphDesc.nodeCount = gsl::narrow_cast<uint32_t>(opDescs.size());
+            operatorGraphDesc.nodes = opDescs.data();
+            SetDmlOperatorGraphDesc(std::move(operatorGraphDesc), kernelInfo);
+        }
     }
 };
 
@@ -777,18 +924,20 @@ DML_OP_DEFINE_CREATION_FUNCTION(Max,              DmlOperatorElementwiseBinaryLo
 DML_OP_DEFINE_CREATION_FUNCTION(Mean,             DmlOperatorElementwiseMean);
 
 // Operators with extra attributes:
-DML_OP_DEFINE_CREATION_FUNCTION(Clip7,            DmlOperatorElementwiseClip7);
-DML_OP_DEFINE_CREATION_FUNCTION(Clip11,           DmlOperatorElementwiseClip11);
-DML_OP_DEFINE_CREATION_FUNCTION(Clip12,           DmlOperatorElementwiseClip12);
-DML_OP_DEFINE_CREATION_FUNCTION(Clip13,           DmlOperatorElementwiseClip13);
-DML_OP_DEFINE_CREATION_FUNCTION(Pow,              DmlOperatorElementwisePow);
-DML_OP_DEFINE_CREATION_FUNCTION(QuantizeLinear,   DmlOperatorElementwiseQLinear<DML_ELEMENT_WISE_QUANTIZE_LINEAR_OPERATOR_DESC>);
-DML_OP_DEFINE_CREATION_FUNCTION(DequantizeLinear, DmlOperatorElementwiseQLinear<DML_ELEMENT_WISE_DEQUANTIZE_LINEAR_OPERATOR_DESC>);
-DML_OP_DEFINE_CREATION_FUNCTION(Where,            DmlOperatorElementwiseIf);
-DML_OP_DEFINE_CREATION_FUNCTION(Mod,              DmlOperatorElementwiseMod);
-DML_OP_DEFINE_CREATION_FUNCTION(BitShift,         DmlOperatorElementwiseBitShift);
-DML_OP_DEFINE_CREATION_FUNCTION(IsInf,            DmlOperatorElementwiseIsInf);
-DML_OP_DEFINE_CREATION_FUNCTION(Round,            DmlOperatorElementwiseRound);
+DML_OP_DEFINE_CREATION_FUNCTION(Clip7,              DmlOperatorElementwiseClip7);
+DML_OP_DEFINE_CREATION_FUNCTION(Clip11,             DmlOperatorElementwiseClip11);
+DML_OP_DEFINE_CREATION_FUNCTION(Clip12,             DmlOperatorElementwiseClip12);
+DML_OP_DEFINE_CREATION_FUNCTION(Clip13,             DmlOperatorElementwiseClip13);
+DML_OP_DEFINE_CREATION_FUNCTION(Pow,                DmlOperatorElementwisePow);
+DML_OP_DEFINE_CREATION_FUNCTION(QuantizeLinear,     DmlOperatorElementwiseQLinear<DML_ELEMENT_WISE_QUANTIZE_LINEAR_OPERATOR_DESC>);
+DML_OP_DEFINE_CREATION_FUNCTION(DequantizeLinear,   DmlOperatorElementwiseQLinear<DML_ELEMENT_WISE_DEQUANTIZE_LINEAR_OPERATOR_DESC>);
+DML_OP_DEFINE_CREATION_FUNCTION(QuantizeLinear21,   DmlOperatorQuantization21<DML_QUANTIZE_OPERATOR_DESC>);
+DML_OP_DEFINE_CREATION_FUNCTION(DequantizeLinear21, DmlOperatorQuantization21<DML_DEQUANTIZE_OPERATOR_DESC>);
+DML_OP_DEFINE_CREATION_FUNCTION(Where,              DmlOperatorElementwiseIf);
+DML_OP_DEFINE_CREATION_FUNCTION(Mod,                DmlOperatorElementwiseMod);
+DML_OP_DEFINE_CREATION_FUNCTION(BitShift,           DmlOperatorElementwiseBitShift);
+DML_OP_DEFINE_CREATION_FUNCTION(IsInf,              DmlOperatorElementwiseIsInf);
+DML_OP_DEFINE_CREATION_FUNCTION(Round,              DmlOperatorElementwiseRound);
 
 // Fused operators:
 DML_OP_DEFINE_CREATION_FUNCTION(DmlFusedAdd,         DmlOperatorElementwiseBinary<DML_ELEMENT_WISE_ADD1_OPERATOR_DESC>);

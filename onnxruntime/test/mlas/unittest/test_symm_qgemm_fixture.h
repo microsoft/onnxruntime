@@ -7,7 +7,7 @@
 #include "test_symm_qgemm.h"
 
 //
-// Short Execute() test helper to register each test seperately by all parameters.
+// Short Execute() test helper to register each test separately by all parameters.
 //
 template <typename AType, typename OutputType, bool Threaded>
 class SymmQgemmShortExecuteTest;

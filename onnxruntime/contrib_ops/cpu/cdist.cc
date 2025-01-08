@@ -67,7 +67,7 @@ static void CalculateSqeuclidean(const Tensor& a, const Tensor& b, Tensor& c, co
                 threadpool);
 #else
   // the performance of this isn't great as the eigen matmul is single threaded by default
-  // if you're on x86 and care about performance try MKL first. if there's a good enough argument for optimising this
+  // if you're on x86 and care about performance try MKL first. if there's a good enough argument for optimizing this
   // we can look into it in the future.
   ORT_UNUSED_PARAMETER(threadpool);
 

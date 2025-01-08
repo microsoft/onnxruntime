@@ -48,7 +48,7 @@ using namespace WEX::TestExecution;
   }
 
 #define WINML_SKIP_TEST(message)                                                                                       \
-  WINML_SUPRESS_UNREACHABLE_BELOW(                                                                                     \
+  WINML_SUPPRESS_UNREACHABLE_BELOW(                                                                                    \
     Log::Result(TestResults::Skipped, std::wstring_convert<std::codecvt_utf8<wchar_t>>().from_bytes(message).c_str()); \
     return;                                                                                                            \
   )

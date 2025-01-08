@@ -36,7 +36,7 @@ Status GemmSumFusion::Apply(Graph& graph, Node& gemm_node, RewriteRuleEffect& mo
   std::vector<NodeArg*> new_gemm_output_defs = sum_node.MutableOutputDefs();
   ORT_ENFORCE(new_gemm_output_defs.size() == 1);
 
-  Node& new_gemm_node = graph.AddNode(graph.GenerateNodeName(gemm_node.Name() + "_sum_transformed"),
+  Node& new_gemm_node = graph.AddNode(graph.GenerateNodeName(gemm_node.Name() + "/GemmSumFusion/"),
                                       gemm_node.OpType(),
                                       "Fused Gemm with Sum",
                                       new_gemm_input_defs,

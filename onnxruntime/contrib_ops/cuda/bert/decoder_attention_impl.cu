@@ -140,21 +140,25 @@ Status DecoderQkvToContext(
   }
 
   constexpr bool is_unidirectional = false;
-  const T* add_before_softmax = nullptr;
+  const T* attention_bias = nullptr;
+  constexpr bool broadcast_attn_bias_dim_0 = false;
+  constexpr bool broadcast_attn_bias_dim_1 = false;
+
   if (has_key_padding_mask) {
     constexpr int mask_dimension = 2;
     constexpr int max_sequence_length = 0;
     ORT_RETURN_IF_ERROR(ComputeSoftmaxWithRawMask<T>(
         ort_stream, kv_sequence_length, sequence_length, batch_size,
-        num_heads, nullptr, key_padding_mask, add_before_softmax,
-        false /*broadcast rpb*/, scratch1, scratch2, is_unidirectional,
+        num_heads, nullptr, key_padding_mask,
+        attention_bias, broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1,
+        scratch1, scratch2, is_unidirectional,
         1.0f, mask_dimension, max_sequence_length, false, nullptr,
         mask_filter_value));
   } else {
     ORT_RETURN_IF_ERROR(ComputeSoftmax<T>(
         stream, kv_sequence_length, sequence_length, batch_size, num_heads,
-        add_before_softmax, false /*broadcast rpb*/, scratch1, scratch2,
-        is_unidirectional));
+        attention_bias, broadcast_attn_bias_dim_0, broadcast_attn_bias_dim_1,
+        scratch1, scratch2, is_unidirectional));
   }
 
   // compute P*V (as V*P), and store in scratch3: BxNxSxH

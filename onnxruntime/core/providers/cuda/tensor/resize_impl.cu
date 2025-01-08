@@ -234,15 +234,15 @@ __global__ void _ResizeNearestKernel(
 
   int output_index = static_cast<int>(id);
   int input_index = 0;
-  int extrapolation_occured = 0;
+  int extrapolation_occurred = 0;
   for (int axis = 0; axis < rank; ++axis) {
     int dim = 0;
     output_div_pitches[axis].divmod(output_index, dim, output_index);
     const NearestMappingInfo& mi = dims_mapping[prefix_dim_sum[axis] + dim];
-    extrapolation_occured += mi.extrapolate_;
+    extrapolation_occurred += mi.extrapolate_;
     input_index += input_strides[axis] * mi.origin_;
   }
-  output_data[id] = extrapolation_occured ? extrapolation_value : input_data[input_index];
+  output_data[id] = extrapolation_occurred ? extrapolation_value : input_data[input_index];
 }
 
 struct LinearMappingInfo {

@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor-view';
-import {ShapeUtil} from '../../util';
-import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../attribute-with-cache-key';
-import {ComputeContext, ProgramInfo, ProgramUniform} from '../types';
+import { DataType } from '../../../wasm-common';
+import { TensorView } from '../../tensor-view';
+import { ShapeUtil } from '../../util';
+import { AttributeWithCacheKey, createAttributeWithCacheKey } from '../attribute-with-cache-key';
+import { ComputeContext, ProgramInfo, ProgramUniform } from '../types';
 
-import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper} from './common';
+import { createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper } from './common';
 
 export interface GatherAttributes extends AttributeWithCacheKey {
   axis: number;
@@ -34,8 +34,10 @@ const createGatherProgramInfo = (inputs: readonly TensorView[], attributes: Gath
   const outputSize = Math.ceil(ShapeUtil.size(outputShape) / components);
 
   const programUniforms: ProgramUniform[] = [
-    {type: DataType.uint32, data: outputSize}, {type: DataType.int32, data: axisDimLimit},
-    {type: DataType.uint32, data: axis}, ...createTensorShapeVariables(inputs[0].dims, inputs[1].dims, outputShape)
+    { type: DataType.uint32, data: outputSize },
+    { type: DataType.int32, data: axisDimLimit },
+    { type: DataType.uint32, data: axis },
+    ...createTensorShapeVariables(inputs[0].dims, inputs[1].dims, outputShape),
   ];
 
   const getShaderSource = (shaderHelper: ShaderHelper) => {
@@ -43,12 +45,13 @@ const createGatherProgramInfo = (inputs: readonly TensorView[], attributes: Gath
     const indices = inputVariable('inputIndices', inputs[1].dataType, inputs[1].dims.length);
     const output = outputVariable('output', inputs[0].dataType, outputShape.length, components);
 
-    const calcDataIndices = (x: number|string): string => {
+    const calcDataIndices = (x: number | string): string => {
       const indicesRank = indicesShape.length;
       let calcStr = `var indicesIndices${x}  = ${indices.type.indices}(0);`;
       for (let i = 0; i < indicesRank; i++) {
         calcStr += `${indicesRank > 1 ? `indicesIndices${x}[${i}]` : `indicesIndices${x}`} = ${
-            outputShape.length > 1 ? `outputIndices${x}[uniforms.axis + ${i}]` : `outputIndices${x}`};`;
+          outputShape.length > 1 ? `outputIndices${x}[uniforms.axis + ${i}]` : `outputIndices${x}`
+        };`;
       }
       calcStr += `
           var idx${x} = ${indices.getByIndices(`indicesIndices${x}`)};
@@ -63,7 +66,8 @@ const createGatherProgramInfo = (inputs: readonly TensorView[], attributes: Gath
           j += indicesRank;
         } else {
           calcStr += `${inputRank > 1 ? `dataIndices${x}[${i}]` : `dataIndices${x}`} = ${
-              outputShape.length > 1 ? `outputIndices${x}[${j}]` : `outputIndices${x}`};`;
+            outputShape.length > 1 ? `outputIndices${x}[${j}]` : `outputIndices${x}`
+          };`;
           j++;
         }
       }
@@ -97,11 +101,11 @@ const createGatherProgramInfo = (inputs: readonly TensorView[], attributes: Gath
       `;
     }
     return `
-      ${
-        shaderHelper.registerUniform('outputSize', 'u32')
-            .registerUniform('axisDimLimit', 'i32')
-            .registerUniform('axis', 'u32')
-            .declareVariables(data, indices, output)}
+      ${shaderHelper
+        .registerUniform('outputSize', 'u32')
+        .registerUniform('axisDimLimit', 'i32')
+        .registerUniform('axis', 'u32')
+        .declareVariables(data, indices, output)}
       ${shaderHelper.mainStart()}
         ${shaderHelper.guardAgainstOutOfBoundsWorkgroupSizes('uniforms.outputSize')}
         ${assignment}
@@ -109,20 +113,18 @@ const createGatherProgramInfo = (inputs: readonly TensorView[], attributes: Gath
   };
   return {
     name: 'Gather',
-    shaderCache: {hint: attributes.cacheKey, inputDependencies: ['rank', 'rank']},
+    shaderCache: { hint: attributes.cacheKey, inputDependencies: ['rank', 'rank'] },
     getRunData: () => ({
-      outputs: [
-        {dims: outputShape, dataType: inputs[0].dataType},
-      ],
-      dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
-      programUniforms
+      outputs: [{ dims: outputShape, dataType: inputs[0].dataType }],
+      dispatchGroup: { x: Math.ceil(outputSize / 64 /* workgroup size */) },
+      programUniforms,
     }),
     getShaderSource,
   };
 };
 
 export const parseGatherAttributes = (attributes: Record<string, unknown>): GatherAttributes =>
-    createAttributeWithCacheKey({axis: attributes.axis as number});
+  createAttributeWithCacheKey({ axis: attributes.axis as number });
 
 export const gather = (context: ComputeContext, attributes: GatherAttributes): void => {
   const inputs = context.inputs;

@@ -4,6 +4,7 @@
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #include "node_unit.h"
+#include <utility>
 #include "core/graph/graph_viewer.h"
 
 namespace onnxruntime {
@@ -272,19 +273,34 @@ NodeUnit::NodeUnit(const GraphViewer& graph_viewer, const QDQ::NodeGroup& node_g
   }
 }
 
+NodeUnit::NodeUnit(gsl::span<const Node* const> dq_nodes, const Node& target_node,
+                   gsl::span<const Node* const> q_nodes, Type unit_type,
+                   gsl::span<const NodeUnitIODef> inputs, gsl::span<const NodeUnitIODef> outputs,
+                   size_t input_edge_count, Node::EdgeSet output_edges)
+    : dq_nodes_(dq_nodes.begin(), dq_nodes.end()),
+      target_node_(target_node),
+      q_nodes_(q_nodes.begin(), q_nodes.end()),
+      type_(unit_type),
+      inputs_(inputs.begin(), inputs.end()),
+      outputs_(outputs.begin(), outputs.end()),
+      input_edge_count_(input_edge_count),
+      output_edges_(std::move(output_edges)) {
+}
+
 const std::string& NodeUnit::Domain() const noexcept { return target_node_.Domain(); }
 const std::string& NodeUnit::OpType() const noexcept { return target_node_.OpType(); }
 const std::string& NodeUnit::Name() const noexcept { return target_node_.Name(); }
 int NodeUnit::SinceVersion() const noexcept { return target_node_.SinceVersion(); }
 NodeIndex NodeUnit::Index() const noexcept { return target_node_.Index(); }
-const Path& NodeUnit::ModelPath() const noexcept { return target_node_.ModelPath(); }
+const std::filesystem::path& NodeUnit::ModelPath() const noexcept { return target_node_.ModelPath(); }
 ProviderType NodeUnit::GetExecutionProviderType() const noexcept { return target_node_.GetExecutionProviderType(); }
 
 void NodeUnit::InitForSingleNode() {
   const auto& input_defs = target_node_.InputDefs();
   const auto& output_defs = target_node_.OutputDefs();
+  const auto& node_attrs = target_node_.GetAttributes();
   auto qlinear_type = GetQLinearOpType(target_node_);
-  if (qlinear_type == QLinearOpType::Unknown || IsVariadicQLinearOp(qlinear_type)) {  // TODO, add variadic support
+  if (qlinear_type == QLinearOpType::Unknown) {
     // Not a Qlinear op, add all inputs / outputs
     auto add_all_io = [](std::vector<NodeUnitIODef>& defs,
                          const ConstPointerContainer<std::vector<NodeArg*>>& node_defs) {
@@ -321,19 +337,42 @@ void NodeUnit::InitForSingleNode() {
     // DequantizeLinear has 3 inputs
     // x, x_scale, x_zp
     // output is not quantized
-    inputs_.push_back(NodeUnitIODef{*input_defs[0], NodeUnitIODef::QuantParam{*input_defs[1], input_defs.size() == 3
-                                                                                                  ? input_defs[2]
-                                                                                                  : nullptr}});
+
+    // Get the DQ axis attribute if available.
+    std::optional<int64_t> axis;
+    if (auto entry = node_attrs.find("axis"); entry != node_attrs.end()) {
+      axis = entry->second.i();
+    }
+
+    inputs_.push_back(NodeUnitIODef{*input_defs[0],
+                                    NodeUnitIODef::QuantParam{*input_defs[1],
+                                                              input_defs.size() == 3 ? input_defs[2] : nullptr,
+                                                              axis}});
     outputs_.push_back(NodeUnitIODef{*output_defs[0], std::nullopt});
 
   } else if (qlinear_type == QLinearOpType::QuantizeLinear) {
     // QuantizeLinear the input is not quantized and has 3 inputs
     // x, y_scale, y_zp (optional)
     // The output is quantized
+
+    // Get the Q axis attribute if available.
+    std::optional<int64_t> axis;
+    if (auto entry = node_attrs.find("axis"); entry != node_attrs.end()) {
+      axis = entry->second.i();
+    }
+
     inputs_.push_back(NodeUnitIODef{*input_defs[0], std::nullopt});
-    outputs_.push_back(NodeUnitIODef{*output_defs[0], NodeUnitIODef::QuantParam{*input_defs[1], input_defs.size() == 3
-                                                                                                    ? input_defs[2]
-                                                                                                    : nullptr}});
+    outputs_.push_back(NodeUnitIODef{*output_defs[0],
+                                     NodeUnitIODef::QuantParam{*input_defs[1],
+                                                               input_defs.size() == 3 ? input_defs[2] : nullptr,
+                                                               axis}});
+  } else if (IsVariadicQLinearOp(qlinear_type)) {
+    size_t input_num = (input_defs.size() - 2) / 3;
+    for (size_t i = 0; i < input_num; i++) {
+      inputs_.push_back(NodeUnitIODef{*input_defs[3 * i + 2], NodeUnitIODef::QuantParam{*input_defs[3 * i + 3],
+                                                                                        input_defs[3 * i + 4]}});
+    }
+    outputs_.push_back(NodeUnitIODef{*output_defs[0], NodeUnitIODef::QuantParam{*input_defs[0], input_defs[1]}});
   } else {
     ORT_THROW("The QLinear op [", static_cast<uint8_t>(qlinear_type), "] is not supported");
   }

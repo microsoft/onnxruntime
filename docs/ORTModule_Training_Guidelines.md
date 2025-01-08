@@ -208,19 +208,6 @@ debugging).
 	export ORTMODULE_ENABLE_COMPUTE_OPTIMIZER=0 # Disable
 	```
 
-#### ORTMODULE_ENABLE_SPARSE_OPTIMIZER
-
-- **Feature Area**: *ORTMODULE/Optimizations*
-- **Description**: By default, this is enabled. This env var can be used for enabling or disabling the input data sparsity
-based performance optimizations, including embedding sparsity and label sparsity.
-This optimization is applicable when using optimum, which has an implementation of the ModuleWithLoss class that wraps the HuggingFace Training that allows loss computation inside ONNX Runtime (ORT).
-If you're not using optimum but want to implement a similar wrapper in your codebase to compute the loss inside ONNX Runtime (ORT), you can refer to this [Link](ORTModule_ModuleWithLoss_Wrapper.md) for detailed steps and guidelines on how to achieve this.
-
-	```bash
-	export ORTMODULE_ENABLE_SPARSE_OPTIMIZER=1 # Enable
-	export ORTMODULE_ENABLE_SPARSE_OPTIMIZER=0 # Disable
-	```
-
 #### ORTMODULE_PRINT_INPUT_DENSITY
 
 - **Feature Area**: *ORTMODULE/RuntimeInspector*
@@ -252,6 +239,17 @@ data sparsity based performance optimizations.
 	```bash
 	export ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER=1 # Enable
 	export ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER=0 # Disable
+	```
+
+#### ORTMODULE_ENABLE_LABEL_SPARSE_OPTIMIZER
+
+- **Feature Area**: *ORTMODULE/Optimizations*
+- **Description**: By default, this is enabled. This env var can be used for enabling or disabling the label input
+data sparsity based performance optimizations.
+
+	```bash
+	export ORTMODULE_ENABLE_LABEL_SPARSE_OPTIMIZER=1 # Enable
+	export ORTMODULE_ENABLE_LABEL_SPARSE_OPTIMIZER=0 # Disable
 	```
 
 #### ORTMODULE_CACHE_DIR
@@ -305,6 +303,16 @@ A classical usage of disabling the deep copy: when the deep copy before module e
 	export ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT=1 # Enable
 	export ORTMODULE_ENABLE_MEM_EFFICIENT_GRAD_MGMT=0 # Disable
 	```
+
+#### ORTMODULE_ATEN_SDPA_FALLBACK
+
+- **Feature Area**: *ORTMODULE/Optimizations*
+- **Description**: By default, this is disabled. This env var can be used for enabling pre-export attention fall back to PyTorch's [_scaled_dot_product_efficient_attention](https://github.com/pytorch/pytorch/blob/c12a4f2e65ad41b739aab1a261e2336b4a79fcfb/aten/src/ATen/native/native_functions.yaml#L14778) ATen kernel for execution when calling torch.nn.functional.scaled_dot_product_attention. NOTE: only use this feature if user model leverages memory efficient attention WITHOUT masking (ie. attn_mask=None). Utilize GPU profiling looks like NVIDIA Nsight Systems to identify if user model leverages memory efficient attention.
+
+    ```bash
+    export ORTMODULE_ATEN_SDPA_FALLBACK=1 # ENABLE
+    unset ORTMODULE_ATEN_SDPA_FALLBACK # DISABLE
+    ```
 
 ### 2.2 Memory Optimization
 

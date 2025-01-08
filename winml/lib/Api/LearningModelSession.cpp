@@ -21,8 +21,8 @@ static const auto c_enable_debug_output = L"EnableDebugOutput";
 namespace guid_details {
 // This GUID is to be used for delimiting ML-related categories of capturable work.
 // {D113B493-BBA2-4993-8608-D706A73B91CE}
-struct __declspec(uuid("D113B493-BBA2-4993-8608-D706A73B91CE")) __declspec(novtable
-) WINML_PIX_EVAL_CAPTURABLE_WORK_GUID {};
+struct __declspec(uuid("D113B493-BBA2-4993-8608-D706A73B91CE"))
+__declspec(novtable) WINML_PIX_EVAL_CAPTURABLE_WORK_GUID {};
 }  // namespace guid_details
 static const GUID WINML_PIX_EVAL_CAPTURABLE_WORK_GUID = __uuidof(guid_details::WINML_PIX_EVAL_CAPTURABLE_WORK_GUID);
 

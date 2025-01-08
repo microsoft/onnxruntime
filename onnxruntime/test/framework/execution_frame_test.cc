@@ -59,6 +59,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
   DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
   profiling::Profiler profiler;
 
   SessionOptions sess_options;
@@ -67,7 +68,7 @@ TEST_F(ExecutionFrameTest, TensorAllocationTest) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState state(graph, execution_providers, &tp_, nullptr, dtm,
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, edlm,
                      DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   node->SetExecutionProviderType(xp_typ);
@@ -143,6 +144,7 @@ TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
   DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
   profiling::Profiler profiler;
 
   SessionOptions sess_options;
@@ -151,7 +153,7 @@ TEST_F(ExecutionFrameTest, OutputShapeValidationTest) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState state(graph, execution_providers, &tp_, nullptr, dtm,
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, edlm,
                      DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   node->SetExecutionProviderType(xp_typ);
@@ -215,6 +217,7 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
   DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
   profiling::Profiler profiler;
 
   SessionOptions sess_options;
@@ -223,7 +226,7 @@ TEST_F(ExecutionFrameTest, FeedInDataTest) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState state(graph, execution_providers, &tp_, nullptr, dtm,
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, edlm,
                      DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
@@ -287,6 +290,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   // 1. prepare input
 
   DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
   profiling::Profiler profiler;
 
   SessionOptions sess_options;
@@ -295,7 +299,7 @@ TEST_F(ExecutionFrameTest, MemPatternTest) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState state(graph, execution_providers, &tp_, nullptr, dtm,
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, edlm,
                      DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
@@ -402,10 +406,11 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
   ASSERT_STATUS_OK(kernel_registry_manager.RegisterKernels(execution_providers));
 
   DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
   profiling::Profiler profiler;
   SessionOptions so;
 
-  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, DefaultLoggingManager().DefaultLogger(),
+  SessionState state(graph, execution_providers, &tp_, nullptr, dtm, edlm, DefaultLoggingManager().DefaultLogger(),
                      profiler, so);
 
   ASSERT_STATUS_OK(state.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));
@@ -454,9 +459,14 @@ TEST_F(ExecutionFrameTest, MemPatternWithExternalOutputsTest) {
 #endif
 
 TEST(ExecutionFrameTestWithoutSessionState, BadModelInvalidDimParamUsage) {
-  // load model with 2 Scan ops that both incorrectly use shapes of { 'None', 'None' } for their outputs.
-  // as 'None' is not a special value it's treated as a variable name, leading to a runtime error when we
-  // attempt to re-use the output from the first Scan node for the second. validate we detect this and error out.
+  // Model that has 2 inputs with shape {'Symbolic', 'Symbolic'} that is carefully constructed to re-use a
+  // buffer the size of one input for output the size of the other input.
+  // The model is fine if all values of 'Symbolic' are the same, but invalid if they are not.
+  // As both inputs claim to have the same size, the allocation plan is based on that.
+  // Code in ExecutionFrame catches what would result in buffer overflow if input 2 is actually larger than input 1
+  // and we're attempting to re-use a buffer the size of input 1.
+  // The 'real' problem being tested is inconsistent values for a dim_param in a model, which could occur anywhere
+  // in the model.
   SessionOptions so;
   so.session_logid = "BadModelInvalidDimParamUsage";
 
@@ -464,17 +474,27 @@ TEST(ExecutionFrameTestWithoutSessionState, BadModelInvalidDimParamUsage) {
   ASSERT_STATUS_OK(session_object.Load("testdata/invalid_dim_param_value_repetition.onnx"));
   ASSERT_STATUS_OK(session_object.Initialize());
 
-  std::vector<int64_t> dims_X = {10, 6};
-  std::vector<float> values_X;
-  values_X.reserve(60);
+  std::vector<int64_t> dims_X1 = {10, 6};
+  std::vector<float> values_X1;
+  values_X1.reserve(60);
   for (int i = 0; i < 60; ++i) {
-    values_X.push_back(float(i));
+    values_X1.push_back(float(i));
   }
 
-  OrtValue ml_value;
-  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_X, values_X, &ml_value);
+  std::vector<int64_t> dims_X2 = {10, 12};
+  std::vector<float> values_X2;
+  values_X2.reserve(120);
+  for (int i = 0; i < 120; ++i) {
+    values_X2.push_back(float(i));
+  }
+
+  OrtValue ml_value1;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_X1, values_X1, &ml_value1);
+  OrtValue ml_value2;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_X2, values_X2, &ml_value2);
   NameMLValMap feeds;
-  feeds.insert(std::make_pair("X", ml_value));
+  feeds.insert({"X1", ml_value1});
+  feeds.insert({"X2", ml_value2});
 
   // prepare outputs
   std::vector<std::string> output_names;

@@ -30,7 +30,7 @@ static winml::ILearningModelFeatureDescriptor FindValidBinding(
     uint32_t size;
     WINML_THROW_IF_FAILED(descriptor_native->GetName(&feature_name, &size));
 
-    // Case insensetive comparison of onnx name in feature descriptor, and passed in name
+    // Case insensitive comparison of onnx name in feature descriptor, and passed in name
     if (_wcsicmp(feature_name, name.c_str()) == 0) {
       return descriptor;
     }

@@ -274,16 +274,11 @@ TEST(Einsum, ExplicitEinsumAsMatmul_OutputTransposed) {
 }
 
 TEST(Einsum, ExplicitEinsumAsMatmul_2) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2068): The parameter is incorrect.";
-  }
-
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "ij,jk->ik");
   test.AddInput<float>("x", {2, 1}, {2.f, 3.f});
-  test.AddInput<float>("y", {2, 2}, {1.f, 2.f, 3.f, 4.f});
-  test.AddOutput<float>("o", {2, 2}, {8.f, 12.f, 12.f, 18.f});
+  test.AddInput<float>("y", {1, 2}, {1.f, 2.f});
+  test.AddOutput<float>("o", {2, 2}, {2.f, 4.f, 3.f, 6.f});
   test.Run();
 }
 
@@ -325,16 +320,11 @@ TEST(Einsum, ImplicitEinsumAsBatchedMatmulWithBroadcasting_0) {
 }
 
 TEST(Einsum, ImplicitEinsumAsMatmul_2) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: MLOperatorAuthorImpl.cpp(2068): The parameter is incorrect.";
-  }
-
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "ij,jk");
   test.AddInput<float>("x", {2, 1}, {2.f, 3.f});
-  test.AddInput<float>("y", {2, 2}, {1.f, 2.f, 3.f, 4.f});
-  test.AddOutput<float>("o", {2, 2}, {8.f, 12.f, 12.f, 18.f});
+  test.AddInput<float>("y", {1, 2}, {1.f, 2.f});
+  test.AddOutput<float>("o", {2, 2}, {2.f, 4.f, 3.f, 6.f});
   test.Run();
 }
 
@@ -434,11 +424,6 @@ TEST(Einsum, ExplicitEinsumAsBatchedDiagonalOp_1) {
 
 // Implicit (Implicit diagonal ops will sum up diagonal values)
 TEST(Einsum, ImplicitEinsumAsDiagonalOp) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: The difference between expected[i] and output[i] is 5, which exceeds threshold";
-  }
-
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "ii");
   test.AddInput<float>("x", {2, 2}, {1.f, 2.f, 3.f, 4.f});
@@ -447,11 +432,6 @@ TEST(Einsum, ImplicitEinsumAsDiagonalOp) {
 }
 
 TEST(Einsum, ImplicitEinsumAsDiagonalOp_1) {
-  // TODO: Unskip when fixed #41968513
-  if (DefaultDmlExecutionProvider().get() != nullptr) {
-    GTEST_SKIP() << "Skipping because of the following error: error: The difference between expected[i] and output[i] is 15, which exceeds threshold";
-  }
-
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "iii");
   test.AddInput<float>("x", {2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 1.f, 2.f, 3.f, 4.f});
@@ -576,8 +556,17 @@ TEST(Einsum, ExplicitEinsumAsTensorContractionReshapeLeft) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "bsnh,btnh->bnts");
   test.AddInput<float>("x", {2, 1, 2, 2}, {1.f, 2.f, 1.f, 2.f, 1.f, 2.f, 1.f, 2.f});
-  test.AddInput<float>("y", {2, 2, 2, 1}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f});
-  test.AddOutput<float>("o", {2, 2, 2, 1}, {3.f, 9.f, 6.f, 12.f, 15.f, 21.f, 18.f, 24.f});
+  test.AddInput<float>("y", {2, 2, 2, 2}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f, 11.f, 12.f, 13.f, 14.f, 15.f, 16.f});
+  test.AddOutput<float>("o", {2, 2, 2, 1}, {5.f, 17.f, 11.f, 23.f, 29.f, 41.f, 35.f, 47.f});
+  test.Run();
+}
+
+TEST(Einsum, ExplicitEinsumAsTensorContractionSameInput) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "nchw,nchw->nch");
+  test.AddInput<float>("x", {1, 3, 2, 4}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f});
+  test.AddInput<float>("y", {1, 3, 2, 4}, {1.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 2.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 3.f, 4.f, 5.f, 6.f, 7.f, 8.f, 9.f, 10.f});
+  test.AddOutput<float>("o", {1, 3, 2}, {30.f, 174.f, 54.f, 230.f, 86.f, 294.f});
   test.Run();
 }
 

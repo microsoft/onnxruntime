@@ -57,10 +57,10 @@ void DestroyStrings(void* p_data, int64_t elements) {
 bool ProviderIsCpuBased(const std::string& provider_type) {
   return provider_type == onnxruntime::kCpuExecutionProvider ||
          provider_type == onnxruntime::kDnnlExecutionProvider ||
-         provider_type == onnxruntime::kTvmExecutionProvider ||
          provider_type == onnxruntime::kVitisAIExecutionProvider ||
          provider_type == onnxruntime::kOpenVINOExecutionProvider ||
          provider_type == onnxruntime::kNnapiExecutionProvider ||
+         provider_type == onnxruntime::kVSINPUExecutionProvider ||
          provider_type == onnxruntime::kAclExecutionProvider ||
          provider_type == onnxruntime::kArmNNExecutionProvider ||
          provider_type == onnxruntime::kRknpuExecutionProvider ||
@@ -784,7 +784,7 @@ common::Status ExecuteGraph(const SessionState& session_state,
 
 #ifdef ENABLE_TRAINING
 common::Status ExecutePartialGraphImpl(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
-                                       gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
+                                       std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                        const logging::Logger& logger, PartialGraphExecutionState& state,
                                        const OrtValueCachePtr& cache, const bool& terminate_flag,
                                        DeviceStreamCollection* device_stream_collection,
@@ -882,7 +882,7 @@ common::Status ExecutePartialGraphImpl(const SessionState& session_state, FeedsF
 }
 
 common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
-                                   gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
+                                   std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                    const logging::Logger& logger, PartialGraphExecutionState& state,
                                    const OrtValueCachePtr& cache, const bool& terminate_flag,
                                    int32_t partial_graph_index,

@@ -10,10 +10,10 @@ parameters:
   default: 'nightly (@dev)'
 
 variables:
-  # pipeline should define the following varaibles
+  # pipeline should define the following variables
   #   ExtraBuildArgs
   #   VersionSuffix
-
+  ComponentDetection.Timeout: 1800
   ${{ if eq(parameters.NpmPublish, 'nightly (@dev)') }}:
     NpmPackagingMode: 'dev'
   ${{ if eq(parameters.NpmPublish, 'release candidate (@rc)') }}:
@@ -47,8 +47,8 @@ stages:
     UseWebPoolName: true
     RunWebGpuTestsForDebugBuild: false
     RunWebGpuTestsForReleaseBuild: true
-    WebGpuPoolName: 'onnxruntime-Win2022-webgpu-A10'
-    WebCpuPoolName: 'Azure-Pipelines-EO-Windows2022-aiinfra'
+    WebGpuPoolName: 'onnxruntime-Win2022-VS2022-webgpu-A10'
+    WebCpuPoolName: 'onnxruntime-Win2022-VS2022-webgpu-A10'
 
 - template: templates/react-native-ci.yml
   parameters:
@@ -56,7 +56,8 @@ stages:
     BuildConfig: 'Release'
     PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
     PackageName: 'onnxruntime-react-native'
-    BuildAndroidAARStageDependsOn: 'Precheck_and_extract_commit'
+    InitialStageDependsOn: 'Precheck_and_extract_commit'
+    enable_code_sign: false
 
 - stage: Download_Node_Package_And_Publish_Validation_Script
   dependsOn:

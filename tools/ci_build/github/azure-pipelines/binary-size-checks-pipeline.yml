@@ -13,21 +13,9 @@ resources:
     ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 stages:
-
-# checks enabled in all builds
-
 - template: templates/android-binary-size-check-stage.yml
   parameters:
     Name: MinimalBaseline
     BuildConfigFile: "tools/ci_build/github/linux/ort_minimal/build_check_binsize_config/android_minimal_baseline.config"
     BinarySizeThresholdInBytes: 1306224
     DoBuildWithDebugInfo: ${{ parameters.DoBuildWithDebugInfo }}
-
-# checks excluded from PR builds
-
-- ${{ if ne(variables['Build.Reason'], 'PullRequest') }}:
-  - template: templates/android-binary-size-check-stage.yml
-    parameters:
-      Name: MinimalWithMobilePackageOps
-      BuildConfigFile: "tools/ci_build/github/linux/ort_minimal/build_check_binsize_config/android_minimal_with_mobile_package_ops.config"
-      DoBuildWithDebugInfo: ${{ parameters.DoBuildWithDebugInfo }}

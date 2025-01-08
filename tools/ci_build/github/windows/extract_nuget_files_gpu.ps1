@@ -29,7 +29,13 @@ Foreach-Object {
 New-Item -Path $Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\_deps\protobuf-build\RelWithDebInfo -ItemType directory
 
 Copy-Item -Path $Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-win-x64-cuda-*\lib\* -Destination $Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\RelWithDebInfo
-Copy-Item -Path $Env:BUILD_BINARIESDIRECTORY\extra-artifact\protoc.exe $Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\_deps\protobuf-build\RelWithDebInfo
+
+$protocInstallDir = "$Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\_deps\protobuf-build"
+dotnet new console
+dotnet add package Google.Protobuf.Tools --version 3.21.12 --package-directory $protocInstallDir
+$protocDir = Get-ChildItem -Path $protocInstallDir -Recurse -Filter "protoc.exe" | Select-Object -ExpandProperty DirectoryName -First 1
+Write-Output $protocDir
+Copy-Item -Path $protocDir -Destination $Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\_deps\protobuf-build\RelWithDebInfo
 
 $ort_dirs = Get-ChildItem -Path $Env:BUILD_BINARIESDIRECTORY\RelWithDebInfo\RelWithDebInfo\nuget-artifacts\onnxruntime-* -Directory
 foreach ($ort_dir in $ort_dirs)

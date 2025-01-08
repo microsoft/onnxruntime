@@ -1,9 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cassert>
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/framework/tensorprotoutils.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/common/safeint.h"
@@ -24,6 +26,11 @@ class LayerNormOpBuilder : public BaseOpBuilder {
                        const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
 
  protected:
+  Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                       const NodeUnit& node_unit,
+                       const logging::Logger& logger,
+                       std::vector<std::string>& input_names,
+                       bool do_op_validation) const override ORT_MUST_USE_RESULT;
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
@@ -53,6 +60,53 @@ Status LayerNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   }
 
   return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
+}
+
+Status LayerNormOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                                         const NodeUnit& node_unit,
+                                         const logging::Logger& logger,
+                                         std::vector<std::string>& input_names,
+                                         bool do_op_validation) const {
+  ORT_UNUSED_PARAMETER(do_op_validation);
+
+  const auto& inputs = node_unit.Inputs();
+  const auto input_count = inputs.size();
+  constexpr size_t X_IDX = 0;
+  constexpr size_t SCALE_IDX = 1;
+  constexpr size_t BIAS_IDX = 2;
+
+  // Input[0] (X, required)
+  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[X_IDX], logger, input_names));
+
+  // Input[1] (scale, required)
+  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[SCALE_IDX], logger, input_names));
+
+  // Input[2] (bias, optional)
+  const bool has_bias_input = input_count > BIAS_IDX && inputs[BIAS_IDX].node_arg.Exists();
+  if (has_bias_input) {
+    ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[BIAS_IDX], logger, input_names));
+  }
+
+#if QNN_API_VERSION_MAJOR == 2 && QNN_API_VERSION_MINOR >= 17 && QNN_API_VERSION_MINOR <= 20
+  if (!has_bias_input && IsNpuBackend(qnn_model_wrapper.GetQnnBackendType())) {
+    // Bias is implicit. QNN SDK 2.24 to 2.27 (QNN API version 2.17 to 2.20) has a validation bug for
+    // implicit bias inputs, so provide an explicit bias of all 0 (quantized int32).
+    TensorInfo x_input_info = {};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[X_IDX], x_input_info));
+
+    TensorInfo scale_input_info = {};
+    ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(inputs[SCALE_IDX], scale_input_info));
+
+    if (x_input_info.quant_param.IsPerTensor(/*include_bw*/ true) && scale_input_info.quant_param.IsQuantized()) {
+      const std::string bias_name = qnn::utils::GetNodeName(node_unit) + "_implicit_bias_ort_qnn_ep";
+      std::vector<uint32_t> bias_shape = scale_input_info.shape;
+      ORT_RETURN_IF_ERROR(AddZeroBiasInput(qnn_model_wrapper, x_input_info.quant_param, scale_input_info.quant_param,
+                                           std::move(bias_shape), bias_name, logger, input_names));
+    }
+  }
+#endif
+
+  return Status::OK();
 }
 
 Status LayerNormOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,

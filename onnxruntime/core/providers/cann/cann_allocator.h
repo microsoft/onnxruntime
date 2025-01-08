@@ -6,7 +6,7 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/framework/allocator.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 
 namespace onnxruntime {
 

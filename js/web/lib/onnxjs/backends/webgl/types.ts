@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor} from '../../tensor';
+import { Tensor } from '../../tensor';
 
 /**
  * Layout info is used for mapping n-dimensional array to 2D textures
@@ -14,7 +14,7 @@ export interface TextureLayout {
   /**
    * specify the number of value that encoded in a single pixel
    */
-  channels: 1|2|3|4;
+  channels: 1 | 2 | 3 | 4;
   /**
    * whether in packed mode or not
    */
@@ -40,11 +40,11 @@ export interface TextureData extends TextureLayout {
 }
 
 export enum TextureType {
-  unpacked,              // <-- normal unpacked texture
-  unpackedReversed,      // <-- unpacked texture used in old ONNX.js implementation (deprecated)
-  packed,                // <-- normal packed texture
-  downloadUint8AsFloat,  // <-- ONLY used in texture downloading for iOS devices
-  packedLastDimension    // <-- ONLY used in old ONNX.js Conv implementation for input W (deprecated)
+  unpacked, // <-- normal unpacked texture
+  unpackedReversed, // <-- unpacked texture used in old ONNX.js implementation (deprecated)
+  packed, // <-- normal packed texture
+  downloadUint8AsFloat, // <-- ONLY used in texture downloading for iOS devices
+  packedLastDimension, // <-- ONLY used in old ONNX.js Conv implementation for input W (deprecated)
 }
 
 export interface TensorInfo {
@@ -55,10 +55,10 @@ export interface TensorInfo {
 }
 
 export interface ProgramVariable {
-  type: 'float'|'int';
+  type: 'float' | 'int';
   name: string;
   arrayLength?: number;
-  data: number|number[];
+  data: number | number[];
 }
 
 /**
@@ -116,23 +116,23 @@ export interface ProgramInfo extends ProgramMetadata {
 }
 
 export interface VariableInfo {
-  type: 'float'|'int';
+  type: 'float' | 'int';
   name: string;
   arrayLength?: number;
 }
 
 export interface ProgramVariable {
-  type: 'float'|'int';
+  type: 'float' | 'int';
   name: string;
   arrayLength?: number;
-  data: number|number[];
+  data: number | number[];
 }
 
 /**
  * Information of uniforms that shader uses
  */
 export interface UniformInfo {
-  type: 'sampler2D'|VariableInfo['type'];
+  type: 'sampler2D' | VariableInfo['type'];
   name: string;
   arrayLength?: number;
 }
@@ -150,7 +150,7 @@ export interface Artifact {
   programInfo: ProgramInfo;
   program: WebGLProgram;
   uniformLocations: UniformLocation[];
-  attribLocations: {position: number; textureCoord: number};
+  attribLocations: { position: number; textureCoord: number };
 }
 export declare namespace Artifact {
   type UniformLocations = Artifact['uniformLocations'];
@@ -158,5 +158,5 @@ export declare namespace Artifact {
 }
 
 export interface UniformData {
-  [name: string]: number|number[];
+  [name: string]: number | number[];
 }

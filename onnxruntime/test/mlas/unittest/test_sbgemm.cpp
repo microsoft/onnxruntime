@@ -20,7 +20,7 @@ Abstract:
 #include "test_sbgemm.h"
 
 //
-// Short Execute() test helper to register each test seperately by all parameters.
+// Short Execute() test helper to register each test separately by all parameters.
 //
 template <typename AType, typename BType, bool Packed, bool Threaded>
 class SBGemmShortExecuteTest : public MlasTestFixture<MlasSBGemmTest<AType, BType, Packed, Threaded>> {
@@ -76,7 +76,7 @@ class SBGemmShortExecuteTest : public MlasTestFixture<MlasSBGemmTest<AType, BTyp
         test_registered += RegisterSingleTest(1, 32, b, 5, false);
       }
     }
-    // TODO: check why the cosine similary is < 0.99 for this shape alone
+    // TODO: check why the cosine similarly is < 0.99 for this shape alone
     // test_registered += RegisterSingleTest(43, 500, 401, 1, true);
     test_registered += RegisterSingleTest(1001, 1027, 1031, 1, false);
     if (!Packed) {

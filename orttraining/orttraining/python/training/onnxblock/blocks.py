@@ -4,6 +4,7 @@
 import contextlib
 import copy
 import logging
+import os
 from abc import ABC, abstractmethod
 from typing import Any, List, Optional
 
@@ -28,8 +29,13 @@ class Block(ABC):
         base (onnx.ModelProto): The base model that the subclass can manipulate.
     """
 
-    def __init__(self):
+    def __init__(self, temp_file_name="temp.onnx"):
+        if os.path.isabs(temp_file_name):
+            raise RuntimeError("Please pass in a relative path for the temp_file_name.")
         self.base = None
+        self.temp_onnx_file_path = os.path.join(os.getcwd(), temp_file_name)
+        # onnx.save location parameter requires a relative path to the model path
+        self.temp_external_data_file_name = temp_file_name + ".data"
 
     @abstractmethod
     def build(self, *args, **kwargs):
@@ -47,9 +53,59 @@ class Block(ABC):
 
         output = self.build(*args, **kwargs)
 
-        onnx.checker.check_model(self.base, True)
+        if accessor._GLOBAL_ACCESSOR.has_path:
+            # `save` will destructively access any external data
+            copied_model = copy.deepcopy(accessor._GLOBAL_ACCESSOR.model)
+            onnx.save(
+                copied_model,
+                self.temp_onnx_file_path,
+                save_as_external_data=True,
+                all_tensors_to_one_file=True,
+                location=self.temp_external_data_file_name,
+            )
+
+            onnx.checker.check_model(self.temp_onnx_file_path, True)
+        else:
+            onnx.checker.check_model(self.base, True)
 
         return output
+
+    def infer_shapes_on_base(self):
+        """
+        Performs shape inference on the global model. If a path was used, then uses the
+        infer_shapes_path API to support models with external data.
+
+        Returns the shape-inferenced ModelProto.
+        """
+        if accessor._GLOBAL_ACCESSOR.has_path:
+            onnx.save(
+                accessor._GLOBAL_ACCESSOR.model,
+                self.temp_onnx_file_path,
+                save_as_external_data=True,
+                all_tensors_to_one_file=True,
+                location=self.temp_external_data_file_name,
+            )
+
+            onnx.shape_inference.infer_shapes_path(self.temp_onnx_file_path)
+            # shape inferenced model is saved to original path
+            model = onnx.load(self.temp_onnx_file_path)
+
+            return model
+        else:
+            return onnx.shape_inference.infer_shapes(accessor._GLOBAL_ACCESSOR.model)
+
+    def __del__(self):
+        # since the ModelProto does not store the external data parameters themselves, just the metadata
+        # for where the external data can be found, we retain the external data files for the intermediate
+        # calls until the Block no longer needs to be used.
+        if os.path.exists(self.temp_onnx_file_path):
+            os.remove(self.temp_onnx_file_path)
+            # get absolute path for the external data file
+            external_data_file_path = os.path.join(
+                os.path.dirname(self.temp_onnx_file_path), self.temp_external_data_file_name
+            )
+            if os.path.exists(external_data_file_path):
+                os.remove(external_data_file_path)
 
 
 class _BinaryOp(Block):
@@ -349,12 +405,12 @@ class InputLike(Block):
     def build(self, input_name: Optional[str] = None):
         cloned_input = None
         with contextlib.suppress(LookupError):
-            # Supress LookupError because we want to try to get the input from the output if it's not found in the inputs
+            # Suppress LookupError because we want to try to get the input from the output if it's not found in the inputs
             cloned_input = copy.deepcopy(_graph_utils.get_input_from_input_name(self.base, self._like))
 
         if cloned_input is None:
             with contextlib.suppress(LookupError):
-                # Supress LookupError because we deal with the case where no input or output was found later.
+                # Suppress LookupError because we deal with the case where no input or output was found later.
                 cloned_input = copy.deepcopy(_graph_utils.get_output_from_output_name(self.base, self._like))
 
         if cloned_input is None:

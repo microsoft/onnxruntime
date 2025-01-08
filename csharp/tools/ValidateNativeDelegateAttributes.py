@@ -19,7 +19,7 @@ def check_all_delegates_have_unmanaged_function_pointer_attribute(file: pathlib.
     line_num = 0
     with open(str(file.resolve(strict=True))) as f:
         prev_line = ""
-        for line in f.readlines():
+        for line in f:
             line_num += 1
 
             # strip so it's easier to deal with commented out lines.

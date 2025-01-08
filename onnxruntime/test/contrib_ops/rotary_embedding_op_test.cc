@@ -32,6 +32,7 @@ static void RunTest(
     int num_heads,
     int max_sequence_length,
     int64_t interleaved,
+    int64_t is_packed_batching,
     TensorType tensor_type,
     bool disable_cpu,
     bool disable_cuda,
@@ -50,7 +51,7 @@ static void RunTest(
                                                               : head_size / 2};
 
   assert(hidden_size != 0 && head_size != 0 && num_heads != 0 && max_sequence_length != 0);
-  assert(max_sequence_length >= sequence_length);
+  assert((is_packed_batching == 0 && max_sequence_length >= sequence_length) || is_packed_batching == 1);
   if (position_ids.size() == 1) {
     pos_dims = {1};
   } else {
@@ -66,6 +67,7 @@ static void RunTest(
                                                                       : 0;
   bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
   bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get()) && !disable_dml;
+  bool enable_webgpu = nullptr != DefaultWebGpuExecutionProvider().get();
 
   if (enable_cuda && !disable_cuda) {
     execution_providers.push_back(DefaultCudaExecutionProvider());
@@ -73,8 +75,11 @@ static void RunTest(
   if (enable_dml && !disable_dml) {
     execution_providers.push_back(DefaultDmlExecutionProvider());
   }
-  if (tensor_type == TensorType::kFloat && !disable_cpu) {
+  if ((tensor_type == TensorType::kFloat || tensor_type == TensorType::kFloat16) && !disable_cpu) {
     execution_providers.push_back(DefaultCpuExecutionProvider());
+  }
+  if (enable_webgpu) {
+    execution_providers.push_back(DefaultWebGpuExecutionProvider());
   }
   if (execution_providers.size() == 0) {
     // Return early if CI pipeline does not support EP (e.g. CUDA EP for CPU CI pipeline)
@@ -87,6 +92,10 @@ static void RunTest(
   if (rotary_embedding_dim > 0) {
     test.AddAttribute<int64_t>("rotary_embedding_dim", rotary_embedding_dim);
     test.AddAttribute<int64_t>("num_heads", num_heads);
+  }
+
+  if (rotary_embedding_dim > 0) {
+    test.AddAttribute<int64_t>("is_packed_batching", is_packed_batching);
   }
 
   if (tensor_type == TensorType::kFloat) {
@@ -129,9 +138,9 @@ static void RunTests(const std::vector<float>& input_data,
                      int num_heads = 0,
                      int max_sequence_length = 0,
                      int64_t interleaved = 0,
-                     bool use_float16 = true,
-                     bool disable_dml = false) {
-  // FP32 test for CPU
+                     int64_t is_packed_batching = 0,
+                     bool use_float16 = true) {
+  // FP32 test for CPU, CUDA and DML
   RunTest(input_data,
           position_ids,
           cos_cache,
@@ -144,30 +153,13 @@ static void RunTests(const std::vector<float>& input_data,
           num_heads,
           max_sequence_length,
           interleaved,
-          TensorType::kFloat,
-          false, /* disable_cpu */
-          true,  /* disable_cuda */
-          true /* disable_dml */);
-
-  // FP32 test for CUDA and DML
-  RunTest(input_data,
-          position_ids,
-          cos_cache,
-          sin_cache,
-          output_data,
-          batch_size,
-          sequence_length,
-          head_size,
-          rotary_embedding_dim,
-          num_heads,
-          max_sequence_length,
-          interleaved,
+          is_packed_batching,
           TensorType::kFloat,
           false, /* disable_cpu */
           false, /* disable_cuda */
-          disable_dml || false /* disable_dml */);
+          false /* disable_dml */);
 
-  // FP16 test for CUDA and DML
+  // FP16 test for CPU, CUDA and DML
   if (use_float16) {
     RunTest(input_data,
             position_ids,
@@ -181,27 +173,11 @@ static void RunTests(const std::vector<float>& input_data,
             num_heads,
             max_sequence_length,
             interleaved,
+            is_packed_batching,
             TensorType::kFloat16,
-            true,  /* disable_cpu */
+            false, /* disable_cpu */
             false, /* disable_cuda*/
-            disable_dml || false /* disable_dml */);
-
-    // RunTest(input_data,
-    //         position_ids,
-    //         cos_cache,
-    //         sin_cache,
-    //         output_data,
-    //         batch_size,
-    //         sequence_length,
-    //         head_size,
-    //         rotary_embedding_dim,
-    //         num_heads,
-    //         max_sequence_length,
-    //         interleaved,
-    //         TensorType::kBFloat16,
-    //         true,  /* disable_cpu */
-    //         false, /* disable_cuda*/
-    //         false /* disable_dml */);
+            false /* disable_dml */);
   }
 }
 
@@ -734,8 +710,49 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi) {
            num_heads,
            max_sequence_length,
            interleaved,
-           true, /*use_fp16*/
-           true /*disable_dml*/);
+           0,  // is_packed_batching
+           true /*use_fp16*/);
+}
+
+TEST(RotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi_Packed_Batching) {
+  int batch_size = 1;
+  int sequence_length = 3;
+  int num_heads = 1;
+  int head_size = 6;
+  int rotary_embedding_dim = 4;
+  int max_sequence_length = 2;
+  int64_t interleaved = 0;  // false
+
+  std::vector<float> input_data = {-1.0408f, 0.9166f, -1.3042f, -1.1097f, -1.2188f, 1.1676f,
+                                   -1.0408f, 0.9166f, -1.3042f, -1.1097f, -1.2188f, 1.1676f,
+                                   1.0076f, -0.7529f, -0.2250f, -0.4327f, -1.5071f, -0.4586f};
+
+  std::vector<int64_t> position_ids = {0, 0, 1};
+
+  std::vector<float> cos_cache = {
+      1.0000f, 1.0000f, 1.0000f, 0.5403f};
+
+  std::vector<float> sin_cache = {
+      0.0000f, 0.0000f, 0.0000f, 0.8415f};
+
+  std::vector<float> output_data = {-1.0408f, 0.9166f, -1.3042f, -1.1097f, -1.2188f, 1.1676f,
+                                    -1.0408f, 0.9166f, -1.3042f, -1.1097f, -1.2188f, 1.1676f,
+                                    1.0076f, -0.0427f, -0.2250f, -0.8673f, -1.5071f, -0.4586f};
+
+  RunTests(input_data,
+           position_ids,
+           cos_cache,
+           sin_cache,
+           output_data,
+           batch_size,
+           sequence_length,
+           head_size,
+           rotary_embedding_dim,
+           num_heads,
+           max_sequence_length,
+           interleaved,
+           1,  // is_packed_batching
+           true /*use_fp16*/);
 }
 
 }  // namespace test

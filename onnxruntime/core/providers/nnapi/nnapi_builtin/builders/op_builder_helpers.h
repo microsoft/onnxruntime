@@ -5,6 +5,7 @@
 
 #include <cstdint>
 #include <vector>
+#include <filesystem>
 
 #include "core/common/common.h"
 #include "core/framework/node_unit.h"
@@ -200,7 +201,7 @@ bool IsQuantizationScaleSupported(const GraphViewer& graph_viewer,
 bool IsQuantizationZeroPointSupported(const GraphViewer& graph_viewer,
                                       const NodeUnitIODef& io_def,
                                       const std::string& op_type,
-                                      const Path& model_path,
+                                      const std::filesystem::path& model_path,
                                       bool is_quant_matmul,
                                       bool is_conv_matmul_u8s8_weight);
 
@@ -214,7 +215,7 @@ bool IsQuantizedIOSupported(const GraphViewer& graph_viewer, const NodeUnit& nod
 bool HasRequiredScaleAndZeroPoint(const GraphViewer& graph_viewer,
                                   const std::string& op_desc,
                                   const NodeUnitIODef& io_def,
-                                  const Path& path,
+                                  const std::filesystem::path& path,
                                   float required_scale, int32_t required_zp);
 
 // performs broadcasting operation on two shapes to make them compatible

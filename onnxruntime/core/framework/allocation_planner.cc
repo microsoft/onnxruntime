@@ -138,7 +138,8 @@ class PlannerImpl {
               const SubgraphsKernelCreateInfoMaps& subgraphs_kernel_create_info_maps,
               const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map,
               const OrtValueNameIdxMap& ort_value_name_idx_map,
-              const ISequentialPlannerContext& context, SequentialExecutionPlan& plan)
+              const ISequentialPlannerContext& context, SequentialExecutionPlan& plan,
+              const logging::Logger& logger)
       : context_(&context),
         plan_(plan),
         parent_node_(parent_node),
@@ -148,14 +149,15 @@ class PlannerImpl {
         kernel_create_info_map_(kernel_create_info_map),
         subgraphs_kernel_create_info_maps_(subgraphs_kernel_create_info_maps),
         outer_scope_node_arg_to_location_map_(outer_scope_node_arg_to_location_map),
-        ort_value_name_idx_map_(ort_value_name_idx_map) {}
+        ort_value_name_idx_map_(ort_value_name_idx_map),
+        logger_(logger) {
+  }
 
   Status CreatePlan(
 #ifdef ORT_ENABLE_STREAM
       const IStreamCommandHandleRegistry& stream_handle_registry,
 #endif
-      const PathString& partition_config_file,
-      const logging::Logger& logger);
+      const PathString& partition_config_file);
 
  private:
   gsl::not_null<const ISequentialPlannerContext*> context_;
@@ -182,6 +184,12 @@ class PlannerImpl {
   // upstream_node_2 is the immediate nodes ahead of downstream_node in the same logic stream
   InlinedHashMap<onnxruntime::NodeIndex, InlinedHashSet<onnxruntime::NodeIndex>> dependence_graph_;
   InlinedHashMap<onnxruntime::OrtValueIndex, onnxruntime::NodeIndex> value_node_map_;
+
+  // logger_ is not currently used in a minimal build
+#if defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
+  [[maybe_unused]]
+#endif
+  const logging::Logger& logger_;
 
   // OrtValueInfo: Auxiliary information about an OrtValue used only during plan-generation:
   struct OrtValueInfo {
@@ -213,6 +221,7 @@ class PlannerImpl {
     FreeBufferInfo(OrtValueIndex ort_value, size_t dealloc_point)
         : ml_value(ort_value), deallocate_point(dealloc_point) {}
   };
+
   // freelist_ : a list of ml-values whose buffers are free to be reused, sorted by when
   // they became free (more recently freed earlier in the list).
   std::list<FreeBufferInfo> freelist_;
@@ -225,7 +234,8 @@ class PlannerImpl {
   }
 
   int& UseCount(OrtValueIndex n) {
-    ORT_ENFORCE(n >= 0 && static_cast<size_t>(n) < ort_value_info_.size(), "invalid value index: ", n, " against size ", ort_value_info_.size());
+    ORT_ENFORCE(n >= 0 && static_cast<size_t>(n) < ort_value_info_.size(),
+                "invalid value index: ", n, " against size ", ort_value_info_.size());
     return ort_value_info_[n].usecount;
   }
   int& UseCount(const OrtValueName& name) { return UseCount(Index(name)); }
@@ -294,8 +304,12 @@ class PlannerImpl {
 #endif
 
   // Find if there exists some input tensor that we can use in-place for output_arg_num-th output in the node.
-  bool FindReusableInput(const onnxruntime::Node& node, int output_arg_num, OrtValueIndex* reusable_input,
-                         bool* is_strided_tensor) {
+  bool FindReusableInput(const GraphViewer& graph, const onnxruntime::Node& node, int output_arg_num,
+                         OrtValueIndex* reusable_input, bool* is_strided_tensor) {
+#if defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
+    ORT_UNUSED_PARAMETER(graph);
+#endif
+
     *is_strided_tensor = false;
 #ifdef ENABLE_TRAINING
     // Inputs of Yields are essentially the outputs for FW partial subgraph
@@ -326,6 +340,16 @@ class PlannerImpl {
         if ((0 <= pair.first) && (static_cast<size_t>(pair.first) < input_args.size())) {
           auto p_input_arg = input_args[pair.first];
           if (p_input_arg->Exists()) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+            // If the producer node does not have external output, then we can reuse the input buffer; Otherwise,
+            // we cannot.
+            const Node* producer_node = graph.GetProducerNode(p_input_arg->Name());
+            if (producer_node && HasExternalOutputs(*producer_node)) {
+              LOGS(logger_, VERBOSE) << "Be noted Node " << node.Name() << " is reusing input buffer of node "
+                                     << producer_node->Name() << " which has external outputs. "
+                                     << "Be cautious the reuse MUST be a read-only usage.";
+            }
+#endif
             *reusable_input = Index(p_input_arg->Name());
             return true;
           }
@@ -342,6 +366,16 @@ class PlannerImpl {
       if (alias_input_index >= 0 && static_cast<size_t>(alias_input_index) < input_args.size()) {
         auto p_input_arg = input_args[alias_input_index];
         if (p_input_arg->Exists()) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+          // If the producer node does not have external output, then we can reuse the input buffer; Otherwise,
+          // we cannot.
+          const Node* producer_node = graph.GetProducerNode(p_input_arg->Name());
+          if (producer_node && HasExternalOutputs(*producer_node)) {
+            LOGS(logger_, VERBOSE) << "Be noted Node " << node.Name() << " is reusing input buffer of node "
+                                   << producer_node->Name() << " which has external outputs. "
+                                   << "Be cautious the reuse MUST be a read-only usage.";
+          }
+#endif
           *reusable_input = Index(p_input_arg->Name());
           return true;
         }
@@ -357,10 +391,25 @@ class PlannerImpl {
             auto input_arg_index = Index(p_input_arg->Name());
             auto original = Buffer(input_arg_index);
             if (1 == UseCount(original)) {
-              if (SameSize(*p_input_arg, *p_output_arg)) {
-                // we can reuse this input since it is its last use and permitted for in-place update
-                *reusable_input = input_arg_index;  // or original; both should be okay
-                return true;
+              bool need_skip = false;
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+              // If the producer node does not have external output, then we can reuse the input buffer; Otherwise,
+              // we cannot.
+              const Node* producer_node = graph.GetProducerNode(p_input_arg->Name());
+              need_skip = producer_node && HasExternalOutputs(*producer_node);
+#endif
+
+              if (!need_skip) {
+                if (SameSize(*p_input_arg, *p_output_arg)) {
+                  // we can reuse this input since it is its last use and permitted for in-place update
+                  *reusable_input = input_arg_index;  // or original; both should be okay
+                  return true;
+                }
+              } else {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+                LOGS(logger_, VERBOSE) << "Node " << node.Name() << " cannot reuse input buffer for node "
+                                       << producer_node->Name() << " as it has external outputs";
+#endif
               }
             }
           }
@@ -395,10 +444,24 @@ class PlannerImpl {
             break;
           }
         }
+
         if (can_strided) {
-          *reusable_input = Index(input_args[pair.first]->Name());
-          *is_strided_tensor = true;
-          return true;
+          bool need_skip = false;
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+          const Node* producer_node = graph.GetProducerNode(input_args[pair.first]->Name());
+          need_skip = producer_node && HasExternalOutputs(*producer_node);
+#endif
+
+          if (!need_skip) {
+            *reusable_input = Index(input_args[pair.first]->Name());
+            *is_strided_tensor = true;
+            return true;
+          } else {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+            LOGS(logger_, VERBOSE) << "Node " << node.Name() << " cannot reuse strided output buffer for node "
+                                   << producer_node->Name() << " as it has external outputs.";
+#endif
+          }
         }
       }
     }
@@ -467,6 +530,15 @@ class PlannerImpl {
       return SameElementSize(ptype1, ptype2) && SameShape(shape1, shape2);
     }
     */
+  }
+
+  static bool OutputHasConsumerNode(const Node& node, int output_idx) {
+    // there will be an edge to all consumer nodes.
+    // if consumed in a subgraph the edge will be to an implicit input of the node containing the subgraph.
+    return std::any_of(node.OutputEdgesBegin(), node.OutputEdgesEnd(),
+                       [&output_idx](const Node::EdgeEnd& edge) {
+                         return edge.GetSrcArgIndex() == output_idx;
+                       });
   }
 
   bool SameSize(const onnxruntime::NodeArg& arg1, const onnxruntime::NodeArg& arg2) {
@@ -604,13 +676,12 @@ class PlannerImpl {
 
         auto outputs = pnode->OutputDefs();
         auto num_outputs = outputs.size();
-        bool has_external_outputs = HasExternalOutputs(*pnode);
         for (size_t i = 0; i < num_outputs; ++i) {
           auto* node_output = outputs[i];
           if (!node_output->Exists()) continue;
           OrtValueIndex index = Index(node_output->Name());
-          // Ensures external outputs will not be reused.
-          UseCount(index) += (has_external_outputs ? 2 : 1);
+
+          UseCount(index) += 1;
         }
       }
     }
@@ -1012,7 +1083,7 @@ class PlannerImpl {
 
 #ifdef ORT_ENABLE_STREAM
   // assume we already have a baseline reuse plan (no memory reuse at all)
-  // this funciton will optimize the plan by building a reuse plan with stream safety.
+  // this function will optimize the plan by building a reuse plan with stream safety.
   Status OptimizeReusePlanForMultiStream() {
     InlinedHashMap<NodeIndex, int> dependent_counter;
     for (const auto& it : dependence_graph_) {
@@ -1079,7 +1150,8 @@ class PlannerImpl {
             int value_idx;
             ORT_RETURN_IF_ERROR(ort_value_name_idx_map_.GetIdx(name, value_idx));
             auto origin = AllocPlan(value_idx).reused_buffer;
-            if (AllocPlan(origin).alloc_kind == AllocKind::kAllocate) {
+            if (AllocPlan(origin).alloc_kind == AllocKind::kAllocate ||
+                AllocPlan(origin).alloc_kind == AllocKind::kAllocatedExternally) {
               // add current node as consumer for origin buffer
               value_consumer_map[origin].insert(node_index);
             }
@@ -1131,6 +1203,17 @@ class PlannerImpl {
             if ((0 <= pair.first) && (static_cast<size_t>(pair.first) < input_args.size())) {
               auto p_input_arg = input_args[pair.first];
               if (p_input_arg->Exists()) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+                // If the producer node does not has external outputs, we can reuse the input buffer;
+                // Otherwise, we cannot reuse the buffer.
+                const Node* producer_node = graph_viewer.GetProducerNode(p_input_arg->Name());
+                if (producer_node && HasExternalOutputs(*producer_node)) {
+                  LOGS(logger_, VERBOSE) << "Be noted input buffer " << p_output_arg->Name() << " of node "
+                                         << producer_node->Name() << " which has external outputs is reused. "
+                                         << "Be cautious the reuse MUST be a read-only usage.";
+                }
+#endif
+
                 OrtValueIndex reusable_input{};
                 if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() /*&&
                     allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate*/
@@ -1163,6 +1246,17 @@ class PlannerImpl {
             auto p_input_arg = input_args[alias_input_index];
 
             if (p_input_arg->Exists()) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+              // If the producer node does not has external outputs, we can reuse the input buffer;
+              // Otherwise, we cannot reuse the buffer.
+              const Node* producer_node = graph_viewer.GetProducerNode(p_input_arg->Name());
+              if (producer_node && HasExternalOutputs(*producer_node)) {
+                LOGS(logger_, VERBOSE) << "Be noted input buffer " << p_output_arg->Name() << " of node "
+                                       << producer_node->Name() << " which has external outputs is reused. "
+                                       << "Be cautious the reuse MUST be a read-only usage.";
+              }
+#endif
+
               OrtValueIndex reusable_input{};
               if (value_map.GetIdx(p_input_arg->Name(), reusable_input).IsOK() &&
                   allocation_plan[reusable_input].alloc_kind == AllocKind::kAllocate) {
@@ -1172,8 +1266,8 @@ class PlannerImpl {
                                                           value_consumer_map[output_idx_global].end());
                 reused.insert(reusable_input);
                 continue;
-              }  // if
-            }    // if
+              }
+            }
           }
         }
 
@@ -1184,16 +1278,31 @@ class PlannerImpl {
             if ((0 <= pair.first) && (static_cast<size_t>(pair.first) < input_args.size())) {
               auto p_input_arg = input_args[pair.first];
               if (p_input_arg->Exists()) {
-                OrtValueIndex input_arg_index{};
-                if (value_map.GetIdx(p_input_arg->Name(), input_arg_index).IsOK() &&
-                    allocation_plan[input_arg_index].alloc_kind == AllocKind::kAllocate) {
-                  if (value_consumer_map[input_arg_index].size() == 1 && SameSize(*p_input_arg, *p_output_arg)) {
-                    allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
-                    allocation_plan[output_idx_global].reused_buffer = input_arg_index;
-                    value_consumer_map[input_arg_index].insert(value_consumer_map[output_idx_global].begin(),
-                                                               value_consumer_map[output_idx_global].end());
-                    reused.insert(input_arg_index);
+                bool need_skip = false;
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+                // If the producer node does not has external outputs, we can reuse the input buffer;
+                // Otherwise, we cannot reuse the buffer.
+                const Node* producer_node = graph_viewer.GetProducerNode(p_input_arg->Name());
+                need_skip = producer_node && HasExternalOutputs(*producer_node);
+#endif
+
+                if (!need_skip) {
+                  OrtValueIndex input_arg_index{};
+                  if (value_map.GetIdx(p_input_arg->Name(), input_arg_index).IsOK() &&
+                      allocation_plan[input_arg_index].alloc_kind == AllocKind::kAllocate) {
+                    if (value_consumer_map[input_arg_index].size() == 1 && SameSize(*p_input_arg, *p_output_arg)) {
+                      allocation_plan[output_idx_global].alloc_kind = AllocKind::kReuse;
+                      allocation_plan[output_idx_global].reused_buffer = input_arg_index;
+                      value_consumer_map[input_arg_index].insert(value_consumer_map[output_idx_global].begin(),
+                                                                 value_consumer_map[output_idx_global].end());
+                      reused.insert(input_arg_index);
+                    }
                   }
+                } else {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+                  LOGS(logger_, VERBOSE) << "Node " << node->Name() << " cannot reuse input buffer for node "
+                                         << producer_node->Name() << " as it has external outputs";
+#endif
                 }
               }
             }
@@ -1439,7 +1548,8 @@ class PlannerImpl {
             }
           }
         } else if (!context_->IsParallelExecutionEnabled() &&
-                   FindReusableInput(*pnode, static_cast<int>(output_arg_def_index), &reused, &is_strided_tensor)) {
+                   FindReusableInput(graph_viewer_, *pnode, static_cast<int>(output_arg_def_index),
+                                     &reused, &is_strided_tensor)) {
           // Re-using inputs is applicable for tensors, sequence tensors,
           // and optional types if the kernel has marked certain inputs as
           // possible candidates for re-use
@@ -1456,7 +1566,13 @@ class PlannerImpl {
         } else if (IsNonTensor(*node_output)) {
           AllocPlan(current).alloc_kind = AllocKind::kAllocate;
         } else if (!context_->IsParallelExecutionEnabled() &&
+                   OutputHasConsumerNode(*pnode, static_cast<int>(output_arg_def_index)) &&
                    FindReusableTensor(*node_output, &reused)) {
+          // The check that OutputHasConsumerNode is to handle an edge case where a node produces a value that is
+          // not consumed by any other nodes. If we set it to kReuse the buffer will be freed prematurely as the
+          // logic in GenerateDeallocationPlan is based on processing consumer nodes. Changing the implementation of
+          // GenerateDeallocationPlan is an alternative but that would be a much bigger change.
+
           // Reuse an available (dead) buffer for this output, this is only for sequential execution.
           Reuse(reused, current, AllocKind::kReuse);
         } else {
@@ -1468,6 +1584,14 @@ class PlannerImpl {
       // determine if inputs of *pnode can be freed:
       for (auto node_input : pnode->InputDefs()) {
         if (node_input->Exists()) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+          const Node* producer_node = graph_viewer_.GetProducerNode(node_input->Name());
+          // Skip if the producer node has external outputs.
+          if (producer_node != nullptr && HasExternalOutputs(*producer_node)) {
+            continue;
+          }
+#endif
+
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
@@ -1480,6 +1604,14 @@ class PlannerImpl {
 
       for (auto node_input : pnode->ImplicitInputDefs()) {
         if (node_input->Exists()) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+          const Node* producer_node = graph_viewer_.GetProducerNode(node_input->Name());
+          // Skip if the producer node has external outputs.
+          if (producer_node != nullptr && HasExternalOutputs(*producer_node)) {
+            continue;
+          }
+#endif
+
           auto& sym = node_input->Name();
           auto original = Buffer(Index(sym));
           // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
@@ -1490,15 +1622,17 @@ class PlannerImpl {
         }
       }
 
-      // determine if any outputs of *pnode are unused and can be freed:
-      for (auto node_output : pnode->OutputDefs()) {
-        if (node_output->Exists()) {
-          auto& sym = node_output->Name();
-          auto original = Buffer(Index(sym));
-          // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
-          // See comments in the OrtValueInfo definition.
-          if (0 == DecrementUseCount(original)) {
-            freelist_.push_front(FreeBufferInfo(original, program_counter));
+      if (!HasExternalOutputs(*pnode)) {
+        // determine if any outputs of *pnode are unused and can be freed:
+        for (auto node_output : pnode->OutputDefs()) {
+          if (node_output->Exists()) {
+            auto& sym = node_output->Name();
+            auto original = Buffer(Index(sym));
+            // The index will be -1 if it's an initializer that was removed as part of a temporary workaround.
+            // See comments in the OrtValueInfo definition.
+            if (0 == DecrementUseCount(original)) {
+              freelist_.push_front(FreeBufferInfo(original, program_counter));
+            }
           }
         }
       }
@@ -1522,7 +1656,8 @@ class PlannerImpl {
         if (!node_output->Exists()) continue;
         // OrtValue index of the considered output NodeArg.
         const auto current = Index(node_output->Name());
-        if (AllocPlan(current).alloc_kind == AllocKind::kAllocate) {
+        if (AllocPlan(current).alloc_kind == AllocKind::kAllocate ||
+            AllocPlan(current).alloc_kind == AllocKind::kAllocatedExternally) {
           AllocPlan(current).program_counter.AddStart(program_counter);
         }
       }
@@ -1570,8 +1705,7 @@ class PlannerImpl {
         // OrtValue index of the considered output NodeArg.
         const auto current = Index(node_output->Name());
         AllocPlan(current).life_interval.first = program_counter;
-        if (AllocPlan(current).alloc_kind == AllocKind::kAllocatedExternally ||
-            AllocPlan(current).alloc_kind == AllocKind::kAllocateOutput) {
+        if (AllocPlan(current).alloc_kind == AllocKind::kAllocateOutput) {
           AllocPlan(current).life_interval.second = execution_plan.size();
         }
         // determine if inputs of *pnode can be freed:
@@ -1679,9 +1813,9 @@ class PlannerImpl {
   // Convert information in execution plan and memory reuse plan into release plan
   Status GenerateDeallocationPlan() {
     // 1. build the consumer list for each value
-    std::vector<InlinedVector<NodeIndex>> value_consumers;
+    std::vector<InlinedVector<NodeIndex>> ortvalue_to_consumers_map;
     int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
-    value_consumers.resize(num_ml_values);
+    ortvalue_to_consumers_map.resize(num_ml_values);
 
     // iterate each stream from back, so the first element is the last consumer in single stream case
     for (auto& stream : stream_nodes_) {
@@ -1695,9 +1829,10 @@ class PlannerImpl {
             int value_idx;
             ORT_RETURN_IF_ERROR(ort_value_name_idx_map_.GetIdx(name, value_idx));
             auto origin = AllocPlan(value_idx).reused_buffer;
-            if (AllocPlan(origin).alloc_kind == AllocKind::kAllocate) {
+            if (AllocPlan(origin).alloc_kind == AllocKind::kAllocate ||
+                AllocPlan(origin).alloc_kind == AllocKind::kAllocatedExternally) {
               // add current node as consumer for origin buffer
-              value_consumers[origin].push_back(node_index);
+              ortvalue_to_consumers_map[origin].push_back(node_index);
             }
           }
           return Status::OK();
@@ -1713,8 +1848,8 @@ class PlannerImpl {
       plan_.node_release_list[node_index].push_back(release_action_idx);
     };
     plan_.node_release_list.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
-    for (size_t i = 0; i < value_consumers.size(); ++i) {
-      if (!value_consumers[i].empty()) {
+    for (size_t i = 0; i < ortvalue_to_consumers_map.size(); ++i) {
+      if (!ortvalue_to_consumers_map[i].empty()) {
         plan_.release_actions.push_back(SequentialExecutionPlan::ReleaseAction{i, 0});
         auto release_action_idx = plan_.release_actions.size() - 1;
         // check whether we can static determine where to release.
@@ -1722,19 +1857,19 @@ class PlannerImpl {
         // we actually can do better if all the consumers depends on the last consumer.
         // will optimize it later
         bool is_all_consumer_same_stream = true;
-        auto stream_idx = plan_.node_stream_map_[value_consumers[i][0]];
-        for (size_t j = 1; j < value_consumers[i].size(); ++j) {
-          if (plan_.node_stream_map_[value_consumers[i][j]] != stream_idx) {
+        auto stream_idx = plan_.node_stream_map_[ortvalue_to_consumers_map[i][0]];
+        for (size_t j = 1; j < ortvalue_to_consumers_map[i].size(); ++j) {
+          if (plan_.node_stream_map_[ortvalue_to_consumers_map[i][j]] != stream_idx) {
             is_all_consumer_same_stream = false;
             break;
           }
         }
         if (is_all_consumer_same_stream) {
           // all the consumers are on the same stream, so the first element is the last consumer int the stream.
-          process_consumer(release_action_idx, value_consumers[i][0]);
+          process_consumer(release_action_idx, ortvalue_to_consumers_map[i][0]);
         } else {
           // can't static determin, add all the consumers, we will use ref count in release action
-          for (auto node_index : value_consumers[i]) {
+          for (auto node_index : ortvalue_to_consumers_map[i]) {
             process_consumer(release_action_idx, node_index);
           }
         }
@@ -1744,8 +1879,7 @@ class PlannerImpl {
   }
 
 #ifndef ORT_ENABLE_STREAM
-  void PartitionIntoStreams(const logging::Logger& /*logger*/,
-                            const ExecutionProviders& /*execution_providers*/,
+  void PartitionIntoStreams(const ExecutionProviders& /*execution_providers*/,
                             const PathString& /*partition_config_file*/) {
     if (graph_viewer_.NumberOfNodes() > 0) {
       stream_nodes_.push_back({});
@@ -1790,11 +1924,11 @@ class PlannerImpl {
 
 #else
 
-  void
-  PartitionIntoStreams(const logging::Logger& logger, const ExecutionProviders& execution_providers,
-                       const PathString& partition_config_file) {
-    auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger, partition_config_file);
-    auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_, context_->GetExecutionOrder());
+  void PartitionIntoStreams(const ExecutionProviders& execution_providers,
+                            const PathString& partition_config_file) {
+    auto partitioner = IGraphPartitioner::CreateGraphPartitioner(logger_, partition_config_file);
+    auto status = partitioner->PartitionGraph(graph_viewer_, execution_providers, stream_nodes_,
+                                              context_->GetExecutionOrder());
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     plan_.node_stream_map_.resize(SafeInt<size_t>(graph_viewer_.MaxNodeIndex()) + 1);
     for (size_t i = 0; i < stream_nodes_.size(); ++i) {
@@ -1887,7 +2021,7 @@ class PlannerImpl {
             for (auto* output : node->OutputDefs()) {
               if (output->Exists()) {
                 if (std::find(it->InputDefs().begin(), it->InputDefs().end(), output) != it->InputDefs().end()) {
-                  output_consumed_in_subgraph = false;  // output direclty consumed in current graph
+                  output_consumed_in_subgraph = false;  // output directly consumed in current graph
                   OrtValueIndex output_arg_idx;
                   ORT_THROW_IF_ERROR(ort_value_name_idx_map_.GetIdx(output->Name(), output_arg_idx));
                   // there are two cases we need notification:
@@ -1906,8 +2040,8 @@ class PlannerImpl {
                     node_to_wait[it->Index()].insert({node_index, wait_handle});
                   }
                 }
-              }  // output->Exists
-            }    // for each output
+              }
+            }
             if (output_consumed_in_subgraph) {
               const auto downstream = plan_.node_stream_map_[it->Index()];
               if (downstream != i) {
@@ -2157,10 +2291,9 @@ Status PlannerImpl::CreatePlan(
 #ifdef ORT_ENABLE_STREAM
     const IStreamCommandHandleRegistry& stream_handle_registry,
 #endif
-    const PathString& partition_config_file,
-    const logging::Logger& logger) {
+    const PathString& partition_config_file) {
   // 1. partition graph into streams
-  PartitionIntoStreams(logger, execution_providers_, this->parent_node_ ? PathString{} : partition_config_file);
+  PartitionIntoStreams(execution_providers_, parent_node_ ? PathString{} : partition_config_file);
 
   // 2. initialize the plan based on stream partition result
   int num_ml_values = ort_value_name_idx_map_.MaxIdx() + 1;
@@ -2229,14 +2362,13 @@ Status SequentialPlanner::CreatePlan(
   PlannerImpl planner(parent_node, graph_viewer, outer_scope_node_args, providers,
                       kernel_create_info_map, subgraphs_kernel_create_info_maps,
                       outer_scope_node_arg_to_location_map,
-                      ort_value_name_idx_map, context, *plan);
+                      ort_value_name_idx_map, context, *plan, logger);
 
   return planner.CreatePlan(
 #ifdef ORT_ENABLE_STREAM
       stream_handle_registry,
 #endif
-      partition_config_file,
-      logger);
+      partition_config_file);
 }
 
 #ifdef ORT_ENABLE_STREAM

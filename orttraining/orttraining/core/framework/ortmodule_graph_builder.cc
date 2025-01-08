@@ -183,7 +183,7 @@ Status OrtModuleGraphBuilder::OptimizeForwardGraph(const TrainingGraphTransforme
   }
 
   if (!config.optimized_pre_grad_filepath.empty()) {
-    ORT_RETURN_IF_ERROR(Model::Save(*forward_model_, config.optimized_pre_grad_filepath));
+    ORT_RETURN_IF_ERROR(Model::Save(*forward_model_, ToPathString(config.optimized_pre_grad_filepath)));
   }
 
   return Status::OK();
@@ -223,7 +223,7 @@ void OrtModuleGraphBuilder::GetFrontierTensors() {
   for (const auto& param : graph_info_.initializer_names_to_train) {
     std::vector<const Node*> consumer_nodes = graph.GetConsumerNodes(param);
     // Initial support is limited to caching Cast output. This can
-    // be extended to accomodate more ops whose result depends only
+    // be extended to accommodate more ops whose result depends only
     // on the weight tensor which is a WIP.
     for (const Node* node : consumer_nodes) {
       if (node != nullptr && node->OpType() == "Cast") {

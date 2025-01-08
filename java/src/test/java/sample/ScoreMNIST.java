@@ -242,7 +242,7 @@ public class ScoreMNIST {
   /**
    * Find the maximum probability and return it's index.
    *
-   * @param probabilities The probabilites.
+   * @param probabilities The probabilities.
    * @return The index of the max.
    */
   public static int pred(float[] probabilities) {

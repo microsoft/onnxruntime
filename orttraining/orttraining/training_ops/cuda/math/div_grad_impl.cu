@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-// for now this operator classes are no different than a funciton.
+// for now this operator classes are no different than a function.
 // Eventually once multiple binary gradient ops are needed, we will pass
 // its instance from API instead of direct function call.
 template <class T>

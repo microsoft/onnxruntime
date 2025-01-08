@@ -6,7 +6,10 @@
 #include <functional>
 #include <string>
 #include <vector>
+#include <memory>
 
+#include "core/common/inlined_containers_fwd.h"
+#include "core/common/span_utils.h"
 #include "core/graph/model.h"
 #include "core/session/inference_session.h"
 #include "test/compare_ortvalue.h"
@@ -19,6 +22,90 @@
 
 namespace onnxruntime {
 namespace test {
+
+static InlinedVector<std::byte> GetZeroPointBytes(int64_t zero_point, ONNX_NAMESPACE::TensorProto_DataType type) {
+  switch (type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8: {
+      int8_t val = static_cast<int8_t>(zero_point);
+      auto span = gsl::as_bytes(gsl::make_span(&val, 1));
+      return InlinedVector<std::byte>(span.begin(), span.end());
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8: {
+      uint8_t val = static_cast<uint8_t>(zero_point);
+      auto span = gsl::as_bytes(gsl::make_span(&val, 1));
+      return InlinedVector<std::byte>(span.begin(), span.end());
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16: {
+      int16_t val = static_cast<int16_t>(zero_point);
+      auto span = gsl::as_bytes(gsl::make_span(&val, 1));
+      return InlinedVector<std::byte>(span.begin(), span.end());
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16: {
+      uint16_t val = static_cast<uint16_t>(zero_point);
+      auto span = gsl::as_bytes(gsl::make_span(&val, 1));
+      return InlinedVector<std::byte>(span.begin(), span.end());
+    }
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+      int32_t val = static_cast<int32_t>(zero_point);
+      auto span = gsl::as_bytes(gsl::make_span(&val, 1));
+      return InlinedVector<std::byte>(span.begin(), span.end());
+    }
+    default:
+      ORT_THROW("Unhandled zero-point type ", type, ".");
+  }
+}
+
+NodeArg* ModelTestBuilder::MakeInitializer(gsl::span<const int64_t> shape,
+                                           ONNX_NAMESPACE::TensorProto_DataType elem_type,
+                                           gsl::span<const std::byte> raw_data) {
+  std::string name = graph_.GenerateNodeArgName("constant");
+  ONNX_NAMESPACE::TensorProto tensor_proto;
+  tensor_proto.set_name(name);
+  tensor_proto.set_data_type(elem_type);
+  utils::SetRawDataInTensorProto(tensor_proto, raw_data.data(), raw_data.size());
+
+  for (auto& dim : shape) {
+    tensor_proto.add_dims(dim);
+  }
+
+  graph_.AddInitializedTensor(tensor_proto);
+
+  return &graph_.GetOrCreateNodeArg(name, nullptr);
+}
+
+Node& ModelTestBuilder::AddQuantizeLinearNode(NodeArg* input_arg,
+                                              float input_scale,
+                                              int64_t input_zero_point,
+                                              ONNX_NAMESPACE::TensorProto_DataType zero_point_type,
+                                              NodeArg* output_arg,
+                                              bool use_ms_domain) {
+  std::vector<NodeArg*> input_args;
+  input_args.push_back(input_arg);
+  input_args.push_back(MakeScalarInitializer<float>(input_scale));
+
+  InlinedVector<std::byte> zp_bytes = GetZeroPointBytes(input_zero_point, zero_point_type);
+  input_args.push_back(MakeInitializer({}, zero_point_type, zp_bytes));
+
+  std::string domain = use_ms_domain ? kMSDomain : "";
+  return AddNode("QuantizeLinear", input_args, {output_arg}, domain);
+}
+
+Node& ModelTestBuilder::AddDequantizeLinearNode(NodeArg* input_arg,
+                                                float input_scale,
+                                                int64_t input_zero_point,
+                                                ONNX_NAMESPACE::TensorProto_DataType zero_point_type,
+                                                NodeArg* output_arg,
+                                                bool use_ms_domain) {
+  std::vector<NodeArg*> input_args;
+  input_args.push_back(input_arg);
+  input_args.push_back(MakeScalarInitializer<float>(input_scale));
+
+  InlinedVector<std::byte> zp_bytes = GetZeroPointBytes(input_zero_point, zero_point_type);
+  input_args.push_back(MakeInitializer({}, zero_point_type, zp_bytes));
+
+  std::string domain = use_ms_domain ? kMSDomain : "";
+  return AddNode("DequantizeLinear", input_args, {output_arg}, domain);
+}
 
 void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& build_test_case,
                        const std::function<void(InferenceSessionWrapper& session)>& check_transformed_graph,
@@ -54,7 +141,8 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
                        double relative_per_sample_tolerance,
                        std::unique_ptr<GraphTransformer> transformer,
                        const std::function<void(SessionOptions&)>& add_session_options,
-                       const InlinedHashSet<std::string>& disabled_optimizers) {
+                       const InlinedHashSet<std::string>& disabled_optimizers,
+                       std::unique_ptr<IExecutionProvider> ep) {
   // Build the model for this test.
   std::unordered_map<std::string, int> domain_to_version;
   domain_to_version[kOnnxDomain] = opset_version;
@@ -71,6 +159,7 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
   // Serialize the model to a string.
   std::string model_data;
   model.ToProto().SerializeToString(&model_data);
+  std::shared_ptr<IExecutionProvider> ep_shared = ep ? std::move(ep) : nullptr;
 
   auto run_model = [&](TransformerLevel level, std::vector<OrtValue>& fetches,
                        std::unique_ptr<GraphTransformer> transformer = nullptr) {
@@ -84,6 +173,10 @@ void TransformerTester(const std::function<void(ModelTestBuilder& helper)>& buil
       add_session_options(session_options);
     }
     InferenceSessionWrapper session{session_options, GetEnvironment()};
+    if (ep_shared) {
+      ASSERT_STATUS_OK(session.RegisterExecutionProvider(ep_shared));
+    }
+
     ASSERT_STATUS_OK(session.Load(model_data.data(), static_cast<int>(model_data.size())));
     if (transformer) {
       ASSERT_STATUS_OK(session.RegisterGraphTransformer(std::move(transformer), level));
@@ -160,14 +253,14 @@ Status TestGraphTransformer(const std::function<void(ModelTestBuilder& helper)>&
       ORT_RETURN_IF_ERROR(pre_graph_checker(graph));
     }
 #if SAVE_TEST_GRAPH
-    ORT_RETURN_IF_ERROR(Model::Save(model, "model_original.onnx"));
+    ORT_RETURN_IF_ERROR(Model::Save(model, ToPathString("model_original.onnx")));
 #endif
     ORT_RETURN_IF_ERROR(graph_transformation_mgr.ApplyTransformers(graph, level, logger));
     if (post_graph_checker) {
       ORT_RETURN_IF_ERROR(post_graph_checker(graph));
     }
 #if SAVE_TEST_GRAPH
-    ORT_RETURN_IF_ERROR(Model::Save(model, "model_optimized.onnx"));
+    ORT_RETURN_IF_ERROR(Model::Save(model, ToPathString("model_optimized.onnx")));
 #endif
   };
 

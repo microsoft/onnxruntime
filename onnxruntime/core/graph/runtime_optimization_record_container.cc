@@ -4,14 +4,12 @@
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #include "core/graph/runtime_optimization_record_container.h"
-
-#include <algorithm>
-
-#include "core/common/gsl.h"
-
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/graph/op_identifier_utils.h"
+
+#include <algorithm>
+#include <gsl/gsl>
 
 namespace onnxruntime {
 
@@ -182,7 +180,8 @@ Status RuntimeOptimizationRecordContainer::LoadFromOrtFormat(
     }
 
     ORT_RETURN_IF_NOT(optimizer_name_to_records.emplace(optimizer_name, std::move(records)).second,
-                      "Attempting to load runtime optimization records for a previously loaded optimizer: ", optimizer_name);
+                      "Attempting to load runtime optimization records for a previously loaded optimizer: ",
+                      optimizer_name);
   }
 
   optimizer_name_to_records_ = std::move(optimizer_name_to_records);

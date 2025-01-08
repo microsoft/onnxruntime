@@ -45,8 +45,6 @@ struct MLFloat16 : onnxruntime_float16::Float16Impl<MLFloat16> {
   static const MLFloat16 NegativeNaN;
   static const MLFloat16 Infinity;
   static const MLFloat16 NegativeInfinity;
-  static const MLFloat16 Epsilon;
-  static const MLFloat16 MinValue;
   static const MLFloat16 MaxValue;
   static const MLFloat16 Zero;
   static const MLFloat16 One;
@@ -181,8 +179,6 @@ struct BFloat16 : onnxruntime_float16::BFloat16Impl<BFloat16> {
   static const BFloat16 NegativeNaN;
   static const BFloat16 Infinity;
   static const BFloat16 NegativeInfinity;
-  static const BFloat16 Epsilon;
-  static const BFloat16 MinValue;
   static const BFloat16 MaxValue;
   static const BFloat16 Zero;
   static const BFloat16 One;
@@ -299,3 +295,147 @@ inline void FloatToBFloat16(const float* flt, BFloat16* blf, size_t size) {
 }
 
 }  // namespace onnxruntime
+
+namespace std {
+
+template <>
+class numeric_limits<onnxruntime::MLFloat16> {
+ public:
+  static constexpr onnxruntime::MLFloat16 min() noexcept {
+    return onnxruntime::MLFloat16::FromBits(0x0400U);  // Minimum positive normalized value: 0.00006103515625
+  }
+
+  static constexpr onnxruntime::MLFloat16 max() noexcept {
+    return onnxruntime::MLFloat16::FromBits(0x7BFFU);  // Largest representable value: 65504
+  }
+
+  static constexpr onnxruntime::MLFloat16 lowest() noexcept {
+    return onnxruntime::MLFloat16::FromBits(0xFBFFU);  // Smallest representable value: -65504
+  }
+
+  static constexpr onnxruntime::MLFloat16 infinity() noexcept {
+    return onnxruntime::MLFloat16::FromBits(0x7C00U);  // Bits: sign(0), exponent(111,11), fraction(00,0000,0000)
+  }
+
+  static constexpr onnxruntime::MLFloat16 quiet_NaN() noexcept {
+    // The most significant fraction bit shall be 1, and no limitation on other fraction bits.
+    // Note that most frameworks use 0x7E00; while CUDA uses 0x7FFF; .Net System.Half.NaN uses 0xFE00;
+    return onnxruntime::MLFloat16::FromBits(0x7E00U);  // Bits: sign(0), exponent(111,11), fraction(10,0000,0000)
+  }
+
+  static constexpr onnxruntime::MLFloat16 signaling_NaN() noexcept {
+    return onnxruntime::MLFloat16::FromBits(0x7D00U);  // Bits: sign(0), exponent(111,11), fraction(01,0000,0000)
+  }
+
+  static constexpr onnxruntime::MLFloat16 denorm_min() noexcept {
+    return onnxruntime::MLFloat16::FromBits(0x0001U);  // Minimum subnormal value: 0.000000059604645
+  }
+
+  static constexpr onnxruntime::MLFloat16 epsilon() noexcept {
+    return onnxruntime::MLFloat16::FromBits(0x1400U);  // Difference between 1.0 and the next value: 2^-10 = 0.0009765625
+  }
+
+  static constexpr onnxruntime::MLFloat16 round_error() noexcept {
+    return onnxruntime::MLFloat16::FromBits(0x3800U);  // 0.5
+  }
+
+  static constexpr bool is_specialized = true;
+
+  static constexpr bool is_signed = true;
+  static constexpr bool is_integer = false;
+  static constexpr bool is_exact = false;
+  static constexpr bool has_infinity = true;
+  static constexpr bool has_quiet_NaN = true;
+  static constexpr bool has_signaling_NaN = true;
+  static constexpr float_denorm_style has_denorm = denorm_present;
+  static constexpr bool has_denorm_loss = false;
+
+  static constexpr bool is_bounded = true;
+  static constexpr bool is_iec559 = true;
+  static constexpr bool is_modulo = false;
+
+  static constexpr int digits = 11;       // Number of significant digits (mantissa)
+  static constexpr int digits10 = 3;      // Decimal digits of precision
+  static constexpr int max_digits10 = 5;  // Max decimal digits required for precision
+  static constexpr int radix = 2;
+  static constexpr int min_exponent = -13;
+  static constexpr int min_exponent10 = -4;
+  static constexpr int max_exponent = 16;
+  static constexpr int max_exponent10 = 4;
+
+  static constexpr bool traps = false;
+  static constexpr bool tinyness_before = false;
+  static constexpr std::float_round_style round_style = std::round_to_nearest;
+};
+
+template <>
+class numeric_limits<onnxruntime::BFloat16> {
+ public:
+  static constexpr onnxruntime::BFloat16 min() noexcept {
+    return onnxruntime::BFloat16::FromBits(0x0080U);  // Minimum positive normalized value: 1.175494e-38
+  }
+
+  static constexpr onnxruntime::BFloat16 max() noexcept {
+    return onnxruntime::BFloat16::FromBits(0x7F7FU);  // Largest representable value: 3.38953139e38
+  }
+
+  static constexpr onnxruntime::BFloat16 lowest() noexcept {
+    return onnxruntime::BFloat16::FromBits(0xFF7FU);  // Smallest representable value: -3.38953139e38
+  }
+
+  static constexpr onnxruntime::BFloat16 infinity() noexcept {
+    return onnxruntime::BFloat16::FromBits(0x7F80U);  // Bits: sign(0), exponent(111,1111,1), fraction(000,0000)
+  }
+
+  static constexpr onnxruntime::BFloat16 quiet_NaN() noexcept {
+    // The most significant fraction bit shall be 1, and no limitation on other fraction bits.
+    // Note that Torch, Tensorflow, OpenVino, nGraph uses 0x7FC0; Paddle uses 0x7FC1; CUDA uses 0x7FFF.
+    return onnxruntime::BFloat16::FromBits(0x7FC1U);  // Bits: sign(0), exponent(111,1111,1), fraction(100,0001)
+  }
+
+  static constexpr onnxruntime::BFloat16 signaling_NaN() noexcept {
+    // The most significant fraction bit shall be 0, and there is at least one 1 in other fraction bits.
+    return onnxruntime::BFloat16::FromBits(0x7F81U);  // Bits: sign(0), exponent(111,1111,1), fraction(000,0001)
+  }
+
+  static constexpr onnxruntime::BFloat16 denorm_min() noexcept {
+    return onnxruntime::BFloat16::FromBits(0x0001U);  // Minimum subnormal value: 9.1835e-41
+  }
+
+  static constexpr onnxruntime::BFloat16 epsilon() noexcept {
+    return onnxruntime::BFloat16::FromBits(0x3C00U);  // Difference between 1.0 and the next value: 2^-7 = 0.0078125
+  }
+
+  static constexpr onnxruntime::BFloat16 round_error() noexcept {
+    return onnxruntime::BFloat16::FromBits(0x3F00U);  // 0.5
+  }
+
+  static constexpr bool is_specialized = true;
+  static constexpr bool is_signed = true;
+  static constexpr bool is_integer = false;
+  static constexpr bool is_exact = false;
+  static constexpr bool has_infinity = true;
+  static constexpr bool has_quiet_NaN = true;
+  static constexpr bool has_signaling_NaN = true;
+  static constexpr float_denorm_style has_denorm = denorm_present;
+  static constexpr bool has_denorm_loss = false;
+
+  static constexpr bool is_bounded = true;
+  static constexpr bool is_iec559 = false;
+  static constexpr bool is_modulo = false;
+
+  static constexpr int digits = 8;
+  static constexpr int digits10 = 2;
+  static constexpr int max_digits10 = 4;
+  static constexpr int radix = 2;
+  static constexpr int min_exponent = -125;
+  static constexpr int min_exponent10 = -37;
+  static constexpr int max_exponent = 128;
+  static constexpr int max_exponent10 = 38;
+
+  static constexpr bool traps = false;
+  static constexpr bool tinyness_before = false;
+  static constexpr float_round_style round_style = round_to_nearest;
+};
+
+}  // namespace std

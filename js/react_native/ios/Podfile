@@ -1,7 +1,16 @@
 require_relative '../node_modules/react-native/scripts/react_native_pods'
 require_relative '../node_modules/@react-native-community/cli-platform-ios/native_modules'
 
-platform :ios, '12.4'
+platform :ios, '13.0'
+
+pre_install do |installer|
+  # Custom pre-install script or commands
+  puts "Running pre-install script..."
+
+  # Recommended fix for https://github.com/facebook/react-native/issues/32483
+  # from https://github.com/facebook/react-native/issues/32483#issuecomment-966784501
+  system("sed -i '' 's/typedef uint8_t clockid_t;//' \"./Pods/RCT-Folly/folly/portability/Time.h\"")
+end
 
 def shared
   config = use_native_modules!
@@ -10,15 +19,6 @@ def shared
 
   # Comment the next line if you don't want to use dynamic frameworks
   use_frameworks!
-  
-  # Mobile build
-  # ort_mobile_c_local_pod_path = ENV['ORT_MOBILE_C_LOCAL_POD_PATH']
-  # if ort_mobile_c_local_pod_path != nil
-  #   print 'Using onnxruntime-c pod at ', ort_mobile_c_local_pod_path, "\n"
-  #   pod 'onnxruntime-mobile-c', :path => ort_mobile_c_local_pod_path
-  # else
-  #   pod 'onnxruntime-mobile-c'
-  # end
 
   ort_c_local_pod_path = ENV['ORT_C_LOCAL_POD_PATH']
   if ort_c_local_pod_path != nil
@@ -37,4 +37,14 @@ end
 
 target 'OnnxruntimeModuleTest' do
   shared
+end
+
+post_install do |installer|
+    installer.generated_projects.each do |project|
+        project.targets.each do |target|
+            target.build_configurations.each do |config|
+                config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+            end
+        end
+    end
 end

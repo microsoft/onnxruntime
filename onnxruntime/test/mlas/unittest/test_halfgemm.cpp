@@ -17,7 +17,7 @@ Abstract:
 #include "test_halfgemm.h"
 
 //
-// Short Execute() test helper to register each test seperately by all parameters.
+// Short Execute() test helper to register each test separately by all parameters.
 //
 template <typename AType, typename BType, bool Packed, bool Threaded>
 class HalfGemmShortExecuteTest : public MlasTestFixture<MlasHalfGemmTest<AType, BType, Packed, Threaded>> {

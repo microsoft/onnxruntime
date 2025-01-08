@@ -330,7 +330,7 @@ Status FromTensorProtos(gsl::span<const ONNX_NAMESPACE::TensorProto> trainable_t
         for (const auto& tensor_proto : tensor_protos) {
           flatbuffers::Offset<fbs::Tensor> fbs_tensor;
           ORT_RETURN_IF_ERROR(
-              fbs::utils::SaveInitializerOrtFormat(builder, tensor_proto, Path(), fbs_tensor, external_data_writer));
+              fbs::utils::SaveInitializerOrtFormat(builder, tensor_proto, std::filesystem::path(), fbs_tensor, external_data_writer));
           fbs_tensors.push_back(fbs_tensor);
         }
 
@@ -449,7 +449,7 @@ Status FromOptimizerState(const OptimizerCheckpointState& optimizer_state,
 
   fbs_optimizer_groups.reserve(optimizer_state.group_named_optimizer_states.size());
   for (const auto& group_name : SortedKeys(optimizer_state.group_named_optimizer_states)) {
-    const std::shared_ptr<GroupOptimizerState>& group_optimizer_state_ptr =
+    std::shared_ptr<GroupOptimizerState> group_optimizer_state_ptr =
         optimizer_state.group_named_optimizer_states.at(group_name);
 
     std::vector<flatbuffers::Offset<fbs::ParameterOptimizerState>> optimizer_states;

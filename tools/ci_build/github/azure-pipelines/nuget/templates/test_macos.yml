@@ -7,11 +7,11 @@ stages:
   - NuGet_Packaging_${{ parameters.ArtifactSuffix }}
   condition: succeeded()
   jobs:
-  - job:
+  - job: NuGet_Test_MacOS
     workspace:
       clean: all
     pool:
-      vmImage: 'macOS-latest'
+      vmImage: 'macOS-13'
 
     variables:
     - name: OnnxRuntimeBuildDirectory

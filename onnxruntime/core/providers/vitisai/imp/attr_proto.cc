@@ -38,7 +38,7 @@ ONNX_NAMESPACE::AttributeProto* attr_proto_new_tensor(
   auto ret = ONNX_NAMESPACE::AttributeProto::Create();
   ret->set_name(name);
   ret->set_type(ONNX_NAMESPACE::AttributeProto_AttributeType_TENSOR);
-  *ret->add_tensors() = value;
+  ret->set_t(value);
   return ret.release();
 }
 ONNX_NAMESPACE::AttributeProto* attr_proto_new_ints(const std::string& name, const std::vector<int64_t>& value) {
@@ -103,5 +103,9 @@ std::vector<std::string> attr_proto_get_strings(const ONNX_NAMESPACE::AttributeP
     ret.push_back(attr.strings(i));
   }
   return ret;
+}
+std::string* attr_proto_release_string(ONNX_NAMESPACE::AttributeProto* attr) {
+  vai_assert(attr->type() == ONNX_NAMESPACE::AttributeProto_AttributeType_STRING, attr->name());
+  return attr->release_s();
 }
 }  // namespace vaip

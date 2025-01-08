@@ -10,6 +10,7 @@
 
 // ORT system.
 #include "core/providers/cuda/tensor/expand.h"
+#include "core/providers/common.h"
 
 // std C++.
 #include <iostream>
@@ -51,7 +52,7 @@ Status DistributedExpand<T>::ComputeInternal(OpKernelContext* context) const {
   TensorShapeVector original_output_dims{p_shape, p_shape + shape_tensor->Shape().Size()};
   TensorShape original_output_shape(original_output_dims);
   ORT_ENFORCE(
-      onnxruntime::cuda::ComputeOutputShape(
+      onnxruntime::ComputeBroadcastOutputShape(
           Node().Name(),
           original_input_shape,
           original_output_dims, original_output_shape)

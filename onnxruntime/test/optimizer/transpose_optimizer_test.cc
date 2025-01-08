@@ -22,6 +22,7 @@
 #include "test/optimizer/graph_transform_test_builder.h"
 #include "test/providers/internal_testing/internal_testing_execution_provider.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/test_utils.h"
 
@@ -3800,6 +3801,46 @@ TEST(TransposeOptimizerTests, TestCast) {
                     /*opset_version*/ {15, 18});
 }
 
+TEST(TransposeOptimizerTests, TestQLinearSoftmax) {
+  auto build_test_case_1 = [&](ModelTestBuilder& builder) {
+    auto* input0_arg = MakeInput<uint8_t>(builder, std::nullopt, {1, 384, 384, 21}, 0, 255);
+    auto* transpose_1_out_0 = builder.MakeIntermediate();
+    auto* input_x_scale = builder.MakeScalarInitializer<float>(0.5086354613304138);
+    auto* input_x_zero_point = builder.MakeScalarInitializer<uint8_t>(74);
+    auto* input_y_scale = builder.MakeScalarInitializer<float>(0.003921568859368563);
+    auto* input_y_zero_point = builder.MakeScalarInitializer<uint8_t>(0);
+    auto* qlinearsoftmax_1_out_0 = builder.MakeIntermediate();
+    auto* transpose_2_out_0 = builder.MakeOutput();
+
+    auto& transpose_1 = builder.AddNode("Transpose", {input0_arg}, {transpose_1_out_0});
+    transpose_1.AddAttribute("perm", std::vector<int64_t>{0, 3, 1, 2});
+    auto& qlinearsoftmax_1 = builder.AddNode("QLinearSoftmax",
+                                             {transpose_1_out_0, input_x_scale, input_x_zero_point, input_y_scale, input_y_zero_point},
+                                             {qlinearsoftmax_1_out_0}, kMSDomain);
+    qlinearsoftmax_1.AddAttribute("axis", static_cast<int64_t>(1));
+    qlinearsoftmax_1.AddAttribute("opset", static_cast<int64_t>(13));
+    auto& transpose_2 = builder.AddNode("Transpose", {qlinearsoftmax_1_out_0}, {transpose_2_out_0});
+    transpose_2.AddAttribute("perm", std::vector<int64_t>{0, 2, 3, 1});
+  };
+
+  auto check_optimized_graph_1 = [&](InferenceSessionWrapper& session) {
+    int transpose_cost = EstimateTransposeCost(session.GetGraph());
+    EXPECT_EQ(transpose_cost, 0);
+  };
+
+  TransformerTester(build_test_case_1,
+                    check_optimized_graph_1,
+                    TransformerLevel::Level2,
+                    TransformerLevel::Level3,
+                    /*opset_version*/ 13,
+                    /*per_sample_tolerance*/ 0.0,
+                    /*relative_per_sample_tolerance*/ 0.0,
+                    /*transformer*/ nullptr,
+                    /*add_session_options*/ {},
+                    /*disabled_optimizers*/ {},
+                    /*ep*/ DefaultCpuExecutionProvider());
+}
+
 TEST(TransposeOptimizerTests, TestBroadcastReusedInputs) {
   auto build_test_case_1 = [&](ModelTestBuilder& builder) {
     auto* input0_arg = MakeInput<float>(builder, {{-1, -1, 3, 4}}, {1, 2, 3, 4}, 0.0, 1.0);
@@ -4424,6 +4465,41 @@ TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue12151) {
               testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
 }
 
+// regression test for a model with DQ node with per-axis dequantization followed by a Transpose.
+// Tests handling of a negative DQ axis.
+// see https://github.com/microsoft/onnxruntime/issues/12151 for more details.
+TEST(TransposeOptimizerTests, RegressionTest_GitHubIssue12151_NegativeDQAxis) {
+  Status status;
+  auto model_uri = ORT_TSTR("testdata/ort_github_issue_12151_neg_dq_axis.onnx");
+
+  NameMLValMap feeds;  // no inputs for this model
+  std::vector<std::string> output_names{"Z"};
+  std::vector<OrtValue> fetches_orig;
+  std::vector<OrtValue> fetches;
+
+  SessionOptions so;
+  so.session_logid = "TransposeOptimizerTests.RegressionTest_GitHubIssue12151_NegativeDQAxis";
+
+  {
+    so.graph_optimization_level = TransformerLevel::Default;  // off
+    InferenceSession session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches_orig));
+  }
+
+  {
+    so.graph_optimization_level = TransformerLevel::Level1;  // enable transpose optimizer
+    InferenceSession session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  }
+
+  ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),
+              testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
+}
+
 // These tests use the internal testing EP with static kernels which requires a full build and contrib ops,
 // and the NHWC Conv which requires contrib ops
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
@@ -4606,7 +4682,647 @@ TEST(TransposeOptimizerTests, QnnTransposeNonConstBroadcastInput) {
     }
   }
 }
+
+// Layout transform's cost function aggressively pushes down transposes with channel-first or channel-last perms.
+// This can lead to a situation where a channel-fist/last Transpose gets stuck after being pushed down an Unsqueeze
+// that makes the Transpose's perm no longer channel-first/last. This breaks the QDQ node units for both the
+// Unsqueeze and the Transpose: DQ -> Unsqueeze -> Transpose -> Q.
+// The transpose optimizer should insert a Q -> DQ pair between the Unsqueeze and Transpose nodes to fix both
+// QDQ node units: DQ -> Unsqueeze -> Q[new] -> DQ[new] -> Transpose -> Q
+TEST(TransposeOptimizerTests, LayoutTransformFixStuckTransposeWithoutDQ) {
+  Status status;
+
+  // Using a sub-model extracted from a model that we tried to run with QNN EP.
+  auto model_uri = ORT_TSTR("testdata/layout_transform_fix_transpose_without_dq.qdq.onnx");
+
+  SessionOptions so;
+
+  // ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+
+  // Set the test EP to support all ops in the model so that the layout transform applies to all nodes
+  const std::unordered_set<std::string> empty_set;
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NHWC);
+  internal_testing_ep->EnableStaticKernels().TakeAllNodes();
+
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(internal_testing_ep)));
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& graph = session.GetGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  ASSERT_EQ(op_to_count["Transpose"], 2) << "Should have 2 transposes remaining.";
+
+  std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
+  for (const auto& node : graph.Nodes()) {
+    EXPECT_EQ(node.GetExecutionProviderType(), expected_ep) << node.OpType() << " node named '" << node.Name()
+                                                            << "' was not assigned to the internal testing EP.";
+    // All Transpose nodes should be in QDQ node units.
+    if (node.OpType() == "Transpose") {
+      for (auto cur_input = node.InputNodesBegin(), end = node.InputNodesEnd(); cur_input != end; ++cur_input) {
+        EXPECT_EQ(cur_input->OpType(), "DequantizeLinear");
+      }
+
+      for (auto cur_output = node.OutputNodesBegin(), end = node.OutputNodesEnd(); cur_output != end; ++cur_output) {
+        EXPECT_EQ(cur_output->OpType(), "QuantizeLinear");
+      }
+    }
+  }
+}
+
+// Tests the transpose optimizer's ability to constant fold inserted Transpose and Squeeze nodes.
+// After the core transpose optimization loop, the test model contains the following "constant foldable" sequence:
+//
+// unsqueezed_transposed_weight --+--> Transpose ---> Squeeze ---> DequantizeLinear ---> Mul ---> ...
+//                                |
+//                                +--> DequantizeLinear --> Mul --> ...
+//
+// After constant-folding the Transpose and Squeeze nodes, the final model looks like:
+//
+// new_folded_weight ---> DequantizeLinear ---> Mul ---> ...
+// unsqueezed_transposed_weight ---> DequantizeLinear ---> Mul ---> ...
+TEST(TransposeOptimizerTests, LayoutTransformConstantFoldTransposeAndSqueeze) {
+  Status status;
+
+  // The test model has a shared initializer that is unsqueezed and transposed in-place for one consumer.
+  // The other consumer gets a Transpose -> Squeeze sequence inserted before its input.
+  // This Transpose -> Squeeze sequence should get constant-folded.
+  auto model_uri = ORT_TSTR("testdata/layout_transform_const_folding.qdq.onnx");
+
+  SessionOptions so;
+
+  // ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kDebugLayoutTransformation, "1"));
+
+  using InternalTestingEP = onnxruntime::internal_testing_ep::InternalTestingExecutionProvider;
+
+  // Set the test EP to support all ops in the model so that the layout transform applies to all nodes
+  const std::unordered_set<std::string> empty_set;
+  auto internal_testing_ep = std::make_unique<InternalTestingEP>(empty_set, empty_set, DataLayout::NHWC);
+  internal_testing_ep->EnableStaticKernels().TakeAllNodes();
+
+  InferenceSessionWrapper session{so, GetEnvironment()};
+  ASSERT_STATUS_OK(session.RegisterExecutionProvider(std::move(internal_testing_ep)));
+  ASSERT_STATUS_OK(session.Load(model_uri));
+  ASSERT_STATUS_OK(session.Initialize());
+
+  const auto& graph = session.GetGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+
+  // All Squeeze nodes should have been constant folded by transpose optimizer.
+  ASSERT_EQ(op_to_count["Squeeze"], 0) << "Should have 0 Squeeze nodes remaining.";
+
+  // 1 transpose is constant-folded, 1 is canceled, and 1 remains.
+  ASSERT_EQ(op_to_count["Transpose"], 1) << "Should have 1 transpose remaining.";
+
+  std::string expected_ep(onnxruntime::utils::kInternalTestingExecutionProvider);
+  for (const auto& node : graph.Nodes()) {
+    EXPECT_EQ(node.GetExecutionProviderType(), expected_ep) << node.OpType() << " node named '" << node.Name()
+                                                            << "' was not assigned to the internal testing EP.";
+    // All Transpose nodes should be in QDQ node units.
+    if (node.OpType() == "Transpose") {
+      for (auto cur_input = node.InputNodesBegin(), end = node.InputNodesEnd(); cur_input != end; ++cur_input) {
+        EXPECT_EQ(cur_input->OpType(), "DequantizeLinear");
+      }
+
+      for (auto cur_output = node.OutputNodesBegin(), end = node.OutputNodesEnd(); cur_output != end; ++cur_output) {
+        EXPECT_EQ(cur_output->OpType(), "QuantizeLinear");
+      }
+    }
+  }
+}
 #endif  // !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_CONTRIB_OPS)
+
+// Checks that a model that is not processed by the transpose optimizer produces the same
+// results as the same model that undergoes transpose optimization with constant folding
+// of Transpose and Squeeze nodes.
+TEST(TransposeOptimizerTests, ConstantFoldTransposeAndSqueezeOutputCorrectness) {
+  // This test model has a shared initializer that is unsqueezed and transposed in-place for one consumer.
+  // The other consumer gets a Transpose -> Squeeze sequence inserted before its input.
+  // This Transpose -> Squeeze sequence should get constant-folded.
+  auto model_uri = ORT_TSTR("testdata/layout_transform_const_folding.qdq.onnx");
+
+  RandomValueGenerator random{123};
+  std::vector<int64_t> input_dims{1, 3, 3, 3};
+  std::vector<float> input0_data = random.Gaussian<float>(input_dims, 0.0f, 1.0f);
+  std::vector<float> input1_data = random.Gaussian<float>(input_dims, 0.0f, 1.0f);
+
+  OrtValue input0;
+  OrtValue input1;
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], input_dims, input0_data, &input0);
+  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], input_dims, input1_data, &input1);
+
+  NameMLValMap feeds{{"input0", input0}, {"input1", input1}};
+
+  std::vector<std::string> output_names{"output0", "output1"};
+  std::vector<OrtValue> fetches_orig;
+  std::vector<OrtValue> fetches;
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
+  so.graph_optimization_level = TransformerLevel::Default;  // off
+
+  // get results with no modifications to the model
+  {
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches_orig));
+  }
+
+  {
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+
+    // We call the ONNX transpose optimizer directly to use a custom cost check function.
+    Graph& graph = session.GetMutableGraph();
+    CPUAllocator allocator;
+
+    namespace alias_oto = onnx_transpose_optimization;
+    auto api_graph = MakeApiGraph(graph,
+                                  TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                                  /*new_node_ep*/ nullptr);
+
+    // Use a custom optimization cost check that aggressively pushes channel-last or channel-first transposes.
+    // This causes an existing transpose to be pushed through an op (Op1) with a shared initializer input. The other
+    // consumer (Op0) of the shared initializer will get a "constant-foldable" sequence between itself and its input.
+    // shared_const --+--> Transpose --> Squeeze --> Op0
+    //                |
+    //                +--> Op1
+    auto custom_cost_fn =
+        [](const alias_oto::api::GraphRef& /* graph */,
+           const alias_oto::api::NodeRef& /* node */,
+           const std::vector<int64_t>& perm,
+           const std::unordered_set<std::string>& /* outputs_leading_to_transpose */) -> alias_oto::CostCheckResult {
+      if (perm == alias_oto::ChannelFirstToLastPerm(perm.size()) ||
+          perm == alias_oto::ChannelLastToFirstPerm(perm.size())) {
+        return alias_oto::CostCheckResult::kPushTranspose;
+      }
+
+      return alias_oto::CostCheckResult::kFallThrough;
+    };
+
+    alias_oto::OptimizeResult result = alias_oto::Optimize(*api_graph, /*provider_type*/ "", custom_cost_fn);
+
+    ASSERT_EQ(result.error_msg, std::nullopt);
+    ASSERT_TRUE(result.graph_modified);
+    ASSERT_TRUE(graph.GraphResolveNeeded());
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    // Use this hack to save model for viewing if needed
+    // ASSERT_STATUS_OK(Model::Save(const_cast<Model&>(session.GetModel()), "transpose_opt_updated_const_fold.onnx"));
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    EXPECT_EQ(op_to_count["Squeeze"], 0) << "The Squeeze nodes should have been folded.";
+    EXPECT_EQ(op_to_count["Transpose"], 1) << "1 inserted Transpose should be constant-folded. "
+                                           << "Only the pre-existing Transpose should remain.";
+
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  }
+
+  ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),
+              testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
+  ASSERT_THAT(fetches_orig[1].Get<Tensor>().DataAsSpan<float>(),
+              testing::ContainerEq(fetches[1].Get<Tensor>().DataAsSpan<float>()));
+}
+
+// Utility to get the axis attribute for a Q or DQ node.
+static void GetQOrDQAxis(const Node& q_or_dq_node, /*out*/ int64_t& axis) {
+  const NodeAttributes& attrs = q_or_dq_node.GetAttributes();
+  auto axis_attr_it = attrs.find("axis");
+  axis = 1;
+
+  if (axis_attr_it != attrs.end()) {
+    auto axis_attr = axis_attr_it->second;
+    ASSERT_TRUE(axis_attr.type() == ONNX_NAMESPACE::AttributeProto_AttributeType_INT);
+    axis = axis_attr.i();
+  }
+}
+
+// Tests the fix-up of a QDQ NodeUnit containing a per-axis DQ followed by an Unsqueeze and Transpose.
+// Before: DQ (axis = 0) -> Unsqueeze (axes = [0, 1, 2]) -> Transpose (perm = [0, 3, 1, 2]) -> Op
+// After:  DQ (axis = 0) -> Unsqueeze -> Q(axis = 3) -> DQ(axis = 3) -> Transpose -> Q(axis = 1) -> DQ(axis = 1) -> Op
+TEST(TransposeOptimizerTests, FixQDQNodeUnitWithPerAxisDQUnsqueezeTranspose) {
+  // Model contains a Mul with a broadcastable/per-axis DQ input[1]. When a transpose is pushed through
+  // the Mul's input[0], input[1]'s input is unsqueezed and transposed.
+  auto model_uri = ORT_TSTR("testdata/transpose_optimizer_qdq_fixup_unsqueeze_per_axis_dq.onnx");
+
+  RandomValueGenerator random{123};
+  std::vector<int64_t> input_dims{1, 3, 4, 4};
+  std::vector<float> input0_data = random.Gaussian<float>(input_dims, 0.0f, 1.0f);
+  std::vector<int8_t> input1_data = {0, 1, 2};
+
+  auto allocators = TestCPUExecutionProvider()->CreatePreferredAllocators();
+  OrtValue input0;
+  OrtValue input1;
+  CreateMLValue<float>(allocators[0], input_dims, input0_data, &input0);
+  CreateMLValue<int8_t>(allocators[0], {3}, input1_data, &input1);
+
+  NameMLValMap feeds{{"input0", input0}, {"input1", input1}};
+
+  std::vector<std::string> output_names{"output0"};
+  std::vector<OrtValue> fetches_orig;
+  std::vector<OrtValue> fetches;
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
+  so.graph_optimization_level = TransformerLevel::Default;  // off
+
+  // get results with no modifications to the model
+  {
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches_orig));
+  }
+
+  {
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+
+    Graph& graph = session.GetMutableGraph();
+    CPUAllocator allocator;
+
+    namespace alias_oto = onnx_transpose_optimization;
+    auto api_graph = MakeApiGraph(graph,
+                                  TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                                  /*new_node_ep*/ nullptr);
+
+    alias_oto::OptimizeResult result = alias_oto::Optimize(*api_graph);
+    ASSERT_EQ(result.error_msg, std::nullopt);
+    ASSERT_TRUE(result.graph_modified);
+    ASSERT_TRUE(graph.GraphResolveNeeded());
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    // Use this hack to save model for viewing if needed
+    // ASSERT_STATUS_OK(Model::Save(const_cast<Model&>(session.GetModel()),
+    // ToPathString("transpose_optimizer_qdq_fixup_unsqueeze_per_axis_dq.debug.onnx")));
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    EXPECT_EQ(op_to_count["Unsqueeze"], 1) << "1 Unsqueeze node added to broadcastable Mul weight.";
+    EXPECT_EQ(op_to_count["Transpose"], 1) << "2 Transposes at the I/O cancel. 1 Transpose inserted above Mul weight.";
+
+    // Get the Unsqueeze and Transpose nodes.
+    Node* unsqueeze_node = nullptr;
+    Node* transpose_node = nullptr;
+    for (auto& node : graph.Nodes()) {
+      const std::string& op_type = node.OpType();
+      if (op_type == "Unsqueeze") {
+        unsqueeze_node = &node;
+      } else if (op_type == "Transpose") {
+        transpose_node = &node;
+      }
+    }
+
+    // DQ axis starts as 0
+    ASSERT_TRUE(unsqueeze_node != nullptr);
+    const auto& dq_before_unsqueeze = *(unsqueeze_node->InputNodesBegin());
+    int64_t dq_before_unsqueeze_axis = 1;
+    GetQOrDQAxis(dq_before_unsqueeze, dq_before_unsqueeze_axis);
+    EXPECT_EQ(dq_before_unsqueeze_axis, 0);
+
+    // Axis changes to 3 after Unsqueeze
+    const auto& q_after_unsqueeze = *(unsqueeze_node->OutputNodesBegin());
+    int64_t q_after_unsqueeze_axis = 1;
+    GetQOrDQAxis(q_after_unsqueeze, q_after_unsqueeze_axis);
+    EXPECT_EQ(q_after_unsqueeze_axis, 3);
+
+    // Axis changes to 1 after Transpose
+    ASSERT_TRUE(transpose_node != nullptr);
+    const auto& q_after_transpose = *(transpose_node->OutputNodesBegin());
+    int64_t q_after_transpose_axis = 1;
+    GetQOrDQAxis(q_after_transpose, q_after_transpose_axis);
+    EXPECT_EQ(q_after_transpose_axis, 1);
+
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  }
+
+  ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),
+              testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
+}
+
+// Test that the TransposeOptimizer's qdq-fixup pass converts the sequence (Op -> DQ -> Q -> GRAPH_OUTPUT) to
+// (Op -> GRAPH_OUTPUT).
+TEST(TransposeOptimizerTests, RemoveEmptyDQQAtGraphOutput) {
+  auto model_uri = ORT_TSTR("testdata/transpose_optimizer_empty_dq_q_at_graph_output.onnx");
+
+  RandomValueGenerator random{123};
+  std::vector<int64_t> input_dims{1, 3, 4, 4};
+  std::vector<float> input0_data = random.Gaussian<float>(input_dims, 0.0f, 1.0f);
+
+  auto allocators = TestCPUExecutionProvider()->CreatePreferredAllocators();
+  OrtValue input0;
+  CreateMLValue<float>(allocators[0], input_dims, input0_data, &input0);
+
+  NameMLValMap feeds{{"input0", input0}};
+
+  std::vector<std::string> output_names{"output0"};
+  std::vector<OrtValue> fetches_orig;
+  std::vector<OrtValue> fetches;
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
+  so.graph_optimization_level = TransformerLevel::Default;  // off
+
+  // get results with no modifications to the model
+  {
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches_orig));
+  }
+
+  {
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+
+    Graph& graph = session.GetMutableGraph();
+    CPUAllocator allocator;
+
+    namespace alias_oto = onnx_transpose_optimization;
+    auto api_graph = MakeApiGraph(graph,
+                                  TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                                  /*new_node_ep*/ nullptr);
+
+    alias_oto::OptimizeResult result = alias_oto::Optimize(*api_graph);
+    ASSERT_EQ(result.error_msg, std::nullopt);
+    ASSERT_TRUE(result.graph_modified);
+    ASSERT_TRUE(graph.GraphResolveNeeded());
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    // Use this hack to save model for viewing if needed
+    // ASSERT_STATUS_OK(Model::Save(const_cast<Model&>(session.GetModel()),
+    // ToPathString("updated_model_empty_dqq_graph_output.onnx")));
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    EXPECT_EQ(op_to_count["Transpose"], 0) << "2 pre-existing Transposes at the I/O cancel. ";
+
+    // Check that the graph ends in the sequence (Mul -> Q -> GRAPH_OUTPUT)
+    Node* mul_node = nullptr;
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "Mul") {
+        mul_node = &node;
+        break;
+      }
+    }
+
+    // Mul should be followed by a Q node.
+    ASSERT_TRUE(mul_node != nullptr);
+    const auto& last_q_node = *(mul_node->OutputNodesBegin());
+    EXPECT_EQ(last_q_node.OpType(), "QuantizeLinear");
+
+    // The Q node should generate the graph's output.
+    const std::string& q_out_name = last_q_node.OutputDefs()[0]->Name();
+    const std::string& graph_out_name = graph.GetOutputs()[0]->Name();
+    EXPECT_EQ(q_out_name, graph_out_name);
+
+    // Run optimized model.
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  }
+
+  ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<uint8_t>(),
+              testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<uint8_t>()));
+}
+
+// Tests the in-place unsqueeze and transpose of a constant consumed by a per-axis DQ.
+TEST(TransposeOptimizerTests, InPlaceUnsqueezeTransposePerAxisDQ) {
+  // Model contains a Mul with a constant/broadcastable/per-axis DQ input[1].
+  // When a transpose is pushed through the Mul's input[0], input[1]'s input is unsqueezed and transposed in-place.
+  auto model_uri = ORT_TSTR("testdata/transpose_optimizer_in_place_transpose_unsqueeze_per_axis_dq.onnx");
+
+  RandomValueGenerator random{123};
+  std::vector<int64_t> input_dims{1, 3, 4, 4};
+  std::vector<float> input0_data = random.Gaussian<float>(input_dims, 0.0f, 1.0f);
+
+  auto allocators = TestCPUExecutionProvider()->CreatePreferredAllocators();
+  OrtValue input0;
+  CreateMLValue<float>(allocators[0], input_dims, input0_data, &input0);
+
+  NameMLValMap feeds{{"input0", input0}};
+
+  std::vector<std::string> output_names{"output0"};
+  std::vector<OrtValue> fetches_orig;
+  std::vector<OrtValue> fetches;
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
+  so.graph_optimization_level = TransformerLevel::Default;  // off
+
+  // get results with no modifications to the model
+  {
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches_orig));
+  }
+
+  {
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+
+    Graph& graph = session.GetMutableGraph();
+    CPUAllocator allocator;
+
+    namespace alias_oto = onnx_transpose_optimization;
+    auto api_graph = MakeApiGraph(graph,
+                                  TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                                  /*new_node_ep*/ nullptr);
+
+    alias_oto::OptimizeResult result = alias_oto::Optimize(*api_graph);
+    ASSERT_EQ(result.error_msg, std::nullopt);
+    ASSERT_TRUE(result.graph_modified);
+    ASSERT_TRUE(graph.GraphResolveNeeded());
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    // Use this hack to save model for viewing if needed
+    // ASSERT_STATUS_OK(Model::Save(const_cast<Model&>(session.GetModel()),
+    // ToPathString("updated_model_inplace_peraxis.onnx")));
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    EXPECT_EQ(op_to_count["Unsqueeze"], 0) << "per-axis DQ constant was unsqueezed in-place.";
+    EXPECT_EQ(op_to_count["Transpose"], 0) << "2 pre-existing Transposes at the I/O cancel. "
+                                           << "per-axis DQ constant was transposed in-place.";
+
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  }
+
+  ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),
+              testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
+}
+
+// Tests the canceling of a pre-existing Transpose before a per-axis DQ during call to TransposeInputImpl.
+// Before: input1 -> Transpose(perm = [0, 2, 3, 1]) -> DQ (axis = -1) -> Mul
+// After : input1 -> DQ (axis = 1) -> Mul
+TEST(TransposeOptimizerTests, CancelTransposeBeforePerAxisDQ) {
+  auto model_uri = ORT_TSTR("testdata/transpose_optimizer_cancel_transpose_per_axis_dq.onnx");
+
+  RandomValueGenerator random{123};
+  std::vector<int64_t> input_dims{1, 3, 4, 4};
+  std::vector<float> input0_data = random.Gaussian<float>(input_dims, 0.0f, 1.0f);
+  std::vector<int8_t> input1_data = {0, 1, 2};
+
+  auto allocators = TestCPUExecutionProvider()->CreatePreferredAllocators();
+  OrtValue input0;
+  OrtValue input1;
+  CreateMLValue<float>(allocators[0], input_dims, input0_data, &input0);
+  CreateMLValue<int8_t>(allocators[0], {1, 3, 1, 1}, input1_data, &input1);
+
+  NameMLValMap feeds{{"input0", input0}, {"input1", input1}};
+
+  std::vector<std::string> output_names{"output0"};
+  std::vector<OrtValue> fetches_orig;
+  std::vector<OrtValue> fetches;
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
+  so.graph_optimization_level = TransformerLevel::Default;  // off
+
+  // get results with no modifications to the model
+  {
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches_orig));
+  }
+
+  {
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+
+    Graph& graph = session.GetMutableGraph();
+    CPUAllocator allocator;
+
+    namespace alias_oto = onnx_transpose_optimization;
+    auto api_graph = MakeApiGraph(graph,
+                                  TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                                  /*new_node_ep*/ nullptr);
+
+    alias_oto::OptimizeResult result = alias_oto::Optimize(*api_graph);
+    ASSERT_EQ(result.error_msg, std::nullopt);
+    ASSERT_TRUE(result.graph_modified);
+    ASSERT_TRUE(graph.GraphResolveNeeded());
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    // Use this hack to save model for viewing if needed
+    // ASSERT_STATUS_OK(Model::Save(const_cast<Model&>(session.GetModel()),
+    // ToPathString("updated_model_peraxis_transpose_cancel.onnx")));
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    EXPECT_EQ(op_to_count["Transpose"], 0) << "2 Transposes at the I/O cancel. "
+                                           << "Transpose inserted above Mul weight cancels.";
+
+    // Get the DQ above Mul's input[1]
+    Node* dq_node = nullptr;
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "DequantizeLinear" && node.Name() == "dq_mul_input_1") {
+        dq_node = &node;
+        break;
+      }
+    }
+
+    // DQ axis changed from -1 (3) to 1 due to Tranpose above DQ being canceled.
+    ASSERT_TRUE(dq_node != nullptr);
+    int64_t dq_axis = 1;
+    GetQOrDQAxis(*dq_node, dq_axis);
+    EXPECT_EQ(dq_axis, 1);
+
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  }
+
+  ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),
+              testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
+}
+
+// Tests the canceling of a pre-existing Squeeze before a per-axis DQ during call to UnsqueezeInput.
+// Before: input1 (shape = [1, 1, 1, 3]) -> Squeeze(axes = [0, 1, 2]) -> DQ (axis = 0) -> Mul
+// After : input1 -> DQ (axis = 3) -> Mul
+TEST(TransposeOptimizerTests, CancelSqueezeBeforePerAxisDQ) {
+  auto model_uri = ORT_TSTR("testdata/transpose_optimizer_cancel_squeeze_per_axis_dq.onnx");
+
+  RandomValueGenerator random{123};
+  std::vector<int64_t> input_dims{1, 3, 4, 4};
+  std::vector<float> input0_data = random.Gaussian<float>(input_dims, 0.0f, 1.0f);
+  std::vector<int8_t> input1_data = {0, 1, 2};
+
+  auto allocators = TestCPUExecutionProvider()->CreatePreferredAllocators();
+  OrtValue input0;
+  OrtValue input1;
+  CreateMLValue<float>(allocators[0], input_dims, input0_data, &input0);
+  CreateMLValue<int8_t>(allocators[0], {1, 1, 1, 3}, input1_data, &input1);
+
+  NameMLValMap feeds{{"input0", input0}, {"input1", input1}};
+
+  std::vector<std::string> output_names{"output0"};
+  std::vector<OrtValue> fetches_orig;
+  std::vector<OrtValue> fetches;
+
+  SessionOptions so;
+  ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsDisableQuantQDQ, "1"));
+  so.graph_optimization_level = TransformerLevel::Default;  // off
+
+  // get results with no modifications to the model
+  {
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches_orig));
+  }
+
+  {
+    InferenceSessionWrapper session{so, GetEnvironment()};
+    ASSERT_STATUS_OK(session.Load(model_uri));
+
+    Graph& graph = session.GetMutableGraph();
+    CPUAllocator allocator;
+
+    namespace alias_oto = onnx_transpose_optimization;
+    auto api_graph = MakeApiGraph(graph,
+                                  TestCPUExecutionProvider()->CreatePreferredAllocators()[0],
+                                  /*new_node_ep*/ nullptr);
+
+    alias_oto::OptimizeResult result = alias_oto::Optimize(*api_graph);
+    ASSERT_EQ(result.error_msg, std::nullopt);
+    ASSERT_TRUE(result.graph_modified);
+    ASSERT_TRUE(graph.GraphResolveNeeded());
+    ASSERT_STATUS_OK(graph.Resolve());
+
+    // Use this hack to save model for viewing if needed
+    // ASSERT_STATUS_OK(Model::Save(const_cast<Model&>(session.GetModel()),
+    // ToPathString("updated_model_peraxis_squeeze_cancel.onnx")));
+
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    EXPECT_EQ(op_to_count["Squeeze"], 0) << "Canceled by unsqueezed input consumed by per-axis DQ";
+    EXPECT_EQ(op_to_count["Unsqueeze"], 0) << "No Unsqueeze inserted because it cancels with pre-existing Squeeze.";
+
+    // Get the DQ above Mul's input[1]
+    Node* dq_node = nullptr;
+    for (auto& node : graph.Nodes()) {
+      if (node.OpType() == "DequantizeLinear" && node.Name() == "dq_mul_input_1") {
+        dq_node = &node;
+        break;
+      }
+    }
+
+    // DQ axis changed from 0 to 3 due to Squeeze above DQ being canceled.
+    ASSERT_TRUE(dq_node != nullptr);
+    int64_t dq_axis = 1;
+    GetQOrDQAxis(*dq_node, dq_axis);
+    EXPECT_EQ(dq_axis, 3);
+
+    ASSERT_STATUS_OK(session.Initialize());
+    ASSERT_STATUS_OK(session.Run(feeds, output_names, &fetches));
+  }
+
+  ASSERT_THAT(fetches_orig[0].Get<Tensor>().DataAsSpan<float>(),
+              testing::ContainerEq(fetches[0].Get<Tensor>().DataAsSpan<float>()));
+}
 
 static void CheckSharedInitializerHandling(bool broadcast) {
   auto model_uri = broadcast ? ORT_TSTR("testdata/transpose_optimizer_shared_initializers_broadcast.onnx")
@@ -4678,7 +5394,7 @@ static void CheckSharedInitializerHandling(bool broadcast) {
 
 // test we re-use a modified shared initializer wherever possible. model has one initializer that is used by 3 DQ nodes
 // and one initializer that is used by 2 Add nodes. both cases should be handled with the initializer being
-// modified in-place for the first usage, and the Transpose added to the second usage being cancelled out when the
+// modified in-place for the first usage, and the Transpose added to the second usage being canceled out when the
 // original Transpose at the start of the model is pushed down.
 TEST(TransposeOptimizerTests, SharedInitializerHandling) {
   CheckSharedInitializerHandling(/*broadcast*/ false);
@@ -4694,7 +5410,7 @@ TEST(TransposeOptimizerTests, SharedInitializerHandlingBroadcast) {
 }
 
 // Unit test where EstimateTransposeValueCost must look past a DQ -> Squeeze to see the Transponse of a shared
-// initializer for the overall cost of pushing the Transpose throught the second Where to be negative.
+// initializer for the overall cost of pushing the Transpose through the second Where to be negative.
 TEST(TransposeOptimizerTests, SharedInitializerHandlingBroadcast2) {
   auto model_uri = ORT_TSTR("testdata/transpose_optimizer_shared_initializers_broadcast2.onnx");
 

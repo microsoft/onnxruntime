@@ -13,7 +13,8 @@ template <typename T>
 bool IsResultCloselyMatch(const T& outvalue, const T& expected_value, const double diff, const double tol) {
   if (diff > tol)
     return false;
-  if (std::isnan(diff) && !(std::isnan(outvalue) && std::isnan(expected_value)) && !(std::isinf(outvalue) && std::isinf(expected_value)))
+  if (std::isnan(diff) && !(std::isnan(outvalue) && std::isnan(expected_value)) &&
+      !(std::isinf(outvalue) && std::isinf(expected_value)))
     return false;
   return true;
 }

@@ -16,7 +16,6 @@
 
 #pragma once
 
-#include "core/common/path.h"
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/graph/graph.h"
@@ -109,9 +108,9 @@ struct NodeDumpOptions {
 
   std::string file_suffix;
   // the output directory for dumped data files
-  Path output_dir;
+  std::filesystem::path output_dir;
   // the sqlite3 db to append dumped data
-  Path sqlite_db_prefix;
+  std::filesystem::path sqlite_db_prefix;
 
   // Total number of elements which trigger snippet rather than full array for Stdout. Value 0 disables snippet.
   int snippet_threshold;

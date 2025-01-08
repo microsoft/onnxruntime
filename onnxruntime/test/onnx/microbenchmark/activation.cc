@@ -27,7 +27,7 @@ class Allocs : public IExecutionProvider {
   std::shared_ptr<CPUAllocator> alloc = std::make_shared<CPUAllocator>();
 
  public:
-  Allocs() : IExecutionProvider("fake"){};
+  Allocs() : IExecutionProvider("fake") {};
   AllocatorPtr GetAllocator(OrtMemType) const {
     return alloc;
   }

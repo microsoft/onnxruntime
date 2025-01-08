@@ -25,6 +25,7 @@ BOOL ORTIsCoreMLExecutionProviderAvailable() {
   try {
     const uint32_t flags =
         (options.useCPUOnly ? COREML_FLAG_USE_CPU_ONLY : 0) |
+        (options.useCPUAndGPU ? COREML_FLAG_USE_CPU_AND_GPU : 0) |
         (options.enableOnSubgraphs ? COREML_FLAG_ENABLE_ON_SUBGRAPH : 0) |
         (options.onlyEnableForDevicesWithANE ? COREML_FLAG_ONLY_ENABLE_DEVICE_WITH_ANE : 0) |
         (options.onlyAllowStaticInputShapes ? COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES : 0) |
@@ -37,6 +38,21 @@ BOOL ORTIsCoreMLExecutionProviderAvailable() {
   ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error);
 #else  // !ORT_OBJC_API_COREML_EP_AVAILABLE
   static_cast<void>(options);
+  ORTSaveCodeAndDescriptionToError(ORT_FAIL, "CoreML execution provider is not enabled.", error);
+  return NO;
+#endif
+}
+
+- (BOOL)appendCoreMLExecutionProviderWithOptionsV2:(NSDictionary*)provider_options
+                                             error:(NSError**)error {
+#if ORT_OBJC_API_COREML_EP_AVAILABLE
+  try {
+    return [self appendExecutionProvider:@"CoreML" providerOptions:provider_options error:error];
+  }
+  ORT_OBJC_API_IMPL_CATCH_RETURNING_BOOL(error);
+
+#else  // !ORT_OBJC_API_COREML_EP_AVAILABLE
+  static_cast<void>(provider_options);
   ORTSaveCodeAndDescriptionToError(ORT_FAIL, "CoreML execution provider is not enabled.", error);
   return NO;
 #endif

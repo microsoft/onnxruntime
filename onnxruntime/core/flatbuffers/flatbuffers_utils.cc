@@ -4,7 +4,7 @@
 #include "core/flatbuffers/flatbuffers_utils.h"
 
 #include "core/common/common.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/flatbuffers/schema/ort.fbs.h"
 #include "core/graph/constants.h"
 #include "core/graph/onnx_protobuf.h"

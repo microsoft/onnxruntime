@@ -112,7 +112,7 @@ TestLog::TestLog()
     if (!std::filesystem::exists(mutateModelDir)) {
       std::filesystem::create_directory(mutateModelDir);
     }
-    logFile.open(L"out/log", std::ios::ate);
+    logFile.open("out/log", std::ios::ate);
   } else {
     throw std::runtime_error("TestLog has already been initialized. Call GetTestLog() to use it");
   }
@@ -121,18 +121,33 @@ TestLog::TestLog()
 // Helper function to convert string to wstring
 //
 std::wstring towstr(const char* pStr) {
-  std::mbstate_t ps;
-  size_t retVal;
+  std::mbstate_t ps = std::mbstate_t();
+#if defined(_WIN32) || defined(_WIN64)
   size_t length_str = strnlen(pStr, onnxruntime::kMaxStrLen);
+  size_t retVal;
+  // On Windows, use mbsrtowcs_s which is safe and provides size checking
   mbsrtowcs_s(&retVal, nullptr, 0, &pStr, length_str, &ps);
   retVal += 1;
   auto ptr = std::make_unique<wchar_t[]>(retVal);
   if (ptr == nullptr) {
     std::stringstream str;
-    str << "Failed to allocate memory: " << __func__ << __LINE__ << "\n";
-    throw std::exception{str.str().data()};
+    str << "Failed to allocate memory: " << __func__ << " " << __LINE__ << "\n";
+    throw std::runtime_error{str.str().data()};
   }
   mbsrtowcs_s(&retVal, ptr.get(), retVal, &pStr, length_str, &ps);
+#else
+  // On Linux, use mbsrtowcs which is part of the standard library
+  size_t retVal = std::mbsrtowcs(nullptr, &pStr, 0, &ps);
+  retVal += 1;
+  auto ptr = std::make_unique<wchar_t[]>(retVal);
+  if (ptr == nullptr) {
+    std::stringstream str;
+    str << "Failed to allocate memory: " << __func__ << " " << __LINE__ << "\n";
+    throw std::runtime_error{str.str().data()};
+  }
+  std::mbsrtowcs(ptr.get(), &pStr, retVal, &ps);
+#endif
+
   return std::wstring{ptr.get()};
 }
 }  // namespace Logger

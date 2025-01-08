@@ -18,6 +18,8 @@ class TernaryOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -30,9 +32,11 @@ Status TernaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   emscripten::val input0 = model_builder.GetOperand(node.InputDefs()[0]->Name());
   emscripten::val input1 = model_builder.GetOperand(node.InputDefs()[1]->Name());
   emscripten::val input2 = model_builder.GetOperand(node.InputDefs()[2]->Name());
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
   emscripten::val output = emscripten::val::object();
   if (op_type == "Where") {
-    output = model_builder.GetBuilder().call<emscripten::val>("where", input0, input1, input2);
+    output = model_builder.GetBuilder().call<emscripten::val>("where", input0, input1, input2, options);
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "TernaryOpBuilder::AddToModelBuilderImpl, unknown op: ", op_type);
@@ -40,6 +44,29 @@ Status TernaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
+}
+
+bool TernaryOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                                              const emscripten::val& wnn_limits, const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  const auto& op_type = node.OpType();
+  int32_t input0_type;  // condition data type
+  int32_t input1_type;  // X data type
+  int32_t input2_type;  // Y data type
+
+  if (!GetType(*input_defs[0], input0_type, logger) ||
+      !GetType(*input_defs[1], input1_type, logger) ||
+      !GetType(*input_defs[2], input2_type, logger))
+    return false;
+
+  // ONNX's condition data type is bool which is same as WebNN.
+  // Only need to check X, Y data types.
+  std::array<int32_t, 2> input_types{input1_type, input2_type};
+  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+    return false;
+  }
+
+  return IsDataTypeSupportedByOp(op_type, input1_type, wnn_limits, "trueValue", "X", logger);
 }
 
 void CreateTernaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

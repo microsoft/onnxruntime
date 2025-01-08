@@ -47,7 +47,7 @@ public:
             mhaStackedQueryKeyValueIndex,
             mhaBiasIndex,
             mhaMaskIndex,
-            mhaRelativePositionBiasIndex,
+            mhaAttentionBiasIndex,
             mhaPastKeyIndex,
             mhaPastValueIndex,
             mhaInputCount,
@@ -60,7 +60,7 @@ public:
             biasIndex,
             maskIndex,
             pastIndex,
-            relativePositionBiasIndex,
+            attentionBiasIndex,
             pastSequenceLengthIndex,
             inputCount,
         };
@@ -74,16 +74,16 @@ public:
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetInputCount() >= 2);
         ML_CHECK_VALID_ARGUMENT(kernelCreationContext.GetOutputCount() >= 1);
 
-        const uint32_t dmlInputIndex = inputIndex;
-        const uint32_t dmlWeightsIndex = weightsIndex;
-        const uint32_t dmlBiasIndex = biasIndex;
-        const uint32_t dmlMaskIndex = maskIndex;
-        const uint32_t dmlRelativePositionBiasIndex = relativePositionBiasIndex;
+        constexpr uint32_t dmlInputIndex = inputIndex;
+        constexpr uint32_t dmlWeightsIndex = weightsIndex;
+        constexpr uint32_t dmlBiasIndex = biasIndex;
+        constexpr uint32_t dmlMaskIndex = maskIndex;
+        constexpr uint32_t dmlAttentionBiasIndex = attentionBiasIndex;
 
         const bool hasBias = kernelCreationContext.IsInputValid(biasIndex);
         const bool hasMask = kernelCreationContext.IsInputValid(maskIndex);
         const bool hasUnpaddedBounds = hasMask && kernelCreationContext.GetInputTensorDimensionCount(maskIndex) == 1;
-        const bool hasRelativePositionBias = kernelCreationContext.IsInputValid(relativePositionBiasIndex);
+        const bool hasAttentionBias = kernelCreationContext.IsInputValid(attentionBiasIndex);
 
         DmlOperator::Initialize(kernelCreationContext, std::nullopt, std::nullopt, std::nullopt, std::nullopt, 1);
 
@@ -188,13 +188,14 @@ public:
             }
         }
 
-        if (hasRelativePositionBias)
+        if (hasAttentionBias)
         {
-            auto relativePositionBiasTensorShape = m_inputTensorDescs[dmlRelativePositionBiasIndex].GetSizes();
-            ML_CHECK_VALID_ARGUMENT(relativePositionBiasTensorShape.size() == 4);
-            ML_CHECK_VALID_ARGUMENT(relativePositionBiasTensorShape[0] == inputTensorShape[0]);
-            ML_CHECK_VALID_ARGUMENT(relativePositionBiasTensorShape[1] == numHeads);
-            ML_CHECK_VALID_ARGUMENT(relativePositionBiasTensorShape[2] == inputTensorShape[1]);
+            auto attentionBiasTensorShape = m_inputTensorDescs[dmlAttentionBiasIndex].GetSizes();
+            ML_CHECK_VALID_ARGUMENT(attentionBiasTensorShape.size() == 4);
+            // TODO: support broadcast of attention bias on the first and second dimensions.
+            ML_CHECK_VALID_ARGUMENT(attentionBiasTensorShape[0] == inputTensorShape[0]);
+            ML_CHECK_VALID_ARGUMENT(attentionBiasTensorShape[1] == numHeads);
+            ML_CHECK_VALID_ARGUMENT(attentionBiasTensorShape[2] == inputTensorShape[1]);
         }
 
         TensorDesc firstGemmOutputTensorDesc = TensorDesc::ConstructDefaultTensorDesc(dataType, desiredBiasTensorShape);
@@ -346,7 +347,7 @@ public:
             mhaOperatorDesc.MaskTensor = hasMask ? &inputDescs[dmlMaskIndex] : nullptr;
         }
 
-        mhaOperatorDesc.RelativePositionBiasTensor = hasRelativePositionBias ? &inputDescs[dmlRelativePositionBiasIndex] : nullptr;
+        mhaOperatorDesc.RelativePositionBiasTensor = hasAttentionBias ? &inputDescs[dmlAttentionBiasIndex] : nullptr;
         mhaOperatorDesc.OutputTensor = &outputDescs[outputIndex];
         mhaOperatorDesc.Scale = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Scale, gsl::narrow_cast<float>(1.0f / std::sqrt(headSize)));
         mhaOperatorDesc.MaskFilterValue = kernelCreationContext.GetOptionalAttribute<float>(AttrName::MaskFilterValue, -10'000.0f);
@@ -452,13 +453,13 @@ public:
             }
         }
 
-        if (hasRelativePositionBias)
+        if (hasAttentionBias)
         {
-            DML_INPUT_GRAPH_EDGE_DESC relativePositionBiasToMhaEdge = {};
-            relativePositionBiasToMhaEdge.GraphInputIndex = dmlRelativePositionBiasIndex;
-            relativePositionBiasToMhaEdge.ToNodeIndex = mhaNodeIndex;
-            relativePositionBiasToMhaEdge.ToNodeInputIndex = mhaRelativePositionBiasIndex;
-            inputEdges.push_back(relativePositionBiasToMhaEdge);
+            DML_INPUT_GRAPH_EDGE_DESC attentionBiasToMhaEdge = {};
+            attentionBiasToMhaEdge.GraphInputIndex = dmlAttentionBiasIndex;
+            attentionBiasToMhaEdge.ToNodeIndex = mhaNodeIndex;
+            attentionBiasToMhaEdge.ToNodeInputIndex = mhaAttentionBiasIndex;
+            inputEdges.push_back(attentionBiasToMhaEdge);
         }
 
         if (hasSlicedValue)

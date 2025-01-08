@@ -43,6 +43,8 @@ size_t GetElementSizeByType(const Qnn_DataType_t& data_type) {
 }
 size_t GetElementSizeByType(ONNXTensorElementDataType elem_type) {
   const static std::unordered_map<ONNXTensorElementDataType, size_t> elem_type_to_size = {
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4, sizeof(Int4x2)},
+      {ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4, sizeof(UInt4x2)},
       {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, sizeof(int8_t)},
       {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16, sizeof(int16_t)},
       {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, sizeof(int32_t)},
@@ -162,6 +164,12 @@ std::ostream& operator<<(std::ostream& out, const Qnn_DataType_t& data_type) {
     case QNN_DATATYPE_BOOL_8:
       out << "QNN_DATATYPE_BOOL_8";
       break;
+    case QNN_DATATYPE_SFIXED_POINT_4:
+      out << "QNN_DATATYPE_SFIXED_POINT_4";
+      break;
+    case QNN_DATATYPE_UFIXED_POINT_4:
+      out << "QNN_DATATYPE_UFIXED_POINT_4";
+      break;
     default:
       ORT_THROW("Unknown Qnn Data type");
   }
@@ -216,9 +224,15 @@ std::ostream& operator<<(std::ostream& out, const Qnn_QuantizeParams_t& quantize
     if (quantize_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_SCALE_OFFSET) {
       out << " scale=" << quantize_params.scaleOffsetEncoding.scale;
       out << " offset=" << quantize_params.scaleOffsetEncoding.offset;
+    } else if (quantize_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_SCALE_OFFSET) {
+      out << " bitwidth=" << quantize_params.bwScaleOffsetEncoding.bitwidth;
+      out << " scale=" << quantize_params.bwScaleOffsetEncoding.scale;
+      out << " offset=" << quantize_params.bwScaleOffsetEncoding.offset;
     } else if (quantize_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_AXIS_SCALE_OFFSET) {
       out << " axis=" << quantize_params.axisScaleOffsetEncoding.axis;
       size_t num_elems = quantize_params.axisScaleOffsetEncoding.numScaleOffsets;
+      bool truncate = num_elems > 20;
+      num_elems = truncate ? 20 : num_elems;
       out << " scales=(";
       for (size_t i = 0; i < num_elems; i++) {
         out << quantize_params.axisScaleOffsetEncoding.scaleOffset[i].scale << (i == num_elems - 1 ? "" : " ");
@@ -227,11 +241,13 @@ std::ostream& operator<<(std::ostream& out, const Qnn_QuantizeParams_t& quantize
       for (size_t i = 0; i < num_elems; i++) {
         out << quantize_params.axisScaleOffsetEncoding.scaleOffset[i].offset << (i == num_elems - 1 ? "" : " ");
       }
-      out << ")";
+      out << (truncate ? "...)" : ")");
     } else if (quantize_params.quantizationEncoding == QNN_QUANTIZATION_ENCODING_BW_AXIS_SCALE_OFFSET) {
       out << " axis=" << quantize_params.bwAxisScaleOffsetEncoding.axis;
       out << " bw=" << quantize_params.bwAxisScaleOffsetEncoding.bitwidth;
       size_t num_elems = quantize_params.bwAxisScaleOffsetEncoding.numElements;
+      bool truncate = num_elems > 20;
+      num_elems = truncate ? 20 : num_elems;
       out << " scales=(";
       for (size_t i = 0; i < num_elems; i++) {
         out << quantize_params.bwAxisScaleOffsetEncoding.scales[i] << (i == num_elems - 1 ? "" : " ");
@@ -240,7 +256,7 @@ std::ostream& operator<<(std::ostream& out, const Qnn_QuantizeParams_t& quantize
       for (size_t i = 0; i < num_elems; i++) {
         out << quantize_params.bwAxisScaleOffsetEncoding.offsets[i] << (i == num_elems - 1 ? "" : " ");
       }
-      out << ")";
+      out << (truncate ? "...)" : ")");
     } else {
       out << " encoding not supported.";
     }
@@ -292,7 +308,9 @@ std::ostream& operator<<(std::ostream& out, const Qnn_ClientBuffer_t& client_buf
   T* data = reinterpret_cast<T*>(client_bufer.data);
   out << " dataSize=" << client_bufer.dataSize;
   uint32_t count = client_bufer.dataSize / sizeof(T);
-  count = count > 100 ? 100 : count;  // limit to 100 data
+  const bool truncate = count > 100;
+
+  count = truncate ? 100 : count;  // limit to 100 data
   out << " clientBuf=(";
   for (uint32_t i = 0; i < count; i++) {
     if constexpr (sizeof(T) == 1) {
@@ -301,7 +319,7 @@ std::ostream& operator<<(std::ostream& out, const Qnn_ClientBuffer_t& client_buf
       out << data[i] << " ";
     }
   }
-  out << ")";
+  out << (truncate ? "..." : "") << ")";
   return out;
 }
 
@@ -319,6 +337,8 @@ std::ostream& operator<<(std::ostream& out, const Qnn_Tensor_t& tensor) {
   }
   out << ")";
   out << " memType=" << GetQnnTensorMemType(tensor);
+// TODO: the code below has compilation errors with the latest ABSL
+#if 0
   if (GetQnnTensorMemType(tensor) == QNN_TENSORMEMTYPE_RAW) {
     if (GetQnnTensorDataType(tensor) == QNN_DATATYPE_FLOAT_32) {
       operator<< <float>(out, GetQnnTensorClientBuf(tensor));
@@ -341,6 +361,7 @@ std::ostream& operator<<(std::ostream& out, const Qnn_Tensor_t& tensor) {
       operator<< <int8_t>(out, GetQnnTensorClientBuf(tensor));
     }
   }
+#endif
   out << " quantizeParams:" << GetQnnTensorQParams(tensor);
   return out;
 }
@@ -432,10 +453,12 @@ bool OnnxDataTypeToQnnDataType(const int32_t onnx_data_type, Qnn_DataType_t& qnn
   };
 
   const std::unordered_map<int32_t, Qnn_DataType_t> onnx_to_qnn_data_type_quantized = {
+      {ONNX_NAMESPACE::TensorProto_DataType_INT4, QNN_DATATYPE_SFIXED_POINT_8},
       {ONNX_NAMESPACE::TensorProto_DataType_INT8, QNN_DATATYPE_SFIXED_POINT_8},
       {ONNX_NAMESPACE::TensorProto_DataType_INT16, QNN_DATATYPE_SFIXED_POINT_16},
       {ONNX_NAMESPACE::TensorProto_DataType_INT32, QNN_DATATYPE_SFIXED_POINT_32},
       {ONNX_NAMESPACE::TensorProto_DataType_INT64, QNN_DATATYPE_INT_64},
+      {ONNX_NAMESPACE::TensorProto_DataType_UINT4, QNN_DATATYPE_UFIXED_POINT_8},
       {ONNX_NAMESPACE::TensorProto_DataType_UINT8, QNN_DATATYPE_UFIXED_POINT_8},
       {ONNX_NAMESPACE::TensorProto_DataType_UINT16, QNN_DATATYPE_UFIXED_POINT_16},
       {ONNX_NAMESPACE::TensorProto_DataType_UINT32, QNN_DATATYPE_UFIXED_POINT_32},
@@ -490,6 +513,9 @@ Status GetQminQmax(const Qnn_DataType_t qnn_data_type,
   } else if (qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16) {
     qmin = static_cast<T>(std::numeric_limits<uint16_t>::min());
     qmax = static_cast<T>(std::numeric_limits<uint16_t>::max());
+  } else if (qnn_data_type == QNN_DATATYPE_SFIXED_POINT_32) {
+    qmin = static_cast<T>(std::numeric_limits<int32_t>::min());
+    qmax = static_cast<T>(std::numeric_limits<int32_t>::max());
   } else {
     ORT_RETURN_IF(true, "Qnn Data Type: %d not supported yet.", qnn_data_type);
   }
@@ -500,15 +526,27 @@ Status GetQuantParams(float rmin,
                       float rmax,
                       const Qnn_DataType_t qnn_data_type,
                       float& scale,
-                      int& zero_point) {
+                      int32_t& zero_point,
+                      bool symmetric) {
   std::tie(rmin, rmax) = CheckMinMax(rmin, rmax);
+  if (symmetric) {
+    float abs_max = std::max(abs(rmax), abs(rmin));
+    rmax = abs_max;
+    rmin = -abs_max;
+  }
+
   float qmin = 0.0f;
   float qmax = 255.0f;
   ORT_RETURN_IF_ERROR(GetQminQmax(qnn_data_type, qmin, qmax));
 
   scale = (rmax - rmin) / (qmax - qmin);
-  const float initial_zero_point = qmin - (rmin / scale);
-  zero_point = static_cast<int>(RoundHalfToEven(Saturate(qmax, qmin, initial_zero_point)));
+  float initial_zero_point = 0.0f;
+  if (symmetric) {
+    initial_zero_point = std::round(rmin + rmax) / 2;
+  } else {
+    initial_zero_point = qmin - (rmin / scale);
+  }
+  zero_point = static_cast<int32_t>(RoundHalfToEven(Saturate(qmax, qmin, initial_zero_point)));
   // To match QNN quantization definition
   zero_point = 0 - zero_point;
   return Status::OK();
@@ -522,7 +560,7 @@ double Dequantize(int32_t offset, float scale, const double quant_value) {
 
 Status Quantize(const double double_value,
                 const float scale,
-                const int zero_point,
+                const int32_t zero_point,
                 const Qnn_DataType_t qnn_data_type,
                 int& quant_value) {
   int qmin = 0;

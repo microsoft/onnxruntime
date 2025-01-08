@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Logger, Profiler} from '../../instrument';
-import {Tensor} from '../../tensor';
+import { Logger, Profiler } from '../../instrument';
+import { Tensor } from '../../tensor';
 
-import {Encoder, EncoderUsage} from './texture-data-encoder';
-import {TextureLayoutStrategy} from './texture-layout-strategy';
-import {TextureData, TextureLayout} from './types';
-import {WebGLContext} from './webgl-context';
+import { Encoder, EncoderUsage } from './texture-data-encoder';
+import { TextureLayoutStrategy } from './texture-layout-strategy';
+import { TextureData, TextureLayout } from './types';
+import { WebGLContext } from './webgl-context';
 
 export interface TextureManagerConfig {
   reuseTextures?: boolean;
@@ -30,8 +30,11 @@ export class TextureManager {
   private readonly pendingRead: Map<Tensor.Id, Array<(arr: Tensor.NumberType) => void>> = new Map();
 
   constructor(
-      public glContext: WebGLContext, public layoutStrategy: TextureLayoutStrategy, public profiler: Readonly<Profiler>,
-      private config: TextureManagerConfig) {
+    public glContext: WebGLContext,
+    public layoutStrategy: TextureLayoutStrategy,
+    public profiler: Readonly<Profiler>,
+    private config: TextureManagerConfig,
+  ) {
     if (config.reuseTextures) {
       this.inUseTextures = new Map();
       this.idleTextures = new Map();
@@ -39,7 +42,11 @@ export class TextureManager {
     }
   }
   createTextureFromLayout(
-      dataType: Tensor.DataType, layout: TextureLayout, data?: Tensor.NumberType, usage?: EncoderUsage) {
+    dataType: Tensor.DataType,
+    layout: TextureLayout,
+    data?: Tensor.NumberType,
+    usage?: EncoderUsage,
+  ) {
     const textureDataType = this.toEncoderType(dataType);
 
     const encoder = this.glContext.getEncoder(textureDataType, layout.channels || 1, usage);
@@ -49,8 +56,8 @@ export class TextureManager {
     const width = layout.width;
     const height = layout.height;
 
-    let key: string|undefined;
-    let inUseTextures: WebGLTexture[]|undefined;
+    let key: string | undefined;
+    let inUseTextures: WebGLTexture[] | undefined;
     if (this.config.reuseTextures) {
       key = `${width}x${height}_${encoder.format}_${encoder.internalFormat}_${encoder.textureType}`;
       inUseTextures = this.inUseTextures.get(key);
@@ -86,7 +93,13 @@ export class TextureManager {
     return this.profiler.event('backend', 'TextureManager.readTexture', () => {
       const dataSize = td.shape.reduce((a, b) => a * b) * channels!;
       const data = this.glContext.readTexture(
-          td.texture, td.width, td.height, dataSize, this.toEncoderType(dataType), channels!);
+        td.texture,
+        td.width,
+        td.height,
+        dataSize,
+        this.toEncoderType(dataType),
+        channels!,
+      );
       return this.toTensorData(dataType, data);
     });
   }
@@ -97,7 +110,7 @@ export class TextureManager {
     }
     if (this.pendingRead.has(dataId)) {
       const subscribers = this.pendingRead.get(dataId);
-      return new Promise<Tensor.NumberType>(resolve => subscribers?.push(resolve));
+      return new Promise<Tensor.NumberType>((resolve) => subscribers?.push(resolve));
     }
     return this.profiler.event('backend', 'TextureManager.readTextureAsync', async () => {
       this.pendingRead.set(dataId, []);
@@ -105,11 +118,17 @@ export class TextureManager {
       // add a fence waiting for the data to be ready
       await this.glContext.createAndWaitForFence();
       const data = this.glContext.readTexture(
-          td.texture, td.width, td.height, dataSize, this.toEncoderType(dataType), channels!);
+        td.texture,
+        td.width,
+        td.height,
+        dataSize,
+        this.toEncoderType(dataType),
+        channels!,
+      );
       const tensorData = this.toTensorData(dataType, data);
       const subscribers = this.pendingRead.get(dataId);
       this.pendingRead.delete(dataId);
-      subscribers?.forEach(resolve => resolve(tensorData));
+      subscribers?.forEach((resolve) => resolve(tensorData));
       return tensorData;
     });
   }
@@ -121,7 +140,7 @@ export class TextureManager {
     });
   }
   releaseTexture(textureData: TextureData, deleteTexture?: boolean): void {
-    let key: string|undefined;
+    let key: string | undefined;
     if (this.config.reuseTextures) {
       key = this.textureLookup.get(textureData.texture);
       if (key) {
@@ -172,11 +191,11 @@ export class TextureManager {
         throw new Error(`TensorData type ${dataType} is not supported`);
     }
   }
-  toTextureData(_dataType: Tensor.DataType, data: Tensor.NumberType|undefined): Encoder.DataArrayType|undefined {
+  toTextureData(_dataType: Tensor.DataType, data: Tensor.NumberType | undefined): Encoder.DataArrayType | undefined {
     if (!data) {
       return undefined;
     }
-    return (data instanceof Float32Array) ? data : new Float32Array(data);
+    return data instanceof Float32Array ? data : new Float32Array(data);
     /*
     switch (dataType) {
       case 'int16':

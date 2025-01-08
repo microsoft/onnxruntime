@@ -8,10 +8,14 @@
 #include <cassert>
 #include <functional>
 #include <vector>
+#include <filesystem>
 struct OrtApi;
 
 namespace vaip_core {
 
+#define VAIP_ORT_API_MAJOR (13u)
+#define VAIP_ORT_API_MINOR (0u)
+#define VAIP_ORT_API_PATCH (0u)
 struct OrtApiForVaip {
   uint32_t magic;  // 'VAIP' or something else to make sure the following field
                    // are not garbage.
@@ -24,10 +28,10 @@ struct OrtApiForVaip {
   onnxruntime::ProviderHost* host_;
   const OrtApi* ort_api_;
   // model
-  Model* (*model_load)(const std::string& file);  // [0]
-  void (*model_delete)(Model* model);             // [1]
-  Model* (*model_clone)(const Model& model);      // [2]
-  Graph& (*model_main_graph)(Model& model);       // [3]
+  Model* (*model_load)(const std::string& file);                               // [0]
+  void (*model_delete)(Model* model);                                          // [1]
+  Model* (*model_clone)(const Model& model, int64_t external_data_threshold);  // [2]
+  Graph& (*model_main_graph)(Model& model);                                    // [3]
   void (*model_set_meta_data)(Model& model, const std::string& key,
                               const std::string& value);  // [4]
   DllSafe<std::string> (*model_get_meta_data)(const Model& model,
@@ -189,10 +193,56 @@ struct OrtApiForVaip {
       const TensorProto& tensor_proto);                             // [77]
   size_t (*tensor_proto_raw_data_size)(const TensorProto& tensor);  // [78]
   gsl::span<const char> (*tensor_proto_as_raw)(
+      const Graph& graph,
       const TensorProto& tensor);  // [79]
 
-  DllSafe<std::string> (*get_lib_id)();    // [80]
-  DllSafe<std::string> (*get_lib_name)();  // [81]
+  DllSafe<std::string> (*get_lib_id)();                                           // [80]
+  DllSafe<std::string> (*get_lib_name)();                                         // [81]
+                                                                                  /** new API after 2.0 */
+  void (*graph_add_initialized_tensor)(Graph& graph, const TensorProto& tensor);  // [82]
+                                                                                  /** new API after 3.0 */
+  TensorProto* (*tensor_proto_new_doubles)(
+      const std::string& name, const std::vector<int64_t>& shape,
+      const std::vector<double>& data);  // [83]
+  TensorProto* (*tensor_proto_new_i16)(
+      const std::string& name, const std::vector<int64_t>& shape,
+      const std::vector<int16_t>& data);  // [84
+  TensorProto* (*tensor_proto_new_u16)(
+      const std::string& name, const std::vector<int64_t>& shape,
+      const std::vector<uint16_t>& data);  // [84]
+  TensorProto* (*tensor_proto_new_u32)(
+      const std::string& name, const std::vector<int64_t>& shape,
+      const std::vector<uint32_t>& data);  // [85]
+  TensorProto* (*tensor_proto_new_u8)(const std::string& name,
+                                      const std::vector<int64_t>& shape,
+                                      const std::vector<uint8_t>& data);  // [86]
+  TensorProto* (*tensor_proto_new_u64)(
+      const std::string& name, const std::vector<int64_t>& shape,
+      const std::vector<uint64_t>& data);  // [87]
+  TensorProto* (*tensor_proto_new_fp16)(
+      const std::string& name, const std::vector<int64_t>& shape,
+      const std::vector<int16_t>& data);  // [88]
+  TensorProto* (*tensor_proto_new_bf16)(
+      const std::string& name, const std::vector<int64_t>& shape,
+      const std::vector<int16_t>& data);                                                                                       // [89]
+  const std::filesystem::path& (*get_model_path)(const Graph& graph);                                                          // [90]
+  Model* (*create_empty_model)(const std::filesystem::path& path, const std::vector<std::pair<std::string, int64_t>>& opset);  //[91]
+  void (*graph_set_inputs)(Graph& graph,
+                           gsl::span<const NodeArg* const> inputs);                                                                                   // [92]
+  int (*node_arg_external_location)(const Graph& graph, const NodeArg& node_arg, std::string& file, size_t& offset, size_t& size, size_t& checksum);  // [93]
+  void (*session_option_configuration)(void* mmap, void* session_option, void (*push)(void* mmap, const char* name, const char* value));              // [94]
+  ModelProto* (*model_to_proto)(Model& model);                                                                                                        // [95]
+  DllSafe<std::string> (*model_proto_serialize_as_string)(ModelProto& model_proto);                                                                   // [96]
+  void (*model_proto_delete)(ModelProto* p);                                                                                                          // [97]
+  DllSafe<std::string> (*attr_proto_release_string)(AttributeProto* attr);                                                                            // [98]
+  bool (*is_profiling_enabled)(void* session_options);                                                                                                // [99]                                                                                        // [98]
+  TensorProto* (*tensor_proto_new_i4)(const std::string& name,
+                                      const std::vector<int64_t>& shape,
+                                      const std::vector<int8_t>& data);  // [100]
+  TensorProto* (*tensor_proto_new_u4)(const std::string& name,
+                                      const std::vector<int64_t>& shape,
+                                      const std::vector<uint8_t>& data);                  // [101]
+  void (*graph_remove_initialized_tensor)(Graph& graph, const std::string& tensor_name);  // [102]
 };
 
 #ifndef USE_VITISAI

@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-# This tool is not used directly in bert optimization. It could assist developing the optimization script on the following senarios:
+# This tool is not used directly in bert optimization. It could assist developing the optimization script on the following scenarios:
 # (1) It could simplify graph by removing many sub-graphs related to reshape.
 # (2) It could reduce extra inputs and outputs to fit other tools. The script compare_bert_results.py or bert_perf_test.py requires 3 inputs.
 

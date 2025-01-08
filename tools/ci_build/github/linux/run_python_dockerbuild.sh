@@ -2,20 +2,25 @@
 set -e -x
 BUILD_CONFIG="Release"
 
-while getopts "i:d:x:c:" parameter_Option
+while getopts "i:d:x:c:p:" parameter_Option
 do case "${parameter_Option}"
 in
 i) DOCKER_IMAGE=${OPTARG};;
 d) DEVICE=${OPTARG};;
 x) BUILD_EXTR_PAR=${OPTARG};;
 c) BUILD_CONFIG=${OPTARG};;
-*) echo "Usage: $0 -i <docker_image> -d <GPU|CPU> [-x <extra_build_arg>] [-c <build_config>]"
+p) PYTHON_EXES=${OPTARG};;
+*) echo "Usage: $0 -i <docker_image> -d <GPU|CPU> [-x <extra_build_arg>] [-c <build_config>] [-p <python_exe_path>]"
    exit 1;;
 esac
 done
 
 mkdir -p "${HOME}/.onnx"
 DOCKER_SCRIPT_OPTIONS="-d ${DEVICE} -c ${BUILD_CONFIG}"
+
+if [ "${PYTHON_EXES}" != "" ] ; then
+    DOCKER_SCRIPT_OPTIONS+=" -p ${PYTHON_EXES}"
+fi
 
 if [ "${BUILD_EXTR_PAR}" != "" ] ; then
     DOCKER_SCRIPT_OPTIONS+=" -x ${BUILD_EXTR_PAR}"
@@ -30,6 +35,8 @@ docker run --rm \
     -w /onnxruntime_src \
     -e NIGHTLY_BUILD \
     -e BUILD_BUILDNUMBER \
+    -e ORT_DISABLE_PYTHON_PACKAGE_LOCAL_VERSION \
+    -e DEFAULT_TRAINING_PACKAGE_DEVICE \
     $ADDITIONAL_DOCKER_PARAMETER \
     $DOCKER_IMAGE tools/ci_build/github/linux/build_linux_python_package.sh $DOCKER_SCRIPT_OPTIONS
 

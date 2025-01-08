@@ -542,8 +542,9 @@ TEST(TrainingApiTest, OptimStep) {
   std::string param_name = "fc2.weight";
   // before training, check if optim state is initialized to 0
   onnxruntime::training::api::OptimizerCheckpointState& optimizer_states = state.optimizer_checkpoint_state;
+  std::shared_ptr<onnxruntime::training::api::GroupOptimizerState> group0_states = optimizer_states.group_named_optimizer_states["group0"];
   onnxruntime::training::api::ParameterOptimizerState& param_state =
-      optimizer_states.group_named_optimizer_states["group0"]->param_named_optimizer_states.at(param_name);
+      group0_states->param_named_optimizer_states.at(param_name);
   OrtValue& moment_1 = param_state.at("momentum0");
 
   std::vector<float> param_vec_before_optimizer_step;

@@ -15,5 +15,10 @@ common::Status OutputOptionalWithoutDataHelper(const ONNX_NAMESPACE::TypeProto& 
                                                OpKernelContext* context, int output_index);
 #endif
 
+/// <summary>
+/// Check if the reciprocal of 'scale' is a factor of 'n'.
+///   e.g. a scale of 0.5 is 1/2, the reciprocal is 2, and 2 is a factor of any even number.
+/// </summary>
+bool ReciprocalIsAFactorOfN(int64_t n, float scale);
 }  // namespace utils
 }  // namespace onnxruntime

@@ -14,6 +14,7 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/current_test_name.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/test/test_environment.h"
@@ -35,10 +36,6 @@ using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
 namespace test {
-
-#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-
-#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -65,7 +62,8 @@ TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
   feeds.insert(std::make_pair("X", ml_value_x));
   feeds.insert(std::make_pair("Y", ml_value_y));
 
-  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.ReshapeFlattenTest",
+  RunAndVerifyOutputsWithEP(model_file_name,
+                            CurrentTestName(),
                             std::make_unique<NnapiExecutionProvider>(0),
                             feeds);
 #else
@@ -88,7 +86,8 @@ TEST(NnapiExecutionProviderTest, SigmoidSupportedInputRankTest) {
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
 
-  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.SigmoidSupportedInputRankTest",
+  RunAndVerifyOutputsWithEP(model_file_name,
+                            CurrentTestName(),
                             std::make_unique<NnapiExecutionProvider>(0),
                             feeds, {ExpectedEPNodeAssignment::None} /* params */);
 #else
@@ -115,7 +114,8 @@ TEST(NnapiExecutionProviderTest, DynamicGraphInputTest) {
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
 
-  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.DynamicGraphInputTest",
+  RunAndVerifyOutputsWithEP(model_file_name,
+                            CurrentTestName(),
                             std::make_unique<NnapiExecutionProvider>(0),
                             feeds);
 #else
@@ -144,7 +144,8 @@ TEST(NnapiExecutionProviderTest, InternalUint8SupportTest) {
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
 
-  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.InternalUint8SupportTest",
+  RunAndVerifyOutputsWithEP(model_file_name,
+                            CurrentTestName(),
                             std::make_unique<NnapiExecutionProvider>(0),
                             feeds);
 #else
@@ -208,7 +209,8 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
   feeds.insert(std::make_pair("Y", ml_value_y));
   feeds.insert(std::make_pair("Z", ml_value_z));
 
-  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.FunctionTest",
+  RunAndVerifyOutputsWithEP(model_file_name,
+                            CurrentTestName(),
                             std::make_unique<NnapiExecutionProvider>(0),
                             feeds);
 #else
@@ -273,7 +275,8 @@ static void RunQDQModelTest(
   const auto model_data_span = AsByteSpan(model_data.data(), model_data.size());
 
 #if defined(__ANDROID__)
-  RunAndVerifyOutputsWithEP(model_data_span, "NnapiExecutionProviderTest.TestQDQModel",
+  RunAndVerifyOutputsWithEP(model_data_span,
+                            CurrentTestName(),
                             std::make_unique<NnapiExecutionProvider>(0),
                             helper.feeds_, params);
 #else
@@ -513,6 +516,31 @@ TEST(NnapiExecutionProviderTest, TestGather) {
                   {ExpectedEPNodeAssignment::All});
 }
 
+TEST(NnapiExecutionProviderTest, SharedInitializersDoNotGetSkipped) {
+  // NNAPI EP's Clip op builder will mark the max initializer as skipped but it is also used by the Div op.
+  // Test that the shared initializer is still present in the NNAPI model for the Div op.
+  constexpr auto* model_file_name = ORT_TSTR("testdata/clip_div_shared_initializer.onnx");
+
+#if defined(__ANDROID__)
+  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+
+  std::vector<int64_t> x_dims{3, 2};
+  std::vector<float> x_values(3.0f, 3 * 2);
+  OrtValue ml_value_x;
+  CreateMLValue<float>(cpu_allocator, x_dims, x_values, &ml_value_x);
+
+  NameMLValMap feeds{{"input_0", ml_value_x}};
+
+  RunAndVerifyOutputsWithEP(model_file_name,
+                            CurrentTestName(),
+                            std::make_unique<NnapiExecutionProvider>(0),
+                            feeds,
+                            {ExpectedEPNodeAssignment::All});
+#else
+  TestModelLoad(model_file_name, std::make_unique<NnapiExecutionProvider>(0), ExpectedEPNodeAssignment::All);
+#endif
+}
+
 #endif  // !(ORT_MINIMAL_BUILD)
 
 TEST(NnapiExecutionProviderTest, NNAPIFlagsTest) {
@@ -541,7 +569,8 @@ TEST(NnapiExecutionProviderTest, TestOrtFormatModel) {
   NameMLValMap feeds;
   feeds.insert(std::make_pair("Input3", ml_value));
 
-  RunAndVerifyOutputsWithEP(model_file_name, "NnapiExecutionProviderTest.TestOrtFormatModel",
+  RunAndVerifyOutputsWithEP(model_file_name,
+                            CurrentTestName(),
                             std::make_unique<NnapiExecutionProvider>(0),
                             feeds);
 #else

@@ -20,7 +20,7 @@ namespace Dml
         DmlRuntimeFusedGraphKernel(
             const onnxruntime::OpKernelInfo& kernelInfo,
             std::shared_ptr<const onnxruntime::IndexedSubGraph> indexedSubGraph,
-            const onnxruntime::Path& modelPath,
+            const std::filesystem::path& modelPath,
             std::vector<std::shared_ptr<onnxruntime::Node>>&& subgraphNodes,
             std::vector<const onnxruntime::NodeArg*>&& subgraphInputs,
             std::vector<const onnxruntime::NodeArg*>&& subgraphOutputs,
@@ -62,10 +62,7 @@ namespace Dml
             }
         }
 
-        void TranslateAndCompileGraph(
-            const onnxruntime::OpKernelInfo& kernelInfo,
-            std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>>& initializeResourceRefs,
-            std::vector<DML_BUFFER_BINDING> initInputBindings) const
+        void TranslateAndCompileGraph(const onnxruntime::OpKernelInfo& kernelInfo, std::vector<DML_BUFFER_BINDING> initInputBindings) const
         {
             // Allocate a persistent resource and initialize the operator
             UINT64 persistentResourceSize = m_compiledExecutionPlanOperator->GetBindingProperties().PersistentResourceSize;
@@ -84,16 +81,14 @@ namespace Dml
                 m_compiledExecutionPlanOperator.Get(),
                 m_persistentResourceBinding ? &*m_persistentResourceBinding : nullptr,
                 gsl::make_span(initInputBindings)));
-
-            std::for_each(
-                initializeResourceRefs.begin(),
-                initializeResourceRefs.end(),
-                [&](ComPtr<ID3D12Resource>& resource){ m_winmlProvider->QueueReference(WRAP_GRAPHICS_UNKNOWN(resource).Get()); }
-            );
         }
 
         onnxruntime::Status Compute(onnxruntime::OpKernelContext* kernelContext) const override
         {
+            // Release the references from the previous execution since Flush() isn't called for reusable command lists
+            auto providerImpl = static_cast<ExecutionProviderImpl*>(m_provider.Get());
+            providerImpl->ReleaseCompletedReferences();
+
             ORT_THROW_HR_IF(E_UNEXPECTED, static_cast<ptrdiff_t>(m_subgraphInputs.size()) != kernelContext->InputCount());
 
             bool recompileNeeded = m_compiledExecutionPlanOperator == nullptr;
@@ -127,7 +122,7 @@ namespace Dml
                     {
                         if (initializerIter->second.first->raw_data().length() == inputProto.raw_data().length())
                         {
-                            for (int i = 0; i < inputProto.raw_data().length(); ++i)
+                            for (size_t i = 0; i < inputProto.raw_data().length(); ++i)
                             {
                                 if (initializerIter->second.first->raw_data()[i] != inputProto.raw_data()[i])
                                 {
@@ -173,14 +168,13 @@ namespace Dml
 
                 // Populate input bindings for operator initialization
                 const uint32_t fusedNodeInputCount = gsl::narrow_cast<uint32_t>(m_indexedSubGraph->GetMetaDef()->inputs.size());
-                std::vector<Microsoft::WRL::ComPtr<ID3D12Resource>> initializeResourceRefs; // For lifetime control
                 std::vector<DML_BUFFER_BINDING> initInputBindings(fusedNodeInputCount);
                 std::vector<uint8_t> isInputsUploadedByDmlEP(fusedNodeInputCount);
-                auto providerImpl = static_cast<const ExecutionProvider*>(Info().GetExecutionProvider())->GetImpl();
+                const ExecutionProviderImpl* cProviderImpl = static_cast<const ExecutionProvider*>(Info().GetExecutionProvider())->GetImpl();
 
                 // Convert partitionONNXGraph into DML EP GraphDesc
                 ComPtr<IDMLDevice> device;
-                ORT_THROW_IF_FAILED(providerImpl->GetDmlDevice(device.GetAddressOf()));
+                ORT_THROW_IF_FAILED(cProviderImpl->GetDmlDevice(device.GetAddressOf()));
                 // This map will be used to transfer the initializer to D3D12 system heap memory.
                 // 'serializedDmlGraphDesc' will have constant input as intermediate edges, that's why
                 // we need a mapping between intermediateEdgeIndex and indexedSubGraph's (a given partition)
@@ -198,7 +192,7 @@ namespace Dml
                     isInputsUploadedByDmlEP.size(),
                     m_isInitializerTransferable,
                     m_partitionNodePropsMap,
-                    providerImpl,
+                    cProviderImpl,
                     m_modelPath,
                     m_subgraphNodePointers,
                     m_subgraphInputs,
@@ -226,25 +220,20 @@ namespace Dml
                 m_compiledExecutionPlanOperator = DmlGraphFusionHelper::TryCreateCompiledOperator(
                     graphDesc,
                     *m_indexedSubGraph,
-                    providerImpl,
+                    cProviderImpl,
                     &serializedGraphInputIndexToSubgraphInputIndex,
                     &serializedGraphLargeConstantNameToSubgraphInputIndex);
 
                 // Queue references to objects which must be kept alive until resulting GPU work completes
                 m_winmlProvider->QueueReference(m_compiledExecutionPlanOperator.Get());
 
-                TranslateAndCompileGraph(
-                    Info(),
-                    initializeResourceRefs,
-                    initInputBindings);
+                TranslateAndCompileGraph(Info(), initInputBindings);
 
                 std::vector<DML_BUFFER_BINDING> inputBindings(kernelContext->InputCount());
                 std::vector<DML_BINDING_DESC> inputBindingDescs(kernelContext->InputCount());
 
                 m_reusedCommandLists.clear();
             }
-
-            auto providerImpl = static_cast<ExecutionProviderImpl*>(m_provider.Get());
 
             // When we are capturing a graph, we don't pool the command list and instead transfer it to the execution provider. Captured graph
             // have the same bindings for their entire lifetime.
@@ -259,6 +248,11 @@ namespace Dml
                 reusableCommandList->persistentResource = m_persistentResource;
                 reusableCommandList->persistentResourceAllocatorUnknown = m_persistentResourceAllocatorUnknown;
 
+                // Keep the temporary resource alive since we won't call ExecuteReusableCommandList again, but will merely replay
+                // the graph in the future. Therefore, all executions of the graph will use the same temporary resource that was
+                // allocated here the first time.
+                constexpr bool keepTemporaryResourceAlive = true;
+
                 DmlGraphFusionHelper::ExecuteReusableCommandList(
                     kernelContext,
                     *reusableCommandList,
@@ -270,7 +264,8 @@ namespace Dml
                     m_outputShapes,
                     m_winmlProvider.Get(),
                     m_provider.Get(),
-                    m_persistentResourceAllocatorUnknown.Get());
+                    m_persistentResourceAllocatorUnknown.Get(),
+                    keepTemporaryResourceAlive);
 
                 providerImpl->AppendCapturedGraph(providerImpl->GetCurrentGraphAnnotationId(), std::move(reusableCommandList));
             }
@@ -288,6 +283,10 @@ namespace Dml
                     m_reusedCommandLists.push_front(std::move(reusableCommandList));
                 }
 
+                // We don't need to keep a reference on the temporary resource once we have recorded into the command list, so the
+                // memory can be reused by the allocator
+                constexpr bool keepTemporaryResourceAlive = false;
+
                 DmlGraphFusionHelper::ExecuteReusableCommandList(
                     kernelContext,
                     *m_reusedCommandLists.front(),
@@ -299,7 +298,8 @@ namespace Dml
                     m_outputShapes,
                     m_winmlProvider.Get(),
                     m_provider.Get(),
-                    m_persistentResourceAllocatorUnknown.Get());
+                    m_persistentResourceAllocatorUnknown.Get(),
+                    keepTemporaryResourceAlive);
 
                 m_reusedCommandLists.push_back(std::move(m_reusedCommandLists.front()));
                 m_reusedCommandLists.pop_front();
@@ -314,7 +314,7 @@ namespace Dml
 
         mutable std::optional<DML_BUFFER_BINDING> m_persistentResourceBinding;
         std::shared_ptr<const onnxruntime::IndexedSubGraph> m_indexedSubGraph;
-        const onnxruntime::Path& m_modelPath;
+        const std::filesystem::path& m_modelPath;
 
         std::vector<std::shared_ptr<onnxruntime::Node>> m_subgraphNodes;
         std::vector<const onnxruntime::NodeArg*> m_subgraphInputs;
@@ -341,7 +341,7 @@ namespace Dml
     onnxruntime::OpKernel* CreateRuntimeFusedGraphKernel(
         const onnxruntime::OpKernelInfo& info,
         std::shared_ptr<const onnxruntime::IndexedSubGraph> indexedSubGraph,
-        const onnxruntime::Path& modelPath,
+        const std::filesystem::path& modelPath,
         std::vector<std::shared_ptr<onnxruntime::Node>>&& subgraphNodes,
         std::vector<const onnxruntime::NodeArg*>&& subgraphInputs,
         std::vector<const onnxruntime::NodeArg*>&& subgraphOutputs,

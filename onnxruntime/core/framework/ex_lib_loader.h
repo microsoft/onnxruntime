@@ -20,7 +20,7 @@ class ExLibLoader {
   virtual ~ExLibLoader();
 
  protected:
-  virtual void PreUnloadLibrary(void* /*handle*/){};
+  virtual void PreUnloadLibrary(void* /*handle*/) {};
 
   std::map<std::string, void*> dso_name_data_map_;
 

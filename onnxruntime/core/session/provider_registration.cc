@@ -108,11 +108,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #endif
   } else if (strcmp(provider_name, "OpenVINO") == 0) {
 #if defined(USE_OPENVINO)
-    options->provider_factories.push_back(OpenVINOProviderFactoryCreator::Create(&provider_options));
+    options->provider_factories.push_back(OpenVINOProviderFactoryCreator::Create(&provider_options, &(options->value)));
 #else
     status = create_not_supported_status();
 #endif
-
   } else if (strcmp(provider_name, "SNPE") == 0) {
 #if defined(USE_SNPE)
     options->provider_factories.push_back(SNPEProviderFactoryCreator::Create(provider_options));
@@ -128,12 +127,14 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   } else if (strcmp(provider_name, "WEBNN") == 0) {
 #if defined(USE_WEBNN)
     std::string deviceType = options->value.config_options.GetConfigOrDefault("deviceType", "cpu");
-    std::string numThreads = options->value.config_options.GetConfigOrDefault("numThreads", "0");
-    std::string powerPreference = options->value.config_options.GetConfigOrDefault("powerPreference", "default");
     provider_options["deviceType"] = deviceType;
-    provider_options["numThreads"] = numThreads;
-    provider_options["powerPreference"] = powerPreference;
     options->provider_factories.push_back(WebNNProviderFactoryCreator::Create(provider_options));
+#else
+    status = create_not_supported_status();
+#endif
+  } else if (strcmp(provider_name, "WebGPU") == 0) {
+#if defined(USE_WEBGPU)
+    options->provider_factories.push_back(WebGpuProviderFactoryCreator::Create(options->value.config_options));
 #else
     status = create_not_supported_status();
 #endif
@@ -153,10 +154,22 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
 #else
     status = create_not_supported_status();
 #endif
+  } else if (strcmp(provider_name, "VitisAI") == 0) {
+#ifdef USE_VITISAI
+    status = OrtApis::SessionOptionsAppendExecutionProvider_VitisAI(options, provider_options_keys, provider_options_values, num_keys);
+#else
+    status = create_not_supported_status();
+#endif
+  } else if (strcmp(provider_name, "CoreML") == 0) {
+#if defined(USE_COREML)
+    options->provider_factories.push_back(CoreMLProviderFactoryCreator::Create(provider_options));
+#else
+    status = create_not_supported_status();
+#endif
   } else {
     ORT_UNUSED_PARAMETER(options);
     status = OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "Unknown provider name. Currently supported values are 'OPENVINO', 'SNPE', 'XNNPACK', 'QNN', 'WEBNN' and 'AZURE'");
+                                   "Unknown provider name. Currently supported values are 'OPENVINO', 'SNPE', 'XNNPACK', 'QNN', 'WEBNN' ,'CoreML', and 'AZURE'");
   }
 
   return status;
@@ -199,15 +212,6 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Nnapi,
   ORT_UNUSED_PARAMETER(options);
   ORT_UNUSED_PARAMETER(nnapi_flags);
   return CreateNotEnabledStatus("NNAPI");
-}
-#endif
-
-#ifndef USE_TVM
-ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_Tvm,
-                    _In_ OrtSessionOptions* options, _In_ const char* settings) {
-  ORT_UNUSED_PARAMETER(options);
-  ORT_UNUSED_PARAMETER(settings);
-  return CreateNotEnabledStatus("Tvm");
 }
 #endif
 

@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <string>
+#include <filesystem>
 
 namespace ONNX_NAMESPACE {
 class TensorProto;
@@ -36,7 +37,8 @@ using GetConstantInitializerFn = std::function<const ONNX_NAMESPACE::TensorProto
 bool IsQDQPairSupported(
     const Node& q_node, const Node& dq_node,
     const GetConstantInitializerFn& get_const_initializer,
-    const Path& model_path);
+    const std::filesystem::path& model_path,
+    bool check_op_type = true);
 
 // Check if a DQ -> Q sequence represents a conversion in quantization data type.
 // Example of uint8 to uint16:
@@ -48,7 +50,7 @@ bool IsQDQPairSupported(
 bool IsDQQConversion(
     const Node& dq_node, const Node& q_node,
     const GetConstantInitializerFn& get_const_initializer,
-    const Path& model_path);
+    const std::filesystem::path& model_path);
 
 // Check if DQ is supported in extended level QDQ transformers. It requires:
 // 1. DQ doesn't have optional input.
@@ -62,6 +64,10 @@ bool QOrDQNodeHasConstantScalarScaleAndZeroPoint(
     const Node& q_or_dq_node,
     const GetConstantInitializerFn& get_const_initializer,
     bool& zero_point_exists);
+
+// Checks that the y_scale/x_scale input to the QuantizeLinear/DequantizeLinear node is a positive scalar.
+bool IsQOrDQScalePositiveConstantScalar(const Node& q_or_dq_node, const GetConstantInitializerFn& get_const_initializer,
+                                        const std::filesystem::path& model_path);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 // Check Q node op type, version, and domain.

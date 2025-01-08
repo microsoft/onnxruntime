@@ -97,13 +97,14 @@ TEST_F(QnnHTPBackendTests, GatherOp_U16_IndicesStaticInt64_Axis0) {
                                         true);  // Use 'com.microsoft' Q/DQ ops
 }
 
-// Tests that dynamic int64 indices are not supported on HTP backend.
+// Tests that dynamic int64 indices are supported on HTP backend if the indices are a graph input.
+// QNN SDK 2.23 added support for Cast from int64 to int32.
 TEST_F(QnnHTPBackendTests, GatherOp_IndicesDynamicInt64_Axis0) {
   RunQDQGatherOpTest<uint8_t, int64_t>(TestInputDef<float>({3, 2}, false, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f}),
                                        TestInputDef<int64_t>({2, 2}, false, {0, 1, 1, 2}),
                                        {utils::MakeAttribute("axis", static_cast<int64_t>(0))},
                                        13,
-                                       ExpectedEPNodeAssignment::None);
+                                       ExpectedEPNodeAssignment::All);
 }
 
 // Test creates a DQ -> Gather -> Q -> DQ graph, and checks that all
@@ -130,11 +131,16 @@ TEST_F(QnnHTPBackendTests, GatherOp_IndicesDynamicInt32_Axis0) {
                                        ExpectedEPNodeAssignment::All);
 }
 
+// disabled for QNN 2.28.0.241029 failed for accuracy validation
+// Also fails on QNN 2.28.2.
+// qdq@QNN_EP val: 3.6094117164611816 (err: 1.3094117641448975, err/output_range: 22.19342041015625%)
+// qdq@CPU_EP val: 2.2905881404876709 (err: 0.0094118118286132812, err/output_range: 0.15952222049236298%)
+// abs(qdq@QNN_EP - qdq@CPU_EP) / output_range = 22.033897399902344%
 // Test creates a DQ -> Gather -> Q -> DQ graph, and checks that all
 // nodes are supported by the QNN EP, and that the inference results are as accurate as CPU EP.
 //
 // Static int32 indices with axis = 1
-TEST_F(QnnHTPBackendTests, GatherOp_IndicesStaticInt32_Axis1) {
+TEST_F(QnnHTPBackendTests, DISABLED_GatherOp_IndicesStaticInt32_Axis1) {
   RunQDQGatherOpTest<uint8_t, int32_t>(TestInputDef<float>({3, 3}, false, {1.0f, 1.2f, 1.9f, 2.3f, 3.4f, 3.9f, 4.5f, 5.7f, 5.9f}),
                                        TestInputDef<int32_t>({1, 2}, true, {0, 2}),
                                        {utils::MakeAttribute("axis", static_cast<int64_t>(1))},

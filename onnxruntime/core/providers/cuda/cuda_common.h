@@ -16,7 +16,7 @@
 #include "core/providers/cuda/cuda_pch.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "core/providers/cuda/shared_inc/fast_divmod.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 namespace onnxruntime {
 namespace cuda {

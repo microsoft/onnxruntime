@@ -11,6 +11,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "core/framework/data_transfer.h"
+#include "core/framework/external_data_loader.h"
 #include "core/framework/tensor.h"
 
 namespace onnxruntime {
@@ -85,6 +86,19 @@ class IExecutionProvider {
    * return a nullptr.
    */
   virtual std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const {
+    return nullptr;
+  }
+
+  /**
+   * Returns an external data loader object that implements methods to load data from external sources.
+   *
+   * By default, framework will handle external data loading by loading the data into CPU memory and then copying
+   * it to the target device if required. So in most cases, it's not necessary to override this method. Specifically,
+   * in WebAssembly build, because the memory is limited and Web platform supports loading data from external sources
+   * directly into GPU memory, this method is overridden to provide a custom external data loader to avoid the extra
+   * CPU memory usage.
+   */
+  virtual std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader() const {
     return nullptr;
   }
 
@@ -201,6 +215,14 @@ class IExecutionProvider {
   }
 
   /**
+     Called when InferenceSession::SetEpDynamicOptions is called
+  */
+  virtual common::Status SetEpDynamicOptions(gsl::span<const char* const> /*keys*/,
+                                             gsl::span<const char* const> /*values*/) {
+    return Status::OK();
+  }
+
+  /**
      Indicate whether the graph capturing mode (e.g., cuda graph) is enabled for
      the provider.
    */
@@ -231,7 +253,7 @@ class IExecutionProvider {
     const std::reference_wrapper<GraphViewer> filtered_graph;
   };
 
-  // Fusion approach that is suppported
+  // Fusion approach that is supported
   // !!! The "Function" FusionStyle is deprecated.
   // !!! If your EP is using this fusion style, please migrate it to "FilteredGraphViewer" style.
   enum class FusionStyle {

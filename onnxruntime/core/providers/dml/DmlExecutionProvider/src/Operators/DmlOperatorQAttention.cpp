@@ -89,7 +89,7 @@ public:
             mhaStackedQueryKeyValueIndex,
             mhaBiasIndex,
             mhaMaskIndex,
-            mhaRelativePositionBiasIndex,
+            mhaAttentionBiasIndex,
             mhaPastKeyIndex,
             mhaPastValueIndex,
             mhaInputCount,
@@ -418,7 +418,7 @@ public:
         mhaOperatorDesc.RelativePositionBiasTensor = nullptr;
         mhaOperatorDesc.OutputTensor = &outputDescs[outputIndex];
         mhaOperatorDesc.Scale = kernelCreationContext.GetOptionalAttribute<float>(AttrName::Scale, gsl::narrow_cast<float>(1.0f / std::sqrt(headSize)));
-        // Set MaskFilterValue to lowest float for Causal Mask 
+        // Set MaskFilterValue to lowest float for Causal Mask
         mhaOperatorDesc.MaskFilterValue = unidirectional ? std::numeric_limits<float>::lowest() :
             kernelCreationContext.GetOptionalAttribute<float>(AttrName::MaskFilterValue, -10'000.0f);
         mhaOperatorDesc.HeadCount = numHeads;

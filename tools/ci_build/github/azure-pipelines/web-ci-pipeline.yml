@@ -1,4 +1,5 @@
 ##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
 trigger:
   branches:
     include:
@@ -35,7 +36,7 @@ parameters:
   default: 'nightly (@dev)'
 
 variables:
-  # pipeline should define the following varaibles
+  # pipeline should define the following variables
   #   ExtraBuildArgs
   #   VersionSuffix
 
@@ -60,6 +61,6 @@ stages:
     UseWebPoolName: true
     RunWebGpuTestsForDebugBuild: false
     RunWebGpuTestsForReleaseBuild: true
-    WebGpuPoolName: 'onnxruntime-Win2022-webgpu-A10'
-    WebCpuPoolName: 'onnxruntime-Win-CPU-2022-web'
+    WebGpuPoolName: 'onnxruntime-Win2022-VS2022-webgpu-A10'
+    WebCpuPoolName: 'onnxruntime-Win2022-VS2022-webgpu-A10'
     WithCache: false

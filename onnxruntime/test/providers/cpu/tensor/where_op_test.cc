@@ -3,7 +3,7 @@
 
 #include "gtest/gtest.h"
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #include "test/providers/provider_test_utils.h"
 

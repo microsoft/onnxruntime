@@ -72,9 +72,6 @@ __global__ void Dequantize4BitsKernelReOrder(
   if (group_id >= total_groups) {
     return;
   }
-  // T __shared__ zero_points_after_reorder[];//K
-  // T __shared__ scales_after_reorder[];     // K
-  // const int num_r_per_thread = k / 256;
 
   const int zero_point_shape_x = (groups_per_K + 1) / 2;
   const int scales_shape_x = groups_per_K;
@@ -361,7 +358,6 @@ template <
 static void dequantize(ElementT* dst, const uint8_t* weights, const ElementT* scales,
                         const uint8_t* zero_points, int32_t rows, int32_t columns,
                         cudaStream_t stream) {
-  using QuantBlk = typename BlkQuantTraits<ElementT, block_size, qbits, Columnwise>::QuantBlk;
   using ThreadBlk = typename BlkQuantTraits<ElementT, block_size, qbits, Columnwise>::ThreadBlk;
 
   // Thread partitioning

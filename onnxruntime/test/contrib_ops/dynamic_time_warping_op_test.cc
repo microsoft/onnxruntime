@@ -11,12 +11,12 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
 
+TEST(DynamicTimeWarping, simple) {
 #ifdef USE_CUDA
-
-TEST(DynamicTimeWarp, simple) {
   if (NeedSkipIfCudaArchLowerThan(530)) {
     return;
   }
+#endif
 
   std::vector<float> X = {
       3.0f,
@@ -113,11 +113,12 @@ TEST(DynamicTimeWarp, simple) {
   tester.AddOutput<int32_t>("output", {2, 12}, Y);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
+#endif
+  execution_providers.push_back(DefaultCpuExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
-
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime

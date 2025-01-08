@@ -7,7 +7,7 @@
 #include "test_pool2d.h"
 
 //
-// Short Execute() test helper to register each test seperately by all parameters.
+// Short Execute() test helper to register each test separately by all parameters.
 //
 template <typename Pool2DTester>
 class Pooling2dShortExecuteTest : public MlasTestFixture<Pool2DTester> {

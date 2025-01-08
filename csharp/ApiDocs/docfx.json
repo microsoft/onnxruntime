@@ -12,11 +12,13 @@
       "dest": "api",
       "disableGitFeatures": false,
       "disableDefaultFilter": false,
+      "noRestore": true,
       "properties": {
-        "AllowUnsafeBlocks": true,
-        "TargetFramework" : "net6.0",
-        "Nullable" : "enable",
+        "AllowUnsafeBlocks": "true",
+        "TargetFramework": "net8.0",
+        "Nullable": "enable",
         "LangVersion": "8.0",
+        "IncludeMobileTargets": "false",
         "EnableTrainingApis": "true"
       },
       "filter": "filterConfig.yml"

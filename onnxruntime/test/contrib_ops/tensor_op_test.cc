@@ -205,12 +205,12 @@ TEST(MVNContribOpTest, MeanVarianceNormalizationCPUTest_Version1_TO_8) {
   MeanVarianceNormalizationPerChannel(false, true);
 }
 
-#ifdef USE_CUDA
-
 TEST(UnfoldTensorOpTest, LastDim) {
+#ifdef USE_CUDA
   if (NeedSkipIfCudaArchLowerThan(530)) {
     return;
   }
+#endif
 
   std::vector<float> X = {
       1.0f, 2.0f, 3.0f, 4.0f,
@@ -229,7 +229,10 @@ TEST(UnfoldTensorOpTest, LastDim) {
   tester.AddOutput<float>("output", {3, 2, 3}, output);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
+#endif
+  execution_providers.push_back(DefaultCpuExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 
@@ -238,13 +241,13 @@ TEST(UnfoldTensorOpTest, NormalDim) {
     return;
   }
 
-  std::vector<int16_t> X = {
+  std::vector<int64_t> X = {
       1, 2, 3, 4, 2, 2, 3, 4, 3, 2, 3, 4,
       4, 6, 7, 8, 5, 6, 7, 8, 6, 6, 7, 8,
       6, 7, 8, 9, 7, 7, 8, 9, 8, 7, 8, 9,
       9, 7, 8, 9, 10, 7, 8, 9, 11, 7, 8, 9};
 
-  std::vector<int16_t> output = {
+  std::vector<int64_t> output = {
       1, 2, 3,
       2, 2, 2,
       3, 3, 3,
@@ -269,15 +272,16 @@ TEST(UnfoldTensorOpTest, NormalDim) {
   tester.AddAttribute<int64_t>("dim", 1LL);
   tester.AddAttribute<int64_t>("size", 3LL);
   tester.AddAttribute<int64_t>("step", 2LL);
-  tester.AddInput<int16_t>("input", {2, 6, 4}, X);
-  tester.AddOutput<int16_t>("output", {2, 2, 4, 3}, output);
+  tester.AddInput<int64_t>("input", {2, 6, 4}, X);
+  tester.AddOutput<int64_t>("output", {2, 2, 4, 3}, output);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
   execution_providers.push_back(DefaultCudaExecutionProvider());
+#endif
+  execution_providers.push_back(DefaultCpuExecutionProvider());
   tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
-
-#endif
 
 }  // namespace test
 }  // namespace onnxruntime

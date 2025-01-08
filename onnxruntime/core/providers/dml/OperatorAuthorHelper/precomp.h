@@ -17,4 +17,4 @@
 #include <wil/wrl.h>
 #include <wil/result.h>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>

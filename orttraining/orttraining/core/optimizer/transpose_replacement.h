@@ -13,10 +13,10 @@ namespace onnxruntime {
 
 Transpose is equivalent to a Reshape if:
  empty dimensions (which dim_value=1) can change place, not empty dimensions must be in
- the same order in the permuted tenosr.
+ the same order in the permuted tensor.
  Example: Shape=(1,1,1024,4096) -> perm=(2,0,3,1).
 
-This Rewrite rule replaces Transpose which meets the requirments with Reshape.
+This Rewrite rule replaces Transpose which meets the requirements with Reshape.
 Because Transpose need memory copy while Reshape needn't, this replacement can save overhead for memory copy.
 
 It is attempted to be triggered only on nodes with op type "Transpose".

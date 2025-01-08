@@ -26,9 +26,28 @@
 #include "test/test_environment.h"
 
 std::unique_ptr<Ort::Env> ort_env;
-void ortenv_setup() {
+
+// ortenv_setup() and ortenv_teardown() are used by onnxruntime/test/xctest/xcgtest.mm so can't be file local
+extern "C" void ortenv_setup() {
   OrtThreadingOptions tpo;
-  ort_env.reset(new Ort::Env(&tpo, ORT_LOGGING_LEVEL_WARNING, "Default"));
+
+  // allow verbose logging to be enabled by setting this environment variable to a numeric log level
+  constexpr auto kLogLevelEnvironmentVariableName = "ORT_UNIT_TEST_MAIN_LOG_LEVEL";
+  OrtLoggingLevel log_level = ORT_LOGGING_LEVEL_WARNING;
+  if (auto log_level_override = onnxruntime::ParseEnvironmentVariable<int>(kLogLevelEnvironmentVariableName);
+      log_level_override.has_value()) {
+    *log_level_override = std::clamp(*log_level_override,
+                                     static_cast<int>(ORT_LOGGING_LEVEL_VERBOSE),
+                                     static_cast<int>(ORT_LOGGING_LEVEL_FATAL));
+    std::cout << "Setting log level to " << *log_level_override << "\n";
+    log_level = static_cast<OrtLoggingLevel>(*log_level_override);
+  }
+
+  ort_env.reset(new Ort::Env(&tpo, log_level, "Default"));
+}
+
+extern "C" void ortenv_teardown() {
+  ort_env.reset();
 }
 
 #ifdef USE_TENSORRT
@@ -36,6 +55,7 @@ void ortenv_setup() {
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4100)  // Ignore warning C4100: unreferenced format parameter.
+#pragma warning(disable : 4996)  // Ignore warning C4996: 'nvinfer1::IPluginV2' was declared deprecated
 #endif
 
 // TensorRT will load/unload libraries as builder objects are created and torn down. This will happen for
@@ -75,17 +95,6 @@ int TEST_MAIN(int argc, char** argv) {
     ortenv_setup();
     ::testing::InitGoogleTest(&argc, argv);
 
-    // allow verbose logging to be enabled by setting this environment variable to a numeric log level
-    constexpr auto kLogLevelEnvironmentVariableName = "ORT_UNIT_TEST_MAIN_LOG_LEVEL";
-    if (auto log_level = onnxruntime::ParseEnvironmentVariable<int>(kLogLevelEnvironmentVariableName);
-        log_level.has_value()) {
-      *log_level = std::clamp(*log_level,
-                              static_cast<int>(ORT_LOGGING_LEVEL_VERBOSE),
-                              static_cast<int>(ORT_LOGGING_LEVEL_FATAL));
-      std::cout << "Setting log level to " << *log_level << "\n";
-      ort_env->UpdateEnvWithCustomLogLevel(static_cast<OrtLoggingLevel>(*log_level));
-    }
-
     status = RUN_ALL_TESTS();
   }
   ORT_CATCH(const std::exception& ex) {
@@ -96,7 +105,7 @@ int TEST_MAIN(int argc, char** argv) {
   }
 
   // TODO: Fix the C API issue
-  ort_env.reset();  // If we don't do this, it will crash
+  ortenv_teardown();  // If we don't do this, it will crash
 
 #ifndef USE_ONNXRUNTIME_DLL
   // make memory leak checker happy

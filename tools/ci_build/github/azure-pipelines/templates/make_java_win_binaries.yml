@@ -3,16 +3,28 @@ parameters:
     type: string
   - name: java_artifact_id
     type: string
+  - name: buildOnly
+    type: boolean
 
 steps:
+    - task: CmdLine@2
+      displayName: 'Gradle cmakeCheck'
+      inputs:
+        ${{ if eq(parameters.buildOnly, true) }}:
+          script: |
+            call gradlew.bat testClasses -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
+            call gradlew.bat cmakeCheck -x test -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo --warning-mode all
+          workingDirectory: $(Build.SourcesDirectory)\java
+        ${{ else }}:
+          script: |
+            call gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo --warning-mode all
+          workingDirectory: $(Build.SourcesDirectory)\java
+
     - task: CmdLine@2
       displayName: 'Add symbols and notices to Java'
       inputs:
         script: |
           @echo on
-          cd $(Build.SourcesDirectory)\java
-          call $(Build.SourcesDirectory)\java\gradlew.bat cmakeCheck -DcmakeBuildDir=$(Build.BinariesDirectory)\RelWithDebInfo
-          if %errorlevel% neq 0 exit /b %errorlevel%
           cd $(Build.BinariesDirectory)\RelWithDebInfo
           set NATIVE_FOLDER=$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}\stage\ai\onnxruntime\native\win-x64
           mkdir %NATIVE_FOLDER%

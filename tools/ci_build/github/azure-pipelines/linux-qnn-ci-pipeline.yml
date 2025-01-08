@@ -1,4 +1,5 @@
 ##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
 trigger:
   branches:
     include:
@@ -32,11 +33,11 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: 2.21.0.240401
+  default: 2.28.2.241116
 
 jobs:
   - job: Build_QNN_EP
-    pool: onnxruntime-qnn-ubuntu-2004-cpu
+    pool: onnxruntime-qnn-ubuntu-2204-cpu
     timeoutInMinutes: 60
     workspace:
       clean: all
@@ -62,22 +63,24 @@ jobs:
           python3 tools/ci_build/build.py \
             --build_dir build \
             --config Release \
-            --parallel --use_binskim_compliant_compile_flags \
+            --use_binskim_compliant_compile_flags \
+            --build_java \
             --use_qnn \
             --qnn_home $(QnnSDKRootDir) \
             --cmake_generator=Ninja \
-            --skip_tests
+            --update --build --parallel
         displayName: Build QNN EP
 
       - script: |
           python3 tools/ci_build/build.py \
             --build_dir build \
-            --config Release --use_binskim_compliant_compile_flags \
-            --test \
+            --config Release \
+            --use_binskim_compliant_compile_flags \
+            --build_java \
+            --use_qnn \
             --qnn_home $(QnnSDKRootDir) \
             --cmake_generator=Ninja \
-            --skip_submodule_sync \
-            --ctest_path ""
+            --test
         displayName: Run unit tests
 
       - task: CmdLine@2

@@ -5,8 +5,11 @@
 
 #include <cuda_fp16.h>
 #include <cublas_v2.h>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
+#include <iostream>
+#include <mutex>
 #include "core/framework/allocator.h"
+#include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 
 namespace onnxruntime {
@@ -15,13 +18,18 @@ namespace cuda {
 
 constexpr int kCumulatedSequenceLengthCacheMaxBatchSize = 128;
 
+// A cache for cumulated sequence length. It will be initialized in the first request, then become read-only after that.
 struct CumulatedSequenceLengthCache {
   onnxruntime::IAllocatorUniquePtr<void> buffer;
   int32_t max_batch_size;
   int32_t sequence_length;
 
-  CumulatedSequenceLengthCache() : max_batch_size(0), sequence_length(0) {}
-  void Initialize(int32_t sequence_length, cudaStream_t stream);
+  CumulatedSequenceLengthCache() : max_batch_size(kCumulatedSequenceLengthCacheMaxBatchSize), sequence_length(0) {}
+
+  const int32_t* TryGet(int batch_size, int32_t sequence_length, cudaStream_t stream);
+
+  // Use this flag to guard the initializaton only once in multi-threading.
+  mutable std::once_flag init_once_flag_;
 };
 
 size_t
@@ -45,8 +53,11 @@ size_t GetAttentionWorkspaceSize(
     size_t total_sequence_length,
     void* fused_runner,
     bool use_flash_attention,
+    bool use_lean_attention,
     bool use_fused_cross_attention,
-    bool use_memory_efficient_attention);
+    bool use_memory_efficient_attention,
+    bool use_cudnn_flash_attention,
+    bool no_qkv_workspace);
 
 template <typename T>
 struct AttentionData {
@@ -61,12 +72,10 @@ struct AttentionData {
   const T* past = nullptr;
   const T* past_key = nullptr;
   const T* past_value = nullptr;
-  const T* relative_position_bias = nullptr;
+  const T* attention_bias = nullptr;
 
   bool has_qkv_workspace = false;
   T* workspace = nullptr;
-  T* temp_k_workspace = nullptr;
-  T* temp_v_workspace = nullptr;
 
   T* output = nullptr;
   T* present = nullptr;
@@ -79,21 +88,65 @@ struct AttentionData {
   bool use_flash_attention = false;
   bool use_memory_efficient_attention = false;
 
-  mutable CumulatedSequenceLengthCache* cumulated_sequence_length_q_cache = nullptr;
-  mutable CumulatedSequenceLengthCache* cumulated_sequence_length_kv_cache = nullptr;
+  const int32_t* cumulated_sequence_length_q_cache = nullptr;
+  const int32_t* cumulated_sequence_length_kv_cache = nullptr;
 
   // Intermediate data
   T* q = nullptr;
   T* k = nullptr;
   T* v = nullptr;
   T* scratch = nullptr;
-  AttentionQkvFormat qkv_format = AttentionQkvFormat::Q_K_V_BSNH;
+  AttentionQkvFormat qkv_format = AttentionQkvFormat::UNKNOWN;
 
   // Flash buffers
   T* softmax_lse = nullptr;
   T* softmax_lse_accum = nullptr;
   T* out_accum = nullptr;
+
+  // Flash Atttention and Lean Attention
+  int num_splits;
+
+  // Lean Attention
+  bool use_lean_attention = false;
+#if USE_LEAN_ATTENTION
+  int grid_dim_z = 0;
+  int max_tiles_per_tb = 0;
+  int high_load_tbs = 0;
+  int tiles_per_head = 0;
+  int* lean_sync_flag = nullptr;
+#endif
+
+  // For Debugging
+  size_t workspace_bytes = 0;
+  bool allow_debug_info = false;
+
+  // For MultiHeadAttention only.
+  AttentionKernelType kernel_type = AttentionKernelType::AttentionKernel_Default;
+  AllocatorPtr allocator = nullptr;
+  bool IsUnfused() const {
+    return kernel_type == AttentionKernelType::AttentionKernel_Unfused;
+  }
+
+  void PrintDebugInfo() const {
+    std::cout << "flash=" << use_flash_attention
+              << ", lean=" << use_lean_attention
+              << ", efficient=" << use_memory_efficient_attention
+              << ", fused_runner=" << (fused_runner != nullptr)
+              << ", fused_cross=" << (fused_cross_attention_kernel != nullptr)
+              << ", bias=" << (bias != nullptr)
+              << ", attn_bias=" << (attention_bias != nullptr)
+              << ", mask_dims=" << mask_index_dims.size()
+              << ", has_qkv_workspace=" << has_qkv_workspace
+              << ", workspace=" << workspace_bytes
+              << ", past=" << (past != nullptr ? 1 : (past_key != nullptr ? 2 : 0))
+              << ", present=" << (present != nullptr ? 1 : (present_key != nullptr ? 2 : 0))
+              << std::endl;
+  }
 };
+
+// Return true if it does not need qkv workspace, false otherwise.
+template <typename T>
+bool NoQkvWorkspace(contrib::AttentionParameters& parameters, AttentionData<T>& data);
 
 template <typename T>
 Status PrepareQkv(contrib::AttentionParameters& parameters,
@@ -105,6 +158,7 @@ template <typename T>
 Status QkvToContext(
     const cudaDeviceProp& device_prop,
     cublasHandle_t& cublas,
+    cudnnHandle_t& cudnn,
     Stream* stream,
     contrib::AttentionParameters& parameters,
     AttentionData<T>& data);
@@ -128,6 +182,9 @@ Status LaunchTransQkv(cudaStream_t stream, const int matrix_num,
                       const int sequence_length, const int batch_size, const int head_size, const int num_heads,
                       const int max_threads_per_block, const bool reversed_bs, const half* input, half* output,
                       int total_matrix_count = -1);
+
+Status Transpose_BSNH_to_BNSH(const int batch_size, const int sequence_length, const int num_heads, const int head_size,
+                              const float* input, float* output, cudaStream_t stream, const int max_threads_per_block);
 
 Status Transpose_BSNH_to_BNSH(const int batch_size, const int sequence_length, const int num_heads, const int head_size,
                               const half* input, half* output, cudaStream_t stream, const int max_threads_per_block);
@@ -158,7 +215,7 @@ Status LaunchConcatTensorToTensor(cudaStream_t stream,
 
 template <typename T>
 Status ConcatPastToPresent(int batch_size, int num_heads, int qk_head_size, int v_head_size,
-                           int sequence_length, int total_sequence_length, bool pass_past_in_kv,
+                           int sequence_length, int total_sequence_length,
                            cudaStream_t stream,
                            int max_threads_per_block,
                            AttentionData<T>& data);
@@ -175,6 +232,13 @@ Status LaunchAddBiasTransAppendKvToPresent(cudaStream_t stream,
                                            const T* biases,
                                            const T* qkv_buffer,
                                            T* present);
+
+template <typename T>
+Status LaunchStridedCopy(
+    cudaStream_t stream,
+    const T* in, int4 in_shape, longlong4 in_strides, const int* in_seqlens_offset,  // coord (b,n,s,h)
+    T* out, longlong4 out_strides, const int* out_seqlens_offset,                    // coord (b,n,s,h)
+    int max_threads_per_block);
 
 template <typename T>
 Status LaunchStridedCopy(cudaStream_t stream,

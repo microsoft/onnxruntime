@@ -58,10 +58,10 @@ void COMPUTESOFTMAXINPLACE(benchmark::State& state) {
   std::copy(data.begin(), data.end(), input);  // Copy the data to the aligned memory
 
   // warming up run
-  MlasComputeSoftmax(input, output, N, D, false, tp.get());
+  MlasComputeSoftmax(input, output, N, D, false, false, tp.get());
 
   for (auto _ : state) {
-    MlasComputeSoftmax(input, output, N, D, false, tp.get());
+    MlasComputeSoftmax(input, output, N, D, false, false, tp.get());
   }
 
   free(ptr.underlying_buffer);

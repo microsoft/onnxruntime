@@ -29,7 +29,7 @@ class ArgBase {
   ArgBase(OrtKernelContext* ctx,
           size_t indice,
           bool is_input) : ctx_(ctx), indice_(indice), is_input_(is_input) {}
-  virtual ~ArgBase(){};
+  virtual ~ArgBase() {};
 
  protected:
   struct KernelContext ctx_;
@@ -403,7 +403,7 @@ using Variadic = TensorArray;
 Note:
 OrtLiteCustomOp inherits from OrtCustomOp to bridge tween a custom func/struct and ort core.
 The lifetime of an OrtLiteCustomOp instance is managed by customer code, not ort, so:
-1. DO NOT cast OrtLiteCustomOp to OrtCustomOp and release since there is no virtual destructor in the hierachy.
+1. DO NOT cast OrtLiteCustomOp to OrtCustomOp and release since there is no virtual destructor in the hierarchy.
 2. OrtLiteCustomFunc and OrtLiteCustomStruct, as two sub-structs, can be released in form of OrtLiteCustomOp since all members are kept in the OrtLiteCustomOp,
    hence memory could still be recycled properly.
 Further, OrtCustomOp is a c struct bearing no v-table, so offspring structs are by design to be of zero virtual functions to maintain cast safety.

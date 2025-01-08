@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {InferenceSession} from 'onnxruntime-common';
+import { InferenceSession } from 'onnxruntime-common';
 
-import {getInstance} from './wasm-factory';
-import {allocWasmString, checkLastError, iterateExtraOptions} from './wasm-utils';
+import { getInstance } from './wasm-factory';
+import { allocWasmString, checkLastError, iterateExtraOptions } from './wasm-utils';
 
 export const setRunOptions = (options: InferenceSession.RunOptions): [number, number[]] => {
   const wasm = getInstance();
@@ -15,15 +15,18 @@ export const setRunOptions = (options: InferenceSession.RunOptions): [number, nu
 
   try {
     if (options?.logSeverityLevel === undefined) {
-      runOptions.logSeverityLevel = 2;  // Default to warning
+      runOptions.logSeverityLevel = 2; // Default to warning
     } else if (
-        typeof options.logSeverityLevel !== 'number' || !Number.isInteger(options.logSeverityLevel) ||
-        options.logSeverityLevel < 0 || options.logSeverityLevel > 4) {
+      typeof options.logSeverityLevel !== 'number' ||
+      !Number.isInteger(options.logSeverityLevel) ||
+      options.logSeverityLevel < 0 ||
+      options.logSeverityLevel > 4
+    ) {
       throw new Error(`log serverity level is not valid: ${options.logSeverityLevel}`);
     }
 
     if (options?.logVerbosityLevel === undefined) {
-      runOptions.logVerbosityLevel = 0;  // Default to 0
+      runOptions.logVerbosityLevel = 0; // Default to 0
     } else if (typeof options.logVerbosityLevel !== 'number' || !Number.isInteger(options.logVerbosityLevel)) {
       throw new Error(`log verbosity level is not valid: ${options.logVerbosityLevel}`);
     }
@@ -38,9 +41,13 @@ export const setRunOptions = (options: InferenceSession.RunOptions): [number, nu
     }
 
     runOptionsHandle = wasm._OrtCreateRunOptions(
-        runOptions.logSeverityLevel!, runOptions.logVerbosityLevel!, !!runOptions.terminate!, tagDataOffset);
+      runOptions.logSeverityLevel!,
+      runOptions.logVerbosityLevel!,
+      !!runOptions.terminate!,
+      tagDataOffset,
+    );
     if (runOptionsHandle === 0) {
-      checkLastError('Can\'t create run options.');
+      checkLastError("Can't create run options.");
     }
 
     if (options?.extra !== undefined) {
@@ -59,7 +66,7 @@ export const setRunOptions = (options: InferenceSession.RunOptions): [number, nu
     if (runOptionsHandle !== 0) {
       wasm._OrtReleaseRunOptions(runOptionsHandle);
     }
-    allocs.forEach(alloc => wasm._free(alloc));
+    allocs.forEach((alloc) => wasm._free(alloc));
     throw e;
   }
 };

@@ -5,7 +5,7 @@
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "contrib_ops/cuda/transformers/sampling.h"
 #include "contrib_ops/cuda/transformers/generation_device_helper.h"
-#include "contrib_ops/cuda/transformers/dump_cuda_tensor.h"
+#include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -28,7 +28,7 @@ ONNX_OPERATOR_KERNEL_EX(
                               DataTypeImpl::GetTensorType<MLFloat16>()}),
     Sampling);
 
-transformers::CudaTensorConsoleDumper g_cuda_dumper_sampling;
+CudaTensorConsoleDumper g_cuda_dumper_sampling;
 
 Sampling::Sampling(const OpKernelInfo& info)
     : onnxruntime::contrib::transformers::Sampling(info) {

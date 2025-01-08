@@ -17,14 +17,14 @@
 
 #include "core/framework/endian.h"
 
+#include "core/util/force_inline.h"
+
 //-----------------------------------------------------------------------------
 // Platform-specific functions and macros
 
 // Microsoft Visual Studio
 
 #if defined(_MSC_VER)
-
-#define FORCE_INLINE __forceinline
 
 #include <stdlib.h>
 
@@ -36,8 +36,6 @@
 // Other compilers
 
 #else  // defined(_MSC_VER)
-
-#define FORCE_INLINE inline __attribute__((always_inline))
 
 inline uint32_t rotl32(uint32_t x, int8_t r) {
   return (x << r) | (x >> (32 - r));
@@ -61,7 +59,7 @@ inline uint64_t rotl64(uint64_t x, int8_t r) {
 //
 // Changes to support big-endian from https://github.com/explosion/murmurhash/pull/27/
 // were manually applied to original murmurhash3 source code.
-FORCE_INLINE uint32_t getblock32(const uint32_t* p, int i) {
+ORT_FORCEINLINE uint32_t getblock32(const uint32_t* p, int i) {
   if constexpr (onnxruntime::endian::native == onnxruntime::endian::little) {
     return p[i];
   } else {
@@ -73,7 +71,7 @@ FORCE_INLINE uint32_t getblock32(const uint32_t* p, int i) {
   }
 }
 
-FORCE_INLINE uint64_t getblock64(const uint64_t* p, int i) {
+ORT_FORCEINLINE uint64_t getblock64(const uint64_t* p, int i) {
   if constexpr (onnxruntime::endian::native == onnxruntime::endian::little) {
     return p[i];
   } else {
@@ -92,7 +90,7 @@ FORCE_INLINE uint64_t getblock64(const uint64_t* p, int i) {
 //-----------------------------------------------------------------------------
 // Finalization mix - force all bits of a hash block to avalanche
 
-FORCE_INLINE constexpr uint32_t fmix32(uint32_t h) {
+ORT_FORCEINLINE constexpr uint32_t fmix32(uint32_t h) {
   h ^= h >> 16;
   h *= 0x85ebca6b;
   h ^= h >> 13;
@@ -104,7 +102,7 @@ FORCE_INLINE constexpr uint32_t fmix32(uint32_t h) {
 
 //----------
 
-FORCE_INLINE constexpr uint64_t fmix64(uint64_t k) {
+ORT_FORCEINLINE constexpr uint64_t fmix64(uint64_t k) {
   k ^= k >> 33;
   k *= BIG_CONSTANT(0xff51afd7ed558ccd);
   k ^= k >> 33;

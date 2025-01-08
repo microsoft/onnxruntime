@@ -7,6 +7,7 @@
 
 // It is safe to include the below header even if SHARED_PROVIDER macro is enabled
 // as it doesn't include any pb headers.
+#include "core/framework/buffer_deleter.h"
 #include "core/framework/prepacked_weights_container.h"
 
 #ifndef SHARED_PROVIDER
@@ -25,7 +26,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/onnx_protobuf.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 namespace onnxruntime {
 class OpKernelContext;
 }
@@ -94,7 +95,7 @@ class OpKernel {
   }
 
   // Override this function to return a list of attributes the session can safely remove
-  // after it is intialized and saved. This option is useful to reduce memory usage
+  // after it is initialized and saved. This option is useful to reduce memory usage
   // when the kernel does not reuse the operator attributes but copies them.
   // All attributes returned by this method will be removed by method
   // PruneRemovableAttributes of they exists.

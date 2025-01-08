@@ -73,7 +73,7 @@ void BaseTester::AddInitializers(onnxruntime::Graph& graph) {
       }
     } else {
       auto buffer_size = tensor.DataType()->Size() * shape.Size();
-      tensor_proto.set_raw_data(tensor.DataRaw(), buffer_size);
+      utils::SetRawDataInTensorProto(tensor_proto, tensor.DataRaw(), buffer_size);
     }
 
     // 4. name
@@ -420,6 +420,7 @@ bool SetEpsForAllNodes(Graph& graph,
       continue;
 
     bool found = false;
+    const auto& logger = DefaultLoggingManager().DefaultLogger();
 
     for (const auto& ep : execution_providers) {
       auto provider_type = ep->Type();
@@ -428,6 +429,7 @@ bool SetEpsForAllNodes(Graph& graph,
       if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
           provider_type == onnxruntime::kTensorrtExecutionProvider ||
           provider_type == onnxruntime::kNnapiExecutionProvider ||
+          provider_type == onnxruntime::kVSINPUExecutionProvider ||
           provider_type == onnxruntime::kCoreMLExecutionProvider ||
           provider_type == onnxruntime::kDnnlExecutionProvider ||
           provider_type == onnxruntime::kQnnExecutionProvider ||
@@ -437,7 +439,8 @@ bool SetEpsForAllNodes(Graph& graph,
       }
 
       // Check the EP has an impl for the node from builtin registry.
-      if (KernelRegistry::HasImplementationOf(*ep->GetKernelRegistry(), node, ep->Type(), kernel_type_str_resolver)) {
+      if (KernelRegistry::HasImplementationOf(*ep->GetKernelRegistry(), node, ep->Type(), kernel_type_str_resolver,
+                                              logger)) {
         found = true;
         break;
       }
@@ -450,6 +453,7 @@ bool SetEpsForAllNodes(Graph& graph,
                                                              std::string_view(kMSInternalNHWCDomain),
                                                              node.SinceVersion(),
                                                              type_constraint_map,
+                                                             logger,
                                                              &kci);
         if (status.IsOK() && kci != nullptr) {
           found = true;
@@ -462,7 +466,7 @@ bool SetEpsForAllNodes(Graph& graph,
           std::any_of(custom_registries->cbegin(), custom_registries->cend(),
                       [&](auto reg) {
                         return KernelRegistry::HasImplementationOf(*reg->GetKernelRegistry(), node, ep->Type(),
-                                                                   kernel_type_str_resolver);
+                                                                   kernel_type_str_resolver, logger);
                       })) {
         found = true;
         break;
@@ -649,12 +653,14 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           kAclExecutionProvider,
           kArmNNExecutionProvider,
           kNnapiExecutionProvider,
+          kVSINPUExecutionProvider,
           kRocmExecutionProvider,
           kCoreMLExecutionProvider,
           kCoreMLExecutionProviderMLProgram,
           kQnnExecutionProvider,
           kSnpeExecutionProvider,
           kXnnpackExecutionProvider,
+          kWebGpuExecutionProvider,
       };
 
       // need to special case any synthetic EP names in the exclude list
@@ -688,6 +694,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultTensorrtExecutionProvider();
         else if (provider_type == onnxruntime::kNnapiExecutionProvider)
           execution_provider = DefaultNnapiExecutionProvider();
+        else if (provider_type == onnxruntime::kVSINPUExecutionProvider)
+          execution_provider = DefaultVSINPUExecutionProvider();
         else if (provider_type == onnxruntime::kRknpuExecutionProvider)
           execution_provider = DefaultRknpuExecutionProvider();
         else if (provider_type == onnxruntime::kAclExecutionProvider)
@@ -708,6 +716,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultXnnpackExecutionProvider();
         else if (provider_type == onnxruntime::kDmlExecutionProvider)
           execution_provider = DefaultDmlExecutionProvider();
+        else if (provider_type == onnxruntime::kWebGpuExecutionProvider)
+          execution_provider = DefaultWebGpuExecutionProvider();
 
         // skip if execution provider is disabled
         if (execution_provider == nullptr)

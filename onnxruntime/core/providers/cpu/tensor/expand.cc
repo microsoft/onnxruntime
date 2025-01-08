@@ -128,7 +128,7 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
           memcpy(output_data + output_offset, input_data + input_offset, onnxruntime::narrow<size_t>(copy_byte));
           output_offsets[onnxruntime::narrow<size_t>(i)] = output_offset;
         }  // for i
-      };   // distribute_fn
+      };  // distribute_fn
 
   auto per_thread_tasks =
       distribute_count / concurrency::ThreadPool::DegreeOfParallelism(context->GetOperatorThreadPool());
@@ -169,9 +169,9 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
                   copy_byte >>= 1;
                 }
               }  // while
-            }    // if
-          }      // for
-        };       // copy_fn
+            }  // if
+          }  // for
+        };  // copy_fn
     if (per_thread_tasks > 20) {
       concurrency::ThreadPool::TryParallelFor(
           context->GetOperatorThreadPool(),
@@ -181,7 +181,7 @@ Status Expand<T>::Compute(OpKernelContext* context) const {
     } else {
       copy_fn(0, onnxruntime::narrow<std::ptrdiff_t>(distribute_count));
     }  // else
-  }    // for
+  }  // for
   return Status::OK();
 }  // Expand::compute
 

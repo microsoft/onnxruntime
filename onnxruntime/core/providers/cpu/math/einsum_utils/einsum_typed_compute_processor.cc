@@ -209,7 +209,7 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
     if (current_left && IsTransposeReshapeForEinsum(left_permutation,
                                                     current_left->Shape().GetDims(),
                                                     reshaped_dims)) {
-      // This can be done because curent_* tensors (if they exist) and output tensors are
+      // This can be done because current_* tensors (if they exist) and output tensors are
       // intermediate tensors and cannot be input tensors to the Einsum node itself
       // (which are immutable).
       // Covered by ExplicitEinsumAsTensorContractionReshapeLeft.

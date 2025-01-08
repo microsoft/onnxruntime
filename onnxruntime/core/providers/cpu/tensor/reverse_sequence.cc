@@ -11,7 +11,7 @@
 #pragma warning(disable : 4996)
 #endif
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #ifdef _MSC_VER
 #pragma warning(pop)

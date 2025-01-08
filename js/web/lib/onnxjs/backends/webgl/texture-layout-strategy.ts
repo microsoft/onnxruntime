@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Logger} from '../../instrument';
-import {assert} from '../../util';
+import { Logger } from '../../instrument';
+import { assert } from '../../util';
 
 /** Layout preferences */
 export interface WidthHeightPrefs {
@@ -37,8 +37,9 @@ export class AlwaysKeepOriginalSizeStrategy implements TextureLayoutStrategy {
         // ignore preferences
         // continue with default layout
         Logger.verbose(
-            'TextureLayout',
-            `Given width/height preferences were unattainable: shape:${shape}, breakAxis:${prefs.breakAxis}`);
+          'TextureLayout',
+          `Given width/height preferences were unattainable: shape:${shape}, breakAxis:${prefs.breakAxis}`,
+        );
       } else {
         return [wsize, hsize];
       }
@@ -89,8 +90,9 @@ export class PreferLogicalStrategy implements TextureLayoutStrategy {
         // ignore preferences
         // continue with default layout
         Logger.verbose(
-            'TextureLayout',
-            `Given width/height preferences were unattainable: shape:${shape}, breakAxis:${prefs.breakAxis}`);
+          'TextureLayout',
+          `Given width/height preferences were unattainable: shape:${shape}, breakAxis:${prefs.breakAxis}`,
+        );
       } else {
         return [wsize, hsize];
       }
@@ -104,8 +106,9 @@ export class PreferLogicalStrategy implements TextureLayoutStrategy {
       // they are from adjacent pairs of rows/cols within the same batch. So if a
       // tensor has 3 rows, we pretend it has 4 rows in order to account for the
       // fact that the texels containing the third row are half empty.
-      logShape = logShape.map(
-          (_d, i) => i >= logShape.length - 2 ? (logShape[i] % 2 === 0 ? logShape[i] : logShape[i] + 1) : logShape[i]);
+      logShape = logShape.map((_d, i) =>
+        i >= logShape.length - 2 ? (logShape[i] % 2 === 0 ? logShape[i] : logShape[i] + 1) : logShape[i],
+      );
 
       // Packed texture height is at least 2 (the channel height of a single
       // texel).
@@ -130,12 +133,16 @@ export class PreferLogicalStrategy implements TextureLayoutStrategy {
     } else if (logShape.length === 3 && logShape[0] <= maxTextureSize && logShape[1] * logShape[2] <= maxTextureSize) {
       return [logShape[0], logShape[1] * logShape[2]];
     } else if (
-        logShape.length === 4 && logShape[0] * logShape[1] * logShape[2] <= maxTextureSize &&
-        logShape[3] <= maxTextureSize) {
+      logShape.length === 4 &&
+      logShape[0] * logShape[1] * logShape[2] <= maxTextureSize &&
+      logShape[3] <= maxTextureSize
+    ) {
       return [logShape[0] * logShape[1] * logShape[2], logShape[3]];
     } else if (
-        logShape.length === 4 && logShape[0] <= maxTextureSize &&
-        logShape[1] * logShape[2] * logShape[3] <= maxTextureSize) {
+      logShape.length === 4 &&
+      logShape[0] <= maxTextureSize &&
+      logShape[1] * logShape[2] * logShape[3] <= maxTextureSize
+    ) {
       return [logShape[0], logShape[1] * logShape[2] * logShape[3]];
     } else {
       if (isPacked) {
@@ -144,18 +151,18 @@ export class PreferLogicalStrategy implements TextureLayoutStrategy {
         // inner dimensions stay even, we rewrite size to equal the number of
         // texels. Then in the return statement we rehydrate the squarified
         // dimensions to channel units.
-        return sizeToSquarishShape(size / 4).map(d => d * 2) as [number, number];
+        return sizeToSquarishShape(size / 4).map((d) => d * 2) as [number, number];
       }
       return sizeToSquarishShape(size);
     }
   }
 }
 
-export function squeezeShape(shape: number[], axis?: number[]): {newShape: number[]; keptDims: number[]} {
+export function squeezeShape(shape: number[], axis?: number[]): { newShape: number[]; keptDims: number[] } {
   const newShape: number[] = [];
   const keptDims: number[] = [];
   const isEmptyArray = axis != null && Array.isArray(axis) && axis.length === 0;
-  const axes = (axis == null || isEmptyArray) ? null : parseAxisParam(axis, shape).sort();
+  const axes = axis == null || isEmptyArray ? null : parseAxisParam(axis, shape).sort();
   let j = 0;
   for (let i = 0; i < shape.length; ++i) {
     if (axes != null) {
@@ -175,10 +182,10 @@ export function squeezeShape(shape: number[], axis?: number[]): {newShape: numbe
       keptDims.push(i);
     }
   }
-  return {newShape, keptDims};
+  return { newShape, keptDims };
 }
 
-export function parseAxisParam(axis: number|number[], shape: number[]): number[] {
+export function parseAxisParam(axis: number | number[], shape: number[]): number[] {
   const rank = shape.length;
 
   // Normalize input
@@ -186,18 +193,15 @@ export function parseAxisParam(axis: number|number[], shape: number[]): number[]
 
   // Check for valid range
   assert(
-      axis.every(ax => ax >= -rank && ax < rank),
-      () => `All values in axis param must be in range [-${rank}, ${rank}) but ` +
-          `got axis ${axis}`);
+    axis.every((ax) => ax >= -rank && ax < rank),
+    () => `All values in axis param must be in range [-${rank}, ${rank}) but ` + `got axis ${axis}`,
+  );
 
   // Check for only integers
-  assert(
-      axis.every(isInt),
-      () => 'All values in axis param must be integers but ' +
-          `got axis ${axis}`);
+  assert(axis.every(isInt), () => 'All values in axis param must be integers but ' + `got axis ${axis}`);
 
   // Handle negative axis.
-  return axis.map(a => a < 0 ? rank + a : a);
+  return axis.map((a) => (a < 0 ? rank + a : a));
 }
 export function isInt(a: number): boolean {
   return a % 1 === 0;

@@ -1,4 +1,5 @@
 ##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
 trigger:
   branches:
     include:
@@ -32,7 +33,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: 2.21.0.240401
+  default: 2.28.2.241116
 
 jobs:
 - job: 'build'
@@ -53,7 +54,7 @@ jobs:
 
   - task: UsePythonVersion@0
     inputs:
-      versionSpec: '3.8'
+      versionSpec: '3.12'
       addToPath: true
       architecture: $(buildArch)
 
@@ -61,33 +62,35 @@ jobs:
     parameters:
       QnnSDKVersion: ${{ parameters.QnnSdk }}
 
-  # TODO: Remove --compile_no_warning_as_error once we update from MSVC Runtime library version 14.32 or we
-  # fix/silence the following warning from the <variant> STL header. This warning halts compilation due to
-  # the /external:templates- option, which allows warnings from external libs for template instantiations.
-  # Warning is not reported on version 14.35.32215 of the Runtime library.
-  #
-  # [warning]C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Tools\MSVC\14.32.31326\include\variant(1586,9)
-  # : Warning C4189: '_Size': local variable is initialized but not referenced
-  # (compiling source file D:\a\_work\1\s\onnxruntime\core\session\IOBinding.cc)
-  #
-  # MSVC\14.32.31326\include\variant(1633): message : see reference to function template instantiation
-  # '_Ret &std::_Visit_strategy<1>::_Visit2<_Ret,_ListOfIndexVectors,_Callable,const
-  # std::variant<onnxruntime::OpSchemaKernelTypeStrResolver,onnxruntime::KernelTypeStrResolver>&>(size_t,_Callable &&,
-  # const std::variant<onnxruntime::OpSchemaKernelTypeStrResolver,onnxruntime::KernelTypeStrResolver> &)'
   - template: templates/jobs/win-ci-build-steps.yml
     parameters:
       WithCache: True
       Today: $(TODAY)
       AdditionalKey: "win-qnn | $(BuildConfig)"
-      BuildPyArguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --compile_no_warning_as_error --update --cmake_generator "Visual Studio 17 2022" --use_qnn --qnn_home $(QnnSDKRootDir) --parallel --use_binskim_compliant_compile_flags'
+      BuildPyArguments: >-
+        --config $(BuildConfig)
+        --build_dir $(Build.BinariesDirectory)
+        --cmake_generator "Visual Studio 17 2022"
+        --build_java
+        --use_qnn
+        --qnn_home $(QnnSDKRootDir)
+        --use_binskim_compliant_compile_flags
+        --update --parallel
       MsbuildArguments: $(MsbuildArguments)
       BuildArch: $(buildArch)
       Platform: 'x64'
       BuildConfig: $(BuildConfig)
 
-  - powershell: |
-     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --test --cmake_generator "Visual Studio 17 2022" --enable_onnx_tests
-    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+  - script: |
+      python $(Build.SourcesDirectory)\tools\ci_build\build.py ^
+        --config $(BuildConfig) ^
+        --build_dir $(Build.BinariesDirectory) ^
+        --cmake_generator "Visual Studio 17 2022" ^
+        --build_java ^
+        --use_qnn ^
+        --qnn_home $(QnnSDKRootDir) ^
+        --use_binskim_compliant_compile_flags ^
+        --test --enable_onnx_tests
     displayName: 'Run unit tests'
 
   - script: |

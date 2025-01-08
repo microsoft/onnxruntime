@@ -247,6 +247,8 @@ namespace Windows::AI::MachineLearning::Adapter
         }
 
         ML_TENSOR_TYPE_CASE(float);
+        ML_TENSOR_TYPE_CASE(onnxruntime::Int4x2Base<false>);
+        ML_TENSOR_TYPE_CASE(onnxruntime::Int4x2Base<true>);
         ML_TENSOR_TYPE_CASE(uint8_t);
         ML_TENSOR_TYPE_CASE(int8_t);
         ML_TENSOR_TYPE_CASE(uint16_t);
@@ -293,6 +295,8 @@ namespace Windows::AI::MachineLearning::Adapter
                 return onnxruntime::DataTypeImpl::GetTensorType<std::string>();
 
             ML_TENSOR_TYPE_CASE(float);
+            ML_TENSOR_TYPE_CASE(onnxruntime::Int4x2Base<false>);
+            ML_TENSOR_TYPE_CASE(onnxruntime::Int4x2Base<true>);
             ML_TENSOR_TYPE_CASE(uint8_t);
             ML_TENSOR_TYPE_CASE(int8_t);
             ML_TENSOR_TYPE_CASE(uint16_t);
@@ -314,6 +318,8 @@ namespace Windows::AI::MachineLearning::Adapter
                 return onnxruntime::DataTypeImpl::GetSequenceTensorType<std::string>();
 
             ML_SEQUENCE_TENSOR_TYPE_CASE(float);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(onnxruntime::Int4x2Base<false>);
+            ML_SEQUENCE_TENSOR_TYPE_CASE(onnxruntime::Int4x2Base<true>);
             ML_SEQUENCE_TENSOR_TYPE_CASE(uint8_t);
             ML_SEQUENCE_TENSOR_TYPE_CASE(int8_t);
             ML_SEQUENCE_TENSOR_TYPE_CASE(uint16_t);
@@ -335,6 +341,8 @@ namespace Windows::AI::MachineLearning::Adapter
                 return onnxruntime::DataTypeImpl::GetType<std::string>();
 
             ML_PRIMITIVE_TYPE_CASE(float);
+            ML_PRIMITIVE_TYPE_CASE(onnxruntime::Int4x2Base<false>);
+            ML_PRIMITIVE_TYPE_CASE(onnxruntime::Int4x2Base<true>);
             ML_PRIMITIVE_TYPE_CASE(uint8_t);
             ML_PRIMITIVE_TYPE_CASE(int8_t);
             ML_PRIMITIVE_TYPE_CASE(uint16_t);
@@ -363,6 +371,12 @@ namespace Windows::AI::MachineLearning::Adapter
         {
         case onnx::TensorProto_DataType_FLOAT:
             return MLOperatorTensorDataType::Float;
+
+        case onnx::TensorProto_DataType_UINT4:
+            return MLOperatorTensorDataType::UInt4;
+
+        case onnx::TensorProto_DataType_INT4:
+            return MLOperatorTensorDataType::Int4;
 
         case onnx::TensorProto_DataType_UINT8:
             return MLOperatorTensorDataType::UInt8;
@@ -455,6 +469,12 @@ namespace Windows::AI::MachineLearning::Adapter
             case MLOperatorTensorDataType::Float:
                 return "tensor(float)";
 
+            case MLOperatorTensorDataType::UInt4:
+                return "tensor(uint4)";
+
+            case MLOperatorTensorDataType::Int4:
+                return "tensor(int4)";
+
             case MLOperatorTensorDataType::UInt8:
                 return "tensor(uint8)";
 
@@ -508,6 +528,12 @@ namespace Windows::AI::MachineLearning::Adapter
             {
             case MLOperatorTensorDataType::Float:
                 return "seq(tensor(float))";
+
+            case MLOperatorTensorDataType::UInt4:
+                return "seq(tensor(uint4))";
+
+            case MLOperatorTensorDataType::Int4:
+                return "seq(tensor(int4))";
 
             case MLOperatorTensorDataType::UInt8:
                 return "seq(tensor(uint8))";
@@ -842,7 +868,7 @@ namespace Windows::AI::MachineLearning::Adapter
               const onnx::TensorProto* tensorProto = &attributeProto->t();
 
               // An empty path is used as external weights are not currently supported in this case
-              Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(const_cast<onnx::TensorProto*>(tensorProto), onnxruntime::Path());
+              Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(const_cast<onnx::TensorProto*>(tensorProto), std::filesystem::path());
               *tensor = tensorWrapper.Detach();
               return S_OK;
             }
@@ -1518,7 +1544,7 @@ namespace Windows::AI::MachineLearning::Adapter
                 AbstractOperatorDesc abstractDesc = SchemaHelpers::ConvertOperatorDesc(*node);
                 m_graphNodeCreateInfo->nodes.push_back(std::make_unique<AbstractOperatorDesc>(std::move(abstractDesc)));
             }
-            
+
             // There can be operators (or kernels) which don't require any input.
             assert(operatorGraphDesc->inputEdgeCount == 0 || operatorGraphDesc->inputEdges != nullptr);
             m_graphNodeCreateInfo->inputEdges.insert(
@@ -1545,7 +1571,7 @@ namespace Windows::AI::MachineLearning::Adapter
         ORT_CATCH_RETURN
     }
 
-    OnnxTensorWrapper::OnnxTensorWrapper(onnx::TensorProto* impl, const onnxruntime::Path& modelPath) : m_impl(impl)
+    OnnxTensorWrapper::OnnxTensorWrapper(onnx::TensorProto* impl, const std::filesystem::path& modelPath) : m_impl(impl)
     {
         // The tensor may be stored as raw data or in typed fields.
         if (impl->data_location() == onnx::TensorProto_DataLocation_EXTERNAL)
@@ -2826,7 +2852,7 @@ namespace Windows::AI::MachineLearning::Adapter
             {
                 // An empty path is used as external weights are not currently supported in this case
                 Microsoft::WRL::ComPtr<IMLOperatorTensor> tensorWrapper = wil::MakeOrThrow<OnnxTensorWrapper>(
-                    const_cast<onnx::TensorProto*>(ctx->getInputData(index)), onnxruntime::Path());
+                    const_cast<onnx::TensorProto*>(ctx->getInputData(index)), std::filesystem::path());
                 return tensorWrapper;
             }
         );
@@ -3018,7 +3044,7 @@ namespace Windows::AI::MachineLearning::Adapter
 
     std::tuple<std::unique_ptr<std::byte[]>, size_t> UnpackTensor(
         const onnx::TensorProto& initializer,
-        const onnxruntime::Path& modelPath)
+        const std::filesystem::path& modelPath)
     {
         std::unique_ptr<std::byte[]> unpackedTensor;
         size_t tensorByteSize = 0;

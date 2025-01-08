@@ -17,7 +17,7 @@ struct TrainingGraphTransformerConfiguration : public GraphTransformerConfigurat
   bool attn_dropout_recompute{false};
   // Enable recompute of Gelu activation output to save memory
   bool gelu_recompute{false};
-  // Enable recompute of transformer layer ouput to save memory
+  // Enable recompute of transformer layer output to save memory
   bool transformer_layer_recompute{false};
   // Number of layers to apply recompute
   int number_recompute_layers{0};
@@ -25,10 +25,10 @@ struct TrainingGraphTransformerConfiguration : public GraphTransformerConfigurat
   // Enable compute optimizer.
   bool enable_compute_optimizer{false};
 
-  // Enable label sparsity compute optimization for the input names in the below list.
-  std::vector<std::string> sparse_label_input_names;
+  bool print_input_density{false};
 
   // Path for serialization of the transformed optimized model. If empty, serialization is disabled.
+  // A UTF-8 string.
   std::string optimized_pre_grad_filepath;
 };
 

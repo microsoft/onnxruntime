@@ -17,7 +17,14 @@ namespace onnxruntime::QDQ {
 bool IsQDQPairSupported(
     const Node& q_node, const Node& dq_node,
     const GetConstantInitializerFn& get_const_initializer,
-    const Path& model_path) {
+    const std::filesystem::path& model_path,
+    bool check_op_type) {
+  if (check_op_type) {
+    if (!MatchQNode(q_node) || !MatchDQNode(dq_node)) {
+      return false;
+    }
+  }
+
   ConstPointerContainer<std::vector<NodeArg*>> dq_input_defs = dq_node.InputDefs();
   ConstPointerContainer<std::vector<NodeArg*>> q_input_defs = q_node.InputDefs();
 
@@ -79,7 +86,7 @@ bool IsQDQPairSupported(
 bool IsDQQConversion(
     const Node& dq_node, const Node& q_node,
     const GetConstantInitializerFn& get_const_initializer,
-    const Path& model_path) {
+    const std::filesystem::path& model_path) {
   ConstPointerContainer<std::vector<NodeArg*>> dq_input_defs = dq_node.InputDefs();
   ConstPointerContainer<std::vector<NodeArg*>> q_input_defs = q_node.InputDefs();
 
@@ -157,6 +164,41 @@ bool QOrDQNodeHasConstantScalarScaleAndZeroPoint(
   }
 
   return true;
+}
+
+bool IsQOrDQScalePositiveConstantScalar(
+    const Node& q_or_dq_node, const GetConstantInitializerFn& get_const_initializer,
+    const std::filesystem::path& model_path) {
+  auto q_or_dq_input_defs = q_or_dq_node.InputDefs();
+
+  ORT_ENFORCE(q_or_dq_input_defs.size() >= 2);
+
+  if (!optimizer_utils::IsScalar(*q_or_dq_input_defs[InputIndex::SCALE_ID])) {
+    return false;
+  }
+
+  const ONNX_NAMESPACE::TensorProto* q_or_dq_scale_tensor_proto =
+      get_const_initializer(q_or_dq_input_defs[InputIndex::SCALE_ID]->Name());
+  if (nullptr == q_or_dq_scale_tensor_proto) {
+    return false;
+  }
+
+  Initializer q_or_dq_scale(*q_or_dq_scale_tensor_proto, model_path);
+
+  switch (q_or_dq_scale.data_type()) {
+    case ONNX_NAMESPACE::TensorProto::FLOAT:
+      return q_or_dq_scale.data<float>()[0] > 0;
+
+    case ONNX_NAMESPACE::TensorProto::FLOAT16:
+      return q_or_dq_scale.data<MLFloat16>()[0] > 0;
+
+    case ONNX_NAMESPACE::TensorProto::BFLOAT16:
+      return q_or_dq_scale.data<BFloat16>()[0] > 0;
+
+    default:
+      assert(false);
+      return false;
+  }
 }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

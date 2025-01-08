@@ -18,6 +18,7 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "test/optimizer/graph_transform_test_builder.h"
 #include "core/optimizer/utils.h"
 #include "core/platform/env.h"
 #include "core/session/inference_session.h"
@@ -26,6 +27,7 @@
 #include "test/capturing_sink.h"
 #include "test/test_environment.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/temp_dir.h"
 #include "orttraining/core/optimizer/memory_optimizer/common.h"
 #include "orttraining/core/optimizer/memory_optimizer/memory_optimizer.h"
 #include "orttraining/core/optimizer/memory_optimizer/memory_insight.h"
@@ -63,9 +65,17 @@ TEST(MemoryOptimizerTests, GeluRecompute) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{1};
 
   const std::string alleviation_config("Gelu+:1:-1");
+  onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("memory_optimizer_test_tmp_dir")};
+  PathString config_path{ConcatPathComponent(tmp_dir.Path(),
+                                             ORT_TSTR("gelurecompute.json"))};
+  const std::string config_path_str = ToUTF8String(config_path);
+  std::ofstream outfile(config_path_str);
+  outfile << "[\"" << alleviation_config << "\"]" << std::endl;
+  outfile.close();
+
   const std::string probe_config("1:0");
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<MemoryOptimizer>(alleviation_config, probe_config), TransformerLevel::Level3));
+      std::make_unique<MemoryOptimizer>(config_path_str, probe_config), TransformerLevel::Level3));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *logger));
 
@@ -105,9 +115,17 @@ TEST(MemoryOptimizerTests, TileRecompute) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
 
   const std::string alleviation_config("Expand+Tile+:1:-1");
+  onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("memory_optimizer_test_tmp_dir")};
+  PathString config_path{ConcatPathComponent(tmp_dir.Path(),
+                                             ORT_TSTR("tilerecompute.json"))};
+  const std::string config_path_str = ToUTF8String(config_path);
+  std::ofstream outfile(config_path_str);
+  outfile << "[\"" << alleviation_config << "\"]" << std::endl;
+  outfile.close();
+
   const std::string probe_config("1:0");
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<MemoryOptimizer>(alleviation_config, probe_config), TransformerLevel::Level3));
+      std::make_unique<MemoryOptimizer>(config_path_str, probe_config), TransformerLevel::Level3));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *logger));
 
@@ -154,40 +172,67 @@ TEST(MemoryOptimizerTests, TransformerPerLayerRecompute) {
 
   // Find all optimizable subgraphs
   GraphViewer graph_viewer(graph);
-  const std::string initial_mem_config("");
+  onnxruntime::test::TemporaryDirectory tmp_dir{ORT_TSTR("memory_optimizer_test_tmp_dir")};
+  PathString config_path1{ConcatPathComponent(tmp_dir.Path(),
+                                              ORT_TSTR("layerrecompute_initial.json"))};
+  const std::string config_path1_str = ToUTF8String(config_path1);
+  std::ofstream conf_stream(config_path1_str);
+  conf_stream << "[]" << std::endl;  // Empty config.
+  conf_stream.close();
+
   const std::string probe_config("1:1");
   std::map<std::string, std::pair<std::string, int>>
       cluster_id_combinations_to_saved_symbolic_byte_map;
   std::string record_str =
       optimizer::memory_optimizer::GetSerializedORTModuleMemoryStat(graph_viewer,
-                                                                    initial_mem_config,
+                                                                    config_path1_str,
                                                                     probe_config,
+                                                                    true, /*enable this for test converage*/
                                                                     *logger,
                                                                     cluster_id_combinations_to_saved_symbolic_byte_map,
                                                                     nullptr,
                                                                     nullptr);
 
   InlinedHashMap<std::string, optimizer::memory_optimizer::UserConfig> cluster_id_to_config_map;
+  PathString config_path2{ConcatPathComponent(tmp_dir.Path(),
+                                              ORT_TSTR("layerrecompute_2.json"))};
+  const std::string config_path2_str = ToUTF8String(config_path2);
+  std::ofstream conf_stream2(config_path2_str);
+  conf_stream2 << "[" << std::endl;  // Empty config.
+  int index = 0;
   for (auto it = cluster_id_combinations_to_saved_symbolic_byte_map.begin();
        it != cluster_id_combinations_to_saved_symbolic_byte_map.end(); ++it) {
     std::string cluster_id = it->first;
-    ORT_ENFORCE(optimizer::memory_optimizer::ParseOptimizationConfigFromString(cluster_id, cluster_id_to_config_map)
-                    .IsOK());
+    conf_stream2 << (index == 0 ? "" : ",") << "\"" << it->first << "\"";
+    index += 1;
   }
+  conf_stream2 << "]" << std::endl;
+  conf_stream2.close();
+
+  ORT_ENFORCE(optimizer::memory_optimizer::ParseOptimizationConfigFromString(config_path2_str, cluster_id_to_config_map)
+                  .IsOK());
   std::ostringstream oss;
-  int index = 0;
+  index = 0;
+  oss << "[";
   for (auto it = cluster_id_to_config_map.begin(); it != cluster_id_to_config_map.end(); ++it) {
     if (it->second.type == optimizer::memory_optimizer::OptimizationType::Recompute) {
-      oss << (index == 0 ? "" : ",") << it->first << ":1:-1";
+      oss << (index == 0 ? "" : ",") << "\"" << it->first << ":1:-1\"";
       ++index;
     }
   }
+  oss << "]";
 
   // Apply the transformer
   GraphTransformerManager graph_transformation_mgr{5};
-  const std::string layer_wise_recompute_config(oss.str());
+  PathString config_path{ConcatPathComponent(tmp_dir.Path(),
+                                             ORT_TSTR("layerrecompute.json"))};
+  const std::string config_path_str = ToUTF8String(config_path);
+  std::ofstream outfile(config_path_str);
+  outfile << oss.str() << std::endl;
+  outfile.close();
+
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<MemoryOptimizer>(layer_wise_recompute_config, probe_config), TransformerLevel::Level3));
+      std::make_unique<MemoryOptimizer>(config_path_str, probe_config), TransformerLevel::Level3));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level3, *logger));
 

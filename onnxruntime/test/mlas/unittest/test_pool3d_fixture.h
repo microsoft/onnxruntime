@@ -7,7 +7,7 @@
 #include "test_pool3d.h"
 
 //
-// Short Execute() test helper to register each test seperately by all parameters.
+// Short Execute() test helper to register each test separately by all parameters.
 //
 template <MLAS_POOLING_KIND PoolingKind, bool Threaded>
 class Pooling3dShortExecuteTest : public MlasTestFixture<MlasPool3DTest<PoolingKind, Threaded>> {

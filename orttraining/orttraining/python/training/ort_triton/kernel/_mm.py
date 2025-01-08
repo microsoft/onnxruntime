@@ -372,7 +372,7 @@ def _gen_bmm_module(
 ) -> Tuple[str, ModuleType]:
     func_name = gen_unique_name("bmm")
     kwargs = _mm_configs(dtype, m, n, k, trans_a, trans_b, alpha, func_name)
-    batch = batch_a if batch_a >= batch_b else batch_b
+    batch = max(batch_a, batch_b)
     kwargs["stride_aq"] = m * k if batch_a == batch else 0
     kwargs["stride_bq"] = k * n if batch_b == batch else 0
     kwargs["batch"] = batch

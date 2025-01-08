@@ -15,5 +15,5 @@ void graph_save(const Graph& graph, const std::string& filename, const std::stri
 Node& graph_fuse(Graph& graph, const std::string& name, const std::string& op_type, const std::vector<size_t>& nodes,
                  const std::vector<std::string>& inputs, const std::vector<std::string>& outputs,
                  const std::vector<std::string>& constant_initializers);
-
+Model* model_clone(const Model& original_model, int64_t external_data_threshold);
 }  // namespace vaip

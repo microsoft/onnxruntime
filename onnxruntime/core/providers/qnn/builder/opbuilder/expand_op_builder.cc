@@ -79,7 +79,7 @@ Status ExpandOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   if (is_quantized_tensor) {
     ORT_RETURN_IF_ERROR(utils::GetQnnDataType(true, type_proto, qnn_data_type));
     float scale = 0.0f;
-    int zero_point = 0;
+    int32_t zero_point = 0;
     float rmax = 1.0f;
     float rmin = 1.0f;
     ORT_RETURN_IF_ERROR(utils::GetQuantParams(rmin,
@@ -125,7 +125,7 @@ Status ExpandOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
       default:
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported.");
     }  // switch
-  }    // if-else
+  }  // if-else
 
   const std::string& output_name = node_unit.Outputs()[0].node_arg.Name();
   std::string shape_input_name(input_name + "_" + output_name);

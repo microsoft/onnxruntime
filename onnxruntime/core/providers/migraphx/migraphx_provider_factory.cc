@@ -6,7 +6,7 @@
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #include "migraphx_execution_provider.h"
 #include "migraphx_provider_factory_creator.h"
-#include "hip_allocator.h"
+#include "migraphx_allocator.h"
 #include "gpu_data_transfer.h"
 #include "core/framework/provider_options.h"
 
@@ -33,10 +33,23 @@ std::unique_ptr<IExecutionProvider> MIGraphXProviderFactory::CreateProvider() {
   return std::make_unique<MIGraphXExecutionProvider>(info_);
 }
 
+struct ProviderInfo_MIGraphX_Impl final : ProviderInfo_MIGraphX {
+  std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name) override {
+    return std::make_unique<MIGraphXAllocator>(device_id, name);
+  }
+
+  std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name) override {
+    return std::make_unique<HIPPinnedAllocator>(device_id, name);
+  }
+
+} g_info;
+
 struct MIGraphX_Provider : Provider {
+  void* GetInfo() override { return &g_info; }
+
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) override {
     MIGraphXExecutionProviderInfo info;
-    info.device_id = device_id;
+    info.device_id = static_cast<OrtDevice::DeviceId>(device_id);
     info.target_device = "gpu";
     return std::make_shared<MIGraphXProviderFactory>(info);
   }
@@ -44,15 +57,26 @@ struct MIGraphX_Provider : Provider {
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* provider_options) override {
     auto& options = *reinterpret_cast<const OrtMIGraphXProviderOptions*>(provider_options);
     MIGraphXExecutionProviderInfo info;
-    info.device_id = options.device_id;
+    info.device_id = static_cast<OrtDevice::DeviceId>(options.device_id);
     info.target_device = "gpu";
     info.fp16_enable = options.migraphx_fp16_enable;
+    info.exhaustive_tune = options.migraphx_exhaustive_tune;
     info.int8_enable = options.migraphx_int8_enable;
     info.int8_calibration_table_name = "";
     if (options.migraphx_int8_calibration_table_name != nullptr) {
       info.int8_calibration_table_name = options.migraphx_int8_calibration_table_name;
     }
     info.int8_use_native_calibration_table = options.migraphx_use_native_calibration_table != 0;
+    info.save_compiled_model = options.migraphx_save_compiled_model;
+    info.save_model_file = "";
+    if (options.migraphx_save_model_path != nullptr) {
+      info.save_model_file = options.migraphx_save_model_path;
+    }
+    info.load_compiled_model = options.migraphx_load_compiled_model;
+    info.load_model_file = "";
+    if (options.migraphx_load_model_path != nullptr) {
+      info.load_model_file = options.migraphx_load_model_path;
+    }
     return std::make_shared<MIGraphXProviderFactory>(info);
   }
 
@@ -62,6 +86,7 @@ struct MIGraphX_Provider : Provider {
     migx_options.device_id = internal_options.device_id;
     migx_options.migraphx_fp16_enable = internal_options.fp16_enable;
     migx_options.migraphx_int8_enable = internal_options.int8_enable;
+    migx_options.migraphx_exhaustive_tune = internal_options.exhaustive_tune;
 
     char* dest = nullptr;
     auto str_size = internal_options.int8_calibration_table_name.size();
@@ -79,6 +104,11 @@ struct MIGraphX_Provider : Provider {
     }
 
     migx_options.migraphx_use_native_calibration_table = internal_options.int8_use_native_calibration_table;
+
+    migx_options.migraphx_save_compiled_model = internal_options.save_compiled_model;
+    migx_options.migraphx_save_model_path = internal_options.save_model_file.c_str();
+    migx_options.migraphx_load_compiled_model = internal_options.load_compiled_model;
+    migx_options.migraphx_load_model_path = internal_options.load_model_file.c_str();
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {

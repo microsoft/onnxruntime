@@ -26,7 +26,7 @@ class ApexAMPModifier(FP16OptimizerModifier):
 
         from onnxruntime.training.ortmodule.torch_cpp_extensions import fused_ops
 
-        warnings.warn("Apex AMP fp16_optimizer functions are overrided with faster implementation.", UserWarning)
+        warnings.warn("Apex AMP fp16_optimizer functions are overridden with faster implementation.", UserWarning)
 
         # Implementation adapted from https://github.com/NVIDIA/apex/blob/082f999a6e18a3d02306e27482cc7486dab71a50/apex/amp/_process_optimizer.py#L161
         def post_backward_with_master_weights(self, scaler):

@@ -2,7 +2,8 @@
 line-length = 120
 # NOTE: Do not extend the exclude list. Edit .lintrunner.toml instead
 extend-exclude = "cmake|onnxruntime/core/flatbuffers/"
-target-version = ["py37", "py38", "py39", "py310", "py311"]
+# NOTE: use the minimum supported python version as target-version
+target-version = ["py310"]
 
 [tool.isort]
 # NOTE: Do not extend the exclude list. Edit .lintrunner.toml instead
@@ -77,6 +78,7 @@ ignore = [
     "G004", # FIXME: Enable when the rule can be autofixed
     "N803", # Argument casing
     "N812", # Allow import torch.nn.functional as F
+    "N813", # Allow importing camelcase names in lowercase
     "N999", # Module names
     "NPY002", # np.random.Generator may not always fit our use cases
     "PERF203", # "try-except-in-loop" only affects Python <3.11, and the improvement is minor; can have false positives
@@ -84,6 +86,7 @@ ignore = [
     "PYI041", # May create confusion
     "PYI024", # May create confusion
     "SIM102", # We don't perfer always combining if branches
+    "SIM103", # Do not collapse if-else
     "SIM108", # We don't encourage ternary operators
     "SIM114", # Don't combine if branches for debugability
     "SIM116", # Don't use dict lookup to replace if-else

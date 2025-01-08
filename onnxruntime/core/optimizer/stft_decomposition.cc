@@ -45,7 +45,7 @@ NodeArg* AddInitializer(Graph& graph, const char* name, const int64_t (&shape)[T
     element_count *= shape[i];
     proto.add_dims(shape[i]);
   }
-  proto.set_raw_data(begin, element_count * sizeof(TDataType));
+  utils::SetRawDataInTensorProto(proto, begin, element_count * sizeof(TDataType));
   return &graph_utils::AddInitializer(graph, proto);
 }
 

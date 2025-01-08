@@ -25,7 +25,7 @@ class PythonOp final : public OpKernel, public PythonOpBase {
 // Pytorch's torch.autograd.Function.backward(...) wrapper.
 class PythonOpGrad final : public OpKernel, public PythonOpGradBase {
  public:
-  PythonOpGrad(const OpKernelInfo& info) : OpKernel(info), PythonOpGradBase(info){};
+  PythonOpGrad(const OpKernelInfo& info) : OpKernel(info), PythonOpGradBase(info) {};
   Status Compute(OpKernelContext* context) const override;
 };
 

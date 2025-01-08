@@ -126,7 +126,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="severity"></param>
         /// <param name="category"></param>
         /// <param name="logid"></param>
-        /// <param name="code_location"></param>
+        /// <param name="codeLocation"></param>
         /// <param name="message"></param>
         private static void LoggingFunctionThunk(IntPtr param,
                 IntPtr severity,

@@ -1,14 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Backend, InferenceSession, InferenceSessionHandler, SessionHandler} from 'onnxruntime-common';
+import { Backend, InferenceSession, InferenceSessionHandler, SessionHandler } from 'onnxruntime-common';
 
-import {Binding, binding} from './binding';
+import { Binding, binding, initOrt } from './binding';
 
 class OnnxruntimeSessionHandler implements InferenceSessionHandler {
   #inferenceSession: Binding.InferenceSession;
 
-  constructor(pathOrBuffer: string|Uint8Array, options: InferenceSession.SessionOptions) {
+  constructor(pathOrBuffer: string | Uint8Array, options: InferenceSession.SessionOptions) {
+    initOrt();
+
     this.#inferenceSession = new binding.InferenceSession();
     if (typeof pathOrBuffer === 'string') {
       this.#inferenceSession.loadModel(pathOrBuffer, options);
@@ -27,14 +29,19 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
   readonly outputNames: string[];
 
   startProfiling(): void {
-    // TODO: implement profiling
+    // startProfiling is a no-op.
+    //
+    // if sessionOptions.enableProfiling is true, profiling will be enabled when the model is loaded.
   }
   endProfiling(): void {
-    // TODO: implement profiling
+    this.#inferenceSession.endProfiling();
   }
 
-  async run(feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType, options: InferenceSession.RunOptions):
-      Promise<SessionHandler.ReturnType> {
+  async run(
+    feeds: SessionHandler.FeedsType,
+    fetches: SessionHandler.FetchesType,
+    options: InferenceSession.RunOptions,
+  ): Promise<SessionHandler.ReturnType> {
     return new Promise((resolve, reject) => {
       setImmediate(() => {
         try {
@@ -53,8 +60,10 @@ class OnnxruntimeBackend implements Backend {
     return Promise.resolve();
   }
 
-  async createInferenceSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
-      Promise<InferenceSessionHandler> {
+  async createInferenceSessionHandler(
+    pathOrBuffer: string | Uint8Array,
+    options?: InferenceSession.SessionOptions,
+  ): Promise<InferenceSessionHandler> {
     return new Promise((resolve, reject) => {
       setImmediate(() => {
         try {

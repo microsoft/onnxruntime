@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-
 #include "onnxruntime_pybind_mlvalue.h"
 #include "python/onnxruntime_pybind_state_common.h"
 #include "pybind11/numpy.h"
@@ -8,7 +7,6 @@
 #define NO_IMPORT_ARRAY
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
-#include <numpy/arrayobject.h>
 #include "python/numpy_helper.h"
 
 #include "core/graph/graph.h"
@@ -39,7 +37,6 @@ using Microsoft::WRL::ComPtr;
 #include "core/providers/dml/DmlExecutionProvider/src/ReadbackHeap.h"
 #include "core/providers/dml/DmlExecutionProvider/src/AllocationInfo.h"
 #endif
-
 namespace onnxruntime {
 namespace python {
 
@@ -90,15 +87,15 @@ static TensorShape GetArrayShape(PyArrayObject* pyObject) {
   const int ndim = PyArray_NDIM(pyObject);
   const npy_intp* npy_dims = PyArray_DIMS(pyObject);
   auto span = gsl::make_span(npy_dims, ndim);
-  std::vector<int64_t> dims(span.begin(), span.end());
-  TensorShape shape(std::move(dims));
+  TensorShapeVector shape_vec(span.begin(), span.end());
+  TensorShape shape(shape_vec);
   return shape;
 }
 
 TensorShape GetShape(const py::array& arr) {
   auto span = gsl::make_span(arr.shape(), arr.ndim());
-  std::vector<int64_t> dims(span.begin(), span.end());
-  TensorShape shape(std::move(dims));
+  TensorShapeVector shape_vec(span.begin(), span.end());
+  TensorShape shape(shape_vec);
   return shape;
 }
 
@@ -283,7 +280,7 @@ void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   uint32_t readback_heap_size = gsl::narrow_cast<uint32_t>(sizeof(readback_heap));
   ORT_THROW_IF_FAILED(d3d12_device->GetPrivateData(dml_readback_heap_guid, &readback_heap_size, &readback_heap));
 
-  // ReadbackFromGpu already syncs with the CPU and waits for the copy to be completed, so we don't need to sync after
+  // ReadbackFromGpu already syncs with the CPU and waits for the copy to be completed, so we dont need to sync after
   // this call
   readback_heap->ReadbackFromGpu(
       gsl::make_span(static_cast<std::byte*>(dst), num_bytes),
@@ -294,7 +291,7 @@ void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
 
 const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetDmlToHostMemCpyFunction() {
   static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::GPU, DmlToCpuMemCpy}};
+      {OrtDevice::DML, DmlToCpuMemCpy}};
 
   return &map;
 }
@@ -431,7 +428,7 @@ MLDataType NumpyTypeToOnnxRuntimeTensorType(int numpy_type) {
       // Special, not a C type expands to enum value of 16
       {NPY_FLOAT16, DataTypeImpl::GetType<MLFloat16>()},
       {NPY_DOUBLE, DataTypeImpl::GetType<double>()},
-      // We don't want to use size specific types such
+      // We dont want to use size specific types such
       // as NPY_INT32 bc they are not enums but hash defines
       // which may map into other enums and may conflict with other entries here
       // also NPY docs define these sizes as platform specific, thus we
@@ -468,6 +465,10 @@ MLDataType NumpyTypeToOnnxRuntimeTensorType(int numpy_type) {
   } else {
     return it->second;
   }
+}
+
+MLDataType OnnxTypeToOnnxRuntimeTensorType(int onnx_element_type) {
+  return DataTypeImpl::TensorTypeFromONNXEnum(onnx_element_type)->GetElementType();
 }
 
 // This is a one time use, ad-hoc allocator that allows Tensors to take ownership of
@@ -580,15 +581,17 @@ static void CopyDataToTensor(PyArrayObject* darray, int npy_type, Tensor& tensor
     for (int i = 0; i < total_items; ++i, src += item_size) {
       // Python unicode strings are assumed to be USC-4. Strings are stored as UTF-8.
       PyObject* item = PyArray_GETITEM(darray, src);
+      UniqueDecRefPtr<PyObject> itemGuard(item, DecRefFn<PyObject>());
       PyObject* pStr = PyObject_Str(item);
       UniqueDecRefPtr<PyObject> strGuard(pStr, DecRefFn<PyObject>());
       dst[i] = py::reinterpret_borrow<py::str>(pStr);
     }
   } else {
     void* buffer = tensor.MutableDataRaw();
-    size_t len;
-    if (!IAllocator::CalcMemSizeForArray(tensor.DataType()->Size(), tensor.Shape().Size(), &len)) {
-      throw std::runtime_error("length overflow");
+    size_t len = 0;
+    Status status = Tensor::CalculateTensorStorageSize(tensor.DataType(), tensor.Shape(), /*alignment*/ 0, len);
+    if (!status.IsOK()) {
+      throw std::runtime_error(status.ErrorMessage());
     }
     mem_cpy_to_device(buffer, PyArray_DATA(darray), len);
   }

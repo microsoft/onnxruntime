@@ -24,7 +24,7 @@ class ClipOpBuilder : public BaseOpBuilder {
   // Operator support related.
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+                         const WebnnDeviceType device_type, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -51,14 +51,9 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                     "GetClipMinMax failed");
   options.set("minValue", minValue);
   options.set("maxValue", maxValue);
+  options.set("label", node.Name());
   emscripten::val input = model_builder.GetOperand(input_name);
-  emscripten::val output = emscripten::val::object();
-  if (Contains(model_builder.GetFusedActivations(), input_name)) {
-    LOGS_DEFAULT(VERBOSE) << "Clip Node [" << node.Name() << "] fused";
-    output = input;
-  } else {
-    output = model_builder.GetBuilder().call<emscripten::val>("clamp", input, options);
-  }
+  emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("clamp", input, options);
 
   model_builder.AddOperand(output_name, std::move(output));
   return Status::OK();
@@ -68,13 +63,33 @@ Status ClipOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 bool ClipOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
                                       const Node& node,
-                                      const WebnnDeviceType /* device_type */,
+                                      const WebnnDeviceType device_type,
                                       const logging::Logger& logger) const {
   // TODO: Update IsOpSupportedImpl to pass GraphViewer instead of InitializedTensorSet so the implementations
   // can ensure initializers are constant. See #19401 for details of how this update was made to the NNAPI EP.
   // GetClipMinMax(graph_viewer, node, minValue, maxValue, logger)
   float min, max;
-  return GetClipMinMax(initializers, node, min, max, logger);
+  if (GetClipMinMax(initializers, node, min, max, logger)) {
+    // WebNN CPU backend only supports 3 specific ranges: [0.0, infinity], [-1.0, 1.0], [0.0, 6.0].
+    // TODO: Remove this workaround once the associated issue is resolved in Chromium:
+    // https://issues.chromium.org/issues/326156496.
+    if (device_type == WebnnDeviceType::CPU) {
+      if ((min == 0.0f && max == std::numeric_limits<float>::infinity()) ||
+          (min == -1.0f && max == 1.0f) ||
+          (min == 0.0f && max == 6.0f)) {
+        return true;
+      } else {
+        LOGS(logger, VERBOSE) << "Clip min and max values ("
+                              << min << ", "
+                              << max << ") are not supported for WebNN CPU backend";
+        return false;
+      }
+    }
+
+    return true;
+  } else {
+    return false;
+  };
 }
 
 void CreateClipOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

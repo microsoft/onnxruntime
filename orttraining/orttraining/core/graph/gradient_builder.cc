@@ -1794,7 +1794,20 @@ IMPLEMENT_GRADIENT_BUILDER(GetExternalGradient) {
     }
 
     std::vector<ArgDef> output_args;
-    for (const auto& output : node_def.outputs) {
+    for (size_t output_index = 0; output_index < node_def.outputs.size(); ++output_index) {
+      // If the input is not used in the forward computation, we don't need it for gradient computation
+      // Required for ORTMODULE_ATEN_SDPA_FALLBACK
+      if (static_cast<int>(output_index) >= GetSrcNodeInputSize()) {
+        continue;
+      }
+
+      if (!IsGradientRequiredForSrcNodeInput(static_cast<int>(output_index))) {
+        output_args.emplace_back(ArgDef());
+        continue;
+      }
+
+      const auto& output = node_def.outputs[output_index];
+
       if (output.find("GI(") == 0) {
         size_t index = static_cast<size_t>(std::stoi(output.substr(3, output.length() - 4)));
         output_args.emplace_back(GI(index));

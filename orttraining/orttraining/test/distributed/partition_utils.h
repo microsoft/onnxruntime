@@ -159,7 +159,7 @@ struct PipelineStageNodeGroup {
   // the consumer nodes of a particular initializer can be more than one, so we need a vector to store those
   // nodes.
   std::vector<Node*> nodes;
-  PipelineStageNodeGroup(const size_t stage, std::vector<Node*>& node_group) : stage_id(stage), nodes(std::move(node_group)){};
+  PipelineStageNodeGroup(const size_t stage, std::vector<Node*>& node_group) : stage_id(stage), nodes(std::move(node_group)) {};
 };
 
 // This function passes through the given initializer across stages specified in node_groups[i].stage_id.
@@ -338,7 +338,7 @@ common::Status SplitGraph(Graph& graph,
   //    but nodeA, nodeB belong to parition0, nodeC belongs to parition1, and nodeD belongs to parition2.
   //    This means we need to cut edge nodeA->nodeC for the first partition and nodeA->nodeD for the second partition.
   //
-  //    During the first cut, we identify the edge nodeA->nodeC, for this edge, based on the origional node_arg,
+  //    During the first cut, we identify the edge nodeA->nodeC, for this edge, based on the original node_arg,
   //    we create a new node_arg, called updated_node_arg. The inserted send node will take the original node_arg
   //    as input and the inserted recv node will take the updated_node_arg as the output.
   //    And we update updated_node_args with updated_node_args[original_node_arg] = updated_node_arg
@@ -414,7 +414,7 @@ common::Status SplitGraph(Graph& graph,
       auto producer_node = graph.GetMutableProducerNode(id.node_arg_name);
       if (!producer_node) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Cannot find producer node of node_arg with name: ", id.node_arg_name,
-                               ". Wrong cutting infomation.");
+                               ". Wrong cutting information.");
       }
 
       // once we find out the producer node for id.node_arg_name, find which output index that leads
@@ -606,7 +606,7 @@ Status CutBasedApplyPipelinePartitionToMainGraph(
     ORT_RETURN_IF_ERROR(GenerateSubgraph(graph, recv_nodes.back()));
   }
 
-  // Post check to ensure the curent partition is correct and matches with Send/Recv nodes inserted during split.
+  // Post check to ensure the current partition is correct and matches with Send/Recv nodes inserted during split.
   Node* send_node{nullptr};
   Node* recv_node{nullptr};
   for (auto& node : graph.Nodes()) {

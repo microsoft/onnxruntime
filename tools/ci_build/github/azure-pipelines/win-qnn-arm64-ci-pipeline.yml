@@ -1,4 +1,5 @@
 ##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
 trigger:
   branches:
     include:
@@ -32,7 +33,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: 2.21.0.240401
+  default: 2.28.2.241116
 
 jobs:
 - job: 'build'
@@ -74,12 +75,22 @@ jobs:
     displayName: 'Build'
     inputs:
       scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-      arguments: '--config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_tests --cmake_generator "Visual Studio 17 2022" --use_qnn --qnn_home $(QnnSDKRootDir) --parallel'
-      workingDirectory: '$(Build.BinariesDirectory)'
+      arguments: >-
+        --config $(BuildConfig)
+        --build_dir $(Build.BinariesDirectory)
+        --cmake_generator "Visual Studio 17 2022"
+        --use_qnn
+        --qnn_home $(QnnSDKRootDir)
+        --update --build --parallel
 
-  - powershell: |
-     python $(Build.SourcesDirectory)\tools\ci_build\build.py --config $(BuildConfig) --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --test --cmake_generator "Visual Studio 17 2022" --enable_onnx_tests
-    workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
+  - script: |
+      python $(Build.SourcesDirectory)\tools\ci_build\build.py ^
+        --config $(BuildConfig) ^
+        --build_dir $(Build.BinariesDirectory) ^
+        --cmake_generator "Visual Studio 17 2022" ^
+        --use_qnn ^
+        --qnn_home $(QnnSDKRootDir) ^
+        --test --enable_onnx_tests
     displayName: 'Run unit tests'
 
   - script: |

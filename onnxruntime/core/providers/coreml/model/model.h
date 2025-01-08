@@ -8,12 +8,17 @@
 #include <unordered_set>
 
 #include "core/common/common.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
+
+#if defined(__OBJC__)
+@class MLMultiArray;
+#endif
 
 namespace onnxruntime {
+class CoreMLOptions;
 namespace coreml {
 
 class Execution;
@@ -32,6 +37,15 @@ using GetOutputTensorMutableRawDataFn = std::function<void*(const std::string& n
                                                             int32_t requested_onnx_tensor_element_type,
                                                             gsl::span<const int64_t> static_shape)>;
 
+#if defined(__OBJC__)
+// helper function that we unit test.
+// Handles an MLMultiArray that is contiguous, or has one non-contiguous dimension.
+// The output values can be used to copy the array data to a contiguous buffer.
+// Loop num_blocks times, copying block_size elements each time, moving stride elements between copies.
+// A contiguous array will have num_blocks == 1, block_size == total_size (i.e. can be copied in a single operation)
+Status GetMLMultiArrayCopyInfo(const MLMultiArray* array, int64_t& num_blocks, int64_t& block_size, int64_t& stride);
+#endif
+
 class Model {
  public:
   Model(const std::string& path,
@@ -40,7 +54,7 @@ class Model {
         std::unordered_map<std::string, OnnxTensorInfo>&& input_output_info,
         std::unordered_set<std::string>&& scalar_outputs,
         std::unordered_set<std::string>&& int64_outputs,
-        const logging::Logger& logger, uint32_t coreml_flags);
+        const logging::Logger& logger, const CoreMLOptions& coreml_options);
 
   ~Model();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Model);
@@ -60,7 +74,7 @@ class Model {
   }
 
   // Mutex for exclusive lock to this model object
-  OrtMutex& GetMutex() { return mutex_; }
+  std::mutex& GetMutex() { return mutex_; }
 
   // Input and output names in the ORT fused node's order.
   // Names may have been adjusted from the originals due to CoreML naming rules.
@@ -88,7 +102,7 @@ class Model {
   std::unordered_set<std::string> scalar_outputs_;
   std::unordered_set<std::string> int64_outputs_;
 
-  OrtMutex mutex_;
+  std::mutex mutex_;
 };
 
 }  // namespace coreml

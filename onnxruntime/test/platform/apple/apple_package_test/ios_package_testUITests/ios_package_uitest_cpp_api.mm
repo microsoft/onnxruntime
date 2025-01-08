@@ -13,15 +13,19 @@
 
 #if __has_include(<onnxruntime/coreml_provider_factory.h>)
 #define COREML_EP_AVAILABLE 1
+#include <onnxruntime/coreml_provider_factory.h>
 #else
 #define COREML_EP_AVAILABLE 0
 #endif
 
-#if COREML_EP_AVAILABLE
-#include <onnxruntime/coreml_provider_factory.h>
+#if __has_include(<onnxruntime/webgpu_provider_factory.h>)
+#define WEBGPU_EP_AVAILABLE 1
+// WebGPU EP doesn't require including the header as it's enabled via AppendExecutionProvider
+#else
+#define WEBGPU_EP_AVAILABLE 0
 #endif
 
-void testSigmoid(const char* modelPath, bool useCoreML) {
+void testSigmoid(const char* modelPath, bool useCoreML = false, bool useWebGPU = false) {
   // This is an e2e test for ORT C++ API
   Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "testCppAPI");
 
@@ -31,12 +35,19 @@ void testSigmoid(const char* modelPath, bool useCoreML) {
 
 #if COREML_EP_AVAILABLE
   if (useCoreML) {
-    const uint32_t flags = COREML_FLAG_USE_CPU_ONLY;
-    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CoreML(session_options, flags));
+    std::unordered_map<std::string, std::string> provider_options = {
+        {kCoremlProviderOption_MLComputeUnits, "CPUOnly"}};
+    session_options.AppendExecutionProvider("CoreML", provider_options);
   }
 #else
   (void)useCoreML;
 #endif
+
+  if (useWebGPU) {
+    std::unordered_map<std::string, std::string> provider_options;
+    // set provider options if needed. e.g. deviceId
+    session_options.AppendExecutionProvider("WebGPU", provider_options);
+  }
 
   Ort::Session session(env, modelPath, session_options);
 
@@ -96,7 +107,7 @@ void testSigmoid(const char* modelPath, bool useCoreML) {
 }
 
 - (void)testCppAPI_Basic {
-  testSigmoid([self getFilePath].UTF8String, false /* useCoreML */);
+  testSigmoid([self getFilePath].UTF8String);
 }
 
 #if COREML_EP_AVAILABLE
@@ -105,4 +116,9 @@ void testSigmoid(const char* modelPath, bool useCoreML) {
 }
 #endif
 
+#if WEBGPU_EP_AVAILABLE
+- (void)testCppAPI_Basic_WebGPU {
+  testSigmoid([self getFilePath].UTF8String, false /* useCoreML */, true /* useWebGPU */);
+}
+#endif
 @end

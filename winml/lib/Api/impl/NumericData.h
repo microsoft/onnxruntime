@@ -15,7 +15,7 @@ class numeric_data : public _winml::idata {
     size_t num_elements, size_t element_size_in_bytes, wfc::IIterable<wss::IBuffer> const& buffers
   );
 
-  // Privte constructor as this type should be created as a shared_ptr
+  // Private constructor as this type should be created as a shared_ptr
   numeric_data(size_t num_elements, size_t element_size_in_bytes, wfc::IIterable<wss::IBuffer> const& buffers);
   gsl::span<byte> buffer_at(size_t index);
   gsl::span<byte> combined_buffer();

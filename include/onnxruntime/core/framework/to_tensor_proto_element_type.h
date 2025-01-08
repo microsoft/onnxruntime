@@ -12,6 +12,7 @@
 
 #include "core/framework/float8.h"
 #include "core/framework/float16.h"
+#include "core/framework/int4.h"
 
 namespace onnxruntime {
 namespace utils {
@@ -97,6 +98,14 @@ constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<Float8E5
 }
 
 #endif
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<Int4x2>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_INT4;
+}
+template <>
+constexpr ONNX_NAMESPACE::TensorProto_DataType ToTensorProtoElementType<UInt4x2>() {
+  return ONNX_NAMESPACE::TensorProto_DataType_UINT4;
+}
 
 }  // namespace utils
 }  // namespace onnxruntime

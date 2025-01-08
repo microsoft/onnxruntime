@@ -40,6 +40,10 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
   // Generate new dims.
   InlinedVector<int64_t> new_dims(output_rank, 0);
   for (int64_t axis : axes) {
+    if (static_cast<size_t>(axis) >= new_dims.size()) {
+      LOGS(logger, WARNING) << "UnsqueezeElimination cannot remove node due to invalid axes" << node.Name();
+      return Status::OK();
+    }
     new_dims[static_cast<size_t>(axis)] = 1;
   }
 

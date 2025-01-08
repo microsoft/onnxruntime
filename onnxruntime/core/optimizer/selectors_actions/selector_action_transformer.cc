@@ -246,7 +246,8 @@ static Status SetOpSinceVersionForProducedNodes(NodeIndex pre_action_max_num_nod
     ++produced_op_id_it;
   }
 
-  ORT_RETURN_IF(produced_op_id_it != produced_op_ids_end, "Too many produced nodes in the runtime optimization record.");
+  ORT_RETURN_IF(produced_op_id_it != produced_op_ids_end,
+                "Too many produced nodes in the runtime optimization record.");
 
   return Status::OK();
 }
@@ -275,6 +276,12 @@ Status SelectorActionTransformer::ApplySavedRuntimeOptimizations(
     }
 
     // all nodes in the group are still available if IsValid returns true
+
+    if (!graph_utils::IsSupportedProvider(nodes_to_optimize.Target(), GetCompatibleExecutionProviders())) {
+      // TODO is it enough to just check the target node?
+      LOGS(logger, VERBOSE) << "Target node is not assigned to a compatible execution provider, skipping action.";
+      continue;
+    }
 
     const NodeIndex pre_action_num_nodes = graph.MaxNodeIndex();
 

@@ -8,6 +8,6 @@ namespace vaip {
 using namespace ::onnxruntime;
 std::unique_ptr<ComputeCapability> XirSubgraphToComputeCapability1(const onnxruntime::GraphViewer& graph, vaip_core::ExecutionProvider* ep, size_t index);
 std::vector<std::unique_ptr<ComputeCapability>> GetComputeCapabilityOps(const onnxruntime::GraphViewer& graph,
-                                                                        vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>>* ep, const std::set<std::string>& all_not_support_optypes);
+                                                                        vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>>* ep, const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup);
 
 }  // namespace vaip

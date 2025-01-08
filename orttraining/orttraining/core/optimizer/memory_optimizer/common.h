@@ -70,7 +70,7 @@ std::string GetTensorElemCountInSymbolicString(const Node* node, size_t output_i
 
 int ParseIntValueFromString(std::string_view str);
 
-Status ParseOptimizationConfigFromString(std::string_view memory_optimization_config,
+Status ParseOptimizationConfigFromString(std::string_view memory_optimization_config_file_path,
                                          InlinedHashMap<std::string, UserConfig>& cluster_id_to_config_map);
 
 constexpr const ExecutionOrder TOPOLOGICAL_SORT_ALGORITHM = ExecutionOrder::MEMORY_EFFICIENT;

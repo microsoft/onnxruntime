@@ -388,7 +388,7 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
     return {m, n, k, o, batch};
   }
 
-  rocblas_handle handle;
+  hipblasHandle_t handle;
   const RocmAttentionParameters* attention;
   const hipDeviceProp_t* device_prop;
 
@@ -398,7 +398,8 @@ struct GemmSoftmaxGemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
   const T* v_buffer;
   T* out_buffer;
 
-  // optional, bias [B,N,S,T]
+  // optional, attention bias [B,N,S,T]
+  // TODO: support shape [B,1,S,T], [1, N, S, T], [1, 1, S, T] with broadcast.
   const T* bias_buffer{nullptr};
 
   // optional, mask value

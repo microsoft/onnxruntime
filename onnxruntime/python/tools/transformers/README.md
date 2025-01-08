@@ -29,7 +29,7 @@ Models not in the list may only be partially optimized or not optimized at all.
 - **hidden_size**: (*default: 768*)
     BERT-base and BERT-large has 768 and 1024 hidden nodes respectively.
 - **input_int32**: (*optional*)
-    Exported model ususally uses int64 tensor as input. If this flag is specified, int32 tensors will be used as input, and it could avoid un-necessary Cast nodes and get better performance.
+    Exported model usually uses int64 tensor as input. If this flag is specified, int32 tensors will be used as input, and it could avoid un-necessary Cast nodes and get better performance.
 - **float16**: (*optional*)
     By default, model uses float32 in computation. If this flag is specified, half-precision float will be used. This option is recommended for NVidia GPU with Tensor Core like V100 and T4. For older GPUs, float32 is likely faster.
 -  **use_gpu**: (*optional*)

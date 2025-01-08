@@ -8,7 +8,6 @@
 #include <sstream>
 #include <iostream>
 #include <filesystem>
-#include <experimental/filesystem>
 #include "flatbuffers/idl.h"
 #include "ort_trt_int8_cal_table.fbs.h"
 #include <NvInferVersion.h>
@@ -16,7 +15,7 @@
 #include "core/common/path_string.h"
 #include "core/framework/murmurhash3.h"
 
-namespace fs = std::experimental::filesystem;
+namespace fs = std::filesystem;
 
 namespace onnxruntime {
 
@@ -521,7 +520,7 @@ void RemoveCachesByType(const std::string& root, std::string file_extension) {
  * compiled kernels, so the name must be unique and deterministic across models and sessions.
  * </remarks>
  */
-HashValue TRTGenerateId(const GraphViewer& graph_viewer) {
+HashValue TRTGenerateId(const GraphViewer& graph_viewer, std::string trt_version, std::string cuda_version) {
   HashValue model_hash = 0;
 
   // find the top level graph
@@ -538,10 +537,8 @@ HashValue TRTGenerateId(const GraphViewer& graph_viewer) {
   };
 
   // Use the model's file name instead of the entire path to avoid cache regeneration if path changes
-  const auto& model_path_components = main_graph.ModelPath().GetComponents();
-
-  if (!model_path_components.empty()) {
-    std::string model_name = PathToUTF8String(model_path_components.back());
+  if (main_graph.ModelPath().has_filename()) {
+    std::string model_name = PathToUTF8String(main_graph.ModelPath().filename());
 
     LOGS_DEFAULT(INFO) << "[TensorRT EP] Model name is " << model_name;
     // Ensure enough characters are hashed in case model names are too short
@@ -586,12 +583,11 @@ HashValue TRTGenerateId(const GraphViewer& graph_viewer) {
 #endif
 
 #ifdef CUDA_VERSION
-  hash_str(std::to_string(CUDA_VERSION));
+  hash_str(cuda_version);
 #endif
 
 #if defined(NV_TENSORRT_MAJOR) && defined(NV_TENSORRT_MINOR)
-  std::string TRT_VERSION = std::to_string(NV_TENSORRT_MAJOR) + "." + std::to_string(NV_TENSORRT_MINOR);
-  hash_str(TRT_VERSION);
+  hash_str(trt_version);
 #endif
 
   model_hash = hash[0] | (uint64_t(hash[1]) << 32);

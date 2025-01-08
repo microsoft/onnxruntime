@@ -7,7 +7,7 @@
 #include "QnnOpDef.h"
 
 #include "core/providers/qnn/builder/op_builder_factory.h"
-#include "core/providers/qnn/builder/qnn_fusions.h"
+#include "core/providers/qnn/builder/qnn_node_group.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/framework/utils.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
@@ -17,7 +17,7 @@
 namespace onnxruntime {
 namespace qnn {
 
-bool QnnModel::GetGraphInfoFromModel(QnnModelWrapper& model_wrapper) {
+bool QnnModel::GetGraphInfoFromModel(QnnModelWrapper& model_wrapper, const logging::Logger& logger) {
   bool rt = true;
 
   graph_info_ = std::make_unique<GraphInfo>(model_wrapper.GetQnnGraph(),
@@ -25,7 +25,7 @@ bool QnnModel::GetGraphInfoFromModel(QnnModelWrapper& model_wrapper) {
                                             std::move(model_wrapper.GetGraphInputTensorWrappers()),
                                             std::move(model_wrapper.GetGraphOutputTensorWrappers()));
   if (graph_info_ == nullptr) {
-    LOGS(logger_, ERROR) << "GetGraphInfoFromModel() failed to allocate GraphInfo.";
+    LOGS(logger, ERROR) << "GetGraphInfoFromModel() failed to allocate GraphInfo.";
     return false;
   }
 
@@ -33,16 +33,19 @@ bool QnnModel::GetGraphInfoFromModel(QnnModelWrapper& model_wrapper) {
 }
 
 Status QnnModel::SetGraphInputOutputInfo(const GraphViewer& graph_viewer,
-                                         const onnxruntime::Node& fused_node) {
+                                         const onnxruntime::Node& fused_node,
+                                         const logging::Logger& logger) {
   auto graph_initializers = graph_viewer.GetAllInitializedTensors();
   for (auto graph_ini : graph_initializers) {
     initializer_inputs_.emplace(graph_ini.first);
   }
   auto input_defs = fused_node.InputDefs();
-  ORT_RETURN_IF_ERROR(ParseGraphInputOrOutput(input_defs, input_names_, inputs_info_, model_input_index_map_, true));
+  ORT_RETURN_IF_ERROR(ParseGraphInputOrOutput(input_defs, input_names_, inputs_info_,
+                                              model_input_index_map_, logger, true));
 
   auto output_defs = fused_node.OutputDefs();
-  ORT_RETURN_IF_ERROR(ParseGraphInputOrOutput(output_defs, output_names_, outputs_info_, model_output_index_map_));
+  ORT_RETURN_IF_ERROR(ParseGraphInputOrOutput(output_defs, output_names_, outputs_info_,
+                                              model_output_index_map_, logger));
 
   return Status::OK();
 }
@@ -51,6 +54,7 @@ Status QnnModel::ParseGraphInputOrOutput(ConstPointerContainer<std::vector<NodeA
                                          std::vector<std::string>& input_output_names,
                                          std::unordered_map<std::string, OnnxTensorInfo>& input_output_info_table,
                                          std::unordered_map<std::string, size_t>& input_output_index_map,
+                                         const logging::Logger& logger,
                                          bool is_input) {
   for (size_t i = 0, end = input_output_defs.size(), index = 0; i < end; ++i) {
     const auto& name = input_output_defs[i]->Name();
@@ -60,7 +64,7 @@ Status QnnModel::ParseGraphInputOrOutput(ConstPointerContainer<std::vector<NodeA
       }
     }
     // Validate input/output shape
-    LOGS(logger_, VERBOSE) << (is_input ? "input " : "output ") << i << " " << name;
+    LOGS(logger, VERBOSE) << (is_input ? "input " : "output ") << i << " " << name;
     input_output_index_map.emplace(name, index++);
     const auto* shape_proto = input_output_defs[i]->Shape();  // consider use qnn_model_wrapper.GetOnnxShape
     ORT_RETURN_IF(shape_proto == nullptr, "shape_proto cannot be null for output: ", name);
@@ -91,124 +95,98 @@ const NodeUnit& QnnModel::GetNodeUnit(const Node* node,
 
 Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
                               const onnxruntime::Node& fused_node,
+                              const qnn::ModelSettings& model_settings,
+                              const logging::Logger& logger,
                               const QnnGraph_Config_t** graph_configs) {
-  LOGS(logger_, VERBOSE) << "ComposeGraph Graph name: " << graph_viewer.Name();
+  LOGS(logger, VERBOSE) << "ComposeGraph Graph name: " << graph_viewer.Name();
 
   // Holder for the NodeUnits in the graph, this will guarantee the NodeUnits is
   // valid throughout the lifetime of the ModelBuilder
   std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
   std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
-  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph_viewer);
+  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph_viewer, logger);
 
   // This name must be same with the EPContext node name
   const auto& graph_name = fused_node.Name();
-  ORT_RETURN_IF_ERROR(SetGraphInputOutputInfo(graph_viewer, fused_node));
+  ORT_RETURN_IF_ERROR(SetGraphInputOutputInfo(graph_viewer, fused_node, logger));
 
-  QnnModelWrapper qnn_model_wrapper = QnnModelWrapper(graph_viewer, logger_,
+  QnnModelWrapper qnn_model_wrapper = QnnModelWrapper(graph_viewer, logger,
                                                       qnn_backend_manager_->GetQnnInterface(),
                                                       qnn_backend_manager_->GetQnnBackendHandle(),
                                                       model_input_index_map_,
                                                       model_output_index_map_,
                                                       initializer_inputs_,
-                                                      qnn_backend_manager_->GetQnnBackendType());
+                                                      qnn_backend_manager_->GetQnnBackendType(),
+                                                      model_settings);
   bool rt = true;
   rt = qnn_model_wrapper.CreateQnnGraph(qnn_backend_manager_->GetQnnContext(), graph_name, graph_configs);
   if (!rt) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to initialize qnn_model_wrapper.");
   }
 
-  std::unordered_set<const NodeUnit*> handled_node_units;
+  std::vector<std::unique_ptr<qnn::IQnnNodeGroup>> qnn_node_groups;
+  qnn_node_groups.reserve(node_unit_holder.size());
 
-  // Op builer
-  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
-  for (size_t i = 0; i < node_indices.size(); i++) {
-    const auto* node(graph_viewer.GetNode(node_indices[i]));
+  ORT_RETURN_IF_ERROR(qnn::GetQnnNodeGroups(qnn_node_groups, qnn_model_wrapper, node_unit_map,
+                                            node_unit_holder.size(), logger));
 
-    // Check whether it's part of NodeUnit
-    const NodeUnit& node_unit = GetNodeUnit(node, node_unit_map);
-    // Q, DQ nodes in the node unit only carry the quantization parameters
-    // Add the QNN node when it is the target node (It's a normal node or a single Q/DQ node)
-    const std::string& op_type = node_unit.OpType();
+  for (const std::unique_ptr<qnn::IQnnNodeGroup>& qnn_node_group : qnn_node_groups) {
+    Status status = qnn_node_group->AddToModelBuilder(qnn_model_wrapper, logger);
 
-    if (node != &node_unit.GetNode()) {
-      continue;
+    if (!status.IsOK()) {
+      LOGS(logger, ERROR) << "[QNN EP] Failed to add supported node to QNN graph during EP's compile call: "
+                          << status.ErrorMessage() << std::endl;
+      return status;
     }
-
-    if (handled_node_units.count(&node_unit) != 0) {
-      continue;  // Already handled.
-    }
-
-    // Try to see if this node unit can be fused.
-    std::vector<const NodeUnit*> fused_nodes;
-    ORT_RETURN_IF_ERROR(TryFusions(fused_nodes, qnn_model_wrapper, node_unit, node_unit_map,
-                                   handled_node_units, logger_, false /*do_op_validation*/));
-
-    if (!fused_nodes.empty()) {
-      for (auto fused_node_unit : fused_nodes) {
-        handled_node_units.insert(fused_node_unit);
-      }
-      continue;
-    }
-
-    LOGS(logger_, VERBOSE) << " node name: [" << node->Name()
-                           << "] node optype: [" << op_type
-                           << "] as part of the NodeUnit type: [" << node_unit.OpType()
-                           << "] name: [" << node_unit.Name()
-                           << "]";
-    if (const auto* op_builder = GetOpBuilder(op_type)) {
-      ORT_RETURN_IF_ERROR(op_builder->AddToModelBuilder(qnn_model_wrapper, node_unit, logger_));
-    }
-
-    handled_node_units.insert(&node_unit);
   }
 
   ORT_RETURN_IF_NOT(qnn_model_wrapper.ComposeQnnGraph(), "Failed to compose Qnn graph.");
 
-  rt = GetGraphInfoFromModel(qnn_model_wrapper);
+  rt = GetGraphInfoFromModel(qnn_model_wrapper, logger);
   if (!rt) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "GetGraphInfoFromModel failed.");
   }
-  LOGS(logger_, VERBOSE) << "GetGraphInfoFromModel completed.";
+  LOGS(logger, VERBOSE) << "GetGraphInfoFromModel completed.";
   return Status::OK();
 }
 
-Status QnnModel::FinalizeGraphs() {
-  LOGS(logger_, VERBOSE) << "FinalizeGraphs started.";
+Status QnnModel::FinalizeGraphs(const logging::Logger& logger) {
+  LOGS(logger, VERBOSE) << "FinalizeGraphs started.";
   Qnn_ErrorHandle_t status = qnn_backend_manager_->GetQnnInterface().graphFinalize(graph_info_->Graph(),
                                                                                    qnn_backend_manager_->GetQnnProfileHandle(),
                                                                                    nullptr);
   if (QNN_GRAPH_NO_ERROR != status) {
-    LOGS(logger_, ERROR) << "Failed to finalize QNN graph.";
+    LOGS(logger, ERROR) << "Failed to finalize QNN graph. Error code: " << status;
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to finalize QNN graph.");
   }
 
   ORT_RETURN_IF_ERROR(qnn_backend_manager_->ExtractBackendProfilingInfo());
 
-  LOGS(logger_, VERBOSE) << "FinalizeGraphs completed.";
+  LOGS(logger, VERBOSE) << "FinalizeGraphs completed.";
   return Status::OK();
 }
 
-Status QnnModel::SetupQnnInputOutput() {
-  LOGS(logger_, VERBOSE) << "Setting up QNN input/output for graph: " << graph_info_->Name();
+Status QnnModel::SetupQnnInputOutput(const logging::Logger& logger) {
+  LOGS(logger, VERBOSE) << "Setting up QNN input/output for graph: " << graph_info_->Name();
 
   auto result = SetupTensors(qnn_input_infos_, graph_info_->InputTensors());
 
   if (Status::OK() != result) {
-    LOGS(logger_, ERROR) << "Failed to setup QNN input output tensors for graph: " << graph_info_->Name();
+    LOGS(logger, ERROR) << "Failed to setup QNN input output tensors for graph: " << graph_info_->Name();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to setup QNN input tensors!");
   }
 
   result = SetupTensors(qnn_output_infos_, graph_info_->OutputTensors(), false);
   if (Status::OK() != result) {
-    LOGS(logger_, ERROR) << "Failed to setup QNN input output tensors for graph: " << graph_info_->Name();
+    LOGS(logger, ERROR) << "Failed to setup QNN input output tensors for graph: " << graph_info_->Name();
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to setup QNN output tensors!");
   }
 
   return Status::OK();
 }
 
-Status QnnModel::ExecuteGraph(const Ort::KernelContext& context) {
-  LOGS(logger_, VERBOSE) << "QnnModel::ExecuteGraphs";
+Status QnnModel::ExecuteGraph(const Ort::KernelContext& context, const logging::Logger& logger) {
+  LOGS(logger, VERBOSE) << "QnnModel::ExecuteGraphs";
   const size_t num_inputs = context.GetInputCount();
   const size_t num_outputs = context.GetOutputCount();
   ORT_RETURN_IF_NOT(qnn_input_infos_.size() <= num_inputs, "Inconsistent input sizes");
@@ -227,14 +205,14 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context) {
   qnn_inputs.reserve(qnn_input_infos_.size());
 
   for (const auto& qnn_input_info : qnn_input_infos_) {
-    LOGS(logger_, VERBOSE) << "model_input = " << qnn_input_info.tensor_wrapper->GetName()
-                           << " index = " << qnn_input_info.ort_index;
+    LOGS(logger, VERBOSE) << "model_input = " << qnn_input_info.tensor_wrapper->GetName()
+                          << " index = " << qnn_input_info.ort_index;
     auto ort_input_tensor = context.GetInput(qnn_input_info.ort_index);
     auto ort_tensor_size = TensorDataSize(ort_input_tensor);
-    LOGS(logger_, VERBOSE) << "Qnn tensor size: " << qnn_input_info.tensor_byte_size
-                           << "Ort tensor size: " << ort_tensor_size;
-    ORT_ENFORCE(qnn_input_info.tensor_byte_size == ort_tensor_size,
-                "ORT Tensor data size does not match QNN tensor data size.");
+    LOGS(logger, VERBOSE) << "Qnn tensor size: " << qnn_input_info.tensor_byte_size
+                          << "Ort tensor size: " << ort_tensor_size;
+    ORT_RETURN_IF_NOT(qnn_input_info.tensor_byte_size == ort_tensor_size,
+                      "ORT Tensor data size does not match QNN tensor data size.");
 
     qnn_inputs.push_back(qnn_input_info.tensor_wrapper->GetQnnTensor());
     SetQnnTensorClientBuf(qnn_inputs.back(),
@@ -246,22 +224,22 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context) {
 
   for (auto& qnn_output_info : qnn_output_infos_) {
     const std::string& model_output_name = qnn_output_info.tensor_wrapper->GetName();
-    LOGS(logger_, VERBOSE) << "model_output = " << model_output_name << " index = " << qnn_output_info.ort_index;
+    LOGS(logger, VERBOSE) << "model_output = " << model_output_name << " index = " << qnn_output_info.ort_index;
     const auto& ort_output_info = GetOutputInfo(model_output_name);
     const std::vector<int64_t>& output_shape = ort_output_info->shape_;
     auto ort_output_tensor = context.GetOutput(qnn_output_info.ort_index, output_shape.data(), output_shape.size());
     auto ort_tensor_size = TensorDataSize(ort_output_tensor);
-    LOGS(logger_, VERBOSE) << "Qnn tensor size: " << qnn_output_info.tensor_byte_size
-                           << "Ort tensor size: " << ort_tensor_size;
-    ORT_ENFORCE(qnn_output_info.tensor_byte_size == ort_tensor_size,
-                "ORT Tensor data size does not match QNN tensor data size");
+    LOGS(logger, VERBOSE) << "Qnn tensor size: " << qnn_output_info.tensor_byte_size
+                          << "Ort tensor size: " << ort_tensor_size;
+    ORT_RETURN_IF_NOT(qnn_output_info.tensor_byte_size == ort_tensor_size,
+                      "ORT Tensor data size does not match QNN tensor data size");
 
     qnn_outputs.push_back(qnn_output_info.tensor_wrapper->GetQnnTensor());
     SetQnnTensorClientBuf(qnn_outputs.back(),
                           const_cast<void*>(ort_output_tensor.GetTensorData<void>()), qnn_output_info.tensor_byte_size);
   }
 
-  LOGS(logger_, VERBOSE) << "Start execute QNN graph:" << graph_info_->Name();
+  LOGS(logger, VERBOSE) << "Start execute QNN graph:" << graph_info_->Name();
   auto qnn_interface = qnn_backend_manager_->GetQnnInterface();
   auto profile_backend_handle = qnn_backend_manager_->GetQnnProfileHandle();
   Qnn_ErrorHandle_t execute_status = QNN_GRAPH_NO_ERROR;
@@ -269,7 +247,7 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context) {
   {
     // Acquire mutex before calling graphExecute and profiling APIs to support calling session.Run()
     // from multiple threads.
-    std::lock_guard<OrtMutex> lock(graph_exec_mutex_);
+    std::lock_guard<std::mutex> lock(graph_exec_mutex_);
     execute_status = qnn_interface.graphExecute(graph_info_->Graph(),
                                                 qnn_inputs.data(),
                                                 static_cast<uint32_t>(qnn_inputs.size()),
@@ -286,7 +264,7 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context) {
 
   if (QNN_COMMON_ERROR_SYSTEM_COMMUNICATION == execute_status) {
     auto error_message = "NPU crashed. SSR detected. Caused QNN graph execute error. Error code: ";
-    LOGS(logger_, ERROR) << error_message << execute_status;
+    LOGS(logger, ERROR) << error_message << execute_status;
     return ORT_MAKE_STATUS(ONNXRUNTIME, ENGINE_ERROR, error_message, execute_status);
   }
 
@@ -337,38 +315,67 @@ Status QnnModel::SetupTensors(std::vector<QnnTensorInfo>& qnn_tensor_infos,
   return Status::OK();
 }
 
-Status QnnModel::DeserializeGraphInfoFromBinaryInfo(const QnnSystemContext_GraphInfo_t& qnn_sys_ctx_graph_info) {
+Status QnnModel::DeserializeGraphInfoFromBinaryInfo(const QnnSystemContext_GraphInfo_t& qnn_sys_ctx_graph_info,
+                                                    const Qnn_ContextHandle_t& context) {
   std::vector<QnnTensorWrapper> input_tensor_wrappers;
   std::vector<QnnTensorWrapper> output_tensor_wrappers;
 
   std::string graph_name;
+  Qnn_Tensor_t* input_tensors = nullptr;
+  Qnn_Tensor_t* output_tensors = nullptr;
+  uint32_t graph_input_num = 0;
+  uint32_t graph_output_num = 0;
   if (qnn_sys_ctx_graph_info.version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_1) {
     graph_name.assign(qnn_sys_ctx_graph_info.graphInfoV1.graphName);
-    auto graph_input_num = qnn_sys_ctx_graph_info.graphInfoV1.numGraphInputs;
-    auto graph_output_num = qnn_sys_ctx_graph_info.graphInfoV1.numGraphOutputs;
-    ORT_RETURN_IF(nullptr == qnn_sys_ctx_graph_info.graphInfoV1.graphInputs, "Graph from cached context doesn't have any inputs.");
-    ORT_RETURN_IF(nullptr == qnn_sys_ctx_graph_info.graphInfoV1.graphOutputs, "Graph from cached context doesn't have any outputs.");
+    graph_input_num = qnn_sys_ctx_graph_info.graphInfoV1.numGraphInputs;
+    graph_output_num = qnn_sys_ctx_graph_info.graphInfoV1.numGraphOutputs;
 
-    // Copy graph input
-    Qnn_Tensor_t* input_tensors = qnn_sys_ctx_graph_info.graphInfoV1.graphInputs;
-    for (size_t i = 0; i < graph_input_num; ++i) {
-      QnnTensorWrapper tensorwrapper;
-      ORT_RETURN_IF_ERROR(tensorwrapper.Init(input_tensors[i]));
-      input_tensor_wrappers.push_back(std::move(tensorwrapper));
-    }
-
-    // Copy graph output
-    Qnn_Tensor_t* output_tensors = qnn_sys_ctx_graph_info.graphInfoV1.graphOutputs;
-    for (size_t i = 0; i < graph_output_num; ++i) {
-      QnnTensorWrapper tensorwrapper;
-      ORT_RETURN_IF_ERROR(tensorwrapper.Init(output_tensors[i]));
-      output_tensor_wrappers.push_back(std::move(tensorwrapper));
-    }
+    input_tensors = qnn_sys_ctx_graph_info.graphInfoV1.graphInputs;
+    output_tensors = qnn_sys_ctx_graph_info.graphInfoV1.graphOutputs;
   }
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 18)  // start from 2.25
+  else if (qnn_sys_ctx_graph_info.version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_2) {
+    graph_name.assign(qnn_sys_ctx_graph_info.graphInfoV2.graphName);
+    graph_input_num = qnn_sys_ctx_graph_info.graphInfoV2.numGraphInputs;
+    graph_output_num = qnn_sys_ctx_graph_info.graphInfoV2.numGraphOutputs;
+
+    input_tensors = qnn_sys_ctx_graph_info.graphInfoV2.graphInputs;
+    output_tensors = qnn_sys_ctx_graph_info.graphInfoV2.graphOutputs;
+  }
+#endif
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 21)  // start from 2.28
+  else if (qnn_sys_ctx_graph_info.version == QNN_SYSTEM_CONTEXT_GRAPH_INFO_VERSION_3) {
+    graph_name.assign(qnn_sys_ctx_graph_info.graphInfoV3.graphName);
+    graph_input_num = qnn_sys_ctx_graph_info.graphInfoV3.numGraphInputs;
+    graph_output_num = qnn_sys_ctx_graph_info.graphInfoV3.numGraphOutputs;
+
+    input_tensors = qnn_sys_ctx_graph_info.graphInfoV3.graphInputs;
+    output_tensors = qnn_sys_ctx_graph_info.graphInfoV3.graphOutputs;
+  }
+#endif
+  else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported context graph info version.");
+  }
+  ORT_RETURN_IF(nullptr == input_tensors, "Graph from cached context doesn't have any inputs.");
+  ORT_RETURN_IF(nullptr == output_tensors, "Graph from cached context doesn't have any outputs.");
+
+  // Copy graph input
+  for (size_t i = 0; i < graph_input_num; ++i) {
+    QnnTensorWrapper tensorwrapper;
+    ORT_RETURN_IF_ERROR(tensorwrapper.Init(input_tensors[i]));
+    input_tensor_wrappers.push_back(std::move(tensorwrapper));
+  }
+  // Copy graph output
+  for (size_t i = 0; i < graph_output_num; ++i) {
+    QnnTensorWrapper tensorwrapper;
+    ORT_RETURN_IF_ERROR(tensorwrapper.Init(output_tensors[i]));
+    output_tensor_wrappers.push_back(std::move(tensorwrapper));
+  }
+
   Qnn_GraphHandle_t graph;
   auto qnn_interface = qnn_backend_manager_->GetQnnInterface();
-  qnn_interface.graphRetrieve(qnn_backend_manager_->GetQnnContext(),
-                              graph_name.c_str(), &graph);
+  auto rt = qnn_interface.graphRetrieve(context, graph_name.c_str(), &graph);
+  ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to retrieve QNN graph.");
 
   graph_info_ = std::make_unique<GraphInfo>(graph,
                                             graph_name,

@@ -227,7 +227,7 @@ def fix_transpose(model):
         weight = numpy_helper.to_array(t[1])
         assert len(weight.shape) == 2
         weight = weight.transpose(perm)
-        new_weight = numpy_helper.from_array(weight, "%s_transposed" % t[1].name)
+        new_weight = numpy_helper.from_array(weight, f"{t[1].name}_transposed")
         model.graph.initializer.extend([new_weight])
         replace_input_arg(model, node.output[0], new_weight.name)
 
@@ -269,7 +269,7 @@ def process_dropout(model):
         del model.graph.node[d]
 
 
-# Also need to set following line differently for differnt verison of bert
+# Also need to set following line differently for different version of bert
 # expand_out.name = '412'
 def add_expand_shape(model):
     expand_out = model.graph.value_info.add()

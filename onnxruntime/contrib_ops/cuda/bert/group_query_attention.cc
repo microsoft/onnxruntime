@@ -5,7 +5,7 @@
 #include "core/platform/env_var_utils.h"
 #include "contrib_ops/cuda/bert/group_query_attention_impl.h"
 #include "contrib_ops/cuda/bert/group_query_attention.h"
-#include "contrib_ops/cuda/bert/group_query_attention_helper.h"
+#include "contrib_ops/cpu/bert/group_query_attention_helper.h"
 #include "contrib_ops/cuda/bert/cutlass_fmha/memory_efficient_attention.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_api.h"
 
@@ -51,21 +51,16 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
   do_rotary_ = info.GetAttrOrDefault<int64_t>("do_rotary", 0) == 1;
   rotary_interleaved_ = info.GetAttrOrDefault<int64_t>("rotary_interleaved", 0) == 1;
   scale_ = info.GetAttrOrDefault<float>("scale", 0.0f);
+  softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
+  use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
 
-#if USE_FLASH_ATTENTION
-  disable_flash_attention_ = sizeof(T) != 2 ||
-                             ParseEnvironmentVariableWithDefault<bool>(attention::kDisableFlashAttention, false);
-#else
-  disable_flash_attention_ = true;
-#endif
+  kernel_options_ = this->GetAttentionKernelOptions();
 
-#if USE_MEMORY_EFFICIENT_ATTENTION
+  disable_flash_attention_ = sizeof(T) != 2 || !kernel_options_->UseFlashAttention();
+
   // Memory efficient attention only supports float and float16, not bfloat16.
-  disable_memory_efficient_attention_ = std::is_same<T, BFloat16>::value ||
-                                        ParseEnvironmentVariableWithDefault<bool>(attention::kDisableMemoryEfficientAttention, false);
-#else
-  disable_memory_efficient_attention_ = true;
-#endif
+  disable_memory_efficient_attention_ = std::is_same<T, BFloat16>::value || !kernel_options_->UseEfficientAttention();
+
   if (!disable_flash_attention_) {
     zeros_ = this->GetScratchBuffer<int>(kZerosCount, nullptr);
   }
@@ -100,11 +95,12 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                 kv_num_heads_,
                                                                 seqlens_k,
                                                                 total_seqlen,
-                                                                is_past_bsnh_,
                                                                 scale_,
+                                                                softcap_,
                                                                 device_prop.maxThreadsPerBlock));
   parameters.local_window_size = local_window_size_;
   parameters.is_unidirectional = is_unidirectional_;
+  parameters.use_smooth_softmax = use_smooth_softmax_;
   parameters.zeros_count = kZerosCount;
   parameters.zero_ptr = zeros_.get();
   // parameters.left_padding = left_padding_;
@@ -139,9 +135,9 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
     // split kv buffer
     using namespace std;
     auto [num_splits, slse_accum_bytes, o_accum_bytes] = onnxruntime::flash::get_num_splits_and_buffer_sizes(
-        parameters.batch_size, parameters.sequence_length, parameters.sequence_length, parameters.num_heads,
+        parameters.batch_size, parameters.sequence_length, parameters.total_sequence_length, parameters.num_heads,
         parameters.head_size, device_prop.multiProcessorCount);
-    parameters.num_splits = num_splits;
+    parameters.num_splits = static_cast<int>(num_splits);
     softmax_lse_accum_bytes = slse_accum_bytes;
     out_accum_bytes = o_accum_bytes;
   }
@@ -161,9 +157,8 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
       !use_flash_attention &&
       !disable_memory_efficient_attention_ &&
       local_window_size_ == -1 &&
-      (parameters.head_size & 7) == 0 &&
-      (sizeof(T) == 2 || parameters.sequence_length >= attention::kMinSeqLenForMemoryEfficientAttentionFp32) &&
-      has_memory_efficient_attention(sm, sizeof(T) == 2);
+      (sizeof(T) == 2 || parameters.sequence_length >= this->kernel_options_->MinSeqLenForEfficientAttentionFp32()) &&
+      has_memory_efficient_attention(sm, sizeof(T) == 2, parameters.head_size, parameters.head_size);
   if (!use_flash_attention && !use_memory_efficient_attention && local_window_size_ != -1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Local attention UNSUPPORTED for sm < 80 on CUDA.");
@@ -201,6 +196,17 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   auto fmha_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
   auto unpacked_qkv_buffer = GetScratchBuffer<void>(0, context->GetComputeStream());
 #endif
+
+  if (kernel_options_->AllowDebugInfo()) {
+    AttentionKernelDebugInfo debug_info;
+    debug_info.use_flash_attention = use_flash_attention;
+    debug_info.use_efficient_attention = use_memory_efficient_attention;
+
+    debug_info.Print("GroupQueryAttention",
+                     this->Node().Name(),
+                     std::is_same<T, MLFloat16>::value,
+                     std::is_same<T, BFloat16>::value);
+  }
 
   // seqlens_k buffer
   size_t seqlens_k_bytes = 0;
@@ -246,7 +252,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
     data.out_accum = reinterpret_cast<CudaT*>(out_accum_buffer.get());
   }
   if (seqlens_k_buffer != nullptr) {
-    data.seqlens_k_total = reinterpret_cast<int*>(seqlens_k_buffer.get());
+    data.seqlens_k_buff = reinterpret_cast<int*>(seqlens_k_buffer.get());
   }
   // Memory Efficient Buffers
   if (k_buffer != nullptr) {

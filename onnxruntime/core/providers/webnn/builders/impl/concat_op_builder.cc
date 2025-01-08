@@ -19,6 +19,10 @@ class ConcatOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
+
+  // Operator support related.
+  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -36,43 +40,43 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   NodeAttrHelper helper(node);
   uint32_t axis = static_cast<uint32_t>(HandleNegativeAxis(helper.Get("axis", 1), rank));
 
-  const size_t num_inputs = input_defs.size();
   std::vector<emscripten::val> inputs;
   for (const auto* input : input_defs) {
-    LOGS(logger, VERBOSE) << "input name " << input->Name();
     inputs.push_back(model_builder.GetOperand(input->Name()));
   }
 
-  emscripten::val output = emscripten::val::undefined();
-  if (num_inputs <= 4 || model_builder.GetPreferredLayout() == DataLayout::NCHW) {
-    output = model_builder.GetBuilder().call<emscripten::val>("concat", emscripten::val::array(inputs), axis);
-  } else {
-    // WebNN XNNPack backend only supports the concat with inputs number <= 4,
-    // decomposing the Concat with inputs number > 4 into multiple WebNN concat ops.
-    size_t remaining_inputs = num_inputs;
-    size_t max_inputs = 4;
-    while (remaining_inputs > 0) {
-      std::vector<emscripten::val> chunk_inputs;
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
 
-      // Push the last concated output to the next chunk_inputs.
-      if (output != emscripten::val::undefined()) {
-        chunk_inputs.push_back(output);
-        max_inputs = 3;
-      }
-
-      size_t chunk_size = std::min(remaining_inputs, max_inputs);
-
-      for (size_t i = 0; i < chunk_size; i++) {
-        chunk_inputs.push_back(inputs[num_inputs - remaining_inputs + i]);
-      }
-
-      output = model_builder.GetBuilder().call<emscripten::val>("concat", emscripten::val::array(chunk_inputs), axis);
-      remaining_inputs -= chunk_size;
-    }
-  }
+  emscripten::val output =
+      model_builder.GetBuilder().call<emscripten::val>("concat", emscripten::val::array(inputs), axis, options);
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
+}
+
+bool ConcatOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                                             const emscripten::val& wnn_limits, const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  const auto& op_type = node.OpType();
+  int32_t input0_type;
+
+  if (!GetType(*input_defs[0], input0_type, logger))
+    return false;
+
+  for (size_t i = 1; i < input_defs.size(); i++) {
+    int32_t input_type;
+    if (!GetType(*input_defs[i], input_type, logger)) {
+      return false;
+    }
+
+    std::array<int32_t, 2> input_types{input0_type, input_type};
+    if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+      return false;
+    }
+  }
+
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "inputs", "inputs", logger);
 }
 
 void CreateConcatOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

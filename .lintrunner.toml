@@ -2,31 +2,23 @@
 # You can install the dependencies and initialize with
 #
 # ```sh
-# pip install lintrunner lintrunner-adapters
+# pip install -r requirements-lintrunner.txt
 # lintrunner init
 # ```
 #
 # This will install lintrunner on your system and download all the necessary
 # dependencies to run linters locally.
-# If you want to see what lintrunner init will install, run
-# `lintrunner init --dry-run`.
 #
-# To lint local changes:
+# To format local changes:
 #
 # ```bash
-# lintrunner
+# lintrunner -a
 # ```
 #
-# To lint all files:
+# To format all files:
 #
 # ```bash
-# lintrunner --all-files
-# ```
-#
-# To format files:
-#
-# ```bash
-# lintrunner f --all-files
+# lintrunner -a --all-files
 # ```
 #
 # To read more about lintrunner, see [wiki](https://github.com/pytorch/pytorch/wiki/lintrunner).
@@ -127,14 +119,16 @@ include_patterns = [
 ]
 exclude_patterns = [
     'java/**', # FIXME: Enable clang-format for java
-    'js/**',
     'onnxruntime/contrib_ops/cuda/bert/tensorrt_fused_multihead_attention/**', # Contains data chunks
     'onnxruntime/core/flatbuffers/schema/*.fbs.h', # Generated code
     'onnxruntime/test/flatbuffers/*.fbs.h', # Generated code
     'onnxruntime/core/graph/contrib_ops/quantization_defs.cc',
     'onnxruntime/core/mlas/**', # Contains assembly code
-    'onnxruntime/core/mickey/cutlass_ext/**', # CUTLASS lib recommends NO automatic code formatting
+    'onnxruntime/core/mickey/cutlass_ext/**', # CUTLASS based libs recommends NO automatic code formatting
+    'onnxruntime/core/mickey/gemm/**', # CUTLASS based libs recommends NO automatic code formatting
     'winml/lib/Api.Image/shaders/**',  # Contains data chunks
+    'onnxruntime/contrib_ops/cuda/bert/flash_attention/flash_fwd_launch_template.h', # Bool Switches hang Clang
+    'onnxruntime/core/providers/coreml/mlprogram_test_scripts/**',  # test scripts only
 ]
 command = [
     'python',

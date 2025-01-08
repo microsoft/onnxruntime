@@ -5,6 +5,7 @@
 
 #include "core/framework/data_transfer_utils.h"
 #include "core/graph/model.h"
+#include "core/graph/model_saving_options.h"
 #include "core/session/IOBinding.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/providers/cpu/controlflow/utils.h"
@@ -758,7 +759,8 @@ Status TrainingSession::AddPredefinedTransformers(
     GraphTransformerManager& transformer_manager,
     TransformerLevel graph_optimization_level,
     MinimalBuildOptimizationHandling minimal_build_optimization_handling,
-    RecordRuntimeOptimizationProducedNodeOpSchemaFn /*record_runtime_optimization_produced_op_schema_fn*/) const {
+    RecordRuntimeOptimizationProducedNodeOpSchemaFn /*record_runtime_optimization_produced_op_schema_fn*/,
+    const logging::Logger& /*logger*/) const {
   ORT_RETURN_IF_NOT(
       minimal_build_optimization_handling == MinimalBuildOptimizationHandling::ApplyFullBuildOptimizations,
       "Only applying full build optimizations is supported by TrainingSession.");
@@ -1002,7 +1004,8 @@ Status TrainingSession::SaveWithExternalInitializers(const PathString& model_uri
   std::remove(ToUTF8String(model_uri).c_str());
   std::remove(external_file_name.c_str());
 
-  return Model::SaveWithExternalInitializers(*model_, model_uri, external_file_name, initializer_size_threshold);
+  ModelSavingOptions model_saving_options{initializer_size_threshold};
+  return Model::SaveWithExternalInitializers(*model_, model_uri, external_file_name, model_saving_options);
 }
 
 Status TrainingSession::Save(const PathString& model_uri, TrainingSession::SaveOption opt) {
@@ -1425,7 +1428,7 @@ std::unordered_set<std::string> TrainingSession::GetTrainableModelInitializers(
 
 #if defined(USE_CUDA) && defined(ORT_USE_NCCL) && defined(USE_NCCL_P2P)
 // Create NCCL's communication plan. In runtime, we will provide details such
-// as pointer to sent/recieved data and the size of the data in byte. See how
+// as pointer to sent/received data and the size of the data in byte. See how
 // Send and Recv call SubmitSendAndWait and SubmitRecvAndWait, respectively.
 void PipelineTrainingSession::LaunchNcclService(const int pipeline_stage_id) {
   ORT_ENFORCE(pipeline_stage_id >= 0, "Pipeline stage ID cannot be negative.");
@@ -1444,7 +1447,7 @@ void PipelineTrainingSession::LaunchNcclService(const int pipeline_stage_id) {
         // In this time slot, stage "pipeline_stage_id" sendss data to "task.peer_rank".
         nccl_service.PlanSend(task.peer_rank);
       } else if (task.type == pipeline::PipelineTask::Type::Recv) {
-        // In this time slot, stage "pipeline_stage_id" recieves data from "task.peer_rank".
+        // In this time slot, stage "pipeline_stage_id" receives data from "task.peer_rank".
         nccl_service.PlanRecv(task.peer_rank);
       }
     }

@@ -1,0 +1,248 @@
+[
+  {
+    "name": "clip float32 type with min and max attributes",
+    "operator": "Clip",
+    "opset": { "domain": "", "version": 10 },
+    "attributes": [
+      { "name": "min", "type": "float", "data": 1.0 },
+      { "name": "max", "type": "float", "data": 5.0 }
+    ],
+    "cases": [
+      {
+        "name": "T[2, 3]",
+        "inputs": [
+          {
+            "data": [0.5, 1.4, 2.7, 3.3, 4.1, 5.8],
+            "dims": [2, 3],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1.0, 1.4, 2.7, 3.3, 4.1, 5.0],
+            "dims": [2, 3],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "clip float32 type with min attribute but no max attribute",
+    "operator": "Clip",
+    "opset": { "domain": "", "version": 10 },
+    "attributes": [{ "name": "min", "type": "float", "data": 1.0 }],
+    "cases": [
+      {
+        "name": "T[2, 3]",
+        "inputs": [
+          {
+            "data": [0.5, 1.4, 2.7, 3.3, 4.1, 5.8],
+            "dims": [2, 3],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1.0, 1.4, 2.7, 3.3, 4.1, 5.8],
+            "dims": [2, 3],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "clip float32 type without min and max attributes",
+    "operator": "Clip",
+    "opset": { "domain": "", "version": 10 },
+    "attributes": [],
+    "cases": [
+      {
+        "name": "T[2, 3]",
+        "inputs": [
+          {
+            "data": [0.5, 1.4, 2.7, 3.3, 4.1, 5.8],
+            "dims": [2, 3],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.5, 1.4, 2.7, 3.3, 4.1, 5.8],
+            "dims": [2, 3],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "clip float32 type with min and max inputs",
+    "operator": "Clip",
+    "cases": [
+      {
+        "name": "T[2, 3]",
+        "inputs": [
+          {
+            "data": [0.5, 1.4, 2.7, 3.3, 4.1, 5.8],
+            "dims": [2, 3],
+            "type": "float32"
+          },
+          {
+            "data": [1.0],
+            "dims": [],
+            "type": "float32"
+          },
+          {
+            "data": [5.0],
+            "dims": [],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1.0, 1.4, 2.7, 3.3, 4.1, 5.0],
+            "dims": [2, 3],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "clip float32 type with min input but no max input",
+    "operator": "Clip",
+    "cases": [
+      {
+        "name": "T[3, 2]",
+        "inputs": [
+          {
+            "data": [0.5, 1.4, 2.7, 3.3, 4.1, 5.8],
+            "dims": [3, 2],
+            "type": "float32"
+          },
+          {
+            "data": [1.0],
+            "dims": [],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1.0, 1.4, 2.7, 3.3, 4.1, 5.8],
+            "dims": [3, 2],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "clip float32 type without min and max inputs",
+    "operator": "Clip",
+    "cases": [
+      {
+        "name": "T[3, 2]",
+        "inputs": [
+          {
+            "data": [0.5, 1.4, 2.7, 3.3, 4.1, 5.8],
+            "dims": [3, 2],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.5, 1.4, 2.7, 3.3, 4.1, 5.8],
+            "dims": [3, 2],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "clip float16 type with min and max inputs",
+    "operator": "Clip",
+    "cases": [
+      {
+        "name": "T[2, 3]",
+        "inputs": [
+          {
+            "data": [0.5, 1.4, 2.7, 3.3, 4.1, 5.8],
+            "dims": [2, 3],
+            "type": "float16"
+          },
+          {
+            "data": [1.0],
+            "dims": [],
+            "type": "float16"
+          },
+          {
+            "data": [5.0],
+            "dims": [],
+            "type": "float16"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1.0, 1.4, 2.7, 3.3, 4.1, 5.0],
+            "dims": [2, 3],
+            "type": "float16"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "clip float16 type with min input but no max input",
+    "operator": "Clip",
+    "cases": [
+      {
+        "name": "T[3, 2]",
+        "inputs": [
+          {
+            "data": [0.5, 1.4, 2.7, 3.3, 4.1, 5.8],
+            "dims": [3, 2],
+            "type": "float16"
+          },
+          {
+            "data": [1.0],
+            "dims": [],
+            "type": "float16"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1.0, 1.4, 2.7, 3.3, 4.1, 5.8],
+            "dims": [3, 2],
+            "type": "float16"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "clip float16 type without min and max inputs",
+    "operator": "Clip",
+    "cases": [
+      {
+        "name": "T[3, 2]",
+        "inputs": [
+          {
+            "data": [0.5, 1.4, 2.7, 3.3, 4.1, 5.8],
+            "dims": [3, 2],
+            "type": "float16"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.5, 1.4, 2.7, 3.3, 4.1, 5.8],
+            "dims": [3, 2],
+            "type": "float16"
+          }
+        ]
+      }
+    ]
+  }
+]

@@ -211,14 +211,17 @@ class ImageTests : public ::testing::Test {
   bool ShouldSkip(
     const std::wstring& model_file_name, const std::wstring& image_file_name, const InputImageSource input_image_source
   ) {
-    // Case that the tensor's shape doesn't match model's shape should be skiped
-    if ((L"1080.jpg" == image_file_name || L"kitten_224.png" == image_file_name) && (InputImageSource::FromGPUResource == input_image_source || InputImageSource::FromCPUResource == input_image_source)) {
+    // Case that the tensor's shape doesn't match model's shape should be skipped
+    if ((L"1080.jpg" == image_file_name || L"kitten_224.png" == image_file_name) &&
+        (InputImageSource::FromGPUResource == input_image_source ||
+         InputImageSource::FromCPUResource == input_image_source)) {
       return true;
     }
 
-    // Case that the images's shape doesn't match model's shape which expects free dimension should be skiped.
+    // Case that the images's shape doesn't match model's shape which expects free dimension should be skipped.
     // Because the fns-candy is not real model that can handle free dimensional input
-    if ((L"1080.jpg" == image_file_name || L"kitten_224.png" == image_file_name) && L"fns-candy_Bgr8_freeDimInput.onnx" == model_file_name) {
+    if ((L"1080.jpg" == image_file_name || L"kitten_224.png" == image_file_name) &&
+        L"fns-candy_Bgr8_freeDimInput.onnx" == model_file_name) {
       return true;
     }
 
@@ -385,7 +388,8 @@ TEST_P(ImageTest, ImageTest) {
     GTEST_SKIP() << "This test is disabled";
   }
 
-  if (LearningModelDeviceKind::Cpu != param.device_kind || InputImageSource::FromGPUResource == param.input_image_source) {
+  if (LearningModelDeviceKind::Cpu != param.device_kind ||
+      InputImageSource::FromGPUResource == param.input_image_source) {
     GPUTEST;
   }
 
@@ -482,13 +486,14 @@ TEST_P(BatchTest, BatchSupport) {
   if (param.use_session_options) {
     optimized_batch_size = param.use_session_options;
   }
-  if (VideoFrameSource::FromDirect3DSurface == param.video_frame_source && LearningModelDeviceKind::Cpu == param.device_kind) {
+  if (VideoFrameSource::FromDirect3DSurface == param.video_frame_source &&
+      LearningModelDeviceKind::Cpu == param.device_kind) {
     return;
   }
   if (LearningModelDeviceKind::Cpu != param.device_kind ||
-        VideoFrameSource::FromDirect3DSurface == param.video_frame_source ||
-        VideoFrameSource::FromDirect3DSurface == param.output_video_frame_source ||
-        VideoFrameSource::FromUnsupportedD3DSurface == param.output_video_frame_source) {
+      VideoFrameSource::FromDirect3DSurface == param.video_frame_source ||
+      VideoFrameSource::FromDirect3DSurface == param.output_video_frame_source ||
+      VideoFrameSource::FromUnsupportedD3DSurface == param.output_video_frame_source) {
     GPUTEST;
   }
 
@@ -556,7 +561,7 @@ TEST_P(BatchTest, BatchSupport) {
     for (int i = 0; i < param.batch_size; ++i) {
       std::wstring bm_image_path = FileHelpers::GetModulePath() + L"batchGroundTruth\\" + param.input_images[i];
       if (VideoFrameSource::FromSoftwareBitmap != param.output_video_frame_source &&
-                OutputBindingStrategy::Unbound != param.output_binding_strategy) {
+          OutputBindingStrategy::Unbound != param.output_binding_strategy) {
         VideoFrame D3D_video_frame = output_video_frames.GetAt(i);
         VideoFrame SB_video_frame(BitmapPixelFormat::Bgra8, 720, 720);
         D3D_video_frame.as<IVideoFrame>().CopyToAsync(SB_video_frame).get();

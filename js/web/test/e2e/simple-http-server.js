@@ -10,54 +10,62 @@ const http = require('http');
 const fs = require('fs');
 const path = require('path');
 
-const validRequests = {
-  // .wasm files
-  '/dist/ort-wasm.wasm': ['dist/ort-wasm.wasm', 'application/wasm'],
-  '/dist/ort-wasm-simd.wasm': ['dist/ort-wasm-simd.wasm', 'application/wasm'],
-  '/dist/ort-wasm-threaded.wasm': ['dist/ort-wasm-threaded.wasm', 'application/wasm'],
-  '/dist/ort-wasm-simd-threaded.wasm': ['dist/ort-wasm-simd-threaded.wasm', 'application/wasm'],
-  '/dist/ort-wasm-simd.jsep.wasm': ['dist/ort-wasm-simd.jsep.wasm', 'application/wasm'],
+const getRequestData = (url, dir) => {
+  const pathname = new URL(url, 'http://localhost').pathname;
 
-  // proxied .wasm files:
-  '/test-wasm-path-override/ort-wasm.wasm': ['dist/ort-wasm.wasm', 'application/wasm'],
-  //'/test-wasm-path-override/renamed.wasm': ['dist/ort-wasm.wasm', 'application/wasm'],
+  let filepath;
+  let mimeType;
+  if (
+    pathname.startsWith('/test-wasm-path-override/') ||
+    pathname.startsWith('/dist/') ||
+    pathname.startsWith('/esm-loaders/')
+  ) {
+    filepath = path.resolve(dir, pathname.substring(1));
+  } else {
+    return null;
+  }
 
-  // .js files
-  '/dist/ort.min.js': ['dist/ort.min.js', 'text/javascript'],
-  '/dist/ort.js': ['dist/ort.js', 'text/javascript'],
-  '/dist/ort.webgl.min.js': ['dist/ort.webgl.min.js', 'text/javascript'],
-  '/dist/ort.webgpu.min.js': ['dist/ort.webgpu.min.js', 'text/javascript'],
-  '/dist/ort.wasm.min.js': ['dist/ort.wasm.min.js', 'text/javascript'],
-  '/dist/ort.wasm-core.min.js': ['dist/ort.wasm-core.min.js', 'text/javascript'],
+  if (filepath.endsWith('.wasm')) {
+    mimeType = 'application/wasm';
+  } else if (filepath.endsWith('.js') || filepath.endsWith('.mjs')) {
+    mimeType = 'text/javascript';
+  } else {
+    return null;
+  }
+
+  return [filepath, mimeType];
 };
 
-module.exports = function(dir) {
-  http.createServer(function(request, response) {
-        console.log(`request ${request.url.replace(/\n|\r/g, '')}`);
+module.exports = function (dir, port) {
+  const server = http
+    .createServer(function (request, response) {
+      const url = request.url.replace(/\n|\r/g, '');
+      console.log(`request ${url}`);
 
-        const requestData = validRequests[request.url];
-        if (!request) {
-          response.writeHead(404);
-          response.end('404');
-        } else {
-          const [filePath, contentType] = requestData;
-          fs.readFile(path.resolve(dir, filePath), function(error, content) {
-            if (error) {
-              if (error.code == 'ENOENT') {
-                response.writeHead(404);
-                response.end('404');
-              } else {
-                response.writeHead(500);
-                response.end('500');
-              }
+      const requestData = getRequestData(url, dir);
+      if (!request || !requestData) {
+        response.writeHead(404);
+        response.end('404');
+      } else {
+        const [filePath, contentType] = requestData;
+        fs.readFile(path.resolve(dir, filePath), function (error, content) {
+          if (error) {
+            if (error.code == 'ENOENT') {
+              response.writeHead(404);
+              response.end('404');
             } else {
-              response.setHeader('access-control-allow-origin', '*');
-              response.writeHead(200, {'Content-Type': contentType});
-              response.end(content, 'utf-8');
+              response.writeHead(500);
+              response.end('500');
             }
-          });
-        }
-      })
-      .listen(8081);
-  console.log('Server running at http://127.0.0.1:8081/');
+          } else {
+            response.setHeader('access-control-allow-origin', '*');
+            response.writeHead(200, { 'Content-Type': contentType });
+            response.end(content, 'utf-8');
+          }
+        });
+      }
+    })
+    .listen(port);
+  console.log(`Server running at http://localhost:${port}/`);
+  return server;
 };

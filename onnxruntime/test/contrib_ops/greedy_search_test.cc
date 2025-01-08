@@ -4,7 +4,7 @@
 #include <memory>
 #include <vector>
 #include "gtest/gtest.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/cuda_op_test_utils.h"
 

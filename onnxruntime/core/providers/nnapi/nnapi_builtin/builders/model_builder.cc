@@ -32,8 +32,16 @@ namespace nnapi {
 
 ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const NnApi& nnapi_handle,
                            gsl::span<const DeviceWrapper> nnapi_target_devices,
-                           TargetDeviceOption target_device_option)
-    : nnapi_(nnapi_handle), graph_viewer_(graph_viewer), nnapi_model_{std::make_unique<Model>(nnapi_handle)}, shaper_{graph_viewer}, nnapi_target_devices_(nnapi_target_devices), target_device_option_(target_device_option), nnapi_effective_feature_level_(GetNNAPIEffectiveFeatureLevel(nnapi_handle, nnapi_target_devices_)) {
+                           TargetDeviceOption target_device_option,
+                           const logging::Logger& logger)
+    : nnapi_(nnapi_handle),
+      graph_viewer_(graph_viewer),
+      nnapi_model_{std::make_unique<Model>(nnapi_handle)},
+      shaper_{graph_viewer},
+      nnapi_target_devices_(nnapi_target_devices),
+      target_device_option_(target_device_option),
+      nnapi_effective_feature_level_(GetNNAPIEffectiveFeatureLevel(nnapi_handle, nnapi_target_devices_)),
+      logger_(logger) {
   nnapi_model_->nnapi_effective_feature_level_ = nnapi_effective_feature_level_;
 }
 
@@ -56,7 +64,13 @@ DEFINE_ADD_OPERAND_FROM_SCALAR(float, FLOAT32);
 #undef DEFINE_ADD_OPERAND_FROM_SCALAR
 
 void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
-  skipped_initializers_.insert(tensor_name);
+  // decrement usage count if this is a known initializer.
+  // For simplicity the OpBuilder::AddInitializersToSkip implementations may call this for arbitrary input names
+  // without first checking if the value is an initializer.
+  auto entry = initializer_usage_.find(tensor_name);
+  if (entry != initializer_usage_.end()) {
+    entry->second -= 1;
+  }
 }
 
 Status ModelBuilder::Prepare() {
@@ -87,7 +101,16 @@ static size_t GetPaddedByteSize(size_t size) {
 }
 
 void ModelBuilder::PreprocessInitializers() {
+  const auto& initializers = GetInitializerTensors();
+
   for (const auto& node_unit : node_unit_holder_) {
+    // find all initializers consumed. AddInitializersToSkip will potentially decrement the usage count.
+    for (const auto& input : node_unit->Inputs()) {
+      if (input.node_arg.Exists() && Contains(initializers, input.node_arg.Name())) {
+        initializer_usage_[input.node_arg.Name()]++;
+      }
+    }
+
     if (const auto* op_builder = GetOpBuilder(*node_unit)) {
       op_builder->AddInitializersToSkip(*this, *node_unit);
     }
@@ -121,7 +144,7 @@ const NodeUnit& ModelBuilder::GetNodeUnit(const Node* node) const {
 }
 
 void ModelBuilder::PreprocessNodeUnits() {
-  std::tie(node_unit_holder_, node_unit_map_) = QDQ::GetAllNodeUnits(graph_viewer_);
+  std::tie(node_unit_holder_, node_unit_map_) = QDQ::GetAllNodeUnits(graph_viewer_, logger_);
 }
 
 // Help to get all quantized operators' input and the NodeUnit(s) using the input
@@ -208,11 +231,16 @@ Status ModelBuilder::RegisterInitializers() {
   std::vector<std::tuple<uint32_t, size_t, size_t>> initializers(initializer_size);
   size_t sizeAll = 0;
 
+  const auto should_skip_initializer = [this](const std::string& name) -> bool {
+    const auto it = initializer_usage_.find(name);
+    return it == initializer_usage_.end() || it->second == 0;
+  };
+
   int i = 0;
   for (const auto& pair : initializer_tensors) {
     const auto& tensor = *pair.second;
     const auto& name = tensor.name();
-    if (Contains(skipped_initializers_, name))
+    if (should_skip_initializer(name))
       continue;
 
     Shape shape;
@@ -249,7 +277,7 @@ Status ModelBuilder::RegisterInitializers() {
   size_t offset = 0;
   for (const auto& pair : initializer_tensors) {
     const auto& tensor = *pair.second;
-    if (Contains(skipped_initializers_, tensor.name()))
+    if (should_skip_initializer(tensor.name()))
       continue;
 
     auto [index, size, padded_size] = initializers[i++];
@@ -439,9 +467,10 @@ Status ModelBuilder::AddOperandFromPersistMemoryBuffer(
 Status ModelBuilder::AddOperations() {
   const auto& node_indices = graph_viewer_.GetNodesInTopologicalOrder();
   for (const auto node_idx : node_indices) {
-    LOGS_DEFAULT(VERBOSE) << "Adding node [" << node_idx << "]";
     const auto* node(graph_viewer_.GetNode(node_idx));
     const NodeUnit& node_unit = GetNodeUnit(node);
+
+    LOGS_DEFAULT(VERBOSE) << "Adding node [" << node_unit.Name() << "] at index [" << node_unit.Index() << "]";
 
     // Since we may have NodeUnit with multiple nodes, insert NodeUnit with the first occurrence of
     // its node(s) in topological order may cause the incorrect topological order while inserting

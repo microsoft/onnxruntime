@@ -10,7 +10,7 @@
 #include <memory>
 #include <chrono>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
@@ -219,6 +219,7 @@ struct CUDA_Provider : Provider {
     info.cudnn_conv_use_max_workspace = params->cudnn_conv_use_max_workspace != 0;
     info.enable_cuda_graph = params->enable_cuda_graph != 0;
     info.prefer_nhwc = params->prefer_nhwc;
+    info.fuse_conv_bias = params->fuse_conv_bias;
     info.cudnn_conv1d_pad_to_nc1d = params->cudnn_conv1d_pad_to_nc1d != 0;
     info.tunable_op.enable = params->tunable_op_enable;
     info.tunable_op.tuning_enable = params->tunable_op_tuning_enable;
@@ -226,6 +227,7 @@ struct CUDA_Provider : Provider {
     info.enable_skip_layer_norm_strict_mode = params->enable_skip_layer_norm_strict_mode != 0;
     info.use_ep_level_unified_stream = params->use_ep_level_unified_stream != 0;
     info.use_tf32 = params->use_tf32 != 0;
+    info.sdpa_kernel = params->sdpa_kernel;
 
     return std::make_shared<CUDAProviderFactory>(info);
   }
@@ -260,6 +262,8 @@ struct CUDA_Provider : Provider {
     cuda_options.prefer_nhwc = internal_options.prefer_nhwc;
     cuda_options.use_ep_level_unified_stream = internal_options.use_ep_level_unified_stream;
     cuda_options.use_tf32 = internal_options.use_tf32;
+    cuda_options.sdpa_kernel = internal_options.sdpa_kernel;
+    cuda_options.fuse_conv_bias = internal_options.fuse_conv_bias;
   }
 
   ProviderOptions GetProviderOptions(const void* provider_options) override {

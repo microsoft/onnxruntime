@@ -47,10 +47,9 @@ template <
     /// will utilize the higher numbered threads
     int ThreadblockSize_ = -1,
     int Alignment =
-        sizeof_bits<Element_>::value * ThreadMap_::kElementsPerAccess / 8>
-class OptionalRegularTileAccessIterator{
+        sizeof_bits<Element_>::value* ThreadMap_::kElementsPerAccess / 8>
+class OptionalRegularTileAccessIterator {
  public:
-
   using Shape = Shape_;
   using Element = Element_;
   using Layout = Layout_;
@@ -59,9 +58,9 @@ class OptionalRegularTileAccessIterator{
   static constexpr int kThreadblockSize = ThreadblockSize_;
 
   static_assert(!std::is_same<Element, std::monostate>::value,
-      "Disabled Iterator failed to match the specialized template");
+                "Disabled Iterator failed to match the specialized template");
   static_assert(kThreadblockSize == -1 || kThreadblockSize >= ThreadMap::kThreads,
-      "kThreadblockSize must be no smaller than ThreadMap::kThreads");
+                "kThreadblockSize must be no smaller than ThreadMap::kThreads");
 
   using Base = RegularTileAccessIterator<Shape, Element, Layout, AdvanceRank, ThreadMap, Alignment>;
 
@@ -71,7 +70,7 @@ class OptionalRegularTileAccessIterator{
   using AccessType = typename Base::AccessType;
 
   CUTLASS_HOST_DEVICE
-  static int flip_thread_id(int thread_id){
+  static int flip_thread_id(int thread_id) {
     if constexpr (kThreadblockSize > 0) {
       return kThreadblockSize - 1 - thread_id;
     }
@@ -79,15 +78,14 @@ class OptionalRegularTileAccessIterator{
   }
 
  private:
-
   Base base_;
 
  public:
   /// Construct a TileIterator with zero threadblock offset
   CUTLASS_HOST_DEVICE
   OptionalRegularTileAccessIterator(TensorRef ref,  ///< Pointer to start of tensor
-                            int thread_id   ///< ID of each participating thread
-                            )
+                                    int thread_id   ///< ID of each participating thread
+                                    )
       : base_(ref, flip_thread_id(thread_id)) {}
 
   /// Overrides the internal iteration index
@@ -104,13 +102,13 @@ class OptionalRegularTileAccessIterator{
 
   /// Returns a pointer
   CUTLASS_DEVICE
-  AccessType *get() const {
+  AccessType* get() const {
     return base_.get();
   }
 
   /// Advances to the next tile in memory.
   CUTLASS_HOST_DEVICE
-  OptionalRegularTileAccessIterator &operator++() {
+  OptionalRegularTileAccessIterator& operator++() {
     ++base_;
     return *this;
   }
@@ -134,7 +132,7 @@ class OptionalRegularTileAccessIterator{
   /// Below two classes map col/row major to the pitch linear coordinates used
   /// in this base class.
   CUTLASS_DEVICE
-  void add_tile_offset(TensorCoord const &coord) {
+  void add_tile_offset(TensorCoord const& coord) {
     base_.add_tile_offset(coord);
   }
 };
@@ -151,9 +149,8 @@ template <
     int ThreadblockSize_,
     int Alignment>
 class OptionalRegularTileAccessIterator<Shape_, std::monostate, Layout_,
-    AdvanceRank, ThreadMap_, ThreadblockSize_, Alignment>{
+                                        AdvanceRank, ThreadMap_, ThreadblockSize_, Alignment> {
  public:
-
   using Shape = Shape_;
   using Element = std::monostate;
   using Layout = Layout_;
@@ -169,15 +166,14 @@ class OptionalRegularTileAccessIterator<Shape_, std::monostate, Layout_,
   using AccessType = typename Base::AccessType;
 
  private:
-
   std::monostate base_;
 
  public:
   /// Construct a TileIterator with zero threadblock offset
   CUTLASS_HOST_DEVICE
   OptionalRegularTileAccessIterator(TensorRef ref,  ///< Pointer to start of tensor
-                            int thread_id   ///< ID of each participating thread
-                            )
+                                    int thread_id   ///< ID of each participating thread
+                                    )
       : base_() {}
 
   /// Overrides the internal iteration index
@@ -190,13 +186,13 @@ class OptionalRegularTileAccessIterator<Shape_, std::monostate, Layout_,
 
   /// Returns a pointer
   CUTLASS_DEVICE
-  AccessType *get() const {
+  AccessType* get() const {
     return nullptr;
   }
 
   /// Advances to the next tile in memory.
   CUTLASS_HOST_DEVICE
-  OptionalRegularTileAccessIterator &operator++() {
+  OptionalRegularTileAccessIterator& operator++() {
     return *this;
   }
 
@@ -216,7 +212,7 @@ class OptionalRegularTileAccessIterator<Shape_, std::monostate, Layout_,
   /// Below two classes map col/row major to the pitch linear coordinates used
   /// in this base class.
   CUTLASS_DEVICE
-  void add_tile_offset(TensorCoord const &coord) {}
+  void add_tile_offset(TensorCoord const& coord) {}
 };
 
 }  // namespace threadblock

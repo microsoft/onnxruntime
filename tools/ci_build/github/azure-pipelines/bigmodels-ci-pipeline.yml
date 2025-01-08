@@ -1,4 +1,5 @@
 ##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
 trigger:
   branches:
     include:
@@ -38,26 +39,11 @@ parameters:
   type: number
   default: 0
 
-resources:
-  repositories:
-  - repository: manylinux
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
-
-  - repository: LLaMa2Onnx
-    type: Github
-    endpoint: Microsoft
-    name: Microsoft/Llama-2-Onnx
-    ref: main
-
 variables:
-  - template: templates/common-variables.yml
   - name: docker_base_image
-    value: nvidia/cuda:11.8.0-cudnn8-devel-ubi8
+    value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241120.3
   - name: linux_trt_version
-    value: 10.0.1.6-1.cuda11.8
+    value: 10.3.0.26-1.cuda11.8
   - name: Repository
     value: 'onnxruntimecuda11manylinuxbuild'
 
@@ -73,9 +59,6 @@ stages:
       clean: all
     pool: onnxruntime-Ubuntu2204-AMD-CPU
     steps:
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
 
     - checkout: self
       clean: true
@@ -113,7 +96,7 @@ stages:
       inputs:
         script: |
           mkdir -p $HOME/.onnx
-          docker run -e CFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" -e CXXFLAGS="-Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection -O3 -Wl,--strip-all" --rm \
+          docker run -e --rm \
             --volume /data/onnx:/data/onnx:ro \
             --volume $(Build.SourcesDirectory):/onnxruntime_src \
             --volume $(Build.BinariesDirectory):/build \
@@ -129,15 +112,15 @@ stages:
               set -ex; \
               env; \
               ccache -s; \
-              /opt/python/cp38-cp38/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              /opt/python/cp310-cp310/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                 --build_dir /build --cmake_generator Ninja \
                 --config Release --update --build \
                 --skip_submodule_sync \
                 --build_shared_lib \
                 --parallel \
                 --build_wheel \
-                --enable_onnx_tests --use_cuda --cuda_version=${{variables.common_cuda_version}} --cuda_home=/usr/local/cuda-${{variables.common_cuda_version}} --cudnn_home=/usr/local/cuda-${{variables.common_cuda_version}} \
-                --enable_cuda_profiling --enable_cuda_nhwc_ops \
+                --enable_onnx_tests --use_cuda --cuda_version=11.8 --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8 \
+                --enable_cuda_profiling \
                 --enable_pybind --build_java \
                 --use_cache \
                 --cmake_extra_defines  'CMAKE_CUDA_ARCHITECTURES=75;86' ; \
@@ -178,6 +161,7 @@ stages:
       CLIP_MODEL_CACHE: $(Agent.TempDirectory)/clip_cache
       STABLE_DIFFUSION_MODEL_CACHE: $(Agent.TempDirectory)/stablediffusion_cache
       GenerateImage_DIR: $(Agent.TempDirectory)/images
+      hitAnother: 'False'
     workspace:
       clean: all
     pool: onnxruntime-Linux-GPU-A10-12G
@@ -193,6 +177,17 @@ stages:
         TargetPath: '$(Build.BinariesDirectory)/Release'
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
+    - template: templates/get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_2204_gpu_opencv
+        Context: tools/ci_build/github/linux/docker/
+        ScriptName: tools/ci_build/get_docker_image.py
+        DockerBuildArgs: "
+        --build-arg BUILD_UID=$( id -u )
+        "
+        Repository: onnxruntimeubuntupackagestest_cuda11
+        UseImageCacheContainerRegistry: false
+        UpdateDepsTxt: false
 
     - task: Cache@2
       inputs:
@@ -209,14 +204,15 @@ stages:
           -v $(Build.BinariesDirectory)/Release:/Release \
           -v $(STABLE_DIFFUSION_MODEL_CACHE):/model_cache:rw \
           -v $(GenerateImage_DIR):/images:rw \
-          nvcr.io/nvidia/pytorch:22.11-py3 \
+          onnxruntimeubuntupackagestest_cuda11 \
           bash -c ' \
             set -ex; \
             python3 --version; \
             python3 -m pip install --upgrade pip; \
             python3 -m pip install /Release/*.whl; \
             pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion; \
-            python3 -m pip install -r requirements-cuda11.txt; \
+            python3 -m pip install -r requirements/cuda11/requirements.txt; \
+            python3 -m pip install numpy==1.22.2; \
             python3 -m pip install --upgrade polygraphy onnx-graphsurgeon ; \
             echo Generate an image guided by a text prompt; \
             python3 demo_txt2img.py --framework-model-dir /model_cache --seed 1 --deterministic "astronaut riding a horse on mars" ; \
@@ -247,7 +243,34 @@ stages:
     - script: |
         docker run --rm --gpus all -v $PWD:/workspace \
           -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
-          nvcr.io/nvidia/pytorch:22.11-py3 \
+          onnxruntimeubuntupackagestest_cuda11 \
+          bash -c '
+            set -x; \
+            python3 --version; \
+            python3 -m pip install --upgrade pip; \
+            pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion/; \
+            image2=$(find $(pwd) -name "astronaut_riding_a_h*.png") ; \
+            pushd test; \
+            python3 -m pip install -r requirements.txt; \
+            echo check demo_txt2image.py generate image; \
+            python3 -u check_image.py --image1 astronaut_riding_error.png --image2 $image2 --cache_dir /model_cache --negative; \
+            if [ $? -ne 0 ]; then echo "Hit an unexpected image"; exit 1; fi; \
+            popd ; \
+            popd ; \
+            ' || ( echo "##vso[task.setvariable variable=hitAnother;]True" && exit 1 )
+      displayName: 'Check if the generated image is wierd'
+      workingDirectory: $(Build.SourcesDirectory)
+      # If the generate image hit another test image, make the job status as warning
+      continueOnError: true
+
+    - bash: |
+        echo "You can use variables: $(hitAnother)"
+
+    # The step will execute if the gereneate image doesn't hit another test image
+    - script: |
+        docker run --rm --gpus all -v $PWD:/workspace \
+          -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
+          onnxruntimeubuntupackagestest_cuda11 \
           bash -c '
             set -ex; \
             python3 --version; \
@@ -255,6 +278,7 @@ stages:
             pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion/; \
             image2=$(find $(pwd) -name "astronaut_riding_a_h*.png") ; \
             pushd test; \
+            python3 -m pip install numpy==1.22.2; \
             python3 -m pip install -r requirements.txt; \
             echo check demo_txt2image.py generate image; \
             python3 -u check_image.py --image1 astronaut_riding_txt2image-DDIM-50.png --image2 $image2 --cache_dir /model_cache ; \
@@ -263,21 +287,24 @@ stages:
             '
       displayName: 'Check the generated image'
       workingDirectory: $(Build.SourcesDirectory)
+      condition: ne(variables.hitAnother, 'True')
 
-- stage: Llama2_ONNX_FP16
+- stage: Llama2_7B_ONNX
   dependsOn:
   - Build_Onnxruntime_Cuda
+  condition: or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'), eq(variables['UseA100'], '1'))
   jobs:
-  - job: Llama2_ONNX_FP16
+  - job: Llama2_7B_ONNX
+    timeoutInMinutes: 120
     variables:
       skipComponentGovernanceDetection: true
     workspace:
       clean: all
-    pool: Onnxruntime-Linux-A10-24G
+    pool:
+      name: Onnxruntime-Linux-GPU-A100-WUS3
+      demands:
+      - WorkFolder -equals /mnt/storage/
     steps:
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
 
     - checkout: self
       clean: true
@@ -293,7 +320,7 @@ stages:
 
     - template: templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda_tensorrt10_0
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubi8_cuda_tensorrt10_0_torch
         Context: tools/ci_build/github/linux/docker/
         ScriptName: tools/ci_build/get_docker_image.py
         DockerBuildArgs: "
@@ -301,7 +328,8 @@ stages:
         --build-arg BASEIMAGE=${{ variables.docker_base_image }}
         --build-arg TRT_VERSION=${{ variables.linux_trt_version }}
         "
-        Repository: onnxruntimeubi8packagestest
+        Repository: onnxruntimeubi8packagestest_torch
+        UseImageCacheContainerRegistry: false
         UpdateDepsTxt: false
 
     - task: DownloadPackage@1
@@ -317,7 +345,7 @@ stages:
         docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            -v $(Agent.TempDirectory)/meta_llama2_7b_hf:/meta-llama2 \
-           onnxruntimeubi8packagestest \
+           onnxruntimeubi8packagestest_torch \
             bash -c "
               set -ex; \
               pushd /workspace/onnxruntime/python/tools/transformers/ ; \
@@ -326,12 +354,54 @@ stages:
               python3 -m pip install -r requirements.txt ; \
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
-              python3 -m pip uninstall -y torch ; \
-              python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
-              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --input /meta-llama2 --small_gpu ;\
+              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --small_gp;\
+              ls -l llama2-7b-fp16; \
+              du -sh llama2-7b-fp16; \
               popd ; \
             "
       displayName: 'Run Llama2 to Onnx F16 and parity Test'
+      workingDirectory: $(Build.SourcesDirectory)
+
+    - script: |
+        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+           -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
+           -v $(Agent.TempDirectory)/meta_llama2_7b_hf:/meta-llama2 \
+           onnxruntimeubi8packagestest_torch \
+            bash -c "
+              set -ex; \
+              pushd /workspace/onnxruntime/python/tools/transformers/ ; \
+              python3 -m pip install --upgrade pip ; \
+              pushd models/llama ; \
+              python3 -m pip install -r requirements.txt ; \
+              popd ; \
+              python3 -m pip install /ort-artifact/*.whl ; \
+              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-fp32-gpu --precision fp32 --execution_provider cuda;\
+              ls -l llama2-7b-fp32-gpu; \
+              du -sh llama2-7b-fp32-gpu; \
+              popd ; \
+            "
+      displayName: 'Run Llama2 to Onnx fp32 and parity Test'
+      workingDirectory: $(Build.SourcesDirectory)
+
+    - script: |
+        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+           -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
+           -v $(Agent.TempDirectory)/meta_llama2_7b_hf:/meta-llama2 \
+           onnxruntimeubi8packagestest_torch \
+            bash -c "
+              set -ex; \
+              pushd /workspace/onnxruntime/python/tools/transformers/ ; \
+              python3 -m pip install --upgrade pip ; \
+              pushd models/llama ; \
+              python3 -m pip install -r requirements.txt ; \
+              popd ; \
+              python3 -m pip install /ort-artifact/*.whl ; \
+              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-int4-gpu  --precision int4 --execution_provider cuda --use_gqa;\
+              ls -l llama2-7b-int4-gpu; \
+              du -sh llama2-7b-int4-gpu; \
+              popd ; \
+            "
+      displayName: 'Run Llama2 to Onnx INT4 and parity Test'
       workingDirectory: $(Build.SourcesDirectory)
 
 - stage: Whisper_ONNX
@@ -345,9 +415,6 @@ stages:
       clean: all
     pool: Onnxruntime-Linux-A10-24G
     steps:
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
 
     - checkout: self
       clean: true
@@ -371,7 +438,7 @@ stages:
 
     - template: templates/get-docker-image-steps.yml
       parameters:
-        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_2004_gpu_ffmpeg
+        Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_2204_gpu_ffmpeg
         Context: tools/ci_build/github/linux/docker/
         ScriptName: tools/ci_build/get_docker_image.py
         DockerBuildArgs: '--build-arg BUILD_UID=$( id -u )'

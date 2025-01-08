@@ -255,8 +255,6 @@ def convert_inputs_for_ort(
     use_buffer_share: bool = False,
     past_seq_len: int = 0,
     max_seq_len: int = 2048,
-    device: str = "",
-    device_id: int = -1,
 ):
     ort_inputs = {}
     for k, v in pt_inputs.items():
@@ -268,7 +266,7 @@ def convert_inputs_for_ort(
             ort_inputs[k] = v.detach().cpu().numpy()
 
     # Reshape KV caches if using past-present-share-buffer
-    if use_buffer_share and device != "" and device != "cpu" and device_id > -1:
+    if use_buffer_share:
         ort_inputs = enable_past_present_share_buffer(ort_inputs, past_seq_len, max_seq_len)
 
     return ort_inputs
@@ -302,7 +300,6 @@ def verify_ort_inputs(model: InferenceSession, ort_inputs: dict):
     unnecessary_inputs = user_inputs - model_inputs
     if len(unnecessary_inputs):
         for unnecessary_input in unnecessary_inputs:
-            print(f"Removing unnecessary input '{unnecessary_input}' from user provided inputs")
             del ort_inputs[unnecessary_input]
 
     return ort_inputs
@@ -384,27 +381,20 @@ def add_io_bindings_as_tensors(
 
     for output in model.get_outputs():
         name = output.name
-        if use_buffer_share and "present" in name:
-            # Bind KV cache outputs to KV cache inputs
-            v = inputs[name.replace("present", "past_key_values")]
-            io_binding.bind_output(
-                name=name,
-                device_type=v.device.type,
-                device_id=v.device.index,
-                element_type=np.float16,
-                shape=tuple(v.shape),
-                buffer_ptr=v.data_ptr(),
-            )
-        else:
-            v = outputs[name]
-            io_binding.bind_output(
-                name=name,
-                device_type=device.type,
-                device_id=0 if device.type == "cpu" else device.index,
-                element_type=(np.float16 if use_fp16 else np.float32),
-                shape=tuple(v.shape),
-                buffer_ptr=v.data_ptr(),
-            )
+        # Bind KV cache outputs to KV cache inputs
+        v = (
+            inputs[name.replace("present", "past_key_values")]
+            if use_buffer_share and "present" in name
+            else outputs[name]
+        )
+        io_binding.bind_output(
+            name=name,
+            device_type=device.type,
+            device_id=0 if device.type == "cpu" else device.index,
+            element_type=(np.float16 if use_fp16 else np.float32),
+            shape=tuple(v.shape),
+            buffer_ptr=v.data_ptr(),
+        )
 
     return io_binding
 
@@ -420,7 +410,7 @@ def get_initial_inputs_and_outputs(
     use_buffer_share: bool,
     engine: str,
 ):
-    tokenizer.pad_token = "[PAD]"
+    tokenizer.pad_token = tokenizer.eos_token
     encodings_dict = tokenizer.batch_encode_plus(prompt, padding=True)
     torch_dtype = torch.float16 if use_fp16 else torch.float32
 

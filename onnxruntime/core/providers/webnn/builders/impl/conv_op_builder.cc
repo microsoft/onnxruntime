@@ -28,14 +28,15 @@ class ConvOpBuilder : public BaseOpBuilder {
   // Operator support related.
  private:
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
-                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+                         const WebnnDeviceType device_type, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
 void ConvOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const {
   // skip the weight for conv as we need to transpose for preferred layout NHWC.
   if (model_builder.GetPreferredLayout() == DataLayout::NHWC) {
     model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());  // W
-    model_builder.AddInputToSkip(node.InputDefs()[1]->Name());
   }
 }
 
@@ -55,72 +56,41 @@ common::Status SetConvBaseOptions(ModelBuilder& model_builder,
 
   // Add Padding.
   AutoPadType auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
-  if (node.OpType() == "Conv") {
+  std::vector<int64_t> pads_out;
+  if (node.OpType() == "Conv" || node.OpType() == "ConvInteger") {
     // Calculate explicit padding for autoPad.
     if (AutoPadType::SAME_UPPER == auto_pad_type || AutoPadType::SAME_LOWER == auto_pad_type) {
-      std::vector<int64_t> pads_out;
       ORT_RETURN_IF_ERROR(HandleAutoPad(input_shape, weight_shape[2], weight_shape[3],
                                         pads, strides, dilations, auto_pad_type, pads_out, !is_nhwc));
       pads = pads_out;
     }
   } else if (node.OpType() == "ConvTranspose") {
-    // When the 'output_shape' is specificed, the 'output_padding' values
-    // in options.outputPadding are ignored.
-    std::vector<int64_t> dims;
-    std::vector<int64_t> output_padding{0, 0};
-    if (helper.HasAttr("output_shape")) {
-      // Default value of 'output_shape' will be ignored as we already check if it existed.
-      dims = helper.Get("output_shape", std::vector<int64_t>{-1, -1});
-      // Extract the height and width.
-      std::vector<int64_t> output_shape;
-      if (dims.size() == 1 && is_conv1d) {  // ConvTranspose 1d
-        output_shape = {dims[0], 1};
-      } else if (dims.size() == 2 && !is_conv1d) {
-        output_shape = dims;
-      } else {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid output shape");
-      }
-      // Padding values are auto generated.
-      if (helper.HasAttr("kernel_shape")) {
-        std::vector<int64_t> kernel_shape = helper.Get("kernel_shape", std::vector<int64_t>{-1, -1});
-        if (is_conv1d) {  // ConvTranspose 1d
-          kernel_shape.push_back(1);
-        }
-        std::vector<int64_t> total_padding(2);
-        for (size_t i = 0; i < 2; i++) {
-          // Get the dimensions of H and W.
-          // For NHWC layout, the dimensions of H and W correspond to index 1 and 2.
-          // For NCHW layout, the dimensions of H and W correspond to index 2 and 3.
-          if (is_nhwc) {
-            total_padding[i] = strides[i] * (input_shape[i + 1] - 1) + output_padding[i] +
-                               ((kernel_shape[i] - 1) * dilations[i] + 1) - output_shape[i];
-          } else {
-            total_padding[i] = strides[i] * (input_shape[i + 2] - 1) + output_padding[i] +
-                               ((kernel_shape[i] - 1) * dilations[i] + 1) - output_shape[i];
-          }
-        }
-        AutoPadType auto_pad_type = StringToAutoPadType(helper.Get("auto_pad", "NOTSET"));
-        if (AutoPadType::SAME_UPPER == auto_pad_type || AutoPadType::SAME_LOWER == auto_pad_type) {
-          pads[0] = total_padding[0] / 2;
-          pads[1] = total_padding[0] - pads[0];
-          pads[2] = total_padding[1] / 2;
-          pads[3] = total_padding[1] - pads[2];
-          if (AutoPadType::SAME_LOWER == auto_pad_type) {
-            std::swap(pads[0], pads[1]);
-            std::swap(pads[2], pads[3]);
-          }
-        }
-      }
-      options.set("outputSizes", emscripten::val::array(GetVecUint32FromVecInt64(output_shape)));
-    } else {
-      output_padding = helper.Get("output_padding", std::vector<int64_t>{0, 0});
-      if (output_padding.size() == 1 && is_conv1d) {  // ConvTranspose 1d
-        output_padding.push_back(0);
-      }
-      options.set("outputPadding", emscripten::val::array(GetVecUint32FromVecInt64(output_padding)));
+    std::vector<int64_t> output_shape = helper.Get("output_shape", std::vector<int64_t>{-1, -1});
+    // Appending 1's if it is ConvTranspose 1d and output shape is provided.
+    if (output_shape.size() == 1 && is_conv1d && output_shape[0] != -1) {
+      output_shape.push_back(1);
     }
+
+    std::vector<int64_t> output_padding = helper.Get("output_padding", std::vector<int64_t>{0, 0});
+    // Appending 0's if it is ConvTranspose 1d.
+    if (output_padding.size() == 1 && is_conv1d) {
+      output_padding.push_back(0);
+    }
+    options.set("outputPadding", emscripten::val::array(GetVecUint32FromVecInt64(output_padding)));
+
+    // If output shape is explicitly provided, compute the pads.
+    // Otherwise compute the output shape, as well as the pads if the auto_pad attribute is SAME_UPPER/SAME_LOWER.
+    ORT_RETURN_IF_ERROR(ComputeConvTransposePadsAndOutputShape(input_shape, weight_shape[2], weight_shape[3],
+                                                               pads, strides, dilations, output_padding,
+                                                               auto_pad_type, pads_out, output_shape, !is_nhwc));
+
+    if (output_shape[0] != -1 && output_shape[1] != -1) {
+      options.set("outputSizes", emscripten::val::array(GetVecUint32FromVecInt64(output_shape)));
+    }
+    pads = pads_out;
   } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "conv_op_builder only supports Op Conv and ConvTranspose.");
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "conv_op_builder only supports Op Conv, ConvInteger and ConvTranspose.");
   }
 
   const auto group = helper.Get("group", static_cast<uint32_t>(1));
@@ -138,11 +108,6 @@ common::Status SetConvBaseOptions(ModelBuilder& model_builder,
     options.set("bias", model_builder.GetOperand(input_defs[2]->Name()));
   }
 
-  emscripten::val activation = model_builder.FindActivation(node, *node.OutputDefs()[0]);
-  if (emscripten::val::null() != activation) {
-    options.set("activation", activation);
-  }
-
   return Status::OK();
 }
 
@@ -153,11 +118,6 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
                                  bool is_conv1d) {
   const auto& tensor = *model_builder.GetInitializerTensors().at(name);
   auto data_type = tensor.data_type();
-  if (!IsSupportedDataType(data_type, model_builder.GetWebnnDeviceType())) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "The initializer of graph has unsupported type, name: ",
-                           tensor.name(), " type: ", data_type);
-  }
 
   const auto& shape = tensor.dims();
   std::vector<uint32_t> dims = GetVecUint32FromVecInt64(std::vector<int64_t>(std::begin(shape), std::end(shape)));
@@ -173,16 +133,15 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
   const auto out_t = dims[0], in_t = dims[1],
              h_t = dims[2], w_t = dims[3];
   std::vector<uint32_t> dest_shape;
-  if (is_conv == 1)
+  if (is_conv)
     dest_shape = {out_t, h_t, w_t, in_t};  // L_0231
   else
-    dest_shape = {in_t, h_t, w_t, out_t};  // L_1230 for depthwise conv weight
+    dest_shape = {in_t, h_t, w_t, out_t};  // L_1230 for depthwise conv and convTranspose weight
 
   SafeInt<size_t> num_elements = SafeInt<size_t>(Product(dest_shape));
 
   size_t element_size{0};
   switch (data_type) {
-    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
       element_size = sizeof(uint8_t);
       break;
@@ -194,18 +153,6 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
       break;
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
       element_size = sizeof(float);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
-      element_size = sizeof(int32_t);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
-      element_size = sizeof(int64_t);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
-      element_size = sizeof(uint32_t);
-      break;
-    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
-      element_size = sizeof(uint64_t);
       break;
     default:
       break;
@@ -252,9 +199,11 @@ Status AddInitializerInNewLayout(ModelBuilder& model_builder,
 Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                             const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
+
   const auto& op_type = node.OpType();
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
   emscripten::val output = emscripten::val::object();
+  const auto& initializers(model_builder.GetInitializerTensors());
 
   std::vector<int64_t> input_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get input shape");
@@ -269,6 +218,7 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
   const bool is_nhwc = model_builder.GetPreferredLayout() == DataLayout::NHWC;
   const bool is_conv1d = input_shape.size() == 3 && weight_shape.size() == 3;
+  const bool is_constant_weight = Contains(initializers, weight_name);
   // Support conv1d by prepending a 1 or 2 size dimensions.
   if (is_conv1d) {
     // Reshape input.
@@ -292,14 +242,18 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   }
 
   emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
   ORT_RETURN_IF_ERROR(SetConvBaseOptions(
       model_builder, node, options, input_shape, weight_shape, strides, dilations, pads, is_nhwc, is_conv1d, logger));
+  bool depthwise = false;
   if (op_type == "Conv" || op_type == "ConvInteger") {
     int groups = options["groups"].as<int>();
     if (is_nhwc) {
-      bool depthwise = (groups == input_shape[3] && groups != 1);
+      depthwise = (groups == input_shape[3] && groups != 1);
       options.set("inputLayout", emscripten::val("nhwc"));
-      ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight_name, !depthwise, is_conv1d));
+      if (is_constant_weight) {
+        ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight_name, !depthwise, is_conv1d));
+      }
       if (!depthwise) {
         options.set("filterLayout", emscripten::val("ohwi"));
       } else {
@@ -310,15 +264,43 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     if (is_nhwc) {
       options.set("inputLayout", emscripten::val("nhwc"));
       options.set("filterLayout", emscripten::val("ohwi"));
-      ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight_name, false, is_conv1d));
+      if (is_constant_weight) {
+        ORT_RETURN_IF_ERROR(AddInitializerInNewLayout(model_builder, weight_name, false, is_conv1d));
+      }
     }
   }
 
   emscripten::val filter = model_builder.GetOperand(weight_name);
-  if (!is_nhwc && is_conv1d) {
-    // Reshape weight to 4D for conv1d with NCHW preferred layout.
-    std::vector<uint32_t> new_shape = GetVecUint32FromVecInt64(weight_shape);
-    filter = model_builder.GetBuilder().call<emscripten::val>("reshape", filter, emscripten::val::array(new_shape));
+
+  if (is_conv1d) {
+    // Reshape weight to 4D for conv1d.
+    if (!is_nhwc || !is_constant_weight) {
+      // The weight_shape has been appended 1's, reshape weight operand.
+      std::vector<uint32_t> new_shape = GetVecUint32FromVecInt64(weight_shape);
+      emscripten::val reshape_options = emscripten::val::object();
+      reshape_options.set("label", node.Name() + "_reshape_filter");
+      filter = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                                filter,
+                                                                emscripten::val::array(new_shape),
+                                                                reshape_options);
+    }
+  }
+
+  emscripten::val transpose_options = emscripten::val::object();
+  if (is_nhwc && !is_constant_weight) {
+    // For NHWC preferred layout, if the weight is input:
+    // - Transpose it from iohw -> ohwi for convTranspose.
+    // - Transpose it from oihw -> ihwo for depthwise conv.
+    // - Transpose it from oihw -> ohwi for conv.
+    std::vector<uint32_t> perm(4);
+    if (op_type == "ConvTranspose" || depthwise) {
+      perm = {1, 2, 3, 0};  // L_1230 for depthwise conv and convTranspose weight
+    } else {
+      perm = {0, 2, 3, 1};  // L_0231
+    }
+    transpose_options.set("permutation", emscripten::val::array(perm));
+    transpose_options.set("label", node.Name() + "_transpose_filter");
+    filter = model_builder.GetBuilder().call<emscripten::val>("transpose", filter, transpose_options);
   }
 
   if (op_type == "Conv") {
@@ -329,12 +311,12 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     if (input_defs.size() >= 3) {
       x_zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
     } else {
-      x_zero_point = model_builder.GetZeroConstant("uint8");
+      x_zero_point = model_builder.CreateOrGetConstant<uint8_t>(ONNX_NAMESPACE::TensorProto_DataType_UINT8, 0);
     }
     if (input_defs.size() >= 4) {
       w_zero_point = model_builder.GetOperand(node.InputDefs()[3]->Name());
     } else {
-      w_zero_point = model_builder.GetZeroConstant("uint8");
+      w_zero_point = model_builder.CreateOrGetConstant<uint8_t>(ONNX_NAMESPACE::TensorProto_DataType_UINT8, 0);
     }
     output = model_builder.GetBuilder().call<emscripten::val>("conv2dInteger",
                                                               input, x_zero_point, filter, w_zero_point, options);
@@ -348,7 +330,12 @@ Status ConvOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
     std::vector<int64_t> output_shape;
     ORT_RETURN_IF_NOT(GetShape(*output_defs[0], output_shape, logger), "Cannot get output shape");
     std::vector<uint32_t> new_shape = GetVecUint32FromVecInt64(output_shape);
-    output = model_builder.GetBuilder().call<emscripten::val>("reshape", output, emscripten::val::array(new_shape));
+    emscripten::val reshape_options = emscripten::val::object();
+    reshape_options.set("label", node.Name() + "_reshape_output");
+    output = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                              output,
+                                                              emscripten::val::array(new_shape),
+                                                              reshape_options);
   }
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
@@ -391,14 +378,55 @@ bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
     return false;
   }
 
-  // WebNN CPU backend (XNNPACK) requires the filter operand to be a constant.
-  // https://github.com/google/XNNPACK/blob/master/src/subgraph/convolution-2d.c#L739
-  if (device_type == WebnnDeviceType::CPU && !Contains(initializers, input_defs[1]->Name())) {
-    LOGS(logger, VERBOSE) << "The weight of " << op_type << " [" << name << "] must be known";
-    return false;
+  // WebNN CPU backend (TFLite) only supports default dilations and group.
+  // https://source.chromium.org/chromium/chromium/src/+/main:services/webnn/tflite/graph_builder_tflite.cc;l=1040
+  if (device_type == WebnnDeviceType::CPU && op_type == "ConvTranspose") {
+    NodeAttrHelper helper(node);
+    const auto dilations = helper.Get("dilations", std::vector<int64_t>{1, 1});
+    const auto group = helper.Get("group", 1);
+    if (dilations[0] != 1 || (dilations.size() > 1 && dilations[1] != 1)) {
+      LOGS(logger, VERBOSE) << op_type << " for WebNN CPU backend only supports default dilation 1.";
+      return false;
+    }
+    if (group != 1) {
+      LOGS(logger, VERBOSE) << op_type << " for WebNN CPU backend only supports default group 1.";
+      return false;
+    }
   }
 
   return true;
+}
+
+bool ConvOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                                           const emscripten::val& wnn_limits, const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  const auto& op_type = node.OpType();
+  int32_t input0_type;  // input data type
+  int32_t input1_type;  // weight data type
+  int32_t input2_type;  // bias or x_zero_point data type
+  int32_t input3_type;  // w_zero_point data type
+  bool has_input2 = TensorExists(input_defs, 2);
+  bool has_input3 = TensorExists(input_defs, 3);
+
+  if (!GetType(*input_defs[0], input0_type, logger) ||
+      !GetType(*input_defs[1], input1_type, logger) ||
+      (has_input2 && !GetType(*input_defs[2], input2_type, logger)) ||
+      (has_input3 && !GetType(*input_defs[3], input3_type, logger))) {
+    return false;
+  }
+
+  InlinedVector<int32_t, 4> input_types = {input0_type, input1_type};
+  if (has_input2) {
+    input_types.push_back(input2_type);
+  }
+  if (has_input3) {
+    input_types.push_back(input3_type);
+  }
+  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+    return false;
+  }
+
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
 }
 
 void CreateConvOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

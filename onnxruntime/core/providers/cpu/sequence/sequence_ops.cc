@@ -317,7 +317,7 @@ Status SequenceConstruct::Compute(OpKernelContext* context) const {
     const auto* X = context->Input<Tensor>(input_idx);
     if (input_idx > 0 && X->DataType() != first_dtype) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Violation of the requirment that all input tensors must have the same data type.");
+                             "Violation of the requirement that all input tensors must have the same data type.");
     }
   }
 

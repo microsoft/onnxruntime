@@ -8,7 +8,7 @@
 namespace onnxruntime {
 /*
  *   This fusion submerges a BatchNormalization operator to it's super
- *   precedding MatMul operator, if and only if MatmulBNFusion::SatisfyCondition()
+ *   preceding MatMul operator, if and only if MatmulBNFusion::SatisfyCondition()
  *   is true.
  */
 class MatmulBNFusion : public RewriteRule {

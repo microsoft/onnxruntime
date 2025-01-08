@@ -9,7 +9,7 @@
 #include <string>
 #include <vector>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/inlined_containers_fwd.h"
 #include "core/common/span_utils.h"
 #include "onnxruntime_config.h"

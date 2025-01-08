@@ -1,25 +1,28 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {DataType} from '../../../wasm-common';
-import {TensorView} from '../../tensor-view';
-import {ShapeUtil} from '../../util';
-import {ComputeContext, ProgramInfo} from '../types';
+import { DataType } from '../../../wasm-common';
+import { TensorView } from '../../tensor-view';
+import { ShapeUtil } from '../../util';
+import { ComputeContext, ProgramInfo } from '../types';
 
-import {createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper} from './common';
+import { createTensorShapeVariables, inputVariable, outputVariable, ShaderHelper } from './common';
 
 const getRepeats = (repeatsTensorView: TensorView): readonly number[] =>
-    Array.from(repeatsTensorView.getBigInt64Array(), Number);
-
+  Array.from(repeatsTensorView.getBigInt64Array(), Number);
 
 const validateInputs = (inputs: readonly TensorView[]): void => {
   if (!inputs || inputs.length !== 2) {
     throw new Error('Tile requires 2 inputs.');
   }
 
-  if (inputs[0].dataType !== DataType.float && inputs[0].dataType !== DataType.int32 &&
-      inputs[0].dataType !== DataType.uint32) {
-    throw new Error('Tile only support float, int32, and uint32 data types');
+  if (
+    inputs[0].dataType !== DataType.float &&
+    inputs[0].dataType !== DataType.float16 &&
+    inputs[0].dataType !== DataType.int32 &&
+    inputs[0].dataType !== DataType.uint32
+  ) {
+    throw new Error('Tile only support float, float16, int32, and uint32 data types');
   }
 
   if (inputs[1].dataType !== DataType.int64) {
@@ -47,9 +50,9 @@ const getOutputShape = (inputShape: readonly number[], repeats: readonly number[
   return outputShape;
 };
 
-export const createTileProgramInfo = (inputs: readonly TensorView[]): ProgramInfo => {
+export const createTileProgramInfo = (inputs: readonly TensorView[], shape?: number[]): ProgramInfo => {
   const inputShape = inputs[0].dims;
-  const repeats: readonly number[] = getRepeats(inputs[1]);
+  const repeats: readonly number[] = shape == null ? getRepeats(inputs[1]) : shape;
   const outputShape = getOutputShape(inputShape, repeats);
   const outputSize = ShapeUtil.size(outputShape);
 
@@ -75,12 +78,14 @@ export const createTileProgramInfo = (inputs: readonly TensorView[]): ProgramInf
 
   return {
     name: 'Tile',
-    shaderCache: {hint: `${repeats}`, inputDependencies: ['rank']},
+    shaderCache: { hint: `${repeats}`, inputDependencies: ['rank'] },
     getRunData: () => ({
-      outputs: [{dims: outputShape, dataType: inputs[0].dataType}],
-      dispatchGroup: {x: Math.ceil(outputSize / 64 /* workgroup size */)},
-      programUniforms:
-          [{type: DataType.uint32, data: outputSize}, ...createTensorShapeVariables(inputs[0].dims, outputShape)],
+      outputs: [{ dims: outputShape, dataType: inputs[0].dataType }],
+      dispatchGroup: { x: Math.ceil(outputSize / 64 /* workgroup size */) },
+      programUniforms: [
+        { type: DataType.uint32, data: outputSize },
+        ...createTensorShapeVariables(inputs[0].dims, outputShape),
+      ],
     }),
     getShaderSource,
   };
@@ -88,5 +93,5 @@ export const createTileProgramInfo = (inputs: readonly TensorView[]): ProgramInf
 
 export const tile = (context: ComputeContext): void => {
   validateInputs(context.inputs);
-  context.compute(createTileProgramInfo(context.inputs), {inputs: [0]});
+  context.compute(createTileProgramInfo(context.inputs), { inputs: [0] });
 };

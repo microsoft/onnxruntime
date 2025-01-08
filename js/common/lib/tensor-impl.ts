@@ -1,13 +1,37 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {tensorToDataURL, tensorToImageData} from './tensor-conversion-impl.js';
-import {TensorToDataUrlOptions, TensorToImageDataOptions} from './tensor-conversion.js';
-import {tensorFromGpuBuffer, tensorFromImage, tensorFromPinnedBuffer, tensorFromTexture} from './tensor-factory-impl.js';
-import {CpuPinnedConstructorParameters, GpuBufferConstructorParameters, TensorFromGpuBufferOptions, TensorFromImageBitmapOptions, TensorFromImageDataOptions, TensorFromImageElementOptions, TensorFromTextureOptions, TensorFromUrlOptions, TextureConstructorParameters} from './tensor-factory.js';
-import {checkTypedArray, NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP, NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP, SupportedTypedArray, SupportedTypedArrayConstructors} from './tensor-impl-type-mapping.js';
-import {calculateSize, tensorReshape} from './tensor-utils-impl.js';
-import {Tensor as TensorInterface} from './tensor.js';
+import { tensorToDataURL, tensorToImageData } from './tensor-conversion-impl.js';
+import { TensorToDataUrlOptions, TensorToImageDataOptions } from './tensor-conversion.js';
+import {
+  tensorFromGpuBuffer,
+  tensorFromImage,
+  tensorFromMLTensor,
+  tensorFromPinnedBuffer,
+  tensorFromTexture,
+} from './tensor-factory-impl.js';
+import {
+  CpuPinnedConstructorParameters,
+  GpuBufferConstructorParameters,
+  MLTensorConstructorParameters,
+  TensorFromGpuBufferOptions,
+  TensorFromImageBitmapOptions,
+  TensorFromImageDataOptions,
+  TensorFromImageElementOptions,
+  TensorFromMLTensorOptions,
+  TensorFromTextureOptions,
+  TensorFromUrlOptions,
+  TextureConstructorParameters,
+} from './tensor-factory.js';
+import {
+  checkTypedArray,
+  NUMERIC_TENSOR_TYPE_TO_TYPEDARRAY_MAP,
+  NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP,
+  SupportedTypedArray,
+  SupportedTypedArrayConstructors,
+} from './tensor-impl-type-mapping.js';
+import { calculateSize, tensorReshape } from './tensor-utils-impl.js';
+import { Tensor as TensorInterface } from './tensor.js';
 
 // type aliases for those exported from Tensor interface
 
@@ -16,6 +40,7 @@ type TensorDataType = TensorInterface.DataType;
 type TensorDataLocation = TensorInterface.DataLocation;
 type TensorTextureType = TensorInterface.TextureType;
 type TensorGpuBufferType = TensorInterface.GpuBufferType;
+type TensorMLTensorType = TensorInterface.MLTensorType;
 
 /**
  * the implementation of Tensor interface.
@@ -29,12 +54,17 @@ export class Tensor implements TensorInterface {
    * Construct a new CPU tensor object from the given type, data and dims.
    */
   constructor(
-      type: TensorType, data: TensorDataType|readonly string[]|readonly number[]|readonly boolean[],
-      dims?: readonly number[]);
+    type: TensorType,
+    data: TensorDataType | Uint8ClampedArray | readonly string[] | readonly number[] | readonly boolean[],
+    dims?: readonly number[],
+  );
   /**
    * Construct a new CPU tensor object from the given data and dims. Type is inferred from data.
    */
-  constructor(data: TensorDataType|readonly string[]|readonly boolean[], dims?: readonly number[]);
+  constructor(
+    data: TensorDataType | Uint8ClampedArray | readonly string[] | readonly boolean[],
+    dims?: readonly number[],
+  );
   /**
    * Construct a new tensor object from the pinned CPU data with the given type and dims.
    *
@@ -61,12 +91,31 @@ export class Tensor implements TensorInterface {
   constructor(params: GpuBufferConstructorParameters);
 
   /**
+   * Construct a new tensor object from the WebNN MLTensor with the given type and dims.
+   *
+   * Tensor's location will be set to 'ml-tensor'.
+   *
+   * @param params - Specify the parameters to construct the tensor.
+   */
+  constructor(params: MLTensorConstructorParameters);
+
+  /**
    * implementation.
    */
   constructor(
-      arg0: TensorType|TensorDataType|readonly string[]|readonly boolean[]|CpuPinnedConstructorParameters|
-      TextureConstructorParameters|GpuBufferConstructorParameters,
-      arg1?: TensorDataType|readonly number[]|readonly string[]|readonly boolean[], arg2?: readonly number[]) {
+    arg0:
+      | TensorType
+      | TensorDataType
+      | Uint8ClampedArray
+      | readonly string[]
+      | readonly boolean[]
+      | CpuPinnedConstructorParameters
+      | TextureConstructorParameters
+      | GpuBufferConstructorParameters
+      | MLTensorConstructorParameters,
+    arg1?: TensorDataType | Uint8ClampedArray | readonly number[] | readonly string[] | readonly boolean[],
+    arg2?: readonly number[],
+  ) {
     // perform one-time check for BigInt/Float16Array support
     checkTypedArray();
 
@@ -102,11 +151,41 @@ export class Tensor implements TensorInterface {
           break;
         }
         case 'gpu-buffer': {
-          if ((type !== 'float32' && type !== 'float16' && type !== 'int32' && type !== 'int64' && type !== 'uint32' &&
-               type !== 'uint8' && type !== 'bool')) {
+          if (
+            type !== 'float32' &&
+            type !== 'float16' &&
+            type !== 'int32' &&
+            type !== 'int64' &&
+            type !== 'uint32' &&
+            type !== 'uint8' &&
+            type !== 'bool' &&
+            type !== 'uint4' &&
+            type !== 'int4'
+          ) {
             throw new TypeError(`unsupported type "${type}" to create tensor from gpu buffer`);
           }
           this.gpuBufferData = arg0.gpuBuffer;
+          this.downloader = arg0.download;
+          this.disposer = arg0.dispose;
+          break;
+        }
+        case 'ml-tensor': {
+          if (
+            type !== 'float32' &&
+            type !== 'float16' &&
+            type !== 'int32' &&
+            type !== 'int64' &&
+            type !== 'uint32' &&
+            type !== 'uint64' &&
+            type !== 'int8' &&
+            type !== 'uint8' &&
+            type !== 'bool' &&
+            type !== 'uint4' &&
+            type !== 'int4'
+          ) {
+            throw new TypeError(`unsupported type "${type}" to create tensor from MLTensor`);
+          }
+          this.mlTensorData = arg0.mlTensor;
           this.downloader = arg0.download;
           this.disposer = arg0.dispose;
           break;
@@ -119,7 +198,7 @@ export class Tensor implements TensorInterface {
       // constructing tensor of location 'cpu'
       //
       let data: TensorDataType;
-      let maybeDims: typeof arg1|typeof arg2;
+      let maybeDims: typeof arg1 | typeof arg2;
       // check whether arg0 is type or data
       if (typeof arg0 === 'string') {
         //
@@ -130,7 +209,7 @@ export class Tensor implements TensorInterface {
         if (arg0 === 'string') {
           // string tensor
           if (!Array.isArray(arg1)) {
-            throw new TypeError('A string tensor\'s data must be a string array.');
+            throw new TypeError("A string tensor's data must be a string array.");
           }
           // we don't check whether every element in the array is string; this is too slow. we assume it's correct and
           // error will be populated at inference
@@ -142,14 +221,20 @@ export class Tensor implements TensorInterface {
             throw new TypeError(`Unsupported tensor type: ${arg0}.`);
           }
           if (Array.isArray(arg1)) {
-            if (arg0 === 'float16' && typedArrayConstructor === Uint16Array) {
-              // When no Float16Array polyfill is used, we cannot create 'float16' tensor from number array.
+            if ((arg0 === 'float16' && typedArrayConstructor === Uint16Array) || arg0 === 'uint4' || arg0 === 'int4') {
+              // - 'float16':
+              //   When no Float16Array polyfill is used, we cannot create 'float16' tensor from number array.
               //
-              // Throw error here because when user try to use number array as data,
-              // e.g. new Tensor('float16', [1, 2, 3, 4], dims)), it will actually call
-              // Uint16Array.from(arg1) which generates wrong data.
+              //   Throw error here because when user try to use number array as data,
+              //   e.g. new Tensor('float16', [1, 2, 3, 4], dims)), it will actually call
+              //   Uint16Array.from(arg1) which generates wrong data.
+              //
+              // - 'uint4' and 'int4':
+              //   Uint8Array.from(arg1) will generate wrong data for 'uint4' and 'int4' tensor.
+              //
               throw new TypeError(
-                  'Creating a float16 tensor from number array is not supported. Please use Uint16Array as data.');
+                `Creating a ${arg0} tensor from number array is not supported. Please use ${typedArrayConstructor.name} as data.`,
+              );
             } else if (arg0 === 'uint64' || arg0 === 'int64') {
               // use 'as any' here because:
               // 1. TypeScript's check on type of 'Array.isArray()' does not work with readonly arrays.
@@ -170,6 +255,12 @@ export class Tensor implements TensorInterface {
             }
           } else if (arg1 instanceof typedArrayConstructor) {
             data = arg1;
+          } else if (arg1 instanceof Uint8ClampedArray) {
+            if (arg0 === 'uint8') {
+              data = Uint8Array.from(arg1);
+            } else {
+              throw new TypeError(`A Uint8ClampedArray tensor's data must be type of uint8`);
+            }
           } else {
             throw new TypeError(`A ${type} tensor's data must be type of ${typedArrayConstructor}`);
           }
@@ -197,10 +288,14 @@ export class Tensor implements TensorInterface {
           } else {
             throw new TypeError(`Invalid element type of data array: ${firstElementType}.`);
           }
+        } else if (arg0 instanceof Uint8ClampedArray) {
+          type = 'uint8';
+          data = Uint8Array.from(arg0);
         } else {
           // get tensor type from TypedArray
-          const mappedType =
-              NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP.get(arg0.constructor as SupportedTypedArrayConstructors);
+          const mappedType = NUMERIC_TENSOR_TYPEDARRAY_TO_TYPE_MAP.get(
+            arg0.constructor as SupportedTypedArrayConstructors,
+          );
           if (mappedType === undefined) {
             throw new TypeError(`Unsupported type for tensor data: ${arg0.constructor}.`);
           }
@@ -214,7 +309,7 @@ export class Tensor implements TensorInterface {
         // assume 1-D tensor if dims omitted
         maybeDims = [data.length];
       } else if (!Array.isArray(maybeDims)) {
-        throw new TypeError('A tensor\'s dims must be a number array');
+        throw new TypeError("A tensor's dims must be a number array");
       }
       dims = maybeDims as readonly number[];
 
@@ -226,7 +321,11 @@ export class Tensor implements TensorInterface {
     const size = calculateSize(dims);
     // if data is on CPU, check whether data length matches tensor size
     if (this.cpuData && size !== this.cpuData.length) {
-      throw new Error(`Tensor's size(${size}) does not match data length(${this.cpuData.length}).`);
+      if ((type === 'uint4' || type === 'int4') && Math.ceil(size / 2) === this.cpuData.length) {
+        // for (u)int4, the data length is half of the tensor size. So we check this special case when size is odd.
+      } else {
+        throw new Error(`Tensor's size(${size}) does not match data length(${this.cpuData.length}).`);
+      }
     }
 
     this.type = type;
@@ -237,24 +336,42 @@ export class Tensor implements TensorInterface {
 
   // #region factory
   static async fromImage(
-      image: ImageData|HTMLImageElement|ImageBitmap|string,
-      options?: TensorFromImageDataOptions|TensorFromImageElementOptions|TensorFromImageBitmapOptions|
-      TensorFromUrlOptions): Promise<TensorInterface> {
+    image: ImageData | HTMLImageElement | ImageBitmap | string,
+    options?:
+      | TensorFromImageDataOptions
+      | TensorFromImageElementOptions
+      | TensorFromImageBitmapOptions
+      | TensorFromUrlOptions,
+  ): Promise<TensorInterface> {
     return tensorFromImage(image, options);
   }
 
   static fromTexture<T extends TensorInterface.TextureDataTypes>(
-      texture: TensorTextureType, options: TensorFromTextureOptions<T>): TensorInterface {
+    texture: TensorTextureType,
+    options: TensorFromTextureOptions<T>,
+  ): TensorInterface {
     return tensorFromTexture(texture, options);
   }
 
   static fromGpuBuffer<T extends TensorInterface.GpuBufferDataTypes>(
-      gpuBuffer: TensorGpuBufferType, options: TensorFromGpuBufferOptions<T>): TensorInterface {
+    gpuBuffer: TensorGpuBufferType,
+    options: TensorFromGpuBufferOptions<T>,
+  ): TensorInterface {
     return tensorFromGpuBuffer(gpuBuffer, options);
   }
 
+  static fromMLTensor<T extends TensorInterface.MLTensorDataTypes>(
+    mlTensor: TensorMLTensorType,
+    options: TensorFromMLTensorOptions<T>,
+  ): TensorInterface {
+    return tensorFromMLTensor(mlTensor, options);
+  }
+
   static fromPinnedBuffer<T extends TensorInterface.CpuPinnedDataTypes>(
-      type: T, buffer: TensorInterface.DataTypeMap[T], dims?: readonly number[]): Tensor {
+    type: T,
+    buffer: TensorInterface.DataTypeMap[T],
+    dims?: readonly number[],
+  ): Tensor {
     return tensorFromPinnedBuffer(type, buffer, dims);
   }
 
@@ -299,6 +416,11 @@ export class Tensor implements TensorInterface {
   private gpuBufferData?: TensorGpuBufferType;
 
   /**
+   * stores the underlying WebNN MLTensor when location is 'ml-tensor'. otherwise empty.
+   */
+  private mlTensorData?: TensorMLTensorType;
+
+  /**
    * stores an optional downloader function to download data from GPU to CPU.
    */
   private downloader?(): Promise<TensorDataType>;
@@ -319,8 +441,9 @@ export class Tensor implements TensorInterface {
     this.ensureValid();
     if (!this.cpuData) {
       throw new Error(
-          'The data is not on CPU. Use `getData()` to download GPU data to CPU, ' +
-          'or use `texture` or `gpuBuffer` property to access the GPU data directly.');
+        'The data is not on CPU. Use `getData()` to download GPU data to CPU, ' +
+          'or use `texture` or `gpuBuffer` property to access the GPU data directly.',
+      );
     }
     return this.cpuData;
   }
@@ -344,6 +467,14 @@ export class Tensor implements TensorInterface {
     }
     return this.gpuBufferData;
   }
+
+  get mlTensor(): TensorMLTensorType {
+    this.ensureValid();
+    if (!this.mlTensorData) {
+      throw new Error('The data is not stored as a WebNN MLTensor.');
+    }
+    return this.mlTensorData;
+  }
   // #endregion
 
   // #region methods
@@ -355,7 +486,8 @@ export class Tensor implements TensorInterface {
       case 'cpu-pinned':
         return this.data;
       case 'texture':
-      case 'gpu-buffer': {
+      case 'gpu-buffer':
+      case 'ml-tensor': {
         if (!this.downloader) {
           throw new Error('The current tensor is not created with a specified data downloader.');
         }
@@ -375,7 +507,6 @@ export class Tensor implements TensorInterface {
           }
 
           return data;
-
         } finally {
           this.isDownloading = false;
         }
@@ -397,6 +528,7 @@ export class Tensor implements TensorInterface {
     this.cpuData = undefined;
     this.gpuTextureData = undefined;
     this.gpuBufferData = undefined;
+    this.mlTensorData = undefined;
     this.downloader = undefined;
     this.isDownloading = undefined;
 

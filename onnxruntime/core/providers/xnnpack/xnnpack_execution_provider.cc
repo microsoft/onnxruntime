@@ -258,6 +258,7 @@ static void AddComputeCapabilityForEachNodeInNodeUnit(
 std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCapability(
     const onnxruntime::GraphViewer& graph,
     const IKernelLookup& /*kernel_lookup*/) const {
+  const auto& logger = *GetLogger();
   std::vector<std::unique_ptr<ComputeCapability>> capabilities;
 
   std::shared_ptr<KernelRegistry> registry = GetKernelRegistry();
@@ -268,7 +269,7 @@ std::vector<std::unique_ptr<ComputeCapability>> XnnpackExecutionProvider::GetCap
   // Get all the NodeUnits in the GraphViewer so we can check if something is in a QDQ node group
   std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
   std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
-  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph);
+  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph, logger);
 
   // This holds the result of whether a NodeUnit is supported or not,
   // to prevent nodes in a NodeUnit being checked for multiple times

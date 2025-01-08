@@ -88,8 +88,16 @@ stages:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
     CUDA_MODULE_LOADING: 'LAZY'
+    ${{ if eq(parameters['buildJava'], 'true') }}:
+      buildJavaParameter: '--build_java'
+    ${{ else }}:
+      buildJavaParameter: ''
+    ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
+      timeoutParameter: '--test_all_timeout 72000'
+    ${{ else }}:
+      timeoutParameter: ''
   jobs:
-  - job:
+  - job: Windows_Packaging_${{ parameters.stage_name_suffix }}
     workspace:
       clean: all
     ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
@@ -102,33 +110,38 @@ stages:
       timeoutInMinutes: 360
 
     steps:
-      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-        displayName: 'Clean Agent Directories'
-        condition: always()
 
       - checkout: self
         clean: true
         submodules: none
 
+      - task: UsePythonVersion@0
+        inputs:
+          versionSpec: '3.12'
+          addToPath: true
+          architecture: ${{ parameters.buildArch }}
+
       - template: telemetry-steps.yml
+
+      # The private ADO project
+      - ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
+        - task: PipAuthenticate@1
+          displayName: 'Pip Authenticate'
+          inputs:
+            artifactFeeds: 'Lotus'
 
       - ${{ if eq(parameters['buildJava'], 'true') }}:
         - task: JavaToolInstaller@0
           inputs:
-            versionSpec: "11"
+            versionSpec: "17"
             jdkArchitectureOption: ${{ parameters.buildArch }}
             jdkSourceOption: 'PreInstalled'
 
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: '3.8'
-          addToPath: true
-          architecture: ${{ parameters.buildArch }}
 
       - task: NodeTool@0
         condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
         inputs:
-          versionSpec: '18.x'
+          versionSpec: '20.x'
 
       - ${{ if ne(parameters.CudaVersion, '') }}:
         - template: jobs/download_win_gpu_library.yml
@@ -166,10 +179,7 @@ stages:
         displayName: 'Generate cmake config'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
-            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} --test_all_timeout 72000'
-          ${{ else }}:
-            arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} '
+          arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --update --cmake_generator "$(VSGenerator)" --enable_onnx_tests $(TelemetryOption) ${{ parameters.buildparameter }} $(timeoutParameter) $(buildJavaParameter)'
           workingDirectory: '$(Build.BinariesDirectory)'
 
 
@@ -186,19 +196,24 @@ stages:
           createLogFile: true
 
       # For CPU job, tests are run in the same machine as building
-      - ${{ if contains(parameters.ort_build_pool_name, 'CPU') }}:
-        - ${{ if eq(parameters.buildJava, 'true') }}:
-          - template: make_java_win_binaries.yml
-            parameters:
-              msbuildPlatform: ${{ parameters.msbuildPlatform }}
-              java_artifact_id: ${{ parameters.java_artifact_id }}
+      - ${{ if eq(parameters.buildJava, 'true') }}:
+        - template: make_java_win_binaries.yml
+          parameters:
+            msbuildPlatform: ${{ parameters.msbuildPlatform }}
+            java_artifact_id: ${{ parameters.java_artifact_id }}
+            ${{ if or(contains(parameters.buildparameter, 'use_cuda'), contains(parameters.buildparameter, 'use_tensorrt')) }}:
+            # When it is a GPU build, we only assemble the java binaries, testing will be done in the later stage with GPU machine
+              buildOnly: true
+            ${{ else }}:
+              buildOnly: false
 
-          - task: PublishBuildArtifacts@1
-            condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
-            displayName: 'Publish Java temp binaries'
-            inputs:
-              pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
-              artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
+        - task: PublishBuildArtifacts@1
+          displayName: 'Publish Java temp binaries'
+          inputs:
+            pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
+            artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
+        # All GPU builds will be tested in the next stage with GPU machine
+      - ${{ if contains(parameters.ort_build_pool_name, 'CPU') }}:
         - task: PythonScript@0
           displayName: 'test'
           condition: and(succeeded(), eq('${{ parameters.runTests}}', true))
@@ -302,12 +317,9 @@ stages:
       - template: component-governance-component-detection-steps.yml
         parameters :
           condition : 'succeeded'
-
 - ${{ if contains(parameters.ort_build_pool_name, 'GPU') }}:
   - stage: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
     dependsOn: Windows_Packaging_${{ parameters.stage_name_suffix }}
-    variables:
-      CUDA_MODULE_LOADING: 'LAZY'
     jobs:
     - job: Windows_Packaging_${{ parameters.stage_name_suffix }}_Testing
       workspace:
@@ -315,9 +327,6 @@ stages:
       pool: ${{ parameters.ort_build_pool_name }}
       timeoutInMinutes: 180
       steps:
-        - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-          displayName: 'Clean Agent Directories'
-          condition: always()
 
         - checkout: self
           clean: true
@@ -347,20 +356,27 @@ stages:
         - ${{ if eq(parameters['buildJava'], 'true') }}:
           - task: JavaToolInstaller@0
             inputs:
-              versionSpec: "11"
+              versionSpec: "17"
               jdkArchitectureOption: ${{ parameters.buildArch }}
               jdkSourceOption: 'PreInstalled'
 
         - task: UsePythonVersion@0
           inputs:
-            versionSpec: '3.8'
+            versionSpec: '3.12'
             addToPath: true
             architecture: ${{ parameters.buildArch }}
+
+        # The private ADO project
+        - ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
+          - task: PipAuthenticate@1
+            displayName: 'Pip Authenticate'
+            inputs:
+              artifactFeeds: 'Lotus'
 
         - task: NodeTool@0
           condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
           inputs:
-            versionSpec: '18.x'
+            versionSpec: '20.x'
 
         - ${{ if ne(parameters.CudaVersion, '') }}:
           - template: jobs/download_win_gpu_library.yml
@@ -384,16 +400,10 @@ stages:
             scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
             arguments: '--config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --enable_onnx_tests  $(TelemetryOption) '
             workingDirectory: '$(Build.BinariesDirectory)'
-
+# Previous stage only assembles the java binaries, testing will be done in this stage with GPU machine
         - ${{ if eq(parameters.buildJava, 'true') }}:
           - template: make_java_win_binaries.yml
             parameters:
               msbuildPlatform: ${{ parameters.msbuildPlatform }}
               java_artifact_id: ${{ parameters.java_artifact_id }}
-
-          - task: PublishBuildArtifacts@1
-            condition: and(succeeded(), eq('${{ parameters.buildJava}}', true))
-            displayName: 'Publish Java temp binaries'
-            inputs:
-              pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
-              artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
+              buildOnly: false

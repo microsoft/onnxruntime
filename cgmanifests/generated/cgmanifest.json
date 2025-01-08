@@ -6,7 +6,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "229d83fc706e10a39d4948a804cbbf17225cdda0",
+          "commitHash": "d52c46520124845b1e0e0525f2759299d840143f",
           "repositoryUrl": "https://github.com/emscripten-core/emsdk.git"
         },
         "comments": "git submodule at cmake/external/emsdk"
@@ -26,7 +26,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "990217f043af7222348ca8f0301e17fa7b841781",
+          "commitHash": "b8baa8446686496da4cc8fda09f2b6fe65c2a02c",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -36,7 +36,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "4a2c63365eff8823a5221db86ef490e828306f9d",
+          "commitHash": "4447c7562e3bc702ade25105912dce503f0c4010",
           "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
         },
         "comments": "abseil_cpp"
@@ -116,7 +116,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "344117638c8ff7e239044fd0fa7085839fc03021",
+          "commitHash": "a6ad7fbbdc2e14fab82bb8a6d27760d700198cbf",
           "repositoryUrl": "https://github.com/google/benchmark.git"
         },
         "comments": "google_benchmark"
@@ -126,17 +126,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "13de152c2a1cd73ff4df97bd2c406b6d15d34af3",
-          "repositoryUrl": "https://github.com/google/nsync.git"
-        },
-        "comments": "google_nsync"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "530d5c8c84abd2a46f38583ee817743c9b3a42b4",
+          "commitHash": "e39786088138f2749d64e9e90e0f9902daa77c40",
           "repositoryUrl": "https://github.com/google/googletest.git"
         },
         "comments": "googletest"
@@ -146,7 +136,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "0da379fc4808f9601faef392352018c741c0f297",
+          "commitHash": "309b75c9e56e0a674bf78d59872ce131f814dfb6",
           "repositoryUrl": "https://github.com/google/XNNPACK.git"
         },
         "comments": "googlexnnpack"
@@ -206,17 +196,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "150e7527d5286ddd3a995c228dedf8d76a7a86bc",
-          "repositoryUrl": "https://github.com/intel/neural-speed.git"
-        },
-        "comments": "neural_speed"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "bacfaaa951653cd4e72efe727a543567cb38f7de",
+          "commitHash": "9c69a24bc2e20c8a511a4e6b06fd49639ec5300a",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "onnx_tensorrt"
@@ -256,7 +236,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "80dc998efced8ceb2be59756668a7e90e8bef917",
+          "commitHash": "941f45bcb51457884fa1afd6e24a67377d70f75c",
           "repositoryUrl": "https://github.com/pybind/pybind11.git"
         },
         "comments": "pybind11"
@@ -266,7 +246,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "959002f82d7962a473d8bf301845f2af720e0aa4",
+          "commitHash": "ca678952a9a8eaa6de112d154e8e104b22f9ab3f",
           "repositoryUrl": "https://github.com/pytorch/cpuinfo.git"
         },
         "comments": "pytorch_cpuinfo"
@@ -276,7 +256,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "5723bb8950318135ed9cf4fc76bed988a087f536",
+          "commitHash": "6dcd83d60f7944926bfd308cc13979fc53dd69ca",
           "repositoryUrl": "https://github.com/google/re2.git"
         },
         "comments": "re2"
@@ -306,7 +286,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "6f47420213f757831fae65c686aa471749fa8d60",
+          "commitHash": "f7b19de32c5d1f3cedfc735c2849f12b537522ee",
           "repositoryUrl": "https://github.com/NVIDIA/cutlass.git"
         },
         "comments": "cutlass"
@@ -336,7 +316,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "5356c4a943a35e74d7cdc69486afcb8703b9a59a",
+          "commitHash": "204da9c522cebec5220bba52cd3542ebcaf99e7a",
           "repositoryUrl": "https://github.com/ROCmSoftwarePlatform/composable_kernel.git"
         },
         "comments": "composable_kernel"
@@ -350,6 +330,26 @@
           "repositoryUrl": "https://github.com/microsoft/DirectX-Headers.git"
         },
         "comments": "directx_headers"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "de355c7094af70467f2b264f531ab5c5f4401c42",
+          "repositoryUrl": "https://github.com/NVIDIA/cudnn-frontend.git"
+        },
+        "comments": "cudnn_frontend"
+      }
+    },
+    {
+      "component": {
+        "type": "git",
+        "git": {
+          "commitHash": "12a3b24c456cebd9fd11f23ac0164f78129b00c6",
+          "repositoryUrl": "https://github.com/google/dawn.git"
+        },
+        "comments": "dawn"
       }
     }
   ]
