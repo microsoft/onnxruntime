@@ -1081,7 +1081,7 @@ Status QnnBackendManager::TerminateQnnLog() {
   if (nullptr != qnn_interface_.logFree && nullptr != log_handle_) {
     auto ret_val = qnn_interface_.logFree(log_handle_);
 
-    // Reset QNN log handle to nullptr so other threads that are waiting on logger_mutex_ know it was freed.
+    // Reset QNN log handle to nullptr so other threads that are waiting on logger_recursive_mutex_ know it was freed.
     log_handle_ = nullptr;
     ORT_RETURN_IF(QNN_SUCCESS != ret_val,
                   "Unable to terminate logging in the backend.");
