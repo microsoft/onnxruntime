@@ -141,14 +141,14 @@ TEST(ModelBuilderAPITest, Basic_CApi) {
     Ort::ThrowOnError(model_builder_api.CreateGraph(&graph));
 
     //
-    // Create OrtModel with a Gemm. X input is 3x2, Y input is 2x3, Z output is 3x3.
+    // Create OrtModel with a Gemm. X input is 3x4, Y input is 4x8, Z output is 3x8.
     // X is model input. Y is initializer.
     // Set the alpha attribute of the Gemm node to 2.0 to test attribute handling.
     //
 
     // model input
     OrtTensorTypeAndShapeInfo* tensor_type_info = nullptr;
-    std::vector<int64_t> input_dims = {3, 2};
+    std::vector<int64_t> input_dims = {3, 4};
     // can use api.SetSymbolicDimensions to set symbolic dimensions.
     // the input array should have the same rank as the call to SetDimensions.
     // e.g. call SetDimensions with {-1, 3, 2} and SetSymbolicDimensions with {"N", nullptr, nullptr} to create
@@ -170,7 +170,7 @@ TEST(ModelBuilderAPITest, Basic_CApi) {
 
     // model outputs
     OrtTypeInfo* output_type_info = nullptr;
-    std::vector<int64_t> output_dims = {3, 3};
+    std::vector<int64_t> output_dims = {3, 8};
 
     Ort::ThrowOnError(api.CreateTensorTypeAndShapeInfo(&tensor_type_info));
     Ort::ThrowOnError(api.SetTensorElementType(tensor_type_info, ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT));
@@ -203,24 +203,22 @@ TEST(ModelBuilderAPITest, Basic_CApi) {
     std::vector<const char*> node_output_names = {gemm_output_name.c_str()};
     std::vector<OrtOpAttr*> node_attributes{alpha_attr};
     OrtNode* node = CreateNode(model_builder_api, "Gemm", "Gemm1", node_input_names, node_output_names, node_attributes);
-
-    api.ReleaseOpAttr(alpha_attr);  // CreateNode copies all OrtOpAttr instances
+    alpha_attr = nullptr;  // Node now owns
 
     Ort::ThrowOnError(model_builder_api.AddNodeToGraph(graph, node));
     node = nullptr;  // graph now owns node
 
     // Y input
-    std::vector<int64_t> y_dims = {2, 3};
-    deleter.weights.emplace_back(
-        std::make_unique<std::vector<float>>(std::initializer_list<float>{1.0f, 2.0f, 3.0f,
-                                                                          4.0f, 5.0f, 6.0f}));
+    // As it's 128 bytes it could either be allocated using CreateTensorAsOrtValue or use existing memory.
+    // Under 128 bytes must use CreateTensorAsOrtValue.
+    std::vector<int64_t> y_dims = {4, 8};
+
+    deleter.weights.emplace_back(std::make_unique<std::vector<float>>(32));
     auto& y_values = *deleter.weights.back();
+    std::iota(y_values.begin(), y_values.end(), 1.0f);
 
-    // create an initializer for the Y input. add to `weights` so the memory remains valid
+    // create an initializer for the Y input. add to `weights` so the memory remains valid.
     OrtValue* y_tensor = nullptr;
-    auto info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-
-    // if you use this API the initializer data MUST remain valid for the lifetime of the InferenceSession
     Ort::ThrowOnError(
         api.CreateTensorWithDataAndDeleterAsOrtValue(&deleter,
                                                      y_values.data(), y_values.size() * sizeof(y_values[0]),
@@ -232,18 +230,24 @@ TEST(ModelBuilderAPITest, Basic_CApi) {
     y_tensor = nullptr;  // graph now owns
 
     if (use_constant_node) {
-      // Test that a Constant node is converted to an intializer
+      // Test that a Constant node is converted to an initializer
 
-      // create Constant node that is used as the Max in a Clip to limit the output
-      OrtOpAttr* value_attr = nullptr;
-      float max = 60.0f;
-      Ort::ThrowOnError(api.CreateOpAttr("value", &max, sizeof(max), ORT_OP_ATTR_FLOAT, &value_attr));
-
-      node = CreateNode(model_builder_api, "Constant", "clip_max", {}, {"max"}, {value_attr});
+      // create Constant nodes for min/max to limit output range
+      OrtOpAttr* min_attr = nullptr;
+      float min = 400.0f;
+      Ort::ThrowOnError(api.CreateOpAttr("value", &min, sizeof(min), ORT_OP_ATTR_FLOAT, &min_attr));
+      node = CreateNode(model_builder_api, "Constant", "clip_min", {}, {"min"}, {min_attr});
       Ort::ThrowOnError(model_builder_api.AddNodeToGraph(graph, node));
       node = nullptr;  // graph now owns node
 
-      node = CreateNode(model_builder_api, "Clip", "Clip1", {gemm_output_name.c_str(), "", "max"}, {"Z"});
+      OrtOpAttr* max_attr = nullptr;
+      float max = 900.0f;
+      Ort::ThrowOnError(api.CreateOpAttr("value", &max, sizeof(max), ORT_OP_ATTR_FLOAT, &max_attr));
+      node = CreateNode(model_builder_api, "Constant", "clip_max", {}, {"max"}, {max_attr});
+      Ort::ThrowOnError(model_builder_api.AddNodeToGraph(graph, node));
+      node = nullptr;  // graph now owns node
+
+      node = CreateNode(model_builder_api, "Clip", "Clip1", {gemm_output_name.c_str(), "min", "max"}, {"Z"});
       Ort::ThrowOnError(model_builder_api.AddNodeToGraph(graph, node));
       node = nullptr;  // graph now owns node
     }
@@ -265,22 +269,25 @@ TEST(ModelBuilderAPITest, Basic_CApi) {
     std::vector<Input<float>> inputs(1);
     auto& input = inputs[0];
     input.name = "X";
-    input.dims = {3, 2};
-    input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+    input.dims = {3, 4};
+    input.values = {1.0f, 2.0f, 3.0f, 4.0f,
+                    8.0f, 7.0f, 6.0f, 5.0f,
+                    9.0f, 3.0f, 5.0f, 7.0f};
 
-    std::vector<int64_t> expected_dims = {3, 3};
+    std::vector<int64_t> expected_dims = {3, 8};
     ModelBuilderAPI::Model cxx_model(model);
     auto session = CreateSession(*ort_env, cxx_model);
 
     std::vector<float> expected_output;
     if (use_constant_node) {
-      expected_output = {18.0f, 24.0f, 30.0f,
-                         38.0f, 52.0f, 60.0f,   // clipped
-                         58.0f, 60.0f, 60.0f};  // clipped
+      // clipped with min 400 and max 900
+      expected_output = {400.0f, 400.0f, 400.0f, 400.0f, 420.0f, 440.0f, 460.0f, 480.0f,
+                         596.0f, 648.0f, 700.0f, 752.0f, 804.0f, 856.0f, 900.0f, 900.0f,
+                         592.0f, 640.0f, 688.0f, 736.0f, 784.0f, 832.0f, 880.0f, 900.0f};
     } else {
-      expected_output = {18.0f, 24.0f, 30.0f,
-                         38.0f, 52.0f, 66.0f,
-                         58.0f, 80.0f, 102.0f};
+      expected_output = {340.0f, 360.0f, 380.0f, 400.0f, 420.0f, 440.0f, 460.0f, 480.0f,
+                         596.0f, 648.0f, 700.0f, 752.0f, 804.0f, 856.0f, 908.0f, 960.0f,
+                         592.0f, 640.0f, 688.0f, 736.0f, 784.0f, 832.0f, 880.0f, 928.0f};
     }
 
     TestInference<float>(session, inputs, "Z", expected_dims, expected_output);
@@ -301,7 +308,7 @@ TEST(ModelBuilderAPITest, Basic_CxxApi) {
   Ort::ModelBuilderAPI::Graph graph;
 
   //
-  // Create OrtModel with a Gemm. X input is 3x2, Y input is 2x3, Z output is 3x3.
+  // Create OrtModel with a Gemm. X input is 3x4, Y input is 4x8, Z output is 3x8.
   // X is model input. Y is initializer.
   // Set the alpha attribute of the Gemm node to 2.0 to test attribute handling.
   //
@@ -309,8 +316,8 @@ TEST(ModelBuilderAPITest, Basic_CxxApi) {
   std::vector<ModelBuilderAPI::ValueInfo> graph_inputs;
   std::vector<ModelBuilderAPI::ValueInfo> graph_outputs;
 
-  // model input. it's {3, 2} but use a symbolic dim to test that works.
-  std::vector<int64_t> input_dims({-1, 2});
+  // model input. it's {3, 4} but use a symbolic dim to test that works.
+  std::vector<int64_t> input_dims({-1, 4});
   std::vector<std::string> input_symbolic_dims({"multiple_of_3", ""});
   TensorTypeAndShapeInfo input_tensor_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
                                            input_dims,
@@ -319,7 +326,7 @@ TEST(ModelBuilderAPITest, Basic_CxxApi) {
   graph_inputs.emplace_back("X", input_type_info.GetConst());
 
   // model outputs
-  std::vector<int64_t> output_dims = {-1, 3};
+  std::vector<int64_t> output_dims = {-1, 8};
   std::vector<std::string> output_symbolic_dims({"multiple_of_3", ""});
   TensorTypeAndShapeInfo output_tensor_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
                                             output_dims,
@@ -344,10 +351,14 @@ TEST(ModelBuilderAPITest, Basic_CxxApi) {
 
   // create an initializer for the Y input.
   // add to `weights` so it remains valid for the lifetime of the session and we can avoid copying the data.
-  std::vector<int64_t> y_dims = {2, 3};
-  weights.emplace_back(std::make_unique<std::vector<float>>(std::initializer_list<float>{1.0f, 2.0f, 3.0f,
-                                                                                         4.0f, 5.0f, 6.0f}));
+  // As it's 128 bytes it could either be allocated using CreateTensorAsOrtValue or use existing memory.
+  // Under 128 bytes must use CreateTensorAsOrtValue.
+  std::vector<int64_t> y_dims = {4, 8};
+
+  weights.emplace_back(std::make_unique<std::vector<float>>(32));
   auto& y_values = *weights.back();
+  std::iota(y_values.begin(), y_values.end(), 1.0f);
+
   auto info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
 
   // if you use this API the initializer data MUST remain valid for the lifetime of the InferenceSession
@@ -361,16 +372,18 @@ TEST(ModelBuilderAPITest, Basic_CxxApi) {
   std::vector<Input<float>> inputs(1);
   auto& input = inputs[0];
   input.name = "X";
-  input.dims = {3, 2};
-  input.values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  input.dims = {3, 4};
+  input.values = {1.0f, 2.0f, 3.0f, 4.0f,
+                  8.0f, 7.0f, 6.0f, 5.0f,
+                  9.0f, 3.0f, 5.0f, 7.0f};
 
-  std::vector<int64_t> expected_dims = {3, 3};
+  std::vector<int64_t> expected_dims = {3, 8};
 
   auto session = CreateSession(*ort_env, model);
   TestInference<float>(session, inputs, "Z", expected_dims,
-                       {18.0f, 24.0f, 30.0f,
-                        38.0f, 52.0f, 66.0f,
-                        58.0f, 80.0f, 102.0f});
+                       {340.0f, 360.0f, 380.0f, 400.0f, 420.0f, 440.0f, 460.0f, 480.0f,
+                        596.0f, 648.0f, 700.0f, 752.0f, 804.0f, 856.0f, 908.0f, 960.0f,
+                        592.0f, 640.0f, 688.0f, 736.0f, 784.0f, 832.0f, 880.0f, 928.0f});
 }
 
 TEST(ModelBuilderAPITest, BasicModelEdit_CxxApi) {

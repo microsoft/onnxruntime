@@ -93,6 +93,9 @@ ORT_API_STATUS_IMPL(OrtModelBuilderAPI::CreateNode, const char* operator_name, c
     n->attributes.reserve(attribs_len);
     for (size_t i = 0; i < attribs_len; ++i) {
       n->attributes.push_back(*reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attributes[i]));
+      // take ownership. as we took a copy that means releasing the original value
+      OrtApis::ReleaseOpAttr(attributes[i]);
+      attributes[i] = nullptr;
     }
   }
 
@@ -156,12 +159,31 @@ ORT_API_STATUS_IMPL(OrtModelBuilderAPI::SetGraphOutputs, _In_ OrtGraph* graph,
 ORT_API_STATUS_IMPL(OrtModelBuilderAPI::AddInitializerToGraph, _In_ OrtGraph* graph, _In_ const char* name,
                     _Inout_ OrtValue* tensor, bool data_is_external) {
   API_IMPL_BEGIN
+  if (!tensor->IsTensor()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Only Tensor is currently supported.");
+  }
+
+  if (!tensor->IsAllocated()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Tensor must be allocated.");
+  }
+
+  const auto& t = tensor->Get<onnxruntime::Tensor>();
+  if (t.Location().device.Type() != OrtDevice::CPU) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Only CPU based tensors are currently supported.");
+  }
+
   if (data_is_external) {
-#if !defined(DISABLE_EXTERNAL_INITIALIZERS)
+    // enforce that an external initializer is not used if the data size is < 128 bytes.
+    // the reason for this is to avoid potential shape inferencing errors if this initializer is providing an
+    // input involved in that. the ONNX shape inferencing does not support external data for those values.
+    // e.g. Reshape's `shape` input, Reduce's `axes', Slice's `starts`, `ends`, `steps`, Clip's `min`, `max`, etc.
+    if (t.SizeInBytes() < 128) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "External initializer should only be used for data >= 128 bytes. "
+                                   "Please use CreateTensorAsOrtValue instead.");
+    }
+
     graph->external_initializers[name] = std::unique_ptr<OrtValue>(tensor);  // take ownership
-#else
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "External initializers are not supported in this build");
-#endif
   } else {
     graph->initializers[name] = std::unique_ptr<OrtValue>(tensor);  // take ownership
   }

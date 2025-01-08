@@ -7,21 +7,24 @@
 #include <fstream>
 #include <iostream>
 #include <numeric>
-#include <stack>
 #include <queue>
+#include <stack>
+
+#include <gsl/gsl>
 
 #include "core/common/common.h"
-#include <gsl/gsl>
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/flatbuffers/schema/ort.fbs.h"
-#include "core/framework/tensor_shape.h"
 #include "core/framework/tensor_external_data_info.h"
+#include "core/framework/tensor_shape.h"
+#include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
+#include "core/graph/function_utils.h"
 #include "core/graph/graph_flatbuffers_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/indexed_sub_graph.h"
@@ -32,7 +35,6 @@
 #include "core/graph/node_attr_utils.h"
 #include "core/graph/op.h"
 #include "core/graph/runtime_optimization_record_container.h"
-#include "core/graph/function_utils.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/graph/function.h"
@@ -4096,27 +4098,51 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
   // This is used for constructing full path for external data
   // if it exists
 
+  auto add_initializer = [](TensorList& output_initializers, const TensorProto& initializer) -> void {
+    TensorProto& output = *output_initializers.Add();
+    output = initializer;
+
+    // copy any in-memory external data into raw data
+    if (utils::HasExternalData(initializer)) {
+      const std::filesystem::path ignored;
+      std::basic_string<ORTCHAR_T> location;
+      onnxruntime::FileOffsetType file_offset;
+      SafeInt<size_t> tensor_byte_size;
+
+      ORT_THROW_IF_ERROR(utils::GetExternalDataInfo(initializer, ignored, location, file_offset, tensor_byte_size));
+
+      if (location == onnxruntime::utils::kTensorProtoMemoryAddressTag) {
+        // file_offset is address
+        void* data = reinterpret_cast<void*>(file_offset);
+
+        // set in raw data
+        output.clear_data_location();
+        output.set_raw_data(data, tensor_byte_size);
+      }
+    }
+  };
+
+  auto* mutable_initializers = result.mutable_initializer();
+
 #if !defined(DISABLE_SPARSE_TENSORS)
   const auto& model_path = ModelPath();
   // We want to make sure that sparse initializers do not appear
   // as dense duplicates within the initializers list.
-  if (!sparse_tensor_names_.empty()) {
-    const auto sparse_end = sparse_tensor_names_.end();
-    auto* mutable_initializer = result.mutable_initializer();
-    for (const auto& initializer : graph_proto_->initializer()) {
-      if (sparse_end == sparse_tensor_names_.find(initializer.name())) {
-        *mutable_initializer->Add() = initializer;
-      } else {
-        auto& sparse_initializer = *result.add_sparse_initializer();
-        auto status = utils::DenseTensorToSparseTensorProto(initializer, model_path, sparse_initializer);
-        ORT_ENFORCE(status.IsOK(), "Failed to convert dense initializer to sparse");
-      }
+  const bool has_sparse_initializers = !sparse_tensor_names_.empty();
+  const auto sparse_end = sparse_tensor_names_.end();
+  for (const auto& initializer : graph_proto_->initializer()) {
+    if (!has_sparse_initializers || sparse_end == sparse_tensor_names_.find(initializer.name())) {
+      add_initializer(*mutable_initializers, initializer);
+    } else {
+      auto& sparse_initializer = *result.add_sparse_initializer();
+      auto status = utils::DenseTensorToSparseTensorProto(initializer, model_path, sparse_initializer);
+      ORT_ENFORCE(status.IsOK(), "Failed to convert dense initializer to sparse");
     }
-  } else {
-    *result.mutable_initializer() = graph_proto_->initializer();
   }
 #else
-  *result.mutable_initializer() = graph_proto_->initializer();
+  for (const auto& initializer : graph_proto_->initializer()) {
+    add_initializer(*mutable_initializers, initializer);
+  }
 #endif
 
   return result;

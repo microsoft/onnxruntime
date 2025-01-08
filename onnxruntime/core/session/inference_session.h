@@ -627,6 +627,12 @@ class InferenceSession {
   /// convenience pointer to logger. should always be the same as session_state_.Logger();
   const logging::Logger* session_logger_;
 
+  // The list of execution providers. 
+  // This MUST be prior to model_ in case there are values in the model that were allocated using an allocator
+  // provided by the EP. If that is the case the allocator's `free` implementation may depend on other parts of the
+  // EP instance.
+  ExecutionProviders execution_providers_;
+
   // The model served by this inference session instance.
   // Currently this has to be a shared ptr because the Model::Load method
   // returns a shared_ptr only. Ideally factory functions should always return
@@ -636,9 +642,6 @@ class InferenceSession {
 
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
   PathString model_location_;
-
-  // The list of execution providers.
-  ExecutionProviders execution_providers_;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
