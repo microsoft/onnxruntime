@@ -69,18 +69,6 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
   }
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP graph capture enable: " << webgpu_ep_config.enable_graph_capture;
 
-  std::string enable_pix_capture_str;
-  if (config_options.TryGetConfigEntry(kEnablePIXCapture, enable_pix_capture_str)) {
-    if (enable_pix_capture_str == kEnablePIXCapture_ON) {
-      webgpu_ep_config.enable_pix_capture = true;
-    } else if (enable_pix_capture_str == kEnablePIXCapture_OFF) {
-      webgpu_ep_config.enable_pix_capture = false;
-    } else {
-      ORT_THROW("Invalid enable pix capture: ", enable_pix_capture_str);
-    }
-  }
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP pix capture enable: " << webgpu_ep_config.enable_pix_capture;
-
   // parse force CPU node names
   // The force CPU node names are separated by EOL (\n or \r\n) in the config entry.
   // each line is a node name that will be forced to run on CPU.
@@ -171,6 +159,18 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
       reinterpret_cast<const void*>(dawn_proc_table),
       validation_mode,
   };
+
+  std::string enable_pix_capture_str;
+  if (config_options.TryGetConfigEntry(kEnablePIXCapture, enable_pix_capture_str)) {
+    if (enable_pix_capture_str == kEnablePIXCapture_ON) {
+      context_config.enable_pix_capture = true;
+    } else if (enable_pix_capture_str == kEnablePIXCapture_OFF) {
+      context_config.enable_pix_capture = false;
+    } else {
+      ORT_THROW("Invalid enable pix capture: ", enable_pix_capture_str);
+    }
+  }
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP pix capture enable: " << context_config.enable_pix_capture;
 
   //
   // STEP.3 - prepare parameters for WebGPU context initialization.
