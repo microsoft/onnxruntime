@@ -124,13 +124,14 @@ jobs:
       uses: lukka/run-vcpkg@v11
       with:
         vcpkgDirectory: "${{ runner.temp }}/vcpkg"
-        vcpkgGitCommitId: "1de2026f28ead93ff1773e6e680387643e914ea1" # 2024.07.12
-        runVcpkgInstall: true
+        vcpkgGitCommitId: "b322364f06308bdd24823f9d8f03fe0cc86fd46f" # 2024.12.16
+        runVcpkgInstall: true # vcpkg install --x-manifest-root cmake --x-install-root .build --overlay-triplets cmake/vcpkg-triplets
         vcpkgJsonGlob: "cmake/vcpkg.json"
         vcpkgConfigurationJsonGlob: "cmake/vcpkg-configuration.json"
       env:
         VCPKG_INSTALLED_DIR: "${{ github.workspace }}/.build"
         VCPKG_DEFAULT_TRIPLET: "x64-osx"
+        VCPKG_OVERLAY_TRIPLETS: "${{ github.workspace }}/cmake/vcpkg-triplets"
         # VCPKG_BINARY_SOURCES: "default" # https://learn.microsoft.com/en-us/vcpkg/reference/binarycaching
 
     - name: "Run compile_schema.py"
@@ -172,13 +173,14 @@ jobs:
       uses: lukka/run-vcpkg@v11
       with:
         vcpkgDirectory: "${{ runner.temp }}/vcpkg"
-        vcpkgGitCommitId: "1de2026f28ead93ff1773e6e680387643e914ea1" # 2024.07.12
-        runVcpkgInstall: true
+        doNotUpdateVcpkg: true
+        runVcpkgInstall: true # vcpkg install --x-manifest-root cmake --x-install-root .build --overlay-triplets cmake/vcpkg-triplets
         vcpkgJsonGlob: "cmake/vcpkg.json"
         vcpkgConfigurationJsonGlob: "cmake/vcpkg-configuration.json"
       env:
         VCPKG_INSTALLED_DIR: "${{ github.workspace }}/.build"
         VCPKG_DEFAULT_TRIPLET: "arm64-osx"
+        VCPKG_OVERLAY_TRIPLETS: "${{ github.workspace }}/cmake/vcpkg-triplets"
         # VCPKG_BINARY_SOURCES: "default" # https://learn.microsoft.com/en-us/vcpkg/reference/binarycaching
 
     - name: "Run build.py(arm64-osx)"
