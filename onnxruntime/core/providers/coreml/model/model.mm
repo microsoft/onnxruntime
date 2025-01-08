@@ -369,7 +369,7 @@ void ProfileComputePlan(NSURL* compileUrl, MLModelConfiguration* config) {
 #define HAS_COREMLOPTIMIZATIONHINT 0
 #endif
 
-API_AVAILABLE(macos(15), ios(18))
+API_AVAILABLE_COREML8
 void ConfigureOptimizationHints(MLModelConfiguration* config, const CoreMLOptions& coreml_options) {
 #if HAS_COREMLOPTIMIZATIONHINT
   MLOptimizationHints* optimizationHints = [[MLOptimizationHints alloc] init];
