@@ -2228,7 +2228,7 @@ IMPLEMENT_GRADIENT_BUILDER(GetResizeGradient) {
 }
 
 IMPLEMENT_GRADIENT_BUILDER(GetAtanGradient) {
-    // dl/dx = dl/dy * (1/(1+x^2))
+  // dl/dx = dl/dy * (1/(1+x^2))
   NodeDef one_const_node = OneConstantNode(IElemType(0));
   ArgDef one = one_const_node.output_args[0];
   std::vector<NodeDef> result;
@@ -2238,7 +2238,6 @@ IMPLEMENT_GRADIENT_BUILDER(GetAtanGradient) {
   result.push_back(NodeDef("Div", {GO(0), IA("One_Plus_Square_I0")}, {GI(0)}));
   return result;
 }
-
 
 }  // namespace training
 }  // namespace onnxruntime

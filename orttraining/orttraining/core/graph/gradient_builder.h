@@ -95,7 +95,6 @@ DECLARE_GRADIENT_BUILDER(GetConvTransposeGradient)
 DECLARE_GRADIENT_BUILDER(GetResizeGradient)
 DECLARE_GRADIENT_BUILDER(GetAtanGradient)
 
-
 DECLARE_GRADIENT_BUILDER(GetExternalGradient)
 
 }  // namespace training
