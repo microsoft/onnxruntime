@@ -202,9 +202,9 @@ stages:
     - script: |
         if [[ "$OSTYPE" == "darwin"* ]]; then
           sed -i .bak "/boostorg.jfrog.io/c\\
-        spec.source = { :http => 'https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2', }" boost.podspec
+        spec.source = { :http => 'https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2', " boost.podspec
         else
-          sed -i .bak "/boostorg.jfrog.io/c\spec.source = { :http => 'https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2', }" boost.podspec
+          sed -i .bak "/boostorg.jfrog.io/c\spec.source = { :http => 'https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2', " boost.podspec
         fi
         rm -f .bak
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/node_modules/react-native/third-party-podspecs'
@@ -214,9 +214,9 @@ stages:
     - script: |
         if [[ "$OSTYPE" == "darwin"* ]]; then
           sed -i .bak "/boostorg.jfrog.io/c\\
-        spec.source = { :http => 'https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2', }" boost.podspec
+        spec.source = { :http => 'https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2', " boost.podspec
         else
-          sed -i .bak "/boostorg.jfrog.io/c\spec.source = { :http => 'https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2', }" boost.podspec
+          sed -i .bak "/boostorg.jfrog.io/c\spec.source = { :http => 'https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2', " boost.podspec
         fi
         rm -f .bak
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/node_modules/react-native/third-party-podspecs'
