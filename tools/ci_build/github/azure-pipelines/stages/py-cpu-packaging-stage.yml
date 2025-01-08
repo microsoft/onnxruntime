@@ -240,7 +240,7 @@ stages:
       workspace:
         clean: all
       pool:
-        vmImage: 'macOS-13'
+        vmImage: 'macOS-14'
       variables:
         MACOSX_DEPLOYMENT_TARGET: '13.3'
       strategy:
