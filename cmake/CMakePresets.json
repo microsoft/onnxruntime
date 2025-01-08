@@ -14,6 +14,7 @@
                 "VCPKG_INSTALLED_DIR": "${sourceParentDir}/.build"
             },
             "environment": {
+                "VCPKG_OVERLAY_TRIPLETS": "${sourceDir}/vcpkg-triplets",
                 "VCPKG_FEATURE_FLGAS": "manifests,versions"
             }
         },
