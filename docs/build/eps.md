@@ -153,7 +153,7 @@ Dockerfile instructions are available [here](https://github.com/microsoft/onnxru
 ### Build Instructions
 {: .no_toc }
 
-These instructions are for the latest [JetPack SDK 6](https://developer.nvidia.com/embedded/jetpack) for Jetson Orin.
+These instructions are for the latest [JetPack SDK](https://developer.nvidia.com/embedded/jetpack).
 
 1. Clone the ONNX Runtime repo on the Jetson host
 
@@ -163,14 +163,15 @@ These instructions are for the latest [JetPack SDK 6](https://developer.nvidia.c
 
 2. Specify the CUDA compiler, or add its location to the PATH.
 
-   1. Starting with **CUDA 11.8**, Jetson users on **JetPack 5.0+** can upgrade to the latest CUDA release without updating the JetPack version or Jetson Linux BSP (Board Support Package). 
+   1. JetPack 5.x users can upgrade to the latest CUDA release without updating the JetPack version or Jetson Linux BSP (Board Support Package). 
     
-      1. For JetPack 5.x users, CUDA 11.8 and GCC 11 are required to be updated, in order to build latest ONNX Runtime locally. 
+      1. For JetPack 5.x users, CUDA>=11.8 and GCC>9.4 are required to be installed on and after ONNX Runtime 1.17. 
 
-      2. Check [this official blog](https://developer.nvidia.com/blog/simplifying-cuda-upgrades-for-nvidia-jetson-users/) for CUDA upgrade instruction.
+      2. Check [this official blog](https://developer.nvidia.com/blog/simplifying-cuda-upgrades-for-nvidia-jetson-users/) for CUDA upgrade instruction (CUDA 12.2 has been verified on JetPack 5.1.2 on Jetson Xavier NX).
 
-      3. CUDA 12.x is only available to Jetson Orin and newer series (CUDA compute capability >= 8.7). Check [here](https://developer.nvidia.com/cuda-gpus#collapse5) for compute capability datasheet.
-         JetPack 6.0 comes preinstalled with CUDA 12.2
+         1. If there's no `libnvcudla.so` under `/usr/local/cuda-12.2/compat`: `sudo apt-get install -y cuda-compat-12-2` and add `export LD_LIBRARY_PATH="/usr/local/cuda-12.2/lib64:/usr/local/cuda-12.2/compat:$LD_LIBRARY_PATH"` to `~/.bashrc`.
+
+      3. Check [here](https://developer.nvidia.com/cuda-gpus#collapse5) for compute capability datasheet.
 
    2. CMake can't automatically find the correct `nvcc` if it's not in the `PATH`. `nvcc` can be added to `PATH` via:
 
@@ -186,9 +187,9 @@ These instructions are for the latest [JetPack SDK 6](https://developer.nvidia.c
 
    3. Update TensorRT libraries
       
-      1. Jetpack 5.x supports up to TensorRT 8.5. Jetpack 6.0 is equipped with TensorRT 8.6 and can support TensorRT 10.
+      1. Jetpack 5.x supports up to TensorRT 8.5. Jetpack 6.x are equipped with TensorRT 8.6-10.3.
       
-      2. Jetpack 6.0 users can download latest TensorRT 10 TAR package for jetpack on [TensorRT SDK website](https://developer.nvidia.com/tensorrt/download/10x).
+      2. Jetpack 6.x users can download latest TensorRT 10 TAR package for **jetpack** on [TensorRT SDK website](https://developer.nvidia.com/tensorrt/download/10x).
       
       3. Check [here](../execution-providers/TensorRT-ExecutionProvider.md#requirements) for TensorRT/CUDA support matrix among all ONNX Runtime versions.
 
@@ -200,7 +201,7 @@ These instructions are for the latest [JetPack SDK 6](https://developer.nvidia.c
      libpython3.8-dev python3-pip python3-dev python3-setuptools python3-wheel
    ```
 
-4. Cmake is needed to build ONNX Runtime. The minimum required CMake version is 3.26 (version 3.27.4 has been tested). This can be either installed by:
+4. Cmake is needed to build ONNX Runtime. The minimum required CMake version is 3.26. This can be either installed by:
 
    1. (Unix/Linux) Build from source. Download sources from [https://cmake.org/download/](https://cmake.org/download/)
       and follow [https://cmake.org/install/](https://cmake.org/install/) to build from source. 
@@ -220,7 +221,11 @@ These instructions are for the latest [JetPack SDK 6](https://developer.nvidia.c
 
 * By default, `onnxruntime-gpu` wheel file will be captured under `path_to/onnxruntime/build/Linux/Release/dist/` (build path can be customized by adding `--build_dir` followed by a customized path to the build command above).
 
-* For a portion of Jetson devices like the Xavier series, higher power mode involves more cores (up to 6) to compute but it consumes more resource when building ONNX Runtime. Set `--parallel 2` or smaller in the build command if system is hanging and OOM happens. 
+* Append `--skip_tests --cmake_extra_defines 'CMAKE_CUDA_ARCHITECTURES=72;87' 'onnxruntime_BUILD_UNIT_TESTS=OFF' 'onnxruntime_USE_FLASH_ATTENTION=OFF'
+'onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION=OFF'` to the build command to opt out optional features and reduce build time.
+
+* For a portion of Jetson devices like the Xavier series, higher power mode involves more cores (up to 6) to compute but it consumes more resource when building ONNX Runtime. Set `--parallel 1` in the build command if OOM happens and system is hanging.
+
 ## oneDNN
 
 See more information on oneDNN (formerly DNNL) [here](../execution-providers/oneDNN-ExecutionProvider.md).
