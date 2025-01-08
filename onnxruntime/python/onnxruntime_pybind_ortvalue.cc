@@ -96,16 +96,22 @@ void addOrtValueMethods(pybind11::module& m) {
       // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
       // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in CUDA
       CreateGenericMLValue(nullptr, GetRocmAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToRocmMemCpy);
-#elif USE_DML
-      // InputDeflist is null because OrtValue creation is not tied to a specific model
-      // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
-      // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in DML
-      CreateGenericMLValue(
-        nullptr, GetDmlAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToDmlMemCpy);
 #else
-      throw std::runtime_error(
-          "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
-          "Please use the CUDA package of OnnxRuntime to use this feature.");
+          throw std::runtime_error(
+              "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
+              "Please use the CUDA package of OnnxRuntime to use this feature.");
+#endif
+        } else if (device.Type() == OrtDevice::DML) {
+#if USE_DML
+          // InputDeflist is null because OrtValue creation is not tied to a specific model
+          // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
+          // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in DML
+          CreateGenericMLValue(
+              nullptr, GetDmlAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToDmlMemCpy);
+#else
+          throw std::runtime_error(
+              "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
+              "Please use the CUDA package of OnnxRuntime to use this feature.");
 #endif
         } else if (device.Type() == OrtDevice::NPU) {
 #ifdef USE_CANN
@@ -116,9 +122,9 @@ void addOrtValueMethods(pybind11::module& m) {
           CreateGenericMLValue(nullptr, GetCannAllocator(device.Id()), "", array_on_cpu, ml_value.get(),
                                true, false, CpuToCannMemCpy);
 #else
-      throw std::runtime_error(
-          "Can't allocate memory on the CANN device using this package of OnnxRuntime. "
-          "Please use the CANN package of OnnxRuntime to use this feature.");
+          throw std::runtime_error(
+              "Can't allocate memory on the CANN device using this package of OnnxRuntime. "
+              "Please use the CANN package of OnnxRuntime to use this feature.");
 #endif
         } else {
           throw std::runtime_error("Unsupported device: Cannot place the OrtValue on this device");
@@ -160,19 +166,24 @@ void addOrtValueMethods(pybind11::module& m) {
           }
 
           onnxruntime::python::CopyDataToTensor(
-            py_values,
-            values_type,
-            *(ml_value->GetMutable<Tensor>()),
-            CpuToRocmMemCpy);
-#elif USE_DML
-          onnxruntime::python::CopyDataToTensor(
-            py_values,
-            values_type,
-            *(ml_value->GetMutable<Tensor>()),
-            CpuToDmlMemCpy);
+              py_values,
+              values_type,
+              *(ml_value->GetMutable<Tensor>()),
+              CpuToRocmMemCpy);
 #else
-        throw std::runtime_error(
-            "Unsupported GPU device: Cannot find the supported GPU device.");
+          throw std::runtime_error(
+              "Unsupported GPU device: Cannot find the supported GPU device.");
+#endif
+        } else if (device.Type() == OrtDevice::DML) {
+#if USE_DML
+          onnxruntime::python::CopyDataToTensor(
+              py_values,
+              values_type,
+              *(ml_value->GetMutable<Tensor>()),
+              CpuToDmlMemCpy);
+#else
+          throw std::runtime_error(
+              "Unsupported GPU device: Cannot find the supported GPU device.");
 #endif
         } else {
           throw std::runtime_error("Unsupported device: Cannot update the OrtValue on this device");

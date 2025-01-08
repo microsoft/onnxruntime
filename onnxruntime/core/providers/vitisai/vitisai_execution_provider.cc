@@ -1,6 +1,7 @@
 // Copyright (c) 2023 Advanced Micro Devices, Inc. All rights reserved.
 // Licensed under the MIT License.
 #include "vitisai_execution_provider.h"
+#include "vitisai_profiler.h"
 
 // Standard headers/libs.
 #include <cassert>
@@ -76,7 +77,17 @@ common::Status VitisAIExecutionProvider::Compile(const std::vector<FusedNodeAndG
     auto& attrs = fused_node_graph.fused_node.get().GetAttributes();
     assert(attrs.count("index"));
     size_t index = attrs.at("index").i();
-    (**this->execution_providers_)[index]->set_fused_node(&fused_node_graph.fused_node.get());
+    auto& ep = (**this->execution_providers_)[index];
+    ep->set_fused_node(&fused_node_graph.fused_node.get());
+    if (ep->get_meta_def_fallback_CPU()) {
+      auto& subgraph = fused_node_graph.filtered_graph.get();
+      auto& logger = logging::LoggingManager::DefaultLogger();
+      auto model_proto = subgraph.CreateModel(logger)->ToProto();
+      subgraph.ToProto(*model_proto->mutable_graph(), true, true);
+      auto local_registries = IOnnxRuntimeOpSchemaRegistryList{subgraph.GetSchemaRegistry()};
+      auto model = Model::Create(std::move(*model_proto), subgraph.ModelPath(), &local_registries, logger);
+      ep->set_model(model.release());
+    }
     compute_info.create_state_func = [this, index](ComputeContext* context, FunctionState* state) {
       auto* p = (**this->execution_providers_)[index]->compile().release();
       *state = p;
@@ -124,5 +135,9 @@ common::Status VitisAIExecutionProvider::SetEpDynamicOptions(gsl::span<const cha
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL, error_msg);
   }
   return Status::OK();
+}
+
+std::unique_ptr<profiling::EpProfiler> VitisAIExecutionProvider::GetProfiler() {
+  return std::make_unique<profiling::VitisaiProfiler>();
 }
 }  // namespace onnxruntime

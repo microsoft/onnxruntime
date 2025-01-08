@@ -48,6 +48,16 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   // Set the inference_num_threads property of the CPU
   SetNumThreads(device_config);
 
+  auto npuw_status =
+      std::any_of(device_config.begin(), device_config.end(), [&](const std::pair<std::string, ov::Any>& pair) {
+        return (pair.first.find("NPU_USE_NPUW") != std::string::npos) && (pair.second.is<std::string>()) &&
+               (pair.second.as<std::string>() == "YES");
+      });
+
+  if (npuw_status) {
+    LOGS_DEFAULT(INFO) << log_tag << "NPUW Enabled during compilation";
+  }
+
   try {
     std::string dev_prec = global_context.device_type + "_" + global_context_.precision_str;
 
@@ -81,7 +91,6 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                                            device_config,
                                                            global_context_.ep_context_embed_mode,
                                                            subgraph_context_.subgraph_name);
-        ie_cnn_network_ = exe_network_.Get().get_runtime_model();
       } else if (global_context_.export_ep_ctx_blob &&
                  hw_target.find("NPU") != std::string::npos &&
                  !global_context_.has_external_weights) {
@@ -106,22 +115,22 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                                             device_config,
                                                             subgraph_context_.subgraph_name);
       } else {  // For all other types use ov::Model Type
-        ie_cnn_network_ = CreateOVModel(*model_proto, global_context_, const_outputs_map_);
+        auto ov_model = CreateOVModel(*model_proto, global_context_, const_outputs_map_);
         exe_network_ = global_context_.ie_core.CompileModel(
-            ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
+            ov_model, hw_target, device_config, subgraph_context_.subgraph_name);
       }
 #endif
     } else {  // Full graph is not supported
-      ie_cnn_network_ = CreateOVModel(*model_proto, global_context_, const_outputs_map_);
+      auto ov_model = CreateOVModel(*model_proto, global_context_, const_outputs_map_);
       exe_network_ = global_context_.ie_core.CompileModel(
-          ie_cnn_network_, hw_target, device_config, subgraph_context_.subgraph_name);
+          ov_model, hw_target, device_config, subgraph_context_.subgraph_name);
     }
     LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
   } catch (const char* msg) {
     ORT_THROW(msg);
   }
-
-  inferRequestsQueue_ = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network_, 1));
+  int num_infer_req = (global_context_.num_of_threads > 0) ? global_context_.num_of_threads : 1;
+  inferRequestsQueue_ = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network_, num_infer_req));
 }
 
 bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map) {
@@ -145,8 +154,8 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
     device_config.emplace(ov::hint::inference_precision("f32"));
   }
   if (global_context_.precision_str.find("ACCURACY") != std::string::npos &&
-      global_context_.device_type == "GPU") {
-    if (global_context_.OpenVINO_Version.at(0) >= 2024 && global_context_.OpenVINO_Version.at(1) >= 1) {
+      global_context_.device_type.find("GPU") != std::string::npos) {
+    if (global_context_.OpenVINO_Version.at(0) >= 2024) {
       device_config.emplace(ov::hint::inference_precision(ov::element::undefined));
       device_config.emplace(ov::hint::execution_mode(ov::hint::ExecutionMode::ACCURACY));
     } else {
@@ -174,7 +183,7 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
       device_property = std::make_pair("NPU_COMPILER_TYPE", env_npu_compiler_type);
     }
     device_config.emplace(ov::device::properties("NPU", device_property));
-#if (OPENVINO_VERSION_MAJOR >= 2024) && (OPENVINO_VERSION_MINOR > 3)
+#if (((OPENVINO_VERSION_MAJOR == 2024) && (OPENVINO_VERSION_MINOR > 3)) || (OPENVINO_VERSION_MAJOR > 2024))
     if (global_context_.export_ep_ctx_blob) {
       global_context_.ie_core.Get().set_property("NPU", ov::intel_npu::bypass_umd_caching(true));
     }
@@ -183,6 +192,33 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
 
   if (!global_context_.load_config.empty()) {
     const std::map<std::string, ov::AnyMap>& target_config = global_context_.load_config;
+
+    if (global_context_.device_type.find("NPU") != std::string::npos) {
+      auto npuw_config = target_config.at("NPU");
+
+      // Check if "NPU_USE_NPUW" exists and is set to "YES"
+      auto npu_use_npuw_it = npuw_config.find("NPU_USE_NPUW");
+      if (npu_use_npuw_it != npuw_config.end() &&
+          npu_use_npuw_it->second.is<std::string>() &&
+          npu_use_npuw_it->second.as<std::string>() == "YES") {
+        // Only add NPUW-related keys if NPU_USE_NPUW is "YES"
+        for (const auto& [key, value] : npuw_config) {
+          if (key.find("NPUW") != std::string::npos) {
+            if (!value.is<std::string>()) {
+              LOGS_DEFAULT(ERROR) << "Invalid value type for key: " << key;
+              continue;
+            }
+            device_config[key] = value;
+          }
+        }
+      } else {
+        // Check if there are any "NPUW" keys and log a warning
+        if (std::any_of(npuw_config.begin(), npuw_config.end(),
+                        [&](const auto& pair) { return pair.first.find("NPUW") != std::string::npos; })) {
+          LOGS_DEFAULT(WARNING) << "Skipping NPUW-related configurations as NPU_USE_NPUW is not set to 'YES'.";
+        }
+      }
+    }
 
     // Parse device types like "AUTO:CPU,GPU" and extract individual devices
     auto parse_individual_devices = [&](const std::string& device_type) -> std::vector<std::string> {
@@ -213,6 +249,9 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
     auto set_target_properties = [&](const std::string& device, const ov::AnyMap& config_options,
                                      const std::vector<ov::PropertyName>& supported_properties) {
       for (const auto& [key, value] : config_options) {
+        if (key.find("NPUW") != std::string::npos) {
+          continue;
+        }
         if (is_supported_and_mutable(key, supported_properties)) {
           global_context_.ie_core.Get().set_property(device, ov::AnyMap{{key, value}});
         } else {
@@ -378,7 +417,7 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
           if ((it == ort_ov_tensor_map.end()) ||
               (it != ort_ov_tensor_map.end() && (it->second.ort_ptr != tensor.GetTensorRawData()))) {
             ov_tensor_data_t ov_tensor_data;
-            auto input = graph_input_info.at(input_idx);
+            const auto& input = graph_input_info.at(input_idx);
             ov_tensor_data.tensor_ptr = std::make_shared<ov::Tensor>(input.get_element_type(), input.get_shape(),
                                                                      const_cast<void*>(tensor.GetTensorRawData()));
 
@@ -663,7 +702,6 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
     // Requesting for an idle infer_request from a pool of infer_requests_
     OVInferRequestPtr infer_request;
     infer_request = inferRequestsQueue_->getIdleRequest();
-
 #ifdef IO_BUFFER_ENABLED
     if ((global_context_.device_type.find("GPU") != std::string::npos) &&
         (global_context_.context != nullptr) && global_context_.is_wholly_supported_graph) {

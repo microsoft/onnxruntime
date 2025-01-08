@@ -329,6 +329,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool cuda_graph_enable_ = false;
   std::string cache_prefix_;
   bool engine_hw_compatible_ = false;
+  std::string op_types_to_exclude_;
+
+  // The format is as for TENSORRT_VERSION: (MAJOR * 100 + MINOR) * 100 + PATCH
+  int32_t trt_version_;
+  int32_t cuda_version_;
 
   // The OrtAllocator object will be get during ep compute time
   // and should be kept for the lifetime of TRT EP object.

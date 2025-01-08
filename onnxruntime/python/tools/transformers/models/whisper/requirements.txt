@@ -7,7 +7,7 @@ soundfile
 librosa
 optimum<=1.21.2
 onnxruntime-extensions>=0.9.0
-onnx==1.16.1
+onnx==1.17.0
 protobuf==3.20.2
 numpy==1.23.3
 psutil

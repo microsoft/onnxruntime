@@ -291,9 +291,6 @@ export const createSession = async (
       const providerName = typeof provider === 'string' ? provider : provider.name;
       if (providerName === 'webnn') {
         wasm.shouldTransferToMLTensor = false;
-        if (wasm.currentContext) {
-          throw new Error('WebNN execution provider is already set.');
-        }
         if (typeof provider !== 'string') {
           const webnnOptions = provider as InferenceSession.WebNNExecutionProviderOption;
           const context = (webnnOptions as InferenceSession.WebNNOptionsWithMLContext)?.context;
@@ -303,12 +300,12 @@ export const createSession = async (
           if (context) {
             wasm.currentContext = context as MLContext;
           } else if (gpuDevice) {
-            wasm.currentContext = await navigator.ml.createContext(gpuDevice);
+            wasm.currentContext = await wasm.jsepCreateMLContext!(gpuDevice);
           } else {
-            wasm.currentContext = await navigator.ml.createContext({ deviceType, powerPreference });
+            wasm.currentContext = await wasm.jsepCreateMLContext!({ deviceType, powerPreference });
           }
         } else {
-          wasm.currentContext = await navigator.ml.createContext();
+          wasm.currentContext = await wasm.jsepCreateMLContext!();
         }
         break;
       }
@@ -490,7 +487,7 @@ export const prepareInputOutputTensor = (
   }
 
   if (location === 'gpu-buffer') {
-    const gpuBuffer = tensor[2].gpuBuffer as GPUBuffer;
+    const gpuBuffer = tensor[2].gpuBuffer;
     dataByteLength = calculateTensorSizeInBytes(tensorDataTypeStringToEnum(dataType), dims)!;
 
     const registerBuffer = wasm.jsepRegisterBuffer;

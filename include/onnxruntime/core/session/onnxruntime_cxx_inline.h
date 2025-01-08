@@ -51,7 +51,7 @@ inline void ThrowOnError(const Status& st) {
   }
 }
 
-inline Status::Status(OrtStatus* status) noexcept : Base<OrtStatus>{status} {
+inline Status::Status(OrtStatus* status) noexcept : detail::Base<OrtStatus>{status} {
 }
 
 inline Status::Status(const std::exception& e) noexcept {
@@ -1908,7 +1908,7 @@ inline void attr_utils::GetAttrs(const OrtKernelInfo* p, const char* name, std::
 
 inline KernelInfo::KernelInfo(OrtKernelInfo* info) : detail::KernelInfoImpl<OrtKernelInfo>{info} {}
 
-inline Op::Op(OrtOp* p) : Base<OrtOp>(p) {}
+inline Op::Op(OrtOp* p) : detail::Base<OrtOp>(p) {}
 
 inline Op Op::Create(const OrtKernelInfo* info, const char* op_name, const char* domain, int version,
                      const char** type_constraint_names,

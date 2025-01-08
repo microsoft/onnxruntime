@@ -176,14 +176,6 @@ std::unique_ptr<IExecutionProvider> DnnlExecutionProviderWithOptions(const OrtDn
   return nullptr;
 }
 
-// std::unique_ptr<IExecutionProvider> DefaultTvmExecutionProvider() {
-// #ifdef USE_TVM
-//   return TVMProviderFactoryCreator::Create("")->CreateProvider();
-// #else
-//   return nullptr;
-// #endif
-// }
-
 std::unique_ptr<IExecutionProvider> DefaultNnapiExecutionProvider() {
 // The NNAPI EP uses a stub implementation on non-Android platforms so cannot be used to execute a model.
 // Manually append an NNAPI EP instance to the session to unit test the GetCapability and Compile implementation.
@@ -247,14 +239,14 @@ std::unique_ptr<IExecutionProvider> DefaultCoreMLExecutionProvider(bool use_mlpr
   // The test will create a model but execution of it will obviously fail.
 #if defined(USE_COREML) && defined(__APPLE__)
   // We want to run UT on CPU only to get output value without losing precision
-  uint32_t coreml_flags = 0;
-  coreml_flags |= COREML_FLAG_USE_CPU_ONLY;
+  auto option = ProviderOptions();
+  option[kCoremlProviderOption_MLComputeUnits] = "CPUOnly";
 
   if (use_mlprogram) {
-    coreml_flags |= COREML_FLAG_CREATE_MLPROGRAM;
+    option[kCoremlProviderOption_ModelFormat] = "MLProgram";
   }
 
-  return CoreMLProviderFactoryCreator::Create(coreml_flags)->CreateProvider();
+  return CoreMLProviderFactoryCreator::Create(option)->CreateProvider();
 #else
   ORT_UNUSED_PARAMETER(use_mlprogram);
   return nullptr;
@@ -307,6 +299,10 @@ std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
 std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider() {
 #ifdef USE_WEBGPU
   ConfigOptions config_options{};
+  // Disable storage buffer cache
+  ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kStorageBufferCacheMode,
+                                            webgpu::options::kBufferCacheMode_Disabled)
+                  .IsOK());
   return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
 #else
   return nullptr;

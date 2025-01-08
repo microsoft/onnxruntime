@@ -3,7 +3,7 @@
 #include <cassert>
 #include <utility>
 
-#include "sqnbitgemm.h"
+#include "qnbitgemm.h"
 #include "sqnbitgemm_kernel_avx_common.h"
 #include "sqnbitgemm_kernel_avx2_int8_blklen16.h"
 #include "sqnbitgemm_kernel_avx512_int8_blklen32.h"

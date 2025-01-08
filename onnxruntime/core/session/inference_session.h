@@ -620,7 +620,7 @@ class InferenceSession {
                          const Environment& session_env);
   void ConstructorCommon(const SessionOptions& session_options,
                          const Environment& session_env);
-
+  [[nodiscard]] common::Status HasInvalidCombinationOfExecutionProviders() const;
   [[nodiscard]] common::Status SaveModelMetadata(const onnxruntime::Model& model);
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -663,7 +663,7 @@ class InferenceSession {
 
   void InitLogger(logging::LoggingManager* logging_manager);
 
-  void TraceSessionOptions(const SessionOptions& session_options, bool captureState);
+  static void TraceSessionOptions(const SessionOptions& session_options, bool captureState, const logging::Logger& logger);
 
   [[nodiscard]] common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape,
                                            const TensorShape& expected_shape, const char* input_output_moniker) const;
@@ -690,8 +690,9 @@ class InferenceSession {
    * If we encounter an invalid request, we return an error
    * back to the user.
    */
-  [[nodiscard]] common::Status ValidateAndParseShrinkArenaString(const std::string& ort_device_list,
-                                                                 /*out*/ InlinedVector<AllocatorPtr>& arenas_to_shrink) const;
+  [[nodiscard]] common::Status ValidateAndParseShrinkArenaString(
+      const std::string& ort_device_list,
+      /*out*/ InlinedVector<AllocatorPtr>& arenas_to_shrink) const;
 
   /*
    * Performs the shrinkage of arenas requested to be shrunk by the user
@@ -700,7 +701,7 @@ class InferenceSession {
   void ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink);
 
 #ifdef _WIN32
-  void LogAllSessions();
+  static void LogAllSessions();
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -708,7 +709,8 @@ class InferenceSession {
       GraphTransformerManager& transformer_manager,
       TransformerLevel graph_optimization_level,
       MinimalBuildOptimizationHandling minimal_build_optimization_handling,
-      RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn) const;
+      RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn,
+      const logging::Logger& logger) const;
 
   common::Status TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format);
 

@@ -8,6 +8,8 @@
 #include "core/framework/provider_options.h"
 #include "core/providers/providers.h"
 
+#include "core/providers/webgpu/webgpu_provider_options.h"
+
 namespace onnxruntime {
 struct ConfigOptions;
 

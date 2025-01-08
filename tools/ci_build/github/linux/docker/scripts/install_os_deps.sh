@@ -12,7 +12,6 @@ d) DEVICE_TYPE=${OPTARG};;
 v) echo "Cuda version is no longer accepted as an input to this script. Ignoring the input argument -v.";;
 t) echo "Installing python training dependencies argument is no longer accepted as an input to this script. Ignoring the input argument -t.";;
 m) INSTALL_DEPS_DISTRIBUTED_SETUP=true;;
-u) echo "Installing ortmodule python dependencies argument is no longer accepted as an input to this script. Ignoring the input argument -u.";;
 r) echo "Installing ROCM python dependencies argument is no longer accepted as an input to this script. Ignoring the input argument -r.";;
 esac
 done

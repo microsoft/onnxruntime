@@ -19,6 +19,7 @@ const std::unordered_map<std::string, const IOpBuilder*>& GetOpBuilders();
 void CreateActivationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateArgMaxOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateBatchNormalizationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateNormalizationOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateBinaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateCastOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateClipOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);

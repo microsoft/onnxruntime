@@ -3335,6 +3335,11 @@ void RegisterContribSchemas() {
           AttributeProto::STRING,
           OPTIONAL_VALUE)
       .Attr("notes", "(Optional) Some notes for the model", AttributeProto::STRING, OPTIONAL_VALUE)
+      .Attr(
+          "max_size",
+          "max size in the context. Usage depend on the EP.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
       .AllowUncheckedAttributes()
       .Input(
           0,
@@ -3366,7 +3371,8 @@ void RegisterContribSchemas() {
            "tensor(uint64)",
            "tensor(float16)",
            "tensor(float)",
-           "tensor(double)"},
+           "tensor(double)",
+           "tensor(bfloat16)"},
           "Constrain input and output types.");
 
   static const char* BitmaskDropout_ver1_doc = R"DOC(

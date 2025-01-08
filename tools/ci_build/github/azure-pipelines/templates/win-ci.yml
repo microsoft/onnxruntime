@@ -110,28 +110,33 @@ stages:
       timeoutInMinutes: 360
 
     steps:
-      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-        displayName: 'Clean Agent Directories'
-        condition: always()
 
       - checkout: self
         clean: true
         submodules: none
-
-      - template: telemetry-steps.yml
-
-      - ${{ if eq(parameters['buildJava'], 'true') }}:
-        - task: JavaToolInstaller@0
-          inputs:
-            versionSpec: "11"
-            jdkArchitectureOption: ${{ parameters.buildArch }}
-            jdkSourceOption: 'PreInstalled'
 
       - task: UsePythonVersion@0
         inputs:
           versionSpec: '3.12'
           addToPath: true
           architecture: ${{ parameters.buildArch }}
+
+      - template: telemetry-steps.yml
+
+      # The private ADO project
+      - ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
+        - task: PipAuthenticate@1
+          displayName: 'Pip Authenticate'
+          inputs:
+            artifactFeeds: 'Lotus'
+
+      - ${{ if eq(parameters['buildJava'], 'true') }}:
+        - task: JavaToolInstaller@0
+          inputs:
+            versionSpec: "17"
+            jdkArchitectureOption: ${{ parameters.buildArch }}
+            jdkSourceOption: 'PreInstalled'
+
 
       - task: NodeTool@0
         condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
@@ -322,9 +327,6 @@ stages:
       pool: ${{ parameters.ort_build_pool_name }}
       timeoutInMinutes: 180
       steps:
-        - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-          displayName: 'Clean Agent Directories'
-          condition: always()
 
         - checkout: self
           clean: true
@@ -354,7 +356,7 @@ stages:
         - ${{ if eq(parameters['buildJava'], 'true') }}:
           - task: JavaToolInstaller@0
             inputs:
-              versionSpec: "11"
+              versionSpec: "17"
               jdkArchitectureOption: ${{ parameters.buildArch }}
               jdkSourceOption: 'PreInstalled'
 
@@ -363,6 +365,13 @@ stages:
             versionSpec: '3.12'
             addToPath: true
             architecture: ${{ parameters.buildArch }}
+
+        # The private ADO project
+        - ${{ if eq(variables['System.CollectionId'], 'bc038106-a83b-4dab-9dd3-5a41bc58f34c') }}:
+          - task: PipAuthenticate@1
+            displayName: 'Pip Authenticate'
+            inputs:
+              artifactFeeds: 'Lotus'
 
         - task: NodeTool@0
           condition: and(succeeded(), eq('${{ parameters.buildNodejs}}', true))
