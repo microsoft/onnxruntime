@@ -747,15 +747,7 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       context_{context},
       preferred_data_layout_{config.data_layout},
       force_cpu_node_names_{std::move(config.force_cpu_node_names)},
-      enable_graph_capture_{config.enable_graph_capture} {
-#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
-  enable_pix_capture_ = config.enable_pix_capture;
-#else
-  if (config.enable_pix_capture) {
-    ORT_THROW("Support PIX capture requires extra build flags (--enable_pix_capture)");
-  }
-#endif  // ENABLE_PIX_FOR_WEBGPU_EP
-}
+      enable_graph_capture_{config.enable_graph_capture} {}
 
 std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
   AllocatorCreationInfo gpuBufferAllocatorCreationInfo([&](int) {
@@ -873,9 +865,11 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     return context_.PopErrorScope();
   }
 
-  if (IsPIXCaptureEnabled()) {
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+  if (context_.IsPixCaptureEnabled()) {
     context_.GeneratePIXFrame();
   }
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
   return Status::OK();
 }

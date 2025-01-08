@@ -18,6 +18,10 @@
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/program_manager.h"
 
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+#include "core/providers/webgpu/webgpu_pix_frame_generator.h"
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
+
 namespace onnxruntime {
 class Tensor;
 
@@ -33,6 +37,7 @@ struct WebGpuContextConfig {
   WGPUDevice device;
   const void* dawn_proc_table;
   ValidationMode validation_mode;
+  bool enable_pix_capture;
 };
 
 struct WebGpuBufferCacheConfig {
@@ -68,39 +73,6 @@ class WebGpuContextFactory {
   static std::once_flag init_default_flag_;
   static wgpu::Instance default_instance_;
 };
-
-#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
-// PIX(https://devblogs.microsoft.com/pix/introduction/) is a profiling tool
-// provides by Microsoft. It has ability to do GPU capture to profile gpu
-// behavior among different GPU vendors. It works on Windows only.
-//
-// GPU capture(present-to-present) provided by PIX uses present as a frame boundary to
-// capture and generate a valid frame infos. But ORT WebGPU EP doesn't have any present logic
-// and hangs PIX GPU Capture forever.
-//
-// To make PIX works with ORT WebGPU EP on Windows, WebGpuPIXFrameGenerator class includes codes
-// to create a trivial window through glfw, config surface with Dawn device and call present in
-// proper place to trigger frame boundary for PIX GPU Capture.
-//
-// WebGpuPIXFrameGenerator is an friend class because:
-// - It should only be used in WebGpuContext class implementation.
-// - It requires instance and device from WebGpuContext.
-//
-// The lifecycle of WebGpuPIXFrameGenerator instance should be nested into WebGpuContext lifecycle.
-// WebGpuPIXFrameGenerator instance should be created during WebGpuContext creation and be destroyed during
-// WebGpuContext destruction.
-class WebGpuPIXFrameGenerator {
- public:
-  WebGpuPIXFrameGenerator() = default;
-  ~WebGpuPIXFrameGenerator();
-  void Initialize(WebGpuContext* context);
-  void GeneratePIXFrame();
-
- private:
-  wgpu::Surface surface_;
-  GLFWwindow* window_;
-};
-#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 
 // Class WebGpuContext includes all necessary resources for the context.
 class WebGpuContext final {
@@ -174,6 +146,8 @@ class WebGpuContext final {
 
   Status Run(ComputeContext& context, const ProgramBase& program);
 
+  bool IsPixCaptureEnabled() const { return enable_pix_capture_; }
+
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   void GeneratePIXFrame();
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
@@ -185,8 +159,8 @@ class WebGpuContext final {
     AtPasses
   };
 
-  WebGpuContext(WGPUInstance instance, WGPUAdapter adapter, WGPUDevice device, webgpu::ValidationMode validation_mode)
-      : instance_{instance}, adapter_{adapter}, device_{device}, validation_mode_{validation_mode}, query_type_{TimestampQueryType::None} {}
+  WebGpuContext(WGPUInstance instance, WGPUAdapter adapter, WGPUDevice device, webgpu::ValidationMode validation_mode, bool enable_pix_capture)
+      : instance_{instance}, adapter_{adapter}, device_{device}, validation_mode_{validation_mode}, enable_pix_capture_(enable_pix_capture), query_type_{TimestampQueryType::None} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
   std::vector<const char*> GetEnabledAdapterToggles() const;
@@ -195,7 +169,6 @@ class WebGpuContext final {
   std::vector<wgpu::FeatureName> GetAvailableRequiredFeatures(const wgpu::Adapter& adapter) const;
   wgpu::RequiredLimits GetRequiredLimits(const wgpu::Adapter& adapter) const;
   void WriteTimestamp(uint32_t query_index);
-  const wgpu::Instance& Instance() const { return instance_; }
 
   struct PendingKernelInfo {
     PendingKernelInfo(std::string_view kernel_name,
@@ -253,6 +226,7 @@ class WebGpuContext final {
   const uint32_t max_num_pending_dispatches_ = 16;
 
   // profiling
+  bool enable_pix_capture_;
   TimestampQueryType query_type_;
   wgpu::QuerySet query_set_;
   wgpu::Buffer query_resolve_buffer_;
@@ -266,8 +240,6 @@ class WebGpuContext final {
   bool is_profiling_ = false;
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
-  // Friend class to access WebGpuContext private members.
-  friend class WebGpuPIXFrameGenerator;
   std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
 };
