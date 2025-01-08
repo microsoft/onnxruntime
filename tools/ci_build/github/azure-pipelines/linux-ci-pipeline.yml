@@ -84,16 +84,16 @@ stages:
                         --config Debug \
                         --skip_submodule_sync \
                         --build_shared_lib \
-                        --parallel --use_binskim_compliant_compile_flags  --use_vcpkg \
-                        --enable_onnx_tests --enable_address_sanitizer --use_vcpkg \
+                        --parallel --use_binskim_compliant_compile_flags \
+                        --enable_onnx_tests --enable_address_sanitizer \
                         --update --build;
                       python3.12 /onnxruntime_src/tools/ci_build/build.py \
                         --build_dir /build --cmake_generator 'Ninja' \
                         --config Debug \
                         --skip_submodule_sync \
                         --build_shared_lib \
-                        --parallel --use_binskim_compliant_compile_flags  --use_vcpkg \
-                        --enable_onnx_tests --enable_address_sanitizer --use_vcpkg \
+                        --parallel --use_binskim_compliant_compile_flags \
+                        --enable_onnx_tests --enable_address_sanitizer \
                         --test;
                       '
                 workingDirectory: $(Build.SourcesDirectory)
@@ -216,7 +216,7 @@ stages:
                         --config Release \
                         --skip_submodule_sync \
                         --build_shared_lib \
-                        --parallel --use_binskim_compliant_compile_flags  --use_vcpkg \
+                        --parallel --use_binskim_compliant_compile_flags \
                         --build_wheel \
                         --build_csharp \
                         --enable_onnx_tests \
