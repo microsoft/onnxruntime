@@ -172,7 +172,7 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
         "add", position_ids, position_ids_range, position_ids_add_range_options);
   }
 
-  // Gather the cos/sin values based on the position_ids.
+  // Gather the cosine/sine values based on the position_ids.
   emscripten::val gather_cos_sin_options = emscripten::val::object();
   gather_cos_sin_options.set("label", node_name + "_gather_cos_sin");
   gather_cos_sin_options.set("axis", 0);
@@ -181,7 +181,7 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
   emscripten::val gather_sin = wnn_builder.call<emscripten::val>(
       "gather", sin_cache, position_ids, gather_cos_sin_options);
 
-  // After gathering cos/sin, reshape and broadcast them to match the number of heads of the input data.
+  // After gathering cosine/sine, reshape and broadcast them to match the number of heads of the input data.
   const std::vector<uint32_t> reshaped_cos_sin_shape =
       interleaved ? std::vector<uint32_t>({batch_size, sequence_length, 1, rotary_embedding_dim / 2, 1})
                   : std::vector<uint32_t>({batch_size, sequence_length, 1, 1, rotary_embedding_dim / 2});
@@ -192,7 +192,7 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
   gather_sin = wnn_builder.call<emscripten::val>(
       "reshape", gather_sin, emscripten::val::array(reshaped_cos_sin_shape), reshape_gather_cos_sin_options);
 
-  // Multiply the non-roated data with the cos and the rotated data with the sin.
+  // Multiply the non-rotated data with the cosine and the rotated data with the sine.
   emscripten::val mul_cos_options = emscripten::val::object();
   mul_cos_options.set("label", node_name + "_mul_cos");
   emscripten::val mul_cos = wnn_builder.call<emscripten::val>(
