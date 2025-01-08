@@ -146,6 +146,17 @@ class QnnModelWrapper {
                         const std::vector<uint32_t>& input_shape,
                         const std::vector<uint32_t>& output_shape,
                         const Qnn_DataType_t& tensor_data_type,
+                        const QnnQuantParamsWrapper& input_quantize_param,
+                        const QnnQuantParamsWrapper& output_quantize_param,
+                        bool do_op_validation,
+                        bool is_for_input = true,
+                        bool is_for_output = false);
+
+  Status AddReshapeNode(const std::string& input_name,
+                        const std::string& output_name,
+                        const std::vector<uint32_t>& input_shape,
+                        const std::vector<uint32_t>& output_shape,
+                        const Qnn_DataType_t& tensor_data_type,
                         const QnnQuantParamsWrapper& quantize_param,
                         bool do_op_validation,
                         bool is_for_input = true,
