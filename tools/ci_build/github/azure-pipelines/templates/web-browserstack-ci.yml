@@ -84,6 +84,3 @@ jobs:
     displayName: 'BrowserStack results'
     continueOnError: true
     timeoutInMinutes: 10
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()

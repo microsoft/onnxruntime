@@ -14,7 +14,9 @@
 
 struct NnApi;
 namespace onnxruntime {
-
+namespace logging {
+class Logger;
+}
 class GraphViewer;
 enum class DataLayout;
 class NodeUnit;
@@ -31,7 +33,8 @@ class ModelBuilder {
   using Shape = Shaper::Shape;
 
   ModelBuilder(const GraphViewer& graph_viewer, const NnApi& nnapi_handle,
-               gsl::span<const DeviceWrapper> nnapi_target_devices, TargetDeviceOption target_device_option);
+               gsl::span<const DeviceWrapper> nnapi_target_devices, TargetDeviceOption target_device_option,
+               const logging::Logger& logger);
 
   common::Status Compile(std::unique_ptr<Model>& model);
 
@@ -173,6 +176,9 @@ class ModelBuilder {
   // <1,1> <1,2> <1,3>
   InlinedVector<std::pair<size_t, int32_t>> operations_recorder_;
 #endif
+
+  const logging::Logger& logger_;
+
   // Convert the ONNX model to ANeuralNetworksModel
   common::Status Prepare();
 

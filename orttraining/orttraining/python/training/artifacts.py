@@ -185,10 +185,13 @@ def generate_artifacts(
         logging.info("Custom op library provided: %s", custom_op_library)
         custom_op_library_path = pathlib.Path(custom_op_library)
 
-    with onnxblock.base(loaded_model, model_path), (
-        onnxblock.custom_op_library(custom_op_library_path)
-        if custom_op_library is not None
-        else contextlib.nullcontext()
+    with (
+        onnxblock.base(loaded_model, model_path),
+        (
+            onnxblock.custom_op_library(custom_op_library_path)
+            if custom_op_library is not None
+            else contextlib.nullcontext()
+        ),
     ):
         _ = training_block(*[output.name for output in loaded_model.graph.output])
         training_model, eval_model = training_block.to_model_proto()

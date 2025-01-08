@@ -70,6 +70,9 @@ endif()
 onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
 
 if(MSVC)
+  # The following source file is only needed for the EPs that use delayloading. Namely, DML and WebGPU.
+  target_sources(onnxruntime_pybind11_state PRIVATE "${ONNXRUNTIME_ROOT}/core/dll/delay_load_hook.cc")
+
   target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
   target_compile_options(onnxruntime_pybind11_state PRIVATE "/bigobj")
 endif()
@@ -170,6 +173,7 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_VSINPU}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_COREML}
     ${PROVIDERS_RKNPU}
@@ -1016,6 +1020,15 @@ if (onnxruntime_USE_QNN)
           $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
     )
   endif()
+endif()
+
+if (onnxruntime_USE_VSINPU)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_vsinpu>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
 endif()
 
 endif()

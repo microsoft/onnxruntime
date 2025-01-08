@@ -28,6 +28,7 @@ static const std::string EP_CACHE_CONTEXT = "ep_cache_context";
 static const std::string EP_SDK_VER = "ep_sdk_version";
 static const std::string PARTITION_NAME = "partition_name";
 static const std::string SOURCE = "source";
+static const std::string MAX_SIZE = "max_size";
 
 bool GraphHasEpContextNode(const onnxruntime::GraphViewer& graph_viewer);
 
@@ -49,13 +50,20 @@ bool ValidateContextCacheFilePath(bool is_qnn_ctx_model,
 Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
                                 const onnxruntime::PathString& ctx_onnx_model_path,
                                 QnnBackendManager* qnn_backend_manager,
-                                QnnModelLookupTable& qnn_models);
+                                QnnModelLookupTable& qnn_models,
+                                int64_t max_spill_fill_size);
+
+Status TryGetMaxSpillFillSize(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
+                              uint32_t total_context_size,
+                              int64_t& max_spill_fill_size,
+                              std::vector<int>& main_context_pos_list);
 
 Status LoadQnnCtxFromOnnxGraph(const onnxruntime::GraphViewer& graph_viewer,
                                const onnxruntime::PathString& ctx_onnx_model_path,
                                QnnBackendManager* qnn_backend_manager,
                                QnnModelLookupTable& qnn_models,
-                               const logging::Logger& logger);
+                               const logging::Logger& logger,
+                               int64_t max_spill_fill_size);
 
 Status CreateEPContextNodes(Model* model,
                             unsigned char* buffer,
@@ -65,6 +73,7 @@ Status CreateEPContextNodes(Model* model,
                             const std::unordered_map<std::string, std::unique_ptr<QnnModel>>& qnn_models,
                             const onnxruntime::PathString& context_cache_path,
                             bool qnn_context_embed_mode,
+                            uint64_t max_spill_fill_buffer_size,
                             const logging::Logger& logger);
 }  // namespace qnn
 }  // namespace onnxruntime

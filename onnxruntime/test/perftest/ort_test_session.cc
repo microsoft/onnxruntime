@@ -202,7 +202,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                         {"backend_path", "profiling_file_path", "profiling_level", "rpc_control_latency",
                          "vtcm_mb", "soc_model", "device_id", "htp_performance_mode", "qnn_saver_path",
                          "htp_graph_finalization_optimization_mode", "qnn_context_priority", "htp_arch",
-                         "enable_htp_fp16_precision", "offload_graph_io_quantization"});
+                         "enable_htp_fp16_precision", "offload_graph_io_quantization", "enable_htp_spill_fill_buffer"});
     for (const auto& provider_option : provider_options) {
       const std::string& key = provider_option.first;
       const std::string& value = provider_option.second;
@@ -253,7 +253,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           std::string str = str_stream.str();
           ORT_THROW("Wrong value for htp_arch. select from: " + str);
         }
-      } else if (key == "enable_htp_fp16_precision" || key == "offload_graph_io_quantization") {
+      } else if (key == "enable_htp_fp16_precision" || key == "offload_graph_io_quantization" || key == "enable_htp_spill_fill_buffer") {
         std::unordered_set<std::string> supported_options = {"0", "1"};
         if (supported_options.find(value) == supported_options.end()) {
           std::ostringstream str_stream;
@@ -346,7 +346,11 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     static const std::unordered_set<std::string> available_keys = {kCoremlProviderOption_MLComputeUnits,
                                                                    kCoremlProviderOption_ModelFormat,
                                                                    kCoremlProviderOption_RequireStaticInputShapes,
-                                                                   kCoremlProviderOption_EnableOnSubgraphs};
+                                                                   kCoremlProviderOption_EnableOnSubgraphs,
+                                                                   kCoremlProviderOption_SpecializationStrategy,
+                                                                   kCoremlProviderOption_ProfileComputePlan,
+                                                                   kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU,
+                                                                   kCoremlProviderOption_ModelCacheDirectory};
     ParseSessionConfigs(ov_string, provider_options, available_keys);
 
     std::unordered_map<std::string, std::string> available_options = {
@@ -364,6 +368,13 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
                  (provider_option.second == "1" || provider_option.second == "0")) {
       } else if (provider_option.first == kCoremlProviderOption_EnableOnSubgraphs &&
                  (provider_option.second == "0" || provider_option.second == "1")) {
+      } else if (provider_option.first == kCoremlProviderOption_SpecializationStrategy &&
+                 (provider_option.second == "Default" || provider_option.second == "FastPrediction")) {
+      } else if (provider_option.first == kCoremlProviderOption_ProfileComputePlan &&
+                 (provider_option.second == "0" || provider_option.second == "1")) {
+      } else if (provider_option.first == kCoremlProviderOption_AllowLowPrecisionAccumulationOnGPU &&
+                 (provider_option.second == "0" || provider_option.second == "1")) {
+      } else if (provider_option.first == kCoremlProviderOption_ModelCacheDirectory) {
       } else {
         ORT_THROW("Invalid value for option ", provider_option.first, ": ", provider_option.second);
       }

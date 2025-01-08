@@ -20,9 +20,6 @@ jobs:
   workspace:
     clean: all
   steps:
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
 
   - template: templates/jobs/win-ci-prebuild-steps.yml
     parameters:

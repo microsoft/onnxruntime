@@ -53,6 +53,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     TransformerLevel level,
     const SessionOptions& session_options,
     const IExecutionProvider& execution_provider /*required by constant folding*/,
+    const logging::Logger& logger,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable = {},
     concurrency::ThreadPool* intra_op_thread_pool = nullptr,
     std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors = nullptr);
@@ -84,6 +85,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
     const SessionOptions& session_options,
     const SatApplyContextVariant& apply_context,
     const IExecutionProvider& cpu_execution_provider,
+    const logging::Logger& logger,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable = {},
     concurrency::ThreadPool* intra_op_thread_pool = nullptr,
     std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors = nullptr);

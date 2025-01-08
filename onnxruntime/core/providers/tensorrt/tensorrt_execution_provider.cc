@@ -1726,8 +1726,10 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   }
 
   trt_version_ = getInferLibVersion();
+  CUDA_CALL_THROW(cudaRuntimeGetVersion(&cuda_version_));
 
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT version is " << trt_version_;
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] CUDA version is " << cuda_version_;
 
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT provider options: "
                         << "device_id: " << device_id_
@@ -1952,7 +1954,7 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
 
   // Find inputs and outputs of the subgraph
   std::unique_ptr<IndexedSubGraph> sub_graph = onnxruntime::IndexedSubGraph::Create();
-  std::unordered_map<const NodeArg*, int> fused_inputs, fused_outputs, fused_outputs_to_add, graph_outputs_to_add;
+  std::unordered_map<const NodeArg*, int> original_inputs, fused_inputs, fused_outputs, fused_outputs_to_add, graph_outputs_to_add;
   std::unordered_set<const NodeArg*> erased;
   int input_order = 0;
   int output_order = 0;
@@ -2044,12 +2046,25 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
   fused_outputs.insert(fused_outputs_to_add.begin(), fused_outputs_to_add.end());
   fused_outputs.insert(graph_outputs_to_add.begin(), graph_outputs_to_add.end());
 
-  // Sort inputs and outputs by the order they were added
   std::multimap<int, const NodeArg*> inputs, outputs;
-  for (auto it = fused_inputs.begin(), end = fused_inputs.end(); it != end; ++it) {
-    inputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
+
+  // Get the input order of the original graph
+  int order = 0;
+  for (const auto* input : graph.GetInputs()) {
+    original_inputs[input] = order++;
   }
 
+  // input order needs to be consistent with original graph's input order
+  for (auto it = fused_inputs.begin(), end = fused_inputs.end(); it != end; ++it) {
+    const auto& iter = original_inputs.find(it->first);
+    if (iter != original_inputs.end()) {
+      inputs.insert(std::pair<int, const NodeArg*>(iter->second, iter->first));
+    } else {
+      inputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
+    }
+  }
+
+  // Sort outputs by the order they were added
   for (auto it = fused_outputs.begin(), end = fused_outputs.end(); it != end; ++it) {
     outputs.insert(std::pair<int, const NodeArg*>(it->second, it->first));
   }
@@ -2453,13 +2468,13 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   // So, simply return the ComputeCapability here.
   if (graph.NumberOfNodes() == 1 && GraphHasCtxNode(graph)) {
     SubGraph_t supported_node_vector = {{0}, true};
-    std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, TRTGenerateId(graph), 0);
+    std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, TRTGenerateId(graph, std::to_string(trt_version_), std::to_string(cuda_version_)), 0);
     result.push_back(ComputeCapability::Create(std::move(sub_graph)));
     return result;
   }
 
   // Generate unique kernel name for TRT graph
-  HashValue model_hash = TRTGenerateId(graph);
+  HashValue model_hash = TRTGenerateId(graph, std::to_string(trt_version_), std::to_string(cuda_version_));
 
   // Get supported node list from TensorRT parser
   const int number_of_ort_nodes = graph.NumberOfNodes();
@@ -3131,12 +3146,14 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   }
 
   std::string cache_hw_compat = "_sm" + compute_capability_;
+#if NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR > 5 || NV_TENSORRT_MAJOR > 8
   // Enable hardware compatility mode if assigned
   if (engine_cache_enable_ && engine_hw_compatible_) {
     trt_config->setHardwareCompatibilityLevel(nvinfer1::HardwareCompatibilityLevel::kAMPERE_PLUS);
     cache_hw_compat = "_sm80+";
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Hardware compatibility is enabled when loading and capturing engine cache.";
   }
+#endif
 
   // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
   // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
@@ -3515,10 +3532,12 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
     // Enable hardware compatility mode if assigned
     std::string cache_hw_compat = "_sm" + compute_capability_;
+#if NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR > 5 || NV_TENSORRT_MAJOR > 8
     if (engine_cache_enable_ && engine_hw_compatible_) {
       cache_hw_compat = "_sm80+";
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Hardware compatibility is enabled when loading and capturing engine cache.";
     }
+#endif
 
     // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
     // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
@@ -3721,11 +3740,13 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         }
       }
 
+#if NV_TENSORRT_MAJOR == 8 && NV_TENSORRT_MINOR > 5 || NV_TENSORRT_MAJOR > 8
       // Enable hardware compatility mode if assigned
       if (trt_state->engine_hw_compatible) {
         trt_config->setHardwareCompatibilityLevel(nvinfer1::HardwareCompatibilityLevel::kAMPERE_PLUS);
         LOGS_DEFAULT(INFO) << "[TensorRT EP] Re-generate engine with hardware compatibility enabled.";
       }
+#endif
 
       // Build engine
       std::unique_ptr<nvinfer1::IHostMemory> serialized_engine;

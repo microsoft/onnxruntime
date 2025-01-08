@@ -22,8 +22,10 @@ class QDQOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                              const logging::Logger& logger) const override;
+  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
 Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
@@ -49,7 +51,7 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val scale = model_builder.GetOperand(input_defs[1]->Name());
   emscripten::val zero_point = emscripten::val::null();
 
-  if (input_defs.size() == 3 && input_defs[2]->Exists()) {
+  if (TensorExists(input_defs, 2)) {
     zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
     has_zero_point = true;
   } else {
@@ -100,7 +102,10 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       // zero_point has the same shape as the scale tensor.
       zero_point_shape = GetVecUint32FromVecInt64(scale_shape);
     }
-    zero_point = model_builder.GetZeroConstant(zero_point_type, zero_point_shape);
+    // Create a zero constant with the same shape as the scale tensor.
+    // The zero value has been pre-processed in the CreateOrGetConstant function,
+    // so the type of T is not relevant here.
+    zero_point = model_builder.CreateOrGetConstant<uint8_t>(zero_point_type, 0, zero_point_shape);
   }
 
   emscripten::val options = emscripten::val::object();
@@ -115,14 +120,46 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   return Status::OK();
 }
 
-bool QDQOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                                          const logging::Logger& logger) const {
+// Operator support related.
+bool QDQOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
+                                     const Node& node,
+                                     const WebnnDeviceType /* device_type */,
+                                     const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+
+  std::vector<int64_t> input_shape;
+  std::vector<int64_t> scale_shape;
+
+  if (!GetShape(*input_defs[0], input_shape, logger) || !GetShape(*input_defs[1], scale_shape, logger)) {
+    return false;
+  }
+
+  // WebNN requires the scale_shape to be a subsample of the input_shape.
+  if (scale_shape.size() > input_shape.size()) {
+    LOGS(logger, VERBOSE) << "The rank of scale is larger than the rank of input";
+    return false;
+  }
+
+  for (size_t i = 0; i < scale_shape.size(); ++i) {
+    auto scale_dim = scale_shape[scale_shape.size() - i - 1];
+    auto input_dim = input_shape[input_shape.size() - i - 1];
+    if (input_dim % scale_dim != 0) {
+      LOGS(logger, VERBOSE) << "The shape of scale is not a subsample of the shape of input";
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool QDQOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                                          const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
   int32_t input0_type = 0;  // input data type
   int32_t input1_type = 0;  // x_scale data type
   int32_t input2_type = 0;  // x_zero_point data type
-  bool has_input2 = input_defs.size() > 2 && input_defs[2]->Exists();
+  bool has_input2 = TensorExists(input_defs, 2);
 
   if (!GetType(*input_defs[0], input0_type, logger) ||
       !GetType(*input_defs[1], input1_type, logger) ||

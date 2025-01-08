@@ -21,6 +21,8 @@ namespace webnn {
 class ResizeOpBuilder : public BaseOpBuilder {
   // Add operator related.
  public:
+  // Allow roi and scales potentially being empty inputs that are ignored during processing.
+  ResizeOpBuilder() : BaseOpBuilder(/*allow empty inputs*/ true) {}
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
