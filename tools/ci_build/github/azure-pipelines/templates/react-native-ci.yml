@@ -200,14 +200,24 @@ stages:
 
 # TODO: remove this once we upgrade the RN to post 0.70.15 or 0.73.3+ versions this is just a temporary workaround
     - script: |
-        sed -i .bak "/boostorg.jfrog.io/c\spec.source = { :http => 'https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2',|" boost.podspec
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+          sed -i .bak "/boostorg.jfrog.io/c\\
+        spec.source = { :http => 'https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2', }" boost.podspec
+        else
+          sed -i .bak "/boostorg.jfrog.io/c\spec.source = { :http => 'https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2', }" boost.podspec
+        fi
         rm -f .bak
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/node_modules/react-native/third-party-podspecs'
       displayName: Path the boost 1.76.0 source URL in boost.podspec js/react_native/node_modules/react-native/third-party-podspecs/boost.podspec
 
 # TODO: remove this once we upgrade the RN to post 0.70.15 or 0.73.3+ versions this is just a temporary workaround
     - script: |
-        sed -i .bak "/boostorg.jfrog.io/c\spec.source = { :http => 'https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2',|" boost.podspec
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+          sed -i .bak "/boostorg.jfrog.io/c\\
+        spec.source = { :http => 'https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2', }" boost.podspec
+        else
+          sed -i .bak "/boostorg.jfrog.io/c\spec.source = { :http => 'https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2', }" boost.podspec
+        fi
         rm -f .bak
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/node_modules/react-native/third-party-podspecs'
       displayName: Path the boost 1.76.0 source URL in boost.podspec in js/react_native/e2e/node_modules/react-native/third-party-podspecs/boost.podspec
