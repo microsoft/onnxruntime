@@ -64,7 +64,7 @@ void GetQuantizationParameter(const float* data, int64_t num_of_elements, float&
     block_size = onnxruntime::narrow<std::ptrdiff_t>(num_of_elements);
   }
 
-  for (int i = 0; i < num_blocks; i++) {
+  for (int i = 0; i < narrow<int>(num_blocks); i++) {
     aggregate[i].min = std::numeric_limits<float>::max();
     aggregate[i].max = std::numeric_limits<float>::lowest();
   }
@@ -79,7 +79,7 @@ void GetQuantizationParameter(const float* data, int64_t num_of_elements, float&
 
   float& min = aggregate[0].min;
   float& max = aggregate[0].max;
-  for (int i = 1; i < num_blocks; i++) {
+  for (int i = 1; i < narrow<int>(num_blocks); i++) {
     min = std::min(min, aggregate[i].min);
     max = std::max(max, aggregate[i].max);
   }
