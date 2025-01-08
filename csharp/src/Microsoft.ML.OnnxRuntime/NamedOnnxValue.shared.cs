@@ -8,11 +8,6 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 
-#if NET8_0_OR_GREATER
-using DotnetTensors = System.Numerics.Tensors;
-using TensorPrimitives = System.Numerics.Tensors.TensorPrimitives;
-#endif
-
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
@@ -35,37 +30,37 @@ namespace Microsoft.ML.OnnxRuntime
     /// <summary>
     /// This is a legacy class that is kept for backward compatibility.
     /// Use OrtValue based API.
-    ///
-    /// The class associates a name with an Object.
+    /// 
+    /// The class associates a name with an Object. 
     /// The name of the class is a misnomer, it does not hold any Onnx values,
     /// just managed representation of them.
-    ///
+    /// 
     /// The class is currently used as both inputs and outputs. Because it is non-
     /// disposable, it can not hold on to any native objects.
-    ///
+    /// 
     /// When used as input, we temporarily create OrtValues that map managed inputs
     /// directly. Thus we are able to avoid copying of contiguous data.
-    ///
+    /// 
     /// For outputs, tensor buffers works the same as input, providing it matches
     /// the expected output shape. For other types (maps and sequences) we create a copy of the data.
     /// This is because, the class is not Disposable and it is a public interface, thus it can not own
     /// the underlying OrtValues that must be destroyed before Run() returns.
-    ///
+    /// 
     /// To avoid data copying on output, use DisposableNamedOnnxValue class that is returned from Run() methods.
     /// This provides access to the native memory tensors and avoids copying.
-    ///
+    /// 
     /// It is a recursive structure that may contain Tensors (base case)
     /// Other sequences and maps. Although the OnnxValueType is exposed,
     /// the caller is supposed to know the actual data type contained.
-    ///
+    /// 
     /// The convention is that for tensors, it would contain a DenseTensor{T} instance or
     /// anything derived from Tensor{T}.
-    ///
+    /// 
     /// For sequences, it would contain a IList{T} where T is an instance of NamedOnnxValue that
     /// would contain a tensor or another type.
-    ///
+    /// 
     /// For Maps, it would contain a IDictionary{K, V} where K,V are primitive types or strings.
-    ///
+    /// 
     /// </summary>
     public class NamedOnnxValue
     {
@@ -145,23 +140,6 @@ namespace Microsoft.ML.OnnxRuntime
             return new NamedOnnxValue(name, value, OnnxValueType.ONNX_TYPE_TENSOR);
         }
 
-#if NET8_0_OR_GREATER
-#pragma warning disable SYSLIB5001 // System.Numerics.Tensors is only in preview so we can continue receiving API feedback
-        /// <summary>
-        /// This is a factory method that instantiates NamedOnnxValue
-        /// and associated name with an instance of a Tensor<typeparamref name="T"/>
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="name">name</param>
-        /// <param name="value">Tensor<typeparamref name="T"/></param>
-        /// <returns></returns>
-        public static NamedOnnxValue CreateFromDotnetTensor<T>(string name, DotnetTensors.Tensor<T> value)
-        {
-            return new NamedOnnxValue(name, value, OnnxValueType.ONNX_TYPE_TENSOR);
-        }
-#pragma warning restore SYSLIB5001 // System.Numerics.Tensors is only in preview so it can continue receiving API feedback
-#endif
-
         /// <summary>
         /// This is a factory method that instantiates NamedOnnxValue.
         /// It would contain a sequence of elements
@@ -217,21 +195,6 @@ namespace Microsoft.ML.OnnxRuntime
         {
             return _value as Tensor<T>;  // will return null if not castable
         }
-
-
-#if NET8_0_OR_GREATER
-#pragma warning disable SYSLIB5001 // System.Numerics.Tensors is only in preview so we can continue receiving API feedback
-        /// <summary>
-        /// Try-get value as a Tensor&lt;T&gt;.
-        /// </summary>
-        /// <typeparam name="T">Type</typeparam>
-        /// <returns>Tensor object if contained value is a Tensor. Null otherwise</returns>
-        public DotnetTensors.Tensor<T> AsDotnetTensor<T>()
-        {
-            return _value as DotnetTensors.Tensor<T>;  // will return null if not castable
-        }
-#pragma warning restore SYSLIB5001 // System.Numerics.Tensors is only in preview so it can continue receiving API feedback
-#endif
 
         /// <summary>
         /// Try-get value as an Enumerable&lt;T&gt;.
@@ -303,7 +266,7 @@ namespace Microsoft.ML.OnnxRuntime
                 }
             }
 
-            throw new OnnxRuntimeException(ErrorCode.NotImplemented,
+            throw new OnnxRuntimeException(ErrorCode.NotImplemented, 
                 $"Can not create output OrtValue for NamedOnnxValue '{metadata.OnnxValueType}' type." +
                 $" Only tensors can be pre-allocated for outputs " +
                 $" Use Run() overloads that return DisposableNamedOnnxValue to get access to all Onnx value types that may be returned as output.");

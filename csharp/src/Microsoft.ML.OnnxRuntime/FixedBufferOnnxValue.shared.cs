@@ -4,17 +4,12 @@
 using Microsoft.ML.OnnxRuntime.Tensors;
 using System;
 
-#if NET8_0_OR_GREATER
-using DotnetTensors = System.Numerics.Tensors;
-using TensorPrimitives = System.Numerics.Tensors.TensorPrimitives;
-#endif
-
 namespace Microsoft.ML.OnnxRuntime
 {
     /// <summary>
     /// This is a legacy class that is kept for backward compatibility.
     /// Use OrtValue based API.
-    ///
+    /// 
     /// Represents an OrtValue with its underlying buffer pinned
     /// </summary>
     public class FixedBufferOnnxValue : IDisposable
@@ -44,22 +39,6 @@ namespace Microsoft.ML.OnnxRuntime
             return new FixedBufferOnnxValue(ref ortValue, OnnxValueType.ONNX_TYPE_TENSOR, elementType);
         }
 
-#if NET8_0_OR_GREATER
-#pragma warning disable SYSLIB5001 // System.Numerics.Tensors is only in preview so we can continue receiving API feedback
-        /// <summary>
-        /// Creates a <see cref="FixedBufferOnnxValue"/> object from the tensor and pins its underlying buffer.
-        /// </summary>
-        /// <typeparam name="T"></typeparam>
-        /// <param name="value"></param>
-        /// <returns>a disposable instance of FixedBufferOnnxValue</returns>
-        public static FixedBufferOnnxValue CreateFromDotnetTensor<T>(DotnetTensors.Tensor<T> value) where T : unmanaged
-        {
-            var ortValue = OrtValue.CreateTensorValueFromDotnetTensorObject<T>(value);
-            return new FixedBufferOnnxValue(ref ortValue, OnnxValueType.ONNX_TYPE_TENSOR, TensorBase.GetTypeInfo(typeof(T)).ElementType);
-        }
-#pragma warning restore SYSLIB5001 // System.Numerics.Tensors is only in preview so it can continue receiving API feedback
-#endif
-
         /// <summary>
         /// This is a factory method that creates a disposable instance of FixedBufferOnnxValue
         /// on top of a buffer. Internally, it will pin managed buffer and will create
@@ -83,7 +62,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// Here is an example of using a 3rd party library class for processing float16/bfloat16.
         /// Currently, to pass tensor data and create a tensor one must copy data to Float16/BFloat16 structures
         /// so DenseTensor can recognize it.
-        ///
+        /// 
         /// If you are using a library that has a class Half and it is blittable, that is its managed in memory representation
         /// matches native one and its size is 16-bits, you can use the following conceptual example
         /// to feed/fetch data for inference using Half array. This allows you to avoid copying data from your Half[] to Float16[]
@@ -94,7 +73,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// var input_shape = new long[] {input.Length};
         /// Half[] output = new Half[40]; // Whatever the expected len/shape is must match
         /// var output_shape = new long[] {output.Length};
-        ///
+        /// 
         /// var memInfo = OrtMemoryInfo.DefaultInstance; // CPU
         ///
         /// using(var fixedBufferInput = FixedBufferOnnxvalue.CreateFromMemory{Half}(memInfo,

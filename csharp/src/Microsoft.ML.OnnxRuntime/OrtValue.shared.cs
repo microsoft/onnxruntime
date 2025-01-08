@@ -234,7 +234,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             var typeSpan = MemoryMarshal.Cast<byte, T>(byteSpan);
             var shape = GetTypeInfo().TensorTypeAndShapeInfo.Shape;
-            var nArray = shape.Select(x => (nint)x).ToArray();
+            nint[] nArray = Array.ConvertAll(shape, new Converter<long, nint>(x => (nint)x));
 
             return new DotnetTensors.ReadOnlyTensorSpan<T>(typeSpan, nArray, []);
         }
@@ -281,7 +281,7 @@ namespace Microsoft.ML.OnnxRuntime
 
             var typeSpan = MemoryMarshal.Cast<byte, T>(byteSpan);
             var shape = GetTypeInfo().TensorTypeAndShapeInfo.Shape;
-            var nArray = shape.Select(x => (nint)x).ToArray();
+            nint[] nArray = Array.ConvertAll(shape, new Converter<long, nint>(x => (nint)x));
 
             return new DotnetTensors.TensorSpan<T>(typeSpan, nArray, []);
         }
@@ -308,7 +308,7 @@ namespace Microsoft.ML.OnnxRuntime
             var byteSpan = GetTensorBufferRawData(typeof(T));
 
             var shape = GetTypeInfo().TensorTypeAndShapeInfo.Shape;
-            var nArray = shape.Select(x => (nint)x).ToArray();
+            nint[] nArray = Array.ConvertAll(shape, new Converter<long, nint>(x => (nint)x));
 
             return new DotnetTensors.TensorSpan<byte>(byteSpan, nArray, []);
         }
@@ -720,8 +720,7 @@ namespace Microsoft.ML.OnnxRuntime
                     }
 
                     var bufferLengthInBytes = tensor.FlattenedLength * sizeof(T);
-
-                    var shape = tensor.Lengths.ToArray().Select(x => (long)x).ToArray();
+                    long[] shape = Array.ConvertAll(tensor.Lengths.ToArray(), new Converter<nint, long>(x => (long)x));
 
                     var typeInfo = TensorBase.GetTypeInfo(typeof(T)) ??
                         throw new OnnxRuntimeException(ErrorCode.InvalidArgument, $"Tensor of type: {typeof(T)} is not supported");
