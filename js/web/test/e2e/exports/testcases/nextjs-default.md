@@ -28,8 +28,9 @@ Installing dependencies:
 - next
 ```
 
-Small changes are made based on the application template, including:
+Small changes were made based on the application template, including:
 
+- Remove default Logos, images, CSS and SVG
 - Add a client side rendering (CSR) component which contains:
   - a checkbox for multi-thread
   - a checkbox for proxy
@@ -53,7 +54,7 @@ Uses puppeteer to simulate the following tests:
   - multi-thread OFF, proxy ON
   - multi-thread ON, proxy OFF
   - multi-thread ON, proxy ON
-- Tests on `npm run build` + `npm run serve` (prod)
+- Tests on `npm run build` + `npm run start` (prod)
   - multi-thread OFF, proxy OFF
   - multi-thread OFF, proxy ON
   - multi-thread ON, proxy OFF
