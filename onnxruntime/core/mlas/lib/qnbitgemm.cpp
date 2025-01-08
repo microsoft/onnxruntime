@@ -78,6 +78,7 @@ MlasIsQNBitGemmAvailable(
     }
 
     const auto Variant = GetQNBitGemmVariant(BlkBitWidth, BlkLen, ComputeType);
+
     switch (Variant) {
         case SQNBitGemmVariant_BitWidth4_CompFp32: {
             return Dispatch->SQ4BitGemmM1Kernel_CompFp32 != nullptr &&

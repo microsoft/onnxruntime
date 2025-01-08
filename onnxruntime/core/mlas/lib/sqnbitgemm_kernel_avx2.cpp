@@ -555,11 +555,6 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx2(
     const float* QuantBBlkSum
 )
 {
-    //if (BlkLen >= 32 && CountM == 1) {
-    //    SQ4BitGemmM1Kernel_CompInt8_avx2<false>(BlkLen, QuantA, QuantAScale, QuantBData, QuantBScale, QuantBZeroPoint, C, CountN, CountK, BlockCountK, Bias);
-    //    return CountM;
-    //}
-
     SQ4BitGemmKernel_CompInt8_avx2<false>(
         BlkLen,
         QuantA,
@@ -576,20 +571,6 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx2(
         ABlockSum,
         QuantBBlkSum
     );
-    //float* c_blk = C;
-    //const float* b_blk_sum = QuantBBlkSum;
-
-    //size_t RowsRemaining = CountM;
-    //const float* a_blksum_row = ABlockSum;
-    //while (RowsRemaining > 0) {
-    //    auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
-    //        a_blksum_row, b_blk_sum, c_blk, BlockCountK, RowsRemaining, CountN, BlockCountK, ldc, 1.f, false
-    //    );
-
-    //    c_blk += ldc * RowsHandled;
-    //    a_blksum_row += BlockCountK * RowsHandled;
-    //    RowsRemaining -= RowsHandled;
-    //}
     return CountM;
 }
 
@@ -611,11 +592,6 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx2vnni(
   const float* QuantBBlkSum
 )
 {
-    //if (BlkLen >= 32 && CountM == 1) {
-    //    SQ4BitGemmM1Kernel_CompInt8_avx2<true>(BlkLen, QuantA, QuantAScale, QuantBData, QuantBScale, QuantBZeroPoint, C, CountN, CountK, BlockCountK, Bias);
-    //    return CountM;
-    //}
-
     SQ4BitGemmKernel_CompInt8_avx2<true>(
         BlkLen,
         QuantA,
@@ -632,20 +608,6 @@ SQ4BitGemmKernel_BlkSum_CompInt8_avx2vnni(
         ABlockSum,
         QuantBBlkSum
     );
-    //float* c_blk = C;
-    //const float* b_blk_sum = QuantBBlkSum;
-
-    //size_t RowsRemaining = CountM;
-    //const float* a_blksum_row = ABlockSum;
-    //while (RowsRemaining > 0) {
-    //    auto RowsHandled = GetMlasPlatform().GemmFloatKernel(
-    //        a_blksum_row, b_blk_sum, c_blk, BlockCountK, RowsRemaining, CountN, BlockCountK, ldc, 1.f, false
-    //    );
-
-    //    c_blk += ldc * RowsHandled;
-    //    a_blksum_row += BlockCountK * RowsHandled;
-    //    RowsRemaining -= RowsHandled;
-    //}
     return CountM;
 }
 

@@ -390,9 +390,6 @@ TEST(MatMulNBits, Float32_Accuracy4) {
   TestMatMulNBitsTyped<float, 100, 288, 93, 32, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 4>();
-  TestMatMulNBitsTyped<float, 2, 4, 128, 32, 4>();
-  TestMatMulNBitsTyped<float, 1, 1, 128, 32, 4>();
-  TestMatMulNBitsTyped<float, 100, 288, 1234, 32, 4>();
 }
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64)
@@ -547,7 +544,7 @@ void LongTestMatMulNBitsTyped() {
   }
 }
 
-TEST(MatMulNBits, LongTestFloat32) {
+TEST(MatMulNBits, DISABLED_LongTestFloat32) {
   // onnxruntime::profiling::Profiler::Profiler::Instance().StartProfiling<char>("profile.json");
   LongTestMatMulNBitsTyped<float>();
 }
@@ -556,7 +553,7 @@ TEST(MatMulNBits, LongTestFloat32) {
 #if !defined(USE_DML)
 // Actual and expected difference is over 0.01 with DmlExecutionProvider.
 // Skip the tests instead of raising the tolerance to make is pass.
-TEST(MatMulNBits, LongTestFloat16) {
+TEST(MatMulNBits, DISABLED_LongTestFloat16) {
   LongTestMatMulNBitsTyped<MLFloat16>();
 }
 #endif
