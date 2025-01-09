@@ -334,6 +334,7 @@ __global__ void cuApplyLayerNorm(
     const U epsilon,
     const V* __restrict__ gamma,
     const V* __restrict__ beta,
+    int broadcast_param,
     const T* __restrict__ skip,
     const T* __restrict__ bias,
     T* __restrict__ skip_input_bias_add_output) {
@@ -353,6 +354,17 @@ __global__ void cuApplyLayerNorm(
     V* ovals = output_vals + offset;
     T* skip_input_bias_add_ovals = (skip_input_bias_add_output != nullptr) ? skip_input_bias_add_output + offset : nullptr;
     U c_inv_std_dev = rsqrt(sigma2 + epsilon);
+
+    // When X shape is (B, S, ...), and task_idx is in the range of [0, B * S).
+    // We support scale and bias shape like below:
+    //    When scale and bias shape is (1, 1, ...) or (...), value of broadcast_param is 0.
+    //    When scale and bias shape is (B, 1, ...), value of broadcast_param is S.
+    //    When scale and bias shape is (B, S, ...), value of broadcast_param is 1.
+    //    When scale and bias shape is (1, S, ...), value of broadcast_param is -S.
+    int gamma_beta_offset = (broadcast_param == 0)
+                                ? 0
+                                : n2 * (broadcast_param > 0 ? (i1 / broadcast_param) : (i1 % (-broadcast_param)));
+
     const int numx = blockDim.x * blockDim.y;
     const int thrx = threadIdx.x + threadIdx.y * blockDim.x;
     for (int i = thrx; i < n2; i += numx) {
@@ -366,8 +378,13 @@ __global__ void cuApplyLayerNorm(
         curr += static_cast<U>(skip_vals[i]);
       }
 
-      U gamma_i = (gamma != nullptr) ? (U)gamma[i] : (U)1;
-      U beta_i = (beta != nullptr) ? (U)beta[i] : (U)0;
+      // onnx operator LayerNormalization support broadcast.
+      // gamma and beta should be unidirectional broadcastable to tensor x.
+      // Here we support a special case for transformer models that x is (B, S, D) and gamma/beta is (B, 1, D)
+      int index = gamma_beta_offset + i;
+      U gamma_i = (gamma != nullptr) ? (U)gamma[index] : (U)1;
+      U beta_i = (beta != nullptr) ? (U)beta[index] : (U)0;
+
       if (simplified) {
         ovals[i] = static_cast<V>(gamma_i * c_inv_std_dev * curr);
       } else {
@@ -409,6 +426,7 @@ void HostApplyLayerNorm(
     double epsilon,
     const V* gamma,
     const V* beta,
+    int broadcast_param,
     const T* skip,
     const T* bias,
     T* skip_input_bias_add_output) {
@@ -442,15 +460,15 @@ void HostApplyLayerNorm(
       input,
       n1, n2,
       U(epsilon),
-      gamma, beta,
+      gamma, beta, broadcast_param,
       skip, bias, skip_input_bias_add_output);
 }
 
 #define LAYERNORM_LINEAR_IMPL(T, U, V, simplified)                                                                    \
   template void HostApplyLayerNorm<T, U, V, simplified>(const cudaDeviceProp& prop, cudaStream_t stream, V* output,   \
                                                         U* mean, U* inv_std_dev, const T* input, int n1, int n2,      \
-                                                        double epsilon, const V* gamma, const V* beta, const T* skip, \
-                                                        const T* bias, T* skip_input_bias_add_output);
+                                                        double epsilon, const V* gamma, const V* beta, int broadcast, \
+                                                        const T* skip, const T* bias, T* skip_input_bias_add_output);
 
 LAYERNORM_LINEAR_IMPL(float, float, float, true)
 LAYERNORM_LINEAR_IMPL(half, float, half, true)

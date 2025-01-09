@@ -210,6 +210,152 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16ScaleBiasOutput) {
             kNnapiExecutionProvider, kQnnExecutionProvider, kCoreMLExecutionProvider, kWebGpuExecutionProvider});
 }
 
+TEST(LayerNormTest, LayerNorm_Scale_Bias_NoBroadcast) {
+  constexpr int min_cuda_architecture = 0;
+  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
+
+  // Broadcast gamma and bias is only supported in CUDA and ROCM providers.
+  if (enable_cuda || enable_rocm) {
+    OpTester test("LayerNormalization");
+    test.AddAttribute<float>("epsilon", 1e-05f);
+
+    std::vector<int64_t> dims{2, 2, 2};
+    test.AddInput<float>("x", dims, {-1.0f, 2.0f, 3.0f, -4.0f, -10.264f, 8.6453f, 43.1561f, -0.641239f});
+    test.AddInput<float>("gamma", {2, 2, 2}, {-0.1f, 1.7f, -0.6953f, 5.1824f, -0.1f, 1.7f, -0.6953f, 5.1824f});
+    test.AddInput<float>("bias", {2, 2, 2}, {-2.0f, 0.3f, 0.0f, 0.0f, -2.0f, 0.3f, 0.0f, 0.0f});
+    test.AddOutput<float>("output", dims, {
+                                              -1.9f,
+                                              2.0f,
+                                              -0.6953f,
+                                              -5.1824f,
+                                              -1.9f,
+                                              2.0f,
+                                              -0.6953f,
+                                              -5.1824f,
+                                          });
+
+    test.SetOutputTolerance(0.0001f);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_provider;
+    cpu_execution_provider.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_execution_provider);
+
+    std::vector<std::unique_ptr<IExecutionProvider>> gpu_execution_provider;
+    if (enable_cuda) {
+      gpu_execution_provider.push_back(DefaultCudaExecutionProvider());
+    } else if (enable_rocm) {
+      gpu_execution_provider.push_back(DefaultRocmExecutionProvider());
+    }
+
+    if (gpu_execution_provider.size() > 0) {
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &gpu_execution_provider);
+    }
+  }
+}
+
+TEST(LayerNormTest, LayerNorm_Scale_Bias_Broadcast_Dim0) {
+  OpTester test("LayerNormalization");
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> dims{4, 2, 2};
+  test.AddInput<float>("x", dims,
+                       {-1.0f, 2.0f, -10.264f, 8.6453f, 3.0f, -4.0f, 43.1561f, -0.641239f, -5.0f, 6.0f, -8.2164f, 0.11412f, 7.0f, 8.0f, 41.3156f, 3.0458f});
+  test.AddInput<float>("gamma", {1, 2, 2}, {-0.1f, 1.7f, -0.6953f, 5.1824f});
+  test.AddInput<float>("bias", {1, 2, 2}, {-2.0f, 0.3f, 0.0f, 0.0f});
+  test.AddOutput<float>("output", dims, {-1.9f, 2.0f, 0.6953f, 5.1824f, -2.1f, -1.4f, -0.6953f, -5.1824f, -1.9f, 2.0f, 0.6953f, 5.1824f, -1.9f, 2.0f, -0.6953f, -5.1824f});
+  test.SetOutputTolerance(0.0001f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_provider;
+  cpu_execution_provider.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_execution_provider);
+
+  constexpr int min_cuda_architecture = 0;
+  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
+  if (enable_cuda || enable_rocm) {
+    std::vector<std::unique_ptr<IExecutionProvider>> gpu_execution_provider;
+    if (enable_cuda) {
+      gpu_execution_provider.push_back(DefaultCudaExecutionProvider());
+    } else if (enable_rocm) {
+      gpu_execution_provider.push_back(DefaultRocmExecutionProvider());
+    }
+
+    if (gpu_execution_provider.size() > 0) {
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &gpu_execution_provider);
+    }
+  }
+}
+
+TEST(LayerNormTest, LayerNorm_Scale_Bias_Broadcast_Dim1) {
+  OpTester test("LayerNormalization");
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> dims{2, 4, 2};
+  test.AddInput<float>("x", dims, {-1.0f, 2.0f, 3.0f, -4.0f, -5.0f, 6.0f, 7.0f, 8.0f, -10.264f, 8.6453f, 43.1561f, -0.641239f, -8.2164f, 0.11412f, 41.3156f, 3.0458f});
+  test.AddInput<float>("gamma", {2, 1, 2}, {-0.1f, 1.7f, -0.6953f, 5.1824f});
+  test.AddInput<float>("bias", {2, 1, 2}, {-2.0f, 0.3f, 0.0f, 0.0f});
+  test.AddOutput<float>("output", dims, {-1.9f, 2.0f, -2.1f, -1.4f, -1.9f, 2.0f, -1.9f, 2.0f, 0.6953f, 5.1824f, -0.6953f, -5.1824f, 0.6953f, 5.1824f, -0.6953f, -5.1824f});
+  test.SetOutputTolerance(0.0001f);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_provider;
+  cpu_execution_provider.push_back(DefaultCpuExecutionProvider());
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_execution_provider);
+
+  constexpr int min_cuda_architecture = 0;
+  bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+  bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
+
+  if (enable_cuda || enable_rocm) {
+    std::vector<std::unique_ptr<IExecutionProvider>> gpu_execution_provider;
+    if (enable_cuda) {
+      gpu_execution_provider.push_back(DefaultCudaExecutionProvider());
+    } else if (enable_rocm) {
+      gpu_execution_provider.push_back(DefaultRocmExecutionProvider());
+    }
+
+    if (gpu_execution_provider.size() > 0) {
+      test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &gpu_execution_provider);
+    }
+  }
+}
+
+TEST(LayerNormTest, LayerNorm_Scale_Bias_Broadcast_Fp16) {
+  auto run_test = [](bool is_initializer) {
+    OpTester test("LayerNormalization");
+    test.AddAttribute<float>("epsilon", 1e-05f);
+
+    std::vector<int64_t> dims{1, 3, 2};
+    test.AddInput<MLFloat16>("x", dims, ToFloat16({1.2416f, 0.946123f, 13.1685f, 0.36423f, 21.145f, 0.03941f}));
+    test.AddInput<MLFloat16>("gamma", {1, 1, 2}, ToFloat16({-0.6953f, 5.1824f}), is_initializer);
+    test.AddInput<MLFloat16>("bias", {1, 1, 2}, ToFloat16({0.6435f, -0.3964f}), is_initializer);
+    test.AddOutput<MLFloat16>("output", dims, ToFloat16({-0.0516f, -5.5776f, -0.0518f, -5.5788f, -0.0518f, -5.5788f}));
+
+    std::vector<std::unique_ptr<IExecutionProvider>> cpu_execution_provider;
+    cpu_execution_provider.push_back(DefaultCpuExecutionProvider());
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &cpu_execution_provider);
+
+    constexpr int min_cuda_architecture = 0;
+    bool enable_cuda = HasCudaEnvironment(min_cuda_architecture);
+    bool enable_rocm = (nullptr != DefaultRocmExecutionProvider().get());
+    if (enable_cuda || enable_rocm) {
+      std::vector<std::unique_ptr<IExecutionProvider>> gpu_execution_provider;
+      if (enable_cuda) {
+        gpu_execution_provider.push_back(DefaultCudaExecutionProvider());
+      } else if (enable_rocm) {
+        gpu_execution_provider.push_back(DefaultRocmExecutionProvider());
+      }
+
+      if (gpu_execution_provider.size() > 0) {
+        test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &gpu_execution_provider);
+      }
+    }
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
 TEST(LayerNormTest, LayerNorm_Scale_Bias_Float16InputScaleBiasOutput) {
   auto run_test = [](bool is_initializer) {
     OpTester test("LayerNormalization");

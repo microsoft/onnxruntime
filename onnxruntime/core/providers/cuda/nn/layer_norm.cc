@@ -4,6 +4,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/cuda/nn/layer_norm.h"
 #include "core/providers/cuda/nn/layer_norm_impl.h"
+#include "core/providers/cpu/nn/layer_norm_helper.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
@@ -44,19 +45,29 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
   auto bias_data = (simplified || (nullptr == bias)) ? nullptr : reinterpret_cast<const CudaV*>(bias->Data<V>());
 
   const TensorShape& x_shape = X->Shape();
-  const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
+  auto x_num_dims = x_shape.NumDimensions();
+  const int64_t axis = HandleNegativeAxis(axis_, x_num_dims);
 
   int n1 = gsl::narrow<int>(x_shape.SizeToDimension(axis));
   int n2 = gsl::narrow<int>(x_shape.SizeFromDimension(axis));
 
-  const auto scale_size = scale->Shape().Size();
-  const auto bias_size = (bias_data) ? bias->Shape().Size() : 0;
-  if (n2 == 1 || scale_size != n2 || (bias_data && bias_size != n2)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Size of X.shape()[axis:] == ", n2,
-                           ". Size of scale and bias (if provided) must match this "
-                           "and the size must not be 1. Got scale size of ",
-                           scale_size, " and bias size of ", bias_size);
+  const TensorShape& scale_shape = scale->Shape();
+
+  const TensorShape& bias_shape = bias_data ? bias->Shape() : TensorShape();
+
+  int64_t broadcast_param = 0;
+  if (n2 <= 1) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Size of X.shape()[axis:] must be larger than 1, got ", n2);
+  } else if (scale_shape.Size() != n2 || (bias_data && bias_shape.Size() != n2)) {
+    // Check if scale and bias can be broadcasted to X (only limited cases are supported).
+    broadcast_param = LayerNormHelper::GetBroadcastParam(x_shape, scale_shape, axis, bias_data ? &bias_shape : nullptr);
+    if (broadcast_param == 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Size of scale and bias (if provided) must match X.shape()[axis:], "
+                             "or scale and bias shape are same and can be broadcasted to X when axis is 2. "
+                             "Shapes X=",
+                             x_shape, " scale=", scale_shape, " bias=", bias_shape, " and axis=", axis);
+    }
   }
 
   // Outputs
@@ -65,7 +76,7 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
 
   // Mean and variance
   std::vector<int64_t> mean_inv_std_var_dim;
-  for (int i = 0; i < static_cast<int>(x_shape.NumDimensions()); ++i) {
+  for (int i = 0; i < static_cast<int>(x_num_dims); ++i) {
     if (i < axis) {
       mean_inv_std_var_dim.emplace_back(x_shape.GetDims()[i]);
     } else {
@@ -94,7 +105,8 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
   }
 
   HostApplyLayerNorm<CudaT, CudaU, CudaV, simplified>(GetDeviceProp(), Stream(ctx), Y_data, mean_data, inv_var_data,
-                                                      X_data, n1, n2, epsilon_, scale_data, bias_data);
+                                                      X_data, n1, n2, epsilon_, scale_data, bias_data,
+                                                      gsl::narrow_cast<int>(broadcast_param));
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
   return Status::OK();
 }
