@@ -99,10 +99,10 @@ for enable_rtti in [True, False]:
 # Gen Linux triplets
 crt_linkages = ["static", "dynamic"]
 for os_name in ["linux", "osx"]:
-    if os_name == 'linux':
+    if os_name == "linux":
         target_abis = ["x64", "arm64"]
     else:
-        target_abis = ["x64", "arm64", 'universal2']
+        target_abis = ["x64", "arm64", "universal2"]
     for enable_rtti in [True, False]:
         for enable_binskim in [True, False]:
             for enable_asan in [True, False]:
@@ -128,7 +128,7 @@ for os_name in ["linux", "osx"]:
                         os.makedirs(folder_name, exist_ok=True)
                         with open(dest_path, "w", encoding="utf-8") as f:
                             add_copyright_header(f)
-                            if target_abi == 'universal2':
+                            if target_abi == "universal2":
                                 # Assume the host machine is Intel based
                                 f.write(f"set(VCPKG_TARGET_ARCHITECTURE x64)\n")
                             else:
@@ -170,13 +170,13 @@ for os_name in ["linux", "osx"]:
                             else:
                                 f.write("set(VCPKG_CMAKE_SYSTEM_NAME Darwin)\n")
                                 osx_abi = None
-                                if target_abi == 'x64':
-                                    osx_abi = 'x86_64'
-                                elif target_abi == 'universal2':
-                                    osx_abi = 'x86_64;arm64'
+                                if target_abi == "x64":
+                                    osx_abi = "x86_64"
+                                elif target_abi == "universal2":
+                                    osx_abi = "x86_64;arm64"
                                 else:
                                     osx_abi = target_abi
-                                f.write(f"set(VCPKG_OSX_ARCHITECTURES \"{osx_abi}\")\n")
+                                f.write(f'set(VCPKG_OSX_ARCHITECTURES "{osx_abi}")\n')
                             f.write("set(CMAKE_POSITION_INDEPENDENT_CODE ON)\n")
                             f.write(
                                 "list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DBENCHMARK_ENABLE_WERROR=OFF)\n"
