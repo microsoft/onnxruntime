@@ -34,7 +34,7 @@ combine_two_m256i_to_m512i(const __m256i& a, const __m256i& b)
 
 static MLAS_FORCEINLINE
 __m512 load_broadcast_512(const float& combined_scale) {
-    const __mmask16 mask = 00000001;  // Binary: 0000 0000 0000 0001, lowest element
+    constexpr __mmask16 mask = 00000001;  // Binary: 0000 0000 0000 0001, lowest element
 
     // Convert the float value to an int representation
     const int& int_value = reinterpret_cast<const int&>(combined_scale);
@@ -55,14 +55,14 @@ __m512 load_broadcast_2ps_512(const double* combined_scale) {
     // const __m512 scale_b_16_ps = _mm512_broadcast_f32x8(scale_b_ps);
     // return;
 
-    const __mmask8 mask = 0xff;  // Binary: 1111 1111, to set all elements
+    constexpr __mmask8 mask = 0xff;  // Binary: 1111 1111, to set all elements
 
     // Convert the float value to an int representation
-    const __int64& int64_value = reinterpret_cast<const __int64&>(*combined_scale);
+    const int64_t& int64_value = reinterpret_cast<const int64_t&>(*combined_scale);
 
     // Use the mask to set all elements to the int_value
     __m512 result = _mm512_castsi512_ps(
-        _mm512_mask_set1_epi64(_mm512_setzero_si512(), mask, const_cast<__int64&>(int64_value))
+        _mm512_mask_set1_epi64(_mm512_setzero_si512(), mask, const_cast<int64_t&>(int64_value))
     );
 
     return result;

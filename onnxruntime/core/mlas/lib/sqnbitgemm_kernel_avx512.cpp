@@ -308,7 +308,6 @@ QuantizeInt8ComputeBlksum(const float* a_ptr, size_t step, __m512& mul, float sc
 
         // Convert int32 to int8
         i_16_epi8[index] = _mm512_cvtepi32_epi8(i0);
-        //_mm_storeu_si128(dst++, i0_8);
 
         // accumulate Sum(a_i)
         __m256i i_16_epi16 = _mm256_cvtepi8_epi16(i_16_epi8[index]);
@@ -366,8 +365,8 @@ QuantizeARow_CompInt8_avx512_blklen32(
     float* AScaledBlkSum  // scale_k * Sum_blklen(a_i)
 )
 {
-    const size_t BlkLen = 32;
-    const int64_t SubBlkLen = 4 * BlkLen;  // process 128 weights at a time and then process the remaining weights
+    constexpr size_t BlkLen = 32;
+    constexpr int64_t SubBlkLen = 4 * BlkLen;  // process 128 weights at a time and then process the remaining weights
 
     const float* a_ptr = A;
     int8_t* quant_a_ptr = reinterpret_cast<int8_t*>(QuantA);
@@ -393,7 +392,6 @@ QuantizeARow_CompInt8_avx512_blklen32(
     }
 
     while (k_remaining > 0) {
-        // for (size_t k = 0; k < CountK; k += BlkLen) {
         __m256i i_32_epi8;
         float scale;
         float blksum;

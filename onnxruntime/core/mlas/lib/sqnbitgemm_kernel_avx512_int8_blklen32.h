@@ -32,7 +32,7 @@ __m512 load_4blksum_512(const float* BlksumPtr)
 static MLAS_FORCEINLINE
 __m512 load_1blksum_512(const float* BlksumPtr) {
     // Create a mask to set only the lowest element
-    const __mmask16 mask = 0x01;  // Binary: 0000 0000 0000 0001
+    constexpr __mmask16 mask = 0x01;  // Binary: 0000 0000 0000 0001
 
     // Dereference the pointer to get the float value
     float value = *BlksumPtr;
@@ -47,7 +47,7 @@ __m512 load_1blksum_512(const float* BlksumPtr) {
 // Function to load a single float value into the lowest element of a __m256 register
 static MLAS_FORCEINLINE
 __m256 load_1blksum_256(const float* BlksumPtr) {
-    const __mmask8 mask = 0x01;  // Binary: 0000 0001
+    constexpr __mmask8 mask = 0x01;  // Binary: 0000 0001
 
     // Convert the float value to an int representation
     float* value = const_cast<float*>(BlksumPtr);
@@ -696,7 +696,7 @@ Q4Int8GemmR1xC4BlkLen32Avx512(
                 const __m512i av_01_epi8 = _mm512_loadu_si512((const __m512i*)(QuantAPtr + 64));
 
                 if constexpr (vnni) {
-                    accumulate_blklen32_r1c1blk4_avx512vnni(av_00_epi8, av_01_epi8, QuantBDataPtr, 
+                    accumulate_blklen32_r1c1blk4_avx512vnni(av_00_epi8, av_01_epi8, QuantBDataPtr,
                       QuantAScalePtr, QuantBScalePtr,
                       ABlockSumPtr, QuantBBlkSumPtr,
                       acc[0]);
@@ -852,7 +852,7 @@ Q4Int8GemmR1xC1BlkLen32Avx512(
                 const __m512i av_01_epi8 = _mm512_loadu_si512((const __m512i*)(QuantAPtr + 64));
 
                 if constexpr (vnni) {
-                    accumulate_blklen32_r1c1blk4_avx512vnni(av_00_epi8, av_01_epi8, QuantBDataPtr, 
+                    accumulate_blklen32_r1c1blk4_avx512vnni(av_00_epi8, av_01_epi8, QuantBDataPtr,
                       QuantAScalePtr, QuantBScalePtr, ABlockSumPtr, QuantBBlkSumPtr, acc0);
                 }
                 else {
