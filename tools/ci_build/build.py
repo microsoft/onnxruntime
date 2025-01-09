@@ -1120,6 +1120,7 @@ def generate_build_tree(
                 run_subprocess(["git", "clone", "https://github.com/microsoft/vcpkg.git", "--recursive"], cwd=build_dir)
         vcpkg_toolchain_path = os.path.join(vcpkg_installation_root, "scripts", "buildsystems", "vcpkg.cmake")
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", vcpkg_toolchain_path)
+        overlay_triplets_dir = None
         # The enable_address_sanitizer and use_binskim_compliant_compile_flags flags cannot be both enabled
         if args.enable_address_sanitizer:
             overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg_triplets", "asan")
