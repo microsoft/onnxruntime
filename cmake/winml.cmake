@@ -782,7 +782,7 @@ add_dependencies(winml_dll winml_api_native)
 add_dependencies(winml_dll winml_api_native_internal)
 
 # Link libraries
-target_link_libraries(winml_dll PRIVATE re2)
+target_link_libraries(winml_dll PRIVATE re2::re2)
 target_link_libraries(winml_dll PRIVATE ${WIL_TARGET})
 target_link_libraries(winml_dll PRIVATE winml_lib_api)
 if (NOT winml_is_inbox)

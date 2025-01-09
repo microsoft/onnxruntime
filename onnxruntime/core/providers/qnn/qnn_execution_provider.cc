@@ -204,7 +204,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "Context cache enable: " << context_cache_enabled_;
 
     std::string embed_mode = session_options->config_options.GetConfigOrDefault(
-        kOrtSessionOptionEpContextEmbedMode, "1");
+        kOrtSessionOptionEpContextEmbedMode, "0");
     if ("1" == embed_mode) {
       qnn_context_embed_mode_ = true;
     } else if ("0" == embed_mode) {
@@ -423,7 +423,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
         if (IsEnabled == EVENT_CONTROL_CODE_ENABLE_PROVIDER) {
           if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)) != 0) {
             auto ortETWSeverity = etwRegistrationManager.MapLevelToSeverity();
-            (void)qnn_backend_manager_->UpdateQnnLogLevel(ortETWSeverity);
+            (void)qnn_backend_manager_->ResetQnnLogLevel(ortETWSeverity);
           }
           if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0) {
             if (Level != 0) {
@@ -439,7 +439,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 
         if (IsEnabled == EVENT_CONTROL_CODE_DISABLE_PROVIDER) {
           // (void)qnn_backend_manager_->SetProfilingLevelETW(qnn::ProfilingLevel::INVALID);
-          (void)qnn_backend_manager_->ResetQnnLogLevel();
+          (void)qnn_backend_manager_->ResetQnnLogLevel(std::nullopt);
         }
       });
   etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_provider_);
