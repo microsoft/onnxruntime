@@ -1,7 +1,7 @@
 require_relative '../node_modules/react-native/scripts/react_native_pods'
 require_relative '../node_modules/@react-native-community/cli-platform-ios/native_modules'
 
-platform :ios, '13.0'
+platform :ios, '15.1'
 
 pre_install do |installer|
   # Custom pre-install script or commands
@@ -15,7 +15,14 @@ end
 target 'OnnxruntimeModuleExample' do
   config = use_native_modules!
 
-  use_react_native!(:path => config["reactNativePath"])
+]# Check both symbol and string keys with default value
+  use_react_native!(
+    :path => config[:reactNativePath],
+    # Hermes is now enabled by default. Disable by setting this flag to false.
+    # Upcoming versions of React Native may rely on get_default_flags(), but
+    # we make it explicit here to aid in the React Native upgrade process.
+    :hermes_enabled => false
+  )
 
   use_frameworks!
 
@@ -32,7 +39,10 @@ post_install do |installer|
     installer.generated_projects.each do |project|
         project.targets.each do |target|
             target.build_configurations.each do |config|
-                config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+                config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
+
+                # TODO: remove this once we migrate the Pipelines to use arm64 MacOS
+                config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = "arm64"
             end
         end
     end

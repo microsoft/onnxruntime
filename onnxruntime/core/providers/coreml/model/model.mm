@@ -369,20 +369,22 @@ void ProfileComputePlan(NSURL* compileUrl, MLModelConfiguration* config) {
 #define HAS_COREMLOPTIMIZATIONHINT 0
 #endif
 
-API_AVAILABLE_COREML8
+
 void ConfigureOptimizationHints(MLModelConfiguration* config, const CoreMLOptions& coreml_options) {
+  if (HAS_COREML8_OR_LATER) {
 #if HAS_COREMLOPTIMIZATIONHINT
-  MLOptimizationHints* optimizationHints = [[MLOptimizationHints alloc] init];
-  if (coreml_options.UseStrategy("FastPrediction")) {
-    optimizationHints.specializationStrategy = MLSpecializationStrategyFastPrediction;
-    config.optimizationHints = optimizationHints;
-  } else if (coreml_options.UseStrategy("Default")) {
-    optimizationHints.specializationStrategy = MLSpecializationStrategyDefault;
-    config.optimizationHints = optimizationHints;
-  } else {
-    // not set
-  }
+    MLOptimizationHints* optimizationHints = [[MLOptimizationHints alloc] init];
+    if (coreml_options.UseStrategy("FastPrediction")) {
+      optimizationHints.specializationStrategy = MLSpecializationStrategyFastPrediction;
+      config.optimizationHints = optimizationHints;
+    } else if (coreml_options.UseStrategy("Default")) {
+      optimizationHints.specializationStrategy = MLSpecializationStrategyDefault;
+      config.optimizationHints = optimizationHints;
+    } else {
+      // not set
+    }
 #endif
+  }
 }
 
 Status CompileOrReadCachedModel(NSURL* modelUrl, const CoreMLOptions& coreml_options,
