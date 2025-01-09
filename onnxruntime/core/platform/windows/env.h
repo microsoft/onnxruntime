@@ -68,6 +68,8 @@ class WindowsEnv : public Env {
                            MappedMemoryPtr& mapped_memory) const override;
   bool FolderExists(const std::wstring& path) const override;
   bool FolderExists(const std::string& path) const override;
+  bool FileExists(const std::wstring& path) const override;
+  bool FileExists(const std::string& path) const override;
   common::Status CreateFolder(const std::wstring& path) const override;
   common::Status CreateFolder(const std::string& path) const override;
   common::Status DeleteFolder(const PathString& path) const override;

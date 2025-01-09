@@ -39,16 +39,6 @@ stages:
       name: ${{ parameters.machine_pool }}
       os: linux
     templateContext:
-      codeSignValidation:
-        enabled: true
-        break: true
-      psscriptanalyzer:
-        enabled: true
-      sdl:
-        binskim:
-          enabled: true
-          scanOutputDirectoryOnly: true
-          targetPathPattern: '\".*.so\"'
       outputs:
       - output: pipelineArtifact
         targetPath: $(Build.ArtifactStagingDirectory)/dist
@@ -57,9 +47,6 @@ stages:
         targetPath: $(Build.ArtifactStagingDirectory)/${{ parameters.cmake_build_type }}
         artifactName: linux_gpu_wheel_${{ parameters.arch }}
     variables:
-      # The build machine pool doesn't have dotnet, so it can't run CG.
-      - name: skipComponentGovernanceDetection
-        value: true
       - name: extra_build_args
         ${{ if ne(parameters.extra_build_arg, '') }}:
           value: -x ${{ parameters.extra_build_arg }}
@@ -108,6 +95,3 @@ stages:
         displayName: 'Move files'
 
 
-      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-        displayName: 'Clean Agent Directories'
-        condition: always()

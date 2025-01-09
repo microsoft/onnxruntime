@@ -30,6 +30,10 @@ constexpr std::string_view DuplicateDQ = "/duplicated";
 
 constexpr ONNX_NAMESPACE::TensorProto_DataType DT_UINT16 = ONNX_NAMESPACE::TensorProto_DataType_UINT16;
 constexpr ONNX_NAMESPACE::TensorProto_DataType DT_INT16 = ONNX_NAMESPACE::TensorProto_DataType_INT16;
+constexpr ONNX_NAMESPACE::TensorProto_DataType DT_UINT8 = ONNX_NAMESPACE::TensorProto_DataType_UINT8;
+constexpr ONNX_NAMESPACE::TensorProto_DataType DT_INT8 = ONNX_NAMESPACE::TensorProto_DataType_INT8;
+constexpr ONNX_NAMESPACE::TensorProto_DataType DT_UINT4 = ONNX_NAMESPACE::TensorProto_DataType_UINT4;
+constexpr ONNX_NAMESPACE::TensorProto_DataType DT_INT4 = ONNX_NAMESPACE::TensorProto_DataType_INT4;
 
 // Return the data type of the qdq node.
 // Check output type of Q and input type of DQ to determine it as zero_point is an optional input and may not exist
@@ -218,7 +222,7 @@ static bool DQFeedsASupportedOp(const Node* dq_node) {
     } else {
       return true;
     }
-  } else if (op_type == "Add") {
+  } else if (op_type == "Add" && !(GetQDQDataType(dq_node) == DT_UINT16 || GetQDQDataType(dq_node) == DT_INT16)) {
     // Add => keeps all DQs
     return true;
   }
@@ -687,7 +691,7 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
   // Get all the NodeUnits in the graph_viewer
   std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
   std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
-  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(&src_graph);
+  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(&src_graph, logger);
 
   std::unordered_set<const NodeUnit*> seen_node_units;
   const auto& node_indices = src_graph.GetNodesInTopologicalOrder();

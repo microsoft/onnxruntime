@@ -260,6 +260,7 @@ def parse_arguments():
     )
 
     parser.add_argument("--disable_cuda_nhwc_ops", action="store_true", help="Disable CUDA NHWC ops in build.")
+    parser.add_argument("--enable_cuda_minimal_build", action="store_true", help="Enable CUDA minimal build.")
 
     # Python bindings
     parser.add_argument("--enable_pybind", action="store_true", help="Enable Python Bindings.")
@@ -1093,6 +1094,7 @@ def generate_build_tree(
         "-Donnxruntime_DISABLE_FLOAT8_TYPES=" + ("ON" if disable_float8_types else "OFF"),
         "-Donnxruntime_DISABLE_SPARSE_TENSORS=" + ("ON" if disable_sparse_tensors else "OFF"),
         "-Donnxruntime_DISABLE_OPTIONAL_TYPE=" + ("ON" if disable_optional_type else "OFF"),
+        "-Donnxruntime_CUDA_MINIMAL=" + ("ON" if args.enable_cuda_minimal_build else "OFF"),
     ]
 
     if args.rv64:
@@ -1561,8 +1563,7 @@ def generate_build_tree(
                 ldflags = ["/profile", "/DYNAMICBASE"]
                 # Address Sanitizer libs do not have a Qspectre version. So they two cannot be both enabled.
                 if not args.enable_address_sanitizer:
-                    # Also enable a special perf patch that was made for Intel Meteor Lake mobile CPUs
-                    cflags += ["/Qspectre", "/DONNXRUNTIME_ENABLE_INTEL_METEOR_LAKE_MOBILE_PLATFORM_PERF_PATCH"]
+                    cflags += ["/Qspectre"]
                 if config == "Release":
                     cflags += ["/O2", "/Ob2", "/DNDEBUG"]
                 elif config == "RelWithDebInfo":
@@ -2333,7 +2334,7 @@ def build_nuget_package(
         target_name = "/t:CreateWindowsAIPackage"
     elif use_openvino:
         execution_provider = "/p:ExecutionProvider=openvino"
-        package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.OpenVino"
+        package_name = "/p:OrtPackageId=Intel.ML.OnnxRuntime.OpenVino"
     elif use_tensorrt:
         execution_provider = "/p:ExecutionProvider=tensorrt"
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.TensorRT"

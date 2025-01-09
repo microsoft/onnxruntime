@@ -45,7 +45,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          # Version range or exact version of Python to use, using SemVer's version range syntax. Reads from .python-version if unset.
+          # Use the version configured in target-version of [tool.black] section in pyproject.toml.
           python-version: "3.10"
       - name: Setup Rust
         uses: actions-rs/toolchain@v1
@@ -55,12 +55,10 @@ jobs:
       - name: Update PATH
         run: |
           echo "$HOME/.local/bin" >> "$GITHUB_PATH"
-
       - name: Install dependencies
         run: |
           set -e -x
           python -m pip install --user -r requirements-dev.txt
-          python -m pip install --user lintrunner lintrunner-adapters
           lintrunner init
       - name: Run lintrunner on all files
         run: |

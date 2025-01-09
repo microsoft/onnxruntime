@@ -869,13 +869,13 @@ bool RemoveNodesWithOneOutputBottomUp(Graph& graph, const Node& start_node) {
     }
 
     // push the parents of current node to the queue.
-    for (unsigned int i = 0; i < cur_node.InputDefs().size(); ++i) {
-      const std::string& input_name = GetNodeInputName(cur_node, i);
-      if (IsInitializer(graph, input_name, true) || IsGraphInput(graph, cur_node.InputDefs()[i])) {
+    for (size_t i = 0; i < cur_node.InputDefs().size(); ++i) {
+      const std::string& input_name = GetNodeInputName(cur_node, static_cast<int>(i));
+      if (IsInitializer(graph, input_name, true) || IsGraphInput(graph, cur_node.InputDefs()[static_cast<int>(i)])) {
         // skip initializers and graph inputs
         continue;
       }
-      const Node* parent_node = GetInputNode(cur_node, i);
+      const Node* parent_node = GetInputNode(cur_node, static_cast<int>(i));
       if (nullptr == parent_node) {
         continue;
       }

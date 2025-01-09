@@ -487,7 +487,7 @@ export const prepareInputOutputTensor = (
   }
 
   if (location === 'gpu-buffer') {
-    const gpuBuffer = tensor[2].gpuBuffer as GPUBuffer;
+    const gpuBuffer = tensor[2].gpuBuffer;
     dataByteLength = calculateTensorSizeInBytes(tensorDataTypeStringToEnum(dataType), dims)!;
 
     const registerBuffer = wasm.jsepRegisterBuffer;

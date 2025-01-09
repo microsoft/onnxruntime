@@ -93,9 +93,12 @@ class QnnBackendManager {
 
   Status LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length,
                                         std::string node_name,
-                                        std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models);
+                                        std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models,
+                                        int64_t max_spill_fill_size);
 
-  Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context);
+  // Initializes handles to QNN resources (device, logger, etc.).
+  // NOTE: This function locks the internal `logger_recursive_mutex_`.
+  Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context, bool need_load_system_lib);
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
 
@@ -112,40 +115,18 @@ class QnnBackendManager {
     return contexts_[index];
   }
 
+  size_t GetQnnContextSize() {
+    return contexts_.size();
+  }
+
   const Qnn_BackendHandle_t& GetQnnBackendHandle() { return backend_handle_; }
 
   const Qnn_ProfileHandle_t& GetQnnProfileHandle() { return profile_backend_handle_; }
 
-  void SetLogger(const logging::Logger* logger) {
-    if (logger_ == nullptr) {
-      logger_ = logger;
-      (void)InitializeQnnLog();
-    }
-  }
-
-  Status InitializeQnnLog();
-
-  Status UpdateQnnLogLevel(logging::Severity ort_log_level);
-
-  Status ResetQnnLogLevel();
-
-  // Terminate logging in the backend
-  Status TerminateQnnLog() {
-    if (logger_ == nullptr) {
-      return Status::OK();
-    }
-
-    if (nullptr != qnn_interface_.logFree && nullptr != log_handle_) {
-      ORT_RETURN_IF(QNN_SUCCESS != qnn_interface_.logFree(log_handle_),
-                    "Unable to terminate logging in the backend.");
-    }
-
-    return Status::OK();
-  }
-
-  void ReleaseResources();
-
-  void Split(std::vector<std::string>& split_string, const std::string& tokenized_string, const char separator);
+  // Resets the QNN log level to the given ORT log level or to the default log level if the argument is
+  // std::nullopt.
+  // NOTE: This function locks the internal `logger_recursive_mutex_`.
+  Status ResetQnnLogLevel(std::optional<logging::Severity> ort_log_level = std::nullopt);
 
   Status ExtractBackendProfilingInfo();
   Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id, std::ofstream& outfile,
@@ -163,7 +144,23 @@ class QnnBackendManager {
 
   Status DestroyHTPPowerConfigID(uint32_t htp_power_config_id);
 
+  Status GetMaxSpillFillBufferSize(unsigned char* buffer,
+                                   uint64_t buffer_length,
+                                   uint64_t& max_spill_fill_buffer_size);
+
  private:
+  // Sets the ORT logger and creates a corresponding QNN logger with the same log level.
+  // NOTE: caller must lock the `logger_recursive_mutex_` before calling this function.
+  Status InitializeQnnLog(const logging::Logger& logger);
+
+  // Terminate logging in the backend
+  // NOTE: This function locks the internal `logger_recursive_mutex_`.
+  Status TerminateQnnLog();
+
+  // Releases all QNN resources. Called in the destructor.
+  // NOTE: This function indirectly locks the internal `logger_recursive_mutex_` via nested function calls.
+  void ReleaseResources();
+
   void* LoadLib(const char* file_name, int flags, std::string& error_msg);
 
   Status LoadQnnSystemLib();
@@ -235,7 +232,7 @@ class QnnBackendManager {
 
  private:
   const std::string backend_path_;
-  std::mutex logger_mutex_;
+  std::recursive_mutex logger_recursive_mutex_;
   const logging::Logger* logger_ = nullptr;
   QNN_INTERFACE_VER_TYPE qnn_interface_ = QNN_INTERFACE_VER_TYPE_INIT;
   QNN_SYSTEM_INTERFACE_VER_TYPE qnn_sys_interface_ = QNN_SYSTEM_INTERFACE_VER_TYPE_INIT;
