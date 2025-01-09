@@ -3,13 +3,36 @@
 // Licensed under the MIT License.
 
 #pragma once
-
 #include "core/framework/tensor_shape.h"
+#include "core/common/status.h"
 
 namespace onnxruntime {
 
+constexpr const char* kLayerNormInputShapeMismatchError =
+    "Size of scale and bias (if provided) must match X.shape()[axis:], "
+    "or scale and bias shape are same and can be broadcasted to X when axis is 2. ";
+
+constexpr const char* kLayerNormInvalidSize = "Size of X.shape()[axis:] must be larger than 1, got ";
+
 class LayerNormHelper {
  public:
+  static Status CheckBroadcast(const TensorShape& x_shape,
+                               const TensorShape& scale_shape,
+                               const TensorShape& bias_shape,
+                               bool has_bias,
+                               int64_t axis,
+                               int64_t& broadcast_param) {
+    broadcast_param = GetBroadcastParam(x_shape, scale_shape, axis, has_bias ? &bias_shape : nullptr);
+    if (broadcast_param == 0) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             kLayerNormInputShapeMismatchError,
+                             "Shapes X=", x_shape, " scale=", scale_shape, " bias=", bias_shape, " and axis=", axis);
+    }
+
+    return Status::OK();
+  }
+
+ private:
   static int64_t GetBroadcastParam(const TensorShape& x_shape,
                                    const TensorShape& scale_shape,
                                    int64_t axis,

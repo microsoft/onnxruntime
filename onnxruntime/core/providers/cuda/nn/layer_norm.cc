@@ -57,17 +57,10 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
 
   int64_t broadcast_param = 0;
   if (n2 <= 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Size of X.shape()[axis:] must be larger than 1, got ", n2);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, kLayerNormInvalidSize, n2);
   } else if (scale_shape.Size() != n2 || (bias_data && bias_shape.Size() != n2)) {
     // Check if scale and bias can be broadcasted to X (only limited cases are supported).
-    broadcast_param = LayerNormHelper::GetBroadcastParam(x_shape, scale_shape, axis, bias_data ? &bias_shape : nullptr);
-    if (broadcast_param == 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Size of scale and bias (if provided) must match X.shape()[axis:], "
-                             "or scale and bias shape are same and can be broadcasted to X when axis is 2. "
-                             "Shapes X=",
-                             x_shape, " scale=", scale_shape, " bias=", bias_shape, " and axis=", axis);
-    }
+    ORT_RETURN_IF_ERROR(LayerNormHelper::CheckBroadcast(x_shape, scale_shape, bias_shape, bias_data != nullptr, axis, broadcast_param));
   }
 
   // Outputs

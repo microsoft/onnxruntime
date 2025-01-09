@@ -280,17 +280,9 @@ Status LayerNormImpl::ComputeWithoutContext(
   int64_t broadcast_param = 0;
 
   if (norm_size <= 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Size of X.shape()[axis:] must be larger than 1, got ", norm_size);
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, kLayerNormInvalidSize, norm_size);
   } else if (static_cast<int64_t>(scale_size) != norm_size || (bias_data && static_cast<int64_t>(bias_size) != norm_size)) {
-    // Check if scale and bias can be broadcasted to X (only limited cases are supported).
-    broadcast_param = LayerNormHelper::GetBroadcastParam(x_shape, scale_shape, axis, bias_data != nullptr ? &bias_shape : nullptr);
-    if (broadcast_param == 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Size of scale and bias (if provided) must match X.shape()[axis:], "
-                             "or scale and bias shape are same and can be broadcasted to X when axis is 2. "
-                             "Shapes X=",
-                             x_shape, " scale=", scale_shape, " bias=", bias_shape, " and axis=", axis);
-    }
+    ORT_RETURN_IF_ERROR(LayerNormHelper::CheckBroadcast(x_shape, scale_shape, bias_shape, bias_data != nullptr, axis, broadcast_param));
   }
 
   IAllocatorUniquePtr<float> scale_fp32;
