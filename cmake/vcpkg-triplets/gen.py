@@ -128,7 +128,15 @@ for os_name in ["linux", "osx"]:
                             f.write(f"set(VCPKG_TARGET_ARCHITECTURE {target_abi})\n")
                             f.write(f"set(VCPKG_CRT_LINKAGE {crt_linkage})\n")
                             f.write("set(VCPKG_LIBRARY_LINKAGE static)\n")
-                            ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now", "-Wl,-z,noexecstack"]
+                            if enable_binskim and os_name == "linux":
+                                ldflags = [
+                                    "-Wl,-Bsymbolic-functions",
+                                    "-Wl,-z,relro",
+                                    "-Wl,-z,now",
+                                    "-Wl,-z,noexecstack",
+                                ]
+                            else:
+                                ldflags = []
                             cflags = []
                             if enable_binskim:
                                 cflags += [

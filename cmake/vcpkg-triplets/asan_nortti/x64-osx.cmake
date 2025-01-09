@@ -9,7 +9,7 @@ set(VCPKG_CMAKE_SYSTEM_NAME Darwin)
 set(VCPKG_OSX_ARCHITECTURES x86_64)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DBENCHMARK_ENABLE_WERROR=OFF)
-set(VCPKG_LINKER_FLAGS "-Wl,-Bsymbolic-functions -Wl,-z,relro -Wl,-z,now -Wl,-z,noexecstack -fsanitize=address")
+set(VCPKG_LINKER_FLAGS "-fsanitize=address")
 if(PORT MATCHES "onnx")
     list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS
         "-DONNX_DISABLE_STATIC_REGISTRATION=ON"
