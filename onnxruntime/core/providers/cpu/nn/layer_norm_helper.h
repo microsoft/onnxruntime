@@ -29,9 +29,6 @@ class LayerNormHelper {
                              "Shapes X=", x_shape, " scale=", scale_shape, " bias=", bias_shape, " and axis=", axis);
     }
 
-    std::cout << "Shapes X=" << x_shape << " scale=" << scale_shape << " bias=" << bias_shape << " and axis=" << axis
-              << "broadcast_param=" << broadcast_param << std::endl;
-
     return Status::OK();
   }
 
