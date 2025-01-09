@@ -355,12 +355,13 @@ __global__ void cuApplyLayerNorm(
     T* skip_input_bias_add_ovals = (skip_input_bias_add_output != nullptr) ? skip_input_bias_add_output + offset : nullptr;
     U c_inv_std_dev = rsqrt(sigma2 + epsilon);
 
-    // When X shape is (B, S, ...), and task_idx is in the range of [0, B * S).
+    // When X shape is (B, S, ...), and i1 is in the range of [0, B * S).
     // We support scale and bias shape like below:
     //    When scale and bias shape is (1, 1, ...) or (...), value of broadcast_param is 0.
     //    When scale and bias shape is (B, 1, ...), value of broadcast_param is S.
     //    When scale and bias shape is (B, S, ...), value of broadcast_param is 1.
     //    When scale and bias shape is (1, S, ...), value of broadcast_param is -S.
+    // Here we compute the offset of gamma and beta (assuming they have same shape) to support broadcasting.
     int gamma_beta_offset = (broadcast_param == 0)
                                 ? 0
                                 : n2 * (broadcast_param > 0 ? (i1 / broadcast_param) : (i1 % (-broadcast_param)));
@@ -378,9 +379,6 @@ __global__ void cuApplyLayerNorm(
         curr += static_cast<U>(skip_vals[i]);
       }
 
-      // onnx operator LayerNormalization support broadcast.
-      // gamma and beta should be unidirectional broadcastable to tensor x.
-      // Here we support a special case for transformer models that x is (B, S, D) and gamma/beta is (B, 1, D)
       int index = gamma_beta_offset + i;
       U gamma_i = (gamma != nullptr) ? (U)gamma[index] : (U)1;
       U beta_i = (beta != nullptr) ? (U)beta[index] : (U)0;
