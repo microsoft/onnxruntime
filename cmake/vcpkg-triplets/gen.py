@@ -34,7 +34,7 @@ for enable_rtti in [True, False]:
                 # Address Sanitizer libs do not have a Qspectre version. So they two cannot be both enabled.
                 if enable_asan and enable_binskim:
                     continue
-                for target_ABI in target_abis:
+                for target_abi in target_abis:
                     folder_name_parts = []
                     if enable_asan:
                         folder_name_parts.append("asan")
@@ -46,17 +46,17 @@ for enable_rtti in [True, False]:
                         folder_name = "default"
                     else:
                         folder_name = "_".join(folder_name_parts)
-                    file_name_parts = [target_ABI, "windows", "static"]
+                    file_name_parts = [target_abi, "windows", "static"]
                     if crt_linkage == "dynamic":
                         file_name_parts.append("md")
                     file_name = "-".join(file_name_parts) + ".cmake"
                     dest_path = os.path.join(folder_name, file_name)
-                    print("Creating file %s" % dest_path)
+                    print("Creating file {}".format(dest_path))
                     os.makedirs(folder_name, exist_ok=True)
                     with open(dest_path, "w", encoding="utf-8") as f:
                         add_copyright_header(f)
-                        f.write("set(VCPKG_TARGET_ARCHITECTURE %s)\n" % target_ABI)
-                        f.write("set(VCPKG_CRT_LINKAGE %s)\n" % crt_linkage)
+                        f.write("set(VCPKG_TARGET_ARCHITECTURE {})\n".format(target_abi))
+                        f.write("set(VCPKG_CRT_LINKAGE {})\n".format(crt_linkage))
                         # we only support static. The default triplets use dynamic.
                         # The default triplets do not work with asan(protoc.exe crashes at startup). Therefore we do not override the default triplets and do not append asan to them.
                         # The default triplets are used for generating host dependencies(such as protoc.exe)
@@ -83,13 +83,13 @@ for enable_rtti in [True, False]:
                             # Disable RTTI and turn usage of dynamic_cast and typeid into errors
                             cxxflags += ["/GR-", "/we4541"]
                         # TODO: should it be a cmake list separated by semicolons?
-                        f.write('set(VCPKG_C_FLAGS "%s")\n' % " ".join(cflags))
-                        f.write('set(VCPKG_CXX_FLAGS "%s")\n' % " ".join(cxxflags))
+                        f.write('set(VCPKG_C_FLAGS "{}")\n'.format(" ".join(cflags)))
+                        f.write('set(VCPKG_CXX_FLAGS "{}")\n'.format(" ".join(cxxflags)))
                         f.write(
                             "list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DBENCHMARK_ENABLE_WERROR=OFF)\n"
                         )
                         if ldflags:
-                            f.write('set(VCPKG_LINKER_FLAGS "%s")\n' % " ".join(ldflags))
+                            f.write('set(VCPKG_LINKER_FLAGS "{}")\n'.format(" ".join(ldflags)))
                         add_port_configs(f)
 
 
@@ -103,7 +103,7 @@ for os_name in ["linux", "osx"]:
                 for crt_linkage in crt_linkages:
                     if enable_asan and enable_binskim:
                         continue
-                    for target_ABI in target_abis:
+                    for target_abi in target_abis:
                         folder_name_parts = []
                         if enable_asan:
                             folder_name_parts.append("asan")
@@ -115,15 +115,15 @@ for os_name in ["linux", "osx"]:
                             folder_name = "default"
                         else:
                             folder_name = "_".join(folder_name_parts)
-                        file_name_parts = [target_ABI, os_name]
+                        file_name_parts = [target_abi, os_name]
                         file_name = "-".join(file_name_parts) + ".cmake"
                         dest_path = os.path.join(folder_name, file_name)
-                        print("Creating file %s" % dest_path)
+                        print("Creating file {}".format(dest_path))
                         os.makedirs(folder_name, exist_ok=True)
                         with open(dest_path, "w", encoding="utf-8") as f:
                             add_copyright_header(f)
-                            f.write("set(VCPKG_TARGET_ARCHITECTURE %s)\n" % target_ABI)
-                            f.write("set(VCPKG_CRT_LINKAGE %s)\n" % crt_linkage)
+                            f.write("set(VCPKG_TARGET_ARCHITECTURE {})\n".format(target_abi))
+                            f.write("set(VCPKG_CRT_LINKAGE {})\n".format(crt_linkage))
                             f.write("set(VCPKG_LIBRARY_LINKAGE static)\n")
                             ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now", "-Wl,-z,noexecstack"]
                             cflags = []
@@ -133,7 +133,7 @@ for os_name in ["linux", "osx"]:
                                     "-Wp,-D_GLIBCXX_ASSERTIONS",
                                     "-fstack-protector-strong",
                                 ]
-                                if target_ABI == "x64":
+                                if target_abi == "x64":
                                     cflags += ["-fstack-clash-protection", "-fcf-protection"]
                             elif enable_asan:
                                 cflags += ["-fsanitize=address"]
@@ -145,8 +145,8 @@ for os_name in ["linux", "osx"]:
                             cxxflags = cflags.copy()
                             if not enable_rtti:
                                 cxxflags.append("-fno-rtti")
-                            f.write('set(VCPKG_C_FLAGS "%s")\n' % " ".join(cflags))
-                            f.write('set(VCPKG_CXX_FLAGS "%s")\n' % " ".join(cxxflags))
+                            f.write('set(VCPKG_C_FLAGS "{}")\n'.format(" ".join(cflags)))
+                            f.write('set(VCPKG_CXX_FLAGS "{}")\n'.format(" ".join(cxxflags)))
                             if os_name == "linux":
                                 f.write("set(VCPKG_CMAKE_SYSTEM_NAME Linux)\n")
                             else:
@@ -158,5 +158,5 @@ for os_name in ["linux", "osx"]:
                             )
 
                             if ldflags:
-                                f.write('set(VCPKG_LINKER_FLAGS "%s")\n' % " ".join(ldflags))
+                                f.write('set(VCPKG_LINKER_FLAGS "{}")\n'.format(" ".join(ldflags)))
                             add_port_configs(f)
