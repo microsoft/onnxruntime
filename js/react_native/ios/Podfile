@@ -1,7 +1,7 @@
 require_relative '../node_modules/react-native/scripts/react_native_pods'
 require_relative '../node_modules/@react-native-community/cli-platform-ios/native_modules'
 
-platform :ios, '13.0'
+platform :ios, '15.1'
 
 pre_install do |installer|
   # Custom pre-install script or commands
@@ -50,7 +50,7 @@ post_install do |installer|
     installer.generated_projects.each do |project|
         project.targets.each do |target|
             target.build_configurations.each do |config|
-                config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+                config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
                 # TODO: remove this once we migrate the Pipelines to use arm64 MacOS
                 config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = "arm64"
             end
