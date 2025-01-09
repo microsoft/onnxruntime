@@ -11,6 +11,11 @@ def add_port_configs(f):
         "-DONNX_DISABLE_STATIC_REGISTRATION=ON"
     )
 endif()
+if(PORT MATCHES "benchmark")
+    list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS
+        "-DBENCHMARK_ENABLE_WERROR=OFF"
+    )
+endif()
 """
     )
 
@@ -85,9 +90,7 @@ for enable_rtti in [True, False]:
                         # TODO: should it be a cmake list separated by semicolons?
                         f.write('set(VCPKG_C_FLAGS "{}")\n'.format(" ".join(cflags)))
                         f.write('set(VCPKG_CXX_FLAGS "{}")\n'.format(" ".join(cxxflags)))
-                        f.write(
-                            "list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DBENCHMARK_ENABLE_WERROR=OFF)\n"
-                        )
+                        f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error)\n")
                         if ldflags:
                             f.write('set(VCPKG_LINKER_FLAGS "{}")\n'.format(" ".join(ldflags)))
                         add_port_configs(f)

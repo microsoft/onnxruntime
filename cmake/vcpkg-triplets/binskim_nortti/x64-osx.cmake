@@ -15,3 +15,8 @@ if(PORT MATCHES "onnx")
         "-DONNX_DISABLE_STATIC_REGISTRATION=ON"
     )
 endif()
+if(PORT MATCHES "benchmark")
+    list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS
+        "-DBENCHMARK_ENABLE_WERROR=OFF"
+    )
+endif()
