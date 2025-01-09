@@ -48,7 +48,7 @@ static Qnn_Version_t GetQnnInterfaceApiVersion(const QnnSystemInterface_t* qnn_i
   return qnn_interface->systemApiVersion;
 }
 
-static char* DlError() {
+static const char* DlError() {
 #ifdef _WIN32
   return "";
 #else
