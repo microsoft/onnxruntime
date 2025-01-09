@@ -41,6 +41,12 @@ Learn more &rarr; [here](https://www.onnxruntime.ai/docs)
     - https://onnxruntime.ai/docs/execution-providers/QNN-ExecutionProvider.html
   - CPU Execution Provider
 
+#### Intel.ML.OnnxRuntime.OpenVino
+  - 64-bit Windows
+  - OpenVINO Execution Provider
+    - https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html
+  - CPU Execution Provider
+
 
 ### Other packages
 
