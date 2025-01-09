@@ -117,6 +117,9 @@ jobs:
       with:
         python-version: ${{ env.python_version }}
 
+    - name: "Gen triplets"
+      run: cd cmake/vcpkg-triplets && python3 gen.py
+
     - name: "Run Homebrew"
       run: brew install autoconf automake autoconf-archive
 
