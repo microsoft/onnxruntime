@@ -464,10 +464,11 @@ void HostApplyLayerNorm(
       skip, bias, skip_input_bias_add_output);
 }
 
-#define LAYERNORM_LINEAR_IMPL(T, U, V, simplified)                                                                    \
-  template void HostApplyLayerNorm<T, U, V, simplified>(const cudaDeviceProp& prop, cudaStream_t stream, V* output,   \
-                                                        U* mean, U* inv_std_dev, const T* input, int n1, int n2,      \
-                                                        double epsilon, const V* gamma, const V* beta, int broadcast, \
+#define LAYERNORM_LINEAR_IMPL(T, U, V, simplified)                                                                  \
+  template void HostApplyLayerNorm<T, U, V, simplified>(const cudaDeviceProp& prop, cudaStream_t stream, V* output, \
+                                                        U* mean, U* inv_std_dev, const T* input, int n1, int n2,    \
+                                                        double epsilon, const V* gamma, const V* beta,              \
+                                                        int broadcast_param,                                        \
                                                         const T* skip, const T* bias, T* skip_input_bias_add_output);
 
 LAYERNORM_LINEAR_IMPL(float, float, float, true)
