@@ -3352,6 +3352,8 @@ TEST(GradientCheckerTest, ResizeGrad) {
 
 #endif  // USE_CUDA
 
+TEST(GradientCheckerTest, AtanGrad) { UnaryOpGradientTest("Atan"); }
+
 }  // namespace test
 }  // namespace onnxruntime
 
