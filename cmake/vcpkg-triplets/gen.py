@@ -152,7 +152,7 @@ for os_name in ["linux", "osx"]:
                             else:
                                 f.write("set(VCPKG_CMAKE_SYSTEM_NAME Darwin)\n")
                                 f.write("set(VCPKG_OSX_ARCHITECTURES x86_64)\n")
-                            f.write("set(CMAKE_POSITION_INDEPENDENT_CODE ON)")
+                            f.write("set(CMAKE_POSITION_INDEPENDENT_CODE ON)\n")
                             f.write(
                                 "list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DBENCHMARK_ENABLE_WERROR=OFF)\n"
                             )
