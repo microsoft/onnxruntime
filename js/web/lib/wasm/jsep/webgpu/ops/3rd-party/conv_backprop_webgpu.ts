@@ -45,7 +45,9 @@ export const createConvTranspose2DProgramInfo = (
   const wShape = inputs[1].dims;
   const inputChannelsPerGroup = wShape[2] / group;
   const outputChannelsPerGroup = wShape[3];
+  const aComponents = isChannelsLast ? getMaxComponents(inputChannelsPerGroup) : 1;
   const components = isChannelsLast ? getMaxComponents(outputChannelsPerGroup) : 1;
+  const bComponents = isChannelsLast ? (outputChannelsPerGroup === 1 ? aComponents : components) : 1;
   const outputSize = ShapeUtil.size(outputShape) / components;
   const dispatch = [Math.ceil(outputSize / 64), 1, 1];
   LOG_DEBUG('verbose', () => `[conv2d_backprop_webgpu] dispatch = ${dispatch}`);
@@ -102,14 +104,36 @@ export const createConvTranspose2DProgramInfo = (
     const colDim = isChannelsLast ? 2 : 3;
     const channelDim = isChannelsLast ? 3 : 1;
 
-    const w = inputVariable('W', inputs[1].dataType, inputs[1].dims.length, components);
-    const dy = inputVariable('Dy', inputs[0].dataType, inputs[0].dims.length);
+    const w = inputVariable('W', inputs[1].dataType, inputs[1].dims.length, bComponents);
+    const dy = inputVariable('Dy', inputs[0].dataType, inputs[0].dims.length, aComponents);
     const inputVariables = [dy, w];
     if (hasBias) {
       inputVariables.push(inputVariable('bias', inputs[2].dataType, [outputShape[channelDim]].length, components));
     }
     const output = outputVariable('result', inputs[0].dataType, outputShape.length, components);
 
+    const calculateResult = (): string => {
+      let calcStr = '';
+      if (aComponents === 1) {
+        calcStr += `
+        let w_offset = ${w.indicesToOffset(`${w.type.indices}(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel)`)};
+        let wValue = ${w.getByOffset(`w_offset / ${bComponents}`)};
+        dotProd = dotProd + xValue * wValue;`;
+      } else {
+        if (outputChannelsPerGroup === 1) {
+          calcStr += `
+          let wValue = ${w.getByOffset(`${w.indicesToOffset(`${w.type.indices}(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel)`)} / ${bComponents}`)};
+          dotProd = dotProd + dot(xValue, wValue);`;
+        } else {
+          for (let c = 0; c < aComponents; c++) {
+            calcStr += `
+            let wValue${c} = ${w.getByOffset(`${w.indicesToOffset(`${w.type.indices}(u32(wRPerm), u32(wCPerm), inputChannel + ${c}, wOutChannel)`)} / ${bComponents}`)};
+            dotProd = dotProd + xValue[${c}] * wValue${c};`;
+          }
+        }
+      }
+      return calcStr;
+    };
     const codeSnippet = `
             let outputIndices = ${output.offsetToIndices(`global_idx * ${components}`)};
             let batch = ${output.indicesGet('outputIndices', 0)};
@@ -134,6 +158,7 @@ export const createConvTranspose2DProgramInfo = (
                   wRPerm < 0) {
                 continue;
               }
+              wR = wR + uniforms.strides[0] - 1;
               let idyR: u32 = u32(dyR);
 
               for (var wC: u32 = 0; wC < uniforms.effective_filter_dims.y; wC = wC + 1) {
@@ -146,18 +171,19 @@ export const createConvTranspose2DProgramInfo = (
                     fract(dyC) > 0.0 || wCPerm < 0) {
                   continue;
                 }
+                wC = wC + uniforms.strides.y - 1;
                 let idyC: u32 = u32(dyC);
                 var inputChannel = groupId * uniforms.input_channels_per_group;
-                for (var d2: u32 = 0; d2 < uniforms.input_channels_per_group; d2 = d2 + 1) {
+                for (var d2: u32 = 0; d2 < uniforms.input_channels_per_group; d2 = d2 + ${aComponents}) {
                   let xValue = ${
                     isChannelsLast
-                      ? dy.get('batch', 'idyR', 'idyC', 'inputChannel')
+                      ? dy.getByOffset(
+                          `${dy.indicesToOffset(`${dy.type.indices}(batch, idyR, idyC, inputChannel)`)} / ${aComponents}`,
+                        )
                       : dy.get('batch', 'inputChannel', 'idyR', 'idyC')
                   };
-                  let w_offset = ${w.indicesToOffset(`${w.type.indices}(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel)`)};
-                  let wValue = ${w.getByOffset(`w_offset / ${components}`)};
-                  dotProd = dotProd + xValue * wValue;
-                  inputChannel = inputChannel + 1;
+                  ${calculateResult()}
+                  inputChannel = inputChannel + ${aComponents};
                 }
               }
             }
@@ -174,7 +200,10 @@ export const createConvTranspose2DProgramInfo = (
 
   return {
     name: 'ConvTranspose2D',
-    shaderCache: { hint: `${attributes.cacheKey};${components}`, inputDependencies },
+    shaderCache: {
+      hint: `${attributes.cacheKey};${aComponents}${bComponents}${components}${outputChannelsPerGroup === 1}`,
+      inputDependencies,
+    },
     getRunData: () => ({
       dispatchGroup: { x: dispatch[0], y: dispatch[1], z: dispatch[2] },
       outputs: [
