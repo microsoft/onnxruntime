@@ -19,10 +19,10 @@ export interface ScatterNDAttributes extends AttributeWithCacheKey {
   reduction: string;
 }
 
-type ReductionType = 'i32' | 'u32' | 'f32';
+type ReductionType = 'i32' | 'u32' | 'f32' | 'f16';
 
 const atomicReductionSnippet = (reduction: string, ptr: string, v: string, type: ReductionType) => {
-  if (reduction !== 'none' && type !== 'i32' && type !== 'u32' && type !== 'f32') {
+  if (reduction !== 'none' && type !== 'i32' && type !== 'u32' && type !== 'f32' && type !== 'f16') {
     throw new Error(`Input ${type} is not supported with reduction ${reduction}.`);
   }
 
@@ -42,6 +42,9 @@ const atomicReductionSnippet = (reduction: string, ptr: string, v: string, type:
 
   switch (reduction) {
     case 'none':
+      if (type === 'f16') {
+        return `${ptr} = bitcast<${type}>(${v});`;
+      }
       return `${ptr}=${v};`;
     case 'add':
       if (type === 'i32' || type === 'u32') {
