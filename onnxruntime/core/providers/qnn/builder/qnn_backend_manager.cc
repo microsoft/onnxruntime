@@ -316,7 +316,7 @@ QnnLog_Level_t QnnBackendManager::MapOrtSeverityToQNNLogLevel(logging::Severity 
 }
 
 Status QnnBackendManager::ResetQnnLogLevel(std::optional<logging::Severity> ort_log_level) {
-  std::lock_guard<std::mutex> lock(logger_mutex_);
+  std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
   if (!backend_setup_completed_ || logger_ == nullptr) {
     return Status::OK();
   }
@@ -810,50 +810,78 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
                                        bool load_from_cached_context,
                                        bool need_load_system_lib) {
-  std::lock_guard<std::mutex> lock(logger_mutex_);
+  std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
   if (backend_setup_completed_) {
     LOGS(logger, VERBOSE) << "Backend setup already!";
     return Status::OK();
   }
 
+  Status status = Status::OK();
   if (qnn_saver_path_.empty()) {
-    ORT_RETURN_IF_ERROR(LoadBackend());
+    status = LoadBackend();
   } else {
-    ORT_RETURN_IF_ERROR(LoadQnnSaverBackend());
+    status = LoadQnnSaverBackend();
+  }
+  if (status.IsOK()) {
+    LOGS(logger, VERBOSE) << "LoadBackend succeed.";
   }
 
-  LOGS(logger, VERBOSE) << "LoadBackend succeed.";
-
-  if (load_from_cached_context || need_load_system_lib) {
-    ORT_RETURN_IF_ERROR(LoadQnnSystemLib());
+  if (status.IsOK() && (load_from_cached_context || need_load_system_lib)) {
+    status = LoadQnnSystemLib();
   }
 
-  sdk_build_version_ = GetBackendBuildId();
-  LOGS(logger, VERBOSE) << "Backend build version: "
-                        << sdk_build_version_;
+  if (status.IsOK()) {
+    sdk_build_version_ = GetBackendBuildId();
+    LOGS(logger, VERBOSE) << "Backend build version: "
+                          << sdk_build_version_;
+  }
 
-  ORT_RETURN_IF_ERROR(InitializeQnnLog(logger));
-  LOGS(logger, VERBOSE) << "SetLogger succeed.";
+  if (status.IsOK()) {
+    status = InitializeQnnLog(logger);
+  }
+  if (status.IsOK()) {
+    LOGS(logger, VERBOSE) << "SetLogger succeed.";
+  }
 
-  ORT_RETURN_IF_ERROR(InitializeBackend());
-  LOGS(logger, VERBOSE) << "InitializeBackend succeed.";
+  if (status.IsOK()) {
+    status = InitializeBackend();
+  }
+  if (status.IsOK()) {
+    LOGS(logger, VERBOSE) << "InitializeBackend succeed.";
+  }
 
-  ORT_RETURN_IF_ERROR(CreateDevice());
-  LOGS(logger, VERBOSE) << "CreateDevice succeed.";
+  if (status.IsOK()) {
+    status = CreateDevice();
+  }
+  if (status.IsOK()) {
+    LOGS(logger, VERBOSE) << "CreateDevice succeed.";
+  }
 
-  ORT_RETURN_IF_ERROR(InitializeProfiling());
-  LOGS(logger, VERBOSE) << "InitializeProfiling succeed.";
+  if (status.IsOK()) {
+    status = InitializeProfiling();
+  }
+  if (status.IsOK()) {
+    LOGS(logger, VERBOSE) << "InitializeProfiling succeed.";
+  }
 
   if (!load_from_cached_context) {
-    ORT_RETURN_IF_ERROR(CreateContext());
-    LOGS(logger, VERBOSE) << "CreateContext succeed.";
+    if (status.IsOK()) {
+      status = CreateContext();
+    }
+    if (status.IsOK()) {
+      LOGS(logger, VERBOSE) << "CreateContext succeed.";
+    }
   }
 
-  LOGS(logger, VERBOSE) << "QNN SetupBackend succeed";
+  if (status.IsOK()) {
+    LOGS(logger, VERBOSE) << "QNN SetupBackend succeed";
+    backend_setup_completed_ = true;
+  } else {
+    LOGS_DEFAULT(WARNING) << "Failed to setup so cleaning up";
+    ReleaseResources();
+  }
 
-  backend_setup_completed_ = true;
-
-  return Status::OK();
+  return status;
 }
 
 Status QnnBackendManager::CreateHtpPowerCfgId(uint32_t device_id, uint32_t core_id, uint32_t& htp_power_config_id) {
@@ -1059,7 +1087,7 @@ Status QnnBackendManager::DestroyHTPPowerConfigID(uint32_t htp_power_config_id) 
 }
 
 Status QnnBackendManager::TerminateQnnLog() {
-  std::lock_guard<std::mutex> lock(logger_mutex_);
+  std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
   if (logger_ == nullptr) {
     return Status::OK();
   }
@@ -1067,7 +1095,7 @@ Status QnnBackendManager::TerminateQnnLog() {
   if (nullptr != qnn_interface_.logFree && nullptr != log_handle_) {
     auto ret_val = qnn_interface_.logFree(log_handle_);
 
-    // Reset QNN log handle to nullptr so other threads that are waiting on logger_mutex_ know it was freed.
+    // Reset QNN log handle to nullptr so other threads that are waiting on logger_recursive_mutex_ know it was freed.
     log_handle_ = nullptr;
     ORT_RETURN_IF(QNN_SUCCESS != ret_val,
                   "Unable to terminate logging in the backend.");
@@ -1083,33 +1111,33 @@ void QnnBackendManager::ReleaseResources() {
 
   auto result = ReleaseContext();
   if (Status::OK() != result) {
-    ORT_THROW("Failed to ReleaseContext.");
+    LOGS_DEFAULT(ERROR) << "Failed to ReleaseContext.";
   }
 
   result = ReleaseProfilehandle();
   if (Status::OK() != result) {
-    ORT_THROW("Failed to ReleaseProfilehandle.");
+    LOGS_DEFAULT(ERROR) << "Failed to ReleaseProfilehandle.";
   }
 
   result = ReleaseDevice();
   if (Status::OK() != result) {
-    ORT_THROW("Failed to ReleaseDevice.");
+    LOGS_DEFAULT(ERROR) << "Failed to ReleaseDevice.";
   }
 
   result = ShutdownBackend();
   if (Status::OK() != result) {
-    ORT_THROW("Failed to ShutdownBackend.");
+    LOGS_DEFAULT(ERROR) << "Failed to ShutdownBackend.";
   }
 
   result = TerminateQnnLog();
   if (Status::OK() != result) {
-    ORT_THROW("Failed to TerminateQnnLog.");
+    LOGS_DEFAULT(ERROR) << "Failed to TerminateQnnLog.";
   }
 
   if (backend_lib_handle_) {
     result = UnloadLib(backend_lib_handle_);
     if (Status::OK() != result) {
-      ORT_THROW("Failed to unload backend library.");
+      LOGS_DEFAULT(ERROR) << "Failed to unload backend library.";
     }
   }
 

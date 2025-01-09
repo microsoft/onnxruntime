@@ -497,47 +497,43 @@ Status QnnModelWrapper::GetTensorInfo(const NodeUnitIODef& input, TensorInfo& te
   return Status::OK();
 }
 
-Status QnnModelWrapper::AddReshapeNode(const std::string& input_name,
-                                       const std::string& output_name,
+Status QnnModelWrapper::AddReshapeNode(const std::string& input_name, const std::string& output_name,
                                        const std::vector<uint32_t>& input_shape,
                                        const std::vector<uint32_t>& output_shape,
                                        const Qnn_DataType_t& tensor_data_type,
-                                       const QnnQuantParamsWrapper& quantize_param,
-                                       bool do_op_validation,
-                                       bool is_for_input,
-                                       bool is_for_output) {
-  // Do not allow QNN EP to insert Reshape nodes with per-channel quantization on dynamic tensors.
-  // We could technically support this by shifting the quantization param's axis value, but
-  // we don't need this right now.
-  ORT_RETURN_IF(quantize_param.IsPerChannel(),
-                "Do not support inserted Reshape nodes with per-channel quantization");
-  QnnTensorWrapper input_tensorwrapper(input_name,
-                                       is_for_input ? QNN_TENSOR_TYPE_APP_WRITE : QNN_TENSOR_TYPE_NATIVE,
-                                       tensor_data_type,
-                                       quantize_param.Copy(),
+                                       const QnnQuantParamsWrapper& input_quantize_param,
+                                       const QnnQuantParamsWrapper& output_quantize_param, bool do_op_validation,
+                                       bool is_for_input, bool is_for_output) {
+  QnnTensorWrapper input_tensorwrapper(input_name, is_for_input ? QNN_TENSOR_TYPE_APP_WRITE : QNN_TENSOR_TYPE_NATIVE,
+                                       tensor_data_type, input_quantize_param.Copy(),
                                        std::vector<uint32_t>(input_shape));
   ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(input_tensorwrapper)),
                     "QNN EP: Failed to add input tensor for inserted Reshape.");
 
   Qnn_TensorType_t tensor_type = is_for_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
-  QnnTensorWrapper output_tensorwrapper(output_name,
-                                        tensor_type,
-                                        tensor_data_type,
-                                        quantize_param.Copy(),
+  QnnTensorWrapper output_tensorwrapper(output_name, tensor_type, tensor_data_type, output_quantize_param.Copy(),
                                         std::vector<uint32_t>(output_shape));
   ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(output_tensorwrapper)),
                     "QNN EP: Failed to add output tensor for inserted Reshape.");
 
-  ORT_RETURN_IF_NOT(CreateQnnNode(output_name,
-                                  QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                  QNN_OP_RESHAPE,
-                                  {input_name},
-                                  {output_name},
-                                  {},
-                                  do_op_validation),
+  ORT_RETURN_IF_NOT(CreateQnnNode(output_name, QNN_OP_PACKAGE_NAME_QTI_AISW, QNN_OP_RESHAPE, {input_name},
+                                  {output_name}, {}, do_op_validation),
                     "QNN EP: Failed to create manually inserted Qnn Reshape node.");
 
   return Status::OK();
+}
+
+Status QnnModelWrapper::AddReshapeNode(const std::string& input_name, const std::string& output_name,
+                                       const std::vector<uint32_t>& input_shape,
+                                       const std::vector<uint32_t>& output_shape,
+                                       const Qnn_DataType_t& tensor_data_type,
+                                       const QnnQuantParamsWrapper& quantize_param, bool do_op_validation,
+                                       bool is_for_input, bool is_for_output) {
+  // Do not allow QNN EP to insert Reshape nodes with per-channel quantization on dynamic tensors
+  // if only one quantization param is provided.
+  ORT_RETURN_IF(quantize_param.IsPerChannel(), "Do not support inserted Reshape nodes with per-channel quantization");
+  return AddReshapeNode(input_name, output_name, input_shape, output_shape, tensor_data_type, quantize_param,
+                        quantize_param, do_op_validation, is_for_input, is_for_output);
 }
 
 Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
