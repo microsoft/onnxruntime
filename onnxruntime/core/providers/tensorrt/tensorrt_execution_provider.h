@@ -332,12 +332,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::string cache_prefix_;
   bool engine_hw_compatible_ = false;
   std::string op_types_to_exclude_;
-  // std::unique_ptr<FusedNodeAndGraph> trt_ep_context_model_;
-  // InlinedVector<const Node*> trt_ep_context_nodes;
-  // std::unique_ptr<Graph> trt_ep_context_nodes;
-  // std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>;
-  // std::unordered_map<std::string, std::unique_ptr<Model>> trt_ep_context_models;
-  std::vector<std::unique_ptr<Model>> trt_ep_context_models; // *#* TODO need ep context node name as key?
+  std::vector<std::unique_ptr<Model>> trt_ep_context_models;
 
   // The format is as for TENSORRT_VERSION: (MAJOR * 100 + MINOR) * 100 + PATCH
   int32_t trt_version_;
@@ -599,66 +594,4 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    */
   nvinfer1::IBuilder* GetBuilder(TensorrtLogger& trt_logger) const;
 };
-
-// class SharedContext {
-//  public:
-//   static SharedContext& GetInstance() {
-//     static SharedContext instance_;
-//     return instance_;
-//   }
-
-//   bool HasSharedTrtModels() {
-//     const std::lock_guard<std::mutex> lock(mtx_);
-//     return !shared_trt_models_.empty();
-//   }
-
-//   bool HasTrtModel(const std::string& model_name) {
-//     auto it = find_if(shared_trt_models_.begin(), shared_trt_models_.end(),
-//                       [&model_name](const std::unique_ptr<FusedNodeAndGraph>& trt_model) { return trt_model->Name() == model_name; });
-//     return it != shared_trt_models_.end();
-//   }
-
-//   std::unique_ptr<FusedNodeAndGraph> GetSharedTrtModel(const std::string& model_name) {
-//     const std::lock_guard<std::mutex> lock(mtx_);
-//     auto it = find_if(shared_trt_models_.begin(), shared_trt_models_.end(),
-//                       [&model_name](const std::unique_ptr<FusedNodeAndGraph>& trt_model) { return trt_model->Name() == model_name; });
-//     if (it == shared_trt_models_.end()) {
-//       return nullptr;
-//     }
-//     auto trt_model = std::move(*it);
-//     shared_trt_models_.erase(it);
-//     return trt_model;
-//   }
-
-//   bool SetSharedTrtModel(std::vector<std::unique_ptr<FusedNodeAndGraph>>&& shared_trt_models,
-//                          std::string& duplicate_graph_names) {
-//     const std::lock_guard<std::mutex> lock(mtx_);
-//     bool graph_exist = false;
-//     for (auto& shared_trt_model : shared_trt_models) {
-//       auto& model_name = shared_trt_model->Name();
-//       auto it = find_if(shared_trt_models_.begin(), shared_trt_models_.end(),
-//                         [&model_name](const std::unique_ptr<FusedNodeAndGraph>& trt_model) { return trt_model->Name() == model_name; });
-//       if (it == shared_trt_models_.end()) {
-//         shared_trt_models_.push_back(std::move(shared_trt_model));
-//       } else {
-//         duplicate_graph_names.append(model_name + " ");
-//         graph_exist = true;
-//       }
-//     }
-
-//     return graph_exist;
-//   }
-
-//  private:
-//   SharedContext() = default;
-//   ~SharedContext() = default;
-//   SharedContext(const SharedContext&) = delete;
-//   SharedContext& operator=(const SharedContext&) = delete;
-
-//   // std::vector<std::unique_ptr<trt::trtModel>> shared_trt_models_;
-//   std::vector<<std::unique_ptr<FusedNodeAndGraph>> shared_trt_models_;
-//   // Producer sessions can be in parallel
-//   // Consumer sessions have to be after producer sessions initialized
-//   std::mutex mtx_;
-// }; //SharedContext class
 }  // namespace onnxruntime

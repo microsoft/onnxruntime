@@ -28,20 +28,7 @@ int FindCtxNodeInGraph(const GraphViewer& graph_viewer);
 
 const std::filesystem::path& GetModelPath(const GraphViewer& graph_viewer);
 std::filesystem::path GetPathOrParentPathOfCtxModel(const std::string& ep_context_file_path);
-// ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
-// std::unique_ptr<GraphViewer> CreateCtxModel(const GraphViewer& graph_viewer,
-// std::unique_ptr<Graph> CreateCtxModel(const GraphViewer& graph_viewer,
-// Status CreateCtxModel(const GraphViewer& graph_viewer,
-ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
-                                           const std::string engine_cache_path,
-                                           char* engine_data,
-                                           size_t size,
-                                           const int64_t embed_mode,
-                                           const std::string compute_capability,
-                                           const std::string onnx_model_path,
-                                           const logging::Logger* logger);
-
-std::unique_ptr<Model> CreateCtxModel2(const GraphViewer& graph_viewer,
+std::unique_ptr<Model> CreateCtxModel(const GraphViewer& graph_viewer,
                                           const std::string fused_subgraph_name,
                                            const std::string engine_cache_path,
                                            char* engine_data,

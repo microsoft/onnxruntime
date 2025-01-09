@@ -58,7 +58,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
   Ort::SessionOptions session_options;
 
   // Set any extra session configuration entries provided by the user via command-line arguments.
-  //
+  // This needs to happen before ep initialization, as some of the entries are used by the ep.
   // Some session config entries can also be set via dedicated command-line options.
   // If the user uses multiple command-line options to set the same session config entry,
   // we'll print a warning. Note that the dedicated command-line options will take precedence.

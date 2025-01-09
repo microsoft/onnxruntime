@@ -2215,7 +2215,9 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
 #if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
   auto ep_context_cache_enabled_from_provider_options = tensorrt_options->trt_dump_ep_context_model != 0;
   auto ep_context_cache_enabled_from_sess_options = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
-
+  LOGS_DEFAULT(VERBOSE) << "*#* options->value=" << options->value;
+  LOGS_DEFAULT(VERBOSE) << "*#*  ep_context_cache_enabled_from_provider_options=" << ep_context_cache_enabled_from_provider_options << 
+    " ep_context_cache_enabled_from_sess_options=" << ep_context_cache_enabled_from_sess_options;
   // If EP context configs are provided in session options, we need to propagate them to provider options. However,
   // if provider options already have the EP context configs provided, the configs in session options will be ignored
   // since provider options has higher priority than session options.
