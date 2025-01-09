@@ -246,16 +246,7 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_NoBroadcast) {
   test.AddInput<float>("x", dims, {-1.0f, 2.0f, 3.0f, -4.0f, -10.264f, 8.6453f, 43.1561f, -0.641239f});
   test.AddInput<float>("gamma", {2, 2, 2}, {-0.1f, 1.7f, -0.6953f, 5.1824f, -0.1f, 1.7f, -0.6953f, 5.1824f});
   test.AddInput<float>("bias", {2, 2, 2}, {-2.0f, 0.3f, 0.0f, 0.0f, -2.0f, 0.3f, 0.0f, 0.0f});
-  test.AddOutput<float>("output", dims, {
-                                            -1.9f,
-                                            2.0f,
-                                            -0.6953f,
-                                            -5.1824f,
-                                            -1.9f,
-                                            2.0f,
-                                            -0.6953f,
-                                            -5.1824f,
-                                        });
+  test.AddOutput<float>("output", dims, {-1.9f, 2.0f, -0.6953f, -5.1824f, -1.9f, 2.0f, -0.6953f, -5.1824f});
 
   test.SetOutputTolerance(0.0001f);
 
@@ -267,8 +258,7 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_Broadcast_Dim0) {
   test.AddAttribute<float>("epsilon", 1e-05f);
 
   std::vector<int64_t> dims{4, 2, 2};
-  test.AddInput<float>("x", dims,
-                       {-1.0f, 2.0f, -10.264f, 8.6453f, 3.0f, -4.0f, 43.1561f, -0.641239f, -5.0f, 6.0f, -8.2164f, 0.11412f, 7.0f, 8.0f, 41.3156f, 3.0458f});
+  test.AddInput<float>("x", dims, {-1.0f, 2.0f, -10.264f, 8.6453f, 3.0f, -4.0f, 43.1561f, -0.641239f, -5.0f, 6.0f, -8.2164f, 0.11412f, 7.0f, 8.0f, 41.3156f, 3.0458f});
   test.AddInput<float>("gamma", {1, 2, 2}, {-0.1f, 1.7f, -0.6953f, 5.1824f});
   test.AddInput<float>("bias", {1, 2, 2}, {-2.0f, 0.3f, 0.0f, 0.0f});
   test.AddOutput<float>("output", dims, {-1.9f, 2.0f, 0.6953f, 5.1824f, -2.1f, -1.4f, -0.6953f, -5.1824f, -1.9f, 2.0f, 0.6953f, 5.1824f, -1.9f, 2.0f, -0.6953f, -5.1824f});
