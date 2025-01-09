@@ -4500,15 +4500,14 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_KR) {
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_KR_neg) {
   FastReduceKind fast_kind;
   TensorShapeVector fast_shape, fast_output_shape, fast_axes;
-  TensorShapeVector expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
 
   // KR - keep_dims=1
   fast_kind = OptimizeShapeForFastReduce(
       TensorShapeVector{10, 11}, TensorShapeVector{-1},
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = TensorShapeVector{10, 11};
-  expected_fast_output_shape = TensorShapeVector{10, 1};
-  expected_fast_axes = TensorShapeVector{1};
+  TensorShapeVector expected_fast_shape{10, 11};
+  TensorShapeVector expected_fast_output_shape{10, 1};
+  TensorShapeVector expected_fast_axes{1};
   ASSERT_EQ(fast_kind, FastReduceKind::kKR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);

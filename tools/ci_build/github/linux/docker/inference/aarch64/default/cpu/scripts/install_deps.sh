@@ -40,15 +40,6 @@ cd /tmp/src
 
 CPU_ARCH=$(uname -m)
 
-echo "Installing Ninja"
-GetFile https://github.com/ninja-build/ninja/archive/v1.10.0.tar.gz /tmp/src/ninja-linux.tar.gz
-tar -zxf ninja-linux.tar.gz
-pushd ninja-1.10.0
-cmake -Bbuild-cmake -H.
-cmake --build build-cmake
-mv ./build-cmake/ninja /usr/bin
-popd
-
 echo "Installing Node.js"
 
 if [[ "$CPU_ARCH" = "x86_64" ]]; then

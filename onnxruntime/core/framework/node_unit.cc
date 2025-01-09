@@ -421,7 +421,9 @@ std::vector<const Node*> NodeUnit::GetAllNodesInGroup() const noexcept {
   if (redundant_clip_node_) {
     all_nodes.push_back(redundant_clip_node_);
   }
-  all_nodes.insert(all_nodes.end(), q_nodes_.begin(), q_nodes_.end());
+  all_nodes.reserve(all_nodes.size() + q_nodes_.size());
+  for (auto& n : q_nodes_)
+    all_nodes.push_back(n);
   return all_nodes;
 }
 

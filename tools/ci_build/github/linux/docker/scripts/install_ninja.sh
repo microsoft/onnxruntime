@@ -34,16 +34,3 @@ function GetFile {
   return $?
 }
 
-mkdir -p /tmp/src
-cd /tmp/src
-
-echo "Installing Ninja"
-GetFile https://github.com/ninja-build/ninja/archive/v1.10.0.tar.gz /tmp/src/ninja-linux.tar.gz
-tar -zxf ninja-linux.tar.gz
-cd ninja-1.10.0
-cmake -Bbuild-cmake -H.
-cmake --build build-cmake
-mv ./build-cmake/ninja /usr/bin
-
-cd /
-rm -rf /tmp/src
