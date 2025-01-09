@@ -166,16 +166,6 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
       // Omitting zero dim subgraphs
       for (auto index : this_cluster) {
         const Node* node = graph_viewer_.GetNode(index);
-        if (data_ops_->DoNotOmitSubGraph(node->OpType())) {
-          for (const auto& input : node->InputDefs()) {
-            const auto& input_name = input->Name();
-            auto it = find(cluster_graph_inputs.begin(), cluster_graph_inputs.end(), input_name);
-            if (it != cluster_graph_inputs.end()) {
-              omit_subgraph = true;
-              break;
-            }
-          }
-        }
 
         if (node->OpType() == "Conv" || node->OpType() == "Identity") {
           const auto& output_name = node->OutputDefs()[0]->Name();
