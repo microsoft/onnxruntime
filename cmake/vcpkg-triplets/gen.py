@@ -130,7 +130,7 @@ for os_name in ["linux", "osx"]:
                             add_copyright_header(f)
                             if target_abi == "universal2":
                                 # Assume the host machine is Intel based
-                                f.write(f"set(VCPKG_TARGET_ARCHITECTURE x64)\n")
+                                f.write("set(VCPKG_TARGET_ARCHITECTURE x64)\n")
                             else:
                                 f.write(f"set(VCPKG_TARGET_ARCHITECTURE {target_abi})\n")
                             f.write(f"set(VCPKG_CRT_LINKAGE {crt_linkage})\n")
