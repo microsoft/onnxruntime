@@ -864,6 +864,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
     backend_setup_completed_ = true;
   } else {
     LOGS_DEFAULT(WARNING) << "Failed to setup so cleaning up";
+    backend_setup_completed_ = true; // Otherwise release will do nothing
     ReleaseResources();
   }
 
