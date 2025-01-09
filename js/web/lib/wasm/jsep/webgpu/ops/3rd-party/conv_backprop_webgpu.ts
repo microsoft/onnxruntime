@@ -171,7 +171,7 @@ export const createConvTranspose2DProgramInfo = (
                     fract(dyC) > 0.0 || wCPerm < 0) {
                   continue;
                 }
-                wC = wC + uniforms.strides.y -1;
+                wC = wC + uniforms.strides.y - 1;
                 let idyC: u32 = u32(dyC);
                 var inputChannel = groupId * uniforms.input_channels_per_group;
                 for (var d2: u32 = 0; d2 < uniforms.input_channels_per_group; d2 = d2 + ${aComponents}) {
