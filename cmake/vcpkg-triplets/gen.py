@@ -51,12 +51,12 @@ for enable_rtti in [True, False]:
                         file_name_parts.append("md")
                     file_name = "-".join(file_name_parts) + ".cmake"
                     dest_path = os.path.join(folder_name, file_name)
-                    print("Creating file {}".format(dest_path))
+                    print(f"Creating file {dest_path}")
                     os.makedirs(folder_name, exist_ok=True)
                     with open(dest_path, "w", encoding="utf-8") as f:
                         add_copyright_header(f)
-                        f.write("set(VCPKG_TARGET_ARCHITECTURE {})\n".format(target_abi))
-                        f.write("set(VCPKG_CRT_LINKAGE {})\n".format(crt_linkage))
+                        f.write(f"set(VCPKG_TARGET_ARCHITECTURE {target_abi})\n")
+                        f.write(f"set(VCPKG_CRT_LINKAGE {crt_linkage})\n")
                         # we only support static. The default triplets use dynamic.
                         # The default triplets do not work with asan(protoc.exe crashes at startup). Therefore we do not override the default triplets and do not append asan to them.
                         # The default triplets are used for generating host dependencies(such as protoc.exe)
@@ -118,12 +118,12 @@ for os_name in ["linux", "osx"]:
                         file_name_parts = [target_abi, os_name]
                         file_name = "-".join(file_name_parts) + ".cmake"
                         dest_path = os.path.join(folder_name, file_name)
-                        print("Creating file {}".format(dest_path))
+                        print(f"Creating file {dest_path}")
                         os.makedirs(folder_name, exist_ok=True)
                         with open(dest_path, "w", encoding="utf-8") as f:
                             add_copyright_header(f)
-                            f.write("set(VCPKG_TARGET_ARCHITECTURE {})\n".format(target_abi))
-                            f.write("set(VCPKG_CRT_LINKAGE {})\n".format(crt_linkage))
+                            f.write(f"set(VCPKG_TARGET_ARCHITECTURE {target_abi})\n")
+                            f.write(f"set(VCPKG_CRT_LINKAGE {crt_linkage})\n")
                             f.write("set(VCPKG_LIBRARY_LINKAGE static)\n")
                             ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now", "-Wl,-z,noexecstack"]
                             cflags = []
