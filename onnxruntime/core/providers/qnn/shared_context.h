@@ -64,8 +64,8 @@ class SharedContext {
  private:
   SharedContext() = default;
   ~SharedContext() = default;
-  SharedContext(const SharedContext&) = delete;
-  SharedContext& operator=(const SharedContext&) = delete;
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SharedContext);
 
   std::vector<std::unique_ptr<qnn::QnnModel>> shared_qnn_models_;
   // Producer sessions can be in parallel
