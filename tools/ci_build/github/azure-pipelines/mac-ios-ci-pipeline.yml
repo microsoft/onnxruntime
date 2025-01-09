@@ -65,7 +65,7 @@ jobs:
                 --ios \
                 --apple_sysroot iphonesimulator  \
                 --osx_arch x86_64 \
-                --apple_deploy_target=13.0 \
+                --apple_deploy_target=15.1 \
                 --use_xcode \
                 --config RelWithDebInfo \
                 --build_apple_framework \
