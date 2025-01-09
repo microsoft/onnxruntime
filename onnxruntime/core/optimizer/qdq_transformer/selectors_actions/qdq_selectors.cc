@@ -28,15 +28,14 @@ constexpr bool Is4BitIntType(int32_t data_type) {
 // adjust for an optional input/output that has an entry but does not exist
 int NumActualValues(const Node& node, bool input) {
   const auto& defs = input ? node.InputDefs() : node.OutputDefs();
-  return gsl::narrow_cast<int>(std::count_if(defs.cbegin(), defs.cend(),
-                                             [](const NodeArg* def) { return def && def->Exists(); }));
+  return gsl::narrow_cast<int>(
+      std::count_if(defs.cbegin(), defs.cend(), [](const NodeArg* def) { return def && def->Exists(); }));
 }
 
 std::vector<const Node*> FindQDQNodes(const GraphViewer& graph_viewer, const Node& node, bool find_dq_nodes) {
   // First get all the upstream (DQ) or downstream (Q) nodes
-  std::vector<const Node*> nodes =
-      find_dq_nodes ? graph_utils::FindParentsByType(node, QDQ::DQOpName)
-                    : graph_utils::FindChildrenByType(node, QDQ::QOpName);
+  std::vector<const Node*> nodes = find_dq_nodes ? graph_utils::FindParentsByType(node, QDQ::DQOpName)
+                                                 : graph_utils::FindChildrenByType(node, QDQ::QOpName);
 
   // Remove all the nodes which are not in the graph_viewer
   nodes.erase(std::remove_if(nodes.begin(), nodes.end(),
@@ -50,9 +49,8 @@ std::vector<const Node*> FindQDQNodes(const GraphViewer& graph_viewer, const Nod
 }  // namespace
 
 bool NodeGroupSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Node& node,
-                                      const std::vector<const Node*>& dq_nodes,
-                                      const std::vector<const Node*>& q_nodes,
-                                      int num_dq_inputs,
+                                      const Node* redundant_clip_node, const std::vector<const Node*>& dq_nodes,
+                                      const std::vector<const Node*>& q_nodes, int num_dq_inputs,
                                       bool is_empty_q_nodes_allowed) const {
   if (num_dq_inputs == -1) {
     num_dq_inputs = NumActualValues(node, true);
@@ -63,7 +61,8 @@ bool NodeGroupSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Nod
     return false;
   }
 
-  if (const auto qdq_validation_status = NodeGroup::CanCreateNodeGroup(graph_viewer, node, dq_nodes, q_nodes);
+  if (const auto qdq_validation_status =
+          NodeGroup::CanCreateNodeGroup(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes);
       !qdq_validation_status.IsOK()) {
     return false;
   }
@@ -73,15 +72,31 @@ bool NodeGroupSelector::CheckQDQNodes(const GraphViewer& graph_viewer, const Nod
   }
 
   int num_outputs = NumActualValues(node, false);  // number of outputs that exist
-  return (num_outputs == gsl::narrow_cast<int>(q_nodes.size())) &&
-         q_nodes.size() == node.GetOutputEdgesCount() &&
+  return (num_outputs == gsl::narrow_cast<int>(q_nodes.size())) && q_nodes.size() == node.GetOutputEdgesCount() &&
          !graph_viewer.NodeProducesGraphOutput(node);
 }
 
 std::optional<NodeGroup> NodeGroupSelector::GetQDQSelection(const GraphViewer& graph_viewer, const Node& node) const {
   std::vector<const Node*> dq_nodes = FindQDQNodes(graph_viewer, node, true);
-  std::vector<const Node*> q_nodes = FindQDQNodes(graph_viewer, node, false);
-  if (!Check(graph_viewer, node, dq_nodes, q_nodes)) {
+
+  // For redundant clip node, currently only support node with only one output, which is consumed by Clip/Relu->Q.
+  const Node* clip_node = nullptr;
+  if (node.GetOutputEdgesCount() == 1) {
+    const Node& next_node = *node.OutputNodesBegin();
+    if ((next_node.OpType() == "Relu" || next_node.OpType() == "Clip") && next_node.GetOutputEdgesCount() == 1 &&
+        !graph_viewer.NodeProducesGraphOutput(next_node)) {
+      clip_node = &next_node;
+    }
+  }
+
+  std::vector<const Node*> q_nodes = FindQDQNodes(graph_viewer, (clip_node ? *clip_node : node), false);
+
+  if (clip_node && (q_nodes.size() != 1 || !IsClipMadeRedundantByQ(graph_viewer.GetGraph(), *clip_node, *q_nodes[0]))) {
+    return std::nullopt;
+  }
+
+  // When here, if clip_node is not nullptr, it is redundant.
+  if (!Check(graph_viewer, node, clip_node, dq_nodes, q_nodes)) {
     return std::nullopt;
   }
 
@@ -89,6 +104,9 @@ std::optional<NodeGroup> NodeGroupSelector::GetQDQSelection(const GraphViewer& g
   node_group.dq_nodes.reserve(dq_nodes.size());
   node_group.q_nodes.reserve(q_nodes.size());
   node_group.target_node = node.Index();
+  if (clip_node) {
+    node_group.redundant_clip_node = clip_node->Index();
+  }
   auto get_node_idx = [&](const Node* n) { return n->Index(); };
   std::transform(dq_nodes.begin(), dq_nodes.end(), std::back_inserter(node_group.dq_nodes), get_node_idx);
   std::transform(q_nodes.begin(), q_nodes.end(), std::back_inserter(node_group.q_nodes), get_node_idx);
@@ -120,11 +138,14 @@ std::optional<NodesToOptimizeIndices> BaseSelector::Select(const GraphViewer& gr
   return builder.Build();
 }
 
-bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
-                                     const Node& node,
+bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
                                      const std::vector<const Node*>& dq_nodes,
                                      const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, 1)) {
+  if (redundant_clip_node) {
+    return false;
+  }
+
+  if (!CheckQDQNodes(graph_viewer, node, nullptr, dq_nodes, q_nodes, 1)) {
     return false;
   }
 
@@ -160,16 +181,19 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   return IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath());
 }
 
-bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
-                                    const Node& node,
+bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
                                     const std::vector<const Node*>& dq_nodes,
                                     const std::vector<const Node*>& q_nodes) const {
+  if (redundant_clip_node) {
+    return false;
+  }
+
   constexpr int num_dq_inputs = 1;
   if (num_dq_inputs != gsl::narrow_cast<int>(dq_nodes.size())) {
     return false;
   }
 
-  if (const auto qdq_validation_status = NodeGroup::CanCreateNodeGroup(graph_viewer, node, dq_nodes, q_nodes);
+  if (const auto qdq_validation_status = NodeGroup::CanCreateNodeGroup(graph_viewer, node, nullptr, dq_nodes, q_nodes);
       !qdq_validation_status.IsOK()) {
     return false;
   }
@@ -194,10 +218,10 @@ bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   return IsDQSupported(dq_node, get_const_initializer);
 }
 
-bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
+bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
                                    const std::vector<const Node*>& dq_nodes,
                                    const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, 1)) {
+  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes, 1)) {
     return false;
   }
 
@@ -220,11 +244,10 @@ bool UnaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
   return true;
 }
 
-bool BinaryNodeGroupSelector::Check(const GraphViewer& graph_viewer,
-                                    const Node& node,
+bool BinaryNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
                                     const std::vector<const Node*>& dq_nodes,
                                     const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
+  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes)) {
     return false;
   }
 
@@ -249,11 +272,10 @@ bool BinaryNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   return true;
 }
 
-bool VariadicNodeGroupSelector::Check(const GraphViewer& graph_viewer,
-                                      const Node& node,
-                                      const std::vector<const Node*>& dq_nodes,
+bool VariadicNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
+                                      const Node* redundant_clip_node, const std::vector<const Node*>& dq_nodes,
                                       const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
+  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes)) {
     return false;
   }
 
@@ -292,11 +314,14 @@ void InputVariadicSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder
   builder.num_input_defs = 1;  // set to 1 as the first input is variadic
 }
 
-bool SplitNodeGroupSelector::Check(const GraphViewer& graph_viewer,
-                                   const Node& node,
+bool SplitNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
                                    const std::vector<const Node*>& dq_nodes,
                                    const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, 1)) {
+  if (redundant_clip_node) {
+    return false;
+  }
+
+  if (!CheckQDQNodes(graph_viewer, node, nullptr, dq_nodes, q_nodes, 1)) {
     return false;
   }
 
@@ -332,11 +357,10 @@ void SplitSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const 
   builder.num_output_defs = 1;  // set to 1 as the first output is variadic
 }
 
-bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer,
-                                  const Node& node,
+bool ConvNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
                                   const std::vector<const Node*>& dq_nodes,
                                   const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
+  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes)) {
     return false;
   }
 
@@ -377,8 +401,7 @@ void ConvSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.input_nodes.resize(3, NodesToOptimizeIndices::kEmptyNodeIndex);
 }
 
-bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
-                                    const Node& node,
+bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
                                     const std::vector<const Node*>& dq_nodes,
                                     const std::vector<const Node*>& q_nodes) const {
   if (dq_nodes.size() != 2) {
@@ -409,7 +432,7 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
 
   if (qlinear) {
     // QLinearMatMul
-    if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
+    if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes)) {
       return false;
     }
 
@@ -421,10 +444,13 @@ bool MatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   }
 }
 
-bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
-                                      const Node& node,
-                                      const std::vector<const Node*>& dq_nodes,
+bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
+                                      const Node* redundant_clip_node, const std::vector<const Node*>& dq_nodes,
                                       const std::vector<const Node*>& q_nodes) const {
+  if (redundant_clip_node) {
+    return false;
+  }
+
   // Should not have any Q nodes
   if (!q_nodes.empty()) {
     return false;
@@ -459,8 +485,7 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
 
   // DQ is blockwise quantized along axis 0, and block_size must be 2's power and >= 16
   const auto& dq_attrs = dq_nodes[0]->GetAttributes();
-  if (const auto a_iter = dq_attrs.find("axis");
-      a_iter == dq_attrs.end() || a_iter->second.i() != 0) {
+  if (const auto a_iter = dq_attrs.find("axis"); a_iter == dq_attrs.end() || a_iter->second.i() != 0) {
     return false;
   }
 
@@ -488,8 +513,7 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   }
 
   // weight, scale and zero points (if exists) must have the rank 2
-  if (weight_tensor_proto->dims_size() != 2 ||
-      scale_tensor_proto->dims_size() != 2 ||
+  if (weight_tensor_proto->dims_size() != 2 || scale_tensor_proto->dims_size() != 2 ||
       (zp_tensor_proto && zp_tensor_proto->dims_size() != 2)) {
     return false;
   }
@@ -497,21 +521,19 @@ bool DQMatMulNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   // check weight, scale and zero points (if exists) shapes
   if ((weight_tensor_proto->dims()[0] + block_size - 1) / block_size != scale_tensor_proto->dims()[0] ||
       weight_tensor_proto->dims()[1] != scale_tensor_proto->dims()[1] ||
-      (zp_tensor_proto &&
-       (zp_tensor_proto->dims()[0] != scale_tensor_proto->dims()[0] ||
-        zp_tensor_proto->dims()[1] != scale_tensor_proto->dims()[1]))) {
+      (zp_tensor_proto && (zp_tensor_proto->dims()[0] != scale_tensor_proto->dims()[0] ||
+                           zp_tensor_proto->dims()[1] != scale_tensor_proto->dims()[1]))) {
     return false;
   }
 
   return true;
 }
 
-bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer,
-                                  const Node& node,
+bool GemmNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
                                   const std::vector<const Node*>& dq_nodes,
                                   const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes,
-                     -1 /*num_dq_inputs*/, true /*is_empty_q_nodes_allowed*/)) {
+  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes, -1 /*num_dq_inputs*/,
+                     true /*is_empty_q_nodes_allowed*/)) {
     return false;
   }
 
@@ -557,11 +579,11 @@ void GemmSelector::UpdateBuilder(NodesToOptimizeIndicesBuilder& builder) const {
   builder.input_nodes.resize(3, NodesToOptimizeIndices::kEmptyNodeIndex);
 }
 
-bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
+bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
                                    const std::vector<const Node*>& dq_nodes,
                                    const std::vector<const Node*>& q_nodes) const {
   // Where has 1 boolean input and 2 dq inputs
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, 2)) {
+  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes, 2)) {
     return false;
   }
 
@@ -586,7 +608,7 @@ bool WhereNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
   return true;
 }
 
-bool PadNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
+bool PadNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
                                  const std::vector<const Node*>& dq_nodes,
                                  const std::vector<const Node*>& q_nodes) const {
   // Pad can have 1 or 2 dq input, the optional input constant_value can be quantized or non-quantized.
@@ -596,7 +618,7 @@ bool PadNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& no
     return false;
   }
 
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, num_dq_inputs)) {
+  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes, num_dq_inputs)) {
     return false;
   }
 
@@ -604,18 +626,17 @@ bool PadNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& no
   const int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
   if (dq_nodes.size() > 1) {
     const int32_t dt_input_2 = dq_nodes[1]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
-    return dt_input_1 == dt_input_2 &&
-           dt_input_1 == dt_output;
+    return dt_input_1 == dt_input_2 && dt_input_1 == dt_output;
   } else {
     return dt_input_1 == dt_output;
   }
 }
 
-bool InstanceAndLayerNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer,
-                                                           const Node& node,
+bool InstanceAndLayerNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
+                                                           const Node* redundant_clip_node,
                                                            const std::vector<const Node*>& dq_nodes,
                                                            const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes)) {
+  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes)) {
     return false;
   }
 
@@ -635,11 +656,11 @@ bool InstanceAndLayerNormalizationNodeGroupSelector::Check(const GraphViewer& gr
          (has_bias ? dt_bias == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT32 : true);
 }
 
-bool BatchNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer,
-                                                const Node& node,
+bool BatchNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
+                                                const Node* redundant_clip_node,
                                                 const std::vector<const Node*>& dq_nodes,
                                                 const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, 3)) {
+  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes, 3)) {
     return false;
   }
 
@@ -659,11 +680,10 @@ bool BatchNormalizationNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   return true;
 }
 
-bool LogicalComparisonNodeGroupSelector::Check(const GraphViewer& graph_viewer,
-                                               const Node& node,
-                                               const std::vector<const Node*>& dq_nodes,
+bool LogicalComparisonNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node,
+                                               const Node* redundant_clip_node, const std::vector<const Node*>& dq_nodes,
                                                const std::vector<const Node*>& q_nodes) const {
-  if (!CheckQDQNodes(graph_viewer, node, dq_nodes, q_nodes, -1, true)) {
+  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes, -1, true)) {
     return false;
   }
 
@@ -672,17 +692,22 @@ bool LogicalComparisonNodeGroupSelector::Check(const GraphViewer& graph_viewer,
   return dt_input_1 == dt_input_2;
 }
 
-bool TopKNodeGroupSelector::Check(const GraphViewer& graph_viewer,
-                                  const Node& node,
+bool TopKNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
                                   const std::vector<const Node*>& dq_nodes,
                                   const std::vector<const Node*>& q_nodes) const {
+  // Not support for now. Need to handle the indices output if we want to support it.
+  if (redundant_clip_node) {
+    return false;
+  }
+
   constexpr int num_dq_inputs = 1;
   constexpr int num_q_outputs = 1;
   if (num_dq_inputs != gsl::narrow_cast<int>(dq_nodes.size())) {
     return false;
   }
 
-  if (const auto qdq_validation_status = QDQ::NodeGroup::CanCreateNodeGroup(graph_viewer, node, dq_nodes, q_nodes);
+  if (const auto qdq_validation_status =
+          QDQ::NodeGroup::CanCreateNodeGroup(graph_viewer, node, nullptr, dq_nodes, q_nodes);
       !qdq_validation_status.IsOK()) {
     return false;
   }

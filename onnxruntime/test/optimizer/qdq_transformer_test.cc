@@ -3926,6 +3926,30 @@ TEST(QDQTransformerTests, QDQPropagation_DQForward_SliceMultipleConsumers) {
   run_test_case(/*slice_has_graph_output*/ true);
 }
 
+#if defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+static void VerifyIODef(const NodeUnitIODef& io_def, const Node& node) {
+  const auto& op_type = node.OpType();
+  const bool is_dq = op_type == "DequantizeLinear";
+  const bool is_q = op_type == "QuantizeLinear";
+  ASSERT_TRUE(is_dq || is_q);
+  const auto input_defs = node.InputDefs();
+  if (is_dq) {
+    ASSERT_EQ(&io_def.node_arg, input_defs[0]);
+  } else {  // is_q
+    ASSERT_EQ(&io_def.node_arg, node.OutputDefs()[0]);
+  }
+
+  ASSERT_EQ(&io_def.quant_param->scale, input_defs[1]);
+
+  // [optional] zero point should be consistent between NodeUnitIODef and Input/OutputDefs
+  ASSERT_EQ(input_defs.size() == 3, io_def.quant_param->zero_point != nullptr);
+  if (input_defs.size() == 3) {
+    // we have zero point
+    ASSERT_EQ(io_def.quant_param->zero_point, input_defs[2]);
+  }
+}
+#endif  // defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+
 TEST(QDQTransformerTests, QDQ_Selector_Test) {
   const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/transform/qdq_conv.onnx");
   const auto& logger = DefaultLoggingManager().DefaultLogger();
@@ -3990,31 +4014,11 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
     ASSERT_EQ(1, qdq_node_unit.Outputs().size());
     ASSERT_EQ(conv_node, &qdq_node_unit.GetNode());
 
-    const auto verify_io_def = [](const NodeUnitIODef& io_def, const Node& node) {
-      const auto& op_type = node.OpType();
-      const bool is_dq = op_type == "DequantizeLinear";
-      const bool is_q = op_type == "QuantizeLinear";
-      ASSERT_TRUE(is_dq || is_q);
-      const auto input_defs = node.InputDefs();
-      if (is_dq) {
-        ASSERT_EQ(&io_def.node_arg, input_defs[0]);
-      } else {  // is_q
-        ASSERT_EQ(&io_def.node_arg, node.OutputDefs()[0]);
-      }
-
-      ASSERT_EQ(&io_def.quant_param->scale, input_defs[1]);
-
-      // [optional] zero point should be consistent between NodeUnitIODef and Input/OutputDefs
-      ASSERT_EQ(input_defs.size() == 3, !!io_def.quant_param->zero_point);
-      if (input_defs.size() == 3)  // we have zero point
-        ASSERT_EQ(io_def.quant_param->zero_point, input_defs[2]);
-    };
-
     // We know the graph has 5 nodes, DQ_input, DQ_weight, DQ_bias, Conv, Q_output (index 0-4)
-    verify_io_def(qdq_node_unit.Inputs()[0], *whole_graph_viewer.GetNode(0));   // DQ_input
-    verify_io_def(qdq_node_unit.Inputs()[1], *whole_graph_viewer.GetNode(1));   // DQ_weight
-    verify_io_def(qdq_node_unit.Inputs()[2], *whole_graph_viewer.GetNode(2));   // DQ_bias
-    verify_io_def(qdq_node_unit.Outputs()[0], *whole_graph_viewer.GetNode(4));  // Q_output
+    VerifyIODef(qdq_node_unit.Inputs()[0], *whole_graph_viewer.GetNode(0));   // DQ_input
+    VerifyIODef(qdq_node_unit.Inputs()[1], *whole_graph_viewer.GetNode(1));   // DQ_weight
+    VerifyIODef(qdq_node_unit.Inputs()[2], *whole_graph_viewer.GetNode(2));   // DQ_bias
+    VerifyIODef(qdq_node_unit.Outputs()[0], *whole_graph_viewer.GetNode(4));  // Q_output
   }
 #endif  // defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
 
@@ -4049,6 +4053,363 @@ TEST(QDQTransformerTests, QDQ_Selector_Test) {
       const auto result = selector_mgr.GetQDQSelections(partial_graph_viewer, logger);
       ASSERT_TRUE(result.empty());
     }
+  }
+}
+
+TEST(QDQTransformerTests, QDQ_Selector_Test_Conv_Relu) {
+  // Relu is redundant.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<uint8_t>({1, 2, 4, 4}, std::numeric_limits<uint8_t>::min(),
+                                                   std::numeric_limits<uint8_t>::max());
+      auto* weight_arg = builder.MakeInput<uint8_t>({2, 1, 3, 3}, std::numeric_limits<uint8_t>::min(),
+                                                    std::numeric_limits<uint8_t>::max());
+      auto* bias_arg =
+          builder.MakeInput<int32_t>({2}, std::numeric_limits<int32_t>::min(), std::numeric_limits<int32_t>::max());
+      // DQ
+      auto* dq_input = builder.MakeIntermediate();
+      auto* dq_weight = builder.MakeIntermediate();
+      auto* dq_bias = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode(input_arg, 0.02348f, uint8_t(0), dq_input, false);
+      builder.AddDequantizeLinearNode(weight_arg, 0.307f, uint8_t(0), dq_weight, false);
+      builder.AddDequantizeLinearNode(bias_arg, 0.007f, int32_t(0), dq_bias, false);
+
+      // Conv
+      auto* conv_output = builder.MakeIntermediate();
+      Node& conv_node = builder.AddNode("Conv", {dq_input, dq_weight, dq_bias}, {conv_output});
+      conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+      conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("group", int64_t(2));
+      conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+
+      // Relu
+      auto* relu_output = builder.MakeIntermediate();
+      builder.AddNode("Relu", {conv_output}, {relu_output});
+
+      // Q
+      auto* q_output = builder.MakeOutput();
+      builder.AddQuantizeLinearNode(relu_output, 0.02348f, uint8_t(0), q_output, false);
+    };
+
+    // Build the model for this test.
+    std::unordered_map<std::string, int> domain_to_version;
+    domain_to_version[kOnnxDomain] = 18;
+    domain_to_version[kMSDomain] = 1;
+    Model model("TransformerTester", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+    Graph& graph = model.MainGraph();
+    ModelTestBuilder helper(graph);
+    build_test_case(helper);
+    helper.SetGraphOutputs();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    const GraphViewer whole_graph_viewer(graph);
+
+    // Make sure node 3 is the conv node
+    const auto* conv_node = graph.GetNode(3);
+    ASSERT_TRUE(nullptr != conv_node);
+    ASSERT_EQ("Conv", conv_node->OpType());
+
+    // Make sure the conv QDQ group is selected for the full graph
+    {
+      onnxruntime::QDQ::ConvNodeGroupSelector conv_selector;
+      const auto result = conv_selector.GetQDQSelection(whole_graph_viewer, *conv_node);
+      ASSERT_TRUE(result.has_value());
+      const auto& qdq_group = *result;
+      ASSERT_EQ(std::vector<NodeIndex>({0, 1, 2}), qdq_group.dq_nodes);
+      ASSERT_EQ(NodeIndex(3), qdq_group.target_node);
+      ASSERT_EQ(NodeIndex(4), qdq_group.redundant_clip_node);
+      ASSERT_EQ(std::vector<NodeIndex>({5}), qdq_group.q_nodes);
+    }
+
+    // Check if SelectorManager get a conv qdq group selection as expected
+    {
+      QDQ::SelectorManager selector_mgr;
+      const auto result = selector_mgr.GetQDQSelections(whole_graph_viewer);
+      ASSERT_FALSE(result.empty());
+      const auto& qdq_group = result.at(0);
+      ASSERT_EQ(std::vector<NodeIndex>({0, 1, 2}), qdq_group.dq_nodes);
+      ASSERT_EQ(NodeIndex(3), qdq_group.target_node);
+      ASSERT_EQ(NodeIndex(4), qdq_group.redundant_clip_node);
+      ASSERT_EQ(std::vector<NodeIndex>({5}), qdq_group.q_nodes);
+    }
+
+// The function GetAllNodeUnits is used by NNAPI, XNNPACK and QNN
+#if defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+    {
+      // Get all the NodeUnits in the graph_viewer
+      std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
+      std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
+
+      std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(whole_graph_viewer);
+
+      // We should get a single QDQ Node unit in the result
+      ASSERT_EQ(1, node_unit_holder.size());
+      ASSERT_EQ(6, node_unit_map.size());
+      const auto& qdq_node_unit = *node_unit_holder[0];
+      ASSERT_EQ(NodeUnit::Type::QDQGroup, qdq_node_unit.UnitType());
+
+      ASSERT_EQ(3, qdq_node_unit.Inputs().size());
+      ASSERT_EQ(1, qdq_node_unit.Outputs().size());
+      ASSERT_EQ(conv_node, &qdq_node_unit.GetNode());
+      ASSERT_EQ(whole_graph_viewer.GetNode(4), qdq_node_unit.GetRedundantClipNode());
+
+      // We know the graph has 5 nodes, DQ_input, DQ_weight, DQ_bias, Conv, Relu, Q_output (index 0-5)
+      VerifyIODef(qdq_node_unit.Inputs()[0], *whole_graph_viewer.GetNode(0));   // DQ_input
+      VerifyIODef(qdq_node_unit.Inputs()[1], *whole_graph_viewer.GetNode(1));   // DQ_weight
+      VerifyIODef(qdq_node_unit.Inputs()[2], *whole_graph_viewer.GetNode(2));   // DQ_bias
+      VerifyIODef(qdq_node_unit.Outputs()[0], *whole_graph_viewer.GetNode(5));  // Q_output
+    }
+#endif  // defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+  }
+
+  // Relu is NOT redundant.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<uint8_t>({1, 2, 4, 4}, std::numeric_limits<uint8_t>::min(),
+                                                   std::numeric_limits<uint8_t>::max());
+      auto* weight_arg = builder.MakeInput<uint8_t>({2, 1, 3, 3}, std::numeric_limits<uint8_t>::min(),
+                                                    std::numeric_limits<uint8_t>::max());
+      auto* bias_arg =
+          builder.MakeInput<int32_t>({2}, std::numeric_limits<int32_t>::min(), std::numeric_limits<int32_t>::max());
+      // DQ
+      auto* dq_input = builder.MakeIntermediate();
+      auto* dq_weight = builder.MakeIntermediate();
+      auto* dq_bias = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode(input_arg, 0.02348f, uint8_t(0), dq_input, false);
+      builder.AddDequantizeLinearNode(weight_arg, 0.307f, uint8_t(0), dq_weight, false);
+      builder.AddDequantizeLinearNode(bias_arg, 0.007f, int32_t(0), dq_bias, false);
+
+      // Conv
+      auto* conv_output = builder.MakeIntermediate();
+      Node& conv_node = builder.AddNode("Conv", {dq_input, dq_weight, dq_bias}, {conv_output});
+      conv_node.AddAttribute("pads", std::vector<int64_t>{1, 1, 1, 1});
+      conv_node.AddAttribute("strides", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("dilations", std::vector<int64_t>{1, 1});
+      conv_node.AddAttribute("group", int64_t(2));
+      conv_node.AddAttribute("kernel_shape", std::vector<int64_t>{3, 3});
+
+      // Relu
+      auto* relu_output = builder.MakeIntermediate();
+      builder.AddNode("Relu", {conv_output}, {relu_output});
+
+      // Q
+      auto* q_output = builder.MakeOutput();
+      builder.AddQuantizeLinearNode(relu_output, 0.02348f, uint8_t(127), q_output, false);
+    };
+
+    // Build the model for this test.
+    std::unordered_map<std::string, int> domain_to_version;
+    domain_to_version[kOnnxDomain] = 18;
+    domain_to_version[kMSDomain] = 1;
+    Model model("TransformerTester", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+    Graph& graph = model.MainGraph();
+    ModelTestBuilder helper(graph);
+    build_test_case(helper);
+    helper.SetGraphOutputs();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    const GraphViewer whole_graph_viewer(graph);
+
+    // Make sure node 3 is the conv node
+    const auto* conv_node = graph.GetNode(3);
+    ASSERT_TRUE(nullptr != conv_node);
+    ASSERT_EQ("Conv", conv_node->OpType());
+
+    // Make sure the conv QDQ group is selected for the full graph
+    {
+      onnxruntime::QDQ::ConvNodeGroupSelector conv_selector;
+      const auto result = conv_selector.GetQDQSelection(whole_graph_viewer, *conv_node);
+      ASSERT_FALSE(result.has_value());
+    }
+
+    // Check if SelectorManager get a conv qdq group selection as expected
+    {
+      QDQ::SelectorManager selector_mgr;
+      const auto result = selector_mgr.GetQDQSelections(whole_graph_viewer);
+      ASSERT_TRUE(result.empty());
+    }
+
+// The function GetAllNodeUnits is used by NNAPI, XNNPACK and QNN
+#if defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+    {
+      std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
+      std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
+      std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(whole_graph_viewer);
+      ASSERT_EQ(6, node_unit_holder.size());
+      ASSERT_EQ(6, node_unit_map.size());
+    }
+#endif  // defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+  }
+}
+
+TEST(QDQTransformerTests, QDQ_Selector_Test_Add_Clip) {
+  // Clip is redundant.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_0_arg = builder.MakeInput<uint8_t>({2, 3, 3, 3}, std::numeric_limits<uint8_t>::min(),
+                                                     std::numeric_limits<uint8_t>::max());
+      auto* input_1_arg = builder.MakeInput<uint8_t>({2, 1, 3, 3}, std::numeric_limits<uint8_t>::min(),
+                                                     std::numeric_limits<uint8_t>::max());
+
+      // DQ
+      auto* dq_input_0 = builder.MakeIntermediate();
+      auto* dq_input_1 = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode(input_0_arg, 0.02348f, uint8_t(0), dq_input_0, false);
+      builder.AddDequantizeLinearNode(input_1_arg, 0.307f, uint8_t(0), dq_input_1, false);
+
+      // Add
+      auto* add_output = builder.MakeIntermediate();
+      builder.AddNode("Add", {dq_input_0, dq_input_1}, {add_output});
+
+      // Clip
+      auto* clip_min_arg = builder.MakeInitializer<float>({}, {0.0f});
+      auto* clip_max_arg = builder.MakeInitializer<float>({}, {6.0f});
+      auto* clip_output = builder.MakeIntermediate();
+      builder.AddNode("Clip", {add_output, clip_min_arg, clip_max_arg}, {clip_output});
+
+      // Q
+      auto* q_output = builder.MakeOutput();
+      builder.AddQuantizeLinearNode(clip_output, 0.02348f, uint8_t(0), q_output, false);
+    };
+
+    // Build the model for this test.
+    std::unordered_map<std::string, int> domain_to_version;
+    domain_to_version[kOnnxDomain] = 18;
+    domain_to_version[kMSDomain] = 1;
+    Model model("TransformerTester", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+    Graph& graph = model.MainGraph();
+    ModelTestBuilder helper(graph);
+    build_test_case(helper);
+    helper.SetGraphOutputs();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    const GraphViewer whole_graph_viewer(graph);
+
+    const auto* add_node = graph.GetNode(2);
+    ASSERT_TRUE(nullptr != add_node);
+    ASSERT_EQ("Add", add_node->OpType());
+
+    // Make sure the add QDQ group is selected for the full graph
+    {
+      onnxruntime::QDQ::BinaryNodeGroupSelector add_selector;
+      const auto result = add_selector.GetQDQSelection(whole_graph_viewer, *add_node);
+      ASSERT_TRUE(result.has_value());
+      const auto& qdq_group = *result;
+      ASSERT_EQ(std::vector<NodeIndex>({0, 1}), qdq_group.dq_nodes);
+      ASSERT_EQ(NodeIndex(2), qdq_group.target_node);
+      ASSERT_EQ(NodeIndex(3), qdq_group.redundant_clip_node);
+      ASSERT_EQ(std::vector<NodeIndex>({4}), qdq_group.q_nodes);
+    }
+
+    // Check if SelectorManager get a add qdq group selection as expected
+    {
+      QDQ::SelectorManager selector_mgr;
+      const auto result = selector_mgr.GetQDQSelections(whole_graph_viewer);
+      ASSERT_FALSE(result.empty());
+      const auto& qdq_group = result.at(0);
+      ASSERT_EQ(std::vector<NodeIndex>({0, 1}), qdq_group.dq_nodes);
+      ASSERT_EQ(NodeIndex(2), qdq_group.target_node);
+      ASSERT_EQ(NodeIndex(3), qdq_group.redundant_clip_node);
+      ASSERT_EQ(std::vector<NodeIndex>({4}), qdq_group.q_nodes);
+    }
+
+// The function GetAllNodeUnits is used by NNAPI, XNNPACK and QNN
+#if defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+    {
+      // Get all the NodeUnits in the graph_viewer
+      std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
+      std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
+
+      std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(whole_graph_viewer);
+
+      // We should get a single QDQ Node unit in the result
+      ASSERT_EQ(1, node_unit_holder.size());
+      ASSERT_EQ(5, node_unit_map.size());
+      const auto& qdq_node_unit = *node_unit_holder[0];
+      ASSERT_EQ(NodeUnit::Type::QDQGroup, qdq_node_unit.UnitType());
+
+      ASSERT_EQ(2, qdq_node_unit.Inputs().size());
+      ASSERT_EQ(1, qdq_node_unit.Outputs().size());
+      ASSERT_EQ(add_node, &qdq_node_unit.GetNode());
+
+      // We know the graph has 5 nodes, DQ_input_0, DQ_input_1, Add, Clip, Q_output (index 0-4)
+      VerifyIODef(qdq_node_unit.Inputs()[0], *whole_graph_viewer.GetNode(0));   // DQ_input_0
+      VerifyIODef(qdq_node_unit.Inputs()[1], *whole_graph_viewer.GetNode(1));   // DQ_input_1
+      VerifyIODef(qdq_node_unit.Outputs()[0], *whole_graph_viewer.GetNode(4));  // Q_output
+    }
+#endif  // defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+  }
+
+  // Clip is NOT redundant.
+  {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_0_arg = builder.MakeInput<uint8_t>({2, 3, 3, 3}, std::numeric_limits<uint8_t>::min(),
+                                                     std::numeric_limits<uint8_t>::max());
+      auto* input_1_arg = builder.MakeInput<uint8_t>({2, 1, 3, 3}, std::numeric_limits<uint8_t>::min(),
+                                                     std::numeric_limits<uint8_t>::max());
+
+      // DQ
+      auto* dq_input_0 = builder.MakeIntermediate();
+      auto* dq_input_1 = builder.MakeIntermediate();
+      builder.AddDequantizeLinearNode(input_0_arg, 0.02348f, uint8_t(0), dq_input_0, false);
+      builder.AddDequantizeLinearNode(input_1_arg, 0.307f, uint8_t(0), dq_input_1, false);
+
+      // Add
+      auto* add_output = builder.MakeIntermediate();
+      builder.AddNode("Add", {dq_input_0, dq_input_1}, {add_output});
+
+      // Clip
+      auto* clip_min_arg = builder.MakeInitializer<float>({}, {1.0f});
+      auto* clip_max_arg = builder.MakeInitializer<float>({}, {5.0f});
+      auto* clip_output = builder.MakeIntermediate();
+      builder.AddNode("Clip", {add_output, clip_min_arg, clip_max_arg}, {clip_output});
+
+      // Q
+      auto* q_output = builder.MakeOutput();
+      builder.AddQuantizeLinearNode(clip_output, 0.02348f, uint8_t(0), q_output, false);
+    };
+
+    // Build the model for this test.
+    std::unordered_map<std::string, int> domain_to_version;
+    domain_to_version[kOnnxDomain] = 18;
+    domain_to_version[kMSDomain] = 1;
+    Model model("TransformerTester", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
+                domain_to_version, {}, DefaultLoggingManager().DefaultLogger());
+    Graph& graph = model.MainGraph();
+    ModelTestBuilder helper(graph);
+    build_test_case(helper);
+    helper.SetGraphOutputs();
+    ASSERT_STATUS_OK(model.MainGraph().Resolve());
+    const GraphViewer whole_graph_viewer(graph);
+
+    const auto* add_node = graph.GetNode(2);
+    ASSERT_TRUE(nullptr != add_node);
+    ASSERT_EQ("Add", add_node->OpType());
+
+    {
+      onnxruntime::QDQ::BinaryNodeGroupSelector add_selector;
+      const auto result = add_selector.GetQDQSelection(whole_graph_viewer, *add_node);
+      ASSERT_FALSE(result.has_value());
+    }
+
+    {
+      QDQ::SelectorManager selector_mgr;
+      const auto result = selector_mgr.GetQDQSelections(whole_graph_viewer);
+      ASSERT_TRUE(result.empty());
+    }
+
+// The function GetAllNodeUnits is used by NNAPI, XNNPACK and QNN
+#if defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
+    {
+      // Get all the NodeUnits in the graph_viewer
+      std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
+      std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
+      std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(whole_graph_viewer);
+      ASSERT_EQ(5, node_unit_holder.size());
+      ASSERT_EQ(5, node_unit_map.size());
+    }
+#endif  // defined(USE_NNAPI) || defined(USE_QNN) || defined(USE_XNNPACK)
   }
 }
 
