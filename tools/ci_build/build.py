@@ -1133,7 +1133,7 @@ def generate_build_tree(
             overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg_triplets", "nortti")
         if overlay_triplets_dir is None:
             overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg_triplets", "default")
-        vcpkg_install_options.append("--overlay-triplets=%s" % overlay_triplets_dir)
+        vcpkg_install_options.append("--overlay-triplets={}".format(overlay_triplets_dir))
 
         # VCPKG_INSTALL_OPTIONS is a CMake list. It must be joined by semicolons
         add_default_definition(cmake_extra_defines, "VCPKG_INSTALL_OPTIONS", ";".join(vcpkg_install_options))
