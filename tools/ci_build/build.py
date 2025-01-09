@@ -2603,13 +2603,7 @@ def main():
     args = parse_arguments()
 
     print(args)
-    if args.build_wasm:
-        # No custom triplet for the wasm builds yet
-        args.use_vcpkg = False
-    elif args.ios or args.android or args.use_xnnpack:
-        # Not supported yet
-        # XNNPack needs a newer version of cpuinfo
-        args.use_vcpkg = False
+
     if os.getenv("ORT_BUILD_WITH_CACHE") == "1":
         args.use_cache = True
 
