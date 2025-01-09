@@ -13,6 +13,21 @@
 
 namespace onnxruntime::qnn {
 
+/**
+ * HtpSharedMemoryAllocator allocation details
+ *
+ * The HTP shared memory allocator will allocate a block of shared memory larger than the amount requested in order to
+ * hold some additional info.
+ * Each allocation returned by HtpSharedMemoryAllocator::Alloc() is preceded by an AllocationHeader structure.
+ *
+ * For example, if Alloc(num_requested_bytes) is called, this is what the memory layout looks like:
+ *   | AllocationHeader bytes | num_requested_bytes bytes |
+ *                              ^- address returned by Alloc()
+ *
+ * The AllocationHeader can be used to obtain the owning allocator instance, which in turn can be used to do other
+ * operations with that allocation, such as retrieving more info about the allocation.
+ */
+
 namespace {
 
 struct AllocationHeader {
