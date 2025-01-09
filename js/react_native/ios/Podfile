@@ -15,7 +15,6 @@ end
 def shared
   config = use_native_modules!
 
-  # Check both symbol and string keys with default value
   use_react_native!(
     :path => config[:reactNativePath],
     # Hermes is now enabled by default. Disable by setting this flag to false.
