@@ -1288,7 +1288,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                                    narrow<OrtDevice::DeviceId>(info.device_id))},
       info_(info),
       device_id_(info.device_id) {
-  std::cout << "Inside TensorrtExecutionProvider::TensorrtExecutionProvider" << std::endl;
   InitProviderOrtApi();
 
   CUDA_CALL_THROW(cudaSetDevice(device_id_));
@@ -1737,7 +1736,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
 
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT version is " << trt_version_;
 
-  std::cout << "[TensorRT EP] TensorRT provider options: "
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT provider options: "
                         << "device_id: " << device_id_
                         << ", trt_max_partition_iterations: " << max_partition_iterations_
                         << ", trt_min_subgraph_size: " << min_subgraph_size_
@@ -1775,7 +1774,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_cache_prefix: " << cache_prefix_
                         << ", trt_engine_hw_compatible: " << engine_hw_compatible_
                         << ", trt_onnx_model_bytestream_size_: " << onnx_model_bytestream_size_
-                        << ", trt_op_types_to_exclude: " << op_types_to_exclude_ << std::endl;
+                        << ", trt_op_types_to_exclude: " << op_types_to_exclude_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -2623,23 +2622,6 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     }
   }
 
-  // Print supported_nodes_vector
-  for (const auto& pair : supported_nodes_vector) {
-    // Print the first element (std::vector<unsigned long>)
-    oss << "[Vector: [";
-    for (size_t i = 0; i < pair.first.size(); ++i) {
-        oss << pair.first[i];
-        if (i < pair.first.size() - 1) {
-            oss << ", ";
-        }
-    }
-    oss << "]";
-
-    // Print the second element (bool)
-    oss << ", " << (pair.second ? "true" : "false") << "]";
-  }
-  LOGS_DEFAULT(VERBOSE) << "*#* After consolidation, print supported_nodes_vector" << oss.str(); // std::vector<std::pair<std::vector<long unsigned int>, bool> >
-
   // Handle the case where the graph is subgraph of control flow op.
   // The purpose is to make control flow op as well as its subgraphs run on TRT.
   // Here we need to check whether subgraph is fully supported by TRT and don't fuse the nodes of the subgraph until control flow op level.
@@ -3379,7 +3361,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
           if (ep_cache_context_attr_.empty()) {
             auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
             ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
-            std::cout << "*#* ep_cache_context_attr_=" << ep_cache_context_attr_ << std::endl;
           }
           std::string compute_capability_hw_compat = compute_capability_;
           if (engine_cache_enable_ && engine_hw_compatible_) {

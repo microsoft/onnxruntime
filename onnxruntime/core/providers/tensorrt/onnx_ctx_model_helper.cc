@@ -86,7 +86,6 @@ std::unique_ptr<Model> CreateCtxModel(const GraphViewer& graph_viewer,
                                            const std::string compute_capability,
                                            const std::string onnx_model_path,
                                            const logging::Logger* logger) {
-  LOGS_DEFAULT(VERBOSE) << "*#* In CreateCtxModel2";
   auto model_build = graph_viewer.CreateModel(*logger);
   auto& graph_build = model_build->MainGraph();
 
@@ -138,29 +137,9 @@ std::unique_ptr<Model> CreateCtxModel(const GraphViewer& graph_viewer,
   node_attributes->emplace(ONNX_MODEL_FILENAME, *attr_3);
 
   // Create EP context node
-  //graph_build.AddNode(EPCONTEXT_OP, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
-  LOGS_DEFAULT(VERBOSE) << "*#* fused_subgraph_name=" << fused_subgraph_name;
   graph_build.AddNode(fused_subgraph_name, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
-  LOGS_DEFAULT(VERBOSE) << "*#* graph_build.GetNode(0)->Name()" << graph_build.GetNode(0)->Name();
   ORT_ENFORCE(graph_build.Resolve().IsOK());
 
-  // Serialize modelproto to string
-  // auto new_graph_viewer = graph_build.CreateGraphViewer();
-  // std::unique_ptr<Model> model = new_graph_viewer->CreateModel(*logger);
-  // auto model_proto = model->ToProto();
-  // new_graph_viewer->ToProto(*model_proto->mutable_graph(), true, true);
-  // model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-
-  // return model_proto.release();
-  // return std::unique_ptr<Graph>(graph_build);
-  // return std::make_unique<Graph>(graph_build);
-  // return std::make_unique<Graph>(std::move(graph_build));
-  // return std::move(graph_build);
-  // trt_ep_context_models.emplace("node name", std::move(model_build));
-  // trt_ep_context_models.emplace_back(std::move(model_build));
-  // return Status::OK();
-  // return std::unique_ptr<Model>(model_build);
-  // return std::move(model_build); // Transfer ownership
   return model_build;
 }
 
