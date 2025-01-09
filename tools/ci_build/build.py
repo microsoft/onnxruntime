@@ -1477,6 +1477,9 @@ def generate_build_tree(
 
     if args.build_wasm:
         emsdk_dir = os.path.join(cmake_dir, "external", "emsdk")
+        if args.use_vcpkg: # get emsdk_dir from system environment variable EMSDK
+            emsdk_dir = str(os.environ.get("EMSDK"))
+        log.info("Using emsdk_dir: " + emsdk_dir)
         emscripten_cmake_toolchain_file = os.path.join(
             emsdk_dir, "upstream", "emscripten", "cmake", "Modules", "Platform", "Emscripten.cmake"
         )
@@ -2648,6 +2651,18 @@ def generate_documentation(source_dir, build_dir, configs, validate):
         except subprocess.CalledProcessError:
             raise BuildError("git diff returned non-zero error code")  # noqa: B904
 
+def activate_system_emsdk(source_dir, emsdk_dir:str):
+    emsdk_file = os.path.join(emsdk_dir, "emsdk.bat") if is_windows() else os.path.join(emsdk_dir, "emsdk")
+    run_subprocess([emsdk_file, "activate", "--system"], cwd=emsdk_dir)
+
+def install_emsdk(source_dir, emsdk_version):
+    emsdk_dir = os.path.join(source_dir, "cmake", "external", "emsdk")
+    emsdk_file = os.path.join(emsdk_dir, "emsdk.bat") if is_windows() else os.path.join(emsdk_dir, "emsdk")
+    log.info("Installing emsdk...")
+    run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
+    log.info("Activating emsdk...")
+    run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
+    return emsdk_dir
 
 def main():
     log.debug("Command line arguments:\n  {}".format(" ".join(shlex.quote(arg) for arg in sys.argv[1:])))  # noqa: G001
@@ -2918,14 +2933,14 @@ def main():
                 raise BuildError("Please use a 64-bit python to run this script")
             if args.build_wheel or args.enable_pybind:
                 raise BuildError("WASM does not support pybind")
-            emsdk_version = args.emsdk_version
-            emsdk_dir = os.path.join(source_dir, "cmake", "external", "emsdk")
-            emsdk_file = os.path.join(emsdk_dir, "emsdk.bat") if is_windows() else os.path.join(emsdk_dir, "emsdk")
-
-            log.info("Installing emsdk...")
-            run_subprocess([emsdk_file, "install", emsdk_version], cwd=emsdk_dir)
-            log.info("Activating emsdk...")
-            run_subprocess([emsdk_file, "activate", emsdk_version], cwd=emsdk_dir)
+            if args.use_vcpkg:
+                log.info("Skipping EMSDK installation. Expect vcpkg packages are ready with the system installed EMSDK")
+                emsdk_dir = os.environ.get("EMSDK")
+                if emsdk_dir is None:
+                    raise BuildError("Environment variable 'EMSDK' is required")
+                activate_system_emsdk(source_dir, emsdk_dir)
+            else:
+                install_emsdk(source_dir, args.emsdk_version)
 
         if args.enable_pybind and is_windows():
             run_subprocess(

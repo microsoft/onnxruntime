@@ -3,19 +3,22 @@ name: WebAssembly
 on: [push]
 
 jobs:
-  Vcpkg:
+  linux-wasm:
+    name: WASM(Linux)
     runs-on: ubuntu-latest
     container:
       image: emscripten/emsdk:3.1.74
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: 'recursive'
 
       - name: "Run apt"
         run: |
           sudo apt update -y
           sudo apt install -y python3 pkg-config autoconf automake autoconf-archive file
+
+      - uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: "~3.31.0"
 
       - name: "Run vcpkg(wasm32-emscripten)"
         uses: lukka/run-vcpkg@v11.5
@@ -51,11 +54,17 @@ jobs:
       - name: "Run build.py"
         run: |
           git config --global --add safe.directory ${{ github.workspace }}
+          # "/emsdk/node/20.18.0_64bit/bin/..."
+          export EMSDK_NODE=$(which node)
           python3 ./tools/ci_build/build.py --allow_running_as_root \
             --build_dir ./build \
             --build_wasm \
+            --parallel \
+            --use_vcpkg \
             --skip_submodule_sync \
             --cmake_extra_defines "CMAKE_TOOLCHAIN_FILE:FILEPATH=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" \
             --cmake_extra_defines "VCPKG_TARGET_TRIPLET=wasm32-emscripten" \
             --cmake_extra_defines "VCPKG_INSTALLED_DIR:PATH=${{ github.workspace }}/.build"
         shell: bash
+        env:
+          VCPKG_INSTALLATION_ROOT: "/usr/local/share/vcpkg"
