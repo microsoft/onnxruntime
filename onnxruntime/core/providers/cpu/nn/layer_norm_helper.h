@@ -22,12 +22,15 @@ class LayerNormHelper {
                                bool has_bias,
                                int64_t axis,
                                int64_t& broadcast_param) {
-    broadcast_param = GetBroadcastParam(x_shape, scale_shape, axis, has_bias ? &bias_shape : nullptr);
+    broadcast_param = GetBroadcastParam(x_shape, scale_shape, has_bias ? &bias_shape : nullptr, axis);
     if (broadcast_param == 0) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              kLayerNormInputShapeMismatchError,
                              "Shapes X=", x_shape, " scale=", scale_shape, " bias=", bias_shape, " and axis=", axis);
     }
+
+    std::cout << "Shapes X=" << x_shape << " scale=" << scale_shape << " bias=" << bias_shape << " and axis=" << axis
+              << "broadcast_param=" << broadcast_param << std::endl;
 
     return Status::OK();
   }
@@ -35,8 +38,8 @@ class LayerNormHelper {
  private:
   static int64_t GetBroadcastParam(const TensorShape& x_shape,
                                    const TensorShape& scale_shape,
-                                   int64_t axis,
-                                   const TensorShape* bias_shape) {
+                                   const TensorShape* bias_shape,
+                                   int64_t axis) {
     // X shape is (B, S, ...)
     if (axis == 2 &&
         x_shape.NumDimensions() >= 3 &&

@@ -134,13 +134,24 @@ void ComputeJob(
     mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon);
   }
 
-  for (size_t h = 0; h < num_elems; h++) {
+  // When X shape is (B, S, ...), and task_idx is in the range of [0, B * S).
+  // We support scale and bias shape like below:
+  //    When scale and bias shape is (1, 1, ...) or (...), value of broadcast_param is 0.
+  //    When scale and bias shape is (B, 1, ...), value of broadcast_param is S.
+  //    When scale and bias shape is (B, S, ...), value of broadcast_param is 1.
+  //    When scale and bias shape is (1, S, ...), value of broadcast_param is -S.
+  // Here we compute the initial index for scale and bias data.
+  int64_t i = (broadcast_param == 0)
+                  ? 0
+                  : norm_size * (broadcast_param > 0 ? (task_idx / broadcast_param) : (task_idx % (-broadcast_param)));
+
+  for (size_t h = 0; h < num_elems; h++, i++) {
     if (simplified) {
-      output_float_ptr[h] = output_float_ptr[h] / mean_square * scale_float_ptr[h];
+      output_float_ptr[h] = output_float_ptr[h] / mean_square * scale_float_ptr[i];
     } else if (nullptr == bias_float_ptr) {
-      output_float_ptr[h] = (output_float_ptr[h] - mean) / mean_square * scale_float_ptr[h];
+      output_float_ptr[h] = (output_float_ptr[h] - mean) / mean_square * scale_float_ptr[i];
     } else {
-      output_float_ptr[h] = (output_float_ptr[h] - mean) / mean_square * scale_float_ptr[h] + bias_float_ptr[h];
+      output_float_ptr[h] = (output_float_ptr[h] - mean) / mean_square * scale_float_ptr[i] + bias_float_ptr[i];
     }
   }
 

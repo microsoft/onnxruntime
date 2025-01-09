@@ -253,6 +253,19 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_NoBroadcast) {
   RunTestOnCpuAndCuda(test);
 }
 
+TEST(LayerNormTest, LayerNorm_Scale_Bias_NoBroadcast_Fp16) {
+  OpTester test("LayerNormalization");
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> dims{2, 2, 2};
+  test.AddInput<MLFloat16>("x", dims, ToFloat16({-1.0f, 2.0f, 3.0f, -4.0f, -10.264f, 8.6453f, 43.1561f, -0.641239f}));
+  test.AddInput<MLFloat16>("gamma", {2, 2, 2}, ToFloat16({-0.1f, 1.7f, -0.6953f, 5.1824f, -0.1f, 1.7f, -0.6953f, 5.1824f}));
+  test.AddInput<MLFloat16>("bias", {2, 2, 2}, ToFloat16({-2.0f, 0.3f, 0.0f, 0.0f, -2.0f, 0.3f, 0.0f, 0.0f}));
+  test.AddOutput<MLFloat16>("output", dims, ToFloat16({-1.9f, 2.0f, -0.6953f, -5.1824f, -1.9f, 2.0f, -0.6953f, -5.1824f}));
+
+  RunTestOnCpuAndCuda(test);
+}
+
 TEST(LayerNormTest, LayerNorm_Scale_Bias_Broadcast_Dim0) {
   OpTester test("LayerNormalization");
   test.AddAttribute<float>("epsilon", 1e-05f);
@@ -267,6 +280,19 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_Broadcast_Dim0) {
   RunTestOnCpuAndCuda(test);
 }
 
+TEST(LayerNormTest, LayerNorm_Scale_Bias_Broadcast_Dim0_Fp16) {
+  OpTester test("LayerNormalization");
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> dims{4, 2, 2};
+  test.AddInput<MLFloat16>("x", dims, ToFloat16({-1.0f, 2.0f, -10.264f, 8.6453f, 3.0f, -4.0f, 43.1561f, -0.641239f, -5.0f, 6.0f, -8.2164f, 0.11412f, 7.0f, 8.0f, 41.3156f, 3.0458f}));
+  test.AddInput<MLFloat16>("gamma", {1, 2, 2}, ToFloat16({-0.1f, 1.7f, -0.6953f, 5.1824f}));
+  test.AddInput<MLFloat16>("bias", {1, 2, 2}, ToFloat16({-2.0f, 0.3f, 0.0f, 0.0f}));
+  test.AddOutput<MLFloat16>("output", dims, ToFloat16({-1.9f, 2.0f, 0.6953f, 5.1824f, -2.1f, -1.4f, -0.6953f, -5.1824f, -1.9f, 2.0f, 0.6953f, 5.1824f, -1.9f, 2.0f, -0.6953f, -5.1824f}));
+
+  RunTestOnCpuAndCuda(test);
+}
+
 TEST(LayerNormTest, LayerNorm_Scale_Bias_Broadcast_Dim1) {
   OpTester test("LayerNormalization");
   test.AddAttribute<float>("epsilon", 1e-05f);
@@ -277,6 +303,19 @@ TEST(LayerNormTest, LayerNorm_Scale_Bias_Broadcast_Dim1) {
   test.AddInput<float>("bias", {2, 1, 2}, {-2.0f, 0.3f, 0.0f, 0.0f});
   test.AddOutput<float>("output", dims, {-1.9f, 2.0f, -2.1f, -1.4f, -1.9f, 2.0f, -1.9f, 2.0f, 0.6953f, 5.1824f, -0.6953f, -5.1824f, 0.6953f, 5.1824f, -0.6953f, -5.1824f});
   test.SetOutputTolerance(0.0001f);
+
+  RunTestOnCpuAndCuda(test);
+}
+
+TEST(LayerNormTest, LayerNorm_Scale_Bias_Broadcast_Dim1_Fp16) {
+  OpTester test("LayerNormalization");
+  test.AddAttribute<float>("epsilon", 1e-05f);
+
+  std::vector<int64_t> dims{2, 4, 2};
+  test.AddInput<MLFloat16>("x", dims, ToFloat16({-1.0f, 2.0f, 3.0f, -4.0f, -5.0f, 6.0f, 7.0f, 8.0f, -10.264f, 8.6453f, 43.1561f, -0.641239f, -8.2164f, 0.11412f, 41.3156f, 3.0458f}));
+  test.AddInput<MLFloat16>("gamma", {2, 1, 2}, ToFloat16({-0.1f, 1.7f, -0.6953f, 5.1824f}));
+  test.AddInput<MLFloat16>("bias", {2, 1, 2}, ToFloat16({-2.0f, 0.3f, 0.0f, 0.0f}));
+  test.AddOutput<MLFloat16>("output", dims, ToFloat16({-1.9f, 2.0f, -2.1f, -1.4f, -1.9f, 2.0f, -1.9f, 2.0f, 0.6953f, 5.1824f, -0.6953f, -5.1824f, 0.6953f, 5.1824f, -0.6953f, -5.1824f}));
 
   RunTestOnCpuAndCuda(test);
 }
