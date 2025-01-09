@@ -4,7 +4,7 @@
 import { Env } from 'onnxruntime-common';
 
 import type { OrtWasmModule } from './wasm-types';
-import { importWasmModule } from './wasm-utils-import';
+import { importWasmModule, inferWasmPathPrefixFromScriptSrc } from './wasm-utils-import';
 
 let wasm: OrtWasmModule | undefined;
 let initialized = false;
@@ -146,18 +146,22 @@ export const initializeWebAssembly = async (flags: Env.WebAssemblyFlags): Promis
       };
 
       if (wasmBinaryOverride) {
-        /**
-         * Set a custom buffer which contains the WebAssembly binary. This will skip the wasm file fetching.
-         */
+        // Set a custom buffer which contains the WebAssembly binary. This will skip the wasm file fetching.
         config.wasmBinary = wasmBinaryOverride;
       } else if (wasmPathOverride || wasmPrefixOverride) {
-        /**
-         * A callback function to locate the WebAssembly file. The function should return the full path of the file.
-         *
-         * Since Emscripten 3.1.58, this function is only called for the .wasm file.
-         */
-        config.locateFile = (fileName, scriptDirectory) =>
-          wasmPathOverride ?? (wasmPrefixOverride ?? scriptDirectory) + fileName;
+        // A callback function to locate the WebAssembly file. The function should return the full path of the file.
+        //
+        // Since Emscripten 3.1.58, this function is only called for the .wasm file.
+        config.locateFile = (fileName) => wasmPathOverride ?? wasmPrefixOverride + fileName;
+      } else if (mjsPathOverride && mjsPathOverride.indexOf('blob:') !== 0) {
+        // if mjs path is specified, use it as the base path for the .wasm file.
+        config.locateFile = (fileName) => new URL(fileName, mjsPathOverride).href;
+      } else if (objectUrl) {
+        const inferredWasmPathPrefix = inferWasmPathPrefixFromScriptSrc();
+        if (inferredWasmPathPrefix) {
+          // if the wasm module is preloaded, use the inferred wasm path as the base path for the .wasm file.
+          config.locateFile = (fileName) => inferredWasmPathPrefix + fileName;
+        }
       }
 
       ortWasmFactory(config).then(
