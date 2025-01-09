@@ -25,9 +25,9 @@ class SliceProgram final : public Program<SliceProgram> {
 class Slice final : public WebGpuKernel {
  public:
   Slice(const OpKernelInfo& info) : WebGpuKernel(info) {
-    info.GetAttrs("starts", attr_starts_).IsOK();
-    info.GetAttrs("ends", attr_ends_).IsOK();
-    info.GetAttrs("axes", attr_axes_).IsOK();
+    info.GetAttrs("starts", attr_starts_);
+    info.GetAttrs("ends", attr_ends_);
+    info.GetAttrs("axes", attr_axes_);
   }
 
   Status ComputeInternal(ComputeContext& context) const override;
