@@ -472,7 +472,6 @@ def parse_arguments():
     parser.add_argument(
         "--use_vcpkg",
         action="store_true",
-        default="VCPKG_INSTALLATION_ROOT" in os.environ,
         help="Use vcpkg to search dependencies. Requires CMAKE_TOOLCHAIN_FILE for vcpkg.cmake",
     )
 
