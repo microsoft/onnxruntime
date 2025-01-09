@@ -6,9 +6,9 @@
 #include <cassert>
 #include <cstddef>
 #include <algorithm>
-#include <limits>
 
 #include "core/common/common.h"
+#include "core/common/safeint.h"
 #include "core/mlas/inc/mlas.h"  // for MlasGetPreferredBufferAlignment()
 
 namespace onnxruntime::qnn {
@@ -100,14 +100,13 @@ void* HtpSharedMemoryAllocator::Alloc(size_t requested_size) {
   const size_t shared_memory_block_size_in_bytes = allocation_offset + requested_size;
 
   // rpcmem_alloc() has an int size parameter. make sure we don't overflow.
-  constexpr size_t max_size_in_bytes = std::numeric_limits<int>::max();
-  ORT_ENFORCE(shared_memory_block_size_in_bytes <= max_size_in_bytes,
-              "Allocation size (", shared_memory_block_size_in_bytes, ") is larger than maximum allowed (",
-              max_size_in_bytes, ").");
+  // TODO switch to rpcmem_alloc2() which has size_t size parameter.
+  // need to verify that rpcmem_alloc2() is available in all environments we care about.
+  const SafeInt<int> shared_memory_block_size_in_bytes_int = shared_memory_block_size_in_bytes;
 
   // allocate shared memory
   void* shared_memory_raw = rpcmem_lib_->Api().alloc(rpcmem::RPCMEM_HEAP_ID_SYSTEM, rpcmem::RPCMEM_DEFAULT_FLAGS,
-                                                     static_cast<int>(shared_memory_block_size_in_bytes));
+                                                     shared_memory_block_size_in_bytes_int);
   ORT_ENFORCE(shared_memory_raw != nullptr, "rpcmem_alloc() failed to allocate and returned nullptr.");
   auto shared_memory = WrapSharedMemoryWithUniquePtr(shared_memory_raw, rpcmem_lib_->Api());
 
