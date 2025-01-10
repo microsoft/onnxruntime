@@ -866,7 +866,7 @@ endif()
 
 if (onnxruntime_USE_CUDA OR onnxruntime_USE_CUDA_INTERFACE)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_CUDA=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CUDA=1)  #TODO[Karim]  Not used anywhere
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CUDA=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES cuda)
 
     if (onnxruntime_USE_FLASH_ATTENTION)
@@ -1180,7 +1180,7 @@ function(onnxruntime_set_compile_flags target_name)
         target_compile_options(${target_name} PRIVATE "-Wno-unused-function")
       endif()
     endif()
-    foreach(ORT_FLAG ${ORT_PROVIDER_FLAGS}) #TODO[Karim] applies to all projects...
+    foreach(ORT_FLAG ${ORT_PROVIDER_FLAGS})
       target_compile_definitions(${target_name} PRIVATE ${ORT_FLAG})
     endforeach()
     if (HAS_DEPRECATED_COPY)
@@ -1775,12 +1775,12 @@ if (onnxruntime_BUILD_JAVA)
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_java)
 endif()
 
-if (onnxruntime_BUILD_NODEJS) #TODO[Karim]
+if (onnxruntime_BUILD_NODEJS)
   message(STATUS "Node.js Build is enabled")
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_nodejs)
 endif()
 
-if (onnxruntime_ENABLE_PYTHON) #TODO[Karim]
+if (onnxruntime_ENABLE_PYTHON)
   message(STATUS "Python Build is enabled")
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_python)
 endif()
@@ -1790,7 +1790,7 @@ if (onnxruntime_BUILD_OBJC)
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_objectivec)
 endif()
 
-if (onnxruntime_BUILD_UNIT_TESTS) #TODO[Karim]
+if (onnxruntime_BUILD_UNIT_TESTS)
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_unittests)
 endif()
 
@@ -1838,7 +1838,7 @@ if (WIN32 AND NOT GDK_PLATFORM AND NOT CMAKE_CROSSCOMPILING)
 endif()
 
 foreach(target_name ${ONNXRUNTIME_CMAKE_FILES})
-  include(${target_name}.cmake) #TODO[Karim]
+  include(${target_name}.cmake)
 endforeach()
 if (UNIX)
   option(BUILD_PKGCONFIG_FILES "Build and install pkg-config files" ON)
