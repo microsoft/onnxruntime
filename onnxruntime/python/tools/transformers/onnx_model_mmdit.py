@@ -87,14 +87,6 @@ class MmditOnnxModel(BertOnnxModel):
         if progress_bar:
             progress_bar.update(1)
 
-        # TODO: SkipLayerNormalization does not support broadcast yet.
-        # if (options is None) or options.enable_skip_layer_norm:
-        #    self.fuse_skip_simplified_layer_norm()
-        #    self.fuse_skip_layer_norm()
-        # if (options is None) or options.enable_bias_skip_layer_norm:
-        #     # Fuse SkipLayerNormalization and Add Bias before it.
-        #     self.fuse_add_bias_skip_layer_norm()
-
         self.postprocess()
         if progress_bar:
             progress_bar.update(1)
@@ -110,7 +102,6 @@ class MmditOnnxModel(BertOnnxModel):
             "FastGelu",
             "MultiHeadAttention",
             "LayerNormalization",
-            # "SkipLayerNormalization",
             "SimplifiedLayerNormalization",
         ]
 

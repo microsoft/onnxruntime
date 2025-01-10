@@ -41,7 +41,6 @@ void HostApplyLayerNorm(
     double epsilon,
     const V* gamma,
     const V* beta,
-    int broadcast = 0,  // broadcast stride for gamma/beta
     const T* skip = nullptr,
     const T* bias = nullptr,
     T* skip_input_bias_add_output = nullptr);

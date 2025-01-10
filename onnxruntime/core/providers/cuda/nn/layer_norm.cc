@@ -44,36 +44,19 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
   auto bias_data = (simplified || (nullptr == bias)) ? nullptr : reinterpret_cast<const CudaV*>(bias->Data<V>());
 
   const TensorShape& x_shape = X->Shape();
-  auto x_num_dims = x_shape.NumDimensions();
-  const int64_t axis = HandleNegativeAxis(axis_, x_num_dims);
+  const int64_t axis = HandleNegativeAxis(axis_, x_shape.NumDimensions());
 
   int n1 = gsl::narrow<int>(x_shape.SizeToDimension(axis));
   int n2 = gsl::narrow<int>(x_shape.SizeFromDimension(axis));
 
   const auto scale_size = scale->Shape().Size();
   const auto bias_size = (bias_data) ? bias->Shape().Size() : 0;
-
-  int broadcast = 0;
   if (n2 == 1 || scale_size != n2 || (bias_data && bias_size != n2)) {
-    // Handle a special case for MMDit where scale and bias need broadcast.
-    // X shape is (B, S, D), scale and bias shape is (B, 1, D), and we store S as broadcast stride.
-    if (x_num_dims == 3 && axis == 2 && n2 > 1 &&
-        scale->Shape().NumDimensions() == x_num_dims &&
-        scale->Shape().GetDims()[0] == x_shape.GetDims()[0] &&
-        scale->Shape().GetDims()[1] == 1 &&
-        scale->Shape().GetDims()[2] == x_shape.GetDims()[2] &&
-        bias->Shape().NumDimensions() == x_num_dims &&
-        bias->Shape().GetDims()[0] == x_shape.GetDims()[0] &&
-        bias->Shape().GetDims()[1] == 1 &&
-        bias->Shape().GetDims()[2] == x_shape.GetDims()[2]) {
-      broadcast = static_cast<int>(x_shape.GetDims()[1]);
-    } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Size of X.shape()[axis:] == ", n2,
-                             ". Size of scale and bias (if provided) must match this "
-                             "and the size must not be 1. Got scale size of ",
-                             scale_size, " and bias size of ", bias_size);
-    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Size of X.shape()[axis:] == ", n2,
+                           ". Size of scale and bias (if provided) must match this "
+                           "and the size must not be 1. Got scale size of ",
+                           scale_size, " and bias size of ", bias_size);
   }
 
   // Outputs
@@ -82,7 +65,7 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
 
   // Mean and variance
   std::vector<int64_t> mean_inv_std_var_dim;
-  for (int i = 0; i < static_cast<int>(x_num_dims); ++i) {
+  for (int i = 0; i < static_cast<int>(x_shape.NumDimensions()); ++i) {
     if (i < axis) {
       mean_inv_std_var_dim.emplace_back(x_shape.GetDims()[i]);
     } else {
@@ -111,7 +94,7 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
   }
 
   HostApplyLayerNorm<CudaT, CudaU, CudaV, simplified>(GetDeviceProp(), Stream(ctx), Y_data, mean_data, inv_var_data,
-                                                      X_data, n1, n2, epsilon_, scale_data, bias_data, broadcast);
+                                                      X_data, n1, n2, epsilon_, scale_data, bias_data);
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
   return Status::OK();
 }
