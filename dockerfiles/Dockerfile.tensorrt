@@ -10,7 +10,7 @@ FROM nvcr.io/nvidia/tensorrt:${TRT_CONTAINER_VERSION}-py3
 
 ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=main
-ARG CMAKE_CUDA_ARCHITECTURES=75;80;86;89;90
+ARG CMAKE_CUDA_ARCHITECTURES=75;80;86;89
 
 RUN apt-get update &&\
     apt-get install -y sudo git bash unattended-upgrades
