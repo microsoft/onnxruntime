@@ -117,10 +117,9 @@ async function minifyWasmModuleJsForBrowser(filepath: string): Promise<string> {
 
     let contents = await fs.readFile(filepath, { encoding: 'utf-8' });
 
-    const fileBaseName = path.basename(filepath);
     // Replace the following line to create worker:
     // ```
-    // new Worker(new URL({{{fileBaseName}}}, import.meta.url), ...
+    // new Worker(new URL(import.meta.url), ...
     // ```
     // with:
     // ```
@@ -129,27 +128,20 @@ async function minifyWasmModuleJsForBrowser(filepath: string): Promise<string> {
     //              : new URL(import.meta.url), ...
     // ```
     //
-    // This change is required because of the following reasons:
-    // 1. When bundling the JS code, the original file is no longer available. We should use `import.meta.url` to get
-    //    the path of the bundle file.
-    // 2. some bundlers that does not support runtime `import.meta.url`. In this case, we should use
-    //    `new URL(BUILD_DEFS.BUNDLE_FILENAME, import.meta.url)`.
+    // NOTE: this is a workaround for some bundlers that does not support runtime import.meta.url.
+    // TODO: in emscripten 3.1.61+, need to update this code.
 
-    // First, check if there is exactly one occurrence of "new Worker(new URL({{{fileBaseName}}}, import.meta.url)".
-    //
-    // /new Worker\(new URL\("ort-wasm-simd-threaded\.jsep\.mjs", ?import\.meta\.url\),/
-    const regex = `new Worker\\(new URL\\("${fileBaseName.replace(/\./g, '\\.')}", ?import\\.meta\\.url\\),`;
-
-    const matches = [...contents.matchAll(new RegExp(regex, 'g'))];
+    // First, check if there is exactly one occurrence of "new Worker(new URL(import.meta.url)".
+    const matches = [...contents.matchAll(/new Worker\(new URL\(import\.meta\.url\),/g)];
     if (matches.length !== 1) {
       throw new Error(
-        `Unexpected number of matches for "new Worker(new URL("${fileBaseName}", import.meta.url)" in "${filepath}": ${matches.length}.`,
+        `Unexpected number of matches for "new Worker(new URL(import.meta.url)" in "${filepath}": ${matches.length}.`,
       );
     }
 
     // Replace the only occurrence.
     contents = contents.replace(
-      new RegExp(regex),
+      /new Worker\(new URL\(import\.meta\.url\),/,
       `new Worker(import.meta.url.startsWith('file:')?new URL(BUILD_DEFS.BUNDLE_FILENAME, import.meta.url):new URL(import.meta.url),`,
     );
 
