@@ -105,7 +105,7 @@ jobs:
           --use_xnnpack \
           --use_binskim_compliant_compile_flags \
           --ios \
-          --apple_deploy_target=13.0 \
+          --apple_deploy_target=15.1 \
           --apple_sysroot=iphonesimulator \
           --osx_arch=${{ matrix.target_arch }}
 
