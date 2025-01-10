@@ -14,6 +14,8 @@ end
 
 target 'OnnxruntimeModuleExample' do
   config = use_native_modules!
+  # Flags change depending on the env values.
+  flags = get_default_flags()
 
     use_react_native!(
     :path => config[:reactNativePath],
@@ -21,11 +23,16 @@ target 'OnnxruntimeModuleExample' do
     # Hermes is now enabled by default. Disable by setting this flag to false.
     # Upcoming versions of React Native may rely on get_default_flags(), but
     # we make it explicit here to aid in the React Native upgrade process.
-    :hermes_enabled => false
+#   TODO: fingure out while main.jsbundle is generated in
+#   ios/build/Build/Products/Debug-iphonesimulator/ instead of
+#   ios/build/Build/Products/Debug-iphonesimulator/OnnxruntimeModuleExample.app
+#   folder when hermes_enabled is set to false
+
+    :hermes_enabled => true,
+#     :flipper_configuration => FlipperConfiguration.enabled,
+    :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
-
-  use_frameworks!
 
   ort_c_local_pod_path = ENV['ORT_C_LOCAL_POD_PATH']
   if ort_c_local_pod_path != nil
@@ -34,17 +41,13 @@ target 'OnnxruntimeModuleExample' do
   end
   pod 'onnxruntime-react-native', :path => '../node_modules/onnxruntime-react-native'
 
-  inherit! :search_paths
-end
-post_install do |installer|
-    installer.generated_projects.each do |project|
-        project.targets.each do |target|
-            target.build_configurations.each do |config|
-                config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.1'
-
-                # TODO: remove this once we migrate the Pipelines to use arm64 MacOS
-                config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = "arm64"
-            end
-        end
-    end
+  post_install do |installer|
+    # https://github.com/facebook/react-native/blob/main/packages/react-native/scripts/react_native_pods.rb#L197-L202
+    react_native_post_install(
+      installer,
+      config[:reactNativePath],
+      :mac_catalyst_enabled => false,
+    )
+    __apply_Xcode_12_5_M1_post_install_workaround(installer)
+  end
 end
