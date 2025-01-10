@@ -703,7 +703,7 @@ if (WIN32)
     # structure was padded due to __declspec(align())
     list(APPEND ORT_WARNING_FLAGS "/wd4324")
     # warning C4800: Implicit conversion from 'X' to bool. Possible information loss
-    if (onnxruntime_USE_OPENVINO)
+    if (onnxruntime_USE_OPENVINO) #TODO[Karim] applys to all projects...
        list(APPEND ORT_WARNING_FLAGS "/wd4800")
     endif()
     # operator 'operator-name': deprecated between enumerations of different types
@@ -831,7 +831,7 @@ set(ONNXRUNTIME_PROVIDER_NAMES cpu)
 set(ORT_PROVIDER_FLAGS)
 set(ORT_PROVIDER_CMAKE_FLAGS)
 
-if (onnxruntime_USE_CUDA)
+if (onnxruntime_USE_CUDA AND (NOT onnxruntime_ENABLE_GENERIC_INTERFACE))
   enable_language(CUDA)
   message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
 
@@ -866,7 +866,7 @@ endif()
 
 if (onnxruntime_USE_CUDA)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_CUDA=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CUDA=1)
+    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CUDA=1)  #TODO[Karim]  Not used anywhere
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES cuda)
 
     if (onnxruntime_USE_FLASH_ATTENTION)
@@ -929,7 +929,7 @@ if (onnxruntime_USE_JSEP)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_JSEP=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES js)
 endif()
-if (onnxruntime_USE_QNN)
+if (onnxruntime_USE_QNN) #TODO[Karim]
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_QNN=1)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_QNN=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES qnn)
@@ -1114,14 +1114,15 @@ function(onnxruntime_set_compile_flags target_name)
     endif()
 
     set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
-    if (onnxruntime_USE_CUDA)
+    
+    if (onnxruntime_USE_CUDA AND (NOT onnxruntime_ENABLE_GENERIC_INTERFACE))
       # Suppress a "conversion_function_not_usable" warning in gsl/span
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe \"--diag_suppress=conversion_function_not_usable\">")
       target_compile_definitions(${target_name} PRIVATE -DDISABLE_CUSPARSE_DEPRECATED)
     endif()
     if (MSVC)
       foreach(CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
-        target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX,C>:/external:I${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY}>")
+        #target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX,C>:/external:I${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORY}>")
       endforeach()
 
       foreach(onnxruntime_external_lib IN LISTS onnxruntime_EXTERNAL_LIBRARIES)
@@ -1179,7 +1180,7 @@ function(onnxruntime_set_compile_flags target_name)
         target_compile_options(${target_name} PRIVATE "-Wno-unused-function")
       endif()
     endif()
-    foreach(ORT_FLAG ${ORT_PROVIDER_FLAGS})
+    foreach(ORT_FLAG ${ORT_PROVIDER_FLAGS}) #TODO[Karim] applies to all projects...
       target_compile_definitions(${target_name} PRIVATE ${ORT_FLAG})
     endforeach()
     if (HAS_DEPRECATED_COPY)
@@ -1192,7 +1193,7 @@ function(onnxruntime_set_compile_flags target_name)
     if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 13 AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 12)
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-maybe-uninitialized>")
     endif()
-    if (onnxruntime_USE_CUDA)
+    if (onnxruntime_USE_CUDA AND (NOT onnxruntime_ENABLE_GENERIC_INTERFACE))
       foreach(FLAG ${ORT_WARNING_FLAGS})
         target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options ${FLAG}>")
       endforeach()
@@ -1416,7 +1417,7 @@ if (onnxruntime_ENABLE_TRAINING_APIS)
   )
 endif()
 
-if (onnxruntime_USE_OPENVINO)
+if (onnxruntime_USE_OPENVINO) #TODO[Karim] applies to both onnxruntime.dll and onnxruntime_shared.dll 
 
   add_definitions(-DUSE_OPENVINO=1)
 
@@ -1473,7 +1474,7 @@ if (onnxruntime_USE_OPENVINO)
 
 endif()
 
-if (onnxruntime_USE_VITISAI)
+if (onnxruntime_USE_VITISAI) #TODO[Karim]
     set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};${CMAKE_CURRENT_LIST_DIR}")
 endif()
 
@@ -1495,7 +1496,7 @@ string(APPEND ORT_BUILD_INFO ", cmake cxx flags: ${CMAKE_CXX_FLAGS}")
 configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_config.h)
 get_property(onnxruntime_GENERATOR_IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
 
-if (onnxruntime_USE_CUDA)
+if (onnxruntime_USE_CUDA AND (NOT onnxruntime_ENABLE_GENERIC_INTERFACE))
   set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
   set(CMAKE_CUDA_STANDARD 17)
   if(onnxruntime_CUDA_HOME)
@@ -1769,17 +1770,17 @@ if (onnxruntime_BUILD_SHARED_LIB OR onnxruntime_BUILD_APPLE_FRAMEWORK)
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime)
 endif()
 
-if (onnxruntime_BUILD_JAVA)
+if (onnxruntime_BUILD_JAVA) #TODO[Karim]  *cmake files included below uses onnxruntime_USE_CUDA, USE_QNN etc variables, 
   message(STATUS "Java Build is enabled")
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_java)
 endif()
 
-if (onnxruntime_BUILD_NODEJS)
+if (onnxruntime_BUILD_NODEJS) #TODO[Karim]
   message(STATUS "Node.js Build is enabled")
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_nodejs)
 endif()
 
-if (onnxruntime_ENABLE_PYTHON)
+if (onnxruntime_ENABLE_PYTHON) #TODO[Karim]
   message(STATUS "Python Build is enabled")
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_python)
 endif()
@@ -1789,7 +1790,7 @@ if (onnxruntime_BUILD_OBJC)
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_objectivec)
 endif()
 
-if (onnxruntime_BUILD_UNIT_TESTS)
+if (onnxruntime_BUILD_UNIT_TESTS) #TODO[Karim]
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_unittests)
 endif()
 
@@ -1837,7 +1838,7 @@ if (WIN32 AND NOT GDK_PLATFORM AND NOT CMAKE_CROSSCOMPILING)
 endif()
 
 foreach(target_name ${ONNXRUNTIME_CMAKE_FILES})
-  include(${target_name}.cmake)
+  include(${target_name}.cmake) #TODO[Karim]
 endforeach()
 if (UNIX)
   option(BUILD_PKGCONFIG_FILES "Build and install pkg-config files" ON)

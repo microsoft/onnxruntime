@@ -782,8 +782,7 @@ def parse_arguments():
     parser.add_argument("--use_triton_kernel", action="store_true", help="Use triton compiled kernels")
     parser.add_argument("--use_lock_free_queue", action="store_true", help="Use lock-free task queue for threadpool.")
 
-    parser.add_argument("--enable_tensorrt_interface", action="store_true", help="build ORT shared library and compatible bridge with tensorrt, but not TRT EP nor tests")
-    parser.add_argument("--enable_openvino_interface", action="store_true", help="build ORT shared library and compatible bridge with OpenVINO, but not OpenVINO EP nor tests")
+    parser.add_argument("--enable_generic_interface", action="store_true", help="build ORT shared library and compatible bridge with primary EPs(tensorRT, OpenVino, Qnn, vitisai) but not tests")
 
     if not is_windows():
         parser.add_argument(
@@ -1045,8 +1044,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER="
         + ("ON" if args.use_tensorrt_builtin_parser and not args.use_tensorrt_oss_parser else "OFF"),
-        "-Donnxruntime_ENABLE_TRT_INTERFACE=" + ("ON" if args.enable_tensorrt_interface else "OFF"),
-        "-Donnxruntime_ENABLE_OPENVINO_INTERFACE=" + ("ON" if args.enable_openvino_interface else "OFF"),
+        "-Donnxruntime_ENABLE_GENERIC_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         # set vars for migraphx
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
@@ -1211,6 +1209,8 @@ def generate_build_tree(
         cmake_args.append("-Donnxruntime_ENABLE_WEBASSEMBLY_SIMD=" + ("ON" if args.enable_wasm_simd else "OFF"))
     if args.use_migraphx:
         cmake_args.append("-Donnxruntime_MIGRAPHX_HOME=" + migraphx_home)
+        
+    '''
     if args.use_cuda:
         nvcc_threads = number_of_nvcc_threads(args)
         cmake_args.append("-Donnxruntime_NVCC_THREADS=" + str(nvcc_threads))
@@ -1221,11 +1221,14 @@ def generate_build_tree(
                     f"Add '--disable_types float8' to your command line. See option disable_types."
                 )
         cmake_args.append(f"-DCMAKE_CUDA_COMPILER={cuda_home}/bin/nvcc")
+    '''
+
     if args.use_rocm:
         cmake_args.append("-Donnxruntime_ROCM_HOME=" + rocm_home)
         cmake_args.append("-Donnxruntime_ROCM_VERSION=" + args.rocm_version)
-    if args.use_tensorrt:
-        cmake_args.append("-Donnxruntime_TENSORRT_HOME=" + tensorrt_home)
+    
+    #if args.use_tensorrt:
+    #    cmake_args.append("-Donnxruntime_TENSORRT_HOME=" + tensorrt_home)
 
     if args.use_cuda:
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_CUDA", "ON")
@@ -1276,8 +1279,8 @@ def generate_build_tree(
     if nccl_home and os.path.exists(nccl_home):
         cmake_args += ["-Donnxruntime_NCCL_HOME=" + nccl_home]
 
-    if qnn_home and os.path.exists(qnn_home):
-        cmake_args += ["-Donnxruntime_QNN_HOME=" + qnn_home]
+    #if qnn_home and os.path.exists(qnn_home):
+    #    cmake_args += ["-Donnxruntime_QNN_HOME=" + qnn_home]
 
     if snpe_root and os.path.exists(snpe_root):
         cmake_args += ["-DSNPE_ROOT=" + snpe_root]
@@ -1369,8 +1372,8 @@ def generate_build_tree(
             cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_code_signing_team_id]
 
     if args.use_qnn:
-        if args.qnn_home is None or os.path.exists(args.qnn_home) is False:
-            raise BuildError("qnn_home=" + qnn_home + " not valid." + " qnn_home paths must be specified and valid.")
+        #if args.qnn_home is None or os.path.exists(args.qnn_home) is False:
+        #    raise BuildError("qnn_home=" + qnn_home + " not valid." + " qnn_home paths must be specified and valid.")
         cmake_args += ["-Donnxruntime_USE_QNN=ON"]
 
         if args.use_qnn == "static_lib":
@@ -1534,7 +1537,7 @@ def generate_build_tree(
             "-Donnxruntime_USE_FULL_PROTOBUF=ON",
         ]
 
-    if args.enable_tensorrt_interface or args.enable_openvino_interface:
+    if args.enable_generic_interface:
         cmake_args += ["-Donnxruntime_BUILD_UNIT_TESTS=OFF"]
 
     if args.enable_lazy_tensor:
@@ -2657,10 +2660,12 @@ def main():
         # Disable ONNX Runtime's builtin memory checker
         args.disable_memleak_checker = True
 
-    if args.enable_tensorrt_interface:
-        args.use_tensorrt, args.test = True, False
-    if args.enable_openvino_interface:
-        args.use_openvino, args.test = "CPU", False
+    if args.enable_generic_interface:
+        args.test = False
+        args.use_tensorrt = True
+        args.use_openvino = "CPU"
+        args.use_vitisai = True
+        #args.use_qnn = True    #defaults should be set based on arm64 vs x64 builds... 
 
     # If there was no explicit argument saying what to do, default
     # to update, build and test (for native builds).
@@ -2765,7 +2770,9 @@ def main():
     source_dir = os.path.normpath(os.path.join(script_dir, "..", ".."))
 
     # if using cuda, setup cuda paths and env vars
-    cuda_home, cudnn_home = setup_cuda_vars(args)
+    #cuda_home, cudnn_home = setup_cuda_vars(args)
+    cuda_home = ""
+    cudnn_home = ""
 
     mpi_home = args.mpi_home
     nccl_home = args.nccl_home
@@ -2779,9 +2786,11 @@ def main():
     armnn_libs = args.armnn_libs
 
     qnn_home = args.qnn_home
+    qnn_home = ""
 
     # if using tensorrt, setup tensorrt paths
-    tensorrt_home = setup_tensorrt_vars(args)
+    #tensorrt_home = setup_tensorrt_vars(args)
+    tensorrt_home = ""
 
     # if using migraphx, setup migraphx paths
     migraphx_home = setup_migraphx_vars(args)
@@ -2872,7 +2881,12 @@ def main():
                     toolset += ",cuda=" + args.cuda_home
                 if args.windows_sdk_version:
                     target_arch += ",version=" + args.windows_sdk_version
-                cmake_extra_args = ["-A", target_arch, "-T", toolset, "-G", args.cmake_generator]
+
+                make_extra_args = ["-A", target_arch, "-G", args.cmake_generator]
+
+                if (args.use_cuda and (not args.enable_generic_interface)):
+                    cmake_extra_args += ["-T", toolset]
+                
             if args.enable_wcos:
                 cmake_extra_defines.append("CMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake")
 
