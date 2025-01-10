@@ -5,6 +5,7 @@
 #include <functional>
 #include <numeric>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <vector>
 
@@ -111,8 +112,8 @@ Status Quantize(const double double_value,
                 int& quant_value);
 
 // Gets error message associated with QNN error handle value.
-const char* GetQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
-                               Qnn_ErrorHandle_t qnn_error_handle);
+std::string_view GetQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
+                                    Qnn_ErrorHandle_t qnn_error_handle);
 
 // Gets verbose error message associated with QNN error handle value.
 std::string GetVerboseQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,

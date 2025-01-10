@@ -185,12 +185,12 @@ Status QnnModel::SetupQnnInputOutput(const logging::Logger& logger) {
   return Status::OK();
 }
 
-static Status BindQnnTensorMemoryToOrtValue(const logging::Logger& logger,
-                                            QnnBackendManager& qnn_backend_manager,
-                                            const OrtMemoryInfo& ort_value_memory_info,
-                                            void* ort_value_data, uint32_t ort_value_data_size,
-                                            Qnn_ContextHandle_t qnn_context,
-                                            Qnn_Tensor_t& qnn_tensor) {
+static Status BindQnnTensorMemoryToOrtValueMemory(const logging::Logger& logger,
+                                                  QnnBackendManager& qnn_backend_manager,
+                                                  const OrtMemoryInfo& ort_value_memory_info,
+                                                  void* ort_value_data, uint32_t ort_value_data_size,
+                                                  Qnn_ContextHandle_t qnn_context,
+                                                  Qnn_Tensor_t& qnn_tensor) {
   // either set qnn_tensor memHandle or clientBuf
   const bool uses_shared_memory = ort_value_memory_info == HtpSharedMemoryAllocator::AssociatedMemoryInfo();
 
@@ -242,7 +242,7 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
 
     qnn_inputs.push_back(qnn_input_info.tensor_wrapper->GetQnnTensor());
 
-    ORT_RETURN_IF_ERROR(BindQnnTensorMemoryToOrtValue(
+    ORT_RETURN_IF_ERROR(BindQnnTensorMemoryToOrtValueMemory(
         logger,
         *qnn_backend_manager_,
         *static_cast<const OrtMemoryInfo*>(ort_input_tensor.GetTensorMemoryInfo()),
@@ -268,11 +268,11 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
 
     qnn_outputs.push_back(qnn_output_info.tensor_wrapper->GetQnnTensor());
 
-    ORT_RETURN_IF_ERROR(BindQnnTensorMemoryToOrtValue(
+    ORT_RETURN_IF_ERROR(BindQnnTensorMemoryToOrtValueMemory(
         logger,
         *qnn_backend_manager_,
         *static_cast<const OrtMemoryInfo*>(ort_output_tensor.GetTensorMemoryInfo()),
-        const_cast<void*>(ort_output_tensor.GetTensorRawData()), qnn_output_info.tensor_byte_size,
+        ort_output_tensor.GetTensorMutableRawData(), qnn_output_info.tensor_byte_size,
         graph_info_->GraphContext(),
         qnn_outputs.back()));
   }
