@@ -28,13 +28,9 @@
       "name": "flatbuffers",
       "version>=": "23.5.26"
     },
+    "mimalloc",
     "ms-gsl",
     "nlohmann-json",
-    {
-      "name": "nsync",
-      "platform": "!windows",
-      "version>=": "1.26.0"
-    },
     {
       "name": "onnx",
       "version>=": "1.16.2"
