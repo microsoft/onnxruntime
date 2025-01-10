@@ -369,10 +369,8 @@ void ProfileComputePlan(NSURL* compileUrl, MLModelConfiguration* config) {
 #define HAS_COREMLOPTIMIZATIONHINT 0
 #endif
 
-
 void ConfigureOptimizationHints(MLModelConfiguration* config, const CoreMLOptions& coreml_options) {
-  if (HAS_COREML8_OR_LATER) {
-#if HAS_COREMLOPTIMIZATIONHINT
+#if HAS_COREMLOPTIMIZATIONHINT && CAN_USE_COREML8_OR_LATER
     MLOptimizationHints* optimizationHints = [[MLOptimizationHints alloc] init];
     if (coreml_options.UseStrategy("FastPrediction")) {
       optimizationHints.specializationStrategy = MLSpecializationStrategyFastPrediction;
@@ -384,7 +382,6 @@ void ConfigureOptimizationHints(MLModelConfiguration* config, const CoreMLOption
       // not set
     }
 #endif
-  }
 }
 
 Status CompileOrReadCachedModel(NSURL* modelUrl, const CoreMLOptions& coreml_options,
