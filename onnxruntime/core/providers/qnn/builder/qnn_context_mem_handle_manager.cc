@@ -57,7 +57,7 @@ Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, co
     ORT_RETURN_IF_ERROR(HtpSharedMemoryAllocator::GetAllocationSharedMemoryInfo(shared_memory_address,
                                                                                 shared_memory_info));
 
-    Qnn_MemDescriptor_t mem_descriptor{};
+    Qnn_MemDescriptor_t mem_descriptor = QNN_MEM_DESCRIPTOR_INIT;
     mem_descriptor.memShape.dimSize = qnn_tensor_dims;
     mem_descriptor.memShape.numDim = qnn_tensor_rank;
     mem_descriptor.memShape.shapeConfig = nullptr;
