@@ -43,6 +43,11 @@
 #define API_AVAILABLE_COREML7 API_AVAILABLE(macos(14), ios(17))
 #define API_AVAILABLE_COREML8 API_AVAILABLE(macos(15), ios(18))
 
+// The previous macros are used in header files to declare the availability of the APIs.
+// The following macros are used in implementation files to check the availability of the APIs.
+#define CAN_USE_COREML8_OR_LATER (__MAC_OS_X_VERSION_MAX_ALLOWED >= 150000 && __IPHONE_OS_VERSION_MAX_ALLOWED >= 180000)
+
+
 // @available is used in implementation code
 // Base required OS to run CoreML Specification Version 4 (Core ML 3)
 #define HAS_COREML3_OR_LATER @available(macOS 10.15, iOS 13, *)
@@ -51,6 +56,7 @@
 #define HAS_COREML6_OR_LATER @available(macOS 13, iOS 16, *)
 #define HAS_COREML7_OR_LATER @available(macOS 14, iOS 17, *)
 #define HAS_COREML8_OR_LATER @available(macOS 15, iOS 18, *)
+
 
 #endif
 
