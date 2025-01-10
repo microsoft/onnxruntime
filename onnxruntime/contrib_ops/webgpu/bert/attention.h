@@ -49,7 +49,8 @@ class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
                                           {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"n_reps", ProgramUniformVariableDataType::Uint32});
+                                          {"n_reps", ProgramUniformVariableDataType::Uint32},
+                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32});
 
   WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
 
@@ -67,8 +68,8 @@ class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
 
 class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
  public:
-  InPlaceSoftmaxProgram(const std::string& kernel_name, int work_group_size, int components, bool is_first_prompt, const Tensor* seqlen_k = nullptr)
-      : Program{kernel_name}, work_group_size_(work_group_size), components_(components), seqlen_k_(seqlen_k), is_first_prompt_(is_first_prompt) {
+  InPlaceSoftmaxProgram(const std::string& kernel_name, int work_group_size, int components, const Tensor* seqlen_k = nullptr)
+      : Program{kernel_name}, work_group_size_(work_group_size), components_(components), seqlen_k_(seqlen_k) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -78,13 +79,13 @@ class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
                                           {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"total_sequence_length_comp", ProgramUniformVariableDataType::Uint32},
-                                          {"elements_per_thread", ProgramUniformVariableDataType::Uint32});
+                                          {"elements_per_thread", ProgramUniformVariableDataType::Uint32},
+                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32});
 
  private:
   int work_group_size_;
   int components_;
   const Tensor* seqlen_k_;
-  bool is_first_prompt_;
 };
 
 class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
@@ -104,7 +105,8 @@ class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
                                           {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"n_reps", ProgramUniformVariableDataType::Uint32});
+                                          {"n_reps", ProgramUniformVariableDataType::Uint32},
+                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32});
 
   WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
 
