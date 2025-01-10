@@ -69,10 +69,10 @@ Status TransferBSDToBNSH(onnxruntime::webgpu::ComputeContext& context, int num_h
   return context.RunProgram(program);
 };
 
-void InitVarStub(std::ostringstream& ss, const Tensor* seqlen_k, bool is_first_prompt) {
+void InitVarStub(std::ostringstream& ss, const Tensor* seqlen_k) {
   if (seqlen_k != nullptr) {
     ss << "total_sequence_length = u32(seqlen_k[batch_idx]) + 1;\n";
-    ss << "var past_sequence_length: u32 = " << (is_first_prompt ? "0" : "total_sequence_length - sequence_length") << ";\n";
+    ss << "var past_sequence_length: u32 = select(total_sequence_length - sequence_length, 0u, uniforms.is_first_prompt > 0);\n";
   } else {
     ss << "let past_sequence_length = uniforms.past_sequence_length;\n";
   }
@@ -106,7 +106,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let sequence_length = uniforms.M;\n"
                             << "var total_sequence_length = uniforms.N;\n";
   std::ostringstream oss;
-  InitVarStub(oss, seqlen_k_, is_first_prompt_);
+  InitVarStub(oss, seqlen_k_);
   shader.MainFunctionBody() << oss.str();
   shader.MainFunctionBody() << "let kOffset = (workgroup_id.z / " << n_reps_ << ") * uniforms.kv_sequence_length * uniforms.K;\n";
   if (has_present_key_) {
@@ -121,7 +121,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                "  if (n + local_id.y < uniforms.N && w + local_id.x < uniforms.K) {\n"
                                "    var idx = TILE_SIZE * local_id.y + local_id.x;\n";
 
-  if ((feed_past_key_ && has_present_key_) || past_present_share_buffer_) {
+  if ((feed_past_key_ && has_present_key_) || (past_present_share_buffer_ && !is_first_prompt_)) {
     shader.MainFunctionBody() << "    if (n + local_id.y < past_sequence_length) {\n"
                               << "      let pastKeyOffset = (workgroup_id.z / " << n_reps_ << ") * uniforms.past_sequence_length * uniforms.K;\n"
                               << "      tileK[idx] = " << (past_present_share_buffer_ ? "present_key" : "past_key") << "[pastKeyOffset + (n + local_id.y) * uniforms.K + w + local_id.x];\n"
@@ -213,7 +213,8 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
                             {static_cast<uint32_t>(past_sequence_length)},
                             {static_cast<uint32_t>(parameters.kv_sequence_length_)},
                             {static_cast<uint32_t>(seqlen_k == nullptr ? total_sequence_length : parameters.seqlen_present_kv_cache_)},
-                            {static_cast<uint32_t>(parameters.n_reps)}})
+                            {static_cast<uint32_t>(parameters.n_reps)},
+                            {static_cast<uint32_t>(parameters.is_first_prompt_ ? 1 : 0)}})
       .SetOverridableConstants({{static_cast<uint32_t>(tile_size)}});
 
   return context.RunProgram(program);
@@ -231,7 +232,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let sequence_length = uniforms.sequence_length;\n"
                             << "var total_sequence_length = uniforms.total_sequence_length_comp * " << components_ << ";\n";
   std::ostringstream oss;
-  InitVarStub(oss, seqlen_k_, is_first_prompt_);
+  InitVarStub(oss, seqlen_k_);
   shader.MainFunctionBody() << oss.str()
                             << "let local_offset = local_idx * uniforms.elements_per_thread;\n"
                             << "let offset = (global_idx / " << work_group_size_ << ") * uniforms.total_sequence_length_comp + local_offset;\n"
@@ -290,7 +291,7 @@ Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tenso
     program.AddInput({seqlen_k, ProgramTensorMetadataDependency::TypeAndRank});
   }
   program.AddOutputs({{probs, ProgramTensorMetadataDependency::TypeAndRank, components}})
-      .CacheHint(work_group_size, is_first_prompt)
+      .CacheHint(work_group_size)
       .SetDispatchGroupSize(1, sequence_length, batch_size * num_heads)
       .SetWorkgroupSize(work_group_size)
       .AddUniformVariables({{static_cast<uint32_t>(batch_size)},
@@ -298,7 +299,8 @@ Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tenso
                             {static_cast<uint32_t>(past_sequence_length)},
                             {static_cast<uint32_t>(sequence_length)},
                             {static_cast<uint32_t>(total_sequence_length_comp)},
-                            {static_cast<uint32_t>(elementsPerThread)}});
+                            {static_cast<uint32_t>(elementsPerThread)},
+                            {static_cast<uint32_t>(is_first_prompt ? 1 : 0)}});
 
   return context.RunProgram(program);
 }
@@ -327,7 +329,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let sequence_length = uniforms.M;\n"
                             << "var total_sequence_length = uniforms.K;\n";
   std::ostringstream oss;
-  InitVarStub(oss, seqlen_k_, is_first_prompt_);
+  InitVarStub(oss, seqlen_k_);
   shader.MainFunctionBody() << oss.str();
   shader.MainFunctionBody() << "let vOffset = (workgroup_id.z / " << n_reps_ << ") * uniforms.N * uniforms.kv_sequence_length + n;\n";
   if (has_present_value_) {
@@ -342,7 +344,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  if (n < uniforms.N && w + local_id.y < uniforms.K) {\n"
                             << "    var idx = TILE_SIZE * local_id.y + local_id.x;\n";
 
-  if ((feed_past_value_ && has_present_value_) || past_present_share_buffer_) {
+  if ((feed_past_value_ && has_present_value_) || (past_present_share_buffer_ && !is_first_prompt_)) {
     shader.MainFunctionBody() << "    if (w + local_id.y < past_sequence_length) {\n"
                               << "      let pastValueOffset = (workgroup_id.z / " << n_reps_ << ") * uniforms.N * uniforms.past_sequence_length + n;\n"
                               << "      tileK[idx] = " << (past_present_share_buffer_ ? "present_value" : "past_value") << "[pastValueOffset + (w + local_id.y) * uniforms.N];\n"
@@ -425,7 +427,8 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
                             {static_cast<uint32_t>(past_sequence_length)},
                             {static_cast<uint32_t>(parameters.kv_sequence_length_)},
                             {static_cast<uint32_t>(seqlen_k == nullptr ? total_sequence_length : parameters.seqlen_present_kv_cache_)},
-                            {static_cast<uint32_t>(parameters.n_reps)}})
+                            {static_cast<uint32_t>(parameters.n_reps)},
+                            {static_cast<uint32_t>(parameters.is_first_prompt_)}})
       .SetOverridableConstants({{static_cast<uint32_t>(tile_size)}});
 
   return context.RunProgram(program);

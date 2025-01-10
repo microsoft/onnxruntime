@@ -49,7 +49,8 @@ class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
                                           {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"n_reps", ProgramUniformVariableDataType::Uint32});
+                                          {"n_reps", ProgramUniformVariableDataType::Uint32},
+                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32});
 
   WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
 
@@ -78,7 +79,8 @@ class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
                                           {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"total_sequence_length_comp", ProgramUniformVariableDataType::Uint32},
-                                          {"elements_per_thread", ProgramUniformVariableDataType::Uint32});
+                                          {"elements_per_thread", ProgramUniformVariableDataType::Uint32},
+                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32});
 
  private:
   int work_group_size_;
@@ -104,7 +106,8 @@ class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
                                           {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"n_reps", ProgramUniformVariableDataType::Uint32});
+                                          {"n_reps", ProgramUniformVariableDataType::Uint32},
+                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32});
 
   WEBGPU_PROGRAM_DEFINE_OVERRIDABLE_CONSTANTS({"TILE_SIZE", ProgramConstantDataType::Uint32});
 
