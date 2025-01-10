@@ -472,7 +472,6 @@ def parse_arguments():
     parser.add_argument(
         "--use_vcpkg",
         action="store_true",
-        default="VCPKG_INSTALLATION_ROOT" in os.environ,
         help="Use vcpkg to search dependencies. Requires CMAKE_TOOLCHAIN_FILE for vcpkg.cmake",
     )
 
@@ -1121,6 +1120,7 @@ def generate_build_tree(
                 run_subprocess(["git", "clone", "https://github.com/microsoft/vcpkg.git", "--recursive"], cwd=build_dir)
         vcpkg_toolchain_path = os.path.join(vcpkg_installation_root, "scripts", "buildsystems", "vcpkg.cmake")
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", vcpkg_toolchain_path)
+        overlay_triplets_dir = None
         # The enable_address_sanitizer and use_binskim_compliant_compile_flags flags cannot be both enabled
         if args.enable_address_sanitizer:
             overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg_triplets", "asan")
@@ -1132,8 +1132,9 @@ def generate_build_tree(
                 overlay_triplets_dir += "_nortti"
         elif args.disable_rtti:
             overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg_triplets", "nortti")
-        if overlay_triplets_dir:
-            vcpkg_install_options.append("--overlay-triplets=%s" % overlay_triplets_dir)
+        if overlay_triplets_dir is None:
+            overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg_triplets", "default")
+        vcpkg_install_options.append(f"--overlay-triplets={overlay_triplets_dir}")
 
         # VCPKG_INSTALL_OPTIONS is a CMake list. It must be joined by semicolons
         add_default_definition(cmake_extra_defines, "VCPKG_INSTALL_OPTIONS", ";".join(vcpkg_install_options))
@@ -2604,13 +2605,7 @@ def main():
     args = parse_arguments()
 
     print(args)
-    if args.build_wasm:
-        # No custom triplet for the wasm builds yet
-        args.use_vcpkg = False
-    elif args.ios or args.android or args.use_xnnpack:
-        # Not supported yet
-        # XNNPack needs a newer version of cpuinfo
-        args.use_vcpkg = False
+
     if os.getenv("ORT_BUILD_WITH_CACHE") == "1":
         args.use_cache = True
 
