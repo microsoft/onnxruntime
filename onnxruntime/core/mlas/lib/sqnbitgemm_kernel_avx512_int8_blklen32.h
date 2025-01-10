@@ -28,22 +28,6 @@ __m512 load_4blksum_512(const float* BlksumPtr)
     return _mm512_insertf32x4(_mm512_setzero_ps(), blksum4_4_ps, 0);
 }
 
-// Function to load a single float value into the lowest element of a __m512 register
-static MLAS_FORCEINLINE
-__m512 load_1blksum_512(const float* BlksumPtr) {
-    // Create a mask to set only the lowest element
-    constexpr __mmask16 mask = 0x01;  // Binary: 0000 0000 0000 0001
-
-    // Dereference the pointer to get the float value
-    float value = *BlksumPtr;
-
-    // Use the mask to set the lowest element to the value
-    __m512 result = _mm512_castsi512_ps(
-        _mm512_mask_set1_epi32(_mm512_setzero_epi32(), mask, *reinterpret_cast<int*>(&value)));
-
-    return result;
-}
-
 // Function to load a single float value into the lowest element of a __m256 register
 static MLAS_FORCEINLINE
 __m256 load_1blksum_256(const float* BlksumPtr) {
