@@ -24,6 +24,7 @@
       "host": true,
       "version>=": "23.5.26"
     },
+    "fp16",
     {
       "name": "flatbuffers",
       "version>=": "23.5.26"
@@ -45,6 +46,7 @@
       "host": true,
       "version>=": "3.21.12"
     },
+    "pthreadpool",
     "re2",
     "safeint",
     "utf8-range",
@@ -56,7 +58,11 @@
       "name": "vcpkg-cmake-config",
       "host": true
     },
-    "wil",
+    {
+      "name": "wil",
+      "platform": "windows"
+    },
+    "xnnpack",
     {
       "name": "zlib",
       "platform": "windows"
