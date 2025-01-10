@@ -371,16 +371,16 @@ void ProfileComputePlan(NSURL* compileUrl, MLModelConfiguration* config) {
 
 void ConfigureOptimizationHints(MLModelConfiguration* config, const CoreMLOptions& coreml_options) {
 #if HAS_COREMLOPTIMIZATIONHINT && CAN_USE_COREML8_OR_LATER
-    MLOptimizationHints* optimizationHints = [[MLOptimizationHints alloc] init];
-    if (coreml_options.UseStrategy("FastPrediction")) {
-      optimizationHints.specializationStrategy = MLSpecializationStrategyFastPrediction;
-      config.optimizationHints = optimizationHints;
-    } else if (coreml_options.UseStrategy("Default")) {
-      optimizationHints.specializationStrategy = MLSpecializationStrategyDefault;
-      config.optimizationHints = optimizationHints;
-    } else {
-      // not set
-    }
+  MLOptimizationHints* optimizationHints = [[MLOptimizationHints alloc] init];
+  if (coreml_options.UseStrategy("FastPrediction")) {
+    optimizationHints.specializationStrategy = MLSpecializationStrategyFastPrediction;
+    config.optimizationHints = optimizationHints;
+  } else if (coreml_options.UseStrategy("Default")) {
+    optimizationHints.specializationStrategy = MLSpecializationStrategyDefault;
+    config.optimizationHints = optimizationHints;
+  } else {
+    // not set
+  }
 #endif
 }
 
