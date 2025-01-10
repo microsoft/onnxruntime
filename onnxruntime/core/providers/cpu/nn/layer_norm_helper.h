@@ -25,17 +25,19 @@ struct LayerNormParams {
   int64_t broadcast_param;
 };
 
-// When X shape is (B, S, ...), and task_idx is in the range of [0, B * S).
+// We support broadcasting for axis=2, where the first two dimensions are rows, and the rest are columns.
+// When X shape is (B, S, ...), and x_row (index of one row in X) is in the range of [0, B * S).
 // We support scale and bias shape like below:
 //    When scale and bias shape is (1, 1, ...) or (...), value of broadcast_param is 0.
 //    When scale and bias shape is (B, 1, ...), value of broadcast_param is S.
 //    When scale and bias shape is (B, S, ...), value of broadcast_param is 1.
 //    When scale and bias shape is (1, S, ...), value of broadcast_param is -S.
-// Below is a macro to compute the initial index for scale and bias data.
+
+// Below is a macro to compute the offset for scale and bias data for a row of X.
 #ifndef LAYER_NORM_SCALE_BIAS_OFFSET
-#define LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, row_idx, norm_size) \
-  ((broadcast_param == 0) ? 0                                             \
-                          : norm_size * (broadcast_param > 0 ? row_idx / broadcast_param : row_idx % (-broadcast_param)))
+#define LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, x_row, norm_size) \
+  ((broadcast_param == 0) ? 0                                           \
+                          : norm_size * (broadcast_param > 0 ? x_row / broadcast_param : x_row % (-broadcast_param)))
 #endif
 
 class LayerNormHelper {
@@ -74,6 +76,8 @@ class LayerNormHelper {
                                    const TensorShape& scale_shape,
                                    const TensorShape* bias_shape,
                                    int64_t axis) {
+    // Note that when size of scale and bias is norm_size, it won't enter this function (see CheckInputs).
+
     // X shape is (B, S, ...)
     if (axis == 2 &&
         x_shape.NumDimensions() >= 3 &&
