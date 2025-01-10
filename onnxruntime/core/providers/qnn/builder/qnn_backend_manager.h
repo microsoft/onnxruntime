@@ -250,7 +250,6 @@ class QnnBackendManager {
   bool backend_initialized_ = false;
   bool device_created_ = false;
   bool context_created_ = false;
-  bool backend_setup_completed_ = false;
   // NPU backend requires quantized model
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   Qnn_ProfileHandle_t profile_backend_handle_ = nullptr;
