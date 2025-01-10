@@ -21,8 +21,8 @@ class ConcatOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                              const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -42,7 +42,6 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   std::vector<emscripten::val> inputs;
   for (const auto* input : input_defs) {
-    LOGS(logger, VERBOSE) << "input name " << input->Name();
     inputs.push_back(model_builder.GetOperand(input->Name()));
   }
 
@@ -56,8 +55,8 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   return Status::OK();
 }
 
-bool ConcatOpBuilder::HasSupportedInputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                                             const logging::Logger& logger) const {
+bool ConcatOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                                             const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
   int32_t input0_type;

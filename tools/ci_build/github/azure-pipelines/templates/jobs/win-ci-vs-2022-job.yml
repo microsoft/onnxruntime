@@ -109,7 +109,7 @@ jobs:
   - ${{ if eq(parameters.buildArch, 'x64') }}:
       - task: JavaToolInstaller@0
         inputs:
-          versionSpec: '11'
+          versionSpec: '17'
           jdkArchitectureOption: ${{ parameters.buildArch }}
           jdkSourceOption: 'PreInstalled'
 

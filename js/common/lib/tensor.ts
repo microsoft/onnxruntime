@@ -4,6 +4,7 @@
 import { TensorFactory } from './tensor-factory.js';
 import { Tensor as TensorImpl } from './tensor-impl.js';
 import { TypedTensorUtils } from './tensor-utils.js';
+import { TryGetGlobalType } from './type-helper.js';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
 
@@ -131,24 +132,19 @@ export declare namespace Tensor {
    */
   export type TextureDataTypes = 'float32';
 
+  type GpuBufferTypeFallback = { size: number; mapState: 'unmapped' | 'pending' | 'mapped' };
   /**
    * type alias for WebGPU buffer
-   *
-   * The reason why we don't use type "GPUBuffer" defined in webgpu.d.ts from @webgpu/types is because "@webgpu/types"
-   * requires "@types/dom-webcodecs" as peer dependency when using TypeScript < v5.1 and its version need to be chosen
-   * carefully according to the TypeScript version being used. This means so far there is not a way to keep every
-   * TypeScript version happy. It turns out that we will easily broke users on some TypeScript version.
-   *
-   * for more info see https://github.com/gpuweb/types/issues/127
    */
-  export type GpuBufferType = { size: number; mapState: 'unmapped' | 'pending' | 'mapped' };
+  export type GpuBufferType = TryGetGlobalType<'GPUBuffer', GpuBufferTypeFallback>;
 
+  type MLTensorTypeFallback = { destroy(): void };
   /**
    * type alias for WebNN MLTensor
    *
    * The specification for WebNN's MLTensor is currently in flux.
    */
-  export type MLTensorType = unknown;
+  export type MLTensorType = TryGetGlobalType<'MLTensor', MLTensorTypeFallback>;
 
   /**
    * supported data types for constructing a tensor from a WebGPU buffer

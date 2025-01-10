@@ -4,6 +4,7 @@
 import { InferenceSession as InferenceSessionImpl } from './inference-session-impl.js';
 import { OnnxModelOptions } from './onnx-model.js';
 import { OnnxValue, OnnxValueDataLocation } from './onnx-value.js';
+import { TryGetGlobalType } from './type-helper.js';
 
 /* eslint-disable @typescript-eslint/no-redeclare */
 
@@ -282,7 +283,7 @@ export declare namespace InferenceSession {
     extends WebNNExecutionProviderName,
       Omit<WebNNContextOptions, 'deviceType'>,
       Required<Pick<WebNNContextOptions, 'deviceType'>> {
-    context: unknown /* MLContext */;
+    context: TryGetGlobalType<'MLContext'>;
   }
 
   /**
@@ -291,8 +292,8 @@ export declare namespace InferenceSession {
    * @see https://www.w3.org/TR/webnn/#dom-ml-createcontext-gpudevice
    */
   export interface WebNNOptionsWebGpu extends WebNNExecutionProviderName {
-    context: unknown /* MLContext */;
-    gpuDevice: unknown /* GPUDevice */;
+    context: TryGetGlobalType<'MLContext'>;
+    gpuDevice: TryGetGlobalType<'GPUDevice'>;
   }
 
   /**

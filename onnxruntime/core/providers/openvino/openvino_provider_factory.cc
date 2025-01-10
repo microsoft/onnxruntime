@@ -7,6 +7,7 @@
 #include "core/providers/openvino/openvino_provider_factory.h"
 #include "core/providers/openvino/openvino_execution_provider.h"
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "nlohmann/json.hpp"
 
 namespace onnxruntime {
@@ -50,13 +51,13 @@ struct OpenVINOProviderFactory : IExecutionProviderFactory {
 };
 
 std::unique_ptr<IExecutionProvider> OpenVINOProviderFactory::CreateProvider() {
-  bool so_disable_cpu_fallback = config_options_.GetConfigOrDefault("session.disable_cpu_ep_fallback", "0") == "1";
-  bool so_export_ep_ctx_blob = config_options_.GetConfigOrDefault("ep.context_enable", "0") == "1";
-  bool so_epctx_embed_mode = config_options_.GetConfigOrDefault("ep.context_embed_mode", "1") == "1";
-  std::string so_cache_path = config_options_.GetConfigOrDefault("ep.context_file_path", "").c_str();
+  bool so_disable_cpu_fallback = config_options_.GetConfigOrDefault(kOrtSessionOptionsDisableCPUEPFallback, "0") == "1";
+  bool so_export_ep_ctx_blob = config_options_.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
+  bool so_epctx_embed_mode = config_options_.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "0") == "1";
+  std::string so_cache_path = config_options_.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "").c_str();
 
   if (so_export_ep_ctx_blob && !so_cache_path.empty()) {
-    cache_dir_ = so_cache_path;
+    cache_dir_ = std::move(so_cache_path);
     auto file_path = std::filesystem::path(cache_dir_);
     // ep_context_file_path_ file extension must be .onnx
     if (file_path.extension().generic_string() == ".onnx") {
@@ -247,7 +248,7 @@ struct OpenVINO_Provider : Provider {
                 LOGS_DEFAULT(WARNING) << "Unsupported JSON value type for key: " << inner_key << ". Skipping key.";
               }
             }
-            target_map[key] = inner_map;
+            target_map[key] = std::move(inner_map);
           }
         } catch (const nlohmann::json::parse_error& e) {
           // Handle syntax errors in JSON

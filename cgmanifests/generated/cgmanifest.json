@@ -26,7 +26,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "595228d99e3977ac27cb79d5963adda262af99ad",
+          "commitHash": "b8baa8446686496da4cc8fda09f2b6fe65c2a02c",
           "repositoryUrl": "https://github.com/onnx/onnx.git"
         },
         "comments": "git submodule at cmake/external/onnx"
@@ -196,7 +196,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "9f98e2ebe7507fe0774d06a44bbf4b0e82cc9ce7",
+          "commitHash": "9c69a24bc2e20c8a511a4e6b06fd49639ec5300a",
           "repositoryUrl": "https://github.com/onnx/onnx-tensorrt.git"
         },
         "comments": "onnx_tensorrt"
@@ -346,7 +346,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "511eb80847afe6bded34ec491a38d5d78ba2d604",
+          "commitHash": "12a3b24c456cebd9fd11f23ac0164f78129b00c6",
           "repositoryUrl": "https://github.com/google/dawn.git"
         },
         "comments": "dawn"

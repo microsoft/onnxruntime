@@ -12,10 +12,6 @@ parameters:
 - name: EP_BUILD_FLAGS
   type: string
 
-- name: ENV_SETUP_SCRIPT
-  type: string
-  default: ''
-
 - name: BUILD_PY_PARAMETERS
   displayName: >
     Extra parameters to pass to build.py. Don't put newlines in here.
@@ -37,6 +33,10 @@ parameters:
    - Release
    - RelWithDebInfo
    - MinSizeRel
+   
+- name: use_tensorrt
+  type: boolean
+  default: false
 
 stages:
   - stage: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build
@@ -50,32 +50,46 @@ stages:
         name: onnxruntime-Win-CPU-2022
         os: windows
       templateContext:
-        codeSignValidation:
-          enabled: true
-          break: true
-        psscriptanalyzer:
-          enabled: true
         sdl:
+          codeSignValidation:
+            enabled: true
+            # TODO: check why pyd file was not signed
+            break: false
+            additionalTargetsGlobPattern: f|**\*.pyd
+          psscriptanalyzer:
+            enabled: true
           binskim:
+            preReleaseVersion: '4.3.1'
             enabled: true
             scanOutputDirectoryOnly: true
-            targetPathPattern: '+:file|*.dll;-:file|DirectML.dll'
+            analyzeTargetGlob: '+:file|$(BUILD.STAGINGDIRECTORY)\**\*.pyd;+:file|$(BUILD.STAGINGDIRECTORY)\**\*.dll;-:file|DirectML.dll'
         outputs:
         - output: pipelineArtifact
           targetPath: $(Build.ArtifactStagingDirectory)
           artifactName: win_${{ parameters.EP_NAME }}_wheel_${{ parameters.PYTHON_VERSION }}
       variables:
-        GRADLE_OPTS: '-Dorg.gradle.daemon=false'
-        VSGenerator: 'Visual Studio 17 2022'
-        CUDA_MODULE_LOADING: 'LAZY'
+      - template: ../templates/common-variables.yml
+      - name: GRADLE_OPTS
+        value: '-Dorg.gradle.daemon=false'
+      - name: VSGenerator
+        value: 'Visual Studio 17 2022'
+      - name: CUDA_MODULE_LOADING
+        value: 'LAZY'
+      - name: win_trt_folder
+        ${{ if eq(parameters.CudaVersion, '11.8') }}:
+          value: ${{ variables.win_trt_folder_cuda11 }}
+        ${{ if eq(parameters.CudaVersion, '12.2') }}:
+          value: ${{ variables.win_trt_folder_cuda12 }}
+      - name: trt_build_flag
+        ${{ if eq(parameters.use_tensorrt, true) }}:
+          value: '--use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder }}"'
+        ${{ if eq(parameters.use_tensorrt, false) }}:
+          value: ''
       steps:
-          - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-            displayName: 'Clean Agent Directories'
-            condition: always()
 
           - checkout: self
             clean: true
-            submodules: recursive
+            submodules: none
 
           - template: ../templates/telemetry-steps.yml
 
@@ -85,25 +99,20 @@ stages:
               addToPath: true
               architecture: 'x64'
 
+          - task: PipAuthenticate@1
+            displayName: 'Pip Authenticate'
+            inputs:
+              artifactFeeds: 'Lotus'
+
+
           - template: ../templates/download-deps.yml
 
-          - ${{ if ne(parameters.ENV_SETUP_SCRIPT, '') }}:
-            - template: ../templates/jobs/set-winenv.yml
-              parameters:
-                EnvSetupScript: ${{ parameters.ENV_SETUP_SCRIPT }}
-                ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt')) }}:
-                  DownloadCUDA: true
-                ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt') }}:
-                  DownloadTRT: true
-
-          - ${{ if eq(parameters.ENV_SETUP_SCRIPT, '') }}:
-            - template: ../templates/jobs/download_win_gpu_library.yml
-              parameters:
-                CudaVersion: ${{ parameters.CudaVersion }}
-                ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt')) }}:
-                  DownloadCUDA: true
-                ${{ if contains(parameters.EP_BUILD_FLAGS, 'use_tensorrt') }}:
-                  DownloadTRT: true
+          - template: ../templates/jobs/download_win_gpu_library.yml
+            parameters:
+              CudaVersion: ${{ parameters.CudaVersion }}
+              ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), eq(parameters.use_tensorrt, true)) }}:
+                DownloadCUDA: true
+              DownloadTRT: ${{ parameters.use_tensorrt }}
 
           - task: PythonScript@0
             displayName: 'Update deps.txt'
@@ -115,7 +124,7 @@ stages:
           - template: ../templates/set-nightly-build-option-variable-step.yml
 
           - task: PythonScript@0
-            displayName: 'Generate cmake config'
+            displayName: 'Build'
             inputs:
               scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
               arguments: >
@@ -125,8 +134,8 @@ stages:
                 --cmake_generator "$(VSGenerator)"
                 --enable_pybind
                 --enable_onnx_tests
-                --parallel --use_binskim_compliant_compile_flags --update --build
-                $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }}
+                --parallel 8 --use_binskim_compliant_compile_flags --update --build --msvc_toolset 14.40
+                $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }} ${{ variables.trt_build_flag }}
               workingDirectory: '$(Build.BinariesDirectory)'
 
           # Esrp signing
@@ -156,9 +165,6 @@ stages:
             workingDirectory: '$(Build.ArtifactStagingDirectory)'
             displayName: 'unzip the package'
 
-          - template: ../templates/component-governance-component-detection-steps.yml
-            parameters:
-              condition: 'succeeded'
 
   - stage: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Tests
     dependsOn: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build
@@ -169,9 +175,6 @@ stages:
       pool:
         name: ${{parameters.MACHINE_POOL}}
       steps:
-        - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-          displayName: 'Clean Agent Directories'
-          condition: always()
 
         - checkout: self
           clean: true
@@ -188,6 +191,13 @@ stages:
             ArtifactName: win_${{ parameters.EP_NAME }}_wheel_${{ parameters.PYTHON_VERSION }}
             StepName: 'Download Pipeline Artifact - Windows GPU Build'
             TargetPath: '$(Build.ArtifactStagingDirectory)'
+
+        - template: ../templates/jobs/download_win_gpu_library.yml
+          parameters:
+            CudaVersion: ${{ parameters.CudaVersion }}
+            ${{ if or(contains(parameters.EP_BUILD_FLAGS, 'use_cuda'), eq(parameters.use_tensorrt, true)) }}:
+              DownloadCUDA: true
+            DownloadTRT: ${{ parameters.use_tensorrt }}
 
         - task: PowerShell@2
           displayName: 'Install ONNX'

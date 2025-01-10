@@ -56,7 +56,7 @@ const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_JSEP': 'false',
   'BUILD_DEFS.DISABLE_WASM': 'false',
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
-  'BUILD_DEFS.DISABLE_DYNAMIC_IMPORT': 'false',
+  'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'false',
 
   'BUILD_DEFS.IS_ESM': 'false',
   'BUILD_DEFS.ESM_IMPORT_META_URL': 'undefined',
@@ -115,7 +115,35 @@ async function minifyWasmModuleJsForBrowser(filepath: string): Promise<string> {
     const TIME_TAG = `BUILD:terserMinify:${filepath}`;
     console.time(TIME_TAG);
 
-    const contents = await fs.readFile(filepath, { encoding: 'utf-8' });
+    let contents = await fs.readFile(filepath, { encoding: 'utf-8' });
+
+    // Replace the following line to create worker:
+    // ```
+    // new Worker(new URL(import.meta.url), ...
+    // ```
+    // with:
+    // ```
+    // new Worker(import.meta.url.startsWith('file:')
+    //              ? new URL(BUILD_DEFS.BUNDLE_FILENAME, import.meta.url)
+    //              : new URL(import.meta.url), ...
+    // ```
+    //
+    // NOTE: this is a workaround for some bundlers that does not support runtime import.meta.url.
+    // TODO: in emscripten 3.1.61+, need to update this code.
+
+    // First, check if there is exactly one occurrence of "new Worker(new URL(import.meta.url)".
+    const matches = [...contents.matchAll(/new Worker\(new URL\(import\.meta\.url\),/g)];
+    if (matches.length !== 1) {
+      throw new Error(
+        `Unexpected number of matches for "new Worker(new URL(import.meta.url)" in "${filepath}": ${matches.length}.`,
+      );
+    }
+
+    // Replace the only occurrence.
+    contents = contents.replace(
+      /new Worker\(new URL\(import\.meta\.url\),/,
+      `new Worker(import.meta.url.startsWith('file:')?new URL(BUILD_DEFS.BUNDLE_FILENAME, import.meta.url):new URL(import.meta.url),`,
+    );
 
     // Find the first and the only occurrence of minified function implementation of "_emscripten_thread_set_strongref":
     // ```js
@@ -265,14 +293,17 @@ async function buildOrt({
   const external = isNode
     ? ['onnxruntime-common']
     : ['node:fs/promises', 'node:fs', 'node:os', 'module', 'worker_threads'];
+  const bundleFilename = `${outputName}${isProduction ? '.min' : ''}.${format === 'esm' ? 'mjs' : 'js'}`;
   const plugins: esbuild.Plugin[] = [];
-  const defineOverride: Record<string, string> = {};
+  const defineOverride: Record<string, string> = {
+    'BUILD_DEFS.BUNDLE_FILENAME': JSON.stringify(bundleFilename),
+  };
   if (!isNode) {
     defineOverride.process = 'undefined';
     defineOverride['globalThis.process'] = 'undefined';
   }
 
-  if (define['BUILD_DEFS.DISABLE_DYNAMIC_IMPORT'] === 'true') {
+  if (define['BUILD_DEFS.ENABLE_BUNDLE_WASM_JS'] === 'true') {
     plugins.push({
       name: 'emscripten-mjs-handler',
       setup(build: esbuild.PluginBuild) {
@@ -285,7 +316,7 @@ async function buildOrt({
 
   await buildBundle({
     entryPoints: ['web/lib/index.ts'],
-    outfile: `web/dist/${outputName}${isProduction ? '.min' : ''}.${format === 'esm' ? 'mjs' : 'js'}`,
+    outfile: `web/dist/${bundleFilename}`,
     platform,
     format,
     globalName: 'ort',
@@ -585,20 +616,20 @@ async function main() {
       isProduction: true,
       outputName: 'ort.all.bundle',
       format: 'esm',
-      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_DYNAMIC_IMPORT': 'true' },
+      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'true' },
     });
 
     // ort[.min].[m]js
     await addAllWebBuildTasks({
       outputName: 'ort',
-      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true' },
+      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true' },
     });
     // ort.bundle.min.mjs
     await buildOrt({
       isProduction: true,
       outputName: 'ort.bundle',
       format: 'esm',
-      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true', 'BUILD_DEFS.DISABLE_DYNAMIC_IMPORT': 'true' },
+      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true', 'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'true' },
     });
 
     // ort.webgpu[.min].[m]js
@@ -611,12 +642,19 @@ async function main() {
       isProduction: true,
       outputName: 'ort.webgpu.bundle',
       format: 'esm',
-      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true', 'BUILD_DEFS.DISABLE_DYNAMIC_IMPORT': 'true' },
+      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true', 'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'true' },
     });
 
     // ort.wasm[.min].[m]js
     await addAllWebBuildTasks({
       outputName: 'ort.wasm',
+      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true', 'BUILD_DEFS.DISABLE_WEBGL': 'true' },
+    });
+    // ort.wasm.bundle.min.mjs
+    await buildOrt({
+      isProduction: true,
+      outputName: 'ort.wasm.bundle',
+      format: 'esm',
       define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true', 'BUILD_DEFS.DISABLE_WEBGL': 'true' },
     });
     // ort.webgl[.min].[m]js

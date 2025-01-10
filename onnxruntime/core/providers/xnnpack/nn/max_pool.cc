@@ -3,6 +3,8 @@
 
 #include "max_pool.h"
 
+#include <limits>
+
 #include "core/graph/graph.h"
 #include "core/providers/utils.h"
 #include "core/providers/xnnpack/xnnpack_init.h"
@@ -168,8 +170,8 @@ MaxPool::MaxPool(const OpKernelInfo& info)
   auto input_dtype = X_arg.TypeAsProto()->tensor_type().elem_type();
   xnn_status status = xnn_status_invalid_state;
   struct xnn_operator* p = nullptr;
-  float foutput_min = clip_min_max_ ? clip_min_max_->first : -INFINITY;
-  float foutput_max = clip_min_max_ ? clip_min_max_->second : INFINITY;
+  float foutput_min = clip_min_max_ ? clip_min_max_->first : -std::numeric_limits<float>::infinity();
+  float foutput_max = clip_min_max_ ? clip_min_max_->second : std::numeric_limits<float>::infinity();
   if (input_dtype == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
     maxpool_type_ = OpComputeType::op_compute_type_fp32;
     status = xnn_create_max_pooling2d_nhwc_f32(input_padding_top, input_padding_right,

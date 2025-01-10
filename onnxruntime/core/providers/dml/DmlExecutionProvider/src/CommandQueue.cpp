@@ -55,7 +55,7 @@ namespace Dml
         // for example, an allocation from BucketizedBufferAllocator attempts to queue a reference
         // to its underlying D3D resource when freed. Furthermore, these references are unnecessary
         // since Close() already blocks for scheduled GPU work before clearing m_queuedReferences.
-        if (!m_clearingQueue)
+        if (!m_closing)
         {
             QueuedReference queuedReference = {GetLastFenceValue(), object};
 
@@ -70,15 +70,15 @@ namespace Dml
         }
     }
 
-    void CommandQueue::WaitForSignalAndClearQueue()
+    void CommandQueue::Close()
     {
         // Wait for flushed work:
-        assert(!m_clearingQueue);
-        m_clearingQueue = true;
+        assert(!m_closing);
+        m_closing = true;
         GpuEvent event = GetCurrentCompletionEvent();
         event.WaitForSignal(m_cpuSyncSpinningEnabled);
         m_queuedReferences.clear();
-        m_clearingQueue = false;
+        m_closing = false;
     }
 
     void CommandQueue::ReleaseCompletedReferences()

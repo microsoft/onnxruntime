@@ -21,6 +21,8 @@ namespace webnn {
 class ResizeOpBuilder : public BaseOpBuilder {
   // Add operator related.
  public:
+  // Allow roi and scales potentially being empty inputs that are ignored during processing.
+  ResizeOpBuilder() : BaseOpBuilder(/*allow empty inputs*/ true) {}
   void AddInitializersToSkip(ModelBuilder& model_builder, const Node& node) const override;
 
  private:
@@ -267,15 +269,9 @@ bool ResizeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers
       return false;
     }
 
-    // coordinate_transformation_mode
-    // Spec issue for supporting more coordinate transformation modes:
-    // https://github.com/webmachinelearning/webnn/issues/270
-    const std::string coordinate_transformation_mode = helper.Get("coordinate_transformation_mode", "half_pixel");
-    if (coordinate_transformation_mode != "half_pixel") {
-      LOGS(logger, VERBOSE) << "Resize does not support coordinate_transformation_mode: "
-                            << coordinate_transformation_mode;
-      return false;
-    }
+    // Ignore coordinate_transformation_mode because WebNN only supports half_pixel mode.
+    // TODO: Validate coordinate_transformation_mode. Related spec issue for supporting attribute coordinate
+    // transformation modes: https://github.com/webmachinelearning/webnn/issues/270
 
     // exclude_outside
     const auto exclude_outside = helper.Get("exclude_outside", 0);

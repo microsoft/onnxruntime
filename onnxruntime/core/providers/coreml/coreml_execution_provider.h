@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/common/inlined_containers.h"
+#include "core/providers/coreml/coreml_options.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/model_metadef_id_generator.h"
 
@@ -14,7 +14,7 @@ class Model;
 
 class CoreMLExecutionProvider : public IExecutionProvider {
  public:
-  CoreMLExecutionProvider(uint32_t coreml_flags);
+  CoreMLExecutionProvider(const CoreMLOptions& options);
   virtual ~CoreMLExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
@@ -29,7 +29,7 @@ class CoreMLExecutionProvider : public IExecutionProvider {
  private:
   // The bit flags which define bool options for COREML EP, bits are defined as
   // COREMLFlags in include/onnxruntime/core/providers/coreml/coreml_provider_factory.h
-  uint32_t coreml_flags_;
+  CoreMLOptions coreml_options_;
   const int32_t coreml_version_;
   ModelMetadefIdGenerator metadef_id_generator_;
 

@@ -358,6 +358,22 @@ size_t
     bool ZeroMode
     );
 
+#ifdef FORCE_GENERIC_ALGORITHMS
+typedef
+size_t
+(MLASCALL MLAS_GEMM_FLOAT_KERNEL_GENERIC)(
+    const float* A,
+    const float* B,
+    float* C,
+    size_t CountK,
+    size_t CountM,
+    size_t CountN,
+    size_t lda,
+    size_t ldc,
+    float alpha
+    );
+#endif
+
 #else
 
 #if defined(__aarch64__) && defined(__linux__)
@@ -733,6 +749,10 @@ extern "C" {
 #if defined(MLAS_TARGET_AMD64_IX86)
     MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelSse;
     MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelAvx;
+#ifdef FORCE_GENERIC_ALGORITHMS
+    MLAS_GEMM_FLOAT_KERNEL_GENERIC MlasSgemmKernelZero;
+    MLAS_GEMM_FLOAT_KERNEL_GENERIC MlasSgemmKernelAdd;
+#endif
 #if defined(MLAS_TARGET_AMD64)
     MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelFma3;
     MLAS_GEMM_FLOAT_KERNEL MlasGemmFloatKernelAvx512F;
@@ -1017,17 +1037,24 @@ extern const MLAS_FPQ4GEMM_DISPATCH MlasFpQ4GemmDispatchAvx512;
 // Float/quantized n-bit integer matrix/matrix multiply dispatch structure.
 //
 
-struct MLAS_SQNBIT_GEMM_DISPATCH;
+struct MLAS_QNBIT_GEMM_DISPATCH;
 
-extern const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon;
+extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon;
 
-extern const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2;
+extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2;
 
-extern const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2vnni;
+extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2vnni;
 
-extern const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512;
+extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512;
 
-extern const MLAS_SQNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni;
+extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni;
+
+//
+// Rotary embedding dispatch structure.
+//
+struct MLAS_ROPE_DISPATCH;
+extern const MLAS_ROPE_DISPATCH MlasRopeDispatchNeon;
+
 
 //
 // Quantized depthwise convolution kernels.
@@ -1184,10 +1211,12 @@ struct MLAS_PLATFORM {
     const MLAS_FPQ4GEMM_DISPATCH* FpQ4GemmDispatch{nullptr};
     const MLAS_Q8Q4GEMM_DISPATCH* Q8Q4GemmDispatch{nullptr};
 
-    const MLAS_SQNBIT_GEMM_DISPATCH* SQNBitGemmDispatch{nullptr};
+    const MLAS_QNBIT_GEMM_DISPATCH* QNBitGemmDispatch{nullptr};
 
     MLAS_CAST_F16_TO_F32_KERNEL* CastF16ToF32Kernel;
     MLAS_CAST_F32_TO_F16_KERNEL* CastF32ToF16Kernel;
+
+    const MLAS_ROPE_DISPATCH* RopeDispatch{nullptr};
 };
 
 inline

@@ -42,7 +42,6 @@ static SessionOptions session_options = {
     ExecutionMode::ORT_SEQUENTIAL,     // execution_mode
     ExecutionOrder::PRIORITY_BASED,    // execution_order
     false,                             // enable_profiling
-    false,                             // save prepacked initializer
     ORT_TSTR(""),                      // optimized_model_filepath
     true,                              // enable_mem_pattern
     true,                              // enable_mem_reuse

@@ -226,7 +226,7 @@ AllocatorPtr GetDmlAllocator(OrtDevice::DeviceId id) {
       auto dml_device = onnxruntime::DMLProviderFactoryCreator::CreateDMLDevice(d3d12_device.Get());
       ORT_THROW_IF_FAILED(d3d12_device->SetPrivateDataInterface(dml_device_guid, dml_device.Get()));
 
-      context = wil::MakeOrThrow<Dml::ExecutionContext>(d3d12_device.Get(), dml_device.Get(), cmd_queue.Get(), true);
+      context = wil::MakeOrThrow<Dml::ExecutionContext>(d3d12_device.Get(), dml_device.Get(), cmd_queue.Get(), true, true);
       ORT_THROW_IF_FAILED(d3d12_device->SetPrivateDataInterface(dml_execution_context_guid, context.Get()));
     }
 
@@ -280,7 +280,7 @@ void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   uint32_t readback_heap_size = gsl::narrow_cast<uint32_t>(sizeof(readback_heap));
   ORT_THROW_IF_FAILED(d3d12_device->GetPrivateData(dml_readback_heap_guid, &readback_heap_size, &readback_heap));
 
-  // ReadbackFromGpu already syncs with the CPU and waits for the copy to be completed, so we don't need to sync after
+  // ReadbackFromGpu already syncs with the CPU and waits for the copy to be completed, so we dont need to sync after
   // this call
   readback_heap->ReadbackFromGpu(
       gsl::make_span(static_cast<std::byte*>(dst), num_bytes),
@@ -291,7 +291,7 @@ void DmlToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
 
 const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetDmlToHostMemCpyFunction() {
   static std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> map{
-      {OrtDevice::GPU, DmlToCpuMemCpy}};
+      {OrtDevice::DML, DmlToCpuMemCpy}};
 
   return &map;
 }
@@ -428,7 +428,7 @@ MLDataType NumpyTypeToOnnxRuntimeTensorType(int numpy_type) {
       // Special, not a C type expands to enum value of 16
       {NPY_FLOAT16, DataTypeImpl::GetType<MLFloat16>()},
       {NPY_DOUBLE, DataTypeImpl::GetType<double>()},
-      // We don't want to use size specific types such
+      // We dont want to use size specific types such
       // as NPY_INT32 bc they are not enums but hash defines
       // which may map into other enums and may conflict with other entries here
       // also NPY docs define these sizes as platform specific, thus we
@@ -581,6 +581,7 @@ static void CopyDataToTensor(PyArrayObject* darray, int npy_type, Tensor& tensor
     for (int i = 0; i < total_items; ++i, src += item_size) {
       // Python unicode strings are assumed to be USC-4. Strings are stored as UTF-8.
       PyObject* item = PyArray_GETITEM(darray, src);
+      UniqueDecRefPtr<PyObject> itemGuard(item, DecRefFn<PyObject>());
       PyObject* pStr = PyObject_Str(item);
       UniqueDecRefPtr<PyObject> strGuard(pStr, DecRefFn<PyObject>());
       dst[i] = py::reinterpret_borrow<py::str>(pStr);

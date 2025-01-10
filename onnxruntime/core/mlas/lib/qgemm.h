@@ -867,7 +867,8 @@ MlasGemmQuantGetDispatch(
 {
     const MLAS_GEMM_QUANT_DISPATCH* GemmQuantDispatch = &MlasGemmQuantDispatchDefault;
 
-#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_LARCH64)
+#if !defined(FORCE_GENERIC_ALGORITHMS)
+#if defined(MLAS_TARGET_AMD64_IX86)
     if (AIsSigned) {
         GemmQuantDispatch =
             BIsSigned ? GetMlasPlatform().GemmS8S8Dispatch : GetMlasPlatform().GemmS8U8Dispatch;
@@ -895,7 +896,13 @@ MlasGemmQuantGetDispatch(
     if (GetMlasPlatform().GemmU8X8Dispatch == &MlasGemm8X8DispatchPOWER10) {
         GemmQuantDispatch = GetMlasPlatform().GemmU8X8Dispatch;
     }
+#elif defined(MLAS_TARGET_LARCH64)
+    if (!AIsSigned) {
+        GemmQuantDispatch =
+            BIsSigned ? GetMlasPlatform().GemmU8S8Dispatch : GetMlasPlatform().GemmU8U8Dispatch;
+    }
 #endif
+#endif // !defined(FORCE_GENERIC_ALGORITHMS)
 
     if (nullptr == GemmQuantDispatch) {
         std::stringstream ss;

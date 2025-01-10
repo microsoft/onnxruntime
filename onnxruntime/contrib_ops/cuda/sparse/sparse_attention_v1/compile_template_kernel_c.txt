@@ -15,7 +15,7 @@ namespace sparse_attention_v1 {{
 // threads_per_cta = {num_warps} * 32
 // kernel_name = {triton_kernel_name}
 
-unsigned char {kernel_name}_cubin[] = {{ {bin_data} }};
+const unsigned char {kernel_name}_cubin[] = {{ {bin_data} }};
 
 CUmodule {kernel_name}_mod = NULL;
 CUfunction {kernel_name}_func = NULL;

@@ -24,7 +24,7 @@ namespace Dml
             OrtMemoryInfo(
                 "DML",
                 OrtAllocatorType::OrtDeviceAllocator,
-                OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)
+                OrtDevice(OrtDevice::DML, OrtDevice::MemType::DEFAULT, 0)
             ))
         {
             m_device = onnxruntime::DMLProviderFactoryCreator::CreateD3D12Device(device_id, false);

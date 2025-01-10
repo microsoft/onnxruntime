@@ -854,6 +854,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_COPY(14,  Identity,                           typeNameListDefaultV,           supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY(16,  Identity,                           typeNameListDefaultV,           supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY(19,  Identity,                           typeNameListDefaultV,           supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
+    {REG_INFO_COPY(21,  Identity,                           typeNameListDefaultV,           supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY( 7,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY( 9,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
     {REG_INFO_COPY(11,  Flatten,                            typeNameListDefault,            supportedTypeListAllScalars,            DmlGraphSupport::Supported)},
@@ -1157,6 +1158,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_MS(  1,   QLinearAdd,                         typeNameListDefault,            supportedTypeListInteger8,              DmlGraphSupport::Supported)},
     {REG_INFO(     10,  QLinearConv,                        typeNameListFour,               supportedTypeListQLinearConv,           DmlGraphSupport::Supported)},
     {REG_INFO(     10,  QLinearMatMul,                      typeNameListThree,              supportedTypeListQLinearMatMul,         DmlGraphSupport::Supported)},
+    {REG_INFO(     21,  QLinearMatMul,                      typeNameListThree,              supportedTypeListQLinearMatMul,         DmlGraphSupport::Supported)},
     {REG_INFO(     10,  MatMulInteger,                      typeNameListThree,              supportedTypeListInteger,               DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  MatMulIntegerToFloat,               typeNameListThree,              supportedTypeListMatMulIntegerToFloat,  DmlGraphSupport::Supported)},
     {REG_INFO(     10,  ConvInteger,                        typeNameListThree,              supportedTypeListInteger,               DmlGraphSupport::Supported)},
@@ -1170,6 +1172,7 @@ constexpr static OperatorRegistrationInformation operatorRegistrationInformation
     {REG_INFO_MS(   1,  BiasAdd,                            typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  QuickGelu,                          typeNameListDefault,            supportedTypeListFloat16to32,           DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  GroupNorm,                          typeNameListGroupNorm,          supportedTypeListGroupNorm,             DmlGraphSupport::Supported)},
+    {REG_INFO(      21, GroupNorm,                          typeNameListGroupNorm,          supportedTypeListGroupNorm,             DmlGraphSupport::Supported)},
     {REG_INFO_MS(   1,  MatMulNBits,                        typeNameListTwo,                supportedTypeListMatMulNBits,           DmlGraphSupport::Supported, requiredConstantCpuInputs(), std::nullopt, QueryMatMulNBits)},
 
     // Operators that need to alias an input with an output

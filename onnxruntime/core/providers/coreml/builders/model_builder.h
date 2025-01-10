@@ -7,6 +7,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/providers/coreml/builders/coreml_spec.h"
 #include "core/providers/coreml/model/model.h"
+#include "core/providers/coreml/coreml_options.h"
 
 #if defined(COREML_ENABLE_MLPROGRAM)
 // coremltools classes
@@ -29,14 +30,14 @@ class IOpBuilder;
 class ModelBuilder {
  private:
   ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger,
-               int32_t coreml_version, uint32_t coreml_flags,
+               int32_t coreml_version, const CoreMLOptions& coreml_options,
                std::vector<std::string>&& onnx_input_names,
                std::vector<std::string>&& onnx_output_names);
 
  public:
   // Create the CoreML model, serialize to disk, load and compile using the CoreML API and return in `model`
   static Status Build(const GraphViewer& graph_viewer, const logging::Logger& logger,
-                      int32_t coreml_version, uint32_t coreml_flags,
+                      int32_t coreml_version, const CoreMLOptions& coreml_options,
                       std::vector<std::string>&& onnx_input_names,
                       std::vector<std::string>&& onnx_output_names,
                       std::unique_ptr<Model>& model);
@@ -53,6 +54,7 @@ class ModelBuilder {
   // We only support CoreML 3 and later so the spec version is always version + 1.
   int32_t CoreMLVersion() const { return coreml_version_; }
   int32_t CoreMLSpecVersion() const { return coreml_version_ + 1; }
+  bool IsModelCached() const { return is_model_cached_; }
 
   // Returns true if we are creating an ML Program
   bool CreateMLProgram() const {
@@ -128,6 +130,12 @@ class ModelBuilder {
                                std::optional<gsl::span<const int64_t>> shape = std::nullopt) {
     return AddConstant(op_type, value_type, gsl::span<const T>(value), shape);
   }
+
+  // helper to convert a initializer to a constant
+  // by default, shape is inferred from the tensor.dims(), but can be provided to override if needed
+  std::string_view AddConstant(std::string_view op_type, std::string_view value_type,
+                               const ONNX_NAMESPACE::TensorProto& tensor,
+                               std::optional<gsl::span<const int64_t>> shape = std::nullopt);
 
   /// <summary>
   /// Add a scalar value as a 'const' operation. See AddConstant for details.
@@ -210,9 +218,10 @@ class ModelBuilder {
   const GraphViewer& graph_viewer_;
   const logging::Logger& logger_;
   const int32_t coreml_version_;
-  const uint32_t coreml_flags_;
-  const bool create_ml_program_;         // ML Program (CoreML5, iOS 15+, macOS 12+) or NeuralNetwork (old)
-  const std::string model_output_path_;  // create_ml_program_ ? dir for mlpackage : filename for mlmodel
+  CoreMLOptions coreml_options_;
+  const bool create_ml_program_;   // ML Program (CoreML5, iOS 15+, macOS 12+) or NeuralNetwork (old)
+  std::string model_output_path_;  // create_ml_program_ ? dir for mlpackage : filename for mlmodel
+  bool is_model_cached_{false};
 
   std::vector<std::string> onnx_input_names_;
   std::vector<std::string> onnx_output_names_;

@@ -42,6 +42,8 @@ using ProviderType = const std::string&;
 class RandomGenerator;
 class IOnnxRuntimeOpSchemaCollection;
 
+struct ModelSavingOptions;
+
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
 namespace contrib {
 class PythonOpBase;
@@ -202,7 +204,8 @@ struct ProviderHost {
 
   virtual std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                              const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                                             gsl::span<const NodeIndex> tentative_nodes) = 0;
+                                                             gsl::span<const NodeIndex> tentative_nodes,
+                                                             const logging::Logger& logger) = 0;
 
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ bool* p_data, size_t expected_size) = 0;
   virtual Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ float* p_data, size_t expected_size) = 0;
@@ -389,6 +392,7 @@ struct ProviderHost {
   virtual void AttributeProto__set_name(ONNX_NAMESPACE::AttributeProto* p, const ::std::string& value) = 0;
   virtual void AttributeProto__set_type(ONNX_NAMESPACE::AttributeProto* p, ONNX_NAMESPACE::AttributeProto_AttributeType value) = 0;
   virtual ONNX_NAMESPACE::TensorProto* AttributeProto__add_tensors(ONNX_NAMESPACE::AttributeProto* p) = 0;
+  virtual std::string* AttributeProto__release_s(ONNX_NAMESPACE::AttributeProto* p) = 0;
 
   // GraphProto
   virtual std::unique_ptr<ONNX_NAMESPACE::GraphProto> GraphProto__construct() = 0;
@@ -585,6 +589,7 @@ struct ProviderHost {
   virtual const ConfigOptions& RunOptions__GetConfigOptions(const RunOptions* p) = 0;
   // OrtSessionOptions
   virtual const std::unordered_map<std::string, std::string>& SessionOptions__GetConfigOptionsMap(const OrtSessionOptions* p) = 0;
+  virtual bool SessionOptions__GetEnableProfiling(const OrtSessionOptions* p) = 0;
   // ComputeCapability
   virtual std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) = 0;
   virtual void ComputeCapability__operator_delete(ComputeCapability* p) = 0;
@@ -890,7 +895,7 @@ struct ProviderHost {
   virtual std::unique_ptr<Node__EdgeIterator> NodeUnit__OutputEdgesEnd(const NodeUnit* p) = 0;
 
   virtual std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
-  QDQ__GetAllNodeUnits(const GraphViewer* graph_viewer) = 0;
+  QDQ__GetAllNodeUnits(const GraphViewer* graph_viewer, const logging::Logger& logger) = 0;
 
   // Model
   virtual std::unique_ptr<Model> Model__construct(ONNX_NAMESPACE::ModelProto&& model_proto, const PathString& model_path,
@@ -899,7 +904,11 @@ struct ProviderHost {
   virtual void Model__operator_delete(Model* p) = 0;
   virtual Graph& Model__MainGraph(Model* p) = 0;
   virtual std::unique_ptr<ONNX_NAMESPACE::ModelProto> Model__ToProto(Model* p) = 0;
-  virtual std::unique_ptr<ONNX_NAMESPACE::ModelProto> Model__ToGraphProtoWithExternalInitializers(Model* p, const std::filesystem::path& external_file_name, const std::filesystem::path& file_path, size_t initializer_size_threshold) = 0;
+  virtual std::unique_ptr<ONNX_NAMESPACE::ModelProto> Model__ToGraphProtoWithExternalInitializers(
+      Model* p,
+      const std::filesystem::path& external_file_name,
+      const std::filesystem::path& file_path,
+      const ModelSavingOptions&) = 0;
   virtual const ModelMetaData& Model__MetaData(const Model* p) const noexcept = 0;
   virtual Status Model__Load(const PathString& file_path, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) = 0;
 
@@ -960,7 +969,7 @@ struct ProviderHost {
 
   // GraphViewer
   virtual void GraphViewer__operator_delete(GraphViewer* p) = 0;
-  virtual std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* p, const logging::Logger& logger) = 0;
+  virtual std::unique_ptr<Model> GraphViewer__CreateModel(const GraphViewer* p, const logging::Logger& logger, const ModelMetaData&) = 0;
 
   virtual const std::string& GraphViewer__Name(const GraphViewer* p) noexcept = 0;
   virtual const std::filesystem::path& GraphViewer__ModelPath(const GraphViewer* p) noexcept = 0;
@@ -996,6 +1005,7 @@ struct ProviderHost {
                                     bool include_outer_scope_args,
                                     int execution_order) noexcept = 0;
   virtual const Node* GraphViewer__GetProducerNode(const GraphViewer* p, const std::string& node_arg_name) const = 0;
+  virtual IOnnxRuntimeOpSchemaCollectionPtr GraphViewer__GetSchemaRegistry(const GraphViewer* p) const = 0;
 
   // OpKernel
   virtual const Node& OpKernel__Node(const OpKernel* p) = 0;

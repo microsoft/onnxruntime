@@ -20,12 +20,6 @@ parameters:
 - name: docker_base_image
   type: string
 
-- name: trt_version
-  type: string
-  default: '10.4.0.26-1.cuda11.8'
-  values:
-    - 10.4.0.26-1.cuda11.8
-    - 10.4.0.26-1.cuda12.6
 - name: cuda_version
   type: string
   default: '11.8'
@@ -45,16 +39,6 @@ stages:
       name: ${{ parameters.machine_pool }}
       os: linux
     templateContext:
-      codeSignValidation:
-        enabled: true
-        break: true
-      psscriptanalyzer:
-        enabled: true
-      sdl:
-        binskim:
-          enabled: true
-          scanOutputDirectoryOnly: true
-          targetPathPattern: '\".*.so\"'
       outputs:
       - output: pipelineArtifact
         targetPath: $(Build.ArtifactStagingDirectory)/dist
@@ -63,14 +47,17 @@ stages:
         targetPath: $(Build.ArtifactStagingDirectory)/${{ parameters.cmake_build_type }}
         artifactName: linux_gpu_wheel_${{ parameters.arch }}
     variables:
-      # The build machine pool doesn't have dotnet, so it can't run CG.
-      - name: skipComponentGovernanceDetection
-        value: true
       - name: extra_build_args
         ${{ if ne(parameters.extra_build_arg, '') }}:
           value: -x ${{ parameters.extra_build_arg }}
         ${{ if eq(parameters.extra_build_arg, '') }}:
           value: ''
+      - template: ../templates/common-variables.yml
+      - name: trt_version
+        ${{ if eq(parameters.cuda_version, '11.8') }}:
+          value: ${{ variables.linux_trt_version_cuda11 }}
+        ${{ if eq(parameters.cuda_version, '12.2') }}:
+          value: ${{ variables.linux_trt_version_cuda12 }}
     steps:
       - checkout: self
         clean: true
@@ -82,7 +69,7 @@ stages:
         parameters:
           Dockerfile: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda/Dockerfile
           Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cuda
-          DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg TRT_VERSION=${{ parameters.trt_version }} --build-arg BUILD_UID=$( id -u )"
+          DockerBuildArgs: "--build-arg BASEIMAGE=${{ parameters.docker_base_image }} --build-arg TRT_VERSION=${{ variables.trt_version }} --build-arg BUILD_UID=$( id -u )"
           Repository: onnxruntimecuda${{ replace(parameters.cuda_version, '.', '') }}xtrt86build${{ parameters.arch }}
 
 
@@ -108,6 +95,3 @@ stages:
         displayName: 'Move files'
 
 
-      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-        displayName: 'Clean Agent Directories'
-        condition: always()

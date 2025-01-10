@@ -15,10 +15,19 @@ ONNX_OPERATOR_VERSIONED_KERNEL_EX(
         .TypeConstraint("T", JsepSupportedDataTypes()),
     Transpose);
 
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Transpose,
+    kOnnxDomain,
+    13, 20,
+    kJsExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", JsepSupportedDataTypes()),
+    Transpose);
+
 ONNX_OPERATOR_KERNEL_EX(
     Transpose,
     kOnnxDomain,
-    13,
+    21,
     kJsExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T", JsepSupportedDataTypes()),

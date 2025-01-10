@@ -55,6 +55,33 @@ let tensorGuid = 1;
 const createNewTensorId = (): TensorId => tensorGuid++;
 
 /**
+ * Map from MLOperandDataType to size in bits. Using bits instead of bytes to avoid possible precision loss on int4 and uint4.
+ */
+const webnnDataTypeToSize = new Map<MLOperandDataType, number>([
+  ['float32', 32],
+  ['float16', 16],
+  ['int32', 32],
+  ['uint32', 32],
+  ['int64', 64],
+  ['uint64', 64],
+  ['int8', 8],
+  ['uint8', 8],
+  ['int4', 4],
+  ['uint4', 4],
+]);
+
+/**
+ * Calculate the byte length of a tensor with the given data type and shape.
+ */
+const calculateByteLength = (dataType: MLOperandDataType, shape: readonly number[]): number => {
+  const size = webnnDataTypeToSize.get(dataType);
+  if (!size) {
+    throw new Error('Unsupported data type.');
+  }
+  return shape.length > 0 ? Math.ceil((shape.reduce((a, b) => a * b) * size) / 8) : 0;
+};
+
+/**
  * TensorWrapper wraps an MLTensor and provides a way to track the last session that used it.
  */
 class TensorWrapper {
@@ -92,6 +119,10 @@ class TensorWrapper {
     return this.tensorShape;
   }
 
+  public get byteLength(): number {
+    return calculateByteLength(this.dataType, this.tensorShape);
+  }
+
   public destroy(): void {
     LOG_DEBUG('verbose', () => '[WebNN] TensorWrapper.destroy');
     this.mlTensor.destroy();
@@ -110,8 +141,13 @@ class TensorWrapper {
     return this.mlContext.readTensor(this.mlTensor);
   }
 
-  public sameTypeAndShape(dataType: MLOperandDataType, shape: readonly number[]): boolean {
-    return this.dataType === dataType && this.tensorShape.every((v, i) => v === shape[i]);
+  public canReuseTensor(context: MLContext, dataType: MLOperandDataType, shape: readonly number[]): boolean {
+    return (
+      this.mlContext === context &&
+      this.dataType === dataType &&
+      this.tensorShape.length === shape.length &&
+      this.tensorShape.every((v, i) => v === shape[i])
+    );
   }
 }
 
@@ -136,19 +172,24 @@ class TensorIdTracker {
   public releaseTensor(): void {
     if (this.tensorWrapper) {
       this.tensorManager.releaseTensor(this.tensorWrapper);
+      this.wrapper = undefined;
     }
   }
 
   public async ensureTensor(
+    context: MLContext,
     dataType: MLOperandDataType,
     shape: readonly number[],
     copyOld: boolean,
   ): Promise<MLTensor> {
     if (this.wrapper) {
-      if (this.wrapper.sameTypeAndShape(dataType, shape)) {
+      if (this.wrapper.canReuseTensor(context, dataType, shape)) {
         return this.wrapper.tensor;
       } else {
         if (copyOld) {
+          if (this.wrapper.byteLength !== calculateByteLength(dataType, shape)) {
+            throw new Error('Unable to copy data to tensor with different size.');
+          }
           this.activeUpload = new Uint8Array(await this.wrapper.read());
         }
         this.tensorManager.releaseTensor(this.wrapper);
@@ -156,7 +197,7 @@ class TensorIdTracker {
     }
 
     // eslint-disable-next-line no-bitwise
-    const usage = MLTensorUsage.READ | MLTensorUsage.WRITE;
+    const usage = typeof MLTensorUsage == 'undefined' ? undefined : MLTensorUsage.READ | MLTensorUsage.WRITE;
     this.wrapper = await this.tensorManager.getCachedTensor(dataType, shape, usage, true, true);
 
     if (copyOld && this.activeUpload) {
@@ -169,8 +210,13 @@ class TensorIdTracker {
 
   public upload(data: Uint8Array): void {
     if (this.wrapper) {
-      this.wrapper.write(data);
-      return;
+      if (data.byteLength === this.wrapper.byteLength) {
+        this.wrapper.write(data);
+        return;
+      } else {
+        LOG_DEBUG('verbose', () => 'Data size does not match tensor size. Releasing tensor.');
+        this.releaseTensor();
+      }
     }
 
     if (this.activeUpload) {
@@ -244,7 +290,7 @@ class TensorManagerImpl implements TensorManager {
     if (!tensor) {
       throw new Error('Tensor not found.');
     }
-    return tensor.ensureTensor(dataType, shape, copyOld);
+    return tensor.ensureTensor(this.backend.currentContext, dataType, shape, copyOld);
   }
 
   public upload(tensorId: TensorId, data: Uint8Array): void {
@@ -305,19 +351,20 @@ class TensorManagerImpl implements TensorManager {
   public async getCachedTensor(
     dataType: MLOperandDataType,
     shape: readonly number[],
-    usage: MLTensorUsageFlags,
+    usage: MLTensorUsageFlags | undefined,
     writable: boolean,
     readable: boolean,
   ): Promise<TensorWrapper> {
     const sessionId = this.backend.currentSessionId;
+    const context = this.backend.currentContext;
     for (const [index, tensor] of this.freeTensors.entries()) {
-      if (tensor.sameTypeAndShape(dataType, shape)) {
+      if (tensor.canReuseTensor(context, dataType, shape)) {
+        LOG_DEBUG('verbose', () => `[WebNN] Reusing tensor {dataType: ${dataType}, shape: ${shape}}`);
         const wrapper = this.freeTensors.splice(index, 1)[0];
         wrapper.sessionId = sessionId;
         return wrapper;
       }
     }
-    const context = this.backend.currentContext;
     LOG_DEBUG('verbose', () => `[WebNN] MLContext.createTensor {dataType: ${dataType}, shape: ${shape}}`);
     const tensor = await context.createTensor({
       dataType,
