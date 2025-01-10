@@ -57,7 +57,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
     return std::make_shared<QnnBackendManager>(config, PrivateConstructorTag{});
   }
 
-  // Note: creation should be done via Create()
+  // Note: Creation should be done via Create(). This constructor is public so that it can be called from
+  // std::make_shared().
   QnnBackendManager(const QnnBackendManagerConfig& config, PrivateConstructorTag)
       : backend_path_(config.backend_path),
         profiling_level_etw_(config.profiling_level_etw),
@@ -240,7 +241,20 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
       const char* eventIdentifier);
 #endif
 
-  Status AddQnnContext(Qnn_ContextHandle_t context);
+  // Adds a new QNN context.
+  // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance.
+  Status AddQnnContextHandle(Qnn_ContextHandle_t context_handle);
+
+ private:
+  // assume Qnn_ContextHandle_t is a pointer and able to be wrapped with std::unique_ptr
+  static_assert(std::is_pointer_v<Qnn_ContextHandle_t>);
+  using UniqueQnnContextHandle =
+      std::unique_ptr<std::remove_pointer_t<Qnn_ContextHandle_t>, std::function<void(Qnn_ContextHandle_t)>>;
+
+  struct QnnContextHandleRecord {
+    UniqueQnnContextHandle context_handle;
+    std::unique_ptr<QnnContextMemHandleManager> mem_handles;
+  };
 
  private:
   const std::string backend_path_;
@@ -254,10 +268,16 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   QnnBackend_Config_t** backend_config_ = nullptr;
   Qnn_LogHandle_t log_handle_ = nullptr;
   Qnn_DeviceHandle_t device_handle_ = nullptr;
-  std::vector<Qnn_ContextHandle_t> contexts_;
-  // Note: Using shared_ptr<QnnContextMemHandleManager> so that we can refer to it with a weak_ptr from a
+
+  // Map of Qnn_ContextHandle_t to QnnContextHandleRecord.
+  // The QnnContextHandleRecord has ownership of the Qnn_ContextHandle_t.
+  // Note: Using shared_ptr<QnnContextHandleRecord> so that we can refer to it with a weak_ptr from a
   // HtpSharedMemoryAllocator allocation cleanup callback.
-  std::unordered_map<Qnn_ContextHandle_t, std::shared_ptr<QnnContextMemHandleManager>> context_mem_handles_;
+  std::unordered_map<Qnn_ContextHandle_t, std::shared_ptr<QnnContextHandleRecord>> context_map_;
+
+  // Vector of Qnn_ContextHandle_t. The context handles are owned by context_map_.
+  std::vector<Qnn_ContextHandle_t> contexts_;
+
   ProfilingLevel profiling_level_etw_;
   ProfilingLevel profiling_level_;
   ProfilingLevel profiling_level_merge_;
