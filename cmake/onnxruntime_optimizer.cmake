@@ -106,6 +106,9 @@ if (onnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH)
   file(GLOB onnxruntime_external_transformer_src ${onnxruntime_external_transformer_src_patterns})
   list(APPEND onnxruntime_optimizer_srcs ${onnxruntime_external_transformer_src})
 endif()
+if(HAS_MAYBE_UNINITIALIZED)
+  set_source_files_properties("${ONNXRUNTIME_ROOT}/core/optimizer/selectors_actions/selector_action_transformer.cc" PROPERTIES COMPILE_FLAGS  "-Wno-maybe-uninitialized")
+endif()
 
 onnxruntime_add_static_library(onnxruntime_optimizer ${onnxruntime_optimizer_srcs})
 
