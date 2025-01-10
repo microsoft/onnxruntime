@@ -878,9 +878,6 @@ struct ProviderHost {
   virtual std::unordered_map<std::string, gsl::not_null<const Graph*>> Node__GetAttributeNameToSubgraphMap(const Node* p) const = 0;
 
   // Node_EdgeEnd
-  virtual std::unique_ptr<Node_EdgeEnd> Node_EdgeEnd__construct(const Node& node, int src_arg_index, int dst_arg_index) = 0;
-  virtual void Node_EdgeEnd__operator_delete(Node_EdgeEnd* p) noexcept = 0;
-
   virtual const Node& Node_EdgeEnd__GetNode(const Node_EdgeEnd* p) = 0;
   virtual int Node_EdgeEnd__GetSrcArgIndex(const Node_EdgeEnd* p) = 0;
   virtual int Node_EdgeEnd__GetDstArgIndex(const Node_EdgeEnd* p) = 0;
@@ -915,10 +912,6 @@ struct ProviderHost {
   virtual void NodeAttributes__reserve(NodeAttributes* p, size_t size) = 0;
 
   // NodeUnit
-  virtual std::unique_ptr<NodeUnit> NodeUnit__construct(gsl::span<const Node* const> dq_nodes, const Node& target_node,
-                                                        gsl::span<const Node* const> q_nodes, uint8_t unit_type,
-                                                        gsl::span<const NodeUnitIODef> inputs, gsl::span<const NodeUnitIODef> outputs,
-                                                        size_t input_edge_count, gsl::span<const Node_EdgeEnd* const> output_edges) = 0;
   virtual void NodeUnit__operator_delete(NodeUnit* p) noexcept = 0;
 
   virtual int NodeUnit__UnitType(const NodeUnit* p) noexcept = 0;

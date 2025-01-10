@@ -94,19 +94,6 @@ struct Factory {
   }
 };
 
-// Specialization of Factory for creating NodeUnit objects.
-template <>
-struct Factory<NodeUnit> {
-  static std::unique_ptr<NodeUnit> Create(gsl::span<const Node* const> dq_nodes,
-                                          const Node& target_node,
-                                          gsl::span<const Node* const> q_nodes,
-                                          NodeUnit::Type unit_type,
-                                          gsl::span<const NodeUnitIODef> inputs,
-                                          gsl::span<const NodeUnitIODef> outputs,
-                                          size_t input_edge_count,
-                                          gsl::span<const Node_EdgeEnd* const> output_edges);
-};
-
 inline const ConfigOptions& RunOptions__GetConfigOptions(const RunOptions& run_options) {
 #if BUILD_QNN_EP_STATIC_LIB
   return run_options.config_options;

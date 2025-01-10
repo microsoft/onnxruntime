@@ -798,11 +798,6 @@ struct Function final {
 };
 
 struct Node_EdgeEnd final {
-  static std::unique_ptr<Node_EdgeEnd> Create(const Node& node, int src_arg_index, int dst_arg_index) {
-    return g_host->Node_EdgeEnd__construct(node, src_arg_index, dst_arg_index);
-  }
-  static void operator delete(void* p) { g_host->Node_EdgeEnd__operator_delete(reinterpret_cast<Node_EdgeEnd*>(p)); }
-
   const Node& GetNode() const { return g_host->Node_EdgeEnd__GetNode(this); }
   int GetSrcArgIndex() const { return g_host->Node_EdgeEnd__GetSrcArgIndex(this); }
   int GetDstArgIndex() const { return g_host->Node_EdgeEnd__GetDstArgIndex(this); }
@@ -955,13 +950,6 @@ struct NodeUnit final {
     QDQGroup,    // The NodeUnit contain a QDQ group of nodes, such as "DQ->Sigmoid->Q"
   };
 
-  static std::unique_ptr<NodeUnit> Create(gsl::span<const Node* const> dq_nodes, const Node& target_node,
-                                          gsl::span<const Node* const> q_nodes, Type unit_type,
-                                          gsl::span<const NodeUnitIODef> inputs, gsl::span<const NodeUnitIODef> outputs,
-                                          size_t input_edge_count, gsl::span<const Node_EdgeEnd* const> output_edges) {
-    return g_host->NodeUnit__construct(dq_nodes, target_node, q_nodes, static_cast<uint8_t>(unit_type),
-                                       inputs, outputs, input_edge_count, output_edges);
-  }
   static void operator delete(void* p) { g_host->NodeUnit__operator_delete(reinterpret_cast<NodeUnit*>(p)); }
 
   Type UnitType() const noexcept { return static_cast<Type>(g_host->NodeUnit__UnitType(this)); }

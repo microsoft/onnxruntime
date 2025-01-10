@@ -1055,11 +1055,6 @@ struct ProviderHostImpl : ProviderHost {
   int Node__NodeType(const Node* p) const noexcept override { return int(p->NodeType()); }
 
   // Node_EdgeEnd (wrapped). Maps to Node::EdgeEnd struct.
-  std::unique_ptr<Node_EdgeEnd> Node_EdgeEnd__construct(const Node& node, int src_arg_index, int dst_arg_index) override {
-    return std::make_unique<Node::EdgeEnd>(node, src_arg_index, dst_arg_index);
-  }
-  void Node_EdgeEnd__operator_delete(Node_EdgeEnd* p) noexcept override { delete p; }
-
   const Node& Node_EdgeEnd__GetNode(const Node_EdgeEnd* p) override { return p->GetNode(); }
   int Node_EdgeEnd__GetSrcArgIndex(const Node_EdgeEnd* p) override { return p->GetSrcArgIndex(); }
   int Node_EdgeEnd__GetDstArgIndex(const Node_EdgeEnd* p) override { return p->GetDstArgIndex(); }
@@ -1098,23 +1093,6 @@ struct ProviderHostImpl : ProviderHost {
   void NodeAttributes__insert_or_assign(NodeAttributes* p, const std::string& k, const ONNX_NAMESPACE::AttributeProto& v) override { p->insert_or_assign(k, v); }
   void NodeAttributes__reserve(NodeAttributes* p, size_t size) override { p->reserve(size); }
 
-  // NodeUnit (wrapped)
-  std::unique_ptr<NodeUnit> NodeUnit__construct(gsl::span<const Node* const> dq_nodes,
-                                                const Node& target_node,
-                                                gsl::span<const Node* const> q_nodes,
-                                                uint8_t unit_type,
-                                                gsl::span<const NodeUnitIODef> inputs,
-                                                gsl::span<const NodeUnitIODef> outputs,
-                                                size_t input_edge_count,
-                                                gsl::span<const Node_EdgeEnd* const> output_edges) override {
-    Node::EdgeSet output_edge_set;
-    for (const Node_EdgeEnd* edge_end : output_edges) {
-      output_edge_set.insert(*edge_end);
-    }
-
-    return std::make_unique<NodeUnit>(dq_nodes, target_node, q_nodes, static_cast<NodeUnit::Type>(unit_type),
-                                      inputs, outputs, input_edge_count, output_edge_set);
-  }
   void NodeUnit__operator_delete(NodeUnit* p) noexcept override { delete p; }
 
   int NodeUnit__UnitType(const NodeUnit* p) noexcept override { return static_cast<int>(p->UnitType()); }
