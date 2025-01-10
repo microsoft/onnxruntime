@@ -117,9 +117,10 @@ async function minifyWasmModuleJsForBrowser(filepath: string): Promise<string> {
 
     let contents = await fs.readFile(filepath, { encoding: 'utf-8' });
 
+    const fileBaseName = path.basename(filepath);
     // Replace the following line to create worker:
     // ```
-    // new Worker(new URL(import.meta.url), ...
+    // new Worker(new URL({{{fileBaseName}}}, import.meta.url), ...
     // ```
     // with:
     // ```
@@ -128,68 +129,39 @@ async function minifyWasmModuleJsForBrowser(filepath: string): Promise<string> {
     //              : new URL(import.meta.url), ...
     // ```
     //
-    // NOTE: this is a workaround for some bundlers that does not support runtime import.meta.url.
-    // TODO: in emscripten 3.1.61+, need to update this code.
+    // This change is required because of the following reasons:
+    // 1. When bundling the JS code, the original file is no longer available. We should use `import.meta.url` to get
+    //    the path of the bundle file.
+    // 2. some bundlers that does not support runtime `import.meta.url`. In this case, we should use
+    //    `new URL(BUILD_DEFS.BUNDLE_FILENAME, import.meta.url)`.
 
-    // First, check if there is exactly one occurrence of "new Worker(new URL(import.meta.url)".
-    const matches = [...contents.matchAll(/new Worker\(new URL\(import\.meta\.url\),/g)];
+    // First, check if there is exactly one occurrence of "new Worker(new URL({{{fileBaseName}}}, import.meta.url)".
+    //
+    // /new Worker\(new URL\("ort-wasm-simd-threaded\.jsep\.mjs", ?import\.meta\.url\),/
+    const regex = `new Worker\\(new URL\\("${fileBaseName.replace(/\./g, '\\.')}", ?import\\.meta\\.url\\),`;
+
+    const matches = [...contents.matchAll(new RegExp(regex, 'g'))];
     if (matches.length !== 1) {
       throw new Error(
-        `Unexpected number of matches for "new Worker(new URL(import.meta.url)" in "${filepath}": ${matches.length}.`,
+        `Unexpected number of matches for "new Worker(new URL("${fileBaseName}", import.meta.url)" in "${filepath}": ${matches.length}.`,
       );
     }
 
     // Replace the only occurrence.
     contents = contents.replace(
-      /new Worker\(new URL\(import\.meta\.url\),/,
+      new RegExp(regex),
       `new Worker(import.meta.url.startsWith('file:')?new URL(BUILD_DEFS.BUNDLE_FILENAME, import.meta.url):new URL(import.meta.url),`,
     );
 
-    // Find the first and the only occurrence of minified function implementation of "_emscripten_thread_set_strongref":
-    // ```js
-    // _emscripten_thread_set_strongref: (thread) => {
-    //   if (ENVIRONMENT_IS_NODE) {
-    //     PThread.pthreads[thread].ref();
-    //   }
-    // }
-    // ```
-    //
-    // It is minified to: (example)
-    // ```js
-    // function Pb(a){D&&N[a>>>0].ref()}
-    // ```
-
-    // The following code will look for the function name and mark the function call as pure, so that Terser will
-    // minify the code correctly.
-
-    const markedAsPure = [];
-    // First, try if we are working on the original (not minified) source file. This is when we are working with the
-    // debug build.
-    const isOriginal = contents.includes('PThread.pthreads[thread].ref()');
-    if (isOriginal) {
-      markedAsPure.push('PThread.pthreads[thread].ref');
-    } else {
-      // If it is not the original source file, we need to find the minified function call.
-      const matches = [...contents.matchAll(/\{[_a-zA-Z][_a-zA-Z0-9]*&&([_a-zA-Z][_a-zA-Z0-9]*\[.+?]\.ref)\(\)}/g)];
-      if (matches.length !== 1) {
-        throw new Error(
-          `Unexpected number of matches for minified "PThread.pthreads[thread].ref()" in "${filepath}": ${
-            matches.length
-          }.`,
-        );
-      }
-      // matches[0] is the first and the only match.
-      // matches[0][0] is the full matched string and matches[0][1] is the first capturing group.
-      markedAsPure.push(matches[0][1]);
-    }
-
+    // Use terser to minify the code with special configurations:
+    // - use `global_defs` to define `process` and `globalThis.process` as `undefined`, so terser can tree-shake the
+    //   Node.js specific code.
     const terser = await import('terser');
     const result = await terser.minify(contents, {
       module: true,
       compress: {
         passes: 2,
         global_defs: { process: undefined, 'globalThis.process': undefined },
-        pure_funcs: markedAsPure,
       },
     });
 
