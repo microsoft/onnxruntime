@@ -274,7 +274,7 @@ if (MSVC)
     string(APPEND CMAKE_C_FLAGS " /arch:AVX512")
   endif()
 
-  if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
+  if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA) #TODO[Low] Any changes ?
     set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Gw /GL")
     set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} /Gw /GL")
     set(CMAKE_CXX_FLAGS_MINSIZEREL "${CMAKE_CXX_FLAGS_MINSIZEREL} /Gw /GL")

@@ -405,7 +405,7 @@ if ((CPUINFO_SUPPORTED OR onnxruntime_USE_XNNPACK) AND NOT ANDROID)
   endif()
 endif()
 
-if(onnxruntime_USE_CUDA) #TODO[Karim]
+if(onnxruntime_USE_CUDA) #TODO[Low] Any changes?
   FetchContent_Declare(
     GSL
     URL ${DEP_URL_microsoft_gsl}
@@ -729,7 +729,7 @@ endif()
 
 set(onnxruntime_LINK_DIRS)
 
-if (onnxruntime_USE_CUDA AND (NOT onnxruntime_ENABLE_GENERIC_INTERFACE))
+if (onnxruntime_USE_CUDA)
   find_package(CUDAToolkit REQUIRED)
 
   if(onnxruntime_CUDNN_HOME)

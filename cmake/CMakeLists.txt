@@ -703,7 +703,7 @@ if (WIN32)
     # structure was padded due to __declspec(align())
     list(APPEND ORT_WARNING_FLAGS "/wd4324")
     # warning C4800: Implicit conversion from 'X' to bool. Possible information loss
-    if (onnxruntime_USE_OPENVINO) #TODO[Karim] applys to all projects...
+    if (onnxruntime_USE_OPENVINO OR onnxruntime_USE_OPENVINO_INTERFACE)
        list(APPEND ORT_WARNING_FLAGS "/wd4800")
     endif()
     # operator 'operator-name': deprecated between enumerations of different types
@@ -726,7 +726,7 @@ if (WIN32)
             set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /INCREMENTAL:NO")
           endif()
         endif()
-        if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA)
+        if (onnxruntime_ENABLE_LTO AND NOT onnxruntime_USE_CUDA) #TODO[Low] Any changes ?
           set(CMAKE_${type}_LINKER_FLAGS_RELEASE "${CMAKE_${type}_LINKER_FLAGS_RELEASE} /LTCG")
           set(CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO "${CMAKE_${type}_LINKER_FLAGS_RELWITHDEBINFO} /LTCG")
           set(CMAKE_${type}_LINKER_FLAGS_MINSIZEREL "${CMAKE_${type}_LINKER_FLAGS_MINSIZEREL} /LTCG")
@@ -831,7 +831,7 @@ set(ONNXRUNTIME_PROVIDER_NAMES cpu)
 set(ORT_PROVIDER_FLAGS)
 set(ORT_PROVIDER_CMAKE_FLAGS)
 
-if (onnxruntime_USE_CUDA AND (NOT onnxruntime_ENABLE_GENERIC_INTERFACE))
+if (onnxruntime_USE_CUDA)
   enable_language(CUDA)
   message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
 
@@ -864,7 +864,7 @@ else()
   set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
 endif()
 
-if (onnxruntime_USE_CUDA)
+if (onnxruntime_USE_CUDA OR onnxruntime_USE_CUDA_INTERFACE)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_CUDA=1)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CUDA=1)  #TODO[Karim]  Not used anywhere
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES cuda)
@@ -888,7 +888,7 @@ if (onnxruntime_USE_CUDA)
     endif()
 endif()
 
-if (onnxruntime_USE_VITISAI)
+if (onnxruntime_USE_VITISAI OR onnxruntime_USE_VITISAI_INTERFACE)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_VITISAI=1)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_VITISAI=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES vitisai)
@@ -898,12 +898,12 @@ if (onnxruntime_USE_DNNL)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES dnnl)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_DNNL=1)
 endif()
-if (onnxruntime_USE_OPENVINO)
+if (onnxruntime_USE_OPENVINO OR onnxruntime_USE_OPENVINO_INTERFACE)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_OPENVINO=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES openvino)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_OPENVINO=1)
 endif()
-if (onnxruntime_USE_TENSORRT)
+if (onnxruntime_USE_TENSORRT OR onnxruntime_USE_TENSORRT_INTERFACE)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_TENSORRT=1)
     #TODO: remove the following line and change the test code in onnxruntime_shared_lib_test to use the new EP API.
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES tensorrt)
@@ -929,7 +929,7 @@ if (onnxruntime_USE_JSEP)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_JSEP=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES js)
 endif()
-if (onnxruntime_USE_QNN) #TODO[Karim]
+if (onnxruntime_USE_QNN OR onnxruntime_USE_QNN_INTERFACE)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_QNN=1)
     list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_QNN=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES qnn)
@@ -957,7 +957,7 @@ if (onnxruntime_USE_QNN) #TODO[Karim]
       endif()
     endif()
 
-    if (MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
+    if ((NOT onnxruntime_USE_QNN_INTERFACE) AND (MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux"))
       file(GLOB QNN_LIB_FILES LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/libQnn*.so"
 	                                     "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/Qnn*.dll"
                                              "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/libHtpPrepare.so"
@@ -1115,7 +1115,7 @@ function(onnxruntime_set_compile_flags target_name)
 
     set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
     
-    if (onnxruntime_USE_CUDA AND (NOT onnxruntime_ENABLE_GENERIC_INTERFACE))
+    if (onnxruntime_USE_CUDA)
       # Suppress a "conversion_function_not_usable" warning in gsl/span
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcudafe \"--diag_suppress=conversion_function_not_usable\">")
       target_compile_definitions(${target_name} PRIVATE -DDISABLE_CUSPARSE_DEPRECATED)
@@ -1193,7 +1193,7 @@ function(onnxruntime_set_compile_flags target_name)
     if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 13 AND CMAKE_C_COMPILER_VERSION VERSION_GREATER_EQUAL 12)
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-maybe-uninitialized>")
     endif()
-    if (onnxruntime_USE_CUDA AND (NOT onnxruntime_ENABLE_GENERIC_INTERFACE))
+    if (onnxruntime_USE_CUDA)
       foreach(FLAG ${ORT_WARNING_FLAGS})
         target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options ${FLAG}>")
       endforeach()
@@ -1417,7 +1417,7 @@ if (onnxruntime_ENABLE_TRAINING_APIS)
   )
 endif()
 
-if (onnxruntime_USE_OPENVINO) #TODO[Karim] applies to both onnxruntime.dll and onnxruntime_shared.dll 
+if (onnxruntime_USE_OPENVINO OR onnxruntime_USE_OPENVINO_INTERFACE) 
 
   add_definitions(-DUSE_OPENVINO=1)
 
@@ -1430,7 +1430,7 @@ if (onnxruntime_USE_OPENVINO) #TODO[Karim] applies to both onnxruntime.dll and o
     add_definitions(-DOPENVINO_CONFIG_GPU=1)
   endif()
 
-  if (onnxruntime_USE_OPENVINO_CPU)
+  if (onnxruntime_USE_OPENVINO_CPU OR onnxruntime_USE_OPENVINO_INTERFACE) # OpenVino CPU interface is default built.
     add_definitions(-DOPENVINO_CONFIG_CPU=1)
   endif()
 
@@ -1496,7 +1496,7 @@ string(APPEND ORT_BUILD_INFO ", cmake cxx flags: ${CMAKE_CXX_FLAGS}")
 configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_config.h)
 get_property(onnxruntime_GENERATOR_IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
 
-if (onnxruntime_USE_CUDA AND (NOT onnxruntime_ENABLE_GENERIC_INTERFACE))
+if (onnxruntime_USE_CUDA)
   set(CMAKE_CUDA_RUNTIME_LIBRARY Shared)
   set(CMAKE_CUDA_STANDARD 17)
   if(onnxruntime_CUDA_HOME)
@@ -1770,7 +1770,7 @@ if (onnxruntime_BUILD_SHARED_LIB OR onnxruntime_BUILD_APPLE_FRAMEWORK)
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime)
 endif()
 
-if (onnxruntime_BUILD_JAVA) #TODO[Karim]  *cmake files included below uses onnxruntime_USE_CUDA, USE_QNN etc variables, 
+if (onnxruntime_BUILD_JAVA) 
   message(STATUS "Java Build is enabled")
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime_java)
 endif()

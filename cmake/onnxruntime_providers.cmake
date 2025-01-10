@@ -59,12 +59,6 @@ function(add_op_reduction_include_dirs target)
 endfunction()
 
 
-if(onnxruntime_USE_VITISAI) #TODO[Karim] seems like not used??
-  set(PROVIDERS_VITISAI onnxruntime_providers_vitisai)
-endif()
-if(onnxruntime_USE_CUDA) #TODO[Karim]
-  set(PROVIDERS_CUDA onnxruntime_providers_cuda)
-endif()
 if(onnxruntime_USE_COREML)
   set(PROVIDERS_COREML onnxruntime_providers_coreml coreml_proto)
 endif()
@@ -120,7 +114,7 @@ if(onnxruntime_USE_SNPE)
 endif()
 
 include(onnxruntime_providers_cpu.cmake)
-if (onnxruntime_USE_CUDA AND (NOT onnxruntime_ENABLE_GENERIC_INTERFACE))
+if (onnxruntime_USE_CUDA)
   include(onnxruntime_providers_cuda.cmake)
 endif()
 
@@ -128,15 +122,15 @@ if (onnxruntime_USE_DNNL)
   include(onnxruntime_providers_dnnl.cmake)
 endif()
 
-if (onnxruntime_USE_TENSORRT AND (NOT onnxruntime_ENABLE_GENERIC_INTERFACE))
+if (onnxruntime_USE_TENSORRT)
   include(onnxruntime_providers_tensorrt.cmake)
 endif()
 
-if (onnxruntime_USE_VITISAI AND (NOT onnxruntime_ENABLE_GENERIC_INTERFACE))
+if (onnxruntime_USE_VITISAI)
   include(onnxruntime_providers_vitisai.cmake)
 endif()
 
-if (onnxruntime_USE_OPENVINO AND (NOT onnxruntime_ENABLE_GENERIC_INTERFACE))
+if (onnxruntime_USE_OPENVINO)
   include(onnxruntime_providers_openvino.cmake)
 endif()
 
@@ -160,8 +154,7 @@ if (onnxruntime_USE_JSEP)
   include(onnxruntime_providers_js.cmake)
 endif()
 
-if (onnxruntime_USE_QNN)
-  message("Hitting qnn check")
+if (onnxruntime_USE_QNN OR onnxruntime_USE_QNN_INTERFACE) #TODO[Low] Revisit when QNN EP becomes dynamic lib.
   include(onnxruntime_providers_qnn.cmake)
 endif()
 
