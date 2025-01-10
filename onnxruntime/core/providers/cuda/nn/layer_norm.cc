@@ -48,20 +48,11 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
   auto x_num_dims = x_shape.NumDimensions();
   const int64_t axis = HandleNegativeAxis(axis_, x_num_dims);
 
-  int n1 = gsl::narrow<int>(x_shape.SizeToDimension(axis));
-  int n2 = gsl::narrow<int>(x_shape.SizeFromDimension(axis));
-
   const TensorShape& scale_shape = scale->Shape();
-
   const TensorShape& bias_shape = bias_data ? bias->Shape() : TensorShape();
 
-  int64_t broadcast_param = 0;
-  if (n2 <= 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, kLayerNormInvalidSize, n2);
-  } else if (scale_shape.Size() != n2 || (bias_data && bias_shape.Size() != n2)) {
-    // Check if scale and bias can be broadcasted to X (only limited cases are supported).
-    ORT_RETURN_IF_ERROR(LayerNormHelper::CheckBroadcast(x_shape, scale_shape, bias_shape, bias_data != nullptr, axis, broadcast_param));
-  }
+  LayerNormParams params;
+  ORT_RETURN_IF_ERROR(LayerNormHelper::CheckInputs(x_shape, scale_shape, bias_shape, bias_data != nullptr, axis, params));
 
   // Outputs
   Tensor* Y = ctx->Output(0, x_shape);
@@ -97,9 +88,11 @@ Status LayerNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) con
     return Status::OK();
   }
 
-  HostApplyLayerNorm<CudaT, CudaU, CudaV, simplified>(GetDeviceProp(), Stream(ctx), Y_data, mean_data, inv_var_data,
-                                                      X_data, n1, n2, epsilon_, scale_data, bias_data,
-                                                      gsl::narrow_cast<int>(broadcast_param));
+  HostApplyLayerNorm<CudaT, CudaU, CudaV, simplified>(
+      GetDeviceProp(), Stream(ctx), Y_data, mean_data, inv_var_data, X_data,
+      onnxruntime::narrow<int>(params.num_rows), onnxruntime::narrow<int>(params.norm_size), epsilon_,
+      scale_data, bias_data,
+      onnxruntime::narrow<int>(params.broadcast_param));
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
   return Status::OK();
 }

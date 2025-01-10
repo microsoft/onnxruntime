@@ -23,8 +23,8 @@
 /* Modifications Copyright (c) Microsoft. */
 
 #include "core/providers/cuda/cu_inc/common.cuh"
-
 #include "layer_norm_impl.h"
+#include "core/providers/cpu/nn/layer_norm_helper.h"
 
 namespace onnxruntime {
 namespace cuda {
@@ -355,16 +355,8 @@ __global__ void cuApplyLayerNorm(
     T* skip_input_bias_add_ovals = (skip_input_bias_add_output != nullptr) ? skip_input_bias_add_output + offset : nullptr;
     U c_inv_std_dev = rsqrt(sigma2 + epsilon);
 
-    // When X shape is (B, S, ...), and i1 is in the range of [0, B * S).
-    // We support scale and bias shape like below:
-    //    When scale and bias shape is (1, 1, ...) or (...), value of broadcast_param is 0.
-    //    When scale and bias shape is (B, 1, ...), value of broadcast_param is S.
-    //    When scale and bias shape is (B, S, ...), value of broadcast_param is 1.
-    //    When scale and bias shape is (1, S, ...), value of broadcast_param is -S.
-    // Here we compute the offset of gamma and beta (assuming they have same shape) to support broadcasting.
-    int gamma_beta_offset = (broadcast_param == 0)
-                                ? 0
-                                : n2 * (broadcast_param > 0 ? (i1 / broadcast_param) : (i1 % (-broadcast_param)));
+    // Compute the offset of gamma and beta to support broadcasting.
+    int gamma_beta_offset = LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, i1, n2);
 
     const int numx = blockDim.x * blockDim.y;
     const int thrx = threadIdx.x + threadIdx.y * blockDim.x;

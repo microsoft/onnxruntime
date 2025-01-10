@@ -57,16 +57,8 @@ void ComputeJob(
     mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon);
   }
 
-  // When X shape is (B, S, ...), and task_idx is in the range of [0, B * S).
-  // We support scale and bias shape like below:
-  //    When scale and bias shape is (1, 1, ...) or (...), value of broadcast_param is 0.
-  //    When scale and bias shape is (B, 1, ...), value of broadcast_param is S.
-  //    When scale and bias shape is (B, S, ...), value of broadcast_param is 1.
-  //    When scale and bias shape is (1, S, ...), value of broadcast_param is -S.
-  // Here we compute the initial index for scale and bias data.
-  int64_t i = (broadcast_param == 0)
-                  ? 0
-                  : norm_size * (broadcast_param > 0 ? (task_idx / broadcast_param) : (task_idx % (-broadcast_param)));
+  // Compute the offset of gamma and beta to support broadcasting.
+  int64_t i = LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, task_idx, norm_size);
 
   for (int64_t h = 0; h < norm_size; h++, i++) {
     if (simplified) {
@@ -134,16 +126,8 @@ void ComputeJob(
     mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon);
   }
 
-  // When X shape is (B, S, ...), and task_idx is in the range of [0, B * S).
-  // We support scale and bias shape like below:
-  //    When scale and bias shape is (1, 1, ...) or (...), value of broadcast_param is 0.
-  //    When scale and bias shape is (B, 1, ...), value of broadcast_param is S.
-  //    When scale and bias shape is (B, S, ...), value of broadcast_param is 1.
-  //    When scale and bias shape is (1, S, ...), value of broadcast_param is -S.
-  // Here we compute the initial index for scale and bias data.
-  int64_t i = (broadcast_param == 0)
-                  ? 0
-                  : norm_size * (broadcast_param > 0 ? (task_idx / broadcast_param) : (task_idx % (-broadcast_param)));
+  // Compute the offset of gamma and beta to support broadcasting.
+  int64_t i = LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, task_idx, norm_size);
 
   for (size_t h = 0; h < num_elems; h++, i++) {
     if (simplified) {
@@ -283,38 +267,28 @@ Status LayerNormImpl::ComputeWithoutContext(
     float epsilon,
     bool simplified,
     AllocatorPtr alloc) const {
-  int64_t norm_count = x_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis));
-  int64_t norm_size = x_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis));
-
-  int64_t scale_size = scale_shape.Size();
-  int64_t bias_size = bias_shape.Size();
-  int64_t broadcast_param = 0;
-
-  if (norm_size <= 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, kLayerNormInvalidSize, norm_size);
-  } else if (static_cast<int64_t>(scale_size) != norm_size || (bias_data && static_cast<int64_t>(bias_size) != norm_size)) {
-    ORT_RETURN_IF_ERROR(LayerNormHelper::CheckBroadcast(x_shape, scale_shape, bias_shape, bias_data != nullptr, axis, broadcast_param));
-  }
+  LayerNormParams params;
+  ORT_RETURN_IF_ERROR(LayerNormHelper::CheckInputs(x_shape, scale_shape, bias_shape, bias_data != nullptr, axis, params));
 
   IAllocatorUniquePtr<float> scale_fp32;
   IAllocatorUniquePtr<float> bias_fp32;
   if constexpr (std::is_same_v<T, MLFloat16>) {
     if (prepacked_scale_fp32_data_ == nullptr) {
-      const size_t num_elems = static_cast<size_t>(scale_size);
+      const size_t num_elems = static_cast<size_t>(params.scale_size);
       scale_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
       MlasConvertHalfToFloatBuffer(scale_data, scale_fp32.get(), num_elems);
     }
     if (prepacked_bias_fp32_data_ == nullptr && bias_data) {
-      const size_t num_elems = static_cast<size_t>(bias_size);
+      const size_t num_elems = static_cast<size_t>(params.bias_size);
       bias_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
       MlasConvertHalfToFloatBuffer(bias_data, bias_fp32.get(), num_elems);
     }
   }
 
   concurrency::ThreadPool::TryBatchParallelFor(
-      thread_pool, static_cast<int32_t>(norm_count),
+      thread_pool, static_cast<int32_t>(params.num_rows),
       [&](ptrdiff_t task_idx) {
-        ComputeJob(X_data, scale_data, bias_data, task_idx, norm_size, broadcast_param,
+        ComputeJob(X_data, scale_data, bias_data, task_idx, params.norm_size, params.broadcast_param,
                    prepacked_scale_fp32_data_ ? prepacked_scale_fp32_data_.get() : scale_fp32.get(),
                    prepacked_bias_fp32_data_ ? prepacked_bias_fp32_data_.get() : bias_fp32.get(),
                    epsilon, simplified, Y_data, mean_data, inv_std_dev_data, alloc);

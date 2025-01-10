@@ -5,6 +5,7 @@
 
 #include "core/framework/tensor_shape.h"
 #include "core/common/status.h"
+#include "core/common/narrow.h"
 
 namespace onnxruntime {
 
@@ -14,24 +15,57 @@ constexpr const char* kLayerNormInputShapeMismatchError =
 
 constexpr const char* kLayerNormInvalidSize = "Size of X.shape[axis:] must be larger than 1, got ";
 
+constexpr int64_t kLayerNormInvalidInput = -1;
+
+struct LayerNormParams {
+  int64_t num_rows;
+  int64_t norm_size;  // size per row
+  int64_t scale_size;
+  int64_t bias_size;
+  int64_t broadcast_param;
+};
+
+// When X shape is (B, S, ...), and task_idx is in the range of [0, B * S).
+// We support scale and bias shape like below:
+//    When scale and bias shape is (1, 1, ...) or (...), value of broadcast_param is 0.
+//    When scale and bias shape is (B, 1, ...), value of broadcast_param is S.
+//    When scale and bias shape is (B, S, ...), value of broadcast_param is 1.
+//    When scale and bias shape is (1, S, ...), value of broadcast_param is -S.
+// Below is a macro to compute the initial index for scale and bias data.
+#ifndef LAYER_NORM_SCALE_BIAS_OFFSET
+#define LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, row_idx, norm_size) \
+  ((broadcast_param == 0) ? 0                                             \
+                          : norm_size * (broadcast_param > 0 ? row_idx / broadcast_param : row_idx % (-broadcast_param)))
+#endif
+
 class LayerNormHelper {
  public:
-  static Status CheckBroadcast(const TensorShape& x_shape,
-                               const TensorShape& scale_shape,
-                               const TensorShape& bias_shape,
-                               bool has_bias,
-                               int64_t axis,
-                               int64_t& broadcast_param) {
-    broadcast_param = GetBroadcastParam(x_shape, scale_shape, has_bias ? &bias_shape : nullptr, axis);
-    if (broadcast_param == 0) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             kLayerNormInputShapeMismatchError,
-                             " X.shape=", x_shape,
-                             " scale.shape=", scale_shape,
-                             " bias.shape=", bias_shape,
-                             " and axis=", axis);
-    }
+  static Status CheckInputs(const TensorShape& x_shape,
+                            const TensorShape& scale_shape,
+                            const TensorShape& bias_shape,
+                            bool has_bias,
+                            int64_t axis,
+                            LayerNormParams& params) {
+    params.num_rows = x_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis));
+    params.norm_size = x_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis));
+    params.scale_size = scale_shape.Size();
+    params.bias_size = bias_shape.Size();
+    params.broadcast_param = 0;
 
+    if (params.norm_size <= 1) {
+      params.broadcast_param = kLayerNormInvalidInput;
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, kLayerNormInvalidSize, params.norm_size);
+    } else if (params.scale_size != params.norm_size || (has_bias && params.bias_size != params.scale_size)) {
+      params.broadcast_param = GetBroadcastParam(x_shape, scale_shape, has_bias ? &bias_shape : nullptr, axis);
+      if (params.broadcast_param == kLayerNormInvalidInput) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               kLayerNormInputShapeMismatchError,
+                               " X.shape=", x_shape,
+                               " scale.shape=", scale_shape,
+                               " bias.shape=", bias_shape,
+                               " and axis=", axis);
+      }
+    }
     return Status::OK();
   }
 
@@ -47,7 +81,8 @@ class LayerNormHelper {
         (bias_shape == nullptr || *bias_shape == scale_shape)) {
       for (size_t i = 2; i < x_shape.NumDimensions(); ++i) {
         if (x_shape.GetDims()[i] != scale_shape.GetDims()[i]) {
-          return 0;
+          // scale cannot be broadcasted to X. It is invalid input.
+          return kLayerNormInvalidInput;
         }
       }
 
@@ -69,7 +104,8 @@ class LayerNormHelper {
       }
     }
 
-    return 0;
+    // Other cases that are not supported.
+    return kLayerNormInvalidInput;
   }
 };
 
