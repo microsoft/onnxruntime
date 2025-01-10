@@ -38,6 +38,7 @@ target 'OnnxruntimeModuleExample' do
   end
   pod 'onnxruntime-react-native', :path => '../node_modules/onnxruntime-react-native'
 
+  inherit! :search_paths
   post_install do |installer|
     # https://github.com/facebook/react-native/blob/main/packages/react-native/scripts/react_native_pods.rb#L197-L202
     react_native_post_install(
