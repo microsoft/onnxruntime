@@ -23,16 +23,13 @@ target 'OnnxruntimeModuleExample' do
     # Hermes is now enabled by default. Disable by setting this flag to false.
     # Upcoming versions of React Native may rely on get_default_flags(), but
     # we make it explicit here to aid in the React Native upgrade process.
-#   TODO: fingure out while main.jsbundle is generated in
-#   ios/build/Build/Products/Debug-iphonesimulator/ instead of
-#   ios/build/Build/Products/Debug-iphonesimulator/OnnxruntimeModuleExample.app
-#   folder when hermes_enabled is set to false
 
-    :hermes_enabled => true,
+    :hermes_enabled => false,
 #     :flipper_configuration => FlipperConfiguration.enabled,
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
+  use_frameworks!
 
   ort_c_local_pod_path = ENV['ORT_C_LOCAL_POD_PATH']
   if ort_c_local_pod_path != nil
