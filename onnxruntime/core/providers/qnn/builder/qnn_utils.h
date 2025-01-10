@@ -226,12 +226,6 @@ Status PermuteShape(gsl::span<const T> input_shape, gsl::span<const P> perm, gsl
 
   return Status::OK();
 }
-
-// Get the min/max of a Clip operator. Reads values from attributes for opset < 11 and inputs after that.
-// For opset 11+, if min/max are not constant initializers, will return false.
-// For now we only support getting float min/max.
-bool GetClipMinMax(const GraphViewer& graph_viewer, const Node& node,
-                   float& min, float& max, const logging::Logger& logger);
 }  // namespace utils
 }  // namespace qnn
 }  // namespace onnxruntime
