@@ -802,9 +802,7 @@ struct Node_EdgeEnd final {
   int GetSrcArgIndex() const { return g_host->Node_EdgeEnd__GetSrcArgIndex(this); }
   int GetDstArgIndex() const { return g_host->Node_EdgeEnd__GetDstArgIndex(this); }
 
-  Node_EdgeEnd() = delete;
-  Node_EdgeEnd(const Node_EdgeEnd&) = delete;
-  void operator=(const Node_EdgeEnd&) = delete;
+  PROVIDER_DISALLOW_ALL(Node_EdgeEnd)
 };
 
 struct Node final {
