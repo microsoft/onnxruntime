@@ -894,8 +894,10 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
 
 Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                      std::vector<NodeComputeInfo>& node_compute_funcs) {
+  // Set the power config id and the default power mode from provider option for main thread,
+  // otherwise it will mess up the power mode if user just create session without run it.
+  GetPerThreadContext();
   const auto& logger = *GetLogger();
-
   bool is_qnn_ctx_model = qnn::IsFusedGraphHasCtxNode(fused_nodes_and_graphs);
 
   onnxruntime::PathString context_cache_path;
