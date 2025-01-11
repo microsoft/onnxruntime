@@ -67,11 +67,6 @@ install_onnxruntime() {
         git clone https://github.com/microsoft/onnxruntime
     fi
     pushd onnxruntime
-    CUDA_ARCH=$(python3 -c "import torch; cc = torch.cuda.get_device_capability(); print(f'{cc[0]}{cc[1]}')")
-    if [ -z "$CUDA_ARCH" ]; then
-        echo "No CUDA device found."
-        exit 1
-    fi
     pip install --upgrade pip cmake psutil setuptools wheel packaging ninja numpy==2.2
     sh build.sh --config Release --build_dir build/cuda12 --parallel \
         --use_cuda --cuda_version 12.6 --cuda_home "$install_dir/cuda12.6" \
@@ -79,7 +74,7 @@ install_onnxruntime() {
         --build_wheel --skip_tests \
         --cmake_generator Ninja \
         --compile_no_warning_as_error \
-        --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF CMAKE_CUDA_ARCHITECTURES="$CUDA_ARCH"
+        --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF CMAKE_CUDA_ARCHITECTURES=native
 
     log "Installing ONNX Runtime"
     pip install build/cuda12/Release/dist/onnxruntime_gpu-*-linux_x86_64.whl
