@@ -1960,7 +1960,7 @@ static bool CreateSessionWithQnnEpAndQnnHtpSharedMemoryAllocator(PATH_TYPE model
     std::string_view expected_error_message = "Failed to load libcdsprpc.dll";
 #else
     std::string_view expected_error_message = "Failed to load libcdsprpc.so";
-    #endif
+#endif
 
     if (e.GetOrtErrorCode() == ORT_FAIL &&
         error_message.find(expected_error_message) != std::string_view::npos) {
