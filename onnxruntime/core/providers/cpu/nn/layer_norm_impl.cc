@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "layer_norm_impl.h"
+#include "layer_norm_helper.h"
 
 #include "core/common/safeint.h"
 #include "core/framework/tensor.h"
@@ -24,6 +25,7 @@ void ComputeJob(
     const T* bias_data,
     const ptrdiff_t task_idx,
     const int64_t norm_size,
+    const int64_t broadcast_param,
     const float* scale_float_ptr,
     const float* bias_float_ptr,
     float epsilon,
@@ -55,13 +57,16 @@ void ComputeJob(
     mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon);
   }
 
-  for (int64_t h = 0; h < norm_size; h++) {
+  // Compute the offset of gamma and beta to support broadcasting.
+  int64_t i = LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, task_idx, norm_size);
+
+  for (int64_t h = 0; h < norm_size; h++, i++) {
     if (simplified) {
-      p_output[h] = p_output[h] / mean_square * scale_data[h];
+      p_output[h] = p_output[h] / mean_square * scale_data[i];
     } else if (nullptr == bias_data) {
-      p_output[h] = (p_output[h] - mean) / mean_square * scale_data[h];
+      p_output[h] = (p_output[h] - mean) / mean_square * scale_data[i];
     } else {
-      p_output[h] = (p_output[h] - mean) / mean_square * scale_data[h] + bias_data[h];
+      p_output[h] = (p_output[h] - mean) / mean_square * scale_data[i] + bias_data[i];
     }
   }
 
@@ -82,6 +87,7 @@ void ComputeJob(
     const MLFloat16* bias_data,
     const ptrdiff_t task_idx,
     const int64_t norm_size,
+    const int64_t broadcast_param,
     const float* scale_float_ptr,
     const float* bias_float_ptr,
     float epsilon,
@@ -120,13 +126,16 @@ void ComputeJob(
     mean_square = sqrt(mean_square / norm_size - mean * mean + epsilon);
   }
 
-  for (size_t h = 0; h < num_elems; h++) {
+  // Compute the offset of gamma and beta to support broadcasting.
+  int64_t i = LAYER_NORM_SCALE_BIAS_OFFSET(broadcast_param, task_idx, norm_size);
+
+  for (size_t h = 0; h < num_elems; h++, i++) {
     if (simplified) {
-      output_float_ptr[h] = output_float_ptr[h] / mean_square * scale_float_ptr[h];
+      output_float_ptr[h] = output_float_ptr[h] / mean_square * scale_float_ptr[i];
     } else if (nullptr == bias_float_ptr) {
-      output_float_ptr[h] = (output_float_ptr[h] - mean) / mean_square * scale_float_ptr[h];
+      output_float_ptr[h] = (output_float_ptr[h] - mean) / mean_square * scale_float_ptr[i];
     } else {
-      output_float_ptr[h] = (output_float_ptr[h] - mean) / mean_square * scale_float_ptr[h] + bias_float_ptr[h];
+      output_float_ptr[h] = (output_float_ptr[h] - mean) / mean_square * scale_float_ptr[i] + bias_float_ptr[i];
     }
   }
 
@@ -161,9 +170,7 @@ LayerNormImpl::LayerNormImpl(const OpKernelInfo& op_kernel_info, bool simplified
       simplified_{simplified},
       contrib_op_{contrib_op},
       prepacked_scale_fp32_data_(nullptr),
-      prepacked_scale_fp32_size_(0),
-      prepacked_bias_fp32_data_(nullptr),
-      prepacked_bias_fp32_size_(0) {
+      prepacked_bias_fp32_data_(nullptr) {
   ORT_ENFORCE(op_kernel_info.GetAttr("axis", &axis_).IsOK());
   ORT_ENFORCE(op_kernel_info.GetAttr<float>("epsilon", &epsilon_).IsOK());
 }
@@ -179,8 +186,8 @@ Status LayerNormImpl::ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, flo
   const T* bias_data = (simplified || nullptr == bias) ? nullptr : bias->Data<T>();
 
   const TensorShape& x_shape = X->Shape();
-  size_t scale_size = scale ? static_cast<size_t>(scale->Shape().Size()) : prepacked_scale_fp32_size_;
-  size_t bias_size = bias ? static_cast<size_t>(bias->Shape().Size()) : prepacked_bias_fp32_size_;
+  const TensorShape& scale_shape = scale ? scale->Shape() : prepacked_scale_fp32_shape_;
+  const TensorShape& bias_shape = bias ? bias->Shape() : prepacked_bias_fp32_shape_;
   Tensor* Y = p_ctx->Output(0, x_shape);
   T* Y_data = Y->MutableData<T>();
 
@@ -215,7 +222,7 @@ Status LayerNormImpl::ComputeImpl(OpKernelContext* p_ctx, int64_t orig_axis, flo
 
   AllocatorPtr alloc;
   ORT_RETURN_IF_ERROR(p_ctx->GetTempSpaceAllocator(&alloc));
-  return ComputeWithoutContext<T, U>(X_data, x_shape, scale_data, scale_size, bias_data, bias_size, Y_data, mean_data,
+  return ComputeWithoutContext<T, U>(X_data, x_shape, scale_data, scale_shape, bias_data, bias_shape, Y_data, mean_data,
                                      inv_std_dev_data, thread_pool, axis, epsilon, simplified, alloc);
 }
 
@@ -234,10 +241,10 @@ Status LayerNormImpl::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr 
 
   is_packed = false;
   if (input_idx == 1) {  // scale
-    prepacked_scale_fp32_size_ = static_cast<size_t>(tensor.Shape().Size());
+    prepacked_scale_fp32_shape_ = tensor.Shape();
     ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, prepacked_scale_fp32_data_, is_packed);
   } else if (input_idx == 2) {  // bias
-    prepacked_bias_fp32_size_ = static_cast<size_t>(tensor.Shape().Size());
+    prepacked_bias_fp32_shape_ = tensor.Shape();
     ConvertMLFloat16ToFloatIfNeeded(tensor, alloc, prepacked_bias_fp32_data_, is_packed);
   }
 
@@ -249,9 +256,9 @@ Status LayerNormImpl::ComputeWithoutContext(
     const T* X_data,
     const TensorShape& x_shape,
     const T* scale_data,
-    size_t scale_size,
+    const TensorShape& scale_shape,
     const T* bias_data,
-    size_t bias_size,
+    const TensorShape& bias_shape,
     T* Y_data,
     U* mean_data,
     U* inv_std_dev_data,
@@ -260,35 +267,28 @@ Status LayerNormImpl::ComputeWithoutContext(
     float epsilon,
     bool simplified,
     AllocatorPtr alloc) const {
-  int64_t norm_count = x_shape.SizeToDimension(onnxruntime::narrow<size_t>(axis));
-  int64_t norm_size = x_shape.SizeFromDimension(onnxruntime::narrow<size_t>(axis));
-
-  if (static_cast<int64_t>(scale_size) != norm_size || (bias_data && static_cast<int64_t>(bias_size) != norm_size)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Size of X.shape()[axis:] == ", norm_size,
-                           ". Size of scale and bias (if provided) must match this. Got scale size of ",
-                           scale_size, " and bias size of ", bias_size);
-  }
+  LayerNormParams params;
+  ORT_RETURN_IF_ERROR(LayerNormHelper::CheckInputs(x_shape, scale_shape, bias_shape, bias_data != nullptr, axis, params));
 
   IAllocatorUniquePtr<float> scale_fp32;
   IAllocatorUniquePtr<float> bias_fp32;
   if constexpr (std::is_same_v<T, MLFloat16>) {
     if (prepacked_scale_fp32_data_ == nullptr) {
-      const size_t num_elems = static_cast<size_t>(norm_size);
+      const size_t num_elems = static_cast<size_t>(params.scale_size);
       scale_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
       MlasConvertHalfToFloatBuffer(scale_data, scale_fp32.get(), num_elems);
     }
     if (prepacked_bias_fp32_data_ == nullptr && bias_data) {
-      const size_t num_elems = static_cast<size_t>(norm_size);
+      const size_t num_elems = static_cast<size_t>(params.bias_size);
       bias_fp32 = IAllocator::MakeUniquePtr<float>(alloc, num_elems);
       MlasConvertHalfToFloatBuffer(bias_data, bias_fp32.get(), num_elems);
     }
   }
 
   concurrency::ThreadPool::TryBatchParallelFor(
-      thread_pool, static_cast<int32_t>(norm_count),
+      thread_pool, static_cast<int32_t>(params.num_rows),
       [&](ptrdiff_t task_idx) {
-        ComputeJob(X_data, scale_data, bias_data, task_idx, norm_size,
+        ComputeJob(X_data, scale_data, bias_data, task_idx, params.norm_size, params.broadcast_param,
                    prepacked_scale_fp32_data_ ? prepacked_scale_fp32_data_.get() : scale_fp32.get(),
                    prepacked_bias_fp32_data_ ? prepacked_bias_fp32_data_.get() : bias_fp32.get(),
                    epsilon, simplified, Y_data, mean_data, inv_std_dev_data, alloc);

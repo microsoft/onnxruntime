@@ -101,6 +101,7 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
         (double)epsilon_,                                                               // epsilon
         reinterpret_cast<const CudaT*>(gamma->Data<T>()),                               // gamma
         (beta != nullptr) ? reinterpret_cast<const CudaT*>(beta->Data<T>()) : nullptr,  // beta
+        0,                                                                              // no broadcast for gamma/beta
         reinterpret_cast<const CudaT*>(skip->Data<T>()),                                // skip or residual to add
         (bias != nullptr) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,  // bias to add
         sum_output != nullptr ? reinterpret_cast<CudaT*>(sum_output->MutableData<T>()) : nullptr);
