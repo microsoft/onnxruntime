@@ -8,4 +8,4 @@ ruff==0.5.4
 black==24.2.0
 isort==5.13.2
 # CLANGFORMAT
-clang-format==18.1.8
+clang-format==19.1.6
