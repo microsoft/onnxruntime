@@ -174,15 +174,4 @@ class NodeAttrHelper {
  private:
   const NodeAttributes& node_attributes_;
 };
-
-namespace logging {
-inline std::unique_ptr<Capture> Capture__Create(const Logger& logger, logging::Severity severity, const char* category,
-                                                logging::DataType data_type, const CodeLocation& location) {
-#if BUILD_QNN_EP_STATIC_LIB
-  return std::make_unique<Capture>(logger, severity, category, data_type, location);
-#else
-  return Capture::Create(logger, severity, category, data_type, location);
-#endif
-}
-}  // namespace logging
 }  // namespace onnxruntime
