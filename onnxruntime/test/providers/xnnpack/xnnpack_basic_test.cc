@@ -266,7 +266,7 @@ TEST(XnnpackEP, TestQDQConvS8S8_per_channel) {
   RunModelTestWithPath(ort_model_path, "xnnpack_qdq_test_graph_conv_s8s8_perchannel", graph_verify, 0.2f);
 }
 
-TEST(XnnpackEP, DISABLED_TestAveragePool) {  // [ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for AveragePool(19) node with name 'node'
+TEST(XnnpackEP, TestAveragePool) {  // [ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for AveragePool(19) node with name 'node'
   const std::vector<int64_t> input_shape = {1, 2, 3, 3};
   auto modelBuilder = [&input_shape](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
