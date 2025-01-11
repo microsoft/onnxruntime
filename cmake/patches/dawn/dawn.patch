@@ -1,0 +1,12 @@
+diff --git a/src/emdawnwebgpu/CMakeLists.txt b/src/emdawnwebgpu/CMakeLists.txt
+index de673537d3..c98dc46de7 100644
+--- a/src/emdawnwebgpu/CMakeLists.txt
++++ b/src/emdawnwebgpu/CMakeLists.txt
+@@ -78,6 +78,7 @@ if (${DAWN_ENABLE_EMSCRIPTEN})
+         endif()
+ 
+         set(ARGS
++            ${Python3_EXECUTABLE}
+             "${DAWN_EMSCRIPTEN_TOOLCHAIN}/tools/maint/gen_struct_info.py"
+             -q
+             "${EM_BUILD_GEN_DIR}/struct_info_webgpu.json"
