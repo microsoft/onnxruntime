@@ -1100,11 +1100,6 @@ TEST_F(QnnHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
 }
 
 TEST_F(QnnHTPBackendTests, UseHtpSharedMemoryAllocatorForInputs) {
-#if !defined(__ANDROID__) && !defined(_WIN32)
-  // TODO there's probably a better way to check that we are on a Qualcomm device
-  GTEST_SKIP() << "Test is only supported on a Qualcomm device.";
-#endif
-
   ProviderOptions provider_options;
 #if defined(_WIN32)
   provider_options["backend_path"] = "QnnHtp.dll";
@@ -1113,9 +1108,23 @@ TEST_F(QnnHTPBackendTests, UseHtpSharedMemoryAllocatorForInputs) {
 #endif
   provider_options["enable_htp_shared_memory_allocator"] = "1";
 
+  std::unique_ptr<IExecutionProvider> qnn_ep;
+  try {
+    qnn_ep = QnnExecutionProviderWithOptions(provider_options);
+  } catch (const OnnxRuntimeException& e) {
+    // handle particular exception that indicates that the libcdsprpc.so / dll can't be loaded
+#if defined(_WIN32)
+    constexpr const char* expected_error_message = "Failed to load libcdsprpc.dll";
+#else
+    constexpr const char* expected_error_message = "Failed to load libcdsprpc.so";
+#endif
+    ASSERT_THAT(e.what(), testing::HasSubstr(expected_error_message));
+    GTEST_SKIP() << "HTP shared memory allocator is unavailable.";
+  }
+
   AllocatorPtr htp_shared_memory_allocator{};
   {
-    auto allocators = QnnExecutionProviderWithOptions(provider_options)->CreatePreferredAllocators();
+    auto allocators = qnn_ep->CreatePreferredAllocators();
     ASSERT_FALSE(allocators.empty());
     auto& allocator = allocators[0];
     ASSERT_EQ(allocator->Info(), qnn::HtpSharedMemoryAllocator::AssociatedMemoryInfo());

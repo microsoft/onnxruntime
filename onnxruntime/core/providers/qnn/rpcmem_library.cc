@@ -35,7 +35,11 @@ DynamicLibraryHandle LoadDynamicLibrary(const PathString& path, bool global_symb
 
   const auto& env = Env::Default();
   void* library_handle = nullptr;
-  ORT_THROW_IF_ERROR(env.LoadDynamicLibrary(path, global_symbols, &library_handle));
+
+  const auto load_status = env.LoadDynamicLibrary(path, global_symbols, &library_handle);
+  if (!load_status.IsOK()) {
+    ORT_THROW("Failed to load ", ToUTF8String(path), ": ", load_status.ErrorMessage());
+  }
 
   return DynamicLibraryHandle{library_handle, unload_library};
 }
