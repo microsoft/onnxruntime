@@ -630,7 +630,7 @@ const createAttentionProbsProgramInfo = (
   return {
     name: 'AttentionProbs',
     shaderCache: {
-      hint: `${components};${attentionBias !== undefined};${pastKey !== undefined};${outputCount}`,
+      hint: `${components};${attentionBias !== undefined};${pastKey !== undefined};${outputCount};${packedQKV}`,
       inputDependencies,
     },
     getRunData: () => ({ outputs, dispatchGroup: dispatch, programUniforms }),
@@ -794,7 +794,7 @@ const createVxAttentionScoreProgramInfo = (
 
   return {
     name: 'AttentionScore',
-    shaderCache: { hint: `${pastValue !== undefined};${outputCount}`, inputDependencies },
+    shaderCache: { hint: `${pastValue !== undefined};${outputCount};${packedQKV}`, inputDependencies },
     getRunData: () => ({ outputs, dispatchGroup: dispatch, programUniforms }),
     getShaderSource,
   };
