@@ -1724,6 +1724,15 @@ Status QnnBackendManager::GetOrRegisterContextMemHandle(Qnn_ContextHandle_t cont
                                                         void* shared_memory_address,
                                                         const Qnn_Tensor_t& qnn_tensor,
                                                         Qnn_MemHandle_t& mem_handle) {
+  // Multi-threading situations to consider:
+  // 1) Shared memory allocation is being freed in another thread while we are processing `shared_memory_address`.
+  //    This implies incorrect usage as the memory is being freed while it is still in use. Let's assume this won't
+  //    happen.
+  // 2) The shared memory allocation clean up function is being run from another thread while the
+  //    QnnContextHandleRecord or QnnBackendManager objects are being destroyed.
+  //    Usage of weak_ptrs from the clean up function should ensure that those objects are only accessed while they are
+  //    in scope.
+
   const auto context_handle_record_it = context_map_.find(context_handle);
   ORT_RETURN_IF_NOT(context_handle_record_it != context_map_.end(), "QNN context not found: ", context_handle);
 
