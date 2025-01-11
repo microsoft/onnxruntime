@@ -394,6 +394,20 @@ const Qnn_QuantizeParams_t& GetQnnTensorQParams(const Qnn_Tensor_t& qnn_tensor) 
   ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
+uint8_t* GetQnnTensorIsDynamicDimensions(const Qnn_Tensor_t& qnn_tensor) {
+  if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
+    return nullptr;  // not present in v1
+  }
+
+#ifdef QNN_TENSOR_V2_INIT
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+    return qnn_tensor.v2.isDynamicDimensions;
+  }
+#endif  // QNN_TENSOR_V2_INIT
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
+}
+
 Status CompareQnnQuantParams(const Qnn_QuantizeParams_t& qparam0, const Qnn_QuantizeParams_t& qparam1,
                              float& scale_diff, int32_t& offset_diff) {
   scale_diff = 0.0f;

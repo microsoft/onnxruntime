@@ -3,6 +3,7 @@
 
 #include "core/providers/qnn/builder/qnn_utils.h"
 
+#include <algorithm>
 #include <functional>
 #include <map>
 #include <numeric>
@@ -69,6 +70,17 @@ size_t GetQnnTensorDataSizeInBytes(gsl::span<const uint32_t> shape, Qnn_DataType
   ORT_ENFORCE(!shape.empty(), "Empty shape not allowed.");  // TODO can we just treat empty shape as a scalar?
   SafeInt<size_t> data_length = GetElementSizeByType(element_type);
   return std::accumulate(shape.begin(), shape.end(), data_length, std::multiplies<>{});
+}
+
+bool QnnTensorHasDynamicShape(const Qnn_Tensor_t& tensor) {
+  const uint8_t* is_dynamic_dimensions = GetQnnTensorIsDynamicDimensions(tensor);
+  if (is_dynamic_dimensions == nullptr) {
+    return false;
+  }
+
+  const auto rank = GetQnnTensorRank(tensor);
+  return std::any_of(is_dynamic_dimensions, is_dynamic_dimensions + rank,
+                     [](uint8_t is_dynamic_dimension) { return is_dynamic_dimension != 0; });
 }
 
 std::ostream& operator<<(std::ostream& out, const Qnn_Scalar_t& scalar) {

@@ -29,6 +29,8 @@ size_t GetElementSizeByType(ONNXTensorElementDataType elem_type);
 
 size_t GetQnnTensorDataSizeInBytes(gsl::span<const uint32_t> shape, Qnn_DataType_t element_data_type);
 
+bool QnnTensorHasDynamicShape(const Qnn_Tensor_t& tensor);
+
 // TODO: make these work with Wrappers?
 std::ostream& operator<<(std::ostream& out, const Qnn_Param_t& qnn_param);
 std::ostream& operator<<(std::ostream& out, const Qnn_Tensor_t& tensor);
