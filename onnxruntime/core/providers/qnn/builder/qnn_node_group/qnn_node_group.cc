@@ -15,7 +15,6 @@
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
-#include "core/providers/qnn/builder/qnn_node_group/conv_activation_fusion.h"
 #include "core/providers/qnn/builder/qnn_node_group/dq_q_fusion.h"
 #include "core/providers/qnn/builder/qnn_node_group/hardsigmoid_mul_fusion.h"
 
@@ -90,8 +89,6 @@ static std::unique_ptr<IQnnNodeGroup> TryQnnFusions(
   static std::unordered_map<std::string, FusionFunc> fusions = {
       {"DequantizeLinear", DQQFusion::TryFusion},
       {"HardSigmoid", HardSigmoidMulFusion::TryFusion},
-      {"Conv", ConvActivationFusion::TryFusion},
-      {"ConvTranspose", ConvActivationFusion::TryFusion},
   };
 
   // For now, all fusions involve standalone node units (i.e., no wrapping DQ/Q nodes).
