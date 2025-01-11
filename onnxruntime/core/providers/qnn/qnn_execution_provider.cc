@@ -697,6 +697,12 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     return result;
   }
 
+  if (IsNpuBackend(qnn_backend_manager_->GetQnnBackendType())) {
+    // Set the power config id and the default power mode from provider option for main thread,
+    // otherwise it will mess up the power mode if user just create session without run it.
+    GetPerThreadContext();
+  }
+
   // Report error if QNN CPU backend is loaded while CPU fallback is disabled
   if (disable_cpu_ep_fallback_ && qnn_backend_manager_->GetQnnBackendType() == qnn::QnnBackendType::CPU) {
     LOGS(logger, ERROR) << "Qnn CPU backend is loaded while CPU fallback is disabled.";
@@ -894,9 +900,6 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
 
 Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                      std::vector<NodeComputeInfo>& node_compute_funcs) {
-  // Set the power config id and the default power mode from provider option for main thread,
-  // otherwise it will mess up the power mode if user just create session without run it.
-  GetPerThreadContext();
   const auto& logger = *GetLogger();
   bool is_qnn_ctx_model = qnn::IsFusedGraphHasCtxNode(fused_nodes_and_graphs);
 
