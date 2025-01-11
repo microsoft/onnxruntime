@@ -2884,7 +2884,7 @@ def main():
 
                 make_extra_args = ["-A", target_arch, "-G", args.cmake_generator]
 
-                if (args.use_cuda and (not args.enable_generic_interface)):
+                if args.use_cuda:
                     cmake_extra_args += ["-T", toolset]
                 
             if args.enable_wcos:
