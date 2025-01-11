@@ -2274,7 +2274,7 @@ TEST(CApiTest, io_binding_qnn_htp_shared) {
   auto output_data = qnn_htp_shared_allocator.GetAllocation(expected_y.size() * sizeof(float));
   ASSERT_NE(output_data.get(), nullptr);
 
-  // Create an OrtValue tensor backed by data on CUDA memory
+  // Create an OrtValue tensor backed by data on QNN HTP shared memory
   Ort::Value bound_y = Ort::Value::CreateTensor(info_qnn_htp_shared, reinterpret_cast<float*>(output_data.get()),
                                                 expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
 
