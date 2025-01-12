@@ -29,6 +29,8 @@ else:
 TINY_MODELS = {
     "stable-diffusion": "hf-internal-testing/tiny-stable-diffusion-torch",
     "stable-diffusion-xl": "echarlaix/tiny-random-stable-diffusion-xl",
+    "stable-diffusion-3": "optimum-internal-testing/tiny-random-stable-diffusion-3",
+    "flux": "optimum-internal-testing/tiny-random-flux",
 }
 
 
@@ -265,6 +267,152 @@ class TestStableDiffusionOptimization(unittest.TestCase):
 
         self.assertTrue(np.array_equal(ort_outputs_1.images[0], ort_outputs_2.images[0]))
         self.assertTrue(np.array_equal(ort_outputs_1.images[0], ort_outputs_3.images[0]))
+
+
+class TestSD3FluxOptimization(unittest.TestCase):
+    def optimize_sd3_or_flux(
+        self, model_name, export_onnx_dir, optimized_onnx_dir, expected_op_counters, is_float16, atol
+    ):
+        from optimum.onnxruntime import ORTPipelineForText2Image
+
+        if os.path.exists(export_onnx_dir):
+            shutil.rmtree(export_onnx_dir, ignore_errors=True)
+
+        baseline = ORTPipelineForText2Image.from_pretrained(model_name, export=True, provider="CUDAExecutionProvider")
+        if not os.path.exists(export_onnx_dir):
+            baseline.save_pretrained(export_onnx_dir)
+
+        argv = [
+            "--input",
+            export_onnx_dir,
+            "--output",
+            optimized_onnx_dir,
+            "--overwrite",
+            "--disable_group_norm",
+            "--disable_bias_splitgelu",
+        ]
+
+        if is_float16:
+            argv.append("--float16")
+
+        op_counters = optimize_stable_diffusion(argv)
+
+        for name in expected_op_counters:
+            self.assertTrue(name in op_counters)
+            for op, count in expected_op_counters[name].items():
+                self.assertTrue(op in op_counters[name])
+                self.assertEqual(op_counters[name][op], count)
+
+        treatment = ORTPipelineForText2Image.from_pretrained(optimized_onnx_dir, provider="CUDAExecutionProvider")
+        batch_size, num_images_per_prompt, height, width = 1, 1, 64, 64
+        inputs = {
+            "prompt": ["starry night by van gogh"] * batch_size,
+            "num_inference_steps": 3,
+            "num_images_per_prompt": num_images_per_prompt,
+            "height": height,
+            "width": width,
+            "output_type": "np",
+        }
+
+        seed = 123
+        np.random.seed(seed)
+        import torch
+
+        baseline_outputs = baseline(**inputs, generator=torch.Generator(device="cuda").manual_seed(seed))
+
+        np.random.seed(seed)
+        treatment_outputs = treatment(**inputs, generator=torch.Generator(device="cuda").manual_seed(seed))
+
+        self.assertTrue(np.allclose(baseline_outputs.images[0], treatment_outputs.images[0], atol=atol))
+
+    @pytest.mark.slow
+    def test_sd3(self):
+        """This tests optimization of stable diffusion 3 pipeline"""
+        model_name = TINY_MODELS["stable-diffusion-3"]
+
+        expected_op_counters = {
+            "transformer": {
+                "FastGelu": 3,
+                "MultiHeadAttention": 2,
+                "LayerNormalization": 8,
+                "SimplifiedLayerNormalization": 0,
+            },
+            "vae_encoder": {"Attention": 0, "GroupNorm": 0, "SkipGroupNorm": 0, "NhwcConv": 17},
+            "vae_decoder": {"Attention": 0, "GroupNorm": 0, "SkipGroupNorm": 0, "NhwcConv": 25},
+            "text_encoder": {
+                "Attention": 2,
+                "Gelu": 0,
+                "LayerNormalization": 1,
+                "QuickGelu": 2,
+                "SkipLayerNormalization": 4,
+            },
+            "text_encoder_2": {
+                "Attention": 2,
+                "Gelu": 0,
+                "LayerNormalization": 1,
+                "QuickGelu": 0,
+                "SkipLayerNormalization": 4,
+            },
+            "text_encoder_3": {
+                "Attention": 2,
+                "MultiHeadAttention": 0,
+                "Gelu": 0,
+                "FastGelu": 2,
+                "BiasGelu": 0,
+                "GemmFastGelu": 0,
+                "LayerNormalization": 0,
+                "SimplifiedLayerNormalization": 2,
+                "SkipLayerNormalization": 0,
+                "SkipSimplifiedLayerNormalization": 3,
+            },
+        }
+
+        export_onnx_dir = "tiny-random-stable-diffusion-3"
+        optimized_onnx_dir = "tiny-random-stable-diffusion-3-optimized-fp32"
+        self.optimize_sd3_or_flux(
+            model_name, export_onnx_dir, optimized_onnx_dir, expected_op_counters, is_float16=False, atol=5e-3
+        )
+
+        optimized_onnx_dir = "tiny-random-stable-diffusion-3-optimized-fp16"
+        self.optimize_sd3_or_flux(
+            model_name, export_onnx_dir, optimized_onnx_dir, expected_op_counters, is_float16=True, atol=5e-2
+        )
+
+    @pytest.mark.slow
+    def test_flux(self):
+        """This tests optimization of flux pipeline"""
+        model_name = TINY_MODELS["flux"]
+
+        expected_op_counters = {
+            "transformer": {
+                "FastGelu": 3,
+                "MultiHeadAttention": 2,
+                "LayerNormalization": 6,
+                "SimplifiedLayerNormalization": 6,
+            },
+            "vae_encoder": {"Attention": 0, "GroupNorm": 0, "SkipGroupNorm": 0, "NhwcConv": 8},
+            "vae_decoder": {"Attention": 0, "GroupNorm": 0, "SkipGroupNorm": 0, "NhwcConv": 10},
+            "text_encoder": {
+                "Attention": 5,
+                "Gelu": 0,
+                "LayerNormalization": 1,
+                "QuickGelu": 0,
+                "SkipLayerNormalization": 10,
+            },
+            # The tiny flux uses clip, but FLUX.1-dev uses t5, so we skip op count verification for text_encoder_2.
+            "text_encoder_2": {},
+        }
+
+        export_onnx_dir = "tiny-random-flux"
+        optimized_onnx_dir = "tiny-random-flux-optimized-fp32"
+        self.optimize_sd3_or_flux(
+            model_name, export_onnx_dir, optimized_onnx_dir, expected_op_counters, is_float16=False, atol=1e-3
+        )
+
+        optimized_onnx_dir = "tiny-random-flux-optimized-fp16"
+        self.optimize_sd3_or_flux(
+            model_name, export_onnx_dir, optimized_onnx_dir, expected_op_counters, is_float16=True, atol=5e-2
+        )
 
 
 if __name__ == "__main__":

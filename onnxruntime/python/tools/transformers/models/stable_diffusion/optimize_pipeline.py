@@ -297,6 +297,7 @@ def _optimize_sd_pipeline(
                     f"--force_fp32_ops shall be in the format of module:operator like unet:Attention, got {fp32_operator}"
                 )
 
+    op_counters = {}
     for name, model_type in model_type_mapping.items():
         onnx_model_path = source_dir / name / "model.onnx"
         if not os.path.exists(onnx_model_path):
@@ -391,10 +392,12 @@ def _optimize_sd_pipeline(
                 m = model_type_class_mapping[model_type](model)
 
         m.get_operator_statistics()
-        m.get_fused_operator_statistics()
+        op_counters[name] = m.get_fused_operator_statistics()
         m.save_model_to_file(str(optimized_model_path), use_external_data_format=use_external_data_format)
         logger.info("%s is optimized", name)
         logger.info("*" * 20)
+
+    return op_counters
 
 
 def _copy_extra_directory(source_dir: Path, target_dir: Path, model_list: List[str]):
@@ -463,7 +466,7 @@ def optimize_stable_diffusion_pipeline(
 
     _copy_extra_directory(source_dir, target_dir, model_list)
 
-    _optimize_sd_pipeline(
+    return _optimize_sd_pipeline(
         source_dir,
         target_dir,
         pipeline_type,
@@ -571,7 +574,9 @@ def main(argv: Optional[List[str]] = None):
     args = parse_arguments(argv)
 
     logger.info("Arguments: %s", str(args))
-    optimize_stable_diffusion_pipeline(
+
+    # Return op counters for testing purpose.
+    return optimize_stable_diffusion_pipeline(
         args.input, args.output, args.overwrite, args.use_external_data_format, args.float16, args.inspect, args
     )
 
