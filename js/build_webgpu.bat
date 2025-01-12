@@ -17,7 +17,8 @@ set BUILD_DIR=%ROOT%build_webgpu
 :arg1
 if ["%~1"]==["d"] (
     set CONFIG=Debug
-    set CONFIG_EXTRA_FLAG=--enable_wasm_profiling --cmake_extra_defines onnxruntime_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL=1
+    set CONFIG_EXTRA_FLAG=--enable_wasm_profiling --wasm_run_tests_in_browser
+    @rem --cmake_extra_defines onnxruntime_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL=1
     @rem --enable_wasm_debug_info
     goto :arg2
 )

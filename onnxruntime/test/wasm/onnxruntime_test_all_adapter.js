@@ -15,6 +15,7 @@
     if (typeof process !== 'undefined') {
         // In Node.js
         args = process.argv;
+        globalThis.PTHREAD_POOL_SIZE = Math.min(8, require('os').cpus().length);
         onTestComplete = function () {
             if (gtestOutputFilepath) {
                 require('fs').writeFileSync(gtestOutputFilepath, gtestOutputFiledata);
@@ -23,6 +24,7 @@
     } else if (typeof __karma__ !== 'undefined') {
         // In browser (launched by karma)
         args = __karma__.config.args;
+        globalThis.PTHREAD_POOL_SIZE = Math.min(8, navigator.hardwareConcurrency);
         onTestComplete = function (exitCode) {
             __karma__.result({
                 id: '',
@@ -42,10 +44,14 @@
     // check for flag "--gtest_output=xml:"
     const argGtestOutputPrefix = '--gtest_output=xml:';
 
+    // check for flag "--wasm-threads="
+    const argWasmThreads = '--wasm-threads=';
+
     for (const arg of args) {
         if (arg.startsWith(argGtestOutputPrefix)) {
             gtestOutputFilepath = arg.substring(argGtestOutputPrefix.length);
-            break;
+        } else if (arg.startsWith(argWasmThreads)) {
+            globalThis.PTHREAD_POOL_SIZE = Number.parseInt(arg.substring(argWasmThreads.length));
         }
     }
 

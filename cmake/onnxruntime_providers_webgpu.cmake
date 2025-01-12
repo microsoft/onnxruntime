@@ -32,6 +32,7 @@
     endif()
 
     target_link_libraries(onnxruntime_providers_webgpu PUBLIC emdawnwebgpu_cpp)
+    target_link_options(onnxruntime_providers_webgpu PUBLIC "SHELL:-s ASYNCIFY=1")
   else()
     onnxruntime_add_include_to_target(onnxruntime_providers_webgpu dawn::dawncpp_headers dawn::dawn_headers)
 

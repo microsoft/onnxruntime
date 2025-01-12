@@ -644,10 +644,8 @@ if (onnxruntime_USE_WEBGPU)
 
     # file "${DAWN_EMSCRIPTEN_TOOLCHAIN}/tools/maint/gen_struct_info.py" is missing from emsdk installation.
     # we should copy if from ${PROJECT_SOURCE_DIR}/patches/
-    file(COPY_FILE
-         "${PROJECT_SOURCE_DIR}/patches/emscripten/tools/maint/gen_struct_info.py"
-         "${DAWN_EMSCRIPTEN_TOOLCHAIN}/tools/maint/gen_struct_info.py"
-         ONLY_IF_DIFFERENT)
+    file(COPY "${PROJECT_SOURCE_DIR}/patches/emscripten/tools/maint/gen_struct_info.py"
+         DESTINATION "${DAWN_EMSCRIPTEN_TOOLCHAIN}/tools/maint/")
   else()
     if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
       set(DAWN_BUILD_MONOLITHIC_LIBRARY ON CACHE BOOL "" FORCE)
