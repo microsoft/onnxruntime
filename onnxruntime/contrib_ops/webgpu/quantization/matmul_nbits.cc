@@ -97,6 +97,8 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
     shader.MainFunctionBody() << "  let n_blocks_per_col = uniforms.input_b_shape[1];\n"
                               << "  let num_tiles =  (n_blocks_per_col - 1) / " << blocks_per_tile << " + 1;\n"
+                              << "  var inter_res0 = output_element_t(0);\n"
+                              << "  var inter_res1 = output_element_t(0);\n"
                               // Loop over shared dimension.
                               << "  for (var tile: u32 = 0; tile < num_tiles; tile += 1) {\n"
                               << "    let a_col_start = tile * " << a_length_per_tile << ";\n"
@@ -162,13 +164,13 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     if (tile_m_ == 1) {
       switch (a.NumComponents()) {
         case 1:
-          shader.MainFunctionBody() << "      inter_results[local_id.y][local_id.x] += dot(vec4<output_element_t>(sub_a[word_offset], sub_a[word_offset + 1], sub_a[word_offset + 2], sub_a[word_offset + 3]), b_dequantized_values[0]) + dot(vec4<output_element_t>(sub_a[word_offset + 4], sub_a[word_offset + 5], sub_a[word_offset + 6], sub_a[word_offset + 7]), b_dequantized_values[1]);\n";
+          shader.MainFunctionBody() << "      inter_res0 += dot(vec4<output_element_t>(sub_a[word_offset], sub_a[word_offset + 1], sub_a[word_offset + 2], sub_a[word_offset + 3]), b_dequantized_values[0]) + dot(vec4<output_element_t>(sub_a[word_offset + 4], sub_a[word_offset + 5], sub_a[word_offset + 6], sub_a[word_offset + 7]), b_dequantized_values[1]);\n";
           break;
         case 2:
-          shader.MainFunctionBody() << "      inter_results[local_id.y][local_id.x] += dot(vec4<output_element_t>(sub_a[word_offset], sub_a[word_offset + 1]), b_dequantized_values[0]) + dot(vec4<output_element_t>(sub_a[word_offset + 2], sub_a[word_offset + 3]), b_dequantized_values[1]);\n";
+          shader.MainFunctionBody() << "      inter_res0 += dot(vec4<output_element_t>(sub_a[word_offset], sub_a[word_offset + 1]), b_dequantized_values[0]) + dot(vec4<output_element_t>(sub_a[word_offset + 2], sub_a[word_offset + 3]), b_dequantized_values[1]);\n";
           break;
         case 4:
-          shader.MainFunctionBody() << "      inter_results[local_id.y][local_id.x] += dot(sub_a[word_offset], b_dequantized_values[0]) + dot(sub_a[word_offset + 1], b_dequantized_values[1]);\n";
+          shader.MainFunctionBody() << "      inter_res0 += dot(sub_a[word_offset], b_dequantized_values[0]) + dot(sub_a[word_offset + 1], b_dequantized_values[1]);\n";
           break;
         default:
           break;
@@ -222,13 +224,13 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
       if (tile_m_ == 1) {
         switch (a.NumComponents()) {
           case 1:
-            shader.MainFunctionBody() << "      inter_results[local_id.y + 8][local_id.x] += dot(vec4<output_element_t>(sub_a[word_offset], sub_a[word_offset + 1], sub_a[word_offset + 2], sub_a[word_offset + 3]), b_dequantized_values[0]) + dot(vec4<output_element_t>(sub_a[word_offset + 4], sub_a[word_offset + 5], sub_a[word_offset + 6], sub_a[word_offset + 7]), b_dequantized_values[1]);\n";
+            shader.MainFunctionBody() << "      inter_res1 += dot(vec4<output_element_t>(sub_a[word_offset], sub_a[word_offset + 1], sub_a[word_offset + 2], sub_a[word_offset + 3]), b_dequantized_values[0]) + dot(vec4<output_element_t>(sub_a[word_offset + 4], sub_a[word_offset + 5], sub_a[word_offset + 6], sub_a[word_offset + 7]), b_dequantized_values[1]);\n";
             break;
           case 2:
-            shader.MainFunctionBody() << "      inter_results[local_id.y + 8][local_id.x] += dot(vec4<output_element_t>(sub_a[word_offset], sub_a[word_offset + 1]), b_dequantized_values[0]) + dot(vec4<output_element_t>(sub_a[word_offset + 2], sub_a[word_offset + 3]), b_dequantized_values[1]);\n";
+            shader.MainFunctionBody() << "      inter_res1 += dot(vec4<output_element_t>(sub_a[word_offset], sub_a[word_offset + 1]), b_dequantized_values[0]) + dot(vec4<output_element_t>(sub_a[word_offset + 2], sub_a[word_offset + 3]), b_dequantized_values[1]);\n";
             break;
           case 4:
-            shader.MainFunctionBody() << "      inter_results[local_id.y + 8][local_id.x] += dot(sub_a[word_offset], b_dequantized_values[0]) + dot(sub_a[word_offset + 1], b_dequantized_values[1]);\n";
+            shader.MainFunctionBody() << "      inter_res1 += dot(sub_a[word_offset], b_dequantized_values[0]) + dot(sub_a[word_offset + 1], b_dequantized_values[1]);\n";
             break;
           default:
             break;
@@ -257,7 +259,10 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.MainFunctionBody() << "    workgroupBarrier();\n"
                                  "  }\n";
     if (tile_m_ == 1) {
-      shader.MainFunctionBody() << "  if (local_idx < " << WorkgroupSizeY() * 2 << ") {\n"
+      shader.MainFunctionBody() << "  inter_results[local_id.y][local_id.x] = inter_res0;\n"
+                                << "  inter_results[local_id.y + 8][local_id.x] = inter_res1;\n"
+                                << "  workgroupBarrier();\n"
+                                << "  if (local_idx < " << WorkgroupSizeY() * 2 << ") {\n"
                                 << "    var output_value = output_value_t(0);\n"
                                 << "    for (var b = 0u; b < " << WorkgroupSizeX() << "; b++) {\n"
                                 << "      output_value += inter_results[local_idx][b];\n"
