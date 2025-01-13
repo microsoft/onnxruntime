@@ -226,8 +226,8 @@ class ThreadPoolProfiler {
   void LogStart() {};
   void LogEnd(ThreadPoolEvent){};
   void LogEndAndStart(ThreadPoolEvent){};
-  void LogStartAndCoreAndBlock(std::ptrdiff_t){};
-  void LogCoreAndBlock(std::ptrdiff_t){};
+  void LogStartAndCoreAndBlock(std::ptrdiff_t) {};
+  void LogCoreAndBlock(std::ptrdiff_t) {};
   void LogThreadId(int) {};
   void LogRun(int) {};
   std::string DumpChildThreadStat() { return {}; }

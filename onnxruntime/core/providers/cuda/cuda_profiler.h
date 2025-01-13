@@ -34,8 +34,8 @@ class CudaProfiler final : public EpProfiler {
   ~CudaProfiler() {}
   bool StartProfiling(TimePoint) override { return true; }
   void EndProfiling(TimePoint, Events&) override {};
-  void Start(uint64_t) override{};
-  void Stop(uint64_t) override{};
+  void Start(uint64_t) override {};
+  void Stop(uint64_t) override {};
 };
 
 #endif

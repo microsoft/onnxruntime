@@ -173,11 +173,11 @@ Status SpaceToDepth<Layout>::ComputeInternal(OpKernelContext* context) const {
   int64_t output_width = -1;
 
   ORT_RETURN_IF_ERROR(
-      InputValidationsAndOutputDimsCalc<Layout == LAYOUT_NHWC>(input,
-                                                               batch,
-                                                               input_depth, input_height, input_width,
-                                                               output_depth, output_height, output_width,
-                                                               true));
+      InputValidationsAndOutputDimsCalc < Layout == LAYOUT_NHWC > (input,
+                                                                   batch,
+                                                                   input_depth, input_height, input_width,
+                                                                   output_depth, output_height, output_width,
+                                                                   true));
 
   // We use the "actual" output shape to construct the output tensor
   Tensor& output = (Layout == LAYOUT_NCHW)
@@ -225,11 +225,11 @@ Status DepthToSpace<Layout>::ComputeInternal(OpKernelContext* context) const {
   int64_t output_width = -1;
 
   ORT_RETURN_IF_ERROR(
-      InputValidationsAndOutputDimsCalc<Layout == LAYOUT_NHWC>(input,
-                                                               batch,
-                                                               input_depth, input_height, input_width,
-                                                               output_depth, output_height, output_width,
-                                                               false));
+      InputValidationsAndOutputDimsCalc < Layout == LAYOUT_NHWC > (input,
+                                                                   batch,
+                                                                   input_depth, input_height, input_width,
+                                                                   output_depth, output_height, output_width,
+                                                                   false));
 
   // We use the "actual" output shape to construct the output tensor
   Tensor& output = (Layout == LAYOUT_NCHW)

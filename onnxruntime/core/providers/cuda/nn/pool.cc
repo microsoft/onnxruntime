@@ -293,7 +293,7 @@ Status Pool<T, MaxPool<8>, Layout>::ComputeInternal(OpKernelContext* context) co
                                                    strides, pads, this->pool_attrs_.dilations,
                                                    this->pool_attrs_.storage_order, x_data, y_data, i_data);
   } else {
-    ORT_RETURN_IF_ERROR((Pool<T, MaxPool<1>, Layout == LAYOUT_NHWC>::ComputeInternal(context)));
+    ORT_RETURN_IF_ERROR((Pool < T, MaxPool<1>, Layout == LAYOUT_NHWC > ::ComputeInternal(context)));
   }
   return Status::OK();
 }

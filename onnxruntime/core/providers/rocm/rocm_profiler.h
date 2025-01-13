@@ -35,8 +35,8 @@ class RocmProfiler final : public EpProfiler {
   ~RocmProfiler() {}
   bool StartProfiling(TimePoint) override { return true; }
   void EndProfiling(TimePoint, Events&) override {};
-  void Start(uint64_t) override{};
-  void Stop(uint64_t) override{};
+  void Start(uint64_t) override {};
+  void Stop(uint64_t) override {};
 };
 
 }  // namespace profiling
