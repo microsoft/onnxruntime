@@ -1,6 +1,6 @@
 import * as ort from 'onnxruntime-web';
 
-// The following line uses Vite's "Explicit URL Imports" feature to load the wasm file as asset.
+// The following line uses Vite's "Explicit URL Imports" feature to load the wasm file as an asset.
 //
 // see https://vite.dev/guide/assets.html#explicit-url-imports
 //
