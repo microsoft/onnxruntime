@@ -61,4 +61,5 @@
       VERBATIM )
   endif()
 
+  add_dependencies(onnxruntime_providers_webgpu ${onnxruntime_EXTERNAL_DEPENDENCIES})
   set_target_properties(onnxruntime_providers_webgpu PROPERTIES FOLDER "ONNXRuntime")

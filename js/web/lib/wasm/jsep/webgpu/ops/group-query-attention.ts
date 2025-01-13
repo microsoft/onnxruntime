@@ -24,6 +24,9 @@ export const validateInputs = (
   inputs: readonly TensorView[],
   attributes: GroupQueryAttentionAttributes,
 ): AttentionParameters => {
+  if (attributes.doRotary) {
+    throw new Error('GroupQuerryAttention do_rotary attribute is not supported');
+  }
   if (attributes.doRotary && inputs.length <= 7) {
     throw new Error('cos_cache and sin_cache inputs are required if do_rotary is specified');
   }
