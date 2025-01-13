@@ -307,7 +307,7 @@ QnnLog_Level_t QnnBackendManager::MapOrtSeverityToQNNLogLevel(logging::Severity 
 
 Status QnnBackendManager::ResetQnnLogLevel(std::optional<logging::Severity> ort_log_level) {
   std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
-  if (logger_ == nullptr) {
+  if (!backend_setup_completed_ || logger_ == nullptr) {
     return Status::OK();
   }
   ORT_RETURN_IF(nullptr == log_handle_, "Unable to update QNN Log Level. Invalid QNN log handle.");
@@ -797,6 +797,10 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
                                        bool load_from_cached_context,
                                        bool need_load_system_lib) {
   std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
+  if (backend_setup_completed_) {
+    LOGS(logger, VERBOSE) << "Backend setup already!";
+    return Status::OK();
+  }
 
   Status status = Status::OK();
   if (qnn_saver_path_.empty()) {
@@ -857,8 +861,10 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
 
   if (status.IsOK()) {
     LOGS(logger, VERBOSE) << "QNN SetupBackend succeed";
+    backend_setup_completed_ = true;
   } else {
     LOGS_DEFAULT(WARNING) << "Failed to setup so cleaning up";
+    backend_setup_completed_ = true; // Otherwise release will do nothing
     ReleaseResources();
   }
 
@@ -1086,6 +1092,10 @@ Status QnnBackendManager::TerminateQnnLog() {
 }
 
 void QnnBackendManager::ReleaseResources() {
+  if (!backend_setup_completed_) {
+    return;
+  }
+
   auto result = ReleaseContext();
   if (Status::OK() != result) {
     LOGS_DEFAULT(ERROR) << "Failed to ReleaseContext.";
@@ -1117,6 +1127,10 @@ void QnnBackendManager::ReleaseResources() {
       LOGS_DEFAULT(ERROR) << "Failed to unload backend library.";
     }
   }
+
+  backend_setup_completed_ = false;
+
+  return;
 }
 
 Status QnnBackendManager::ExtractBackendProfilingInfo() {
