@@ -1938,10 +1938,16 @@ TEST(ReducedOpsBuildTest, test_excluded_ops) {
 
 // Returns true if QNN EP was created and QNN HTP shared memory allocator is available, false otherwise.
 static bool CreateSessionWithQnnEpAndQnnHtpSharedMemoryAllocator(PATH_TYPE model_path, Ort::Session& session) {
-#if defined(_WIN32)
-  constexpr const char* backend_path = "QnnCpu.dll";
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+  constexpr bool use_htp_backend = true;
 #else
-  constexpr const char* backend_path = "libQnnCpu.so";
+  constexpr bool use_htp_backend = false;
+#endif
+
+#if defined(_WIN32)
+  const char* backend_path = use_htp_backend ? "QnnHtp.dll" : "QnnCpu.dll";
+#else
+  const char* backend_path = use_htp_backend ? "libQnnHtp.so" : "libQnnCpu.so";
 #endif
 
   Ort::SessionOptions session_options;
