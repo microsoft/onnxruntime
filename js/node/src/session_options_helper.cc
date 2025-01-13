@@ -47,6 +47,9 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
 #ifdef USE_WEBGPU
     std::unordered_map<std::string, std::string> webgpu_options;
 #endif
+#ifdef USE_QNN
+    std::unordered_map<std::string, std::string> qnn_options;
+#endif
     if (epValue.IsString()) {
       name = epValue.As<Napi::String>().Utf8Value();
     } else if (!epValue.IsObject() || epValue.IsNull() || !epValue.As<Napi::Object>().Has("name") ||
@@ -73,6 +76,18 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
           ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsString(), epList.Env(), "Invalid argument: sessionOptions.executionProviders must be a string or an object with property 'name'.");
           std::string value = valueVar.As<Napi::String>().Utf8Value();
           webgpu_options[name] = value;
+        }
+      }
+#endif
+#ifdef USE_QNN
+      for (const auto& nameIter : obj.GetPropertyNames()) {
+        Napi::Value nameVar = nameIter.second;
+        std::string name = nameVar.As<Napi::String>().Utf8Value();
+        if (name != "name") {
+          Napi::Value valueVar = obj.Get(nameVar);
+          ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsString(), epList.Env(), "Invalid argument: sessionOptions.executionProviders must be a string or an object with property 'name'.");
+          std::string value = valueVar.As<Napi::String>().Utf8Value();
+          qnn_options[name] = value;
         }
       }
 #endif
@@ -111,9 +126,14 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
 #endif
 #ifdef USE_QNN
     } else if (name == "qnn") {
-      std::unordered_map<std::string, std::string> qnn_options;
-      qnn_options["backend_path"] = "QnnHtp.dll";
-      qnn_options["enable_htp_fp16_precision"] = "1";
+      // Ensure that the backend_path and enable_htp_fp16_precision options are set to default values if not provided.
+      if (qnn_options.find("backend_path") == qnn_options.end()) {
+        qnn_options["backend_path"] = "QnnHtp.dll";
+      }
+      if (qnn_options.find("enable_htp_fp16_precision") == qnn_options.end()) {
+        qnn_options["enable_htp_fp16_precision"] = "1";
+      }
+
       sessionOptions.AppendExecutionProvider("QNN", qnn_options);
 #endif
     } else {
