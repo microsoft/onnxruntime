@@ -11,7 +11,7 @@ import { maybeTransposeToBNSHAndAddBias } from './multihead-attention';
 import { createSplitProgramInfo, SplitAttributes } from './split';
 import { createTransposeProgramInfo, TransposeAttributes } from './transpose';
 import { RotaryEmbeddingAttributes, createRotaryEmbeddingProgramInfo } from './rotary-embedding';
-import { inputVariable, outputVariable, ShaderHelper, tensorTypeToWsglStorageType, UniformsArrayType } from './common';
+import { inputVariable, outputVariable, ShaderHelper, UniformsArrayType } from './common';
 export interface GroupQueryAttentionAttributes {
   numHeads: number;
   kvNumHeads: number;
@@ -27,9 +27,6 @@ export const validateInputs = (
   inputs: readonly TensorView[],
   attributes: GroupQueryAttentionAttributes,
 ): AttentionParameters => {
-  if (attributes.doRotary) {
-    throw new Error('GroupQuerryAttention do_rotary attribute is not supported');
-  }
   if (attributes.doRotary && inputs.length <= 7) {
     throw new Error('cos_cache and sin_cache inputs are required if do_rotary is specified');
   }
@@ -267,7 +264,6 @@ const generatePositionIdsProgramInfo = (
       { name: 'output_size', type: 'u32' },
       { name: 'sequence_length', type: 'u32' },
     ];
-    const outputType = tensorTypeToWsglStorageType(outputDataType);
 
     return `
   ${shaderHelper.registerUniforms(uniforms).declareVariables(seqLensInputHelper, totalSeqLenInputHelper, positionIdsHelper)}
@@ -278,16 +274,13 @@ const generatePositionIdsProgramInfo = (
     let is_first_prompt = !is_subsequent_prompt && uniforms.sequence_length == total_sequence_length;
     let batch_idx = global_idx / uniforms.sequence_length;
     let sequence_idx = i32(global_idx % uniforms.sequence_length);
-    var pos_id: ${outputType} = ${outputType}(0);
+    var pos_id: u32 = 0u;
     if (is_first_prompt == false) {
       let total_seqlen = ${seqLensInputHelper.getByOffset('batch_idx')} + 1;
       let past_seqlen = total_seqlen - i32(uniforms.sequence_length);
       if (past_seqlen + sequence_idx < total_seqlen) {
         // sign extend value and convert to vec2<u32>
-        let value = past_seqlen + sequence_idx;
-        pos_id = ${outputType}(u32(extractBits(value, 31, 1)), u32(value));
-      } else {
-        pos_id = ${outputType}(0,1);
+        pos_id = u32(past_seqlen + sequence_idx);
       }
     }
     ${positionIdsHelper.setByOffset('global_idx', 'pos_id')}
@@ -345,7 +338,7 @@ export const groupQueryAttention = (context: ComputeContext, attributes: GroupQu
     )[0];
     const cosCache = context.inputs[7];
     const sinCache = context.inputs[8];
-    const rotaryEmbeddingAttributes: RotaryEmbeddingAttributes = createAttributeWithCacheKey({
+    const qRotaryEmbeddingAttributes: RotaryEmbeddingAttributes = createAttributeWithCacheKey({
       interleaved: attributes.rotaryInterleaved !== 0,
       numHeads: params.numHeads,
       rotaryEmbeddingDim: 0,
@@ -353,12 +346,18 @@ export const groupQueryAttention = (context: ComputeContext, attributes: GroupQu
     });
     const inputs = [query, posIds, cosCache, sinCache];
     const outputs = [-1];
-    qRotary = context.compute(createRotaryEmbeddingProgramInfo(inputs, rotaryEmbeddingAttributes), {
+    qRotary = context.compute(createRotaryEmbeddingProgramInfo(inputs, qRotaryEmbeddingAttributes), {
       inputs,
       outputs,
     })[0];
     inputs.splice(0, 1, key);
-    kRotary = context.compute(createRotaryEmbeddingProgramInfo(inputs, rotaryEmbeddingAttributes), {
+    const kRotaryEmbeddingAttributes: RotaryEmbeddingAttributes = createAttributeWithCacheKey({
+      interleaved: attributes.rotaryInterleaved !== 0,
+      numHeads: params.kvNumHeads!,
+      rotaryEmbeddingDim: 0,
+      scale: attributes.scale,
+    });
+    kRotary = context.compute(createRotaryEmbeddingProgramInfo(inputs, kRotaryEmbeddingAttributes), {
       inputs,
       outputs,
     })[0];
