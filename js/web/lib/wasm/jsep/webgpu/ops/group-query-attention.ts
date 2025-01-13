@@ -281,6 +281,8 @@ const generatePositionIdsProgramInfo = (
       if (past_seqlen + sequence_idx < total_seqlen) {
         // sign extend value and convert to vec2<u32>
         pos_id = u32(past_seqlen + sequence_idx);
+      } else {
+        pos_id = 1u;
       }
     }
     ${positionIdsHelper.setByOffset('global_idx', 'pos_id')}
