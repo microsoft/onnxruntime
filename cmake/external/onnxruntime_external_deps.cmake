@@ -405,7 +405,7 @@ if ((CPUINFO_SUPPORTED OR onnxruntime_USE_XNNPACK) AND NOT ANDROID)
   endif()
 endif()
 
-if(onnxruntime_USE_CUDA) #TODO[Low] Any changes?
+if(onnxruntime_USE_CUDA)
   FetchContent_Declare(
     GSL
     URL ${DEP_URL_microsoft_gsl}

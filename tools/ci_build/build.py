@@ -2875,18 +2875,13 @@ def main():
                     toolset = "host=" + host_arch + ",version=" + args.msvc_toolset
                 else:
                     toolset = "host=" + host_arch
-                if args.cuda_version:
+                if args.use_cuda and args.cuda_version:
                     toolset += ",cuda=" + args.cuda_version
-                elif args.cuda_home:
+                elif args.use_cuda and args.cuda_home:
                     toolset += ",cuda=" + args.cuda_home
                 if args.windows_sdk_version:
                     target_arch += ",version=" + args.windows_sdk_version
-
-                make_extra_args = ["-A", target_arch, "-G", args.cmake_generator]
-
-                if args.use_cuda:
-                    cmake_extra_args += ["-T", toolset]
-                
+                cmake_extra_args = ["-A", target_arch, "-T", toolset, "-G", args.cmake_generator]
             if args.enable_wcos:
                 cmake_extra_defines.append("CMAKE_USER_MAKE_RULES_OVERRIDE=wcos_rules_override.cmake")
 
