@@ -18,7 +18,7 @@ ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPES_ALL_OPSETS(
 using EnabledEyeLikeDataTypes = ORT_OP_KERNEL_ARG_ENABLED_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, EyeLike, Output, 0);
 
-ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     EyeLike,
     9,
     21,
@@ -32,7 +32,7 @@ ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
     EyeLike);
 
 // Opset 22 starts to support bfloat16
-ONNX_CPU_OPERATOR_TYPED_KERNEL(
+ONNX_CPU_OPERATOR_KERNEL(
     EyeLike,
     22,
     KernelDefBuilder()

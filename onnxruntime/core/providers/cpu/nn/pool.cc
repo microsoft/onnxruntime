@@ -399,26 +399,25 @@ Status LpPoolV18<T>::Compute(OpKernelContext* context) const {
   return Status::OK();
 }
 
-#define REGISTER_KERNEL_VERSIONED(OpName, START_VER, END_VER, Impl) \
-  ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                               \
-      OpName,                                                       \
-      START_VER,                                                    \
-      END_VER,                                                      \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), Impl);
+#define REGISTER_KERNEL_VERSIONED(OpName, START_VER, END_VER, ...) \
+  ONNX_CPU_OPERATOR_VERSIONED_KERNEL(                              \
+      OpName,                                                      \
+      START_VER,                                                   \
+      END_VER,                                                     \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), __VA_ARGS__);
 
-#define REGISTER_KERNEL(OpName, VER, Impl) \
-  ONNX_CPU_OPERATOR_KERNEL(                \
-      OpName,                              \
-      VER,                                 \
-      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), Impl);
+#define REGISTER_KERNEL(OpName, VER, ...) \
+  ONNX_CPU_OPERATOR_KERNEL(               \
+      OpName,                             \
+      VER,                                \
+      KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), __VA_ARGS__);
 
 REGISTER_KERNEL_VERSIONED(AveragePool, 7, 9, Pool<float, AveragePool>);
 REGISTER_KERNEL_VERSIONED(AveragePool, 10, 10, Pool<float, AveragePool>);
 REGISTER_KERNEL_VERSIONED(AveragePool, 11, 18, Pool<float, AveragePool>);
-REGISTER_KERNEL(AveragePool, 19, Pool<float, AveragePoolV19>);
+REGISTER_KERNEL(AveragePool, 19, AveragePoolV19<float>);
 
 REGISTER_KERNEL_VERSIONED(MaxPool, 1, 7, Pool<float, MaxPool<1 /*VERSION*/>>);
-REGISTER_KERNEL_VERSIONED(MaxPool, 8, 11, MaxPoolV8);
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(MaxPool, 8, 11,
                                    KernelDefBuilder()
                                        .TypeConstraint(
@@ -444,7 +443,7 @@ ONNX_CPU_OPERATOR_KERNEL(MaxPool, 22,
 
 REGISTER_KERNEL_VERSIONED(LpPool, 2, 10, Pool<float, LpPool>);
 REGISTER_KERNEL_VERSIONED(LpPool, 11, 17, Pool<float, LpPool>);
-REGISTER_KERNEL(LpPool, 18, 21, LpPoolV18<float>);
+REGISTER_KERNEL_VERSIONED(LpPool, 18, 21, LpPoolV18<float>);
 REGISTER_KERNEL(LpPool, 22, LpPoolV18<float>);
 
 REGISTER_KERNEL(GlobalLpPool, 2, Pool<float, LpPool>);
@@ -452,6 +451,7 @@ REGISTER_KERNEL(GlobalLpPool, 2, Pool<float, LpPool>);
 REGISTER_KERNEL_VERSIONED(GlobalAveragePool, 1, 21, Pool<float, AveragePool>);
 REGISTER_KERNEL(GlobalAveragePool, 22, Pool<float, AveragePool>);
 
-REGISTER_KERNEL(GlobalMaxPool, 1, Pool<float, MaxPool<1 /*VERSION*/>>);
+REGISTER_KERNEL_VERSIONED(GlobalMaxPool, 1, 21, Pool<float, MaxPool<1 /*VERSION*/>>);
+REGISTER_KERNEL(GlobalMaxPool, 22, Pool<float, MaxPool<1 /*VERSION*/>>);
 
 }  // namespace onnxruntime
