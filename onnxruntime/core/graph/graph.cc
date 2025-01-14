@@ -50,7 +50,9 @@ namespace onnxruntime {
 #define NO_CHANGE_ON_SYNC_FLAG(...)                  \
   do {                                               \
     const bool sync_needed = GraphProtoSyncNeeded(); \
-    { __VA_ARGS__; }                                 \
+    {                                                \
+      __VA_ARGS__;                                   \
+    }                                                \
     GraphProtoSyncNeeded(sync_needed);               \
   } while (0)
 

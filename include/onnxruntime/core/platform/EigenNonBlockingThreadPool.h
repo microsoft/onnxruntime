@@ -218,18 +218,18 @@ class ThreadPoolProfiler {
     WAIT_REVOKE,
     MAX_EVENT
   };
-  ThreadPoolProfiler(int, const CHAR_TYPE*) {};
+  ThreadPoolProfiler(int, const CHAR_TYPE*) {}
   ~ThreadPoolProfiler() = default;
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ThreadPoolProfiler);
-  void Start() {};
+  void Start() {}
   std::string Stop() { return "not available for minimal build"; }
-  void LogStart() {};
-  void LogEnd(ThreadPoolEvent){};
-  void LogEndAndStart(ThreadPoolEvent){};
-  void LogStartAndCoreAndBlock(std::ptrdiff_t){};
-  void LogCoreAndBlock(std::ptrdiff_t){};
-  void LogThreadId(int) {};
-  void LogRun(int) {};
+  void LogStart() {}
+  void LogEnd(ThreadPoolEvent) {}
+  void LogEndAndStart(ThreadPoolEvent) {}
+  void LogStartAndCoreAndBlock(std::ptrdiff_t) {}
+  void LogCoreAndBlock(std::ptrdiff_t) {}
+  void LogThreadId(int) {}
+  void LogRun(int) {}
   std::string DumpChildThreadStat() { return {}; }
 };
 #else
