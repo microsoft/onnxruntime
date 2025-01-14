@@ -543,10 +543,10 @@ Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const
     var norm_a = local_a/scale;
     output[workgroup_id.x * sg_size + sg_id] = pack4x8snorm(vec4<f32>(norm_a));
     if (sg_id == 0)
-    {
+  {
       // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
       scales[workgroup_id.x] = scale/127;
-    }
+  }
 )MAIN_FN";
   return Status::OK();
 }
@@ -763,7 +763,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
       components_a == 4 && K % 64 == 0 &&
       !has_zero_points && M >= kMinMForTileOptimization) {
     constexpr uint32_t kVec4Components = 4;
-    //constexpr uint32_t kVec2Components = 2;
+    constexpr uint32_t kVec2Components = 2;
     constexpr uint32_t kU32Components = 4;
 
     constexpr uint32_t kBlockSizeA = 64;
@@ -779,34 +779,36 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
                       {&a_scale, ProgramTensorMetadataDependency::Rank, a_scale.Shape(), gsl::narrow<int>(1)}});
     ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
 
-    DP4AMatMulDeQuantizeProgram dequantize_program;
-    dequantize_program.SetWorkgroupSize(64);
-    dequantize_program.SetDispatchGroupSize(M*K/kBlockSizeA, 1, 1);
-    dequantize_program.AddInputs({
-      {&a_quant, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)},
-      {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)}})
-      .AddOutput({&a_clone, ProgramTensorMetadataDependency::Rank, a->Shape(), gsl::narrow<int>(1)});
-    ORT_RETURN_IF_ERROR(context.RunProgram(dequantize_program));
+    // Enable this block and disable the matmul block below to test if quantization is correct.
+    // DP4AMatMulDeQuantizeProgram dequantize_program;
+    // dequantize_program.SetWorkgroupSize(64);
+    // dequantize_program.SetDispatchGroupSize(M*K/kBlockSizeA, 1, 1);
+    // dequantize_program.AddInputs({
+    //   {&a_quant, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)},
+    //   {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)}})
+    //   .AddOutput({&a_clone, ProgramTensorMetadataDependency::Rank, a->Shape(), gsl::narrow<int>(1)});
+    // ORT_RETURN_IF_ERROR(context.RunProgram(dequantize_program));
     // a = &a_clone;
-    // constexpr uint32_t kTileSize = 64;
-    // TensorShape reshaped_y_shape{1, M, N / kVec4Components};
-    // DP4AMatMulNBitsProgram mul_program;
-    // mul_program.SetWorkgroupSize(256);
-    // mul_program.SetDispatchGroupSize(
-    //   (M + kTileSize - 1) / kTileSize,
-    //   (N + kTileSize - 1) / kTileSize, 1);
-    // mul_program.AddInputs({
-    //     {&a_quant, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components)},
-    //     {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)},
-    //     {b, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec2Components * kU32Components)},
-    //     {scales, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec2Components)}})
-    //   .AddUniformVariables({{static_cast<uint32_t>(M)},
-    //                         {static_cast<uint32_t>(N)},
-    //                         {static_cast<uint32_t>(K)},
-    //                         {static_cast<uint32_t>(K/8)},
-    //                         {static_cast<uint32_t>(K/16)}})
-    //   .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, gsl::narrow<int>(kVec4Components)});
-    // return context.RunProgram(mul_program);
+
+    constexpr uint32_t kTileSize = 64;
+    TensorShape reshaped_y_shape{1, M, N / kVec4Components};
+    DP4AMatMulNBitsProgram mul_program;
+    mul_program.SetWorkgroupSize(256);
+    mul_program.SetDispatchGroupSize(
+      (M + kTileSize - 1) / kTileSize,
+      (N + kTileSize - 1) / kTileSize, 1);
+    mul_program.AddInputs({
+        {&a_quant, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components)},
+        {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)},
+        {b, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec2Components * kU32Components)},
+        {scales, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec2Components)}})
+      .AddUniformVariables({{static_cast<uint32_t>(M)},
+                            {static_cast<uint32_t>(N)},
+                            {static_cast<uint32_t>(K)},
+                            {static_cast<uint32_t>(K/8)},
+                            {static_cast<uint32_t>(K/16)}})
+      .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, gsl::narrow<int>(kVec4Components)});
+    return context.RunProgram(mul_program);
   }
 
   // TODO: Support output_number > 1. Some cases are failed when output_number > 1.
