@@ -300,3 +300,9 @@ static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "sessio
 // “Default”: OS determines the scheduling priority and processor performance to service this workload. [Default]
 // “Efficient”: OS treats this workload is efficiency oriented with low scheduling priority and efficient processor performance.
 static const char* const kOrtEpDynamicOptionsWorkloadType = "ep.dynamic.workload_type";
+
+// Dequantize initializer using ORT ConstantFolding optimizer for dq node if initializer has specific(? TBD) data type.
+// This feature is required by some NPU's. 
+// "0": disable. ORT doesn't constant fold the DQ node. [DEFAULT]
+// "1": enable. ORT constant folds the DQ node.
+static const char* const kOrtSessionOptionsDequantizeInitializerForDQNode = "session.dequantize_initializer_for_dq_node";

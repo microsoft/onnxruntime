@@ -588,7 +588,10 @@ TEST_F(GraphTransformationTests, ConstantFolding) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   const ConfigOptions empty_config_options;
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options),
+      std::make_unique<ConstantFolding>(*e.get(),
+                                        false /*skip_dequantize_linear*/,
+                                        false /*dequantize_initializer_for_dequantize_linear*/,
+                                        empty_config_options),
       TransformerLevel::Level1));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
@@ -609,7 +612,10 @@ TEST_F(GraphTransformationTests, ConstantFoldingNodesOnDifferentEP) {
   const ConfigOptions empty_config_options;
 
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options),
+      std::make_unique<ConstantFolding>(*e.get(),
+                                        false /*skip_dequantize_linear*/,
+                                        false /*dequantize_initializer_for_dequantize_linear*/,
+                                        empty_config_options),
       TransformerLevel::Level1));
 
   // assign all nodes to CUDA. the constant folding should override this to perform the constant folding on cpu
@@ -639,7 +645,10 @@ TEST_F(GraphTransformationTests, ConstantFoldingUnsupportedFloat16) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   const ConfigOptions empty_config_options;
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options),
+      std::make_unique<ConstantFolding>(*e.get(),
+                                        false /*skip_dequantize_linear*/,
+                                        false /*dequantize_initializer_for_dequantize_linear*/,
+                                        empty_config_options),
       TransformerLevel::Level1));
 
   // assign all nodes to CUDA. the constant folding should try folding the node on the CPU and fail, thus leaving the
@@ -723,7 +732,10 @@ TEST_F(GraphTransformationTests, ConstantFoldingSubgraph) {
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   const ConfigOptions empty_config_options;
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options),
+      std::make_unique<ConstantFolding>(*e.get(),
+                                        false /*skip_dequantize_linear*/,
+                                        false /*dequantize_initializer_for_dequantize_linear*/, 
+                                        empty_config_options),
       TransformerLevel::Level1));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
@@ -752,6 +764,7 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithShapeToInitializer) {
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
       std::make_unique<ConstantFolding>(*e.get(),
                                         false /*skip_dequantize_linear*/,
+                                        false /*dequantize_initializer_for_dequantize_linear*/,
                                         empty_config_options,
                                         compatible_eps,
                                         excluded_initializers),
@@ -781,7 +794,10 @@ TEST_F(GraphTransformationTests, ConstantFoldingWithScalarShapeToInitializer) {
 
   std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options,
+      std::make_unique<ConstantFolding>(*e.get(),
+                                        false /*skip_dequantize_linear*/,
+                                        false /*dequantize_initializer_for_dequantize_linear*/,
+                                        empty_config_options,
                                         compatible_eps),
       TransformerLevel::Level1));
 
@@ -810,7 +826,10 @@ TEST_F(GraphTransformationTests, ConstantFoldingForOpsWithMissingOptionalInputs)
 
   std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options,
+      std::make_unique<ConstantFolding>(*e.get(),
+                                        false /*skip_dequantize_linear*/,
+                                        false /*dequantize_initializer_for_dequantize_linear*/,
+                                        empty_config_options,
                                         compatible_eps),
       TransformerLevel::Level1));
 
@@ -988,7 +1007,10 @@ TEST_F(GraphTransformationTests, ConstantFolding_RemoveDanglingInputNodesToConst
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   const ConfigOptions empty_config_options;
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options),
+      std::make_unique<ConstantFolding>(*e.get(),
+                                        false /*skip_dequantize_linear*/,
+                                        false /*dequantize_initializer_for_dequantize_linear*/,
+                                        empty_config_options),
       TransformerLevel::Level1));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
@@ -1012,7 +1034,10 @@ TEST_F(GraphTransformationTests, ConstantFoldingAShapeNodeDeepInTheGraph) {
   std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
 
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options),
+      std::make_unique<ConstantFolding>(*e.get(),
+                                        false /*skip_dequantize_linear*/,
+                                        false /*dequantize_initializer_for_dequantize_linear*/,
+                                        empty_config_options),
       TransformerLevel::Level1));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
@@ -1041,7 +1066,10 @@ TEST_F(GraphTransformationTests, ConstantFoldingStringInitializer) {
   std::unique_ptr<CPUExecutionProvider> e = std::make_unique<CPUExecutionProvider>(CPUExecutionProviderInfo());
 
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options),
+      std::make_unique<ConstantFolding>(*e.get(),
+                                        false /*skip_dequantize_linear*/,
+                                        false /*dequantize_initializer_for_dequantize_linear*/,
+                                        empty_config_options),
       TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 

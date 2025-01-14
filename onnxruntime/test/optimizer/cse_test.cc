@@ -284,7 +284,10 @@ TEST(CseTests, MergeConstants) {
                                                      TransformerLevel::Level1));
   const ConfigOptions empty_config_options;
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<ConstantFolding>(*e.get(), false /*skip_dequantize_linear*/, empty_config_options),
+      std::make_unique<ConstantFolding>(*e.get(),
+                                        false /*skip_dequantize_linear*/,
+                                        false /*dequantize_initializer_for_dequantize_linear*/,
+                                        empty_config_options),
       TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1,
                                                               DefaultLoggingManager().DefaultLogger()));

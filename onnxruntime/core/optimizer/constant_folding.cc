@@ -18,11 +18,13 @@ namespace onnxruntime {
 
 ConstantFolding::ConstantFolding(const IExecutionProvider& execution_provider,
                                  bool skip_dequantize_linear,
+                                 bool dequantize_initializer_for_dequantize_linear,
                                  const ConfigOptions& config_options,
                                  const InlinedHashSet<std::string_view>& compatible_execution_providers,
                                  const InlinedHashSet<std::string>& excluded_initializers) noexcept
     : GraphTransformer("ConstantFolding", compatible_execution_providers),
       skip_dequantize_linear_(skip_dequantize_linear),
+      dequantize_initializer_for_dequantize_linear_(dequantize_initializer_for_dequantize_linear),
       config_options_(config_options),
       excluded_initializers_(excluded_initializers),
       execution_provider_(execution_provider) {
@@ -219,7 +221,26 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           }
         }
 
-        if (!can_constant_fold_qdq_node_unit) {
+        bool can_constant_fold_dq_node = false;
+
+        // Another scenario where dequantizing initializer (ex: initializer -> DQ -> bias of X) can be constant folded is if:
+        //   - the DQ node does not produce a graph output
+        //   - The data type of initializer is INT32, UINT16 or INT16 (More? How can user specify the data type?)
+        //     Note: Some NPU's only support FP32, FP16, INT8, UNIT8 or INT4 weights if consumed by Q/DQ nodes.
+        //   - Does X need to be Gemm, Conv or LayerNormalization ?
+        if (!can_constant_fold_qdq_node_unit && dequantize_initializer_for_dequantize_linear_) {
+          if (!graph.NodeProducesGraphOutput(*node)) {     // DQ does not produce graph output
+            const auto* input_def = node->InputDefs()[0];  // Get NodeArg of the initializer of the DequantizeLinear node;
+            auto data_type = input_def->TypeAsProto()->tensor_type().elem_type();
+            if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
+                data_type == ONNX_NAMESPACE::TensorProto_DataType_INT16 ||
+                data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT16) {
+              can_constant_fold_dq_node = true;
+            }
+          }
+        }
+
+        if (!can_constant_fold_qdq_node_unit && !can_constant_fold_dq_node) {
           continue;
         }
       }
