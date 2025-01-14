@@ -208,6 +208,22 @@ void SetQnnTensorClientBufData(Qnn_Tensor_t& qnn_tensor, void* client_buf_data) 
   ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
+void SetQnnTensorMemHandle(Qnn_Tensor_t& qnn_tensor, Qnn_MemHandle_t mem_handle) {
+  if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
+    qnn_tensor.v1.memHandle = mem_handle;
+    return;
+  }
+
+#ifdef QNN_TENSOR_V2_INIT
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+    qnn_tensor.v2.memHandle = mem_handle;
+    return;
+  }
+#endif  // QNN_TENSOR_V2_INIT
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
+}
+
 void SetQnnTensorQParams(Qnn_Tensor_t& qnn_tensor, const Qnn_QuantizeParams_t& quantize_params) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     qnn_tensor.v1.quantizeParams = quantize_params;
@@ -350,6 +366,20 @@ const Qnn_ClientBuffer_t& GetQnnTensorClientBuf(const Qnn_Tensor_t& qnn_tensor) 
   ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
 }
 
+Qnn_MemHandle_t GetQnnTensorMemHandle(const Qnn_Tensor_t& qnn_tensor) {
+  if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
+    return qnn_tensor.v1.memHandle;
+  }
+
+#ifdef QNN_TENSOR_V2_INIT
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+    return qnn_tensor.v2.memHandle;
+  }
+#endif  // QNN_TENSOR_V2_INIT
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
+}
+
 const Qnn_QuantizeParams_t& GetQnnTensorQParams(const Qnn_Tensor_t& qnn_tensor) {
   if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
     return qnn_tensor.v1.quantizeParams;
@@ -358,6 +388,20 @@ const Qnn_QuantizeParams_t& GetQnnTensorQParams(const Qnn_Tensor_t& qnn_tensor) 
 #ifdef QNN_TENSOR_V2_INIT
   if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
     return qnn_tensor.v2.quantizeParams;
+  }
+#endif  // QNN_TENSOR_V2_INIT
+
+  ORT_THROW("QNN tensor version not supported, QNN tensor version: ", qnn_tensor.version);
+}
+
+uint8_t* GetQnnTensorIsDynamicDimensions(const Qnn_Tensor_t& qnn_tensor) {
+  if (QNN_TENSOR_VERSION_1 == qnn_tensor.version) {
+    return nullptr;  // not present in v1
+  }
+
+#ifdef QNN_TENSOR_V2_INIT
+  if (QNN_TENSOR_VERSION_2 == qnn_tensor.version) {
+    return qnn_tensor.v2.isDynamicDimensions;
   }
 #endif  // QNN_TENSOR_V2_INIT
 

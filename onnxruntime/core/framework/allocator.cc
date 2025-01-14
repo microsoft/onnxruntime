@@ -155,11 +155,18 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtA
         mem_type1);
   } else if (strcmp(name1, onnxruntime::CUDA_PINNED) == 0) {
     *out = new OrtMemoryInfo(
-        onnxruntime::CUDA_PINNED, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, static_cast<OrtDevice::DeviceId>(id1)),
+        onnxruntime::CUDA_PINNED, type,
+        OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, static_cast<OrtDevice::DeviceId>(id1)),
         id1, mem_type1);
   } else if (strcmp(name1, onnxruntime::HIP_PINNED) == 0) {
     *out = new OrtMemoryInfo(
-        onnxruntime::HIP_PINNED, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, static_cast<OrtDevice::DeviceId>(id1)),
+        onnxruntime::HIP_PINNED, type,
+        OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, static_cast<OrtDevice::DeviceId>(id1)),
+        id1, mem_type1);
+  } else if (strcmp(name1, onnxruntime::QNN_HTP_SHARED) == 0) {
+    *out = new OrtMemoryInfo(
+        onnxruntime::QNN_HTP_SHARED, type,
+        OrtDevice(OrtDevice::CPU, OrtDevice::MemType::QNN_HTP_SHARED, static_cast<OrtDevice::DeviceId>(id1)),
         id1, mem_type1);
   } else {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Specified device is not supported.");
