@@ -37,6 +37,8 @@ constexpr const char* kDumpInputData = "ORT_DEBUG_NODE_IO_DUMP_INPUT_DATA";
 constexpr const char* kDumpOutputData = "ORT_DEBUG_NODE_IO_DUMP_OUTPUT_DATA";
 // Output statistics data like min, max, count of NaN, count of infinity etc.
 constexpr const char* kDumpStatisticsData = "ORT_DEBUG_NODE_IO_DUMP_STATISTICS_DATA";
+// Output node name when any float input or output exceeds a threshold for float16 conversion overflow.
+constexpr const char* kDumpHalfConversionOverflow = "ORT_DEBUG_NODE_IO_DUMP_HALF_CONVERSION_OVERFLOW";
 
 // specify a node name filter to limit the nodes that are dumped
 // see NodeDumpOptions::FilterOptions
@@ -61,6 +63,10 @@ constexpr const char* kSnippetThreshold = "ORT_DEBUG_NODE_IO_SNIPPET_THRESHOLD";
 // Number of array items in snippet at beginning and end of each dimension (default 3)
 constexpr const char* kSnippetEdgeItems = "ORT_DEBUG_NODE_IO_SNIPPET_EDGE_ITEMS";
 
+// Threshold for float to float16 conversion overflow detection (default 50000).
+// It is a positive integer that <= 65505, and it is recommended to add some margain for new inputs.
+constexpr const char* kHalfOverflowThreshold = "ORT_DEBUG_NODE_IO_HALF_OVERFLOW_THRESHOLD";
+
 }  // namespace debug_node_inputs_outputs_env_vars
 
 constexpr char kFilterPatternDelimiter = ';';
@@ -73,7 +79,8 @@ struct NodeDumpOptions {
     OutputData = 1 << 2,
     NodePlacement = 1 << 3,
     StatisticsData = 1 << 4,
-    AllData = Shape | InputData | OutputData | NodePlacement | StatisticsData,
+    HalfConversionOverflow = 1 << 5,
+    AllData = Shape | InputData | OutputData | NodePlacement | StatisticsData | HalfConversionOverflow,
   };
 
   // specifies the information to dump per node
@@ -117,6 +124,9 @@ struct NodeDumpOptions {
 
   // Number of array items in snippet at beginning and end of each dimension for Stdout.
   int snippet_edge_items;
+
+  // Threshold for float16 conversion overflow.
+  int half_overflow_threshold;
 };
 
 struct NodeDumpContext {
