@@ -62,8 +62,13 @@ bool BaseOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& initializ
   int32_t input_type;
   if (!GetType(input, input_type, logger))
     return false;
+  std::string webnn_op_type;
+  if (!GetWebNNOpType(op_type, webnn_op_type))
+    return false;
 
-  return IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "Input", logger);
+  const auto webnn_input_name = GetWebNNOpFirstInputName(op_type);
+  return IsDataTypeSupportedByWebNNOp(op_type, webnn_op_type, input_type, wnn_limits,
+                                      webnn_input_name, "input", logger);
 }
 
 bool BaseOpBuilder::HasSupportedOutputs(const Node& node, const emscripten::val& wnn_limits,
