@@ -11,7 +11,9 @@ _script_dir = pathlib.Path(__file__).parent.resolve(strict=True)
 sys.path.append(str(_script_dir.parent))
 
 
-from c.assemble_c_pod_package import get_pod_config_file as get_c_pod_config_file  # noqa: E402
+from c.assemble_c_pod_package import (  # noqa: E402
+    get_pod_config_file as get_c_pod_config_file,
+)
 from package_assembly_utils import (  # noqa: E402
     PackageVariant,
     copy_repo_relative_to_dir,
@@ -93,8 +95,8 @@ def get_pod_files(package_variant: PackageVariant):
     else:
         # return files that are in pod_files but not in training_only_objc_files
         filtered_pod_files = {}
-        for key in all_objc_files:
-            filtered_pod_files[key] = filter_files(all_objc_files[key], training_only_objc_files[key])
+        for key, value in all_objc_files.items():
+            filtered_pod_files[key] = filter_files(value, training_only_objc_files[key])
         return filtered_pod_files
 
 

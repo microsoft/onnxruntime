@@ -15,7 +15,12 @@ from onnx.helper import float32_to_float8e4m3, np_dtype_to_tensor_dtype
 from onnx.numpy_helper import float8e4m3_to_float32
 from onnx.reference import ReferenceEvaluator
 from onnx.reference import ops as onnx_ops
-from onnx.reference.custom_element_types import float8e4m3fn, float8e4m3fnuz, float8e5m2, float8e5m2fnuz
+from onnx.reference.custom_element_types import (
+    float8e4m3fn,
+    float8e4m3fnuz,
+    float8e5m2,
+    float8e5m2fnuz,
+)
 from onnx.reference.op_run import OpRun
 
 import onnxruntime
@@ -379,10 +384,10 @@ def check_op_type_count(testcase, model_path, **kwargs):
         if node.op_type in optype2count:
             optype2count[node.op_type] += 1
 
-    for op_type in kwargs:
+    for op_type, value in kwargs.items():
         try:
             testcase.assertEqual(
-                kwargs[op_type],
+                value,
                 optype2count[op_type],
                 f"op_type {op_type} count not same",
             )

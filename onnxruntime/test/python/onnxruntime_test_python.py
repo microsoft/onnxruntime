@@ -85,7 +85,7 @@ class TestInferenceSession(unittest.TestCase):
         if result != 0:
             error_str = ctypes.c_char_p()
             cuda_lib.cuGetErrorString(result, ctypes.byref(error_str))
-            print("cuDeviceGetCount failed with error code %d: %s" % (result, error_str.value.decode()))
+            print(f"cuDeviceGetCount failed with error code {result}: {error_str.value.decode()}")
             return -1
         return num_device.value
 
@@ -1647,7 +1647,9 @@ class TestInferenceSession(unittest.TestCase):
                 sess2.run([], {input_name: x}, ro2)
 
     def test_check_and_normalize_provider_args(self):
-        from onnxruntime.capi.onnxruntime_inference_collection import check_and_normalize_provider_args
+        from onnxruntime.capi.onnxruntime_inference_collection import (
+            check_and_normalize_provider_args,
+        )
 
         valid_providers = ["a", "b", "c"]
 

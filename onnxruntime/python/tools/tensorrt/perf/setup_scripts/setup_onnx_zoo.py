@@ -17,11 +17,10 @@ def create_model_folder(model):
 def extract_and_get_files(file_name):
     model_folder = file_name.replace(".tar.gz", "") + "/"
     create_model_folder(model_folder)
-    model_tar = tarfile.open(file_name)
-    model_tar.extractall(model_folder)
-    file_list = model_tar.getnames()
-    file_list.sort()
-    model_tar.close()
+    with tarfile.open(file_name) as model_tar:
+        model_tar.extractall(model_folder)
+        file_list = model_tar.getnames()
+        file_list.sort()
     return model_folder, file_list
 
 
