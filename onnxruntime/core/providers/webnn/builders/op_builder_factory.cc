@@ -45,7 +45,6 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateTernaryOpBuilder("Where", op_registrations);
   }
 
-
   {  // Attention
     CreateAttentionOpBuilder("GroupQueryAttention", op_registrations);
   }
