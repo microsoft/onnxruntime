@@ -306,9 +306,20 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   }
 
   // Multiply the mutated inputs
-  auto output = EinsumOp::MatMul<T>(current_left ? *current_left : left, TensorShapeVector{lro_size, lo_size, reduced_size},
-                                    current_right ? *current_right : right, TensorShapeVector{lro_size, reduced_size, ro_size},
-                                    allocator_, tp_, einsum_ep_assets_, device_matmul_func_);
+  auto output = std::make_unique<Tensor>(left.DataType(), output_dims, allocator_);
+
+  bool input_has_zero_dim = left.Shape().Size() == 0 || right.Shape().Size() == 0;
+  if (!input_has_zero_dim) {
+    output = EinsumOp::MatMul<T>(current_left ? *current_left : left, TensorShapeVector{lro_size, lo_size, reduced_size},
+                                 current_right ? *current_right : right, TensorShapeVector{lro_size, reduced_size, ro_size},
+                                 allocator_, tp_, einsum_ep_assets_, device_matmul_func_);
+  } else {
+    if constexpr (std::is_integral<T>::value) {
+      std::fill_n(reinterpret_cast<T*>(output->MutableDataRaw()), output->Shape().Size(), T(0));
+    } else {
+      std::fill_n(reinterpret_cast<T*>(output->MutableDataRaw()), output->Shape().Size(), T(0.f));
+    }
+  }
 
   output->Reshape(output_dims);
 

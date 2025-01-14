@@ -755,6 +755,44 @@ TEST(Einsum, ExplicitEinsumAsTensorContraction_Half) {
   test.Run();
 }
 
+// Theme: Dimensions of size 0
+TEST(Einsum, EinsumZeroDimensionOuterProduct) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "i,j->ij");
+  test.AddInput<float>("x", {0}, {});
+  test.AddInput<float>("y", {0}, {});
+  test.AddOutput<float>("o", {0, 0}, {});
+  test.Run();
+  std::cout << "Ending" << std::endl;
+}
+
+TEST(Einsum, EinsumZeroDimensionTranspose) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "ab,ba->ab");
+  test.AddInput<float>("x", {0, 1}, {});
+  test.AddInput<float>("y", {1, 0}, {});
+  test.AddOutput<float>("o", {0, 1}, {});
+  test.Run();
+}
+
+TEST(Einsum, EinsumZeroDimensionVanish) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "ab,ba->a");
+  test.AddInput<float>("x", {1, 0}, {});
+  test.AddInput<float>("y", {0, 1}, {});
+  test.AddOutput<float>("o", {1}, {0.f});
+  test.Run();
+}
+
+TEST(Einsum, EinsumZeroDimensionVanish3d) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "abc,bad->ad");
+  test.AddInput<float>("x", {10, 0, 10}, {});
+  test.AddInput<float>("y", {0, 10, 1}, {});
+  test.AddOutput<float>("o", {10, 1}, std::vector<float>(10, 0.f));
+  test.Run();
+}
+
 // Theme: Tests involving MatMul(s) interleaved with Transpose(s)
 // for two and three inputs (most common use-case of Einsum operator)
 
