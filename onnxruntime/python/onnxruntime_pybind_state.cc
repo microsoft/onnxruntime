@@ -860,7 +860,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           "./compiled_model.mxr",
           1,
           "./compiled_model.mxr",
-          1};
+          1,
+          SIZE_MAX,
+          0};
       for (auto option : it->second) {
         if (option.first == "device_id") {
           if (!option.second.empty()) {
@@ -1490,7 +1492,7 @@ void addGlobalMethods(py::module& m) {
     ORT_UNUSED_PARAMETER(algo);
     ORT_THROW("set_cudnn_conv_algo_search is not supported in ROCM");
 #else
-    cudnn_conv_algo_search = algo;
+        cudnn_conv_algo_search = algo;
 #endif
   });
   // TODO remove deprecated global config
@@ -1501,7 +1503,7 @@ void addGlobalMethods(py::module& m) {
     ORT_UNUSED_PARAMETER(use_single_stream);
     ORT_THROW("set_do_copy_in_default_stream is not supported in ROCM");
 #else
-    do_copy_in_default_stream = use_single_stream;
+        do_copy_in_default_stream = use_single_stream;
 #endif
   });
   // TODO remove deprecated global config
@@ -1874,10 +1876,10 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
         }
         ORT_THROW_IF_ERROR(options->value.AddExternalInitializers(names_ptrs, values_ptrs));
 #else
-        ORT_UNUSED_PARAMETER(options);
-        ORT_UNUSED_PARAMETER(names);
-        ORT_UNUSED_PARAMETER(ort_values);
-        ORT_THROW("External initializers are not supported in this build.");
+            ORT_UNUSED_PARAMETER(options);
+            ORT_UNUSED_PARAMETER(names);
+            ORT_UNUSED_PARAMETER(ort_values);
+            ORT_THROW("External initializers are not supported in this build.");
 #endif
       });
 
@@ -1944,7 +1946,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             return *(na.Type());
           },
           "node type")
-      .def("__str__", [](const onnxruntime::NodeArg& na) -> std::string {
+      .def(
+          "__str__", [](const onnxruntime::NodeArg& na) -> std::string {
             std::ostringstream res;
             res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
             auto shape = na.Shape();
@@ -1971,7 +1974,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             res << ")";
 
             return std::string(res.str()); }, "converts the node into a readable string")
-      .def_property_readonly("shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
+      .def_property_readonly(
+          "shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
             auto shape = na.Shape();
             std::vector<py::object> arr;
             if (shape == nullptr || shape->dim_size() == 0) {
@@ -2199,25 +2203,32 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def_property_readonly("get_profiling_start_time_ns", [](const PyInferenceSession* sess) -> uint64_t {
         return sess->GetSessionHandle()->GetProfiling().GetStartTimeNs();
       })
-      .def("get_providers", [](const PyInferenceSession* sess) -> const std::vector<std::string>& { return sess->GetSessionHandle()->GetRegisteredProviderTypes(); }, py::return_value_policy::reference_internal)
-      .def("get_provider_options", [](const PyInferenceSession* sess) -> const ProviderOptionsMap& { return sess->GetSessionHandle()->GetAllProviderOptions(); }, py::return_value_policy::reference_internal)
-      .def_property_readonly("session_options", [](const PyInferenceSession* sess) -> PySessionOptions* {
+      .def(
+          "get_providers", [](const PyInferenceSession* sess) -> const std::vector<std::string>& { return sess->GetSessionHandle()->GetRegisteredProviderTypes(); }, py::return_value_policy::reference_internal)
+      .def(
+          "get_provider_options", [](const PyInferenceSession* sess) -> const ProviderOptionsMap& { return sess->GetSessionHandle()->GetAllProviderOptions(); }, py::return_value_policy::reference_internal)
+      .def_property_readonly(
+          "session_options", [](const PyInferenceSession* sess) -> PySessionOptions* {
             auto session_options = std::make_unique<PySessionOptions>();
             session_options->value = sess->GetSessionHandle()->GetSessionOptions();
             return session_options.release(); }, py::return_value_policy::take_ownership)
-      .def_property_readonly("inputs_meta", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
+      .def_property_readonly(
+          "inputs_meta", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
             auto res = sess->GetSessionHandle()->GetModelInputs();
             OrtPybindThrowIfError(res.first);
             return *(res.second); }, py::return_value_policy::reference_internal)
-      .def_property_readonly("outputs_meta", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
+      .def_property_readonly(
+          "outputs_meta", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
             auto res = sess->GetSessionHandle()->GetModelOutputs();
             OrtPybindThrowIfError(res.first);
             return *(res.second); }, py::return_value_policy::reference_internal)
-      .def_property_readonly("overridable_initializers", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
+      .def_property_readonly(
+          "overridable_initializers", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
             auto res = sess->GetSessionHandle()->GetOverridableInitializers();
             OrtPybindThrowIfError(res.first);
             return *(res.second); }, py::return_value_policy::reference_internal)
-      .def_property_readonly("model_meta", [](const PyInferenceSession* sess) -> const onnxruntime::ModelMetadata& {
+      .def_property_readonly(
+          "model_meta", [](const PyInferenceSession* sess) -> const onnxruntime::ModelMetadata& {
             auto res = sess->GetSessionHandle()->GetModelMetadata();
             OrtPybindThrowIfError(res.first);
             return *(res.second); }, py::return_value_policy::reference_internal)
@@ -2252,8 +2263,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
         return ret;
 #else
-        ORT_UNUSED_PARAMETER(sess);
-        ORT_THROW("TunableOp and get_tuning_results are not supported in this build.");
+            ORT_UNUSED_PARAMETER(sess);
+            ORT_THROW("TunableOp and get_tuning_results are not supported in this build.");
 #endif
       })
       .def("set_tuning_results", [](PyInferenceSession* sess, py::list results, bool error_on_invalid) -> void {
@@ -2284,10 +2295,10 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
         }
 #else
-        ORT_UNUSED_PARAMETER(sess);
-        ORT_UNUSED_PARAMETER(results);
-        ORT_UNUSED_PARAMETER(error_on_invalid);
-        ORT_THROW("TunableOp and set_tuning_results are not supported in this build.");
+            ORT_UNUSED_PARAMETER(sess);
+            ORT_UNUSED_PARAMETER(results);
+            ORT_UNUSED_PARAMETER(error_on_invalid);
+            ORT_THROW("TunableOp and set_tuning_results are not supported in this build.");
 #endif
       });
 
