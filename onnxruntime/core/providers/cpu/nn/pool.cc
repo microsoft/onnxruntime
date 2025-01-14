@@ -415,7 +415,8 @@ Status LpPoolV18<T>::Compute(OpKernelContext* context) const {
 REGISTER_KERNEL_VERSIONED(AveragePool, 7, 9, Pool<float, AveragePool>);
 REGISTER_KERNEL_VERSIONED(AveragePool, 10, 10, Pool<float, AveragePool>);
 REGISTER_KERNEL_VERSIONED(AveragePool, 11, 18, Pool<float, AveragePool>);
-REGISTER_KERNEL(AveragePool, 19, AveragePoolV19<float>);
+REGISTER_KERNEL_VERSIONED(AveragePool, 19, 21, AveragePoolV19<float>);
+REGISTER_KERNEL(AveragePool, 22, AveragePoolV19<float>);
 
 REGISTER_KERNEL_VERSIONED(MaxPool, 1, 7, Pool<float, MaxPool<1 /*VERSION*/>>);
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(MaxPool, 8, 11,
