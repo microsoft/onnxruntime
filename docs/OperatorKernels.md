@@ -4,11 +4,9 @@ Do not modify directly.*
 
 ## Execution Providers
 
-- [Supported Operators and Data Types](#supported-operators-and-data-types)
-- [Execution Providers](#execution-providers)
-- [Operators implemented by CPUExecutionProvider](#operators-implemented-by-cpuexecutionprovider)
-- [Operators implemented by CUDAExecutionProvider](#operators-implemented-by-cudaexecutionprovider)
-- [Operators implemented by DmlExecutionProvider](#operators-implemented-by-dmlexecutionprovider)
+- [CPUExecutionProvider](#cpuexecutionprovider)
+- [CUDAExecutionProvider](#cudaexecutionprovider)
+- [DmlExecutionProvider](#dmlexecutionprovider)
 
 ---------------
 
