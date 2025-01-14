@@ -3,7 +3,7 @@
 	archiveVersion = 1;
 	classes = {
 	};
-	objectVersion = 54;
+	objectVersion = 46;
 	objects = {
 
 /* Begin PBXBuildFile section */
@@ -16,7 +16,6 @@
 		DBA8BA87267293C4008CC55A /* mnist.ort in Resources */ = {isa = PBXBuildFile; fileRef = DBA8BA86267293C4008CC55A /* mnist.ort */; };
 		DBBF7412263B8C7100487C77 /* MNISTDataHandler.mm in Sources */ = {isa = PBXBuildFile; fileRef = DBBF7411263B8C7100487C77 /* MNISTDataHandler.mm */; };
 		DBBF7414263B8CCB00487C77 /* 3.jpg in Resources */ = {isa = PBXBuildFile; fileRef = DBBF7413263B8CCB00487C77 /* 3.jpg */; };
-		E315AAD72D31C6100069FA6B /* main.jsbundle in Resources */ = {isa = PBXBuildFile; fileRef = 008F07F21AC5B25A0029DE68 /* main.jsbundle */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -242,7 +241,6 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				E315AAD72D31C6100069FA6B /* main.jsbundle in Resources */,
 				DBA8BA87267293C4008CC55A /* mnist.ort in Resources */,
 				DBBF7414263B8CCB00487C77 /* 3.jpg in Resources */,
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
@@ -269,10 +267,11 @@
 			);
 			name = "Bundle React Native code and images";
 			outputPaths = (
+				"$(CONFIGURATION_BUILD_DIR)/$(UNLOCALIZED_RESOURCES_FOLDER_PATH)/main.jsbundle",
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "set -e\n\nexport NODE_BINARY=node\nexport PROJECT_ROOT=$PWD/..\nexport ENTRY_FILE=index.tsx\n../node_modules/react-native/scripts/react-native-xcode.sh\n";
+			shellScript = "if [ \"$CONFIGURATION\" == \"Release\" ]; then\n  export NODE_BINARY=$(which node)\n  export ENTRY_FILE=\"index.tsx\"\n  export EXTRA_PACKAGER_ARGS=\"--reset-cache\"\n\n  ../node_modules/react-native/scripts/react-native-xcode.sh\n  echo \"copying bundle file from $CONFIGURATION_BUILD_DIR/main.jsbundlecd  to $CONFIGURATION_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/\"\n  echo \"This cp might not need it post 0.7.15 because it is a bug from facebook\" \n  cp $CONFIGURATION_BUILD_DIR/main.jsbundle $CONFIGURATION_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH/\nfi\n";
 		};
 		8BCC39118F893614DE3809E3 /* [CP] Embed Pods Frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
@@ -426,10 +425,7 @@
 				ENABLE_BITCODE = NO;
 				INFOPLIST_FILE = OnnxruntimeModuleExample/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -453,10 +449,7 @@
 				DEVELOPMENT_TEAM = "";
 				INFOPLIST_FILE = OnnxruntimeModuleExample/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/Frameworks";
 				OTHER_LDFLAGS = (
 					"$(inherited)",
 					"-ObjC",
@@ -521,10 +514,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				"HEADER_SEARCH_PATHS[arch=*]" = "";
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
-				LD_RUNPATH_SEARCH_PATHS = (
-					/usr/lib/swift,
-					"$(inherited)",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "/usr/lib/swift $(inherited)";
 				LIBRARY_SEARCH_PATHS = (
 					"$(SDKROOT)/usr/lib/swift",
 					"\"$(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)\"",
@@ -589,10 +579,7 @@
 				GCC_WARN_UNUSED_FUNCTION = YES;
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
-				LD_RUNPATH_SEARCH_PATHS = (
-					/usr/lib/swift,
-					"$(inherited)",
-				);
+				LD_RUNPATH_SEARCH_PATHS = "/usr/lib/swift $(inherited)";
 				LIBRARY_SEARCH_PATHS = (
 					"$(SDKROOT)/usr/lib/swift",
 					"\"$(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)\"",
