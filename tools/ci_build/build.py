@@ -782,7 +782,11 @@ def parse_arguments():
     parser.add_argument("--use_triton_kernel", action="store_true", help="Use triton compiled kernels")
     parser.add_argument("--use_lock_free_queue", action="store_true", help="Use lock-free task queue for threadpool.")
 
-    parser.add_argument("--enable_generic_interface", action="store_true", help="build ORT shared library and compatible bridge with primary EPs(tensorRT, OpenVino, Qnn, vitisai) but not tests")
+    parser.add_argument(
+        "--enable_generic_interface",
+        action="store_true",
+        help="build ORT shared library and compatible bridge with primary EPs(tensorRT, OpenVino, Qnn, vitisai) but not tests",
+    )
 
     if not is_windows():
         parser.add_argument(
@@ -1017,7 +1021,9 @@ def generate_build_tree(
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
 
-    enable_qnn_interface = True if((args.arm64 or args.arm or args.arm64ec) and (args.enable_generic_interface)) else False
+    enable_qnn_interface = (
+        True if ((args.arm64 or args.arm or args.arm64ec) and (args.enable_generic_interface)) else False
+    )
 
     cmake_args += [
         "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
@@ -1047,10 +1053,14 @@ def generate_build_tree(
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER="
         + ("ON" if args.use_tensorrt_builtin_parser and not args.use_tensorrt_oss_parser else "OFF"),
         # interface variables are used only for building onnxruntime/onnxruntime_shared.dll but not EPs
-        "-Donnxruntime_USE_TENSORRT_INTERFACE=" + ("ON" if (args.enable_generic_interface and not enable_qnn_interface) else "OFF"),
-        "-Donnxruntime_USE_OPENVINO_INTERFACE=" + ("ON" if (args.enable_generic_interface and not enable_qnn_interface) else "OFF"),
-        "-Donnxruntime_USE_VITISAI_INTERFACE=" + ("ON" if (args.enable_generic_interface and not enable_qnn_interface) else "OFF"),
-        "-Donnxruntime_USE_QNN_INTERFACE=" + ("ON" if (args.enable_generic_interface and enable_qnn_interface) else "OFF"),
+        "-Donnxruntime_USE_TENSORRT_INTERFACE="
+        + ("ON" if (args.enable_generic_interface and not enable_qnn_interface) else "OFF"),
+        "-Donnxruntime_USE_OPENVINO_INTERFACE="
+        + ("ON" if (args.enable_generic_interface and not enable_qnn_interface) else "OFF"),
+        "-Donnxruntime_USE_VITISAI_INTERFACE="
+        + ("ON" if (args.enable_generic_interface and not enable_qnn_interface) else "OFF"),
+        "-Donnxruntime_USE_QNN_INTERFACE="
+        + ("ON" if (args.enable_generic_interface and enable_qnn_interface) else "OFF"),
         # set vars for migraphx
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
@@ -2770,7 +2780,7 @@ def main():
     source_dir = os.path.normpath(os.path.join(script_dir, "..", ".."))
 
     # if using cuda, setup cuda paths and env vars
-    #cuda_home, cudnn_home = setup_cuda_vars(args)
+    # cuda_home, cudnn_home = setup_cuda_vars(args)
     cuda_home = ""
     cudnn_home = ""
     if args.use_cuda:
