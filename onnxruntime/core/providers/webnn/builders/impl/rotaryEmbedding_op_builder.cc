@@ -291,7 +291,7 @@ bool RotaryEmbeddingOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& ini
     return false;
   }
 
-  if (input_size == 4 && num_heads != input_shape[1]) {
+  if (input_size == 4 && num_heads != 0 && num_heads != input_shape[1]) {
     LOGS(logger, VERBOSE) << "RotaryEmbedding: when input has 4 dimensions, num_heads must be 0 or have the same value "
                              "as the second dimension of the input";
     return false;
