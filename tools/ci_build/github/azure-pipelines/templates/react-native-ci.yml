@@ -258,7 +258,7 @@ stages:
       displayName: Build React Native Detox Android e2e Tests
 
     - script: |
-        detox build --configuration ios.sim.debug
+        detox build --configuration ios.sim.release
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Build React Native Detox iOS e2e Tests
 
@@ -348,7 +348,7 @@ stages:
     - script: |
         JEST_JUNIT_OUTPUT_FILE=$(Build.SourcesDirectory)/js/react_native/e2e/ios-test-results.xml \
           detox test --record-logs all \
-                     --configuration ios.sim.debug \
+                     --configuration ios.sim.release \
                      --loglevel trace \
                      --take-screenshots failing
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
