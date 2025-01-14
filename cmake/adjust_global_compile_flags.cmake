@@ -369,3 +369,7 @@ if (WIN32)
 elseif(LINUX)
     add_compile_definitions("_GNU_SOURCE")
 endif()
+
+if (onnxruntime_USE_EXTENSIONS)
+    include_directories(${REPO_ROOT}/include/onnxruntime/core/session)
+endif()
