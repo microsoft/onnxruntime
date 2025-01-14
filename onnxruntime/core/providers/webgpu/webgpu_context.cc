@@ -103,8 +103,7 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
       });
       // TODO: revise temporary device lost handling
       device_desc.SetDeviceLostCallback(wgpu::CallbackMode::AllowSpontaneous, [](const wgpu::Device& /*device*/, wgpu::DeviceLostReason reason, const char* message) {
-        // cannot use ORT logger because it may be already destroyed
-        std::cerr << "WebGPU device lost (" << int(reason) << "): " << message;
+        LOGS_DEFAULT(INFO) << "WebGPU device lost (" << int(reason) << "): " << message;
       });
 
       ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(adapter_.RequestDevice(
