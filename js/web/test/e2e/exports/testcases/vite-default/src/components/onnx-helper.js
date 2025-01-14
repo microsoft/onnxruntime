@@ -1,14 +1,13 @@
 import * as ort from 'onnxruntime-web';
 
-// The following line uses Vite's "Explicit URL Imports" feature to load the wasm files as asset.
+// The following line uses Vite's "Explicit URL Imports" feature to load the wasm file as an asset.
 //
 // see https://vite.dev/guide/assets.html#explicit-url-imports
 //
 import wasmFileUrl from '/node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm?url';
-import mjsFileUrl from '/node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.mjs?url';
 
-// wasmFileUrl is a string that contains the URL of the wasm file.
-ort.env.wasm.wasmPaths = { wasm: wasmFileUrl, mjs: mjsFileUrl };
+// wasmFileUrl is the URL of the wasm file. Vite will make sure it's available in both development and production.
+ort.env.wasm.wasmPaths = { wasm: wasmFileUrl };
 
 // Model data for "test_abs/model.onnx"
 const testModelData =

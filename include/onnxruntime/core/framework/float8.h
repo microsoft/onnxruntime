@@ -165,11 +165,11 @@ inline ORT_HOST_DEVICE bool operator<(const Float8E4M3FN& left, const Float8E4M3
 // initializers with MLFloat8E4M3FN and Float8E4M3FN from unsigned char
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 
-inline Float8E4M3FN operator"" _f8e4m3fn(unsigned long long int v) {
+inline Float8E4M3FN operator""_f8e4m3fn(unsigned long long int v) {
   return Float8E4M3FN(narrow<uint8_t>(v), Float8E4M3FN::FromBits());
 }
 
-inline Float8E4M3FN operator"" _f8e4m3fnp8(long double v) {
+inline Float8E4M3FN operator""_f8e4m3fnp8(long double v) {
   return Float8E4M3FN(static_cast<float>(v), true);
 }
 
@@ -323,11 +323,11 @@ inline ORT_HOST_DEVICE bool operator<(const Float8E4M3FNUZ& left, const Float8E4
 // initializers with MLFloat8E4M3FN and Float8E4M3FN from unsigned char
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 
-inline Float8E4M3FNUZ operator"" _f8e4m3p8fnuz(unsigned long long int v) {
+inline Float8E4M3FNUZ operator""_f8e4m3p8fnuz(unsigned long long int v) {
   return Float8E4M3FNUZ(narrow<uint8_t>(v), Float8E4M3FNUZ::FromBits());
 }
 
-inline Float8E4M3FNUZ operator"" _f8e4m3fnuzp8(long double v) {
+inline Float8E4M3FNUZ operator""_f8e4m3fnuzp8(long double v) {
   return Float8E4M3FNUZ(static_cast<float>(v), true);
 }
 
@@ -493,11 +493,11 @@ inline ORT_HOST_DEVICE bool operator<(const Float8E5M2& left, const Float8E5M2& 
 // initializers with MLFloat8E5M2 and Float8E5M2 from unsigned char
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 
-inline Float8E5M2 operator"" _f8e5m2fn(unsigned long long int v) {
+inline Float8E5M2 operator""_f8e5m2fn(unsigned long long int v) {
   return Float8E5M2(narrow<uint8_t>(v), Float8E5M2::FromBits());
 }
 
-inline Float8E5M2 operator"" _f8e5m2fnp8(long double v) {
+inline Float8E5M2 operator""_f8e5m2fnp8(long double v) {
   return Float8E5M2(static_cast<float>(v), true);
 }
 
@@ -642,11 +642,11 @@ inline ORT_HOST_DEVICE bool operator<(const Float8E5M2FNUZ& left, const Float8E5
 // initializers with MLFloat8E5M2 and Float8E5M2 from unsigned char
 #if !defined(__CUDACC__) && !defined(__HIPCC__)
 
-inline Float8E5M2FNUZ operator"" _f8e5m2fnuz(unsigned long long int v) {
+inline Float8E5M2FNUZ operator""_f8e5m2fnuz(unsigned long long int v) {
   return Float8E5M2FNUZ(narrow<uint8_t>(v), Float8E5M2FNUZ::FromBits());
 }
 
-inline Float8E5M2FNUZ operator"" _f8e5m2fnuzp8(long double v) {
+inline Float8E5M2FNUZ operator""_f8e5m2fnuzp8(long double v) {
   return Float8E5M2FNUZ(static_cast<float>(v), true);
 }
 
