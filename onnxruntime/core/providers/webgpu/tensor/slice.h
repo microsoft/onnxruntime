@@ -5,7 +5,6 @@
 
 #include "core/providers/webgpu/webgpu_kernel.h"
 #include "core/providers/webgpu/program.h"
-#include <iostream>
 
 namespace onnxruntime {
 namespace webgpu {
@@ -25,9 +24,11 @@ class SliceProgram final : public Program<SliceProgram> {
 class Slice final : public WebGpuKernel {
  public:
   Slice(const OpKernelInfo& info) : WebGpuKernel(info) {
-    info.GetAttrs("starts", attr_starts_).IsOK();
-    info.GetAttrs("ends", attr_ends_).IsOK();
-    info.GetAttrs("axes", attr_axes_).IsOK();
+    // since only opset1-9 provides these as attributes, we can safely ignore the return value
+    // we handle failure in fetching the attribute in ComputeInternal
+    (void)info.GetAttrs("starts", attr_starts_);
+    (void)info.GetAttrs("ends", attr_ends_);
+    (void)info.GetAttrs("axes", attr_axes_);
   }
 
   Status ComputeInternal(ComputeContext& context) const override;
