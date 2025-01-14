@@ -247,5 +247,6 @@ class TestFusion(unittest.TestCase):
         )
         self.verify_fusion(optimized_model, "phi-3.5-v-instruct-vision-attention.onnx")
 
+
 if __name__ == "__main__":
     unittest.main()
