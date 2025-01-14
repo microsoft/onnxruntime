@@ -3,6 +3,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/safeint.h"
+#include "onnx/defs/data_type_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
@@ -100,6 +101,27 @@ Status AttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   std::vector<uint32_t> scatter_indices_shape = {qkv_batch_size, num_heads, qkv_sequence_length, 3};
   std::vector<uint32_t> reshape_tensor_shape = {qkv_batch_size, qkv_sequence_length, num_heads, head_size};
 
+  emscripten::val common_options = emscripten::val::object();
+  if (input_defs[0]->Type() == onnx::Utils::DataTypeUtils::ToType("float16")) {
+    common_options.set("label", node.Name() + "/GQA/preprocess/cast/query_input");
+    query_input = model_builder.GetBuilder().call<emscripten::val>("cast", query_input, emscripten::val("float32"), common_options);
+  }
+  if (input_defs[1]->Type() == onnx::Utils::DataTypeUtils::ToType("float16")) {
+    common_options.set("label", node.Name() + "/GQA/preprocess/cast/key_input");
+    key_input = model_builder.GetBuilder().call<emscripten::val>("cast", key_input, emscripten::val("float32"), common_options);
+  }
+  if (input_defs[2]->Type() == onnx::Utils::DataTypeUtils::ToType("float16")) {
+    common_options.set("label", node.Name() + "/GQA/preprocess/cast/value_input");
+    value_input = model_builder.GetBuilder().call<emscripten::val>("cast", value_input, emscripten::val("float32"), common_options);
+  }
+  if (input_defs[3]->Type() == onnx::Utils::DataTypeUtils::ToType("float16")) {
+    common_options.set("label", node.Name() + "/GQA/preprocess/cast/past_key_input");
+    past_key_input = model_builder.GetBuilder().call<emscripten::val>("cast", past_key_input, emscripten::val("float32"), common_options);
+  }
+  if (input_defs[4]->Type() == onnx::Utils::DataTypeUtils::ToType("float16")) {
+    common_options.set("label", node.Name() + "/GQA/preprocess/cast/past_value_input");
+    past_value_input = model_builder.GetBuilder().call<emscripten::val>("cast", past_value_input, emscripten::val("float32"), common_options);
+  }
 
   auto left = generate_indices(qkv_batch_size, num_heads, qkv_sequence_length);
   auto right = repeat_sequence(qkv_sequence_length, num_heads, qkv_batch_size);
@@ -120,7 +142,6 @@ Status AttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val right_buffer = emscripten::val::global("BigInt64Array").new_(emscripten::val::array(right));
   emscripten::val right_constant = model_builder.GetBuilder().call<emscripten::val>("constant", desc_right, right_buffer);
 
-  emscripten::val common_options = emscripten::val::object();
   common_options.set("label", node.Name() + "/GQA/query/reshape");
   emscripten::val reshaped_query = model_builder.GetBuilder().call<emscripten::val>("reshape", query_input, emscripten::val::array(reshape_tensor_shape), common_options);
 
@@ -276,6 +297,20 @@ Status AttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   common_options.set("label", node.Name() + "/GQA/qkv/reshape");
   emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("reshape", transposed_attn_output, emscripten::val::array(reshape_output_shape), common_options);
+
+
+  if (node.OutputDefs()[0]->Type() == onnx::Utils::DataTypeUtils::ToType("float16")) {
+    common_options.set("label", node.Name() + "/GQA/postprocess/cast/output");
+    output = model_builder.GetBuilder().call<emscripten::val>("cast", output, emscripten::val("float16"), common_options);
+  }
+  if (node.OutputDefs()[1]->Type() == onnx::Utils::DataTypeUtils::ToType("float16")) {
+    common_options.set("label", node.Name() + "/GQA/postprocess/cast/present_key");
+    present_key = model_builder.GetBuilder().call<emscripten::val>("cast", present_key, emscripten::val("float16"), common_options);
+  }
+  if (node.OutputDefs()[2]->Type() == onnx::Utils::DataTypeUtils::ToType("float16")) {
+    common_options.set("label", node.Name() + "/GQA/postprocess/cast/present_value");
+    present_value = model_builder.GetBuilder().call<emscripten::val>("cast", present_value, emscripten::val("float16"), common_options);
+  }
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   model_builder.AddOperand(node.OutputDefs()[1]->Name(), std::move(present_key));
