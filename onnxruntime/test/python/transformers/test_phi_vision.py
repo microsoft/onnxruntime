@@ -204,7 +204,9 @@ class TestFusion(unittest.TestCase):
         )
 
     def tearDown(self):
-        os.remove(os.path.join(os.path.dirname(__file__), "export.onnx"))
+        path = os.path.join(os.path.dirname(__file__), "export.onnx")
+        if os.path.exists(path):
+            os.remove(path)
 
     def test_phi_vision_layernorm(self):
         if not torch.cuda.is_available():
