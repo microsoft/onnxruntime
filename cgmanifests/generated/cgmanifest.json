@@ -136,7 +136,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "309b75c9e56e0a674bf78d59872ce131f814dfb6",
+          "commitHash": "fe98e0b93565382648129271381c14d6205255e3",
           "repositoryUrl": "https://github.com/google/XNNPACK.git"
         },
         "comments": "googlexnnpack"
@@ -246,7 +246,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "ca678952a9a8eaa6de112d154e8e104b22f9ab3f",
+          "commitHash": "8a1772a0c5c447df2d18edf33ec4603a8c9c04a6",
           "repositoryUrl": "https://github.com/pytorch/cpuinfo.git"
         },
         "comments": "pytorch_cpuinfo"
