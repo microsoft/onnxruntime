@@ -226,8 +226,8 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "4fe0e1e183925bf8cfa6aae24237e724a96479b8",
-          "repositoryUrl": "https://github.com/Maratyszcza/pthreadpool.git"
+          "commitHash": "4e80ca24521aa0fb3a746f9ea9c3eaa20e9afbb0",
+          "repositoryUrl": "https://github.com/google/pthreadpool.git"
         },
         "comments": "pthreadpool"
       }
