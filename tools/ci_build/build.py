@@ -1047,7 +1047,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER="
         + ("ON" if args.use_tensorrt_builtin_parser and not args.use_tensorrt_oss_parser else "OFF"),
         # interface variables are used only for building onnxruntime/onnxruntime_shared.dll but not EPs
-        "-Donnxruntime_USE_TENSORRT_INTERFACE=" + ("ON" if (args.enable_generic_interface and not enable_qnn_interface) else "OFF"),   
+        "-Donnxruntime_USE_TENSORRT_INTERFACE=" + ("ON" if (args.enable_generic_interface and not enable_qnn_interface) else "OFF"),
         "-Donnxruntime_USE_OPENVINO_INTERFACE=" + ("ON" if (args.enable_generic_interface and not enable_qnn_interface) else "OFF"),
         "-Donnxruntime_USE_VITISAI_INTERFACE=" + ("ON" if (args.enable_generic_interface and not enable_qnn_interface) else "OFF"),
         "-Donnxruntime_USE_QNN_INTERFACE=" + ("ON" if (args.enable_generic_interface and enable_qnn_interface) else "OFF"),
@@ -1538,6 +1538,9 @@ def generate_build_tree(
             "-Donnxruntime_USE_FULL_PROTOBUF=ON",
         ]
 
+    # When this flag is enabled, that means we only build ONNXRuntime shared library, expecting some compatible EP
+    # shared lib being build in a seperate process. So we skip the test for now as ONNXRuntime shared lib built under
+    # this flag is not expected to work alone
     if args.enable_generic_interface:
         cmake_args += ["-Donnxruntime_BUILD_UNIT_TESTS=OFF"]
 
