@@ -811,11 +811,7 @@ def write_calibration_table(calibration_cache, dir="."):
 
     import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue
     import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable
-    from onnxruntime.quantization.calibrate import (
-        CalibrationMethod,
-        TensorData,
-        TensorsData,
-    )
+    from onnxruntime.quantization.calibrate import CalibrationMethod, TensorData, TensorsData
 
     logging.info(f"calibration cache: {calibration_cache}")
 

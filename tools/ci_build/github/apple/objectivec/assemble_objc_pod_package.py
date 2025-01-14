@@ -11,9 +11,7 @@ _script_dir = pathlib.Path(__file__).parent.resolve(strict=True)
 sys.path.append(str(_script_dir.parent))
 
 
-from c.assemble_c_pod_package import (  # noqa: E402
-    get_pod_config_file as get_c_pod_config_file,
-)
+from c.assemble_c_pod_package import get_pod_config_file as get_c_pod_config_file  # noqa: E402
 from package_assembly_utils import (  # noqa: E402
     PackageVariant,
     copy_repo_relative_to_dir,

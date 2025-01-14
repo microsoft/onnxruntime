@@ -15,12 +15,7 @@ from onnx.helper import float32_to_float8e4m3, np_dtype_to_tensor_dtype
 from onnx.numpy_helper import float8e4m3_to_float32
 from onnx.reference import ReferenceEvaluator
 from onnx.reference import ops as onnx_ops
-from onnx.reference.custom_element_types import (
-    float8e4m3fn,
-    float8e4m3fnuz,
-    float8e5m2,
-    float8e5m2fnuz,
-)
+from onnx.reference.custom_element_types import float8e4m3fn, float8e4m3fnuz, float8e5m2, float8e5m2fnuz
 from onnx.reference.op_run import OpRun
 
 import onnxruntime

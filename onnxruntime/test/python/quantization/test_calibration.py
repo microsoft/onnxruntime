@@ -14,11 +14,7 @@ import onnx
 from onnx import TensorProto, helper, numpy_helper
 
 import onnxruntime
-from onnxruntime.quantization.calibrate import (
-    CalibrationDataReader,
-    CalibrationMethod,
-    create_calibrator,
-)
+from onnxruntime.quantization.calibrate import CalibrationDataReader, CalibrationMethod, create_calibrator
 
 
 def generate_input_initializer(tensor_shape, tensor_dtype, input_name):

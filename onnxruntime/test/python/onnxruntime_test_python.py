@@ -1647,9 +1647,7 @@ class TestInferenceSession(unittest.TestCase):
                 sess2.run([], {input_name: x}, ro2)
 
     def test_check_and_normalize_provider_args(self):
-        from onnxruntime.capi.onnxruntime_inference_collection import (
-            check_and_normalize_provider_args,
-        )
+        from onnxruntime.capi.onnxruntime_inference_collection import check_and_normalize_provider_args
 
         valid_providers = ["a", "b", "c"]
 

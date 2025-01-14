@@ -12,9 +12,7 @@ from onnx.defs import onnx_opset_version
 from onnx.mapping import TENSOR_TYPE_MAP
 
 import onnxruntime as onnxrt
-from onnxruntime.capi._pybind_state import (
-    OrtDevice as C_OrtDevice,  # pylint: disable=E0611
-)
+from onnxruntime.capi._pybind_state import OrtDevice as C_OrtDevice  # pylint: disable=E0611
 from onnxruntime.capi._pybind_state import OrtValue as C_OrtValue
 from onnxruntime.capi._pybind_state import OrtValueVector, SessionIOBinding
 
