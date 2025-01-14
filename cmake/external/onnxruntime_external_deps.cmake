@@ -651,10 +651,10 @@ if (onnxruntime_USE_WEBGPU)
     # "${DAWN_EMSCRIPTEN_TOOLCHAIN}/tools/maint/gen_struct_info.py" from emscripten, which is missing in the emscripten
     # installed by emsdk.
     #
-    # We keep a copy of the missing file(s) in ${PROJECT_SOURCE_DIR}/patches/, and now we copy them to the emscripten
-    # toolchain folder.
-    file(COPY "${PROJECT_SOURCE_DIR}/patches/emscripten/"
-         DESTINATION "${DAWN_EMSCRIPTEN_TOOLCHAIN}/")
+    # We keep a copy of the missing file(s) in ${PROJECT_SOURCE_DIR}/patches/emscripten/, and now we extract them to the
+    # emscripten toolchain folder.
+    execute_process(COMMAND ${CMAKE_COMMAND} -E tar x "${PROJECT_SOURCE_DIR}/patches/emscripten/patch_3.1.74.tgz"
+                    WORKING_DIRECTORY ${DAWN_EMSCRIPTEN_TOOLCHAIN})
   else()
     if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
       set(DAWN_BUILD_MONOLITHIC_LIBRARY ON CACHE BOOL "" FORCE)
