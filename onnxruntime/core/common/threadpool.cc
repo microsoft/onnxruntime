@@ -390,12 +390,12 @@ ThreadPool::ThreadPool(Env* env,
       assert(thread_options_.affinities.size() >= size_t(threads_to_create));
     }
 
-    extended_eigen_threadpool_ =
-        std::make_unique<ThreadPoolTempl<Env> >(name,
-                                                threads_to_create,
-                                                low_latency_hint,
-                                                *env,
-                                                thread_options_);
+    extended_eigen_threadpool_ = std::make_unique<ThreadPoolTempl<Env>>(name,
+                                                                        threads_to_create,
+                                                                        low_latency_hint,
+                                                                        *env,
+                                                                        thread_options_,
+                                                                        force_hybrid_);
     underlying_threadpool_ = extended_eigen_threadpool_.get();
   }
 }
@@ -665,15 +665,11 @@ std::string ThreadPool::StopProfiling(concurrency::ThreadPool* tp) {
 }
 
 void ThreadPool::EnableSpinning() {
-  if (extended_eigen_threadpool_) {
-    extended_eigen_threadpool_->EnableSpinning();
-  }
+  extended_eigen_threadpool_->EnableSpinning();
 }
 
 void ThreadPool::DisableSpinning() {
-  if (extended_eigen_threadpool_) {
-    extended_eigen_threadpool_->DisableSpinning();
-  }
+  extended_eigen_threadpool_->DisableSpinning();
 }
 
 // Return the number of threads created by the pool.
