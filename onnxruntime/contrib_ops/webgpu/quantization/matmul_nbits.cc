@@ -583,7 +583,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     program.CacheHint("T_M" + std::to_string(tile_m) + "Subgroup" + std::to_string(use_subgroup));
   } else if (block_size == 32) {
     components = 1;
-    constexpr uint32_t workgroup_size = 64;
+    // TODO: Tune the workgroup size when `M=1`.
+    constexpr uint32_t workgroup_size = 128;
     const uint32_t workgroup_y = N % 8 == 0 ? 8 : 1;
     const uint32_t workgroup_x = workgroup_size / workgroup_y;
     program.SetWorkgroupSize(workgroup_x, workgroup_y, 1);
