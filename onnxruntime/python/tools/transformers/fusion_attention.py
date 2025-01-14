@@ -355,45 +355,6 @@ class FusionAttention(Fusion):
         self.node_name_to_graph_name[gather_k_name] = self.this_graph_name
         self.node_name_to_graph_name[gather_v_name] = self.this_graph_name
 
-    def transpose_kv(self, past_k: str, past_v: str):
-        """Transpose past_k and past_v from (B,N,P,H) to (B,P,N,H)
-
-        Args:
-            past_k (str): name of past K value of shape (B,N,P,H)
-            past_v (str): name of past V value of shape (B,N,P,H)
-
-        Returns:
-            past_k_transpose (str): name of past K value of shape (B,P,N,H)
-            past_v_transpose (str): name of past V value of shape (B,P,N,H)
-        """
-        past_k_transpose = (past_k + "_transposed").replace(".", "_")
-        past_v_transpose = (past_v + "_transposed").replace(".", "_")
-        transpose_k_name = self.model.create_node_name("Transpose")
-        transpose_v_name = self.model.create_node_name("Transpose")
-
-        transpose_k = helper.make_node(
-            "Transpose",
-            inputs=[past_k],
-            outputs=[past_k_transpose],
-            name=transpose_k_name,
-            perm=[0, 2, 1, 3],
-        )
-        transpose_v = helper.make_node(
-            "Transpose",
-            inputs=[past_v],
-            outputs=[past_v_transpose],
-            name=transpose_v_name,
-            perm=[0, 2, 1, 3],
-        )
-
-        # Add reshape nodes to graph
-        self.nodes_to_add.append(transpose_k)
-        self.nodes_to_add.append(transpose_v)
-        self.node_name_to_graph_name[transpose_k_name] = self.this_graph_name
-        self.node_name_to_graph_name[transpose_v_name] = self.this_graph_name
-
-        return past_k_transpose, past_v_transpose
-
     def create_combined_qkv_bias(
         self,
         q_add: NodeProto,

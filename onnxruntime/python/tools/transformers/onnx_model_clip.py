@@ -27,6 +27,7 @@ class ClipOnnxModel(BertOnnxModel):
             "Gelu",
             "LayerNormalization",
             "QuickGelu",
+            "BiasGelu",
             "SkipLayerNormalization",
         ]
         for op in ops:

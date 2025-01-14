@@ -26,6 +26,9 @@ class FusionFastGelu(Fusion):
         if self.fuse_3(tanh_node, input_name_to_nodes, output_name_to_node):
             return
 
+        if self.fuse_4(tanh_node, input_name_to_nodes, output_name_to_node):
+            return
+
     def fuse_1(self, tanh_node, input_name_to_nodes, output_name_to_node) -> Optional[bool]:
         """
         Fuse Gelu with tanh into one node:
@@ -352,6 +355,125 @@ class FusionFastGelu(Fusion):
             "FastGelu",
             inputs=[root_input],
             outputs=mul_last.output,
+            name=self.model.create_node_name("FastGelu"),
+        )
+        fused_node.domain = "com.microsoft"
+        self.nodes_to_add.append(fused_node)
+        self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
+        return True
+
+    def fuse_4(self, tanh_node, input_name_to_nodes: Dict, output_name_to_node: Dict) -> Optional[bool]:
+        """
+        This pattern is from stable diffusion 3.5 model.
+        Fuse Gelu with tanh into one node:
+              +-----------------+------------------+
+              |                 |                  |
+              |                 v                  v
+            [root] ==> Mul --> Mul --> Mul -----> Add  --> Mul --> Tanh --> Add -----> Mul --> Mul -->
+              |                       (A=0.0447)          (A=0.7978)        (A=1)       ^     (A=0.5)
+              |                                                                         |
+              +-------------------------------------------------------------------------+
+        Note that constant input for Add and Mul could be first or second input.
+        """
+        if tanh_node.output[0] not in input_name_to_nodes:
+            return
+
+        children = input_name_to_nodes[tanh_node.output[0]]
+        if len(children) != 1 or children[0].op_type != "Add":
+            return
+        add_after_tanh = children[0]
+
+        if not self.model.has_constant_input(add_after_tanh, 1.0):
+            return
+
+        if add_after_tanh.output[0] not in input_name_to_nodes:
+            return
+        children = input_name_to_nodes[add_after_tanh.output[0]]
+        if len(children) != 1 or children[0].op_type != "Mul":
+            return
+        mul_after_tanh = children[0]
+
+        if mul_after_tanh.output[0] not in input_name_to_nodes:
+            return
+        children = input_name_to_nodes[mul_after_tanh.output[0]]
+        if len(children) != 1 or children[0].op_type != "Mul":
+            return
+        mul_half = children[0]
+        if not self.model.has_constant_input(mul_half, 0.5):
+            return
+
+        root_input = mul_after_tanh.input[0 if mul_after_tanh.input[1] == add_after_tanh.output[0] else 1]
+
+        mul_before_tanh = self.model.match_parent(tanh_node, "Mul", 0, output_name_to_node)
+        if mul_before_tanh is None:
+            return
+
+        i = self.model.find_constant_input(mul_before_tanh, 0.7978, delta=0.0001)
+        if i < 0:
+            return
+
+        add_before_tanh = self.model.match_parent(mul_before_tanh, "Add", 0 if i == 1 else 1, output_name_to_node)
+        if add_before_tanh is None:
+            return
+
+        if add_before_tanh.input[0] == root_input:
+            another = 1
+        elif add_before_tanh.input[1] == root_input:
+            another = 0
+        else:
+            return
+
+        mul_after_pow = self.model.match_parent(add_before_tanh, "Mul", another, output_name_to_node)
+        if mul_after_pow is None:
+            return
+
+        i = self.model.find_constant_input(mul_after_pow, 0.0447, delta=0.0001)
+        if i < 0:
+            return
+
+        mul = self.model.match_parent(mul_after_pow, "Mul", 0 if i == 1 else 1, output_name_to_node)
+        if mul is None:
+            return
+
+        if mul.input[0] == root_input:
+            another = 1
+        elif mul.input[1] == root_input:
+            another = 0
+        else:
+            return
+
+        mul2 = self.model.match_parent(mul, "Mul", another, output_name_to_node)
+        if mul2 is None:
+            return
+
+        if mul2.input[0] != root_input or mul2.input[1] != root_input:
+            return
+
+        subgraph_nodes = [
+            mul2,
+            mul,
+            mul_after_pow,
+            add_before_tanh,
+            mul_before_tanh,
+            tanh_node,
+            add_after_tanh,
+            mul_after_tanh,
+            mul_half,
+        ]
+
+        if not self.model.is_safe_to_fuse_nodes(
+            subgraph_nodes,
+            [mul_half.output[0]],
+            input_name_to_nodes,
+            output_name_to_node,
+        ):
+            return
+
+        self.nodes_to_remove.extend(subgraph_nodes)
+        fused_node = helper.make_node(
+            "FastGelu",
+            inputs=[root_input],
+            outputs=mul_half.output,
             name=self.model.create_node_name("FastGelu"),
         )
         fused_node.domain = "com.microsoft"
