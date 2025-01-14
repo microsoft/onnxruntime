@@ -41,6 +41,7 @@ void HostApplyLayerNorm(
     double epsilon,
     const V* gamma,
     const V* beta,
+    int broadcast_param = 0,  // parameter for broadcasting gamma/beta.
     const T* skip = nullptr,
     const T* bias = nullptr,
     T* skip_input_bias_add_output = nullptr);

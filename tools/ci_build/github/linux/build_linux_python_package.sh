@@ -47,25 +47,6 @@ if [ "$BUILD_CONFIG" != "Debug" ]; then
 fi
 if [ "$ENABLE_CACHE" = true ] ; then
     BUILD_ARGS+=("--use_cache")
-    # No release binary for ccache aarch64, so we need to build it from source.
-    if ! [ -x "$(command -v ccache)" ]; then
-        ccache_url="https://github.com/ccache/ccache/archive/refs/tags/v4.8.tar.gz"
-        cd /build
-        curl -sSL --retry 5 --retry-delay 10 --create-dirs --fail -L -o ccache_src.tar.gz $ccache_url
-        mkdir ccache_main
-        cd ccache_main
-        tar -zxf ../ccache_src.tar.gz --strip=1
-
-        mkdir build
-        cd build
-        cmake -DCMAKE_INSTALL_PREFIX=/build -DCMAKE_BUILD_TYPE=Release ..
-        make -j$(nproc)
-        make install
-        export PATH=/build/bin:$PATH
-        which ccache
-        rm -f ccache_src.tar.gz
-        rm -rf ccache_src
-    fi
     ccache -s;
 fi
 
