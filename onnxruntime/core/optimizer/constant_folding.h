@@ -32,6 +32,7 @@ class ConstantFolding : public GraphTransformer {
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
 
   bool skip_dequantize_linear_;
+  bool dequantize_linear_on_initializer_ = true;
   const ConfigOptions& config_options_;
   const InlinedHashSet<std::string> excluded_initializers_;
   const IExecutionProvider& execution_provider_;
