@@ -571,6 +571,31 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("scales_b", ShaderUsage::UseUniform);
   shader.AddOutput("output", ShaderUsage::UseUniform);
 
+  // This shader implements co-operative matrix multiply. The key idea here is to
+  // assume there is a primitive for medium size matrix multiply a subgroup can perform,
+  // using all its lanes and pooling all its registers to keep the values in registry.
+  //
+  // The entire workgroup which has N subgroups first loads a tile into shared memory,
+  // Then each subgroup loads a subtile from shared memory into registers and uses
+  // the medium size matrix multiply primitive to perform the math.
+  // The values for tile/subtile size are choosen to conform to the resource limits
+  // of an alderlake/tiger lake gpu. A tile is 64x64, workgroup is 256 threads -
+  // therefore there are 16 subgroups and 16 lanes in each subgroup.
+  // K the hidden dimension is paged in from RAM at k tile size which is 64.
+  // All this puts the shared memory requirement slightly above 16KB.
+  // WebGPU limit is 16KB, output is moved to registers instead of SHM to make
+  // everything fit in shared memory.
+  //
+  // Each subgroup performs a 16 x 64 x 16 multiply which is implemented with
+  // subgroup shuffle as a placeholder for the day the medium matrix mul primitive
+  // becomes available in WGSL. The registy requirements is ~2KB per subgroup, on
+  // Alderlake/Tigerlake subgroup has 8KB of registry space pooling the
+  // 512B of registery from each lane.
+  //
+  // The medium size matmul is implemented using dot4I8Packed, so the inputs for
+  // this shader require A to be int8 quantized with block size 64. B is regular
+  // matmulnbits input with block size 32.
+
   shader.AdditionalImplementation() << R"ADDNL_FN(
   const tile_size_a = 64;
   const tile_size_b = 64;
@@ -636,7 +661,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
       }
   }
 
-  // Implement a 16x64x16 matrix multipy primitive using the 16 lanes of the subgroup.
+  // Implement a 16x64x16 matrix multiply primitive using the 16 lanes of the subgroup.
   // Each Lane first loads a row of A and a column of B.
   // Then each lane becomes responsible for a row and loops through the columns to compute
   // dot product. The columns are fetched from other owning lanes using subgroupShuffle.
