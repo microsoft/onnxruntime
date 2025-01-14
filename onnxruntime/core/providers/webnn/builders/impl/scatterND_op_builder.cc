@@ -23,7 +23,8 @@ class ScatterNDOpBuilder : public BaseOpBuilder {
   bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
   bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
+                              const emscripten::val& wnn_limits, bool& is_fusable,
+                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -58,7 +59,7 @@ bool ScatterNDOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initia
 }
 
 bool ScatterNDOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                                                const emscripten::val& wnn_limits,
+                                                const emscripten::val& wnn_limits, bool& is_fusable,
                                                 const logging::Logger& logger) const {
   const auto& data = *node.InputDefs()[0];
   const auto& indices = *node.InputDefs()[1];
@@ -77,8 +78,19 @@ bool ScatterNDOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* i
     return false;
   }
 
-  return IsDataTypeSupportedByOp(op_type, data_type, wnn_limits, "input", "data", logger) &&
-         IsDataTypeSupportedByOp(op_type, indices_type, wnn_limits, "indices", "indices", logger);
+  if (!IsDataTypeSupportedByOp(op_type, data_type, wnn_limits, "input", "data", logger)) {
+    return false;
+  }
+
+  // Check if indices' input node is Cast.
+  for (auto it = node.InputNodesBegin(); it != node.InputNodesEnd(); ++it) {
+    const Node& input_node = *it;
+    if (input_node.OpType() == "Cast" && indices.Name() == input_node.OutputDefs()[0]->Name()) {
+      is_fusable = IsCastFusable(input_node, false, logger);
+    }
+  }
+
+  return IsDataTypeSupportedByOp(op_type, indices_type, wnn_limits, "indices", "indices", logger);
 }
 
 void CreateScatterNDOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

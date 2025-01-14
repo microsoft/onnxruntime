@@ -23,7 +23,8 @@ class ScatterElementsOpBuilder : public BaseOpBuilder {
   bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
   bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
+                              const emscripten::val& wnn_limits, bool& /* is_fusable */,
+                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -66,7 +67,7 @@ bool ScatterElementsOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* 
 }
 
 bool ScatterElementsOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                                                      const emscripten::val& wnn_limits,
+                                                      const emscripten::val& wnn_limits, bool& /* is_fusable */,
                                                       const logging::Logger& logger) const {
   const auto& data = *node.InputDefs()[0];
   const auto& indices = *node.InputDefs()[1];

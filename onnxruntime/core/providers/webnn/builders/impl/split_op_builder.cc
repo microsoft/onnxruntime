@@ -29,7 +29,7 @@ class SplitOpBuilder : public BaseOpBuilder {
   bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
   bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
-                               const logging::Logger& logger) const override;
+                               bool& /* is_fusable */, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -165,9 +165,8 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   return true;
 }
 
-bool SplitOpBuilder::HasSupportedOutputsImpl(const Node& node,
-                                             const emscripten::val& wnn_limits,
-                                             const logging::Logger& logger) const {
+bool SplitOpBuilder::HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
+                                             bool& /* is_fusable */, const logging::Logger& logger) const {
   const auto& output_defs = node.OutputDefs();
   const auto& op_type = node.OpType();
   int32_t output_type = 0;

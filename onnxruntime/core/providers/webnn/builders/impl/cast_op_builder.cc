@@ -22,7 +22,8 @@ class CastOpBuilder : public BaseOpBuilder {
   // Operator support related.
  private:
   bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
+                              const emscripten::val& wnn_limits, bool& is_fusable,
+                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -32,6 +33,14 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                             const logging::Logger& logger) const {
   const auto& input_name = node.InputDefs()[0]->Name();
   emscripten::val input = model_builder.GetOperand(input_name);
+
+  // If Cast is fusable, skip adding the Cast node and use the input directly.
+  const auto& fused_nodes = model_builder.GetFusedNodes();
+  if (fused_nodes.find(node.Index()) != fused_nodes.end()) {
+    model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(input));
+    LOGS(logger, VERBOSE) << "Fuse Cast node: " << node.Name();
+    return Status::OK();
+  }
 
   NodeAttrHelper helper(node);
   // We already checked the "to" type in IsOpSupportedImpl.
@@ -87,7 +96,8 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related.
 bool CastOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                                           const emscripten::val& wnn_limits, const logging::Logger& logger) const {
+                                           const emscripten::val& wnn_limits, bool& is_fusable,
+                                           const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
   int32_t input_type;
@@ -95,13 +105,17 @@ bool CastOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initia
   if (!GetType(*input_defs[0], input_type, logger))
     return false;
 
-  if (!IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "input", logger))
-    return false;
-
   NodeAttrHelper helper(node);
-  // Check cast to type.
   const auto to_type = helper.Get("to", ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED);
-  return IsDataTypeSupportedByOp(op_type, to_type, wnn_limits, "output", "to", logger);
+
+  // Check if Cast node can be fused by either preceding node or successive node.
+  // e.g. preceding node: ArgMax -> Cast (from int64 to int32)
+  //      sussessive node: Cast (from int32 to int64) -> ScatterND
+  is_fusable = IsCastFusable(node, true, logger) || IsCastFusable(node, false, logger);
+
+  // Check input type and cast to type.
+  return IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "input", logger) &&
+         IsDataTypeSupportedByOp(op_type, to_type, wnn_limits, "output", "to", logger);
 }
 
 void CreateCastOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

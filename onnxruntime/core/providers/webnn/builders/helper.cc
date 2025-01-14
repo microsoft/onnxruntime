@@ -58,12 +58,66 @@ bool GetShape(const NodeArg& node_arg, std::vector<int64_t>& shape, const loggin
   return true;
 }
 
+bool FindCastFusableNodeIndex(const Node& node, const bool is_prec_node, NodeIndex& index) {
+  if (is_prec_node) {
+    // Preceding node should have only one input edge.
+    if (node.GetInputEdgesCount() == 1) {
+      const auto& prec_node = node.InputEdgesBegin()->GetNode();
+      // Preceding node should have only one output edge.
+      if (prec_node.GetOutputEdgesCount() == 1) {
+        index = prec_node.Index();
+        return true;
+      }
+    }
+  } else {
+    // Successive node should have only one output edge.
+    if (node.GetOutputEdgesCount() == 1) {
+      const auto& next_node = node.OutputEdgesBegin()->GetNode();
+      index = next_node.Index();
+      return true;
+    }
+  }
+
+  return false;
+}
+
+bool IsCastFusable(const Node& node, const bool is_prec_node, const logging::Logger& logger) {
+  if (node.OpType() != "Cast") {
+    return false;
+  }
+
+  int32_t input_type;
+  if (!GetType(*node.InputDefs()[0], input_type, logger))
+    return false;
+
+  NodeAttrHelper cast_helper(node);
+  const auto to_type = cast_helper.Get("to", ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+
+  if (is_prec_node) {
+    // If it is preceding node, only allows casting from int64 to int32.
+    if (input_type != ONNX_NAMESPACE::TensorProto_DataType_INT64 &&
+        to_type != ONNX_NAMESPACE::TensorProto_DataType_INT32) {
+      return false;
+    }
+  } else {
+    // If it is successive node, only allows casting from int32 to int64.
+    if (input_type != ONNX_NAMESPACE::TensorProto_DataType_INT32 &&
+        to_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+      return false;
+    }
+  }
+
+  NodeIndex index;
+  return FindCastFusableNodeIndex(node, is_prec_node, index);
+}
+
 bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const WebnnDeviceType device_type,
-                     const emscripten::val& wnn_limits, const logging::Logger& logger) {
+                     const emscripten::val& wnn_limits, bool& is_fusable, const logging::Logger& logger) {
   const auto& op_builders = GetOpBuilders();
   if (Contains(op_builders, node.OpType())) {
     const auto* op_builder = op_builders.at(node.OpType());
-    return op_builder->IsOpSupported(graph_viewer.GetAllInitializedTensors(), node, device_type, wnn_limits, logger);
+    return op_builder->IsOpSupported(
+        graph_viewer.GetAllInitializedTensors(), node, device_type, wnn_limits, is_fusable, logger);
   } else {
     return false;
   }
@@ -99,30 +153,74 @@ bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_n
   return true;
 }
 
-std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer,
-                                                      const emscripten::val& wnn_builder,
-                                                      const WebnnDeviceType device_type,
-                                                      const emscripten::val& wnn_limits,
-                                                      const logging::Logger& logger) {
+std::vector<std::vector<NodeIndex>> GetSupportedNodes(
+    const GraphViewer& graph_viewer, const emscripten::val& wnn_builder,
+    const WebnnDeviceType device_type, const emscripten::val& wnn_limits,
+    InlinedHashMap<NodeIndex, NodeIndex>& fused_node_map, const logging::Logger& logger) {
   std::vector<std::vector<size_t>> supported_node_groups;
   std::vector<size_t> supported_node_group;
   const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
 
+  // Some WebNN backends do not support the int64 data type, but this limitation can be addressed by converting the
+  // model's int64 inputs, outputs, and initializers to int32. However, certain ONNX nodes, such as ArgMax, ArgMin,
+  // and ScatterND, require the int64 data type for specific inputs or outputs.
+  // To handle such case, we can add Cast nodes before or after these nodes in the model and fuse them during WebNN EP
+  // optimization. The fusion strategy is as follows:
+  // 1. Verify if the Cast node can be fused with either the preceding node or the successive node.
+  // 2. Check if the node requiring the int64 data type can be supported solely by addressing the int64 data type
+  //    limitation. Ensure that the node is unsupported only due to the int64 restriction.
+  // 3. Use an is_fusable flag to record paired nodes as <Cast node index, fusable node index> that can be
+  //    fused together.
+  // 4. Mark the fusable nodes as supported after identifying them.
+  // 5. During WebNN graph compilation, skip the Cast node and fuse it in its paired fusable node.
+
+  InlinedHashMap<NodeIndex, WebnnNodeInfo> node_info_map;
+  std::vector<NodeIndex> fusable_cast_nodes;
   for (size_t i = 0; i < node_indices.size(); i++) {
     auto node_idx = node_indices[i];
     const auto* node(graph_viewer.GetNode(node_idx));
     bool supported = false;
+    bool is_fusable = false;
     // Firstly check if platform supports the WebNN op.
     if (CheckSingleOp(node->OpType(), wnn_builder, device_type)) {
-      supported = IsNodeSupported(*node, graph_viewer, device_type, wnn_limits, logger);
+      supported = IsNodeSupported(*node, graph_viewer, device_type, wnn_limits, is_fusable, logger);
+      node_info_map[node_idx] = {supported, is_fusable};
     }
+
+    if (node->OpType() == "Cast" && is_fusable) {
+      fusable_cast_nodes.push_back(node_idx);
+    }
+  }
+
+  // Try to find the fusable nodes for the Cast nodes.
+  // Note: graph partition will make sure fusable nodes are in the same partition.
+  for (size_t i = 0; i < fusable_cast_nodes.size(); i++) {
+    NodeIndex fusable_node_idx;
+    NodeIndex fusable_cast_node_idx = fusable_cast_nodes[i];
+    const auto& cast_node = *graph_viewer.GetNode(fusable_cast_node_idx);
+    // Cast can only be fused by either preceding node or successive node.
+    bool fusable_found = FindCastFusableNodeIndex(cast_node, true, fusable_node_idx) ||
+                         FindCastFusableNodeIndex(cast_node, false, fusable_node_idx);
+
+    if (fusable_found && node_info_map[fusable_node_idx].fusable) {
+      // Set the fusable nodes to supported.
+      node_info_map[fusable_cast_node_idx].supported = true;
+      node_info_map[fusable_node_idx].supported = true;
+      fused_node_map[fusable_cast_node_idx] = fusable_node_idx;
+    }
+  }
+
+  for (size_t i = 0; i < node_indices.size(); i++) {
+    auto node_idx = node_indices[i];
+    const auto* node(graph_viewer.GetNode(node_idx));
+    WebnnNodeInfo node_info = node_info_map[node_idx];
 
     LOGS(logger, VERBOSE) << "Operator type: [" << node->OpType()
                           << "] index: [" << node_idx
                           << "] name: [" << node->Name()
-                          << "] supported: [" << supported
+                          << "] supported: [" << node_info.supported
                           << "]";
-    if (supported) {
+    if (node_info.supported) {
       supported_node_group.push_back(node_idx);
     } else {
       if (!supported_node_group.empty()) {

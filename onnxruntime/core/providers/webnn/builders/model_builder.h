@@ -24,7 +24,8 @@ class ModelBuilder {
  public:
   ModelBuilder(const GraphViewer& graph_viewer, const logging::Logger& logger,
                const emscripten::val& context, const DataLayout preferred_layout,
-               const WebnnDeviceType wnn_device_type, const emscripten::val& wnn_limits);
+               const WebnnDeviceType wnn_device_type, const emscripten::val& wnn_limits,
+               const InlinedHashMap<NodeIndex, NodeIndex>& fused_node_map);
   ~ModelBuilder() = default;
 
   Status Compile(std::unique_ptr<Model>& model) ORT_MUST_USE_RESULT;
@@ -51,6 +52,8 @@ class ModelBuilder {
   Status AddOperandFromPersistMemoryBuffer(
       const std::string& name, const void* buffer,
       const size_t size, const std::vector<uint32_t> shape, const int32_t data_type);
+
+  const InlinedHashMap<NodeIndex, NodeIndex>& GetFusedNodes() const { return fused_node_map_; }
 
   DataLayout GetPreferredLayout() const { return preferred_layout_; }
 
@@ -83,6 +86,8 @@ class ModelBuilder {
 
   InlinedHashSet<std::string> skipped_initializers_;
   InlinedHashSet<std::string> skipped_inputs_;
+
+  InlinedHashMap<NodeIndex, NodeIndex> fused_node_map_;
 
   uint32_t name_token_{0};
   InlinedHashSet<std::string> unique_names_;

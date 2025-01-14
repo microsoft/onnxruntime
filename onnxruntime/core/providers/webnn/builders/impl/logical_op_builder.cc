@@ -22,7 +22,8 @@ class LogicalOpBuilder : public BaseOpBuilder {
   bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
   bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
+                              const emscripten::val& wnn_limits, bool& /* is_fusable */,
+                              const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -72,7 +73,8 @@ bool LogicalOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initiali
 }
 
 bool LogicalOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                                              const emscripten::val& wnn_limits, const logging::Logger& logger) const {
+                                              const emscripten::val& wnn_limits, bool& /* is_fusable */,
+                                              const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& op_type = node.OpType();
   int32_t input0_type;
