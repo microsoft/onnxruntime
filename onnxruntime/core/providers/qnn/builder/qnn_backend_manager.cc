@@ -1093,33 +1093,33 @@ Status QnnBackendManager::TerminateQnnLog() {
 void QnnBackendManager::ReleaseResources() {
   auto result = ReleaseContext();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to ReleaseContext: " << result;
+    LOGS_DEFAULT(ERROR) << "Failed to ReleaseContext: " << result.ErrorMessage();
   }
 
   result = ReleaseProfilehandle();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to ReleaseProfilehandle: " << result;
+    LOGS_DEFAULT(ERROR) << "Failed to ReleaseProfilehandle: " << result.ErrorMessage();
   }
 
   result = ReleaseDevice();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to ReleaseDevice: " << result;
+    LOGS_DEFAULT(ERROR) << "Failed to ReleaseDevice: " << result.ErrorMessage();
   }
 
   result = ShutdownBackend();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to ShutdownBackend: " << result;
+    LOGS_DEFAULT(ERROR) << "Failed to ShutdownBackend: " << result.ErrorMessage();
   }
 
   result = TerminateQnnLog();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to TerminateQnnLog: " << result;
+    LOGS_DEFAULT(ERROR) << "Failed to TerminateQnnLog: " << result.ErrorMessage();
   }
 
   if (backend_lib_handle_) {
     result = UnloadLib(backend_lib_handle_);
     if (Status::OK() != result) {
-      LOGS_DEFAULT(ERROR) << "Failed to unload backend library: " << result;
+      LOGS_DEFAULT(ERROR) << "Failed to unload backend library: " << result.ErrorMessage();
     }
   }
 
