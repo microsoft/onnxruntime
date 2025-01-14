@@ -46,7 +46,7 @@ stages:
 
   - job: Build_Ios_Pod_For_React_Native
     pool:
-      vmImage: 'macOS-13'
+      vmImage: 'macOS-14'
 
     timeoutInMinutes: 90
 
@@ -103,7 +103,7 @@ stages:
   jobs:
   - job: ReactNative_CI
     pool:
-      vmImage: 'macOS-13'
+      vmImage: 'macOS-14'
     variables:
       runCodesignValidationInjection: false
     timeoutInMinutes: 90

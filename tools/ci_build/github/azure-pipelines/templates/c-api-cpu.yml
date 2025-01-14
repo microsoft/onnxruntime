@@ -119,7 +119,7 @@ stages:
     workspace:
       clean: all
     pool:
-      vmImage: 'macOS-13'
+      vmImage: 'macOS-14'
     timeoutInMinutes: 300
     steps:
     - template: set-version-number-variables-step.yml
@@ -816,7 +816,7 @@ stages:
 
 - template: ../nuget/templates/test_macos.yml
   parameters:
-    AgentPool : macOS-13
+    AgentPool : macOS-14
     ArtifactSuffix: 'CPU'
 
 - template: ../nodejs/templates/test_win.yml
@@ -852,4 +852,4 @@ stages:
     OS: MacOS
     BuildId: ${{ parameters.BuildId }}
     SpecificArtifact: ${{ parameters.SpecificArtifact }}
-    PoolName: 'macOS-13'
+    PoolName: 'macOS-14'

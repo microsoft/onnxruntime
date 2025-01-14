@@ -15,13 +15,13 @@ stages:
     displayName: "Build iOS package for variant: ${{ parameters.packageVariant}}"
 
     pool:
-      vmImage: "macOS-13"
+      vmImage: "macOS-14"
 
     variables:
       # Note: Keep the Xcode version and iOS simulator version compatible.
       # Check the table here to see what iOS simulator versions are supported by a particular Xcode version:
       # https://developer.apple.com/support/xcode/
-      xcodeVersion: "14.3.1"
+      xcodeVersion: "15.3.0"
       iosSimulatorRuntimeVersion: "16.4"
 
       ortPodVersion: $[stageDependencies.IosPackaging_SetCommonVariables.j.outputs['SetCommonVariables.ORT_POD_VERSION']]

@@ -423,7 +423,7 @@ stages:
   - job: IosDynamicFramework
     timeoutInMinutes: 120
     pool:
-      vmImage: "macOS-13"
+      vmImage: "macOS-14"
 
     steps:
     - task: UsePythonVersion@0
@@ -459,7 +459,7 @@ stages:
   - job: IosMinimalTrainingBuild
     timeoutInMinutes: 120
     pool:
-      vmImage: "macOS-13"
+      vmImage: "macOS-14"
 
     steps:
     - task: UsePythonVersion@0

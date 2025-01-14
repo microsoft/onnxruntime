@@ -110,7 +110,7 @@ jobs:
           --osx_arch=${{ matrix.target_arch }}
 
   Vcpkg:
-    runs-on: macos-13
+    runs-on: macOS-14
     steps:
     - uses: actions/checkout@v4
     - uses: actions/setup-python@v5
