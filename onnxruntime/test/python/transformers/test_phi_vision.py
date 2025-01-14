@@ -171,6 +171,7 @@ class PhiVCLIPAttentionAndLayerNorm(torch.nn.Module):
         x = self.ln(x)
         return x
 
+
 class TestFusion(unittest.TestCase):
     def verify_fusion(self, optimized_model, expected_model_filename):
         optimized_model.topological_sort(is_deterministic=True)
@@ -209,7 +210,7 @@ class TestFusion(unittest.TestCase):
         if not torch.cuda.is_available():
             return
         model = PhiVCLIPLayerNorm()
-        inputs = (torch.randn(1, 2, 20).to(torch.float16), )
+        inputs = (torch.randn(1, 2, 20).to(torch.float16),)
         self.export(model, inputs)
         original_model = onnx.load(os.path.join(os.path.dirname(__file__), "export.onnx"))
         options = FusionOptions("clip")
@@ -226,7 +227,7 @@ class TestFusion(unittest.TestCase):
 
     def test_phi_vision_quickgelu(self):
         model = PhiVCLIPQuickGelu()
-        inputs = (torch.randn(1, 2, 20), )
+        inputs = (torch.randn(1, 2, 20),)
         self.export(model, inputs)
         original_model = onnx.load(os.path.join(os.path.dirname(__file__), "export.onnx"))
         options = FusionOptions("clip")
@@ -237,7 +238,7 @@ class TestFusion(unittest.TestCase):
 
     def test_phi_vision_attention(self):
         model = PhiVCLIPAttentionAndLayerNorm()
-        inputs = (torch.randn(1, 2, 20), )
+        inputs = (torch.randn(1, 2, 20),)
         self.export(model, inputs)
         original_model = onnx.load(os.path.join(os.path.dirname(__file__), "export.onnx"))
         options = FusionOptions("clip")
