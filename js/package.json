@@ -23,7 +23,7 @@
     "mocha": "^11.0.1",
     "npmlog": "^7.0.1",
     "prettier": "^3.3.3",
-    "terser": "^5.31.0",
+    "terser": "^5.37.0",
     "typescript": "^5.2.2"
   },
   "scripts": {
