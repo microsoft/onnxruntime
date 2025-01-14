@@ -230,31 +230,6 @@ class FusionAttention(Fusion):
 
         return add_qk.input[1]
 
-    def reshape_add_qk(self, add_qk: str):
-        # Convert 4D mask from (B,1,S,T) to (B,N,S,T)
-        # B = batch size, N = num heads, S = source sequence length, T = target sequence length
-        mask_output_name = add_qk + "_mask"
-
-        # Check if concat node for (B,1,S,T) --> (B,N,S,T) already exists
-        concat_node = list(filter(lambda node: node.output[0] == mask_output_name, self.nodes_to_add))
-        if len(concat_node) == 1:
-            return mask_output_name
-
-        assert len(concat_node) == 0
-        concat_node_name = self.model.create_node_name("Concat")
-        concat_add_qk_fp32 = helper.make_node(
-            "Concat",
-            inputs=[add_qk for _ in range(self.num_heads)],
-            outputs=[mask_output_name],
-            name=concat_node_name,
-            axis=1,
-        )
-        # Add new node to graph
-        self.nodes_to_add.append(concat_add_qk_fp32)
-        self.node_name_to_graph_name[concat_node_name] = self.this_graph_name
-
-        return mask_output_name
-
     def concat_kv(self, past_k: str, past_v: str) -> str:
         """Concatenate past_k and past_v inputs to create past_kv input.
 
@@ -878,12 +853,10 @@ class FusionAttention(Fusion):
                 attention_inputs.append(past_kv)
 
             if add_qk_str:
-                mask_output_name = self.reshape_add_qk(add_qk_str)
-
-                # Add attention mask to attention node
+                # Add additional add to attention node (input name = attention_bias)
                 if not past_exists:
                     attention_inputs.append("")
-                attention_inputs.append(mask_output_name)
+                attention_inputs.append(add_qk_str)
 
             attention_outputs = [output]
             if present_k and present_v:

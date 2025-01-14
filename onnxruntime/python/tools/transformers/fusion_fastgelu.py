@@ -26,6 +26,9 @@ class FusionFastGelu(Fusion):
         if self.fuse_3(tanh_node, input_name_to_nodes, output_name_to_node):
             return
 
+        if self.fuse_4(tanh_node, input_name_to_nodes, output_name_to_node):
+            return
+
     def fuse_1(self, tanh_node, input_name_to_nodes, output_name_to_node) -> Optional[bool]:
         """
         Fuse Gelu with tanh into one node:
@@ -357,4 +360,133 @@ class FusionFastGelu(Fusion):
         fused_node.domain = "com.microsoft"
         self.nodes_to_add.append(fused_node)
         self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
+        return True
+
+    def fuse_4(self, tanh_node, input_name_to_nodes: Dict, output_name_to_node: Dict) -> Optional[bool]:
+        """
+        PyTorch's gelu implementation with tanh approximation:
+           Gelu(x) = 0.5 * x * (1 + torch.tanh(0.7978845834732056 * (x + 0.044714998453855515 * x * x * x)))
+        """
+        # Fuse subgraph into a FastGelu node:
+        #
+        #           root_input
+        #          /  | |  |  \
+        #         /   Mul  |   \
+        #        |      \  |    |
+        #        |       Mul    |
+        #        |        |     |
+        #        |       Mul    |
+        #        |     (0.044)  |
+        #        |         \   /
+        #        |          Add
+        #        |           |
+        #        |          Mul
+        #        |        (0.797)
+        #        |           |
+        #         \        Tanh
+        #          \         |
+        #           \       Add
+        #            \      (1)
+        #             \    /
+        #              \  /
+        #              Mul
+        #               |
+        #              Mul
+        #             (0.5)
+        #               |
+        #             output
+        if tanh_node.output[0] not in input_name_to_nodes:
+            return
+
+        children = input_name_to_nodes[tanh_node.output[0]]
+        if len(children) != 1 or children[0].op_type != "Add":
+            return
+        add_after_tanh = children[0]
+
+        if not self.model.has_constant_input(add_after_tanh, 1.0):
+            return
+        j = self.model.find_constant_input(add_after_tanh, 1.0)
+        if j < 0:
+            return
+
+        if add_after_tanh.output[0] not in input_name_to_nodes:
+            return
+        children = input_name_to_nodes[add_after_tanh.output[0]]
+        if len(children) != 1 or children[0].op_type != "Mul":
+            return
+        mul_before_half = children[0]
+
+        children = input_name_to_nodes[mul_before_half.output[0]]
+        if len(children) != 1 or children[0].op_type != "Mul":
+            return
+        mul_last = children[0]
+
+        i = self.model.find_constant_input(mul_last, 0.5)
+        if i < 0:
+            return
+
+        root_input = mul_before_half.input[0]
+
+        mul_0797 = self.model.match_parent(tanh_node, "Mul", 0, output_name_to_node)
+        if mul_0797 is None:
+            return
+        k = self.model.find_constant_input(mul_0797, 0.7978, delta=0.0001)
+        if k < 0:
+            return
+
+        add_before_tanh = self.model.match_parent(mul_0797, "Add", 0 if k == 1 else 1, output_name_to_node)
+        if add_before_tanh is None:
+            return
+        if add_before_tanh.input[0] != root_input:
+            return
+
+        mul_0044 = self.model.match_parent(add_before_tanh, "Mul", 1, output_name_to_node)
+        if mul_0044 is None:
+            return
+        m = self.model.find_constant_input(mul_0044, 0.0447, delta=0.0001)
+        if m < 0:
+            return
+
+        mul_cubed = self.model.match_parent(mul_0044, "Mul", 0 if m == 1 else 1, output_name_to_node)
+        if mul_cubed is None:
+            return
+        if mul_cubed.input[0] != root_input:
+            return
+
+        mul_squared = self.model.match_parent(mul_cubed, "Mul", 1, output_name_to_node)
+        if mul_squared is None:
+            return
+        if mul_squared.input[0] != root_input or mul_squared.input[1] != root_input:
+            return
+
+        subgraph_nodes = [
+            mul_squared,
+            mul_cubed,
+            mul_0044,
+            add_before_tanh,
+            mul_0797,
+            tanh_node,
+            add_after_tanh,
+            mul_before_half,
+            mul_last,
+        ]
+        if not self.model.is_safe_to_fuse_nodes(
+            subgraph_nodes,
+            [mul_last.output[0]],
+            input_name_to_nodes,
+            output_name_to_node,
+        ):
+            return
+
+        self.nodes_to_remove.extend(subgraph_nodes)
+        fused_node = helper.make_node(
+            "FastGelu",
+            inputs=[root_input],
+            outputs=mul_last.output,
+            name=self.model.create_node_name("FastGelu"),
+        )
+        fused_node.domain = "com.microsoft"
+        self.nodes_to_add.append(fused_node)
+        self.node_name_to_graph_name[fused_node.name] = self.this_graph_name
+        self.increase_counter("FastGelu")
         return True
