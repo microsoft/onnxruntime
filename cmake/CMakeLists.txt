@@ -1479,7 +1479,7 @@ if (onnxruntime_USE_OPENVINO OR onnxruntime_USE_OPENVINO_INTERFACE)
 
 endif()
 
-if (onnxruntime_USE_VITISAI) #TODO[Karim]
+if (onnxruntime_USE_VITISAI)
     set(CMAKE_MODULE_PATH "${CMAKE_MODULE_PATH};${CMAKE_CURRENT_LIST_DIR}")
 endif()
 

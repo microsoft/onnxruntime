@@ -1021,9 +1021,7 @@ def generate_build_tree(
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
 
-    enable_qnn_interface = (
-        True if ((args.arm64 or args.arm or args.arm64ec) and (args.enable_generic_interface)) else False
-    )
+    enable_qnn_interface = bool((args.arm64 or args.arm or args.arm64ec) and (args.enable_generic_interface))
 
     cmake_args += [
         "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
