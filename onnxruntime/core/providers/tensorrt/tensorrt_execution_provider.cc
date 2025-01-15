@@ -3358,10 +3358,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         // dump EP context node model
         if (dump_ep_context_model_) {
           // "ep_cache_context" node attribute should be a relative path to context model directory
-          if (ep_cache_context_attr_.empty()) {
-            auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
-            ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
-          }
+          // ep_cache_context_attr_ needs to be set to engine_cache_path for every context node
+          auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
+          ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
           std::string compute_capability_hw_compat = compute_capability_;
           if (engine_cache_enable_ && engine_hw_compatible_) {
             compute_capability_hw_compat = "80+";
@@ -3375,7 +3374,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
                                               compute_capability_hw_compat,
                                               model_path_,
                                               GetLogger());
-          auto& graph = trt_ep_context_model_ptr->MainGraph();
           trt_ep_context_models.emplace_back(std::move(trt_ep_context_model_ptr));
         }
       }
@@ -3466,10 +3464,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   // However, if the embed_mode is 0 (only includes engine path), TRT EP will serialize it here.
   if (dump_ep_context_model_ && has_dynamic_shape) {
     // "ep_cache_context" node attribute should be a relative path to context model directory
-    if (ep_cache_context_attr_.empty()) {
-      auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
-      ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
-    }
+    // ep_cache_context_attr_ needs to be set to engine_cache_path for every context node
+    auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
+    ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
     std::string compute_capability_hw_compat = compute_capability_;
     if (engine_cache_enable_ && engine_hw_compatible_) {
       compute_capability_hw_compat = "80+";
@@ -4410,7 +4407,6 @@ const InlinedVector<const Node*> TensorrtExecutionProvider::GetEpContextNodes() 
     for (const auto& context_model: trt_ep_context_models) {
       const auto& graph = context_model->MainGraph();
       for (const auto& node: graph.Nodes()) {
-        // if (node.IsEpContextNode()) { // Check if it's an EP context node
         ep_context_nodes.push_back(node);
       }
     }
