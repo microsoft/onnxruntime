@@ -11,6 +11,8 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Xml.Linq;
+
 
 #if NET8_0_OR_GREATER
 using DotnetTensors = System.Numerics.Tensors;
@@ -696,7 +698,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="value">Tensor object</param>
         /// <param name="elementType">discovered tensor element type</param>
         /// <returns>And instance of OrtValue constructed on top of the object</returns>
-        public static OrtValue CreateTensorValueFromDotnetTensorObject<T>(DotnetTensors.Tensor<T> tensor) where T : unmanaged
+        public static OrtValue CreateTensorValueFromDotnetTensorObject<T>(DotnetTensors.ITensor<DotnetTensors.Tensor<T>, T> tensor) where T : unmanaged
         {
             if (!IsContiguousAndDense(tensor))
             {
@@ -744,7 +746,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        private static bool IsContiguousAndDense<T>(DotnetTensors.Tensor<T> tensor)
+        private static bool IsContiguousAndDense<T>(DotnetTensors.ITensor<DotnetTensors.Tensor<T>, T> tensor) where T : unmanaged
         {
             // Right most dimension must be 1 for a dense tensor.
             if (tensor.Strides[^1] != 1)
