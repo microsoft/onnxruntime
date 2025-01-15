@@ -29,7 +29,10 @@
       "name": "flatbuffers",
       "version>=": "23.5.26"
     },
-    "mimalloc",
+    {
+      "name": "mimalloc",
+      "platform": "windows"
+    },
     "ms-gsl",
     "nlohmann-json",
     {
