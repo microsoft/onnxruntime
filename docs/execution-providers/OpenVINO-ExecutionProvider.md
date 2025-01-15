@@ -540,6 +540,15 @@ For NPU is model is not supported we fallback to CPU.
 | twitter-roberta-base-sentiment | Yes | Yes |
 | xlm-roberta-base | Yes | Yes |
 
+### Models Supported on NPU
+
+| **MODEL NAME** | **NPU** |
+| --- | --- | --- |
+| yolov3 | Yes |
+| microsoft_resnet-50 | Yes |
+| realesrgan-x4 | Yes |
+| timm_inception_v4.tf_in1k | Yes |
+
 **Note:** We have added support for INT8 models, quantized with Neural Network Compression Framework (NNCF). To know more about NNCF refer [here](https://github.com/openvinotoolkit/nncf).
 
 ## OpenVINO™ Execution Provider Samples Tutorials
