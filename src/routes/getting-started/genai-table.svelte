@@ -4,7 +4,7 @@
 	let platforms = ['Windows', 'Linux', 'MacOS'];
 	let languages = ['Python', 'C#'];
 	let hardwareAccelerations = ['CPU', 'DirectML', 'CUDA'];
-	let builds = ['Stable', 'Preview (Nightly)'];
+	// let builds = ['Stable', 'Preview (Nightly)'];
 
 	/**
 	 * @type {string | null}
@@ -18,6 +18,7 @@
 	 * @type {string | null}
 	 */
 	let selectedHardwareAcceleration = null;
+    // For eventual nightly builds
 	/**
 	 * @type {string | null}
 	 */
@@ -214,7 +215,8 @@
 		</div>
 	</div>
 
-	<div class="col-span-1 bg-success r-heading rounded p-2 text-xl">
+    <!-- For eventual nightly use -->
+	<!-- <div class="col-span-1 bg-success r-heading rounded p-2 text-xl">
 		<h3>Build</h3>
 	</div>
 	<div class="col-span-4">
@@ -228,7 +230,7 @@
 				</button>
 			{/each}
 		</div>
-	</div>
+	</div> -->
 
 	<div class="col-span-1 bg-success rounded p-2">
 		<h3 class="text-xl">Installation Instructions</h3>
