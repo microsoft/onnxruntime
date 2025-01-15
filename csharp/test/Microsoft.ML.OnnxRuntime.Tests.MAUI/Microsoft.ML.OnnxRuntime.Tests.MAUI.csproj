@@ -7,7 +7,7 @@
 
     <!-- General app properties -->
     <PropertyGroup>
-        <TargetFrameworks>net8.0-android;net8.0-ios;net8.0-maccatalyst</TargetFrameworks>
+        <TargetFrameworks>net8.0;net8.0-android;net8.0-ios;net8.0-maccatalyst</TargetFrameworks>
         <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net8.0-windows10.0.19041.0</TargetFrameworks>
 
         <!-- Note for MacCatalyst:
@@ -17,7 +17,7 @@
         either BOTH runtimes must be indicated or ONLY macatalyst-x64. -->
         <!-- For example: <RuntimeIdentifiers>maccatalyst-x64;maccatalyst-arm64</RuntimeIdentifiers> -->
 
-        <OutputType>Exe</OutputType>
+        <OutputType Condition="'$(TargetFramework)' != 'net8.0'">Exe</OutputType>
         <RootNamespace>Microsoft.ML.OnnxRuntime.Tests.MAUI</RootNamespace>
         <UseMaui>true</UseMaui>
         <SingleProject>true</SingleProject>
@@ -101,6 +101,7 @@
         <PackageReference Include="DeviceRunners.VisualRunners.Xunit" Version="0.1.0-preview.2" />
         <PackageReference Include="DeviceRunners.XHarness.Maui" Version="0.1.0-preview.2" />
         <PackageReference Include="DeviceRunners.XHarness.Xunit" Version="0.1.0-preview.2" />
+		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
         <PackageReference Include="Microsoft.DotNet.XHarness.TestRunners.Xunit" Version="9.0.0-prerelease.24374.1" />
         <PackageReference Include="Microsoft.Maui.Controls" Version="8.0.70" />
         <PackageReference Include="Microsoft.Maui.Controls.Compatibility" Version="8.0.70" />
@@ -122,4 +123,10 @@
             <PackagingOutputs Remove="@(_VisualStudioTestRunnerFiles)" />
         </ItemGroup>
     </Target>
+
+	<PropertyGroup Condition="'$(IsAndroidTarget)' !='true'">
+		<GenerateProgramFile>false</GenerateProgramFile>
+		<DefaultLanguage>en</DefaultLanguage>
+	</PropertyGroup>
+
 </Project>
