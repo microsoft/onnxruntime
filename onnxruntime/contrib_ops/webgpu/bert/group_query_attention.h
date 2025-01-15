@@ -14,6 +14,27 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
+Status GeneratePositionIDs(onnxruntime::webgpu::ComputeContext& context, bool is_first_prompt, int batch_size, int sequence_length, int num_heads, int head_size, int rotary_embedding_dim, bool interleaved, int total_seqlen, const Tensor* seqlens, Tensor* output_tensor);
+
+class GeneratePositionIDsProgram final : public Program<GeneratePositionIDsProgram> {
+ public:
+  GeneratePositionIDsProgram(const WebgpuAttentionParameters& params) : Program{"GeneratePositionIDs"}, params_(params) {}
+
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32},
+                                          {"sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"num_heads", ProgramUniformVariableDataType::Uint32},
+                                          {"head_size", ProgramUniformVariableDataType::Uint32},
+                                          {"rotary_embedding_dim", ProgramUniformVariableDataType::Uint32},
+                                          {"interleaved", ProgramUniformVariableDataType::Uint32},
+                                          {"position_ids_format", ProgramUniformVariableDataType::Uint32},
+                                          {"total_seqlen", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  const WebgpuAttentionParameters& params_;
+};
+
 class GroupQueryAttention final : public WebGpuKernel {
  public:
   GroupQueryAttention(const OpKernelInfo& info) : WebGpuKernel(info) {
