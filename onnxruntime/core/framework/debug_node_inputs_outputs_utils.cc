@@ -22,11 +22,15 @@
 namespace onnxruntime {
 namespace utils {
 
-void NodeDumpAnalysis::Add(const std::string& node_name, bool is_half_overflow) {
+void NodeDumpAnalysis::Add(const std::string& node_name, const std::string& op_type, bool is_half_overflow) {
   std::lock_guard<std::mutex> lock(set_mutex);
   if (is_half_overflow) {
-    half_overflow_nodes.insert(node_name);
+    auto p = half_overflow_nodes.insert(node_name);
+    if (p.second) {  // insert succeeded
+      ++half_overflow_ops[op_type];
+    }
   }
+
   counter++;
 }
 
@@ -36,23 +40,34 @@ void NodeDumpAnalysis::PrintToStdOut(const std::string& model_path) {
     return;
   }
 
-  // We added the counter twice (during dumping inputs and outputs) for each node, so we need to divide it by 2.
+  // We added counter twice per node (once for node inputs, once for node outputs), so we need to divide it by 2.
   counter /= 2;
 
-  std::cout << "Total counter in node dumping: " << counter << std::endl;
+  std::cout << "Total counter in node dumping: " << counter / 2 << std::endl;
 
   if (!half_overflow_nodes.empty()) {
     std::cout << "Found " << half_overflow_nodes.size() << " nodes cannot be converted to half precision due to potential input/output overflow." << std::endl;
-    for (const auto& node : half_overflow_nodes) {
-      if (node.empty()) {
-        std::cout << "Warning: some node name is empty and node_block_list is not completed. "
-                  << "Please update the model to make sure each node has name then run this tool again!" << std::endl;
-      }
+
+    if (half_overflow_nodes.count("") > 0) {
+      std::cout << "Warning: some node name is empty and node_block_list is not completed. "
+                << "Please update the model to make sure each node has name then run this tool again!" << std::endl;
+    }
+
+    // Sort and display the op frequency in the descending order
+    std::cout << "Operator frequence for these nodes:" << std::endl;
+    std::vector<std::pair<std::string, int>> op_freq(half_overflow_ops.begin(), half_overflow_ops.end());
+    std::sort(op_freq.begin(), op_freq.end(),
+              [](const std::pair<std::string, int>& a, const std::pair<std::string, int>& b) {
+                return b.second < a.second;
+              });
+    for (const auto& pair : op_freq) {
+      std::cout << pair.first << " : " << pair.second << std::endl;
     }
   } else {
     std::cout << "No node has potential overflow during half conversion so node_block_list is empty." << std::endl;
   }
 
+  std::cout << "# -------" << std::endl;
   std::cout << "# Example python script for float16 conversion" << std::endl;
   std::cout << "# For details, search `node_block_list` in https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/float16.py" << std::endl;
   std::cout << "# -------" << std::endl;
@@ -464,9 +479,10 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
 
     constexpr int kMaxHalfThreshold = 65504;
     // The default value is set to have reasonable margin for input variance.
-    opts.half_overflow_threshold = ParseEnvironmentVariableWithDefault<int>(env_vars::kHalfOverflowThreshold, 50000);
-    ORT_ENFORCE(opts.half_overflow_threshold > 0 && opts.half_overflow_threshold <= kMaxHalfThreshold,
+    int threshold = ParseEnvironmentVariableWithDefault<int>(env_vars::kHalfOverflowThreshold, 50000);
+    ORT_ENFORCE(threshold > 0 && threshold <= kMaxHalfThreshold,
                 debug_node_inputs_outputs_env_vars::kHalfOverflowThreshold, " shall be a positive integer <= ", kMaxHalfThreshold);
+    opts.half_overflow_threshold = static_cast<float>(threshold);
 
     if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kAppendRankToFileName, false)) {
       std::string rank = Env::Default().GetEnvironmentVar("OMPI_COMM_WORLD_RANK");
@@ -570,7 +586,7 @@ void DumpNodeInputs(
               DumpTensor(dump_options, *tensor, tensor_metadata, tensor_statistics, session_state);
 
               if (check_half_overflow && tensor_statistics.is_float) {
-                float threshold = static_cast<float>(dump_options.half_overflow_threshold);
+                float threshold = dump_options.half_overflow_threshold;
                 if (tensor_statistics.float_min < -threshold || tensor_statistics.float_max > threshold) {
                   potential_half_overflow = true;
                 }
@@ -592,7 +608,7 @@ void DumpNodeInputs(
   }
 
   if (check_half_overflow) {
-    dump_analysis.Add(node.Name(), potential_half_overflow);
+    dump_analysis.Add(node.Name(), node.OpType(), potential_half_overflow);
   }
 }
 
@@ -659,7 +675,7 @@ void DumpNodeOutputs(
               DumpTensor(dump_options, *tensor, tensor_metadata, tensor_statistics, session_state);
 
               if (check_half_overflow && tensor_statistics.is_float) {
-                float threshold = static_cast<float>(dump_options.half_overflow_threshold);
+                float threshold = dump_options.half_overflow_threshold;
                 if (tensor_statistics.float_min < -threshold || tensor_statistics.float_max > threshold) {
                   potential_half_overflow = true;
                 }
@@ -680,7 +696,7 @@ void DumpNodeOutputs(
     }
 
     if (check_half_overflow) {
-      dump_analysis.Add(node.Name(), potential_half_overflow);
+      dump_analysis.Add(node.Name(), node.OpType(), potential_half_overflow);
     }
 
     std::cout << std::endl;

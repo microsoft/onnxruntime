@@ -67,7 +67,7 @@ constexpr const char* kSnippetThreshold = "ORT_DEBUG_NODE_IO_SNIPPET_THRESHOLD";
 constexpr const char* kSnippetEdgeItems = "ORT_DEBUG_NODE_IO_SNIPPET_EDGE_ITEMS";
 
 // Threshold for float to float16 conversion overflow detection (default 50000).
-// It is a positive integer that <= 65505, and it is recommended to add some margain for new inputs.
+// It is a positive integer that <= 65504, and it is recommended to add some margin for new inputs.
 constexpr const char* kHalfOverflowThreshold = "ORT_DEBUG_NODE_IO_HALF_OVERFLOW_THRESHOLD";
 
 }  // namespace debug_node_inputs_outputs_env_vars
@@ -129,7 +129,7 @@ struct NodeDumpOptions {
   int snippet_edge_items;
 
   // Threshold for float16 conversion overflow.
-  int half_overflow_threshold;
+  float half_overflow_threshold;
 };
 
 struct NodeDumpContext {
@@ -141,10 +141,11 @@ struct NodeDumpContext {
 
 // A session level analysis of node dumps. It can be used to collect some statistics or analysis during node dumps.
 struct NodeDumpAnalysis {
-  std::unordered_set<std::string> half_overflow_nodes;
   std::mutex set_mutex;
+  std::unordered_set<std::string> half_overflow_nodes;
+  std::unordered_map<std::string, int> half_overflow_ops;
   int counter{0};
-  void Add(const std::string& node_name, bool is_half_overflow);
+  void Add(const std::string& node_name, const std::string& op_name, bool is_half_overflow);
   void PrintToStdOut(const std::string& model_path);
 };
 
