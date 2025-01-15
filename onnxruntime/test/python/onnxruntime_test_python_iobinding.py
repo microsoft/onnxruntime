@@ -221,7 +221,7 @@ class TestIOBinding(unittest.TestCase):
             )
 
         for inner_device, provider in devices:
-            for onnx_dtype in onnx_to_torch_type_map:
+            for onnx_dtype, torch_dtype in onnx_to_torch_type_map.items():
                 with self.subTest(onnx_dtype=onnx_dtype, inner_device=str(inner_device)):
 
                     # Create onnx graph with dynamic axes
@@ -239,7 +239,6 @@ class TestIOBinding(unittest.TestCase):
 
                     sess = onnxrt.InferenceSession(model_def.SerializeToString(), providers=provider)
 
-                    torch_dtype = onnx_to_torch_type_map[onnx_dtype]
                     x = torch.arange(8).to(torch_dtype)
                     y = torch.empty(8, dtype=torch_dtype)
 

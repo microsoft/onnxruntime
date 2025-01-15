@@ -361,8 +361,8 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
         min_max_pairs = list(zip(rmin, rmax))
         output_names = [infer_session.get_outputs()[i].name for i in range(len(infer_session.get_outputs()))]
         output_min_max_dict = dict(zip(output_names, min_max_pairs))
-        for output_name in output_min_max_dict:
-            self.assertEqual(output_min_max_dict[output_name], tensors_range[output_name].range_value)
+        for output_name, min_max in output_min_max_dict.items():
+            self.assertEqual(min_max, tensors_range[output_name].range_value)
 
     def test_histogram_calibrators_run(self):
         """
@@ -524,8 +524,8 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
         min_max_pairs = list(zip(rmin, rmax))
         output_names = [infer_session.get_outputs()[i].name for i in range(len(infer_session.get_outputs()))]
         output_min_max_dict = dict(zip(output_names, min_max_pairs))
-        for output_name in output_min_max_dict:
-            np.testing.assert_equal(output_min_max_dict[output_name], tensors_range[output_name].range_value)
+        for output_name, min_max in output_min_max_dict.items():
+            np.testing.assert_equal(min_max, tensors_range[output_name].range_value)
 
 
 if __name__ == "__main__":

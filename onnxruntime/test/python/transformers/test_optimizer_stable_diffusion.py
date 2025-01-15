@@ -29,6 +29,8 @@ else:
 TINY_MODELS = {
     "stable-diffusion": "hf-internal-testing/tiny-stable-diffusion-torch",
     "stable-diffusion-xl": "echarlaix/tiny-random-stable-diffusion-xl",
+    "stable-diffusion-3": "optimum-internal-testing/tiny-random-stable-diffusion-3",
+    "flux": "tlwu/tiny-random-flux",
 }
 
 
@@ -114,157 +116,287 @@ class TestStableDiffusionOptimization(unittest.TestCase):
             float16=True,
         )
 
-    @pytest.mark.slow
-    def test_clip_sdxl(self):
-        save_directory = "tiny-random-stable-diffusion-xl"
-        if os.path.exists(save_directory):
-            shutil.rmtree(save_directory, ignore_errors=True)
 
-        model_type = "stable-diffusion-xl"
-        model_name = TINY_MODELS[model_type]
+class TestStableDiffusionOrFluxPipelineOptimization(unittest.TestCase):
+    def verify_pipeline_optimization(
+        self,
+        model_name,
+        export_onnx_dir,
+        optimized_onnx_dir,
+        expected_op_counters,
+        is_float16,
+        atol,
+        disable_group_norm=False,
+    ):
+        from optimum.onnxruntime import ORTPipelineForText2Image
 
-        from optimum.onnxruntime import ORTStableDiffusionXLPipeline
+        if os.path.exists(export_onnx_dir):
+            shutil.rmtree(export_onnx_dir, ignore_errors=True)
 
-        base = ORTStableDiffusionXLPipeline.from_pretrained(model_name, export=True)
-        base.save_pretrained(save_directory)
+        baseline = ORTPipelineForText2Image.from_pretrained(model_name, export=True, provider="CUDAExecutionProvider")
+        if not os.path.exists(export_onnx_dir):
+            baseline.save_pretrained(export_onnx_dir)
 
-        clip_onnx_path = os.path.join(save_directory, "text_encoder", "model.onnx")
-        optimized_clip_onnx_path = os.path.join(save_directory, "text_encoder", "opt.onnx")
-        self.verify_clip_optimizer(
-            clip_onnx_path,
-            optimized_clip_onnx_path,
-            expected_counters={
-                "EmbedLayerNormalization": 0,
-                "Attention": 5,
-                "SkipLayerNormalization": 10,
-                "LayerNormalization": 1,
-                "Gelu": 0,
-                "BiasGelu": 5,
-            },
-        )
-
-        clip_onnx_path = os.path.join(save_directory, "text_encoder_2", "model.onnx")
-        optimized_clip_onnx_path = os.path.join(save_directory, "text_encoder_2", "opt.onnx")
-        self.verify_clip_optimizer(
-            clip_onnx_path,
-            optimized_clip_onnx_path,
-            expected_counters={
-                "EmbedLayerNormalization": 0,
-                "Attention": 5,
-                "SkipLayerNormalization": 10,
-                "LayerNormalization": 1,
-                "Gelu": 0,
-                "BiasGelu": 5,
-            },
-        )
-
-    @pytest.mark.slow
-    def test_optimize_sdxl_fp32(self):
-        save_directory = "tiny-random-stable-diffusion-xl"
-        if os.path.exists(save_directory):
-            shutil.rmtree(save_directory, ignore_errors=True)
-
-        model_type = "stable-diffusion-xl"
-        model_name = TINY_MODELS[model_type]
-
-        from optimum.onnxruntime import ORTStableDiffusionXLPipeline
-
-        baseline = ORTStableDiffusionXLPipeline.from_pretrained(model_name, export=True)
-        if not os.path.exists(save_directory):
-            baseline.save_pretrained(save_directory)
-
-        batch_size, num_images_per_prompt, height, width = 2, 2, 64, 64
-        latents = baseline.prepare_latents(
-            batch_size * num_images_per_prompt,
-            baseline.unet.config["in_channels"],
-            height,
-            width,
-            dtype=np.float32,
-            generator=np.random.RandomState(0),
-        )
-
-        optimized_directory = "tiny-random-stable-diffusion-xl-optimized"
         argv = [
             "--input",
-            save_directory,
+            export_onnx_dir,
             "--output",
-            optimized_directory,
-            "--disable_group_norm",
-            "--disable_bias_splitgelu",
+            optimized_onnx_dir,
             "--overwrite",
-        ]
-        optimize_stable_diffusion(argv)
-
-        treatment = ORTStableDiffusionXLPipeline.from_pretrained(optimized_directory, provider="CUDAExecutionProvider")
-        inputs = {
-            "prompt": ["starry night by van gogh"] * batch_size,
-            "num_inference_steps": 3,
-            "num_images_per_prompt": num_images_per_prompt,
-            "height": height,
-            "width": width,
-            "guidance_rescale": 0.1,
-            "output_type": "np",
-        }
-
-        ort_outputs_1 = baseline(latents=latents, **inputs)
-        ort_outputs_2 = treatment(latents=latents, **inputs)
-        self.assertTrue(np.allclose(ort_outputs_1.images[0], ort_outputs_2.images[0], atol=1e-3))
-
-    @pytest.mark.slow
-    def test_optimize_sdxl_fp16(self):
-        """This tests optimized fp16 pipeline, and result is deterministic for a given seed"""
-        save_directory = "tiny-random-stable-diffusion-xl"
-        if os.path.exists(save_directory):
-            shutil.rmtree(save_directory, ignore_errors=True)
-
-        model_type = "stable-diffusion-xl"
-        model_name = TINY_MODELS[model_type]
-
-        from optimum.onnxruntime import ORTStableDiffusionXLPipeline
-
-        baseline = ORTStableDiffusionXLPipeline.from_pretrained(model_name, export=True)
-        if not os.path.exists(save_directory):
-            baseline.save_pretrained(save_directory)
-
-        optimized_directory = "tiny-random-stable-diffusion-xl-optimized-fp16"
-        argv = [
-            "--input",
-            save_directory,
-            "--output",
-            optimized_directory,
-            "--disable_group_norm",
             "--disable_bias_splitgelu",
-            "--float16",
-            "--overwrite",
         ]
-        optimize_stable_diffusion(argv)
 
-        fp16_pipeline = ORTStableDiffusionXLPipeline.from_pretrained(
-            optimized_directory, provider="CUDAExecutionProvider"
-        )
+        if disable_group_norm:
+            argv.append("--disable_group_norm")
+
+        if is_float16:
+            argv.append("--float16")
+
+        op_counters = optimize_stable_diffusion(argv)
+        print(op_counters)
+
+        for name in expected_op_counters:
+            self.assertIn(name, op_counters)
+            for op, count in expected_op_counters[name].items():
+                self.assertIn(op, op_counters[name])
+                self.assertEqual(op_counters[name][op], count, f"Expected {count} {op} in {name}")
+
+        treatment = ORTPipelineForText2Image.from_pretrained(optimized_onnx_dir, provider="CUDAExecutionProvider")
         batch_size, num_images_per_prompt, height, width = 1, 1, 64, 64
         inputs = {
             "prompt": ["starry night by van gogh"] * batch_size,
-            "num_inference_steps": 3,
+            "num_inference_steps": 20,
             "num_images_per_prompt": num_images_per_prompt,
             "height": height,
             "width": width,
-            "guidance_rescale": 0.1,
-            "output_type": "latent",
+            "output_type": "np",
         }
 
         seed = 123
         np.random.seed(seed)
-        ort_outputs_1 = fp16_pipeline(**inputs)
+        import torch
+
+        baseline_outputs = baseline(**inputs, generator=torch.Generator(device="cuda").manual_seed(seed))
 
         np.random.seed(seed)
-        ort_outputs_2 = fp16_pipeline(**inputs)
+        treatment_outputs = treatment(**inputs, generator=torch.Generator(device="cuda").manual_seed(seed))
 
-        np.random.seed(seed)
-        ort_outputs_3 = fp16_pipeline(**inputs)
+        self.assertTrue(np.allclose(baseline_outputs.images[0], treatment_outputs.images[0], atol=atol))
 
-        self.assertTrue(np.array_equal(ort_outputs_1.images[0], ort_outputs_2.images[0]))
-        self.assertTrue(np.array_equal(ort_outputs_1.images[0], ort_outputs_3.images[0]))
+    @pytest.mark.slow
+    def test_sd(self):
+        """This tests optimization of stable diffusion 1.x pipeline"""
+        model_name = TINY_MODELS["stable-diffusion"]
+
+        expected_op_counters = {
+            "unet": {
+                "Attention": 6,
+                "MultiHeadAttention": 6,
+                "LayerNormalization": 6,
+                "SkipLayerNormalization": 12,
+                "BiasSplitGelu": 0,
+                "GroupNorm": 0,
+                "SkipGroupNorm": 0,
+                "NhwcConv": 47,
+                "BiasAdd": 0,
+            },
+            "vae_encoder": {"Attention": 0, "GroupNorm": 0, "SkipGroupNorm": 0, "NhwcConv": 13},
+            "vae_decoder": {"Attention": 0, "GroupNorm": 0, "SkipGroupNorm": 0, "NhwcConv": 17},
+            "text_encoder": {
+                "Attention": 5,
+                "Gelu": 0,
+                "LayerNormalization": 1,
+                "QuickGelu": 5,
+                "BiasGelu": 0,
+                "SkipLayerNormalization": 10,
+            },
+        }
+
+        export_onnx_dir = "tiny-random-sd"
+        optimized_onnx_dir = "tiny-random-sd-optimized-fp32"
+        # Disable GroupNorm due to limitation of current cuda kernel implementation.
+        self.verify_pipeline_optimization(
+            model_name,
+            export_onnx_dir,
+            optimized_onnx_dir,
+            expected_op_counters,
+            is_float16=False,
+            atol=5e-3,
+            disable_group_norm=True,
+        )
+
+        expected_op_counters["unet"].update({"Attention": 0, "MultiHeadAttention": 12})
+        optimized_onnx_dir = "tiny-random-sd-optimized-fp16"
+        self.verify_pipeline_optimization(
+            model_name,
+            export_onnx_dir,
+            optimized_onnx_dir,
+            expected_op_counters,
+            is_float16=True,
+            atol=5e-2,
+            disable_group_norm=True,
+        )
+
+    @pytest.mark.slow
+    def test_sdxl(self):
+        """This tests optimization of SDXL pipeline"""
+        model_name = TINY_MODELS["stable-diffusion-xl"]
+
+        expected_op_counters = {
+            "unet": {
+                "Attention": 12,
+                "MultiHeadAttention": 12,
+                "LayerNormalization": 6,
+                "SkipLayerNormalization": 30,
+                "BiasSplitGelu": 0,
+                "GroupNorm": 0,
+                "SkipGroupNorm": 0,
+                "NhwcConv": 35,
+                "BiasAdd": 0,
+            },
+            "vae_encoder": {"Attention": 0, "GroupNorm": 0, "SkipGroupNorm": 0, "NhwcConv": 13},
+            "vae_decoder": {"Attention": 0, "GroupNorm": 0, "SkipGroupNorm": 0, "NhwcConv": 17},
+            "text_encoder": {
+                "Attention": 5,
+                "Gelu": 0,
+                "LayerNormalization": 1,
+                "QuickGelu": 0,
+                "BiasGelu": 5,
+                "SkipLayerNormalization": 10,
+            },
+            "text_encoder_2": {
+                "Attention": 5,
+                "Gelu": 0,
+                "LayerNormalization": 1,
+                "QuickGelu": 0,
+                "BiasGelu": 5,
+                "SkipLayerNormalization": 10,
+            },
+        }
+
+        export_onnx_dir = "tiny-random-sdxl"
+        optimized_onnx_dir = "tiny-random-sdxl-optimized-fp32"
+        # Disable GroupNorm due to limitation of current cuda kernel implementation.
+        self.verify_pipeline_optimization(
+            model_name,
+            export_onnx_dir,
+            optimized_onnx_dir,
+            expected_op_counters,
+            is_float16=False,
+            atol=5e-3,
+            disable_group_norm=True,
+        )
+
+        expected_op_counters["unet"].update({"Attention": 0, "MultiHeadAttention": 24})
+        optimized_onnx_dir = "tiny-random-sdxl-optimized-fp16"
+        self.verify_pipeline_optimization(
+            model_name,
+            export_onnx_dir,
+            optimized_onnx_dir,
+            expected_op_counters,
+            is_float16=True,
+            atol=5e-2,
+            disable_group_norm=True,
+        )
+
+    @pytest.mark.slow
+    def test_sd3(self):
+        """This tests optimization of stable diffusion 3 pipeline"""
+        model_name = TINY_MODELS["stable-diffusion-3"]
+
+        expected_op_counters = {
+            "transformer": {
+                "FastGelu": 3,
+                "MultiHeadAttention": 2,
+                "LayerNormalization": 8,
+                "SimplifiedLayerNormalization": 0,
+            },
+            "vae_encoder": {"Attention": 0, "GroupNorm": 10, "SkipGroupNorm": 3, "NhwcConv": 17},
+            "vae_decoder": {"Attention": 0, "GroupNorm": 14, "SkipGroupNorm": 7, "NhwcConv": 25},
+            "text_encoder": {
+                "Attention": 2,
+                "Gelu": 0,
+                "LayerNormalization": 1,
+                "QuickGelu": 2,
+                "SkipLayerNormalization": 4,
+            },
+            "text_encoder_2": {
+                "Attention": 2,
+                "Gelu": 0,
+                "LayerNormalization": 1,
+                "QuickGelu": 0,
+                "SkipLayerNormalization": 4,
+            },
+            "text_encoder_3": {
+                "Attention": 2,
+                "MultiHeadAttention": 0,
+                "Gelu": 0,
+                "FastGelu": 2,
+                "BiasGelu": 0,
+                "GemmFastGelu": 0,
+                "LayerNormalization": 0,
+                "SimplifiedLayerNormalization": 2,
+                "SkipLayerNormalization": 0,
+                "SkipSimplifiedLayerNormalization": 3,
+            },
+        }
+
+        export_onnx_dir = "tiny-random-stable-diffusion-3"
+        optimized_onnx_dir = "tiny-random-stable-diffusion-3-optimized-fp32"
+        self.verify_pipeline_optimization(
+            model_name, export_onnx_dir, optimized_onnx_dir, expected_op_counters, is_float16=False, atol=5e-3
+        )
+
+        optimized_onnx_dir = "tiny-random-stable-diffusion-3-optimized-fp16"
+        self.verify_pipeline_optimization(
+            model_name, export_onnx_dir, optimized_onnx_dir, expected_op_counters, is_float16=True, atol=5e-2
+        )
+
+    @pytest.mark.slow
+    def test_flux(self):
+        """This tests optimization of flux pipeline"""
+        model_name = TINY_MODELS["flux"]
+
+        expected_op_counters = {
+            "transformer": {
+                "FastGelu": 8,
+                "MultiHeadAttention": 6,
+                "LayerNormalization": 13,
+                "SimplifiedLayerNormalization": 16,
+            },
+            "vae_encoder": {"Attention": 0, "GroupNorm": 10, "SkipGroupNorm": 3, "NhwcConv": 17},
+            "vae_decoder": {"Attention": 0, "GroupNorm": 14, "SkipGroupNorm": 7, "NhwcConv": 25},
+            "text_encoder": {
+                "Attention": 2,
+                "Gelu": 0,
+                "LayerNormalization": 1,
+                "QuickGelu": 2,
+                "SkipLayerNormalization": 4,
+            },
+            "text_encoder_2": {
+                "Attention": 2,
+                "MultiHeadAttention": 0,
+                "Gelu": 0,
+                "FastGelu": 2,
+                "BiasGelu": 0,
+                "GemmFastGelu": 0,
+                "LayerNormalization": 0,
+                "SimplifiedLayerNormalization": 2,
+                "SkipLayerNormalization": 0,
+                "SkipSimplifiedLayerNormalization": 3,
+            },
+        }
+
+        export_onnx_dir = "tiny-random-flux"
+        optimized_onnx_dir = "tiny-random-flux-optimized-fp32"
+        self.verify_pipeline_optimization(
+            model_name, export_onnx_dir, optimized_onnx_dir, expected_op_counters, is_float16=False, atol=1e-3
+        )
+
+        optimized_onnx_dir = "tiny-random-flux-optimized-fp16"
+        self.verify_pipeline_optimization(
+            model_name, export_onnx_dir, optimized_onnx_dir, expected_op_counters, is_float16=True, atol=5e-2
+        )
 
 
 if __name__ == "__main__":
