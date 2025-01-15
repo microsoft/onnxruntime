@@ -755,18 +755,17 @@ TEST(Einsum, ExplicitEinsumAsTensorContraction_Half) {
   test.Run();
 }
 
-// Theme: Dimensions of size 0
-TEST(Einsum, EinsumZeroDimensionOuterProduct) {
+// Theme: Empty inputs
+TEST(Einsum, EinsumEmptyInputOuterProduct) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "i,j->ij");
   test.AddInput<float>("x", {0}, {});
   test.AddInput<float>("y", {0}, {});
   test.AddOutput<float>("o", {0, 0}, {});
   test.Run();
-  std::cout << "Ending" << std::endl;
 }
 
-TEST(Einsum, EinsumZeroDimensionTranspose) {
+TEST(Einsum, EinsumEmptyInputTranspose) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "ab,ba->ab");
   test.AddInput<float>("x", {0, 1}, {});
@@ -775,7 +774,7 @@ TEST(Einsum, EinsumZeroDimensionTranspose) {
   test.Run();
 }
 
-TEST(Einsum, EinsumZeroDimensionVanish) {
+TEST(Einsum, EinsumEmptyInputVanish) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "ab,ba->a");
   test.AddInput<float>("x", {1, 0}, {});
@@ -784,7 +783,7 @@ TEST(Einsum, EinsumZeroDimensionVanish) {
   test.Run();
 }
 
-TEST(Einsum, EinsumZeroDimensionVanish3d) {
+TEST(Einsum, EinsumEmptyInputVanish3d) {
   OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
   test.AddAttribute<std::string>("equation", "abc,bad->ad");
   test.AddInput<float>("x", {10, 0, 10}, {});
