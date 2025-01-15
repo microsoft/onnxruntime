@@ -93,7 +93,7 @@ Status CreateOrValidateOnQnn(QnnModelWrapper& qnn_model_wrapper, const NodeUnit&
   Qnn_TensorType_t tensor_type = qnn_model_wrapper.GetTensorType(weight_tensor_name);
   Qnn_DataType_t data_type = QNN_DATATYPE_FLOAT_32;
   ORT_RETURN_IF_ERROR(utils::GetQnnDataType(false, weight_def.node_arg.TypeAsProto(), data_type));
-  const auto& weight_tensor_proto = qnn_model_wrapper.GetInitializerTensor(weight_tensor_name);
+  const auto& weight_tensor_proto = qnn_model_wrapper.GetConstantTensor(weight_tensor_name);
   ORT_RETURN_IF_ERROR(
       utils::TwoDimensionTranspose(qnn_model_wrapper, weight_shape, *weight_tensor_proto, unpacked_tensor));
   QnnTensorWrapper weight_tensor(weight_tensor_name, tensor_type, data_type, QnnQuantParamsWrapper(),
@@ -149,7 +149,7 @@ std::unique_ptr<IQnnNodeGroup> ReshapeGemmFusion::TryFusion(
   const auto& weight_input = gemm_node_unit.Inputs()[1];
   // The pattern is from MatMul->Add, so the transA and transB should be false, and weight should be initializer.
   // Currently we don't handle quantized weight.
-  if (transA != 0 || transB != 0 || !qnn_model_wrapper.IsInitializerInput(weight_input.node_arg.Name()) ||
+  if (transA != 0 || transB != 0 || !qnn_model_wrapper.IsConstantInput(weight_input.node_arg.Name()) ||
       weight_input.quant_param.has_value()) {
     return nullptr;
   }
