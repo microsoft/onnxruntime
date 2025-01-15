@@ -319,7 +319,7 @@ stages:
                   --build_wheel \
                   --enable_onnx_tests --use_tensorrt --cuda_version=11.8 --tensorrt_home=/usr --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8 \
                   ${{ parameters.gpu_build_py_parameters }} \
-                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
+                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=75;80;90'
           workingDirectory: $(Build.SourcesDirectory)
 
       - task: CmdLine@2
@@ -349,7 +349,7 @@ stages:
                   --build_wheel \
                   --enable_onnx_tests --use_tensorrt --cuda_version=11.8 --tensorrt_home=/usr --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8  \
                   ${{ parameters.gpu_build_py_parameters }} --ctest_path '' \
-                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80'
+                  --cmake_extra_defines CMAKE_CUDA_HOST_COMPILER=/opt/rh/devtoolset-11/root/usr/bin/cc 'CMAKE_CUDA_ARCHITECTURES=75;80;90'
 
       - task: CopyFiles@2
         displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
@@ -379,7 +379,7 @@ stages:
       - template: common-variables.yml
         CUDA_VERSION: '11.8'
         buildArch: x64
-        EpBuildFlags: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda11 }}" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=37;50;52;60;61;70;75;80"
+        EpBuildFlags: --use_tensorrt --tensorrt_home="$(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda11 }}" --cuda_version=$(CUDA_VERSION) --cuda_home="C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v$(CUDA_VERSION)" --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75;80;90"
         EnvSetupScript: setup_env_gpu.bat
         EP_NAME: gpu
         VSGenerator: 'Visual Studio 17 2022'
