@@ -194,6 +194,8 @@ std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_v
                                                       const WebnnDeviceType device_type,
                                                       const emscripten::val& wnn_limits,
                                                       const logging::Logger& logger);
+// TODO(@Honry): Some ONNX ops are supported by decomposed WebNN ops,
+// we need to check the support of the decomposed ops.
 static const InlinedHashMap<std::string, std::string> op_map = {
     {"Abs", "abs"},
     {"Add", "add"},
@@ -273,6 +275,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Relu", "relu"},
     {"Reshape", "reshape"},
     {"Resize", "resample2d"},
+    {"RotaryEmbedding", "gather"},
     {"ScatterElements", "scatterElements"},
     {"ScatterND", "scatterND"},
     {"Shape", "slice"},
