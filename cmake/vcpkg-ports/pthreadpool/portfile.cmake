@@ -6,7 +6,7 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO google/pthreadpool
     REF 4e80ca24521aa0fb3a746f9ea9c3eaa20e9afbb0
-    SHA512 30e96c3bf4548c745a23bc15badf11524c83f4944a931316ef4030e25d398ce79937578ba9671a1dcd03006bd52d39a9342d96ca7d43d60959d08c62b7129c01
+    SHA512 776017cc5d2aa94337292f2f4fbd54d099ef29abf736ab8147f07f98f12b7654cbd2fe38d34646a479a519c261ac253bbaf19c6dcbb0ec4cc0859de70f7e6472
     PATCHES
         fix-cmakelists.patch
 )
@@ -21,5 +21,5 @@ vcpkg_cmake_install()
 vcpkg_copy_pdbs()
 vcpkg_cmake_config_fixup(PACKAGE_NAME unofficial-${PORT})
 
-file(INSTALL "${SOURCE_PATH}/LICENSE" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)
+#file(INSTALL "${SOURCE_PATH}/LICENSE" DESTINATION "${CURRENT_PACKAGES_DIR}/share/${PORT}" RENAME copyright)
 file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
