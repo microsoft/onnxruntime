@@ -22,6 +22,28 @@
 namespace onnxruntime {
 namespace utils {
 
+void NodeDumpAnalysis::AddHalfOverflowNode(const std::string& node_name) {
+  std::lock_guard<std::mutex> lock(set_mutex);
+  half_overflow_nodes.insert(node_name);
+}
+
+void NodeDumpAnalysis::PrintToStdOut() {
+  std::lock_guard<std::mutex> lock(set_mutex);
+  std::cout << "Found nodes cannot be converted to half precision due to potential input/output overflow." << std::endl;
+  std::cout << "# Example python script for float16 conversion" << std::endl;
+  std::cout << "# For details, search `node_block_list` in https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/float16.py" << std::endl;
+  std::cout << "# -------" << std::endl;
+  std::cout << "from onnxruntime.transformers.onnx_model import OnnxModel" << std::endl;
+  std::cout << "m = OnnxModel(onnx.load('fp32/optimized.onnx'))" << std::endl;
+  std::cout << "node_block_list = [" << std::endl;
+  for (const auto& node : half_overflow_nodes) {
+    std::cout << "  '" << node << "'," << std::endl;
+  }
+  std::cout << "]" << std::endl;
+  std::cout << "m.convert_float_to_float16(keep_io_types=False, node_block_list=node_block_list)" << std::endl;
+  std::cout << "m.save_model_to_file('fp16/optimized.onnx', use_external_data_format=False)" << std::endl;
+}
+
 namespace {
 
 struct TensorMetadata {
@@ -60,8 +82,11 @@ bool FilterNode(const NodeDumpOptions& dump_options, const Node& node) {
 
 template <typename T>
 void DumpTensorToStdOut(const Tensor& tensor, const NodeDumpOptions& dump_options, TensorStatisticsData& tensor_statistics) {
-  onnxruntime::utils::PrintCpuTensor<T>(tensor, dump_options.snippet_threshold, dump_options.snippet_edge_items);
-  if (dump_options.dump_flags & (NodeDumpOptions::DumpFlags::StatisticsData | NodeDumpOptions::DumpFlags::HalfConversionOverflow)) {
+  if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::InputData) != 0) {
+    onnxruntime::utils::PrintCpuTensor<T>(tensor, dump_options.snippet_threshold, dump_options.snippet_edge_items);
+  }
+
+  if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::StatisticsData) != 0) {
     onnxruntime::utils::PrintCpuTensorStats<T>(tensor, tensor_statistics);
   }
 }
@@ -384,9 +409,10 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
       opts.dump_flags |= NodeDumpOptions::DumpFlags::StatisticsData;
     }
     if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpHalfConversionOverflow, false)) {
+      // Statistics data is required for half conversion overflow detection.
+      opts.dump_flags |= NodeDumpOptions::DumpFlags::StatisticsData;
       opts.dump_flags |= NodeDumpOptions::DumpFlags::HalfConversionOverflow;
     }
-
 
     opts.filter.name_pattern = Env::Default().GetEnvironmentVar(env_vars::kNameFilter);
     opts.filter.op_type_pattern = Env::Default().GetEnvironmentVar(env_vars::kOpTypeFilter);
@@ -462,7 +488,8 @@ void DumpNodeInputs(
     const NodeDumpContext& dump_context,
     const OpKernelContext& context,
     const Node& node,
-    const SessionState& session_state) {
+    const SessionState& session_state,
+    NodeDumpAnalysis& dump_analysis) {
   const bool is_any_output_dumped = IsAnyOutputDumped(dump_options);
   if (!is_any_output_dumped) {
     return;
@@ -487,7 +514,8 @@ void DumpNodeInputs(
   const auto& input_defs = node.InputDefs();
   TensorMetadata tensor_metadata;
 
-  bool check_half_overflow = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::HalfConversionOverflow) != 0;
+  bool check_half_overflow = (dump_options.data_destination == NodeDumpOptions::DataDestination::StdOut) &&
+                             (dump_options.dump_flags & NodeDumpOptions::DumpFlags::HalfConversionOverflow) != 0;
   bool potential_half_overflow = false;
   for (auto i = 0, end = context.InputCount(); i < end; ++i) {
     if (input_defs[i]->Exists()) {
@@ -503,7 +531,7 @@ void DumpNodeInputs(
             const bool is_shape_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::Shape) != 0;
             PrintIf(is_shape_set, MakeString(" Shape: ", shape, "\n"));
 
-            if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::InputData) != 0) {
+            if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::InputData) != 0 || check_half_overflow) {
               tensor_metadata.name = input_defs[i]->Name();
               tensor_metadata.step = dump_context.iteration;
               tensor_metadata.consumer = node.Name() + ":" + std::to_string(i);
@@ -534,7 +562,7 @@ void DumpNodeInputs(
   }
 
   if (potential_half_overflow) {
-    std::cerr << "Node cannot be in half precision due to potential input overflow:\t" << node.Name() << std::endl;
+    dump_analysis.AddHalfOverflowNode(node.Name());
   }
 }
 
@@ -542,8 +570,9 @@ void DumpNodeInputs(
     const NodeDumpContext& dump_context,
     const OpKernelContext& context,
     const Node& node,
-    const SessionState& session_state) {
-  DumpNodeInputs(NodeDumpOptionsFromEnvironmentVariables(), dump_context, context, node, session_state);
+    const SessionState& session_state,
+    NodeDumpAnalysis& dump_analysis) {
+  DumpNodeInputs(NodeDumpOptionsFromEnvironmentVariables(), dump_context, context, node, session_state, dump_analysis);
 }
 
 void DumpNodeOutputs(
@@ -551,7 +580,8 @@ void DumpNodeOutputs(
     const NodeDumpContext& dump_context,
     OpKernelContext& context,
     const Node& node,
-    const SessionState& session_state) {
+    const SessionState& session_state,
+    NodeDumpAnalysis& dump_analysis) {
   const bool is_any_output_dumped = IsAnyOutputDumped(dump_options);
   if (!is_any_output_dumped) {
     return;
@@ -574,7 +604,8 @@ void DumpNodeOutputs(
   const auto& output_defs = node.OutputDefs();
   TensorMetadata tensor_metadata;
 
-  bool check_half_overflow = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::HalfConversionOverflow) != 0;
+  bool check_half_overflow = (dump_options.data_destination == NodeDumpOptions::DataDestination::StdOut) &&
+                             (dump_options.dump_flags & NodeDumpOptions::DumpFlags::HalfConversionOverflow) != 0;
   bool potential_half_overflow = false;
   for (auto i = 0, end = context.OutputCount(); i < end; ++i) {
     if (output_defs[i]->Exists()) {
@@ -589,7 +620,7 @@ void DumpNodeOutputs(
             const bool is_shape_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::Shape) != 0;
             PrintIf(is_shape_set, MakeString(" Shape: ", shape, "\n"));
 
-            if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::OutputData) != 0) {
+            if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::OutputData) != 0 || check_half_overflow) {
               tensor_metadata.name = output_defs[i]->Name();
               tensor_metadata.step = dump_context.iteration;
               tensor_metadata.producer = node.Name() + ":" + std::to_string(i);
@@ -619,7 +650,7 @@ void DumpNodeOutputs(
     }
 
     if (potential_half_overflow) {
-      std::cerr << "Node cannot be in half precision due to potential output overflow:\t" << node.Name() << std::endl;
+      dump_analysis.AddHalfOverflowNode(node.Name());
     }
 
     std::cout << std::endl;
@@ -630,8 +661,9 @@ void DumpNodeOutputs(
     const NodeDumpContext& dump_context,
     OpKernelContext& context,
     const Node& node,
-    const SessionState& session_state) {
-  DumpNodeOutputs(NodeDumpOptionsFromEnvironmentVariables(), dump_context, context, node, session_state);
+    const SessionState& session_state,
+    NodeDumpAnalysis& dump_analysis) {
+  DumpNodeOutputs(NodeDumpOptionsFromEnvironmentVariables(), dump_context, context, node, session_state, dump_analysis);
 }
 
 }  // namespace utils

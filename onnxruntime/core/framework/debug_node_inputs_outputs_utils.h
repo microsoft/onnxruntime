@@ -19,6 +19,8 @@
 #include "core/framework/op_kernel.h"
 #include "core/framework/session_state.h"
 #include "core/graph/graph.h"
+#include <unordered_set>
+#include <mutex>
 
 namespace onnxruntime {
 namespace utils {
@@ -136,6 +138,14 @@ struct NodeDumpContext {
   size_t program_counter;
 };
 
+// A session level analysis of node dumps. It can be used to collect some statistics or analysis during node dumps.
+struct NodeDumpAnalysis {
+  std::unordered_set<std::string> half_overflow_nodes;
+  std::mutex set_mutex;
+  void AddHalfOverflowNode(const std::string& node_name);
+  void PrintToStdOut();
+};
+
 // gets NodeDumpOptions instance configured from environment variable values
 const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables();
 
@@ -145,13 +155,15 @@ void DumpNodeInputs(
     const NodeDumpContext& dump_context,
     const OpKernelContext& context,
     const Node& node,
-    const SessionState& session_state);
+    const SessionState& session_state,
+    NodeDumpAnalysis& dump_analysis);
 
 void DumpNodeInputs(
     const NodeDumpContext& dump_context,
     const OpKernelContext& context,
     const Node& node,
-    const SessionState& session_state);
+    const SessionState& session_state,
+    NodeDumpAnalysis& dump_analysis);
 
 // dumps outputs for a node
 void DumpNodeOutputs(
@@ -159,13 +171,15 @@ void DumpNodeOutputs(
     const NodeDumpContext& dump_context,
     OpKernelContext& context,
     const Node& node,
-    const SessionState& session_state);
+    const SessionState& session_state,
+    NodeDumpAnalysis& dump_analysis);
 
 void DumpNodeOutputs(
     const NodeDumpContext& dump_context,
     OpKernelContext& context,
     const Node& node,
-    const SessionState& session_state);
+    const SessionState& session_state,
+    NodeDumpAnalysis& dump_analysis);
 
 }  // namespace utils
 }  // namespace onnxruntime
