@@ -535,7 +535,11 @@ if (onnxruntime_USE_XNNPACK)
     message(FATAL_ERROR "XNNPACK EP requires the internal NHWC contrib ops to be available "
                          "but onnxruntime_DISABLE_CONTRIB_OPS is ON")
   endif()
-  include(xnnpack)
+  if(onnxruntime_USE_VCPKG)
+    find_package(xnnpack CONFIG REQUIRED)
+  else()
+    include(xnnpack)
+  endif()
 endif()
 
 if (onnxruntime_USE_MIMALLOC)
