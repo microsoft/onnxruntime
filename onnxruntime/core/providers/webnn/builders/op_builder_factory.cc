@@ -196,6 +196,10 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateResizeOpBuilder("Resize", op_registrations);
   }
 
+  {  // RotaryEmbedding
+    CreateRotaryEmbeddingOpBuilder("RotaryEmbedding", op_registrations);
+  }
+
   {  // ScatterElements
     CreateScatterElementsOpBuilder("ScatterElements", op_registrations);
   }
