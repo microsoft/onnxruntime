@@ -241,7 +241,7 @@ class SessionScope {
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
-    dump_analysis_.PrintToStdOut();
+    dump_analysis_.PrintToStdOut(session_state_.GetGraphViewer().ModelPath().string());
 #endif
   }
 

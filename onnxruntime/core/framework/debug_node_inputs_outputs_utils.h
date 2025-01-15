@@ -21,6 +21,7 @@
 #include "core/graph/graph.h"
 #include <unordered_set>
 #include <mutex>
+#include <string>
 
 namespace onnxruntime {
 namespace utils {
@@ -142,8 +143,9 @@ struct NodeDumpContext {
 struct NodeDumpAnalysis {
   std::unordered_set<std::string> half_overflow_nodes;
   std::mutex set_mutex;
-  void AddHalfOverflowNode(const std::string& node_name);
-  void PrintToStdOut();
+  int counter{0};
+  void Add(const std::string& node_name, bool is_half_overflow);
+  void PrintToStdOut(const std::string& model_path);
 };
 
 // gets NodeDumpOptions instance configured from environment variable values

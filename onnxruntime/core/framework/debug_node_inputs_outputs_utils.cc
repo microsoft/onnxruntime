@@ -22,25 +22,55 @@
 namespace onnxruntime {
 namespace utils {
 
-void NodeDumpAnalysis::AddHalfOverflowNode(const std::string& node_name) {
+void NodeDumpAnalysis::Add(const std::string& node_name, bool is_half_overflow) {
   std::lock_guard<std::mutex> lock(set_mutex);
-  half_overflow_nodes.insert(node_name);
+  if (is_half_overflow) {
+    half_overflow_nodes.insert(node_name);
+  }
+  counter++;
 }
 
-void NodeDumpAnalysis::PrintToStdOut() {
+void NodeDumpAnalysis::PrintToStdOut(const std::string& model_path) {
   std::lock_guard<std::mutex> lock(set_mutex);
-  std::cout << "Found nodes cannot be converted to half precision due to potential input/output overflow." << std::endl;
+  if (counter == 0) {
+    return;
+  }
+
+  // We added the counter twice (during dumping inputs and outputs) for each node, so we need to divide it by 2.
+  counter /= 2;
+
+  std::cout << "Total counter in node dumping: " << counter << std::endl;
+
+  if (!half_overflow_nodes.empty()) {
+    std::cout << "Found " << half_overflow_nodes.size() << " nodes cannot be converted to half precision due to potential input/output overflow." << std::endl;
+    for (const auto& node : half_overflow_nodes) {
+      if (node.empty()) {
+        std::cout << "Warning: some node name is empty and node_block_list is not completed. "
+                  << "Please update the model to make sure each node has name then run this tool again!" << std::endl;
+      }
+    }
+  } else {
+    std::cout << "No node has potential overflow during half conversion so node_block_list is empty." << std::endl;
+  }
+
   std::cout << "# Example python script for float16 conversion" << std::endl;
   std::cout << "# For details, search `node_block_list` in https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/float16.py" << std::endl;
   std::cout << "# -------" << std::endl;
   std::cout << "from onnxruntime.transformers.onnx_model import OnnxModel" << std::endl;
-  std::cout << "m = OnnxModel(onnx.load('fp32/optimized.onnx'))" << std::endl;
-  std::cout << "node_block_list = [" << std::endl;
-  for (const auto& node : half_overflow_nodes) {
-    std::cout << "  '" << node << "'," << std::endl;
+  std::cout << "m = OnnxModel(onnx.load('" << model_path << "'))" << std::endl;
+  if (!half_overflow_nodes.empty()) {
+    std::cout << "node_block_list = [" << std::endl;
+    for (const auto& node : half_overflow_nodes) {
+      if (!node.empty()) {
+        std::cout << "  '" << node << "'," << std::endl;
+      }
+    }
+    std::cout << "]" << std::endl;
+    std::cout << "m.convert_float_to_float16(keep_io_types=False, node_block_list=node_block_list)" << std::endl;
+  } else {
+    std::cout << "m.convert_float_to_float16(keep_io_types=False)" << std::endl;
   }
-  std::cout << "]" << std::endl;
-  std::cout << "m.convert_float_to_float16(keep_io_types=False, node_block_list=node_block_list)" << std::endl;
+
   std::cout << "m.save_model_to_file('fp16/optimized.onnx', use_external_data_format=False)" << std::endl;
 }
 
@@ -561,8 +591,8 @@ void DumpNodeInputs(
     }
   }
 
-  if (potential_half_overflow) {
-    dump_analysis.AddHalfOverflowNode(node.Name());
+  if (check_half_overflow) {
+    dump_analysis.Add(node.Name(), potential_half_overflow);
   }
 }
 
@@ -649,8 +679,8 @@ void DumpNodeOutputs(
       std::cout << "Output " << i << " is optional and was not produced.\n";
     }
 
-    if (potential_half_overflow) {
-      dump_analysis.AddHalfOverflowNode(node.Name());
+    if (check_half_overflow) {
+      dump_analysis.Add(node.Name(), potential_half_overflow);
     }
 
     std::cout << std::endl;
