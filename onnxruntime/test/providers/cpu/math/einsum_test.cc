@@ -792,6 +792,15 @@ TEST(Einsum, EinsumEmptyInputVanish3d) {
   test.Run();
 }
 
+TEST(Einsum, EinsumEmptyInputVanish3d2empty) {
+  OpTester test("Einsum", 12, onnxruntime::kOnnxDomain);
+  test.AddAttribute<std::string>("equation", "abc,bcd->ad");
+  test.AddInput<float>("x", {0, 0, 0}, {});
+  test.AddInput<float>("y", {0, 0, 1}, {});
+  test.AddOutput<float>("o", {0, 1}, {});
+  test.Run();
+}
+
 // Theme: Tests involving MatMul(s) interleaved with Transpose(s)
 // for two and three inputs (most common use-case of Einsum operator)
 

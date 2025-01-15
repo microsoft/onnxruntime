@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+
 #include "einsum_typed_compute_processor.h"
 #include "core/common/narrow.h"
 #include "core/common/span_utils.h"
@@ -306,20 +308,9 @@ std::unique_ptr<Tensor> EinsumTypedComputeProcessor<T>::PairwiseOperandProcess(c
   }
 
   // Multiply the mutated inputs
-  auto output = std::make_unique<Tensor>(left.DataType(), output_dims, allocator_);
-
-  bool has_empty_input = left.Shape().Size() == 0 || right.Shape().Size() == 0;
-  if (has_empty_input) {
-    if constexpr (std::is_integral<T>::value) {
-      std::fill_n(reinterpret_cast<T*>(output->MutableDataRaw()), output->Shape().Size(), T(0));
-    } else {
-      std::fill_n(reinterpret_cast<T*>(output->MutableDataRaw()), output->Shape().Size(), T(0.f));
-    }
-  } else {
-    output = EinsumOp::MatMul<T>(current_left ? *current_left : left, TensorShapeVector{lro_size, lo_size, reduced_size},
-                                 current_right ? *current_right : right, TensorShapeVector{lro_size, reduced_size, ro_size},
-                                 allocator_, tp_, einsum_ep_assets_, device_matmul_func_);
-  }
+  auto output = EinsumOp::MatMul<T>(current_left ? *current_left : left, TensorShapeVector{lro_size, lo_size, reduced_size},
+                                    current_right ? *current_right : right, TensorShapeVector{lro_size, reduced_size, ro_size},
+                                    allocator_, tp_, einsum_ep_assets_, device_matmul_func_);
 
   output->Reshape(output_dims);
 
@@ -367,6 +358,25 @@ Status EinsumTypedComputeProcessor<T>::Run() {
   auto num_subscript_labels = einsum_compute_preprocessor_.GetNumSubscriptIndices();
 
   auto num_inputs = context_->InputCount();
+
+  {
+    bool has_empty_input = std::any_of(raw_inputs.begin(), raw_inputs.end(), [](const auto& input) {
+      return input->Shape().Size() == 0;
+    });
+    // Skip all the work, fill with zeros if needed
+    if (has_empty_input) {
+      const auto output_dims = einsum_compute_preprocessor_.GetOutputDims();
+      Tensor& output = *context_->Output(0, output_dims);
+
+      if constexpr (std::is_integral<T>::value) {
+        std::fill_n(reinterpret_cast<T*>(output.MutableDataRaw()), output.Shape().Size(), T(0));
+      } else {
+        std::fill_n(reinterpret_cast<T*>(output.MutableDataRaw()), output.Shape().Size(), T(0.f));
+      }
+
+      return Status::OK();
+    }
+  }
 
   // Pre-process the first input so as to reduce any dims that only it has
   std::unique_ptr<const Tensor> result;
