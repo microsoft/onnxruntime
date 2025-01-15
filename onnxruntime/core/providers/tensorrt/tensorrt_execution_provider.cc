@@ -1723,6 +1723,8 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   {
     auto lock = GetApiLock();
     runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger(detailed_build_log_)));
+    trt_gpu_allocator_ = std::unique_ptr<PoolAllocator>();
+    runtime_->setGpuAllocator(trt_gpu_allocator_.get());
   }
 
   trt_version_ = getInferLibVersion();

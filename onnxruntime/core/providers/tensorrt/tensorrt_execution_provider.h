@@ -114,6 +114,40 @@ template <typename T>
 using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
 };  // namespace tensorrt_ptr
 
+class PoolAllocator : public nvinfer1::IGpuAsyncAllocator {
+ public:
+  PoolAllocator() {
+    cudaMemPoolProps poolProps{};
+    poolProps.allocType = ::cudaMemAllocationTypePinned;
+    poolProps.handleTypes = ::cudaMemHandleTypeNone;
+    poolProps.location.type = ::cudaMemLocationTypeDevice;
+    poolProps.location.id = 0;
+    cudaMemPoolCreate(&mPool, &poolProps);
+    auto maxThreshold = std::numeric_limits<std::uint64_t>::max();
+    cudaMemPoolSetAttribute(mPool, cudaMemPoolAttrReleaseThreshold, &maxThreshold);
+  }
+
+  void* allocateAsync(uint64_t const size, uint64_t const alignment, nvinfer1::AllocatorFlags const flags,
+                      cudaStream_t stream) noexcept override {
+    void* memory{nullptr};
+    cudaMallocFromPoolAsync(&memory, size, mPool, stream);
+    return memory;
+  }
+  bool deallocateAsync(void* const memory, cudaStream_t stream) noexcept override {
+    cudaFreeAsync(memory, stream);
+    return true;
+  }
+
+  ~PoolAllocator() {
+    if (mPool) {
+      cudaMemPoolDestroy(mPool);
+    }
+  }
+
+ private:
+  cudaMemPool_t mPool{nullptr};
+};
+
 //
 // Class to allocate memory for outputs with data-dependent shapes. The sizes of those are unknown so pre-allocation is
 // not possible.
@@ -312,6 +346,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::string tactic_sources_;
   std::string global_cache_path_, cache_path_, engine_decryption_lib_path_;
   std::unique_ptr<nvinfer1::IRuntime> runtime_ = nullptr;
+  std::unique_ptr<PoolAllocator> trt_gpu_allocator_ = nullptr;
   std::mutex tensorrt_mu_;
   int device_id_;
   std::string compute_capability_;
