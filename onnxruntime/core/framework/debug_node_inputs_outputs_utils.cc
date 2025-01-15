@@ -43,7 +43,7 @@ void NodeDumpAnalysis::PrintToStdOut(const std::string& model_path) {
   // We added counter twice per node (once for node inputs, once for node outputs), so we need to divide it by 2.
   counter /= 2;
 
-  std::cout << "Total counter in node dumping: " << counter / 2 << std::endl;
+  std::cout << "Total counter in node dumping: " << counter << std::endl;
 
   if (!half_overflow_nodes.empty()) {
     std::cout << "Found " << half_overflow_nodes.size() << " nodes cannot be converted to half precision due to potential input/output overflow." << std::endl;
