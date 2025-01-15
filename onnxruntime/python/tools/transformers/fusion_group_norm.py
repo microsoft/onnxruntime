@@ -84,6 +84,7 @@ class FusionGroupNorm(Fusion):
         instance_norm_scale = self.model.get_constant_value(instance_norm.input[1])
         if instance_norm_scale is None or len(instance_norm_scale.shape) != 1:
             return
+        num_groups = int(instance_norm_scale.shape[0])
 
         instance_norm_bias = self.model.get_constant_value(instance_norm.input[2])
         if instance_norm_bias is None or instance_norm_scale.shape != instance_norm_scale.shape:
@@ -156,7 +157,8 @@ class FusionGroupNorm(Fusion):
         )
 
         new_node.attribute.extend(instance_norm.attribute)
-        new_node.attribute.extend([helper.make_attribute("groups", 32)])
+
+        new_node.attribute.extend([helper.make_attribute("groups", num_groups)])
         new_node.attribute.extend([helper.make_attribute("activation", 1 if has_swish_activation else 0)])
 
         if not self.channels_last:
