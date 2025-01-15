@@ -535,18 +535,30 @@ Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const
   shader.AddOutput("output", ShaderUsage::UseUniform);
   shader.AddOutput("scales", ShaderUsage::UseUniform);
 
+  shader.AdditionalImplementation() << R"ADDNL_FN(
+    var<workgroup> max_values : array<f16, 2>;
+ )ADDNL_FN";
+
   shader.MainFunctionBody() << R"MAIN_FN(
-    var local_a = input_a[workgroup_id.x*sg_size + sg_id];
+    var local_a = input_a[global_idx];
     var max_val = subgroupMax(abs(local_a));
     var max_temp = max(max_val.xy, max_val.zw);
     var scale = max(max_temp[0], max_temp[1]);
+    if (sg_size == 8)
+    {
+      if (local_idx % sg_size == 0) {
+        max_values[local_idx / sg_size] = scale;
+      }
+      workgroupBarrier();
+      scale = max(max_values[0], max_values[1]);
+    }
     var norm_a = local_a/scale;
-    output[workgroup_id.x * sg_size + sg_id] = pack4x8snorm(vec4<f32>(norm_a));
-    if (sg_id == 0)
-  {
+    output[global_idx] = pack4x8snorm(vec4<f32>(norm_a));
+    if (local_idx == 0)
+    {
       // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
-      scales[workgroup_id.x] = scale/127;
-  }
+      scales[workgroup_idx] = scale/127;
+    }
 )MAIN_FN";
   return Status::OK();
 }
