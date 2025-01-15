@@ -117,6 +117,7 @@ TEST(QnnEP, TestDisableCPUFallback_ModelNotFullySupported) {
 #else
     options["backend_path"] = "libQnnCpu.so";
 #endif
+    options["offload_graph_io_quantization"] = "0";
 
     so.AppendExecutionProvider("QNN", options);
 
@@ -148,6 +149,7 @@ TEST(QnnEP, TestDisableCPUFallback_TryingToRunOnQnnCPU) {
 #else
   options["backend_path"] = "libQnnCpu.so";
 #endif
+  options["offload_graph_io_quantization"] = "0";
 
   auto input_defs = {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
                      TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)};
@@ -196,6 +198,7 @@ TEST(QnnEP, TestDisableCPUFallback_ConflictingConfig) {
 #else
     options["backend_path"] = "libQnnCpu.so";
 #endif
+    options["offload_graph_io_quantization"] = "0";
 
     so.AppendExecutionProvider("QNN", options);
 
@@ -226,6 +229,7 @@ TEST_F(QnnHTPBackendTests, TestConvWithExternalData) {
 #else
   options["backend_path"] = "libQnnHtp.so";
 #endif
+  options["offload_graph_io_quantization"] = "0";
 
   so.AppendExecutionProvider("QNN", options);
 
@@ -301,6 +305,7 @@ static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bo
   so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
 
   onnxruntime::ProviderOptions options;
+  options["offload_graph_io_quantization"] = "0";
 
 #if defined(_WIN32)
   options["backend_path"] = use_htp ? "QnnHtp.dll" : "QnnCpu.dll";
@@ -591,6 +596,7 @@ TEST_F(QnnHTPBackendTests, MultithreadSessionRun) {
 #else
   options["backend_path"] = "libQnnHtp.so";
 #endif
+  options["offload_graph_io_quantization"] = "0";
 
   auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
   EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
@@ -640,6 +646,7 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgSessionRunOption) {
 #else
   options["backend_path"] = "libQnnHtp.so";
 #endif
+  options["offload_graph_io_quantization"] = "0";
 
   auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
   EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
@@ -705,6 +712,7 @@ TEST_F(QnnHTPBackendTests, MultithreadDefaultHtpPowerCfgFromEpOption) {
 #else
   options["backend_path"] = "libQnnHtp.so";
 #endif
+  options["offload_graph_io_quantization"] = "0";
   options["htp_performance_mode"] = "burst";
 
   auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
@@ -756,6 +764,7 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgDefaultAndRunOption) {
 #else
   options["backend_path"] = "libQnnHtp.so";
 #endif
+  options["offload_graph_io_quantization"] = "0";
   options["htp_performance_mode"] = "burst";
 
   auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
@@ -920,6 +929,7 @@ TEST_F(QnnHTPBackendTests, ProfilingTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
   provider_options["enable_htp_fp16_precision"] = "1";
   provider_options["profiling_level"] = "detailed";
   provider_options["profiling_file_path"] = "detailed_profile.csv";
@@ -940,6 +950,7 @@ TEST_F(QnnHTPBackendTests, CastAddHTPAccuracyTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildCastAddTestCase(),
                   provider_options,
@@ -1010,6 +1021,7 @@ TEST_F(QnnHTPBackendTests, EPRejectsDynamicShapesF32) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
   provider_options["enable_htp_fp16_precision"] = "1";  // QNN EP will use fp16 precision.
                                                         // CPU EP will use fp32, so we can relax accuracy requirements.
 
@@ -1098,6 +1110,101 @@ TEST_F(QnnHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
   }
 }
 
+// Tests graph I/O quantization/dequantization offloading to CPU with the following graph:
+//     graph_input -> Q -> Transpose -> DQ -> Op -> Q -> Transpose -> DQ
+// This graph caused issues when offloading graph I/O quantization/dequantization
+// to the CPU EP because the transposes were not members of a QDQ node group. When QNN EP
+// rejected the Q and DQ at the graph I/O, we lost the quantization type information used
+// by the Transpose nodes. The current implementation correctly handles this case, so we add this test to
+// catch regresssions.
+TEST_F(QnnHTPBackendTests, OffloadingWithTransposesNotInQDQForm) {
+  auto model_build_fn = [](ModelTestBuilder& builder) {
+    NodeArg* input1 = builder.MakeInput<float>(std::vector<int64_t>{2, 3},
+                                               {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f});
+
+    // Standalone Q that quantizes graph input.
+    NodeArg* q0_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(input1, 1.0f, 0, q0_output, false);
+
+    // Standalone Transpose.
+    NodeArg* transpose0_output = builder.MakeIntermediate();
+    builder.AddNode("Transpose", {q0_output}, {transpose0_output});
+
+    // [DQ -> Pow -> Q]
+    NodeArg* dq_pow_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<uint8_t>(transpose0_output, 1.0f, 0, dq_pow_output, false);
+
+    NodeArg* two_const = builder.MakeScalarInitializer<uint8_t>(2);
+    NodeArg* dq_two_output = builder.MakeIntermediate();
+    builder.AddDequantizeLinearNode<uint8_t>(two_const, 1.0f, 0, dq_two_output, false);
+
+    NodeArg* pow_output = builder.MakeIntermediate();
+    builder.AddNode("Pow", {dq_pow_output, dq_two_output}, {pow_output});
+
+    NodeArg* q_pow_output = builder.MakeIntermediate();
+    builder.AddQuantizeLinearNode<uint8_t>(pow_output, 1.0f, 0, q_pow_output, false);
+
+    // Standalone Transpose.
+    NodeArg* transpose1_output = builder.MakeIntermediate();
+    builder.AddNode("Transpose", {q_pow_output}, {transpose1_output});
+
+    // Standalone DQ that produces graph output.
+    NodeArg* graph_output = builder.MakeOutput();
+    builder.AddDequantizeLinearNode<uint8_t>(transpose1_output, 1.0f, 0, graph_output, false);
+  };
+
+  // Local function that checks that the nodes with dynamic shape I/O were assigned to CPU EP.
+  auto build_graph_checker = [](bool offload_graph_io_quantization) -> std::function<void(const Graph&)> {
+    return [offload_graph_io_quantization](const Graph& graph) {
+      for (const Node& node : graph.Nodes()) {
+        const std::string& ep_name = node.GetExecutionProviderType();
+        const std::string& op_type = node.OpType();
+        if (op_type == "QuantizeLinear" || op_type == "DequantizeLinear") {
+          EXPECT_EQ(ep_name, kCpuExecutionProvider) << " Op type: " << op_type;
+        } else {
+          EXPECT_EQ(ep_name, kQnnExecutionProvider) << " Op type: " << op_type;
+        }
+      }
+    };
+  };
+
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["enable_htp_fp16_precision"] = "1";  // QNN EP will use fp16 precision.
+                                                        // CPU EP will use fp32, so we can relax accuracy requirements.
+
+  // Test without offloading graph I/O quant/dequant
+  {
+    provider_options["offload_graph_io_quantization"] = "0";
+    auto graph_checker = build_graph_checker(/*offload_graph_io_quantization*/ false);
+    RunQnnModelTest(model_build_fn,
+                    provider_options,
+                    /*opset*/ 19,
+                    ExpectedEPNodeAssignment::All,  // All nodes assigned to QNN EP!
+                    /*abs_err*/ 1e-4f,
+                    logging::Severity::kERROR,
+                    /*verify_output*/ true,
+                    &graph_checker);
+  }
+
+  // Test with offloading graph I/O quant/dequant
+  {
+    provider_options["offload_graph_io_quantization"] = "1";
+    auto graph_checker = build_graph_checker(/*offload_graph_io_quantization*/ true);
+    RunQnnModelTest(model_build_fn,
+                    provider_options,
+                    /*opset*/ 19,
+                    ExpectedEPNodeAssignment::Some,  // Not all nodes assigned to QNN EP.
+                    /*abs_err*/ 1e-4f,
+                    logging::Severity::kERROR,
+                    /*verify_output*/ true,
+                    &graph_checker);  // Checks that only the Q and DQ at graph I/O are assigned to CPU.
+  }
+}
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

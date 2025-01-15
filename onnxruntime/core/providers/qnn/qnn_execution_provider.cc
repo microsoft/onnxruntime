@@ -192,6 +192,52 @@ qnn::ProfilingLevel QNNExecutionProvider::GetProfilingLevelFromETWLevel(unsigned
   }
 }
 
+// Given an array of supported Nodes, this function removes Q or DQ nodes that quantize (or dequantize)
+// the graph inputs (or graph outputs). The removed Q/DQ nodes will be offloaded to another EP.
+// TODO(adrianlizarraga): Support Q/DQ offloading between partitions; this currently only handles graph inputs/outputs.
+static void OffloadPartitionIOQuantization(const std::unordered_set<const NodeArg*>& graph_inputs,
+                                           const std::unordered_set<const NodeArg*>& graph_outputs,
+                                           const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
+                                           std::vector<const Node*>& partition_nodes) {
+  if (partition_nodes.empty()) {
+    return;
+  }
+
+  auto should_remove_node = [&graph_inputs, &graph_outputs, &node_unit_map](const Node* node) -> bool {
+    const std::string& op_type = node->OpType();
+    const bool is_q = op_type == "QuantizeLinear";
+    const bool is_dq = op_type == "DequantizeLinear";
+    if (!is_q && !is_dq) {
+      return false;
+    }
+
+    auto node_unit_iter = node_unit_map.find(node);
+    assert(node_unit_iter != node_unit_map.end() && node_unit_iter->second != nullptr);
+    const NodeUnit& node_unit = *node_unit_iter->second;
+
+    // We're only looking for standalone Q or DQ nodes.
+    if (node_unit.UnitType() != NodeUnit::Type::SingleNode) {
+      return false;
+    }
+
+    // Remove QuantizeLinear that only consumes a graph input.
+    if (is_q && node->GetInputEdgesCount() == 0 && Contains(graph_inputs, node->InputDefs()[0])) {
+      return true;
+    }
+
+    // Remove DequantizeLinear that produces a graph output. The output is not an input to another node.
+    if (is_dq && node->GetOutputEdgesCount() == 0 && Contains(graph_outputs, node->OutputDefs()[0])) {
+      return true;
+    }
+
+    return false;
+  };
+
+  // Remove Q and DQ nodes at the boundary of the graph. Preserve relative order of nodes.
+  partition_nodes.erase(
+      std::remove_if(partition_nodes.begin(), partition_nodes.end(), should_remove_node), partition_nodes.end());
+}
+
 QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_options_map,
                                            const SessionOptions* session_options)
     : IExecutionProvider{onnxruntime::kQnnExecutionProvider} {
@@ -381,13 +427,15 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   // Add this option because this feature requires QnnSystem lib and it's no supported for Windows x86_64 platform
   enable_spill_fill_buffer_ = ParseBoolOption("enable_htp_spill_fill_buffer", false, provider_options_map);
 
-  model_settings_.offload_graph_io_quantization = ParseBoolOption("offload_graph_io_quantization", false,
-                                                                  provider_options_map);
+  offload_graph_io_quantization_ = ParseBoolOption("offload_graph_io_quantization", true,
+                                                   provider_options_map);
 
-  if (disable_cpu_ep_fallback_ && model_settings_.offload_graph_io_quantization) {
-    LOGS_DEFAULT(WARNING) << "Fallback to CPU EP is disabled, but user configured QNN EP to offload graph I/O "
-                          << "quantization/dequantization to another EP. Session creation will fail if the CPU EP "
-                          << "handles the graph I/O quantization/dequantization.";
+  if (disable_cpu_ep_fallback_ && offload_graph_io_quantization_) {
+    LOGS_DEFAULT(INFO) << "Fallback to CPU EP is disabled, but user tried to configure QNN EP to offload graph I/O "
+                       << "quantization/dequantization to another EP. These are conflicting options. Fallback to CPU "
+                       << "EP will remain disabled and graph I/O quantization/dequantization will not be offloaded "
+                       << "to another EP.";
+    offload_graph_io_quantization_ = false;
   }
 
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
@@ -497,12 +545,12 @@ static void LogNodeSupport(const logging::Logger& logger,
       << oss.str();
 }
 
-std::unordered_set<const Node*>
+QNNExecutionProvider::SupportedNodesResult
 QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                         const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
                                         const size_t node_unit_size,
                                         const logging::Logger& logger) const {
-  std::unordered_set<const Node*> supported_nodes{};
+  SupportedNodesResult result{};
 
   std::unordered_set<std::string> initializer_input_lookup;
   auto graph_initializers = graph_viewer.GetAllInitializedTensors();
@@ -531,8 +579,7 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
                                                 model_input_index_map,
                                                 model_output_index_map,
                                                 initializer_input_lookup,
-                                                qnn_backend_manager_->GetQnnBackendType(),
-                                                model_settings_);
+                                                qnn_backend_manager_->GetQnnBackendType());
 
   std::vector<std::unique_ptr<qnn::IQnnNodeGroup>> qnn_node_groups;
   qnn_node_groups.reserve(node_unit_size);
@@ -548,22 +595,38 @@ QNNExecutionProvider::GetSupportedNodes(const GraphViewer& graph_viewer,
     Status status = qnn_node_group->IsSupported(qnn_model_wrapper, logger);
     const bool supported = status.IsOK();
 
-    constexpr auto log_severity = logging::Severity::kVERBOSE;
+    // Log with INFO to see cleaner output that shows how ONNX ops are translated into QNN ops.
+    constexpr auto log_severity = logging::Severity::kINFO;
     constexpr auto log_data_type = logging::DataType::SYSTEM;
     if (logger.OutputIsEnabled(log_severity, log_data_type)) {
       LogNodeSupport(logger, log_severity, log_data_type, ORT_WHERE, *qnn_node_group, status);
     }
 
     if (supported) {
-      for (const NodeUnit* node_unit : qnn_node_group->GetNodeUnits()) {
+      const auto node_units = qnn_node_group->GetNodeUnits();
+
+      // Track number of Q or DQ nodes that are not part of a NodeUnit.
+      if (node_units.size() == 1) {
+        const NodeUnit* node_unit = node_units[0];
+        if (node_unit->UnitType() == NodeUnit::Type::SingleNode) {
+          if (node_unit->OpType() == "QuantizeLinear") {
+            result.num_single_q_nodes += 1;
+          } else if (node_unit->OpType() == "DequantizeLinear") {
+            result.num_single_dq_nodes += 1;
+          }
+        }
+      }
+
+      // Add all nodes in this QnnNodeGroup to the supported set.
+      for (const NodeUnit* node_unit : node_units) {
         for (const Node* node : node_unit->GetAllNodesInGroup()) {
-          supported_nodes.insert(node);
+          result.supported_nodes.insert(node);
         }
       }
     }
   }
 
-  return supported_nodes;
+  return result;
 }
 
 static bool EpSharedContextsHasAllGraphs(const onnxruntime::GraphViewer& graph_viewer,
@@ -721,8 +784,11 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph_viewer, logger);
 
   // remove is_qnn_ctx_model related code
-  const auto supported_nodes = GetSupportedNodes(graph_viewer, node_unit_map,
-                                                 node_unit_holder.size(), logger);
+  const auto supported_nodes_result = GetSupportedNodes(graph_viewer, node_unit_map,
+                                                        node_unit_holder.size(), logger);
+  const auto& supported_nodes = supported_nodes_result.supported_nodes;
+  const bool has_single_q_or_dq = supported_nodes_result.num_single_dq_nodes > 0 ||
+                                  supported_nodes_result.num_single_q_nodes > 0;
 
   // Helper function that returns a string that lists all unsupported nodes.
   // Ex: { name: mul_123, type: Mul }, {}, ...
@@ -750,39 +816,48 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   }
 
   size_t num_of_supported_nodes = 0;
+  const auto& graph_input_list = graph_viewer.GetInputs();  // Excludes initializers.
+  const auto& graph_output_list = graph_viewer.GetOutputs();
+  std::unordered_set<const NodeArg*> graph_inputs(graph_input_list.cbegin(), graph_input_list.cend());
+  std::unordered_set<const NodeArg*> graph_outputs(graph_output_list.cbegin(), graph_output_list.cend());
 
   // Create partitions from supported nodes.
-  std::vector<std::unique_ptr<ComputeCapability>> partitions = utils::CreateSupportedPartitions(
-      graph_viewer, supported_nodes, {}, gen_metadef_name, QNN, kQnnExecutionProvider, &node_unit_map);
+  std::vector<std::vector<const Node*>> partition_node_groups = utils::CreateSupportedPartitionNodeGroups(
+      graph_viewer,
+      [&supported_nodes](const Node& node) { return Contains(supported_nodes, &node); },
+      {},
+      kQnnExecutionProvider,
+      &node_unit_map);
 
-  // Filter out partitions that consist of a single QuantizeLinear or DequantizeLinear node.
-  // We also count the number of supported nodes in all valid partitions.
-  for (auto& partition : partitions) {
+  result.reserve(partition_node_groups.size());
+
+  for (auto& partition_nodes : partition_node_groups) {
+    if (offload_graph_io_quantization_ && has_single_q_or_dq) {
+      OffloadPartitionIOQuantization(graph_inputs, graph_outputs, node_unit_map, partition_nodes);
+    }
+
+    // Filter out partitions that consist of a single QuantizeLinear or DequantizeLinear node.
+    // We also count the number of supported nodes in all valid partitions.
     bool is_valid_partition = true;
-    size_t nodes_in_partition = 0;
+    const size_t num_nodes_in_partition = partition_nodes.size();
 
-    if (partition && partition->sub_graph) {
-      nodes_in_partition = partition->sub_graph->nodes.size();
+    if (num_nodes_in_partition == 1 && !is_qnn_ctx_model) {
+      const Node* node = partition_nodes[0];
 
-      if (nodes_in_partition == 1 && !is_qnn_ctx_model) {
-        const Node* node = graph_viewer.GetNode(partition->sub_graph->nodes[0]);
-
-        if (!node) {
-          LOGS(logger, ERROR) << "QNN EP: Invalid node in partition of one node.";
-          is_valid_partition = false;
-        } else if (node->OpType() == "QuantizeLinear" || node->OpType() == "DequantizeLinear") {
-          LOGS(logger, WARNING) << "QNN EP does not support a single Quantize/Dequantize node in a partition.";
-          is_valid_partition = false;
-        }
+      if (!node) {
+        LOGS(logger, ERROR) << "QNN EP: Invalid node in partition of one node.";
+        is_valid_partition = false;
+      } else if (node->OpType() == "QuantizeLinear" || node->OpType() == "DequantizeLinear") {
+        LOGS(logger, WARNING) << "QNN EP does not support a single Quantize/Dequantize node in a partition.";
+        is_valid_partition = false;
       }
-    } else {
-      LOGS(logger, ERROR) << "QNN EP: Invalid partition.";
-      is_valid_partition = false;
     }
 
     if (is_valid_partition) {
-      result.push_back(std::move(partition));
-      num_of_supported_nodes += nodes_in_partition;
+      std::unique_ptr<ComputeCapability> compute_capability = utils::MakeComputeCapability(
+          graph_viewer, partition_nodes, gen_metadef_name, QNN, /*drop_initializers*/ false);
+      result.push_back(std::move(compute_capability));
+      num_of_supported_nodes += num_nodes_in_partition;
     }
   }  // for
 
@@ -879,7 +954,7 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
                                                                                                 QNN_HTP_GRAPH_CUSTOM_CONFIG_INIT);
     InitQnnGraphConfigs(graph_configs_builder);
 
-    ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, model_settings_, logger,
+    ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, logger,
                                                 graph_configs_builder.GetQnnConfigs()));
     ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs(logger));
     ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput(logger));

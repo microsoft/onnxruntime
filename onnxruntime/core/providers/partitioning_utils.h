@@ -136,6 +136,48 @@ Stop op nodes and nodes downstream from them will be excluded.
 */
 InlinedHashSet<const Node*> CreateExcludedNodeSet(const GraphViewer& graph_viewer,
                                                   const std::unordered_set<std::string>& stop_ops);
+
+/**
+Create partition node groups.
+
+A partition node group (a.k.a. a group) contains supported nodes that will run in a partition.
+
+All nodes in a group can be run together. This means that two nodes with an intervening unsupported node cannot be in
+the same group. On the other hand, nodes within the same group do not necessarily have to be connected.
+
+The partitioning algorithm attempts to form the largest possible groups in a greedy fashion. It is a variant of Kahn's
+topological sort algorithm that forms the group(s) as it goes.
+
+Conceptually, we consider nodes in a sequence of waves starting from the root nodes. One wave produces at most one
+group. A wave flows over nodes in topological order, adding supported nodes to the current group, and stops at the
+border of the current group. The next wave starts where the previous wave stopped.
+
+When generating the topological ordering, we maintain a set of nodes that have no inputs produced by unprocessed nodes.
+From this set, we select the next node to process.
+
+When selecting the next node to process, we first take:
+- a supported node (which will be part of the group)
+- an unsupported node that does not consume an output of any node in the group
+
+The remaining unsupported nodes mark the border of the current group so they will be processed later when we consider
+the next group.
+
+If node_unit_map is provided, we process NodeUnit instances (a logical 'Node' that can be a single node or a
+QDQ node group) instead of individual Node instances. As an EP must take complete NodeUnit instances (i.e. it
+must not break up a QDQ node group by taking a subset of nodes in it), this granularity of processing is valid.
+It is required to ensure we do not break up a QDQ node unit during partitioning.
+
+@param graph_viewer GraphViewer that IExecutionProvider::GetCapability is called with.
+@param is_node_supported_fn Callback to check whether a node is supported.
+@param on_group_closed_fn Callback to indicate a completed partition node group.
+@return The partition node groups.
+*/
+std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
+    const GraphViewer& graph_viewer,
+    const IsNodeSupportedFn& is_node_supported_fn,
+    const OnGroupClosedFn& on_group_closed_fn,
+    const std::string& execution_provider_type,
+    const std::unordered_map<const Node*, const NodeUnit*>* node_unit_map);
 }  // namespace utils
 }  // namespace onnxruntime
 

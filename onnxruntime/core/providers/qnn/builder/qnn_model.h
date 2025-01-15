@@ -35,7 +35,6 @@ class QnnModel {
 
   Status ComposeGraph(const GraphViewer& graph_viewer,
                       const onnxruntime::Node& fused_node,
-                      const qnn::ModelSettings& model_settings,
                       const logging::Logger& logger,
                       const QnnGraph_Config_t** graph_configs = nullptr);
 

@@ -114,10 +114,18 @@ class QNNExecutionProvider : public IExecutionProvider {
   Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
 
  private:
-  std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
-                                                    const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
-                                                    const size_t node_unit_size,
-                                                    const logging::Logger& logger) const;
+  struct SupportedNodesResult {
+    std::unordered_set<const Node*> supported_nodes;
+
+    // The following variables track the number of supported Q or DQ nodes that are not part of a NodeUnit.
+    // Used to allow QNN EP to skip processing of "I/O qdq offloading", which can be expensive.
+    size_t num_single_q_nodes = 0;
+    size_t num_single_dq_nodes = 0;
+  };
+  SupportedNodesResult GetSupportedNodes(const GraphViewer& graph_viewer,
+                                         const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
+                                         const size_t node_unit_size,
+                                         const logging::Logger& logger) const;
 
   Status CreateComputeFunc(std::vector<NodeComputeInfo>& node_compute_funcs,
                            const logging::Logger& logger);
@@ -153,7 +161,7 @@ class QNNExecutionProvider : public IExecutionProvider {
 #ifdef _WIN32
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;
 #endif
-  qnn::ModelSettings model_settings_ = {};
+  bool offload_graph_io_quantization_ = true;
 
   class PerThreadContext final {
    public:
