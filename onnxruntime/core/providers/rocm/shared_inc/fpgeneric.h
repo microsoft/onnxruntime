@@ -955,3 +955,5 @@ inline rocblas_status rocblasGemmStridedBatchedHelper(rocblas_handle handle,
                                          C, ldc, strideC,
                                          batchCount);
 }
+bool CanUse_hipblasTransposeHelper_MLFloat16(int m, int n);
+hipblasStatus_t hipblasTransposeHelper(hipStream_t stream, rocblas_handle, rocblas_operation, rocblas_operation, int m, int n, const half*, const half* A, int, const half*, const half*, int, half* C, int);

@@ -514,10 +514,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   } else if (provider_name_ == onnxruntime::kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(session_options, 0));
-    OrtROCMProviderOptions rocm_options;
-    rocm_options.miopen_conv_exhaustive_search = performance_test_config.run_config.cudnn_conv_algo;
-    rocm_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
-    session_options.AppendExecutionProvider_ROCM(rocm_options);
 #else
     ORT_THROW("MIGraphX is not supported in this build\n");
 #endif
