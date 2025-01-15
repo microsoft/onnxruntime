@@ -5,11 +5,12 @@
 #include <string>
 #include <thread>
 
+#include "core/providers/cpu/cpu_provider_factory.h"  // For OrtSessionOptionsAppendExecutionProvider_CPU
+#include "core/providers/qnn/qnn_allocator.h"
+#include "core/session/inference_session.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
-#include "core/providers/cpu/cpu_provider_factory.h"  // For OrtSessionOptionsAppendExecutionProvider_CPU
-#include "core/session/inference_session.h"
 
 #include "test/providers/qnn/qnn_test_utils.h"
 
@@ -1159,7 +1160,7 @@ TEST_F(QnnHTPBackendTests, OffloadingWithTransposesNotInQDQForm) {
       for (const Node& node : graph.Nodes()) {
         const std::string& ep_name = node.GetExecutionProviderType();
         const std::string& op_type = node.OpType();
-        if (op_type == "QuantizeLinear" || op_type == "DequantizeLinear") {
+        if (op_type == "QuantizeLinear" || op_type == "DequantizeLinear" || op_type == "Transpose") {
           EXPECT_EQ(ep_name, kCpuExecutionProvider) << " Op type: " << op_type;
         } else {
           EXPECT_EQ(ep_name, kQnnExecutionProvider) << " Op type: " << op_type;
@@ -1174,6 +1175,7 @@ TEST_F(QnnHTPBackendTests, OffloadingWithTransposesNotInQDQForm) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+
   provider_options["enable_htp_fp16_precision"] = "1";  // QNN EP will use fp16 precision.
                                                         // CPU EP will use fp32, so we can relax accuracy requirements.
 
@@ -1204,6 +1206,49 @@ TEST_F(QnnHTPBackendTests, OffloadingWithTransposesNotInQDQForm) {
                     /*verify_output*/ true,
                     &graph_checker);  // Checks that only the Q and DQ at graph I/O are assigned to CPU.
   }
+}
+
+
+TEST_F(QnnHTPBackendTests, UseHtpSharedMemoryAllocatorForInputs) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["offload_graph_io_quantization"] = "0";
+  provider_options["enable_htp_shared_memory_allocator"] = "1";
+
+  std::unique_ptr<IExecutionProvider> qnn_ep;
+  try {
+    qnn_ep = QnnExecutionProviderWithOptions(provider_options);
+  } catch (const OnnxRuntimeException& e) {
+    // handle particular exception that indicates that the libcdsprpc.so / dll can't be loaded
+#if defined(_WIN32)
+    constexpr const char* expected_error_message = "Failed to load libcdsprpc.dll";
+#else
+    constexpr const char* expected_error_message = "Failed to load libcdsprpc.so";
+#endif
+    ASSERT_THAT(e.what(), testing::HasSubstr(expected_error_message));
+    GTEST_SKIP() << "HTP shared memory allocator is unavailable.";
+  }
+
+  AllocatorPtr htp_shared_memory_allocator{};
+  {
+    auto allocators = qnn_ep->CreatePreferredAllocators();
+    ASSERT_FALSE(allocators.empty());
+    auto& allocator = allocators[0];
+    ASSERT_EQ(allocator->Info(), qnn::HtpSharedMemoryAllocator::AssociatedMemoryInfo());
+    htp_shared_memory_allocator = std::move(allocator);
+  }
+
+  auto input_defs = {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
+                     TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)};
+  RunQnnModelTest(BuildOpTestCase<float>("Add", input_defs, {}, {}, kOnnxDomain, htp_shared_memory_allocator),
+                  provider_options,
+                  13,
+                  ExpectedEPNodeAssignment::All,
+                  0.008f);
 }
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 #endif  // !defined(ORT_MINIMAL_BUILD)

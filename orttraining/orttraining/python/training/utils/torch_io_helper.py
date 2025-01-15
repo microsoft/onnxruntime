@@ -52,7 +52,7 @@ ORTModelInputOutputType = Union[
 class _TensorStub:
     """Tensor stub class used to represent model's input or output"""
 
-    __slots__ = ["tensor_idx", "name", "dtype", "shape", "shape_dims"]
+    __slots__ = ["dtype", "name", "shape", "shape_dims", "tensor_idx"]
 
     def __init__(
         self,
