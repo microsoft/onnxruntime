@@ -5,6 +5,7 @@
 # --------------------------------------------------------------------------
 from __future__ import annotations
 
+import copy
 import logging
 import os
 import tempfile
@@ -906,11 +907,7 @@ def smooth_distribution(p, eps=0.0001):
         # raise ValueError('The discrete probability distribution is malformed. All entries are 0.')
         return None
     eps1 = eps * float(n_zeros) / float(n_nonzeros)
-    assert eps1 < 1.0, "n_zeros=%d, n_nonzeros=%d, eps1=%f" % (
-        n_zeros,
-        n_nonzeros,
-        eps1,
-    )
+    assert eps1 < 1.0, f"n_zeros={n_zeros}, n_nonzeros={n_nonzeros}, eps1={eps1}"
 
     hist = p.astype(numpy.float32)
     hist += eps * is_zeros + (-eps1) * is_nonzeros
@@ -988,8 +985,9 @@ def load_model_with_shape_infer(model_path: Path) -> ModelProto:
 
 def save_and_reload_model_with_shape_infer(model: ModelProto) -> ModelProto:
     with tempfile.TemporaryDirectory(prefix="ort.quant.") as quant_tmp_dir:
+        model_copy = copy.deepcopy(model)
         model_path = Path(quant_tmp_dir).joinpath("model.onnx")
-        onnx.save_model(model, model_path.as_posix(), save_as_external_data=True)
+        onnx.save_model(model_copy, model_path.as_posix(), save_as_external_data=True)
         return load_model_with_shape_infer(model_path)
 
 

@@ -177,8 +177,8 @@ endif()
 if (_enable_ML_PROGRAM)
   # Setup coremltools fp16 and json dependencies for creating an mlpackage.
   #
-  # These are also used by external/xnnpack.cmake. fp16 depends on psimd
-  onnxruntime_fetchcontent_declare(psimd URL ${DEP_URL_psimd} URL_HASH SHA1=${DEP_SHA1_psimd} EXCLUDE_FROM_ALL)
+  # fp16 depends on psimd
+  FetchContent_Declare(psimd URL ${DEP_URL_psimd} URL_HASH SHA1=${DEP_SHA1_psimd} EXCLUDE_FROM_ALL)
   onnxruntime_fetchcontent_makeavailable(psimd)
   set(PSIMD_SOURCE_DIR ${psimd_SOURCE_DIR})
   onnxruntime_fetchcontent_declare(fp16 URL ${DEP_URL_fp16} URL_HASH SHA1=${DEP_SHA1_fp16} EXCLUDE_FROM_ALL)

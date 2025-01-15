@@ -41,6 +41,9 @@ class ComputeContext {
   inline const wgpu::Limits& DeviceLimits() const {
     return webgpu_context_.DeviceLimits();
   }
+  inline const wgpu::Device& Device() const {
+    return webgpu_context_.Device();
+  }
 
   //
   // Get the kernel context.
