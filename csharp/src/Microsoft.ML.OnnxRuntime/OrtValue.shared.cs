@@ -708,8 +708,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
             unsafe
             {
-                var field = tensor.GetType().GetFields(BindingFlags.Instance | BindingFlags.NonPublic).Where(x => x.Name == "_values").FirstOrDefault();
-                var backingData = (T[])field.GetValue(tensor);
+                var backingData = (T[])tensor.GetType().GetField("_values", BindingFlags.Instance | BindingFlags.NonPublic).GetValue(tensor);
                 GCHandle handle = GCHandle.Alloc(backingData, GCHandleType.Pinned);
                 var memHandle = new MemoryHandle(Unsafe.AsPointer(ref tensor.GetPinnableReference()), handle);
 
