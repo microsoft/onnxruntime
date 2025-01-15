@@ -54,7 +54,7 @@ void NodeDumpAnalysis::PrintToStdOut(const std::string& model_path) {
     }
 
     // Sort and display the op frequency in the descending order
-    std::cout << "Operator frequence for these nodes:" << std::endl;
+    std::cout << "Operator frequencies for these nodes:" << std::endl;
     std::vector<std::pair<std::string, int>> op_freq(half_overflow_ops.begin(), half_overflow_ops.end());
     std::sort(op_freq.begin(), op_freq.end(),
               [](const std::pair<std::string, int>& a, const std::pair<std::string, int>& b) {
