@@ -3,6 +3,14 @@ require_relative '../node_modules/@react-native-community/cli-platform-ios/nativ
 
 platform :ios, '15.1'
 
+prepare_react_native_project!
+
+linkage = ENV['USE_FRAMEWORKS']
+if linkage != nil
+  Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
+  use_frameworks! :linkage => linkage.to_sym
+end
+
 pre_install do |installer|
   # Custom pre-install script or commands
   puts "Running pre-install script..."
@@ -14,14 +22,16 @@ end
 
 def shared
   config = use_native_modules!
+  # Flags change depending on the env values.
+  flags = get_default_flags()
 
   use_react_native!(
     :path => config[:reactNativePath],
-
     # Hermes is now enabled by default. Disable by setting this flag to false.
     # Upcoming versions of React Native may rely on get_default_flags(), but
     # we make it explicit here to aid in the React Native upgrade process.
-    :hermes_enabled => false
+    :hermes_enabled => false,
+    :fabric_enabled => false,
   )
 
   # Comment the next line if you don't want to use dynamic frameworks
@@ -34,9 +44,7 @@ def shared
   else
     pod 'onnxruntime-c'
   end
-
   inherit! :search_paths
-
 end
 
 target 'OnnxruntimeModule' do
@@ -48,10 +56,11 @@ target 'OnnxruntimeModuleTest' do
 end
 
 post_install do |installer|
-  # https://github.com/facebook/react-native/blob/main/packages/react-native/scripts/react_native_pods.rb#L197-L202
   react_native_post_install(
     installer,
-    :mac_catalyst_enabled => false,
+    # Set `mac_catalyst_enabled` to `true` in order to apply patches
+	  # necessary for Mac Catalyst builds
+	  :mac_catalyst_enabled => false
   )
   __apply_Xcode_12_5_M1_post_install_workaround(installer)
 end
