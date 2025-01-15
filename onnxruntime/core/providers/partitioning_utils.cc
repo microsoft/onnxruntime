@@ -54,7 +54,6 @@ std::string NodeGroupDebugString(const Container& group, bool show_all = false) 
   return oss.str();
 }
 #endif
-}  // namespace
 
 /**
 Create partition node groups.
@@ -255,6 +254,7 @@ std::vector<std::vector<const Node*>> CreateSupportedPartitionNodeGroups(
 
   return supported_groups;
 }
+}  // namespace
 
 InlinedHashSet<const Node*> CreateExcludedNodeSet(const GraphViewer& graph_viewer,
                                                   const std::unordered_set<std::string>& stop_ops) {
