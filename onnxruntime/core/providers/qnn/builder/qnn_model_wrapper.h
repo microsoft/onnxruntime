@@ -112,9 +112,7 @@ class QnnModelWrapper {
   const InitializedTensorSet& GetInitializerTensors() const { return graph_viewer_.GetAllInitializedTensors(); }
 
   const ONNX_NAMESPACE::TensorProto* GetInitializerTensor(const std::string& tensor_name) const {
-    const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-    graph_viewer_.GetInitializedTensor(tensor_name, initializer);
-    return initializer;
+    return graph_viewer_.GetConstantInitializer(tensor_name);
   }
 
   bool IsInitializerInput(std::string input_name) const {
