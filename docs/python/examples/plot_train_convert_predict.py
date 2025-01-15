@@ -212,9 +212,9 @@ for n_trees in range(5, 51, 5):
     rf.fit(X_train, y_train)
     initial_type = [("float_input", FloatTensorType([1, 4]))]
     onx = convert_sklearn(rf, initial_types=initial_type)
-    with open("rf_iris_%d.onnx" % n_trees, "wb") as f:
+    with open(f"rf_iris_{n_trees}.onnx", "wb") as f:
         f.write(onx.SerializeToString())
-    sess = rt.InferenceSession("rf_iris_%d.onnx" % n_trees, providers=rt.get_available_providers())
+    sess = rt.InferenceSession(f"rf_iris_{n_trees}.onnx", providers=rt.get_available_providers())
 
     def sess_predict_proba_loop(x):
         return sess.run([prob_name], {input_name: x.astype(numpy.float32)})[0]  # noqa: B023

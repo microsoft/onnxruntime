@@ -85,7 +85,7 @@ class TestInferenceSession(unittest.TestCase):
         if result != 0:
             error_str = ctypes.c_char_p()
             cuda_lib.cuGetErrorString(result, ctypes.byref(error_str))
-            print("cuDeviceGetCount failed with error code %d: %s" % (result, error_str.value.decode()))
+            print(f"cuDeviceGetCount failed with error code {result}: {error_str.value.decode()}")
             return -1
         return num_device.value
 

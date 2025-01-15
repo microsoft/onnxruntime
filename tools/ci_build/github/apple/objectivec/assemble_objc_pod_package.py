@@ -93,8 +93,8 @@ def get_pod_files(package_variant: PackageVariant):
     else:
         # return files that are in pod_files but not in training_only_objc_files
         filtered_pod_files = {}
-        for key in all_objc_files:
-            filtered_pod_files[key] = filter_files(all_objc_files[key], training_only_objc_files[key])
+        for key, value in all_objc_files.items():
+            filtered_pod_files[key] = filter_files(value, training_only_objc_files[key])
         return filtered_pod_files
 
 

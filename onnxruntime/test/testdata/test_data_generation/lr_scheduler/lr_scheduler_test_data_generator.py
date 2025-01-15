@@ -60,7 +60,7 @@ def main():
 
         import tempfile
 
-        fp = tempfile.NamedTemporaryFile()
+        fp = tempfile.NamedTemporaryFile()  # noqa: SIM115
 
         adamw_optimizer = torch.optim.AdamW(pt_model.parameters(), lr=1e-3)
         scheduler = WarmupLinearSchedule(adamw_optimizer, num_warmup_steps, num_training_steps)

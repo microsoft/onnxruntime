@@ -88,8 +88,8 @@ class TestScatterPerProvider(unittest.TestCase):
         self.assertEqual(expected_names, names)
 
         sonx = str(onx).replace(" ", "").replace("\n", "|")
-        sexp = 'op_type:"Cast"|attribute{|name:"to"|type:INT|i:%d|}' % itype
-        sexp2 = 'op_type:"Cast"|attribute{|name:"to"|i:%d|type:INT|}' % itype
+        sexp = 'op_type:"Cast"|attribute{|name:"to"|type:INT|i:%d|}' % itype  # noqa: UP031
+        sexp2 = 'op_type:"Cast"|attribute{|name:"to"|i:%d|type:INT|}' % itype  # noqa: UP031
         assert sexp in sonx or sexp2 in sonx, f"Unable to find a substring in {sonx!r}"
         if providers == ["CPUExecutionProvider"]:
             return

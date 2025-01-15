@@ -46,7 +46,7 @@ with open(args.output, "w") as file:
 
     for symbol in symbols:
         if args.style == "vc":
-            file.write(" %s @%d\n" % (symbol, symbol_index))
+            file.write(f" {symbol} @{symbol_index}\n")
         elif args.style == "xcode":
             file.write(f"_{symbol}\n")
         else:

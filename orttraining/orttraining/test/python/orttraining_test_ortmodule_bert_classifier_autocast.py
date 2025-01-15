@@ -376,7 +376,7 @@ def main():
     # Device (CPU vs CUDA)
     if torch.cuda.is_available() and not args.no_cuda:
         device = torch.device("cuda")
-        print("There are %d GPU(s) available." % torch.cuda.device_count())
+        print(f"There are {torch.cuda.device_count()} GPU(s) available.")
         print("We will use the GPU:", torch.cuda.get_device_name(0))
     else:
         print("No GPU available, using the CPU instead.")

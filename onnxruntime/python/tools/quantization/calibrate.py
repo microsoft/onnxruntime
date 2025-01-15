@@ -161,7 +161,7 @@ class CalibrationMethod(Enum):
 class CalibrationDataReader(metaclass=abc.ABCMeta):
     @classmethod
     def __subclasshook__(cls, subclass):
-        return hasattr(subclass, "get_next") and callable(subclass.get_next) or NotImplemented
+        return (hasattr(subclass, "get_next") and callable(subclass.get_next)) or NotImplemented
 
     @abc.abstractmethod
     def get_next(self) -> dict:
