@@ -86,10 +86,10 @@ def _get_name(name):
 def assert_gradients_match_and_reset_gradient(
     ort_model,
     pt_model,
-    none_pt_params=[],
+    none_pt_params=(),
     reset_gradient=True,
     rtol=1e-04,
-    atol=1e-05,  # noqa: B006
+    atol=1e-05,
 ):
     ort_named_params = list(ort_model.named_parameters())
     pt_named_params = list(pt_model.named_parameters())
