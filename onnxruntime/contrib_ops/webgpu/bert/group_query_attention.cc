@@ -64,10 +64,10 @@ Status GeneratePositionIDs(onnxruntime::webgpu::ComputeContext& context, const W
   return context.RunProgram(program);
 }
 
-Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params, const Tensor* input, const Tensor* pos_ids, const Tensor* cos_cache, const Tensor* sin_cache, Tensor* output) {
+Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params, const Tensor* input, const Tensor* pos_ids, const Tensor* cos_cache, const Tensor* sin_cache, Tensor* output, bool is_packed_qkv, bool is_query_input) {
   const auto half_rotary_embedding_dim = gsl::narrow<uint32_t>(cos_cache->Shape()[1]);
-
-  const TensorShape global_shape({params.batch_size_, params.sequence_length_, params.num_heads_, params.head_size_ - half_rotary_embedding_dim});
+  auto num_heads = is_packed_qkv ? params.num_heads_ + 2 * params.kv_num_heads_ : (is_query_input ? params.num_heads_ : params.kv_num_heads_);
+  const TensorShape global_shape({params.batch_size_, params.sequence_length_, num_heads, params.head_size_ - half_rotary_embedding_dim});
   const auto rank = global_shape.NumDimensions();
   std::vector<uint32_t> global_dims(rank);
   std::vector<uint32_t> global_strides(rank);
@@ -122,23 +122,6 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                                                 scale_,
                                                                 softcap_));
   WebgpuAttentionParameters parameters(params);
-  if (parameters.is_packed_qkv_) {
-    ORT_NOT_IMPLEMENTED("Packed QKV of shape (B, L, N, 3, H) not implemented for webgpu-ep.");
-  }
-  if (do_rotary_) {
-    Tensor q = context.CreateGPUTensor(query->DataType(), query->Shape());
-    Tensor k = context.CreateGPUTensor(key->DataType(), key->Shape());
-    TensorShape pos_ids_shape = parameters.is_first_prompt_ ? TensorShape({1}) : TensorShape({parameters.batch_size_ * parameters.sequence_length_});
-    Tensor pos_ids = context.CreateGPUTensor(DataTypeImpl::GetType<int64_t>(), pos_ids_shape);
-    ORT_RETURN_IF_ERROR(GeneratePositionIDs(context, parameters, seqlens_k, &pos_ids));
-
-    ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters, query, &pos_ids, cos_cache, sin_cache, &q));
-
-    ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters, key, &pos_ids, cos_cache, sin_cache, &k));
-
-    query = &q;
-    key = &k;
-  }
 
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(parameters.batch_size_);
@@ -155,32 +138,60 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   Tensor* present_value = context.Output(2, present_kv_shape);
   parameters.past_present_share_buffer_ = present_key != nullptr && present_value != nullptr && past_key != nullptr && past_value != nullptr && past_key->DataRaw() == present_key->DataRaw() && past_value->DataRaw() == present_value->DataRaw();
 
-  TensorShapeVector q_new_dims({parameters.batch_size_, parameters.num_heads_,
+  TensorShapeVector q_new_dims({parameters.batch_size_, parameters.is_packed_qkv_ ? parameters.num_heads_ + 2 * parameters.kv_num_heads_ : parameters.num_heads_,
                                 parameters.sequence_length_, parameters.head_size_});
   TensorShape q_new_shape(q_new_dims);
-  Tensor Q = context.CreateGPUTensor(query->DataType(), q_new_shape);
+  Tensor qBNSH = context.CreateGPUTensor(query->DataType(), q_new_shape);
   ORT_RETURN_IF_ERROR(TransferBSDToBNSH(
-      context, parameters.num_heads_, parameters.sequence_length_, parameters.head_size_, query, nullptr, 0, &Q));
-  if (parameters.qkv_format_ == Q_K_V_BSNH_BNSH_BNSH) {  // key and value in BNSH format
-    return ApplyAttention(&Q, key, value, nullptr, past_key, past_value, output, present_key,
+      context, parameters.num_heads_, parameters.sequence_length_, parameters.head_size_, query, nullptr, 0, &qBNSH));
+  if (!parameters.is_packed_qkv_) {
+    TensorShapeVector k_new_dims({parameters.batch_size_, parameters.kv_num_heads_,
+                                  parameters.kv_sequence_length_, parameters.head_size_});
+    TensorShape k_new_shape(k_new_dims);
+    Tensor kBNSH = context.CreateGPUTensor(key->DataType(), k_new_shape);
+    ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.kv_num_heads_, parameters.kv_sequence_length_,
+                                          parameters.head_size_, key, nullptr, 0, &kBNSH));
+
+    TensorShapeVector v_new_dims({parameters.batch_size_, parameters.kv_num_heads_,
+                                  parameters.kv_sequence_length_, parameters.v_head_size_});
+    TensorShape v_new_shape(v_new_dims);
+    Tensor vBNSH = context.CreateGPUTensor(value->DataType(), v_new_shape);
+    ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.kv_num_heads_, parameters.kv_sequence_length_,
+                                          parameters.v_head_size_, value, nullptr, 0, &vBNSH));
+
+    if (do_rotary_) {
+      Tensor qRotary = context.CreateGPUTensor(qBNSH.DataType(), qBNSH.Shape());
+      Tensor kRotary = context.CreateGPUTensor(kBNSH.DataType(), kBNSH.Shape());
+      TensorShape pos_ids_shape = parameters.is_first_prompt_ ? TensorShape({1}) : TensorShape({parameters.batch_size_ * parameters.sequence_length_});
+      Tensor pos_ids = context.CreateGPUTensor(DataTypeImpl::GetType<int64_t>(), pos_ids_shape);
+      ORT_RETURN_IF_ERROR(GeneratePositionIDs(context, parameters, seqlens_k, &pos_ids));
+
+      ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters, &qBNSH, &pos_ids, cos_cache, sin_cache, &qRotary, /* is_packed_qkv = */ false, /* is_query_input = */ true));
+
+      ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters, &kBNSH, &pos_ids, cos_cache, sin_cache, &kRotary, /* is_packed_qkv = */ false, /* is_query_input = */ false));
+      return ApplyAttention(&qRotary, &kRotary, &vBNSH, nullptr, past_key, past_value, output, present_key,
                           present_value, parameters, context, seqlens_k);
+    } else {
+      return ApplyAttention(&qBNSH, &kBNSH, &vBNSH, nullptr, past_key, past_value, output, present_key,
+                          present_value, parameters, context, seqlens_k);
+    }
+  } else {
+    // Q, K and V are packed. Both key and value are nullptr
+    if (parameters.do_rotary_) {
+      Tensor qRotary = context.CreateGPUTensor(qBNSH.DataType(), qBNSH.Shape());
+      TensorShape pos_ids_shape = parameters.is_first_prompt_ ? TensorShape({1}) : TensorShape({parameters.batch_size_ * parameters.sequence_length_});
+      Tensor pos_ids = context.CreateGPUTensor(DataTypeImpl::GetType<int64_t>(), pos_ids_shape);
+      ORT_RETURN_IF_ERROR(GeneratePositionIDs(context, parameters, seqlens_k, &pos_ids));
+
+      ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters, &qBNSH, &pos_ids, cos_cache, sin_cache, &qRotary, /* is_packed_qkv = */ true, /* is_query_input = */ true));
+
+      return ApplyAttention(&qRotary, nullptr, nullptr, nullptr, past_key, past_value, output, present_key,
+                          present_value, parameters, context, seqlens_k);
+    } else {
+      return ApplyAttention(&qBNSH, nullptr, nullptr, nullptr, past_key, past_value, output, present_key,
+                          present_value, parameters, context, seqlens_k);
+    }
   }
-
-  TensorShapeVector k_new_dims({parameters.batch_size_, parameters.kv_num_heads_,
-                                parameters.kv_sequence_length_, parameters.head_size_});
-  TensorShape k_new_shape(k_new_dims);
-  Tensor K = context.CreateGPUTensor(key->DataType(), k_new_shape);
-  ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.kv_num_heads_, parameters.kv_sequence_length_,
-                                        parameters.head_size_, key, nullptr, 0, &K));
-
-  TensorShapeVector v_new_dims({parameters.batch_size_, parameters.kv_num_heads_,
-                                parameters.kv_sequence_length_, parameters.v_head_size_});
-  TensorShape v_new_shape(v_new_dims);
-  Tensor V = context.CreateGPUTensor(value->DataType(), v_new_shape);
-  ORT_RETURN_IF_ERROR(TransferBSDToBNSH(context, parameters.kv_num_heads_, parameters.kv_sequence_length_,
-                                        parameters.v_head_size_, value, nullptr, 0, &V));
-  return ApplyAttention(&Q, &K, &V, nullptr, past_key, past_value, output, present_key,
-                        present_value, parameters, context, seqlens_k);
 }
 
 }  // namespace webgpu
