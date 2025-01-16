@@ -1026,14 +1026,14 @@ class TestRotaryAttentionFusion(unittest.TestCase):
             unsqueeze_0_node = helper.make_node(
                 "Unsqueeze",
                 inputs=[gather_0_node.output[0] if not use_mul_and_add_nodes_0 else "mul_extra_out", "zero"],
-                outputs=[f"unsqueeze_extra_{2*i}"],
-                name=f"Unsqueeze_extra_{2*i}",
+                outputs=[f"unsqueeze_extra_{2 * i}"],
+                name=f"Unsqueeze_extra_{2 * i}",
             )
             unsqueeze_1_node = helper.make_node(
                 "Unsqueeze",
                 inputs=[gather_1_node.output[0] if not use_mul_and_add_nodes_1 else "add_extra_out", "zero"],
-                outputs=[f"unsqueeze_extra_{2*i + 1}"],
-                name=f"Unsqueeze_extra_{2*i + 1}",
+                outputs=[f"unsqueeze_extra_{2 * i + 1}"],
+                name=f"Unsqueeze_extra_{2 * i + 1}",
             )
 
             reshape_name = reshape_node.name
