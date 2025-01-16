@@ -1,4 +1,5 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
+# SPDX-FileCopyrightText: Copyright 2024-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
 # Licensed under the MIT License.
 
 set(MLAS_ROOT ${ONNXRUNTIME_ROOT}/core/mlas)
@@ -99,6 +100,8 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp
       )
 
+      setup_kleidiai()
+
       set(mlas_platform_preprocess_srcs
         ${MLAS_SRC_DIR}/arm64/ConvSymS8KernelDot.asm
         ${MLAS_SRC_DIR}/arm64/ConvSymS8KernelDotLd64.asm
@@ -118,6 +121,10 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/arm64/SymQgemmS8KernelNeon.asm
         ${MLAS_SRC_DIR}/arm64/SymQgemmS8KernelSDot.asm
         ${MLAS_SRC_DIR}/arm64/SymQgemmS8KernelSDotLd64.asm
+        ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod_asm.S
+        ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod_asm.S
+        ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod_asm.S
+        ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm_asm.S
       )
     else()
       target_sources(onnxruntime_mlas PRIVATE
@@ -240,6 +247,58 @@ function(setup_mlas_source_for_windows)
       ${MLAS_SRC_DIR}/i386/SgemmKernelSse2.asm
       ${MLAS_SRC_DIR}/i386/SgemmKernelAvx.asm
     )
+  endif()
+endfunction()
+
+function(setup_kleidiai)
+  # Disable the KleidiAI tests
+  set(KLEIDIAI_BUILD_TESTS  OFF)
+
+  # Fetch KleidiAI sources:
+  include(FetchContent)
+  set(KLEIDIAI_COMMIT_SHA "d8dbb175f19054e4848c229f46995b96cc12159e")
+  set(KLEIDIAI_DOWNLOAD_URL "https://gitlab.arm.com/kleidi/kleidiai/-/archive/${KLEIDIAI_COMMIT_SHA}/kleidiai-${KLEIDIAI_COMMIT_SHA}.tar.gz")
+  set(KLEIDIAI_ARCHIVE_MD5  "cd26b942ff2e93ab4dd34a4ce4146478")
+
+  if (POLICY CMP0135)
+    cmake_policy(SET CMP0135 NEW)
+  endif()
+
+  FetchContent_Declare(KleidiAI_Download
+      URL ${KLEIDIAI_DOWNLOAD_URL}
+      DOWNLOAD_EXTRACT_TIMESTAMP NEW
+      URL_HASH MD5=${KLEIDIAI_ARCHIVE_MD5})
+
+  FetchContent_MakeAvailable(KleidiAI_Download)
+  FetchContent_GetProperties(KleidiAI_Download
+      SOURCE_DIR  KLEIDIAI_SRC
+      POPULATED   KLEIDIAI_POPULATED)
+  set(KLEIDIAI_SRC ${KLEIDIAI_SRC} PARENT_SCOPE)
+
+  if (NOT KLEIDIAI_POPULATED)
+      message(FATAL_ERROR "KleidiAI source downloaded failed.")
+  endif()
+
+  # KleidiAI
+  include_directories(${KLEIDIAI_SRC}/)
+
+  target_sources(onnxruntime_mlas PRIVATE
+    ${MLAS_SRC_DIR}/kai_ukernel_interface.cpp
+    ${KLEIDIAI_SRC}/kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0.c
+    ${KLEIDIAI_SRC}/kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.c
+    ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod.c
+    ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod.c
+    ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod.c
+    ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm.c
+    ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x4_qsi4c32p4x4_1x4_neon_dotprod_asm.S
+    ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp4x4_qsi4c32p4x4_16x4_neon_dotprod_asm.S
+    ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp1x8_qsi4c32p4x8_1x4x32_neon_dotprod_asm.S
+    ${KLEIDIAI_SRC}/kai/ukernels/matmul/matmul_clamp_f32_qai8dxp_qsi4c32p/kai_matmul_clamp_f32_qai8dxp4x8_qsi4c32p4x8_16x4x32_neon_i8mm_asm.S
+  )
+
+  if (NOT MSVC)
+    set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
+                                PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
   endif()
 endfunction()
 
@@ -378,6 +437,7 @@ else()
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.cpp
           ${MLAS_SRC_DIR}/hgemm_kernel_neon.cpp
         )
+        setup_kleidiai()
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
                                     PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
         if (NOT APPLE)

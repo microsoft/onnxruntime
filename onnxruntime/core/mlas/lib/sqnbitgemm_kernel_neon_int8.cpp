@@ -1,6 +1,7 @@
 /*++
 
 Copyright (c) Microsoft Corporation. All rights reserved.
+SPDX-FileCopyrightText: Copyright 2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
 
 Licensed under the MIT License.
 
@@ -20,10 +21,13 @@ Abstract:
 #include <arm_neon.h>
 
 #include <cassert>
+#include <limits>
 
 #include "qnbitgemm.h"
 #include "qnbitgemm_kernel_neon.h"
 #include "sqnbitgemm_q8_block.h"
+#include "kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.h"
+#include "kai_ukernel_interface.h"
 
 namespace sqnbitgemm_neon
 {
@@ -125,6 +129,41 @@ QuantizeBlock(
 }
 
 }  // namespace
+
+bool
+UseTiled_CompInt8(size_t K, size_t BlkLen, bool has_zp)
+{
+    return UseKleidiAI(K, BlkLen, has_zp);
+}
+
+void
+QuantizeA_CompInt8(
+    size_t BlkLen,
+    const float* A,
+    size_t CountM,
+    size_t CountK,
+    std::byte* QuantA
+)
+{
+    const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel =
+        CountM == 1? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
+
+    const size_t mr = ukernel.get_mr();
+    const size_t kr = ukernel.get_kr();
+    const size_t sr = ukernel.get_sr();
+
+    const size_t src_stride = CountK * sizeof(float);
+    const size_t lhs_offset = kai_get_lhs_offset_lhs_quant_pack_qai8dxp_f32(0, src_stride);
+    const size_t lhs_packed_offset = kai_get_lhs_packed_offset_lhs_quant_pack_qai8dxp_f32(
+                            0, CountK, mr, kr, sr);
+
+    const float* src_ptr = reinterpret_cast<const float*>(
+                            reinterpret_cast<const uint8_t*>(A) + lhs_offset);
+    void*        dst_ptr = reinterpret_cast<void *>(
+                            reinterpret_cast<uint8_t*>(QuantA) + lhs_packed_offset);
+
+    kai_run_lhs_quant_pack_qai8dxp_f32(CountM, CountK, mr, kr, sr, 0, src_ptr, src_stride, dst_ptr);
+}
 
 void
 QuantizeARow_CompInt8(
@@ -1397,6 +1436,50 @@ SQ4BitGemmKernel_CompInt8(
     }
 
     return CountM;
+}
+
+void
+SQ4BitGemm_CompInt8(
+    size_t BlkLen,
+    const std::byte* QuantA,
+    const std::byte* PackedQuantBData,
+    float* C,
+    const size_t RangeStartM,
+    const size_t RangeCountM,
+    const size_t RangeStartN,
+    const size_t RangeCountN,
+    size_t CountK,
+    size_t ldc,
+    const float* Bias
+)
+{
+    const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel ukernel =
+        RangeCountM == 1 && RangeStartM == 0? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
+
+    const size_t dst_stride = ldc * sizeof(float);
+
+    const size_t lhs_packed_offset = ukernel.get_lhs_packed_offset(RangeStartM, CountK);
+    const size_t rhs_packed_offset = ukernel.get_rhs_packed_offset(RangeStartN, CountK, BlkLen);
+    const size_t dst_offset = ukernel.get_dst_offset(RangeStartM, RangeStartN, dst_stride);
+
+    const void* lhs_ptr = reinterpret_cast<const void*>(
+            reinterpret_cast<const char *>(QuantA) + lhs_packed_offset);
+    const void* rhs_ptr = reinterpret_cast<const void*>(
+            reinterpret_cast<const char *>(PackedQuantBData) + rhs_packed_offset);
+    float* dst_ptr = reinterpret_cast<float*>(
+            reinterpret_cast<uint8_t*>(C) + dst_offset);
+
+    ukernel.run_matmul(
+        RangeCountM, RangeCountN, CountK, BlkLen, lhs_ptr, rhs_ptr, dst_ptr, dst_stride, sizeof(float),
+        -std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
+
+    if (Bias != nullptr) {
+        for (size_t m = RangeStartM; m < RangeStartM + RangeCountM; m++) {
+            for (size_t n = RangeStartN; n < RangeStartN + RangeCountN; n++) {
+                C[m * ldc + n] += Bias[n];
+            }
+        }
+    }
 }
 
 }  // namespace sqnbitgemm_neon

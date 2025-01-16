@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include "mlas_q4.h"
@@ -63,13 +64,13 @@ void RunQNBitGemmBenchmark(size_t BlkLen,
                                             tp.get());
 
   std::unique_ptr<std::byte[]> Workspace;
-  if (const auto WorkspaceSize = MlasQNBitGemmBatchWorkspaceSize(M, N, K, 1, BlkBitWidth, BlkLen, ComputeType);
+  if (const auto WorkspaceSize = MlasQNBitGemmBatchWorkspaceSize(M, N, K, 1, BlkBitWidth, BlkLen, !Symmetric, ComputeType);
       WorkspaceSize > 0) {
     Workspace = std::make_unique<std::byte[]>(WorkspaceSize);
   }
 
   std::unique_ptr<std::byte[]> PackedQuantBData;
-  if (const auto PackedQuantBDataSize = MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, ComputeType);
+  if (const auto PackedQuantBDataSize = MlasQNBitGemmPackQuantBDataSize(N, K, BlkBitWidth, BlkLen, !Symmetric, ComputeType);
       PackedQuantBDataSize > 0) {
     PackedQuantBData = std::make_unique<std::byte[]>(PackedQuantBDataSize);
     MlasQNBitGemmPackQuantBData(N, K, BlkBitWidth, BlkLen, ComputeType, QuantBData.data(), PackedQuantBData.get(),
