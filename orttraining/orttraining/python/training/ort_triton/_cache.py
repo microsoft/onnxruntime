@@ -12,7 +12,6 @@ import os
 import sys
 import tempfile
 from types import ModuleType
-from typing import Tuple
 
 
 @functools.lru_cache(None)
@@ -73,7 +72,7 @@ class ModuleCache:
     clear = staticmethod(cache.clear)
 
     @classmethod
-    def load(cls, key_func, mod_func, *args) -> Tuple[str, ModuleType]:
+    def load(cls, key_func, mod_func, *args) -> tuple[str, ModuleType]:
         key = key_func(*args)
         if key not in cls.cache:
             func_name, mod = mod_func(*args)

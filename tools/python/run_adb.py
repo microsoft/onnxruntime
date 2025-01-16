@@ -5,13 +5,12 @@
 import logging
 import os
 import sys
-import typing
 
 from util import run
 from util.android import get_sdk_tool_paths
 
 
-def run_adb(android_sdk_root: str, args: typing.List[str]):
+def run_adb(android_sdk_root: str, args: list[str]):
     sdk_tool_paths = get_sdk_tool_paths(android_sdk_root)
     run(sdk_tool_paths.adb, *args)
 

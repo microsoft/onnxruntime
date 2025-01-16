@@ -9,11 +9,10 @@
 import argparse
 import logging
 import sys
-from typing import List, Tuple  # noqa: F401
 
 import numpy as np
 import onnx
-from onnx import ModelProto, SparseTensorProto, TensorProto, numpy_helper  # noqa: F401
+from onnx import ModelProto, TensorProto, numpy_helper
 
 logger = logging.getLogger(__name__)
 

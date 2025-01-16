@@ -1387,7 +1387,7 @@ def generate_build_tree(
         if not all(needed_args):
             raise BuildError(
                 "iOS/MacOS framework build on MacOS canceled due to missing arguments: "
-                + ", ".join(val for val, cond in zip(arg_names, needed_args) if not cond)
+                + ", ".join(val for val, cond in zip(arg_names, needed_args, strict=False) if not cond)
             )
         # note: this value is mainly used in framework_info.json file to specify the build osx type
         platform_name = "macabi" if args.macos == "Catalyst" else args.apple_sysroot

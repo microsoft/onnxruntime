@@ -7,7 +7,6 @@
 import logging
 import os
 from pathlib import Path
-from typing import Dict, Tuple, Union
 
 import numpy as np
 import torch
@@ -117,7 +116,7 @@ class WhisperHelper:
         device: torch.device,
         merge_encoder_and_decoder_init: bool = True,
         state_dict_path: str = "",
-    ) -> Dict[str, torch.nn.Module]:
+    ) -> dict[str, torch.nn.Module]:
         """Load model given a pretrained name or path, then build models for ONNX conversion.
 
         Args:
@@ -170,7 +169,7 @@ class WhisperHelper:
 
     @staticmethod
     def export_onnx(
-        model: Union[WhisperEncoder, WhisperDecoder, WhisperDecoderInit, WhisperEncoderDecoderInit],
+        model: WhisperEncoder | WhisperDecoder | WhisperDecoderInit | WhisperEncoderDecoderInit,
         device: torch.device,
         onnx_model_path: str,
         verbose: bool = True,
@@ -209,7 +208,7 @@ class WhisperHelper:
     @staticmethod
     def auto_mixed_precision(
         onnx_model: OnnxModel,
-        op_block_list: Tuple[str] = (
+        op_block_list: tuple[str] = (
             "SimplifiedLayerNormalization",
             "SkipSimplifiedLayerNormalization",
             "Relu",
@@ -460,7 +459,7 @@ class WhisperHelper:
         }
 
         use_extra_decoding_ids = "extra_decoding_ids" in ort_names
-        for name, dtype in zip(ort_names, ort_dtypes):
+        for name, dtype in zip(ort_names, ort_dtypes, strict=False):
             if name == "input_features":
                 inputs[name] = inputs[name].detach().cpu().numpy()
             elif name == "vocab_mask":

@@ -3,7 +3,6 @@
 
 import logging
 import pathlib
-from typing import Optional
 
 import onnx
 from onnx import version_converter
@@ -62,8 +61,8 @@ def get_opsets_imported(model: onnx.ModelProto):
 def update_onnx_opset(
     model_path: pathlib.Path,
     opset: int,
-    out_path: Optional[pathlib.Path] = None,
-    logger: Optional[logging.Logger] = None,
+    out_path: pathlib.Path | None = None,
+    logger: logging.Logger | None = None,
 ):
     """
     Helper to update the opset of a model using onnx version_converter. Target opset must be greater than current opset.

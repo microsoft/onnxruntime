@@ -8,7 +8,7 @@ import os
 import pathlib
 import sys
 from collections import defaultdict
-from typing import Any, Dict, List, Sequence, Set, Text, Tuple  # noqa: F401
+from collections.abc import Sequence  # noqa: F401
 
 import numpy as np  # type: ignore
 from onnx import AttributeProto, FunctionProto  # noqa: F401
