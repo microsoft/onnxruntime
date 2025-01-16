@@ -119,7 +119,7 @@ onnxruntime_fetchcontent_makeavailable(utf8_range)
 include_directories(${utf8_range_SOURCE_DIR})
 
 # Download a protoc binary from Internet if needed
-if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT onnxruntime_USE_VCPKG)
+if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
   # This part of code is only for users' convenience. The code couldn't handle all cases. Users always can manually
   # download protoc from Protobuf's Github release page and pass the local path to the ONNX_CUSTOM_PROTOC_EXECUTABLE
   # variable.
