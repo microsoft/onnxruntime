@@ -1136,9 +1136,7 @@ def generate_build_tree(
         if overlay_triplets_dir is None:
             overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg_triplets", "default")
         vcpkg_install_options.append(f"--overlay-triplets={overlay_triplets_dir}")
-        overlay_ports_dir = os.path.join(source_dir, "cmake", 'vcpkg-ports')
-        vcpkg_install_options.append(f"--overlay-ports={overlay_ports_dir}")
-        
+
         # VCPKG_INSTALL_OPTIONS is a CMake list. It must be joined by semicolons
         add_default_definition(cmake_extra_defines, "VCPKG_INSTALL_OPTIONS", ";".join(vcpkg_install_options))
         # Choose the cmake triplet
@@ -2619,7 +2617,6 @@ def main():
 
     if os.getenv("ORT_BUILD_WITH_CACHE") == "1":
         args.use_cache = True
-
 
     if not is_windows():
         if not args.allow_running_as_root:

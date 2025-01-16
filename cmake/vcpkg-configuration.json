@@ -5,7 +5,7 @@
         "baseline": "93570a28ecdf49d3d9676cec8aa0cc72935d43db"
     },
     "overlay-ports": [
-	"./vcpkg-ports/onnx"
+	"./vcpkg-ports"
     ],
     "registries": []
 }
