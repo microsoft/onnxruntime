@@ -12,9 +12,13 @@
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_TYPED_KERNEL(Round, 11, MLFloat16, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()), Round<MLFloat16>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(Round, 11, float, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), Round<float>);
-ONNX_CPU_OPERATOR_TYPED_KERNEL(Round, 11, double, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()), Round<double>);
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(Round, 11, 21, MLFloat16, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()), Round<MLFloat16>);
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(Round, 11, 21, float, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), Round<float>);
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(Round, 11, 21, double, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()), Round<double>);
+
+ONNX_CPU_OPERATOR_TYPED_KERNEL(Round, 22, MLFloat16, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()), Round<MLFloat16>);
+ONNX_CPU_OPERATOR_TYPED_KERNEL(Round, 22, float, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()), Round<float>);
+ONNX_CPU_OPERATOR_TYPED_KERNEL(Round, 22, double, KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<double>()), Round<double>);
 
 template <typename T>
 Status Round<T>::Compute(OpKernelContext* ctx) const {

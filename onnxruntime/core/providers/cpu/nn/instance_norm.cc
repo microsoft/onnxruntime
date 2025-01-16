@@ -8,9 +8,16 @@ using namespace ::onnxruntime::common;
 
 namespace onnxruntime {
 
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     InstanceNormalization,
     6,
+    21,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+    InstanceNorm<float>);
+
+ONNX_CPU_OPERATOR_KERNEL(
+    InstanceNormalization,
+    22,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
     InstanceNorm<float>);
 
