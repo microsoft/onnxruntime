@@ -536,29 +536,41 @@ Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const
   shader.AddOutput("scales", ShaderUsage::UseUniform);
 
   shader.AdditionalImplementation() << R"ADDNL_FN(
-    var<workgroup> max_values : array<f16, 2>;
+    var<workgroup> max_values : array<f16, 4>;
  )ADDNL_FN";
 
   shader.MainFunctionBody() << R"MAIN_FN(
-    var local_a = input_a[global_idx];
-    var max_val = subgroupMax(abs(local_a));
-    var max_temp = max(max_val.xy, max_val.zw);
-    var scale = max(max_temp[0], max_temp[1]);
-    if (sg_size == 8)
-    {
-      if (local_idx % sg_size == 0) {
-        max_values[local_idx / sg_size] = scale;
-      }
-      workgroupBarrier();
-      scale = max(max_values[0], max_values[1]);
-    }
-    var norm_a = local_a/scale;
-    output[global_idx] = pack4x8snorm(vec4<f32>(norm_a));
-    if (local_idx == 0)
-    {
-      // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
-      scales[workgroup_idx] = scale/127;
-    }
+  var local_a = input_a[global_idx];
+  var max_val = subgroupMax(abs(local_a));
+  var max_temp = max(max_val.xy, max_val.zw);
+  var scale = max(max_temp[0], max_temp[1]);
+  if (local_idx % sg_size == 0) {
+    max_values[local_idx / sg_size] = scale;
+  }
+  workgroupBarrier();
+
+  if (sg_size == 8)
+  {
+    scale = max(max_values[0], max_values[1]);
+    scale = max(scale, max_values[2]);
+    scale = max(scale, max_values[3]);
+  }
+  else if (sg_size == 16)
+  {
+    scale = max(max_values[0], max_values[1]);
+  }
+  else
+  {
+    scale = max_values[0];
+  }
+
+  var norm_a = local_a/scale;
+  output[global_idx] = pack4x8snorm(vec4<f32>(norm_a));
+  if (local_idx == 0)
+  {
+    // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
+    scales[workgroup_idx] = scale/127;
+  }
 )MAIN_FN";
   return Status::OK();
 }
@@ -639,9 +651,9 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     tile_A[a_slot][sg_id%4] = input_a[a_global*uniforms.K16+kidx_v+sg_id%4];
     if (sg_id%4 == 0)
     {
-      // kidx_v - each kidx_v covers 16 values of k, therefore 4 index must share
-      // a single scale kidx_v/4.
-      scale_A[a_slot] = scales_a[a_global*(uniforms.K/64) + kidx_v/4];
+      // kidx_v - each kidx_v covers 16 values of k, therefore 8 index
+      // (8*14 = 128) will share a single scale, index by kidx_v/8 below.
+      scale_A[a_slot] = scales_a[a_global*(uniforms.K/128) + kidx_v/8];
     }
   }
 
@@ -811,9 +823,9 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     constexpr uint32_t kVec2Components = 2;
     constexpr uint32_t kU32Components = 4;
 
-    constexpr uint32_t kBlockSizeA = 64;
+    constexpr uint32_t kBlockSizeA = 128;
     DP4AMatMulQuantizeProgram quantize_program;
-    quantize_program.SetWorkgroupSize(16);
+    quantize_program.SetWorkgroupSize(32);
     quantize_program.SetDispatchGroupSize(M*K/kBlockSizeA, 1, 1);
     TensorShape a_quant_shape{1, M, K/kU32Components};
     Tensor a_quant = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), a_quant_shape);
