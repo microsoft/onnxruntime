@@ -57,10 +57,6 @@ ignore = [
     "SIM116", # Don't use dict lookup to replace if-else
 ]
 ignore-init-module-imports = true
-unfixable = [
-    "F401", # Unused imports
-    "SIM112", # Use upper case for env vars
-]
 
 [tool.ruff.lint.per-file-ignores]
 # NOTE: Refrain from growing the ignore list unless for exceptional cases.
