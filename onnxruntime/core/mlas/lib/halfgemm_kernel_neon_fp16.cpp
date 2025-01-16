@@ -137,7 +137,7 @@ HGemmTransB_Kernel_Block(
     }
 }
 
-void HTransposePackB_Kernel(
+void HPackB_TransposedB_Kernel(
     const MLAS_FP16* B,
     MLAS_FP16* PackedB,
     size_t CountN,
@@ -207,7 +207,7 @@ void HTransposePackB_Kernel(
     }
 }
 
-void HGemm_TransposeB_Kernel(
+void HGemm_TransposedB_Kernel(
     const MLAS_FP16* A,
     const MLAS_FP16* B,
     MLAS_FP16* C,
@@ -221,11 +221,11 @@ void HGemm_TransposeB_Kernel(
     MLAS_FP16 beta
 ) {
     if (CountM > 2) {
-        MLAS_THROW_EX(std::runtime_error, "HGemm_TransposeB_Kernel only support <= 2 rows");
+        MLAS_THROW_EX(std::runtime_error, "HGemm_TransposedB_Kernel only support <= 2 rows");
     }
 }
 
-void HGemm_TransposePackB_Kernel(
+void HGemm_TransposedPackedB_Kernel(
     const MLAS_FP16* A,
     const MLAS_FP16* PackedB,
     MLAS_FP16* C,
@@ -238,7 +238,7 @@ void HGemm_TransposePackB_Kernel(
     MLAS_FP16 beta
 ) {
     if (CountM > 2) {
-        MLAS_THROW_EX(std::runtime_error, "HGemm_TransposePackB_Kernel only support <= 2 rows");
+        MLAS_THROW_EX(std::runtime_error, "HGemm_TransposedPackedB_Kernel only support <= 2 rows");
     }
 
     const auto* a = reinterpret_cast<const _mlas_fp16_*>(A);

@@ -516,7 +516,7 @@ MlasHalfGemmGetDispatch()
 
 namespace hgemm_neon {
 
-void HTransposePackB_Kernel(
+void HPackB_TransposedB_Kernel(
     const MLAS_FP16* B,
     MLAS_FP16* PackedB,
     size_t CountN,
@@ -524,7 +524,7 @@ void HTransposePackB_Kernel(
     size_t ldb
 );
 
-void HGemm_TransposeB_Kernel(
+void HGemm_TransposedB_Kernel(
     const MLAS_FP16* A,
     const MLAS_FP16* B,
     MLAS_FP16* C,
@@ -538,7 +538,7 @@ void HGemm_TransposeB_Kernel(
     MLAS_FP16 beta
 );
 
-void HGemm_TransposePackB_Kernel(
+void HGemm_TransposedPackedB_Kernel(
     const MLAS_FP16* A,
     const MLAS_FP16* PackedB,
     MLAS_FP16* C,
@@ -555,7 +555,8 @@ void HGemm_TransposePackB_Kernel(
 
 struct MLAS_HGEMM_DISPATCH {
     /**
-     * @brief Transpose and pack the B matrix segment. Elements from the same row are packed continuously.
+     * @brief Pack the B matrix segment. B is column-major. Elements from CountK rows x N columns are packed
+     *        continuously in row-major.
      *        First pack CountK rows x 16 columns, then pack CountK rows x 8 columns.
      *        If there are < 8 columns left, pad the columns with 0.
      * @param      B                   the first element of the B matrix segment. Column major.
@@ -563,7 +564,7 @@ struct MLAS_HGEMM_DISPATCH {
      * @param      CountN              the number of columns of B chunk.
      * @param      CountK              the number of rows of B chunk.
      */
-    typedef void(HTransposePackBKernel_Fn) (
+    typedef void(HPackBKernel_TransposedB_Fn) (
         const MLAS_FP16* B,
         MLAS_FP16* PackedB,
         size_t CountN,
@@ -571,7 +572,7 @@ struct MLAS_HGEMM_DISPATCH {
         size_t ldb
     );
 
-    HTransposePackBKernel_Fn* HTransposePackB = nullptr;
+    HPackBKernel_TransposedB_Fn* HPackBKernel_TransposedB = nullptr;
 
     /**
      * @brief C = alpha * A * Transpose(B) + beta * C. CountM <= 2. B is not packed. Used when M is small.
@@ -588,7 +589,7 @@ struct MLAS_HGEMM_DISPATCH {
      * @param       alpha               the alpha scalar value.
      * @param       beta                the beta scalar value.
      */
-    typedef void(HGemmKernel_TransposeB_Fn)(
+    typedef void(HGemmKernel_TransposedB_Fn)(
         const MLAS_FP16* A,
         const MLAS_FP16* B,
         MLAS_FP16* C,
@@ -602,11 +603,11 @@ struct MLAS_HGEMM_DISPATCH {
         MLAS_FP16 beta
     );
 
-    HGemmKernel_TransposeB_Fn* HGemmKernel_TransposeB = nullptr;
+    HGemmKernel_TransposedB_Fn* HGemmKernel_TransposedB = nullptr;
 
      /**
-     * @brief C = alpha * A * Transpose(B) + beta * C. CountM <= 2. B is packed using HTransposePackBKernel_Fn.
-     *        Used when M is large.
+     * @brief C = alpha * A * Transpose(B) + beta * C. CountM <= 2. B has been packed using HPackBKernel_TransposedB_Fn.
+     *        Use when M is large.
      *
      * @param       A                   first row of the A matrix segment. Row major.
      * @param       PackedB             first element of the packed B buffer.
@@ -619,7 +620,7 @@ struct MLAS_HGEMM_DISPATCH {
      * @param       alpha               the alpha scalar value.
      * @param       beta                the beta scalar value.
      */
-    typedef void(HGemmKernel_TransposePackB_Fn)(
+    typedef void(HGemmKernel_TransposedPackedB_Fn)(
         const MLAS_FP16* A,
         const MLAS_FP16* PackedB,
         MLAS_FP16* C,
@@ -632,5 +633,5 @@ struct MLAS_HGEMM_DISPATCH {
         MLAS_FP16 beta
     );
 
-    HGemmKernel_TransposePackB_Fn* HGemmKernel_TransposePackB = nullptr;
+    HGemmKernel_TransposedPackedB_Fn* HGemmKernel_TransposedPackedB = nullptr;
 };

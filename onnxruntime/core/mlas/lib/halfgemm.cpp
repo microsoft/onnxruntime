@@ -333,9 +333,9 @@ MlasHGemmSupported(
     auto* dispatch = GetMlasPlatform().HGemmDispatch;
     if (TransA == CblasNoTrans && TransB == CblasTrans) {
         return dispatch &&
-        dispatch->HGemmKernel_TransposeB &&
-        dispatch->HTransposePackB &&
-        dispatch->HGemmKernel_TransposePackB;
+        dispatch->HGemmKernel_TransposedB &&
+        dispatch->HPackBKernel_TransposedB &&
+        dispatch->HGemmKernel_TransposedPackedB;
     }
 
     return false;
@@ -369,20 +369,22 @@ HGemmOperation(
         auto* C = DataParams->C + RangeStartM * ldc + RangeStartN;
 
         if (RangeCountM <= StrideM) {
-            if (!dispatch || !dispatch->HGemmKernel_TransposeB) {
-                MLAS_THROW_EX(std::runtime_error, "hgemm does not have A x Transpoe(B) kernels");
+            if (!dispatch || !dispatch->HGemmKernel_TransposedB) {
+                MLAS_THROW_EX(std::runtime_error, "hgemm does not have A x Transposed(B) kernels");
             }
+            // When M is small, B is visited once. The overhead of Pack(B) exceeds the benefits
+            // from A x Pack(B). Therefore directly calculate A x B.
             // Without PackB, to utilize memory locality, iterate full K.
             const size_t StrideN = 16;
             for (size_t n = 0, countN; n < RangeCountN; n += countN) {
                 countN = std::min(StrideN, RangeCountN - n);
-                dispatch->HGemmKernel_TransposeB(A, B, C, RangeCountM, countN, K, lda, ldb, ldc, alpha, beta);
+                dispatch->HGemmKernel_TransposedB(A, B, C, RangeCountM, countN, K, lda, ldb, ldc, alpha, beta);
                 B += countN * ldb;
                 C += countN;
             }
         } else {
-            if (!dispatch || !dispatch->HTransposePackB || !dispatch->HGemmKernel_TransposePackB) {
-                MLAS_THROW_EX(std::runtime_error, "hgemm does not have A x Transpoe(B) kernels");
+            if (!dispatch || !dispatch->HPackBKernel_TransposedB || !dispatch->HGemmKernel_TransposedPackedB) {
+                MLAS_THROW_EX(std::runtime_error, "hgemm does not have A x Transposed(B) kernels");
             }
             // 16N is the smallest pack unit.
             const size_t StrideK = std::min(K, size_t(MLAS_HGEMM_STRIDEK));
@@ -394,13 +396,13 @@ HGemmOperation(
                 MLAS_FP16* c = C;
                 for (size_t k = 0, countK; k < K; k += countK) {
                     countK = std::min(StrideK, K - k);
-                    dispatch->HTransposePackB(b, PackedB, countN, countK, ldb);
+                    dispatch->HPackBKernel_TransposedB(b, PackedB, countN, countK, ldb);
                     const MLAS_FP16* aa = a;
                     MLAS_FP16* cc = c;
                     for (size_t m = 0, countM; m < RangeCountM; m += countM) {
                         countM = std::min(StrideM, RangeCountM - m);
                         // First K iteration, beta is applied to the whole C. In rest K iterations, use add mode.
-                        dispatch->HGemmKernel_TransposePackB(
+                        dispatch->HGemmKernel_TransposedPackedB(
                             aa, PackedB, cc, countM, countN, countK, lda, ldc, alpha, k == 0 ? beta : beta_add);
                         aa += countM * lda;
                         cc += countM * ldc;
@@ -476,10 +478,9 @@ MlasGemmBatch(
     const size_t ThreadCountN = MlasDivRoundup(N, StrideN);
     ThreadsPerGemm = ThreadCountM * ThreadCountN;
 
-    MlasTrySimpleParallel(ThreadPool, ThreadsPerGemm * static_cast<ptrdiff_t>(BatchSize), [=](ptrdiff_t tid) {
+    MlasTrySimpleParallel(ThreadPool, ThreadsPerGemm * static_cast<ptrdiff_t>(BatchSize), [&](ptrdiff_t tid) {
         const auto gemm_i = tid / ThreadsPerGemm;
         const auto blk_i = tid % ThreadsPerGemm;
-        const auto* threadData = &Data[gemm_i];
 
         const ptrdiff_t ThreadIdN = blk_i / ThreadCountM;
         const ptrdiff_t ThreadIdM = blk_i % ThreadCountM;
