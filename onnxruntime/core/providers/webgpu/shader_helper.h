@@ -5,10 +5,6 @@
 
 #include <sstream>
 
-#ifdef __EMSCRIPTEN__
-#include <emscripten/emscripten.h>
-#endif
-
 #include <webgpu/webgpu_cpp.h>
 
 #include "core/framework/tensor_shape.h"

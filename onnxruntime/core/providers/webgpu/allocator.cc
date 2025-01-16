@@ -1,10 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-#endif
-
 #include "core/framework/session_state.h"
 #include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/webgpu_context.h"

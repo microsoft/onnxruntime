@@ -111,6 +111,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       ${PROVIDERS_JS}
       ${PROVIDERS_XNNPACK}
       ${PROVIDERS_WEBNN}
+      ${PROVIDERS_WEBGPU}
       onnxruntime_session
       onnxruntime_util
       re2::re2
@@ -188,6 +189,7 @@ else()
     ${PROVIDERS_JS}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_WEBNN}
+    ${PROVIDERS_WEBGPU}
     onnxruntime_session
     onnxruntime_util
     re2::re2
@@ -389,6 +391,10 @@ jsepDownload:_pp_")
         "SHELL:-s ASYNCIFY_IMPORTS=['Module.jsepCopy','Module.jsepCopyAsync','jsepDownload']"
       )
     endif()
+  endif()
+
+  if (onnxruntime_USE_WEBGPU)
+    target_compile_definitions(onnxruntime_webassembly PRIVATE USE_WEBGPU=1)
   endif()
 
   if (onnxruntime_EMSCRIPTEN_SETTINGS)

@@ -85,7 +85,7 @@ class SimpleCacheManager : public IBufferCacheManager {
 
   void OnRefresh() override {
     for (auto& buffer : pending_buffers_) {
-      buffers_[wgpuBufferGetSize(buffer)].push_back(buffer);
+      buffers_[static_cast<size_t>(wgpuBufferGetSize(buffer))].push_back(buffer);
     }
     pending_buffers_.clear();
   }
@@ -167,7 +167,7 @@ class BucketCacheManager : public IBufferCacheManager {
     // TODO: consider graph capture. currently not supported
 
     for (auto& buffer : pending_buffers_) {
-      auto buffer_size = wgpuBufferGetSize(buffer);
+      auto buffer_size = static_cast<size_t>(wgpuBufferGetSize(buffer));
 
       auto it = buckets_.find(buffer_size);
       if (it != buckets_.end() && it->second.size() < buckets_limit_[buffer_size]) {

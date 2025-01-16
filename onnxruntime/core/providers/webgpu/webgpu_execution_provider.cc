@@ -3,9 +3,6 @@
 
 #include "core/providers/webgpu/webgpu_execution_provider.h"
 
-#ifdef __EMSCRIPTEN__
-#include <emscripten.h>
-#endif
 #include <string_view>
 #include <unordered_map>
 #include <unordered_set>

@@ -26,6 +26,10 @@ parameters:
   type: boolean
   default: false
 
+- name: BuildWebGPU
+  type: boolean
+  default: false
+
 # In fact, it's only used on Linux for compiler cache.
 - name: BuildStaticLib
   type: boolean
@@ -120,6 +124,24 @@ jobs:
         CacheDir: $(ORT_CACHE_DIR)/wasm_inferencing_jsep
         Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_jsep --use_jsep --use_webnn --target onnxruntime_webassembly --skip_tests'
         DisplayName: 'Build (simd + threads + JSEP)'
+        WithCache: ${{ parameters.WithCache }}
+
+  - ${{ if eq(parameters.BuildWebGPU, true) }}:
+    # This step only verifies whether the build is successful.
+    # currently, we uses EMSDK 3.1.59, which is not compatible with Dawn's changes in its Emscripten fork. Closure compiler will not work for WebGPU build.
+    # Only enables in DEBUG build.
+    #
+    # TODO: when upgrading to a newer Emscripten version, we should fix this step.
+    - template: build-linux-wasm-step.yml
+      parameters:
+        Today: $(Today)
+        ${{ if eq(parameters.BuildStaticLib, true)}}:
+          AdditionalKey: wasm_inferencing_webgpu_exp | ${{ parameters.BuildConfig }} | static
+        ${{ else }}:
+          AdditionalKey: wasm_inferencing_webgpu_exp | ${{ parameters.BuildConfig }}
+        CacheDir: $(ORT_CACHE_DIR)/wasm_inferencing_webgpu
+        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_webgpu --use_webgpu --target onnxruntime_webassembly --skip_tests'
+        DisplayName: 'Build (simd + threads + WebGPU experimental)'
         WithCache: ${{ parameters.WithCache }}
 
   - ${{ if eq(parameters.SkipPublish, false) }}:
