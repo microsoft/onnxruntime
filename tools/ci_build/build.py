@@ -1617,7 +1617,7 @@ def generate_build_tree(
                 if args.parallel == 0:
                     cflags += ["/MP"]
                 else:
-                    cflags += ["/MP%d" % njobs]
+                    cflags += [f"/MP{njobs}"]
         # Setup default values for cflags/cxxflags/ldflags.
         # The values set here are purely for security and compliance purposes. ONNX Runtime should work fine without these flags.
         if (
@@ -2343,6 +2343,8 @@ def build_python_wheel(
             args.append("--use_rocm")
             if rocm_version:
                 args.append(f"--rocm_version={rocm_version}")
+            if use_migraphx:
+                args.append("--use_migraphx")
         elif use_migraphx:
             args.append("--use_migraphx")
         elif use_openvino:

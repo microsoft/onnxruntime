@@ -5,14 +5,18 @@
 
 #include <filesystem>
 #include <unordered_set>
+
 #include "core/providers/qnn/ort_api.h"
-#include "core/providers/qnn/qnn_telemetry.h"
-#include "core/providers/qnn/builder/qnn_utils.h"
-#include "core/providers/qnn/builder/qnn_model_wrapper.h"
-#include "core/providers/qnn/builder/op_builder_factory.h"
-#include "core/providers/qnn/builder/qnn_node_group.h"
-#include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
+#include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn/builder/qnn_def.h"
+#include "core/providers/qnn/builder/qnn_model_wrapper.h"
+#include "core/providers/qnn/builder/qnn_node_group.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
+#include "core/providers/qnn/qnn_allocator.h"
+#include "core/providers/qnn/qnn_telemetry.h"
+#include "core/providers/qnn/rpcmem_library.h"
+#include "core/providers/qnn/shared_context.h"
 
 namespace onnxruntime {
 
@@ -356,17 +360,24 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
                           << "handles the graph I/O quantization/dequantization.";
   }
 
-  qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(
-      std::move(backend_path),
-      profiling_level_etw,
-      profiling_level,
-      std::move(profiling_file_path),
-      context_priority,
-      std::move(qnn_saver_path),
-      device_id_,
-      htp_arch,
-      soc_model,
-      enable_htp_weight_sharing);
+  static const std::string QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED = "enable_htp_shared_memory_allocator";
+  if (ParseBoolOption(QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED, false, provider_options_map)) {
+    // Initialize rpcmem_library_.
+    // This is necessary for HtpSharedMemoryAllocator to function and also indicates that the allocator is available.
+    rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
+  }
+
+  qnn_backend_manager_ = qnn::QnnBackendManager::Create(
+      qnn::QnnBackendManagerConfig{backend_path,
+                                   profiling_level_etw,
+                                   profiling_level,
+                                   profiling_file_path,
+                                   context_priority,
+                                   qnn_saver_path,
+                                   device_id_,
+                                   htp_arch,
+                                   soc_model,
+                                   enable_htp_weight_sharing});
 
 #if defined(_WIN32)
   if (onnxruntime::logging::EtwRegistrationManager::SupportsETW()) {
@@ -1166,4 +1177,25 @@ Status QNNExecutionProvider::OnRunEnd(bool /*sync_stream*/, const onnxruntime::R
 
   return Status::OK();
 }
+
+std::vector<AllocatorPtr> QNNExecutionProvider::CreatePreferredAllocators() {
+  std::vector<AllocatorPtr> allocators{};
+
+  if (IsHtpSharedMemoryAllocatorAvailable()) {
+    LOGS_DEFAULT(INFO) << "Creating HtpSharedMemoryAllocator.";
+
+    AllocatorFactory rpcmem_allocator_factory = [this](OrtDevice::DeviceId) {
+      return std::make_unique<qnn::HtpSharedMemoryAllocator>(rpcmem_library_);
+    };
+
+    AllocatorCreationInfo rpcmem_allocator_creation_info{rpcmem_allocator_factory,
+                                                         /* device_id */ 0,
+                                                         /* use_arena */ false};
+
+    allocators.emplace_back(CreateAllocator(rpcmem_allocator_creation_info));
+  }
+
+  return allocators;
+}
+
 }  // namespace onnxruntime

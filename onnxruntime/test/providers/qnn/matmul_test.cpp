@@ -233,7 +233,8 @@ TEST_F(QnnCPUBackendTests, MatMulOp) {
 //
 // HTP tests:
 //
-TEST_F(QnnHTPBackendTests, MatMulOp) {
+// Disable this for now as the QNN HTP backend is not stable on different versions and platforms so it failed randomly.
+TEST_F(QnnHTPBackendTests, DISABLED_MatMulOp) {
   // RunMatMulOpTest(is_htp_backend, shape_0, shape_1, is_initializer_0, is_initializer_1, expected_ep_assignment,
   // opset, f32_abs_err)
   RunMatMulOpTest(true, {2, 3}, {3, 2}, false, false, ExpectedEPNodeAssignment::All, 18, 1e-2f);

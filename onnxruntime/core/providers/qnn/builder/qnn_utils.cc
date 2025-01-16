@@ -101,6 +101,23 @@ size_t GetElementSizeByType(ONNX_NAMESPACE::TensorProto_DataType onnx_type) {
   // Unreachable
 }
 
+size_t GetQnnTensorDataSizeInBytes(gsl::span<const uint32_t> shape, Qnn_DataType_t element_type) {
+  ORT_ENFORCE(!shape.empty(), "Empty shape not allowed.");  // TODO can we just treat empty shape as a scalar?
+  SafeInt<size_t> data_length = GetElementSizeByType(element_type);
+  return std::accumulate(shape.begin(), shape.end(), data_length, std::multiplies<>{});
+}
+
+bool QnnTensorHasDynamicShape(const Qnn_Tensor_t& tensor) {
+  const uint8_t* is_dynamic_dimensions = GetQnnTensorIsDynamicDimensions(tensor);
+  if (is_dynamic_dimensions == nullptr) {
+    return false;
+  }
+
+  const auto rank = GetQnnTensorRank(tensor);
+  return std::any_of(is_dynamic_dimensions, is_dynamic_dimensions + rank,
+                     [](uint8_t is_dynamic_dimension) { return is_dynamic_dimension != 0; });
+}
+
 std::ostream& operator<<(std::ostream& out, const Qnn_Scalar_t& scalar) {
   switch (scalar.dataType) {
     case QNN_DATATYPE_INT_8:
@@ -712,6 +729,28 @@ Status QuantizeData(gsl::span<const float> data, gsl::span<const uint32_t> shape
 
   return Status::OK();
 }
+
+std::string_view GetQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface, Qnn_ErrorHandle_t qnn_error_handle) {
+  // From QNN SDK: The memory is statically owned and should not be freed by the caller.
+  const char* error_msg = nullptr;
+  if (qnn_interface.errorGetMessage(qnn_error_handle, &error_msg) == QNN_SUCCESS) {
+    return error_msg;
+  }
+  return "Unknown error.";
+}
+
+std::string GetVerboseQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
+                                      Qnn_ErrorHandle_t qnn_error_handle) {
+  const char* error_msg = nullptr;
+  if (qnn_interface.errorGetVerboseMessage(qnn_error_handle, &error_msg) == QNN_SUCCESS) {
+    auto free_error_msg = gsl::finally([&qnn_interface, error_msg] {
+      qnn_interface.errorFreeVerboseMessage(error_msg);
+    });
+    return error_msg;
+  }
+  return "Unknown error.";
+}
+
 }  // namespace utils
 }  // namespace qnn
 }  // namespace onnxruntime

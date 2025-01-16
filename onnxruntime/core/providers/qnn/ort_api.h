@@ -51,6 +51,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #endif
 
+#include "core/common/inlined_containers.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
 

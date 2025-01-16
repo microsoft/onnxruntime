@@ -6,11 +6,16 @@
 #include <functional>
 #include <numeric>
 #include <string>
+#include <string_view>
 #include <type_traits>
 #include <utility>
 #include <vector>
 
+#include <gsl/gsl>
+
+#include "QnnInterface.h"
 #include "QnnTypes.h"
+
 #include "core/providers/qnn/ort_api.h"
 
 namespace onnxruntime {
@@ -23,6 +28,10 @@ size_t GetElementSizeByType(const Qnn_DataType_t& data_type);
 size_t GetElementSizeByType(ONNXTensorElementDataType elem_type);
 
 size_t GetElementSizeByType(ONNX_NAMESPACE::TensorProto_DataType onnx_type);
+
+size_t GetQnnTensorDataSizeInBytes(gsl::span<const uint32_t> shape, Qnn_DataType_t element_data_type);
+
+bool QnnTensorHasDynamicShape(const Qnn_Tensor_t& tensor);
 
 // TODO: make these work with Wrappers?
 std::ostream& operator<<(std::ostream& out, const Qnn_Param_t& qnn_param);
@@ -226,6 +235,15 @@ Status PermuteShape(gsl::span<const T> input_shape, gsl::span<const P> perm, gsl
 
   return Status::OK();
 }
+
+// Gets error message associated with QNN error handle value.
+std::string_view GetQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
+                                    Qnn_ErrorHandle_t qnn_error_handle);
+
+// Gets verbose error message associated with QNN error handle value.
+std::string GetVerboseQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
+                                      Qnn_ErrorHandle_t qnn_error_handle);
+
 }  // namespace utils
 }  // namespace qnn
 }  // namespace onnxruntime

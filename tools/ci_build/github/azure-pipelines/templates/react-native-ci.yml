@@ -198,30 +198,6 @@ stages:
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Bootstrap Android and iOS e2e tests
 
-# TODO: remove this once we upgrade the RN to post 0.70.15 or 0.73.3+ versions this is just a temporary workaround
-    - script: |
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-          sed -i .bak "/boostorg.jfrog.io/c\\
-        spec.source = { :http => 'https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2', " boost.podspec
-        else
-          sed -i .bak "/boostorg.jfrog.io/c\spec.source = { :http => 'https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2', " boost.podspec
-        fi
-        rm -f boost.podspec.bak
-      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/node_modules/react-native/third-party-podspecs'
-      displayName: Path the boost 1.76.0 source URL in boost.podspec js/react_native/node_modules/react-native/third-party-podspecs/boost.podspec
-
-# TODO: remove this once we upgrade the RN to post 0.70.15 or 0.73.3+ versions this is just a temporary workaround
-    - script: |
-        if [[ "$OSTYPE" == "darwin"* ]]; then
-          sed -i .bak "/boostorg.jfrog.io/c\\
-        spec.source = { :http => 'https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2', " boost.podspec
-        else
-          sed -i .bak "/boostorg.jfrog.io/c\spec.source = { :http => 'https://archives.boost.io/release/1.76.0/source/boost_1_76_0.tar.bz2', " boost.podspec
-        fi
-        rm -f boost.podspec.bak
-      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e/node_modules/react-native/third-party-podspecs'
-      displayName: Path the boost 1.76.0 source URL in boost.podspec in js/react_native/e2e/node_modules/react-native/third-party-podspecs/boost.podspec
-
     - script: |
         ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/ios-full-pod/onnxruntime-c \
         pod install
