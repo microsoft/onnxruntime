@@ -36,10 +36,6 @@ jobs:
         run: azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v11.8" cuda_sdk
 
 
-      - name: Install ONNX
-        run: |
-          &tools\ci_build\github\windows\install_third_party_deps.ps1 -cpu_arch x64 -install_prefix D:\b\Debug\installed -build_config Debug
-
       # The build machine doesn't have a GPU. So the value of CMAKE_CUDA_ARCHITECTURES doesn't matter.
       - name: Build code
         env:
@@ -117,7 +113,6 @@ jobs:
       - name: Delete build folder
         run: |
           if (Test-Path D:\b) { Remove-Item -Recurse -Force D:\b }
-          &tools\ci_build\github\windows\install_third_party_deps.ps1 -cpu_arch x64 -install_prefix D:\b\Debug\installed -build_config Debug
 
       # The build machine doesn't have a GPU. So the value of CMAKE_CUDA_ARCHITECTURES doesn't matter.
       - name: Build code
@@ -157,7 +152,6 @@ jobs:
       - name: Delete build folder
         run: |
           if (Test-Path D:\b) { Remove-Item -Recurse -Force D:\b }
-          &tools\ci_build\github\windows\install_third_party_deps.ps1 -cpu_arch x86 -install_prefix D:\b\Debug\installed -build_config Debug
 
       # The build machine doesn't have a GPU. So the value of CMAKE_CUDA_ARCHITECTURES doesn't matter.
       - name: Build code
