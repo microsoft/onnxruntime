@@ -125,12 +125,12 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   shader.MainFunctionBody() << "var value = f32_val_t(0);\n"
-                               "for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {\n"
-                               "  if (global_id.y < uniforms.M && w + local_id.x < uniforms.K) {\n"
-                               "    tileQ[TILE_SIZE * local_id.y + local_id.x] = q[qOffset + local_id.y * uniforms.K + w + local_id.x];\n"
-                               "  }\n"
-                               "  if (n + local_id.y < uniforms.N && w + local_id.x < uniforms.K) {\n"
-                               "    var idx = TILE_SIZE * local_id.y + local_id.x;\n";
+                            << "for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {\n"
+                            << "  if (global_id.y < uniforms.M && w + local_id.x < uniforms.K) {\n"
+                            << "    tileQ[TILE_SIZE * local_id.y + local_id.x] = q[qOffset + local_id.y * uniforms.K + w + local_id.x];\n"
+                            << "  }\n"
+                            << "  if (n + local_id.y < uniforms.N && w + local_id.x < uniforms.K) {\n"
+                            << "    var idx = TILE_SIZE * local_id.y + local_id.x;\n";
 
   if ((feed_past_key_ && has_present_key_) || (past_present_share_buffer_ && !is_first_prompt_)) {
     shader.MainFunctionBody() << "    if (n + local_id.y < past_sequence_length) {\n"
