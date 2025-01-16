@@ -18,7 +18,7 @@ else:
 
 sys.path.append(ort_fbs_py_parent_dir)
 
-from .operator_type_usage_processors import (
+from .operator_type_usage_processors import (  # noqa: E402
     GloballyAllowedTypesOpTypeImplFilter,  # noqa: F401
     OperatorTypeUsageManager,  # noqa: F401
     OpTypeImplFilterInterface,  # noqa: F401
