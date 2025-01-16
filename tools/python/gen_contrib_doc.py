@@ -8,10 +8,8 @@ import os
 import pathlib
 import sys
 from collections import defaultdict
-from collections.abc import Sequence  # noqa: F401
 
-import numpy as np  # type: ignore
-from onnx import AttributeProto, FunctionProto  # noqa: F401
+import numpy as np
 
 import onnxruntime.capi.onnxruntime_pybind11_state as rtpy
 from onnxruntime.capi.onnxruntime_pybind11_state import schemadef  # noqa: F401
@@ -303,11 +301,6 @@ def display_function(function, versions, domain=ONNX_DOMAIN):  # type: (Function
 
 def support_level_str(level):  # type: (OpSchema.SupportType) -> Text
     return "<sub>experimental</sub> " if level == OpSchema.SupportType.EXPERIMENTAL else ""
-
-
-# def function_status_str(status=OperatorStatus.Value("EXPERIMENTAL")):  # type: ignore
-#     return \
-#         "<sub>experimental</sub> " if status == OperatorStatus.Value('EXPERIMENTAL') else ""  # type: ignore
 
 
 def main(output_path: str, domain_filter: [str]):
