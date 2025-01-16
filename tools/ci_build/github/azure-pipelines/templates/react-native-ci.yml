@@ -303,7 +303,7 @@ stages:
 
     - task: PublishPipelineArtifact@0
       inputs:
-        artifactName: '${{parameters.PackageName}}'
+        artifactName: 'NPM_packages_ios'
         targetPath: '$(Build.ArtifactStagingDirectory)'
       displayName: Publish Pipeline Artifact
 
@@ -468,8 +468,6 @@ stages:
       condition: succeededOrFailed()
       displayName: Publish React Native Detox Android e2e Test Results
 
-
-
     - script: |
         git restore .
       workingDirectory: '$(Build.SourcesDirectory)/js'
@@ -506,7 +504,7 @@ stages:
 
     - task: PublishPipelineArtifact@0
       inputs:
-        artifactName: '${{parameters.PackageName}}'
+        artifactName: 'NPM_packages_android'
         targetPath: '$(Build.ArtifactStagingDirectory)'
       displayName: Publish Pipeline Artifact
 
