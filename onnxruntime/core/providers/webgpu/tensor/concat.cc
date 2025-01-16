@@ -106,7 +106,8 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
 
   uint32_t output_size = gsl::narrow_cast<int32_t>(prepare.output_tensor->Shape().Size());
 
-  ConcatProgram program{prepare.axis};
+  size_t axis = static_cast<size_t>(prepare.axis);
+  ConcatProgram program{axis};
 
   std::vector<uint32_t> sizes_in_concat_axis;
   sizes_in_concat_axis.reserve(input_count);
@@ -118,7 +119,7 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
     }
     program.AddInput({input.tensor, ProgramTensorMetadataDependency::TypeAndRank});
 
-    auto axis_size = input.tensor->Shape()[prepare.axis];
+    auto axis_size = input.tensor->Shape()[axis];
     sum += static_cast<uint32_t>(axis_size);
     sizes_in_concat_axis.push_back(sum);
   }
