@@ -53,6 +53,12 @@ export declare namespace JSEP {
     unmountExternalData(): void;
 
     /**
+     * This function patches the WebAssembly module to support Asyncify. This function should be called at least once
+     * before any ORT API is called.
+     */
+    asyncInit?(): void;
+
+    /**
      * This is the entry of JSEP initialization. This function is called once when initializing ONNX Runtime per
      * backend. This function initializes Asyncify support. If name is 'webgpu', also initializes WebGPU backend and
      * registers a few callbacks that will be called in C++ code.
@@ -316,7 +322,13 @@ export interface OrtInferenceAPIs {
     logVerbosityLevel: number,
     optimizedModelFilePath: number,
   ): number;
-  _OrtAppendExecutionProvider(sessionOptionsHandle: number, name: number): number;
+  _OrtAppendExecutionProvider(
+    sessionOptionsHandle: number,
+    name: number,
+    providerOptionsKeys: number,
+    providerOptionsValues: number,
+    numKeys: number,
+  ): Promise<number>;
   _OrtAddFreeDimensionOverride(sessionOptionsHandle: number, name: number, dim: number): number;
   _OrtAddSessionConfigEntry(sessionOptionsHandle: number, configKey: number, configValue: number): number;
   _OrtReleaseSessionOptions(sessionOptionsHandle: number): number;

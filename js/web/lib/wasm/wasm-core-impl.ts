@@ -102,52 +102,82 @@ export const initRuntime = async (env: Env): Promise<void> => {
  * @param epName
  */
 export const initEp = async (env: Env, epName: string): Promise<void> => {
+  // initialize ASYNCIFY support
+  getInstance().asyncInit?.();
+
+  let adapter: GPUAdapter | null = env.webgpu?.adapter;
+  if (epName === 'webgpu') {
+    // perform WebGPU availability check
+    if (typeof navigator === 'undefined' || !navigator.gpu) {
+      throw new Error('WebGPU is not supported in current environment');
+    }
+
+    if (!adapter) {
+      // if adapter is not set, request a new adapter.
+      const powerPreference = env.webgpu.powerPreference;
+      if (powerPreference !== undefined && powerPreference !== 'low-power' && powerPreference !== 'high-performance') {
+        throw new Error(`Invalid powerPreference setting: "${powerPreference}"`);
+      }
+      const forceFallbackAdapter = env.webgpu.forceFallbackAdapter;
+      if (forceFallbackAdapter !== undefined && typeof forceFallbackAdapter !== 'boolean') {
+        throw new Error(`Invalid forceFallbackAdapter setting: "${forceFallbackAdapter}"`);
+      }
+      adapter = await navigator.gpu.requestAdapter({ powerPreference, forceFallbackAdapter });
+      if (!adapter) {
+        throw new Error(
+          'Failed to get GPU adapter. ' +
+            'You may need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.',
+        );
+      }
+    } else {
+      // if adapter is set, validate it.
+      if (
+        typeof adapter.limits !== 'object' ||
+        typeof adapter.features !== 'object' ||
+        typeof adapter.requestDevice !== 'function'
+      ) {
+        throw new Error('Invalid GPU adapter set in `env.webgpu.adapter`. It must be a GPUAdapter object.');
+      }
+    }
+  }
+
+  if (BUILD_DEFS.USE_WEBGPU_EP) {
+    // const requiredFeatures: GPUFeatureName[] = [];
+    // const deviceDescriptor: GPUDeviceDescriptor = {
+    //   requiredLimits: {
+    //     maxComputeWorkgroupStorageSize: adapter.limits.maxComputeWorkgroupStorageSize,
+    //     maxComputeWorkgroupsPerDimension: adapter.limits.maxComputeWorkgroupsPerDimension,
+    //     maxStorageBufferBindingSize: adapter.limits.maxStorageBufferBindingSize,
+    //     maxBufferSize: adapter.limits.maxBufferSize,
+    //     maxComputeInvocationsPerWorkgroup: adapter.limits.maxComputeInvocationsPerWorkgroup,
+    //     maxComputeWorkgroupSizeX: adapter.limits.maxComputeWorkgroupSizeX,
+    //     maxComputeWorkgroupSizeY: adapter.limits.maxComputeWorkgroupSizeY,
+    //     maxComputeWorkgroupSizeZ: adapter.limits.maxComputeWorkgroupSizeZ,
+    //   },
+    //   requiredFeatures,
+    // };
+    // // Try requiring WebGPU features
+    // const requireFeatureIfAvailable = (feature: GPUFeatureName) =>
+    //   adapter.features.has(feature) && requiredFeatures.push(feature) && true;
+    // // Try chromium-experimental-timestamp-query-inside-passes and fallback to timestamp-query
+    // if (!requireFeatureIfAvailable('chromium-experimental-timestamp-query-inside-passes' as GPUFeatureName)) {
+    //   requireFeatureIfAvailable('timestamp-query');
+    // }
+    // requireFeatureIfAvailable('shader-f16');
+    // // Try subgroups
+    // if (requireFeatureIfAvailable('subgroups' as GPUFeatureName)) {
+    //   // If subgroups feature is available, also try subgroups-f16
+    //   requireFeatureIfAvailable('subgroups-f16' as GPUFeatureName);
+    // }
+    // this.device = await adapter.requestDevice(deviceDescriptor);
+  }
   if (!BUILD_DEFS.DISABLE_JSEP) {
     // eslint-disable-next-line @typescript-eslint/no-require-imports, @typescript-eslint/no-var-requires
     const initJsep = require('./jsep/init').init;
 
     if (epName === 'webgpu') {
-      // perform WebGPU availability check
-      if (typeof navigator === 'undefined' || !navigator.gpu) {
-        throw new Error('WebGPU is not supported in current environment');
-      }
-
-      let adapter = env.webgpu.adapter as GPUAdapter | null;
-      if (!adapter) {
-        // if adapter is not set, request a new adapter.
-        const powerPreference = env.webgpu.powerPreference;
-        if (
-          powerPreference !== undefined &&
-          powerPreference !== 'low-power' &&
-          powerPreference !== 'high-performance'
-        ) {
-          throw new Error(`Invalid powerPreference setting: "${powerPreference}"`);
-        }
-        const forceFallbackAdapter = env.webgpu.forceFallbackAdapter;
-        if (forceFallbackAdapter !== undefined && typeof forceFallbackAdapter !== 'boolean') {
-          throw new Error(`Invalid forceFallbackAdapter setting: "${forceFallbackAdapter}"`);
-        }
-        adapter = await navigator.gpu.requestAdapter({ powerPreference, forceFallbackAdapter });
-        if (!adapter) {
-          throw new Error(
-            'Failed to get GPU adapter. ' +
-              'You may need to enable flag "--enable-unsafe-webgpu" if you are using Chrome.',
-          );
-        }
-      } else {
-        // if adapter is set, validate it.
-        if (
-          typeof adapter.limits !== 'object' ||
-          typeof adapter.features !== 'object' ||
-          typeof adapter.requestDevice !== 'function'
-        ) {
-          throw new Error('Invalid GPU adapter set in `env.webgpu.adapter`. It must be a GPUAdapter object.');
-        }
-      }
-
       await initJsep('webgpu', getInstance(), env, adapter);
-    }
-    if (epName === 'webnn') {
+    } else if (epName === 'webnn') {
       // perform WebNN availability check
       if (typeof navigator === 'undefined' || !(navigator as unknown as { ml: unknown }).ml) {
         throw new Error('WebNN is not supported in current environment');
@@ -270,7 +300,7 @@ export const createSession = async (
   const outputNamesUTF8Encoded = [];
 
   try {
-    [sessionOptionsHandle, allocs] = setSessionOptions(options);
+    [sessionOptionsHandle, allocs] = await setSessionOptions(options);
 
     if (options?.externalData && wasm.mountExternalData) {
       const loadingPromises = [];
