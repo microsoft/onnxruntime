@@ -105,9 +105,9 @@ class TritonCodegen(NodeVisitor):
         name = node.tensor_arg.name
         var_name = context.get_variable_name(name)
         internal_var_name = context.get_internal_variable_name(name)
-        assert (
-            var_name != internal_var_name
-        ), f"variable name {var_name} and its internal variable name should not be the same."
+        assert var_name != internal_var_name, (
+            f"variable name {var_name} and its internal variable name should not be the same."
+        )
 
         offset_str, mask_str = self._get_offset_mask(node.offset_calc, node.tensor_arg.name)
         if offset_str:
@@ -359,8 +359,7 @@ class TritonCodegen(NodeVisitor):
         for reduce_node in node.reduce_nodes:
             tmp_var_name = "tmp_" + context.get_internal_variable_name(reduce_node.outputs[0].name)
             code_buffer += (
-                f"{space_indent}{tmp_var_name} = "
-                f"tl.zeros([XBLOCK, RBLOCK], tl.float32) + {reduce_node.default_value}\n"
+                f"{space_indent}{tmp_var_name} = tl.zeros([XBLOCK, RBLOCK], tl.float32) + {reduce_node.default_value}\n"
             )
         code_buffer += (
             f"{space_indent}for roffset in range(0, rnumel, RBLOCK):\n{space_indent}    rindex = rbase + roffset\n"
@@ -440,9 +439,7 @@ class TritonCodegen(NodeVisitor):
     def ModuleNode(self, node: ModuleNode, context: CodegenContext, code_buffer: CodeBuffer, indent: int):  # noqa: N802
         space_indent = " " * indent
         code_buffer += (
-            f"{space_indent}import triton\n"
-            f"{space_indent}import triton.language as tl\n"
-            f"{space_indent}import torch\n"
+            f"{space_indent}import triton\n{space_indent}import triton.language as tl\n{space_indent}import torch\n"
         )
 
         for kernel_node in node.kernels:

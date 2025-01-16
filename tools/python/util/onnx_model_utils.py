@@ -227,7 +227,7 @@ def make_input_shape_fixed(graph: onnx.GraphProto, input_name: str, fixed_shape:
 
     raise ValueError(
         f"Input {input_name} was not found in graph inputs. "
-        f'Valid input names are: {",".join([i.name for i in graph.input])}'
+        f"Valid input names are: {','.join([i.name for i in graph.input])}"
     )
 
 
@@ -337,7 +337,7 @@ def get_producer_consumer_maps(graph: onnx.GraphProto):
     # top level graph should have no implicit inputs
     if implicit_inputs:
         raise ValueError(
-            f'This appears to be an invalid model with missing inputs of {",".join(sorted(implicit_inputs))}'
+            f"This appears to be an invalid model with missing inputs of {','.join(sorted(implicit_inputs))}"
         )
 
     return node_to_producers, node_to_consumers

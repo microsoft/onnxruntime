@@ -86,7 +86,7 @@ def _shape_to_string(shape):
         value = next(iter(dict_obj.values()))
         if len(res) != 0:
             res += ","
-        res += f'{key}({"x".join(str(v) for v in value)})'
+        res += f"{key}({'x'.join(str(v) for v in value)})"
     return res
 
 

@@ -2,6 +2,7 @@
 """
 Automates the generation of ONNX operators.
 """
+
 import importlib
 import inspect
 import keyword

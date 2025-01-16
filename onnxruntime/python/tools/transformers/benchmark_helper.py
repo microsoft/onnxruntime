@@ -167,9 +167,9 @@ def prepare_environment(cache_dir, output_dir, use_gpu, provider=None):
 
     if use_gpu:
         if provider == "dml":
-            assert (
-                "DmlExecutionProvider" in onnxruntime.get_available_providers()
-            ), "Please install onnxruntime-directml package to test GPU inference."
+            assert "DmlExecutionProvider" in onnxruntime.get_available_providers(), (
+                "Please install onnxruntime-directml package to test GPU inference."
+            )
 
         else:
             assert not set(onnxruntime.get_available_providers()).isdisjoint(

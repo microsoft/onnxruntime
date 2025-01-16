@@ -2,8 +2,8 @@
     "build_abis": [
         "arm64-v8a"
     ],
-    "android_min_sdk_version": 21,
-    "android_target_sdk_version": 24,
+    "android_min_sdk_version": 24,
+    "android_target_sdk_version": 34,
     "build_params": [
         "--enable_lto",
         "--android",
