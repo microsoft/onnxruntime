@@ -291,7 +291,7 @@ const generatePositionIdsProgramInfo = (
   };
   return {
     name: 'GeneratePositionIds',
-    shaderCache: { hint: `${batchSize}`, inputDependencies },
+    shaderCache: { hint: `${batchSize};${sequenceLength}`, inputDependencies },
     getRunData: () => ({
       outputs: [{ dims: outputShape, dataType: outputDataType }],
       dispatchGroup: { x: Math.ceil(outputSize / 64 /* workgroup size */) },
