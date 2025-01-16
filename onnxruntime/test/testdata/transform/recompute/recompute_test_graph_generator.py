@@ -2,11 +2,11 @@
 # Licensed under the MIT License.
 
 """This file is used to generate test data for MemoryOptimizer tests in
-   onnxruntime/test/optimizer/memory_optimizer_test.cc.
+onnxruntime/test/optimizer/memory_optimizer_test.cc.
 
-   Be noticed, after run this script, manually rename recompute_XXXX_execution_model_training.onnx to
-   recompute_XXXX.onnx
-   """
+Be noticed, after run this script, manually rename recompute_XXXX_execution_model_training.onnx to
+recompute_XXXX.onnx
+"""
 
 import torch
 

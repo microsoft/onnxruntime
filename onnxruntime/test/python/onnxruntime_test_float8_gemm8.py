@@ -173,16 +173,16 @@ class TestFloat8Gemm8(unittest.TestCase):
 
                 raise AssertionError(
                     f"Gemm ERROR len(inputs)={len(feeds)}"
-                    f"\na@b=\n{check(lambda:a@b)}"
-                    f"\na.T@b=\n{check(lambda:a.T@b)}"
-                    f"\na@b.T=\n{check(lambda:a@b.T)}"
-                    f"\na.T@b.T=\n{check(lambda:a.T@b.T)}"
-                    f"\n----\nb@a=\n{check(lambda:b@a)}"
-                    f"\nb.T@a=\n{check(lambda:b.T@a)}"
-                    f"\nb@a.T=\n{check(lambda:b@a.T)}"
-                    f"\nb.T@a.T=\n{check(lambda:b.T@a.T)}"
-                    f"\n----\nexpected=\n{expected[:2,:2]}"
-                    f"\n----\ngot=\n{y[:2,:2]}"
+                    f"\na@b=\n{check(lambda: a @ b)}"
+                    f"\na.T@b=\n{check(lambda: a.T @ b)}"
+                    f"\na@b.T=\n{check(lambda: a @ b.T)}"
+                    f"\na.T@b.T=\n{check(lambda: a.T @ b.T)}"
+                    f"\n----\nb@a=\n{check(lambda: b @ a)}"
+                    f"\nb.T@a=\n{check(lambda: b.T @ a)}"
+                    f"\nb@a.T=\n{check(lambda: b @ a.T)}"
+                    f"\nb.T@a.T=\n{check(lambda: b.T @ a.T)}"
+                    f"\n----\nexpected=\n{expected[:2, :2]}"
+                    f"\n----\ngot=\n{y[:2, :2]}"
                     f"\nkwargs={kwargs}"
                 ) from e
 
@@ -225,16 +225,16 @@ class TestFloat8Gemm8(unittest.TestCase):
 
             raise AssertionError(
                 f"Gemm ERROR len(inputs)={len(feeds)}"
-                f"\na@b=\n{check(lambda:a@b)}"
-                f"\na.T@b=\n{check(lambda:a.T@b)}"
-                f"\na@b.T=\n{check(lambda:a@b.T)}"
-                f"\na.T@b.T=\n{check(lambda:a.T@b.T)}"
-                f"\n----\nb@a=\n{check(lambda:b@a)}"
-                f"\nb.T@a=\n{check(lambda:b.T@a)}"
-                f"\nb@a.T=\n{check(lambda:b@a.T)}"
-                f"\nb.T@a.T=\n{check(lambda:b.T@a.T)}"
-                f"\n----\nexpected=\n{expected[:2,:2]}"
-                f"\n----\ngot=\n{y[:2,:2]}"
+                f"\na@b=\n{check(lambda: a @ b)}"
+                f"\na.T@b=\n{check(lambda: a.T @ b)}"
+                f"\na@b.T=\n{check(lambda: a @ b.T)}"
+                f"\na.T@b.T=\n{check(lambda: a.T @ b.T)}"
+                f"\n----\nb@a=\n{check(lambda: b @ a)}"
+                f"\nb.T@a=\n{check(lambda: b.T @ a)}"
+                f"\nb@a.T=\n{check(lambda: b @ a.T)}"
+                f"\nb.T@a.T=\n{check(lambda: b.T @ a.T)}"
+                f"\n----\nexpected=\n{expected[:2, :2]}"
+                f"\n----\ngot=\n{y[:2, :2]}"
                 f"\nkwargs={kwargs}"
             ) from e
         self.assertEqual(expected.shape, y.shape)

@@ -455,9 +455,8 @@ def smooth_quant(
     decoder_model_int8_path: str,
     decoder_with_past_model_int8_path: str,
 ):
-    from neural_compressor import PostTrainingQuantConfig
+    from neural_compressor import PostTrainingQuantConfig, set_workspace
     from neural_compressor import quantization as intel_quantization
-    from neural_compressor import set_workspace
     from onnx.external_data_helper import load_external_data_for_model
     from quant_kv_dataloader import QuantKVDataLoader
 

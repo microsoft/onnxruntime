@@ -76,7 +76,7 @@ def show_masks(
             show_box(box_coords, plt.gca())
 
         if len(scores) > 1:
-            plt.title(f"Mask {i+1}, Score: {score:.3f}", fontsize=18)
+            plt.title(f"Mask {i + 1}, Score: {score:.3f}", fontsize=18)
 
         plt.axis("off")
         if output_image_file_prefix:

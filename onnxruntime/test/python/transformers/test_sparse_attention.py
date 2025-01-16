@@ -6,6 +6,7 @@
 """
 Parity test and benchmark performance of SparseAttention. Requires Nvidia GPU of Compute Capability 7.5 or above.
 """
+
 import math
 import unittest
 from typing import Optional, Union

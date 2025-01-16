@@ -580,9 +580,9 @@ class GraphTransitionManager:
             parameter_names = {k: v for k, v in flatten_module.named_parameters()}
             for input_name in exported_model_info.onnx_graph_input_names:
                 if input_name in exported_model_info.onnx_graph_input_names_user_defined:
-                    assert (
-                        input_name in model_info_for_export.onnx_graph_input_data_accessor_user_defined
-                    ), f"{input_name} model_info_for_export.onnx_graph_input_data_accessor_user_defined"
+                    assert input_name in model_info_for_export.onnx_graph_input_data_accessor_user_defined, (
+                        f"{input_name} model_info_for_export.onnx_graph_input_data_accessor_user_defined"
+                    )
                     # We assume the data accessor should be the same as the one used for the previous export, because
                     # there is args and kwargs schema check during export check phase.
                     if model_info_for_export.onnx_graph_input_data_accessor_user_defined[input_name](
@@ -736,7 +736,6 @@ class GraphTransitionManager:
         runtime_inspector: RuntimeInspector,
         logger: logging.Logger,
     ) -> tuple[onnx.ModelProto, ORTModelInputOutputSchemaType, list[str], list[str]]:
-
         # Add hooks to check the sparsity of the embedding and label inputs during the export.
         embedding_hook_handles = GraphTransitionManager._add_check_embedding_sparsity_hook(
             enable_embedding_sparse_optimizer, device, logger, runtime_inspector, flattened_module

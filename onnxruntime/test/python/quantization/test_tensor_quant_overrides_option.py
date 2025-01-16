@@ -1195,7 +1195,9 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
         # get_qnn_qdq_config() should be able to validate the per-channel axis without having to load
         # the external weight data.
         qnn_config = get_qnn_qdq_config(
-            str(model_path), DummyDataReader([]), init_overrides=init_overrides  # Dummy data reader does nothing
+            str(model_path),
+            DummyDataReader([]),
+            init_overrides=init_overrides,  # Dummy data reader does nothing
         )
         self.assertEqual(set(qnn_config.op_types_to_quantize), {"Conv"})
         self.assertTrue(qnn_config.use_external_data_format)

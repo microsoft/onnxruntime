@@ -1,4 +1,4 @@
-""" Script to generate a dummy ONNX model emulating T5 model with BeamSearch op. """
+"""Script to generate a dummy ONNX model emulating T5 model with BeamSearch op."""
 
 import argparse
 

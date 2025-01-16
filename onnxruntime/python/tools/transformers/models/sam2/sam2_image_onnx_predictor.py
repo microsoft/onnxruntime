@@ -136,9 +136,9 @@ class SAM2ImageOnnxPredictor(SAM2ImagePredictor):
         input_image = self._transforms(image)
         input_image = input_image[None, ...].to(self.device)
 
-        assert (
-            len(input_image.shape) == 4 and input_image.shape[1] == 3
-        ), f"input_image must be of size 1x3xHxW, got {input_image.shape}"
+        assert len(input_image.shape) == 4 and input_image.shape[1] == 3, (
+            f"input_image must be of size 1x3xHxW, got {input_image.shape}"
+        )
 
         # Computing image embeddings for the provided image
         io_shapes = encoder_shape_dict(batch_size=1, height=input_image.shape[2], width=input_image.shape[3])

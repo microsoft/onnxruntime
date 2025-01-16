@@ -212,7 +212,6 @@ def test_decoder_onnx(
     onnx_model_path: str,
     multimask_output=False,
 ):
-
     batch_size = 1
     image = random_sam2_input_image(batch_size)
     sam2_encoder = SAM2ImageEncoder(sam2_model).cpu()

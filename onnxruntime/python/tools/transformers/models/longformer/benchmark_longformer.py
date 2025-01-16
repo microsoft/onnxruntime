@@ -148,9 +148,9 @@ def test_ort_latency(
     for batch_size in batch_sizes:
         for sequence_length in sequence_lengths:
             for global_length in global_lengths:
-                assert (
-                    global_length <= model.config.attention_window[0]
-                ), "Limitation of current implementation: number of global token <= attention_window"
+                assert global_length <= model.config.attention_window[0], (
+                    "Limitation of current implementation: number of global token <= attention_window"
+                )
 
                 logger.info(
                     f"Testing batch_size={batch_size} sequence_length={sequence_length} global_length={global_length} "

@@ -6562,7 +6562,8 @@ def test_bert_memory_inspection(caplog):
     os.environ["ORTMODULE_PRINT_MEMORY_STATS"] = "1"
     pt_model.eval()  # Put it in evaluate mode by intention, in case some initialization in ORTModule use the module.is_training for its checks by mistake.
     ort_model = ORTModule(
-        copy.deepcopy(pt_model), DebugOptions(log_level=LogLevel.INFO)  # The logged memory info is in INFO level.
+        copy.deepcopy(pt_model),
+        DebugOptions(log_level=LogLevel.INFO),  # The logged memory info is in INFO level.
     )
 
     def run_step(model, x, y, z):
@@ -6776,11 +6777,9 @@ def test_enable_layerwise_recompute(memory_optimization_level, allow_gradient_ch
 
 
 def test_layerwise_recompute_pythonop_deterministic():
-
     original_val = os.environ.get("ORTMODULE_MEMORY_OPT_LEVEL", None)
 
     class DropoutFunction(torch.autograd.Function):
-
         @staticmethod
         def forward(ctx, x):
             return torch.nn.functional.dropout(x, p=0.5, training=True)

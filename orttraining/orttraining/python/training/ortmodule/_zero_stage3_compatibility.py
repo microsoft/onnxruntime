@@ -102,9 +102,9 @@ def post_processing_enable_zero_stage3_compat(
 
             func_name = _get_func_name(c)
             if func_name == pre_forward_function_name:
-                assert (
-                    pre_forward_pythonop_node is None
-                ), "Multiple ORTZeROOffloadPreForwardFunction nodes found, it should not happen"
+                assert pre_forward_pythonop_node is None, (
+                    "Multiple ORTZeROOffloadPreForwardFunction nodes found, it should not happen"
+                )
                 pre_forward_pythonop_node = c
 
         if pre_forward_pythonop_node is None:
@@ -210,7 +210,7 @@ def post_processing_enable_zero_stage3_compat(
 
 
 def _create_weight_retrieval_function(
-    zero_stage3_named_params: Optional[Dict[str, torch.nn.parameter.Parameter]]
+    zero_stage3_named_params: Optional[Dict[str, torch.nn.parameter.Parameter]],
 ) -> str:
     """This function is used to create a weight retrieving function using zero_stage3_named_params."""
 

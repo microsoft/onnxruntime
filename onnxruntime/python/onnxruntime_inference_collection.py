@@ -115,8 +115,9 @@ def check_and_normalize_provider_args(
     def set_provider_options(name, options):
         if name not in available_provider_names:
             warnings.warn(
-                "Specified provider '{}' is not in available provider names."
-                "Available providers: '{}'".format(name, ", ".join(available_provider_names))
+                "Specified provider '{}' is not in available provider names.Available providers: '{}'".format(
+                    name, ", ".join(available_provider_names)
+                )
             )
 
         if name in provider_name_to_options:

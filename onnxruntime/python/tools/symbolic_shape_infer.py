@@ -1814,12 +1814,12 @@ class SymbolicShapeInference:
 
                 def replace_min_with_arg(arg_idx):
                     replaced = list(expr.args)
-                    assert isinstance(
-                        replaced[min_pos], sympy.Min
-                    ), f"Expected a sympy.Min() at position {min_pos}, got {replaced[min_pos]}"
-                    assert (
-                        len(replaced[min_pos].args) == 2
-                    ), f"Expected a sympy.Min() with exactly 2 arguments, got {replaced[min_pos]}"
+                    assert isinstance(replaced[min_pos], sympy.Min), (
+                        f"Expected a sympy.Min() at position {min_pos}, got {replaced[min_pos]}"
+                    )
+                    assert len(replaced[min_pos].args) == 2, (
+                        f"Expected a sympy.Min() with exactly 2 arguments, got {replaced[min_pos]}"
+                    )
                     replaced[min_pos] = replaced[min_pos].args[arg_idx]
                     return sympy.Add(*replaced)
 

@@ -24,6 +24,7 @@ Models created with this script:
 - fusion/constant_folding_qdq_node_unit.graph_output.qdq_contrib.onnx
 - fusion/constant_folding_qdq_node_unit.graph_output.qdq16_contrib.onnx
 """
+
 from __future__ import annotations
 
 import argparse

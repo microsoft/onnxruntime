@@ -1368,9 +1368,9 @@ def main():
             use_io_binding=args.use_io_binding,
         )
     elif args.engine == "onnxruntime":
-        assert args.pipeline and os.path.isdir(
-            args.pipeline
-        ), "--pipeline should be specified for the directory of ONNX models"
+        assert args.pipeline and os.path.isdir(args.pipeline), (
+            "--pipeline should be specified for the directory of ONNX models"
+        )
         print(f"Testing diffusers StableDiffusionPipeline with {provider} provider and tuning={args.tuning}")
         result = run_ort(
             model_name=sd_model,

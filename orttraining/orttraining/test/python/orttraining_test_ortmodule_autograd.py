@@ -1414,13 +1414,9 @@ def test_pythonop_training_mode():
     def check_pythonop_training_mode(model, is_eval_mode):
         ## make sure the ort's PythonOp's training_mode is correct
         if is_eval_mode:
-            onnx_nodes = (
-                model._torch_module._execution_manager._inference_manager._graph_transition_manager._exported_model_info.exported_model.graph.node
-            )
+            onnx_nodes = model._torch_module._execution_manager._inference_manager._graph_transition_manager._exported_model_info.exported_model.graph.node
         else:
-            onnx_nodes = (
-                model._torch_module._execution_manager._training_manager._graph_transition_manager._exported_model_info.exported_model.graph.node
-            )
+            onnx_nodes = model._torch_module._execution_manager._training_manager._graph_transition_manager._exported_model_info.exported_model.graph.node
 
         found_pythonop = False
         for node in onnx_nodes:
@@ -1642,14 +1638,14 @@ def test_customized_shape_inference():
         _find_shape_and_dtype(graph.value_info)
 
         assert all(s is not None for s in input_shapes), "PythonOp input shape should be found in the optimized_model"
-        assert (
-            all(d is not None for d in input_dtypes) is not None
-        ), "PythonOp input dtype should be found in the optimized_model"
+        assert all(d is not None for d in input_dtypes) is not None, (
+            "PythonOp input dtype should be found in the optimized_model"
+        )
 
         assert all(s is not None for s in output_shapes), "PythonOp output shape should be found in the optimized_model"
-        assert (
-            all(d is not None for d in output_dtypes) is not None
-        ), "PythonOp output dtype should be found in the optimized_model"
+        assert all(d is not None for d in output_dtypes) is not None, (
+            "PythonOp output dtype should be found in the optimized_model"
+        )
 
         def _compare_shape(shape1, shape2):
             if len(shape1.dim) != len(shape2.dim):
@@ -1805,7 +1801,6 @@ def test_python_op_return_persistent_param_as_value():
 
 
 def test_determistic_pythonop_export():
-
     class TestFunction(torch.autograd.Function):
         @staticmethod
         # bias is an optional argument
@@ -1839,9 +1834,7 @@ def test_determistic_pythonop_export():
     ortmodule = ORTModule(TestModel(output_size)).train()
     _ = ortmodule(torch.randn(output_size, dtype=torch.float))
 
-    onnx_nodes = (
-        ortmodule._torch_module._execution_manager._training_manager._graph_transition_manager._exported_model_info.exported_model.graph.node
-    )
+    onnx_nodes = ortmodule._torch_module._execution_manager._training_manager._graph_transition_manager._exported_model_info.exported_model.graph.node
 
     found_pythonop = False
     for node in onnx_nodes:

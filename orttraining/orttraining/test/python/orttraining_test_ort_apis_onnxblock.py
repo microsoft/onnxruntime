@@ -1102,7 +1102,6 @@ def test_custom_optimizer_block():
 
 
 def test_generate_artifacts_path():
-
     with tempfile.TemporaryDirectory() as temp_dir:
         _, simple_net = _get_models("cpu", 32, 28, 10, 10)
 

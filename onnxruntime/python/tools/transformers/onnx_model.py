@@ -1284,7 +1284,7 @@ class OnnxModel:
             op_count[op] = 1 if op not in op_count else (op_count[op] + 1)
 
         # Sorted by count in the descending order, then by key in alphabetical order.
-        logger.info(f"Operators:{sorted(op_count.items(), key=lambda kv:(-kv[1], kv[0]))}")
+        logger.info(f"Operators:{sorted(op_count.items(), key=lambda kv: (-kv[1], kv[0]))}")
 
         return op_count
 

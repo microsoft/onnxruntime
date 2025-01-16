@@ -568,7 +568,7 @@ class StableDiffusionPipeline:
             prefix = "".join(x for x in prompt[i] if x.isalnum() or x in ", -").replace(" ", "_")[:20]
             parts = [prefix, session_id, str(i + 1), str(seed), self.current_scheduler, str(self.actual_steps)]
             image_path = os.path.join(self.output_dir, "-".join(parts) + ".png")
-            print(f"Saving image {i+1} / {len(images)} to: {image_path}")
+            print(f"Saving image {i + 1} / {len(images)} to: {image_path}")
 
             from PIL import PngImagePlugin
 

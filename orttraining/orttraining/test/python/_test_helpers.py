@@ -84,7 +84,12 @@ def _get_name(name):
 # Depending on calling backward() from which outputs, it's possible that grad of some weights are not calculated.
 # none_pt_params is to tell what these weights are, so we will not compare the tensors.
 def assert_gradients_match_and_reset_gradient(
-    ort_model, pt_model, none_pt_params=[], reset_gradient=True, rtol=1e-04, atol=1e-05  # noqa: B006
+    ort_model,
+    pt_model,
+    none_pt_params=(),
+    reset_gradient=True,
+    rtol=1e-04,
+    atol=1e-05,
 ):
     ort_named_params = list(ort_model.named_parameters())
     pt_named_params = list(pt_model.named_parameters())
