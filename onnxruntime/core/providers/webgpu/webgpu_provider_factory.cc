@@ -160,18 +160,6 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
       validation_mode,
   };
 
-  std::string enable_pix_capture_str;
-  if (config_options.TryGetConfigEntry(kEnablePIXCapture, enable_pix_capture_str)) {
-    if (enable_pix_capture_str == kEnablePIXCapture_ON) {
-      context_config.enable_pix_capture = true;
-    } else if (enable_pix_capture_str == kEnablePIXCapture_OFF) {
-      context_config.enable_pix_capture = false;
-    } else {
-      ORT_THROW("Invalid enable pix capture: ", enable_pix_capture_str);
-    }
-  }
-  LOGS_DEFAULT(VERBOSE) << "WebGPU EP pix capture enable: " << context_config.enable_pix_capture;
-
   //
   // STEP.3 - prepare parameters for WebGPU context initialization.
   //
@@ -233,6 +221,19 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
   buffer_cache_config.default_entry.mode = parse_buffer_cache_mode(kDefaultBufferCacheMode, webgpu::BufferCacheMode::Disabled);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP default buffer cache mode: " << buffer_cache_config.default_entry.mode;
 
+  bool enable_pix_capture = false;
+  std::string enable_pix_capture_str;
+  if (config_options.TryGetConfigEntry(kEnablePIXCapture, enable_pix_capture_str)) {
+    if (enable_pix_capture_str == kEnablePIXCapture_ON) {
+      enable_pix_capture = true;
+    } else if (enable_pix_capture_str == kEnablePIXCapture_OFF) {
+      enable_pix_capture = false;
+    } else {
+      ORT_THROW("Invalid enable pix capture: ", enable_pix_capture_str);
+    }
+  }
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP pix capture enable: " << enable_pix_capture;
+
   //
   // STEP.4 - start initialization.
   //
@@ -241,7 +242,7 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
   auto& context = webgpu::WebGpuContextFactory::CreateContext(context_config);
 
   // Create WebGPU device and initialize the context.
-  context.Initialize(buffer_cache_config, backend_type);
+  context.Initialize(buffer_cache_config, backend_type, enable_pix_capture);
 
   // Create WebGPU EP factory.
   return std::make_shared<WebGpuProviderFactory>(context_id, context, std::move(webgpu_ep_config));

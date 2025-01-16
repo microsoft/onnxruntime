@@ -77,7 +77,7 @@ class WebGpuContextFactory {
 // Class WebGpuContext includes all necessary resources for the context.
 class WebGpuContext final {
  public:
-  void Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type);
+  void Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type, bool enable_pix_capture);
 
   Status Wait(wgpu::Future f);
 
@@ -131,12 +131,7 @@ class WebGpuContext final {
   void EndProfiling(TimePoint, profiling::Events& events, profiling::Events& cached_events);
 
   Status Run(ComputeContext& context, const ProgramBase& program);
-
-  bool IsPixCaptureEnabled() const { return enable_pix_capture_; }
-
-#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
-  void GeneratePIXFrame();
-#endif  // ENABLE_PIX_FOR_WEBGPU_EP
+  void OnRunEnd();
 
  private:
   enum class TimestampQueryType {
@@ -145,8 +140,8 @@ class WebGpuContext final {
     AtPasses
   };
 
-  WebGpuContext(WGPUInstance instance, WGPUAdapter adapter, WGPUDevice device, webgpu::ValidationMode validation_mode, bool enable_pix_capture)
-      : instance_{instance}, adapter_{adapter}, device_{device}, validation_mode_{validation_mode}, enable_pix_capture_(enable_pix_capture), query_type_{TimestampQueryType::None} {}
+  WebGpuContext(WGPUInstance instance, WGPUAdapter adapter, WGPUDevice device, webgpu::ValidationMode validation_mode)
+      : instance_{instance}, adapter_{adapter}, device_{device}, validation_mode_{validation_mode}, query_type_{TimestampQueryType::None} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
   std::vector<const char*> GetEnabledAdapterToggles() const;
@@ -212,7 +207,6 @@ class WebGpuContext final {
   const uint32_t max_num_pending_dispatches_ = 16;
 
   // profiling
-  bool enable_pix_capture_;
   TimestampQueryType query_type_;
   wgpu::QuerySet query_set_;
   wgpu::Buffer query_resolve_buffer_;
