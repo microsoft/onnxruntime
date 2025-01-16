@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "webgpu_context.h"
 #include <memory>
 #include <cmath>
 
@@ -35,8 +36,8 @@
 namespace onnxruntime {
 namespace webgpu {
 
-void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type) {
-  std::call_once(init_flag_, [this, &buffer_cache_config, backend_type]() {
+void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type, bool enable_pix_capture) {
+  std::call_once(init_flag_, [this, &buffer_cache_config, backend_type, enable_pix_capture]() {
     // Create wgpu::Adapter
     if (adapter_ == nullptr) {
 #if !defined(__wasm__) && defined(_MSC_VER) && defined(DAWN_ENABLE_D3D12) && !defined(USE_EXTERNAL_DAWN)
@@ -162,18 +163,17 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
     } else {
       query_type_ = TimestampQueryType::None;
     }
-  });
-
-  if (enable_pix_capture_) {
+    if (enable_pix_capture) {
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
-    // set pix frame generator
-    pix_frame_generator_ = std::make_unique<WebGpuPIXFrameGenerator>(instance_,
-                                                                     Adapter(),
-                                                                     Device());
+      // set pix frame generator
+      pix_frame_generator_ = std::make_unique<WebGpuPIXFrameGenerator>(instance_,
+                                                                       Adapter(),
+                                                                       Device());
 #else
     ORT_THROW("Support PIX capture requires extra build flags (--enable_pix_capture)");
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
-  }
+    }
+  });
 }
 
 Status WebGpuContext::Wait(wgpu::Future f) {
@@ -691,11 +691,13 @@ void WebGpuContext::Flush() {
   num_pending_dispatches_ = 0;
 }
 
+void WebGpuContext::OnRunEnd() {
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
-void WebGpuContext::GeneratePIXFrame() {
-  pix_frame_generator_->GeneratePIXFrame();
-}
+  if (pix_frame_generator_) {
+    pix_frame_generator_->GeneratePIXFrame();
+  }
 #endif  // ENABLE_PIX_FOR_WEBGPU_EP
+}
 
 std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo> WebGpuContextFactory::contexts_;
 std::mutex WebGpuContextFactory::mutex_;
@@ -759,7 +761,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
   auto it = contexts_.find(context_id);
   if (it == contexts_.end()) {
     GSL_SUPPRESS(r.11)
-    auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance, adapter, device, config.validation_mode, config.enable_pix_capture));
+    auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance, adapter, device, config.validation_mode));
     it = contexts_.emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second.context->instance_.Get() == instance &&

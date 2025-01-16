@@ -865,11 +865,7 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     return context_.PopErrorScope();
   }
 
-#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
-  if (context_.IsPixCaptureEnabled()) {
-    context_.GeneratePIXFrame();
-  }
-#endif  // ENABLE_PIX_FOR_WEBGPU_EP
+  context_.OnRunEnd();
 
   return Status::OK();
 }
