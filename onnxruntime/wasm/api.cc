@@ -164,8 +164,12 @@ OrtSessionOptions* OrtCreateSessionOptions(size_t graph_optimization_level,
   return UNREGISTER_AUTO_RELEASE(session_options);
 }
 
-int OrtAppendExecutionProvider(ort_session_options_handle_t session_options, const char* name) {
-  return CHECK_STATUS(SessionOptionsAppendExecutionProvider, session_options, name, nullptr, nullptr, 0);
+int OrtAppendExecutionProvider(ort_session_options_handle_t session_options,
+                               const char* name,
+                               const char* const* provider_options_keys,
+                               const char* const* provider_options_values,
+                               size_t num_keys) {
+  return CHECK_STATUS(SessionOptionsAppendExecutionProvider, session_options, name, provider_options_keys, provider_options_values, num_keys);
 }
 
 int OrtAddFreeDimensionOverride(ort_session_options_handle_t session_options,

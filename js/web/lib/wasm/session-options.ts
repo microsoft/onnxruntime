@@ -54,11 +54,11 @@ const appendDefaultOptions = (options: InferenceSession.SessionOptions): void =>
   }
 };
 
-const setExecutionProviders = (
+const setExecutionProviders = async (
   sessionOptionsHandle: number,
   executionProviders: readonly InferenceSession.ExecutionProviderConfig[],
   allocs: number[],
-): void => {
+): Promise<void> => {
   for (const ep of executionProviders) {
     let epName = typeof ep === 'string' ? ep : ep.name;
 
@@ -80,17 +80,24 @@ const setExecutionProviders = (
         }
         break;
       case 'webgpu':
-        epName = 'JS';
-        if (typeof ep !== 'string') {
-          const webgpuOptions = ep as InferenceSession.WebGpuExecutionProviderOption;
-          if (webgpuOptions?.preferredLayout) {
-            if (webgpuOptions.preferredLayout !== 'NCHW' && webgpuOptions.preferredLayout !== 'NHWC') {
-              throw new Error(`preferredLayout must be either 'NCHW' or 'NHWC': ${webgpuOptions.preferredLayout}`);
-            }
-            const keyDataOffset = allocWasmString('preferredLayout', allocs);
-            const valueDataOffset = allocWasmString(webgpuOptions.preferredLayout, allocs);
-            if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !== 0) {
-              checkLastError(`Can't set a session config entry: 'preferredLayout' - ${webgpuOptions.preferredLayout}.`);
+        if (BUILD_DEFS.USE_WEBGPU_EP) {
+          epName = 'WebGPU';
+          // TODO: session options
+        } else {
+          epName = 'JS';
+          if (typeof ep !== 'string') {
+            const webgpuOptions = ep as InferenceSession.WebGpuExecutionProviderOption;
+            if (webgpuOptions?.preferredLayout) {
+              if (webgpuOptions.preferredLayout !== 'NCHW' && webgpuOptions.preferredLayout !== 'NHWC') {
+                throw new Error(`preferredLayout must be either 'NCHW' or 'NHWC': ${webgpuOptions.preferredLayout}`);
+              }
+              const keyDataOffset = allocWasmString('preferredLayout', allocs);
+              const valueDataOffset = allocWasmString(webgpuOptions.preferredLayout, allocs);
+              if (getInstance()._OrtAddSessionConfigEntry(sessionOptionsHandle, keyDataOffset, valueDataOffset) !== 0) {
+                checkLastError(
+                  `Can't set a session config entry: 'preferredLayout' - ${webgpuOptions.preferredLayout}.`,
+                );
+              }
             }
           }
         }
@@ -103,13 +110,13 @@ const setExecutionProviders = (
     }
 
     const epNameDataOffset = allocWasmString(epName, allocs);
-    if (getInstance()._OrtAppendExecutionProvider(sessionOptionsHandle, epNameDataOffset) !== 0) {
+    if ((await getInstance()._OrtAppendExecutionProvider(sessionOptionsHandle, epNameDataOffset, 0, 0, 0)) !== 0) {
       checkLastError(`Can't append execution provider: ${epName}.`);
     }
   }
 };
 
-export const setSessionOptions = (options?: InferenceSession.SessionOptions): [number, number[]] => {
+export const setSessionOptions = async (options?: InferenceSession.SessionOptions): Promise<[number, number[]]> => {
   const wasm = getInstance();
   let sessionOptionsHandle = 0;
   const allocs: number[] = [];
@@ -155,7 +162,7 @@ export const setSessionOptions = (options?: InferenceSession.SessionOptions): [n
     }
 
     if (sessionOptions.executionProviders) {
-      setExecutionProviders(sessionOptionsHandle, sessionOptions.executionProviders, allocs);
+      await setExecutionProviders(sessionOptionsHandle, sessionOptions.executionProviders, allocs);
     }
 
     if (sessionOptions.enableGraphCapture !== undefined) {

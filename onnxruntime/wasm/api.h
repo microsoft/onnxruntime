@@ -85,7 +85,10 @@ ort_session_options_handle_t EMSCRIPTEN_KEEPALIVE OrtCreateSessionOptions(size_t
  * @returns ORT error code. If not zero, call OrtGetLastError() to get detailed error message.
  */
 int EMSCRIPTEN_KEEPALIVE OrtAppendExecutionProvider(ort_session_options_handle_t session_options,
-                                                    const char* name);
+                                                    const char* name,
+                                                    const char* const* provider_options_keys,
+                                                    const char* const* provider_options_values,
+                                                    size_t num_keys);
 
 /**
  * add a free dimension override for one dimension of a session's input.
