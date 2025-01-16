@@ -778,7 +778,7 @@ def generate_files(line_list, args):
             + '\\native" />'
         )
 
-    if args.execution_provider == "qnn" or is_qnn_package and not is_ado_packaging_build:
+    if args.execution_provider == "qnn" or (is_qnn_package and not is_ado_packaging_build):
         files_list.append(
             "<file src="
             + '"'
