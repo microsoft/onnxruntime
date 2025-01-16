@@ -103,7 +103,7 @@ stages:
   dependsOn:
   - Build_iOS_Packages
   jobs:
-  - job: ReactNative_CI_Android
+  - job: ReactNative_CI_iOS
     pool:
       vmImage: 'macOS-13'
     timeoutInMinutes: 90
@@ -178,6 +178,11 @@ stages:
         yarn
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Bootstrap Android and iOS e2e tests
+
+    - script: |
+        yarn add --dev jest-junit
+      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
+      displayName: install jest junit reporter js/react_native/e2e
 
     - script: |
         ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/ios-full-pod/onnxruntime-c \
@@ -291,7 +296,7 @@ stages:
 
     - task: PublishPipelineArtifact@1
       inputs:
-        artifact: e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)
+        artifact: ios_e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)
         targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
       condition: succeededOrFailed()
       displayName: Publish React Native Detox E2E test logs
@@ -494,7 +499,7 @@ stages:
 
     - task: PublishPipelineArtifact@1
       inputs:
-        artifact: e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)
+        artifact: android_e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)
         targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
       condition: succeededOrFailed()
       displayName: Publish React Native Detox E2E test logs
