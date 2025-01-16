@@ -9,7 +9,6 @@ import os
 import sys
 from collections import deque
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
 
 from float16 import convert_float_to_float16
 from onnx import (
@@ -35,16 +34,16 @@ class OnnxModel:
 
     def initialize(self, model):
         self.model: ModelProto = model
-        self._node_name_suffix: Dict[str, int] = {}  # key is node name prefix, value is the last suffix generated
+        self._node_name_suffix: dict[str, int] = {}  # key is node name prefix, value is the last suffix generated
         self.shape_infer_helper: SymbolicShapeInferenceHelper = None
         self.enable_shape_infer: bool = True
-        self.all_graphs: Optional[List[GraphProto]] = None
+        self.all_graphs: list[GraphProto] | None = None
 
         # Cache of shape and data type from onnx graph to speed up optimization.
         # Be careful that fusion shall not reuse node output name for different shape/type (in adding/removing nodes)
         # Note that these do not cache the symbolic shape inference result.
-        self._dtype_dict: Optional[Dict[str, int]] = None
-        self._shape_dict: Optional[Dict[str, List]] = None
+        self._dtype_dict: dict[str, int] | None = None
+        self._shape_dict: dict[str, list] | None = None
 
     def disable_shape_inference(self):
         self.enable_shape_infer = False
@@ -348,7 +347,7 @@ class OnnxModel:
 
     def match_parent_paths(self, node, paths, output_name_to_node):
         for i, path in enumerate(paths):
-            assert isinstance(path, (List, Tuple))
+            assert isinstance(path, (list, tuple))
             return_indice = []
             matched = self.match_parent_path(node, path[0], path[1], output_name_to_node, return_indice)
             if matched:
@@ -358,7 +357,7 @@ class OnnxModel:
     def match_parent_paths_all(self, node, paths, output_name_to_node):
         match_i, matches, return_indices = [], [], []
         for i, path in enumerate(paths):
-            assert isinstance(path, (List, Tuple))
+            assert isinstance(path, (list, tuple))
             return_indice = []
             matched = self.match_parent_path(node, path[0], path[1], output_name_to_node, return_indice)
             if matched:
@@ -442,7 +441,7 @@ class OnnxModel:
         self,
         node,
         child_op_types,
-        edges: Optional[List[Tuple[int, int]]] = None,
+        edges: list[tuple[int, int]] | None = None,
         input_name_to_nodes=None,
         exclude=[],  # noqa: B006
     ):
@@ -600,7 +599,7 @@ class OnnxModel:
                 shape_list.append("?")  # shall not happen
         return shape_list
 
-    def get_dtype(self, name: str, symbolic_shape_helper: Optional[SymbolicShapeInferenceHelper] = None):
+    def get_dtype(self, name: str, symbolic_shape_helper: SymbolicShapeInferenceHelper | None = None):
         """Try get data type given a name (could be initializer, input or output of graph or node)."""
 
         if self._dtype_dict is None:
@@ -625,7 +624,7 @@ class OnnxModel:
 
         return None
 
-    def get_shape(self, name: str, symbolic_shape_helper: Optional[SymbolicShapeInferenceHelper] = None):
+    def get_shape(self, name: str, symbolic_shape_helper: SymbolicShapeInferenceHelper | None = None):
         """Try get shape given a name (could be initializer, input or output of graph or node)."""
 
         if self._shape_dict is None:
@@ -1284,7 +1283,7 @@ class OnnxModel:
             op_count[op] = 1 if op not in op_count else (op_count[op] + 1)
 
         # Sorted by count in the descending order, then by key in alphabetical order.
-        logger.info(f"Operators:{sorted(op_count.items(), key=lambda kv:(-kv[1], kv[0]))}")
+        logger.info(f"Operators:{sorted(op_count.items(), key=lambda kv: (-kv[1], kv[0]))}")
 
         return op_count
 
@@ -1320,8 +1319,8 @@ class OnnxModel:
     def has_same_value(
         tensor1: TensorProto,
         tensor2: TensorProto,
-        signature_cache1: Optional[dict] = None,
-        signature_cache2: Optional[dict] = None,
+        signature_cache1: dict | None = None,
+        signature_cache2: dict | None = None,
     ) -> bool:
         """Returns True when two tensors have same value.
            Note that name can be different.
@@ -1354,7 +1353,7 @@ class OnnxModel:
 
         return False
 
-    def remove_duplicated_initializer(self, cache: Optional[dict] = None):
+    def remove_duplicated_initializer(self, cache: dict | None = None):
         """Remove initializers with duplicated values, and only keep the first one.
         It could help reduce size of models (like ALBert) with shared weights.
         If require_raw_data passed, method will only compare raw_data initializers to speed runtime

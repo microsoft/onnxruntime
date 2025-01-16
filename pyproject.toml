@@ -1,20 +1,3 @@
-[tool.black]
-line-length = 120
-# NOTE: Do not extend the exclude list. Edit .lintrunner.toml instead
-extend-exclude = "cmake|onnxruntime/core/flatbuffers/"
-# NOTE: use the minimum supported python version as target-version
-target-version = ["py310"]
-
-[tool.isort]
-# NOTE: Do not extend the exclude list. Edit .lintrunner.toml instead
-profile = "black"
-line_length = 120
-extend_skip_glob = [
-    "cmake/*",
-    "orttraining/*",
-    "onnxruntime/core/flatbuffers/*",
-]
-
 [tool.pydocstyle]
 convention = "google"
 
@@ -45,6 +28,7 @@ reportMissingImports = false
 [tool.ruff]
 # NOTE: Do not create an exclude list. Edit .lintrunner.toml instead
 target-version = "py38"
+line-length = 120
 
 [tool.ruff.lint]
 select = [
@@ -53,6 +37,7 @@ select = [
     "F", # Pyflakes
     "FURB", # refurb
     "G", # flake8-logging-format
+    "I", # isort
     "ISC", # flake8-implicit-str-concat
     "N", # pep8-naming
     "NPY", # numpy
@@ -92,10 +77,6 @@ ignore = [
     "SIM116", # Don't use dict lookup to replace if-else
 ]
 ignore-init-module-imports = true
-unfixable = [
-    "F401", # Unused imports
-    "SIM112", # Use upper case for env vars
-]
 
 [tool.ruff.lint.per-file-ignores]
 # NOTE: Refrain from growing the ignore list unless for exceptional cases.

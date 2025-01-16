@@ -2,17 +2,21 @@ import argparse
 import os  # noqa: F401
 import sys
 import traceback
-from typing import Any, Callable, Dict, List, Optional, Sequence, Text, Tuple, TypeVar, Union, cast  # noqa: F401
+from collections.abc import Callable, Sequence  # noqa: F401
 
 import numpy as np  # noqa: F401
 import onnx
-from onnx import AttributeProto  # noqa: F401
-from onnx import GraphProto  # noqa: F401
-from onnx import SparseTensorProto  # noqa: F401
-from onnx import mapping  # noqa: F401
-from onnx import numpy_helper  # noqa: F401
-from onnx import utils  # noqa: F401
-from onnx import TensorProto, ValueInfoProto, helper
+from onnx import (
+    AttributeProto,  # noqa: F401
+    GraphProto,  # noqa: F401
+    SparseTensorProto,  # noqa: F401
+    TensorProto,
+    ValueInfoProto,
+    helper,
+    mapping,  # noqa: F401
+    numpy_helper,  # noqa: F401
+    utils,  # noqa: F401
+)
 from onnx.helper import make_opsetid
 
 

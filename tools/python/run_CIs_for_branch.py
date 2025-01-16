@@ -7,7 +7,6 @@ import json
 import os
 import subprocess
 import sys
-import typing
 
 from run_CIs_for_external_pr import get_pipeline_names
 from util.platform_helpers import is_windows
@@ -78,7 +77,7 @@ def _parse_args():
     return args
 
 
-def _run_az_pipelines_command(command: typing.List[str]):
+def _run_az_pipelines_command(command: list[str]):
     try:
         az = "az.cmd" if is_windows() else "az"
         az_output = subprocess.run([az, "pipelines", *command], capture_output=True, text=True, check=True)

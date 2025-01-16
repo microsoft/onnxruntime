@@ -30,7 +30,7 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
         pt_named_params = list(pt_model.named_parameters())
         self.assertEqual(len(ort_named_params), len(pt_named_params))
 
-        for ort_named_param, pt_named_param in zip(ort_named_params, pt_named_params):
+        for ort_named_param, pt_named_param in zip(ort_named_params, pt_named_params, strict=False):
             ort_name, ort_param = ort_named_param
             pt_name, pt_param = pt_named_param
 
@@ -69,9 +69,7 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
             self.assert_values_are_close(ort_prediction, pt_prediction, **kwargs)
             self.assert_gradients_match_and_reset_gradient(ort_model, pt_model, **kwargs)
 
-        onnx_graph_inf = (
-            ort_model._torch_module._execution_manager._training_manager._graph_transition_manager._exported_model_info.exported_model
-        )
+        onnx_graph_inf = ort_model._torch_module._execution_manager._training_manager._graph_transition_manager._exported_model_info.exported_model
         onnx_graph_train = ort_model._torch_module._execution_manager._training_manager._onnx_models.optimized_model
         if debug:
             with open(f"debug_{name}_ortmodule_infer.onnx", "wb") as f:
