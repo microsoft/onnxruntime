@@ -22,6 +22,73 @@
 namespace onnxruntime {
 namespace utils {
 
+void NodeDumpAnalysis::Add(const std::string& node_name, const std::string& op_type, bool is_half_overflow) {
+  std::lock_guard<std::mutex> lock(set_mutex);
+  if (is_half_overflow) {
+    auto p = half_overflow_nodes.insert(node_name);
+    if (p.second) {  // insert succeeded
+      ++half_overflow_ops[op_type];
+    }
+  }
+
+  counter++;
+}
+
+void NodeDumpAnalysis::PrintToStdOut(const std::string& model_path) {
+  std::lock_guard<std::mutex> lock(set_mutex);
+  if (counter == 0) {
+    return;
+  }
+
+  // We added counter twice per node (once for node inputs, once for node outputs), so we need to divide it by 2.
+  counter /= 2;
+
+  std::cout << "Total counter in node dumping: " << counter << std::endl;
+
+  if (!half_overflow_nodes.empty()) {
+    std::cout << "Found " << half_overflow_nodes.size() << " nodes cannot be converted to half precision due to potential input/output overflow." << std::endl;
+
+    if (half_overflow_nodes.count("") > 0) {
+      std::cout << "Warning: some node name is empty and node_block_list is not completed. "
+                << "Please update the model to make sure each node has name then run this tool again!" << std::endl;
+    }
+
+    // Sort and display the op frequency in the descending order
+    std::cout << "Operator frequencies for these nodes:" << std::endl;
+    std::vector<std::pair<std::string, int>> op_freq(half_overflow_ops.begin(), half_overflow_ops.end());
+    std::sort(op_freq.begin(), op_freq.end(),
+              [](const std::pair<std::string, int>& a, const std::pair<std::string, int>& b) {
+                return b.second < a.second;
+              });
+    for (const auto& pair : op_freq) {
+      std::cout << pair.first << " : " << pair.second << std::endl;
+    }
+  } else {
+    std::cout << "No node has potential overflow during half conversion so node_block_list is empty." << std::endl;
+  }
+
+  std::cout << "# -------" << std::endl;
+  std::cout << "# Example python script for float16 conversion" << std::endl;
+  std::cout << "# For details, search `node_block_list` in https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/transformers/float16.py" << std::endl;
+  std::cout << "# -------" << std::endl;
+  std::cout << "from onnxruntime.transformers.onnx_model import OnnxModel" << std::endl;
+  std::cout << "m = OnnxModel(onnx.load('" << model_path << "'))" << std::endl;
+  if (!half_overflow_nodes.empty()) {
+    std::cout << "node_block_list = [" << std::endl;
+    for (const auto& node : half_overflow_nodes) {
+      if (!node.empty()) {
+        std::cout << "  '" << node << "'," << std::endl;
+      }
+    }
+    std::cout << "]" << std::endl;
+    std::cout << "m.convert_float_to_float16(keep_io_types=False, node_block_list=node_block_list)" << std::endl;
+  } else {
+    std::cout << "m.convert_float_to_float16(keep_io_types=False)" << std::endl;
+  }
+
+  std::cout << "m.save_model_to_file('fp16/optimized.onnx', use_external_data_format=False)" << std::endl;
+}
+
 namespace {
 
 struct TensorMetadata {
@@ -59,10 +126,13 @@ bool FilterNode(const NodeDumpOptions& dump_options, const Node& node) {
 }
 
 template <typename T>
-void DumpTensorToStdOut(const Tensor& tensor, const NodeDumpOptions& dump_options) {
-  onnxruntime::utils::PrintCpuTensor<T>(tensor, dump_options.snippet_threshold, dump_options.snippet_edge_items);
-  if (dump_options.dump_flags & NodeDumpOptions::DumpFlags::StatisticsData) {
-    onnxruntime::utils::PrintCpuTensorStats<T>(tensor);
+void DumpTensorToStdOut(const Tensor& tensor, const NodeDumpOptions& dump_options, TensorStatisticsData& tensor_statistics) {
+  if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::InputData) != 0) {
+    onnxruntime::utils::PrintCpuTensor<T>(tensor, dump_options.snippet_threshold, dump_options.snippet_edge_items);
+  }
+
+  if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::StatisticsData) != 0) {
+    onnxruntime::utils::PrintCpuTensorStats<T>(tensor, tensor_statistics);
   }
 }
 
@@ -295,10 +365,10 @@ void InsertNodePlacementToSqliteDb(const NodeDumpContext& dump_context, const No
 
 void DumpCpuTensor(
     const NodeDumpOptions& dump_options,
-    const Tensor& tensor, const TensorMetadata& tensor_metadata) {
+    const Tensor& tensor, const TensorMetadata& tensor_metadata, TensorStatisticsData& tensor_statistics) {
   switch (dump_options.data_destination) {
     case NodeDumpOptions::DataDestination::StdOut: {
-      DispatchOnTensorType(tensor.DataType(), DumpTensorToStdOut, tensor, dump_options);
+      DispatchOnTensorType(tensor.DataType(), DumpTensorToStdOut, tensor, dump_options, tensor_statistics);
       break;
     }
     case NodeDumpOptions::DataDestination::TensorProtoFiles: {
@@ -321,7 +391,7 @@ void DumpCpuTensor(
 
 void DumpTensor(
     const NodeDumpOptions& dump_options,
-    const Tensor& tensor, TensorMetadata& tensor_metadata,
+    const Tensor& tensor, TensorMetadata& tensor_metadata, TensorStatisticsData& tensor_statistics,
     const SessionState& session_state) {
   // check tensor is on CPU before dumping it
   auto& tensor_location = tensor.Location();
@@ -329,7 +399,7 @@ void DumpTensor(
       tensor_location.mem_type == OrtMemTypeCPUInput ||
       tensor_location.mem_type == OrtMemTypeCPUOutput) {
     tensor_metadata.device_type = "CPU";
-    DumpCpuTensor(dump_options, tensor, tensor_metadata);
+    DumpCpuTensor(dump_options, tensor, tensor_metadata, tensor_statistics);
   } else {
     std::cout << tensor_location << "\n";
 
@@ -345,7 +415,7 @@ void DumpTensor(
       auto status = data_transfer_mgr.CopyTensor(tensor, cpu_tensor);
       if (status == common::Status::OK()) {
         tensor_metadata.device_type = "GPU";
-        DumpCpuTensor(dump_options, cpu_tensor, tensor_metadata);
+        DumpCpuTensor(dump_options, cpu_tensor, tensor_metadata, tensor_statistics);
       } else {
         std::cout << " failed to transfer data to cpu.\n";
       }
@@ -383,6 +453,11 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
     if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpStatisticsData, false)) {
       opts.dump_flags |= NodeDumpOptions::DumpFlags::StatisticsData;
     }
+    if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpHalfConversionOverflow, false)) {
+      // Statistics data is required for half conversion overflow detection.
+      opts.dump_flags |= NodeDumpOptions::DumpFlags::StatisticsData;
+      opts.dump_flags |= NodeDumpOptions::DumpFlags::HalfConversionOverflow;
+    }
 
     opts.filter.name_pattern = Env::Default().GetEnvironmentVar(env_vars::kNameFilter);
     opts.filter.op_type_pattern = Env::Default().GetEnvironmentVar(env_vars::kOpTypeFilter);
@@ -401,6 +476,13 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
     // Snippet options for StdOut
     opts.snippet_threshold = ParseEnvironmentVariableWithDefault<int>(env_vars::kSnippetThreshold, kDefaultSnippetThreshold);
     opts.snippet_edge_items = ParseEnvironmentVariableWithDefault<int>(env_vars::kSnippetEdgeItems, kDefaultSnippetEdgeItems);
+
+    constexpr int kMaxHalfThreshold = 65504;
+    // The default value is set to have reasonable margin for input variance.
+    int threshold = ParseEnvironmentVariableWithDefault<int>(env_vars::kHalfOverflowThreshold, 50000);
+    ORT_ENFORCE(threshold > 0 && threshold <= kMaxHalfThreshold,
+                debug_node_inputs_outputs_env_vars::kHalfOverflowThreshold, " shall be a positive integer <= ", kMaxHalfThreshold);
+    opts.half_overflow_threshold = static_cast<float>(threshold);
 
     if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kAppendRankToFileName, false)) {
       std::string rank = Env::Default().GetEnvironmentVar("OMPI_COMM_WORLD_RANK");
@@ -452,7 +534,8 @@ void DumpNodeInputs(
     const NodeDumpContext& dump_context,
     const OpKernelContext& context,
     const Node& node,
-    const SessionState& session_state) {
+    const SessionState& session_state,
+    NodeDumpAnalysis& dump_analysis) {
   const bool is_any_output_dumped = IsAnyOutputDumped(dump_options);
   if (!is_any_output_dumped) {
     return;
@@ -477,6 +560,9 @@ void DumpNodeInputs(
   const auto& input_defs = node.InputDefs();
   TensorMetadata tensor_metadata;
 
+  bool check_half_overflow = (dump_options.data_destination == NodeDumpOptions::DataDestination::StdOut) &&
+                             (dump_options.dump_flags & NodeDumpOptions::DumpFlags::HalfConversionOverflow) != 0;
+  bool potential_half_overflow = false;
   for (auto i = 0, end = context.InputCount(); i < end; ++i) {
     if (input_defs[i]->Exists()) {
       std::cout << "Input " << i << " Name: " << input_defs[i]->Name() << "\n";
@@ -491,11 +577,20 @@ void DumpNodeInputs(
             const bool is_shape_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::Shape) != 0;
             PrintIf(is_shape_set, MakeString(" Shape: ", shape, "\n"));
 
-            if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::InputData) != 0) {
+            if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::InputData) != 0 || check_half_overflow) {
               tensor_metadata.name = input_defs[i]->Name();
               tensor_metadata.step = dump_context.iteration;
               tensor_metadata.consumer = node.Name() + ":" + std::to_string(i);
-              DumpTensor(dump_options, *tensor, tensor_metadata, session_state);
+
+              TensorStatisticsData tensor_statistics;
+              DumpTensor(dump_options, *tensor, tensor_metadata, tensor_statistics, session_state);
+
+              if (check_half_overflow && tensor_statistics.is_float) {
+                float threshold = dump_options.half_overflow_threshold;
+                if (tensor_statistics.float_min < -threshold || tensor_statistics.float_max > threshold) {
+                  potential_half_overflow = true;
+                }
+              }
             }
           } else {
             std::cout << " is empty optional tensor.\n";
@@ -511,14 +606,19 @@ void DumpNodeInputs(
       std::cout << "Input " << i << " is optional and was not provided.\n";
     }
   }
+
+  if (check_half_overflow) {
+    dump_analysis.Add(node.Name(), node.OpType(), potential_half_overflow);
+  }
 }
 
 void DumpNodeInputs(
     const NodeDumpContext& dump_context,
     const OpKernelContext& context,
     const Node& node,
-    const SessionState& session_state) {
-  DumpNodeInputs(NodeDumpOptionsFromEnvironmentVariables(), dump_context, context, node, session_state);
+    const SessionState& session_state,
+    NodeDumpAnalysis& dump_analysis) {
+  DumpNodeInputs(NodeDumpOptionsFromEnvironmentVariables(), dump_context, context, node, session_state, dump_analysis);
 }
 
 void DumpNodeOutputs(
@@ -526,7 +626,8 @@ void DumpNodeOutputs(
     const NodeDumpContext& dump_context,
     OpKernelContext& context,
     const Node& node,
-    const SessionState& session_state) {
+    const SessionState& session_state,
+    NodeDumpAnalysis& dump_analysis) {
   const bool is_any_output_dumped = IsAnyOutputDumped(dump_options);
   if (!is_any_output_dumped) {
     return;
@@ -549,6 +650,9 @@ void DumpNodeOutputs(
   const auto& output_defs = node.OutputDefs();
   TensorMetadata tensor_metadata;
 
+  bool check_half_overflow = (dump_options.data_destination == NodeDumpOptions::DataDestination::StdOut) &&
+                             (dump_options.dump_flags & NodeDumpOptions::DumpFlags::HalfConversionOverflow) != 0;
+  bool potential_half_overflow = false;
   for (auto i = 0, end = context.OutputCount(); i < end; ++i) {
     if (output_defs[i]->Exists()) {
       std::cout << "Output " << i << " Name: " << output_defs[i]->Name() << "\n";
@@ -562,11 +666,20 @@ void DumpNodeOutputs(
             const bool is_shape_set = (dump_options.dump_flags & NodeDumpOptions::DumpFlags::Shape) != 0;
             PrintIf(is_shape_set, MakeString(" Shape: ", shape, "\n"));
 
-            if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::OutputData) != 0) {
+            if ((dump_options.dump_flags & NodeDumpOptions::DumpFlags::OutputData) != 0 || check_half_overflow) {
               tensor_metadata.name = output_defs[i]->Name();
               tensor_metadata.step = dump_context.iteration;
               tensor_metadata.producer = node.Name() + ":" + std::to_string(i);
-              DumpTensor(dump_options, *tensor, tensor_metadata, session_state);
+
+              TensorStatisticsData tensor_statistics;
+              DumpTensor(dump_options, *tensor, tensor_metadata, tensor_statistics, session_state);
+
+              if (check_half_overflow && tensor_statistics.is_float) {
+                float threshold = dump_options.half_overflow_threshold;
+                if (tensor_statistics.float_min < -threshold || tensor_statistics.float_max > threshold) {
+                  potential_half_overflow = true;
+                }
+              }
             }
           } else {
             std::cout << " is empty optional tensor.\n";
@@ -582,6 +695,10 @@ void DumpNodeOutputs(
       std::cout << "Output " << i << " is optional and was not produced.\n";
     }
 
+    if (check_half_overflow) {
+      dump_analysis.Add(node.Name(), node.OpType(), potential_half_overflow);
+    }
+
     std::cout << std::endl;
   }
 }
@@ -590,8 +707,9 @@ void DumpNodeOutputs(
     const NodeDumpContext& dump_context,
     OpKernelContext& context,
     const Node& node,
-    const SessionState& session_state) {
-  DumpNodeOutputs(NodeDumpOptionsFromEnvironmentVariables(), dump_context, context, node, session_state);
+    const SessionState& session_state,
+    NodeDumpAnalysis& dump_analysis) {
+  DumpNodeOutputs(NodeDumpOptionsFromEnvironmentVariables(), dump_context, context, node, session_state, dump_analysis);
 }
 
 }  // namespace utils
