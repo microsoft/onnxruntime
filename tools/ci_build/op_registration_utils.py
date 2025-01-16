@@ -5,6 +5,8 @@
 Utilities to help process files containing kernel registrations.
 """
 
+from __future__ import annotations
+
 import os
 import pathlib
 import sys
