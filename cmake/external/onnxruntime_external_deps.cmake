@@ -631,6 +631,33 @@ if (onnxruntime_USE_WEBGPU)
       URL_HASH SHA1=${DEP_SHA1_dawn}
       # All previous patches are merged into the upstream dawn project. We don't need to apply any patches right now.
       # if we need to apply patches in the future, we can uncomment the following line.
+      #
+      # Currently, the patch contains the following changes:
+
+      # git reset --hard 12a3b24c456cebd9fd11f23ac0164f78129b00c6  (The current dawn version in deps.txt)
+      # HEAD is now at 12a3b24c45 [tint][ir][val] Enforce rules around scope for function vars
+
+      # git cherry-pick 28258a5769a4212fec19a467f1dd4afa886b8179
+      # [emscripten] Fix handling of errors in MapAsync
+
+      # git cherry-pick d7727b4aaa8fe9e3005a7217fc36fe2e9baacc6f
+      # [emscripten] Fix cleanup steps in emwgpuWaitAny
+
+      # git cherry-pick 63cbc06bd56d57488b5234269eee41414e2583fd
+      # [emscripten] Use handleAsync correctly in WaitAny
+
+      # git cherry-pick 6e3c037b70a095b726164aeb2e6ff6e436662371
+      # [emscripten] Revise return value several webgpu APIs
+
+      # git cherry-pick 96973ac4bf79f321910a5ad0ed46847205408d02
+      # [emscripten] Fix convertSentinelToUndefined when heap size > 2GB
+
+      # git cherry-pick 617d042d4bb243a36930b020ab6f5c14cd89f824
+      # [emscripten] Make some things work with WASM_BIGINT or MEMORY64
+
+      # git cherry-pick b7143cc4f3bf86a78ffff816dec53d9e40ce9518
+      # fix webgpu_gen_struct_info in Windows
+
       PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
     )
   endif()
