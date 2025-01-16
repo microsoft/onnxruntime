@@ -638,22 +638,19 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Private memory
   var<private> lane_output: array<f16, 16>;
 
-  fn loadSHMA(a_global_base:u32, kidx_v:u32, subtile_id: u32, sg_id: u32)
+  fn loadSHMA(a_global_base:u32, kidx_v:u32, row: u32, col: u32)
   {
-    // Workgroup needs to fill 64 slots, there are 16 subgroups in the workgroup.
-    // Each subgroup fills out 4 slots.
-    let a_slot = subtile_id * 4 + sg_id/4;
-    let a_global = a_global_base + a_slot;
+    let a_global = a_global_base + row;
     if (a_global >= uniforms.M)
     {
       return;
     }
-    tile_A[a_slot][sg_id%4] = input_a[a_global*uniforms.K16+kidx_v+sg_id%4];
-    if (sg_id%4 == 0)
+    tile_A[row][col] = input_a[a_global*uniforms.K16+kidx_v+col];
+    if (col == 0)
     {
       // kidx_v - each kidx_v covers 16 values of k, therefore 8 index
       // (8*14 = 128) will share a single scale, index by kidx_v/8 below.
-      scale_A[a_slot] = scales_a[a_global*(uniforms.K/128) + kidx_v/8];
+      scale_A[row] = scales_a[a_global*(uniforms.K/128) + kidx_v/8];
     }
   }
 
@@ -741,19 +738,15 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   let a_global_base = workgroup_id.x * tile_size_a;
   let b_global_base = workgroup_id.y * tile_size_b;
-
-  // Clear the accumulator
-  for (var i:u32 = 0; i < 16; i++)
-  {
-    lane_output[i] = 0;
-  }
+  let load_row = u32(local_idx/4);
+  let load_col = u32(local_idx%4);
 
   // K's vectrorization is 16 items per index. See input_a/input_b.
   // tile_size_kv - is the k tile size in vectorized k units/space (1/16).
   for (var kidx_v:u32 = 0; kidx_v < uniforms.K16; kidx_v+=tile_size_kv)
   {
     // Populate shared memory for the workgroup
-    loadSHMA(a_global_base, kidx_v, subtile_id, sg_id);
+    loadSHMA(a_global_base, kidx_v, load_row, load_col);
     loadSHMB(b_global_base, kidx_v, subtile_id, sg_id);
     workgroupBarrier();
 
