@@ -10,18 +10,18 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Microsoft.ML.OnnxRuntime.Tests.Android
+namespace Microsoft.ML.OnnxRuntime.Tests.BrowserStack.Android
 {
     public class BrowserStackTest
     {
         public AndroidDriver driver;
-        public BrowserStackTest() { }
+        public BrowserStackTest()
+        {}
 
         [SetUp]
         public void Init()
         {
-            var androidOptions = new AppiumOptions
-            {
+            var androidOptions = new AppiumOptions {
                 AutomationName = "UIAutomator2",
                 PlatformName = "Android",
             };
@@ -30,13 +30,15 @@ namespace Microsoft.ML.OnnxRuntime.Tests.Android
         }
 
         /// <summary>
-        /// Sends a log to BrowserStack that is visible in the text logs and labelled as ANNOTATION.
+        /// Sends a log to BrowserStack that is visible in the text logs and labeled as ANNOTATION.
         /// </summary>
         /// <param name="text">Log text to send.</param>
         /// <param name="logLevel">Log level -- choose between info, debug, warning, and error</param>
         public void browserStackLog(String text, String logLevel = "info")
         {
-            String jsonToSend = String.Format("browserstack_executor: {\"action\": \"annotate\", \"arguments\": {\"data\": {0}, \"level\": {1}}}", JsonConvert.ToString(text), JsonConvert.ToString(logLevel));
+            String jsonToSend = String.Format(
+                "browserstack_executor: {\"action\": \"annotate\", \"arguments\": {\"data\": {0}, \"level\": {1}}}",
+                JsonConvert.ToString(text), JsonConvert.ToString(logLevel));
 
             ((IJavaScriptExecutor)driver).ExecuteScript(jsonToSend);
         }
@@ -49,19 +51,25 @@ namespace Microsoft.ML.OnnxRuntime.Tests.Android
         {
             try
             {
-                // According to https://www.browserstack.com/docs/app-automate/appium/set-up-tests/mark-tests-as-pass-fail
+                // According to
+                // https://www.browserstack.com/docs/app-automate/appium/set-up-tests/mark-tests-as-pass-fail
                 // BrowserStack doesn't know whether test assertions have passed or failed. Below handles
                 // passing the test status to BrowserStack along with any relevant information.
                 if (TestContext.CurrentContext.Result.Outcome.Status == TestStatus.Failed)
                 {
                     String failureMessage = TestContext.CurrentContext.Result.Message;
-                    String jsonToSendFailure = String.Format("browserstack_executor: {\"action\": \"setSessionStatus\", \"arguments\": {\"status\":\"failed\", \"reason\": {0}}}", JsonConvert.ToString(failureMessage));
+                    String jsonToSendFailure =
+                        String.Format("browserstack_executor: {\"action\": \"setSessionStatus\", \"arguments\": " +
+                                      "{\"status\":\"failed\", \"reason\": {0}}}",
+                                      JsonConvert.ToString(failureMessage));
 
                     ((IJavaScriptExecutor)driver).ExecuteScript(jsonToSendFailure);
                 }
                 else
                 {
-                    ((IJavaScriptExecutor)driver).ExecuteScript("browserstack_executor: {\"action\": \"setSessionStatus\", \"arguments\": {\"status\":\"passed\", \"reason\": \"\"}}");
+                    ((IJavaScriptExecutor)driver)
+                        .ExecuteScript("browserstack_executor: {\"action\": \"setSessionStatus\", \"arguments\": " +
+                                       "{\"status\":\"passed\", \"reason\": \"\"}}");
                 }
             }
             finally

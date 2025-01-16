@@ -7,8 +7,18 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace Microsoft.ML.OnnxRuntime.Tests.Android
+namespace Microsoft.ML.OnnxRuntime.Tests.BrowserStack.Android
 {
+    /// <summary>
+    /// This class contains a single test: RunAll, which interacts with the UI from
+    /// https://github.com/mattleibow/DeviceRunners/tree/main by clicking the "Run All" button and checking the number
+    /// of passed and failed tests.
+    ///
+    /// It searches for elements on the page using Appium's WebDriver. These searches use the XPath attributes.
+    ///
+    /// Launching the MAUI test app in Appium Inspector will allow you to see the exact XPath attributes for each
+    /// element.
+    /// </summary>
     [TestFixture]
     public class RunAllTest : BrowserStackTest
     {
@@ -39,7 +49,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests.Android
             int numPassed = -1;
             int numFailed = -1;
 
-            IReadOnlyCollection<AppiumElement> labelElements = driver.FindElements(By.XPath("//android.widget.TextView"));
+            IReadOnlyCollection<AppiumElement> labelElements =
+                driver.FindElements(By.XPath("//android.widget.TextView"));
 
             for (int i = 0; i < labelElements.Count; i++)
             {
@@ -68,8 +79,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests.Android
         [Test]
         public async Task ClickRunAllTest()
         {
+            // XAML for the main page:
+            // https://github.com/mattleibow/DeviceRunners/blob/main/src/DeviceRunners.VisualRunners.Maui/App/Pages/HomePage.xaml
             AppiumElement runAllButton = FindAppiumElementThenClick("//android.widget.Button", "Run All");
-            
+
             while (!runAllButton.Enabled)
             {
                 // waiting for unit tests to execute
@@ -87,6 +100,10 @@ namespace Microsoft.ML.OnnxRuntime.Tests.Android
             // click into test results if tests have failed
             FindAppiumElementThenClick("//android.widget.TextView", "⛔");
             await Task.Delay(500);
+
+            // Brings you to the test assembly page
+            // XAML for test assembly page:
+            // https://github.com/mattleibow/DeviceRunners/blob/cba7644e07b305ba64dc930b01c3eee55ef2b93d/src/DeviceRunners.VisualRunners.Maui/App/Pages/TestAssemblyPage.xaml
             FindAppiumElementThenClick("//android.widget.EditText", "All");
             await Task.Delay(100);
             FindAppiumElementThenClick("//android.widget.TextView", "Failed");
