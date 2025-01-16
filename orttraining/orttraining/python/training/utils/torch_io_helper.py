@@ -52,7 +52,7 @@ ORTModelInputOutputType = Union[
 class _TensorStub:
     """Tensor stub class used to represent model's input or output"""
 
-    __slots__ = ["tensor_idx", "name", "dtype", "shape", "shape_dims"]
+    __slots__ = ["dtype", "name", "shape", "shape_dims", "tensor_idx"]
 
     def __init__(
         self,
@@ -291,9 +291,9 @@ def unflatten_data_using_schema(
         elif PrimitiveType.is_primitive_type(data_schema):
             return data_schema
         elif isinstance(data_schema, _TensorStub):
-            assert isinstance(
-                data[data_schema.tensor_idx], torch.Tensor
-            ), f"Expecting torch.Tensor, got {type(data[data_schema.tensor_idx])}"
+            assert isinstance(data[data_schema.tensor_idx], torch.Tensor), (
+                f"Expecting torch.Tensor, got {type(data[data_schema.tensor_idx])}"
+            )
             return data[data_schema.tensor_idx]
         elif isinstance(data_schema, abc.Sequence):
             sequence_type = type(data_schema)

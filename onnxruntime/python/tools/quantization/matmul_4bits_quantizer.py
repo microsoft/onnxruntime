@@ -1259,7 +1259,6 @@ class MatMul4BitsQuantizer:
             self._process_subgraph(graph_stack)
             self.model.clean_initializers()
         elif self.algo_config.algorithm == "nvidia_awq":
-
             # Handle nvidia_awq quantization
             logger.info("Processing nvidia_awq quantization...")
             self.model = self.node_quantizer.quantize_awq(
@@ -1280,9 +1279,9 @@ class MatMul4BitsQuantizer:
 
             import neural_compressor
 
-            assert version.parse(neural_compressor.__version__) >= version.parse(
-                "2.3.2"
-            ), "Require neural-compressor >= 2.3.2 to support weight only quantization!"
+            assert version.parse(neural_compressor.__version__) >= version.parse("2.3.2"), (
+                "Require neural-compressor >= 2.3.2 to support weight only quantization!"
+            )
 
             self.int4_quant_algo()
 
@@ -1446,7 +1445,6 @@ if __name__ == "__main__":
     elif args.quant_method == "gptq":
         quant_config = GPTQWeightOnlyQuantConfig(block_size=args.block_size, op_types_to_quantize=op_types_to_quantize)
     elif args.quant_method == "nvidia_awq":
-
         if quant_format == QuantFormat.QOperator:
             logger.warning("QOperator is not applicable to nvidia_awq. overriding the value to QDQ")
             quant_format = QuantFormat.QDQ

@@ -3,10 +3,6 @@
 
 #pragma once
 
-#ifdef __EMSCRIPTEN__
-#include <emscripten/emscripten.h>
-#endif
-
 #include <memory>
 #include <mutex>
 
@@ -147,11 +143,12 @@ class WebGpuContext final {
 
   struct PendingKernelInfo {
     PendingKernelInfo(std::string_view kernel_name,
+                      std::string_view kernel_type,
                       std::string_view program_name,
                       std::string_view cache_key,
                       const std::vector<ProgramInput>& inputs,
                       const std::vector<ProgramOutput>& outputs)
-        : name{absl::StrJoin({kernel_name, program_name}, "_")}, cache_key{cache_key}, inputs{inputs}, outputs{outputs} {}
+        : name{absl::StrJoin({kernel_name, kernel_type, program_name}, "&")}, cache_key{cache_key}, inputs{inputs}, outputs{outputs} {}
 
     PendingKernelInfo(PendingKernelInfo&&) = default;
     PendingKernelInfo& operator=(PendingKernelInfo&&) = default;

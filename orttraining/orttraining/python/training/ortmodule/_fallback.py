@@ -11,7 +11,6 @@ from typing import Optional
 import torch
 
 from . import _logger, _utils
-from ._fallback_exceptions import wrap_exception  # noqa: F401
 from ._fallback_exceptions import (
     ORTModuleDeviceException,
     ORTModuleFallbackException,
@@ -19,6 +18,7 @@ from ._fallback_exceptions import (
     ORTModuleIOError,
     ORTModuleONNXModelException,
     ORTModuleTorchModelException,
+    wrap_exception,  # noqa: F401
 )
 
 

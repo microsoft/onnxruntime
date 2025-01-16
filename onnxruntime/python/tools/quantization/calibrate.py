@@ -161,7 +161,7 @@ class CalibrationMethod(Enum):
 class CalibrationDataReader(metaclass=abc.ABCMeta):
     @classmethod
     def __subclasshook__(cls, subclass):
-        return hasattr(subclass, "get_next") and callable(subclass.get_next) or NotImplemented
+        return (hasattr(subclass, "get_next") and callable(subclass.get_next)) or NotImplemented
 
     @abc.abstractmethod
     def get_next(self) -> dict:
@@ -820,9 +820,9 @@ class HistogramCollector(CalibrationDataCollector):
                 for arr in data_arr:
                     assert isinstance(arr, np.ndarray), f"Unexpected type {type(arr)} for tensor={tensor!r}"
                 dtypes = set(a.dtype for a in data_arr)
-                assert (
-                    len(dtypes) == 1
-                ), f"The calibration expects only one element type but got {dtypes} for tensor={tensor!r}"
+                assert len(dtypes) == 1, (
+                    f"The calibration expects only one element type but got {dtypes} for tensor={tensor!r}"
+                )
                 data_arr_np = np.asarray(data_arr)
             elif not isinstance(data_arr, np.ndarray):
                 raise ValueError(f"Unexpected type {type(data_arr)} for tensor={tensor!r}")
@@ -842,9 +842,9 @@ class HistogramCollector(CalibrationDataCollector):
                 # first time it uses num_bins to compute histogram.
                 hist, hist_edges = np.histogram(data_arr_np, bins=self.num_bins)
                 hist_edges = hist_edges.astype(data_arr_np.dtype)
-                assert (
-                    data_arr_np.dtype != np.float64
-                ), "only float32 or float16 is supported, every constant must be explicitly typed"
+                assert data_arr_np.dtype != np.float64, (
+                    "only float32 or float16 is supported, every constant must be explicitly typed"
+                )
                 self.histogram_dict[tensor] = (hist, hist_edges, min_value, max_value)
             else:
                 old_histogram = self.histogram_dict[tensor]
@@ -864,9 +864,9 @@ class HistogramCollector(CalibrationDataCollector):
                 hist, hist_edges = np.histogram(data_arr_np, bins=old_hist_edges)
                 hist_edges = hist_edges.astype(data_arr_np.dtype)
                 hist[: len(old_hist)] += old_hist
-                assert (
-                    data_arr_np.dtype != np.float64
-                ), "only float32 or float16 is supported, every constant must be explicitly typed"
+                assert data_arr_np.dtype != np.float64, (
+                    "only float32 or float16 is supported, every constant must be explicitly typed"
+                )
                 self.histogram_dict[tensor] = (hist, hist_edges, min(old_min, min_value), max(old_max, max_value))
 
     def collect_value(self, name_to_arr):

@@ -41,7 +41,7 @@ parameters:
 
 variables:
   - name: docker_base_image
-    value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241120.3
+    value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250109.1
   - name: linux_trt_version
     value: 10.3.0.26-1.cuda11.8
   - name: Repository
@@ -59,9 +59,6 @@ stages:
       clean: all
     pool: onnxruntime-Ubuntu2204-AMD-CPU
     steps:
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
 
     - checkout: self
       clean: true
@@ -308,9 +305,6 @@ stages:
       demands:
       - WorkFolder -equals /mnt/storage/
     steps:
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
 
     - checkout: self
       clean: true
@@ -421,9 +415,6 @@ stages:
       clean: all
     pool: Onnxruntime-Linux-A10-24G
     steps:
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
 
     - checkout: self
       clean: true

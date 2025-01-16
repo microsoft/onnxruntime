@@ -36,10 +36,10 @@ This file should be generated. See [cgmanifests/README](/cgmanifests/README.md) 
 1. If there is a build failure in stage "Check out of dated documents" in WebAssembly CI pipeline, update ONNX Runtime
    Web WebGL operator support document:
    - Make sure Node.js is installed (see [Prerequisites](../js/README.md#Prerequisites) for instructions).
-   - Follow step 1 in [js/Build](../js/README.md#Build-2) to install dependencies).
+   - Follow [js/Build](../js/README.md#Build-2) to install dependencies.
    - Follow instructions in [Generate document](../js/README.md#Generating-Document) to update document. Commit changes applied to file `docs/operators.md`.
 
-1. Usually some newly introduced tests will fail. Then you may need to update
+2. Usually some newly introduced tests will fail. Then you may need to update
 - [onnxruntime/test/onnx/main.cc](/onnxruntime/test/onnx/main.cc)
 - [onnxruntime/test/providers/cpu/model_tests.cc](/onnxruntime/test/providers/cpu/model_tests.cc)
 - [csharp/test/Microsoft.ML.OnnxRuntime.Tests.NetCoreApp/InferenceTest.netcore.cs](/csharp/test/Microsoft.ML.OnnxRuntime.Tests.NetCoreApp/InferenceTest.netcore.cs)

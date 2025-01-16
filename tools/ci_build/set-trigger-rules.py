@@ -71,12 +71,11 @@ def main():
     os.chdir(working_dir)
 
     trigger_rules = {"skip-docs.yml": skip_doc_changes, "skip-js.yml": skip_js_changes}
-    for key in trigger_rules:
+    for key, skip_changes in trigger_rules.items():
         trigger_file = os.path.join(working_dir, "triggers", key)
         with open(trigger_file) as f1:
             trigger_lines = f1.readlines()
 
-        skip_changes = trigger_rules[key]
         pool = multiprocessing.Pool()
         pool.starmap(add_trigger_filter, [(file, trigger_lines) for file in skip_changes])
         pool.close()

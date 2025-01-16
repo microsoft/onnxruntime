@@ -6,6 +6,7 @@
 """
 Export LLM to onnx
 """
+
 import argparse
 import inspect
 import math
@@ -173,8 +174,8 @@ def move_to_appropriate_device(model: nn.Module, sample_inputs_tp: tuple) -> nn.
     """
     total_mem_per_cpu = torch.cuda.get_device_properties(0).total_memory / 1024 / 1024
 
-    print(f"Model_Size = {get_model_parameter_size(model)/1024} GB")
-    print(f"total_mem_per_cpu = {total_mem_per_cpu/1024} GB")
+    print(f"Model_Size = {get_model_parameter_size(model) / 1024} GB")
+    print(f"total_mem_per_cpu = {total_mem_per_cpu / 1024} GB")
     if get_model_parameter_size(model) > total_mem_per_cpu * 0.45:
         device_collection = [torch.device(i) for i in range(torch.cuda.device_count())]
         if len(device_collection) > 1:
@@ -228,9 +229,9 @@ def fetch_onnx_inputs_outputs_name(
     onnx_inp_names = tuple(
         [torch_input_names[i] for i in range(len(torch_input_names)) if isinstance(onnx_inputs[i], torch.Tensor)]
     )
-    assert (
-        "input_ids" in onnx_inp_names and "attention_mask" in onnx_inp_names
-    ), "input_ids and attention_mask must be existed in inputs"
+    assert "input_ids" in onnx_inp_names and "attention_mask" in onnx_inp_names, (
+        "input_ids and attention_mask must be existed in inputs"
+    )
     onnx_out_names = ("logits",)
     onnx_dynamic_axes = {
         "input_ids": {0: "batch_size", 1: "seq_len"},

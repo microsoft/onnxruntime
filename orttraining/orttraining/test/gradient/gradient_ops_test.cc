@@ -1571,7 +1571,9 @@ TEST(GradientCheckerTest, SigmoidGrad) { UnaryOpGradientTest("Sigmoid"); }
 
 TEST(GradientCheckerTest, QuickGeluGrad) {
   // Default alpha = 1.702, relax the tolerance due failure on Win for some seed.
-  { UnaryOpGradientTest("QuickGelu", kMSDomain, 1, nullptr, nullptr, {}, 5e-2f); }
+  {
+    UnaryOpGradientTest("QuickGelu", kMSDomain, 1, nullptr, nullptr, {}, 5e-2f);
+  }
 
   // Silu, alpha = 1.0.
   {
@@ -3351,6 +3353,8 @@ TEST(GradientCheckerTest, ResizeGrad) {
 }
 
 #endif  // USE_CUDA
+
+TEST(GradientCheckerTest, AtanGrad) { UnaryOpGradientTest("Atan"); }
 
 }  // namespace test
 }  // namespace onnxruntime

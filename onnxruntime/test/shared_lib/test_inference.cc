@@ -1222,7 +1222,7 @@ TEST(CApiTest, invalid_variadic_input_min_arity_custom_op) {
     Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
     FAIL();
   } catch (const Ort::Exception& excpt) {
-    ASSERT_THAT(excpt.what(), testing::HasSubstr("Error Node (VariadicNode0) has input size 3 not in range [min=4"));
+    ASSERT_THAT(excpt.what(), testing::HasSubstr("Error Node(VariadicNode0) with schema(test::VariadicNode:1) has input size 3 not in range [min=4,"));
   }
 }
 
@@ -1252,7 +1252,7 @@ TEST(CApiTest, invalid_variadic_output_min_arity_custom_op) {
     Ort::Session session(*ort_env, VARIADIC_INPUT_OUTPUT_CUSTOM_OP_MODEL_URI, session_options);
     FAIL();
   } catch (const Ort::Exception& excpt) {
-    ASSERT_THAT(excpt.what(), testing::HasSubstr("Error Node (VariadicNode0) has output size 3 not in range [min=4"));
+    ASSERT_THAT(excpt.what(), testing::HasSubstr("Error Node(VariadicNode0) with schema(test::VariadicNode:1) has output size 3 not in range [min=4"));
   }
 }
 
@@ -1934,6 +1934,53 @@ TEST(ReducedOpsBuildTest, test_excluded_ops) {
 }
 #endif
 
+#if defined(USE_QNN)
+
+// Returns true if QNN EP was created and QNN HTP shared memory allocator is available, false otherwise.
+static bool CreateSessionWithQnnEpAndQnnHtpSharedMemoryAllocator(PATH_TYPE model_path, Ort::Session& session) {
+#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+  constexpr bool use_htp_backend = true;
+#else
+  constexpr bool use_htp_backend = false;
+#endif
+
+#if defined(_WIN32)
+  const char* backend_path = use_htp_backend ? "QnnHtp.dll" : "QnnCpu.dll";
+#else
+  const char* backend_path = use_htp_backend ? "libQnnHtp.so" : "libQnnCpu.so";
+#endif
+
+  Ort::SessionOptions session_options;
+  session_options.AppendExecutionProvider("QNN",
+                                          {{"enable_htp_shared_memory_allocator", "1"},
+                                           {"backend_path", backend_path}});
+
+  try {
+    session = Ort::Session{*ort_env, model_path, session_options};
+    return true;
+  } catch (const Ort::Exception& e) {
+    // handle particular exception that indicates that the libcdsprpc.so / dll can't be loaded
+    std::string_view error_message = e.what();
+
+#if defined(_WIN32)
+    std::string_view expected_error_message = "Failed to load libcdsprpc.dll";
+#else
+    std::string_view expected_error_message = "Failed to load libcdsprpc.so";
+#endif
+
+    if (e.GetOrtErrorCode() == ORT_FAIL &&
+        error_message.find(expected_error_message) != std::string_view::npos) {
+      session = Ort::Session{nullptr};
+      return false;
+    }
+
+    // propagate other exceptions
+    throw;
+  }
+}
+
+#endif  // defined(USE_QNN)
+
 TEST(CApiTest, get_allocator_cpu) {
   Ort::SessionOptions session_options;
   Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CPU(session_options, 1));
@@ -2000,6 +2047,32 @@ TEST(CApiTest, get_allocator_rocm) {
   ASSERT_EQ(1024U, mem_allocation.size());
 }
 #endif
+
+#if defined(USE_QNN)
+
+TEST(CApiTest, get_allocator_qnn_htp_shared) {
+  Ort::Session session{nullptr};
+
+  if (!CreateSessionWithQnnEpAndQnnHtpSharedMemoryAllocator(NAMED_AND_ANON_DIM_PARAM_URI, session)) {
+    GTEST_SKIP() << "HTP shared memory allocator is unavailable.";
+  }
+
+  Ort::MemoryInfo info_qnn_htp_shared("QnnHtpShared", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  Ort::Allocator qnn_htp_shared_allocator(session, info_qnn_htp_shared);
+
+  auto allocator_info = qnn_htp_shared_allocator.GetInfo();
+  ASSERT_EQ(allocator_info, info_qnn_htp_shared);
+
+  void* p = qnn_htp_shared_allocator.Alloc(1024);
+  ASSERT_NE(p, nullptr);
+  qnn_htp_shared_allocator.Free(p);
+
+  auto mem_allocation = qnn_htp_shared_allocator.GetAllocation(1024);
+  ASSERT_NE(mem_allocation.get(), nullptr);
+  ASSERT_EQ(mem_allocation.size(), size_t{1024});
+}
+
+#endif  // defined(USE_QNN)
 
 TEST(CApiTest, io_binding) {
   Ort::SessionOptions session_options;
@@ -2177,6 +2250,101 @@ TEST(CApiTest, io_binding_cuda) {
   binding.ClearBoundOutputs();
 }
 #endif
+
+#if defined(USE_QNN)
+
+TEST(CApiTest, io_binding_qnn_htp_shared) {
+  Ort::Session session{nullptr};
+  if (!CreateSessionWithQnnEpAndQnnHtpSharedMemoryAllocator(MODEL_URI, session)) {
+    GTEST_SKIP() << "HTP shared memory allocator is unavailable.";
+  }
+
+  Ort::MemoryInfo info_qnn_htp_shared("QnnHtpShared", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
+
+  Ort::Allocator qnn_htp_shared_allocator(session, info_qnn_htp_shared);
+  auto allocator_info = qnn_htp_shared_allocator.GetInfo();
+  ASSERT_EQ(info_qnn_htp_shared, allocator_info);
+
+  const std::array<int64_t, 2> x_shape = {3, 2};
+  std::array<float, 3 * 2> x_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  auto input_data = qnn_htp_shared_allocator.GetAllocation(x_values.size() * sizeof(float));
+  ASSERT_NE(input_data.get(), nullptr);
+  memcpy(input_data.get(), x_values.data(), sizeof(float) * x_values.size());
+
+  // Create an OrtValue tensor backed by data on QNN HTP shared memory
+  Ort::Value bound_x = Ort::Value::CreateTensor(info_qnn_htp_shared, reinterpret_cast<float*>(input_data.get()), x_values.size(),
+                                                x_shape.data(), x_shape.size());
+
+  const std::array<int64_t, 2> expected_y_shape = {3, 2};
+  const std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+  auto output_data = qnn_htp_shared_allocator.GetAllocation(expected_y.size() * sizeof(float));
+  ASSERT_NE(output_data.get(), nullptr);
+
+  // Create an OrtValue tensor backed by data on QNN HTP shared memory
+  Ort::Value bound_y = Ort::Value::CreateTensor(info_qnn_htp_shared, reinterpret_cast<float*>(output_data.get()),
+                                                expected_y.size(), expected_y_shape.data(), expected_y_shape.size());
+
+  Ort::IoBinding binding(session);
+  binding.BindInput("X", bound_x);
+  binding.BindOutput("Y", bound_y);
+
+  session.Run(Ort::RunOptions(), binding);
+
+  // Check the values against the bound raw memory
+  {
+    gsl::span y{reinterpret_cast<const float*>(output_data.get()), expected_y.size()};
+    ASSERT_TRUE(std::equal(std::begin(y), std::end(y), std::begin(expected_y)));
+  }
+
+  // Now compare values via GetOutputValues
+  {
+    std::vector<Ort::Value> output_values = binding.GetOutputValues();
+    ASSERT_EQ(output_values.size(), 1U);
+    const Ort::Value& Y_value = output_values[0];
+    ASSERT_TRUE(Y_value.IsTensor());
+    Ort::TensorTypeAndShapeInfo type_info = Y_value.GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, type_info.GetElementType());
+    auto count = type_info.GetElementCount();
+    ASSERT_EQ(expected_y.size(), count);
+
+    gsl::span y{Y_value.GetTensorData<float>(), count};
+    ASSERT_TRUE(std::equal(std::begin(y), std::end(y), std::begin(expected_y)));
+  }
+
+  {
+    std::vector<std::string> output_names = binding.GetOutputNames();
+    ASSERT_EQ(1U, output_names.size());
+    ASSERT_EQ(output_names[0].compare("Y"), 0);
+  }
+
+  // Now replace binding of Y with an on device binding instead of pre-allocated memory.
+  // This is when we can not allocate an OrtValue due to unknown dimensions
+  {
+    binding.BindOutput("Y", info_qnn_htp_shared);
+    session.Run(Ort::RunOptions(), binding);
+  }
+
+  // Check the output value allocated based on the device binding.
+  {
+    std::vector<Ort::Value> output_values = binding.GetOutputValues();
+    ASSERT_EQ(output_values.size(), 1U);
+    const Ort::Value& Y_value = output_values[0];
+    ASSERT_TRUE(Y_value.IsTensor());
+    Ort::TensorTypeAndShapeInfo type_info = Y_value.GetTensorTypeAndShapeInfo();
+    ASSERT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, type_info.GetElementType());
+    auto count = type_info.GetElementCount();
+    ASSERT_EQ(expected_y.size(), count);
+
+    gsl::span y{Y_value.GetTensorData<float>(), count};
+    ASSERT_TRUE(std::equal(std::begin(y), std::end(y), std::begin(expected_y)));
+  }
+
+  // Clean up
+  binding.ClearBoundInputs();
+  binding.ClearBoundOutputs();
+}
+
+#endif  // defined(USE_QNN)
 
 #if defined(USE_CUDA) || defined(USE_TENSORRT) || defined(USE_ROCM) || defined(USE_DML)
 TEST(CApiTest, basic_cuda_graph) {

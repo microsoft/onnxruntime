@@ -201,9 +201,9 @@ def convert_float_to_float16(
     Returns:
         ModelProto: converted model.
     """
-    assert (
-        min_positive_val >= 5.96e-08
-    ), "invalid min_positive_val. smallest positive float16 value: subnormal 5.96e-08, and normalized 6.104e-05"
+    assert min_positive_val >= 5.96e-08, (
+        "invalid min_positive_val. smallest positive float16 value: subnormal 5.96e-08, and normalized 6.104e-05"
+    )
     assert max_finite_val <= float(np.finfo(np.float16).max), "invalid max_finite_val. largest float16 value: 65504"
 
     force_fp16_inputs_dict = {} if force_fp16_inputs is None else force_fp16_inputs

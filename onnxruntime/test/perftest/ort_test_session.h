@@ -39,7 +39,7 @@ class OnnxRuntimeTestSession : public TestSession {
   std::uniform_int_distribution<int> dist_;
   std::vector<std::vector<Ort::Value>> test_inputs_;
   OrtAllocator* allocator_ = Ort::AllocatorWithDefaultOptions();
-  std::unique_ptr<Ort::Allocator> custom_allocator_;
+  Ort::Allocator custom_allocator_{nullptr};
   std::vector<Ort::Value> outputs_;
   std::vector<std::string> output_names_;
   // The same size with output_names_.

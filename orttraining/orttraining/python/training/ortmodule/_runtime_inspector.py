@@ -201,7 +201,6 @@ class MemoryObserver:
             _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE,
             _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE,
         ]:
-
             apply_config = []
 
             for cluster_id in self.cluster_id_combination_to_saving_symbolics_map:
@@ -229,7 +228,7 @@ class MemoryObserver:
 
                 apply_config.append(",".join(recompute_configs))
 
-            self._json_file_for_layerwise_recompute = tempfile.NamedTemporaryFile(mode="w+")
+            self._json_file_for_layerwise_recompute = tempfile.NamedTemporaryFile(mode="w+")  # noqa: SIM115
             json.dump(apply_config, self._json_file_for_layerwise_recompute)
             self._json_file_for_layerwise_recompute.flush()
             runtime_options.memory_optimizer_config_file_path = self._json_file_for_layerwise_recompute.name

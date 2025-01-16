@@ -197,6 +197,7 @@ class Env {
 #ifdef _WIN32
   /// \brief Returns true if the directory exists.
   virtual bool FolderExists(const std::wstring& path) const = 0;
+  virtual bool FileExists(const std::wstring& path) const = 0;
   /// \brief Recursively creates the directory, if it doesn't exist.
   virtual common::Status CreateFolder(const std::wstring& path) const = 0;
   // Mainly for use with protobuf library
@@ -206,6 +207,7 @@ class Env {
 #endif
   /// \brief Returns true if the directory exists.
   virtual bool FolderExists(const std::string& path) const = 0;
+  virtual bool FileExists(const std::string& path) const = 0;
   /// \brief Recursively creates the directory, if it doesn't exist.
   virtual common::Status CreateFolder(const std::string& path) const = 0;
   // Recursively deletes the directory and its contents.

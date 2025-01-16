@@ -13,7 +13,7 @@ template <typename T>
 class TensorOpTest : public ::testing::Test {
 };
 
-using TensorOpTestTypes = ::testing::Types<float, MLFloat16>;
+using TensorOpTestTypes = ::testing::Types<float, MLFloat16, uint8_t>;
 TYPED_TEST_SUITE(TensorOpTest, TensorOpTestTypes);
 
 TEST(TensorOpTest, SpaceToDepthTest_1) {
@@ -224,6 +224,7 @@ TEST(TensorOpTest, DepthToSpaceTest_1_double) {
   test.AddOutput<double>("output", {N, C / (blocksize * blocksize), H * blocksize, W * blocksize}, result);
   test.Run();
 }
+
 TEST(TensorOpTest, DepthToSpaceTest_2) {
   OpTester test("DepthToSpace", 7);  // create an opset 7 model
   constexpr int64_t blocksize = 2;
@@ -308,14 +309,24 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_3) {
   if constexpr (std::is_same<TypeParam, float>::value) {
     test.AddInput<float>("input", {N, C, H, W}, X);
     test.AddOutput<float>("output", {2, 3, 6, 4}, result);
-  } else {
+  } else if constexpr (std::is_same<TypeParam, MLFloat16>::value) {
     std::vector<TypeParam> X_fp16(X.size());
     std::vector<TypeParam> result_fp16(result.size());
-    ConvertFloatToMLFloat16(result.data(), result_fp16.data(), result.size());
     ConvertFloatToMLFloat16(X.data(), X_fp16.data(), X.size());
-    test.AddOutput<TypeParam>("output", {2, 3, 6, 4}, result_fp16);
+    ConvertFloatToMLFloat16(result.data(), result_fp16.data(), result.size());
     test.AddInput<TypeParam>("input", {N, C, H, W}, X_fp16);
+    test.AddOutput<TypeParam>("output", {2, 3, 6, 4}, result_fp16);
+  } else if constexpr (std::is_same<TypeParam, uint8_t>::value) {
+    std::vector<uint8_t> X_u8(X.size());
+    std::vector<uint8_t> result_u8(result.size());
+    ConvertFloatToUint8_t(X.data(), X_u8.data(), X.size());
+    ConvertFloatToUint8_t(result.data(), result_u8.data(), result.size());
+    test.AddInput<uint8_t>("input", {N, C, H, W}, X_u8);
+    test.AddOutput<uint8_t>("output", {2, 3, 6, 4}, result_u8);
+  } else {
+    ORT_THROW("Type not supported");
   }
+
   // TODO: Test is flaky on QNN EP (CPU backend).
   // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky test is fixed.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
@@ -363,13 +374,22 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_4) {
   if constexpr (std::is_same<TypeParam, float>::value) {
     test.AddInput<float>("input", {N, C, H, W}, X);
     test.AddOutput<float>("output", {2, 3, 6, 4}, result);
-  } else {
+  } else if constexpr (std::is_same<TypeParam, MLFloat16>::value) {
     std::vector<TypeParam> X_fp16(X.size());
     std::vector<TypeParam> result_fp16(result.size());
     ConvertFloatToMLFloat16(X.data(), X_fp16.data(), X.size());
     ConvertFloatToMLFloat16(result.data(), result_fp16.data(), result.size());
     test.AddInput<TypeParam>("input", {N, C, H, W}, X_fp16);
     test.AddOutput<TypeParam>("output", {2, 3, 6, 4}, result_fp16);
+  } else if constexpr (std::is_same<TypeParam, uint8_t>::value) {
+    std::vector<uint8_t> X_u8(X.size());
+    std::vector<uint8_t> result_u8(result.size());
+    ConvertFloatToUint8_t(X.data(), X_u8.data(), X.size());
+    ConvertFloatToUint8_t(result.data(), result_u8.data(), result.size());
+    test.AddInput<uint8_t>("input", {N, C, H, W}, X_u8);
+    test.AddOutput<uint8_t>("output", {2, 3, 6, 4}, result_u8);
+  } else {
+    ORT_THROW("Type not supported");
   }
 
   // TODO: Test is flaky on QNN EP (CPU backend).
@@ -401,14 +421,24 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_5) {
   if constexpr (std::is_same<TypeParam, float>::value) {
     test.AddInput<float>("input", {N, C, H, W}, X);
     test.AddOutput<float>("output", {1, 1, 4, 6}, result);
-  } else {
+  } else if constexpr (std::is_same<TypeParam, MLFloat16>::value) {
     std::vector<TypeParam> X_fp16(X.size());
     std::vector<TypeParam> result_fp16(result.size());
     ConvertFloatToMLFloat16(X.data(), X_fp16.data(), X.size());
     ConvertFloatToMLFloat16(result.data(), result_fp16.data(), result.size());
     test.AddInput<TypeParam>("input", {N, C, H, W}, X_fp16);
     test.AddOutput<TypeParam>("output", {1, 1, 4, 6}, result_fp16);
+  } else if constexpr (std::is_same<TypeParam, uint8_t>::value) {
+    std::vector<uint8_t> X_u8(X.size());
+    std::vector<uint8_t> result_u8(result.size());
+    ConvertFloatToUint8_t(X.data(), X_u8.data(), X.size());
+    ConvertFloatToUint8_t(result.data(), result_u8.data(), result.size());
+    test.AddInput<uint8_t>("input", {N, C, H, W}, X_u8);
+    test.AddOutput<uint8_t>("output", {1, 1, 4, 6}, result_u8);
+  } else {
+    ORT_THROW("Type not supported");
   }
+
   // TODO: Test is flaky on QNN EP (CPU backend).
   // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky2 test is fixed.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
