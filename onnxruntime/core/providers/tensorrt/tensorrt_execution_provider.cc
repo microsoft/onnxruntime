@@ -1723,8 +1723,16 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   {
     auto lock = GetApiLock();
     runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger(detailed_build_log_)));
-    trt_gpu_allocator_ = std::unique_ptr<PoolAllocator>();
-    runtime_->setGpuAllocator(trt_gpu_allocator_.get());
+#if NV_TENSORRT_MAJOR >= 10
+    // There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) when running TRT EP with TRT 10.
+    // The reason is when cudaStreamSynchronize being called after inference, the gpu memory will be released back to OS and for the next inference
+    // run, TRT will allocate gpu memory from OS again. This introduces overheads and end up having performance degradation.
+    // The fix is to increase mem pool threshold so TRT can hold the allocated memory to prevent overhead.
+    if (is_dds_op_in_graph_) {
+      trt_gpu_allocator_ = std::make_unique<onnxruntime::PoolAllocator>();
+      runtime_->setGpuAllocator(trt_gpu_allocator_.get());
+    }
+#endif
   }
 
   trt_version_ = getInferLibVersion();
@@ -2325,6 +2333,12 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
              * TODO: Remove the subgraph_node_index
              */
             next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
+
+            // Check if it's DDS op. TRT EP will have corresponding action later to prevent performance degradation if the graph has DDS op that run by TRT 10.
+            if (!is_dds_op_in_graph_) {
+              const auto& node = graph.GetNode(next_nodes_list[i].first[j]);
+              if (dds_op_set_.find(node->OpType()) != dds_op_set_.end()) is_dds_op_in_graph_ = true;
+            }
           }
           nodes_list_output.push_back(next_nodes_list[i]);
         }
@@ -2483,17 +2497,16 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
 
-  std::set<std::string> exclude_ops_set;
+  std::set<std::string> exclude_ops_set; // currently not support to exclude ops
 
   /*
-   * There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) in TRT 10.
-   * TRT EP automatically excludes DDS ops from running on TRT.
+   * There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) when running TRT EP with TRT 10.
+   * DDS op needs special handling here.
    */
-  if (trt_version_ >= 100000 && trt_version_ < 110000) {
-    exclude_ops_set.insert("NonMaxSuppression");
-    exclude_ops_set.insert("NonZero");
-    exclude_ops_set.insert("RoiAlign");
-    LOGS_DEFAULT(VERBOSE) << "There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) in TRT 10. TRT EP automatically excludes DDS ops from running on TRT, if applicable";
+  if (trt_version_ >= 100000) {
+    dds_op_set_.insert("NonMaxSuppression");
+    dds_op_set_.insert("NonZero");
+    dds_op_set_.insert("RoiAlign");
   }
 
   SubGraphCollection_t parser_nodes_vector, supported_nodes_vector;
