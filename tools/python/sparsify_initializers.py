@@ -5,6 +5,7 @@
 # This script opens an existing model in onnx format and attempts to
 # move initializers from model.graph.initializer field to model.graph.sparse_initializer field
 # and convert them into ONNX COO flat index format.
+from __future__ import annotations
 
 import argparse
 import logging
