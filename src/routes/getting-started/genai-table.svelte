@@ -1,9 +1,9 @@
 <script>
-    import FaRegClipboard from 'svelte-icons/fa/FaRegClipboard.svelte';
-	import FaClipboardCheck from 'svelte-icons/fa/FaClipboardCheck.svelte'
+	import FaRegClipboard from 'svelte-icons/fa/FaRegClipboard.svelte';
+	import FaClipboardCheck from 'svelte-icons/fa/FaClipboardCheck.svelte';
 	let platforms = ['Windows', 'Linux', 'MacOS'];
-	let languages = ['Python', 'C#'];
-	let hardwareAccelerations = ['CPU', 'DirectML', 'CUDA'];
+	let languages = ['Python', 'C', 'C++', 'C#'];
+	let hardwareAccelerations = ['CPU', 'CUDA'];
 	// let builds = ['Stable', 'Preview (Nightly)'];
 
 	/**
@@ -18,7 +18,7 @@
 	 * @type {string | null}
 	 */
 	let selectedHardwareAcceleration = null;
-    // For eventual nightly builds
+	// For eventual nightly builds
 	/**
 	 * @type {string | null}
 	 */
@@ -36,52 +36,46 @@
 		updateInstallationInstructions();
 	};
 
-    // Function to dynamically copy text
-    let copied = false;
-    const copyCodeToClipboard = () => {
-        const codeElement = document.querySelector('#installation-code');
-        if (codeElement && codeElement.textContent) {
-            const textToCopy = codeElement.textContent;
-            // textToCopy && navigator.clipboard.writeText(textToCopy).then(() => {
-            //     alert('Copied to clipboard!');
-            // }).catch(err => {
-            //     console.error('Failed to copy text: ', err);
-            // });
-            try {
-			copied = true;
-			setTimeout(() => {
-				copied = false;
-			}, 3000);
-			navigator.clipboard.writeText(textToCopy);
-		} catch (err) {
-			console.error('Failed to copy:', err);
+	// Function to dynamically copy text
+	let copied = false;
+	const copyCodeToClipboard = () => {
+		const codeElement = document.querySelector('#installation-code');
+		if (codeElement && codeElement.textContent) {
+			const textToCopy = codeElement.textContent;
+			// textToCopy && navigator.clipboard.writeText(textToCopy).then(() => {
+			//     alert('Copied to clipboard!');
+			// }).catch(err => {
+			//     console.error('Failed to copy text: ', err);
+			// });
+			try {
+				copied = true;
+				setTimeout(() => {
+					copied = false;
+				}, 3000);
+				navigator.clipboard.writeText(textToCopy);
+			} catch (err) {
+				console.error('Failed to copy:', err);
+			}
 		}
-        }
-    };
+	};
 
 	const updateInstallationInstructions = () => {
-        if (!selectedPlatform || !selectedLanguage || !selectedHardwareAcceleration) {
-            installationInstructions = `<p>Please select a combination of resources.</p>`;
-            return;
-        }
+		if (!selectedPlatform || !selectedLanguage || !selectedHardwareAcceleration) {
+			installationInstructions = `<p>Please select a combination of resources.</p>`;
+			return;
+		}
 
-        switch (selectedLanguage) {
-            case 'Python':
-                switch (selectedHardwareAcceleration) {
-                    case 'CPU':
-                        installationInstructions = `
+		switch (selectedLanguage) {
+			case 'Python':
+				switch (selectedHardwareAcceleration) {
+					case 'CPU':
+						installationInstructions = `
                             <pre><code id="installation-code">pip install onnxruntime-genai</code></pre>
                         `;
-                        break;
+						break;
 
-                    case 'DirectML':
-                        installationInstructions = `
-                            <pre><code id="installation-code">pip install onnxruntime-genai-directml</code></pre>
-                        `;
-                        break;
-
-                    case 'CUDA':
-                        installationInstructions = `
+					case 'CUDA':
+						installationInstructions = `
                             <ul class="list-decimal pl-4">
                                 <li>Ensure that the CUDA toolkit is installed.</li>
                                 <li>Download the CUDA toolkit from the <a href="https://developer.nvidia.com/cuda-toolkit-archive" target="_blank">CUDA Toolkit Archive</a>.</li>
@@ -101,44 +95,74 @@
                                 </li>
                             </ul>
                         `;
-                        break;
+						break;
 
-                    default:
-                        installationInstructions = `<p>Unsupported hardware acceleration option for Python.</p>`;
-                }
-                break;
+					default:
+						installationInstructions = `<p>Unsupported hardware acceleration option for Python.</p>`;
+				}
+				break;
 
-            case 'C#':
-                switch (selectedHardwareAcceleration) {
-                    case 'CPU':
-                        installationInstructions = `
+			case 'C':
+				switch (selectedHardwareAcceleration) {
+					case 'CPU':
+						installationInstructions = `
+							<p>Install Nuget package <a class="underline text-blue-700" href="https://www.nuget.org/packages/Microsoft.ML.OnnxRuntimeGenAI/">Microsoft.ML.OnnxRuntimeGenAI</a></code></a>
+						`;
+						break;
+
+					case 'CUDA':
+						installationInstructions = `
+							<p>Install Nuget package <a class="underline text-blue-700" href="https://www.nuget.org/packages/Microsoft.ML.OnnxRuntimeGenAI.Cuda/">Microsoft.ML.OnnxRuntimeGenAI.Cuda</a></code></a>
+						`;
+						break;
+
+					default:
+						installationInstructions = `<p>Unsupported hardware acceleration option for C.</p>`;
+				}
+				break;
+
+			case 'C++':
+				switch (selectedHardwareAcceleration) {
+					case 'CPU':
+						installationInstructions = `
+							<p>Install Nuget package <a href="https://www.nuget.org/packages/Microsoft.ML.OnnxRuntimeGenAI/">Microsoft.ML.OnnxRuntimeGenAI</a></code></a>
+						`;
+						break;
+
+					case 'CUDA':
+						installationInstructions = `
+							<p>Install Nuget package <a href="https://www.nuget.org/packages/Microsoft.ML.OnnxRuntimeGenAI.Cuda/">Microsoft.ML.OnnxRuntimeGenAI.Cuda</a></code></a>
+						`;
+						break;
+
+					default:
+						installationInstructions = `<p>Unsupported hardware acceleration option for C.</p>`;
+				}
+				break;
+			case 'C#':
+				switch (selectedHardwareAcceleration) {
+					case 'CPU':
+						installationInstructions = `
                             <pre><code id="installation-code">dotnet add package Microsoft.ML.OnnxRuntimeGenAI</code></pre>
                         `;
-                        break;
-
-                    case 'DirectML':
-                        installationInstructions = `
-                            <pre><code id="installation-code">dotnet add package Microsoft.ML.OnnxRuntimeGenAI.DirectML</code></pre>
-                        `;
-                        break;
-
-                    case 'CUDA':
-                        installationInstructions = `
+						break;
+					case 'CUDA':
+						installationInstructions = `
                             <p>Note: Only CUDA 11 is supported for versions 0.3.0 and earlier, and only CUDA 12 is supported for versions 0.4.0 and later.</p>
                             <br/>
                             <pre><code id="installation-code">dotnet add package Microsoft.ML.OnnxRuntimeGenAI.Cuda</code></pre>
                         `;
-                        break;
+						break;
 
-                    default:
-                        installationInstructions = `<p>Unsupported hardware acceleration option for C#.</p>`;
-                }
-                break;
+					default:
+						installationInstructions = `<p>Unsupported hardware acceleration option for C#.</p>`;
+				}
+				break;
 
-            default:
-                installationInstructions = `<p>Unsupported language selection.</p>`;
-        }
-    };
+			default:
+				installationInstructions = `<p>Unsupported language selection.</p>`;
+		}
+	};
 
 	// If required, can use this method to enable disabling.
 	// const isDisabled = (/** @type {string} */ type, /** @type {string} */ value) => {
@@ -155,16 +179,16 @@
 	role="tabpanel"
 	aria-labelledby="tab2"
 >
-{#if copied}
-	<div class="toast toast-top top-14 z-50" role="alert">
-		<div class="alert alert-info">
-			<div class="icon" style="width: 16px; height: 16px;">
-				<FaClipboardCheck />
+	{#if copied}
+		<div class="toast toast-top top-14 z-50" role="alert">
+			<div class="alert alert-info">
+				<div class="icon" style="width: 16px; height: 16px;">
+					<FaClipboardCheck />
+				</div>
+				<span>Code successfully copied!</span>
 			</div>
-			<span>Code successfully copied!</span>
 		</div>
-	</div>
-{/if}
+	{/if}
 	<div class="col-span-1 bg-success r-heading rounded p-2 text-xl">
 		<h3>Platform</h3>
 	</div>
@@ -185,7 +209,7 @@
 		<h3>API</h3>
 	</div>
 	<div class="col-span-4">
-		<div class="grid grid-cols-2 gap-4">
+		<div class="grid grid-cols-4 gap-4">
 			{#each languages as language}
 				<button
 					class="btn rounded {selectedLanguage === language ? 'btn-active btn-primary' : ''}"
@@ -201,7 +225,7 @@
 		<h3>Hardware Acceleration</h3>
 	</div>
 	<div class="col-span-4">
-		<div class="grid grid-cols-3 gap-4">
+		<div class="grid grid-cols-2 gap-4">
 			{#each hardwareAccelerations as hardwareAcceleration}
 				<button
 					class="btn h-20 rounded {selectedHardwareAcceleration === hardwareAcceleration
@@ -215,7 +239,7 @@
 		</div>
 	</div>
 
-    <!-- For eventual nightly use -->
+	<!-- For eventual nightly use -->
 	<!-- <div class="col-span-1 bg-success r-heading rounded p-2 text-xl">
 		<h3>Build</h3>
 	</div>
@@ -237,15 +261,15 @@
 	</div>
 	<div class="col-span-4 bg-base-300 rounded">
 		<div class="p-4">
-            <div id="installation-instructions">
-                {@html installationInstructions}
-            </div>
-            {#if installationInstructions.includes('<pre><code')}
-                <button class="btn btn-primary btn-sm mt-4" on:click={copyCodeToClipboard}>
-                    {" "}Copy code 
-                    <span class="copy-btn-icon w-4"><FaRegClipboard/></span>
-                </button>
-            {/if}
-        </div>
+			<div id="installation-instructions">
+				{@html installationInstructions}
+			</div>
+			{#if installationInstructions.includes('<pre><code')}
+				<button class="btn btn-primary btn-sm mt-4" on:click={copyCodeToClipboard}>
+					{' '}Copy code
+					<span class="copy-btn-icon w-4"><FaRegClipboard /></span>
+				</button>
+			{/if}
+		</div>
 	</div>
 </div>
