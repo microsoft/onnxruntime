@@ -948,6 +948,11 @@ struct NodeUnit final {
     QDQGroup,    // The NodeUnit contain a QDQ group of nodes, such as "DQ->Sigmoid->Q"
   };
 
+  NodeUnit() = delete;
+  NodeUnit(const NodeUnit&) = delete;
+  void operator=(const NodeUnit& v) = delete;
+
+  // Need delete because of APIs that return unique_ptr<NodeUnit>
   static void operator delete(void* p) { g_host->NodeUnit__operator_delete(reinterpret_cast<NodeUnit*>(p)); }
 
   Type UnitType() const noexcept { return static_cast<Type>(g_host->NodeUnit__UnitType(this)); }
@@ -976,10 +981,6 @@ struct NodeUnit final {
   // output. any Q nodes are hidden.
   Node::EdgeConstIterator OutputEdgesBegin() const { return g_host->NodeUnit__OutputEdgesBegin(this); }
   Node::EdgeConstIterator OutputEdgesEnd() const { return g_host->NodeUnit__OutputEdgesEnd(this); }
-
-  NodeUnit() = delete;
-  NodeUnit(const NodeUnit&) = delete;
-  void operator=(const NodeUnit& v) = delete;
 };
 
 struct ModelSavingOptions;
