@@ -14,6 +14,7 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -24,6 +25,7 @@
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/common/path_string.h"
+#include "core/providers/qnn/builder/qnn_context_mem_handle_manager.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 
 namespace onnxruntime {
@@ -31,63 +33,48 @@ namespace qnn {
 
 class QnnModel;
 
-class QnnBackendManager {
+// configuration values for QnnBackendManager creation
+struct QnnBackendManagerConfig {
+  std::string backend_path;
+  ProfilingLevel profiling_level_etw;
+  ProfilingLevel profiling_level;
+  std::string profiling_file_path;
+  ContextPriority context_priority;
+  std::string qnn_saver_path;
+  uint32_t device_id;
+  QnnHtpDevice_Arch_t htp_arch;
+  uint32_t soc_model;
+  bool enable_htp_weight_sharing;
+};
+
+class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager> {
+ private:
+  // private tag to pass to constructor to ensure that constructor cannot be directly called externally
+  struct PrivateConstructorTag {};
+
  public:
-  QnnBackendManager(std::string&& backend_path,
-                    ProfilingLevel profiling_level_etw,
-                    ProfilingLevel profiling_level,
-                    std::string&& profiling_file_path,
-                    ContextPriority context_priority,
-                    std::string&& qnn_saver_path,
-                    uint32_t device_id,
-                    QnnHtpDevice_Arch_t htp_arch,
-                    uint32_t soc_model,
-                    bool enable_htp_weight_sharing)
-      : backend_path_(backend_path),
-        profiling_level_etw_(profiling_level_etw),
-        profiling_level_(profiling_level),
-        profiling_file_path_(profiling_file_path),
-        context_priority_(context_priority),
-        qnn_saver_path_(qnn_saver_path),
-        device_id_(device_id),
-        htp_arch_(htp_arch),
-        soc_model_(soc_model),
-        enable_htp_weight_sharing_(enable_htp_weight_sharing) {
+  static std::shared_ptr<QnnBackendManager> Create(const QnnBackendManagerConfig& config) {
+    return std::make_shared<QnnBackendManager>(config, PrivateConstructorTag{});
   }
+
+  // Note: Creation should be done via Create(). This constructor is public so that it can be called from
+  // std::make_shared().
+  QnnBackendManager(const QnnBackendManagerConfig& config, PrivateConstructorTag)
+      : backend_path_(config.backend_path),
+        profiling_level_etw_(config.profiling_level_etw),
+        profiling_level_(config.profiling_level),
+        profiling_file_path_(config.profiling_file_path),
+        context_priority_(config.context_priority),
+        qnn_saver_path_(config.qnn_saver_path),
+        device_id_(config.device_id),
+        htp_arch_(config.htp_arch),
+        soc_model_(config.soc_model),
+        enable_htp_weight_sharing_(config.enable_htp_weight_sharing) {
+  }
+
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
 
   ~QnnBackendManager();
-  char* DlError() {
-#ifdef _WIN32
-    return "";
-#else
-    return ::dlerror();
-#endif
-  }
-
-  Status LoadBackend();
-
-  Status InitializeBackend();
-
-  Status CreateDevice();
-
-  Status ReleaseDevice();
-
-  Status ShutdownBackend();
-
-  Status InitializeProfiling();
-
-  Status ReleaseProfilehandle();
-
-  Status CreateContext();
-
-  Status ReleaseContext();
-
-  Status ResetContext() {
-    ORT_RETURN_IF_ERROR(ReleaseContext());
-
-    return CreateContext();
-  }
 
   std::unique_ptr<unsigned char[]> GetContextBinaryBuffer(uint64_t& written_buffer_size);
 
@@ -148,7 +135,31 @@ class QnnBackendManager {
                                    uint64_t buffer_length,
                                    uint64_t& max_spill_fill_buffer_size);
 
+  // Gets an existing QNN mem handle or registers a new one.
+  // `mem_handle` is set to the QNN mem handle.
+  Status GetOrRegisterContextMemHandle(Qnn_ContextHandle_t context, void* shared_memory_address,
+                                       const Qnn_Tensor_t& qnn_tensor,
+                                       Qnn_MemHandle_t& mem_handle);
+
  private:
+  Status LoadBackend();
+
+  Status InitializeBackend();
+
+  Status CreateDevice();
+
+  Status ReleaseDevice();
+
+  Status ShutdownBackend();
+
+  Status InitializeProfiling();
+
+  Status ReleaseProfilehandle();
+
+  Status CreateContext();
+
+  Status ReleaseContext();
+
   // Sets the ORT logger and creates a corresponding QNN logger with the same log level.
   // NOTE: caller must lock the `logger_recursive_mutex_` before calling this function.
   Status InitializeQnnLog(const logging::Logger& logger);
@@ -217,7 +228,7 @@ class QnnBackendManager {
   static const std::string GetEventTypeString(QnnProfile_EventType_t eventType);
   static const std::string ExtractQnnScalarValue(const Qnn_Scalar_t& scalar);
   const char* QnnProfileErrorToString(QnnProfile_Error_t error);
-  const char* QnnErrorHandleToString(Qnn_ErrorHandle_t error);
+  std::string_view QnnErrorHandleToString(Qnn_ErrorHandle_t error);
   QnnLog_Level_t MapOrtSeverityToQNNLogLevel(logging::Severity ort_log_level);
 #ifdef _WIN32
   void LogQnnProfileEventAsTraceLogging(
@@ -229,6 +240,21 @@ class QnnBackendManager {
       const std::string& eventLevel,
       const char* eventIdentifier);
 #endif
+
+  // Adds a new QNN context.
+  // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance.
+  Status AddQnnContextHandle(Qnn_ContextHandle_t context_handle);
+
+ private:
+  // assume Qnn_ContextHandle_t is a pointer and able to be wrapped with std::unique_ptr
+  static_assert(std::is_pointer_v<Qnn_ContextHandle_t>);
+  using UniqueQnnContextHandle =
+      std::unique_ptr<std::remove_pointer_t<Qnn_ContextHandle_t>, std::function<void(Qnn_ContextHandle_t)>>;
+
+  struct QnnContextHandleRecord {
+    UniqueQnnContextHandle context_handle;
+    std::unique_ptr<QnnContextMemHandleManager> mem_handles;
+  };
 
  private:
   const std::string backend_path_;
@@ -242,7 +268,16 @@ class QnnBackendManager {
   QnnBackend_Config_t** backend_config_ = nullptr;
   Qnn_LogHandle_t log_handle_ = nullptr;
   Qnn_DeviceHandle_t device_handle_ = nullptr;
+
+  // Map of Qnn_ContextHandle_t to QnnContextHandleRecord.
+  // The QnnContextHandleRecord has ownership of the Qnn_ContextHandle_t.
+  // Note: Using shared_ptr<QnnContextHandleRecord> so that we can refer to it with a weak_ptr from a
+  // HtpSharedMemoryAllocator allocation cleanup callback.
+  std::unordered_map<Qnn_ContextHandle_t, std::shared_ptr<QnnContextHandleRecord>> context_map_;
+
+  // Vector of Qnn_ContextHandle_t. The context handles are owned by context_map_.
   std::vector<Qnn_ContextHandle_t> contexts_;
+
   ProfilingLevel profiling_level_etw_;
   ProfilingLevel profiling_level_;
   ProfilingLevel profiling_level_merge_;

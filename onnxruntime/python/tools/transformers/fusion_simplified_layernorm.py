@@ -18,134 +18,113 @@ class FusionSimplifiedLayerNormalization(Fusion):
             return
 
         sim_ln_nodes = None
-        # SimplifiedLayerNorm calculation (notation from https://onnx.ai/onnx/operators/onnx__LayerNormalization.html#summary):
-        # DD = Pow(D, 2)
-        # Var = ReduceMean(DD)
-        # VarEps = Add(Var, epsilon)
-        # StdDev = Sqrt(VarEps)
-        # InvStdDev = Div(1, StdDev)
-        # Normalized = Mul(D, InvStdDev)
-        # NormalizedScaled = Mul(Normalized, Scale)
-
-        #                              SimplifiedLayerNorm
-        #          +-------------------------------------------------------+
-        #          |                                                       |
-        # Add --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Mul
-        #                                                                  |
-        #                                                                 node
-        sim_ln_nodes_1 = self.model.match_parent_path(
-            node,
-            ["Mul", "Div", "Sqrt", "Add", "ReduceMean", "Pow", "Add"],
-            [1, 1, 1, 0, 0, 0, 0],
-        )
-        #                                SimplifiedLayerNorm
-        #             +-------------------------------------------------------+
-        #             |                                                       |
-        # Gather --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Mul
-        #                                                                     |
-        #                                                                    node
-        sim_ln_nodes_2 = self.model.match_parent_path(
-            node,
-            ["Mul", "Div", "Sqrt", "Add", "ReduceMean", "Pow", "Gather"],
-            [1, 1, 1, 0, 0, 0, 0],
-        )
-
-        # For LLaMA from Microsoft custom export:
-        # sim_ln_nodes_3 uses a different start parent index than sim_ln_nodes_1
+        # RMSNorm formula:
+        #   S = Pow(X, 2) or S = Mul(X, X)
+        #   MS = ReduceMean(S)
+        #   MSEps = Add(MS, epsilon)
+        #   RMS = Sqrt(MSEps)
+        #   InvRMS = Div(1, RMS) or InvRMS = Reciprocal(RMS)
+        #   Normalized = Mul(D, InvRMS)
+        #   Y = Mul(Normalized, Scale)
         #
-        #                              SimplifiedLayerNorm
-        #          +-------------------------------------------------------+
-        #          |                                                       |
-        # Add --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Mul
-        #                                                                  |
-        #                                                                 node
-        sim_ln_nodes_3 = self.model.match_parent_path(
-            node,
-            ["Mul", "Div", "Sqrt", "Add", "ReduceMean", "Pow", "Add"],
-            [0, 1, 1, 0, 0, 0, 0],
-        )
-
-        # sim_ln_nodes_4 starts with a graph input instead of an Add node like sim_ln_nodes_3
+        #  (root_input) ----------------------------------------+
+        #       |                                               |
+        #       v                                               v
+        #      Pow --> ReduceMean --> Add ---> Sqrt --> Div --> Mul --> Mul (node)
+        #      (B=2)                  (A/B=eps)         (A=1)           (A/B=scale)
         #
-        #                                  SimplifiedLayerNorm
-        #                  +-----------------------------------------------+
-        #                  |                                               |
-        # graph_input --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul
-        #                                                                  |
-        #                                                                 node
-        sim_ln_nodes_4 = self.model.match_parent_path(
-            node,
-            ["Mul", "Div", "Sqrt", "Add", "ReduceMean", "Pow"],
-            [0, 1, 1, 0, 0, 0],
-        )
-
-        # For Gemma from Microsoft custom export, which has a Multiply after the Gather:
+        #  (root_input) ----------------------------------------+
+        #      | |                                              |
+        #      v v                                              v
+        #      Mul --> ReduceMean --> Add ---> Sqrt --> Div --> Mul --> Mul (node)
+        #      (B=2)                  (A/B=eps)         (A=1)           (A/B=scale)
         #
-        #                              SimplifiedLayerNorm
-        #          +-------------------------------------------------------+
-        #          |                                                       |
-        # Mul --> Pow --> ReduceMean --> Add --> Sqrt --> Div --> Mul --> Mul
-        #                                                                  |
-        #                                                                 node
-        sim_ln_nodes_5 = self.model.match_parent_path(
+        return_indice = []
+        sim_ln_nodes = self.model.match_parent_path(
             node,
-            ["Mul", "Div", "Sqrt", "Add", "ReduceMean", "Pow", "Mul"],
-            [1, 1, 1, 0, 0, 0, 0],
+            ["Mul", "Div", "Sqrt", "Add", "ReduceMean"],
+            [None, 1, 1, 0, None],
+            output_name_to_node=output_name_to_node,
+            return_indice=return_indice,
         )
 
-        add_node, pow_node = None, None
-        if sim_ln_nodes_1 is not None:
-            sim_ln_nodes = sim_ln_nodes_1
-            add_node = sim_ln_nodes[3]
-            pow_node = sim_ln_nodes[-2]
-        elif sim_ln_nodes_2 is not None:
-            sim_ln_nodes = sim_ln_nodes_2
-            add_node = sim_ln_nodes[3]
-            pow_node = sim_ln_nodes[-2]
-        elif sim_ln_nodes_3 is not None:
-            sim_ln_nodes = sim_ln_nodes_3
-            add_node = sim_ln_nodes[3]
-            pow_node = sim_ln_nodes[-2]
-        elif sim_ln_nodes_4 is not None:
-            sim_ln_nodes = sim_ln_nodes_4
-            add_node = sim_ln_nodes[3]
-            pow_node = sim_ln_nodes[-1]
-            # Verify that parent input to Pow node is graph_input
-            if pow_node.input[0] not in self.model.get_graphs_input_names():
+        if sim_ln_nodes:
+            mul_node, div_node, _sqrt_node, add_node, reduce_mean_node = sim_ln_nodes
+            if not self.model.has_constant_input(div_node, 1.0):
                 return
-        elif sim_ln_nodes_5 is not None:
-            sim_ln_nodes = sim_ln_nodes_5
-            add_node = sim_ln_nodes[3]
-            pow_node = sim_ln_nodes[-2]
         else:
+            # Div(1, RMS) can also be represented as Reciprocal(RMS) like
+            #
+            #  (root_input) -----------------------------------------------+
+            #       |                                                      |
+            #       v                                                      v
+            #      Pow --> ReduceMean --> Add ---> Sqrt --> Reciprocal --> Mul --> Mul (node)
+            #      (B=2)                  (A/B=eps)                                (A/B=scale)
+            #
+            #  (root_input) -----------------------------------------------+
+            #      | |                                                     |
+            #      v v                                                     v
+            #      Mul --> ReduceMean --> Add ---> Sqrt --> Reciprocal --> Mul --> Mul (node)
+            #      (B=2)                  (A/B=eps)                                (A/B=scale)
+            #
+            sim_ln_nodes = self.model.match_parent_path(
+                node,
+                ["Mul", "Reciprocal", "Sqrt", "Add", "ReduceMean"],
+                [None, 1, 0, 0, None],
+                output_name_to_node=output_name_to_node,
+                return_indice=return_indice,
+            )
+            if sim_ln_nodes is None:
+                return
+            mul_node, _reciprocal_node, _sqrt_node, add_node, reduce_mean_node = sim_ln_nodes
+
+        pow_or_mul_node = self.model.get_parent(reduce_mean_node, 0, output_name_to_node)
+        if pow_or_mul_node is None or pow_or_mul_node.op_type not in ["Pow", "Mul"]:
             return
 
-        layernorm_weight_index = 1 if sim_ln_nodes in (sim_ln_nodes_3, sim_ln_nodes_4) else 0
-        starts_with_graph_input = sim_ln_nodes == sim_ln_nodes_4
+        if pow_or_mul_node.op_type == "Pow":
+            if self.model.find_constant_input(pow_or_mul_node, 2.0) != 1:
+                return
+        else:
+            assert pow_or_mul_node.op_type == "Mul"
+            if pow_or_mul_node[0] != pow_or_mul_node[1]:
+                return
 
-        if self.model.find_constant_input(pow_node, 2.0) != 1:
+        root_input = pow_or_mul_node.input[0]
+        if root_input != mul_node.input[0]:
             return
 
-        root_input = pow_node.input[0]
-        if root_input != sim_ln_nodes[0].input[0]:
+        _i, epsilon = self.model.get_constant_input(add_node)
+        if epsilon is None or epsilon <= 0 or epsilon > 1.0e-4:
+            logger.warning(f"epsilon value is not expected: {epsilon}")
             return
 
-        i, add_weight = self.model.get_constant_input(add_node)
-        if add_weight is None or add_weight <= 0 or add_weight > 1.0e-4:
-            logger.warning(f"epsilon value is not expected: {add_weight}")
+        # ReduceMean must have keepdims == 1
+        keepdims = self.model.get_node_attribute(reduce_mean_node, "keepdims")
+        if not keepdims:
             return
 
-        self.nodes_to_remove.extend(sim_ln_nodes[:-1] if not starts_with_graph_input else sim_ln_nodes)
+        # ReduceMean axes must refer only to the last dimension.
+        # Axes became an input in opset 18. Before then, axes was an attribute.
+        axes = self.model.get_node_attribute(reduce_mean_node, "axes")
+        if (not axes) and len(reduce_mean_node.input) > 1:
+            axes = self.model.get_constant_value(reduce_mean_node.input[1])
+        # Make sure only one axis as required by SimplifiedLayerNormalization spec.
+        if not axes or len(axes) != 1:
+            return
+
+        self.nodes_to_remove.extend(sim_ln_nodes)
+        self.nodes_to_remove.append(pow_or_mul_node)
         self.nodes_to_remove.append(node)
 
         normalize_node = helper.make_node(
             "SimplifiedLayerNormalization",
-            inputs=[root_input, node.input[layernorm_weight_index]],
+            inputs=[root_input, node.input[1 - return_indice[0]]],
             outputs=[node.output[0]],
-            name=self.model.create_node_name("SimplifiedLayerNormalization", name_prefix="LayerNorm"),
+            name=self.model.create_node_name("SimplifiedLayerNormalization", name_prefix="RMSNorm"),
         )
-        normalize_node.attribute.extend([helper.make_attribute("epsilon", float(add_weight))])
-        normalize_node.attribute.extend([helper.make_attribute("axis", -1)])
+        normalize_node.attribute.extend([helper.make_attribute("epsilon", float(epsilon))])
+        normalize_node.attribute.extend([helper.make_attribute("axis", axes[0])])
         normalize_node.attribute.extend([helper.make_attribute("stash_type", 1)])
         self.nodes_to_add.append(normalize_node)
         self.node_name_to_graph_name[normalize_node.name] = self.this_graph_name

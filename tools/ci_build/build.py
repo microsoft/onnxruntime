@@ -1109,6 +1109,53 @@ def generate_build_tree(
             "-DRISCV_QEMU_PATH:PATH=" + args.riscv_qemu_path,
             "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, "cmake", "riscv64.toolchain.cmake"),
         ]
+    if args.use_vcpkg:
+        # TODO: set VCPKG_PLATFORM_TOOLSET_VERSION
+        # Setup CMake flags for vcpkg
+        vcpkg_install_options = ["--x-feature=tests"]
+        vcpkg_installation_root = os.environ.get("VCPKG_INSTALLATION_ROOT")
+        if vcpkg_installation_root is None:
+            vcpkg_installation_root = os.path.join(os.path.abspath(build_dir), "vcpkg")
+            if not os.path.exists(vcpkg_installation_root):
+                run_subprocess(["git", "clone", "https://github.com/microsoft/vcpkg.git", "--recursive"], cwd=build_dir)
+        vcpkg_toolchain_path = os.path.join(vcpkg_installation_root, "scripts", "buildsystems", "vcpkg.cmake")
+        add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", vcpkg_toolchain_path)
+        overlay_triplets_dir = None
+        # The enable_address_sanitizer and use_binskim_compliant_compile_flags flags cannot be both enabled
+        if args.enable_address_sanitizer:
+            overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg_triplets", "asan")
+            if args.disable_rtti:
+                overlay_triplets_dir += "_nortti"
+        elif args.use_binskim_compliant_compile_flags:
+            overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg_triplets", "binskim")
+            if args.disable_rtti:
+                overlay_triplets_dir += "_nortti"
+        elif args.disable_rtti:
+            overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg_triplets", "nortti")
+        if overlay_triplets_dir is None:
+            overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg_triplets", "default")
+        vcpkg_install_options.append(f"--overlay-triplets={overlay_triplets_dir}")
+
+        # VCPKG_INSTALL_OPTIONS is a CMake list. It must be joined by semicolons
+        add_default_definition(cmake_extra_defines, "VCPKG_INSTALL_OPTIONS", ";".join(vcpkg_install_options))
+        # Choose the cmake triplet
+        triplet = None
+        if args.build_wasm:
+            triplet = "wasm32-emscripten"
+        elif is_windows():
+            target_arch = platform.machine()
+            cpu_arch = platform.architecture()[0]
+            if target_arch == "AMD64":
+                if cpu_arch == "32bit" or args.x86:
+                    triplet = "x86-windows-static" if args.enable_msvc_static_runtime else "x86-windows-static-md"
+                else:
+                    triplet = "x64-windows-static" if args.enable_msvc_static_runtime else "x64-windows-static-md"
+            elif target_arch == "ARM64":
+                triplet = "arm64-windows-static" if args.enable_msvc_static_runtime else "arm64-windows-static-md"
+            else:
+                raise BuildError("unknown python arch")
+        if triplet:
+            add_default_definition(cmake_extra_defines, "VCPKG_TARGET_TRIPLET", triplet)
 
     # By default on Windows we currently support only cross compiling for ARM/ARM64
     # (no native compilation supported through this script).
@@ -1254,14 +1301,16 @@ def generate_build_tree(
             raise BuildError("android_ndk_path required to build for Android")
         if not args.android_sdk_path:
             raise BuildError("android_sdk_path required to build for Android")
+        android_toolchain_cmake_path = os.path.join(args.android_ndk_path, "build", "cmake", "android.toolchain.cmake")
         cmake_args += [
-            "-DCMAKE_TOOLCHAIN_FILE="
-            + os.path.join(args.android_ndk_path, "build", "cmake", "android.toolchain.cmake"),
             "-DANDROID_PLATFORM=android-" + str(args.android_api),
             "-DANDROID_ABI=" + str(args.android_abi),
             "-DANDROID_MIN_SDK=" + str(args.android_api),
         ]
-
+        if not args.use_vcpkg:
+            cmake_args.append("-DCMAKE_TOOLCHAIN_FILE=" + android_toolchain_cmake_path)
+        else:
+            cmake_args.append("-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=" + android_toolchain_cmake_path)
         if args.android_cpp_shared:
             cmake_args += ["-DANDROID_STL=c++_shared"]
 
@@ -1391,7 +1440,10 @@ def generate_build_tree(
         emscripten_cmake_toolchain_file = os.path.join(
             emsdk_dir, "upstream", "emscripten", "cmake", "Modules", "Platform", "Emscripten.cmake"
         )
-        cmake_args += ["-DCMAKE_TOOLCHAIN_FILE=" + emscripten_cmake_toolchain_file]
+        if args.use_vcpkg:
+            cmake_args.append("-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=" + emscripten_cmake_toolchain_file)
+        else:
+            cmake_args.append("-DCMAKE_TOOLCHAIN_FILE=" + emscripten_cmake_toolchain_file)
         if args.disable_wasm_exception_catching:
             # WebAssembly unittest requires exception catching to work. If this feature is disabled, we do not build
             # unit test.
@@ -1469,15 +1521,18 @@ def generate_build_tree(
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_LOCK_FREE_QUEUE", "ON")
 
     if is_windows():
-        if args.use_cache:
-            add_default_definition(
-                cmake_extra_defines, "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT", "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>"
-            )
-        else:
-            # Always enable debug info even in release build. The debug information is in separated *.pdb files that
-            # can be easily discarded when debug symbols are not needed. We enable it by default because many auditting
-            # tools need to use the symbols.
-            add_default_definition(cmake_extra_defines, "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT", "ProgramDatabase")
+        if not args.ios and not args.android and not args.build_wasm:
+            if args.use_cache:
+                add_default_definition(
+                    cmake_extra_defines,
+                    "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT",
+                    "$<$<CONFIG:Debug,RelWithDebInfo>:Embedded>",
+                )
+            else:
+                # Always enable debug info even in release build. The debug information is in separated *.pdb files that
+                # can be easily discarded when debug symbols are not needed. We enable it by default because many auditting
+                # tools need to use the symbols.
+                add_default_definition(cmake_extra_defines, "CMAKE_MSVC_DEBUG_INFORMATION_FORMAT", "ProgramDatabase")
 
         if number_of_parallel_jobs(args) > 0:
             # https://devblogs.microsoft.com/cppblog/improved-parallelism-in-msbuild/
@@ -1539,7 +1594,7 @@ def generate_build_tree(
                 if args.parallel == 0:
                     cflags += ["/MP"]
                 else:
-                    cflags += ["/MP%d" % njobs]
+                    cflags += [f"/MP{njobs}"]
         # Setup default values for cflags/cxxflags/ldflags.
         # The values set here are purely for security and compliance purposes. ONNX Runtime should work fine without these flags.
         if (
@@ -1659,7 +1714,7 @@ def generate_build_tree(
                 f"-DCMAKE_BUILD_TYPE={config}",
                 (
                     f"-DCMAKE_PREFIX_PATH={build_dir}/{config}/installed"
-                    if preinstalled_dir.exists() and not (args.arm64 or args.arm64ec or args.arm)
+                    if preinstalled_dir.exists() and not (args.arm64 or args.arm64ec or args.arm or args.use_vcpkg)
                     else ""
                 ),
             ],
@@ -2265,6 +2320,8 @@ def build_python_wheel(
             args.append("--use_rocm")
             if rocm_version:
                 args.append(f"--rocm_version={rocm_version}")
+            if use_migraphx:
+                args.append("--use_migraphx")
         elif use_migraphx:
             args.append("--use_migraphx")
         elif use_openvino:
