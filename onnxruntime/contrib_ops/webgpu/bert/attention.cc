@@ -98,7 +98,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   shader.AdditionalImplementation() << "var<workgroup> tileQ: array<q_value_t, " << tile_size_ * tile_size_ << ">;\n"
-                                    << "var<workgroup> tileK: array<key_value_t, " << tile_size_ * tile_size_ << ">;\n"
+                                    << "var<workgroup> tileK: array<" << (is_packed_qkv_ ? "q_value_t" : "key_value_t") << ", " << tile_size_ * tile_size_ << ">;\n"
                                     << "alias f32_val_t = " << (components_ == 4 ? "vec4<f32>" : (components_ == 2 ? "vec2<f32>" : "f32")) << ";\n";
   shader.MainFunctionBody() << "// x holds the N and y holds the M\n"
                             << "let m = workgroup_id.y * TILE_SIZE;\n"
@@ -108,10 +108,11 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "var total_sequence_length = uniforms.N;\n";
   if (is_packed_qkv_) {
     shader.MainFunctionBody() << "let head_idx = workgroup_id.z % uniforms.num_heads;\n"
-                              << "let kv_num_heads = uniforms.kv_num_heads /" << n_reps_ << ";\n"
+                              << "let kv_num_heads = uniforms.num_heads /" << n_reps_ << ";\n"
                               << "let packed_batch_stride = (uniforms.num_heads + 2 * kv_num_heads) * uniforms.M * uniforms.K;\n"
                               << "let qOffset = batch_idx * packed_batch_stride + head_idx * uniforms.M * uniforms.K;\n"
-                              << "let kOffset = batchIdx * packed_batch_stride + (uniforms.num_heads + kvHeadIdx) * uniforms.kv_sequence_length * uniforms.K;\n";
+                              << "let kvHeadIdx = head_idx % kv_num_heads;\n"
+                              << "let kOffset = batch_idx * packed_batch_stride + (uniforms.num_heads + kvHeadIdx) * uniforms.kv_sequence_length * uniforms.K;\n";
   } else {
     shader.MainFunctionBody() << "let qOffset = workgroup_id.z * uniforms.M * uniforms.K + m * uniforms.K;\n"
                               << "let kOffset = (workgroup_id.z / " << n_reps_ << ") * uniforms.kv_sequence_length * uniforms.K;\n";
@@ -346,6 +347,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (is_packed_qkv_) {
     shader.MainFunctionBody() << "let kv_num_heads = uniforms.num_heads / " << n_reps_ << ";\n"
                               << "let packed_batch_stride = (uniforms.num_heads + 2 * kv_num_heads) * uniforms.M * uniforms.K;\n"
+                              << "let kvHeadIdx = head_idx % kv_num_heads;\n"
                               << "let vOffset = batch_idx * packed_batch_stride + (uniforms.num_heads + kv_num_heads + kvHeadIdx) * uniforms.N * uniforms.kv_sequence_length + n;\n";
   } else {
     shader.MainFunctionBody() << "let vOffset = (workgroup_id.z / " << n_reps_ << ") * uniforms.N * uniforms.kv_sequence_length + n;\n";
