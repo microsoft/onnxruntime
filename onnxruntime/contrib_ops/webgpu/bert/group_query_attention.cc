@@ -170,10 +170,10 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
 
       ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters, &kBNSH, &pos_ids, cos_cache, sin_cache, &kRotary, /* is_packed_qkv = */ false, /* is_query_input = */ false));
       return ApplyAttention(&qRotary, &kRotary, &vBNSH, nullptr, past_key, past_value, output, present_key,
-                          present_value, parameters, context, seqlens_k);
+                            present_value, parameters, context, seqlens_k);
     } else {
       return ApplyAttention(&qBNSH, &kBNSH, &vBNSH, nullptr, past_key, past_value, output, present_key,
-                          present_value, parameters, context, seqlens_k);
+                            present_value, parameters, context, seqlens_k);
     }
   } else {
     // Q, K and V are packed. Both key and value are nullptr
@@ -186,10 +186,10 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
       ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters, &qBNSH, &pos_ids, cos_cache, sin_cache, &qRotary, /* is_packed_qkv = */ true, /* is_query_input = */ true));
 
       return ApplyAttention(&qRotary, nullptr, nullptr, nullptr, past_key, past_value, output, present_key,
-                          present_value, parameters, context, seqlens_k);
+                            present_value, parameters, context, seqlens_k);
     } else {
       return ApplyAttention(&qBNSH, nullptr, nullptr, nullptr, past_key, past_value, output, present_key,
-                          present_value, parameters, context, seqlens_k);
+                            present_value, parameters, context, seqlens_k);
     }
   }
 }

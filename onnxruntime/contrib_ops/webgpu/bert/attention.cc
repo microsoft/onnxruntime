@@ -140,8 +140,8 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               << "    }\n";
   } else {
     shader.MainFunctionBody() << "    if (n + local_id.y < uniforms.kv_sequence_length) {\n"
-                                 "      tileK[idx] = " << (is_packed_qkv_ ? "q" : "key") << "[kOffset + (n + local_id.y) * uniforms.K + w + local_id.x];\n"
-                                 "    }\n";
+                              << "      tileK[idx] = " << (is_packed_qkv_ ? "q" : "key") << "[kOffset + (n + local_id.y) * uniforms.K + w + local_id.x];\n"
+                              << "    }\n";
   }
 
   if (has_present_key_) {
