@@ -615,15 +615,16 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const vec_factor = 4;
   const u32_factor = 4;
   const tile_size_kv = 4;
-  const tile_k_scale_count = 2;
   const block_size = 32;
-  const subgroup_count = 16;
 
-  //Shared memory
+  // Shared memory
   var<workgroup> tile_A : array<array<vec4<u32>, tile_size_kv>, tile_size_a>;                        // 64 x 64
   var<workgroup> scale_A : array<f16, tile_size_a>;                                                  // 64 x 1
   var<workgroup> tile_B : array<array<vec4<u32>, tile_size_kv>, tile_size_b>;                        // 64 x 64
   var<workgroup> scale_B : array<vec2<f16>, tile_size_b>;                                            // 64 x 2
+
+  // Private memory
+  var<private> lane_output: array<f16, 16>;
 
   fn loadSHMA(a_global_base:u32, kidx_v:u32, subtile_id: u32, sg_id: u32)
   {
@@ -673,43 +674,52 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
       }
   }
 
-  // Implement a 16x64x16 matrix multiply primitive using the 16 lanes of the subgroup.
+  fn DP4AI(a:vec4<u32>, b:vec4<u32>) -> i32
+  {
+      var local_sum = dot4I8Packed(a[0], b[0]);
+      local_sum += dot4I8Packed(a[1], b[1]);
+      local_sum += dot4I8Packed(a[2], b[2]);
+      local_sum += dot4I8Packed(a[3], b[3]);
+      return local_sum;
+  }
+
+  // Implement a 16x64x16 matrix multipy primitive using the 16 lanes of the subgroup.
   // Each Lane first loads a row of A and a column of B.
   // Then each lane becomes responsible for a row and loops through the columns to compute
   // dot product. The columns are fetched from other owning lanes using subgroupShuffle.
-  fn perform16_64_16MatMul(base_A:u32, base_B:u32, sg_id:u32, lane_output: ptr<function,array<f16, 16>>)
+  fn perform16_64_16MatMul(base_A:u32, base_B:u32, sg_id:u32)
   {
-    var own_a: array<vec4<u32>, tile_size_kv>;
-    var own_b: array<vec4<u32>, tile_size_kv>;
+    var own_a0: vec4<u32> = tile_A[base_A + sg_id][0];
+    var own_a1: vec4<u32> = tile_A[base_A + sg_id][1];
+    var own_a2: vec4<u32> = tile_A[base_A + sg_id][2];
+    var own_a3: vec4<u32> = tile_A[base_A + sg_id][3];
+    var own_b0: vec4<u32> = tile_B[base_B + sg_id][0];
+    var own_b1: vec4<u32> = tile_B[base_B + sg_id][1];
+    var own_b2: vec4<u32> = tile_B[base_B + sg_id][2];
+    var own_b3: vec4<u32> = tile_B[base_B + sg_id][3];
     var own_scale_b: vec2<f16> = scale_B[base_B + sg_id];
     var own_scale_a: f16 = scale_A[base_A+sg_id];;
-
-    for (var i:u32 = 0; i < tile_size_kv; i++)
-    {
-      own_a[i] = tile_A[base_A + sg_id][i];
-      own_b[i] = tile_B[base_B + sg_id][i];
-    }
 
     for (var col:u32 = 0; col < 16; col++)
     {
       var local_scale_b = subgroupShuffle(own_scale_b, col);
       local_scale_b = local_scale_b * own_scale_a;
-      for (var j:u32 = 0; j < 2; j++){
-        var local_sum = 0;
-        for (var k:u32 = 0; k < 2; k++){
-          let idx = j*2+ k;
-          var local_b = own_b[idx];
-          local_b = subgroupShuffle(local_b, col);
-          let local_a = own_a[idx];
-          local_sum += dot4I8Packed(local_a[0], local_b[0]);
-          local_sum += dot4I8Packed(local_a[1], local_b[1]);
-          local_sum += dot4I8Packed(local_a[2], local_b[2]);
-          local_sum += dot4I8Packed(local_a[3], local_b[3]);
-        }
-        lane_output[col] += f16(local_sum) * local_scale_b[j];
-      }
+      var local_b = own_b0;
+      local_b = subgroupShuffle(local_b, col);
+      var local_sum = DP4AI(own_a0, local_b);
+      local_b = own_b1;
+      local_b = subgroupShuffle(local_b, col);
+      local_sum += DP4AI(own_a1, local_b);
+      local_b = own_b2;
+      local_b = subgroupShuffle(local_b, col);
+      var local_sum2 = DP4AI(own_a2, local_b);
+      local_b = own_b3;
+      local_b = subgroupShuffle(local_b, col);
+      local_sum2 += DP4AI(own_a3, local_b);
+      lane_output[col] += (f16(local_sum) * local_scale_b[0] + f16(local_sum2) * local_scale_b[1]);
     }
   }
+
 )ADDNL_FN";
 
   shader.MainFunctionBody() << R"MAIN_FN(
@@ -720,8 +730,6 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   let a_global_base = workgroup_id.x * tile_size_a;
   let b_global_base = workgroup_id.y * tile_size_b;
 
-  // Output accumulation
-  var lane_output: array<f16, 16>;
   // Clear the accumulator
   for (var i:u32 = 0; i < 16; i++)
   {
@@ -738,7 +746,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     workgroupBarrier();
 
     // Perform the matmul for the subtile this subgroup is responsible for.
-    perform16_64_16MatMul(subtile_idx*16, subtile_idy*16, sg_id, &lane_output);
+    perform16_64_16MatMul(subtile_idx*16, subtile_idy*16, sg_id);
     workgroupBarrier();
   }
 
