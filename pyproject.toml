@@ -55,6 +55,7 @@ ignore = [
     "SIM108", # We don't encourage ternary operators
     "SIM114", # Don't combine if branches for debugability
     "SIM116", # Don't use dict lookup to replace if-else
+    "UP038", # Using X | Y in isinstance checks is a little aggresive
 ]
 ignore-init-module-imports = true
 
