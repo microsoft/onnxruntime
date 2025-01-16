@@ -76,10 +76,7 @@ def _parse_build_settings(args):
 
 
 def _is_qnn_android_build(build_settings):
-    for build_arg in build_settings["build_params"]:
-        if build_arg.startswith("--use_qnn"):
-            return True
-    return False
+    return any(build_arg.startswith("--use_qnn") for build_arg in build_settings["build_params"])
 
 
 def _build_aar(args):
