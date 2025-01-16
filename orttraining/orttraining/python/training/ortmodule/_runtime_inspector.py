@@ -201,7 +201,6 @@ class MemoryObserver:
             _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE,
             _MemoryOptimizationLevel.TRANSFORMER_LAYERWISE_RECOMPUTE_WITH_COMPROMISE,
         ]:
-
             apply_config = []
 
             for cluster_id in self.cluster_id_combination_to_saving_symbolics_map:

@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 """This file is used to generate test data for LR scheduler optimizer tests in
-   orttraining/orttraining/test/training_api/core/training_api_tests.cc."""
+orttraining/orttraining/test/training_api/core/training_api_tests.cc."""
 
 import torch
 from torch.optim.lr_scheduler import LambdaLR
@@ -33,7 +33,7 @@ class WarmupLinearSchedule(LambdaLR):
         super().__init__(optimizer, self.lr_lambda, last_epoch=last_epoch)
 
     def lr_lambda(self, step):
-        print(f"warmup_step_count_: {self.warmup_steps }, step: {step}, total_step_count_: {self.t_total}")
+        print(f"warmup_step_count_: {self.warmup_steps}, step: {step}, total_step_count_: {self.t_total}")
         if step < self.warmup_steps:
             return float(step) / float(max(1, self.warmup_steps))
         return max(0.0, float(self.t_total - step) / float(max(1.0, self.t_total - self.warmup_steps)))

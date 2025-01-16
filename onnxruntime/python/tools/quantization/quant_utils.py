@@ -197,9 +197,9 @@ def _check_type(*args, zero_point_index=-1):
 
 
 def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
-    assert (
-        qType in ONNX_TYPE_TO_NP_TYPE
-    ), f"Unexpected data type {qType} requested. Only INT8, UINT8, INT16, and UINT16 are supported."
+    assert qType in ONNX_TYPE_TO_NP_TYPE, (
+        f"Unexpected data type {qType} requested. Only INT8, UINT8, INT16, and UINT16 are supported."
+    )
     if qType in (
         onnx_proto.TensorProto.FLOAT8E4M3FN,
         onnx_proto.TensorProto.FLOAT8E4M3FNUZ,

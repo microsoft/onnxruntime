@@ -191,7 +191,6 @@ def _export_pt_1_10(g, n, *args, **kwargs):
 def _default_export(
     g, func_full_qual_name, func_class, cconv, output_size, output_tensor_types, output_tensor_ranks, *args, **kwargs
 ):
-
     input_tensor_types = []
     input_tensor_ranks = []
 

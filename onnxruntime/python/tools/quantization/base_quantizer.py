@@ -331,9 +331,9 @@ class BaseQuantizer:
             scale = np.array(quant_overrides["scale"])
             q_weight_data = quantize_nparray(qType, weight_data.flatten(), scale, zero_point)
             assert isinstance(zero_point, np.ndarray), f"Unexpected type {type(zero_point)}"
-            assert (
-                zero_point.dtype != np.float32 and zero_point.dtype != np.float16
-            ), f"Unexpected dtype {zero_point.dtype}"
+            assert zero_point.dtype != np.float32 and zero_point.dtype != np.float16, (
+                f"Unexpected dtype {zero_point.dtype}"
+            )
             assert isinstance(scale, np.ndarray), f"Unexpected type {type(scale)}"
 
         else:
@@ -349,9 +349,9 @@ class BaseQuantizer:
             )
 
             assert isinstance(zero_point, np.ndarray), f"Unexpected type {type(zero_point)}"
-            assert (
-                zero_point.dtype != np.float32 and zero_point.dtype != np.float16
-            ), f"Unexpected dtype {zero_point.dtype}"
+            assert zero_point.dtype != np.float32 and zero_point.dtype != np.float16, (
+                f"Unexpected dtype {zero_point.dtype}"
+            )
             assert isinstance(scale, np.ndarray), f"Unexpected type {type(scale)}"
 
         scale_dtype = weight.data_type
@@ -465,13 +465,13 @@ class BaseQuantizer:
                     weight_qType, per_channel_data.flatten(), scale, zero_point
                 )
                 assert isinstance(zero_point, np.ndarray), f"Unexpected type {type(zero_point)}"
-                assert (
-                    zero_point.dtype != np.float32 and zero_point.dtype != np.float16
-                ), f"Unexpected dtype {zero_point.dtype}"
+                assert zero_point.dtype != np.float32 and zero_point.dtype != np.float16, (
+                    f"Unexpected dtype {zero_point.dtype}"
+                )
                 assert isinstance(scale, np.ndarray), f"Unexpected type {type(scale)}"
-                assert isinstance(
-                    quantized_per_channel_data, np.ndarray
-                ), f"Unexpected type {type(quantized_per_channel_data)}"
+                assert isinstance(quantized_per_channel_data, np.ndarray), (
+                    f"Unexpected type {type(quantized_per_channel_data)}"
+                )
 
             else:
                 zero_point, scale, quantized_per_channel_data = quantize_data(
@@ -485,13 +485,13 @@ class BaseQuantizer:
                 )
 
                 assert isinstance(zero_point, np.ndarray), f"Unexpected type {type(zero_point)}"
-                assert (
-                    zero_point.dtype != np.float32 and zero_point.dtype != np.float16
-                ), f"Unexpected dtype {zero_point.dtype}"
+                assert zero_point.dtype != np.float32 and zero_point.dtype != np.float16, (
+                    f"Unexpected dtype {zero_point.dtype}"
+                )
                 assert isinstance(scale, np.ndarray), f"Unexpected type {type(scale)}"
-                assert isinstance(
-                    quantized_per_channel_data, np.ndarray
-                ), f"Unexpected type {type(quantized_per_channel_data)}"
+                assert isinstance(quantized_per_channel_data, np.ndarray), (
+                    f"Unexpected type {type(quantized_per_channel_data)}"
+                )
 
             zero_point_list.append(zero_point)
             scale_list.append(scale)

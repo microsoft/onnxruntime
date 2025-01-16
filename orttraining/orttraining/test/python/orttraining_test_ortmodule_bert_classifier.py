@@ -429,7 +429,9 @@ def main():
 
     # Create the learning rate scheduler.
     scheduler = get_linear_schedule_with_warmup(
-        optimizer, num_warmup_steps=0, num_training_steps=total_steps  # Default value in run_glue.py
+        optimizer,
+        num_warmup_steps=0,
+        num_training_steps=total_steps,  # Default value in run_glue.py
     )
     # Seed
     random.seed(args.seed)
