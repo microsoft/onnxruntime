@@ -383,7 +383,7 @@ class StableDiffusionPipeline:
         # Note: negative prompt embedding is not needed for SD XL when guidance <= 1
         if do_classifier_free_guidance:
             # For SD XL base, handle force_zeros_for_empty_prompt
-            is_empty_negative_prompt = all([not i for i in negative_prompt])
+            is_empty_negative_prompt = all(not i for i in negative_prompt)
             if force_zeros_for_empty_prompt and is_empty_negative_prompt:
                 uncond_embeddings = torch.zeros_like(text_embeddings)
                 if output_hidden_states:

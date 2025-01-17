@@ -282,7 +282,7 @@ def get_domain_list():
     """
     Returns the list of available domains.
     """
-    return list(sorted(set(map(lambda s: s.domain, get_all_schemas_with_history()))))
+    return sorted({s.domain for s in get_all_schemas_with_history()})
 
 
 def get_operator_schemas(op_name, version=None, domain=None):
