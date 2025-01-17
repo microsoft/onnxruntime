@@ -575,19 +575,6 @@ Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const
   return Status::OK();
 }
 
-Status DP4AMatMulDeQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("input", ShaderUsage::UseUniform);
-  shader.AddInput("scales", ShaderUsage::UseUniform);
-  shader.AddOutput("output", ShaderUsage::UseUniform);
-
-  shader.MainFunctionBody() << R"MAIN_FN(
-  var local_a = unpack4xI8(input[workgroup_id.x*16 + local_idx/4]);
-  output[workgroup_id.x*64+local_idx ] = f16(local_a[local_idx%4]) * scales[workgroup_id.x];
-)MAIN_FN";
-
-  return Status::OK();
-}
-
 Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   shader.AddInput("scales_a", ShaderUsage::UseUniform);
@@ -814,8 +801,6 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   uint32_t components = GetMaxComponents(N);
 
   const bool has_zero_points = zero_points != nullptr;
-
-  Tensor a_clone = context.CreateGPUTensor(a->DataType(), a->Shape());
   if (block_size == 32 && batch_count == 1 &&
       components_a == 4 && K % 64 == 0 &&
       !has_zero_points && M >= kMinMForTileOptimization) {
@@ -835,17 +820,6 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
           .AddOutputs({{&a_quant, ProgramTensorMetadataDependency::Rank, a_quant.Shape(), gsl::narrow<int>(1)},
                       {&a_scale, ProgramTensorMetadataDependency::Rank, a_scale.Shape(), gsl::narrow<int>(1)}});
     ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
-
-    // Enable this block and disable the matmul block below to test if quantization is correct.
-    // DP4AMatMulDeQuantizeProgram dequantize_program;
-    // dequantize_program.SetWorkgroupSize(64);
-    // dequantize_program.SetDispatchGroupSize(M*K/kBlockSizeA, 1, 1);
-    // dequantize_program.AddInputs({
-    //   {&a_quant, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)},
-    //   {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)}})
-    //   .AddOutput({&a_clone, ProgramTensorMetadataDependency::Rank, a->Shape(), gsl::narrow<int>(1)});
-    // ORT_RETURN_IF_ERROR(context.RunProgram(dequantize_program));
-    // a = &a_clone;
 
     constexpr uint32_t kTileSize = 64;
     TensorShape reshaped_y_shape{1, M, N / kVec4Components};
