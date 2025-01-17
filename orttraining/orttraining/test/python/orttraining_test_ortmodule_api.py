@@ -3320,8 +3320,8 @@ def test_parameters():
     N, D_in, H, D_out = 64, 784, 500, 10  # noqa: F841, N806
     pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
-    parameters_pt = [param for param in pt_model.parameters()]
-    parameters_ort = [param for param in ort_model.parameters()]
+    parameters_pt = list(pt_model.parameters())
+    parameters_ort = list(ort_model.parameters())
 
     assert len(parameters_pt) > 0
     assert len(parameters_pt) == len(parameters_ort)
@@ -3351,8 +3351,8 @@ def test_buffers():
     pt_model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
     pt_model.register_buffer("sample_buffer_pt", torch.tensor(torch.randn(N, D_in, device=device)))
     ort_model = ORTModule(copy.deepcopy(pt_model))
-    buffers_pt = [buffer for buffer in pt_model.buffers()]
-    buffers_ort = [buffer for buffer in ort_model.buffers()]
+    buffers_pt = list(pt_model.buffers())
+    buffers_ort = list(ort_model.buffers())
 
     assert len(buffers_pt) > 0
     assert len(buffers_pt) == len(buffers_ort)
@@ -3360,7 +3360,7 @@ def test_buffers():
 
     x = torch.tensor(torch.randn(N, D_in, device=device))
     ort_model.register_buffer("sample_buffer_ort", x)
-    buffers_ort = [buffer for buffer in ort_model.buffers()]
+    buffers_ort = list(ort_model.buffers())
     assert len(buffers_ort) == 2
     assert torch.equal(buffers_ort[1], x)
 
@@ -5506,7 +5506,7 @@ def test_random_states_unchanged_for_ortmodule():
         assert type(a) is type(b)
         if isinstance(a, tuple):
             assert len(a) == len(b)
-            return all([random_state_equal(a_i, b_i) for a_i, b_i in zip(a, b, strict=False)])
+            return all(random_state_equal(a_i, b_i) for a_i, b_i in zip(a, b, strict=False))
         if isinstance(a, np.ndarray):
             return np.array_equal(a, b)
         if isinstance(a, torch.Tensor):
@@ -6635,7 +6635,7 @@ def test_overridden_softmax_export(softmax_compute_type):
     )
 
     onnx_model = onnx.load(path)
-    onnx_nodes = [n for n in onnx_model.graph.node]
+    onnx_nodes = list(onnx_model.graph.node)
 
     assert onnx_nodes[0].op_type == "Cast"
     to_attr = onnx_nodes[0].attribute[0]

@@ -1789,7 +1789,7 @@ def test_python_op_return_persistent_param_as_value():
         _run_step(pt_model, input)
         _run_step(ort_model, input)
 
-        pt_params = {n: p for n, p in pt_model.named_parameters()}
+        pt_params = dict(pt_model.named_parameters())
         for name, param in ort_model.named_parameters():
             assert_values_are_close(param, pt_params[name], rtol=1e-04, atol=1e-3)
             if param.grad is not None:

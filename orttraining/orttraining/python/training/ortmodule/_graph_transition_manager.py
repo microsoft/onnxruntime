@@ -213,8 +213,8 @@ class PostExportProcessedModelInfo:
             # Create the buffers for the inputs that are either parameters or buffers in the original module.
             # For user inputs, fill with None for now, and will be filled dynamically during the forward run.
 
-            parameter_names = {k: v for k, v in self._flattened_module.named_parameters()}
-            buffer_names = {k: v for k, v in self._flattened_module.named_buffers()}
+            parameter_names = dict(self._flattened_module.named_parameters())
+            buffer_names = dict(self._flattened_module.named_buffers())
 
             for input_name in self.onnx_graph_input_names:
                 if input_name in parameter_names:
@@ -577,7 +577,7 @@ class GraphTransitionManager:
             # Model may have unused params dropped after export, so we only check those inputs existing in onnx graph.
 
             onnx_graph_input_requires_grads = []
-            parameter_names = {k: v for k, v in flatten_module.named_parameters()}
+            parameter_names = dict(flatten_module.named_parameters())
             for input_name in exported_model_info.onnx_graph_input_names:
                 if input_name in exported_model_info.onnx_graph_input_names_user_defined:
                     assert input_name in model_info_for_export.onnx_graph_input_data_accessor_user_defined, (
