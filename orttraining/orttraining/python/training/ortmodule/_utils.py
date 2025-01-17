@@ -66,7 +66,7 @@ def _ortvalues_to_torch_tensor(
     ortvalues: C.OrtValueVector, device: torch.device | None = None
 ) -> tuple[torch.Tensor, ...]:
     if len(ortvalues) == 0:
-        return tuple()
+        return ()
 
     if device is not None and device.type == "ort":
         if not hasattr(C, "to_aten_ort_device_tensor"):
