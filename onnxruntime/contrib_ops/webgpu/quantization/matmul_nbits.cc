@@ -828,7 +828,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
 
   const bool has_zero_points = zero_points != nullptr;
   if (accuracy_level_ == 4 && block_size == 32 &&
-      batch_count == 1 && components_a == 4 && K % 64 == 0 &&
+      batch_count == 1 && components_a == 4 && K % 64 == 0 && N % 16 == 0 &&
       !has_zero_points && M >= kMinMForTileOptimization) {
     constexpr uint32_t kVec4Components = 4;
     constexpr uint32_t kVec2Components = 2;
