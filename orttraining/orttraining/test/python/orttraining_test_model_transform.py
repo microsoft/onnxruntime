@@ -3,7 +3,7 @@ from onnx import numpy_helper
 
 def add_name(model):
     for i, node in enumerate(model.graph.node):
-        node.name = "%s_%d" % (node.op_type, i)
+        node.name = f"{node.op_type}_{i}"
 
 
 def find_single_output_node(model, arg):

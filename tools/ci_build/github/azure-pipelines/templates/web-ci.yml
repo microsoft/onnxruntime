@@ -23,6 +23,10 @@ parameters:
   displayName: 'Build JSEP'
   type: boolean
   default: true
+- name: BuildWebGPU
+  displayName: 'Build WebGPU (EP)'
+  type: boolean
+  default: true
 
 - name: WASMTemplate
   type: string
@@ -98,6 +102,7 @@ stages:
       ExtraBuildArgs: '--enable_wasm_profiling ${{ parameters.ExtraBuildArgs }}'
       PoolName: ${{ parameters.PoolName }}
       BuildJsep: ${{ parameters.BuildJsep }}
+      BuildWebGPU: ${{ parameters.BuildWebGPU }}
       WithCache: ${{ parameters.WithCache }}
 
 - stage: Build_web_Debug
@@ -128,6 +133,7 @@ stages:
       ExtraBuildArgs: '--target onnxruntime_webassembly --skip_tests --enable_wasm_api_exception_catching --disable_rtti ${{ parameters.ExtraBuildArgs }}'
       PoolName: ${{ parameters.PoolName }}
       BuildJsep: ${{ parameters.BuildJsep }}
+      BuildWebGPU: false
       WithCache: ${{ parameters.WithCache }}
 
 - ${{ if eq(parameters.BuildStaticLib, 'true') }}:
