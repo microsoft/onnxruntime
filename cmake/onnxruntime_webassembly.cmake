@@ -334,7 +334,7 @@ else()
     "SHELL:-s VERBOSE=0"
     "SHELL:-s FILESYSTEM=0"
     "SHELL:-s INCOMING_MODULE_JS_API=[locateFile,instantiateWasm,wasmBinary]"
-    "SHELL:-s WASM_BIGINT=1"
+    #"SHELL:-s WASM_BIGINT=1"
     ${WASM_API_EXCEPTION_CATCHING}
     --no-entry
     "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre.js\""
