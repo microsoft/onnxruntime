@@ -241,20 +241,19 @@ class GraphLowering:
     def _extract_module_io(self):
         graph = self._sorted_graph.original_graph
         self._module_inputs = [TensorArg(input.name, self._node_arg_infos[input.name]) for input in graph.input]
-        self._module_input_names = set(arg.name for arg in self._module_inputs)
+        self._module_input_names = {arg.name for arg in self._module_inputs}
         self._module_outputs = [TensorArg(output.name, self._node_arg_infos[output.name]) for output in graph.output]
-        self._module_output_names = set(arg.name for arg in self._module_outputs)
+        self._module_output_names = {arg.name for arg in self._module_outputs}
         for initializer in graph.initializer:
             data = to_torch_tensor(initializer)
             self._module_constants.append(TensorArg(initializer.name, data=data))
         for const_node in self._sorted_graph.const_nodes:
             data = to_torch_tensor(const_node)
             self._module_constants.append(TensorArg(const_node.output[0], data=data))
-        self._module_constant_names = set(arg.name for arg in self._module_constants)
-        self._tensor_args = dict(
-            (arg.name, arg)
-            for arg in itertools.chain(self._module_inputs, self._module_outputs, self._module_constants)
-        )
+        self._module_constant_names = {arg.name for arg in self._module_constants}
+        self._tensor_args = {
+            arg.name: arg for arg in itertools.chain(self._module_inputs, self._module_outputs, self._module_constants)
+        }
 
     def _get_reduce_info(self, node) -> tuple[int, list[int]]:
         assert is_reduction_node(node)

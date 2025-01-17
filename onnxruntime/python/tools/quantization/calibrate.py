@@ -504,9 +504,9 @@ class MinMaxCalibrater(CalibraterBase):
 
             if self.symmetric:
                 max_absolute_value = np.max([np.abs(min_value_array), np.abs(max_value_array)], axis=0)
-                pairs.append(tuple([-max_absolute_value, max_absolute_value]))
+                pairs.append((-max_absolute_value, max_absolute_value))
             else:
-                pairs.append(tuple([min_value_array, max_value_array]))
+                pairs.append((min_value_array, max_value_array))
 
         new_calibrate_tensors_range = TensorsData(
             CalibrationMethod.MinMax, dict(zip(calibrate_tensor_names, pairs, strict=False))
@@ -823,7 +823,7 @@ class HistogramCollector(CalibrationDataCollector):
             if isinstance(data_arr, list):
                 for arr in data_arr:
                     assert isinstance(arr, np.ndarray), f"Unexpected type {type(arr)} for tensor={tensor!r}"
-                dtypes = set(a.dtype for a in data_arr)
+                dtypes = {a.dtype for a in data_arr}
                 assert len(dtypes) == 1, (
                     f"The calibration expects only one element type but got {dtypes} for tensor={tensor!r}"
                 )
