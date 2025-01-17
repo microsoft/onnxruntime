@@ -4,7 +4,7 @@
 # --------------------------------------------------------------------------
 
 # This script is used to add trigger rules to the workflow files.
-
+from __future__ import annotations
 
 import multiprocessing
 import os

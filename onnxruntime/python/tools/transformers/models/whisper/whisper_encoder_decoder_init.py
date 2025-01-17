@@ -8,7 +8,6 @@ import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import List, Optional
 
 import numpy
 import onnx
@@ -34,7 +33,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         encoder: torch.nn.Module,
         decoder: torch.nn.Module,
         config: WhisperConfig,
-        decoder_start_token_id: Optional[int] = None,
+        decoder_start_token_id: int | None = None,
         model_impl: str = "hf",
         model: torch.nn.Module = None,
     ):
@@ -94,7 +93,7 @@ class WhisperEncoderDecoderInitInputs:
 
         return WhisperEncoderDecoderInitInputs(encoder_inputs.input_ids, decoder_input_ids)
 
-    def to_list(self) -> List:
+    def to_list(self) -> list:
         input_list = [self.encoder_input_ids]
         if self.decoder_input_ids is not None:
             input_list.append(self.decoder_input_ids)
