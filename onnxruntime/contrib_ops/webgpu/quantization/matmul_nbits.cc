@@ -621,19 +621,19 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // matmulnbits input with block size 32.
 
   shader.AdditionalImplementation() << R"ADDNL_FN(
-  const tile_size_a = 64;
-  const tile_size_b = 64;
+  const tile_size = 64;
+  const subtile_size = 16;
   const tile_size_k =  64;
   const vec_factor = 4;
   const u32_factor = 4;
-  const tile_size_kv = 4;
+  const tile_size_k_vec = 4;
   const block_size = 32;
 
   // Shared memory
-  var<workgroup> tile_A : array<array<vec4<u32>, tile_size_kv>, tile_size_a>;                        // 64 x 64
-  var<workgroup> scale_A : array<f16, tile_size_a>;                                                  // 64 x 1
-  var<workgroup> tile_B : array<array<vec4<u32>, tile_size_kv>, tile_size_b>;                        // 64 x 64
-  var<workgroup> scale_B : array<vec2<f16>, tile_size_b>;                                            // 64 x 2
+  var<workgroup> tile_A : array<array<vec4<u32>, tile_size_k_vec>, tile_size>;                     // 64 x 64
+  var<workgroup> scale_A : array<f16, tile_size>;                                                  // 64 x 1
+  var<workgroup> tile_B : array<array<vec4<u32>, tile_size_k_vec>, tile_size>;                     // 64 x 64
+  var<workgroup> scale_B : array<vec2<f16>, tile_size>;                                            // 64 x 2
 
   // Private memory
   var<private> lane_output: array<f16, 16>;
@@ -692,7 +692,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Each Lane first loads a row of A and a column of B.
   // Then each lane becomes responsible for a row and loops through the columns to compute
   // dot product. The columns are fetched from other owning lanes using subgroupShuffle.
-  fn perform16_64_16MatMul(base_A:u32, base_B:u32, sg_id:u32)
+  fn perform16_64_16MatMul_sgsize16(base_A:u32, base_B:u32, sg_id:u32)
   {
     var own_a0: vec4<u32> = tile_A[base_A + sg_id][0];
     var own_a1: vec4<u32> = tile_A[base_A + sg_id][1];
@@ -728,20 +728,26 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 )ADDNL_FN";
 
   shader.MainFunctionBody() << R"MAIN_FN(
-  let subtile_id = u32(local_idx / sg_size);
-  let subtile_idx = u32(subtile_id / 4);
-  let subtile_idy = u32(subtile_id % 4);
-
-  let a_global_base = workgroup_id.x * tile_size_a;
-  let b_global_base = workgroup_id.y * tile_size_b;
   // During the load phase we use all 256 threads to load 64 rows of A/B.
   // For each row we load 4 vectorized elements, which are 64 elements of K.
+  let a_global_base = workgroup_id.x * tile_size;
+  let b_global_base = workgroup_id.y * tile_size;
   let load_row = u32(local_idx/4);
   let load_col = u32(local_idx%4);
 
+  // During the compute phase, we have the 64x64 tile split into
+  // subtiles of 16x16. We have a grid of 4x4 subtiles.
+  let subtile_id = u32(local_idx / subtile_size);
+  let subtile_idx = u32(subtile_id / 4);
+  let subtile_idy = u32(subtile_id % 4);
+  let subtile_a_base = subtile_idx * 16;
+  let subtile_b_base = subtile_idy * 16;
+  // For each subtile we have 16 threads assigned.
+  let subtile_thread_id = u32(local_idx % subtile_size);
+
   // K's vectrorization is 16 items per index. See input_a/input_b.
-  // tile_size_kv - is the k tile size in vectorized k units/space (1/16).
-  for (var kidx_v:u32 = 0; kidx_v < uniforms.K16; kidx_v+=tile_size_kv)
+  // tile_size_k_vec - is the k tile size in vectorized k units/space (1/16).
+  for (var kidx_v:u32 = 0; kidx_v < uniforms.K16; kidx_v+=tile_size_k_vec)
   {
     // Populate shared memory for the workgroup
     loadSHMA(a_global_base, kidx_v, load_row, load_col);
@@ -749,12 +755,15 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     workgroupBarrier();
 
     // Perform the matmul for the subtile this subgroup is responsible for.
-    perform16_64_16MatMul(subtile_idx*16, subtile_idy*16, sg_id);
+    if (sg_size == 16)
+    {
+      perform16_64_16MatMul_sgsize16(subtile_a_base, subtile_b_base, sg_id);
+    }
     workgroupBarrier();
   }
 
-  let a_global = a_global_base + subtile_idx * 16+ sg_id;
-  let b_global = b_global_base + subtile_idy * 16;
+  let a_global = a_global_base + subtile_a_base + subtile_thread_id;
+  let b_global = b_global_base + subtile_b_base;
   let output_idx = ((a_global) * uniforms.N + b_global)/4;
   // This creates a shader requirement that uniforms.N % 16 == 0
   if (a_global < uniforms.M && b_global < uniforms.N)
