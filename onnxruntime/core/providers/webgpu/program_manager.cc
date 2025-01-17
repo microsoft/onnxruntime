@@ -147,16 +147,16 @@ Status ProgramManager::Build(const ProgramBase& program,
     }
   }
 
-  wgpu::ProgrammableStageDescriptor compute_stage{};
-  compute_stage.module = shader_module;
-  compute_stage.entryPoint = "main";
+  wgpu::ComputeState compute_state{};
+  compute_state.module = shader_module;
+  compute_state.entryPoint = "main";
   if (!constant_entries.empty()) {
-    compute_stage.constants = constant_entries.data();
-    compute_stage.constantCount = constant_entries.size();
+    compute_state.constants = constant_entries.data();
+    compute_state.constantCount = constant_entries.size();
   }
 
   wgpu::ComputePipelineDescriptor pipeline_descriptor{};
-  pipeline_descriptor.compute = compute_stage;
+  pipeline_descriptor.compute = compute_state;
 #ifndef NDEBUG  // if debug build
   pipeline_descriptor.label = program.Name().c_str();
 #endif
