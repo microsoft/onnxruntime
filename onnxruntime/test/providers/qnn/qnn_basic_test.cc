@@ -1113,6 +1113,12 @@ TEST_F(QnnHTPBackendTests, UseHtpSharedMemoryAllocatorForInputs) {
     qnn_ep = QnnExecutionProviderWithOptions(provider_options);
   } catch (const OnnxRuntimeException& e) {
     // handle particular exception that indicates that the libcdsprpc.so / dll can't be loaded
+    // NOTE: To run this on a local Windows ARM64 device, you need to copy libcdsprpc.dll to the build directory:
+    //  - Open File Explorer
+    //  - Go to C:/Windows/System32/DriverStore/FileRepository/
+    //  - Search for a folder that begins with qcnspmcdm8380.inf_arm64_ and open it
+    //  - Copy the libcdsprpc.dll into the build/[PATH CONTAINING onnxruntime.dll] directory of the application.
+    // TODO(adrianlizarraga): Update CMake build for unittests to automatically copy libcdsprpc.dll into build directory
 #if defined(_WIN32)
     constexpr const char* expected_error_message = "Failed to load libcdsprpc.dll";
 #else

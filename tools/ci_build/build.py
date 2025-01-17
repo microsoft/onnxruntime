@@ -2,6 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 # Licensed under the MIT License.
+from __future__ import annotations
 
 import argparse
 import contextlib
@@ -451,9 +452,7 @@ def parse_arguments():
     parser.add_argument(
         "--apple_deploy_target",
         type=str,
-        help="Specify the minimum version of the target platform "
-        "(e.g. macOS or iOS)"
-        "This is only supported on MacOS",
+        help="Specify the minimum version of the target platform (e.g. macOS or iOS)This is only supported on MacOS",
     )
     # A 32-bit progress doesn't have enough memory to run all the tests in onnxruntime_test_all.
     # Mimalloc is incompatible with address sanitizer.
@@ -1248,8 +1247,7 @@ def generate_build_tree(
             cmake_args += ["-Donnxruntime_MPI_HOME=" + mpi_home]
         else:
             log.warning(
-                "mpi_home is supplied but use_mpi is set to false."
-                " Build will continue without linking MPI libraries."
+                "mpi_home is supplied but use_mpi is set to false. Build will continue without linking MPI libraries."
             )
 
     if nccl_home and os.path.exists(nccl_home):
@@ -1390,7 +1388,7 @@ def generate_build_tree(
         if not all(needed_args):
             raise BuildError(
                 "iOS/MacOS framework build on MacOS canceled due to missing arguments: "
-                + ", ".join(val for val, cond in zip(arg_names, needed_args) if not cond)
+                + ", ".join(val for val, cond in zip(arg_names, needed_args, strict=False) if not cond)
             )
         # note: this value is mainly used in framework_info.json file to specify the build osx type
         platform_name = "macabi" if args.macos == "Catalyst" else args.apple_sysroot
@@ -2320,6 +2318,8 @@ def build_python_wheel(
             args.append("--use_rocm")
             if rocm_version:
                 args.append(f"--rocm_version={rocm_version}")
+            if use_migraphx:
+                args.append("--use_migraphx")
         elif use_migraphx:
             args.append("--use_migraphx")
         elif use_openvino:
@@ -2403,7 +2403,7 @@ def build_nuget_package(
     elif use_qnn:
         execution_provider = "/p:ExecutionProvider=qnn"
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.QNN"
-    elif any(map(lambda x: "OrtPackageId=" in x, msbuild_extra_options)):
+    elif any("OrtPackageId=" in x for x in msbuild_extra_options):
         pass
     else:
         # we currently only allow building with mobile targets on Windows.

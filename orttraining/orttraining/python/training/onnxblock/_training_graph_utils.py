@@ -4,7 +4,6 @@
 import copy
 import logging
 import os
-from typing import List, Optional, Set, Tuple, Union
 
 import onnx
 
@@ -35,7 +34,7 @@ def _disable_training_mode(model: onnx.ModelProto) -> None:
             ops_to_disable_training_mode_func_map[node.op_type](node)
 
 
-def _reorder_outputs(model: onnx.ModelProto, user_output_names: List[str], requires_grad: Set[str]) -> None:
+def _reorder_outputs(model: onnx.ModelProto, user_output_names: list[str], requires_grad: set[str]) -> None:
     """Reorders the outputs of the model to match the order of [user_outputs, gradients]"""
 
     graph_outputs = {output.name: output for output in model.graph.output}
@@ -50,7 +49,7 @@ def _reorder_outputs(model: onnx.ModelProto, user_output_names: List[str], requi
     model.graph.output.extend(ordered_graph_outputs)
 
 
-def _move_initializers_to_inputs(model: onnx.ModelProto, initializer_names: Optional[Set[str]] = None) -> None:
+def _move_initializers_to_inputs(model: onnx.ModelProto, initializer_names: set[str] | None = None) -> None:
     # Move all trainable and non trainable initializers to graph inputs.
     # This allows training to pass in the parameters from outside the graph
     # so as to share the parameters across multiple sessions.
@@ -70,9 +69,9 @@ def _move_initializers_to_inputs(model: onnx.ModelProto, initializer_names: Opti
 
 def _gradient_model_for(
     model: onnx.ModelProto,
-    requires_grad: Set[str],
+    requires_grad: set[str],
     loss_name: str,
-    options: Optional[SessionOptions] = None,
+    options: SessionOptions | None = None,
 ) -> onnx.ModelProto:
     """Builds the gradient graph on top of the given input forward only graph."""
 
@@ -87,11 +86,11 @@ def _gradient_model_for(
 
 def build_gradient_graph(
     model: onnx.ModelProto,
-    requires_grad: Set[str],
-    frozen_params: Set[str],
-    output_names: Union[List[str], str],
-    custom_op_library: Optional[str] = None,
-) -> Tuple[onnx.ModelProto, onnx.ModelProto]:
+    requires_grad: set[str],
+    frozen_params: set[str],
+    output_names: list[str] | str,
+    custom_op_library: str | None = None,
+) -> tuple[onnx.ModelProto, onnx.ModelProto]:
     """Prepare the training model and the eval model.
 
     This function will restructure the model to prepare for training.
@@ -134,7 +133,7 @@ def build_gradient_graph(
     return gradient_model, eval_model
 
 
-def build_gradient_accumulation_graph(grad_model: onnx.ModelProto, requires_grad: Set[str]) -> None:
+def build_gradient_accumulation_graph(grad_model: onnx.ModelProto, requires_grad: set[str]) -> None:
     """Builds gradient accumulation nodes on top of a training model.
 
     Adds an InPlaceAccumulatorV2 node for every gradient so that the gradients
@@ -209,8 +208,8 @@ def build_gradient_accumulation_graph(grad_model: onnx.ModelProto, requires_grad
 
 
 def get_model_parameters(
-    model: onnx.ModelProto, requires_grad: Set[str], frozen_params: Set[str]
-) -> Tuple[List[onnx.TensorProto], List[onnx.TensorProto]]:
+    model: onnx.ModelProto, requires_grad: set[str], frozen_params: set[str]
+) -> tuple[list[onnx.TensorProto], list[onnx.TensorProto]]:
     """Returns trainable and non trainable onnx model parameters.
 
     This function pulls out the model parameters from the initializers in the graph.
