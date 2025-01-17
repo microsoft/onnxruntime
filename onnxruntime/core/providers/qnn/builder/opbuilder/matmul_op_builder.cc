@@ -52,7 +52,7 @@ class MatMulOpBuilder : public BaseOpBuilder {
 
 namespace {
 
-// Move to qnn_utils if it's re-usable
+// Inserts a QNN Convert operator to convert from one quantization type (e.g., uint16) to another (e.g., uint8).
 Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
                        const std::string& convert_input_name,
                        const std::string& convert_output_name,
@@ -173,16 +173,16 @@ Status MatMulOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper, const 
   if (use_fully_connected) {
     return ProcessInputsForQnnFullyConnected(qnn_model_wrapper,
                                              node_unit,
-                                             std::move(input_info_0),
-                                             std::move(input_info_1),
+                                             input_info_0,
+                                             input_info_1,
                                              logger,
                                              input_names,
                                              do_op_validation);
   }
   return ProcessInputsForQnnMatMul(qnn_model_wrapper,
                                    node_unit,
-                                   std::move(input_info_0),
-                                   std::move(input_info_1),
+                                   input_info_0,
+                                   input_info_1,
                                    logger,
                                    input_names,
                                    do_op_validation);
@@ -198,7 +198,6 @@ Status MatMulOpBuilder::ProcessInputsForQnnMatMul(QnnModelWrapper& qnn_model_wra
   const auto& inputs = node_unit.Inputs();
   const bool reshape_input_1 = input_info_1.shape.size() == 1;
 
-  // Process input 0.
   const std::string& org_input_0_name = inputs[0].node_arg.Name();
   ORT_RETURN_IF_ERROR(ProcessInput0(qnn_model_wrapper, input_info_0, org_input_0_name, input_names,
                                     logger, do_op_validation));
@@ -290,7 +289,6 @@ Status MatMulOpBuilder::ProcessInputsForQnnFullyConnected(QnnModelWrapper& qnn_m
   const auto& inputs = node_unit.Inputs();
   const bool reshape_input_1 = input_info_1.shape.size() == 1;
 
-  // Process input 0.
   const std::string& org_input_0_name = inputs[0].node_arg.Name();
   ORT_RETURN_IF_ERROR(ProcessInput0(qnn_model_wrapper, input_info_0, org_input_0_name, input_names,
                                     logger, do_op_validation));
