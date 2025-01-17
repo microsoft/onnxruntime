@@ -26,12 +26,11 @@ python3.12 /onnxruntime_src/tools/ci_build/build.py \
     --build_wheel \
     --skip_tests \
     --enable_training_ops \
-    --enable_pybind --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp310-cp310/include/python3.10 PYTHON_LIBRARY=/usr/lib64/librt.so \
     --use_nnapi \
     --use_coreml
 
 # Install the ORT python wheel
-python3 -m pip install --user ${BUILD_DIR}/Debug/dist/*
+python3.12 -m pip install --user ${BUILD_DIR}/Debug/dist/*
 
 # Convert all the E2E ONNX models to ORT format
 python3.12 /onnxruntime_src/tools/python/convert_onnx_models_to_ort.py \
