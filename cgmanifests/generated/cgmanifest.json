@@ -136,7 +136,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "fe98e0b93565382648129271381c14d6205255e3",
+          "commitHash": "74c0fd13f749844ef997c3d2043c1be6e534e6b1",
           "repositoryUrl": "https://github.com/google/XNNPACK.git"
         },
         "comments": "googlexnnpack"
