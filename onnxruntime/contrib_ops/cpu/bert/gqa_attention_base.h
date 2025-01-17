@@ -34,6 +34,8 @@ class GQAAttentionBase {
     use_smooth_softmax_ = info.GetAttrOrDefault<int64_t>("smooth_softmax", 0) == 1;
 
     local_window_size_ = has_local ? static_cast<int>(info.GetAttrOrDefault<int64_t>("local_window_size", -1)) : -1;
+
+    is_unidirectional_ = info.GetAttrOrDefault<int64_t>("unidirectional", 1) == 1;
   }
 
   int num_heads_;     // number of attention heads of Q
@@ -43,6 +45,7 @@ class GQAAttentionBase {
   bool do_rotary_;  // whether or not to use rotary embeddings
   bool rotary_interleaved_;
   int local_window_size_;
+  bool is_unidirectional_;
 
   bool use_smooth_softmax_;
 
@@ -217,7 +220,7 @@ class GQAAttentionBase {
         // compute Softmax
         float* output_softmax = output;
         for (size_t seq = 0; seq < sequence_length; seq++) {
-          size_t seq_causal_length = past_seqlen + seq + 1;
+          size_t seq_causal_length = is_unidirectional_ ? past_seqlen + seq + 1 : past_seqlen + sequence_length;
           if (local_window_size_ > 0 && seq_causal_length > static_cast<size_t>(local_window_size_) + 1) {
             for (size_t total_seq_id = 0; total_seq_id < seq_causal_length - local_window_size_ - 1; total_seq_id++) {
               output_softmax[total_seq_id] = 0.f;

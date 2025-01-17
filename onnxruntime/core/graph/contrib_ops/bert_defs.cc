@@ -1058,6 +1058,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .SetDoc(GroupQueryAttention_ver1_doc)
         .Attr("num_heads", "Number of attention heads for q", AttributeProto::INT)
         .Attr("kv_num_heads", "Number of attention heads for k and v", AttributeProto::INT)
+        .Attr("unidirectional",
+              "Whether every token can only attend to previous tokens. Default value is 1.",
+              AttributeProto::INT,
+              static_cast<int64_t>(1))
         .Attr("scale",
               "Custom scale will be used if specified. Default value is 1/sqrt(head_size)",
               AttributeProto::FLOAT,
