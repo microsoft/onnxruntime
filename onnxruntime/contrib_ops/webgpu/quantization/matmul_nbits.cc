@@ -589,7 +589,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // The entire workgroup which has N subgroups first loads a tile into shared memory,
   // Then each subgroup loads a subtile from shared memory into registers and uses
   // the medium size matrix multiply primitive to perform the math.
-  // The values for tile/subtile size are choosen to conform to the resource limits
+  // The values for tile/subtile size are chosen to conform to the resource limits
   // of an alderlake/tiger lake gpu. A tile is 64x64, workgroup is 256 threads -
   // therefore there are 16 subgroups and 16 lanes in each subgroup.
   // K the hidden dimension is paged in from RAM at k tile size which is 64.
@@ -599,9 +599,9 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   //
   // Each subgroup performs a 16 x 64 x 16 multiply which is implemented with
   // subgroup shuffle as a placeholder for the day the medium matrix mul primitive
-  // becomes available in WGSL. The registy requirements is ~2KB per subgroup, on
+  // becomes available in WGSL. The registry requirements is ~2KB per subgroup, on
   // Alderlake/Tigerlake subgroup has 8KB of registry space pooling the
-  // 512B of registery from each lane.
+  // 512B of registry from each lane.
   //
   // The medium size matmul is implemented using dot4I8Packed, so the inputs for
   // this shader require A to be int8 quantized with block size 64. B is regular
