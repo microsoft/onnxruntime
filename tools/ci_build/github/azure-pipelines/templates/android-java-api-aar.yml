@@ -76,13 +76,12 @@ jobs:
         mkdir -p $(artifacts_directory)
       workingDirectory: $(Build.BinariesDirectory)
 
-  #TODO: use a different docker file since this job doesn't need to rely on manylinux
   - template: get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
-      Context: tools/ci_build/github/linux/docker
+      Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
+      Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-      Repository: onnxruntimecpubuild
+      Repository: onnxruntimecpubuildcentos8x64_packaging
 
   - template: set-version-number-variables-step.yml
 
@@ -127,7 +126,7 @@ jobs:
           -e PUBLISH_EXECUTABLES=${{parameters.publish_executables}} \
           -e PACKAGE_NAME=${{parameters.packageName}} \
           -e RELEASE_VERSION_SUFFIX=${{parameters.ReleaseVersionSuffix}} \
-          onnxruntimecpubuild \
+          onnxruntimecpubuildcentos8x64_packaging \
             /bin/bash /onnxruntime_src/tools/ci_build/github/android/build_aar_and_copy_artifacts.sh $USE_QNN
       workingDirectory: $(Build.SourcesDirectory)
 

@@ -1,6 +1,7 @@
 # !/usr/bin/env python3
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+from __future__ import annotations
 
 import argparse
 import io
@@ -28,7 +29,7 @@ log = get_logger("reduce_op_kernels")
 
 
 def _adapt_filters_for_extended_minimal_build(
-    base_required_ops: typing.Optional[dict], base_op_type_impl_filter: typing.Optional[OpTypeImplFilterInterface]
+    base_required_ops: dict | None, base_op_type_impl_filter: OpTypeImplFilterInterface | None
 ):
     """
     Adapts the values returned by parse_config() for an extended minimal build or higher.
@@ -68,7 +69,7 @@ def _adapt_filters_for_extended_minimal_build(
     if base_required_ops is not None:
         adapted_required_ops = base_required_ops.copy()
         for domain, optype, opset in extended_minimal_build_required_op_ids:
-            adapted_required_ops.setdefault(domain, dict()).setdefault(opset, set()).add(optype)
+            adapted_required_ops.setdefault(domain, {}).setdefault(opset, set()).add(optype)
 
     adapted_op_type_impl_filter = None
     if base_op_type_impl_filter is not None:
@@ -77,7 +78,7 @@ def _adapt_filters_for_extended_minimal_build(
             def __init__(
                 self,
                 filter_to_adapt: OpTypeImplFilterInterface,
-                required_domain_and_optypes: typing.Set[typing.Tuple[str, str]],
+                required_domain_and_optypes: set[tuple[str, str]],
             ):
                 self.filter_to_adapt = filter_to_adapt
                 self.required_domain_and_optypes = required_domain_and_optypes
@@ -107,17 +108,15 @@ class _ExcludingRegistrationProcessor(op_registration_utils.RegistrationProcesso
 
     def __init__(
         self,
-        required_ops: typing.Optional[dict],
-        op_type_impl_filter: typing.Optional[OpTypeImplFilterInterface],
+        required_ops: dict | None,
+        op_type_impl_filter: OpTypeImplFilterInterface | None,
         output_file: io.TextIOWrapper,
     ):
         self._required_ops = required_ops
         self._op_type_impl_filter = op_type_impl_filter
         self._output_file = output_file
 
-    def _is_op_required(
-        self, domain: str, operator: str, start_version: int, end_version: typing.Optional[int]
-    ) -> bool:
+    def _is_op_required(self, domain: str, operator: str, start_version: int, end_version: int | None) -> bool:
         """See if an op is required."""
         if self._required_ops is None:
             return True
@@ -134,12 +133,12 @@ class _ExcludingRegistrationProcessor(op_registration_utils.RegistrationProcesso
 
     def process_registration(
         self,
-        lines: typing.List[str],
+        lines: list[str],
         constant_for_domain: str,
         operator: str,
         start_version: int,
-        end_version: typing.Optional[int] = None,
-        type: typing.Optional[str] = None,
+        end_version: int | None = None,
+        type: str | None = None,
     ):
         registration_identifier = "{}:{}({}){}".format(
             constant_for_domain, operator, start_version, f"<{type}>" if type else ""
@@ -202,8 +201,8 @@ def _generate_provider_registrations(
     ort_root: Path,
     build_dir: Path,
     use_cuda: bool,
-    required_ops: typing.Optional[dict],
-    op_type_impl_filter: typing.Optional[OpTypeImplFilterInterface],
+    required_ops: dict | None,
+    op_type_impl_filter: OpTypeImplFilterInterface | None,
 ):
     """Generate provider registration files."""
     kernel_registration_files = [

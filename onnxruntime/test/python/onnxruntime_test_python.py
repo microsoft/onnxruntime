@@ -23,7 +23,7 @@ from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, Ru
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
     os.add_dll_directory(os.getcwd())
 
-available_providers = [provider for provider in onnxrt.get_available_providers()]
+available_providers = list(onnxrt.get_available_providers())
 
 # TVM EP doesn't support:
 # * calling Run() on different threads using the same session object
