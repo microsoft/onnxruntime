@@ -419,6 +419,280 @@ void HPackB_TransposedB_Kernel(
     }
 }
 
+void HGemm_TransposedB_Kernel_M1(
+    const _mlas_fp16_* A_data,
+    const _mlas_fp16_* B_data,
+    _mlas_fp16_* C_data,
+    size_t CountM,
+    size_t CountN,
+    size_t CountK,
+    size_t lda,
+    size_t ldb,
+    size_t ldc,
+    float16_t alpha,
+    float16_t beta
+) {
+    for (; CountN >= 8; CountN -= 8, B_data += 8 * ldb, C_data += 8) {
+        const auto* a = A_data;
+        const auto* b = B_data;
+        size_t k = CountK;
+        float16x8_t accu0 = MlasZeroFloat16x8();
+        float16x8_t accu1 = MlasZeroFloat16x8();
+        float16x8_t accu2 = MlasZeroFloat16x8();
+        float16x8_t accu3 = MlasZeroFloat16x8();
+        float16x8_t accu4 = MlasZeroFloat16x8();
+        float16x8_t accu5 = MlasZeroFloat16x8();
+        float16x8_t accu6 = MlasZeroFloat16x8();
+        float16x8_t accu7 = MlasZeroFloat16x8();
+        for (; k >= 8; k -= 8, a += 8, b += 8) {
+            float16x8_t b0 = MlasLoadFloat16x8(b);
+            float16x8_t b1 = MlasLoadFloat16x8(b + ldb);
+            float16x8_t b2 = MlasLoadFloat16x8(b + 2 * ldb);
+            float16x8_t b3 = MlasLoadFloat16x8(b + 3 * ldb);
+            float16x8_t a0 = MlasLoadFloat16x8(a);
+            accu0 = vfmaq_f16(accu0, b0, a0);
+            accu1 = vfmaq_f16(accu1, b1, a0);
+            accu2 = vfmaq_f16(accu2, b2, a0);
+            accu3 = vfmaq_f16(accu3, b3, a0);
+            accu4 = vfmaq_f16(accu4, b4, a0);
+            accu5 = vfmaq_f16(accu5, b5, a0);
+            accu6 = vfmaq_f16(accu6, b6, a0);
+            accu7 = vfmaq_f16(accu7, b7, a0);
+        }
+        Transpose8x8(accu0, accu1, accu2, accu3, accu4, accu5, accu6, accu7);
+        accu0 = vaddq_f16(accu0, accu1);
+        accu2 = vaddq_f16(accu2, accu3);
+        accu4 = vaddq_f16(accu4, accu5);
+        accu6 = vaddq_f16(accu6, accu7);
+        accu0 = vaddq_f16(accu0, accu2);
+        accu4 = vaddq_f16(accu4, accu6);
+        accu0 = vaddq_f16(accu0, accu4); // accumulator of 8 columns
+
+        if (k & 4) {
+            float16x4_t b0 = MlasLoadFloat16x4(b);
+            float16x4_t b1 = MlasLoadFloat16x4(b + ldb);
+            float16x4_t b2 = MlasLoadFloat16x4(b + 2 * ldb);
+            float16x4_t b3 = MlasLoadFloat16x4(b + 3 * ldb);
+            float16x4_t b4 = MlasLoadFloat16x4(b + 4 * ldb);
+            float16x4_t b5 = MlasLoadFloat16x4(b + 5 * ldb);
+            float16x4_t b6 = MlasLoadFloat16x4(b + 6 * ldb);
+            float16x4_t b7 = MlasLoadFloat16x4(b + 7 * ldb);
+            Transpose4x4(b0, b1, b2, b3);
+            Transpose4x4(b4, b5, b6, b7);
+            float16x8_t v0 = vcombine_f16(b0, b4);
+            float16x8_t v1 = vcombine_f16(b1, b5);
+            float16x8_t v2 = vcombine_f16(b2, b6);
+            float16x8_t v3 = vcombine_f16(b3, b7);
+            float16x4_t a0 = MlasLoadFloat16x4(a);
+            accu0 = vfmaq_lane_f16(accu0, v0, a0, 0);
+            accu0 = vfmaq_lane_f16(accu0, v1, a0, 1);
+            accu0 = vfmaq_lane_f16(accu0, v2, a0, 2);
+            accu0 = vfmaq_lane_f16(accu0, v3, a0, 3);
+            k -= 4, a += 4, b += 4;
+        }
+
+        if (k > 0) {
+            float16x4_t b0 = MlasLoadPartialFloat16x4(b, k);
+            float16x4_t b1 = MlasLoadPartialFloat16x4(b + ldb, k);
+            float16x4_t b2 = MlasLoadPartialFloat16x4(b + 2 * ldb, k);
+            float16x4_t b3 = MlasLoadPartialFloat16x4(b + 3 * ldb, k);
+            float16x4_t b4 = MlasLoadPartialFloat16x4(b + 4 * ldb, k);
+            float16x4_t b5 = MlasLoadPartialFloat16x4(b + 5 * ldb, k);
+            float16x4_t b6 = MlasLoadPartialFloat16x4(b + 6 * ldb, k);
+            float16x4_t b7 = MlasLoadPartialFloat16x4(b + 7 * ldb, k);
+            Transpose4x4(b0, b1, b2, b3);
+            Transpose4x4(b4, b5, b6, b7);
+            float16x8_t v0 = vcombine_f16(b0, b4), v1, v2;
+            if (k > 1) {
+                v1 = vcombine_f16(b1, b5);
+            }
+            if (k > 2) {
+                v2 = vcombine_f16(b2, b6);
+            }
+            float16x4_t a0 = MlasLoadPartialFloat16x4(a, k);
+            accu0 = vfmaq_lane_f16(accu0, v0, a0, 0);
+            if (k > 1) {
+                accu0 = vfmaq_lane_f16(accu0, v1, a0, 1);
+            }
+            if (k > 2) {
+                accu0 = vfmaq_lane_f16(accu0, v2, a0, 2);
+            }
+        }
+
+        if (beta == 1.0f16) {
+            float16x8_t c = MlasLoadFloat16x8(C_data);
+            accu0 = vfmaq_n_f16(c, accu0, alpha);
+            MlasStoreFloat16x8(C_data, accu0);
+        } else if (beta != 0.0f16) {
+            float16x8_t c = MlasLoadFloat16x8(C_data);
+            accu0 = vfmaq_n_f16(vmulq_n_f16(c, beta), accu0, alpha);
+            MlasStoreFloat16x8(C_data, accu0);
+        } else {
+            accu0 = vmulq_n_f16(accu0, alpha);
+            MlasStoreFloat16x8(C_data, accu0);
+        }
+    }
+
+    if (CountN & 4) {
+        const auto* a = A_data;
+        const auto* b = B_data;
+        size_t k = CountK;
+        float16x8_t accu0 = MlasZeroFloat16x8();
+        float16x8_t accu1 = MlasZeroFloat16x8();
+        float16x8_t accu2 = MlasZeroFloat16x8();
+        float16x8_t accu3 = MlasZeroFloat16x8();
+        for (; k >= 8; k -= 8, a += 8, b += 8) {
+            float16x8_t b0 = MlasLoadFloat16x8(b);
+            float16x8_t b1 = MlasLoadFloat16x8(b + ldb);
+            float16x8_t b2 = MlasLoadFloat16x8(b + 2 * ldb);
+            float16x8_t b3 = MlasLoadFloat16x8(b + 3 * ldb);
+            float16x8_t a0 = MlasLoadFloat16x8(a);
+            accu0 = vfmaq_f16(accu0, b0, a0);
+            accu1 = vfmaq_f16(accu1, b1, a0);
+            accu2 = vfmaq_f16(accu2, b2, a0);
+            accu3 = vfmaq_f16(accu3, b3, a0);
+        }
+        Transpose4x8(accu0, accu1, accu2, accu3);
+        accu0 = vaddq_f16(accu0, accu1);
+        accu2 = vaddq_f16(accu2, accu3);
+        accu0 = vaddq_f16(accu0, accu2);
+        float16x4_t accu = vadd_f16(vget_low_f16(accu0), vget_high_f16(accu0));
+
+        if (k & 4) {
+            float16x4_t b0 = MlasLoadFloat16x4(b);
+            float16x4_t b1 = MlasLoadFloat16x4(b + ldb);
+            float16x4_t b2 = MlasLoadFloat16x4(b + 2 * ldb);
+            float16x4_t b3 = MlasLoadFloat16x4(b + 3 * ldb);
+            Transpose4x4(b0, b1, b2, b3);
+            float16x4_t a0 = MlasLoadFloat16x4(a);
+            accu = vfma_lane_f16(accu, b0, a0, 0);
+            accu = vfma_lane_f16(accu, b1, a0, 1);
+            accu = vfma_lane_f16(accu, b2, a0, 2);
+            accu = vfma_lane_f16(accu, b3, a0, 3);
+            k -= 4, a += 4, b += 4;
+        }
+
+        if (k > 0) {
+            float16x4_t b0 = MlasLoadPartialFloat16x4(b, k);
+            float16x4_t b1 = MlasLoadPartialFloat16x4(b + ldb, k);
+            float16x4_t b2 = MlasLoadPartialFloat16x4(b + 2 * ldb, k);
+            float16x4_t b3 = MlasLoadPartialFloat16x4(b + 3 * ldb, k);
+            Transpose4x4(b0, b1, b2, b3);
+            float16x4_t a0 = MlasLoadPartialFloat16x4(a, k);
+            accu = vfma_lane_f16(accu, b0, a0, 0);
+            if (k > 1) {
+                accu = vfma_lane_f16(accu, b1, a0, 1);
+            }
+            if (k > 2) {
+                accu = vfma_lane_f16(accu, b2, a0, 2);
+            }
+        }
+
+        if (beta == 1.0f16) {
+            float16x4_t c = MlasLoadFloat16x4(C_data);
+            accu = vfma_n_f16(c, accu, alpha);
+            MlasStoreFloat16x4(C_data, accu);
+        } else if (beta != 0.0f16) {
+            float16x4_t c = MlasLoadFloat16x4(C_data);
+            accu = vfma_n_f16(vmul_n_f16(c, beta), accu, alpha);
+            MlasStoreFloat16x4(C_data, accu);
+        } else {
+            accu = vmulq_n_f16(accu, alpha);
+            MlasStoreFloat16x4(C_data, accu);
+        }
+
+        CountN -= 4, B_data += 4 * ldb, C_data += 4;
+    }
+
+    if (CountN > 0) {
+        const auto* a = A_data;
+        const auto* b = B_data;
+        size_t k = CountK;
+        float16x8_t accu[4];
+        size_t i = 0;
+        for (i = 0; i < 4; ++i) {
+            accu[i] = MlasZeroFloat16x8();
+        }
+        for (; k >= 8; k -= 8, a += 8, b += 8) {
+            float16x8_t a0 = MlasLoadFloat16x8(a);
+            for (i = 0; i < CountN; ++i) {
+                accu[i] = vfmaq_f16(accu[i], MlasLoadFloat16x8(b + i * ldb), a0);
+            }
+        }
+        Transpose4x8(accu[0], accu[1], accu[2], accu[3]);
+        float16x8_t accu0 = vaddq_f16(accu[0], accu[1]);
+        float16x8_t accu2 = vaddq_f16(accu[2], accu[3]);
+        float16x8_t accu0 = vaddq_f16(accu0, accu2);
+        float16x4_t accu = vadd_f16(vget_low_f16(accu0), vget_high_f16(accu0));
+
+        if (k & 4) {
+            float16x4_t b[4];
+            for (i = 0; i < CountN; ++i) {
+                b[i] = MlasLoadFloat16x4(b + i * ldb);
+            }
+            for (; i < 4; ++i) {
+                b[i] = MlasZeroFloat16x4();
+            }
+            Transpose4x4(b[0], b[1], b[2], b[3]);
+            float16x4_t a0 = MlasLoadFloat16x4(a);
+            accu = vfma_lane_f16(accu, b[0], a0, 0);
+            accu = vfma_lane_f16(accu, b[1], a0, 1);
+            accu = vfma_lane_f16(accu, b[2], a0, 2);
+            accu = vfma_lane_f16(accu, b[3], a0, 3);
+            k -= 4, a += 4, b += 4;
+        }
+
+        if (k > 0) {
+            float16x4_t b[4];
+            for (i = 0; i < CountN; ++i) {
+                b[i] = MlasLoadPartialFloat16x4(b + i * ldb, k);
+            }
+            for (; i < 4; ++i) {
+                b[i] = MlasZeroFloat16x4();
+            }
+            Transpose4x4(b[0], b[1], b[2], b[3]);
+            float16x4_t a0 = MlasLoadPartialFloat16x4(a, k);
+            accu = vfma_lane_f16(accu, b[0], a0, 0);
+            if (k > 1) {
+                accu = vfma_lane_f16(accu, b[1], a0, 1);
+            }
+            if (k > 2) {
+                accu = vfma_lane_f16(accu, b[2], a0, 2);
+            }
+        }
+
+        if (beta == 1.0f16) {
+            float16x4_t c = MlasLoadPartialFloat16x4(C_data, CountN);
+            accu = vfma_n_f16(c, accu, alpha);
+            MlasStorePartialFloat16x4(C_data, accu, CountN);
+        } else if (beta != 0.0f16) {
+            float16x4_t c = MlasLoadPartialFloat16x4(C_data, CountN);
+            accu = vfma_n_f16(vmul_n_f16(c, beta), accu, alpha);
+            MlasStorePartialFloat16x4(C_data, accu, CountN);
+        } else {
+            accu = vmulq_n_f16(accu, alpha);
+            MlasStorePartialFloat16x4(C_data, accu, CountN);
+        }
+    }
+}
+
+void HGemm_TransposedB_Kernel_M2(
+    const _mlas_fp16_* A,
+    const _mlas_fp16_* B,
+    _mlas_fp16_* C,
+    size_t CountM,
+    size_t CountN,
+    size_t CountK,
+    size_t lda,
+    size_t ldb,
+    size_t ldc,
+    float16_t alpha,
+    float16_t beta
+) {
+
+}
+
+// Full K. Directly save to C.
 void HGemm_TransposedB_Kernel(
     const MLAS_FP16* A,
     const MLAS_FP16* B,
@@ -434,6 +708,14 @@ void HGemm_TransposedB_Kernel(
 ) {
     if (CountM > 2) {
         MLAS_THROW_EX(std::runtime_error, "HGemm_TransposedB_Kernel only support <= 2 rows");
+    }
+    const _mlas_fp16_ A_data = reinterpret_cast<const _mlas_fp16_*>(A);
+    const _mlas_fp16_ B_data = reinterpret_cast<const _mlas_fp16_*>(B);
+    _mlas_fp16_* C_data = reinterpret_cast<_mlas_fp16_*>(C);
+    if (CountM == 1) {
+        HGemm_TransposedB_Kernel_M1(A_data, B_data, C_data, CountM, CountN, CountK, lda, ldb, ldc, alpha, beta);
+    } else {
+        HGemm_TransposedB_Kernel_M2(A_data, B_data, C_data, CountM, CountN, CountK, lda, ldb, ldc, alpha, beta);
     }
 }
 

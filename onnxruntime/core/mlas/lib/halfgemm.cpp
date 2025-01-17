@@ -372,8 +372,8 @@ HGemmOperation(
             if (!dispatch || !dispatch->HGemmKernel_TransposedB) {
                 MLAS_THROW_EX(std::runtime_error, "hgemm does not have A x Transposed(B) kernels");
             }
-            // When M is small, B is visited once. The overhead of Pack(B) exceeds the benefits
-            // from A x Pack(B). Therefore directly calculate A x B.
+            // When M is small, B is visited once. The overhead of Pack(B') exceeds the benefits
+            // from A x Pack(B'). Therefore directly calculate A x B'.
             // Without PackB, to utilize memory locality, iterate full K.
             const size_t StrideN = 16;
             for (size_t n = 0, countN; n < RangeCountN; n += countN) {
