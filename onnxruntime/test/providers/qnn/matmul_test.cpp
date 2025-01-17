@@ -212,8 +212,8 @@ TEST_F(QnnCPUBackendTests, MatMulOp) {
 
 #if defined(__linux__)
   // TODO: This fails on Linux (HTP emulation). Works on Windows ARM64.
-  //Expected: contains 24 values, where each value and its corresponding value in 16-byte object <18-00 00-00 00-00 00-00 00-29 4E-53 A8-55 00-00> are an almost-equal pair
-  //Actual: 16-byte object <18-00 00-00 00-00 00-00 80-28 3E-53 A8-55 00-00>, where the value pair (0.0285999943, 0) at index #12 don't match, which is -0.0286 from 0.0286
+  // Expected: contains 24 values, where each value and its corresponding value in 16-byte object <18-00 00-00 00-00 00-00 00-29 4E-53 A8-55 00-00> are an almost-equal pair
+  // Actual: 16-byte object <18-00 00-00 00-00 00-00 80-28 3E-53 A8-55 00-00>, where the value pair (0.0285999943, 0) at index #12 don't match, which is -0.0286 from 0.0286
 #else
   RunMatMulOpTest(false, {2, 1, 2, 3}, {3, 3, 2}, false, false);
 #endif
