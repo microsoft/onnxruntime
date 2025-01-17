@@ -265,47 +265,12 @@ stages:
       condition: succeededOrFailed()
       displayName: Publish React Native Detox iOS e2e Test Results
 
-
-
-    - script: |
-        git restore .
-      workingDirectory: '$(Build.SourcesDirectory)/js'
-      displayName: Restore git changes
-
-    - task: PowerShell@2
-      inputs:
-        filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/js/pack-npm-packages.ps1'
-        arguments: '"${{parameters.NpmPackagingMode}}" $(Build.SourcesDirectory) react_native'
-        workingDirectory: '$(Build.SourcesDirectory)'
-        errorActionPreference: stop
-      displayName: Pack NPM packages
-
-    - task: CopyFiles@2
-      inputs:
-        sourceFolder: $(Build.SourcesDirectory)/js/common
-        contents: onnxruntime-common*.tgz
-        targetFolder: $(Build.ArtifactStagingDirectory)
-      displayName: 'Create Artifacts onnxruntime-common'
-
-    - task: CopyFiles@2
-      inputs:
-        sourceFolder: $(Build.SourcesDirectory)/js/react_native
-        contents: onnxruntime-react-native*.tgz
-        targetFolder: $(Build.ArtifactStagingDirectory)
-      displayName: Create Artifacts onnxruntime-react-native
-
     - task: PublishPipelineArtifact@1
       inputs:
         artifact: ios_e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)
         targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
       condition: succeededOrFailed()
       displayName: Publish React Native Detox E2E test logs
-
-    - task: PublishPipelineArtifact@0
-      inputs:
-        artifactName: 'NPM_packages_ios'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
-      displayName: Publish Pipeline Artifact
 
     - template: explicitly-defined-final-tasks.yml
 
@@ -504,7 +469,7 @@ stages:
 
     - task: PublishPipelineArtifact@0
       inputs:
-        artifactName: 'NPM_packages_android'
+        artifactName: '${{parameters.PackageName}}'
         targetPath: '$(Build.ArtifactStagingDirectory)'
       displayName: Publish Pipeline Artifact
 

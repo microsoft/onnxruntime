@@ -61,7 +61,8 @@ stages:
 
 - stage: Download_Node_Package_And_Publish_Validation_Script
   dependsOn:
-  - ReactNative_CI
+  - ReactNative_CI_Android
+  - ReactNative_CI_iOS
   - Build_web_Release
   - Build_web_Debug
   jobs:
@@ -72,12 +73,12 @@ stages:
     timeoutInMinutes: 10
     steps:
     - download: build
-      artifact: 'NPM_packages'
+      artifact: 'onnxruntime-react-native'
       displayName: 'Download onnxruntime-node Pipeline Artifact'
 
     - task: CopyFiles@2
       inputs:
-        sourceFolder: '$(Pipeline.Workspace)\build\NPM_packages'
+        sourceFolder: '$(Pipeline.Workspace)\build\onnxruntime-react-native'
         contents: onnxruntime-*.tgz
         targetFolder: $(Build.ArtifactStagingDirectory)\node-artifacts
       displayName: 'Copy onnxruntime-node Artifacts'
