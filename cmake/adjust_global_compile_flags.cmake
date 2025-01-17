@@ -329,10 +329,6 @@ else()
     # suppress warnings from flatbuffers
     string(APPEND CMAKE_CXX_FLAGS " -Wno-restrict ")
     string(APPEND CMAKE_C_FLAGS   " -Wno-restrict ")
-    if(onnxruntime_USE_XNNPACK)
-      # https://github.com/google/XNNPACK/issues/7650
-      string(APPEND CMAKE_C_FLAGS   " -Wno-incompatible-pointer-types ")
-    endif()
   endif()
   # Check support for AVX and f16c.
   include(CheckCXXCompilerFlag)
