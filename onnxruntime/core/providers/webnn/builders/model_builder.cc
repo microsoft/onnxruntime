@@ -393,12 +393,12 @@ void ModelBuilder::AddOperand(const std::string& name, const emscripten::val& op
 }
 
 void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
-  // decrement usage count if this is a known initializer.
+  // Decrement usage count if this is a known initializer.
   // For simplicity the OpBuilder::AddInitializersToSkip implementations may call this for arbitrary input names
   // without first checking if the value is an initializer.
   auto entry = initializer_usage_.find(tensor_name);
   if (entry != initializer_usage_.end()) {
-    entry->second -= 1;
+    --entry->second;
   }
 }
 
