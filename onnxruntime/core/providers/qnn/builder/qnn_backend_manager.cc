@@ -547,8 +547,8 @@ Status QnnBackendManager::CreateContext() {
   QnnContext_Config_t context_priority_config = QNN_CONTEXT_CONFIG_INIT;
   ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, context_priority_config));
   const QnnContext_Config_t* npu_context_configs[] = {&context_priority_config,
-                                                  &context_config_weight_sharing,
-                                                  nullptr};
+                                                      &context_config_weight_sharing,
+                                                      nullptr};
   const QnnContext_Config_t* empty_context_configs[] = {nullptr};
   bool is_npu_backend = IsNpuBackend(GetQnnBackendType());
 
