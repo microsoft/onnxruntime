@@ -151,23 +151,23 @@ class PartitioningInfo:
 
         if self.supported_groups:
             logger.info(
-                f'\tPartition sizes: [{", ".join([str(len(partition)) for partition in self.supported_groups])}]'
+                f"\tPartition sizes: [{', '.join([str(len(partition)) for partition in self.supported_groups])}]"
             )
 
             # dump full groups if debug output is enabled
             for group in self.supported_groups:
-                logger.debug(f'Nodes in group: {",".join([f"{node.op_type}:{node.name}" for node in group])}')
+                logger.debug(f"Nodes in group: {','.join([f'{node.op_type}:{node.name}' for node in group])}")
 
         logger.info(f"Unsupported nodes due to operator={self.nodes_unsupported_due_to_op}")
         if self.unsupported_ops:
-            logger.info(f'\tUnsupported ops: {",".join(sorted(self.unsupported_ops))}')
+            logger.info(f"\tUnsupported ops: {','.join(sorted(self.unsupported_ops))}")
 
         caveats = self.supported_ops_checker.get_caveats()
         if caveats:
             indent = " " * 5
             logger.info(
                 "\tCaveats that have not been checked and may result in a node not actually being supported:  "
-                f'{"".join([os.linesep + indent + caveat for caveat in caveats])}'
+                f"{''.join([os.linesep + indent + caveat for caveat in caveats])}"
             )
 
         if self.nodes_unsupported_due_to_dynamic_input:
@@ -341,7 +341,7 @@ def _check_partitioning_for_graph(
                 continue
 
             if not is_op_supported:
-                unsupported_ops.add(f'{node.domain if node.domain else "ai.onnx"}:{node.op_type}')
+                unsupported_ops.add(f"{node.domain if node.domain else 'ai.onnx'}:{node.op_type}")
                 num_unsupported_nodes_due_to_op += 1
 
             if not is_input_shape_supported:
@@ -349,7 +349,7 @@ def _check_partitioning_for_graph(
 
             if not is_rank_supported:
                 num_unsupported_nodes_due_to_rank += 1
-                ops_with_unsupported_rank.add(f'{node.domain if node.domain else "ai.onnx"}:{node.op_type}')
+                ops_with_unsupported_rank.add(f"{node.domain if node.domain else 'ai.onnx'}:{node.op_type}")
 
         if is_node_supported:
             num_supported_nodes += 1
@@ -569,8 +569,7 @@ def check_shapes(graph: onnx.GraphProto, logger: logging.Logger | None = None):
     # a model where all inputs are dynamic (results in no value_info)
     if not graph.value_info and not (len(graph.node) == 1 or len(dynamic_inputs) == len(graph.input)):
         logger.warning(
-            "Unable to check shapes within model. "
-            "ONNX shape inferencing should be run on the model prior to checking."
+            "Unable to check shapes within model. ONNX shape inferencing should be run on the model prior to checking."
         )
 
     for vi in graph.value_info:

@@ -201,8 +201,8 @@ class FusionBartAttention(FusionAttention):
                 root_input = output
                 break
 
-        graph_input_names = set([node.name for node in self.model.graph().input])
-        graph_output_names = set([node.name for node in self.model.graph().output])
+        graph_input_names = {node.name for node in self.model.graph().input}
+        graph_output_names = {node.name for node in self.model.graph().output}
 
         v_nodes = self.model.match_parent_path(
             matmul_qkv,

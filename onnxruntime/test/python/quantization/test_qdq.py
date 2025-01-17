@@ -759,12 +759,12 @@ class TestQDQFormatConvRelu(TestQDQFormat):
             QuantType.QInt16: TensorProto.INT16,
             QuantType.QUInt16: TensorProto.UINT16,
         }
-        assert (
-            weight_type not in to_tensor_types or to_tensor_types[weight_type] in zero_types
-        ), f"weight_type={weight_type} not in zero_types={zero_types}"
-        assert (
-            activation_type not in to_tensor_types or to_tensor_types[activation_type] in zero_types
-        ), f"activation_type={activation_type} not in zero_types={zero_types}"
+        assert weight_type not in to_tensor_types or to_tensor_types[weight_type] in zero_types, (
+            f"weight_type={weight_type} not in zero_types={zero_types}"
+        )
+        assert activation_type not in to_tensor_types or to_tensor_types[activation_type] in zero_types, (
+            f"activation_type={activation_type} not in zero_types={zero_types}"
+        )
 
         check_model_correctness(self, model_fp32_path, model_qdq_path, data_reader.get_next(), rtol=rtol, atol=atol)
 

@@ -156,6 +156,7 @@ def run_ort_pipeline(
     batch_count,
     start_memory,
     memory_monitor_type,
+    skip_warmup: bool = False,
 ):
     from diffusers import OnnxStableDiffusionPipeline
 
@@ -164,6 +165,8 @@ def run_ort_pipeline(
     prompts, negative_prompt = example_prompts()
 
     def warmup():
+        if skip_warmup:
+            return
         prompt, negative = warmup_prompts()
         pipe(
             prompt=[prompt] * batch_size,
@@ -247,6 +250,7 @@ def run_torch_pipeline(
     batch_count,
     start_memory,
     memory_monitor_type,
+    skip_warmup=False,
 ):
     prompts, negative_prompt = example_prompts()
 
@@ -255,6 +259,8 @@ def run_torch_pipeline(
     is_flux = isinstance(pipe, diffusers.FluxPipeline)
 
     def warmup():
+        if skip_warmup:
+            return
         prompt, negative = warmup_prompts()
         extra_kwargs = get_negative_prompt_kwargs(negative, False, is_flux, batch_size)
         pipe(prompt=[prompt] * batch_size, height=height, width=width, num_inference_steps=steps, **extra_kwargs)
@@ -320,6 +326,7 @@ def run_ort(
     start_memory,
     memory_monitor_type,
     tuning: bool,
+    skip_warmup: bool = False,
 ):
     provider_and_options = provider
     if tuning and provider in ["CUDAExecutionProvider", "ROCMExecutionProvider"]:
@@ -342,6 +349,7 @@ def run_ort(
         batch_count,
         start_memory,
         memory_monitor_type,
+        skip_warmup=skip_warmup,
     )
 
     result.update(
@@ -395,6 +403,7 @@ def run_optimum_ort_pipeline(
     start_memory,
     memory_monitor_type,
     use_num_images_per_prompt=False,
+    skip_warmup=False,
 ):
     print("Pipeline type", type(pipe))
     from optimum.onnxruntime.modeling_diffusion import ORTFluxPipeline
@@ -404,6 +413,8 @@ def run_optimum_ort_pipeline(
     prompts, negative_prompt = example_prompts()
 
     def warmup():
+        if skip_warmup:
+            return
         prompt, negative = warmup_prompts()
         extra_kwargs = get_negative_prompt_kwargs(negative, use_num_images_per_prompt, is_flux, batch_size)
         if use_num_images_per_prompt:
@@ -484,6 +495,7 @@ def run_optimum_ort(
     start_memory,
     memory_monitor_type,
     use_io_binding: bool = False,
+    skip_warmup: bool = False,
 ):
     load_start = time.time()
     pipe = get_optimum_ort_pipeline(
@@ -507,6 +519,7 @@ def run_optimum_ort(
         batch_count,
         start_memory,
         memory_monitor_type,
+        skip_warmup=skip_warmup,
     )
 
     result.update(
@@ -668,6 +681,7 @@ def run_tensorrt_static(
     max_batch_size: int,
     nvtx_profile: bool = False,
     use_cuda_graph: bool = True,
+    skip_warmup: bool = False,
 ):
     print("[I] Initializing TensorRT accelerated StableDiffusionXL txt2img pipeline (static input shape)")
 
@@ -729,6 +743,8 @@ def run_tensorrt_static(
     pipeline.load_resources(height, width, batch_size)
 
     def warmup():
+        if skip_warmup:
+            return
         prompt, negative = warmup_prompts()
         pipeline.run([prompt] * batch_size, [negative] * batch_size, height, width, denoising_steps=steps)
 
@@ -800,6 +816,7 @@ def run_tensorrt_static_xl(
     max_batch_size: int,
     nvtx_profile: bool = False,
     use_cuda_graph=True,
+    skip_warmup: bool = False,
 ):
     print("[I] Initializing TensorRT accelerated StableDiffusionXL txt2img pipeline (static input shape)")
 
@@ -883,6 +900,8 @@ def run_tensorrt_static_xl(
         )
 
     def warmup():
+        if skip_warmup:
+            return
         prompt, negative = warmup_prompts()
         run_sd_xl_inference([prompt] * batch_size, [negative] * batch_size)
 
@@ -947,6 +966,7 @@ def run_ort_trt_xl(
     max_batch_size: int,
     nvtx_profile: bool = False,
     use_cuda_graph=True,
+    skip_warmup: bool = False,
 ):
     from demo_utils import initialize_pipeline
     from engine_builder import EngineType
@@ -978,6 +998,8 @@ def run_ort_trt_xl(
         )
 
     def warmup():
+        if skip_warmup:
+            return
         prompt, negative = warmup_prompts()
         run_sd_xl_inference([prompt] * batch_size, [negative] * batch_size)
 
@@ -1046,6 +1068,7 @@ def run_torch(
     batch_count: int,
     start_memory,
     memory_monitor_type,
+    skip_warmup: bool = True,
 ):
     torch.backends.cudnn.enabled = True
     torch.backends.cudnn.benchmark = True
@@ -1072,6 +1095,7 @@ def run_torch(
                 batch_count,
                 start_memory,
                 memory_monitor_type,
+                skip_warmup=skip_warmup,
             )
     else:
         result = run_torch_pipeline(
@@ -1085,6 +1109,7 @@ def run_torch(
             batch_count,
             start_memory,
             memory_monitor_type,
+            skip_warmup=skip_warmup,
         )
 
     result.update(
@@ -1189,6 +1214,14 @@ def parse_arguments():
         help="Use I/O Binding for Optimum.",
     )
     parser.set_defaults(use_io_binding=False)
+
+    parser.add_argument(
+        "--skip_warmup",
+        required=False,
+        action="store_true",
+        help="No warmup.",
+    )
+    parser.set_defaults(skip_warmup=False)
 
     parser.add_argument(
         "-b",
@@ -1329,6 +1362,7 @@ def main():
                 max_batch_size=args.max_trt_batch_size,
                 nvtx_profile=False,
                 use_cuda_graph=args.enable_cuda_graph,
+                skip_warmup=args.skip_warmup,
             )
         else:
             print("Testing Txt2ImgPipeline with static input shape. Backend is ORT TensorRT EP.")
@@ -1347,6 +1381,7 @@ def main():
                 max_batch_size=args.max_trt_batch_size,
                 nvtx_profile=False,
                 use_cuda_graph=args.enable_cuda_graph,
+                skip_warmup=args.skip_warmup,
             )
     elif args.engine == "optimum" and provider == "CUDAExecutionProvider":
         if "xl" in args.version:
@@ -1366,11 +1401,12 @@ def main():
             start_memory=start_memory,
             memory_monitor_type=memory_monitor_type,
             use_io_binding=args.use_io_binding,
+            skip_warmup=args.skip_warmup,
         )
     elif args.engine == "onnxruntime":
-        assert args.pipeline and os.path.isdir(
-            args.pipeline
-        ), "--pipeline should be specified for the directory of ONNX models"
+        assert args.pipeline and os.path.isdir(args.pipeline), (
+            "--pipeline should be specified for the directory of ONNX models"
+        )
         print(f"Testing diffusers StableDiffusionPipeline with {provider} provider and tuning={args.tuning}")
         result = run_ort(
             model_name=sd_model,
@@ -1386,6 +1422,7 @@ def main():
             start_memory=start_memory,
             memory_monitor_type=memory_monitor_type,
             tuning=args.tuning,
+            skip_warmup=args.skip_warmup,
         )
     elif args.engine == "tensorrt" and "xl" in args.version:
         print("Testing Txt2ImgXLPipeline with static input shape. Backend is TensorRT.")
@@ -1404,6 +1441,7 @@ def main():
             max_batch_size=args.max_trt_batch_size,
             nvtx_profile=False,
             use_cuda_graph=args.enable_cuda_graph,
+            skip_warmup=args.skip_warmup,
         )
     elif args.engine == "tensorrt":
         print("Testing Txt2ImgPipeline with static input shape. Backend is TensorRT.")
@@ -1423,6 +1461,7 @@ def main():
             max_batch_size=args.max_trt_batch_size,
             nvtx_profile=False,
             use_cuda_graph=args.enable_cuda_graph,
+            skip_warmup=args.skip_warmup,
         )
     else:
         print(
@@ -1441,6 +1480,7 @@ def main():
             batch_count=args.batch_count,
             start_memory=start_memory,
             memory_monitor_type=memory_monitor_type,
+            skip_warmup=args.skip_warmup,
         )
 
     print(result)

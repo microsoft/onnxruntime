@@ -110,17 +110,17 @@ class TestSymbolicShapeInference(unittest.TestCase):
 class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
     def _check_shapes(self, graph, inferred_graph, vis):  # type: (GraphProto, GraphProto, List[ValueInfoProto]) -> None
         names_in_vis = {x.name for x in vis}
-        vis = list(x for x in graph.value_info if x.name not in names_in_vis) + vis
+        vis = [x for x in graph.value_info if x.name not in names_in_vis] + vis
         inferred_vis = list(inferred_graph.value_info)
-        vis = list(sorted(vis, key=lambda x: x.name))
-        inferred_vis = list(sorted(inferred_vis, key=lambda x: x.name))
+        vis = sorted(vis, key=lambda x: x.name)
+        inferred_vis = sorted(inferred_vis, key=lambda x: x.name)
         if vis == inferred_vis:
             return
         # otherwise some custom logic to give a nicer diff
         vis_names = {x.name for x in vis}
         inferred_vis_names = {x.name for x in inferred_vis}
         assert vis_names == inferred_vis_names, (vis_names, inferred_vis_names)
-        for vi, inferred_vi in zip(vis, inferred_vis):
+        for vi, inferred_vi in zip(vis, inferred_vis, strict=False):
             assert vi == inferred_vi, f"\n{vi}\n{inferred_vi}\n"
         raise AssertionError()
 
