@@ -28,7 +28,7 @@ class GeneratePositionIDsProgram final : public Program<GeneratePositionIDsProgr
                                           {"head_size", ProgramUniformVariableDataType::Uint32},
                                           {"rotary_embedding_dim", ProgramUniformVariableDataType::Uint32},
                                           {"interleaved", ProgramUniformVariableDataType::Uint32},
-                                          {"position_ids_format", ProgramUniformVariableDataType::Uint32},
+                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32},
                                           {"total_seqlen", ProgramUniformVariableDataType::Uint32});
 
  private:

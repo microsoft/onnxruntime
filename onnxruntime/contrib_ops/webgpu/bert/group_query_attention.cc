@@ -36,8 +36,8 @@ Status GeneratePositionIDsProgram::GenerateShaderCode(ShaderHelper& sh) const {
   sh.MainFunctionBody() << "let batch_idx = global_idx / uniforms.sequence_length;\n"
                         << "let sequence_idx = i32(global_idx % uniforms.sequence_length);\n"
                         << "var pos_id: u32 = 0u;\n"
-                        << "if (is_first_prompt == 0) {\n"
-                        << "  let total_seqlen = ${seqLensInputHelper.getByOffset('batch_idx')} + 1;\n"
+                        << "if (uniforms.is_first_prompt == 0) {\n"
+                        << "  let total_seqlen = seqlens[batch_idx] + 1;\n"
                         << "  let past_seqlen = total_seqlen - i32(uniforms.sequence_length);\n"
                         << "  if (past_seqlen + sequence_idx < total_seqlen) {\n"
                         << "    pos_id = u32(past_seqlen + sequence_idx);\n"
@@ -45,12 +45,13 @@ Status GeneratePositionIDsProgram::GenerateShaderCode(ShaderHelper& sh) const {
                         << "    pos_id = 1u;\n"
                         << "  }\n"
                         << "}\n"
-                        << "output[global_idx] = pos_id;\n";
+                        << "output[global_idx] = vec2<u32>(pos_id, u32(select(0, 0xFFFFFFF, pos_id < 0)));\n";
   return Status::OK();
 }
 
 Status GeneratePositionIDs(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params, const Tensor* seqlens, Tensor* output_tensor) {
   GeneratePositionIDsProgram program(params);
+  auto output_size = params.is_first_prompt_ ? 1 : params.batch_size_ * params.sequence_length_;
   program.AddInput(seqlens)
       .AddOutput(output_tensor)
       .AddUniformVariables({{static_cast<uint32_t>(params.batch_size_)},
@@ -60,14 +61,15 @@ Status GeneratePositionIDs(onnxruntime::webgpu::ComputeContext& context, const W
                             {static_cast<uint32_t>(params.rotary_dim_)},
                             {static_cast<uint32_t>(params.rotary_interleaved_)},
                             {static_cast<uint32_t>(params.is_first_prompt_ ? 0 : 1)},
-                            {static_cast<uint32_t>(params.total_sequence_length_)}});
+                            {static_cast<uint32_t>(params.total_sequence_length_)}})
+      .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
   return context.RunProgram(program);
 }
 
 Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params, const Tensor* input, const Tensor* pos_ids, const Tensor* cos_cache, const Tensor* sin_cache, Tensor* output, bool is_packed_qkv, bool is_query_input) {
   const auto half_rotary_embedding_dim = gsl::narrow<uint32_t>(cos_cache->Shape()[1]);
   auto num_heads = is_packed_qkv ? params.num_heads_ + 2 * params.kv_num_heads_ : (is_query_input ? params.num_heads_ : params.kv_num_heads_);
-  const TensorShape global_shape({params.batch_size_, params.sequence_length_, num_heads, params.head_size_ - half_rotary_embedding_dim});
+  const TensorShape global_shape({params.batch_size_, params.sequence_length_, num_heads, static_cast<int64_t>(params.head_size_) - static_cast<int64_t>(half_rotary_embedding_dim)});
   const auto rank = global_shape.NumDimensions();
   std::vector<uint32_t> global_dims(rank);
   std::vector<uint32_t> global_strides(rank);
@@ -162,7 +164,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     if (do_rotary_) {
       Tensor qRotary = context.CreateGPUTensor(qBNSH.DataType(), qBNSH.Shape());
       Tensor kRotary = context.CreateGPUTensor(kBNSH.DataType(), kBNSH.Shape());
-      TensorShape pos_ids_shape = parameters.is_first_prompt_ ? TensorShape({1}) : TensorShape({parameters.batch_size_ * parameters.sequence_length_});
+      TensorShape pos_ids_shape = parameters.is_first_prompt_ ? TensorShape({1}) : TensorShape({static_cast<int64_t>(parameters.batch_size_) * static_cast<int64_t>(parameters.sequence_length_)});
       Tensor pos_ids = context.CreateGPUTensor(DataTypeImpl::GetType<int64_t>(), pos_ids_shape);
       ORT_RETURN_IF_ERROR(GeneratePositionIDs(context, parameters, seqlens_k, &pos_ids));
 
@@ -177,9 +179,9 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     }
   } else {
     // Q, K and V are packed. Both key and value are nullptr
-    if (parameters.do_rotary_) {
+    if (do_rotary_) {
       Tensor qRotary = context.CreateGPUTensor(qBNSH.DataType(), qBNSH.Shape());
-      TensorShape pos_ids_shape = parameters.is_first_prompt_ ? TensorShape({1}) : TensorShape({parameters.batch_size_ * parameters.sequence_length_});
+      TensorShape pos_ids_shape = parameters.is_first_prompt_ ? TensorShape({1}) : TensorShape({static_cast<int64_t>(parameters.batch_size_) * static_cast<int64_t>(parameters.sequence_length_)});
       Tensor pos_ids = context.CreateGPUTensor(DataTypeImpl::GetType<int64_t>(), pos_ids_shape);
       ORT_RETURN_IF_ERROR(GeneratePositionIDs(context, parameters, seqlens_k, &pos_ids));
 
