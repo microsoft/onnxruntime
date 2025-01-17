@@ -712,6 +712,28 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
   }
 
+  fn perform16_64_16MatMul_NoSubgroup(base_A:u32, base_B:u32, a_idx:u32)
+  {
+    var own_a0: vec4<u32> = tile_A[base_A + a_idx][0];
+    var own_a1: vec4<u32> = tile_A[base_A + a_idx][1];
+    var own_a2: vec4<u32> = tile_A[base_A + a_idx][2];
+    var own_a3: vec4<u32> = tile_A[base_A + a_idx][3];
+    var own_scale_a: f16 = scale_A[base_A + a_idx];
+    for (var col:u32 = 0; col < 16; col++)
+    {
+      var scale: vec2<f16> = scale_B[base_B + col];
+      scale = scale * own_scale_a;
+      var b0: vec4<u32> = tile_B[base_B + col][0];
+      var b1: vec4<u32> = tile_B[base_B + col][1];
+      var b2: vec4<u32> = tile_B[base_B + col][2];
+      var b3: vec4<u32> = tile_B[base_B + col][3];
+      var local_sum = DP4AI(own_a0, b0);
+      local_sum += DP4AI(own_a1, b1);
+      var local_sum2 = DP4AI(own_a2, b2);
+      local_sum2 += DP4AI(own_a3, b3);
+      lane_output[col] += (f16(local_sum) * scale[0] + f16(local_sum2) * scale[1]);
+    }
+  }
 )ADDNL_FN";
 
   shader.MainFunctionBody() << R"MAIN_FN(
@@ -744,7 +766,11 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     // Perform the matmul for the subtile this subgroup is responsible for.
     if (sg_size == 16)
     {
-      perform16_64_16MatMul_sgsize16(subtile_a_base, subtile_b_base, sg_id);
+       perform16_64_16MatMul_sgsize16(subtile_a_base, subtile_b_base, sg_id);
+    }
+    else
+    {
+      perform16_64_16MatMul_NoSubgroup(subtile_a_base, subtile_b_base, subtile_thread_id);
     }
     workgroupBarrier();
   }
