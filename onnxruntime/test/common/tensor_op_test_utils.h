@@ -6,7 +6,7 @@
 #include <random>
 #include <type_traits>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #include "gtest/gtest.h"
 
@@ -120,6 +120,19 @@ inline std::vector<MLFloat16> ValueRange<MLFloat16>(size_t count, MLFloat16 star
   return result;
 }
 
+template <>
+inline std::vector<BFloat16> ValueRange<BFloat16>(size_t count, BFloat16 start, BFloat16 step) {
+  std::vector<BFloat16> result;
+  result.reserve(count);
+  float curr = start.ToFloat();
+  float f_step = step.ToFloat();
+  for (size_t i = 0; i < count; ++i) {
+    result.emplace_back(BFloat16(curr));
+    curr += f_step;
+  }
+  return result;
+}
+
 inline std::pair<float, float> MeanStdev(gsl::span<const float> v) {
   float sum = std::accumulate(v.begin(), v.end(), 0.0f);
   float mean = sum / v.size();
@@ -178,6 +191,24 @@ inline void CheckTensor(const Tensor& expected_tensor, const Tensor& output_tens
       ASSERT_TRUE(diff <= (atol + rtol * fabs(expected_value))) << "value mismatch at index " << i << "; expected: "
                                                                 << expected_value << ", actual: " << actual_value;
     }
+  }
+}
+
+template <typename T>
+std::vector<T> GetTypedArray(std::vector<float> inputs) {
+  static_assert(std::is_same<T, float>::value || std::is_same<T, double>::value ||
+                    std::is_same<T, MLFloat16>::value || std::is_integral_v<T>,
+                "Only float, double, MLFloat16, and integral types are supported.");
+  if constexpr (std::is_same<T, float>::value) {
+    return inputs;
+  } else if constexpr (std::is_integral_v<T> || std::is_same<T, double>::value) {
+    std::vector<T> result(inputs.size());
+    for (size_t i = 0; i < inputs.size(); i++) {
+      result[i] = static_cast<T>(inputs[i]);
+    }
+    return result;
+  } else {
+    return ToFloat16(inputs);
   }
 }
 

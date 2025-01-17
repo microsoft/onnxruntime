@@ -5,6 +5,7 @@
 
 #include "core/framework/debug_node_inputs_outputs_utils.h"
 #include "core/framework/print_tensor_utils.h"
+#include "core/framework/print_tensor_statistics_utils.h"
 #include <iomanip>
 #include <cctype>
 #include <string>
@@ -60,6 +61,9 @@ bool FilterNode(const NodeDumpOptions& dump_options, const Node& node) {
 template <typename T>
 void DumpTensorToStdOut(const Tensor& tensor, const NodeDumpOptions& dump_options) {
   onnxruntime::utils::PrintCpuTensor<T>(tensor, dump_options.snippet_threshold, dump_options.snippet_edge_items);
+  if (dump_options.dump_flags & NodeDumpOptions::DumpFlags::StatisticsData) {
+    onnxruntime::utils::PrintCpuTensorStats<T>(tensor);
+  }
 }
 
 PathString MakeTensorFileName(const std::string& tensor_name, const NodeDumpOptions& dump_options) {
@@ -72,9 +76,9 @@ PathString MakeTensorFileName(const std::string& tensor_name, const NodeDumpOpti
   return path_utils::MakePathString(make_valid_name(tensor_name), dump_options.file_suffix, ".tensorproto");
 }
 
-void DumpTensorToFile(const Tensor& tensor, const std::string& tensor_name, const Path& file_path) {
+void DumpTensorToFile(const Tensor& tensor, const std::string& tensor_name, const std::filesystem::path& file_path) {
   auto tensor_proto = utils::TensorToTensorProto(tensor, tensor_name);
-  const PathString file_path_str = file_path.ToPathString();
+  const PathString file_path_str = file_path.native();
   int output_fd;
   ORT_THROW_IF_ERROR(Env::Default().FileOpenWr(file_path_str, output_fd));
   try {
@@ -298,7 +302,7 @@ void DumpCpuTensor(
       break;
     }
     case NodeDumpOptions::DataDestination::TensorProtoFiles: {
-      const Path tensor_file = dump_options.output_dir / Path::Parse(MakeTensorFileName(tensor_metadata.name, dump_options));
+      const std::filesystem::path tensor_file = dump_options.output_dir / MakeTensorFileName(tensor_metadata.name, dump_options);
       DumpTensorToFile(tensor, tensor_metadata.name, tensor_file);
       break;
     }
@@ -329,7 +333,7 @@ void DumpTensor(
   } else {
     std::cout << tensor_location << "\n";
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
     const auto data_type = tensor.DataType();
     // Dumping GPU only when cuda is enabled.
     if (tensor_location.device.Type() == OrtDevice::GPU) {
@@ -376,6 +380,9 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
     if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpNodePlacement, true)) {
       opts.dump_flags |= NodeDumpOptions::DumpFlags::NodePlacement;
     }
+    if (ParseEnvironmentVariableWithDefault<bool>(env_vars::kDumpStatisticsData, false)) {
+      opts.dump_flags |= NodeDumpOptions::DumpFlags::StatisticsData;
+    }
 
     opts.filter.name_pattern = Env::Default().GetEnvironmentVar(env_vars::kNameFilter);
     opts.filter.op_type_pattern = Env::Default().GetEnvironmentVar(env_vars::kOpTypeFilter);
@@ -404,11 +411,11 @@ const NodeDumpOptions& NodeDumpOptionsFromEnvironmentVariables() {
       }
     }
 
-    opts.output_dir = Path::Parse(ToPathString(Env::Default().GetEnvironmentVar(env_vars::kOutputDir)));
+    opts.output_dir = ToPathString(Env::Default().GetEnvironmentVar(env_vars::kOutputDir));
 
     std::string sqlite_db_prefix =
         ParseEnvironmentVariableWithDefault<std::string>(env_vars::kSqliteDbPrefix, "execution-trace");
-    opts.sqlite_db_prefix = Path::Parse(ToPathString(sqlite_db_prefix));
+    opts.sqlite_db_prefix = ToPathString(sqlite_db_prefix);
 
     // check for confirmation for dumping data to files for all nodes
     const bool is_input_or_output_requested = ((opts.dump_flags & NodeDumpOptions::DumpFlags::InputData) != 0) ||

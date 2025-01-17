@@ -60,4 +60,4 @@ class QDQSplit(QDQOperatorBase):
             self.quantizer.quantize_activation_tensor(node.input[0])
         if not self.disable_qdq_for_node_output:
             for output in node.output:
-                self.quantizer.quantize_activation_tensor(output, node.input[0])
+                self.quantizer.quantize_output_same_as_input(output, node.input[0], node.name)

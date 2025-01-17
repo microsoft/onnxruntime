@@ -27,7 +27,7 @@ limitations under the License.
 #include "core/common/logging/severity.h"
 #include "core/common/safeint.h"
 
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/allocator.h"
 
@@ -482,14 +482,14 @@ class BFCArena : public IAllocator {
 
   Bin* BinForSize(size_t bytes) { return BinFromIndex(BinNumForSize(bytes)); }
 
-  char bins_space_[sizeof(Bin) * kNumBins];
+  alignas(Bin) char bins_space_[sizeof(Bin) * kNumBins];
 
   // The size of the current region allocation.
   SafeInt<size_t> curr_region_allocation_bytes_;
 
   std::unique_ptr<IAllocator> device_allocator_;
 
-  mutable OrtMutex lock_;
+  mutable std::mutex lock_;
 
   RegionManager region_manager_;
   std::vector<Chunk> chunks_;

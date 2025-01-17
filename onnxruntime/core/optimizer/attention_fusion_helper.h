@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include <limits>
 #include "onnx/defs/shape_inference.h"
 #include "onnx/defs/tensor_proto_util.h"
 #include "core/framework/tensorprotoutils.h"
@@ -23,7 +24,8 @@ struct MatchGemmResult {
 };
 
 // Compare the expected parameters (starts, ends, axes and step)
-bool CheckSliceParameters(const Graph& graph, const Node& slice, const std::vector<int>& input_indices, const std::vector<int64_t>& expected_values, const logging::Logger& logger) {
+bool CheckSliceParameters(const Graph& graph, const Node& slice, const std::vector<int>& input_indices,
+                          const std::vector<int64_t>& expected_values, const logging::Logger& logger) {
   ORT_ENFORCE(input_indices.size() == expected_values.size() && input_indices.size() > 0);
 
   // Here assumes that the last element of input_indices is the maximum one.
@@ -279,8 +281,8 @@ bool ValidateUnidirMask(std::vector<T> mask_data, int64_t w, bool& is_undirectio
     is_undirectional = true;
 
     const T* p = mask_data.data();
-    for (int i = 0; i < w; i++) {
-      for (int j = 0; j < w; j++) {
+    for (int64_t i = 0; i < w; i++) {
+      for (int64_t j = 0; j < w; j++) {
         if (*p != static_cast<T>(1)) {
           is_one = false;
         }
@@ -766,7 +768,8 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const No
   }
 
   // check where has X=-Infinity
-  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(where.InputDefs()[1]), -INFINITY, true)) {
+  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(where.InputDefs()[1]),
+                                                       -std::numeric_limits<float>::infinity(), true)) {
     DEBUG_LOG("where const not matched.");
     return false;
   }
@@ -1117,8 +1120,8 @@ bool CheckNodesInPathV(const Graph& graph, const Node& reshape, const Node& tran
   head_size = v_reshape_shape[3];
 
   // Check reshape for attention output has shape input (0, 0, -1) or (0, 0, N*H)
-  // In DistilBert, the reshape after qkv paths can not be fused during reshape fusion, so we do not have the correspondig
-  // initializer. We need to get the shape information from the input of concat.
+  // In DistilBert, the reshape after qkv paths can not be fused during reshape fusion, so we do not have the
+  // corresponding initializer. We need to get the shape information from the input of concat.
   InlinedVector<int64_t> reshape_shape;
   if (!optimizer_utils::AppendTensorFromInitializer(graph, *(reshape.InputDefs()[1]), reshape_shape)) {
     if (CheckDistilBertReshapeShape(graph, reshape, hidden_size, record_node_idx, logger)) {

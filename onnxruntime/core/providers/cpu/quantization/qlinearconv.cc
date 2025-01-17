@@ -77,7 +77,8 @@ class QLinearConv : public OpKernel {
     W_zero_point_value = W_zero_point_data[0];
     for (int64_t i = 1; i < W_zero_point_size; i++) {
       ORT_ENFORCE(W_zero_point_data[i] == W_zero_point_value,
-                  "QLinearConv : zero point of per-channel filter must be same");
+                  "QLinearConv : zero point of per-channel filter must be same. "
+                  "This happens by design if the quantization is symmetric.");
     }
   }
 
@@ -379,8 +380,8 @@ Status QLinearConv<ActType>::PrePack(const Tensor& tensor, int input_idx, Alloca
   const int64_t M = shape[0];
   const int64_t C = shape[1];
 
-  // Verify that the total number of output channels is a multiple of the group count.
-  if (M % conv_attrs_.group != 0) {
+  // Verify that conv_attrs_.group is not 0 and the total number of output channels is a multiple of the group count.
+  if (conv_attrs_.group == 0 || M % conv_attrs_.group != 0) {
     return Status::OK();
   }
 

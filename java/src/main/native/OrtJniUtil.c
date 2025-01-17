@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2022 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2023 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 #include <jni.h>
@@ -146,6 +146,14 @@ jint convertFromONNXDataFormat(ONNXTensorElementDataType type) {
             return 15;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:    // Non-IEEE floating-point format based on IEEE754 single-precision
             return 16;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:
+            return 17;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ:
+            return 18;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2:
+            return 19;
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ:
+            return 20;
         default:
             return -1;
     }
@@ -190,6 +198,14 @@ ONNXTensorElementDataType convertToONNXDataFormat(jint type) {
             return ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128;  // complex with float64 real and imaginary components
         case 16:
             return ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16;    // Non-IEEE floating-point format based on IEEE754 single-precision
+        case 17:
+          return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN;
+        case 18:
+          return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ;
+        case 19:
+          return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2;
+        case 20:
+          return ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ;
         default:
             return ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
     }
@@ -200,10 +216,15 @@ size_t onnxTypeSize(ONNXTensorElementDataType type) {
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:   // maps to c type uint8_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:    // maps to c type int8_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ:
             return 1;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:  // maps to c type uint16_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:   // maps to c type int16_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:    // Non-IEEE floating-point format based on IEEE754 single-precision
             return 2;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:  // maps to c type uint32_t
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:   // maps to c type int32_t
@@ -215,7 +236,6 @@ size_t onnxTypeSize(ONNXTensorElementDataType type) {
             return 8;
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING:  // maps to c++ type std::string
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:    // Non-IEEE floating-point format based on IEEE754 single-precision
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:   // complex with float32 real and imaginary components
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:  // complex with float64 real and imaginary components
         default:
@@ -256,6 +276,12 @@ typedef union FP32 {
 jfloat convertHalfToFloat(const uint16_t half) {
     FP32 output;
     output.intVal = (((half&0x8000)<<16) | (((half&0x7c00)+0x1C000)<<13) | ((half&0x03FF)<<13));
+    return output.floatVal;
+}
+
+jfloat convertBF16ToFloat(const uint16_t bf16) {
+    FP32 output;
+    output.intVal = bf16 << 16;
     return output.floatVal;
 }
 
@@ -316,7 +342,6 @@ jobject convertToTensorInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTensorT
   if (code != ORT_OK) {
     return NULL;
   }
-  //printf("numDim %d\n",numDim);
   int64_t* dimensions = (int64_t*) malloc(sizeof(int64_t)*numDim);
   code = checkOrtStatus(jniEnv, api, api->GetDimensions(info, dimensions, numDim));
   if (code != ORT_OK) {
@@ -332,12 +357,31 @@ jobject convertToTensorInfo(JNIEnv *jniEnv, const OrtApi * api, const OrtTensorT
   free(dimensions);
   dimensions = NULL;
 
+  // Create the string array for the names.
+  const char** dimensionNames = (const char**) malloc(sizeof(char*)*numDim);
+  if (dimensionNames == NULL) {
+    throwOrtException(jniEnv, 1, "Not enough memory");
+    return NULL;
+  }
+  code = checkOrtStatus(jniEnv, api, api->GetSymbolicDimensions(info, dimensionNames, numDim));
+  if (code != ORT_OK) {
+    // extraction failed, exception has been thrown, return to Java.
+    free(dimensionNames);
+    return NULL;
+  }
+  jclass stringClazz = (*jniEnv)->FindClass(jniEnv, "java/lang/String");
+  jobjectArray names = (*jniEnv)->NewObjectArray(jniEnv, safecast_size_t_to_jsize(numDim), stringClazz, NULL);
+  for (size_t i = 0; i < numDim; i++) {
+    jobject javaName = (*jniEnv)->NewStringUTF(jniEnv, dimensionNames[i]);
+    (*jniEnv)->SetObjectArrayElement(jniEnv, names, safecast_size_t_to_jsize(i), javaName);
+  }
+  free(dimensionNames);
+
   // Create the TensorInfo object
   static const char *tensorInfoClassName = "ai/onnxruntime/TensorInfo";
   jclass clazz = (*jniEnv)->FindClass(jniEnv, tensorInfoClassName);
-  jmethodID tensorInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,clazz, "<init>", "([JI)V");
-  //printf("TensorInfo class %p, methodID %p\n",clazz,tensorInfoConstructor);
-  jobject tensorInfo = (*jniEnv)->NewObject(jniEnv, clazz, tensorInfoConstructor, shape, onnxTypeInt);
+  jmethodID tensorInfoConstructor = (*jniEnv)->GetMethodID(jniEnv,clazz, "<init>", "([J[Ljava/lang/String;I)V");
+  jobject tensorInfo = (*jniEnv)->NewObject(jniEnv, clazz, tensorInfoConstructor, shape, names, onnxTypeInt);
   return tensorInfo;
 }
 
@@ -458,104 +502,6 @@ sequence_cleanup:
   return sequenceInfo;
 }
 
-int64_t copyJavaToPrimitiveArray(JNIEnv* jniEnv, ONNXTensorElementDataType onnxType, jarray inputArray, uint8_t* outputTensor) {
-    int32_t inputLength = (*jniEnv)->GetArrayLength(jniEnv, inputArray);
-    int64_t consumedSize = inputLength * onnxTypeSize(onnxType);
-    switch (onnxType) {
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:   // maps to c type uint8_t
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8: {  // maps to c type int8_t
-            jbyteArray typedArr = (jbyteArray)inputArray;
-            (*jniEnv)->GetByteArrayRegion(jniEnv, typedArr, 0, inputLength, (jbyte * )outputTensor);
-            return consumedSize;
-        }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:  // maps to c type uint16_t
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16: { // maps to c type int16_t
-            jshortArray typedArr = (jshortArray)inputArray;
-            (*jniEnv)->GetShortArrayRegion(jniEnv, typedArr, 0, inputLength, (jshort * )outputTensor);
-            return consumedSize;
-        }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:      // maps to c type uint32_t
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32: { // maps to c type int32_t
-            jintArray typedArr = (jintArray)inputArray;
-            (*jniEnv)->GetIntArrayRegion(jniEnv, typedArr, 0, inputLength, (jint * )outputTensor);
-            return consumedSize;
-        }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:      // maps to c type uint64_t
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64: { // maps to c type int64_t
-            jlongArray typedArr = (jlongArray)inputArray;
-            (*jniEnv)->GetLongArrayRegion(jniEnv, typedArr, 0, inputLength, (jlong * )outputTensor);
-            return consumedSize;
-        }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: {
-            throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "16-bit float not supported.");
-            return -1;
-            /*
-            float *floatArr = malloc(sizeof(float) * inputLength);
-            uint16_t *halfArr = (uint16_t *) outputTensor;
-            for (uint32_t i = 0; i < inputLength; i++) {
-                floatArr[i] = convertHalfToFloat(halfArr[i]);
-            }
-            jfloatArray typedArr = (jfloatArray) inputArray;
-            (*jniEnv)->GetFloatArrayRegion(jniEnv, typedArr, 0, inputLength, floatArr);
-            free(floatArr);
-            return consumedSize;
-            */
-        }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: { // maps to c type float
-            jfloatArray typedArr = (jfloatArray)inputArray;
-            (*jniEnv)->GetFloatArrayRegion(jniEnv, typedArr, 0, inputLength, (jfloat * )outputTensor);
-            return consumedSize;
-        }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE: {    // maps to c type double
-            jdoubleArray typedArr = (jdoubleArray)inputArray;
-            (*jniEnv)->GetDoubleArrayRegion(jniEnv, typedArr, 0, inputLength, (jdouble * )outputTensor);
-            return consumedSize;
-        }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING: { // maps to c++ type std::string
-            throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "String is not supported.");
-            return -1;
-        }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL: {
-            jbooleanArray typedArr = (jbooleanArray)inputArray;
-            (*jniEnv)->GetBooleanArrayRegion(jniEnv, typedArr, 0, inputLength, (jboolean *)outputTensor);
-            return consumedSize;
-        }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX64:   // complex with float32 real and imaginary components
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128:  // complex with float64 real and imaginary components
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:    // Non-IEEE floating-point format based on IEEE754 single-precision
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
-        default: {
-            throwOrtException(jniEnv, convertErrorCode(ORT_INVALID_ARGUMENT), "Invalid outputTensor element type.");
-            return -1;
-        }
-    }
-}
-
-int64_t copyJavaToTensor(JNIEnv* jniEnv, ONNXTensorElementDataType onnxType, size_t tensorSize, size_t dimensionsRemaining, jarray inputArray, uint8_t* outputTensor) {
-    if (dimensionsRemaining == 1) {
-        // write out 1d array of the respective primitive type
-        return copyJavaToPrimitiveArray(jniEnv, onnxType, inputArray, outputTensor);
-    } else {
-        // recurse through the dimensions
-        // Java arrays are objects until the final dimension
-        jobjectArray inputObjArr = (jobjectArray)inputArray;
-        int32_t dimLength = (*jniEnv)->GetArrayLength(jniEnv, inputObjArr);
-        int64_t sizeConsumed = 0;
-        for (int32_t i = 0; i < dimLength; i++) {
-            jarray childArr = (jarray) (*jniEnv)->GetObjectArrayElement(jniEnv, inputObjArr, i);
-            int64_t consumed = copyJavaToTensor(jniEnv, onnxType, tensorSize - sizeConsumed, dimensionsRemaining - 1, childArr, outputTensor + sizeConsumed);
-            sizeConsumed += consumed;
-            // Cleanup reference to childArr so it doesn't prevent GC.
-            (*jniEnv)->DeleteLocalRef(jniEnv, childArr);
-            // If we failed to copy an array then break and return.
-            if (consumed == -1) {
-              return -1;
-            }
-        }
-        return sizeConsumed;
-    }
-}
-
 int64_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, const uint8_t* inputTensor, jarray outputArray) {
     int32_t outputLength = (*jniEnv)->GetArrayLength(jniEnv, outputArray);
     if (outputLength == 0) return 0;
@@ -600,6 +546,21 @@ int64_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxT
             free(floatArr);
             return consumedSize;
         }
+        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16: { // stored as a uint16_t
+            jfloat *floatArr = malloc(sizeof(jfloat) * outputLength);
+            if (floatArr == NULL) {
+                throwOrtException(jniEnv, 1, "Not enough memory");
+                return -1;
+            }
+            uint16_t *bf16Arr = (uint16_t *)inputTensor;
+            for (int32_t i = 0; i < outputLength; i++) {
+                floatArr[i] = convertBF16ToFloat(bf16Arr[i]);
+            }
+            jfloatArray typedArr = (jfloatArray)outputArray;
+            (*jniEnv)->SetFloatArrayRegion(jniEnv, typedArr, 0, outputLength, floatArr);
+            free(floatArr);
+            return consumedSize;
+        }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT: { // maps to c type float
             jfloatArray typedArr = (jfloatArray)outputArray;
             (*jniEnv)->SetFloatArrayRegion(jniEnv, typedArr, 0, outputLength, (jfloat * )inputTensor);
@@ -630,76 +591,12 @@ int64_t copyPrimitiveArrayToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxT
           throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "Invalid inputTensor element type ONNX_TENSOR_ELEMENT_DATA_TYPE_COMPLEX128.");
           return -1;
         }
-        case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16: {
-          // Non-IEEE floating-point format based on IEEE754 single-precision
-          throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "Invalid inputTensor element type ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16.");
-          return -1;
-        }
         case ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED:
         default: {
           throwOrtException(jniEnv, convertErrorCode(ORT_NOT_IMPLEMENTED), "Invalid inputTensor element type ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED.");
           return -1;
         }
     }
-}
-
-int64_t copyTensorToJava(JNIEnv *jniEnv, ONNXTensorElementDataType onnxType, const uint8_t* inputTensor, size_t tensorSize,
-                        size_t dimensionsRemaining, jarray outputArray) {
-  if (dimensionsRemaining == 1) {
-    // write out 1d array of the respective primitive type
-    return copyPrimitiveArrayToJava(jniEnv, onnxType, inputTensor, outputArray);
-  } else {
-    // recurse through the dimensions
-    // Java arrays are objects until the final dimension
-    jobjectArray outputObjArr = (jobjectArray)outputArray;
-    int32_t dimLength = (*jniEnv)->GetArrayLength(jniEnv, outputObjArr);
-    int64_t sizeConsumed = 0;
-    for (int32_t i = 0; i < dimLength; i++) {
-      jarray childArr = (jarray) (*jniEnv)->GetObjectArrayElement(jniEnv, outputObjArr, i);
-      int64_t consumed = copyTensorToJava(jniEnv, onnxType, inputTensor + sizeConsumed, tensorSize - sizeConsumed, dimensionsRemaining - 1, childArr);
-      sizeConsumed += consumed;
-      // Cleanup reference to childArr so it doesn't prevent GC.
-      (*jniEnv)->DeleteLocalRef(jniEnv, childArr);
-      // If we failed to copy an array then break and return.
-      if (consumed == -1) {
-        return -1;
-      }
-    }
-    return sizeConsumed;
-  }
-}
-
-jobject createStringFromStringTensor(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor) {
-  jobject tempString = NULL;
-  // Get the buffer size needed
-  size_t totalStringLength = 0;
-  OrtErrorCode code = checkOrtStatus(jniEnv, api, api->GetStringTensorDataLength(tensor, &totalStringLength));
-  if (code != ORT_OK) {
-    return NULL;
-  }
-
-  // Create the character and offset buffers, character is one larger to allow zero termination.
-  char * characterBuffer = malloc(sizeof(char)*(totalStringLength+1));
-  if (characterBuffer == NULL) {
-    throwOrtException(jniEnv, 1, "OOM error");
-  } else {
-    size_t * offsets = malloc(sizeof(size_t));
-    if (offsets != NULL) {
-      // Get a view on the String data
-      code = checkOrtStatus(jniEnv, api, api->GetStringTensorContent(tensor, characterBuffer, totalStringLength, offsets, 1));
-
-      if (code == ORT_OK) {
-        size_t curSize = (offsets[0]) + 1;
-        characterBuffer[curSize-1] = '\0';
-        tempString = (*jniEnv)->NewStringUTF(jniEnv, characterBuffer);
-      }
-
-      free((void*)characterBuffer);
-      free((void*)offsets);
-    }
-  }
-
-  return tempString;
 }
 
 OrtErrorCode copyStringTensorToArray(JNIEnv *jniEnv, const OrtApi * api, OrtValue* tensor, size_t length, jobjectArray outputArray) {

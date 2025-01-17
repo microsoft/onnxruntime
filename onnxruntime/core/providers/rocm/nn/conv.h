@@ -3,13 +3,16 @@
 
 #pragma once
 
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/providers/rocm/rocm_kernel.h"
 #include "core/providers/rocm/miopen_common.h"
 #include "core/providers/cpu/nn/conv_attributes.h"
 #include <list>
 
 namespace onnxruntime {
+
+using ConvPadVector = ConvAttributes::ConvPadVector;
+
 namespace rocm {
 
 class MiopenConvolutionDescriptor final {
@@ -18,9 +21,9 @@ class MiopenConvolutionDescriptor final {
   ~MiopenConvolutionDescriptor();
 
   Status Set(size_t rank,
-             gsl::span<const int64_t> pads,
-             gsl::span<const int64_t> strides,
-             gsl::span<const int64_t> dilations,
+             const gsl::span<const int64_t>& pads,
+             const gsl::span<const int64_t>& strides,
+             const gsl::span<const int64_t>& dilations,
              int groups,
              miopenConvolutionMode_t mode,
              miopenDataType_t data_type);
@@ -155,7 +158,7 @@ struct MiopenConvState {
   TensorShapeVector slice_axes;
 
   // note that conv objects are shared between execution frames, and a lock is needed to avoid multi-thread racing
-  OrtMutex mutex;
+  std::mutex mutex;
   IAllocatorUniquePtr<void> memory_for_miopen_conv_results;
 
   ~MiopenConvState() {
@@ -198,7 +201,7 @@ class Conv : public RocmKernel {
 
 Status SliceOutUnwantedOutputSection(hipStream_t stream,
                                      const void* input_data,
-                                     const gsl::span<const int64_t>& input_dims,
+                                     gsl::span<const int64_t> input_dims,
                                      void* output_data,
                                      const gsl::span<const int64_t>& output_dims,
                                      const gsl::span<const int64_t>& starts,

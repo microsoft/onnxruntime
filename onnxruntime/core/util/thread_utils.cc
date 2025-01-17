@@ -7,11 +7,29 @@
 
 #ifdef _WIN32
 #include <Windows.h>
+#include <versionhelpers.h>
 #endif
 #include <thread>
 #include "core/session/ort_apis.h"
 #include "core/common/string_utils.h"
 #include "core/common/logging/logging.h"
+
+std::ostream& operator<<(std::ostream& os, const OrtThreadPoolParams& params) {
+  os << "OrtThreadPoolParams {";
+  os << " thread_pool_size: " << params.thread_pool_size;
+  os << " auto_set_affinity: " << params.auto_set_affinity;
+  os << " allow_spinning: " << params.allow_spinning;
+  os << " dynamic_block_base_: " << params.dynamic_block_base_;
+  os << " stack_size: " << params.stack_size;
+  os << " affinity_str: " << params.affinity_str;
+  // os << " name: " << (params.name ? params.name : L"nullptr");
+  os << " set_denormal_as_zero: " << params.set_denormal_as_zero;
+  // os << " custom_create_thread_fn: " << (params.custom_create_thread_fn ? "set" : "nullptr");
+  // os << " custom_thread_creation_options: " << (params.custom_thread_creation_options ? "set" : "nullptr");
+  // os << " custom_join_thread_fn: " << (params.custom_join_thread_fn ? "set" : "nullptr");
+  os << " }";
+  return os;
+}
 
 namespace onnxruntime {
 namespace concurrency {
@@ -75,13 +93,31 @@ static std::unique_ptr<ThreadPool>
 CreateThreadPoolHelper(Env* env, OrtThreadPoolParams options) {
   ThreadOptions to;
   if (options.thread_pool_size <= 0) {  // default
-    auto default_affinities = Env::Default().GetDefaultThreadAffinities();
-    if (default_affinities.size() <= 1) {
-      return nullptr;
-    }
-    options.thread_pool_size = static_cast<int>(default_affinities.size());
     if (options.auto_set_affinity) {
+#ifdef _WIN32
+      // Only set thread affinity on Server with auto affinity.
+      // On client best to let OS scheduler handle.
+      // On big (P-Core) / little (E-Core) CPU designs affinity overrides QoS and has high power usage
+      if (IsWindowsServer()) {
+        auto default_affinities = Env::Default().GetDefaultThreadAffinities();
+        if (default_affinities.size() <= 1) {
+          return nullptr;
+        }
+        options.thread_pool_size = static_cast<int>(default_affinities.size());
+        to.affinities = std::move(default_affinities);
+      } else {
+        options.thread_pool_size = Env::Default().GetNumPhysicalCpuCores();
+      }
+#else
+      auto default_affinities = Env::Default().GetDefaultThreadAffinities();
+      if (default_affinities.size() <= 1) {
+        return nullptr;
+      }
+      options.thread_pool_size = static_cast<int>(default_affinities.size());
       to.affinities = std::move(default_affinities);
+#endif
+    } else {
+      options.thread_pool_size = Env::Default().GetNumPhysicalCpuCores();
     }
   }
   if (options.thread_pool_size <= 1) {

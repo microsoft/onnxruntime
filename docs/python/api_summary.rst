@@ -244,8 +244,35 @@ You can also bind inputs and outputs directly to a PyTorch tensor.
     )
 
     session.run_with_iobinding(binding)
-    
+
 You can also see code examples of this API in in the `ONNX Runtime inferences examples <https://github.com/microsoft/onnxruntime-inference-examples/blob/main/python/api/onnxruntime-python-api.py>`_.
+
+Some onnx data type (like TensorProto.BFLOAT16, TensorProto.FLOAT8E4M3FN and TensorProto.FLOAT8E5M2) are not supported by Numpy. You can directly bind input or output with Torch tensor of corresponding data type
+(like torch.bfloat16, torch.float8_e4m3fn and torch.float8_e5m2) in GPU memory.
+
+.. code-block:: python
+
+    x = torch.ones([3], dtype=torch.float8_e5m2, device='cuda:0')
+    y = torch.empty([3], dtype=torch.bfloat16, device='cuda:0')
+
+    binding = session.io_binding()
+    binding.bind_input(
+        name='X',
+        device_type='cuda',
+        device_id=0,
+        element_type=TensorProto.FLOAT8E5M2,
+        shape=tuple(x.shape),
+        buffer_ptr=x.data_ptr(),
+        )
+    binding.bind_output(
+        name='Y',
+        device_type='cuda',
+        device_id=0,
+        element_type=TensorProto.BFLOAT16,
+        shape=tuple(y.shape),
+        buffer_ptr=y.data_ptr(),
+        )
+	session.run_with_iobinding(binding)
 
 
 API Details
@@ -274,6 +301,77 @@ SessionOptions
 .. autoclass:: onnxruntime.SessionOptions
     :members:
 
+.. autoclass:: onnxruntime.ExecutionMode
+    :members:
+
+.. autoclass:: onnxruntime.ExecutionOrder
+    :members:
+
+.. autoclass:: onnxruntime.GraphOptimizationLevel
+    :members:
+
+.. autoclass:: onnxruntime.OrtAllocatorType
+    :members:
+
+.. autoclass:: onnxruntime.OrtArenaCfg
+    :members:
+
+.. autoclass:: onnxruntime.OrtMemoryInfo
+    :members:
+
+.. autoclass:: onnxruntime.OrtMemType
+    :members:
+
+Functions
+---------
+
+Allocators
+^^^^^^^^^^
+
+.. autofunction:: onnxruntime.create_and_register_allocator
+
+.. autofunction:: onnxruntime.create_and_register_allocator_v2
+
+Telemetry events
+^^^^^^^^^^^^^^^^
+
+.. autofunction:: onnxruntime.disable_telemetry_events
+
+.. autofunction:: onnxruntime.enable_telemetry_events
+
+Providers
+^^^^^^^^^
+
+.. autofunction:: onnxruntime.get_all_providers
+
+.. autofunction:: onnxruntime.get_available_providers
+
+Build, Version
+^^^^^^^^^^^^^^
+
+.. autofunction:: onnxruntime.get_build_info
+
+.. autofunction:: onnxruntime.get_version_string
+
+.. autofunction:: onnxruntime.has_collective_ops
+
+Device
+^^^^^^
+
+.. autofunction:: onnxruntime.get_device
+
+Logging
+^^^^^^^
+
+.. autofunction:: onnxruntime.set_default_logger_severity
+
+.. autofunction:: onnxruntime.set_default_logger_verbosity
+
+Random
+^^^^^^
+
+.. autofunction:: onnxruntime.set_seed
+
 Data
 ----
 
@@ -296,6 +394,9 @@ IOBinding
 ^^^^^^^^^
 
 .. autoclass:: onnxruntime.IOBinding
+    :members:
+
+.. autoclass:: onnxruntime.SessionIOBinding
     :members:
 
 OrtDevice

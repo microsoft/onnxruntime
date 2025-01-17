@@ -33,5 +33,25 @@ TEST(PlatformEnvTest, DirectoryCreationAndDeletion) {
   ASSERT_FALSE(env.FolderExists(root_dir));
 }
 
+TEST(PlatformEnvTest, GetErrnoInfo) {
+  // command that should generate an errno error
+  std::ifstream file("non_existent_file");
+  ASSERT_TRUE(file.fail());
+  auto [err, msg] = GetErrnoInfo();
+  ASSERT_EQ(err, ENOENT);
+
+#if defined(_WIN32)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
+
+  // GetErrnoInfo uses strerror_r or strerror_s depending on the platform. use the unsafe std::sterror to get the
+  // expected value given this is a unit test so doesn't have to be as robust.
+  ASSERT_EQ(msg, std::strerror(ENOENT));
+
+#if defined(_WIN32)
+#pragma warning(pop)
+#endif
+}
 }  // namespace test
 }  // namespace onnxruntime

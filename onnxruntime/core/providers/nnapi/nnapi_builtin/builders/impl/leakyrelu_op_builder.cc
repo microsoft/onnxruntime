@@ -27,7 +27,7 @@ class LeakyReluOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
   // LeakyRelu opset 6- has unsupported attributes
@@ -111,7 +111,7 @@ Status LeakyReluOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related
 
-bool LeakyReluOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /*initializers*/, const NodeUnit& node_unit,
+bool LeakyReluOpBuilder::IsOpSupportedImpl(const GraphViewer& /*graph_viewer*/, const NodeUnit& node_unit,
                                            const OpSupportCheckParams& /* params */) const {
   Shape input_shape;
   if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))

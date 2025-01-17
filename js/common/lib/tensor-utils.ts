@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {ConversionUtils} from './tensor-conversion.js';
-import {Tensor, TypedTensor} from './tensor.js';
+import { ConversionUtils } from './tensor-conversion.js';
+import { Tensor, TypedTensor } from './tensor.js';
 
 interface Properties {
   /**

@@ -3,45 +3,18 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import os
 from typing import Callable
 
 import torch
 import torch.onnx.symbolic_helper as sym_help
 from packaging import version
 from packaging.version import Version
-from torch.onnx import register_custom_op_symbolic
-from torch.onnx.symbolic_helper import _get_tensor_dim_size, _get_tensor_sizes, parse_args
+from torch.onnx.symbolic_helper import parse_args
+
+from onnxruntime.training.utils import pytorch_type_to_onnx_dtype
 
 from ._utils import get_runtime_pytorch_version
-
-# Mapping from pytorch scalar type to onnx scalar type.
-_CAST_PYTORCH_TO_ONNX = {
-    "Byte": torch.onnx.TensorProtoDataType.UINT8,
-    "Char": torch.onnx.TensorProtoDataType.INT8,
-    "Double": torch.onnx.TensorProtoDataType.DOUBLE,
-    "Float": torch.onnx.TensorProtoDataType.FLOAT,
-    "Half": torch.onnx.TensorProtoDataType.FLOAT16,
-    "Int": torch.onnx.TensorProtoDataType.INT32,
-    "Long": torch.onnx.TensorProtoDataType.INT64,
-    "Short": torch.onnx.TensorProtoDataType.INT16,
-    "Bool": torch.onnx.TensorProtoDataType.BOOL,
-    "ComplexFloat": torch.onnx.TensorProtoDataType.COMPLEX64,
-    "ComplexDouble": torch.onnx.TensorProtoDataType.COMPLEX128,
-    "BFloat16": torch.onnx.TensorProtoDataType.BFLOAT16,
-    # Not yet defined in torch.
-    # "Float8E4M3FN": torch.onnx.TensorProtoDataType.FLOAT8E4M3FN,
-    # "Float8E4M3FNUZ": torch.onnx.TensorProtoDataType.FLOAT8E4M3FNUZ,
-    # "Float8E5M2": torch.onnx.TensorProtoDataType.FLOAT8E5M2,
-    # "Float8E5M2FNUZ": torch.onnx.TensorProtoDataType.FLOAT8E5M2FNUZ,
-    "Undefined": torch.onnx.TensorProtoDataType.UNDEFINED,
-}
-
-
-def pytorch_type_to_onnx(scalar_type: str) -> torch.onnx.TensorProtoDataType:
-    try:
-        return torch.onnx.JitScalarType.from_name(scalar_type).onnx_type()
-    except AttributeError:
-        return _CAST_PYTORCH_TO_ONNX[scalar_type]
 
 
 def wrap_custom_export_function(original_func: Callable) -> Callable:
@@ -88,7 +61,7 @@ def wrap_custom_export_function(original_func: Callable) -> Callable:
 
 
 class CustomOpSymbolicRegistry:
-    _SYMBOLICS = {}
+    _SYMBOLICS = {}  # noqa: RUF012
 
     @classmethod
     def register(cls, name, domain, fn):
@@ -96,6 +69,8 @@ class CustomOpSymbolicRegistry:
 
     @classmethod
     def register_all(cls, onnx_opset_version):
+        from torch.onnx import register_custom_op_symbolic
+
         for name, fn in cls._SYMBOLICS.items():
             # Symbolic name is in format: domain::name
             register_custom_op_symbolic(
@@ -156,7 +131,7 @@ def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index,
         output_type = logits_casted.type()
     else:
         # For higher version torch we can get node output types
-        loss_output = list(node.outputs())[0]
+        loss_output = next(iter(node.outputs()))
         output_type = loss_output.type()
     ##################################
 
@@ -172,7 +147,7 @@ def cross_entropy_loss(g, node, logits, target, weight, reduction, ignore_index,
         weight_casted,
         ignore_index,
         reduction_s=reduction,
-        output_type_i=pytorch_type_to_onnx(output_type.scalarType()),
+        output_type_i=pytorch_type_to_onnx_dtype(output_type.scalarType()),
         outputs=2,
     )
     output.setType(output_type)
@@ -199,10 +174,16 @@ def embedding(g, weight, indices, padding_idx, scale_grad_by_freq, sparse):
     output = g.op(
         "org.pytorch.aten::ATen", weight, indices, padding_idx, scale_grad_by_freq, sparse, operator_s="embedding"
     )
-    indices_shape = _get_tensor_sizes(indices)
-    if indices_shape is not None and hasattr(weight.type(), "with_sizes"):
-        output_type = weight.type().with_sizes([*indices_shape, _get_tensor_dim_size(weight, 1)])
-        output.setType(output_type)
+
+    try:
+        # Tolerant to the case when sizes of indices are not available or not usable (for example
+        # when DeepSpeed stage3 enabled, all weights size is (0), this will fail.)
+        indices_shape = sym_help._get_tensor_sizes(indices)
+        if indices_shape is not None and hasattr(weight.type(), "with_sizes"):
+            output_type = weight.type().with_sizes([*indices_shape, sym_help._get_tensor_dim_size(weight, 1)])
+            output.setType(output_type)
+    except IndexError:
+        output.setType(weight.type())
     return output
 
 
@@ -458,7 +439,7 @@ def permute_and_reshape_tensor(
     shape_tensor,
 ):
     # If matmul_output_axes and contraction_axes are contiguous in input tensor,
-    # we can move Reshape to before Transpose, so it's possible that the Transpoase is fused to MatMul.
+    # we can move Reshape to before Transpose, so it's possible that the Transpose is fused to MatMul.
     # Otherwise, we have to Transpose first to move those axes together and then Reshape.
     is_matmul_output_axes_contiguous = is_axes_contiguous(matmul_output_axes)
     is_contraction_axes_contiguous = is_axes_contiguous(contraction_axes)
@@ -546,7 +527,7 @@ def permute_and_reshape_tensor(
 
 @register_symbolic("einsum", torch_version_end="1.13.0")
 @parse_args("s", "v")
-def einsum_pre_troch_113(g, equation, tensor_list):
+def einsum_pre_torch_113(g, equation, tensor_list):
     return einsum_internal(g, equation, tensor_list)
 
 
@@ -561,12 +542,12 @@ def einsum_internal(g, equation, tensor_list):
     num_ops = len(tensors)
     assert num_ops > 0
 
-    # Doesn't support implicit output is ellipsis or more than 2 oprands for now.
-    # Doesn't support ellipsis ('...') for now as not easy to get sizes of oprands.
+    # Doesn't support implicit output is ellipsis or more than 2 operands for now.
+    # Doesn't support ellipsis ('...') for now as not easy to get sizes of operands.
     if num_ops != 2 or equation.find("->") == -1 or "." in equation:
         return g.op("Einsum", *tensors, equation_s=equation)
 
-    # Take "ks,ksm->sm" as example. After prcoess inputs,
+    # Take "ks,ksm->sm" as example. After process inputs,
     # lhs_labels = [k,s], rhs_labels = [k,s,m], result_labels = [s,m].
     lhs_labels, rhs_labels, result_labels = parse_equation(equation)
 
@@ -831,14 +812,185 @@ def upsample_nearest3d(g, input, output_size, scale_factors):
     return _upsample_nearest(g, input, output_size, scale_factors, "upsample_nearest3d")
 
 
-@register_symbolic("upsample_bilinear2d")
-def upsample_bilinear2d(g, input, output_size, align_corners, scale_factors):
+@register_symbolic("upsample_bicubic2d")
+def upsample_bicubic2d(g, input, output_size, align_corners, scale_factors):
     return g.op(
         "org.pytorch.aten::ATen",
         input,
         output_size,
         align_corners,
         scale_factors,
-        operator_s="upsample_bilinear2d",
+        operator_s="upsample_bicubic2d",
         overload_name_s="vec",
     )
+
+
+@register_symbolic("layer_norm")
+@parse_args("v", "is", "v", "v", "f", "none")
+def layer_norm(g, input, normalized_shape, weight, bias, eps, cudnn_enable):
+    # normalized_shape: input shape from an expected input of size
+    # axis: The first normalization dimension.
+    # layer_norm normalizes on the last D dimensions,
+    # where D is the size of normalized_shape
+    axis = -len(normalized_shape)
+
+    res, new_running_mean, new_running_var = g.op(
+        "LayerNormalization",
+        input,
+        weight,
+        bias,
+        epsilon_f=eps,
+        axis_i=axis,
+        outputs=3,  # force all 3 outputs to be exported in training mode
+        operator_s="layer_norm",
+        overload_name_s="vec",
+    )
+
+    return res
+
+
+# Adapted from torch.onnx.symbolic_opset9._convolution -
+# https://github.com/pytorch/pytorch/blob/cf06189a2d2785ac493bcd0d55e520af5a0e3b97/torch/onnx/symbolic_opset9.py#L2334
+# We override aten::_convolution here to support bf16 for phimm model from GenAI team.
+# For bf16 inputs, we will convert input to float32, do convolution then convert output back to bf16.
+# TODO: This might have negative impact on performance.
+@register_symbolic("_convolution")
+@parse_args("v", "v", "v", "is", "is", "is", "i", "is", "i", "i", "i", "i", "i")
+def convolution(
+    g,
+    input,
+    weight,
+    bias,
+    stride,
+    padding,
+    dilation,
+    transposed,
+    output_padding,
+    groups,
+    benchmark,
+    deterministic,
+    cudnn_enabled,
+    allow_tf32=None,
+):
+    from torch.onnx.symbolic_opset9 import _convolution
+
+    input_casted = (
+        g.op("Cast", input, to_i=torch.onnx.TensorProtoDataType.FLOAT)
+        if input.type().scalarType() == "BFloat16"
+        else input
+    )
+    weight_casted = (
+        g.op("Cast", weight, to_i=torch.onnx.TensorProtoDataType.FLOAT)
+        if weight.type().scalarType() == "BFloat16"
+        else weight
+    )
+
+    n = _convolution(
+        g,
+        input_casted,
+        weight_casted,
+        bias,
+        stride,
+        padding,
+        dilation,
+        transposed,
+        output_padding,
+        groups,
+        benchmark,
+        deterministic,
+        cudnn_enabled,
+        allow_tf32,
+    )
+
+    n_casted = (
+        g.op("Cast", n, to_i=torch.onnx.TensorProtoDataType.BFLOAT16) if input.type().scalarType() == "BFloat16" else n
+    )
+    return n_casted
+
+
+# Adapted from torch.onnx.symbolic_opset9._convolution_mode -
+# https://github.com/pytorch/pytorch/blob/cf06189a2d2785ac493bcd0d55e520af5a0e3b97/torch/onnx/symbolic_opset9.py#L2406
+# We override aten::_convolution_mode here to support bf16 for phimm model from GenAI team.
+# For bf16 inputs, we will convert input to float32, do convolution then convert output back to bf16.
+# TODO: This might have negative impact on performance.
+@register_symbolic("_convolution_mode")
+@parse_args("v", "v", "v", "is", "s", "is", "i")
+def convolution_mode(
+    g,
+    input,
+    weight,
+    bias,
+    stride,
+    padding,
+    dilation,
+    groups,
+):
+    from torch.onnx.symbolic_opset9 import _convolution_mode
+
+    input_casted = (
+        g.op("Cast", input, to_i=torch.onnx.TensorProtoDataType.FLOAT)
+        if input.type().scalarType() == "BFloat16"
+        else input
+    )
+    weight_casted = (
+        g.op("Cast", weight, to_i=torch.onnx.TensorProtoDataType.FLOAT)
+        if weight.type().scalarType() == "BFloat16"
+        else weight
+    )
+
+    n = _convolution_mode(g, input_casted, weight_casted, bias, stride, padding, dilation, groups)
+
+    n_casted = (
+        g.op("Cast", n, to_i=torch.onnx.TensorProtoDataType.BFLOAT16) if input.type().scalarType() == "BFloat16" else n
+    )
+    return n_casted
+
+
+# Adapted from torch.onnx.symbolic_opset13.softmax -
+# https://github.com/pytorch/pytorch/blob/cf06189a2d2785ac493bcd0d55e520af5a0e3b97/torch/onnx/symbolic_opset13.py#L27
+# We don't need overloads symbolic_opset9 because training support opsets >= 13.
+#
+# Why we need to define softmax export logic here?
+# For the usage `nn.functional.softmax(attn_weights, dim=-1, dtype=torch.float32)` in the model,
+# https://github.com/huggingface/transformers/blob/76a33a10923ccc1074917f6b6a1e719e626b7dc9/src/transformers/models/mistral/modeling_mistral.py#L302
+# If dtype is specified, the input tensor is casted to dtype before the operation is performed.
+# This is useful for preventing data type overflows. While existing ONNX exporter do the cast after the operation.
+# This override can be a workaround before PyTorch fix the issues in coming releases.
+# (TODO: pengwa - add PyTorch versions when the issue is fixed).
+@register_symbolic("softmax")
+@parse_args("v", "i", "none")
+def softmax(g, input, dim, dtype=None):
+    from torch.onnx import _type_utils
+
+    casted_input = input
+    need_cast_for_compute = dtype and dtype.node().kind() != "prim::Constant"
+    if need_cast_for_compute:
+        parsed_dtype = sym_help._get_const(dtype, "i", "dtype")
+        casted_input = g.op("Cast", input, to_i=_type_utils.JitScalarType(parsed_dtype).onnx_type())
+
+    softmax = g.op("Softmax", casted_input, axis_i=dim)
+
+    return softmax
+
+
+ATEN_SDPA_FALLBACK = os.getenv("ORTMODULE_ATEN_SDPA_FALLBACK", None)
+if ATEN_SDPA_FALLBACK:
+    # based on the following internal PyTorch kernel for efficient attention:
+    # https://github.com/pytorch/pytorch/blob/c12a4f2e65ad41b739aab1a261e2336b4a79fcfb/aten/src/ATen/native/native_functions.yaml#L14778
+    @register_symbolic("scaled_dot_product_attention")
+    def scaled_dot_product_attention(g, query, key, value, attn_mask=None, dropout_p=0.0, is_causal=False, scale=None):
+        dropout_p_f = g.op("Cast", dropout_p, to_i=torch.onnx.TensorProtoDataType.FLOAT)
+        compute_logsumexp = g.op("Constant", value_t=torch.tensor([1], dtype=torch.bool))
+        return g.op(
+            "org.pytorch.aten::ATen",
+            query,
+            key,
+            value,
+            attn_mask,
+            compute_logsumexp,
+            dropout_p_f,
+            is_causal,
+            scale,
+            operator_s="_scaled_dot_product_efficient_attention",
+            outputs=4,
+        )[0]

@@ -5,7 +5,7 @@
 
 #include <vector>
 #include <string>
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/framework/allocator.h"
 #include "core/framework/feeds_fetches_manager.h"
 #include "contrib_ops/cpu/transformers/generation_device_helper.h"
@@ -31,6 +31,7 @@ class Subgraph {
   const GraphViewer& subgraph;    // The subgraph
 
   int num_implicit_inputs;
+  std::vector<bool> used_implicit_inputs;
 
   int num_subgraph_inputs;   // Same as subgraph_input_names.size(), keep it for convenience.
   int num_subgraph_outputs;  // Same as subgraph_output_names.size()
@@ -45,6 +46,7 @@ class Subgraph {
   int num_layers;
   bool past_present_share_buffer_;
   bool has_decoder_masked_attention_;
+  bool output_cross_qk_ = false;
 
   // Setup execution
   Status Setup(const SessionState& session_state,

@@ -1,8 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/copy.h"
+#include "core/framework/element_type_lists.h"
 #include "core/framework/transpose_helper.h"
 #include "core/mlas/inc/mlas.h"
+#include "core/providers/cpu/tensor/utils.h"
 
 namespace onnxruntime {
 
@@ -24,7 +27,7 @@ typename std::enable_if<!has_mlas_transpose<T>::value, void>::type SimpleTranspo
   for (int64_t l = 0; l < num_loops; ++l) {
     T* output_for_first_writer = output_data;
 
-    for (auto wwpl = 0; wwpl < writes_per_writer_per_loop; ++wwpl) {
+    for (int64_t wwpl = 0; wwpl < writes_per_writer_per_loop; ++wwpl) {
       T* output_for_current_writer = output_for_first_writer;
 
       end = input_data + num_writers;
@@ -56,7 +59,8 @@ typename std::enable_if<has_mlas_transpose<T>::value, void>::type SimpleTranspos
 
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
 void TransposeSingleAxisOutwards(gsl::span<const size_t> permutations, const Tensor& input, Tensor& output,
-                                 size_t from, size_t to, const TensorShape* input_shape_override = nullptr) {
+                                 size_t from, size_t to, const TensorShape* input_shape_override = nullptr,
+                                 concurrency::ThreadPool* tp = nullptr) {
   ORT_UNUSED_PARAMETER(permutations);
 
   const auto& input_shape = input_shape_override ? *input_shape_override : input.Shape();
@@ -100,25 +104,20 @@ void TransposeSingleAxisOutwards(gsl::span<const size_t> permutations, const Ten
       break;
     }
     default: {
-      // we need to use memcpy for each block
-      for (int64_t l = 0; l < num_loops; ++l) {
-        uint8_t* output_for_first_writer = output_data;
+      TensorPitches src_strides(input_dims);
 
-        for (auto wwpl = 0; wwpl < writes_per_writer_per_loop; ++wwpl) {
-          uint8_t* output_for_current_writer = output_for_first_writer;
+      TensorPitches contig_dst_strides(output);
 
-          for (int64_t w = 0; w < num_writers; ++w) {
-            memcpy(output_for_current_writer, input_data, bytes_per_write);
-            // skip to output position for next writer
-            output_for_current_writer += (writes_per_writer_per_loop * bytes_per_write);
-            input_data += bytes_per_write;
-          }
-
-          output_for_first_writer += bytes_per_write;
-        }
-
-        output_data += writes_per_loop * bytes_per_write;
+      const auto dims = input_dims.size();
+      TensorShapeVector dst_strides(dims);
+      for (size_t dim = 0; dim < dims; ++dim) {
+        dst_strides[permutations[dim]] = contig_dst_strides[dim];
       }
+
+      ORT_THROW_IF_ERROR(DispatchStridedCopy<element_type_lists::All>(tp,
+                                                                      output, 0, dst_strides,
+                                                                      input_shape,
+                                                                      input, 0, src_strides));
     }
   }
 }
@@ -131,7 +130,7 @@ typename std::enable_if<!has_mlas_transpose<T>::value, void>::type SimpleTranspo
   for (int64_t l = 0; l < num_loops; ++l) {
     const T* input_for_first_reader = input_data;
 
-    for (auto rrpl = 0; rrpl < reads_per_reader_per_loop; ++rrpl) {
+    for (int64_t rrpl = 0; rrpl < reads_per_reader_per_loop; ++rrpl) {
       const T* input_for_current_reader = input_for_first_reader;
 
       end = output_data + num_readers;
@@ -211,7 +210,7 @@ void TransposeSingleAxisInwards(gsl::span<const size_t> permutations, const Tens
       for (int64_t l = 0; l < num_loops; ++l) {
         const uint8_t* input_for_first_reader = input_data;
 
-        for (auto rrpl = 0; rrpl < reads_per_reader_per_loop; ++rrpl) {
+        for (int64_t rrpl = 0; rrpl < reads_per_reader_per_loop; ++rrpl) {
           const uint8_t* input_for_current_reader = input_for_first_reader;
 
           for (int64_t r = 0; r < num_readers; ++r) {
@@ -233,9 +232,9 @@ void TransposeSingleAxisInwards(gsl::span<const size_t> permutations, const Tens
 
 //  `input_shape_override` overrides the shape of `input` for compute purposes.
 void SingleAxisTranspose(gsl::span<const size_t> permutations, const Tensor& input, Tensor& output, size_t from,
-                         size_t to, const TensorShape* input_shape_override) {
+                         size_t to, const TensorShape* input_shape_override, concurrency::ThreadPool* tp) {
   if (from > to) {
-    TransposeSingleAxisOutwards(permutations, input, output, from, to, input_shape_override);
+    TransposeSingleAxisOutwards(permutations, input, output, from, to, input_shape_override, tp);
   } else {
     TransposeSingleAxisInwards(permutations, input, output, from, to, input_shape_override);
   }

@@ -20,7 +20,8 @@ namespace test {
 enum class EP : char {
   CPU,
   CUDA,
-  DNNL
+  DNNL,
+  DML
 };
 
 // input:      [batch_size, sequence_length, hidden_size]
@@ -89,11 +90,13 @@ void RunQAttention(const std::vector<float>& input_data,
     tester.AddInput<MLFloat16>("input_scale", {1}, ToFloat16({input_quant_params.scale}));
     tester.AddInput<MLFloat16>("weight_scale", {1}, ToFloat16({weight_quant_params.scale}));
     tester.AddOutput<MLFloat16>("output", output_dims, ToFloat16(output_data));
+    tester.SetOutputTolerance(0.01f);
   } else {
     tester.AddInput<float>("bias", bias_dims, bias_data);
     tester.AddInput<float>("input_scale", {1}, {input_quant_params.scale});
     tester.AddInput<float>("weight_scale", {1}, {weight_quant_params.scale});
     tester.AddOutput<float>("output", output_dims, output_data);
+    tester.SetOutputTolerance(0.005f);
   }
 
   if (mask_index_data.size() > 0) {
@@ -111,7 +114,9 @@ void RunQAttention(const std::vector<float>& input_data,
     execution_providers.push_back(DefaultCudaExecutionProvider());
   } else if constexpr (ep == EP::CPU) {
     execution_providers.push_back(DefaultCpuExecutionProvider());
-  } else {  // onednn ep
+  } else if constexpr (ep == EP::DML) {
+    execution_providers.push_back(DefaultDmlExecutionProvider());
+  } else {  //  onednn ep
     execution_providers.push_back(DefaultDnnlExecutionProvider());
   }
 
@@ -176,6 +181,52 @@ static void RunQAttentionDNNL(
   RunQAttention<uint8_t, int8_t, EP::DNNL>(
       input_data, weights_data, bias_data, mask_index_data, output_data, input_quant_params, weights_quant_params,
       batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional, false, input_hidden_size);
+#else
+  ORT_UNUSED_PARAMETER(input_data);
+  ORT_UNUSED_PARAMETER(weights_data);
+  ORT_UNUSED_PARAMETER(bias_data);
+  ORT_UNUSED_PARAMETER(mask_index_data);
+  ORT_UNUSED_PARAMETER(output_data);
+  ORT_UNUSED_PARAMETER(batch_size);
+  ORT_UNUSED_PARAMETER(sequence_length);
+  ORT_UNUSED_PARAMETER(hidden_size);
+  ORT_UNUSED_PARAMETER(number_of_heads);
+  ORT_UNUSED_PARAMETER(use_special_quantize_parameter);
+  ORT_UNUSED_PARAMETER(is_unidirectional);
+  ORT_UNUSED_PARAMETER(input_hidden_size);
+#endif
+}
+
+static void RunQAttentionDML(
+    const std::vector<float>& input_data,
+    const std::vector<float>& weights_data,
+    const std::vector<float>& bias_data,
+    const std::vector<int32_t>& mask_index_data,
+    const std::vector<float>& output_data,
+    int batch_size,
+    int sequence_length,
+    int hidden_size,
+    int number_of_heads,
+    bool use_special_quantize_parameter = true,
+    bool is_unidirectional = false,
+    int input_hidden_size = 0) {
+  // Return without running code if USE_DML is not defined
+#ifdef USE_DML
+  bool enable_dml = (nullptr != DefaultDmlExecutionProvider().get());
+  if (enable_dml) {
+    quantization::Params<uint8_t> input_quant_params(/*scale=*/0.0f, /*zero_point=*/0);
+    quantization::Params<int8_t> weights_quant_params(/*scale=*/0.0f, /*zero_point=*/0);
+    if (use_special_quantize_parameter) {
+      input_quant_params.scale = 0.1f;
+      weights_quant_params.scale = 0.1f;
+      input_quant_params.zero_point = 128;
+      weights_quant_params.zero_point = 1;
+    }
+
+    RunQAttention<uint8_t, int8_t, EP::DML>(
+        input_data, weights_data, bias_data, mask_index_data, output_data, input_quant_params, weights_quant_params,
+        batch_size, sequence_length, hidden_size, number_of_heads, is_unidirectional, false, input_hidden_size);
+  }
 #else
   ORT_UNUSED_PARAMETER(input_data);
   ORT_UNUSED_PARAMETER(weights_data);
@@ -272,6 +323,9 @@ static void RunQAttentionAll(
   RunQAttentionDNNL(input_data, weight_data, bias_data, mask_index_data, output_data,
                     batch_size, sequence_length, hidden_size, number_of_heads,
                     use_special_quantize_parameter, is_unidirectional, input_hidden_size);
+  RunQAttentionDML(input_data, weight_data, bias_data, mask_index_data, output_data,
+                   batch_size, sequence_length, hidden_size, number_of_heads,
+                   use_special_quantize_parameter, is_unidirectional, input_hidden_size);
 }
 
 // ONEDNN EP only supports 2D raw mask
@@ -859,8 +913,8 @@ void TestQuantizedAttentionPastState(int64_t batch,
   std::vector<int64_t> input_dims{batch, seq_len, hidden_size};
   std::vector<InputT> input_data = random.Gaussian<InputT>(input_dims, input_mean, static_cast<InputT>(input_range / 6), input_min, input_max);
 
-  constexpr WeightT weight_min = std::numeric_limits<WeightT>::min();
-  constexpr WeightT weight_max = std::numeric_limits<WeightT>::max();
+  constexpr WeightT weight_min = std::is_same_v<WeightT, int8_t> ? std::numeric_limits<int8_t>::min() / 2 : std::numeric_limits<WeightT>::min();
+  constexpr WeightT weight_max = std::numeric_limits<WeightT>::max() / 2;
   constexpr int32_t weight_range = weight_max - weight_min;
 
   std::vector<WeightT> weight_zero_point(weight_scale_zp_size);

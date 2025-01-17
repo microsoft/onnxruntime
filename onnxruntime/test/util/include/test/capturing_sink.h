@@ -6,8 +6,6 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/isink.h"
 
-#include "date/date.h"
-
 namespace onnxruntime {
 namespace test {
 
@@ -17,7 +15,7 @@ class CapturingSink : public logging::ISink {
  public:
   void SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) override {
     // operator for formatting of timestamp in ISO8601 format including microseconds
-    using date::operator<<;
+    using timestamp_ns::operator<<;
     std::ostringstream msg;
 
     msg << timestamp << " [" << message.SeverityPrefix() << ":" << message.Category() << ":" << logger_id << ", "

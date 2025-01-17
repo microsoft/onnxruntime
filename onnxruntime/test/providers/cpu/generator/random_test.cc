@@ -36,7 +36,8 @@ TEST(Random, RandomNormal2DDouble) {
 
   // The expected_output is generated using std lib, which is used by CPU kernel only.
   // So we need to exclude other EPs here. Ditto for other places.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider});
 }
 
 void RunRandomNormalLike3DFloat(bool infer_dtype = false) {
@@ -72,7 +73,8 @@ void RunRandomNormalLike3DFloat(bool infer_dtype = false) {
   test.AddOutput<float>("Y", dims, expected_output);
 
   // TensorRT does not support manual seed overrides and there will be result mismatch
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(Random, RandomNormalLike3DDouble) {
@@ -109,7 +111,8 @@ TEST(Random, RandomUniform1DFloat) {
   test.AddOutput<float>("Y", dims, expected_output);
 
   // TensorRT does not support manual seed overrides and there will be result mismatch
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
 }
 
 void RunRandomUniformLikeTest(bool infer_dtype = false) {
@@ -142,7 +145,8 @@ void RunRandomUniformLikeTest(bool infer_dtype = false) {
   test.AddOutput<double>("Y", dims, expected_output);
 
   // TensorRT does not support seed parameter and there will be result mismatch
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCudaExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "",
+           {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider, kTensorrtExecutionProvider});
 }
 
 TEST(Random, RandomUniformLike2DDouble) {
@@ -174,7 +178,7 @@ TEST(Random, InvalidDType) {
     test.AddAttribute("shape", dims);
 
     test.AddOutput<double>("Y", dims, expected_output);
-    test.Run(OpTester::ExpectResult::kExpectFailure, "Attribute dtype does not specify a valid type.");
+    test.Run(OpTester::ExpectResult::kExpectFailure, "Node (node1) Op (RandomNormal) [TypeInferenceError] Attribute dtype does not specify a valid type in .");
   }
 
   {
@@ -190,7 +194,7 @@ TEST(Random, InvalidDType) {
     test.AddAttribute("shape", dims);
 
     test.AddOutput<double>("Y", dims, expected_output);
-    test.Run(OpTester::ExpectResult::kExpectFailure, "Attribute dtype does not specify a valid type.");
+    test.Run(OpTester::ExpectResult::kExpectFailure, "Node (node1) Op (RandomUniform) [TypeInferenceError] Attribute dtype does not specify a valid type in .");
   }
 
   {
@@ -206,7 +210,7 @@ TEST(Random, InvalidDType) {
 
     test.AddInput<int32_t>("X", dims, input);
     test.AddOutput<double>("Y", dims, expected_output);
-    test.Run(OpTester::ExpectResult::kExpectFailure, "Attribute dtype does not specify a valid type.");
+    test.Run(OpTester::ExpectResult::kExpectFailure, "Node (node1) Op (RandomNormalLike) [TypeInferenceError] Attribute dtype does not specify a valid type in .");
   }
 
   {
@@ -222,7 +226,7 @@ TEST(Random, InvalidDType) {
 
     test.AddInput<int32_t>("X", dims, input);
     test.AddOutput<double>("Y", dims, expected_output);
-    test.Run(OpTester::ExpectResult::kExpectFailure, "Attribute dtype does not specify a valid type.");
+    test.Run(OpTester::ExpectResult::kExpectFailure, "Node (node1) Op (RandomUniformLike) [TypeInferenceError] Attribute dtype does not specify a valid type in .");
   }
 }
 
@@ -252,7 +256,7 @@ TEST(Random, MultinomialGoodCase) {
   const std::vector<int64_t> output_dims{batch_size, num_samples};
 #ifdef _WIN32
   const std::vector<int64_t> expected_output{2, 0, 0, 2, 2, 2, 0, 2, 2, 1, 1, 2, 1, 1, 1, 1, 2, 1, 2, 0};
-#elif defined(__MACH__) || defined(__ANDROID__) || defined(__FreeBSD__) || defined(__wasm__)
+#elif defined(__MACH__) || defined(__ANDROID__) || defined(__FreeBSD__) || defined(__wasm__) || (defined(_AIX) && defined(__clang__))
   const std::vector<int64_t> expected_output{1, 1, 2, 2, 0, 2, 2, 2, 0, 2, 1, 1, 2, 0, 2, 2, 0, 2, 1, 1};
 #else
   const std::vector<int64_t> expected_output{2, 0, 0, 1, 0, 1, 2, 0, 1, 0, 0, 1, 1, 0, 1, 0, 2, 0, 2, 0};
@@ -290,7 +294,7 @@ TEST(Random, MultinomialDefaultDType) {
 #ifdef _WIN32
   const std::vector<int32_t> expected_output_1{2, 0, 0, 2, 2, 2, 0, 2, 2, 1, 1, 2, 1, 1, 1, 1, 2, 1, 2, 0};
   const std::vector<int32_t> expected_output_2{0, 0, 1, 0, 2, 2, 2, 0, 2, 1, 2, 1, 0, 2, 0, 2, 2, 1, 2, 1};
-#elif defined(__MACH__) || defined(__ANDROID__) || defined(__FreeBSD__) || defined(__wasm__)
+#elif defined(__MACH__) || defined(__ANDROID__) || defined(__FreeBSD__) || defined(__wasm__) || (defined(_AIX) && defined(__clang__))
   const std::vector<int32_t> expected_output_1{1, 1, 2, 2, 0, 2, 2, 2, 0, 2, 1, 1, 2, 0, 2, 2, 0, 2, 1, 1};
   const std::vector<int32_t> expected_output_2{1, 0, 1, 1, 1, 1, 0, 0, 1, 1, 0, 2, 0, 1, 1, 0, 2, 2, 2, 1};
 #else
@@ -380,7 +384,7 @@ void RunRandomNormalGpuTest(const std::vector<int64_t> dims, const float mean, c
     test.AddOutput("Y", dims, fp16_data);
   }
 
-  auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
+  auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& /*provider_type*/) {
     // Only one output, and mean of output values are near attribute mean.
     ASSERT_EQ(fetches.size(), 1u);
     const auto& output_tensor = fetches[0].Get<Tensor>();
@@ -472,7 +476,7 @@ void RunRandomUniformGpuTest(const std::vector<int64_t> dims, const float low, c
     test.AddOutput("Y", dims, fp16_data);
   }
 
-  auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
+  auto output_verifier = [&](const std::vector<OrtValue>& fetches, const std::string& /*provider_type*/) {
     // Only one output. Each value in output tensoer is between low and high.
     // Mean of output values are near attribute mean of low and high.
     ASSERT_EQ(fetches.size(), 1u);

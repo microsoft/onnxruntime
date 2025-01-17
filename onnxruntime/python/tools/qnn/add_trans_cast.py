@@ -142,7 +142,7 @@ def gen_to_channel_first_perm(rank):
     perm.append(0)
     perm.append(rank - 1)
     for i in range(1, rank - 1):
-        perm.append(i)
+        perm.append(i)  # noqa: PERF402
 
     return perm
 
@@ -152,7 +152,7 @@ def gen_to_channel_last_perm(rank):
     perm = []
     perm.append(0)
     for i in range(2, rank):
-        perm.append(i)
+        perm.append(i)  # noqa: PERF402
     perm.append(1)
 
     return perm
@@ -270,19 +270,15 @@ def main():
             raise AssertionError("Error: Onnx model output: " + graph_output.name + " not exist from QNN model output.")
 
     for node in model.graph.node:
-        node_input_index = 0
-        for node_input in node.input:
+        for node_input_index, node_input in enumerate(node.input):
             # update consumer node for graph inputs to connect to inserted node
             if node_input in graph_input_output_name_dic:
                 node.input[node_input_index] = graph_input_output_name_dic[node_input]
-            node_input_index += 1
 
-        node_output_index = 0
-        for node_output in node.output:
+        for node_output_index, node_output in enumerate(node.output):
             # update producer node for graph outputs to connect to inserted node
             if node_output in graph_input_output_name_dic:
                 node.output[node_output_index] = graph_input_output_name_dic[node_output]
-            node_output_index += 1
 
     model.graph.node.extend(nodes_to_add)
     graph_topological_sort(model.graph)

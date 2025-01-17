@@ -23,7 +23,7 @@ TEST(MathOpTest, Clip_6) {
                         {10.0f, 4.4f, 10.0f,
                          -1.3f, 3.5f, 10.0f,
                          -5.4f, 9.3f, 10.0f});
-#if defined(OPENVINO_CONFIG_CPU_FP32) || defined(OPENVINO_CONFIG_CPU_FP16)
+#if defined(OPENVINO_CONFIG_CPU)
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 #else
   test.Run();
@@ -119,6 +119,67 @@ TEST(MathOpTest, Clip_Default_uint64) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+TEST(MathOpTest, Clip_MLFloat16) {
+  auto run_test = [](bool min_max_are_initializer) {
+    OpTester test("Clip", 12);
+
+    std::vector<int64_t> dims{3, 3};
+    test.AddInput<MLFloat16>("X", dims,
+                             {MLFloat16(-1.0f), MLFloat16(-2.0f), MLFloat16(-3.0f),
+                              MLFloat16(-4.0f), MLFloat16(0.0f), MLFloat16(2.0f),
+                              MLFloat16(4.0f), MLFloat16(6.0f), MLFloat16(8.0f)});
+    test.AddInput<MLFloat16>("min", {}, {MLFloat16(0.0f)}, min_max_are_initializer);
+    test.AddInput<MLFloat16>("max", {}, {MLFloat16(6.0f)}, min_max_are_initializer);
+    test.AddOutput<MLFloat16>("Y", dims,
+                              {MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(0.0f),
+                               MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(2.0f),
+                               MLFloat16(4.0f), MLFloat16(6.0f), MLFloat16(6.0f)});
+
+    test.Run();
+  };
+  run_test(true);  // coreml requires constant max/min
+  run_test(false);
+}
+
+TEST(MathOpTest, Clip_MLFloat16_NoMin_NoMax) {
+  OpTester test("Clip", 12);
+
+  std::vector<int64_t> dims{3};
+  test.AddInput<MLFloat16>("X", dims,
+                           {MLFloat16(-1.0f), MLFloat16(-2.0f), MLFloat16(3.0f)});
+  test.AddOutput<MLFloat16>("Y", dims,
+                            {MLFloat16(-1.0f), MLFloat16(-2.0f), MLFloat16(3.0f)});
+
+  test.Run();
+}
+
+TEST(MathOpTest, Clip_MLFloat16_NoMax) {
+  OpTester test("Clip", 12);
+
+  std::vector<int64_t> dims{3};
+  test.AddInput<MLFloat16>("X", dims,
+                           {MLFloat16(-1.0f), MLFloat16(-2.0f), MLFloat16(3.0f)});
+  test.AddInput<MLFloat16>("min", {}, {MLFloat16(0.0f)});
+  test.AddOutput<MLFloat16>("Y", dims,
+                            {MLFloat16(0.0f), MLFloat16(0.0f), MLFloat16(3.0f)});
+
+  test.Run();
+}
+
+TEST(MathOpTest, Clip_MLFloat16_NoMin) {
+  OpTester test("Clip", 12);
+
+  std::vector<int64_t> dims{3};
+  test.AddInput<MLFloat16>("X", dims,
+                           {MLFloat16(-1.0f), MLFloat16(-2.0f), MLFloat16(3.0f)});
+  test.AddOptionalInputEdge<MLFloat16>();  // no min
+  test.AddInput<MLFloat16>("max", {}, {MLFloat16(0.0f)});
+  test.AddOutput<MLFloat16>("Y", dims,
+                            {MLFloat16(-1.0f), MLFloat16(-2.0f), MLFloat16(0.0f)});
+
+  test.Run();
+}
+
 TEST(MathOpTest, Clip_int32) {
   OpTester test("Clip", 12);
 
@@ -182,7 +243,7 @@ TEST(MathOpTest, Clip) {
   run_test(true);
 }
 
-// Use clip between [0, 6] as Relu6 (for some EPs, such as NNAPI)
+// Use clip between [0, 6] as Relu6 to test optimized path in some  EPs, such as NNAPI and CoreML
 TEST(MathOpTest, Clip_Relu6) {
   // To test NNAPI EP, we need the min/max to be in initializers
   auto run_test = [](bool min_max_are_initializer) {
@@ -199,6 +260,31 @@ TEST(MathOpTest, Clip_Relu6) {
                           {0.0f, 0.0f, 1.0f,
                            0.0f, 3.5f, 6.0f,
                            0.0f, 2.0f, 6.0f});
+
+    // TensorRT does not support Clip opset 11 yet.
+    test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  };
+
+  run_test(false);
+  run_test(true);
+}
+
+// Use clip between [0, inf] as Relu to test optimized path in some EPs, such as CoreML
+TEST(MathOpTest, Clip_Relu) {
+  // To test NNAPI EP, we need the min/max to be in initializers
+  auto run_test = [](bool min_max_are_initializer) {
+    OpTester test("Clip", 11);
+
+    std::vector<int64_t> dims{3, 3};
+    test.AddInput<float>("X", dims,
+                         {-1.0f, 0.0f, 1.0f,
+                          -6.0f, 3.5f, 6.0f,
+                          -5.4f, 2.0f, 8.0f});
+    test.AddInput<float>("min", {}, {0.0f}, min_max_are_initializer);
+    test.AddOutput<float>("Y", dims,
+                          {0.0f, 0.0f, 1.0f,
+                           0.0f, 3.5f, 6.0f,
+                           0.0f, 2.0f, 8.0f});
 
     // TensorRT does not support Clip opset 11 yet.
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});

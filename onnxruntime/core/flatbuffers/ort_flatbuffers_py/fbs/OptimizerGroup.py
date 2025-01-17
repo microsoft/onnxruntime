@@ -10,12 +10,16 @@ class OptimizerGroup(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAsOptimizerGroup(cls, buf, offset):
+    def GetRootAs(cls, buf, offset=0):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
         x = OptimizerGroup()
         x.Init(buf, n + offset)
         return x
 
+    @classmethod
+    def GetRootAsOptimizerGroup(cls, buf, offset=0):
+        """This method is deprecated. Please switch to GetRootAs."""
+        return cls.GetRootAs(buf, offset)
     @classmethod
     def OptimizerGroupBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x44\x54\x43", size_prefixed=size_prefixed)
@@ -70,10 +74,44 @@ class OptimizerGroup(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(10))
         return o == 0
 
-def OptimizerGroupStart(builder): builder.StartObject(4)
-def OptimizerGroupAddGroupName(builder, groupName): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(groupName), 0)
-def OptimizerGroupAddStep(builder, step): builder.PrependInt64Slot(1, step, 0)
-def OptimizerGroupAddInitialLearningRate(builder, initialLearningRate): builder.PrependFloat32Slot(2, initialLearningRate, 0.0)
-def OptimizerGroupAddOptimizerStates(builder, optimizerStates): builder.PrependUOffsetTRelativeSlot(3, flatbuffers.number_types.UOffsetTFlags.py_type(optimizerStates), 0)
-def OptimizerGroupStartOptimizerStatesVector(builder, numElems): return builder.StartVector(4, numElems, 4)
-def OptimizerGroupEnd(builder): return builder.EndObject()
+def OptimizerGroupStart(builder):
+    builder.StartObject(4)
+
+def Start(builder):
+    OptimizerGroupStart(builder)
+
+def OptimizerGroupAddGroupName(builder, groupName):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(groupName), 0)
+
+def AddGroupName(builder, groupName):
+    OptimizerGroupAddGroupName(builder, groupName)
+
+def OptimizerGroupAddStep(builder, step):
+    builder.PrependInt64Slot(1, step, 0)
+
+def AddStep(builder, step):
+    OptimizerGroupAddStep(builder, step)
+
+def OptimizerGroupAddInitialLearningRate(builder, initialLearningRate):
+    builder.PrependFloat32Slot(2, initialLearningRate, 0.0)
+
+def AddInitialLearningRate(builder, initialLearningRate):
+    OptimizerGroupAddInitialLearningRate(builder, initialLearningRate)
+
+def OptimizerGroupAddOptimizerStates(builder, optimizerStates):
+    builder.PrependUOffsetTRelativeSlot(3, flatbuffers.number_types.UOffsetTFlags.py_type(optimizerStates), 0)
+
+def AddOptimizerStates(builder, optimizerStates):
+    OptimizerGroupAddOptimizerStates(builder, optimizerStates)
+
+def OptimizerGroupStartOptimizerStatesVector(builder, numElems):
+    return builder.StartVector(4, numElems, 4)
+
+def StartOptimizerStatesVector(builder, numElems: int) -> int:
+    return OptimizerGroupStartOptimizerStatesVector(builder, numElems)
+
+def OptimizerGroupEnd(builder):
+    return builder.EndObject()
+
+def End(builder):
+    return OptimizerGroupEnd(builder)

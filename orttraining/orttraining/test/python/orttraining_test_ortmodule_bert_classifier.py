@@ -385,7 +385,7 @@ def main():
     # Set log level
     numeric_level = getattr(logging, args.log_level.upper(), None)
     if not isinstance(numeric_level, int):
-        raise ValueError("Invalid log level: %s" % args.log_level)
+        raise ValueError(f"Invalid log level: {args.log_level}")
     logging.basicConfig(level=numeric_level)
 
     # 2. Dataloader
@@ -441,7 +441,7 @@ def main():
 
     # 4. Train loop (fine-tune)
     total_training_time, total_test_time, epoch_0_training, validation_accuracy = 0, 0, 0, 0
-    for epoch_i in range(0, args.epochs):
+    for epoch_i in range(args.epochs):
         total_training_time += train(model, optimizer, scheduler, train_dataloader, epoch_i, device, args)
         if not args.pytorch_only and epoch_i == 0:
             epoch_0_training = total_training_time

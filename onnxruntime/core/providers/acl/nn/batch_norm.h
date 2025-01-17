@@ -31,9 +31,9 @@ typedef struct {
 typedef std::map<OpKernel*, ACLNEBatchNorm>::iterator BatchNormLayersIterator;
 
 template <typename T>
-class BatchNorm final : public OpKernel {
+class BatchNorm : public onnxruntime::BatchNorm<T> {
  public:
-  explicit BatchNorm(const OpKernelInfo& info) : OpKernel(info) {
+  explicit BatchNorm(const OpKernelInfo& info) : onnxruntime::BatchNorm<T>(info) {
     auto st = info.GetAttr<float>("epsilon", &epsilon_);
     ORT_ENFORCE(st.IsOK(), st.ErrorMessage());
 

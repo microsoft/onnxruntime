@@ -32,6 +32,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
     CreateResizeOpBuilder("Resize", op_registrations);
     CreateSliceOpBuilder("Slice", op_registrations);
     CreateSoftMaxOpBuilder("Softmax", op_registrations);
+    CreateSplitOpBuilder("Split", op_registrations);
     CreateSqueezeOpBuilder("Squeeze", op_registrations);
     CreateTransposeOpBuilder("Transpose", op_registrations);
     CreateUnsqueezeOpBuilder("Unsqueeze", op_registrations);

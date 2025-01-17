@@ -3,13 +3,17 @@
 
 #pragma once
 
+#include <string>
 #include <memory>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
 #include "core/common/inlined_containers.h"
 #include "core/framework/session_options.h"
+#include "core/framework/tensor.h"
 #include "core/optimizer/graph_transformer.h"
+#include "core/platform/threadpool.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/optimizer/rule_based_graph_transformer.h"
@@ -49,7 +53,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     TransformerLevel level,
     const SessionOptions& session_options,
     const IExecutionProvider& execution_provider /*required by constant folding*/,
-    const InlinedHashSet<std::string>& rules_and_transformers_to_disable = {});
+    const logging::Logger& logger,
+    const InlinedHashSet<std::string>& rules_and_transformers_to_disable = {},
+    concurrency::ThreadPool* intra_op_thread_pool = nullptr,
+    std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors = nullptr);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -78,7 +85,10 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
     const SessionOptions& session_options,
     const SatApplyContextVariant& apply_context,
     const IExecutionProvider& cpu_execution_provider,
-    const InlinedHashSet<std::string>& rules_and_transformers_to_disable = {});
+    const logging::Logger& logger,
+    const InlinedHashSet<std::string>& rules_and_transformers_to_disable = {},
+    concurrency::ThreadPool* intra_op_thread_pool = nullptr,
+    std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors = nullptr);
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 

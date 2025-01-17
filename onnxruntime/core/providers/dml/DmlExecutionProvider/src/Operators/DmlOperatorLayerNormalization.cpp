@@ -9,7 +9,7 @@ namespace Dml
 class DmlOperatorLayerNormalization : public DmlOperator
 {
 public:
-    DmlOperatorLayerNormalization(const MLOperatorKernelCreationContext& kernelCreationContext)
+    DmlOperatorLayerNormalization(const MLOperatorKernelCreationContext& kernelCreationContext, bool simplified)
     :   DmlOperator(kernelCreationContext)
     {
         std::vector<std::optional<uint32_t>> kernelInputIndices = {0, 1, 2};
@@ -128,17 +128,18 @@ public:
             outputCastOpDesc.Desc = &outputCastDesc;
         }
 
-        DML_MEAN_VARIANCE_NORMALIZATION1_OPERATOR_DESC operatorDesc = {};
+        DML_MEAN_VARIANCE_NORMALIZATION2_OPERATOR_DESC operatorDesc = {};
         operatorDesc.InputTensor = inputCastOpDesc.Desc ? &inputCastOutputDmlTensorDesc : &inputDesc;
         operatorDesc.ScaleTensor = scaleCastOpDesc.Desc ? &scaleCastOutputDmlTensorDesc : &scaleDesc;
         operatorDesc.BiasTensor = biasCastOpDesc.Desc ? &biasCastOutputDmlTensorDesc : (biasDesc.Desc ? &biasDesc : nullptr);
         operatorDesc.OutputTensor = outputCastOpDesc.Desc ? &outputCastOutputDmlTensorDesc : &outputDesc;
         operatorDesc.Axes = onnxAxes.data();
         operatorDesc.AxisCount = gsl::narrow_cast<uint32_t>(onnxAxes.size());
-        operatorDesc.NormalizeVariance = true;
+        operatorDesc.UseMean = !simplified;
+        operatorDesc.UseVariance = true;
         operatorDesc.Epsilon = epsilon;
         operatorDesc.FusedActivation = nullptr;
-        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION1, &operatorDesc };
+        DML_OPERATOR_DESC opDesc = { DML_OPERATOR_MEAN_VARIANCE_NORMALIZATION2, &operatorDesc };
 
         // Construct the graph
         std::vector<const DML_OPERATOR_DESC*> opDescs;
@@ -247,7 +248,7 @@ public:
         operatorGraphDesc.outputEdgeCount = gsl::narrow_cast<uint32_t>(outputEdges.size());
         operatorGraphDesc.outputEdges = outputEdges.data();
         operatorGraphDesc.nodeCount = gsl::narrow_cast<uint32_t>(opDescs.size());
-        operatorGraphDesc.nodesAsOpDesc = opDescs.data();
+        operatorGraphDesc.nodes = opDescs.data();
 
         SetDmlOperatorGraphDesc(std::move(operatorGraphDesc), kernelCreationContext);
     }
@@ -258,7 +259,19 @@ void CALLBACK QueryLayerNormalization(IMLOperatorSupportQueryContextPrivate* con
     *isSupported = context->GetOutputCount() == 1;
 }
 
-DML_OP_DEFINE_CREATION_FUNCTION(LayerNormalization, DmlOperatorLayerNormalization);
-DML_OP_DEFINE_CREATION_FUNCTION(LayerNormalization17, DmlOperatorLayerNormalization);
+// A specific type of operation for registration.
+template <bool simplified>
+class LayerNormalizationTemplate : public DmlOperatorLayerNormalization
+{
+public:
+    LayerNormalizationTemplate(const MLOperatorKernelCreationContext& kernelCreationContext)
+    :   DmlOperatorLayerNormalization(kernelCreationContext, simplified)
+    {
+    }
+};
+
+DML_OP_DEFINE_CREATION_FUNCTION(LayerNormalization, LayerNormalizationTemplate<false>);
+DML_OP_DEFINE_CREATION_FUNCTION(LayerNormalization17, LayerNormalizationTemplate<false>);
+DML_OP_DEFINE_CREATION_FUNCTION(SimplifiedLayerNormalization, LayerNormalizationTemplate<true>);
 
 } // namespace Dml

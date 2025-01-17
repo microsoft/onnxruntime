@@ -6,7 +6,7 @@
 #include <algorithm>
 #include <optional>
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/providers/common.h"
 #include "core/providers/cpu/tensor/transpose.h"
 #include "core/util/math_cpuonly.h"

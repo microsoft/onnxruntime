@@ -36,15 +36,15 @@ public:
                   "Two inputs should have same rank and rank >= 3 if transBatchA or transBatchB is true");
         }
 
-        auto [sizesA, stridesA] = OperatorHelper::GetFusedMatMulSizesAndStrides(inputShape0, transBatchA, transA);
+        auto [sizesA, stridesA] = OperatorHelper::GetFusedMatMulSizesAndStrides(inputShape0, transBatchA);
 
-        auto [sizesB, stridesB] = OperatorHelper::GetFusedMatMulSizesAndStrides(inputShape1, transBatchB, transB);
+        auto [sizesB, stridesB] = OperatorHelper::GetFusedMatMulSizesAndStrides(inputShape1, transBatchB);
 
         OperatorHelper::FusedMatMulShapeMapping(sizesA, stridesA, sizesB, stridesB, outputShape);
 
         // At this point, we have manipulated input/output shapes and strides and
         // we do not care about actual input shapes present in the model (.onnx file).
-        // Create the TensorDesc with the manipulated input shapes becuase we don't want incorrect
+        // Create the TensorDesc with the manipulated input shapes because we don't want incorrect
         // broadcasting to be happen inside TensorDesc constructor.
         std::vector<std::optional<uint32_t>> inputIndices = { 0, 1, std::nullopt };
         gsl::span<const uint32_t> inputShapes[2] = {sizesA, sizesB};
@@ -67,8 +67,8 @@ public:
         gemmDesc.BTensor = &inputDescs[1];
         gemmDesc.CTensor = nullptr;
         gemmDesc.OutputTensor = &outputDescs[0];
-        gemmDesc.TransA = DML_MATRIX_TRANSFORM_NONE;
-        gemmDesc.TransB = DML_MATRIX_TRANSFORM_NONE;
+        gemmDesc.TransA = (transA && inputShape0.size() != 1 ? DML_MATRIX_TRANSFORM_TRANSPOSE : DML_MATRIX_TRANSFORM_NONE);
+        gemmDesc.TransB = (transB && inputShape1.size() != 1 ? DML_MATRIX_TRANSFORM_TRANSPOSE : DML_MATRIX_TRANSFORM_NONE);
         gemmDesc.Alpha = alpha;
         gemmDesc.Beta = 0.0f;
         gemmDesc.FusedActivation = fusedActivation ? &fusedActivationDmlDesc : nullptr;

@@ -1,4 +1,4 @@
-# This sets the default behaviour, overriding core.autocrlf
+# This sets the default behavior, overriding core.autocrlf
 * text=auto
 
 # All source files should have unix line-endings in the repository,

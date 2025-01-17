@@ -4,9 +4,13 @@
 #include <memory>
 #include <vector>
 #include "gtest/gtest.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/common/cuda_op_test_utils.h"
+
+#ifdef USE_CUDA
+#include "core/providers/cuda/cuda_provider_options.h"
+#endif
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -65,7 +69,10 @@ TEST(SamplingTest, Gpt2Sampling_GPU) {
     LOGS_DEFAULT(WARNING) << "Hardware NOT support current architecture";
     return;
   }
-  Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_CUDA(session_options, 0));
+
+  OrtCUDAProviderOptionsV2 cuda_options;
+  cuda_options.use_tf32 = false;
+  session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
 #else  // USE_ROCM
   OrtROCMProviderOptions rocm_options;
   // TODO - verify the default settings

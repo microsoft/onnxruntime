@@ -9,7 +9,6 @@
 #include <map>
 #include <unordered_set>
 
-#include "core/providers/shared_library/provider_api.h"
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/cann/cann_execution_provider.h"
@@ -29,7 +28,7 @@ using onnxruntime::common::Status;
 namespace onnxruntime {
 
 // Models can only be parsed and built serially in the same process
-OrtMutex g_mutex;
+std::mutex g_mutex;
 
 class Memcpy final : public OpKernel {
  public:
@@ -1029,13 +1028,14 @@ Status RegisterCANNKernels(KernelRegistry& kernel_registry) {
 }  // namespace cann
 
 CANNExecutionProvider::CANNExecutionProvider(const CANNExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kCannExecutionProvider, OrtDevice(OrtDevice::NPU, OrtDevice::MemType::DEFAULT, info.device_id), true}, info_{info} {
+    : IExecutionProvider{onnxruntime::kCannExecutionProvider, OrtDevice(OrtDevice::NPU, OrtDevice::MemType::DEFAULT, info.device_id)}, info_{info} {
   InitProviderOrtApi();
 
   CANN_CALL_THROW(aclrtSetDevice(info_.device_id));
 
   soc_name_ = aclrtGetSocName();
   ORT_ENFORCE(soc_name_ != nullptr, "aclrtGetSocName return nullptr");
+  metadef_id_generator_ = ModelMetadefIdGenerator::Create();
 }
 
 CANNExecutionProvider::~CANNExecutionProvider() {
@@ -1045,7 +1045,7 @@ CANNExecutionProvider::~CANNExecutionProvider() {
 }
 
 // All threads share the same context and stream
-Status CANNExecutionProvider::OnRunStart() {
+Status CANNExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
   CANN_RETURN_IF_ERROR(aclrtSetDevice(info_.device_id));
 
   return Status::OK();
@@ -1197,7 +1197,7 @@ std::unique_ptr<IndexedSubGraph> CANNExecutionProvider::GetSubGraph(
 
   // Generate unique kernel name for CANN subgraph
   HashValue model_hash = 0;
-  int id = GenerateMetaDefId(graph_viewer, model_hash);
+  int id = metadef_id_generator_->GenerateId(graph_viewer, model_hash);
   auto meta_def = IndexedSubGraph_MetaDef::Create();
   meta_def->name() = graph_viewer.Name() + "_" + std::to_string(model_hash) + "_" + std::to_string(id);
 
@@ -1288,15 +1288,15 @@ CANNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewe
 
       const KernelCreateInfo* cann_kernel_def = kernel_lookup.LookUpKernel(node);
       if (cann_kernel_def == nullptr) {
-        LOGS_DEFAULT(INFO) << "CANN kernel not found in registries for Op type: " << node.OpType()
-                           << " node name: " << node.Name();
+        LOGS(*GetLogger(), INFO) << "CANN kernel not found in registries for Op type: " << node.OpType()
+                                 << " node name: " << node.Name();
         continue;
       }
 
       candidates.push_back(node.Index());
     }
 
-    auto cpu_nodes = GetCpuPreferredNodes(graph_viewer, kernel_lookup, candidates);
+    auto cpu_nodes = GetCpuPreferredNodes(graph_viewer, kernel_lookup, candidates, *GetLogger());
     for (auto& node_index : candidates) {
       if (cpu_nodes.count(node_index) > 0)
         continue;
@@ -1389,7 +1389,7 @@ Status CANNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fuse
       if (modelIDs_.find(filename) != modelIDs_.end()) {
         modelID = modelIDs_[filename];
       } else {
-        std::lock_guard<OrtMutex> lock(g_mutex);
+        std::lock_guard<std::mutex> lock(g_mutex);
 
         if (cann::FileExist(filename_with_suffix)) {
           CANN_RETURN_IF_ERROR(aclmdlLoadFromFile(filename_with_suffix.c_str(), &modelID));

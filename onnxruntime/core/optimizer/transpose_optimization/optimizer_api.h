@@ -86,7 +86,7 @@ class TensorRef {
   /// <returns>Flattened tensor data in bytes</returns>
   virtual std::vector<uint8_t> Data() const = 0;
 
-  virtual ~TensorRef(){};
+  virtual ~TensorRef() {};
 };
 
 /// <summary>
@@ -104,6 +104,12 @@ class ValueInfoRef {
   /// representing the dimensions of the value. Use -1 for unknown dimensions.
   /// </returns>
   virtual std::optional<std::vector<int64_t>> Shape() const = 0;
+
+  /// <returns>
+  /// The inferred/declared rank of the value's tensor shape, or nullopt if the rank is unknown. A scalar
+  /// has a rank of 0.
+  /// </returns>
+  virtual std::optional<size_t> ShapeRank() const = 0;
 
   /// <returns>The inferred/declared dtype of the value. UNDEFINED (0) if dtype is unknown.</returns>
   virtual DataType DType() const = 0;
@@ -131,7 +137,7 @@ class ValueInfoRef {
   /// <param name="axes">Indices of dimensions to add. Indices are relative to final shape.</param>
   virtual void UnsqueezeDims(const std::vector<int64_t>& axes) = 0;
 
-  virtual ~ValueInfoRef(){};
+  virtual ~ValueInfoRef() {};
 };
 
 /// <summary>
@@ -140,6 +146,9 @@ class ValueInfoRef {
 /// </summary>
 class NodeRef {
  public:
+  /// <returns>Node name</returns>
+  virtual std::string_view Name() const = 0;
+
   /// <returns>Op computed by the node</returns>
   virtual std::string_view OpType() const = 0;
 
@@ -242,7 +251,13 @@ class NodeRef {
   /// <returns>since version or default value -1</returns>
   virtual int SinceVersion() const = 0;
 
-  virtual ~NodeRef(){};
+  /// <summary>
+  /// Get the unique id of the node.
+  /// </summary>
+  /// <returns>Id</returns>
+  virtual int64_t Id() const = 0;
+
+  virtual ~NodeRef() {};
 };
 
 /// <summary>
@@ -349,6 +364,7 @@ class GraphRef {
   /// generated. Outputs of created node have unspecified shapes/dtypes. They will be populated afterwards using
   /// CopyValueInfo.
   /// </summary>
+  /// <param name="name">The new node's name</param>
   /// <param name="op_type">The new node's op type</param>
   /// <param name="inputs">Inputs for the node. "" for missing optional inputs.</param>
   /// <param name="num_outputs">
@@ -356,7 +372,7 @@ class GraphRef {
   /// </param>
   /// <param name="domain">The new node's domain. Empty string signifies default onnx domain.</param>
   /// <returns>The new node</returns>
-  virtual std::unique_ptr<NodeRef> AddNode(std::string_view op_type, const std::vector<std::string_view>& inputs,
+  virtual std::unique_ptr<NodeRef> AddNode(std::string_view name, std::string_view op_type, const std::vector<std::string_view>& inputs,
                                            size_t num_outputs, std::string_view domain = /*kOnnxDomain*/ "") = 0;
 
   /// <summary>
@@ -436,13 +452,20 @@ class GraphRef {
     return !unused;
   }
 
-  virtual ~GraphRef(){};
+  /// <summary>
+  /// Is the value a graph output.
+  /// </summary>
+  /// <param name="name">Value name.</param>
+  /// <returns>True if output of the Graph.</returns>
+  virtual bool IsGraphOutput(std::string_view name) const = 0;
+
+  virtual ~GraphRef() {};
 };
 
 }  // namespace api
 
 constexpr int64_t kMinSupportedOpset = 7;
-constexpr int64_t kMaxSupportedOpset = 19;
+constexpr int64_t kMaxSupportedOpset = 22;
 
 // enum of results that a CostCheckFn can return.
 enum class CostCheckResult {

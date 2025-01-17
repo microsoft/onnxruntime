@@ -23,9 +23,9 @@ struct TreeNodeElementId {
   }
   struct hash_fn {
     std::size_t operator()(const TreeNodeElementId& key) const {
-      std::size_t h1 = std::hash<int64_t>()(key.tree_id);
-      std::size_t h2 = std::hash<int64_t>()(key.node_id);
-      return h1 ^ h2;
+      // unordered_map has poor performance on Windows when inserting consecutive keys.
+      // keys are usually inserted with key.node_id being incremented at each iteration.
+      return static_cast<std::size_t>(static_cast<uint64_t>(key.tree_id) | static_cast<uint64_t>(key.node_id) << 32);
     }
   };
 };
@@ -67,34 +67,75 @@ enum MissingTrack : uint8_t {
 };
 
 template <typename T>
+struct TreeNodeElement;
+
+template <typename T>
+union PtrOrWeight {
+  TreeNodeElement<T>* ptr;
+  struct WeightData {
+    int32_t weight;
+    int32_t n_weights;
+  } weight_data;
+};
+
+enum NODE_MODE_ORT : uint8_t {
+  LEAF = 1,
+  BRANCH_LEQ = 2,
+  BRANCH_LT = 4,
+  BRANCH_GTE = 6,
+  BRANCH_GT = 8,
+  BRANCH_EQ = 10,
+  BRANCH_NEQ = 12,
+  BRANCH_MEMBER = 14,
+};
+
+inline NODE_MODE_ORT Convert_NODE_MODE_ONNX_to_ORT(NODE_MODE_ONNX node_mode) {
+  switch (node_mode) {
+    case NODE_MODE_ONNX::LEAF:
+      return NODE_MODE_ORT::LEAF;
+    case NODE_MODE_ONNX::BRANCH_LEQ:
+      return NODE_MODE_ORT::BRANCH_LEQ;
+    case NODE_MODE_ONNX::BRANCH_LT:
+      return NODE_MODE_ORT::BRANCH_LT;
+    case NODE_MODE_ONNX::BRANCH_GTE:
+      return NODE_MODE_ORT::BRANCH_GTE;
+    case NODE_MODE_ONNX::BRANCH_GT:
+      return NODE_MODE_ORT::BRANCH_GT;
+    case NODE_MODE_ONNX::BRANCH_EQ:
+      return NODE_MODE_ORT::BRANCH_EQ;
+    case NODE_MODE_ONNX::BRANCH_NEQ:
+      return NODE_MODE_ORT::BRANCH_NEQ;
+    case NODE_MODE_ONNX::BRANCH_MEMBER:
+      return NODE_MODE_ORT::BRANCH_MEMBER;
+    default:
+      ORT_THROW("Unexpected value for node_mode");
+  };
+}
+
+template <typename T>
 struct TreeNodeElement {
   int feature_id;
 
   // Stores the node threshold or the weights if the tree has one target.
   T value_or_unique_weight;
 
-  // onnx specification says hitrates is used to store information about the node,
+  // The onnx specification says hitrates is used to store information about the node,
   // but this information is not used for inference.
   // T hitrates;
 
-  // True node, false node are obtained by computing `this + truenode_inc_or_first_weight`,
-  // `this + falsenode_inc_or_n_weights` if the node is not a leaf.
-  // In case of a leaf, these attributes are used to indicate the position of the weight
-  // in array `TreeEnsembleCommon::weights_`. If the number of targets or classes is one,
-  // the weight is also stored in `value_or_unique_weight`.
-  // This implementation assumes a tree has less than 2^31 nodes,
-  // and the total number of leave in the set of trees is below 2^31.
-  // A node cannot point to itself.
-  int32_t truenode_inc_or_first_weight;
-  // In case of a leaf, the following attribute indicates the number of weights
-  // in array `TreeEnsembleCommon::weights_`. If not a leaf, it indicates
-  // `this + falsenode_inc_or_n_weights` is the false node.
-  // A node cannot point to itself.
-  int32_t falsenode_inc_or_n_weights;
-  uint8_t flags;
+  // PtrOrWeight acts as a tagged union, with the "tag" being whether the node is a leaf or not (see `is_not_leaf`).
 
-  inline NODE_MODE mode() const { return NODE_MODE(flags & 0xF); }
-  inline bool is_not_leaf() const { return !(flags & NODE_MODE::LEAF); }
+  // If it is not a leaf, it is a pointer to the true child node when traversing the decision tree. The false branch is
+  // always 1 position away from the TreeNodeElement in practice in `TreeEnsembleCommon::nodes_` so it is not stored.
+
+  // If it is a leaf, it contains `weight` and `n_weights` attributes which are used to indicate the position of the
+  // weight in array `TreeEnsembleCommon::weights_`. If the number of targets or classes is one, the weight is also
+  // stored in `value_or_unique_weight`.
+  PtrOrWeight<T> truenode_or_weight;
+  NODE_MODE_ORT flags;
+
+  inline NODE_MODE_ORT mode() const { return NODE_MODE_ORT(flags & 0xF); }
+  inline bool is_not_leaf() const { return !(flags & NODE_MODE_ORT::LEAF); }
   inline bool is_missing_track_true() const { return flags & MissingTrack::kTrue; }
 };
 
@@ -191,8 +232,8 @@ class TreeAggregatorSum : public TreeAggregator<InputType, ThresholdType, Output
   void ProcessTreeNodePrediction(InlinedVector<ScoreValue<ThresholdType>>& predictions,
                                  const TreeNodeElement<ThresholdType>& root,
                                  gsl::span<const SparseValue<ThresholdType>> weights) const {
-    auto it = weights.begin() + root.truenode_inc_or_first_weight;
-    for (int32_t i = 0; i < root.falsenode_inc_or_n_weights; ++i, ++it) {
+    auto it = weights.begin() + root.truenode_or_weight.weight_data.weight;
+    for (int32_t i = 0; i < root.truenode_or_weight.weight_data.n_weights; ++i, ++it) {
       ORT_ENFORCE(it->i < (int64_t)predictions.size());
       predictions[onnxruntime::narrow<size_t>(it->i)].score += it->value;
       predictions[onnxruntime::narrow<size_t>(it->i)].has_score = 1;
@@ -294,8 +335,8 @@ class TreeAggregatorMin : public TreeAggregator<InputType, ThresholdType, Output
   void ProcessTreeNodePrediction(InlinedVector<ScoreValue<ThresholdType>>& predictions,
                                  const TreeNodeElement<ThresholdType>& root,
                                  gsl::span<const SparseValue<ThresholdType>> weights) const {
-    auto it = weights.begin() + root.truenode_inc_or_first_weight;
-    for (int32_t i = 0; i < root.falsenode_inc_or_n_weights; ++i, ++it) {
+    auto it = weights.begin() + root.truenode_or_weight.weight_data.weight;
+    for (int32_t i = 0; i < root.truenode_or_weight.weight_data.n_weights; ++i, ++it) {
       predictions[onnxruntime::narrow<size_t>(it->i)].score =
           (!predictions[onnxruntime::narrow<size_t>(it->i)].has_score || it->value < predictions[onnxruntime::narrow<size_t>(it->i)].score)
               ? it->value
@@ -321,11 +362,10 @@ class TreeAggregatorMin : public TreeAggregator<InputType, ThresholdType, Output
 template <typename InputType, typename ThresholdType, typename OutputType>
 class TreeAggregatorMax : public TreeAggregator<InputType, ThresholdType, OutputType> {
  public:
-  TreeAggregatorMax<InputType, ThresholdType, OutputType>(size_t n_trees,
-                                                          const int64_t& n_targets_or_classes,
-                                                          POST_EVAL_TRANSFORM post_transform,
-                                                          const std::vector<ThresholdType>& base_values) : TreeAggregator<InputType, ThresholdType, OutputType>(n_trees, n_targets_or_classes,
-                                                                                                                                                                post_transform, base_values) {}
+  TreeAggregatorMax(size_t n_trees,
+                    const int64_t& n_targets_or_classes,
+                    POST_EVAL_TRANSFORM post_transform,
+                    const std::vector<ThresholdType>& base_values) : TreeAggregator<InputType, ThresholdType, OutputType>(n_trees, n_targets_or_classes, post_transform, base_values) {}
 
   // 1 output
 
@@ -351,8 +391,8 @@ class TreeAggregatorMax : public TreeAggregator<InputType, ThresholdType, Output
   void ProcessTreeNodePrediction(InlinedVector<ScoreValue<ThresholdType>>& predictions,
                                  const TreeNodeElement<ThresholdType>& root,
                                  gsl::span<const SparseValue<ThresholdType>> weights) const {
-    auto it = weights.begin() + root.truenode_inc_or_first_weight;
-    for (int32_t i = 0; i < root.falsenode_inc_or_n_weights; ++i, ++it) {
+    auto it = weights.begin() + root.truenode_or_weight.weight_data.weight;
+    for (int32_t i = 0; i < root.truenode_or_weight.weight_data.n_weights; ++i, ++it) {
       predictions[onnxruntime::narrow<size_t>(it->i)].score =
           (!predictions[onnxruntime::narrow<size_t>(it->i)].has_score || it->value > predictions[onnxruntime::narrow<size_t>(it->i)].score)
               ? it->value

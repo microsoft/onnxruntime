@@ -17,7 +17,7 @@ Abstract:
 #include "test_halfgemm.h"
 
 //
-// Short Execute() test helper to register each test seperately by all parameters.
+// Short Execute() test helper to register each test separately by all parameters.
 //
 template <typename AType, typename BType, bool Packed, bool Threaded>
 class HalfGemmShortExecuteTest : public MlasTestFixture<MlasHalfGemmTest<AType, BType, Packed, Threaded>> {
@@ -88,42 +88,6 @@ class HalfGemmShortExecuteTest : public MlasTestFixture<MlasHalfGemmTest<AType, 
   size_t M_, N_, K_, Batch_;
   bool hasBias_;
 };
-
-template <>
-MlasHalfGemmTest<float, MLFp16, false, false>* MlasTestFixture<MlasHalfGemmTest<float, MLFp16, false, false>>::mlas_tester(nullptr);
-template <>
-MlasHalfGemmTest<float, MLFp16, false, true>* MlasTestFixture<MlasHalfGemmTest<float, MLFp16, false, true>>::mlas_tester(nullptr);
-template <>
-MlasHalfGemmTest<float, MLFp16, true, false>* MlasTestFixture<MlasHalfGemmTest<float, MLFp16, true, false>>::mlas_tester(nullptr);
-template <>
-MlasHalfGemmTest<float, MLFp16, true, true>* MlasTestFixture<MlasHalfGemmTest<float, MLFp16, true, true>>::mlas_tester(nullptr);
-
-template <>
-MlasHalfGemmTest<MLFp16, float, false, false>* MlasTestFixture<MlasHalfGemmTest<MLFp16, float, false, false>>::mlas_tester(nullptr);
-template <>
-MlasHalfGemmTest<MLFp16, float, false, true>* MlasTestFixture<MlasHalfGemmTest<MLFp16, float, false, true>>::mlas_tester(nullptr);
-template <>
-MlasHalfGemmTest<MLFp16, float, true, false>* MlasTestFixture<MlasHalfGemmTest<MLFp16, float, true, false>>::mlas_tester(nullptr);
-template <>
-MlasHalfGemmTest<MLFp16, float, true, true>* MlasTestFixture<MlasHalfGemmTest<MLFp16, float, true, true>>::mlas_tester(nullptr);
-
-template <>
-MlasHalfGemmTest<float, float, false, false>* MlasTestFixture<MlasHalfGemmTest<float, float, false, false>>::mlas_tester(nullptr);
-template <>
-MlasHalfGemmTest<float, float, false, true>* MlasTestFixture<MlasHalfGemmTest<float, float, false, true>>::mlas_tester(nullptr);
-template <>
-MlasHalfGemmTest<float, float, true, false>* MlasTestFixture<MlasHalfGemmTest<float, float, true, false>>::mlas_tester(nullptr);
-template <>
-MlasHalfGemmTest<float, float, true, true>* MlasTestFixture<MlasHalfGemmTest<float, float, true, true>>::mlas_tester(nullptr);
-
-template <>
-MlasHalfGemmTest<MLFp16, MLFp16, false, false>* MlasTestFixture<MlasHalfGemmTest<MLFp16, MLFp16, false, false>>::mlas_tester(nullptr);
-template <>
-MlasHalfGemmTest<MLFp16, MLFp16, false, true>* MlasTestFixture<MlasHalfGemmTest<MLFp16, MLFp16, false, true>>::mlas_tester(nullptr);
-template <>
-MlasHalfGemmTest<MLFp16, MLFp16, true, false>* MlasTestFixture<MlasHalfGemmTest<MLFp16, MLFp16, true, false>>::mlas_tester(nullptr);
-template <>
-MlasHalfGemmTest<MLFp16, MLFp16, true, true>* MlasTestFixture<MlasHalfGemmTest<MLFp16, MLFp16, true, true>>::mlas_tester(nullptr);
 
 static size_t HalfGemmRegistLongExecute() {
   size_t count = 0;

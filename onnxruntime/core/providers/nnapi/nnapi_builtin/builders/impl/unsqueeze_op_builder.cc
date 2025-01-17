@@ -32,7 +32,7 @@ class UnsqueezeOpBuilder : public BaseOpBuilder {
 
   // Operator support related
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 };
 
@@ -74,7 +74,7 @@ Status UnsqueezeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
 
 // Operator support related
 
-bool UnsqueezeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+bool UnsqueezeOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                                            const OpSupportCheckParams& /* params */) const {
   const auto& inputs = node_unit.Inputs();
   Shape input_shape;
@@ -93,8 +93,8 @@ bool UnsqueezeOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializ
   // Unsqueeze opset 13 uses input 1 as axes, if we have input 1 then it needs to be an initializer
   if (node_unit.SinceVersion() > 12 && inputs.size() > 1) {
     const auto& axes_name = inputs[1].node_arg.Name();
-    if (!Contains(initializers, axes_name)) {
-      LOGS_DEFAULT(VERBOSE) << "Input axes of Unsqueeze must be known";
+    if (!graph_viewer.GetConstantInitializer(axes_name)) {
+      LOGS_DEFAULT(VERBOSE) << "Input axes of Unsqueeze must be a constant initializer";
       return false;
     }
   }

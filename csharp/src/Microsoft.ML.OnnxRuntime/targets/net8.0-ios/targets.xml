@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Condition="('$(OutputType)'!='Library' OR '$(IsAppExtension)'=='True')">
+    <NativeReference Include="$(MSBuildThisFileDirectory)..\..\runtimes\ios\native\onnxruntime.xcframework.zip">
+      <Kind>Static</Kind>
+      <IsCxx>True</IsCxx>
+      <SmartLink>True</SmartLink>
+      <ForceLoad>True</ForceLoad>
+      <LinkerFlags>-lc++</LinkerFlags>
+      <WeakFrameworks>CoreML</WeakFrameworks>
+    </NativeReference>
+  </ItemGroup>
+</Project>

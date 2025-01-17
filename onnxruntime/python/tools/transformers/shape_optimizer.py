@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-# This tool is not used directly in bert optimization. It could assist developing the optimization script on the following senarios:
+# This tool is not used directly in bert optimization. It could assist developing the optimization script on the following scenarios:
 # (1) It could simplify graph by removing many sub-graphs related to reshape.
 # (2) It could reduce extra inputs and outputs to fit other tools. The script compare_bert_results.py or bert_perf_test.py requires 3 inputs.
 
@@ -16,7 +16,7 @@ import tempfile
 from collections import deque  # noqa: F401
 from datetime import datetime
 from pathlib import Path  # noqa: F401
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import onnx
@@ -133,9 +133,7 @@ class BertOnnxModelShapeOptimizer(OnnxModel):
                     dim_proto.dim_value = max_seq_len
                 elif dim_proto.HasField("dim_value") and dim_proto.dim_value != max_seq_len:
                     raise ValueError(
-                        "Unable to set dimension value to {} for axis {} of {}. Contradicts existing dimension value {}.".format(
-                            max_seq_len, 1, input.name, dim_proto.dim_value
-                        )
+                        f"Unable to set dimension value to {max_seq_len} for axis {1} of {input.name}. Contradicts existing dimension value {dim_proto.dim_value}."
                     )
 
     def create_dummy_inputs(
@@ -287,7 +285,7 @@ class BertOnnxModelShapeOptimizer(OnnxModel):
         input_mask: str,
         enable_shape_opt: bool,
         enable_reshape_opt: bool,
-        output_names: List[str] = None,
+        output_names: Optional[List[str]] = None,
         batch_size=1,
         sequence_length=128,
         verbose=False,

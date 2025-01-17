@@ -5,6 +5,8 @@
 
 #include "test/providers/kernel_compute_test_utils.h"
 
+#include <utility>
+
 #include "core/framework/execution_providers.h"
 #include "core/optimizer/optimizer_execution_frame.h"
 #include "test/util/include/default_providers.h"
@@ -40,8 +42,9 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
   }
 #endif
 
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
   Model model("test", false, ModelMetaData(), ORT_TSTR(""), IOnnxRuntimeOpSchemaRegistryList(),
-              {{domain_, opset_version_}}, {}, DefaultLoggingManager().DefaultLogger());
+              {{domain_, opset_version_}}, {}, logger);
 
   std::vector<NodeArg*> input_args;
   std::unordered_map<std::string, OrtValue> initializer_map;
@@ -55,12 +58,20 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
     }
 #if defined(USE_CUDA) || defined(USE_ROCM)
     if ((provider_ == kCudaExecutionProvider || provider_ == kRocmExecutionProvider) && !data.is_cpu_data_) {
-      OrtValue gpu_value;
       const Tensor& tensor = data.value_.Get<Tensor>();
-      Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(),
-                           execution_providers.Get(ep_type)->CreatePreferredAllocators()[0], gpu_value,
-                           tensor.Strides());
-      ASSERT_STATUS_OK(dtm.CopyTensor(tensor, *gpu_value.GetMutable<Tensor>()));
+
+      Tensor gpu_tensor(tensor.DataType(), tensor.Shape(),
+                        execution_providers.Get(ep_type)->CreatePreferredAllocators()[0]);
+
+      if (const auto strides = tensor.Strides(); !strides.empty()) {
+        gpu_tensor.SetShapeAndStrides(tensor.Shape(), strides);
+      }
+
+      ASSERT_STATUS_OK(dtm.CopyTensor(tensor, gpu_tensor));
+
+      OrtValue gpu_value;
+      Tensor::InitOrtValue(std::move(gpu_tensor), gpu_value);
+
       initializer_map[name] = gpu_value;
     }
 #endif
@@ -79,8 +90,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
   ASSERT_STATUS_OK(graph.Resolve());
 
   node.SetExecutionProviderType(ep_type);
-  OptimizerExecutionFrame::Info info({&node}, initializer_map, graph.ModelPath(), *execution_providers.Get(ep_type),
-                                     [](std::string const&) { return false; });
+  OptimizerExecutionFrame::Info info({&node}, initializer_map, graph.ModelPath(), *execution_providers.Get(ep_type), [](std::string const&) { return false; }, logger);
   const KernelCreateInfo* kernel_create_info = nullptr;
   ASSERT_STATUS_OK(info.TryFindKernel(&node, &kernel_create_info));
   ASSERT_TRUE(kernel_create_info);
@@ -114,7 +124,8 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
     outputs.emplace_back(output);
   }
 
-  auto kernel = info.CreateKernel(&node);
+  static const ConfigOptions empty_config_options;
+  auto kernel = info.CreateKernel(&node, empty_config_options);
   ASSERT_TRUE(kernel);
 
   std::vector<int> fetch_mlvalue_idxs;
@@ -128,7 +139,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
 #pragma warning(disable : 6387)
 #endif
   OptimizerExecutionFrame frame(info, fetch_mlvalue_idxs, outputs);
-  OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, nullptr, DefaultLoggingManager().DefaultLogger());
+  OpKernelContext op_kernel_context(&frame, kernel.get(), nullptr, nullptr, logger);
 #ifdef _WIN32
 #pragma warning(pop)
 #endif
@@ -161,8 +172,7 @@ void KernelComputeTester::Run(std::unordered_set<int> strided_outputs) {
       } else {
         const Tensor& tensor = outputs[i].Get<Tensor>();
         Tensor::InitOrtValue(tensor.DataType(), tensor.Shape(),
-                             execution_providers.Get(cpu_ep_type)->CreatePreferredAllocators()[0], cpu_value,
-                             tensor.Strides());
+                             execution_providers.Get(cpu_ep_type)->CreatePreferredAllocators()[0], cpu_value);
         ASSERT_STATUS_OK(dtm.CopyTensor(tensor, *cpu_value.GetMutable<Tensor>()));
       }
 

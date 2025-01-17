@@ -266,5 +266,5 @@ def export_decoder(args):
             use_cache=True,
         )
         time_cost = time.time() - start_time
-        print("--- %s seconds ---" % (time_cost))
+        print(f"--- {time_cost} seconds ---")
         print(tokenizer.decode(pred_ids[0], skip_special_tokens=True, clean_up_tokenization_spaces=False))

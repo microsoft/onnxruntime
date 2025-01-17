@@ -5,11 +5,15 @@
 
 #include <thread>
 #include <future>
+#include <map>
+#include <utility>
+#include <string>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/framework_common.h"
 #include "core/session/inference_session.h"
+#include "orttraining/core/optimizer/memory_optimizer/memory_insight.h"
 
 namespace onnxruntime {
 struct PartialGraphExecutionState;
@@ -28,14 +32,14 @@ class TrainingAgent {
                          int local_rank = 0);
   ~TrainingAgent();
   // For ORTModule.forward()
-  [[nodiscard]] common::Status RunForward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+  [[nodiscard]] common::Status RunForward(std::vector<OrtValue>& mutable_feeds, std::vector<OrtValue>& fetches,
                                           PartialGraphExecutionState& state, const OrtValueCachePtr& cache);
 
   // For ORTModule.backward()
-  [[nodiscard]] common::Status RunBackward(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+  [[nodiscard]] common::Status RunBackward(std::vector<OrtValue>& mutable_feeds, std::vector<OrtValue>& fetches,
                                            PartialGraphExecutionState& state);
 
-  [[nodiscard]] common::Status RunCore(const std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
+  [[nodiscard]] common::Status RunCore(std::vector<OrtValue>& mutable_feeds, std::vector<OrtValue>& fetches,
                                        PartialGraphExecutionState& state, FeedsFetchesManager& feeds_fetches_manager,
                                        const OrtValueCachePtr& cache, int32_t partial_graph_index);
 
@@ -44,6 +48,12 @@ class TrainingAgent {
                                               const std::vector<std::string>& fetches_names,
                                               const std::vector<OrtDevice>& outputs_device_info,
                                               std::unique_ptr<FeedsFetchesManager>& feeds_fetches_manager);
+
+  std::string GetSerializedORTModuleMemoryStat(std::string_view memory_optimization_config,
+                                               std::string_view recompute_probe_level,
+                                               const bool return_opportunity_table,
+                                               std::map<std::string, std::pair<std::string, int>>&
+                                                   cluster_id_combinations_to_saved_symbolic_byte_map) const;
 
  private:
   // TrainingAgent runs on a InferenceSession under the hood

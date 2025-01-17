@@ -40,13 +40,13 @@ def TestReduction(op, data, axes, keepdims):  # noqa: N802
 
 
 def PrintResult(op, axes, keepdims, res):  # noqa: N802
-    print('  {"%s",' % op)
+    print(f'  {{"{op}",')
     print("OpAttributesResult(")
     print("    // ReductionAttribute")
     print("      {")
     print(" // axes_")
     print("{", end="")
-    print(*axes, sep=", ", end="") if axes else print("")
+    print(*axes, sep=", ", end="") if axes else print()
     print("},")
     print(" // keep_dims_")
     print(keepdims, ",")
@@ -59,8 +59,8 @@ def PrintResult(op, axes, keepdims, res):  # noqa: N802
 
     print(" // expected values")
     print("{", end="")
-    for i in range(0, res.size):
-        print("%5.6ff," % res.item(i))
+    for i in range(res.size):
+        print(f"{res.item(i):5.6f}f,")
 
     print("})},")
 
@@ -128,9 +128,9 @@ if __name__ == "__main__":
     print("ReductionTestCases testcases = {")
     print("// input_data")
     print("{")
-    for i in range(0, input_data.size):
+    for i in range(input_data.size):
         print(
-            "%5.6ff," % input_data.item(i),
+            f"{input_data.item(i):5.6f}f,",
         )
     print("},")
     print("// input_dims")

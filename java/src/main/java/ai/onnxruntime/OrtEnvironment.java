@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2019, 2023 Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2024 Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
@@ -7,13 +7,15 @@ package ai.onnxruntime;
 import ai.onnxruntime.OrtSession.SessionOptions;
 import ai.onnxruntime.OrtTrainingSession.OrtCheckpointState;
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.util.EnumSet;
 import java.util.Objects;
 import java.util.logging.Logger;
 
 /**
- * The host object for the onnx-runtime system. Can create {@link OrtSession}s which encapsulate
- * specific models.
+ * The host object for the ONNX Runtime system. Can create {@link OrtSession}s which encapsulate
+ * specific models. This object should be instantiated before any other ONNX Runtime classes are
+ * created.
  *
  * <p>There can be at most one OrtEnvironment object created in a JVM lifetime. This class
  * implements {@link AutoCloseable} as before for backwards compatibility with 1.10 and earlier, but
@@ -24,6 +26,7 @@ public final class OrtEnvironment implements AutoCloseable {
 
   private static final Logger logger = Logger.getLogger(OrtEnvironment.class.getName());
 
+  /** The default name for ORT environments constructed from Java. */
   public static final String DEFAULT_NAME = "ort-java";
 
   static {
@@ -238,6 +241,52 @@ public final class OrtEnvironment implements AutoCloseable {
    * Create a session using the specified {@link SessionOptions}, model and the default memory
    * allocator.
    *
+   * @param modelBuffer Byte buffer representing an ONNX model. Must be a direct byte buffer.
+   * @param options The session options.
+   * @return An {@link OrtSession} with the specified model.
+   * @throws OrtException If the model failed to parse, wasn't compatible or caused an error.
+   */
+  public OrtSession createSession(ByteBuffer modelBuffer, SessionOptions options)
+      throws OrtException {
+    return createSession(modelBuffer, defaultAllocator, options);
+  }
+
+  /**
+   * Create a session using the default {@link SessionOptions}, model and the default memory
+   * allocator.
+   *
+   * @param modelBuffer Byte buffer representing an ONNX model. Must be a direct byte buffer.
+   * @return An {@link OrtSession} with the specified model.
+   * @throws OrtException If the model failed to parse, wasn't compatible or caused an error.
+   */
+  public OrtSession createSession(ByteBuffer modelBuffer) throws OrtException {
+    return createSession(modelBuffer, new OrtSession.SessionOptions());
+  }
+
+  /**
+   * Create a session using the specified {@link SessionOptions} and model buffer.
+   *
+   * @param modelBuffer Byte buffer representing an ONNX model. Must be a direct byte buffer.
+   * @param allocator The memory allocator to use.
+   * @param options The session options.
+   * @return An {@link OrtSession} with the specified model.
+   * @throws OrtException If the model failed to parse, wasn't compatible or caused an error.
+   */
+  OrtSession createSession(ByteBuffer modelBuffer, OrtAllocator allocator, SessionOptions options)
+      throws OrtException {
+    Objects.requireNonNull(modelBuffer, "model array must not be null");
+    if (modelBuffer.remaining() == 0) {
+      throw new OrtException("Invalid model buffer, no elements remaining.");
+    } else if (!modelBuffer.isDirect()) {
+      throw new OrtException("ByteBuffer is not direct.");
+    }
+    return new OrtSession(this, modelBuffer, allocator, options);
+  }
+
+  /**
+   * Create a session using the specified {@link SessionOptions}, model and the default memory
+   * allocator.
+   *
    * @param modelArray Byte array representing an ONNX model.
    * @param options The session options.
    * @return An {@link OrtSession} with the specified model.
@@ -357,7 +406,7 @@ public final class OrtEnvironment implements AutoCloseable {
   /**
    * Turns on or off the telemetry.
    *
-   * @param sendTelemetry If true then send telemetry on onnxruntime usage.
+   * @param sendTelemetry If true then send telemetry on ONNX Runtime usage.
    * @throws OrtException If the call failed.
    */
   public void setTelemetry(boolean sendTelemetry) throws OrtException {

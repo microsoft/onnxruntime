@@ -26,7 +26,9 @@ limitations under the License.
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
+#if !defined(_AIX)
 #include <sys/syscall.h>
+#endif
 #include <unistd.h>
 
 #include <iostream>
@@ -43,8 +45,12 @@ limitations under the License.
 #define ORT_USE_CPUINFO
 #endif
 
+#if defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__)
+#include <sys/sysctl.h>
+#endif
+
 #include "core/common/common.h"
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/logging/logging.h"
 #include "core/common/narrow.h"
 #include "core/platform/scoped_resource.h"
@@ -62,39 +68,11 @@ class UnmapFileParam {
   size_t len;
 };
 
-/**
- * @brief Get System Error
- *
- * @return a pair of {errno, error message}
- */
-static std::pair<int, std::string> GetSystemError(int e) {
-  char buf[1024];
-  const char* msg = "";
-  if (e > 0) {
-#if defined(__GLIBC__) && defined(_GNU_SOURCE) && !defined(__ANDROID__)
-    msg = strerror_r(e, buf, sizeof(buf));
-#else
-    // for Mac OS X and Android lower than API 23
-    if (strerror_r(e, buf, sizeof(buf)) != 0) {
-      buf[0] = '\0';
-    }
-    msg = buf;
-#endif
-  }
-
-  return std::make_pair(e, msg);
-}
-
-static std::pair<int, std::string> GetSystemError() {
-  auto e = errno;
-  return GetSystemError(e);
-}
-
 static void UnmapFile(void* param) noexcept {
   std::unique_ptr<UnmapFileParam> p(reinterpret_cast<UnmapFileParam*>(param));
   int ret = munmap(p->addr, p->len);
   if (ret != 0) {
-    auto [err_no, err_msg] = GetSystemError();
+    auto [err_no, err_msg] = GetErrnoInfo();
     LOGS_DEFAULT(ERROR) << "munmap failed. error code: " << err_no << " error msg: " << err_msg;
   }
 }
@@ -104,8 +82,9 @@ struct FileDescriptorTraits {
   static Handle GetInvalidHandleValue() { return -1; }
   static void CleanUp(Handle h) {
     if (close(h) == -1) {
-      auto [err_no, err_msg] = GetSystemError();
-      LOGS_DEFAULT(ERROR) << "Failed to close file descriptor " << h << " - error code: " << err_no << " error msg: " << err_msg;
+      auto [err_no, err_msg] = GetErrnoInfo();
+      LOGS_DEFAULT(ERROR) << "Failed to close file descriptor " << h << " - error code: " << err_no
+                          << " error msg: " << err_msg;
     }
   }
 };
@@ -131,7 +110,7 @@ int nftw_remove(
     int /*typeflag*/, struct FTW* /*ftwbuf*/) {
   const auto result = remove(fpath);
   if (result != 0) {
-    auto [err_no, err_msg] = GetSystemError();
+    auto [err_no, err_msg] = GetErrnoInfo();
     LOGS_DEFAULT(WARNING) << "remove() failed. Error code: " << err_no << " error msg: " << err_msg
                           << ", path: " << fpath;
   }
@@ -188,38 +167,22 @@ class PosixThread : public EnvThread {
       pthread_attr_t attr;
       int s = pthread_attr_init(&attr);
       if (s != 0) {
-        auto [err_no, err_msg] = GetSystemError();
+        auto [err_no, err_msg] = GetErrnoInfo();
         ORT_THROW("pthread_attr_init failed, error code: ", err_no, " error msg: ", err_msg);
       }
 
       size_t stack_size = thread_options.stack_size;
-#if defined(__wasm__)
-      // emscripten 3.1.37 has a bug which does not take build flags 'STACK_SIZE' or 'DEFAULT_PTHREAD_STACK_SIZE'.
-      // the pthread stack size will always be 64kB, which is insufficient to run some kernels.
-      // we set the stack_size to a bigger value
-      //
-      // https://github.com/emscripten-core/emscripten/issues/19302
-      //
-      // TODO: once this issue is fixed by emscripten's new release, remove this code.
-      //       future changes to DEFAULT_PTHREAD_STACK_SIZE will be in the following files
-      //       - cmake/onnxruntime_unittests.cmake (target onnxruntime_test_all)
-      //       - cmake/onnxruntime_webassembly.cmake (target onnxruntime_webassembly)
-      //
-      if (stack_size == 0) {
-        stack_size = 131072;
-      }
-#endif
       if (stack_size > 0) {
         s = pthread_attr_setstacksize(&attr, stack_size);
         if (s != 0) {
-          auto [err_no, err_msg] = GetSystemError();
+          auto [err_no, err_msg] = GetErrnoInfo();
           ORT_THROW("pthread_attr_setstacksize failed, error code: ", err_no, " error msg: ", err_msg);
         }
       }
 
       s = pthread_create(&hThread, &attr, ThreadMain, param_ptr.get());
       if (s != 0) {
-        auto [err_no, err_msg] = GetSystemError();
+        auto [err_no, err_msg] = GetErrnoInfo();
         ORT_THROW("pthread_create failed, error code: ", err_no, " error msg: ", err_msg);
       }
       param_ptr.release();
@@ -265,7 +228,8 @@ class PosixThread : public EnvThread {
                                 << ", index: " << p->index
                                 << ", mask: " << *p->affinity;
         } else {
-          auto [err_no, err_msg] = GetSystemError(ret);
+          errno = ret;
+          auto [err_no, err_msg] = GetErrnoInfo();
 #if !defined(USE_MIGRAPHX)
           LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << syscall(SYS_gettid)
                               << ", index: " << p->index
@@ -342,6 +306,22 @@ class PosixEnv : public Env {
       ret.resize(GetNumPhysicalCpuCores());
     }
     return ret;
+  }
+
+  int GetL2CacheSize() const override {
+#ifdef _SC_LEVEL2_CACHE_SIZE
+    return static_cast<int>(sysconf(_SC_LEVEL2_CACHE_SIZE));
+#else
+    int value = 0;  // unknown
+#if (defined(__APPLE__) || defined(__FreeBSD__) || defined(__NetBSD__)) && defined(HW_L2CACHESIZE)
+    int mib[2] = {CTL_HW, HW_L2CACHESIZE};
+    size_t len = sizeof(value);
+    if (sysctl(mib, 2, &value, &len, NULL, 0) < 0) {
+      return -1;  // error
+    }
+#endif
+    return value;
+#endif
   }
 
   void SleepForMicroseconds(int64_t micros) const override {
@@ -477,7 +457,7 @@ class PosixEnv : public Env {
   }
 
   static common::Status ReportSystemError(const char* operation_name, const std::string& path) {
-    auto [err_no, err_msg] = GetSystemError();
+    auto [err_no, err_msg] = GetErrnoInfo();
     std::ostringstream oss;
     oss << operation_name << " file \"" << path << "\" failed: " << err_msg;
     return common::Status(common::SYSTEM, err_no, oss.str());
@@ -489,6 +469,14 @@ class PosixEnv : public Env {
       return false;
     }
     return S_ISDIR(sb.st_mode);
+  }
+
+  bool FileExists(const std::string& path) const override {
+    struct stat sb;
+    if (stat(path.c_str(), &sb)) {
+      return false;
+    }
+    return S_ISREG(sb.st_mode);
   }
 
   common::Status CreateFolder(const std::string& path) const override {

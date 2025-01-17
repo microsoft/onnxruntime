@@ -14,7 +14,7 @@ import onnx
 from onnx import TensorProto, helper, numpy_helper
 
 import onnxruntime
-from onnxruntime.quantization.calibrate import CalibrationDataReader, create_calibrator
+from onnxruntime.quantization.calibrate import CalibrationDataReader, CalibrationMethod, create_calibrator
 
 
 def generate_input_initializer(tensor_shape, tensor_dtype, input_name):
@@ -275,7 +275,7 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
         for output in added_outputs:
             self.assertTrue(output in augmented_model_outputs)
 
-    def construct_test_compute_range_model(self, test_model_path):
+    def construct_test_compute_data_model(self, test_model_path, opset_version=13, augmented=True):
         #    (input)
         #       |
         #      Relu
@@ -290,12 +290,19 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
         #        |
         #       (X6)
         input = helper.make_tensor_value_info("input", TensorProto.FLOAT, [1, 3, 1, 3])
-        x1_output = helper.make_tensor_value_info("X1", TensorProto.FLOAT, [1, 3, 1, 3])
-        x2_output = helper.make_tensor_value_info("X2", TensorProto.FLOAT, [1, 3, 1, 3])
-        x3_output = helper.make_tensor_value_info("X3", TensorProto.FLOAT, [1, 3, 1, 3])
-        x4_output = helper.make_tensor_value_info("X4", TensorProto.FLOAT, [1, 3, 1, 3])
-        x5_output = helper.make_tensor_value_info("X5", TensorProto.FLOAT, [1, 3, 1, 3])
-        x6_output = helper.make_tensor_value_info("X6", TensorProto.FLOAT, [1, 3, 1, 3])
+        graph_outputs = None
+        if augmented:
+            graph_outputs = [
+                helper.make_tensor_value_info("X1", TensorProto.FLOAT, [1, 3, 1, 3]),
+                helper.make_tensor_value_info("X2", TensorProto.FLOAT, [1, 3, 1, 3]),
+                helper.make_tensor_value_info("X3", TensorProto.FLOAT, [1, 3, 1, 3]),
+                helper.make_tensor_value_info("X4", TensorProto.FLOAT, [1, 3, 1, 3]),
+                helper.make_tensor_value_info("X5", TensorProto.FLOAT, [1, 3, 1, 3]),
+                helper.make_tensor_value_info("X6", TensorProto.FLOAT, [1, 3, 1, 3]),
+            ]
+        else:
+            graph_outputs = [helper.make_tensor_value_info("X6", TensorProto.FLOAT, [1, 3, 1, 3])]
+
         w1 = generate_input_initializer([3, 3, 1, 1], np.float32, "W1")
         b1 = generate_input_initializer([3], np.float32, "B1")
         w3 = generate_input_initializer([3, 3, 1, 1], np.float32, "W3")
@@ -312,7 +319,7 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
             [relu_node_1, conv_node_1, relu_node_2, conv_node_2, conv_node_3, add_node],
             "test_graph_4",
             [input],
-            [x1_output, x2_output, x3_output, x4_output, x5_output, x6_output],
+            graph_outputs,
         )
         graph.initializer.add().CopyFrom(w1)
         graph.initializer.add().CopyFrom(b1)
@@ -320,18 +327,18 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
         graph.initializer.add().CopyFrom(b3)
         graph.initializer.add().CopyFrom(w5)
         graph.initializer.add().CopyFrom(b5)
-        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", 13)])
+        model = helper.make_model(graph, opset_imports=[helper.make_opsetid("", opset_version)])
         onnx.save(model, test_model_path)
 
-    def test_compute_range(self):
+    def test_compute_data(self):
         test_model_path = Path(self._tmp_model_dir.name).joinpath("./test_model_4.onnx")
-        self.construct_test_compute_range_model(test_model_path.as_posix())
+        self.construct_test_compute_data_model(test_model_path.as_posix())
 
         augmented_model_path = Path(self._tmp_model_dir.name).joinpath("./augmented_test_model_4.onnx")
         calibrater = create_calibrator(test_model_path, augmented_model_path=augmented_model_path.as_posix())
         data_reader = TestDataReader()
         calibrater.collect_data(data_reader)
-        tensors_range = calibrater.compute_range()
+        tensors_range = calibrater.compute_data()
 
         sess_options = onnxruntime.SessionOptions()
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
@@ -355,7 +362,35 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
         output_names = [infer_session.get_outputs()[i].name for i in range(len(infer_session.get_outputs()))]
         output_min_max_dict = dict(zip(output_names, min_max_pairs))
         for output_name in output_min_max_dict:
-            self.assertEqual(output_min_max_dict[output_name], tensors_range[output_name])
+            self.assertEqual(output_min_max_dict[output_name], tensors_range[output_name].range_value)
+
+    def test_histogram_calibrators_run(self):
+        """
+        Runs all histogram-based calibrators (Percentile, Entropy, Distribution) and checks that they run
+        and generate the expected number of tensor ranges. Does not check correctness of range values.
+        """
+        # Create test model.
+        test_model_path = Path(self._tmp_model_dir.name).joinpath("./test_model_4.onnx")
+        self.construct_test_compute_data_model(test_model_path.as_posix(), augmented=False)
+
+        # Count the number of tensors in the model.
+        model = onnx.load_model(test_model_path)
+        model = onnx.shape_inference.infer_shapes(model)
+        num_tensors = len(model.graph.value_info) + len(model.graph.input) + len(model.graph.output)
+
+        # Run all histogram calibration methods.
+        data_reader = TestDataReader()
+        calibration_methods = [CalibrationMethod.Percentile, CalibrationMethod.Entropy, CalibrationMethod.Distribution]
+        for calibration_method in calibration_methods:
+            with self.subTest(calibration_method=calibration_method):
+                data_reader.rewind()
+                augmented_model_path = Path(self._tmp_model_dir.name).joinpath(f"augmented_{calibration_method}.onnx")
+                calibrator = create_calibrator(
+                    test_model_path, calibrate_method=calibration_method, augmented_model_path=augmented_model_path
+                )
+                calibrator.collect_data(data_reader)
+                tensors_range = calibrator.compute_data()
+                self.assertEqual(len(tensors_range.items()), num_tensors)  # A range for every tensor in the graph.
 
     def test_augment_graph_with_zero_value_dimension(self):
         """TEST_CONFIG_5"""
@@ -455,6 +490,42 @@ class TestCalibrateMinMaxCalibrator(unittest.TestCase):
             self.assertTrue(name in augmented_model_node_names)
         for output in added_outputs:
             self.assertTrue(output in augmented_model_outputs)
+
+    def test_compute_data_per_channel(self):
+        test_model_path = Path(self._tmp_model_dir.name).joinpath("./test_model_6.onnx")
+        self.construct_test_compute_data_model(test_model_path.as_posix(), opset_version=18)
+
+        augmented_model_path = Path(self._tmp_model_dir.name).joinpath("./augmented_test_model_6.onnx")
+        calibrater = create_calibrator(
+            test_model_path, augmented_model_path=augmented_model_path.as_posix(), extra_options={"per_channel": True}
+        )
+        data_reader = TestDataReader()
+        calibrater.collect_data(data_reader)
+        tensors_range = calibrater.compute_data()
+
+        sess_options = onnxruntime.SessionOptions()
+        sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        infer_session = onnxruntime.InferenceSession(
+            test_model_path.as_posix(),
+            sess_options=sess_options,
+            providers=["CPUExecutionProvider"],
+        )
+        data_reader.rewind()
+        rmin = np.array([np.inf, np.inf, np.inf, np.inf, np.inf, np.inf], dtype=np.float32)[:, np.newaxis]
+        rmax = -1.0 * rmin
+        while True:
+            input = data_reader.get_next()
+            if not input:
+                break
+            output = np.asarray(infer_session.run(None, input)).reshape((6, 3, -1))
+            rmin = np.minimum(rmin, np.amin(output, axis=-1))
+            rmax = np.maximum(rmax, np.amax(output, axis=-1))
+
+        min_max_pairs = list(zip(rmin, rmax))
+        output_names = [infer_session.get_outputs()[i].name for i in range(len(infer_session.get_outputs()))]
+        output_min_max_dict = dict(zip(output_names, min_max_pairs))
+        for output_name in output_min_max_dict:
+            np.testing.assert_equal(output_min_max_dict[output_name], tensors_range[output_name].range_value)
 
 
 if __name__ == "__main__":

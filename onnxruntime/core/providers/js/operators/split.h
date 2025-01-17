@@ -25,8 +25,9 @@ class Split : public JsKernel, public SplitBase {
       if (num_outputs_ < 0) {
         num_outputs_ = split_sizes.size();
       }
-    } else if (split_sizes_.size() == 0) {
-      // Compute split_sizes from input shape and num_outputs
+    } else if (split_sizes_.size() == 0 && info.GetInputCount() < 2) {
+      // Compute split_sizes from input shape and num_outputs.
+      // TODO: Shape might not be known at this point, better to handle this in javascript
       auto total_split_size = info.node().InputDefs()[0]->Shape()->dim(gsl::narrow_cast<int32_t>(axis_)).dim_value();
       int64_t split_size_sum = 0;
       if (num_outputs_ < 0) {
@@ -44,14 +45,15 @@ class Split : public JsKernel, public SplitBase {
       ORT_ENFORCE(split_size_sum == total_split_size,
                   "Sum of split sizes (", split_size_sum, ") does not match input size (", total_split_size, ")");
     }
+    // else: let javascript handle all other cases, ie. split_sizes come as input[1]
 
     JSEP_INIT_KERNEL_ATTRIBUTE(Split, ({"axis" : $1,
                                         "numOutputs" : $2,
-                                        "splitSizes" : $3 ? Array.from(HEAP32.subarray($4, $4 + $3)) : []}),
+                                        "splitSizes" : $3 ? Array.from(HEAP32.subarray(Number($3), Number($4))) : []}),
                                static_cast<int32_t>(axis_),
                                static_cast<int32_t>(num_outputs_),
-                               gsl::narrow_cast<int32_t>(split_sizes.size()),
-                               reinterpret_cast<int32_t>((!split_sizes.empty() > 0) ? split_sizes.data() : nullptr) >> 2);
+                               JSEP_HEAP32_INDEX_START(split_sizes),
+                               JSEP_HEAP32_INDEX_END(split_sizes));
   }
 };
 

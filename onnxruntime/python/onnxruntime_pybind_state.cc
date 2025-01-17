@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include "python/onnxruntime_pybind_exceptions.h"
@@ -7,8 +8,7 @@
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
-#include <numpy/arrayobject.h>
-
+#include "python/numpy_helper.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
@@ -32,9 +32,22 @@
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/provider_bridge_ort.h"
 
+#include "core/session/lora_adapters.h"
+
 #ifdef ENABLE_ATEN
 #include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
 #endif
+
+#ifdef USE_CUDA
+#include <cuda.h>   // for CUDA_VERSION
+#include <cudnn.h>  // for CUDNN_MAJOR
+#endif
+
+#if defined(USE_COREML)
+#include "core/providers/coreml/coreml_provider_factory.h"
+#endif
+
+#include <pybind11/functional.h>
 
 // Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
 // GCC 4.x doesn't seem to define this and it breaks the pipelines based on CentOS as it uses
@@ -42,19 +55,12 @@
 // (This static var is referenced in GetCudaToHostMemCpyFunction())
 const OrtDevice::DeviceType OrtDevice::GPU;
 
-namespace onnxruntime {
-
-}  // namespace onnxruntime
-
 #if defined(_MSC_VER)
-#pragma warning(disable : 4267 4996 4503 4003)
+#pragma warning(disable : 4267 4996 4503)
 #endif  // _MSC_VER
 
 #include <iterator>
-
-#if defined(_MSC_VER)
-#pragma warning(disable : 4267 4996 4503 4003)
-#endif  // _MSC_VER
+#include <algorithm>
 
 namespace onnxruntime {
 namespace python {
@@ -74,6 +80,110 @@ static Env& platform_env = Env::Default();
 #pragma warning(push)
 #endif
 
+using PyCallback = std::function<void(std::vector<py::object>, py::object user_data, std::string)>;
+
+struct AsyncResource {
+  std::vector<OrtValue> feeds;
+  std::vector<const OrtValue*> feeds_raw;
+
+  std::vector<std::string> feed_names;
+  std::vector<const char*> feed_names_raw;
+
+  std::vector<OrtValue*> fetches_raw;  // will be released during destruction
+
+  std::vector<std::string> fetch_names;
+  std::vector<const char*> fetch_names_raw;
+
+  RunOptions default_run_option;
+  PyCallback callback;
+  py::object user_data;
+
+  void ReserveFeeds(size_t sz) {
+    feeds.reserve(sz);
+    feeds_raw.reserve(sz);
+    feed_names.reserve(sz);
+    feed_names_raw.reserve(sz);
+  }
+
+  void ReserveFetches(size_t sz) {
+    fetches_raw.reserve(sz);
+    fetch_names.reserve(sz);
+    fetch_names_raw.reserve(sz);
+  }
+
+  ~AsyncResource() {
+    std::for_each(fetches_raw.begin(), fetches_raw.end(), [](const OrtValue* fetch) {
+      if (fetch) {
+        std::unique_ptr<const OrtValue> fetch_recycler(fetch);
+      }
+    });
+    fetches_raw.clear();
+  }
+};
+
+void AsyncCallback(void* user_data, OrtValue** outputs, size_t num_outputs, OrtStatusPtr ort_status) {
+  ORT_ENFORCE(user_data, "user data must not be NULL for callback in python");
+
+  auto invoke_callback = [&]() {
+    std::unique_ptr<AsyncResource> async_resource{reinterpret_cast<AsyncResource*>(user_data)};
+    Ort::Status status(ort_status);
+
+    // return on error
+    if (!status.IsOK()) {
+      async_resource->callback({}, async_resource->user_data, status.GetErrorMessage());
+      return;
+    }
+
+    std::vector<py::object> rfetch;
+    rfetch.reserve(num_outputs);
+    size_t pos = 0;
+    for (size_t ith = 0; ith < num_outputs; ++ith) {
+      const auto& fet = *outputs[ith];
+      if (fet.IsAllocated()) {
+        if (fet.IsTensor()) {
+          rfetch.push_back(AddTensorAsPyObj(fet, nullptr, nullptr));
+        } else if (fet.IsSparseTensor()) {
+          rfetch.push_back(GetPyObjectFromSparseTensor(pos, fet, nullptr));
+        } else {
+          rfetch.push_back(AddNonTensorAsPyObj(fet, nullptr, nullptr));
+        }
+      } else {
+        rfetch.push_back(py::none());
+      }
+      ++pos;
+    }
+    async_resource->callback(rfetch, async_resource->user_data, "");
+  };
+
+  if (PyGILState_Check()) {
+    invoke_callback();
+  } else {
+    // acquire GIL to safely:
+    // 1) invoke python callback
+    // 2) create, manipulate, and destroy python objects
+    py::gil_scoped_acquire acquire;
+    invoke_callback();
+  }
+}
+
+void AppendLoraParametersAsInputs(const RunOptions& run_options,
+                                  size_t total_entries,
+                                  NameMLValMap& feeds) {
+  for (const auto* adapter : run_options.active_adapters) {
+    total_entries += adapter->GetParamNum();
+  }
+  feeds.reserve(total_entries + feeds.size());
+
+  // Append necessary inputs for active adapters
+  for (const auto* adapter : run_options.active_adapters) {
+    auto [begin, end] = adapter->GetParamIterators();
+    for (; begin != end; ++begin) {
+      const auto& [name, param] = *begin;
+      feeds.insert(std::make_pair(name, param.GetMapped()));
+    }
+  }
+}
+
 template <typename T>
 static py::object AddNonTensor(const OrtValue& val,
                                const DataTransferManager* /*data_transfer_manager*/,
@@ -81,66 +191,96 @@ static py::object AddNonTensor(const OrtValue& val,
   return py::cast(val.Get<T>());
 }
 
+// This function is used to return strings from a string tensor to python
+// as a numpy array of strings
+// Strings are always on CPU and must always be copied to python memory
+py::array StringTensorToNumpyArray(const Tensor& tensor) {
+  // Create the result and allocate memory with the right size
+  py::array result(py::dtype(NPY_OBJECT), tensor.Shape().GetDims());
+  const auto span = tensor.DataAsSpan<std::string>();
+  auto* mutable_data = reinterpret_cast<py::object*>(result.mutable_data());
+  for (size_t i = 0, lim = span.size(); i < lim; ++i) {
+    mutable_data[i] = py::cast(span[i]);
+  }
+  return result;
+}
+
+pybind11::array PrimitiveTensorToNumpyOverOrtValue(const OrtValue& ort_value) {
+  const Tensor& tensor = ort_value.Get<Tensor>();
+  // The capsule destructor must be stateless
+  // We create a copy of OrtValue on the heap.
+  auto memory_release = [](void* data) {
+    auto* ort_value = reinterpret_cast<OrtValue*>(data);
+    delete ort_value;
+  };
+
+  const int numpy_type = OnnxRuntimeTensorToNumpyType(tensor.DataType());
+  auto ort_value_ptr = std::make_unique<OrtValue>(ort_value);
+  pybind11::capsule caps(ort_value_ptr.get(), memory_release);
+  ort_value_ptr.release();
+
+  // Not using array_t<T> because it may not handle MLFloat16 properly
+  pybind11::array result(py::dtype(numpy_type), tensor.Shape().GetDims(),
+                         tensor.DataRaw(),
+                         caps);
+  return result;
+}
+
+pybind11::array PrimitiveTensorToNumpyFromDevice(const OrtValue& ort_value, const DataTransferAlternative& dtm) {
+  const Tensor& tensor = ort_value.Get<Tensor>();
+  const int numpy_type = OnnxRuntimeTensorToNumpyType(tensor.DataType());
+  pybind11::array result(py::dtype(numpy_type), tensor.Shape().GetDims());
+  void* data = result.mutable_data();
+
+  if (std::holds_alternative<const DataTransferManager*>(dtm)) {
+    const DataTransferManager* data_transfer = std::get<const DataTransferManager*>(dtm);
+    static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
+    const auto span = gsl::make_span<char>(reinterpret_cast<char*>(data), tensor.SizeInBytes());
+    ORT_THROW_IF_ERROR(CopyTensorDataToByteSpan(*data_transfer, tensor, cpu_alloc_info, span));
+  } else {
+    std::get<MemCpyFunc>(dtm)(data, tensor.DataRaw(), tensor.SizeInBytes());
+  }
+  return result;
+}
+
 // In all cases, we may not have access to a DataTransferManager, hence the user may specify functions that
 // pretty much does what a DataTransferManager does - copy data from device(s) to the host
-void GetPyObjFromTensor(const Tensor& rtensor, py::object& obj,
-                        const DataTransferManager* data_transfer_manager,
-                        const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
-  std::vector<npy_intp> npy_dims;
-  const TensorShape& shape = rtensor.Shape();
+py::object GetPyObjFromTensor(const OrtValue& ort_value,
+                              const DataTransferManager* data_transfer_manager,
+                              const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
+  ORT_ENFORCE(ort_value.IsTensor(), "This function only supports tensors");
 
-  for (size_t n = 0; n < shape.NumDimensions(); ++n) {
-    npy_dims.push_back(shape[n]);
+  const auto& tensor = ort_value.Get<Tensor>();
+  if (tensor.IsDataTypeString()) {
+    ORT_ENFORCE(tensor.Location().device.Type() == OrtDevice::CPU, "Strings can only be on CPU");
+    // Create a numpy array of strings (python objects) by copy/converting them
+    py::array result = StringTensorToNumpyArray(tensor);
+    return py::cast<py::object>(result);
   }
 
-  MLDataType dtype = rtensor.DataType();
-  const int numpy_type = OnnxRuntimeTensorToNumpyType(dtype);
-  obj = py::reinterpret_steal<py::object>(PyArray_SimpleNew(
-      narrow<int>(shape.NumDimensions()), npy_dims.data(), numpy_type));
+  const auto device_type = tensor.Location().device.Type();
+  // Create an numpy array on top of the OrtValue memory, no copy
+  if (device_type == OrtDevice::CPU) {
+    py::array result = PrimitiveTensorToNumpyOverOrtValue(ort_value);
+    return py::cast<py::object>(result);
+  }
 
-  void* out_ptr = static_cast<void*>(
-      PyArray_DATA(reinterpret_cast<PyArrayObject*>(obj.ptr())));
+  if (!data_transfer_manager && !mem_cpy_to_host_functions) {
+    throw std::runtime_error(
+        "GetPyObjFromTensor: Either data transfer manager or a "
+        "function to copy data to the host is needed to convert non-CPU tensor to numpy array");
+  }
 
-  if (numpy_type != NPY_OBJECT) {
-    // if it is not cpu tensor, need to copy to host
-    auto device_type = rtensor.Location().device.Type();
-    if (device_type != OrtDevice::CPU) {
-      if (!data_transfer_manager && !mem_cpy_to_host_functions)
-        throw std::runtime_error(
-            "GetPyObjFromTensor: Either data transfer manager or a "
-            "function to copy data to the host is needed to convert non-CPU tensor to numpy array");
-      static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
-
-      // Prefer DataTransferManager if available
-      if (data_transfer_manager) {
-        auto span = gsl::make_span<char>(reinterpret_cast<char*>(out_ptr), dtype->Size() * shape.Size());
-        ORT_THROW_IF_ERROR(CopyTensorDataToByteSpan(
-            *data_transfer_manager, rtensor, cpu_alloc_info, span));
-      } else {
-        auto mem_cpy_to_host = mem_cpy_to_host_functions->find(device_type);
-
-        ORT_ENFORCE(mem_cpy_to_host != mem_cpy_to_host_functions->end(),
-                    "Unable to locate a function that can copy data to the host from the device");
-
-        ORT_ENFORCE(mem_cpy_to_host->second != 0,
-                    "No function that can copy data to the host from the device provided");
-
-        mem_cpy_to_host->second(out_ptr, rtensor.DataRaw(), dtype->Size() * shape.Size());
-      }
-
-    } else
-      memcpy(out_ptr, rtensor.DataRaw(dtype), dtype->Size() * shape.Size());
+  py::array result;
+  if (data_transfer_manager != nullptr) {
+    result = PrimitiveTensorToNumpyFromDevice(ort_value, data_transfer_manager);
   } else {
-    // Handle string type.
-    // Copying strings to cpu from device is currently not supported
-    ORT_ENFORCE(rtensor.Location().device.Type() == OrtDevice::CPU,
-                "Copying string tensors located on another device to the host is currently not supported");
-    py::object* outObj = static_cast<py::object*>(out_ptr);
-    const std::string* src = rtensor.Data<std::string>();
-    for (int i = 0; i < rtensor.Shape().Size(); i++, src++) {
-      outObj[i] = py::cast(*src);
-    }
+    auto mem_cpy_to_host = mem_cpy_to_host_functions->find(device_type);
+    ORT_ENFORCE(mem_cpy_to_host != mem_cpy_to_host_functions->end(),
+                "Unable to locate a function that can copy data to the host from the device");
+    result = PrimitiveTensorToNumpyFromDevice(ort_value, mem_cpy_to_host->second);
   }
+  return py::cast<py::object>(result);
 }
 
 const char* GetDeviceName(const OrtDevice& device) {
@@ -149,6 +289,8 @@ const char* GetDeviceName(const OrtDevice& device) {
       return CPU;
     case OrtDevice::GPU:
       return CUDA;
+    case OrtDevice::DML:
+      return DML;
     case OrtDevice::FPGA:
       return "FPGA";
     case OrtDevice::NPU:
@@ -203,10 +345,9 @@ py::object AddNonTensor<TensorSeq>(const OrtValue& val,
                                    const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
   const auto& seq_tensors = val.Get<TensorSeq>();
   py::list py_list;
-  for (const auto& rtensor : seq_tensors) {
-    py::object obj;
-    GetPyObjFromTensor(rtensor.Get<Tensor>(), obj, data_transfer_manager, mem_cpy_to_host_functions);
-    py_list.append(obj);
+  for (const auto& ort_value : seq_tensors) {
+    py::object obj = GetPyObjFromTensor(ort_value, data_transfer_manager, mem_cpy_to_host_functions);
+    py_list.append(std::move(obj));
   }
   // XToolChain kills the build
   // local variable 'py_list' will be copied despite being returned by name [-Werror,-Wreturn-std-move]
@@ -258,10 +399,7 @@ py::object AddNonTensorAsPyObj(const OrtValue& val,
 
 py::object AddTensorAsPyObj(const OrtValue& val, const DataTransferManager* data_transfer_manager,
                             const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions) {
-  const Tensor& rtensor = val.Get<Tensor>();
-  py::object obj;
-  GetPyObjFromTensor(rtensor, obj, data_transfer_manager, mem_cpy_to_host_functions);
-  return obj;
+  return GetPyObjFromTensor(val, data_transfer_manager, mem_cpy_to_host_functions);
 }
 
 static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
@@ -337,6 +475,38 @@ const ROCMExecutionProviderInfo GetRocmExecutionProviderInfo(ProviderInfo_ROCM* 
 }
 #endif
 
+#ifdef USE_TENSORRT
+void RegisterTensorRTPluginsAsCustomOps(PySessionOptions& so, const ProviderOptions& options) {
+  if (auto* tensorrt_provider_info = TryGetProviderInfo_TensorRT()) {
+    auto is_already_in_domains = [&](std::string& domain_name, std::vector<OrtCustomOpDomain*>& domains) {
+      for (auto ptr : domains) {
+        if (domain_name == ptr->domain_) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    std::string trt_extra_plugin_lib_paths = "";
+    const auto it = options.find("trt_extra_plugin_lib_paths");
+    if (it != options.end()) {
+      trt_extra_plugin_lib_paths = it->second;
+    }
+    std::vector<OrtCustomOpDomain*> custom_op_domains;
+    tensorrt_provider_info->GetTensorRTCustomOpDomainList(custom_op_domains, trt_extra_plugin_lib_paths);
+    for (auto ptr : custom_op_domains) {
+      if (!is_already_in_domains(ptr->domain_, so.custom_op_domains_)) {
+        so.custom_op_domains_.push_back(ptr);
+      } else {
+        LOGS_DEFAULT(WARNING) << "The custom op domain name " << ptr->domain_ << " is already in session option.";
+      }
+    }
+  } else {
+    ORT_THROW("Please install TensorRT libraries as mentioned in the GPU requirements page, make sure they're in the PATH or LD_LIBRARY_PATH, and that your GPU is supported.");
+  }
+}
+#endif
+
 std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     const SessionOptions& session_options,
     const std::string& type,
@@ -350,48 +520,31 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     // If the environment variable 'ORT_TENSORRT_UNAVAILABLE' exists, then we do not load TensorRT. This is set by _ld_preload for the manylinux case
     // as in that case, trying to load the library itself will result in a crash due to the way that auditwheel strips dependencies.
     if (Env::Default().GetEnvironmentVar("ORT_TENSORRT_UNAVAILABLE").empty()) {
-      std::string calibration_table, cache_path, lib_path, min_profile, max_profile, opt_profile;
+      // provider_options_map is just a reference to the ProviderOptionsMap instance, so it can be released anytime from application.
+      // So we need these std::string variables defined here as they will be kept alive for the lifetime of TRT EP and we can still access them from OrtTensorRTProviderOptionsV2 instance.
+      // (The reason is string copy is involved, for example params.trt_engine_cache_path = cache_path.c_str() and those std::string variable is referenced by OrtTensorRTProviderOptionsV2 instance
+      // and TRT EP instance, so it won't be released.)
+      std::string calibration_table, cache_path, cache_prefix, timing_cache_path, lib_path, trt_tactic_sources,
+          trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile, ep_context_file_path,
+          onnx_model_folder_path;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
-        OrtTensorRTProviderOptionsV2 params{
-            0,
-            0,
-            nullptr,
-            1000,
-            1,
-            1 << 30,
-            0,
-            0,
-            nullptr,
-            0,
-            0,
-            0,
-            0,
-            0,
-            nullptr,
-            0,
-            nullptr,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            0,
-            2,
-            -1,
-            nullptr,
-            nullptr,
-            nullptr,
-            nullptr,
-            0};
+        OrtTensorRTProviderOptionsV2 params;
         for (auto option : it->second) {
           if (option.first == "device_id") {
             if (!option.second.empty()) {
               params.device_id = std::stoi(option.second);
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'device_id' should be a number i.e. '0'.\n");
+            }
+          } else if (option.first == "user_compute_stream") {
+            if (!option.second.empty()) {
+              auto stream = std::stoull(option.second, nullptr, 0);
+              params.user_compute_stream = reinterpret_cast<void*>(stream);
+              params.has_user_compute_stream = true;
+            } else {
+              params.has_user_compute_stream = false;
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'user_compute_stream' should be a string to define the compute stream for the inference to run on.\n");
             }
           } else if (option.first == "trt_max_partition_iterations") {
             if (!option.second.empty()) {
@@ -479,6 +632,28 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_path' should be a path string i.e. 'engine_cache'.\n");
             }
+          } else if (option.first == "trt_engine_cache_prefix") {
+            if (!option.second.empty()) {
+              cache_prefix = option.second;
+              params.trt_engine_cache_prefix = cache_prefix.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_cache_prefix' should be a string to customize engine cache prefix i.e. 'FRCNN' or 'yolov4'.\n");
+            }
+          } else if (option.first == "trt_weight_stripped_engine_enable") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_weight_stripped_engine_enable = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_weight_stripped_engine_enable = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_weight_stripped_engine_enable' should be 'True' or 'False'. Default value is 'False'.\n");
+            }
+          } else if (option.first == "trt_onnx_model_folder_path") {
+            if (!option.second.empty()) {
+              onnx_model_folder_path = option.second;
+              params.trt_onnx_model_folder_path = onnx_model_folder_path.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_onnx_model_folder_path' should be a path string i.e. 'engine_cache'.\n");
+            }
           } else if (option.first == "trt_engine_decryption_enable") {
             if (option.second == "True" || option.second == "true") {
               params.trt_engine_decryption_enable = true;
@@ -526,6 +701,13 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_timing_cache_enable' should be 'True' or 'False'. Default value is 'False'.\n");
             }
+          } else if (option.first == "trt_timing_cache_path") {
+            if (!option.second.empty()) {
+              timing_cache_path = option.second;
+              params.trt_timing_cache_path = timing_cache_path.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_timing_cache_path' should be a path string i.e. 'cache_folder/'.\n");
+            }
           } else if (option.first == "trt_force_timing_cache") {
             if (option.second == "True" || option.second == "true") {
               params.trt_force_timing_cache = true;
@@ -572,13 +754,15 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             }
           } else if (option.first == "trt_tactic_sources") {
             if (!option.second.empty()) {
-              params.trt_tactic_sources = option.second.c_str();
+              trt_tactic_sources = option.second;
+              params.trt_tactic_sources = trt_tactic_sources.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_tactic_sources' should be a string. e.g. \"-CUDNN,+CUBLAS\" available keys: \"CUBLAS\"|\"CUBLAS_LT\"|\"CUDNN\"|\"EDGE_MASK_CONVOLUTIONS\".\n");
             }
           } else if (option.first == "trt_extra_plugin_lib_paths") {
             if (!option.second.empty()) {
-              params.trt_extra_plugin_lib_paths = option.second.c_str();
+              trt_extra_plugin_lib_paths = option.second;
+              params.trt_extra_plugin_lib_paths = trt_extra_plugin_lib_paths.c_str();
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_extra_plugin_lib_paths' should be a path string.\n");
             }
@@ -611,6 +795,35 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_cuda_graph_enable' should be 'True' or 'False'. Default value is 'False'.\n");
             }
+          } else if (option.first == "trt_dump_ep_context_model") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_dump_ep_context_model = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_dump_ep_context_model = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dump_ep_context_model' should be 'True' or 'False'. Default value is 'False'.\n");
+            }
+          } else if (option.first == "trt_ep_context_file_path") {
+            if (!option.second.empty()) {
+              ep_context_file_path = option.second;
+              params.trt_ep_context_file_path = ep_context_file_path.c_str();
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_ep_context_file_path' should be a string.\n");
+            }
+          } else if (option.first == "trt_ep_context_embed_mode") {
+            if (!option.second.empty()) {
+              params.trt_ep_context_embed_mode = std::stoi(option.second);
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_ep_context_embed_mode' should be a positive integer number i.e. '1'.\n");
+            }
+          } else if (option.first == "trt_engine_hw_compatible") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_engine_hw_compatible = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_engine_hw_compatible = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_hw_compatible' should be 'True' or 'False'. Default value is 'False'.\n");
+            }
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
           }
@@ -624,33 +837,167 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         }
       }
     }
-    LOGS_DEFAULT(WARNING) << "Failed to create " << type << ". Please reference https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#requirements to ensure all dependencies are met.";
+    LOGS_DEFAULT(WARNING) << "Failed to create "
+                          << type
+                          << ". Please reference "
+                          << "https://onnxruntime.ai/docs/execution-providers/"
+                          << "TensorRT-ExecutionProvider.html#requirements to ensure all dependencies are met.";
 #endif
   } else if (type == kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
-    return onnxruntime::MIGraphXProviderFactoryCreator::Create(0)->CreateProvider();
+    std::string calibration_table;
+    std::string save_model_path;
+    std::string load_model_path;
+    auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      OrtMIGraphXProviderOptions params{
+          0,
+          0,
+          0,
+          0,
+          nullptr,
+          1,
+          "./compiled_model.mxr",
+          1,
+          "./compiled_model.mxr",
+          1};
+      for (auto option : it->second) {
+        if (option.first == "device_id") {
+          if (!option.second.empty()) {
+            params.device_id = std::stoi(option.second);
+          } else {
+            ORT_THROW("[ERROR] [MIGraphX] The value for the key 'device_id' should be a number i.e. '0'.\n");
+          }
+        } else if (option.first == "migraphx_fp16_enable") {
+          if (option.second == "True" || option.second == "true") {
+            params.migraphx_fp16_enable = true;
+          } else if (option.second == "False" || option.second == "false") {
+            params.migraphx_fp16_enable = false;
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'trt_fp16_enable' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else if (option.first == "migraphx_int8_enable") {
+          if (option.second == "True" || option.second == "true") {
+            params.migraphx_int8_enable = true;
+          } else if (option.second == "False" || option.second == "false") {
+            params.migraphx_int8_enable = false;
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_int8_enable' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else if (option.first == "migraphx_int8_calibration_table_name") {
+          if (!option.second.empty()) {
+            calibration_table = option.second;
+            params.migraphx_int8_calibration_table_name = calibration_table.c_str();
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_int8_calibration_table_name' should be a "
+                "file name i.e. 'cal_table'.\n");
+          }
+        } else if (option.first == "migraphx_use_native_calibration_table") {
+          if (option.second == "True" || option.second == "true") {
+            params.migraphx_use_native_calibration_table = true;
+          } else if (option.second == "False" || option.second == "false") {
+            params.migraphx_use_native_calibration_table = false;
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_int8_use_native_calibration_table' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else if (option.first == "migraphx_save_compiled_model") {
+          if (option.second == "True" || option.second == "true") {
+            params.migraphx_fp16_enable = true;
+          } else if (option.second == "False" || option.second == "false") {
+            params.migraphx_fp16_enable = false;
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_save_compiled_model' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else if (option.first == "migraphx_save_model_path") {
+          if (!option.second.empty()) {
+            save_model_path = option.second;
+            params.migraphx_save_model_path = save_model_path.c_str();
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_save_model_name' should be a "
+                "file name i.e. 'compiled_model.mxr'.\n");
+          }
+        } else if (option.first == "migraphx_load_compiled_model") {
+          if (option.second == "True" || option.second == "true") {
+            params.migraphx_fp16_enable = true;
+          } else if (option.second == "False" || option.second == "false") {
+            params.migraphx_fp16_enable = false;
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_load_compiled_model' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else if (option.first == "migraphx_load_model_path") {
+          if (!option.second.empty()) {
+            load_model_path = option.second;
+            params.migraphx_load_model_path = load_model_path.c_str();
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_load_model_name' should be a "
+                "file name i.e. 'compiled_model.mxr'.\n");
+          }
+        } else if (option.first == "migraphx_exhaustive_tune") {
+          if (option.second == "True" || option.second == "true") {
+            params.migraphx_exhaustive_tune = true;
+          } else if (option.second == "False" || option.second == "false") {
+            params.migraphx_exhaustive_tune = false;
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migraphx_exhaustive_tune' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else {
+          ORT_THROW("Invalid MIGraphX EP option: ", option.first);
+        }
+      }
+      if (std::shared_ptr<IExecutionProviderFactory> migraphx_provider_factory =
+              onnxruntime::MIGraphXProviderFactoryCreator::Create(&params)) {
+        return migraphx_provider_factory->CreateProvider();
+      }
+    } else {
+      if (std::shared_ptr<IExecutionProviderFactory> migraphx_provider_factory =
+              onnxruntime::MIGraphXProviderFactoryCreator::Create(cuda_device_id)) {
+        return migraphx_provider_factory->CreateProvider();
+      }
+    }
 #endif
   } else if (type == kCudaExecutionProvider) {
 #ifdef USE_CUDA
-    // If the environment variable 'CUDA_UNAVAILABLE' exists, then we do not load cuda. This is set by _ld_preload for the manylinux case
-    // as in that case, trying to load the library itself will result in a crash due to the way that auditwheel strips dependencies.
+    // If the environment variable 'CUDA_UNAVAILABLE' exists, then we do not load cuda.
+    // This is set by _ld_preload for the manylinux case as in that case,
+    // trying to load the library itself will result in a crash due to the way that auditwheel strips dependencies.
     if (Env::Default().GetEnvironmentVar("ORT_CUDA_UNAVAILABLE").empty()) {
       if (auto* cuda_provider_info = TryGetProviderInfo_CUDA()) {
         const CUDAExecutionProviderInfo info = GetCudaExecutionProviderInfo(cuda_provider_info,
                                                                             provider_options_map);
 
-        // This variable is never initialized because the APIs by which it should be initialized are deprecated, however they still
-        // exist are are in-use. Neverthless, it is used to return CUDAAllocator, hence we must try to initialize it here if we can
-        // since FromProviderOptions might contain external CUDA allocator.
+        // This variable is never initialized because the APIs by which it should be initialized are deprecated,
+        // however they still exist are are in-use. Nevertheless, it is used to return CUDAAllocator,
+        // hence we must try to initialize it here if we can since FromProviderOptions might contain
+        // external CUDA allocator.
         external_allocator_info = info.external_allocator_info;
         return cuda_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
-      } else {
-        if (!Env::Default().GetEnvironmentVar("CUDA_PATH").empty()) {
-          ORT_THROW("CUDA_PATH is set but CUDA wasn't able to be loaded. Please install the correct version of CUDA and cuDNN as mentioned in the GPU requirements page (https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements), make sure they're in the PATH, and that your GPU is supported.");
-        }
       }
     }
-    LOGS_DEFAULT(WARNING) << "Failed to create " << type << ". Please reference https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements to ensure all dependencies are met.";
+    LOGS_DEFAULT(WARNING) << "Failed to create "
+                          << type
+                          << ". Require cuDNN " << CUDNN_MAJOR << ".* and "
+                          << "CUDA " << (CUDA_VERSION / 1000) << ".*"
+#if defined(_MSC_VER)
+                          << ", and the latest MSVC runtime"
+#endif
+                          << ". Please install all dependencies as mentioned in the GPU requirements page"
+                             " (https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements), "
+                             "make sure they're in the PATH, and that your GPU is supported.";
 #endif
   } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
@@ -658,14 +1005,17 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       const ROCMExecutionProviderInfo info = GetRocmExecutionProviderInfo(rocm_provider_info,
                                                                           provider_options_map);
 
-      // This variable is never initialized because the APIs by which is it should be initialized are deprecated, however they still
-      // exist are are in-use. Neverthless, it is used to return ROCMAllocator, hence we must try to initialize it here if we can
-      // since FromProviderOptions might contain external ROCM allocator.
+      // This variable is never initialized because the APIs by which is it should be initialized are deprecated,
+      // however they still exist and are in-use. Nevertheless, it is used to return ROCMAllocator, hence we must
+      // try to initialize it here if we can since FromProviderOptions might contain external ROCM allocator.
       external_allocator_info = info.external_allocator_info;
       return rocm_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
     } else {
       if (!Env::Default().GetEnvironmentVar("ROCM_PATH").empty()) {
-        ORT_THROW("ROCM_PATH is set but ROCM wasn't able to be loaded. Please install the correct version of ROCM and MIOpen as mentioned in the GPU requirements page, make sure they're in the PATH, and that your GPU is supported.");
+        ORT_THROW(
+            "ROCM_PATH is set but ROCM wasn't able to be loaded. Please install the correct version "
+            "of ROCM and MIOpen as mentioned in the GPU requirements page, make sure they're in the PATH, "
+            "and that your GPU is supported.");
       }
     }
 #endif
@@ -700,56 +1050,70 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kOpenVINOExecutionProvider) {
 #ifdef USE_OPENVINO
-    OrtOpenVINOProviderOptions params;
-    params.device_type = openvino_device_type.c_str();
-    std::string cache_dir;
-
+    ProviderOptions OV_provider_options_map;
     auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
       for (auto option : it->second) {
         if (option.first == "device_type") {
-          openvino_device_type = option.second;
-          params.device_type = openvino_device_type.c_str();
-        } else if (option.first == "enable_vpu_fast_compile") {
-          if (option.second == "True") {
-            params.enable_vpu_fast_compile = true;
-          } else if (option.second == "False") {
-            params.enable_vpu_fast_compile = false;
-          } else {
-            ORT_THROW("Invalid value passed for enable_vpu_fast_compile: ", option.second);
-          }
-
+          OV_provider_options_map[option.first] = option.second;
+          continue;
+        } else if (option.first == "precision") {
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else if (option.first == "enable_opencl_throttling") {
-          if (option.second == "True") {
-            params.enable_opencl_throttling = true;
-          } else if (option.second == "False") {
-            params.enable_opencl_throttling = false;
-          } else {
+          if (!(option.second == "True" || option.second == "true" ||
+                option.second == "False" || option.second == "false")) {
             ORT_THROW("Invalid value passed for enable_opencl_throttling: ", option.second);
           }
+          OV_provider_options_map[option.first] = option.second;
+        } else if (option.first == "disable_dynamic_shapes") {
+          if (!(option.second == "True" || option.second == "true" ||
+                option.second == "False" || option.second == "false")) {
+            ORT_THROW("Invalid value passed for disable_dynamic_shapes: ", option.second);
+          }
+          OV_provider_options_map[option.first] = option.second;
         } else if (option.first == "enable_dynamic_shapes") {
-          if (option.second == "True") {
-            params.enable_dynamic_shapes = true;
-          } else if (option.second == "False") {
-            params.enable_dynamic_shapes = false;
-          } else {
+          LOGS_DEFAULT(WARNING) << " Deprecation notice - 'enable_dynamic_shapes' is Deprected. Upgrade the API to disable_dynamic_shapes parameter."
+                                   "Please refer https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements to ensure all dependencies are met.";
+          std::string value;
+          if (!(option.second == "True" || option.second == "true" ||
+                option.second == "False" || option.second == "false")) {
             ORT_THROW("Invalid value passed for enable_dynamic_shapes: ", option.second);
           }
-        } else if (option.first == "device_id") {
-          params.device_id = option.second.c_str();
+          if (option.second == "True" || option.second == "true") {
+            value = "false";
+          } else {
+            value = "true";
+          }
+          OV_provider_options_map["disable_dynamic_shapes"] = value;
         } else if (option.first == "num_of_threads") {
-          params.num_of_threads = std::stoi(option.second);
+          OV_provider_options_map[option.first] = option.second;
+          continue;
+        } else if (option.first == "model_priority") {
+          OV_provider_options_map[option.first] = option.second;
+          continue;
+        } else if (option.first == "num_streams") {
+          OV_provider_options_map[option.first] = option.second;
+          continue;
+        } else if (option.first == "load_config") {
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else if (option.first == "cache_dir") {
-          cache_dir = option.second;
-          params.cache_dir = cache_dir.c_str();
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else if (option.first == "context") {
-          params.context = (void*)(option.second.c_str());
+          OV_provider_options_map[option.first] = option.second;
+          continue;
+        } else if (option.first == "enable_qdq_optimizer") {
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else {
           ORT_THROW("Invalid OpenVINO EP option: ", option.first);
         }
       }
     }
-    if (std::shared_ptr<IExecutionProviderFactory> openvino_provider_factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(&params)) {
+    if (std::shared_ptr<IExecutionProviderFactory> openvino_provider_factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(
+            &OV_provider_options_map, &session_options)) {
       auto p = openvino_provider_factory->CreateProvider();
       // Reset global variables config to avoid it being accidentally passed on to the next session
       openvino_device_type.clear();
@@ -758,34 +1122,41 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       if (!Env::Default().GetEnvironmentVar("INTEL_OPENVINO_DIR").empty()) {
         ORT_THROW("INTEL_OPENVINO_DIR is set but OpenVINO library wasn't able to be loaded. Please install a supported version of OpenVINO as mentioned in the requirements page (https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements), ensure dependency libraries are in the PATH and your hardware is supported.");
       } else {
-        LOGS_DEFAULT(WARNING) << "Failed to create " << type << ". Please reference https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements to ensure all dependencies are met.";
+        LOGS_DEFAULT(WARNING) << "Failed to create " << type << ". Please refer https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements to ensure all dependencies are met.";
       }
     }
 #endif
-  } else if (type == kTvmExecutionProvider) {
-#if USE_TVM
-    onnxruntime::tvm::TvmEPOptions info{};
+  } else if (type == kVitisAIExecutionProvider) {
+#ifdef USE_VITISAI
+    ProviderOptions info{};
     const auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
-      info = onnxruntime::tvm::TvmEPOptionsHelper::FromProviderOptions(it->second);
+      info = it->second;
     }
-
-    return onnxruntime::TVMProviderFactoryCreator::Create(info)->CreateProvider();
-#endif
-  } else if (type == kVitisAIExecutionProvider) {
-#if USE_VITISAI
-    const auto it = provider_options_map.find(type);
-    if (it == provider_options_map.end()) {
-      LOGS_DEFAULT(FATAL) << "cannot find provider options for VitisAIExecutionProvider";
-    }
-    const auto& vitis_option_map = it->second;
-    return onnxruntime::VitisAIProviderFactoryCreator::Create(vitis_option_map)
-        ->CreateProvider();
+    info["session_options"] = std::to_string((uintptr_t)(void*)&session_options);
+    return onnxruntime::VitisAIProviderFactoryCreator::Create(info)->CreateProvider();
 #endif
   } else if (type == kAclExecutionProvider) {
 #ifdef USE_ACL
-    return onnxruntime::ACLProviderFactoryCreator::Create(
-               session_options.enable_cpu_mem_arena)
+    bool enable_fast_math = false;
+    auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      for (auto option : it->second) {
+        if (option.first == "enable_fast_math") {
+          std::set<std::string> supported_values = {"true", "True", "false", "False"};
+          if (supported_values.find(option.second) != supported_values.end()) {
+            enable_fast_math = (option.second == "true") || (option.second == "True");
+          } else {
+            ORT_THROW(
+                "Invalid value for enable_fast_math. "
+                "Select from 'true' or 'false'\n");
+          }
+        } else {
+          ORT_THROW("Unrecognized option: ", option.first);
+        }
+      }
+    }
+    return onnxruntime::ACLProviderFactoryCreator::Create(enable_fast_math)
         ->CreateProvider();
 #endif
   } else if (type == kArmNNExecutionProvider) {
@@ -796,18 +1167,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
   } else if (type == kDmlExecutionProvider) {
 #ifdef USE_DML
-    int device_id = 0;
-    auto it = provider_options_map.find(type);
-    if (it != provider_options_map.end()) {
-      for (auto option : it->second) {
-        if (option.first == "device_id") {
-          if (!option.second.empty()) {
-            device_id = std::stoi(option.second);
-          }
-        }
-      }
-    }
-    return onnxruntime::DMLProviderFactoryCreator::Create(device_id)->CreateProvider();
+    auto cit = provider_options_map.find(type);
+    return onnxruntime::DMLProviderFactoryCreator::CreateFromProviderOptions(
+               session_options.config_options, cit == provider_options_map.end() ? ProviderOptions{} : cit->second, true)
+        ->CreateProvider();
 #endif
   } else if (type == kNnapiExecutionProvider) {
 #if defined(USE_NNAPI)
@@ -818,6 +1181,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         kOrtSessionOptionsConfigNnapiEpPartitioningStopOps);
     return onnxruntime::NnapiProviderFactoryCreator::Create(0, partitioning_stop_ops_list)->CreateProvider();
 #endif
+  } else if (type == kVSINPUExecutionProvider) {
+#ifdef USE_VSINPU
+    return onnxruntime::VSINPUProviderFactoryCreator::Create()->CreateProvider();
+#endif
   } else if (type == kRknpuExecutionProvider) {
 #ifdef USE_RKNPU
     return onnxruntime::RknpuProviderFactoryCreator::Create()->CreateProvider();
@@ -827,7 +1194,35 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #if !defined(__APPLE__)
     LOGS_DEFAULT(WARNING) << "CoreML execution provider can only be used to generate ORT format model in this build.";
 #endif
-    return onnxruntime::CoreMLProviderFactoryCreator::Create(0)->CreateProvider();
+    uint32_t coreml_flags = 0;
+
+    const auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      const ProviderOptions& options = it->second;
+      auto flags = options.find("flags");
+      if (flags != options.end()) {
+        const auto& flags_str = flags->second;
+
+        if (flags_str.find("COREML_FLAG_USE_CPU_ONLY") != std::string::npos) {
+          coreml_flags |= COREMLFlags::COREML_FLAG_USE_CPU_ONLY;
+        } else if (flags_str.find("COREML_FLAG_USE_CPU_AND_GPU") != std::string::npos) {
+          coreml_flags |= COREMLFlags::COREML_FLAG_USE_CPU_AND_GPU;
+        }
+
+        if (flags_str.find("COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES") != std::string::npos) {
+          coreml_flags |= COREMLFlags::COREML_FLAG_ONLY_ALLOW_STATIC_INPUT_SHAPES;
+        }
+
+        if (flags_str.find("COREML_FLAG_CREATE_MLPROGRAM") != std::string::npos) {
+          coreml_flags |= COREMLFlags::COREML_FLAG_CREATE_MLPROGRAM;
+        }
+      } else {
+        // read from provider_options
+        return onnxruntime::CoreMLProviderFactoryCreator::Create(options)->CreateProvider();
+      }
+    }
+
+    return onnxruntime::CoreMLProviderFactoryCreator::Create(coreml_flags)->CreateProvider();
 #endif
   } else if (type == kXnnpackExecutionProvider) {
 #if defined(USE_XNNPACK)
@@ -835,6 +1230,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     return onnxruntime::XnnpackProviderFactoryCreator::Create(
                cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options)
         ->CreateProvider();
+#endif
+  } else if (type == kWebGpuExecutionProvider) {
+#if defined(USE_WEBGPU)
+    return onnxruntime::WebGpuProviderFactoryCreator::Create(session_options.config_options)->CreateProvider();
 #endif
   } else if (type == kCannExecutionProvider) {
 #ifdef USE_CANN
@@ -1060,7 +1459,8 @@ void addGlobalMethods(py::module& m) {
         LogDeprecationWarning("set_openvino_device", "OpenVINO execution provider option \"device_type\"");
         openvino_device_type = device_type;
       },
-      "Set the prefered OpenVINO device type to be used. If left unset, the device type selected during build time will be used.");
+      "Set the preferred OpenVINO device type to be used. If left unset, "
+      "the device type selected during build time will be used.");
   // TODO remove deprecated global config
   m.def(
       "get_openvino_device", []() -> std::string {
@@ -1090,7 +1490,7 @@ void addGlobalMethods(py::module& m) {
     ORT_UNUSED_PARAMETER(algo);
     ORT_THROW("set_cudnn_conv_algo_search is not supported in ROCM");
 #else
-        cudnn_conv_algo_search = algo;
+    cudnn_conv_algo_search = algo;
 #endif
   });
   // TODO remove deprecated global config
@@ -1101,7 +1501,7 @@ void addGlobalMethods(py::module& m) {
     ORT_UNUSED_PARAMETER(use_single_stream);
     ORT_THROW("set_do_copy_in_default_stream is not supported in ROCM");
 #else
-        do_copy_in_default_stream = use_single_stream;
+    do_copy_in_default_stream = use_single_stream;
 #endif
   });
   // TODO remove deprecated global config
@@ -1116,6 +1516,12 @@ void addGlobalMethods(py::module& m) {
     LogDeprecationWarning("set_arena_extend_strategy", "CUDA/ROCM execution provider option \"arena_extend_strategy\"");
     arena_extend_strategy = strategy;
   });
+#endif
+
+#ifdef USE_TENSORRT
+  m.def(
+      "register_tensorrt_plugins_as_custom_ops", [](PySessionOptions& so, const ProviderOptions& options) { RegisterTensorRTPluginsAsCustomOps(so, options); },
+      "Register TensorRT plugins as custom ops.");
 #endif
 
 #ifdef ENABLE_ATEN
@@ -1145,7 +1551,8 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
 
   py::enum_<ExecutionOrder>(m, "ExecutionOrder")
       .value("DEFAULT", ExecutionOrder::DEFAULT)
-      .value("PRIORITY_BASED", ExecutionOrder::PRIORITY_BASED);
+      .value("PRIORITY_BASED", ExecutionOrder::PRIORITY_BASED)
+      .value("MEMORY_EFFICIENT", ExecutionOrder::MEMORY_EFFICIENT);
 
   py::enum_<OrtAllocatorType>(m, "OrtAllocatorType")
       .value("INVALID", OrtInvalidAllocator)
@@ -1167,6 +1574,8 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def_static("cann", []() { return OrtDevice::NPU; })
       .def_static("fpga", []() { return OrtDevice::FPGA; })
       .def_static("npu", []() { return OrtDevice::NPU; })
+      .def_static("dml", []() { return OrtDevice::DML; })
+      .def_static("webgpu", []() { return OrtDevice::GPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
@@ -1273,6 +1682,13 @@ Serialized model format will default to ONNX unless:
 - there is no 'session.save_model_format' config entry and optimized_model_filepath ends in '.ort' (case insensitive)
 
 )pbdoc")
+      .def_property(
+          "enable_cpu_mem_arena",
+          [](const PySessionOptions* options) -> bool { return options->value.enable_cpu_mem_arena; },
+          [](PySessionOptions* options, bool enable_cpu_mem_arena) -> void {
+            options->value.enable_cpu_mem_arena = enable_cpu_mem_arena;
+          },
+          R"pbdoc(Enable memory arena on CPU. Default is true.)pbdoc")
       .def_property(
           "enable_mem_pattern",
           [](const PySessionOptions* options) -> bool { return options->value.enable_mem_pattern; },
@@ -1458,10 +1874,10 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
         }
         ORT_THROW_IF_ERROR(options->value.AddExternalInitializers(names_ptrs, values_ptrs));
 #else
-            ORT_UNUSED_PARAMETER(options);
-            ORT_UNUSED_PARAMETER(names);
-            ORT_UNUSED_PARAMETER(ort_values);
-            ORT_THROW("External initializers are not supported in this build.");
+        ORT_UNUSED_PARAMETER(options);
+        ORT_UNUSED_PARAMETER(names);
+        ORT_UNUSED_PARAMETER(ort_values);
+        ORT_THROW("External initializers are not supported in this build.");
 #endif
       });
 
@@ -1502,7 +1918,12 @@ RunOptions instance. The individual calls will exit gracefully and return an err
 
             return value;
           },
-          R"pbdoc(Get a single run configuration value using the given configuration key.)pbdoc");
+          R"pbdoc(Get a single run configuration value using the given configuration key.)pbdoc")
+      .def(
+          "add_active_adapter", [](RunOptions* options, lora::LoraAdapter* adapter) {
+            options->active_adapters.push_back(adapter);
+          },
+          R"pbdoc(Adds specified adapter as an active adapter)pbdoc");
 
   py::class_<ModelMetadata>(m, "ModelMetadata", R"pbdoc(Pre-defined and custom metadata about the model.
 It is usually used to identify the model used to run the prediction and
@@ -1523,8 +1944,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             return *(na.Type());
           },
           "node type")
-      .def(
-          "__str__", [](const onnxruntime::NodeArg& na) -> std::string {
+      .def("__str__", [](const onnxruntime::NodeArg& na) -> std::string {
             std::ostringstream res;
             res << "NodeArg(name='" << na.Name() << "', type='" << *(na.Type()) << "', shape=";
             auto shape = na.Shape();
@@ -1550,11 +1970,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             }
             res << ")";
 
-            return std::string(res.str());
-          },
-          "converts the node into a readable string")
-      .def_property_readonly(
-          "shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
+            return std::string(res.str()); }, "converts the node into a readable string")
+      .def_property_readonly("shape", [](const onnxruntime::NodeArg& na) -> std::vector<py::object> {
             auto shape = na.Shape();
             std::vector<py::object> arr;
             if (shape == nullptr || shape->dim_size() == 0) {
@@ -1571,9 +1988,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                 arr[i] = py::none();
               }
             }
-            return arr;
-          },
-          "node shape (assuming the node holds a tensor)");
+            return arr; }, "node shape (assuming the node holds a tensor)");
 
   py::class_<SessionObjectInitializer> sessionObjectInitializer(m, "SessionObjectInitializer");
   py::class_<PyInferenceSession>(m, "InferenceSession", R"pbdoc(This is the main class used to run a model.)pbdoc")
@@ -1625,11 +2040,17 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           },
           R"pbdoc(Load a model saved in ONNX or ORT format.)pbdoc")
       .def("run",
-           [](PyInferenceSession* sess, std::vector<std::string> output_names,
-              std::map<std::string, py::object> pyfeeds, RunOptions* run_options = nullptr)
-               -> std::vector<py::object> {
+           [](PyInferenceSession* sess, const std::vector<std::string>& output_names,
+              const std::map<std::string, const py::object>& pyfeeds, RunOptions* run_options = nullptr)
+               -> py::list {
              NameMLValMap feeds;
-             for (auto feed : pyfeeds) {
+             if (run_options != nullptr && !run_options->active_adapters.empty()) {
+               AppendLoraParametersAsInputs(*run_options, pyfeeds.size(), feeds);
+             } else {
+               feeds.reserve(pyfeeds.size());
+             }
+
+             for (const auto& feed : pyfeeds) {
                // No need to process 'None's sent in by the user
                // to feed Optional inputs in the graph.
                // We just won't include anything in the feed and ORT
@@ -1642,11 +2063,12 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                  }
                  CreateGenericMLValue(px.second, GetAllocator(), feed.first, feed.second, &ml_value);
                  ThrowIfPyErrOccured();
-                 feeds.insert(std::make_pair(feed.first, ml_value));
+                 feeds.insert(std::make_pair(feed.first, std::move(ml_value)));
                }
              }
 
              std::vector<OrtValue> fetches;
+             fetches.reserve(output_names.size());
              common::Status status;
 
              {
@@ -1659,39 +2081,97 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                }
              }
 
-             std::vector<py::object> rfetch;
-             rfetch.reserve(fetches.size());
+             py::list result;
              size_t pos = 0;
-             for (auto fet : fetches) {
+             for (const auto& fet : fetches) {
                if (fet.IsAllocated()) {
                  if (fet.IsTensor()) {
-                   rfetch.push_back(AddTensorAsPyObj(fet, nullptr, nullptr));
+                   result.append(AddTensorAsPyObj(fet, nullptr, nullptr));
                  } else if (fet.IsSparseTensor()) {
-                   rfetch.push_back(GetPyObjectFromSparseTensor(pos, fet, nullptr));
+                   result.append(GetPyObjectFromSparseTensor(pos, fet, nullptr));
                  } else {
-                   rfetch.push_back(AddNonTensorAsPyObj(fet, nullptr, nullptr));
+                   result.append(AddNonTensorAsPyObj(fet, nullptr, nullptr));
                  }
                } else {  // Send back None because the corresponding OrtValue was empty
-                 rfetch.push_back(py::none());
+                 result.append(py::none());
                }
                ++pos;
              }
-             return rfetch;
+             return result;
+           })
+      .def("run_async",
+           [](PyInferenceSession* sess,
+              const std::vector<std::string>& output_names,
+              const std::map<std::string, py::object>& pyfeeds,
+              PyCallback callback, py::object user_data = {},
+              RunOptions* run_options = nullptr)
+               -> void {
+             if (run_options != nullptr && !run_options->active_adapters.empty()) {
+               LOGS(*sess->GetSessionHandle()->GetLogger(), WARNING)
+                   << "run_async has active adapters specified, but won't have an effect";
+             }
+
+             std::unique_ptr<AsyncResource> async_resource = std::make_unique<AsyncResource>();
+             async_resource->callback = callback;
+             async_resource->user_data = user_data;
+             // prepare feeds
+             async_resource->ReserveFeeds(pyfeeds.size());
+             for (const auto& feed : pyfeeds) {
+               if (!feed.second.is(py::none())) {
+                 OrtValue ml_value;
+                 auto px = sess->GetSessionHandle()->GetModelInputs();
+                 if (!px.first.IsOK() || !px.second) {
+                   throw std::runtime_error("Either failed to get model inputs from the session object or the input def list was null");
+                 }
+                 CreateGenericMLValue(px.second, GetAllocator(), feed.first, feed.second, &ml_value);
+                 ThrowIfPyErrOccured();
+                 async_resource->feeds.push_back(ml_value);
+                 async_resource->feeds_raw.push_back(&async_resource->feeds.back());
+                 async_resource->feed_names.push_back(feed.first);
+                 async_resource->feed_names_raw.push_back(async_resource->feed_names.back().c_str());
+               }
+             }
+             // prepare fetches
+             async_resource->ReserveFetches(output_names.size());
+             for (const auto& output_name : output_names) {
+               async_resource->fetch_names.push_back(output_name);
+               async_resource->fetch_names_raw.push_back(async_resource->fetch_names.back().c_str());
+               async_resource->fetches_raw.push_back({});
+             }
+             const RunOptions* run_async_option = run_options ? run_options : &async_resource->default_run_option;
+             common::Status status = sess->GetSessionHandle()->RunAsync(run_async_option,
+                                                                        gsl::span(async_resource->feed_names_raw.data(), async_resource->feed_names_raw.size()),
+                                                                        gsl::span(async_resource->feeds_raw.data(), async_resource->feeds_raw.size()),
+                                                                        gsl::span(async_resource->fetch_names_raw.data(), async_resource->fetch_names_raw.size()),
+                                                                        gsl::span(async_resource->fetches_raw.data(), async_resource->fetches_raw.size()),
+                                                                        AsyncCallback,
+                                                                        async_resource.get());
+             if (status.IsOK()) {
+               async_resource.release();
+             }
+             OrtPybindThrowIfError(status);
            })
       /// This method accepts a dictionary of feeds (name -> OrtValue) and the list of output_names
       /// and returns a list of python objects representing OrtValues. Each name may represent either
       /// a Tensor, SparseTensor or a TensorSequence.
       .def("run_with_ort_values", [](PyInferenceSession* sess, const py::dict& feeds, const std::vector<std::string>& output_names, RunOptions* run_options = nullptr) -> std::vector<OrtValue> {
         NameMLValMap ort_feeds;
+        if (run_options != nullptr && !run_options->active_adapters.empty()) {
+          AppendLoraParametersAsInputs(*run_options, feeds.size(), ort_feeds);
+        } else {
+          ort_feeds.reserve(feeds.size());
+        }
+
         // item is always a copy since dict returns a value and not a ref
         // and Apple XToolChain barks
-        for (const auto item : feeds) {
+        for (const auto& item : feeds) {
           auto name = item.first.cast<std::string>();
           const OrtValue* ort_value = item.second.cast<const OrtValue*>();
           ort_feeds.emplace(name, *ort_value);
         }
 
         std::vector<OrtValue> fetches;
+        fetches.reserve(output_names.size());
         {
           // release GIL to allow multiple python threads to invoke Run() in parallel.
           py::gil_scoped_release release;
@@ -1704,6 +2184,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         return fetches;
       })
       .def("run_with_ortvaluevector", [](PyInferenceSession* sess, RunOptions run_options, const std::vector<std::string>& feed_names, const std::vector<OrtValue>& feeds, const std::vector<std::string>& fetch_names, std::vector<OrtValue>& fetches, const std::vector<OrtDevice>& fetch_devices) -> void {
+        if (!run_options.active_adapters.empty()) {
+          LOGS(*sess->GetSessionHandle()->GetLogger(), WARNING)
+              << "run_with_ortvaluevector has active adapters specified, but won't have an effect";
+        }
+
         // release GIL to allow multiple python threads to invoke Run() in parallel.
         py::gil_scoped_release release;
         OrtPybindThrowIfError(sess->GetSessionHandle()->Run(run_options, feed_names, feeds, fetch_names, &fetches, &fetch_devices));
@@ -1714,53 +2199,37 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def_property_readonly("get_profiling_start_time_ns", [](const PyInferenceSession* sess) -> uint64_t {
         return sess->GetSessionHandle()->GetProfiling().GetStartTimeNs();
       })
-      .def(
-          "get_providers", [](const PyInferenceSession* sess) -> const std::vector<std::string>& {
-            return sess->GetSessionHandle()->GetRegisteredProviderTypes();
-          },
-          py::return_value_policy::reference_internal)
-      .def(
-          "get_provider_options", [](const PyInferenceSession* sess) -> const ProviderOptionsMap& {
-            return sess->GetSessionHandle()->GetAllProviderOptions();
-          },
-          py::return_value_policy::reference_internal)
-      .def_property_readonly(
-          "session_options", [](const PyInferenceSession* sess) -> PySessionOptions* {
+      .def("get_providers", [](const PyInferenceSession* sess) -> const std::vector<std::string>& { return sess->GetSessionHandle()->GetRegisteredProviderTypes(); }, py::return_value_policy::reference_internal)
+      .def("get_provider_options", [](const PyInferenceSession* sess) -> const ProviderOptionsMap& { return sess->GetSessionHandle()->GetAllProviderOptions(); }, py::return_value_policy::reference_internal)
+      .def_property_readonly("session_options", [](const PyInferenceSession* sess) -> PySessionOptions* {
             auto session_options = std::make_unique<PySessionOptions>();
             session_options->value = sess->GetSessionHandle()->GetSessionOptions();
-            return session_options.release();
-          },
-          py::return_value_policy::take_ownership)
-      .def_property_readonly(
-          "inputs_meta", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
+            return session_options.release(); }, py::return_value_policy::take_ownership)
+      .def_property_readonly("inputs_meta", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
             auto res = sess->GetSessionHandle()->GetModelInputs();
             OrtPybindThrowIfError(res.first);
-            return *(res.second);
-          },
-          py::return_value_policy::reference_internal)
-      .def_property_readonly(
-          "outputs_meta", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
+            return *(res.second); }, py::return_value_policy::reference_internal)
+      .def_property_readonly("outputs_meta", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
             auto res = sess->GetSessionHandle()->GetModelOutputs();
             OrtPybindThrowIfError(res.first);
-            return *(res.second);
-          },
-          py::return_value_policy::reference_internal)
-      .def_property_readonly(
-          "overridable_initializers", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
+            return *(res.second); }, py::return_value_policy::reference_internal)
+      .def_property_readonly("overridable_initializers", [](const PyInferenceSession* sess) -> const std::vector<const onnxruntime::NodeArg*>& {
             auto res = sess->GetSessionHandle()->GetOverridableInitializers();
             OrtPybindThrowIfError(res.first);
-            return *(res.second);
-          },
-          py::return_value_policy::reference_internal)
-      .def_property_readonly(
-          "model_meta", [](const PyInferenceSession* sess) -> const onnxruntime::ModelMetadata& {
+            return *(res.second); }, py::return_value_policy::reference_internal)
+      .def_property_readonly("model_meta", [](const PyInferenceSession* sess) -> const onnxruntime::ModelMetadata& {
             auto res = sess->GetSessionHandle()->GetModelMetadata();
             OrtPybindThrowIfError(res.first);
-            return *(res.second);
-          },
-          py::return_value_policy::reference_internal)
+            return *(res.second); }, py::return_value_policy::reference_internal)
       .def("run_with_iobinding", [](PyInferenceSession* sess, SessionIOBinding& io_binding, RunOptions* run_options = nullptr) -> void {
+
         Status status;
+
+        if (run_options != nullptr && !run_options->active_adapters.empty()) {
+          LOGS(*sess->GetSessionHandle()->GetLogger(), WARNING)
+              << "run_with_iobinding has active adapters specified, but won't have an effect";
+        }
+
         // release GIL to allow multiple python threads to invoke Run() in parallel.
         py::gil_scoped_release release;
         if (!run_options)
@@ -1768,12 +2237,12 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         else
           status = sess->GetSessionHandle()->Run(*run_options, *io_binding.Get());
         if (!status.IsOK())
-          throw std::runtime_error("Error in execution: " + status.ErrorMessage());
-      })
+          throw std::runtime_error("Error in execution: " + status.ErrorMessage()); })
       .def("get_tuning_results", [](PyInferenceSession* sess) -> py::list {
 #if !defined(ORT_MINIMAL_BUILD)
+        auto results = sess->GetSessionHandle()->GetTuningResults();
         py::list ret;
-        for (const auto& trs : sess->GetSessionHandle()->GetTuningResults()) {
+        for (const auto& trs : results) {
           py::dict py_trs;
           py_trs["ep"] = trs.ep;
           py_trs["results"] = trs.results;
@@ -1783,8 +2252,8 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
         return ret;
 #else
-            ORT_UNUSED_PARAMETER(sess);
-            ORT_THROW("TunableOp and get_tuning_results are not supported in this build.");
+        ORT_UNUSED_PARAMETER(sess);
+        ORT_THROW("TunableOp and get_tuning_results are not supported in this build.");
 #endif
       })
       .def("set_tuning_results", [](PyInferenceSession* sess, py::list results, bool error_on_invalid) -> void {
@@ -1815,10 +2284,10 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           throw std::runtime_error("Error in execution: " + status.ErrorMessage());
         }
 #else
-            ORT_UNUSED_PARAMETER(sess);
-            ORT_UNUSED_PARAMETER(results);
-            ORT_UNUSED_PARAMETER(error_on_invalid);
-            ORT_THROW("TunableOp and set_tuning_results are not supported in this build.");
+        ORT_UNUSED_PARAMETER(sess);
+        ORT_UNUSED_PARAMETER(results);
+        ORT_UNUSED_PARAMETER(error_on_invalid);
+        ORT_THROW("TunableOp and set_tuning_results are not supported in this build.");
 #endif
       });
 
@@ -1828,15 +2297,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .export_values();
 }
 
-void CreateInferencePybindStateModule(py::module& m) {
+bool CreateInferencePybindStateModule(py::module& m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
   RegisterExceptions(m);
 
-  // Initialization of the module
-  ([]() -> void {
-    // import_array1() forces a void return value.
-    import_array1();
-  })();
+  import_array1(false);
 
   auto env = GetEnv();
 
@@ -1845,6 +2310,7 @@ void CreateInferencePybindStateModule(py::module& m) {
   addOrtValueMethods(m);
   addSparseTensorMethods(m);
   addIoBindingMethods(m);
+  addAdapterFormatMethods(m);
 
 #if !defined(__APPLE__) && !defined(ORT_MINIMAL_BUILD)
   if (!InitProvidersSharedLibrary()) {
@@ -1856,13 +2322,13 @@ void CreateInferencePybindStateModule(py::module& m) {
   addGlobalSchemaFunctions(m);
   addOpSchemaSubmodule(m);
   addOpKernelSubmodule(m);
+  return true;
 }
 
-void InitArray() {
-  ([]() -> void {
-    // import_array1() forces a void return value.
-    import_array1();
-  })();
+// This function is only used by orttraining module
+bool InitArray() {
+  import_array1(false);
+  return true;
 }
 
 namespace {
@@ -1905,8 +2371,6 @@ class EnvInitializer {
 
  private:
   EnvInitializer() {
-    // Initialization of the module
-    InitArray();
     std::unique_ptr<Environment> env_ptr;
     Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
     OrtPybindThrowIfError(Environment::Create(std::make_unique<LoggingManager>(

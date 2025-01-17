@@ -1,7 +1,7 @@
 {
-  "[cpp]": {
+  "[json]": {
     "editor.formatOnSave": true,
-    "editor.defaultFormatter": "xaver.clang-format"
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
   "[jsonc]": {
     "editor.formatOnSave": true,
@@ -11,12 +11,15 @@
     "editor.formatOnSave": true,
     "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
+  "[javascript]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
+  },
   "[typescript]": {
     "editor.formatOnSave": true,
-    "editor.defaultFormatter": "xaver.clang-format"
+    "editor.defaultFormatter": "esbenp.prettier-vscode"
   },
-  "clang-format.executable": "${workspaceRoot}/node_modules/.bin/clang-format",
-  "clang-format.style": "file",
+  "prettier.prettierPath": "./node_modules/prettier",
   "editor.detectIndentation": false,
   "editor.insertSpaces": true,
   "editor.rulers": [120],
@@ -28,7 +31,8 @@
     "node/lib/**/*.js.map": true,
     "node/lib/**/*.js": true,
     "web/lib/**/*.js.map": true,
-    "web/lib/**/*.js": true
+    "web/lib/**/*.js": true,
+    "web/lib/**/*.d.ts": true
   },
   "files.insertFinalNewline": true,
   "files.trimTrailingWhitespace": true,
@@ -37,5 +41,12 @@
     "./types": true
   },
   "typescript.tsdk": "node_modules/typescript/lib",
-  "git.detectSubmodules": false
+  "git.detectSubmodules": false,
+  "cmake.configureOnOpen": false,
+  "json.schemas": [
+    {
+      "fileMatch": ["web/test/data/ops/*.jsonc"],
+      "url": "./web/test/op-test-schema.json"
+    }
+  ]
 }

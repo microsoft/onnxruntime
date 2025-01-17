@@ -3,13 +3,7 @@
 
 #pragma once
 
-#if !defined(ORT_MINIMAL_BUILD)
-#include "onnx/defs/schema.h"
-#else
-#include "onnx/defs/data_type_utils.h"
-#endif
-#include "onnx/onnx_pb.h"
-#include "onnx/onnx-operators_pb.h"
+#include "core/graph/onnx_protobuf.h"
 
 namespace onnxruntime {
 namespace dml {

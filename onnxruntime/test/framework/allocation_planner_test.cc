@@ -160,6 +160,7 @@ class PlannerTest : public ::testing::Test {
   ExecutionProviders execution_providers_;
   std::unique_ptr<concurrency::ThreadPool> tp_;
   DataTransferManager dtm_;
+  ExternalDataLoaderManager edlm_;
   profiling::Profiler profiler_;
   std::unique_ptr<SessionOptions> sess_options_;
   std::unique_ptr<SessionState> state_;
@@ -198,7 +199,7 @@ class PlannerTest : public ::testing::Test {
     sess_options_->enable_mem_pattern = false;
     sess_options_->use_deterministic_compute = false;
     sess_options_->enable_mem_reuse = true;
-    state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_,
+    state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_, edlm_,
                                   DefaultLoggingManager().DefaultLogger(), profiler_, *sess_options_));
   }
 
@@ -250,16 +251,17 @@ class PlannerTest : public ::testing::Test {
 
   void BindKernel(onnxruntime::Node* p_node, ::onnxruntime::KernelDef& kernel_def, KernelRegistry* reg,
                   std::unordered_map<NodeIndex, gsl::not_null<const KernelCreateInfo*>>& kernel_create_info_map) {
+    const auto& logger = DefaultLoggingManager().DefaultLogger();
     const IExecutionProvider* ep = execution_providers_.Get(*p_node);
     ASSERT_NE(ep, nullptr);
     auto info = std::make_unique<OpKernelInfo>(
         *p_node, kernel_def, *ep, state_->GetInitializedTensors(), state_->GetOrtValueNameIdxMap(),
-        state_->GetDataTransferMgr());
+        state_->GetDataTransferMgr(), state_->GetAllocators(), state_->GetSessionOptions().config_options);
 
     op_kernel_infos_.push_back(std::move(info));
     const auto kernel_type_str_resolver = OpSchemaKernelTypeStrResolver{};
     if (!KernelRegistry::HasImplementationOf(*reg, *p_node, onnxruntime::kCpuExecutionProvider,
-                                             kernel_type_str_resolver)) {
+                                             kernel_type_str_resolver, logger)) {
       ASSERT_STATUS_OK(reg->Register(
           KernelCreateInfo(std::make_unique<KernelDef>(kernel_def),
                            [](FuncManager&, const OpKernelInfo& info, std::unique_ptr<OpKernel>& out) -> Status {
@@ -269,7 +271,7 @@ class PlannerTest : public ::testing::Test {
     }
 
     const KernelCreateInfo* kci;
-    ASSERT_STATUS_OK(reg->TryFindKernel(*p_node, "", kernel_type_str_resolver, &kci));
+    ASSERT_STATUS_OK(reg->TryFindKernel(*p_node, "", kernel_type_str_resolver, logger, &kci));
     kernel_create_info_map.insert({p_node->Index(), gsl::not_null<const KernelCreateInfo*>(kci)});
   }
 
@@ -281,8 +283,9 @@ class PlannerTest : public ::testing::Test {
     }
   }
 
-  void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {}, bool invoke_createPlan_explicityly = true) {
-    state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_,
+  void CreatePlan(const std::vector<const NodeArg*>& outer_scope_node_args = {},
+                  bool invoke_createPlan_explicityly = true) {
+    state_.reset(new SessionState(graph_, execution_providers_, tp_.get(), nullptr, dtm_, edlm_,
                                   DefaultLoggingManager().DefaultLogger(), profiler_, *sess_options_));
     EXPECT_EQ(graph_.Resolve(), Status::OK());
 
@@ -327,10 +330,23 @@ class PlannerTest : public ::testing::Test {
 
     if (invoke_createPlan_explicityly) {
       onnxruntime::GraphViewer graph_viewer{graph_};
-      status = SequentialPlanner::CreatePlan(nullptr, graph_viewer, outer_scope_node_args, execution_providers_,
-                                             kernel_create_info_map, {}, {}, state_->GetOrtValueNameIdxMap(), test_context,
-                                             MockStreamHandleRegsitry(), /* {{kCpuExecutionProvider, 1}}, {},*/
-                                             ORT_TSTR(""), DefaultLoggingManager().DefaultLogger(), plan_);
+      status = SequentialPlanner::CreatePlan(
+          nullptr,
+          graph_viewer,
+          outer_scope_node_args,
+          execution_providers_,
+          kernel_create_info_map,
+          {},
+          {},
+          state_->GetOrtValueNameIdxMap(),
+          test_context,
+#ifdef ORT_ENABLE_STREAM
+          MockStreamHandleRegsitry(),
+#endif
+          /* {{kCpuExecutionProvider, 1}}, {},*/
+          ORT_TSTR(""),
+          DefaultLoggingManager().DefaultLogger(),
+          plan_);
 
       EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
       // AllocationPlanTestUtility::BasicIntegrityCheck(*plan_, name_to_arg_.size());
@@ -357,8 +373,9 @@ class PlannerTest : public ::testing::Test {
     EXPECT_EQ(plan_->execution_plan.size(), 1U);
     int list_size = static_cast<int>(plan_->node_release_list.size());
     EXPECT_GT(list_size, step_number);
-    for (auto freed : plan_->node_release_list[step_number]) {
-      plan_result.insert(static_cast<int>(freed));
+    for (auto action_idx : plan_->node_release_list[step_number]) {
+      const size_t ortvalue_id = plan_->release_actions[action_idx].value_index;
+      plan_result.insert(static_cast<int>(ortvalue_id));
     }
     EXPECT_EQ(plan_result, expected) << "Freed items incorrect for step " << step_number;
   }
@@ -420,7 +437,7 @@ TEST_F(PlannerTest, ChainTest) {
   CreatePlan();
 
   // Expected plan:
-  //   W: kAllocateStatically; X: kAllocate; B: kAllocate; Y: kReuse (X); post-node3: free(B); X is returned output
+  //   W: kAllocateStatically; X: kAllocate; B: kAllocate; Y: kReuse (X); post-node3: free(B); Z is returned output
   CheckAllocKind(W, AllocKind::kAllocateStatically);
   CheckAllocKind(X, AllocKind::kAllocate);
   CheckAllocKind(B, AllocKind::kAllocate);
@@ -429,8 +446,8 @@ TEST_F(PlannerTest, ChainTest) {
 
   CheckFreed(0, {});
   CheckFreed(1, {});
-  CheckFreed(2, {"X"});
-  CheckFreed(3, {"W"});
+  CheckFreed(2, {B});
+  CheckFreed(3, {X});
 }
 
 /* InputOutputTest: Test that:
@@ -497,7 +514,7 @@ TEST_F(PlannerTest, InPlaceTest) {
   // check each ml-value is freed at appropriate step
   CheckFreed(0, {});
   CheckFreed(1, {});
-  CheckFreed(2, {X1});
+  CheckFreed(2, {X2});
 }
 
 TEST_F(PlannerTest, ExternalOutputsTest) {
@@ -523,10 +540,42 @@ TEST_F(PlannerTest, ExternalOutputsTest) {
   CheckAllocKind(X4, AllocKind::kAllocateOutput);
 
   // check each ml-value is freed at appropriate step
-  // X2 will not be reused and will not be freed. X3 will be allocated and will be freed.
+  // X2 will not be reused but will be freed (to release the current reference). X3 will be allocated and will be freed.
   CheckFreed(0, {});
-  CheckFreed(1, {});
-  CheckFreed(2, {X1});
+  CheckFreed(1, {X2});
+  CheckFreed(2, {X3});
+}
+
+TEST_F(PlannerTest, ExternalOutputsNoReuseTest) {
+  // tensor variables:
+  std::string X1("X1"), X2("X2"), X3("X3"), X4("X4"), X5("X5");
+
+  // graph structure:
+  AddExternalOutputsNode(X1, X2);  // external-outputs operator; X1: input; X2: temporary
+  AddInplaceNode(X2, X3);          // may-in-place operator; X3: temporary
+  AddNormalNode(X3, X4);           // normal operator; X4: temporary
+  AddNormalNode(X4, X5);           // normal operator; X5: output
+
+  // simulate shape-inference results:
+  Shape shape1{"M", "N"};
+  auto shape = &shape1.value;
+  SetShape({{X1, shape}, {X2, shape}, {X3, shape}, {X4, shape}, {X5, shape}});
+
+  CreatePlan();
+
+  // check allocation kind:
+  CheckAllocKind(X1, AllocKind::kPreExisting);
+  CheckAllocKind(X2, AllocKind::kAllocatedExternally);
+  CheckAllocKind(X3, AllocKind::kAllocate);  // Should not be Reused.
+  CheckAllocKind(X4, AllocKind::kAllocate);
+  CheckAllocKind(X5, AllocKind::kAllocateOutput);
+
+  // check each ml-value is freed at appropriate step
+  // X2 will not be reused. X3 will be allocated and will be freed.
+  CheckFreed(0, {});
+  CheckFreed(1, {X2});
+  CheckFreed(2, {X3});
+  CheckFreed(3, {X4});
 }
 
 #ifdef ENABLE_STRIDED_TENSORS
@@ -551,9 +600,9 @@ TEST_F(PlannerTest, MayStridedTest1) {
   CheckAllocKind(X3, AllocKind::kAllocateOutput);
 
   // check each ml-value is freed at appropriate step
-  // X2 will not be reused and will not be freed. X3 will be allocated and will be freed.
+  // X2 will not be reused because X3 is a graph output. X3 will be allocated and will be freed.
   CheckFreed(0, {});
-  CheckFreed(1, {X1});
+  CheckFreed(1, {X2});
 }
 
 TEST_F(PlannerTest, MayStridedTest2) {
@@ -561,9 +610,9 @@ TEST_F(PlannerTest, MayStridedTest2) {
   std::string X1("X1"), X2("X2"), X3("X3"), X4("X4");
 
   // graph structure:
-  AddMayStridedOutputNode(X1, X2);
-  AddMayStridedInputNode(X2, X3);
-  AddMayStridedInputNode(X2, X4);
+  AddMayStridedOutputNode(X1, X2);  // X2 can reuse X1, and is a strided output.
+  AddMayStridedInputNode(X2, X3);   // X3 is a graph output, cannot reuse.
+  AddMayStridedInputNode(X2, X4);   // X4 is a graph output, cannot reuse.
 
   // simulate shape-inference results:
   Shape shape1{"M", "N"};
@@ -590,8 +639,9 @@ TEST_F(PlannerTest, MayStridedTest3) {
   std::string X1("X1"), X2("X2"), X3("X3"), X4("X4");
 
   // graph structure:
-  AddMayStridedOutputNode(X1, X2);
-  AddMayStridedInputNode(X2, X3);
+  AddMayStridedOutputNode(X1, X2);  // X2 cannot strided reuse X1 because,
+  // one of X2's consumers is a node not supporting strided input. So X2 is a allocate.
+  AddMayStridedInputNode(X2, X3);  // X3 is a graph output, cannot reuse.
   AddNormalNode(X2, X4);
 
   // simulate shape-inference results:
@@ -607,11 +657,27 @@ TEST_F(PlannerTest, MayStridedTest3) {
   CheckAllocKind(X3, AllocKind::kAllocateOutput);
   CheckAllocKind(X4, AllocKind::kAllocateOutput);
 
+  // Be noted: the last two nodes added can run in two different orders, we need figure out the exact order
+  // we planned then we know how to check the free order.
+  const GraphViewer& graph_viewer = GetState().GetGraphViewer();
+  // Normal node index is 2.
+  bool does_normal_node_run_at_last = graph_viewer.GetNodesInTopologicalOrder()[2] == 2;
+
   // check each ml-value is freed at appropriate step
-  // X2 will not be reused and will not be freed. X3 will be allocated and will be freed.
+
   CheckFreed(0, {});
-  CheckFreed(1, {X1});
-  CheckFreed(2, {});
+
+  if (does_normal_node_run_at_last) {
+    // Normal node has node index to be 2, but it is possible that the normal node is executed after the strided node.
+    // Then X2 will released once the normal node is executed.
+    CheckFreed(1, {});
+    CheckFreed(2, {X2});
+  } else {
+    // Normal node has node index to be 2, and is executed before the strided node.
+    // So X2 will be released after the strided node (node index to be 1) is executed.
+    CheckFreed(2, {});
+    CheckFreed(1, {X2});
+  }
 }
 #endif
 
@@ -624,7 +690,7 @@ TEST_F(PlannerTest, InPlaceSizeMismatchTest) {
   // graph structure:
   AddNormalNode(X1, X2);   // no in-place operator; X1: input; X2: temporary
   AddInplaceNode(X2, X3);  // may-in-place operator; X3: temporary
-  AddNormalNode(X3, X4);   // no in-place operator; X4: temporary
+  AddNormalNode(X3, X4);   // no in-place operator; X4: temporary (reuse X2)
   AddInplaceNode(X4, X5);  // may-in-place operator; X5 output
 
   // simulate shape-inference results:
@@ -646,8 +712,8 @@ TEST_F(PlannerTest, InPlaceSizeMismatchTest) {
   // check each ml-value is freed at appropriate step
   CheckFreed(0, {});
   CheckFreed(1, {});
-  CheckFreed(2, {X2});
-  CheckFreed(3, {X1});
+  CheckFreed(2, {X3});
+  CheckFreed(3, {X2});
 }
 
 // Test operator<< to output details of an allocation & execution plan.
@@ -1225,7 +1291,7 @@ TEST_F(PlannerTest, MultiStream) {
 
   CreatePlan({}, false);
 
-  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan.size(), 2) << "2 logic streams for CPU and CUDA seperately";
+  EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan.size(), 2) << "2 logic streams for CPU and CUDA separately";
   EXPECT_EQ(GetState().GetExecutionPlan()->execution_plan[0]->steps_.size(), 6) << "CPU stream has 6 steps";
   EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[0]).name(), "LaunchKernelStep"), nullptr) << "0th step: LaunchKernelStep for node 1";
   EXPECT_NE(strstr(typeid(*GetState().GetExecutionPlan()->execution_plan[0]->steps_[1]).name(), "LaunchKernelStep"), nullptr) << "1st step: LaunchKernelStep for node 2";
@@ -1792,7 +1858,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
 
   status = sess.RegisterExecutionProvider(DefaultCpuExecutionProvider());
   ASSERT_TRUE(status.IsOK());
-  ASSERT_TRUE(model.Save(model, "./simplified_ssd.onnx").IsOK());
+  ASSERT_TRUE(model.Save(model, ORT_TSTR("./simplified_ssd.onnx")).IsOK());
 
   std::string s1;
   const bool rc = model.ToProto().SerializeToString(&s1);
@@ -1820,7 +1886,7 @@ TEST_F(PlannerTest, ParaPlanCreation) {
       ORT_ENFORCE(main_graph_ort_value_index_map.GetName(per_value_plan.reused_buffer, reused).IsOK());
       reuse_pairs.erase(reused);
     }  // if
-  }    // for
+  }  // for
   ASSERT_TRUE(reuse_pairs.empty());
 }
 
@@ -1943,12 +2009,9 @@ TEST_F(PlannerTest, TestCpuIf) {
   sess_opt.graph_optimization_level = TransformerLevel::Default;
 
   InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/multi_stream_models/cpu_if.onnx"));
-  auto status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
-  ASSERT_TRUE(status.IsOK());
-  status = sess.Load();
-  ASSERT_TRUE(status.IsOK());
-  status = sess.Initialize();
-  ASSERT_TRUE(status.IsOK());
+  ASSERT_STATUS_OK(sess.RegisterExecutionProvider(DefaultCudaExecutionProvider()));
+  ASSERT_STATUS_OK(sess.Load());
+  ASSERT_STATUS_OK(sess.Initialize());
 
   auto& sess_state = const_cast<onnxruntime::SessionState&>(sess.GetSessionState());
   const auto& exe_plan = sess_state.GetExecutionPlan()->execution_plan;
@@ -1958,9 +2021,115 @@ TEST_F(PlannerTest, TestCpuIf) {
       exe_plan[1]->steps_[7]->GetNodeIndex() == 7) {
     // there must be a wait before cpu If node
     static const std::string WaitOnEPStep = "WaitOnEPStep";
-    ASSERT_TRUE(exe_plan[1]->steps_[6]->ToString().substr(0, WaitOnEPStep.size()) == WaitOnEPStep);
+    ASSERT_EQ(exe_plan[1]->steps_[6]->ToString().substr(0, WaitOnEPStep.size()), WaitOnEPStep);
   }
 }
+
+// model looks like:
+//                                                 |-----------> Gather
+//                                                 |-----------> Gather
+//                                                 |-----------> Gather
+//                                                 |-----------> Gather
+// Shape ----------------> Reshape --> Shape ------------------> Reshape
+//                           ^                                     ^
+// InstanceNormalization ----|         InstanceNormalization ------|
+//
+// Python script to create this model:
+// def CreateModelFor19480():
+//    #shape->reshape->shape->reshape, 4 gather
+//    graphNodes = []
+//    graphNodes.append(h.make_node('Shape', inputs=['shape_input'], outputs=['9']))
+//    graphNodes.append(h.make_node('InstanceNormalization', inputs=['in0_input', 'scale0', 'B0'], outputs=['8']))
+//    graphNodes.append(h.make_node('Reshape', inputs=['8', '9'], outputs=['Reshape15_output']))
+//    graphNodes.append(h.make_node('Shape', inputs=['Reshape15_output'], outputs=['281']))
+//    graphNodes.append(h.make_node('InstanceNormalization', inputs=['in1_input', 'scale1', 'B1'], outputs=['293']))
+//    graphNodes.append(h.make_node('Reshape', inputs=['293', '281'], outputs=['output0']))
+//    graphNodes.append(h.make_node('Gather', inputs=['281', 'indices1'], outputs=['output1']))
+//    graphNodes.append(h.make_node('Gather', inputs=['281', 'indices2'], outputs=['output2']))
+//    graphNodes.append(h.make_node('Gather', inputs=['281', 'indices3'], outputs=['output3']))
+//    graphNodes.append(h.make_node('Gather', inputs=['281', 'indices4'], outputs=['output4']))
+//    g = h.make_graph(graphNodes, 'issue_19480',
+//                     [h.make_tensor_value_info('shape_input', tp.FLOAT, ['batch', 128, None, None]),
+//                      h.make_tensor_value_info('in0_input', tp.FLOAT, ['batch', 32, None]),
+//                      h.make_tensor_value_info('scale0', tp.FLOAT, [32]),
+//                      h.make_tensor_value_info('B0', tp.FLOAT, [32]),
+//                      h.make_tensor_value_info('in1_input', tp.FLOAT, ['batch', 32, None]),
+//                      h.make_tensor_value_info('scale1', tp.FLOAT, [32]),
+//                      h.make_tensor_value_info('B1', tp.FLOAT, [32]),
+//                      h.make_tensor_value_info('indices1', tp.INT32, []),
+//                      h.make_tensor_value_info('indices2', tp.INT32, []),
+//                      h.make_tensor_value_info('indices3', tp.INT32, []),
+//                      h.make_tensor_value_info('indices4', tp.INT32, [])],
+//                     [h.make_tensor_value_info('output0', tp.FLOAT, None),
+//                      h.make_tensor_value_info('output1', tp.INT64, None),
+//                      h.make_tensor_value_info('output2', tp.INT64, None),
+//                      h.make_tensor_value_info('output3', tp.INT64, None),
+//                      h.make_tensor_value_info('output4', tp.INT64, None)])
+//    model = h.make_model(g, opset_imports=[h.make_operatorsetid("", 17)], producer_name='producer_name')
+//    onnx.save(model, 'issue_19480.onnx')
+//
+TEST(AllocationPlannerTest, ReusedInputCrossDifferentStreams) {
+  SessionOptions sess_opt;
+  sess_opt.graph_optimization_level = TransformerLevel::Default;
+
+  InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/multi_stream_models/issue_19480.onnx"));
+  auto status = sess.RegisterExecutionProvider(DefaultCudaExecutionProvider());
+  status = sess.Load();
+  status = sess.Initialize();
+  ASSERT_TRUE(status.IsOK()) << "No crash";
+  const SequentialExecutionPlan* plan = sess.GetSessionState().GetExecutionPlan();
+  ASSERT_EQ(plan->allocation_plan[14].alloc_kind, AllocKind::kReuse) << "The input of reshape and gather will reuse the output of shape";
+
+  int gather_count = 0;
+  ASSERT_GT(plan->execution_plan.size(), 1) << "Number of execution plans should be greater than 1";
+  for (size_t i = 0; i < plan->execution_plan[1]->steps_.size(); i++) {
+    if (strstr(typeid(*(plan->execution_plan[1]->steps_[i])).name(), "LaunchKernelStep")) {
+      const Node* node = sess.GetSessionState().GetGraphViewer().GetNode(plan->execution_plan[1]->steps_[i]->GetNodeIndex());
+      if (node->OpType() == "Gather")
+        gather_count++;
+      else
+        FAIL() << "CPU stream should contain only gather ops";
+    }
+  }
+  ASSERT_EQ(gather_count, 4) << "4 gather ops are all placed in CPU stream";
+}
 #endif
+
+#ifdef ENABLE_TRAINING_OPS
+// use a carefully constructed model to re-produce a customer reported issue where a model produced invalid output.
+// this issue required:
+// - buffer A that is re-used later in the model
+//   - output of the first Shape node
+//   - first usage completes after the following Cast node
+// - buffer B which has the same size requirement and is used after the first usage of A is complete
+//   - buffer B is used for the output from `squeeze2` and a number of other nodes in that part of the model.
+// - re-use of buffer A for an output of a node that has no consumers whilst buffer B is still in use
+//   - this is the `per_input_length` output of the ConcatTraining node
+//
+// Because the logic to determine when a buffer can be freed is based on consumers, buffer A gets freed after the
+// Cast node. It is then re-used as buffer B because the memory pattern planner believes that block to be available.
+// When we re-use buffer A for the ConcatTraining output we are using the same address for two different node output
+// buffers, leading to corruption of the output.
+// This tests that the change in allocation planner to not re-use a buffer for outputs with no consumers prevents this.
+TEST(AllocationPlannerTest, AvoidReuseOfBufferForNodeOutputWithNoConsumers) {
+  SessionOptions sess_opt;
+  sess_opt.graph_optimization_level = TransformerLevel::Default;
+
+  InferenceSession sess(sess_opt, GetEnvironment(), ORT_TSTR("./testdata/avoid_reuse_of_buffer_for_node_output_with_no_consumers.onnx"));
+  auto status = sess.Load();
+  status = sess.Initialize();
+  ASSERT_TRUE(status.IsOK());
+
+  const auto& session_state = sess.GetSessionState();
+  const auto& ort_value_index_map = session_state.GetOrtValueNameIdxMap();
+  const SequentialExecutionPlan* plan = session_state.GetExecutionPlan();
+
+  OrtValueIndex concat_training_unused_out_index;
+  // Here per_input_length output of the ConcatTraining node has no consumers, so it should not reuse the buffer.
+  ASSERT_STATUS_OK(ort_value_index_map.GetIdx("per_input_length", concat_training_unused_out_index));
+  EXPECT_EQ(plan->allocation_plan[concat_training_unused_out_index].alloc_kind, AllocKind::kAllocate);
+}
+#endif
+
 }  // namespace test
 }  // namespace onnxruntime

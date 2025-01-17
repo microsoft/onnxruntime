@@ -32,7 +32,7 @@ namespace Microsoft.ML.OnnxRuntime.PerfTool
         [Option('i', "input_file", Required = false, HelpText = "Input file.")]
         public string InputFile { get; set; }
 
-        [Option('p', Required = false, HelpText = "Run with parallel exection. Default is false")]
+        [Option('p', Required = false, HelpText = "Run with parallel execution. Default is false")]
         public bool ParallelExecution { get; set; } = false;
 
         [Option('o', "optimization_level", Required = false, HelpText = "Optimization Level. Default is 99, all optimization.")]

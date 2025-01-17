@@ -184,6 +184,31 @@ Return Value:
     MlasStoreFloat32x4(&D[ScatterStride * 1], v[1]);
     MlasStoreFloat32x4(&D[ScatterStride * 2], v[2]);
     MlasStoreFloat32x4(&D[ScatterStride * 3], v[3]);
+#elif  defined(MLAS_LSX_INTRINSICS)
+
+    MLAS_FLOAT32X4 v[4];
+    MLAS_FLOAT32X4 t[4];
+
+    v[0] = MlasLoadFloat32x4(&S[GatherStride * 0]);
+    v[1] = MlasLoadFloat32x4(&S[GatherStride * 1]);
+    v[2] = MlasLoadFloat32x4(&S[GatherStride * 2]);
+    v[3] = MlasLoadFloat32x4(&S[GatherStride * 3]);
+
+    t[0] = (__m128)__lsx_vilvl_w((__m128i)v[1], (__m128i)v[0]);
+    t[2] = (__m128)__lsx_vilvh_w((__m128i)v[1], (__m128i)v[0]);
+    t[1] = (__m128)__lsx_vilvl_w((__m128i)v[3], (__m128i)v[2]);
+    t[3] = (__m128)__lsx_vilvh_w((__m128i)v[3], (__m128i)v[2]);
+
+
+    v[0] = (__m128)__lsx_vpickev_d((__m128i) t[1],(__m128i) t[0]);
+    v[1] = (__m128)__lsx_vpickod_d((__m128i) t[1],(__m128i) t[0]);
+    v[2] = (__m128)__lsx_vpickev_d((__m128i) t[3],(__m128i) t[2]);
+    v[3] = (__m128)__lsx_vpickod_d((__m128i) t[3],(__m128i) t[2]);
+
+    MlasStoreFloat32x4(&D[ScatterStride * 0], v[0]);
+    MlasStoreFloat32x4(&D[ScatterStride * 1], v[1]);
+    MlasStoreFloat32x4(&D[ScatterStride * 2], v[2]);
+    MlasStoreFloat32x4(&D[ScatterStride * 3], v[3]);
 #else
     MlasReorderScatterFloat32x4(&S[GatherStride * 0], &D[0], ScatterStride);
     MlasReorderScatterFloat32x4(&S[GatherStride * 1], &D[1], ScatterStride);
@@ -456,7 +481,6 @@ Return Value:
         &TaskStart, &TasksRemaining);
 
     size_t TaskEnd = TaskStart + TasksRemaining;
-   
     //
     // Rebase the pointers to the source and destination buffers for this thread.
     //
@@ -567,18 +591,17 @@ Return Value:
 
     WorkBlock.S = S;
     WorkBlock.D = D;
-    
     WorkBlock.OutputChannels = size_t(OutputShape[1]);
     WorkBlock.OutputSize = size_t(OutputShape[2]) * size_t(OutputShape[3]);
 
     const size_t BlockSize = MlasNchwcGetBlockSize();
     const size_t TasksPerBatch = size_t(ceil(((float)WorkBlock.OutputChannels) / BlockSize));
     const size_t BatchCount = size_t(OutputShape[0]);
-    const size_t TasksCount = BatchCount * TasksPerBatch;    
+    const size_t TasksCount = BatchCount * TasksPerBatch;
     WorkBlock.TasksCount = TasksCount;
 
     //
-    // Schedule the operation across a set of worker threads if the output 
+    // Schedule the operation across a set of worker threads if the output
     // tensor is sufficienly large. Limit the number of threads to at least
     // the number of available tasks.
     //
@@ -590,7 +613,7 @@ Return Value:
         if (size_t(TargetThreadCount) > TasksCount) {
             TargetThreadCount = ptrdiff_t(TasksCount);
         }
-    }     
+    }
     WorkBlock.TargetThreadCount = TargetThreadCount;
 
     MlasExecuteThreaded(MlasReorderOutputNchwThreaded, &WorkBlock, TargetThreadCount, ThreadPool);

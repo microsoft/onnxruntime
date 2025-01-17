@@ -17,8 +17,8 @@ InlinedHashSet<size_t> TritonOp::GetBoolOutputs(size_t output_size) const {
   InlinedHashSet<size_t> bool_outputs;
   for (size_t i = 0; i < output_size; ++i) {
     ORT_ENFORCE(i < Node().OutputDefs().size(), "Output index out of range.");
-    if (Node().OutputDefs()[i]->TypeAsProto()->tensor_type().elem_type() ==
-        ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL) {
+    if (Node().OutputDefs()[i]->Exists() && Node().OutputDefs()[i]->TypeAsProto()->tensor_type().elem_type() ==
+                                                ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_BOOL) {
       bool_outputs.insert(i);
     }
   }
@@ -37,13 +37,15 @@ Status TritonOp::Compute(OpKernelContext* context) const {
   InlinedHashSet<size_t> bool_outputs = GetBoolOutputs(output_size);
   auto& executor = training::framework::triton::TritonOpExecutor::Instance();
   if (func_name_ != "") {
-    executor.ExecuteByFuncName(func_name_, inputs, outputs, bool_outputs);
+    executor.ExecuteByFuncName(func_name_, inputs, outputs, bool_outputs, kwargs_);
   } else {
     executor.ExecuteByOnnx(onnx_key_, onnx_string_, inputs, outputs, bool_outputs);
   }
   ORT_ENFORCE(output_size == outputs.size());
   for (size_t i = 0; i < output_size; ++i) {
-    ORT_THROW_IF_ERROR(p_ctx_internal->SetOutputMLValue(static_cast<int>(i), outputs[i]));
+    if (Node().OutputDefs()[i]->Exists()) {
+      ORT_THROW_IF_ERROR(p_ctx_internal->SetOutputMLValue(static_cast<int>(i), outputs[i]));
+    }
   }
   return Status::OK();
 }

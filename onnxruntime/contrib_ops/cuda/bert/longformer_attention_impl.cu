@@ -396,7 +396,7 @@ Status LaunchLongformerSoftmaxKernel(
   cudaDataType_t Atype;
   cudaDataType_t Btype;
   cudaDataType_t Ctype;
-  cudaDataType_t resultType;
+  cublasComputeType_t resultType;
   cublasGemmAlgo_t algo = CUBLAS_GEMM_DEFAULT;
 
   __half one_fp16, zero_fp16;
@@ -412,7 +412,7 @@ Status LaunchLongformerSoftmaxKernel(
     Atype = CUDA_R_16F;
     Btype = CUDA_R_16F;
     Ctype = CUDA_R_16F;
-    resultType = CUDA_R_16F;
+    resultType = CUBLAS_COMPUTE_16F;
     algo = CUBLAS_GEMM_DEFAULT_TENSOR_OP;
   } else {
     one_fp32 = 1.f;
@@ -423,7 +423,7 @@ Status LaunchLongformerSoftmaxKernel(
     Atype = CUDA_R_32F;
     Btype = CUDA_R_32F;
     Ctype = CUDA_R_32F;
-    resultType = CUDA_R_32F;
+    resultType = CUBLAS_COMPUTE_32F;
   }
 
   // Strided batch matrix multiply
@@ -924,55 +924,55 @@ Status LongformerQkvToContext(
 
   if (disable_compact_memory) {
     ORT_RETURN_IF_ERROR(LaunchLongformerSoftmaxSimpleKernel(
-            stream,
-            cublas,
-            workspace,
-            q,
-            k,
-            v,
-            attention_mask,
-            global_q,
-            global_k,
-            global_v,
-            global_attention,
-            global_index,
-            batch_global_num,
-            pinned_buffer,
-            temp_output,
-            rsqrt_head_size,
-            batch_size,
-            sequence_length,
-            num_heads,
-            head_size,
-            window,
-            element_size));
+        stream,
+        cublas,
+        workspace,
+        q,
+        k,
+        v,
+        attention_mask,
+        global_q,
+        global_k,
+        global_v,
+        global_attention,
+        global_index,
+        batch_global_num,
+        pinned_buffer,
+        temp_output,
+        rsqrt_head_size,
+        batch_size,
+        sequence_length,
+        num_heads,
+        head_size,
+        window,
+        element_size));
   } else {
     ORT_ENFORCE(max_num_global <= window);
     ORT_RETURN_IF_ERROR(LaunchLongformerSoftmaxKernel(
-            stream,
-            cublas,
-            workspace,
-            q,
-            k,
-            v,
-            attention_mask,
-            max_num_global,
-            compact_global_q,
-            global_q,
-            global_k,
-            global_v,
-            global_attention,
-            global_index,
-            batch_global_num,
-            pinned_buffer,
-            temp_output,
-            rsqrt_head_size,
-            batch_size,
-            sequence_length,
-            num_heads,
-            head_size,
-            window,
-            element_size));
+        stream,
+        cublas,
+        workspace,
+        q,
+        k,
+        v,
+        attention_mask,
+        max_num_global,
+        compact_global_q,
+        global_q,
+        global_k,
+        global_v,
+        global_attention,
+        global_index,
+        batch_global_num,
+        pinned_buffer,
+        temp_output,
+        rsqrt_head_size,
+        batch_size,
+        sequence_length,
+        num_heads,
+        head_size,
+        window,
+        element_size));
   }
 
   // The temp_output is BxNxSxH, transpose it to final output BxSxNxH
@@ -1005,7 +1005,6 @@ Status LaunchLongformerAttentionKernel(
     bool disable_compact_memory,
     bool use_merged_qkv_weights,
     bool use_half4) {
-  CublasMathModeSetter helper(device_prop, cublas, CUBLAS_TENSOR_OP_MATH);
   size_t softmax_workspace_size = GetLongformerSoftmaxWorkspaceSize(element_size,
                                                                     batch_size,
                                                                     num_heads,

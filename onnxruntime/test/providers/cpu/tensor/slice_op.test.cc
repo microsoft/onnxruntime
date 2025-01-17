@@ -5,6 +5,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/common/tensor_op_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -35,8 +36,10 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
   excluded_providers.insert(excluded_providers_input.cbegin(), excluded_providers_input.cend());
 
   // NNAPI EP does not support empty output
+  // VSINPU EP does not support empty output
   if (std::any_of(output_dims.cbegin(), output_dims.cend(), [](int64_t i) { return i == 0; })) {
     excluded_providers.insert(kNnapiExecutionProvider);
+    excluded_providers.insert(kVSINPUExecutionProvider);
   }
 
   // TODO: ORT behavior when step < 0 and end = INT_MAX is wrong. Fix it and
@@ -48,6 +51,10 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
   // ignore the above-mentioned disagreement.
   SessionOptions so;
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigStrictShapeTypeInference, "0"));
+
+  if (onnx_shape_disagreement) {
+    excluded_providers.insert(kCoreMLExecutionProvider);
+  }
 
   if (!v10_only) {
     OpTester testv9("Slice", 9);
@@ -84,7 +91,7 @@ void RunSliceTest(const std::vector<int64_t>& input_dims,
 
   run_test(false);
 
-  // NNAPI EP requires the starts/ends/axes/steps be initializers
+  // EPs like NNAPI and CoreML require the starts/ends/axes/steps be initializers
   run_test(true);
 }
 
@@ -257,16 +264,41 @@ TEST(SliceTest, Slice3D) {
                        332.0f, 333.0f});
 }
 
-TEST(SliceTest, Slice1D_Int) {
-  RunSliceTest<int32_t>({6},
-                        {0L, 1L, 2L, 3L, 4L, 5L},
-                        {2},
-                        {4},
-                        {0},
-                        {},
-                        {2},
-                        {2L, 3L});
+template <typename T>
+static void TestSlice1DIntData() {
+  // static_assert(std::is_integral_v<TInt>);
+  RunSliceTest<T>({6},
+                  GetTypedArray<T>({0.f, 1.f, 2.f, 3.f, 4.f, 5.f}),
+                  {2},
+                  {4},
+                  {0},
+                  {},
+                  {2},
+                  GetTypedArray<T>({2.f, 3.f}));
 }
+
+TEST(SliceTest, Slice1D_Int32) {
+  TestSlice1DIntData<int32_t>();
+}
+
+TEST(SliceTest, Slice1D_Int64) {
+  TestSlice1DIntData<int64_t>();
+}
+
+TEST(SliceTest, Slice1D_Float) {
+  TestSlice1DIntData<float>();
+}
+
+TEST(SliceTest, Slice1D_Float16) {
+  TestSlice1DIntData<MLFloat16>();
+}
+
+template <typename T>
+class SliceTest : public ::testing::Test {
+};
+
+using SliceTestTypes = ::testing::Types<float, MLFloat16>;
+TYPED_TEST_SUITE(SliceTest, SliceTestTypes);
 
 TEST(SliceTest, Slice1D_String) {
   RunSliceTest<std::string>({6},
@@ -280,16 +312,16 @@ TEST(SliceTest, Slice1D_String) {
 }
 
 // Only Slice V10 can run the following tests
-TEST(SliceTest, Slice1D_WithPositiveSteps) {
-  RunSliceTest<float>({6},
-                      {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f},
-                      {0},
-                      {6},
-                      {0},
-                      {2},
-                      {3},
-                      {0.0f, 2.0f, 4.0f},
-                      true);
+TYPED_TEST(SliceTest, Slice1D_WithPositiveSteps) {
+  RunSliceTest<TypeParam>({6},
+                          GetTypedArray<TypeParam>({0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f}),
+                          {0},
+                          {6},
+                          {0},
+                          {2},
+                          {3},
+                          GetTypedArray<TypeParam>({0.0f, 2.0f, 4.0f}),
+                          true);
 }
 
 // In numpy:
@@ -501,6 +533,9 @@ TEST(SliceTest, Slice1D_ReverseAllAxes_1) {
   if (DefaultDmlExecutionProvider().get() != nullptr) {
     GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{2,2}] did not match run output shape [{0,0}] for output";
   }
+  if (DefaultVSINPUExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Expected output shape [{4}] did not match run output shape [{0}] for output";
+  }
 
   RunSliceTest<float>({4},
                       {1.0f, 2.0f, 3.0f, 4.0f},
@@ -548,7 +583,7 @@ TEST(SliceTest, Slice2D_ReverseAllAxes) {
   RunSliceTest<float>({2, 2},
                       {1.0f, 2.0f, 3.0f, 4.0f},
                       {-1, -1},
-                      {std::numeric_limits<int64_t>::max(), std::numeric_limits<int64_t>::max()},
+                      {std::numeric_limits<int64_t>::min(), std::numeric_limits<int64_t>::min()},
                       {0, 1},
                       {-1, -1},
                       {2, 2},
@@ -565,7 +600,7 @@ TEST(SliceTest, Slice2D_ReverseSubsetOfAxes_1) {
   RunSliceTest<float>({2, 2},
                       {1.0f, 2.0f, 3.0f, 4.0f},
                       {-1},
-                      {std::numeric_limits<int64_t>::max()},
+                      {std::numeric_limits<int64_t>::min()},
                       {1},  // axis = 1 only
                       {-1},
                       {2, 2},
@@ -582,7 +617,7 @@ TEST(SliceTest, Slice2D_ReverseSubsetOfAxes_2) {
   RunSliceTest<float>({2, 2},
                       {1.0f, 2.0f, 3.0f, 4.0f},
                       {-1},
-                      {std::numeric_limits<int64_t>::max()},  // end of dimension
+                      {std::numeric_limits<int64_t>::min()},  // end of dimension
                       {0},                                    // axis = 0 only
                       {-1},
                       {2, 2},
@@ -636,7 +671,7 @@ TEST(SliceTest, Slice2D_ReverseSubsetOfNegAxes_1) {
   RunSliceTest<float>({2, 2},
                       {1.0f, 2.0f, 3.0f, 4.0f},
                       {-1},
-                      {std::numeric_limits<int64_t>::max()},
+                      {std::numeric_limits<int64_t>::min()},
                       {-1},  // axis = -1 only
                       {-1},
                       {2, 2},

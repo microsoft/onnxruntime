@@ -38,9 +38,9 @@ class QuantizeLinearOpBuilder : public BaseOpBuilder {
   }
 
   bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+      const GraphViewer& graph_viewer, const NodeUnit& node_unit,
       const OpSupportCheckParams& params) const override {
-    return IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kOutput);
+    return IsQuantizedIOSupported(graph_viewer, node_unit, {0}, params, ArgType::kOutput);
   }
 };
 
@@ -60,7 +60,7 @@ Status QuantizeLinearOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builde
   float scale = 0.0f;
   int32_t zero_point = 0;
   ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-      model_builder.GetInitializerTensors(), node_unit.Outputs()[0], node_unit.ModelPath(), scale, zero_point));
+      model_builder.GetGraphViewer(), node_unit.Outputs()[0], node_unit.ModelPath(), scale, zero_point));
 
   Type output_type = Type::TENSOR_QUANT8_ASYMM;
   const OperandType output_operand_type(output_type, shaper[output], scale, zero_point);

@@ -343,9 +343,9 @@ def generate_test_data(
         try:
             os.mkdir(path)
         except OSError:
-            print("Creation of the directory %s failed" % path)
+            print(f"Creation of the directory {path} failed")
         else:
-            print("Successfully created the directory %s " % path)
+            print(f"Successfully created the directory {path} ")
 
         if input_tensor_only:
             return
@@ -403,9 +403,7 @@ def generate_test_data(
         evalTime = timeit.default_timer() - start_time  # noqa: N806
         if outputs[0].tolist() != result[0].tolist():
             print(
-                "Error: not same result after optimization. use_cpu={}, no_opt_output={}, opt_output={}".format(
-                    use_cpu, result[0].tolist(), outputs[1].tolist()
-                )
+                f"Error: not same result after optimization. use_cpu={use_cpu}, no_opt_output={result[0].tolist()}, opt_output={outputs[1].tolist()}"
             )
         print(f"** Evaluation done in total {evalTime} secs")
 

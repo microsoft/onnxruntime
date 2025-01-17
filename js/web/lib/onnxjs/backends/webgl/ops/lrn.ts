@@ -1,12 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {AttributeWithCacheKey, createAttributeWithCacheKey} from '../../../attribute-with-cache-key';
-import {Graph} from '../../../graph';
-import {OperatorImplementation, OperatorInitialization} from '../../../operators';
-import {Tensor} from '../../../tensor';
-import {WebGLInferenceHandler} from '../inference-handler';
-import {ProgramInfo, ProgramInfoLoader, TextureType} from '../types';
+import { AttributeWithCacheKey, createAttributeWithCacheKey } from '../../../attribute-with-cache-key';
+import { Graph } from '../../../graph';
+import { OperatorImplementation, OperatorInitialization } from '../../../operators';
+import { Tensor } from '../../../tensor';
+import { WebGLInferenceHandler } from '../inference-handler';
+import { ProgramInfo, ProgramInfoLoader, TextureType } from '../types';
 
 export interface LrnAttributes extends AttributeWithCacheKey {
   alpha: number;
@@ -15,17 +15,20 @@ export interface LrnAttributes extends AttributeWithCacheKey {
   size: number;
 }
 
-export const lrn: OperatorImplementation<LrnAttributes> =
-    (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[], attributes: LrnAttributes): Tensor[] => {
-      validateInputs(inputs);
+export const lrn: OperatorImplementation<LrnAttributes> = (
+  inferenceHandler: WebGLInferenceHandler,
+  inputs: Tensor[],
+  attributes: LrnAttributes,
+): Tensor[] => {
+  validateInputs(inputs);
 
-      // if (inferenceHandler.session.pack) {
-      //   return [inferenceHandler.run(createPackedLrnProgramInfoLoader(inferenceHandler, inputs, attributes),
-      //   inputs)];
-      // } else {
-      return [inferenceHandler.run(createLrnProgramInfoLoader(inputs, attributes), inputs)];
-      //}
-    };
+  // if (inferenceHandler.session.pack) {
+  //   return [inferenceHandler.run(createPackedLrnProgramInfoLoader(inferenceHandler, inputs, attributes),
+  //   inputs)];
+  // } else {
+  return [inferenceHandler.run(createLrnProgramInfoLoader(inputs, attributes), inputs)];
+  //}
+};
 
 export const parseLrnAttributes: OperatorInitialization<LrnAttributes> = (node: Graph.Node): LrnAttributes => {
   const alpha = node.attributes.getFloat('alpha', 0.0001);
@@ -33,13 +36,13 @@ export const parseLrnAttributes: OperatorInitialization<LrnAttributes> = (node: 
   const bias = node.attributes.getFloat('bias', 1.0);
   const size = node.attributes.getInt('size');
 
-  return createAttributeWithCacheKey({alpha, beta, bias, size});
+  return createAttributeWithCacheKey({ alpha, beta, bias, size });
 };
 
 const lrnProgramMetadata = {
   name: 'LRN',
   inputNames: ['X'],
-  inputTypes: [TextureType.unpacked]
+  inputTypes: [TextureType.unpacked],
 };
 
 function createLrnProgramInfo(inputs: Tensor[], attributes: LrnAttributes): ProgramInfo {
@@ -70,13 +73,13 @@ function createLrnProgramInfo(inputs: Tensor[], attributes: LrnAttributes): Prog
   return {
     ...lrnProgramMetadata,
     cacheHint: attributes.cacheKey,
-    output: {dims: inputs[0].dims, type: inputs[0].type, textureType: TextureType.unpacked},
+    output: { dims: inputs[0].dims, type: inputs[0].type, textureType: TextureType.unpacked },
     shaderSource,
   };
 }
 
 export function createLrnProgramInfoLoader(inputs: Tensor[], attributes: LrnAttributes): ProgramInfoLoader {
-  return {...lrnProgramMetadata, cacheHint: attributes.cacheKey, get: () => createLrnProgramInfo(inputs, attributes)};
+  return { ...lrnProgramMetadata, cacheHint: attributes.cacheKey, get: () => createLrnProgramInfo(inputs, attributes) };
 }
 
 const validateInputs = (inputs: Tensor[]): void => {

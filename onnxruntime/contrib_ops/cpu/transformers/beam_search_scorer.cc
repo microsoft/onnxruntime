@@ -50,11 +50,12 @@ bool BeamHypotheses::CanImprove(float best_sum_logprobs, int current_length) con
   return beams_.back().score < current_score;
 }
 
+template <typename T>
 void BeamHypotheses::Output(
     int top_k,
     int max_length,
-    gsl::span<int32_t>& sequences,       // buffer filled with pad token ID, shape (num_return_sequences, max_length)
-    gsl::span<float>& sequences_scores)  // buffer of shape (num_return_sequences) or empty
+    gsl::span<int32_t>& sequences,   // buffer filled with pad token ID, shape (num_return_sequences, max_length)
+    gsl::span<T>& sequences_scores)  // buffer of shape (num_return_sequences) or empty
 {
   // Copy the top_k beams into the sequences
   ORT_ENFORCE(top_k <= beams_used_);
@@ -67,7 +68,7 @@ void BeamHypotheses::Output(
     gsl::copy(item.hypothesis, target);
 
     if (!sequences_scores.empty())
-      sequences_scores[index] = item.score;
+      sequences_scores[index] = (T)item.score;
   }
 }
 
@@ -181,21 +182,21 @@ void BeamSearchScorer::Process(ISequences& sequences,
   }
 }
 
-void BeamSearchScorer::Finalize(ISequences& sequences,
-                                gsl::span<const float>& final_beam_scores,
-                                Tensor* output_sequences,
-                                Tensor* output_sequence_scores) {
-  ORT_ENFORCE(output_sequences != nullptr);
-
+template <typename T>
+void OutputSequenceScores(BeamSearchScorer* scorer,
+                          ISequences& sequences,
+                          gsl::span<const float>& final_beam_scores,
+                          Tensor* output_sequences,
+                          Tensor* output_sequence_scores) {
   // Finalize all open beam hypotheses and add to generated hypotheses.
-  for (size_t batch_index = 0; batch_index < batch_size_; batch_index++) {
-    BeamHypotheses& beam_hyp = beam_hyps_[batch_index];
+  for (size_t batch_index = 0; batch_index < scorer->batch_size_; batch_index++) {
+    BeamHypotheses& beam_hyp = scorer->beam_hyps_[batch_index];
     if (beam_hyp.done_) {
       continue;
     }
 
-    for (size_t beam_index = 0; beam_index < num_beams_; beam_index++) {
-      size_t batch_beam_index = batch_index * num_beams_ + beam_index;
+    for (size_t beam_index = 0; beam_index < scorer->num_beams_; beam_index++) {
+      size_t batch_beam_index = batch_index * scorer->num_beams_ + beam_index;
       float final_score = final_beam_scores[batch_beam_index];
       auto final_tokens = sequences.GetSequence(narrow<int>(batch_beam_index));
       beam_hyp.Add(final_tokens, final_score);
@@ -206,26 +207,59 @@ void BeamSearchScorer::Finalize(ISequences& sequences,
   gsl::span<int32_t> output = output_sequences->MutableDataAsSpan<int32_t>();
 
   // Fill output sequences with pad token ID so that we do not need append it later.
-  std::fill_n(output.data(), output.size(), pad_token_id_);
+  std::fill_n(output.data(), output.size(), scorer->pad_token_id_);
 
   // Score of each sequence, with shape (batch_size * num_return_sequences).
-  gsl::span<float> sequence_scores;
+  gsl::span<T> sequence_scores;
   if (output_sequence_scores) {
-    sequence_scores = output_sequence_scores->MutableDataAsSpan<float>();
+    sequence_scores = output_sequence_scores->MutableDataAsSpan<T>();
   }
 
   // Select the best hypotheses according to number of sequences to return.
-  for (size_t batch_index = 0; batch_index < batch_size_; batch_index++) {
-    BeamHypotheses& beam_hyp = beam_hyps_[batch_index];
+  for (size_t batch_index = 0; batch_index < scorer->batch_size_; batch_index++) {
+    BeamHypotheses& beam_hyp = scorer->beam_hyps_[batch_index];
 
-    auto batch_output = output.subspan(batch_index * num_return_sequences_ * max_length_,
-                                       num_return_sequences_ * max_length_);
-    gsl::span<float> sequence_scores_buffer;
+    auto batch_output = output.subspan(batch_index * scorer->num_return_sequences_ * scorer->max_length_,
+                                       scorer->num_return_sequences_ * scorer->max_length_);
+    gsl::span<T> sequence_scores_buffer;
     if (!sequence_scores.empty())
-      sequence_scores_buffer = sequence_scores.subspan(batch_index * num_return_sequences_, num_return_sequences_);
+      sequence_scores_buffer = sequence_scores.subspan(batch_index * scorer->num_return_sequences_, scorer->num_return_sequences_);
 
-    beam_hyp.Output(narrow<int>(num_return_sequences_), narrow<int>(max_length_), batch_output,
-                    sequence_scores_buffer);
+    beam_hyp.template Output<T>(narrow<int>(scorer->num_return_sequences_), narrow<int>(scorer->max_length_), batch_output,
+                                sequence_scores_buffer);
+  }
+}
+
+void BeamSearchScorer::Finalize(ISequences& sequences,
+                                gsl::span<const float>& final_beam_scores,
+                                Tensor* output_sequences,
+                                Tensor* output_sequence_scores) {
+  ORT_ENFORCE(output_sequences != nullptr);
+
+  if (output_sequence_scores == nullptr || output_sequence_scores->IsDataType<float>()) {
+    OutputSequenceScores<float>(this, sequences, final_beam_scores, output_sequences, output_sequence_scores);
+  } else {
+    ORT_ENFORCE(output_sequence_scores->IsDataType<MLFloat16>());
+    OutputSequenceScores<MLFloat16>(this, sequences, final_beam_scores, output_sequences, output_sequence_scores);
+  }
+}
+
+void BeamSearchScorer::OutputScores(gsl::span<const float>& final_scores, Tensor* output_scores) {
+  if (output_scores) {
+    if (output_scores->IsDataType<float>()) {
+      gsl::span<float> target = output_scores->MutableDataAsSpan<float>();
+      ORT_ENFORCE(target.size() == final_scores.size());
+      std::copy_n(final_scores.data(), final_scores.size(), target.data());
+    } else {
+      ORT_ENFORCE(output_scores->IsDataType<MLFloat16>());
+      gsl::span<MLFloat16> target = output_scores->MutableDataAsSpan<MLFloat16>();
+      ORT_ENFORCE(target.size() == final_scores.size());
+      const float* src = final_scores.data();
+      MLFloat16* dst = target.data();
+      for (size_t i = 0; i < target.size(); i++) {
+        dst[i] = MLFloat16(src[i]);
+      }
+    }
   }
 }
 

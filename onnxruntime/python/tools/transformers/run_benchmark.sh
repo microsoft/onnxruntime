@@ -1,13 +1,11 @@
+#!/bin/bash
 # -------------------------------------------------------------------------
 # Copyright (c) Microsoft Corporation.  All rights reserved.
 # Licensed under the MIT License.  See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
 # This measures the performance of OnnxRuntime, PyTorch and TorchScript on transformer models.
-# Please install PyTorch (see https://pytorch.org/) before running this benchmark. Like the following:
-# GPU:   conda install pytorch torchvision cudatoolkit=11.0 -c pytorch
-# CPU:   conda install pytorch torchvision cpuonly -c pytorch
-# To use torch2, please install the nightly PyTorch by replacing pytorch with pytorch-nightly.
+# Please install PyTorch (see https://pytorch.org/) before running this benchmark.
 
 # When use_package=true, you need not copy other files to run benchmarks except this sh file.
 # Otherwise, it will use python script (*.py) files in this directory.
@@ -34,6 +32,9 @@ run_gpu_fp16=true
 run_cpu_fp32=false
 run_cpu_int8=false
 
+# Set this to true to enable bfloat16 fastmath gemm kernels on aarch64 platforms with bfloat16 support
+arm64_bfloat16_fastmath_mode=false
+
 average_over=1000
 # CPU takes longer time to run, only run 100 inferences to get average latency.
 if [ "$run_cpu_fp32" = true ] || [ "$run_cpu_int8" = true ]; then
@@ -56,14 +57,13 @@ sequence_lengths="8 16 32 64 128 256 512 1024"
 # Here we only test one input (input_ids) for fair comparison with PyTorch.
 input_counts=1
 
-# Pretrained transformers models can be a subset of: bert-base-cased roberta-base gpt2 distilgpt2 distilbert-base-uncased
 models_to_test="bert-base-cased roberta-base distilbert-base-uncased"
 
-# If you have mutliple GPUs, you can choose one GPU for test. Here is an example to use the second GPU:
+# If you have multiple GPUs, you can choose one GPU for test. Here is an example to use the second GPU:
 # export CUDA_VISIBLE_DEVICES=1
 
 # This script will generate a logs file with a list of commands used in tests.
-echo echo "ort=$run_ort torch=$run_torch torch2=$run_torch2 torchscript=$run_torchscript tensorflow=$run_tensorflow gpu_fp32=$run_gpu_fp32 gpu_fp16=$run_gpu_fp16 cpu=$run_cpu optimizer=$use_optimizer batch=$batch_sizes sequence=$sequence_length models=$models_to_test" >> benchmark.log
+echo echo "ort=$run_ort torch=$run_torch torch2=$run_torch2 torchscript=$run_torchscript tensorflow=$run_tensorflow gpu_fp32=$run_gpu_fp32 gpu_fp16=$run_gpu_fp16 cpu=$run_cpu optimizer=$use_optimizer batch=$batch_sizes sequence=$sequence_length models=$models_to_test" arm64_bfloat16_fastmath_mode=$arm64_bfloat16_fastmath_mode >> benchmark.log
 
 # Set it to false to skip testing. You can use it to dry run this script with the log file.
 run_tests=true
@@ -88,7 +88,6 @@ fi
 
 
 if [ "$run_install" = true ] ; then
-  pip uninstall --yes ort-nightly ort-gpu-nightly
   pip uninstall --yes onnxruntime
   pip uninstall --yes onnxruntime-gpu
   if [ "$run_cpu_fp32" = true ] || [ "$run_cpu_int8" = true ]; then
@@ -96,7 +95,7 @@ if [ "$run_install" = true ] ; then
   else
     pip install onnxruntime-gpu
   fi
-  pip install --upgrade onnx coloredlogs packaging psutil py3nvml onnxconverter_common numpy transformers sympy
+  pip install --upgrade onnx coloredlogs packaging psutil py3nvml numpy transformers sympy
 fi
 
 if [ "$use_package" = true ] ; then
@@ -125,6 +124,10 @@ fi
 if [ "$force_layer_number" = true ] ; then
   onnx_export_options="$onnx_export_options --force_num_layers $layer_number"
   benchmark_options="$benchmark_options --force_num_layers $layer_number"
+fi
+
+if [ "$arm64_bfloat16_fastmath_mode" = true ] ; then
+  benchmark_options="$benchmark_options --enable_arm64_bfloat16_fastmath_mlas_gemm"
 fi
 
 # -------------------------------------------

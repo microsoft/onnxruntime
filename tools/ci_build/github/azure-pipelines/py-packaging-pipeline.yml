@@ -4,23 +4,8 @@ parameters:
   type: boolean
   default: true
 
-- name: enable_ubuntu_cpu
-  displayName: 'Whether Ubuntu CPU (manylinux_2_27) package is built.'
-  type: boolean
-  default: true
-
-- name: enable_linux_gpu
-  displayName: 'Whether Linux GPU package is built.'
-  type: boolean
-  default: true
-
 - name: enable_windows_cpu
   displayName: 'Whether Windows CPU package is built.'
-  type: boolean
-  default: true
-
-- name: enable_windows_gpu
-  displayName: 'Whether Windows GPU package is built.'
   type: boolean
   default: true
 
@@ -29,41 +14,66 @@ parameters:
   type: boolean
   default: true
 
-- name: enable_mac_silicon
-  displayName: 'Whether Mac silicon package is built.'
+- name: enable_linux_arm
+  displayName: 'Whether Linux ARM package is built.'
   type: boolean
   default: true
 
-- name: enable_linux_arm
-  displayName: 'Whether Linux ARM package is built.'
+- name: enable_windows_arm64_qnn
+  displayName: 'Whether Windows ARM64 package with QNN EP is built.'
+  type: boolean
+  default: true
+
+- name: enable_windows_arm64ec_qnn
+  displayName: 'Whether Windows ARM64EC package with QNN EP is built.'
+  type: boolean
+  default: true
+
+- name: enable_windows_x64_qnn
+  displayName: 'Whether Windows x86_64 package with QNN EP is built.'
+  type: boolean
+  default: true
+
+- name: enable_linux_x64_qnn
+  displayName: 'Whether Linux x86_64 package with QNN EP is built.'
   type: boolean
   default: true
 
 - name: build_py_parameters
   displayName: 'Specify extra build parameters'
   type: string
-  default: 'NONE'
+  default: '--use_azure'
+
+# TODO: Now the Windows jobs use a different cmake build type. Consider to merge it.
+- name: cmake_build_type
+  type: string
+  displayName: 'Linux packages cmake build type. Linux Only.'
+  default: 'Release'
+  values:
+   - Debug
+   - Release
+   - RelWithDebInfo
+   - MinSizeRel
+
+# Only applies to QNN packages.
+- name: qnn_sdk_version
+  type: string
+  displayName: 'QNN SDK version. Only for QNN packages.'
+  default: 2.28.2.241116
 
 trigger: none
 
-resources:
-  repositories:
-  - repository: manylinux
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
-
 stages:
-- template: templates/py-packaging-stage.yml
+- template: stages/py-cpu-packaging-stage.yml
   parameters:
-    enable_linux_gpu: ${{ parameters.enable_linux_gpu }}
-    enable_ubuntu_cpu: ${{ parameters.enable_ubuntu_cpu }}
     enable_linux_cpu: ${{ parameters.enable_linux_cpu }}
     enable_windows_cpu: ${{ parameters.enable_windows_cpu }}
-    enable_windows_gpu: ${{ parameters.enable_windows_gpu }}
     enable_mac_cpu: ${{ parameters.enable_mac_cpu }}
-    enable_mac_silicon: ${{ parameters.enable_mac_silicon }}
     enable_linux_arm: ${{ parameters.enable_linux_arm }}
-    ${{ if not(eq(parameters.build_py_parameters, 'NONE')) }}:
-      build_py_parameters: ${{ parameters.build_py_parameters }}
+    enable_windows_arm64_qnn: ${{ parameters.enable_windows_arm64_qnn }}
+    enable_windows_arm64ec_qnn: ${{ parameters.enable_windows_arm64ec_qnn }}
+    enable_windows_x64_qnn: ${{ parameters.enable_windows_x64_qnn }}
+    enable_linux_x64_qnn: ${{ parameters.enable_linux_x64_qnn }}
+    build_py_parameters: ${{ parameters.build_py_parameters }}
+    cmake_build_type: ${{ parameters.cmake_build_type }}
+    qnn_sdk_version: ${{ parameters.qnn_sdk_version }}

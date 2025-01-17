@@ -33,7 +33,7 @@ class SoftMaxOpBuilder : public BaseOpBuilder {
   // Operator support related
 
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
                          const OpSupportCheckParams& params) const override;
 
   int32_t GetMinSupportedNNAPIFeatureLevel(const NodeUnit& /* node_unit */,
@@ -41,7 +41,7 @@ class SoftMaxOpBuilder : public BaseOpBuilder {
     return ANEURALNETWORKS_FEATURE_LEVEL_2;
   }
   bool HasSupportedInputOutputsImpl(
-      const InitializedTensorSet& initializers, const NodeUnit& node_unit,
+      const GraphViewer& graph_viewer, const NodeUnit& node_unit,
       const OpSupportCheckParams& params) const override;
 
   bool IsNodeUnitTypeSupported(const NodeUnit& /* node_unit */) const override { return true; }
@@ -77,8 +77,7 @@ Status SoftMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   int32_t y_zero_point = 0;
   if (IsQuantizedOp(node_unit)) {
     ORT_RETURN_IF_ERROR(GetQuantizationScaleAndZeroPoint(
-        model_builder.GetInitializerTensors(), node_unit.Inputs()[0], node_unit.ModelPath(),
-        x_scale, x_zero_point));
+        model_builder.GetGraphViewer(), node_unit.Inputs()[0], node_unit.ModelPath(), x_scale, x_zero_point));
 
     ORT_RETURN_IF_ERROR(IsValidInputQuantizedType(model_builder, input, x_scale, x_zero_point));
 
@@ -156,7 +155,7 @@ bool SoftMaxOpBuilder::IsQuantizedOp(const NodeUnit& node_unit) const {
   return GetQuantizedOpType(node_unit) == QuantizedOpType::QDQSoftmax;
 }
 
-bool SoftMaxOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const NodeUnit& node_unit,
+bool SoftMaxOpBuilder::IsOpSupportedImpl(const GraphViewer& /* graph_viewer */, const NodeUnit& node_unit,
                                          const OpSupportCheckParams& params) const {
   Shape input_shape;
   if (!GetShape(node_unit.Inputs()[0].node_arg, input_shape))
@@ -197,24 +196,23 @@ bool SoftMaxOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initiali
   return true;
 }
 
-bool SoftMaxOpBuilder::HasSupportedInputOutputsImpl(
-    const InitializedTensorSet& initializers, const NodeUnit& node_unit,
-    const OpSupportCheckParams& params) const {
+bool SoftMaxOpBuilder::HasSupportedInputOutputsImpl(const GraphViewer& graph_viewer, const NodeUnit& node_unit,
+                                                    const OpSupportCheckParams& params) const {
   if (!IsQuantizedOp(node_unit)) {
-    return BaseOpBuilder::HasSupportedInputOutputsImpl(initializers, node_unit, params);
+    return BaseOpBuilder::HasSupportedInputOutputsImpl(graph_viewer, node_unit, params);
   }
 
-  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kInput)) {
+  if (!IsQuantizedIOSupported(graph_viewer, node_unit, {0}, params, ArgType::kInput)) {
     return false;
   }
 
-  if (!IsQuantizedIOSupported(initializers, node_unit, {0}, params, ArgType::kOutput)) {
+  if (!IsQuantizedIOSupported(graph_viewer, node_unit, {0}, params, ArgType::kOutput)) {
     return false;
   }
 
   // NNAPI requires the scale be 1.f/256 and zero point to be 0
   if (!HasRequiredScaleAndZeroPoint(
-          initializers,
+          graph_viewer,
           MakeString("Op [", node_unit.OpType(), "] name [", node_unit.Name(), "]'s output 0 "),
           node_unit.Outputs()[0], node_unit.ModelPath(),
           1.f / 256 /* required_scale */, 0 /* required_zp */)) {

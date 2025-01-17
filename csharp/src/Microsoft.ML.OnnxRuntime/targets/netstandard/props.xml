@@ -37,7 +37,7 @@
   <PropertyGroup>
     <EnginePlatform Condition="'$(Platform)' == 'Win32'">x86</EnginePlatform>
     <EnginePlatform Condition="'$(Platform)' == 'ARM64'">arm64</EnginePlatform>
-    <EnginePlatform Condition="'$(Platform)' == 'ARM'">arm</EnginePlatform>	
+    <EnginePlatform Condition="'$(Platform)' == 'ARM'">arm</EnginePlatform>
     <EnginePlatform Condition="'$(Platform)' != 'Win32' AND '$(Platform)' != 'ARM64'">$(Platform)</EnginePlatform>
   </PropertyGroup>
 
@@ -55,7 +55,8 @@
   <ItemGroup>
     <!-- x64 -->
     <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime.dll"
-          Condition="'$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')">
+          Condition="('$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')) AND
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-x64\native\onnxruntime.dll')">
       <Link>onnxruntime.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
@@ -146,8 +147,8 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
-	
-    <!-- x86 -->	
+
+    <!-- x86 -->
     <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-x86\native\onnxruntime.dll"
           Condition="('$(PlatformTarget)' == 'x86' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' == 'true'))">
       <Link>onnxruntime.dll</Link>

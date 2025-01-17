@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {InferenceSession, Tensor} from 'onnxruntime-common';
+import { InferenceSession, Tensor } from 'onnxruntime-common';
 import * as path from 'path';
 
-import {assertTensorEqual, SQUEEZENET_INPUT0_DATA, SQUEEZENET_OUTPUT0_DATA, TEST_DATA_ROOT} from '../test-utils';
+import { assertTensorEqual, SQUEEZENET_INPUT0_DATA, SQUEEZENET_OUTPUT0_DATA, TEST_DATA_ROOT } from '../test-utils';
 
 describe('E2E Tests - InferenceSession.run()', async () => {
   let session: InferenceSession;
@@ -17,7 +17,7 @@ describe('E2E Tests - InferenceSession.run()', async () => {
 
   it('multiple run() calls', async () => {
     for (let i = 0; i < 1000; i++) {
-      const result = await session!.run({'data_0': input0}, ['softmaxout_1']);
+      const result = await session!.run({ data_0: input0 }, ['softmaxout_1']);
       assertTensorEqual(result.softmaxout_1, expectedOutput0);
     }
   }).timeout(process.arch === 'x64' ? '120s' : 0);

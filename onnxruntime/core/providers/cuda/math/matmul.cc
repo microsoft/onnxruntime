@@ -110,7 +110,16 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   Tensor* Y = ctx->Output(0, helper.OutputShape());
   // Bail out early if the output is going to be empty
-  if (Y->Shape().Size() == 0) return Status::OK();
+  const auto output_size = Y->Shape().Size();
+  if (output_size == 0) return Status::OK();
+
+  if (helper.K() == 0) {
+    // When we have (M, 0, N) then the inputs are empty, but the output should
+    // be filled out with zeros.
+    using CudaT = typename ToCudaType<T>::MappedType;
+    Fill<CudaT>(Stream(ctx), reinterpret_cast<CudaT*>(Y->MutableData<T>()), CudaT(0.f), narrow<int64_t>(output_size));
+    return Status::OK();
+  }
 
   if (GetTuningContext()->IsTunableOpEnabled()) {
     return tunable::TunableMatMul<T>(alpha_, trans_a, trans_b, trans_batch_a_, trans_batch_b_, helper, this, ctx);
@@ -118,6 +127,164 @@ Status MatMul<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   return ComputeDefault(ctx, helper);
 }
+
+template <typename T>
+Status FuncMatMul(
+    const CudaKernel* cuda_kernel,
+    OpKernelContext* ctx,
+    const Tensor* A,
+    const Tensor* B,
+    float alpha,
+    bool trans_A,
+    bool trans_B,
+    bool trans_batch_A,
+    bool trans_batch_B,
+    Tensor* Y) {
+  typedef typename ToCudaType<T>::MappedType CudaT;
+
+  // Ignore the transpose flag if rank of input being 1.
+  // Be noted: numpy.transpose on vector does not change anything.
+  if (A->Shape().NumDimensions() == 1) {
+    trans_A = false;
+  }
+  if (B->Shape().NumDimensions() == 1) {
+    trans_B = false;
+  }
+
+  const CudaT cuda_alpha = ToCudaType<T>::FromFloat(alpha);
+  const CudaT cuda_zero = ToCudaType<T>::FromFloat(0.0f);
+
+  cublasOperation_t cuda_trans_A = trans_A ? CUBLAS_OP_T : CUBLAS_OP_N;
+  cublasOperation_t cuda_trans_B = trans_B ? CUBLAS_OP_T : CUBLAS_OP_N;
+
+  MatMulComputeHelper helper;
+  ORT_RETURN_IF_ERROR(
+      helper.Compute(A->Shape(), B->Shape(), trans_A, trans_B, trans_batch_A, trans_batch_B, false));
+  const int lda = helper.Lda(trans_A);
+  const int ldb = helper.Ldb(trans_B);
+  const int ldc = helper.Ldc();
+  int64_t stride_A, stride_B, stride_C, batch_count;
+  auto& device_prop = cuda_kernel->GetDeviceProp();
+
+  if (helper.OutputOffsets().size() == 1) {
+    CUBLAS_RETURN_IF_ERROR(cublasGemmHelper(
+        cuda_kernel->GetCublasHandle(ctx),
+        cuda_trans_B,
+        cuda_trans_A,
+        static_cast<int>(helper.N()),
+        static_cast<int>(helper.M()),
+        static_cast<int>(helper.K()),
+        &cuda_alpha,
+        reinterpret_cast<const CudaT*>(B->Data<T>()),
+        ldb,
+        reinterpret_cast<const CudaT*>(A->Data<T>()),
+        lda,
+        &cuda_zero,
+        reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+        ldc,
+        device_prop,
+        cuda_kernel->UseTF32()));
+    return Status::OK();
+  } else if (CanUseStridedBatchedGemm(A->Shape(), B->Shape(),
+                                      trans_A, trans_B, trans_batch_B, trans_batch_B, stride_A, stride_B, stride_C, batch_count)) {
+    CUBLAS_RETURN_IF_ERROR(cublasGemmStridedBatchedHelper(cuda_kernel->GetCublasHandle(ctx),
+                                                          cuda_trans_B,
+                                                          cuda_trans_A,
+                                                          static_cast<int>(helper.N()),
+                                                          static_cast<int>(helper.M()),
+                                                          static_cast<int>(helper.K()),
+                                                          &cuda_alpha,
+                                                          reinterpret_cast<const CudaT*>(B->Data<T>()),
+                                                          ldb,
+                                                          stride_B,
+                                                          reinterpret_cast<const CudaT*>(A->Data<T>()),
+                                                          lda,
+                                                          stride_A,
+                                                          &cuda_zero,
+                                                          reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+                                                          ldc,
+                                                          stride_C,
+                                                          static_cast<int>(batch_count),
+                                                          device_prop,
+                                                          cuda_kernel->UseTF32()));
+
+    return Status::OK();
+  }
+
+  // Fill offsets when needed.
+  helper.FillOffsets();
+  CudaKernel::CudaAsyncBuffer<const CudaT*> A_arrays(cuda_kernel, helper.LeftOffsets().size());
+  CudaKernel::CudaAsyncBuffer<const CudaT*> B_arrays(cuda_kernel, helper.RightOffsets().size());
+  CudaKernel::CudaAsyncBuffer<CudaT*> Y_arrays(cuda_kernel, helper.OutputOffsets().size());
+  MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(A->Data<T>()), helper.LeftOffsets(), A_arrays.CpuSpan());
+  MatMulComputeHelper::OffsetToArrays(reinterpret_cast<const CudaT*>(B->Data<T>()), helper.RightOffsets(), B_arrays.CpuSpan());
+  MatMulComputeHelper::OffsetToArrays(reinterpret_cast<CudaT*>(Y->MutableData<T>()), helper.OutputOffsets(), Y_arrays.CpuSpan());
+  ORT_RETURN_IF_ERROR(A_arrays.CopyToGpu(ctx->GetComputeStream()));
+  ORT_RETURN_IF_ERROR(B_arrays.CopyToGpu(ctx->GetComputeStream()));
+  ORT_RETURN_IF_ERROR(Y_arrays.CopyToGpu(ctx->GetComputeStream()));
+
+  // TF32 provides a huge performance gain for training and inference while preserving FP32 levels of accuracy.
+  // It requires Ampere or newer GPU, and pointers of matrices shall be aligned (ideal alignment is 16-byte).
+  // Assume that start memory of input/output tensor is aligned, we only check offsets of sub-matrix per batch here.
+  bool use_tf32 = std::is_same<T, float>::value &&
+                  cuda_kernel->UseTF32() &&
+                  device_prop.major >= 8 &&
+                  helper.IsBatchedGemmAligned();
+
+  // note that onnxruntime OrtValue is row major, while cublas is column major,
+  // so swap left/right operands
+  CUBLAS_RETURN_IF_ERROR(cublasGemmBatchedHelper(
+      cuda_kernel->GetCublasHandle(ctx),
+      cuda_trans_B,
+      cuda_trans_A,
+      static_cast<int>(helper.N()),
+      static_cast<int>(helper.M()),
+      static_cast<int>(helper.K()),
+      &cuda_alpha,
+      B_arrays.GpuPtr(),
+      ldb,
+      A_arrays.GpuPtr(),
+      lda,
+      &cuda_zero,
+      Y_arrays.GpuPtr(),
+      ldc,
+      static_cast<int>(helper.OutputOffsets().size()),
+      device_prop,
+      use_tf32));
+  return Status::OK();
+}
+
+template Status FuncMatMul<float>(
+    // Use OpKernel and do a pointer cast to unify functional calls with other eps.
+    // TODO: remove CudaKernel and OpKernelContext.
+    const CudaKernel* cuda_kernel,
+    // Do NOT use ctx to access inputs and outputs.
+    // Inputs and outputs are passed in as function arguments.
+    OpKernelContext* ctx,
+    const Tensor* A,
+    const Tensor* B,
+    float alpha,
+    bool trans_A,
+    bool trans_B,
+    bool trans_batch_A,
+    bool trans_batch_B,
+    Tensor* Y);
+
+template Status FuncMatMul<MLFloat16>(
+    // Use OpKernel and do a pointer cast to unify functional calls with other eps.
+    // TODO: remove CudaKernel and OpKernelContext.
+    const CudaKernel* cuda_kernel,
+    // Do NOT use ctx to access inputs and outputs.
+    // Inputs and outputs are passed in as function arguments.
+    OpKernelContext* ctx,
+    const Tensor* A,
+    const Tensor* B,
+    float alpha,
+    bool trans_A,
+    bool trans_B,
+    bool trans_batch_A,
+    bool trans_batch_B,
+    Tensor* Y);
 
 template <typename T>
 Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& helper) const {
@@ -166,7 +333,8 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
         &zero,
         reinterpret_cast<CudaT*>(Y->MutableData<T>()),
         ldc,
-        device_prop));
+        device_prop,
+        UseTF32()));
     return Status::OK();
   } else if (CanUseStridedBatchedGemm(left_X->Shape(), right_X->Shape(),
                                       transa, transb, trans_batch_a_, trans_batch_b_, stride_A, stride_B, stride_C, batch_count)) {
@@ -188,7 +356,8 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
                                                           ldc,
                                                           stride_C,
                                                           static_cast<int>(batch_count),
-                                                          device_prop));
+                                                          device_prop,
+                                                          UseTF32()));
 
     return Status::OK();
   }
@@ -206,12 +375,12 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
   ORT_RETURN_IF_ERROR(output_arrays.CopyToGpu(ctx->GetComputeStream()));
 
   // TF32 provides a huge performance gain for training and inference while preserving FP32 levels of accuracy.
-  // It requires Ampere or newer GPU, and pointers of matrics shall be aligned (ideal alignment is 16-byte).
+  // It requires Ampere or newer GPU, and pointers of matrices shall be aligned (ideal alignment is 16-byte).
   // Assume that start memory of input/output tensor is aligned, we only check offsets of sub-matrix per batch here.
-  cublasMath_t mode = (std::is_same<T, float>::value && device_prop.major >= 8 && helper.IsBatchedGemmAligned())
-                          ? CUBLAS_TF32_TENSOR_OP_MATH
-                          : CUBLAS_DEFAULT_MATH;
-  CublasMathModeSetter math_mode_setter(device_prop, GetCublasHandle(ctx), mode);
+  bool use_tf32 = std::is_same<T, float>::value &&
+                  this->UseTF32() &&
+                  device_prop.major >= 8 &&
+                  helper.IsBatchedGemmAligned();
 
   // note that onnxruntime OrtValue is row major, while cublas is column major,
   // so swap left/right operands
@@ -231,7 +400,8 @@ Status MatMul<T>::ComputeDefault(OpKernelContext* ctx, MatMulComputeHelper& help
       output_arrays.GpuPtr(),
       ldc,
       static_cast<int>(helper.OutputOffsets().size()),
-      device_prop));
+      device_prop,
+      use_tf32));
 
   return Status::OK();
 }

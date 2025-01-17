@@ -4,9 +4,17 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "core/providers/cpu/tensor/space_depth_ops.h"
+#include "core/mlas/inc/mlas.h"
 
 namespace onnxruntime {
 namespace test {
+
+template <typename T>
+class TensorOpTest : public ::testing::Test {
+};
+
+using TensorOpTestTypes = ::testing::Types<float, MLFloat16>;
+TYPED_TEST_SUITE(TensorOpTest, TensorOpTestTypes);
 
 TEST(TensorOpTest, SpaceToDepthTest_1) {
   OpTester test("SpaceToDepth");
@@ -35,7 +43,10 @@ TEST(TensorOpTest, SpaceToDepthTest_1) {
       1.1f, 1.3f,
       3.1f, 3.3f};
   test.AddOutput<float>("output", {N, C * blocksize * blocksize, H / blocksize, W / blocksize}, result);
-  test.Run();
+
+  // TODO: Test is flaky on QNN EP (CPU backend).
+  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky test  is fixed.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
 TEST(TensorOpTest, SpaceToDepthTest_1_double) {
@@ -99,6 +110,56 @@ TEST(TensorOpTest, SpaceToDepthTest_2) {
       98., 101., 66., 69., 84., 87., 102., 105., 67., 70., 85.,
       88., 103., 106., 68., 71., 86., 89., 104., 107.};
   test.AddOutput<float>("output", {2, 27, 1, 2}, result);
+
+  // TODO: Test is flaky on QNN EP (CPU backend).
+  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky2 test is fixed.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
+}
+
+TEST(TensorOpTest, SpaceToDepthTest_3) {
+  // Test swizzling with H_output > 1
+  OpTester test("SpaceToDepth");
+  constexpr int64_t blocksize = 2;
+  test.AddAttribute("blocksize", blocksize);
+  constexpr int64_t N = 1, C = 2, H = 4, W = 8;
+
+  const std::vector<float> X = {
+      0.0f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f,
+      1.0f, 1.1f, 1.2f, 1.3f, 1.4f, 1.5f, 1.6f, 1.7f,
+
+      2.0f, 2.1f, 2.2f, 2.3f, 2.4f, 2.5f, 2.6f, 2.7f,
+      3.0f, 3.1f, 3.2f, 3.3f, 3.4f, 3.5f, 3.6f, 3.7f,
+
+      4.0f, 4.1f, 4.2f, 4.3f, 4.4f, 4.5f, 4.6f, 4.7f,
+      5.0f, 5.1f, 5.2f, 5.3f, 5.4f, 5.5f, 5.6f, 5.7f,
+      6.0f, 6.1f, 6.2f, 6.3f, 6.4f, 6.5f, 6.6f, 6.7f,
+      7.0f, 7.1f, 7.2f, 7.3f, 7.4f, 7.5f, 7.6f, 7.7f};
+
+  test.AddInput<float>("input", {N, C, H, W}, X);
+
+  const std::vector<float> result = {
+      0.0f, 0.2f, 0.4f, 0.6f,
+      2.0f, 2.2f, 2.4f, 2.6f,
+      4.0f, 4.2f, 4.4f, 4.6f,
+      6.0f, 6.2f, 6.4f, 6.6f,
+
+      0.1f, 0.3f, 0.5f, 0.7f,
+      2.1f, 2.3f, 2.5f, 2.7f,
+      4.1f, 4.3f, 4.5f, 4.7f,
+      6.1f, 6.3f, 6.5f, 6.7f,
+
+      1.0f, 1.2f, 1.4f, 1.6f,
+      3.0f, 3.2f, 3.4f, 3.6f,
+      5.0f, 5.2f, 5.4f, 5.6f,
+      7.0f, 7.2f, 7.4f, 7.6f,
+
+      1.1f, 1.3f, 1.5f, 1.7f,
+      3.1f, 3.3f, 3.5f, 3.7f,
+      5.1f, 5.3f, 5.5f, 5.7f,
+      7.1f, 7.3f, 7.5f, 7.7f};
+
+  test.AddOutput<float>("output", {N, C * blocksize * blocksize, H / blocksize, W / blocksize}, result);
+
   test.Run();
 }
 
@@ -206,7 +267,7 @@ TEST(TensorOpTest, DepthToSpaceTest_2) {
   test.Run();
 }
 
-TEST(TensorOpTest, DepthToSpaceTest_3) {
+TYPED_TEST(TensorOpTest, DepthToSpaceTest_3) {
   OpTester test("DepthToSpace", 11);  // create an opset 11 model with missing default attribute
   constexpr int64_t blocksize = 2;
   test.AddAttribute("blocksize", blocksize);
@@ -228,8 +289,6 @@ TEST(TensorOpTest, DepthToSpaceTest_3) {
       132., 133., 134., 135., 136., 137., 138., 139., 140., 141., 142.,
       143.};
 
-  test.AddInput<float>("input", {N, C, H, W}, X);
-
   const std::vector<float> result = {
       0., 18., 1., 19., 36., 54., 37., 55., 2., 20., 3.,
       21., 38., 56., 39., 57., 4., 22., 5., 23., 40., 58.,
@@ -245,11 +304,24 @@ TEST(TensorOpTest, DepthToSpaceTest_3) {
       102., 85., 103., 120., 138., 121., 139., 86., 104., 87., 105.,
       122., 140., 123., 141., 88., 106., 89., 107., 124., 142., 125.,
       143.};
-  test.AddOutput<float>("output", {2, 3, 6, 4}, result);
-  test.Run();
+
+  if constexpr (std::is_same<TypeParam, float>::value) {
+    test.AddInput<float>("input", {N, C, H, W}, X);
+    test.AddOutput<float>("output", {2, 3, 6, 4}, result);
+  } else {
+    std::vector<TypeParam> X_fp16(X.size());
+    std::vector<TypeParam> result_fp16(result.size());
+    ConvertFloatToMLFloat16(result.data(), result_fp16.data(), result.size());
+    ConvertFloatToMLFloat16(X.data(), X_fp16.data(), X.size());
+    test.AddOutput<TypeParam>("output", {2, 3, 6, 4}, result_fp16);
+    test.AddInput<TypeParam>("input", {N, C, H, W}, X_fp16);
+  }
+  // TODO: Test is flaky on QNN EP (CPU backend).
+  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky test is fixed.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
-TEST(TensorOpTest, DepthToSpaceTest_4) {
+TYPED_TEST(TensorOpTest, DepthToSpaceTest_4) {
   OpTester test("DepthToSpace", 11);  // create an opset 11 model with attribute present = "DCR" mode
   constexpr int64_t blocksize = 2;
   test.AddAttribute("blocksize", blocksize);
@@ -272,8 +344,6 @@ TEST(TensorOpTest, DepthToSpaceTest_4) {
       132., 133., 134., 135., 136., 137., 138., 139., 140., 141., 142.,
       143.};
 
-  test.AddInput<float>("input", {N, C, H, W}, X);
-
   const std::vector<float> result = {
       0., 18., 1., 19., 36., 54., 37., 55., 2., 20., 3.,
       21., 38., 56., 39., 57., 4., 22., 5., 23., 40., 58.,
@@ -289,11 +359,25 @@ TEST(TensorOpTest, DepthToSpaceTest_4) {
       102., 85., 103., 120., 138., 121., 139., 86., 104., 87., 105.,
       122., 140., 123., 141., 88., 106., 89., 107., 124., 142., 125.,
       143.};
-  test.AddOutput<float>("output", {2, 3, 6, 4}, result);
-  test.Run();
+
+  if constexpr (std::is_same<TypeParam, float>::value) {
+    test.AddInput<float>("input", {N, C, H, W}, X);
+    test.AddOutput<float>("output", {2, 3, 6, 4}, result);
+  } else {
+    std::vector<TypeParam> X_fp16(X.size());
+    std::vector<TypeParam> result_fp16(result.size());
+    ConvertFloatToMLFloat16(X.data(), X_fp16.data(), X.size());
+    ConvertFloatToMLFloat16(result.data(), result_fp16.data(), result.size());
+    test.AddInput<TypeParam>("input", {N, C, H, W}, X_fp16);
+    test.AddOutput<TypeParam>("output", {2, 3, 6, 4}, result_fp16);
+  }
+
+  // TODO: Test is flaky on QNN EP (CPU backend).
+  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky2 test is fixed.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
-TEST(TensorOpTest, DepthToSpaceTest_5) {
+TYPED_TEST(TensorOpTest, DepthToSpaceTest_5) {
   OpTester test("DepthToSpace", 11);  // create an opset 11 model with attribute present = "CRD" mode
   constexpr int64_t blocksize = 2;
   test.AddAttribute("blocksize", blocksize);
@@ -309,14 +393,55 @@ TEST(TensorOpTest, DepthToSpaceTest_5) {
                                 27., 28., 29.,
                                 30., 31., 32.};
 
-  test.AddInput<float>("input", {N, C, H, W}, X);
-
   const std::vector<float> result = {0., 9., 1., 10., 2., 11.,
                                      18., 27., 19., 28., 20., 29.,
                                      3., 12., 4., 13., 5., 14.,
                                      21., 30., 22., 31., 23., 32.};
 
-  test.AddOutput<float>("output", {1, 1, 4, 6}, result);
+  if constexpr (std::is_same<TypeParam, float>::value) {
+    test.AddInput<float>("input", {N, C, H, W}, X);
+    test.AddOutput<float>("output", {1, 1, 4, 6}, result);
+  } else {
+    std::vector<TypeParam> X_fp16(X.size());
+    std::vector<TypeParam> result_fp16(result.size());
+    ConvertFloatToMLFloat16(X.data(), X_fp16.data(), X.size());
+    ConvertFloatToMLFloat16(result.data(), result_fp16.data(), result.size());
+    test.AddInput<TypeParam>("input", {N, C, H, W}, X_fp16);
+    test.AddOutput<TypeParam>("output", {1, 1, 4, 6}, result_fp16);
+  }
+  // TODO: Test is flaky on QNN EP (CPU backend).
+  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky2 test is fixed.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
+}
+
+TEST(TensorOpTest, DepthToSpaceTest_CRD_Batched) {
+  OpTester test("DepthToSpace", 11);  // create an opset 11 model with attribute present = "CRD" mode
+  constexpr int64_t blocksize = 2;
+  test.AddAttribute("blocksize", blocksize);
+  test.AddAttribute("mode", "CRD");
+
+  constexpr int64_t N = 2, C = 4, H = 2, W = 3;
+  std::vector<float> X = {0., 1., 2.,
+                          3., 4., 5.,
+                          9., 10., 11.,
+                          12., 13., 14.,
+                          18., 19., 20.,
+                          21., 22., 23.,
+                          27., 28., 29.,
+                          30., 31., 32.};
+
+  // append same data but in reverse order so we can tell if the batch output is wrong
+  X.insert(X.end(), X.rbegin(), X.rend());
+
+  test.AddInput<float>("input", {N, C, H, W}, X);
+
+  std::vector<float> result = {0., 9., 1., 10., 2., 11.,
+                               18., 27., 19., 28., 20., 29.,
+                               3., 12., 4., 13., 5., 14.,
+                               21., 30., 22., 31., 23., 32.};
+  result.insert(result.end(), result.rbegin(), result.rend());
+
+  test.AddOutput<float>("output", {2, 1, 4, 6}, result);
   test.Run();
 }
 

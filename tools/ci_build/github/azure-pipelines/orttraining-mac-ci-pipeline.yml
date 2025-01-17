@@ -1,7 +1,0 @@
-stages:
-- template: templates/mac-cpu-packaging-pipeline.yml
-  parameters:
-    AllowReleasedOpsetOnly: 0
-    BuildForAllArchs: false
-    AdditionalBuildFlags: --enable_training --build_objc
-    WithCache: true

@@ -4,7 +4,7 @@
 #pragma once
 #include "core/common/optional.h"
 #include "core/providers/cuda/cuda_kernel.h"
-#include "core/providers/cpu/reduction/reduction_ops.h"
+#include "core/providers/cpu/reduction/reduction_kernel_base.h"
 #include "core/providers/cuda/reduction/reduction_functions.h"
 
 namespace onnxruntime {
@@ -88,7 +88,15 @@ class ReduceKernel : public CudaKernel, public ReduceKernelBase<allow_multi_axes
 template <typename T>
 class ArgMax final : public ReduceKernel<false> {
  public:
-  ArgMax(const OpKernelInfo& info) : ReduceKernel<false>(info) {}
+  ArgMax(const OpKernelInfo& info) : ReduceKernel<false>(info) {
+    // The following is just a safety check.
+    // The logic in ArgMaxOrArgMinNeedFallbackToCPU() makes sure to not assign ArgMax
+    // nodes with select_last_index == 1 to the CUDA EP.
+    int64_t select_last_index = 0;
+    if (info.GetAttr<int64_t>("select_last_index", &select_last_index).IsOK()) {
+      ORT_ENFORCE(select_last_index == 0, "select_last_index as 1 is not supported on CUDA");
+    }
+  }
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
     return ComputeImpl<T, CUDNN_REDUCE_TENSOR_FLATTENED_INDICES>(ctx, CUDNN_REDUCE_TENSOR_MAX);
@@ -98,7 +106,15 @@ class ArgMax final : public ReduceKernel<false> {
 template <typename T>
 class ArgMin final : public ReduceKernel<false> {
  public:
-  ArgMin(const OpKernelInfo& info) : ReduceKernel<false>(info) {}
+  ArgMin(const OpKernelInfo& info) : ReduceKernel<false>(info) {
+    // The following is just a safety check.
+    // The logic in ArgMaxOrArgMinNeedFallbackToCPU() makes sure to not assign ArgMin
+    // nodes with select_last_index == 1 to the CUDA EP.
+    int64_t select_last_index = 0;
+    if (info.GetAttr<int64_t>("select_last_index", &select_last_index).IsOK()) {
+      ORT_ENFORCE(select_last_index == 0, "select_last_index as 1 is not supported on CUDA");
+    }
+  }
 
   Status ComputeInternal(OpKernelContext* ctx) const override {
     return ComputeImpl<T, CUDNN_REDUCE_TENSOR_FLATTENED_INDICES>(ctx, CUDNN_REDUCE_TENSOR_MIN);

@@ -7,30 +7,26 @@
 
 // It is safe to include the below header even if SHARED_PROVIDER macro is enabled
 // as it doesn't include any pb headers.
+#include "core/framework/buffer_deleter.h"
 #include "core/framework/prepacked_weights_container.h"
 
 #ifndef SHARED_PROVIDER
 #include <functional>
+
 #include "core/common/exceptions.h"
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/kernel_def_builder.h"
-#include "core/framework/ort_value.h"
 #include "core/framework/op_kernel_info.h"
 #include "core/framework/op_node_proto_helper.h"
-#include "core/framework/tensor.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/sparse_tensor.h"
+#include "core/framework/tensor.h"
 #include "core/graph/constants.h"
 #include "core/graph/graph_viewer.h"
-#if !defined(ORT_MINIMAL_BUILD)
-#include "onnx/defs/schema.h"
-#else
-#include "onnx/defs/data_type_utils.h"
-#endif
-#include "onnx/onnx_pb.h"
-#include "onnx/onnx-operators_pb.h"
-#include "core/common/gsl.h"
+#include "core/graph/onnx_protobuf.h"
+#include <gsl/gsl>
 namespace onnxruntime {
 class OpKernelContext;
 }
@@ -99,7 +95,7 @@ class OpKernel {
   }
 
   // Override this function to return a list of attributes the session can safely remove
-  // after it is intialized and saved. This option is useful to reduce memory usage
+  // after it is initialized and saved. This option is useful to reduce memory usage
   // when the kernel does not reuse the operator attributes but copies them.
   // All attributes returned by this method will be removed by method
   // PruneRemovableAttributes of they exists.
@@ -185,6 +181,13 @@ namespace cuda {
 template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 }  // namespace cuda
+}  // namespace contrib
+
+namespace contrib {
+namespace js {
+template <typename T>
+KernelCreateInfo BuildKernelCreateInfo();
+}  // namespace js
 }  // namespace contrib
 
 namespace contrib {

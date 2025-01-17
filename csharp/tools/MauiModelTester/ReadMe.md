@@ -16,12 +16,23 @@ Resources\Raw\test_data\test_data_set_0
 The MAUI application will read the model and test data from those locations and should need no other changes to be able
 to execute the model.
 
-NOTE: The project uses builds from the nightly feed to keep things simple.
+The project uses builds from the nightly feed by default to keep things simple.
 
 If it was part of the main ONNX Runtime C# solution we'd have to
   - add the ORT nightly feed to the top level nuget.config
     - this potentially adds confusion about where nuget packages come from in unit tests
   - keep updating the referenced nightly packages so they remain valid so the complete solution builds in the CI
+
+You will need to manually add the ORT-Nightly feed to the packageSources section of the nuget.config in this directory.
+  - `<add key="ORT-Nightly" value="https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/ORT-Nightly/nuget/v3/index.json" />`
+  - This feed isn't allowed in the checked in nuget.config
+
+If you need to update the ORT packages used by the app to the latest nightly:
+- In Visual Studio, Tools -> Nuget Package Manager -> Manage NuGet Packages for Solution...
+- Make sure 'Include prerelease' is checked
+- Set Package Source to ORT-Nightly
+- Update Microsoft.ML.OnnxRuntime, Microsoft.ML.OnnxRuntime.Managed and Microsoft.ML.OnnxRuntime.Extensions to the
+latest build.
 
 ## Testing C# or native code changes
 

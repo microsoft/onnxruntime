@@ -144,7 +144,7 @@ def test_abs(output_dir):
     )
     generate_abs_op_test(
         TensorProto.UINT16,
-        np.uint16([-32767, -4, 0, 3, 32767]),
+        np.uint16([0, 3, 32767, 65535]),
         os.path.join(output_dir, "test_abs_uint16"),
     )
     generate_abs_op_test(

@@ -10,12 +10,16 @@ class SequenceType(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAsSequenceType(cls, buf, offset):
+    def GetRootAs(cls, buf, offset=0):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
         x = SequenceType()
         x.Init(buf, n + offset)
         return x
 
+    @classmethod
+    def GetRootAsSequenceType(cls, buf, offset=0):
+        """This method is deprecated. Please switch to GetRootAs."""
+        return cls.GetRootAs(buf, offset)
     @classmethod
     def SequenceTypeBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x52\x54\x4D", size_prefixed=size_prefixed)
@@ -35,6 +39,20 @@ class SequenceType(object):
             return obj
         return None
 
-def SequenceTypeStart(builder): builder.StartObject(1)
-def SequenceTypeAddElemType(builder, elemType): builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(elemType), 0)
-def SequenceTypeEnd(builder): return builder.EndObject()
+def SequenceTypeStart(builder):
+    builder.StartObject(1)
+
+def Start(builder):
+    SequenceTypeStart(builder)
+
+def SequenceTypeAddElemType(builder, elemType):
+    builder.PrependUOffsetTRelativeSlot(0, flatbuffers.number_types.UOffsetTFlags.py_type(elemType), 0)
+
+def AddElemType(builder, elemType):
+    SequenceTypeAddElemType(builder, elemType)
+
+def SequenceTypeEnd(builder):
+    return builder.EndObject()
+
+def End(builder):
+    return SequenceTypeEnd(builder)

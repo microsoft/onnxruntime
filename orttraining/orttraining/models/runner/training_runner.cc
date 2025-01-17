@@ -57,6 +57,7 @@ static SessionOptions SESSION_OPTION = {
     {},                                // initializers_to_share_map
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)
     {},  // external_initializers
+    {},  // external_initializer_files
 #endif
     nullptr,  // custom_create_thread_fn
     nullptr,  // custom_thread_creation_options
@@ -1018,9 +1019,8 @@ Status TrainingRunner::SavePerfMetrics(const size_t number_of_batches, const siz
     optimizer = optimizer.substr(0, pos);
   perf_metrics["Optimizer"] = optimizer;
 
-  Path model_path{};
-  ORT_RETURN_IF_ERROR(Path::Parse(params_.model_path, model_path));
-  PathString leaf = model_path.GetComponents().back();
+  std::filesystem::path model_path = params_.model_path;
+  PathString leaf = model_path.filename();
   std::string model_name = ToUTF8String(leaf.c_str());
   perf_metrics["ModelName"] = model_name;
 
@@ -1188,7 +1188,7 @@ Status TrainingRunner::Evaluate(TrainingSession& session, IDataLoader& data_load
                                     fetch_names,
                                     &fetches));
 
-    // Assume that user-specified fetches are avaliable only on the last pipeline stage.
+    // Assume that user-specified fetches are available only on the last pipeline stage.
     // When there is no pipeline, all pipeline_context_.pipeline_stage_id should be 0 and
     // params_.pipeline_parallel_size is 1. Thus, the following condition is always true if there
     // is no pipeline.
@@ -1252,7 +1252,7 @@ Status WithOrtValuesFromTensorProtos(
 
     OrtValue ort_value;
 
-    ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(
+    ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(
         Env::Default(), model_location.c_str(), tensor_proto, mem_buffer,
         ort_value));
 

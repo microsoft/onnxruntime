@@ -41,7 +41,7 @@ struct Gmem_params {
   // Hidden dim per head
   int32_t d;
 
-  // array of length b+1 holding prefix sum of actual sequence lenghts.
+  // array of length b+1 holding prefix sum of actual sequence lengths.
   int32_t* cu_seqlens;
 };
 
@@ -69,7 +69,7 @@ struct Fused_multihead_attention_params_mhca {
   // See https://confluence.nvidia.com/pages/viewpage.action?pageId=302779721 for details.
   bool enable_i2f_trick;
 
-  // array of length b+1 holding prefix sum of actual sequence lenghts
+  // array of length b+1 holding prefix sum of actual sequence lengths
   int32_t* cu_seqlens;
 
   // use C/32 Format.
@@ -116,31 +116,31 @@ struct Fused_multihead_attention_params_mhca {
   }
 };
 
-extern unsigned char cubin_fmha_mhca_fp16_128_64_sm75_cu_cubin[];
-extern unsigned char cubin_fmha_mhca_fp16_128_64_sm80_cu_cubin[];
-extern unsigned char cubin_fmha_mhca_fp16_128_64_sm86_cu_cubin[];
-extern unsigned char cubin_fmha_mhca_fp16_128_64_sm89_cu_cubin[];
+extern const unsigned char cubin_fmha_mhca_fp16_128_64_sm75_cu_cubin[];
+extern const unsigned char cubin_fmha_mhca_fp16_128_64_sm80_cu_cubin[];
+extern const unsigned char cubin_fmha_mhca_fp16_128_64_sm86_cu_cubin[];
+extern const unsigned char cubin_fmha_mhca_fp16_128_64_sm89_cu_cubin[];
 
-extern unsigned char cubin_fmha_mhca_fp16_128_128_sm80_cu_cubin[];
-extern unsigned char cubin_fmha_mhca_fp16_128_128_sm86_cu_cubin[];
-extern unsigned char cubin_fmha_mhca_fp16_128_128_sm89_cu_cubin[];
+extern const unsigned char cubin_fmha_mhca_fp16_128_128_sm80_cu_cubin[];
+extern const unsigned char cubin_fmha_mhca_fp16_128_128_sm86_cu_cubin[];
+extern const unsigned char cubin_fmha_mhca_fp16_128_128_sm89_cu_cubin[];
 
-extern unsigned char cubin_fmha_mhca_fp16_128_256_sm80_cu_cubin[];
-extern unsigned char cubin_fmha_mhca_fp16_128_256_sm86_cu_cubin[];
-extern unsigned char cubin_fmha_mhca_fp16_128_256_sm89_cu_cubin[];
+extern const unsigned char cubin_fmha_mhca_fp16_128_256_sm80_cu_cubin[];
+extern const unsigned char cubin_fmha_mhca_fp16_128_256_sm86_cu_cubin[];
+extern const unsigned char cubin_fmha_mhca_fp16_128_256_sm89_cu_cubin[];
 
-extern uint32_t cubin_fmha_mhca_fp16_128_64_sm75_cu_cubin_len;
-extern uint32_t cubin_fmha_mhca_fp16_128_64_sm80_cu_cubin_len;
-extern uint32_t cubin_fmha_mhca_fp16_128_64_sm86_cu_cubin_len;
-extern uint32_t cubin_fmha_mhca_fp16_128_64_sm89_cu_cubin_len;
+extern const uint32_t cubin_fmha_mhca_fp16_128_64_sm75_cu_cubin_len;
+extern const uint32_t cubin_fmha_mhca_fp16_128_64_sm80_cu_cubin_len;
+extern const uint32_t cubin_fmha_mhca_fp16_128_64_sm86_cu_cubin_len;
+extern const uint32_t cubin_fmha_mhca_fp16_128_64_sm89_cu_cubin_len;
 
-extern uint32_t cubin_fmha_mhca_fp16_128_128_sm80_cu_cubin_len;
-extern uint32_t cubin_fmha_mhca_fp16_128_128_sm86_cu_cubin_len;
-extern uint32_t cubin_fmha_mhca_fp16_128_128_sm89_cu_cubin_len;
+extern const uint32_t cubin_fmha_mhca_fp16_128_128_sm80_cu_cubin_len;
+extern const uint32_t cubin_fmha_mhca_fp16_128_128_sm86_cu_cubin_len;
+extern const uint32_t cubin_fmha_mhca_fp16_128_128_sm89_cu_cubin_len;
 
-extern uint32_t cubin_fmha_mhca_fp16_128_256_sm80_cu_cubin_len;
-extern uint32_t cubin_fmha_mhca_fp16_128_256_sm86_cu_cubin_len;
-extern uint32_t cubin_fmha_mhca_fp16_128_256_sm89_cu_cubin_len;
+extern const uint32_t cubin_fmha_mhca_fp16_128_256_sm80_cu_cubin_len;
+extern const uint32_t cubin_fmha_mhca_fp16_128_256_sm86_cu_cubin_len;
+extern const uint32_t cubin_fmha_mhca_fp16_128_256_sm89_cu_cubin_len;
 
 static const struct FusedMultiHeadCrossAttentionKernelMetaInfoV2 {
   Data_type mDataType;
@@ -258,8 +258,12 @@ class FusedMultiHeadCrossAttentionKernel
             << "\t force_unroll: " << param.force_unroll << "\n";
   }
 
-  int32_t getSForUnroll(Fused_multihead_attention_params_mhca const& param) const override {
-    return param.s_q;
+  dim3 getGridDim(const FusedMultiHeadCrossAttentionKernelMetaInfoV2& kernelMeta,
+                  const Fused_multihead_attention_params_mhca& params) const override {
+    dim3 gridDim(params.h,
+                 params.b,
+                 params.force_unroll ? ((params.s_q + kernelMeta.mUnrollStep - 1) / kernelMeta.mUnrollStep) : 1);
+    return gridDim;
   }
 };
 

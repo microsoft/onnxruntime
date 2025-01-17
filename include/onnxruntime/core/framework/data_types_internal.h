@@ -17,13 +17,7 @@
 #ifndef SHARED_PROVIDER
 #include "core/common/type_list.h"
 #include "core/framework/data_types.h"
-#if !defined(ORT_MINIMAL_BUILD)
-#include "onnx/defs/schema.h"
-#else
-#include "onnx/defs/data_type_utils.h"
-#endif
-#include "onnx/onnx_pb.h"
-#include "onnx/onnx-operators_pb.h"
+#include "core/graph/onnx_protobuf.h"
 #endif
 
 namespace onnxruntime {
@@ -99,6 +93,12 @@ namespace utils {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ:     \
       function<Float8E5M2FNUZ>(__VA_ARGS__);                      \
       break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT4:               \
+      function<Int4x2>(__VA_ARGS__);                              \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT4:              \
+      function<UInt4x2>(__VA_ARGS__);                             \
+      break;                                                      \
     default:                                                      \
       ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type); \
   }
@@ -159,6 +159,12 @@ namespace utils {
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E5M2FNUZ:              \
       retval = function<Float8E5M2FNUZ>(__VA_ARGS__);                      \
       break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT4:                        \
+      retval = function<Int4x2>(__VA_ARGS__);                              \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT4:                       \
+      retval = function<UInt4x2>(__VA_ARGS__);                             \
+      break;                                                               \
     default:                                                               \
       ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type);          \
   }
@@ -209,6 +215,12 @@ namespace utils {
     case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:           \
       function<BFloat16>(__VA_ARGS__);                            \
       break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT4:               \
+      function<Int4x2>(__VA_ARGS__);                              \
+      break;                                                      \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT4:              \
+      function<UInt4x2>(__VA_ARGS__);                             \
+      break;                                                      \
     default:                                                      \
       ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type); \
   }
@@ -256,6 +268,12 @@ namespace utils {
       break;                                                               \
     case ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16:                    \
       retval = function<BFloat16>(__VA_ARGS__);                            \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_INT4:                        \
+      retval = function<Int4x2>(__VA_ARGS__);                              \
+      break;                                                               \
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT4:                       \
+      retval = function<UInt4x2>(__VA_ARGS__);                             \
       break;                                                               \
     default:                                                               \
       ORT_ENFORCE(false, "Unknown tensor type of ", tensor_type);          \
@@ -311,7 +329,7 @@ class CallableDispatchableHelper {
     return 0;
   }
 
-  void CheckCalledOnce() {
+  void CheckCalledOnce() const {
     ORT_ENFORCE(called_ == 1, "Unsupported data type: ", dt_type_);
   }
 };

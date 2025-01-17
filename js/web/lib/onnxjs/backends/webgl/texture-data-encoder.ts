@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Logger} from '../../instrument';
+import { Logger } from '../../instrument';
 
 export declare namespace Encoder {
   export interface DataTypeMap {
@@ -11,14 +11,15 @@ export declare namespace Encoder {
   }
   export type DataType = keyof DataTypeMap;
   type DataArrayType = DataTypeMap[DataType];
-
-  /* eslint-disable @typescript-eslint/naming-convention */
-  export const enum Usage {
-    Default = 0,
-    UploadOnly,
-    Download4BytesAsFloat32,
-  }
 }
+
+/* eslint-disable @typescript-eslint/naming-convention */
+export const enum EncoderUsage {
+  Default = 0,
+  UploadOnly,
+  Download4BytesAsFloat32,
+}
+/* eslint-enable @typescript-eslint/naming-convention */
 
 /**
  * Abstraction for mapping data types to texture texlets
@@ -69,7 +70,7 @@ export class RedFloat32DataEncoder implements DataEncoder {
       Logger.warning('Encoder', 'Source data too small. Allocating larger array');
       source = src as Float32Array;
       result = this.allocate(textureSize * this.channelSize) as Float32Array;
-      source.forEach((v, i) => result[i] = v);
+      source.forEach((v, i) => (result[i] = v));
     } else {
       source = src as Float32Array;
       result = source;
@@ -81,7 +82,7 @@ export class RedFloat32DataEncoder implements DataEncoder {
   }
   decode(buffer: Encoder.DataArrayType, dataSize: number): Float32Array {
     if (this.channelSize === 1) {
-      const filteredData = (buffer as Float32Array).filter((value, index) => index % 4 === 0).subarray(0, dataSize);
+      const filteredData = (buffer as Float32Array).filter((_value, index) => index % 4 === 0).subarray(0, dataSize);
       return filteredData;
     }
     return buffer.subarray(0, dataSize) as Float32Array;
@@ -109,7 +110,7 @@ export class RGBAFloatDataEncoder implements DataEncoder {
     if (this.channelSize === 1) {
       Logger.verbose('Encoder', 'Exploding into a larger array');
       dest = this.allocate(textureSize) as Float32Array;
-      src.forEach((v, i) => dest[i * 4] = v);
+      src.forEach((v, i) => (dest[i * 4] = v));
     }
     return dest;
   }
@@ -118,7 +119,7 @@ export class RGBAFloatDataEncoder implements DataEncoder {
   }
   decode(buffer: Encoder.DataArrayType, dataSize: number): Float32Array {
     if (this.channelSize === 1) {
-      const filteredData = (buffer as Float32Array).filter((value, index) => index % 4 === 0).subarray(0, dataSize);
+      const filteredData = (buffer as Float32Array).filter((_value, index) => index % 4 === 0).subarray(0, dataSize);
       return filteredData;
     }
     return buffer.subarray(0, dataSize) as Float32Array;
@@ -133,7 +134,7 @@ export class Uint8DataEncoder implements DataEncoder {
   constructor(gl: WebGLRenderingContext, channels = 1) {
     if (channels === 1) {
       this.internalFormat = gl.ALPHA;
-      this.format = gl.ALPHA;  // not tested
+      this.format = gl.ALPHA; // not tested
       this.textureType = gl.UNSIGNED_BYTE;
       this.channelSize = channels;
     } else if (channels === 4) {

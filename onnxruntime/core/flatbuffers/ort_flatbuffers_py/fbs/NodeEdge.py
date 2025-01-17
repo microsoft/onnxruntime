@@ -10,12 +10,16 @@ class NodeEdge(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAsNodeEdge(cls, buf, offset):
+    def GetRootAs(cls, buf, offset=0):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
         x = NodeEdge()
         x.Init(buf, n + offset)
         return x
 
+    @classmethod
+    def GetRootAsNodeEdge(cls, buf, offset=0):
+        """This method is deprecated. Please switch to GetRootAs."""
+        return cls.GetRootAs(buf, offset)
     @classmethod
     def NodeEdgeBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x52\x54\x4D", size_prefixed=size_prefixed)
@@ -79,10 +83,44 @@ class NodeEdge(object):
         o = flatbuffers.number_types.UOffsetTFlags.py_type(self._tab.Offset(8))
         return o == 0
 
-def NodeEdgeStart(builder): builder.StartObject(3)
-def NodeEdgeAddNodeIndex(builder, nodeIndex): builder.PrependUint32Slot(0, nodeIndex, 0)
-def NodeEdgeAddInputEdges(builder, inputEdges): builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(inputEdges), 0)
-def NodeEdgeStartInputEdgesVector(builder, numElems): return builder.StartVector(12, numElems, 4)
-def NodeEdgeAddOutputEdges(builder, outputEdges): builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(outputEdges), 0)
-def NodeEdgeStartOutputEdgesVector(builder, numElems): return builder.StartVector(12, numElems, 4)
-def NodeEdgeEnd(builder): return builder.EndObject()
+def NodeEdgeStart(builder):
+    builder.StartObject(3)
+
+def Start(builder):
+    NodeEdgeStart(builder)
+
+def NodeEdgeAddNodeIndex(builder, nodeIndex):
+    builder.PrependUint32Slot(0, nodeIndex, 0)
+
+def AddNodeIndex(builder, nodeIndex):
+    NodeEdgeAddNodeIndex(builder, nodeIndex)
+
+def NodeEdgeAddInputEdges(builder, inputEdges):
+    builder.PrependUOffsetTRelativeSlot(1, flatbuffers.number_types.UOffsetTFlags.py_type(inputEdges), 0)
+
+def AddInputEdges(builder, inputEdges):
+    NodeEdgeAddInputEdges(builder, inputEdges)
+
+def NodeEdgeStartInputEdgesVector(builder, numElems):
+    return builder.StartVector(12, numElems, 4)
+
+def StartInputEdgesVector(builder, numElems: int) -> int:
+    return NodeEdgeStartInputEdgesVector(builder, numElems)
+
+def NodeEdgeAddOutputEdges(builder, outputEdges):
+    builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(outputEdges), 0)
+
+def AddOutputEdges(builder, outputEdges):
+    NodeEdgeAddOutputEdges(builder, outputEdges)
+
+def NodeEdgeStartOutputEdgesVector(builder, numElems):
+    return builder.StartVector(12, numElems, 4)
+
+def StartOutputEdgesVector(builder, numElems: int) -> int:
+    return NodeEdgeStartOutputEdgesVector(builder, numElems)
+
+def NodeEdgeEnd(builder):
+    return builder.EndObject()
+
+def End(builder):
+    return NodeEdgeEnd(builder)

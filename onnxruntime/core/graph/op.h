@@ -3,17 +3,12 @@
 
 #pragma once
 
-#include <functional>
-#include <unordered_map>
-#if !defined(ORT_MINIMAL_BUILD)
-#include "onnx/defs/schema.h"
-#else
-#include "onnx/defs/data_type_utils.h"
-#endif
-#include "onnx/onnx_pb.h"
-#include "onnx/onnx-operators_pb.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/common/status.h"
 #include "core/graph/constants.h"
+
+#include <functional>
+#include <unordered_map>
 
 namespace onnxruntime {
 using AttrType = ONNX_NAMESPACE::AttributeProto_AttributeType;
@@ -35,19 +30,18 @@ AttributeProto_AttributeType_GRAPHS = 10,
 AttributeProto_AttributeType_SPARSE_TENSOR = 22,
 AttributeProto_AttributeType_SPARSE_TENSORS = 23,
 */
-static constexpr const char* kAttrTypeStrings[] =
-    {
-        "UNDEFINED",
-        "FLOAT",
-        "INT",
-        "STRING",
-        "TENSOR",
-        "GRAPH",
-        "FLOATS",
-        "INTS",
-        "STRINGS",
-        "TENSORS",
-        "GRAPHS"};
+static constexpr const char* kAttrTypeStrings[] = {
+    "UNDEFINED",
+    "FLOAT",
+    "INT",
+    "STRING",
+    "TENSOR",
+    "GRAPH",
+    "FLOATS",
+    "INTS",
+    "STRINGS",
+    "TENSORS",
+    "GRAPHS"};
 
 class TypeUtils {
  public:

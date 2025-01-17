@@ -130,7 +130,7 @@ class Gemm : public onnxruntime::Gemm<T> {
       armnn::TensorInfo outputTensorInfo(outputShape, armnn::DataType::Float32);
       fc_armnn->GetOutputSlot(0).SetTensorInfo(outputTensorInfo);
 
-      // Optimise ArmNN network
+      // Optimize ArmNN network
       armnn::IOptimizedNetworkPtr optNet = armnn::Optimize(*myNetwork, {armnn::Compute::CpuAcc}, Gemm::run->GetDeviceSpec());
 
       if (optNet == nullptr) {

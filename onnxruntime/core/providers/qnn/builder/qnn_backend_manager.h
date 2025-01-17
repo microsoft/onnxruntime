@@ -6,12 +6,20 @@
 #include <windows.h>
 #include <psapi.h>
 #include <libloaderapi.h>
+#include <set>
 #else
 #include <dlfcn.h>
 #endif
 
+#include <memory>
+#include <mutex>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #include "HTP/QnnHtpDevice.h"
 #include "QnnLog.h"
+#include "QnnTypes.h"
 #include "System/QnnSystemInterface.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
@@ -25,14 +33,26 @@ class QnnModel;
 
 class QnnBackendManager {
  public:
-  QnnBackendManager(std::string backend_path,
+  QnnBackendManager(std::string&& backend_path,
+                    ProfilingLevel profiling_level_etw,
                     ProfilingLevel profiling_level,
-                    uint32_t rpc_control_latency,
-                    HtpPerformanceMode htp_performance_mode)
+                    std::string&& profiling_file_path,
+                    ContextPriority context_priority,
+                    std::string&& qnn_saver_path,
+                    uint32_t device_id,
+                    QnnHtpDevice_Arch_t htp_arch,
+                    uint32_t soc_model,
+                    bool enable_htp_weight_sharing)
       : backend_path_(backend_path),
+        profiling_level_etw_(profiling_level_etw),
         profiling_level_(profiling_level),
-        rpc_control_latency_(rpc_control_latency),
-        htp_performance_mode_(htp_performance_mode) {
+        profiling_file_path_(profiling_file_path),
+        context_priority_(context_priority),
+        qnn_saver_path_(qnn_saver_path),
+        device_id_(device_id),
+        htp_arch_(htp_arch),
+        soc_model_(soc_model),
+        enable_htp_weight_sharing_(enable_htp_weight_sharing) {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
 
@@ -69,76 +89,83 @@ class QnnBackendManager {
     return CreateContext();
   }
 
-  Status DumpQnnContext(const std::string& model_name, const std::string& graph_name);
+  std::unique_ptr<unsigned char[]> GetContextBinaryBuffer(uint64_t& written_buffer_size);
 
-  Status LoadCachedQnnContext(QnnModel& qnn_model);
+  Status LoadCachedQnnContextFromBuffer(char* buffer, uint64_t buffer_length,
+                                        std::string node_name,
+                                        std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>& qnn_models,
+                                        int64_t max_spill_fill_size);
 
-  Status GetMetadataFromOrtContextFile();
+  // Initializes handles to QNN resources (device, logger, etc.).
+  // NOTE: This function locks the internal `logger_recursive_mutex_`.
+  Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context, bool need_load_system_lib);
 
-  Status ValidateWithContextFile(const std::string& model_name, const std::string& graph_name);
+  Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
 
-  Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context);
+  Status SetHtpPowerConfig(uint32_t htp_power_config_client_id,
+                           HtpPerformanceMode htp_performance_mode);
 
-  Status SetHtpPowerConfig();
+  Status SetRpcControlLatency(uint32_t htp_power_config_client_id,
+                              uint32_t rpc_control_latency);
 
   const QNN_INTERFACE_VER_TYPE& GetQnnInterface() { return qnn_interface_; }
 
-  const Qnn_ContextHandle_t& GetQnnContext() { return context_; }
+  const Qnn_ContextHandle_t& GetQnnContext(int index = 0) {
+    ORT_ENFORCE((contexts_.size() > 0) && (static_cast<size_t>(index) < contexts_.size()), "No valid QNN context!");
+    return contexts_[index];
+  }
+
+  size_t GetQnnContextSize() {
+    return contexts_.size();
+  }
 
   const Qnn_BackendHandle_t& GetQnnBackendHandle() { return backend_handle_; }
 
   const Qnn_ProfileHandle_t& GetQnnProfileHandle() { return profile_backend_handle_; }
 
-  std::string GetBackendBuildId() {
-    char* backend_build_id{nullptr};
-    if (QNN_SUCCESS != qnn_interface_.backendGetBuildId((const char**)&backend_build_id)) {
-      LOGS(*logger_, ERROR) << "Unable to get build Id from the backend.";
-    }
-    return (backend_build_id == nullptr ? std::string("") : std::string(backend_build_id));
-  }
-
-  void SetLogger(const logging::Logger* logger) {
-    if (logger_ == nullptr) {
-      logger_ = logger;
-      InitializeQnnLog();
-    }
-  }
-
-  void InitializeQnnLog();
-
-  // Terminate logging in the backend
-  Status TerminateQnnLog() {
-    if (logger_ == nullptr) {
-      return Status::OK();
-    }
-
-    if (nullptr != qnn_interface_.logFree && nullptr != log_handle_) {
-      ORT_RETURN_IF(QNN_SUCCESS != qnn_interface_.logFree(log_handle_),
-                    "Unable to terminate logging in the backend.");
-    }
-
-    return Status::OK();
-  }
-
-  void ReleaseResources();
-
-  void Split(std::vector<std::string>& split_string, const std::string& tokenized_string, const char separator);
+  // Resets the QNN log level to the given ORT log level or to the default log level if the argument is
+  // std::nullopt.
+  // NOTE: This function locks the internal `logger_recursive_mutex_`.
+  Status ResetQnnLogLevel(std::optional<logging::Severity> ort_log_level = std::nullopt);
 
   Status ExtractBackendProfilingInfo();
-  Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id);
-  Status ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id);
+  Status ExtractProfilingSubEvents(QnnProfile_EventId_t profile_event_id, std::ofstream& outfile,
+                                   bool backendSupportsExtendedEventData, bool tracelogging_provider_ep_enabled);
+  Status ExtractProfilingEvent(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
+                               std::ofstream& outfile, bool backendSupportsExtendedEventData,
+                               bool tracelogging_provider_ep_enabled);
 
-  // NPU backend requires quantized model
-  bool IsNpuBackend() { return is_npu_backend_; }
+  Status SetProfilingLevelETW(ProfilingLevel profiling_level_etw_param);
 
-  bool IsContextCacheFileExists(const std::string& customer_context_cache_path,
-                                const std::string& model_description,
-                                const onnxruntime::PathString& model_pathstring);
+  void SetQnnBackendType(uint32_t backend_id);
+  QnnBackendType GetQnnBackendType() { return qnn_backend_type_; }
+
+  const std::string& GetSdkVersion() { return sdk_build_version_; }
+
+  Status DestroyHTPPowerConfigID(uint32_t htp_power_config_id);
+
+  Status GetMaxSpillFillBufferSize(unsigned char* buffer,
+                                   uint64_t buffer_length,
+                                   uint64_t& max_spill_fill_buffer_size);
 
  private:
+  // Sets the ORT logger and creates a corresponding QNN logger with the same log level.
+  // NOTE: caller must lock the `logger_recursive_mutex_` before calling this function.
+  Status InitializeQnnLog(const logging::Logger& logger);
+
+  // Terminate logging in the backend
+  // NOTE: This function locks the internal `logger_recursive_mutex_`.
+  Status TerminateQnnLog();
+
+  // Releases all QNN resources. Called in the destructor.
+  // NOTE: This function indirectly locks the internal `logger_recursive_mutex_` via nested function calls.
+  void ReleaseResources();
+
   void* LoadLib(const char* file_name, int flags, std::string& error_msg);
 
   Status LoadQnnSystemLib();
+
+  Status LoadQnnSaverBackend();
 
   Status UnloadLib(void* handle);
 
@@ -155,11 +182,11 @@ class QnnBackendManager {
   }
 
   template <typename F, class T>
-  Status GetQnnInterfaceProviders(const char* lib_path,
-                                  const char* interface_provider_name,
-                                  void** backend_lib_handle,
-                                  T*** interface_providers,
-                                  uint32_t& num_providers);
+  Status GetQnnInterfaceProvider(const char* lib_path,
+                                 const char* interface_provider_name,
+                                 void** backend_lib_handle,
+                                 Qnn_Version_t req_version,
+                                 T** interface_provider);
 
   bool IsDevicePropertySupported();
 
@@ -173,8 +200,39 @@ class QnnBackendManager {
     return ret;
   }
 
+  std::string GetBackendBuildId() {
+    char* backend_build_id{nullptr};
+    if (QNN_SUCCESS != qnn_interface_.backendGetBuildId((const char**)&backend_build_id)) {
+      LOGS(*logger_, ERROR) << "Unable to get build Id from the backend.";
+    }
+    return (backend_build_id == nullptr ? std::string("") : std::string(backend_build_id));
+  }
+
+  Status ExtractProfilingEventBasic(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
+                                    std::ofstream& outfile, bool tracelogging_provider_ep_enabled);
+  Status ExtractProfilingEventExtended(QnnProfile_EventId_t profile_event_id, const std::string& eventLevel,
+                                       std::ofstream& outfile, bool tracelogging_provider_ep_enabled);
+  static const std::string& GetUnitString(QnnProfile_EventUnit_t unitType);
+  static const std::unordered_map<QnnProfile_EventUnit_t, std::string>& GetUnitStringMap();
+  static const std::string GetEventTypeString(QnnProfile_EventType_t eventType);
+  static const std::string ExtractQnnScalarValue(const Qnn_Scalar_t& scalar);
+  const char* QnnProfileErrorToString(QnnProfile_Error_t error);
+  const char* QnnErrorHandleToString(Qnn_ErrorHandle_t error);
+  QnnLog_Level_t MapOrtSeverityToQNNLogLevel(logging::Severity ort_log_level);
+#ifdef _WIN32
+  void LogQnnProfileEventAsTraceLogging(
+      uint64_t timestamp,
+      const std::string& message,
+      const std::string& qnnScalarValue,
+      const std::string& unit,
+      const std::string& timingSource,
+      const std::string& eventLevel,
+      const char* eventIdentifier);
+#endif
+
  private:
   const std::string backend_path_;
+  std::recursive_mutex logger_recursive_mutex_;
   const logging::Logger* logger_ = nullptr;
   QNN_INTERFACE_VER_TYPE qnn_interface_ = QNN_INTERFACE_VER_TYPE_INIT;
   QNN_SYSTEM_INTERFACE_VER_TYPE qnn_sys_interface_ = QNN_SYSTEM_INTERFACE_VER_TYPE_INIT;
@@ -184,32 +242,29 @@ class QnnBackendManager {
   QnnBackend_Config_t** backend_config_ = nullptr;
   Qnn_LogHandle_t log_handle_ = nullptr;
   Qnn_DeviceHandle_t device_handle_ = nullptr;
-  Qnn_ContextHandle_t context_ = nullptr;
-  QnnContext_Config_t** context_config_ = nullptr;
+  std::vector<Qnn_ContextHandle_t> contexts_;
+  ProfilingLevel profiling_level_etw_;
   ProfilingLevel profiling_level_;
+  ProfilingLevel profiling_level_merge_;
+  const std::string profiling_file_path_;
   bool backend_initialized_ = false;
   bool device_created_ = false;
   bool context_created_ = false;
   bool backend_setup_completed_ = false;
   // NPU backend requires quantized model
-  bool is_npu_backend_ = false;
+  QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   Qnn_ProfileHandle_t profile_backend_handle_ = nullptr;
   std::vector<std::string> op_package_paths_;
-  uint32_t rpc_control_latency_ = 0;
-  HtpPerformanceMode htp_performance_mode_;
-  std::string model_name_from_ctx_cache_ = "";
-  std::string graph_name_from_ctx_cache_ = "";
-  std::string model_description_from_ctx_cache_ = "";
-  std::string model_description_ = "";
-  std::string context_cache_path_ = "";
-  bool ctx_file_exists_ = false;
-  bool ctx_metadata_tried_ = false;
-  bool ort_generated_ctx_cache_ = false;
-  bool get_capability_round_2_ = false;
-  uint16_t ort_ctx_metadata_length_ = 0;
+  ContextPriority context_priority_;
+  std::string sdk_build_version_ = "";
 #ifdef _WIN32
   std::set<HMODULE> mod_handles_;
 #endif
+  const std::string qnn_saver_path_;
+  uint32_t device_id_ = 0;
+  QnnHtpDevice_Arch_t htp_arch_ = QNN_HTP_DEVICE_ARCH_NONE;
+  uint32_t soc_model_ = QNN_SOC_MODEL_UNKNOWN;
+  bool enable_htp_weight_sharing_ = false;
 };
 
 }  // namespace qnn

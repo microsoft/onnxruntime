@@ -7,6 +7,9 @@
 
 #include "adapter/winml_adapter_c_api.h"
 
+// clang-format off
+// preserve visually scannable types
+
 using UniqueOrtModel                  = std::unique_ptr<OrtModel,                  decltype(WinmlAdapterApi::ReleaseModel)>;
 using UniqueOrtThreadPool             = std::unique_ptr<OrtThreadPool,             decltype(WinmlAdapterApi::ReleaseThreadPool)>;
 using UniqueOrtAllocator              = std::unique_ptr<OrtAllocator,              decltype(OrtApi::ReleaseAllocator)>;
@@ -19,3 +22,4 @@ using UniqueOrtTensorTypeAndShapeInfo = std::unique_ptr<OrtTensorTypeAndShapeInf
 using UniqueOrtRunOptions             = std::unique_ptr<OrtRunOptions,             decltype(OrtApi::ReleaseRunOptions)>;
 using UniqueOrtEnv                    = std::unique_ptr<OrtEnv,                    decltype(OrtApi::ReleaseEnv)>;
 
+// clang-format on

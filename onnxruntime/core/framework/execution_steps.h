@@ -44,7 +44,11 @@ class WaitOnEPStep : public SequentialExecutionPlan::ExecutionStep {
 
 class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
  public:
+#if defined(ORT_MINIMAL_BUILD)
   LaunchKernelStep(NodeIndex index);
+#else
+  LaunchKernelStep(NodeIndex index, std::string_view node_name);
+#endif
 
   Status Execute(StreamExecutionContext& ctx,
                  size_t stream_idx,
@@ -53,6 +57,11 @@ class LaunchKernelStep : public SequentialExecutionPlan::ExecutionStep {
                  bool& continue_flag) override;
 
   std::string ToString() const override;
+
+#if !defined(ORT_MINIMAL_BUILD)
+ private:
+  std::string node_name_;
+#endif
 };
 
 class ActivateNotificationStep : public SequentialExecutionPlan::ExecutionStep {

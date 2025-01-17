@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "onnx/defs/schema.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/graph/contrib_ops/ms_schema.h"
 
 // This file contains deprecated ONNX operators that have been removed from ONNX spec, but we still need to keep them

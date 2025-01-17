@@ -15,12 +15,14 @@ namespace qnn {
 OpBuilderRegistrations::OpBuilderRegistrations() {
   {
     CreateSimpleOpBuilder("Add", *this);
+    CreateSimpleOpBuilder("Asin", *this);
     CreateSimpleOpBuilder("Atan", *this);
     CreateSimpleOpBuilder("Mul", *this);
     CreateSimpleOpBuilder("Abs", *this);
     CreateSimpleOpBuilder("And", *this);
     CreateSimpleOpBuilder("Ceil", *this);
     CreateSimpleOpBuilder("Cos", *this);
+    CreateSimpleOpBuilder("Sign", *this);
     CreateSimpleOpBuilder("Div", *this);
     CreateSimpleOpBuilder("Equal", *this);
     CreateSimpleOpBuilder("Exp", *this);
@@ -45,20 +47,29 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("Where", *this);
     CreateSimpleOpBuilder("Sigmoid", *this);
     CreateSimpleOpBuilder("Sin", *this);
-    CreateSimpleOpBuilder("Softmax", *this);
     CreateSimpleOpBuilder("Sqrt", *this);
     CreateSimpleOpBuilder("Sub", *this);
     CreateSimpleOpBuilder("Tanh", *this);
-    CreateSimpleOpBuilder("Transpose", *this);
 
-    CreateSimpleOpBuilder("LogSoftmax", *this);
-    CreateSimpleOpBuilder("MatMul", *this);
     CreateSimpleOpBuilder("Concat", *this);
 
     CreateSimpleOpBuilder("QuantizeLinear", *this);
     CreateSimpleOpBuilder("DequantizeLinear", *this);
 
     CreateSimpleOpBuilder("HardSwish", *this);
+    CreateSimpleOpBuilder("HardSigmoid", *this);
+
+    CreateSimpleOpBuilder("DepthToSpace", *this);
+    CreateSimpleOpBuilder("SpaceToDepth", *this);
+
+    CreateSimpleOpBuilder("GridSample", *this);
+
+    CreateSimpleOpBuilder("LpNormalization", *this);
+  }
+
+  {
+    CreateSoftmaxOpBuilder("Softmax", *this);
+    CreateSoftmaxOpBuilder("LogSoftmax", *this);
   }
 
   {
@@ -71,6 +82,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateReduceOpBuilder("ReduceMin", *this);
     CreateReduceOpBuilder("ReduceProd", *this);
     CreateReduceOpBuilder("ReduceSum", *this);
+    CreateReduceOpBuilder("ReduceL2", *this);
   }
 
   {
@@ -82,6 +94,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreatePoolOpBuilder("GlobalAveragePool", *this);
     CreatePoolOpBuilder("AveragePool", *this);
     CreatePoolOpBuilder("MaxPool", *this);
+    CreatePoolOpBuilder("GlobalMaxPool", *this);
   }
 
   {
@@ -97,6 +110,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateGatherOpBuilder("Gather", *this);
+    CreateGatherOpBuilder("GatherElements", *this);
   }
 
   {
@@ -137,7 +151,27 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateLayerNormOpBuilder("LayerNormalization", *this);
+  }
+
+  {
     CreateLRNOpBuilder("LRN", *this);
+  }
+
+  {
+    CreateTransposeOpBuilder("Transpose", *this);
+  }
+
+  {
+    CreatePadOpBuilder("Pad", *this);
+  }
+
+  {
+    CreateExpandOpBuilder("Expand", *this);
+  }
+
+  {
+    CreateMatMulOpBuilder("MatMul", *this);
   }
 }
 

@@ -2,27 +2,16 @@
 // Licensed under the MIT License.
 #include "vaip/graph.h"
 
-#include <core/graph/graph_viewer.h>
-
-#include "./vai_assert.h"
 #include <codecvt>
 #include <fstream>
 #include <filesystem>
 #include <limits>
 #include <locale>
 #include <string>
-#include "onnx/onnx-ml.pb.h"
-#ifdef _MSC_VER
-#pragma warning(push)
-// 'type' : forcing value to bool 'true' or 'false' (performance warning)
-#pragma warning(disable : 4800)
-#endif
-#include <google/protobuf/io/zero_copy_stream_impl.h>
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
-using convert_t = std::codecvt_utf8<wchar_t>;
-std::wstring_convert<convert_t, wchar_t> strconverter;
+
+#include "core/graph/model_saving_options.h"
+#include "core/providers/shared_library/provider_api.h"
+#include "./vai_assert.h"
 
 #include "vaip/node.h"
 #include "vaip/node_arg.h"
@@ -38,23 +27,14 @@ struct NodeEdgeT {
 
 static void graph_remove_node(Graph& graph, const Node& node) {
   auto remove_edges = std::vector<NodeEdgeT>();
-  auto begin = node.InputEdgesBegin();
-  auto end = node.InputEdgesEnd();
-  for (auto it = begin; it != end; ++it) {
-    remove_edges.push_back(NodeEdgeT{it->GetNode().Index(), node.Index(),
-                                     it->GetSrcArgIndex(),
-                                     it->GetDstArgIndex()});
+  for (auto it = node.InputEdgesBegin(); it != node.InputEdgesEnd(); ++it) {
+    remove_edges.push_back(NodeEdgeT{it->GetNode().Index(), node.Index(), it->GetSrcArgIndex(), it->GetDstArgIndex()});
   }
-  begin = node.OutputEdgesBegin();
-  end = node.OutputEdgesEnd();
-  for (auto it = begin; it != end; ++it) {
-    remove_edges.push_back(NodeEdgeT{node.Index(), it->GetNode().Index(),
-                                     it->GetSrcArgIndex(),
-                                     it->GetDstArgIndex()});
+  for (auto it = node.OutputEdgesBegin(); it != node.OutputEdgesEnd(); ++it) {
+    remove_edges.push_back(NodeEdgeT{node.Index(), it->GetNode().Index(), it->GetSrcArgIndex(), it->GetDstArgIndex()});
   }
   for (auto it : remove_edges) {
-    graph.RemoveEdge(it.src_node_index, it.dst_node_index, it.src_arg_index,
-                     it.dst_arg_index);
+    graph.RemoveEdge(it.src_node_index, it.dst_node_index, it.src_arg_index, it.dst_arg_index);
   }
   graph.RemoveNode(node.Index());
 }
@@ -68,13 +48,9 @@ static std::vector<const NodeArg*> node_get_implicit_input_node_args(const Node&
   }
   return ret;
 }
-
-Node& graph_add_node(Graph& graph, const std::string& name,
-                     const std::string& op_type, const std::string& description,
-                     const std::vector<const NodeArg*>& input_args,
-                     const std::vector<const NodeArg*>& output_args,
-                     const NodeAttributes& attributes,
-                     const std::string& domain) {
+Node& graph_add_node(Graph& graph, const std::string& name, const std::string& op_type, const std::string& description,
+                     const std::vector<const NodeArg*>& input_args, const std::vector<const NodeArg*>& output_args,
+                     const NodeAttributes& attributes, const std::string& domain) {
   std::vector<NodeArg*> inputs;
   inputs.reserve(input_args.size());
   for (auto i : input_args) {
@@ -85,34 +61,28 @@ Node& graph_add_node(Graph& graph, const std::string& name,
   for (auto i : output_args) {
     outputs.push_back(const_cast<NodeArg*>(i));
   }
-  auto& ret = graph.AddNode(name, op_type, description, inputs, outputs,
-                            &attributes, domain);
+  auto& ret = graph.AddNode(name, op_type, description, inputs, outputs, &attributes, domain);
   auto src_arg_index = 0;
   for (auto& o : outputs) {
     auto consumers = graph.GetConsumerNodes(o->Name());
     for (auto& consumer : consumers) {
-      auto dst_arg_index = -1;
-      int arg_index = 0;
+      auto dst_arg_index = 0u;
       auto tmp_inputs = node_get_inputs(*consumer);
       for (auto ni : *tmp_inputs) {
         auto name1 = ni.node_arg->Name();
         if (name1 == o->Name()) {
-          dst_arg_index = arg_index;
-          break;
+          graph.AddEdge(ret.Index(), consumer->Index(), src_arg_index, dst_arg_index);
         }
-        arg_index = arg_index + 1;
+        dst_arg_index = dst_arg_index + 1;
       }
+      // dst_arg_index should not init again.
       for (auto implicit_node_arg : node_get_implicit_input_node_args(*consumer)) {
         auto name1 = implicit_node_arg->Name();
         if (name1 == o->Name()) {
-          dst_arg_index = arg_index;
-          break;
+          graph.AddEdge(ret.Index(), consumer->Index(), src_arg_index, dst_arg_index);
         }
-        arg_index = arg_index + 1;
+        dst_arg_index = dst_arg_index + 1;
       }
-      assert(dst_arg_index != -1);
-      graph.AddEdge(ret.Index(), consumer->Index(), src_arg_index,
-                    dst_arg_index);
     }
     src_arg_index = src_arg_index + 1;
   }
@@ -134,42 +104,32 @@ void graph_remove_node(Graph& graph, const NodeInput& node_input) {
 }
 
 void graph_save(const Graph& graph, const std::string& filename, const std::string& filename_dat, size_t initializer_size_threshold) {
-  auto& model = const_cast<Model&>(graph.GetModel());
-  auto model_proto = ONNX_NAMESPACE::ModelProto();
-
+  auto model_proto = const_cast<onnxruntime::Model&>(graph.GetModel()).ToProto();
+  auto graph_proto_subgraph = graph.ToGraphProto();
+  *model_proto->mutable_graph() = *graph_proto_subgraph;
+  auto& logger = logging::LoggingManager::DefaultLogger();
+  auto model = Model::Create(std::move(*model_proto), ToPathString(filename), nullptr, logger);
   if (initializer_size_threshold == std::numeric_limits<size_t>::max()) {
-    model_proto = model.ToProto();
+    model_proto = model->ToProto();
   } else {
-    model_proto = model.ToGraphProtoWithExternalInitializers(filename_dat,
-                                                             initializer_size_threshold);
+    ModelSavingOptions model_saving_options{initializer_size_threshold};
+    model_proto = model->ToGraphProtoWithExternalInitializers(ToPathString(filename_dat), ToPathString(filename),
+                                                              model_saving_options);
   }
-  auto& metadata = model.MetaData();
+  auto& metadata = model->MetaData();
   if (!metadata.empty()) {
-    model_proto.mutable_metadata_props()->Clear();
+    auto metadata_props = model_proto->mutable_metadata_props();
+    metadata_props->Clear();
     for (auto& m : metadata) {
-      auto prop = model_proto.mutable_metadata_props()->Add();
+      auto prop = metadata_props->Add();
       *prop->mutable_key() = m.first;
       *prop->mutable_value() = m.second;
     }
   }
-  // use relative path as data storage.
-  for (auto i = 0; i < model_proto.graph().initializer_size(); ++i) {
-    auto initializer = model_proto.mutable_graph()->mutable_initializer(i);
-    for (auto j = 0; j < initializer->external_data_size(); ++j) {
-      auto external_data = initializer->mutable_external_data(j);
-      if (external_data->key() == "location") {
-        *external_data->mutable_value() = std::filesystem::path(external_data->value()).filename().u8string();
-      }
-    }
-  }
-  int fd = -1;
-  Status status = Env::Default().FileOpenWr(filename, fd);
-  vai_assert(status.IsOK(), status.ErrorMessage());
-  google::protobuf::io::FileOutputStream output(fd);
-  const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
-  vai_assert(result, "model serialize to zero cipy stream error");
-  status = Env::Default().FileClose(fd);
-  vai_assert(status.IsOK(), status.ErrorMessage());
+  std::fstream output(ToPathString(filename), std::ios::out | std::ios::trunc | std::ios::binary);
+  bool result = model_proto->SerializeToOstream(output);
+  output << std::flush;
+  vai_assert(result, "model serialize to ostream error");
 }
 
 Node& graph_fuse(Graph& graph, const std::string& name,
@@ -178,26 +138,98 @@ Node& graph_fuse(Graph& graph, const std::string& name,
                  const std::vector<std::string>& inputs,
                  const std::vector<std::string>& outputs,
                  const std::vector<std::string>& constant_initializers) {
-  auto meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
-  auto indexed_subgraph = std::make_unique<IndexedSubGraph>();
-  indexed_subgraph->nodes = nodes;
-  meta_def->inputs = inputs;
-  meta_def->outputs = outputs;
-  meta_def->constant_initializers = constant_initializers;
-  meta_def->name = "super_layer";
-  meta_def->domain = "com.xilinx";
-  meta_def->since_version = 1;
-  meta_def->status = ONNX_NAMESPACE::EXPERIMENTAL;
+  auto meta_def = IndexedSubGraph_MetaDef::Create();
+  meta_def->inputs() = inputs;
+  meta_def->outputs() = outputs;
+  meta_def->constant_initializers() = constant_initializers;
+  meta_def->name() = "super_layer";
+  meta_def->domain() = "com.xilinx";
+  meta_def->since_version() = 1;
+  meta_def->status() = ONNX_NAMESPACE::EXPERIMENTAL;
+
+  auto indexed_subgraph = IndexedSubGraph::Create();
+  indexed_subgraph->Nodes() = nodes;
   indexed_subgraph->SetMetaDef(std::move(meta_def));
+
   auto& fused_node = graph.FuseSubGraph(*indexed_subgraph, name);
   auto function_body = fused_node.GetFunctionBody();
   if (function_body) {
-    auto& mygraph = function_body->Body();
-    // auto proto = graph.ToGraphProtoWithExternal("exteranl.dat", 128);
-    auto proto = mygraph.ToGraphProto();
-    *proto.mutable_name() = name;
-    fused_node.AddAttribute("body", proto);
+    auto proto = function_body->Body().ToGraphProto();
+    *proto->mutable_name() = name;
+    fused_node.AddAttribute("body", *proto);
+  }
+  for (auto&& o : fused_node.OutputDefs()) {
+    graph.UpdateProducerNode(o->Name(), fused_node.Index());
   }
   return fused_node;
+}
+Model* model_clone(const Model& original_model, int64_t external_data_threshold) {
+  // create an empty mode
+  auto& original_graph = const_cast<Model&>(original_model).MainGraph();
+  auto& logger = logging::LoggingManager::DefaultLogger();
+  auto file_path = original_graph.ModelPath();
+  auto local_registries = IOnnxRuntimeOpSchemaRegistryList{original_graph.GetSchemaRegistry()};
+  auto model_proto = ONNX_NAMESPACE::ModelProto::Create();
+  auto graph_proto = model_proto->mutable_graph();  // create a graph
+  model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  for (const auto& op : original_graph.DomainToVersionMap()) {
+    auto* opset_import = model_proto->add_opset_import();
+    *(opset_import->mutable_domain()) = op.first;
+    opset_import->set_version(op.second);
+  }
+  auto graph_input = graph_proto->mutable_input();
+  for (const auto& input : original_graph.GetInputs()) {
+    auto* input_proto = graph_input->Add();
+    *input_proto = input->ToProto();
+  }
+  auto graph_output = graph_proto->mutable_output();
+  for (const auto& output : original_graph.GetOutputs()) {
+    auto* output_proto = graph_output->Add();
+    *output_proto = output->ToProto();
+  }
+  for (auto& node : original_graph.Nodes()) {
+    auto* node_proto = graph_proto->add_node();
+    node->ToProto(*node_proto, false);
+    for (auto output : node->OutputDefs()) {
+      if (output->Exists()) {
+        auto* value_info = graph_proto->mutable_value_info()->Add();
+        *value_info = output->ToProto();
+      }
+    }
+  }
+  auto ptr_to_string = [](const void* g) -> std::string {
+    return std::to_string((uintptr_t)(g));
+  };
+  auto graph_ptr = ptr_to_string(&original_graph);
+  for (auto& it : original_graph.GetAllInitializedTensors()) {
+    auto cloned_tensor = graph_proto->add_initializer();
+    auto original_tensor = it.second;
+    cloned_tensor->set_name(original_tensor->name());
+    cloned_tensor->set_data_type(original_tensor->data_type());
+    auto& dims = original_tensor->dims();
+    int64_t size = 1;
+    for (auto i = 0; i < dims.size(); ++i) {
+      auto dim = dims[i];
+      cloned_tensor->add_dims(dim);
+      size = size * dim;
+    }
+    if (size >= external_data_threshold) {
+      cloned_tensor->set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
+      auto external_data = cloned_tensor->mutable_external_data();
+      auto p = external_data->Add();
+      *p->mutable_key() = "location";
+      *p->mutable_value() = std::string("<") + graph_ptr;
+    } else {
+      *cloned_tensor = *original_tensor;
+    }
+  }
+  auto ret = Model::Create(std::move(*model_proto), file_path, &local_registries, logger);
+  auto& graph = ret->MainGraph();
+  for (auto node : graph.Nodes()) {
+    graph.SetOpSchemaFromRegistryForNode(*graph.GetNode(node->Index()));
+  }
+  auto status = graph.Resolve();
+  vai_assert(status.IsOK(), status.ErrorMessage());
+  return ret.release();
 }
 }  // namespace vaip

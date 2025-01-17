@@ -1,26 +1,33 @@
 /*
- * Copyright (c) 2019, 2023, Oracle and/or its affiliates. All rights reserved.
+ * Copyright (c) 2019, 2024, Oracle and/or its affiliates. All rights reserved.
  * Licensed under the MIT License.
  */
 package ai.onnxruntime;
 
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
+import ai.onnxruntime.OrtException.OrtErrorCode;
 import ai.onnxruntime.OrtSession.Result;
 import ai.onnxruntime.OrtSession.SessionOptions;
 import ai.onnxruntime.OrtSession.SessionOptions.ExecutionMode;
 import ai.onnxruntime.OrtSession.SessionOptions.OptLevel;
 import java.io.File;
 import java.io.IOException;
+import java.io.RandomAccessFile;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.FloatBuffer;
 import java.nio.LongBuffer;
+import java.nio.MappedByteBuffer;
+import java.nio.channels.FileChannel;
+import java.nio.channels.FileChannel.MapMode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -31,6 +38,8 @@ import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -46,7 +55,9 @@ import java.util.stream.Stream;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.DisabledOnOs;
 import org.junit.jupiter.api.condition.EnabledIfSystemProperty;
+import org.junit.jupiter.api.condition.OS;
 
 /** Tests for the onnx-runtime Java interface. */
 public class InferenceTest {
@@ -57,21 +68,23 @@ public class InferenceTest {
   private static final Pattern inputPBPattern = Pattern.compile("input_*.pb");
   private static final Pattern outputPBPattern = Pattern.compile("output_*.pb");
 
-  private static final OrtEnvironment env = OrtEnvironment.getEnvironment();
+  private static final OrtEnvironment env = TestHelpers.getOrtEnvironment();
 
   @Test
   public void environmentTest() {
     // Checks that the environment instance is the same.
     OrtEnvironment otherEnv = OrtEnvironment.getEnvironment();
     assertSame(env, otherEnv);
+    TestHelpers.quietLogger(OrtEnvironment.class);
     otherEnv = OrtEnvironment.getEnvironment("test-name");
+    TestHelpers.loudLogger(OrtEnvironment.class);
     assertSame(env, otherEnv);
   }
 
   @Test
   public void testVersion() {
     String version = env.getVersion();
-    Assertions.assertFalse(version.isEmpty());
+    assertFalse(version.isEmpty());
   }
 
   @Test
@@ -332,6 +345,33 @@ public class InferenceTest {
   }
 
   @Test
+  public void createSessionFromByteBuffer() throws IOException, OrtException {
+    Path modelPath = TestHelpers.getResourcePath("/squeezenet.onnx");
+    try (RandomAccessFile file = new RandomAccessFile(modelPath.toFile(), "r");
+        FileChannel channel = file.getChannel()) {
+      MappedByteBuffer modelBuffer = channel.map(MapMode.READ_ONLY, 0, channel.size());
+      try (OrtSession.SessionOptions options = new SessionOptions();
+          OrtSession session = env.createSession(modelBuffer, options)) {
+        assertNotNull(session);
+        assertEquals(1, session.getNumInputs()); // 1 input node
+        Map<String, NodeInfo> inputInfoList = session.getInputInfo();
+        assertNotNull(inputInfoList);
+        assertEquals(1, inputInfoList.size());
+        NodeInfo input = inputInfoList.get("data_0");
+        assertEquals("data_0", input.getName()); // input node name
+        assertTrue(input.getInfo() instanceof TensorInfo);
+        TensorInfo inputInfo = (TensorInfo) input.getInfo();
+        assertEquals(OnnxJavaType.FLOAT, inputInfo.type);
+        int[] expectedInputDimensions = new int[] {1, 3, 224, 224};
+        assertEquals(expectedInputDimensions.length, inputInfo.shape.length);
+        for (int i = 0; i < expectedInputDimensions.length; i++) {
+          assertEquals(expectedInputDimensions[i], inputInfo.shape[i]);
+        }
+      }
+    }
+  }
+
+  @Test
   public void createSessionFromByteArray() throws IOException, OrtException {
     Path modelPath = TestHelpers.getResourcePath("/squeezenet.onnx");
     byte[] modelBytes = Files.readAllBytes(modelPath);
@@ -457,12 +497,12 @@ public class InferenceTest {
       container.put("wrong_name", OnnxTensor.createTensor(env, tensor));
       try {
         session.run(container);
-        OnnxValue.close(container.values());
         fail("Should throw exception for incorrect name.");
       } catch (OrtException e) {
-        OnnxValue.close(container.values());
         String msg = e.getMessage();
         assertTrue(msg.contains("Unknown input name"));
+      } finally {
+        OnnxValue.close(container.values());
       }
     }
   }
@@ -484,12 +524,57 @@ public class InferenceTest {
       container.put(inputMeta.getName(), OnnxTensor.createTensor(env, tensor));
       try {
         session.run(container);
-        OnnxValue.close(container.values());
         fail("Should throw exception for incorrect type.");
       } catch (OrtException e) {
-        OnnxValue.close(container.values());
         String msg = e.getMessage();
         assertTrue(msg.contains("Unexpected input data type"));
+      } finally {
+        OnnxValue.close(container.values());
+      }
+    }
+  }
+
+  @Test
+  public void throwWrongSizeInput() throws OrtException {
+    SqueezeNetTuple tuple = openSessionSqueezeNet();
+    try (OrtSession session = tuple.session) {
+
+      float[] inputData = tuple.inputData;
+      NodeInfo inputMeta = session.getInputInfo().values().iterator().next();
+      Map<String, OnnxTensor> container = new HashMap<>();
+      float[] wrongSizeData = Arrays.copyOf(inputData, 2 * 224 * 224);
+      Object tensor = OrtUtil.reshape(wrongSizeData, new long[] {1, 2, 224, 224});
+      container.put(inputMeta.getName(), OnnxTensor.createTensor(env, tensor));
+      try {
+        session.run(container);
+        fail("Should throw exception for incorrect size.");
+      } catch (OrtException e) {
+        String msg = e.getMessage();
+        assertTrue(msg.contains("Got invalid dimensions for input"));
+      } finally {
+        OnnxValue.close(container.values());
+      }
+    }
+  }
+
+  @Test
+  public void throwWrongRankInput() throws OrtException {
+    SqueezeNetTuple tuple = openSessionSqueezeNet();
+    try (OrtSession session = tuple.session) {
+
+      float[] inputData = tuple.inputData;
+      NodeInfo inputMeta = session.getInputInfo().values().iterator().next();
+      Map<String, OnnxTensor> container = new HashMap<>();
+      Object tensor = OrtUtil.reshape(inputData, new long[] {1, 1, 3, 224, 224});
+      container.put(inputMeta.getName(), OnnxTensor.createTensor(env, tensor));
+      try {
+        session.run(container);
+        fail("Should throw exception for incorrect size.");
+      } catch (OrtException e) {
+        String msg = e.getMessage();
+        assertTrue(msg.contains("Invalid rank for input"));
+      } finally {
+        OnnxValue.close(container.values());
       }
     }
   }
@@ -512,12 +597,12 @@ public class InferenceTest {
       container.put("extra", OnnxTensor.createTensor(env, tensor));
       try {
         session.run(container);
-        OnnxValue.close(container.values());
         fail("Should throw exception for too many inputs.");
       } catch (OrtException e) {
-        OnnxValue.close(container.values());
         String msg = e.getMessage();
         assertTrue(msg.contains("Unexpected number of inputs"));
+      } finally {
+        OnnxValue.close(container.values());
       }
     }
   }
@@ -527,12 +612,11 @@ public class InferenceTest {
     int numThreads = 10;
     int loop = 10;
     SqueezeNetTuple tuple = openSessionSqueezeNet();
+    Map<String, OnnxTensor> container = new HashMap<>();
     try (OrtSession session = tuple.session) {
-
       float[] inputData = tuple.inputData;
       float[] expectedOutput = tuple.outputData;
       NodeInfo inputMeta = session.getInputInfo().values().iterator().next();
-      Map<String, OnnxTensor> container = new HashMap<>();
       long[] inputShape = ((TensorInfo) inputMeta.getInfo()).shape;
       Object tensor = OrtUtil.reshape(inputData, inputShape);
       container.put(inputMeta.getName(), OnnxTensor.createTensor(env, tensor));
@@ -554,8 +638,9 @@ public class InferenceTest {
       }
       executor.shutdown();
       executor.awaitTermination(1, TimeUnit.MINUTES);
-      OnnxValue.close(container.values());
       assertTrue(executor.isTerminated());
+    } finally {
+      OnnxValue.close(container.values());
     }
   }
 
@@ -583,6 +668,12 @@ public class InferenceTest {
         Map<String, NodeInfo> infoMap = session.getInputInfo();
         TensorInfo aInfo = (TensorInfo) infoMap.get("A").getInfo();
         assertArrayEquals(new long[] {-1, 2}, aInfo.shape);
+        assertEquals(2, aInfo.dimensionNames.length);
+        assertEquals("n", aInfo.dimensionNames[0]);
+        assertEquals("", aInfo.dimensionNames[1]);
+        TensorInfo bInfo = (TensorInfo) infoMap.get("B").getInfo();
+        assertEquals(1, bInfo.dimensionNames.length);
+        assertEquals("m", bInfo.dimensionNames[0]);
       }
     }
     // Check that when the options are assigned it overrides the symbolic dimension
@@ -622,6 +713,14 @@ public class InferenceTest {
 
   @Test
   @EnabledIfSystemProperty(named = "USE_DNNL", matches = "1")
+  // TODO see if this can be enabled on Windows.
+  // Error in CI build:
+  // ai.onnxruntime.OrtException: Error code - ORT_RUNTIME_EXCEPTION - message:
+  // D:\a\_work\1\s\onnxruntime\core\session\provider_bridge_ort.cc:1530
+  // onnxruntime::ProviderLibrary::Get [ONNXRuntimeError] : 1 : FAIL : LoadLibrary failed with error
+  // 126 "" when trying to load
+  // "C:\Users\cloudtest\AppData\Local\Temp\onnxruntime-java9085185608411256214\onnxruntime_providers_dnnl.dll"
+  @DisabledOnOs(value = OS.WINDOWS)
   public void testDNNL() throws OrtException {
     runProvider(OrtProvider.DNNL);
   }
@@ -636,6 +735,18 @@ public class InferenceTest {
   @EnabledIfSystemProperty(named = "USE_COREML", matches = "1")
   public void testCoreML() throws OrtException {
     runProvider(OrtProvider.CORE_ML);
+  }
+
+  @Test
+  @EnabledIfSystemProperty(named = "USE_DML", matches = "1")
+  public void testDirectML() throws OrtException {
+    runProvider(OrtProvider.DIRECT_ML);
+  }
+
+  @Test
+  @EnabledIfSystemProperty(named = "USE_QNN", matches = "1")
+  public void testQNN() throws OrtException {
+    runProvider(OrtProvider.QNN);
   }
 
   private void runProvider(OrtProvider provider) throws OrtException {
@@ -656,7 +767,16 @@ public class InferenceTest {
         OnnxValue resultTensor = result.get(0);
         float[] resultArray = TestHelpers.flattenFloat(resultTensor.getValue());
         assertEquals(expectedOutput.length, resultArray.length);
-        assertArrayEquals(expectedOutput, resultArray, 1e-6f);
+        if (provider == OrtProvider.CORE_ML) {
+          // CoreML gives slightly different answers on a 2020 13" M1 MBP
+          assertArrayEquals(expectedOutput, resultArray, 1e-2f);
+        } else if (provider == OrtProvider.CUDA || provider == OrtProvider.TENSOR_RT) {
+          // CUDA gives slightly different answers on a H100 with CUDA 12.2
+          // Need larger tolerance since TRT 10.4
+          assertArrayEquals(expectedOutput, resultArray, 1e-3f);
+        } else {
+          assertArrayEquals(expectedOutput, resultArray, 1e-5f);
+        }
       } catch (OrtException e) {
         throw new IllegalStateException("Failed to execute a scoring operation", e);
       }
@@ -741,6 +861,151 @@ public class InferenceTest {
         }
       }
       tensor.close();
+    }
+  }
+
+  @Test
+  public void testPinnedOutputs() throws OrtException {
+    String modelPath = TestHelpers.getResourcePath("/java-three-output-matmul.onnx").toString();
+    FloatBuffer outputABuf =
+        ByteBuffer.allocateDirect(4 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+    FloatBuffer outputBBuf =
+        ByteBuffer.allocateDirect(4 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+    FloatBuffer outputCBuf =
+        ByteBuffer.allocateDirect(4 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+    FloatBuffer tooSmallBuf =
+        ByteBuffer.allocateDirect(4 * 2).order(ByteOrder.nativeOrder()).asFloatBuffer();
+    FloatBuffer tooBigBuf =
+        ByteBuffer.allocateDirect(4 * 6).order(ByteOrder.nativeOrder()).asFloatBuffer();
+    FloatBuffer wrongShapeBuf =
+        ByteBuffer.allocateDirect(4 * 4).order(ByteOrder.nativeOrder()).asFloatBuffer();
+    LongBuffer wrongTypeBuf =
+        ByteBuffer.allocateDirect(8 * 4).order(ByteOrder.nativeOrder()).asLongBuffer();
+
+    try (SessionOptions options = new SessionOptions()) {
+      try (OrtSession session = env.createSession(modelPath, options);
+          OnnxTensor t = OnnxTensor.createTensor(env, new float[][] {{1, 2, 3, 4}});
+          OnnxTensor outputA = OnnxTensor.createTensor(env, outputABuf, new long[] {1, 4});
+          OnnxTensor outputB = OnnxTensor.createTensor(env, outputBBuf, new long[] {1, 4});
+          OnnxTensor outputC = OnnxTensor.createTensor(env, outputCBuf, new long[] {1, 4});
+          OnnxTensor tooSmall = OnnxTensor.createTensor(env, tooSmallBuf, new long[] {1, 2});
+          OnnxTensor tooBig = OnnxTensor.createTensor(env, tooBigBuf, new long[] {1, 6});
+          OnnxTensor wrongShape = OnnxTensor.createTensor(env, wrongShapeBuf, new long[] {2, 2});
+          OnnxTensor wrongType = OnnxTensor.createTensor(env, wrongTypeBuf, new long[] {1, 4})) {
+        Map<String, OnnxTensor> inputMap = Collections.singletonMap("input", t);
+        Set<String> requestedOutputs = new LinkedHashSet<>();
+        Map<String, OnnxTensor> pinnedOutputs = new LinkedHashMap<>();
+
+        // Test that all outputs can be pinned
+        pinnedOutputs.put("output-0", outputA);
+        pinnedOutputs.put("output-1", outputB);
+        pinnedOutputs.put("output-2", outputC);
+        try (OrtSession.Result r = session.run(inputMap, requestedOutputs, pinnedOutputs)) {
+          assertEquals(3, r.size());
+          assertSame(outputA, r.get(0));
+          assertSame(outputB, r.get(1));
+          assertSame(outputC, r.get(2));
+          assertFalse(r.isResultOwner(0));
+          assertFalse(r.isResultOwner(1));
+          assertFalse(r.isResultOwner(2));
+          // More tests
+        }
+        TestHelpers.zeroBuffer(outputABuf);
+        TestHelpers.zeroBuffer(outputBBuf);
+        TestHelpers.zeroBuffer(outputCBuf);
+        requestedOutputs.clear();
+        pinnedOutputs.clear();
+
+        // Test a single pinned output
+        pinnedOutputs.put("output-1", outputB);
+        try (OrtSession.Result r = session.run(inputMap, requestedOutputs, pinnedOutputs)) {
+          assertEquals(1, r.size());
+          assertSame(outputB, r.get(0));
+          assertSame(outputB, r.get("output-1").get());
+          assertFalse(r.isResultOwner(0));
+          // More tests
+        }
+        TestHelpers.zeroBuffer(outputABuf);
+        TestHelpers.zeroBuffer(outputBBuf);
+        TestHelpers.zeroBuffer(outputCBuf);
+        requestedOutputs.clear();
+        pinnedOutputs.clear();
+
+        // Test a mixture of pinned and generated outputs
+        requestedOutputs.add("output-0");
+        requestedOutputs.add("output-2");
+        pinnedOutputs.put("output-1", outputB);
+        try (OrtSession.Result r = session.run(inputMap, requestedOutputs, pinnedOutputs)) {
+          assertEquals(3, r.size());
+          // pinned outputs are first
+          assertSame(outputB, r.get(0));
+          assertSame(outputB, r.get("output-1").get());
+          // requested outputs are different
+          assertNotSame(outputA, r.get("output-0").get());
+          assertNotSame(outputC, r.get("output-2").get());
+          // check ownership.
+          assertFalse(r.isResultOwner(0));
+          assertTrue(r.isResultOwner(1));
+          assertTrue(r.isResultOwner(2));
+          // More tests
+        }
+        TestHelpers.zeroBuffer(outputABuf);
+        TestHelpers.zeroBuffer(outputBBuf);
+        TestHelpers.zeroBuffer(outputCBuf);
+        requestedOutputs.clear();
+        pinnedOutputs.clear();
+
+        // Test that overlapping names causes an error
+        requestedOutputs.add("output-1");
+        pinnedOutputs.put("output-1", outputB);
+        try (OrtSession.Result r = session.run(inputMap, requestedOutputs, pinnedOutputs)) {
+          fail("Should have thrown OrtException");
+        } catch (OrtException e) {
+          assertEquals(OrtErrorCode.ORT_JAVA_UNKNOWN, e.getCode());
+        }
+        requestedOutputs.clear();
+        pinnedOutputs.clear();
+
+        // Test that a tensor of the wrong type causes an error
+        pinnedOutputs.put("output-0", wrongType);
+        try (OrtSession.Result r = session.run(inputMap, requestedOutputs, pinnedOutputs)) {
+          fail("Should have thrown OrtException");
+        } catch (OrtException e) {
+          assertEquals(OrtErrorCode.ORT_INVALID_ARGUMENT, e.getCode());
+        }
+        requestedOutputs.clear();
+        pinnedOutputs.clear();
+
+        // Test that a tensor of the wrong shape (but right capacity) causes an error.
+        pinnedOutputs.put("output-1", wrongShape);
+        try (OrtSession.Result r = session.run(inputMap, requestedOutputs, pinnedOutputs)) {
+          fail("Should have thrown OrtException");
+        } catch (OrtException e) {
+          assertEquals(OrtErrorCode.ORT_INVALID_ARGUMENT, e.getCode());
+        }
+        requestedOutputs.clear();
+        pinnedOutputs.clear();
+
+        // Test that a tensor which is too small causes an error
+        pinnedOutputs.put("output-1", tooSmall);
+        try (OrtSession.Result r = session.run(inputMap, requestedOutputs, pinnedOutputs)) {
+          fail("Should have thrown OrtException");
+        } catch (OrtException e) {
+          assertEquals(OrtErrorCode.ORT_INVALID_ARGUMENT, e.getCode());
+        }
+        requestedOutputs.clear();
+        pinnedOutputs.clear();
+
+        // Test that a tensor which is too large causes an error
+        pinnedOutputs.put("output-1", tooBig);
+        try (OrtSession.Result r = session.run(inputMap, requestedOutputs, pinnedOutputs)) {
+          fail("Should have thrown OrtException");
+        } catch (OrtException e) {
+          assertEquals(OrtErrorCode.ORT_INVALID_ARGUMENT, e.getCode());
+        }
+        requestedOutputs.clear();
+        pinnedOutputs.clear();
+      }
     }
   }
 
@@ -1047,6 +1312,82 @@ public class InferenceTest {
   }
 
   @Test
+  public void testRunWithLoraAdapter() throws IOException, OrtException {
+    Path modelPath = TestHelpers.getResourcePath("/lora/two_params_lora_model.onnx");
+    Path adapterPath = TestHelpers.getResourcePath("/lora/two_params_lora_model.onnx_adapter");
+
+    long[] inputShape = new long[] {4, 4};
+    float[] inputData = new float[16];
+    Arrays.fill(inputData, 1.f);
+    FloatBuffer buf =
+        ByteBuffer.allocateDirect(Float.BYTES * 16).order(ByteOrder.nativeOrder()).asFloatBuffer();
+    buf.put(inputData);
+    buf.rewind();
+
+    float[][] expectedOutput =
+        new float[][] {
+          {28.f, 32.f, 36.f, 40.f},
+          {28.f, 32.f, 36.f, 40.f},
+          {28.f, 32.f, 36.f, 40.f},
+          {28.f, 32.f, 36.f, 40.f}
+        };
+
+    float[][] expectedLoRAOutput =
+        new float[][] {
+          {154.f, 176.f, 198.f, 220.f},
+          {154.f, 176.f, 198.f, 220.f},
+          {154.f, 176.f, 198.f, 220.f},
+          {154.f, 176.f, 198.f, 220.f}
+        };
+
+    try (OrtSession session = env.createSession(modelPath.toString());
+        OnnxTensor tensor = OnnxTensor.createTensor(env, buf, inputShape)) {
+
+      Map<String, OnnxTensor> inputs = Collections.singletonMap("input_x", tensor);
+
+      // Without LoRA
+      try (OrtSession.Result result = session.run(inputs)) {
+        float[][] resultArr = (float[][]) result.get(0).getValue();
+        Assertions.assertArrayEquals(expectedOutput, resultArr);
+      }
+
+      // With LoRA from path
+      try (OrtLoraAdapter adapter = OrtLoraAdapter.create(adapterPath.toString());
+          OrtSession.RunOptions runOptions = new OrtSession.RunOptions()) {
+        runOptions.addActiveLoraAdapter(adapter);
+        try (OrtSession.Result result = session.run(inputs, runOptions)) {
+          float[][] resultArr = (float[][]) result.get(0).getValue();
+          Assertions.assertArrayEquals(expectedLoRAOutput, resultArr);
+        }
+      }
+
+      // With LoRA from array
+      byte[] loraArray = Files.readAllBytes(adapterPath);
+      try (OrtLoraAdapter adapter = OrtLoraAdapter.create(loraArray);
+          OrtSession.RunOptions runOptions = new OrtSession.RunOptions()) {
+        runOptions.addActiveLoraAdapter(adapter);
+        try (OrtSession.Result result = session.run(inputs, runOptions)) {
+          float[][] resultArr = (float[][]) result.get(0).getValue();
+          Assertions.assertArrayEquals(expectedLoRAOutput, resultArr);
+        }
+      }
+
+      // With LoRA from buffer
+      ByteBuffer loraBuf = ByteBuffer.allocateDirect(loraArray.length);
+      loraBuf.put(loraArray);
+      loraBuf.rewind();
+      try (OrtLoraAdapter adapter = OrtLoraAdapter.create(loraBuf);
+          OrtSession.RunOptions runOptions = new OrtSession.RunOptions()) {
+        runOptions.addActiveLoraAdapter(adapter);
+        try (OrtSession.Result result = session.run(inputs, runOptions)) {
+          float[][] resultArr = (float[][]) result.get(0).getValue();
+          Assertions.assertArrayEquals(expectedLoRAOutput, resultArr);
+        }
+      }
+    }
+  }
+
+  @Test
   public void testExtraSessionOptions() throws OrtException, IOException {
     // model takes 1x5 input of fixed type, echoes back
     String modelPath = TestHelpers.getResourcePath("/test_types_BOOL.pb").toString();
@@ -1060,6 +1401,7 @@ public class InferenceTest {
       options.setLoggerId("monkeys");
       options.setSessionLogLevel(OrtLoggingLevel.ORT_LOGGING_LEVEL_FATAL);
       options.setSessionLogVerbosityLevel(5);
+      options.setDeterministicCompute(true);
       Map<String, String> configEntries = options.getConfigEntries();
       assertTrue(configEntries.isEmpty());
       options.addConfigEntry("key", "value");
@@ -1763,6 +2105,8 @@ public class InferenceTest {
           options.addNnapi();
           break;
         case DIRECT_ML:
+          options.setMemoryPatternOptimization(false);
+          options.setExecutionMode(ExecutionMode.SEQUENTIAL);
           options.addDirectML(0);
           break;
         case ACL:
@@ -1780,6 +2124,14 @@ public class InferenceTest {
         case XNNPACK:
           options.addXnnpack(Collections.emptyMap());
           break;
+        case QNN:
+          {
+            String backendPath = OS.WINDOWS.isCurrentOs() ? "/QnnCpu.dll" : "/libQnnCpu.so";
+            options.addQnn(
+                Collections.singletonMap(
+                    "backend_path", TestHelpers.getResourcePath(backendPath).toString()));
+            break;
+          }
         case VITIS_AI:
         case RK_NPU:
         case MI_GRAPH_X:

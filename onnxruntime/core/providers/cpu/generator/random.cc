@@ -138,7 +138,7 @@ static TensorProto::DataType InferDataType(const Tensor& tensor);
 Status RandomNormal::Compute(OpKernelContext* ctx) const {
   Tensor& Y = *ctx->Output(0, shape_);
 
-  std::lock_guard<onnxruntime::OrtMutex> l(generator_mutex_);
+  std::lock_guard<std::mutex> l(generator_mutex_);
   auto status = RandomNormalCompute(mean_, scale_, generator_, dtype_, Y);
 
   return status;
@@ -147,7 +147,7 @@ Status RandomNormal::Compute(OpKernelContext* ctx) const {
 Status RandomUniform::Compute(OpKernelContext* ctx) const {
   Tensor& Y = *ctx->Output(0, shape_);
 
-  std::lock_guard<onnxruntime::OrtMutex> l(generator_mutex_);
+  std::lock_guard<std::mutex> l(generator_mutex_);
   auto status = RandomUniformCompute(low_, high_, generator_, dtype_, Y);
 
   return status;
@@ -169,7 +169,7 @@ Status RandomNormalLike::Compute(OpKernelContext* ctx) const {
                            "Could not infer data type from input tensor with data type ",
                            X.DataType());
 
-  std::lock_guard<onnxruntime::OrtMutex> l(generator_mutex_);
+  std::lock_guard<std::mutex> l(generator_mutex_);
   status = RandomNormalCompute(mean_, scale_, generator_, dtype, *Y);
 
   return status;
@@ -190,7 +190,7 @@ Status RandomUniformLike::Compute(OpKernelContext* ctx) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                            "Could not infer data type from input tensor with data type ",
                            X.DataType());
-  std::lock_guard<onnxruntime::OrtMutex> l(generator_mutex_);
+  std::lock_guard<std::mutex> l(generator_mutex_);
   status = RandomUniformCompute(low_, high_, generator_, dtype, *Y);
 
   return status;
@@ -310,7 +310,7 @@ Status Multinomial::Compute(OpKernelContext* ctx) const {
   Tensor* Y = ctx->Output(0, {batch_size, num_samples_});
 
   Status status = Status::OK();
-  std::lock_guard<onnxruntime::OrtMutex> l(generator_mutex_);
+  std::lock_guard<std::mutex> l(generator_mutex_);
   switch (output_dtype_) {
     case TensorProto::INT32: {
       status = MultinomialCompute<int32_t>(ctx, X, batch_size, num_classes, num_samples_, generator_, *Y);
@@ -428,4 +428,14 @@ template Status MultinomialComputeShared<int64_t>(AllocatorPtr& alloc,
                                                   std::default_random_engine& generator,
                                                   Tensor& Y);
 
+#if !defined(DISABLE_CONTRIB_OPS)
+// used by onnxruntime/contrib_ops/cpu/transformers/sampling_cpu_helper.h
+template Status MultinomialComputeShared<int32_t>(AllocatorPtr& alloc,
+                                                  const Tensor& X,
+                                                  const int64_t batch_size,
+                                                  const int64_t num_classes,
+                                                  const int64_t num_samples,
+                                                  std::default_random_engine& generator,
+                                                  Tensor& Y);
+#endif
 }  // namespace onnxruntime

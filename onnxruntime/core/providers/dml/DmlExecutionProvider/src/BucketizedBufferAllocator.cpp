@@ -36,28 +36,24 @@ namespace Dml
 
     BucketizedBufferAllocator::BucketizedBufferAllocator(
         ID3D12Device* device,
-        std::shared_ptr<ExecutionContext> context,
+        ExecutionContext* context,
         const D3D12_HEAP_PROPERTIES& heapProps,
         D3D12_HEAP_FLAGS heapFlags,
         D3D12_RESOURCE_FLAGS resourceFlags,
         D3D12_RESOURCE_STATES initialState,
-        std::unique_ptr<DmlSubAllocator>&& subAllocator
-        )
+        std::unique_ptr<DmlSubAllocator>&& subAllocator)
         : onnxruntime::IAllocator(
-            OrtMemoryInfo(
-                "DML",
-                OrtAllocatorType::OrtDeviceAllocator,
-                OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0)
-            )
-        ),
-        m_device(device),
-        m_heapProperties(heapProps),
-        m_heapFlags(heapFlags),
-        m_resourceFlags(resourceFlags),
-        m_initialState(initialState),
-        m_context(context),
-        m_subAllocator(std::move(subAllocator))
-    {
+              OrtMemoryInfo(
+                  "DML",
+                  OrtAllocatorType::OrtDeviceAllocator,
+                  OrtDevice(OrtDevice::DML, OrtDevice::MemType::DEFAULT, 0))),
+          m_device(device),
+          m_heapProperties(heapProps),
+          m_heapFlags(heapFlags),
+          m_resourceFlags(resourceFlags),
+          m_initialState(initialState),
+          m_context(context),
+          m_subAllocator(std::move(subAllocator)) {
     }
 
     /*static*/ gsl::index BucketizedBufferAllocator::GetBucketIndexFromSize(uint64_t size)
@@ -82,6 +78,11 @@ namespace Dml
 
     void* BucketizedBufferAllocator::Alloc(size_t size)
     {
+        return Alloc(size, m_defaultRoundingMode);
+    }
+
+    void* BucketizedBufferAllocator::Alloc(size_t size, AllocatorRoundingMode roundingMode)
+    {
         // For some reason lotus likes requesting 0 bytes of memory
         size = std::max<size_t>(1, size);
 
@@ -90,7 +91,7 @@ namespace Dml
         uint64_t bucketSize = 0;
 
         // Use a pooled resource if the size (post rounding, if requested) matches a bucket size
-        if (m_defaultRoundingMode == AllocatorRoundingMode::Enabled || size == GetBucketSizeFromIndex(GetBucketIndexFromSize(size)))
+        if (roundingMode == AllocatorRoundingMode::Enabled || size == GetBucketSizeFromIndex(GetBucketIndexFromSize(size)))
         {
             Bucket* bucket = nullptr;
 
@@ -181,12 +182,16 @@ namespace Dml
         }
         else
         {
-            // Free the underlying allocation once queued work has completed.
-#ifdef _GAMING_XBOX
-            m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->GetResource()).Get());
-#else
-            m_context->QueueReference(allocInfo->GetResource());
-#endif
+            if (!m_context->IsClosed())
+            {
+                // Free the underlying allocation once queued work has completed.
+    #ifdef _GAMING_XBOX
+                m_context->QueueReference(WRAP_GRAPHICS_UNKNOWN(allocInfo->GetResource()).Get());
+    #else
+                m_context->QueueReference(allocInfo->GetResource());
+    #endif
+            }
+
             allocInfo->DetachResourceWrapper();
         }
 
@@ -207,15 +212,6 @@ namespace Dml
             ORT_THROW_HR(E_INVALIDARG);
         }
         const auto* allocInfo = static_cast<const AllocationInfo*>(opaqueHandle);
-
-        auto owner = allocInfo->GetOwner();
-        //The owner can be null if the resource was wrapped via CreateGPUAllocationFromD3DResource
-        if (owner != nullptr && owner != this)
-        {
-            // This allocation doesn't belong to this allocator!
-            ORT_THROW_HR(E_INVALIDARG);
-        }
-
         return allocInfo;
     }
 
@@ -223,28 +219,4 @@ namespace Dml
     {
         m_defaultRoundingMode = roundingMode;
     }
-
-    CPUAllocator::CPUAllocator(OrtMemType memType)
-        : onnxruntime::IAllocator(
-            OrtMemoryInfo(
-                "DML CPU",
-                OrtAllocatorType::OrtDeviceAllocator,
-                OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, 0),
-                0,
-                memType
-            )
-        )
-    {
-    }
-
-    void* CPUAllocator::Alloc(size_t size)
-    {
-        return onnxruntime::AllocatorDefaultAlloc(size);
-    }
-
-    void CPUAllocator::Free(void* p)
-    {
-        return onnxruntime::AllocatorDefaultFree(p);
-    }
-
 } // namespace Dml

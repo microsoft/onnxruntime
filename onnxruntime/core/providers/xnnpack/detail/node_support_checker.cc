@@ -6,23 +6,23 @@
 #include <unordered_map>
 
 #include "core/common/common.h"
+#include "core/framework/node_unit.h"
 #include "core/framework/op_node_proto_helper.h"
-#include "core/graph/graph_viewer.h"
 #include "core/graph/graph_utils.h"
+#include "core/graph/graph_viewer.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/nn/pool_attributes.h"
 #include "core/providers/xnnpack/detail/utils.h"
-#include "core/providers/shared/node_unit/node_unit.h"
 
 // each operator provides a helper to check if supported
+#include "core/providers/xnnpack/math/gemm.h"
+#include "core/providers/xnnpack/math/matmul.h"
+#include "core/providers/xnnpack/math/softmax.h"
+#include "core/providers/xnnpack/nn/average_pool.h"
 #include "core/providers/xnnpack/nn/conv.h"
 #include "core/providers/xnnpack/nn/conv_transpose.h"
 #include "core/providers/xnnpack/nn/max_pool.h"
-#include "core/providers/xnnpack/math/gemm.h"
-#include "core/providers/xnnpack/math/matmul.h"
-#include "core/providers/xnnpack/nn/average_pool.h"
-#include "core/providers/xnnpack/nn/resize.h"
-#include "core/providers/xnnpack/nn/softmax.h"
+#include "core/providers/xnnpack/tensor/resize.h"
 
 namespace onnxruntime {
 namespace xnnpack {
@@ -90,6 +90,17 @@ const NodeUnit* ClipReluChecker(const NodeUnit& node_unit,
 }  // namespace
 
 bool NodeSupportChecker::IsNodeSupported(const NodeUnit& nodeunit) {
+#ifndef XNNPACK_FP16_SUPPORTED
+  // check whether the hardware support XNNPack FP16
+  // Note. In CI, ios pipeline on ADO doesn't support XNNPack FP16. Because ADO mac pool is still x64.
+  const auto& inputs = nodeunit.Inputs();
+  const auto& x_arg = inputs[0].node_arg;
+  const auto* x_type = x_arg.TypeAsProto();
+  if (x_type == nullptr || x_type->tensor_type().elem_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
+    return false;
+  }
+#endif
+
   static std::unordered_map<std::string, CheckerFn> checkers{
       {"Conv", Conv::IsOnnxNodeSupported},
       {"ConvTranspose", ConvTranspose::IsOnnxNodeSupported},

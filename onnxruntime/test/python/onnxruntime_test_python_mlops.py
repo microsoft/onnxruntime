@@ -13,7 +13,7 @@ import onnxruntime as onnxrt
 
 
 class TestInferenceSession(unittest.TestCase):
-    def testZipMapStringFloat(self):  # noqa: N802
+    def test_zip_map_string_float(self):
         sess = onnxrt.InferenceSession(
             get_name("zipmap_stringfloat.onnx"),
             providers=onnxrt.get_available_providers(),
@@ -37,7 +37,7 @@ class TestInferenceSession(unittest.TestCase):
         res = sess.run([output_name], {x_name: x})
         self.assertEqual(output_expected, res[0])
 
-    def testZipMapInt64Float(self):  # noqa: N802
+    def test_zip_map_int64_float(self):
         sess = onnxrt.InferenceSession(
             get_name("zipmap_int64float.onnx"),
             providers=onnxrt.get_available_providers(),
@@ -58,7 +58,7 @@ class TestInferenceSession(unittest.TestCase):
         res = sess.run([output_name], {x_name: x})
         self.assertEqual(output_expected, res[0])
 
-    def testDictVectorizer(self):  # noqa: N802
+    def test_dict_vectorizer(self):
         sess = onnxrt.InferenceSession(
             get_name("pipeline_vectorize.onnx"),
             providers=onnxrt.get_available_providers(),
@@ -108,7 +108,7 @@ class TestInferenceSession(unittest.TestCase):
         output_expected = np.array([[49.752754]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
-    def testLabelEncoder(self):  # noqa: N802
+    def test_label_encoder(self):
         sess = onnxrt.InferenceSession(get_name("LabelEncoder.onnx"), providers=onnxrt.get_available_providers())
         input_name = sess.get_inputs()[0].name
         self.assertEqual(input_name, "input")
@@ -173,7 +173,7 @@ class TestInferenceSession(unittest.TestCase):
         # In memory, the size of each element is fixed and equal to the
         # longest element. We cannot use bytes because numpy is trimming
         # every final 0 for strings and bytes before creating the array
-        # (to save space). It does not have this behaviour for void
+        # (to save space). It does not have this behavior for void
         # but as a result, numpy does not know anymore the size
         # of each element, they all have the same size.
         c1 = np.array([b"A\0A\0\0", b"B\0B\0\0", b"C\0C\0\0"], np.void).reshape(1, 3)

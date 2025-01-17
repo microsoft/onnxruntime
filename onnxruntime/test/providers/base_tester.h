@@ -7,6 +7,7 @@
 #include <string>
 #include <variant>
 #include <vector>
+#include <type_traits>
 
 #include "core/framework/customregistry.h"
 #include "core/framework/prepacked_weights_container.h"
@@ -519,8 +520,19 @@ class BaseTester {
     custom_session_registries_.push_back(registry);
   }
 
+  // For floating types (double/float/half/bfloat16), tolerance is similar to numpy.isclose:
+  //   absolute(expected_value - actual_value) <= abs_error + rel_error * absolute(expected_value)
+  // For integer types, tolerance parameters are ignored except the following cases:
+  //   For uint8, tolerance is only applied to NNAPI/XNNPACK/DML providers.
+  //   For int8, only abs_error is used, and rel_error is ignored. See checkers.cc for detail.
+  // If abs_error or rel_error is not set, a default value is used (search DefaultTolerance for detail).
   void SetOutputAbsErr(const char* name, float v);
   void SetOutputRelErr(const char* name, float v);
+
+  // Set absolute and relative tolerance for all existed outputs.
+  // Negative value will be ignored.
+  // Note that it will not set tolerance for new outputs added after this call.
+  void SetOutputTolerance(float abs_error, float rel_error = -1.0f);
 
   // Number of times to call InferenceSession::Run. The same feeds are used each time.
   // e.g. used to verify the generator ops behave as expected
@@ -546,6 +558,12 @@ class BaseTester {
   BaseTester& ConfigExcludeEps(const std::unordered_set<std::string>& excluded_provider_types);
   BaseTester& Config(const RunOptions* run_options);
   BaseTester& ConfigEps(std::vector<std::unique_ptr<IExecutionProvider>>&& execution_providers);
+  // Configure a single EP to run.
+  BaseTester& ConfigEp(std::unique_ptr<IExecutionProvider>&& execution_provider) {
+    std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+    execution_providers.emplace_back(std::move(execution_provider));
+    return ConfigEps(std::move(execution_providers));
+  }
   BaseTester& Config(const Graph::ResolveOptions& resolve_options);
 
   void RunWithConfig(size_t* number_of_pre_packed_weights_counter = nullptr,
@@ -673,8 +691,14 @@ class BaseTester {
       if (!is_optional_type_tensor || (is_optional_type_tensor && values != nullptr)) {
         // In case values is nullptr for optional type tensor, it means we are creating
         // an optional type tensor which is None and we hence skip values count validation
-        ORT_ENFORCE(shape.Size() == values_count, values_count, " input values doesn't match tensor size of ",
-                    shape.Size());
+        if constexpr (std::is_same_v<T, Int4x2> || std::is_same_v<T, UInt4x2>) {
+          const int64_t expected_values_count = T::CalcNumInt4Pairs(shape.Size());
+          ORT_ENFORCE(expected_values_count == values_count, values_count,
+                      " input values doesn't match tensor size of ", expected_values_count);
+        } else {
+          ORT_ENFORCE(shape.Size() == values_count, values_count, " input values doesn't match tensor size of ",
+                      shape.Size());
+        }
 
         // If it is an optional tensor type with no values (i.e.) None,
         // we won't even pass it in to Run() as part of the feeds,

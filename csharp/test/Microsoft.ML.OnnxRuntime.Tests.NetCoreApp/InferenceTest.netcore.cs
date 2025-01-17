@@ -42,7 +42,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 Assert.NotNull(session);
                 Assert.NotNull(session.InputMetadata);
-                Assert.Equal(1, session.InputMetadata.Count); // 1 input nodeMeta
+                Assert.Single(session.InputMetadata); // 1 input nodeMeta
                 Assert.True(session.InputMetadata.ContainsKey("data_0")); // input nodeMeta name
                 Assert.Equal(typeof(float), session.InputMetadata["data_0"].ElementType);
                 Assert.True(session.InputMetadata["data_0"].IsTensor);
@@ -54,7 +54,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 }
 
                 Assert.NotNull(session.OutputMetadata);
-                Assert.Equal(1, session.OutputMetadata.Count); // 1 output nodeMeta
+                Assert.Single(session.OutputMetadata); // 1 output nodeMeta
                 Assert.True(session.OutputMetadata.ContainsKey("softmaxout_1")); // output nodeMeta name
                 Assert.Equal(typeof(float), session.OutputMetadata["softmaxout_1"].ElementType);
                 Assert.True(session.OutputMetadata["softmaxout_1"].IsTensor);
@@ -73,13 +73,21 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 
+            string defaultDeviceId = "0";
+            string deviceIdFromEnv = System.Environment.GetEnvironmentVariable("OnnxruntimeTestGpuDeviceId");
+            if (!string.IsNullOrEmpty(deviceIdFromEnv) && int.TryParse(deviceIdFromEnv, out int deviceId) && deviceId >= 0)
+            {
+                defaultDeviceId = deviceIdFromEnv;
+                output.WriteLine($"Parsed ID: {deviceIdFromEnv}");
+            }
+
             using (var cleanUp = new DisposableListTest<IDisposable>())
             {
                 var cudaProviderOptions = new OrtCUDAProviderOptions();
                 cleanUp.Add(cudaProviderOptions);
 
                 var providerOptionsDict = new Dictionary<string, string>();
-                providerOptionsDict["device_id"] = "0";
+                providerOptionsDict["device_id"] = defaultDeviceId;
                 // 256MB
                 providerOptionsDict["gpu_mem_limit"] = "268435456";
                 providerOptionsDict["arena_extend_strategy"] = "kSameAsRequested";
@@ -138,9 +146,17 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         {
             string modelPath = Path.Combine(Directory.GetCurrentDirectory(), "squeezenet.onnx");
 
+            int deviceId = 0;
+            string deviceIdStr = System.Environment.GetEnvironmentVariable("ONNXRUNTIME_TEST_GPU_DEVICE_ID");
+            if (!string.IsNullOrEmpty(deviceIdStr) && int.TryParse(deviceIdStr, out int parsedValue) && parsedValue >= 0)
+            {
+                deviceId = parsedValue;
+                output.WriteLine($"Parsed ID: {parsedValue}");
+            }
+
             using (var cleanUp = new DisposableListTest<IDisposable>())
             {
-                SessionOptions options = SessionOptions.MakeSessionOptionWithTensorrtProvider(0);
+                SessionOptions options = SessionOptions.MakeSessionOptionWithTensorrtProvider(deviceId);
                 cleanUp.Add(options);
 
                 var session = new InferenceSession(modelPath, options);
@@ -172,6 +188,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             string calTablePath = "squeezenet_calibration.flatbuffers";
             string enginePath = "./";
             string engineDecrptLibPath = "engine_decryp";
+            string defaultDeviceId = "0";
+            string deviceIdFromEnv = System.Environment.GetEnvironmentVariable("OnnxruntimeTestGpuDeviceId");
+            if (!string.IsNullOrEmpty(deviceIdFromEnv) && int.TryParse(deviceIdFromEnv, out int deviceId) && deviceId >= 0)
+            {
+                defaultDeviceId = deviceIdFromEnv;
+                output.WriteLine($"Parsed ID: {deviceIdFromEnv}");
+            }
 
             using (var cleanUp = new DisposableListTest<IDisposable>())
             {
@@ -179,7 +202,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 cleanUp.Add(trtProviderOptions);
 
                 var providerOptionsDict = new Dictionary<string, string>();
-                providerOptionsDict["device_id"] = "0";
+                providerOptionsDict["device_id"] = defaultDeviceId;
                 providerOptionsDict["trt_fp16_enable"] = "1";
                 providerOptionsDict["trt_int8_enable"] = "1";
                 providerOptionsDict["trt_int8_calibration_table_name"] = calTablePath;
@@ -195,7 +218,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 // test provider options configuration
                 string value;
                 value = resultProviderOptionsDict["device_id"];
-                Assert.Equal("0", value);
+                Assert.Equal(defaultDeviceId, value);
                 value = resultProviderOptionsDict["trt_fp16_enable"];
                 Assert.Equal("1", value);
                 value = resultProviderOptionsDict["trt_int8_enable"];
@@ -642,7 +665,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                             }
                             break;
                         default:
-                            Assert.True(false, $"TestPreTrainedModels cannot handle Onnxtype: {outputValue.ValueType}");
+                            Assert.Fail($"TestPreTrainedModels cannot handle Onnxtype: {outputValue.ValueType}");
                             break;
                     }
                 }
@@ -657,7 +680,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
             var orderedInputNames = new List<string>(inputContainer.Count);
             var orderdedInputs = new List<OrtValue>(inputContainer.Count);
-            foreach(var pair in inputContainer)
+            foreach (var pair in inputContainer)
             {
                 orderedInputNames.Add(pair.Key);
                 orderdedInputs.Add(pair.Value);
@@ -697,7 +720,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     }
                     else
                     {
-                        Assert.True(false, $"TestPreTrainedModels cannot handle Onnxtype: {outputMeta.OnnxValueType}");
+                        Assert.Fail($"TestPreTrainedModels cannot handle Onnxtype: {outputMeta.OnnxValueType}");
                     }
                 }
             }
@@ -749,7 +772,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     throw new Exception($"Opset {opset} Model {modelName}. Can't determine model file name. Found these :{modelNamesList}");
                 }
 
-                using(var runOptions = new RunOptions())
+                using (var runOptions = new RunOptions())
                 using (var session = new InferenceSession(onnxModelFileName))
                 {
                     string testDataDirNamePattern = "test_data*";
@@ -820,7 +843,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         }
                         break;
                     default:
-                        Assert.True(false, "VerifySequenceResults cannot handle Onnxtype: " + resultItem.ValueType.ToString());
+                        Assert.Fail("VerifySequenceResults cannot handle Onnxtype: " + resultItem.ValueType.ToString());
                         break;
                 }
                 Assert.Equal(resultItem.AsTensor<float>(), expectedItem.AsTensor<float>(), new FloatComparer());
@@ -874,7 +897,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     Assert.Equal(expectedValue.AsTensor<string>(), result.AsTensor<string>(), new ExactComparer<string>());
                     break;
                 default:
-                    Assert.True(false, "TestPreTrainedModels does not yet support output of type: " + elementType.ToString());
+                    Assert.Fail("TestPreTrainedModels does not yet support output of type: " + elementType.ToString());
                     break;
             }
         }
@@ -914,7 +937,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                             }
                             break;
                         default:
-                            Assert.True(false, $"VerifySequenceResults cannot handle Onnxtype: {elementMeta.OnnxValueType}");
+                            Assert.Fail($"VerifySequenceResults cannot handle Onnxtype: {elementMeta.OnnxValueType}");
                             break;
                     }
                 }
@@ -986,7 +1009,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                                                new BFloat16Comparer { tolerance = 2 });
                     break;
                 default:
-                    Assert.True(false, "VerifyTensorResults cannot handle ElementType: " + expectedElementType.ToString());
+                    Assert.Fail("VerifyTensorResults cannot handle ElementType: " + expectedElementType.ToString());
                     break;
             }
         }
@@ -1054,7 +1077,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         Assert.Equal(result.GetStringTensorAsArray(), expectedValue.AsTensor<string>().ToArray(), new ExactComparer<string>());
                         break;
                     default:
-                        Assert.True(false, $"VerifyTensorResults cannot handle ElementType: { resultTypeShape.ElementDataType}");
+                        Assert.Fail($"VerifyTensorResults cannot handle ElementType: {resultTypeShape.ElementDataType}");
                         break;
                 }
             }
@@ -1226,6 +1249,88 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     Assert.True(File.Exists(modelOutputPath));
                 }
             }
+        }
+
+        private static OrtLoraAdapter CreateLoraAdapterFromFile()
+        {
+            var adapterPath = Path.Combine(Directory.GetCurrentDirectory(), "two_params_lora_model.onnx_adapter");
+            return OrtLoraAdapter.Create(adapterPath, null);
+        }
+
+        private static OrtLoraAdapter CreateLoraAdapterFromArray()
+        {
+            var adapterPath = Path.Combine(Directory.GetCurrentDirectory(), "two_params_lora_model.onnx_adapter");
+            var adapterBytes = File.ReadAllBytes(adapterPath);
+            return OrtLoraAdapter.Create(adapterBytes, null);
+        }
+
+        // See tests below for running with Lora Adapters
+        [Fact(DisplayName = "TestInferenceWithBaseLoraModel")]
+        private void TestInferenceWithBaseLoraModel()
+        {
+            var modelPath = Path.Combine(Directory.GetCurrentDirectory(), "two_params_lora_model.onnx");
+
+            var inputShape = new long[] { 4, 4 };
+            var inputData = new float[16];
+            Array.Fill(inputData, 1);
+            using var inputOrtValue = OrtValue.CreateTensorValueFromMemory(inputData, inputShape);
+
+            var expectedOutput = new float[] {
+                    28, 32, 36, 40,
+                    28, 32, 36, 40,
+                    28, 32, 36, 40,
+                    28, 32, 36, 40 };
+
+            using var session = new InferenceSession(modelPath);
+            using var runOptions = new RunOptions();
+
+            using var outputs = session.Run(runOptions, ["input_x"], [inputOrtValue], ["output"]);
+            Assert.Single(outputs);
+            var output = outputs[0].GetTensorDataAsSpan<float>();
+            Assert.Equal(expectedOutput.Length, output.Length);
+            Assert.Equal(expectedOutput, output.ToArray(), new FloatComparer());
+        }
+
+
+        private static void TestInferenceWithLoraAdapter(OrtLoraAdapter ortLoraAdapter)
+        {
+            var modelPath = Path.Combine(Directory.GetCurrentDirectory(), "two_params_lora_model.onnx");
+            var adapterPath = Path.Combine(Directory.GetCurrentDirectory(), "two_params_lora_model.onnx_adapter");
+
+            var inputShape = new long[] { 4, 4 };
+            var inputData = new float[16];
+            Array.Fill(inputData, 1);
+            using var inputOrtValue = OrtValue.CreateTensorValueFromMemory(inputData, inputShape);
+
+            var expectedOutput = new float[] {
+                  154, 176, 198, 220,
+                  154, 176, 198, 220,
+                  154, 176, 198, 220,
+                  154, 176, 198, 220 };
+
+            using var session = new InferenceSession(modelPath);
+            using var runOptions = new RunOptions();
+            runOptions.AddActiveLoraAdapter(ortLoraAdapter);
+
+            using var outputs = session.Run(runOptions, ["input_x"], [inputOrtValue], ["output"]);
+            Assert.Single(outputs);
+            var output = outputs[0].GetTensorDataAsSpan<float>();
+            Assert.Equal(expectedOutput.Length, output.Length);
+            Assert.Equal(expectedOutput, output.ToArray(), new FloatComparer());
+        }
+
+        [Fact(DisplayName = "TestInferenceWithLoraAdapterFromFile")]
+        private void TestInferenceWithLoraAdapterFromFile()
+        {
+            using var ortAdapter = CreateLoraAdapterFromFile();
+            TestInferenceWithLoraAdapter(ortAdapter);
+        }
+
+        [Fact(DisplayName = "TestInferenceWithLoraAdapterFromArray")]
+        private void TestInferenceWithLoraAdapterFromArray()
+        {
+            using var ortAdapter = CreateLoraAdapterFromArray();
+            TestInferenceWithLoraAdapter(ortAdapter);
         }
 
         // TestGpu() will test

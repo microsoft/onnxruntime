@@ -10,7 +10,7 @@
 
 const size_t EMIT_NUM = 4;
 
-// This will avoid the copies when doing implict Python list <==> C++ std::vector<> conversion.
+// This will avoid the copies when doing implicit Python list <==> C++ std::vector<> conversion.
 PYBIND11_MAKE_OPAQUE(std::vector<at::Tensor>);
 
 // This function is adapted from microsoft/DeepSpeed fused_adam_frontend.cpp
@@ -150,7 +150,7 @@ void unscale_fp16_grads_into_fp32_grads(std::vector<at::Tensor>& all_fp16_params
 
   if (idx_to_fp32_from_fp16_params.size() > 0) {
     auto mem_buffer = MemoryBuffer(memory_buffer_size, idx_to_fp32_from_fp16_params.begin()->second);
-    const size_t emit_threshhold = memory_buffer_size / EMIT_NUM;
+    const size_t emit_threshold = memory_buffer_size / EMIT_NUM;
 
     size_t acc_size = 0;
     std::vector<at::Tensor> partial_new_fp32_grads;
@@ -167,7 +167,7 @@ void unscale_fp16_grads_into_fp32_grads(std::vector<at::Tensor>& all_fp16_params
       partial_new_fp32_grads.emplace_back(idx_to_fp32_from_fp16_params[idx].grad());
       partial_fp16_grads_needing_unscale.emplace_back(fp16_grads_needing_unscale[fp32_from_fp16_param_idx]);
 
-      if (acc_size > emit_threshhold || fp32_from_fp16_param_idx == idx_to_fp32_from_fp16_params.size() - 1) {
+      if (acc_size > emit_threshold || fp32_from_fp16_param_idx == idx_to_fp32_from_fp16_params.size() - 1) {
         if (partial_fp16_grads_needing_unscale.size() > 0) {
           std::vector<std::vector<at::Tensor>> tensor_lists;
           tensor_lists.emplace_back(partial_fp16_grads_needing_unscale);

@@ -144,7 +144,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
 
   BeamSearchCpuState cpu_state{*parameters,
                                this->cpu_allocator_,
-                               this->IsCuda()};
+                               this->IsCuda(),
+                               this->ort_stream_};
 
   IAllocatorUniquePtr<char> buffer;
 
@@ -195,7 +196,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
   BeamSearchState<T> beam_state{*parameters,
                                 this->temp_space_allocator_,
                                 decoder_subgraph_.has_decoder_masked_attention_,
-                                false /* use_position */};
+                                false /* use_position */,
+                                this->ort_stream_};
 
   init_beam_state_func_(&beam_state,
                         cpu_state.sequence_lengths,
@@ -212,7 +214,7 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     cpu_state.sequences.InitDevice(beam_state.sequences_device);
     ORT_RETURN_IF_ERROR(this->device_copy_int32_func_(beam_state.sequences_device.subspan(0, beam_state.sequences_device.size() / 2),
                                                       cpu_state.sequences_space.subspan(0, cpu_state.sequences_space.size() / 2),
-                                                      nullptr,
+                                                      this->ort_stream_,
                                                       DeviceCopyDirection::hostToDevice));
   }
 
@@ -256,7 +258,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                                              current_length,
                                                              cpu_state.sequences,
                                                              parameters->max_length,
-                                                             decoder_subgraph_.has_decoder_masked_attention_));
+                                                             decoder_subgraph_.has_decoder_masked_attention_,
+                                                             this->cuda_device_prop_ != nullptr));
 
     if (decoder_subgraph_.past_present_share_buffer_) {
       decoder_fetches.reserve(static_cast<size_t>(decoder_subgraph_.GetFirstPresentOutputIndex()) +
@@ -300,17 +303,24 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
     auto cur_len = std::to_string(current_length);
     dumper->Print("***CurrentLength", cur_len, true);
 
-    for (int i = 0; i <= decoder_subgraph_.GetFirstPastInputIndex(); i++) {
+    for (int i = 0; i < decoder_subgraph_.GetFirstPastInputIndex(); i++) {
       dumper->Print("decoder_feeds", i, true);
       dumper->Print("", decoder_feeds[i]);
     }
-    auto offset = decoder_subgraph_.GetFirstPastInputIndex() + 4 * decoder_subgraph_.num_layers;
-    dumper->Print("past_sequence_length", offset, true);
-    dumper->Print("", decoder_feeds[offset]);
-    dumper->Print("beam_width", offset + 1, true);
-    dumper->Print("", decoder_feeds[offset + 1]);
-    dumper->Print("cache_redir", offset + 2, true);
-    dumper->Print("", decoder_feeds[offset + 2]);
+    for (int i = 0; i < decoder_subgraph_.num_layers; i++) {
+      int self_key_idx = decoder_subgraph_.GetFirstPastInputIndex() + 2 * i;
+      int self_value_idx = self_key_idx + 1;
+      dumper->Print("past_key_self", i, true);
+      dumper->Print("", decoder_feeds[self_key_idx]);
+      dumper->Print("past_value_self", i + 1, true);
+      dumper->Print("", decoder_feeds[self_value_idx]);
+      int cross_key_idx = decoder_subgraph_.GetFirstPastInputIndex() + 2 * decoder_subgraph_.num_layers + 2 * i;
+      int cross_value_idx = cross_key_idx + 1;
+      dumper->Print("past_key_cross", i, true);
+      dumper->Print("", decoder_feeds[cross_key_idx]);
+      dumper->Print("past_value_cross", i, true);
+      dumper->Print("", decoder_feeds[cross_value_idx]);
+    }
 #endif
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS
@@ -402,12 +412,8 @@ Status BeamSearchT5<T>::Execute(const FeedsFetchesManager& encoder_feeds_fetches
                                output_sequences_scores);
 
   // Output per token scores
-  if (output_scores) {
-    gsl::span<float> target = output_scores->MutableDataAsSpan<float>();
-    gsl::span<const float> source = beam_state.scores;
-    assert(target.size() == source.size());
-    ORT_RETURN_IF_ERROR(this->device_copy_func_(target, source, nullptr, DeviceCopyDirection::deviceToDevice));
-  }
+  gsl::span<const float> per_token_scores = beam_state.scores;
+  this->beam_scorer_->OutputScores(per_token_scores, output_scores);
 
   return status;
 }

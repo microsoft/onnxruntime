@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "onnx/defs/schema.h"
+#include "core/graph/onnx_protobuf.h"
 #include "onnx/defs/shape_inference.h"
 #include "onnx/defs/tensor_proto_util.h"
 
@@ -395,7 +395,7 @@ ONNX_CONTRIB_OPERATOR_SET_SCHEMA(
             const auto input_rank = input_shape.dim_size();
             if (input_rank != 4) fail_shape_inference("Input's shape must be 4-D");
 
-            // parse necessary attributes for futher processing
+            // parse necessary attributes for further processing
             std::vector<int64_t> border;
             bool border_present = getRepeatedAttribute(ctx, "border", border);
             if (!border_present || border.size() != 4)

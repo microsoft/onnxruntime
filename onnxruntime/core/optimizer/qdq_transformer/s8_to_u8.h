@@ -27,7 +27,7 @@ inline bool Int8TensorProto2Uint8(
   if (nullptr == src) {
     uint8_t zero_val = 128;
     dst.set_name(graph.GenerateNodeArgName("weight_zp_s8_2_u8"));
-    dst.set_raw_data(&zero_val, sizeof(uint8_t));
+    utils::SetRawDataInTensorProto(dst, &zero_val, sizeof(uint8_t));
     return true;
   }
 
@@ -58,7 +58,7 @@ inline bool Int8TensorProto2Uint8(
     p++;
   }
   if (force || should_convert) {
-    dst.set_raw_data(temp.data<int8_t>(), size_t(temp.size()));
+    utils::SetRawDataInTensorProto(dst, temp.data<int8_t>(), size_t(temp.size()));
     return true;
   }
   return false;

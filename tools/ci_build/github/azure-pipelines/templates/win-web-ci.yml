@@ -20,19 +20,22 @@ parameters:
   type: string
   default: 'NPM_packages'
 
+- name: RunWebGpuTests
+  type: boolean
+  default: false
+
 jobs:
 - job: build_onnxruntime_web
   pool: ${{ parameters.PoolName }}
 
   variables:
+    webgpuCommandlineExtraFlags: '--chromium-flags=--ignore-gpu-blocklist --chromium-flags=--gpu-vendor-id=0x10de'
     runCodesignValidationInjection: false
+    CHROME_BIN: 'C:\Program Files\Google\Chrome\Application\chrome.exe'
   timeoutInMinutes: 60
   workspace:
     clean: all
   steps:
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
   - checkout: self
     submodules: false
   - task: DownloadPipelineArtifact@2
@@ -68,7 +71,7 @@ jobs:
     displayName: 'Testing: force EOL to lf on windows for /js/**'
   - task: NodeTool@0
     inputs:
-      versionSpec: '16.x'
+      versionSpec: '20.x'
   - task: DownloadPipelineArtifact@2
     inputs:
       patterns: '${{ parameters.BuildConfig }}_*/**/*'
@@ -78,34 +81,30 @@ jobs:
     inputs:
       sourceFolder: $(Pipeline.Workspace)\artifacts
       contents: |
-        **\*.wasm
+        **\*.*
       targetFolder: $(Build.SourcesDirectory)\js\web\dist
       flattenFolders: true
     displayName: 'Binplace dist files'
-  - task: CopyFiles@2
-    inputs:
-      sourceFolder: $(Pipeline.Workspace)\artifacts
-      contents: |
-        **\*.js
-      targetFolder: $(Build.SourcesDirectory)\js\web\lib\wasm\binding
-      flattenFolders: true
-    displayName: 'Binplace js files'
   - script: |
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js'
     displayName: 'npm ci /js/'
   - script: |
-     npm run lint
-    workingDirectory: '$(Build.SourcesDirectory)\js'
-    displayName: 'run ESLint without TS type populated'
-  - script: |
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js\common'
     displayName: 'npm ci /js/common/'
   - script: |
+     npm test
+    workingDirectory: '$(Build.SourcesDirectory)\js\common'
+    displayName: 'run onnxruntime-common tests'
+  - script: |
      npm ci
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'npm ci /js/web/'
+  - script: |
+     npm run prebuild
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'run TypeScript type check in /js/web/'
   - script: |
      npm run lint
     workingDirectory: '$(Build.SourcesDirectory)\js'
@@ -134,12 +133,7 @@ jobs:
       path: $(Build.SourcesDirectory)/js/test/
       cacheHitVar: CACHE_RESTORED
     displayName: 'Cache ONNX node test data'
-  - task: Bash@3
-    inputs:
-      targetType: 'inline'
-      script: find "$(Build.SourcesDirectory)/js/test/" -type f
-    condition: and(not(canceled()), eq(variables.CACHE_RESTORED, 'true'))
-    displayName: 'List ONNX node test data'
+
   - task: PowerShell@2
     inputs:
       filePath: '$(Build.SourcesDirectory)\tools\ci_build\github\js\pack-npm-packages.ps1'
@@ -148,23 +142,76 @@ jobs:
       errorActionPreference: stop
     displayName: 'Pack NPM packages'
   - script: |
-     npm test
-    workingDirectory: '$(Build.SourcesDirectory)\js\web'
-    displayName: 'Run ort-web tests'
+     powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
+    displayName: 'Check active Chrome processes (before test)'
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
   - script: |
-     npm test -- --webgl-texture-pack-mode -b=webgl
+     mkdir $(Agent.TempDirectory)\web\test\01
+     dir $(Agent.TempDirectory)\web\test\01
+     npm test -- -e=chrome -b=webgl,wasm --user-data-dir=$(Agent.TempDirectory)\web\test\01 --chromium-flags=--enable-logging --chromium-flags=--v=1
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Run ort-web tests (wasm,webgl backend)'
+    condition: and(succeeded(), eq('${{ parameters.RunWebGpuTests }}', 'false'))
+  - script: |
+     powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
+    displayName: 'Check active Chrome processes (before test)'
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
+  - script: |
+     mkdir $(Agent.TempDirectory)\web\test\02
+     dir $(Agent.TempDirectory)\web\test\02
+     npm test -- -e=chrome -b=webgl,wasm,webgpu $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\02 --chromium-flags=--enable-logging --chromium-flags=--v=1
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Run ort-web tests (ALL backends)'
+    condition: and(succeeded(), eq('${{ parameters.RunWebGpuTests }}', 'true'))
+  - script: |
+     powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
+    displayName: 'Check active Chrome processes (before test)'
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
+  - script: |
+     mkdir $(Agent.TempDirectory)\web\test\03
+     dir $(Agent.TempDirectory)\web\test\03
+     npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-tensor $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\03 --chromium-flags=--enable-logging --chromium-flags=--v=1
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-tensor)'
+    condition: and(succeeded(), eq('${{ parameters.RunWebGpuTests }}', 'true'))
+  - script: |
+     powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
+    displayName: 'Check active Chrome processes (before test)'
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
+  - script: |
+     mkdir $(Agent.TempDirectory)\web\test\04
+     dir $(Agent.TempDirectory)\web\test\04
+     npm test -- suite1 -e=chrome -b=webgpu --io-binding=gpu-location $(webgpuCommandlineExtraFlags) --user-data-dir=$(Agent.TempDirectory)\web\test\04 --chromium-flags=--enable-logging --chromium-flags=--v=1
+    workingDirectory: '$(Build.SourcesDirectory)\js\web'
+    displayName: 'Run ort-web tests (Suite1, webgpu, IO-binding=gpu-location)'
+    condition: and(succeeded(), eq('${{ parameters.RunWebGpuTests }}', 'true'))
+  - script: |
+     powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
+    displayName: 'Check active Chrome processes (before test)'
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
+  - script: |
+     mkdir $(Agent.TempDirectory)\web\test\05
+     dir $(Agent.TempDirectory)\web\test\05
+     npm test -- --webgl.pack -b=webgl -e=chrome --user-data-dir=$(Agent.TempDirectory)\web\test\05 --chromium-flags=--enable-logging --chromium-flags=--v=1
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebGL: packed mode'
   - script: |
-     npm test -- --wasm-enable-proxy -b=wasm
+     powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
+    displayName: 'Check active Chrome processes (before test)'
+    condition: and(succeeded(), eq(variables['Agent.Diagnostic'], 'true'))
+  - script: |
+     mkdir $(Agent.TempDirectory)\web\test\06
+     dir $(Agent.TempDirectory)\web\test\06
+     npm test -- --wasm.proxy -b=wasm -e=chrome --user-data-dir=$(Agent.TempDirectory)\web\test\06 --chromium-flags=--enable-logging --chromium-flags=--v=1
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'Run ort-web tests - WebAssembly: proxy'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
   - script: |
-      npm run test:e2e
+      npm run test:e2e -- --browser=Chrome_default
     workingDirectory: '$(Build.SourcesDirectory)\js\web'
     displayName: 'E2E package consuming test'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
+
   - task: CopyFiles@2
     inputs:
       sourceFolder: $(Build.SourcesDirectory)\js\common
@@ -185,6 +232,16 @@ jobs:
       targetPath: '$(Build.ArtifactStagingDirectory)'
     displayName: 'Publish Pipeline Artifact'
     condition: and(succeeded(), eq('${{ parameters.BuildConfig }}', 'Release'))
+  - script: |
+      if exist 01 (echo ------------------- BEGIN 01 -------------------&&type 01\chrome_debug.log&&echo ------------------- END 01 ------------------- )
+      if exist 02 (echo ------------------- BEGIN 02 -------------------&&type 02\chrome_debug.log&&echo ------------------- END 02 ------------------- )
+      if exist 03 (echo ------------------- BEGIN 03 -------------------&&type 03\chrome_debug.log&&echo ------------------- END 03 ------------------- )
+      if exist 04 (echo ------------------- BEGIN 04 -------------------&&type 04\chrome_debug.log&&echo ------------------- END 04 ------------------- )
+      if exist 05 (echo ------------------- BEGIN 05 -------------------&&type 05\chrome_debug.log&&echo ------------------- END 05 ------------------- )
+      if exist 06 (echo ------------------- BEGIN 06 -------------------&&type 06\chrome_debug.log&&echo ------------------- END 06 ------------------- )
+    displayName: 'Log Chrome processes (after test)'
+    workingDirectory: '$(Agent.TempDirectory)\web\test'
+    condition: always()
   - template: component-governance-component-detection-steps.yml
     parameters :
       condition : 'succeeded'

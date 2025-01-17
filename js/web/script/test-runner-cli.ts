@@ -4,22 +4,23 @@
 /* eslint-disable guard-for-in */
 /* eslint-disable @typescript-eslint/no-use-before-define */
 
-import {spawnSync} from 'child_process';
+import { spawnSync } from 'child_process';
 import * as fs from 'fs-extra';
-import {default as minimatch} from 'minimatch';
+import { default as minimatch } from 'minimatch';
 import npmlog from 'npmlog';
 import * as os from 'os';
 import * as path from 'path';
-import {inspect} from 'util';
+import { inspect } from 'util';
 
-import {bufferToBase64} from '../test/test-shared';
-import {Test} from '../test/test-types';
+import { onnx } from '../lib/onnxjs/ort-schema/protobuf/onnx';
+import { bufferToBase64 } from '../test/test-shared';
+import { Test } from '../test/test-types';
 
-import {parseTestRunnerCliArgs, TestRunnerCliArgs} from './test-runner-cli-args';
+import { parseTestRunnerCliArgs, TestRunnerCliArgs } from './test-runner-cli-args';
 
 async function main() {
   // use dynamic import so that we can use ESM only libraries in commonJS.
-  const {globbySync} = await import('globby');
+  const { globbySync } = await import('globby');
   const stripJsonComments = (await import('strip-json-comments')).default;
 
   npmlog.info('TestRunnerCli', 'Initializing...');
@@ -28,6 +29,7 @@ async function main() {
 
   npmlog.verbose('TestRunnerCli.Init.Config', inspect(args));
 
+  const DIST_ROOT = path.join(__dirname, '..', 'dist');
   const TEST_ROOT = path.join(__dirname, '..', 'test');
   const TEST_DATA_MODEL_NODE_ROOT = path.join(TEST_ROOT, 'data', 'node');
   const TEST_DATA_OP_ROOT = path.join(TEST_ROOT, 'data', 'ops');
@@ -39,29 +41,30 @@ async function main() {
   npmlog.verbose('TestRunnerCli.Init', 'Ensure test data folder... DONE');
 
   let testlist: Test.TestList;
-  const shouldLoadSuiteTestData = (args.mode === 'suite0' || args.mode === 'suite1');
+  const shouldLoadSuiteTestData = args.mode === 'suite0' || args.mode === 'suite1';
   if (shouldLoadSuiteTestData) {
     npmlog.verbose('TestRunnerCli.Init', 'Loading testlist...');
 
     // The following is a list of unittests for already implemented operators.
     // Modify this list to control what node tests to run.
     const jsonWithComments = fs.readFileSync(path.resolve(TEST_ROOT, './suite-test-list.jsonc')).toString();
-    const json = stripJsonComments(jsonWithComments, {whitespace: true});
+    const json = stripJsonComments(jsonWithComments, { whitespace: true });
     testlist = JSON.parse(json) as Test.TestList;
     npmlog.verbose('TestRunnerCli.Init', 'Loading testlist... DONE');
   }
 
   // The default backends and opset version lists. Those will be used in suite tests.
   const DEFAULT_BACKENDS: readonly TestRunnerCliArgs.Backend[] =
-      args.env === 'node' ? ['cpu', 'wasm'] : ['wasm', 'webgl', 'webgpu', 'webnn'];
-  const DEFAULT_OPSET_VERSIONS = fs.readdirSync(TEST_DATA_MODEL_NODE_ROOT, {withFileTypes: true})
-                                     .filter(dir => dir.isDirectory() && dir.name.startsWith('opset'))
-                                     .map(dir => dir.name.slice(5));
-  const MAX_OPSET_VERSION = Math.max(...DEFAULT_OPSET_VERSIONS.map(v => Number.parseInt(v, 10)));
+    args.env === 'node' ? ['cpu', 'wasm'] : ['wasm', 'webgl', 'webgpu', 'webnn'];
+  const DEFAULT_OPSET_VERSIONS = fs
+    .readdirSync(TEST_DATA_MODEL_NODE_ROOT, { withFileTypes: true })
+    .filter((dir) => dir.isDirectory() && dir.name.startsWith('opset'))
+    .map((dir) => dir.name.slice(5));
+  const MAX_OPSET_VERSION = Math.max(...DEFAULT_OPSET_VERSIONS.map((v) => Number.parseInt(v, 10)));
 
-  const FILE_CACHE_ENABLED = args.fileCache;         // whether to enable file cache
-  const FILE_CACHE_MAX_FILE_SIZE = 1 * 1024 * 1024;  // The max size of the file that will be put into file cache
-  const FILE_CACHE_SPLIT_SIZE = 4 * 1024 * 1024;     // The min size of the cache file
+  const FILE_CACHE_ENABLED = args.fileCache; // whether to enable file cache
+  const FILE_CACHE_MAX_FILE_SIZE = 1 * 1024 * 1024; // The max size of the file that will be put into file cache
+  const FILE_CACHE_SPLIT_SIZE = 4 * 1024 * 1024; // The min size of the cache file
   const fileCache: Test.FileCache = {};
 
   const nodeTests = new Map<string, Test.ModelTestGroup[]>();
@@ -72,20 +75,19 @@ async function main() {
     npmlog.verbose('TestRunnerCli.Init', 'Loading test groups for suite test...');
 
     // collect all model test folders
-    const allNodeTestsFolders =
-        DEFAULT_OPSET_VERSIONS
-            .map(version => {
-              const suiteRootFolder = path.join(TEST_DATA_MODEL_NODE_ROOT, `opset${version}`);
-              if (!fs.existsSync(suiteRootFolder) || !fs.statSync(suiteRootFolder).isDirectory()) {
-                throw new Error(`model test root folder '${suiteRootFolder}' does not exist.`);
-              }
-              return fs.readdirSync(suiteRootFolder).map(f => `opset${version}/${f}`);
-            })
-            .flat();
+    const allNodeTestsFolders = DEFAULT_OPSET_VERSIONS.map((version) => {
+      const suiteRootFolder = path.join(TEST_DATA_MODEL_NODE_ROOT, `opset${version}`);
+      if (!fs.existsSync(suiteRootFolder) || !fs.statSync(suiteRootFolder).isDirectory()) {
+        throw new Error(`model test root folder '${suiteRootFolder}' does not exist.`);
+      }
+      return fs.readdirSync(suiteRootFolder).map((f) => `opset${version}/${f}`);
+    }).flat();
 
     for (const backend of DEFAULT_BACKENDS) {
-      nodeTests.set(backend, loadNodeTests(backend, allNodeTestsFolders));
-      opTests.set(backend, loadOpTests(backend));
+      if (args.backends.indexOf(backend) !== -1) {
+        nodeTests.set(backend, loadNodeTests(backend, allNodeTestsFolders));
+        opTests.set(backend, loadOpTests(backend));
+      }
     }
   }
 
@@ -107,8 +109,8 @@ async function main() {
     case 'suite1':
       for (const backend of DEFAULT_BACKENDS) {
         if (args.backends.indexOf(backend) !== -1) {
-          modelTestGroups.push(...nodeTests.get(backend)!);  // model test : node
-          opTestGroups.push(...opTests.get(backend)!);       // operator test
+          modelTestGroups.push(...nodeTests.get(backend)!); // model test : node
+          opTestGroups.push(...opTests.get(backend)!); // operator test
         }
       }
       if (args.mode === 'suite0') {
@@ -118,12 +120,15 @@ async function main() {
 
     case 'model':
       if (!args.param) {
-        throw new Error('the test folder should be specified in mode \'node\'');
+        throw new Error("the test folder should be specified in mode 'node'");
       } else {
         const testFolderSearchPattern = args.param;
         const testFolder = tryLocateModelTestFolder(testFolderSearchPattern);
         for (const b of args.backends) {
-          modelTestGroups.push({name: testFolder, tests: [modelTestFromFolder(testFolder, b, undefined, args.times)]});
+          modelTestGroups.push({
+            name: testFolder,
+            tests: [modelTestFromFolder(testFolder, b, undefined, args.times)],
+          });
         }
       }
       break;
@@ -134,7 +139,7 @@ async function main() {
 
     case 'op':
       if (!args.param) {
-        throw new Error('the test manifest should be specified in mode \'op\'');
+        throw new Error("the test manifest should be specified in mode 'op'");
       } else {
         const manifestFileSearchPattern = args.param;
         const manifestFile = tryLocateOpTestManifest(manifestFileSearchPattern);
@@ -156,15 +161,19 @@ async function main() {
     op: opTestGroups,
     log: args.logConfig,
     profile: args.profile,
+    downloadModel: args.downloadModel,
     options: {
-      sessionOptions:
-          {graphOptimizationLevel: args.graphOptimizationLevel, optimizedModelFilePath: args.optimizedModelFilePath},
+      sessionOptions: {
+        graphOptimizationLevel: args.graphOptimizationLevel,
+        optimizedModelFilePath: args.optimizedModelFilePath,
+      },
       debug: args.debug,
       cpuOptions: args.cpuOptions,
       webglOptions: args.webglOptions,
+      webnnOptions: args.webnnOptions,
       wasmOptions: args.wasmOptions,
-      globalEnvFlags: args.globalEnvFlags
-    }
+      globalEnvFlags: args.globalEnvFlags,
+    },
   });
   npmlog.info('TestRunnerCli', 'Tests completed successfully');
 
@@ -176,11 +185,12 @@ async function main() {
           const testCaseName = typeof testCase === 'string' ? testCase : testCase.name;
           let found = false;
           for (const testGroup of nodeTest) {
-            found ||= minimatch
-                          .match(
-                              testGroup.tests.map(test => test.modelUrl).filter(url => url !== ''),
-                              path.join('**', testCaseName, '*.+(onnx|ort)').replace(/\\/g, '/'), {matchBase: true})
-                          .length > 0;
+            found ||=
+              minimatch.match(
+                testGroup.tests.map((test) => test.modelUrl).filter((url) => url !== ''),
+                path.join('**', testCaseName, '*.+(onnx|ort)').replace(/\\/g, '/'),
+                { matchBase: true },
+              ).length > 0;
           }
           if (!found) {
             throw new Error(`node model test case '${testCaseName}' in test list does not exist.`);
@@ -190,7 +200,7 @@ async function main() {
 
       const onnxTest = onnxTests.get(backend);
       if (onnxTest) {
-        const onnxModelTests = onnxTest.tests.map(i => i.name);
+        const onnxModelTests = onnxTest.tests.map((i) => i.name);
         for (const testCase of testlist[backend].onnx) {
           const testCaseName = typeof testCase === 'string' ? testCase : testCase.name;
           if (onnxModelTests.indexOf(testCaseName) === -1) {
@@ -201,7 +211,7 @@ async function main() {
 
       const opTest = opTests.get(backend);
       if (opTest) {
-        const opTests = opTest.map(i => i.name);
+        const opTests = opTest.map((i) => i.name);
         for (const testCase of testlist[backend].ops) {
           const testCaseName = typeof testCase === 'string' ? testCase : testCase.name;
           if (opTests.indexOf(testCaseName) === -1) {
@@ -216,14 +226,14 @@ async function main() {
     const allTests = testlist[backend]?.node;
 
     // key is folder name, value is test index array
-    const folderTestMatchCount = new Map<string, number[]>(allFolders.map(f => [f, []]));
+    const folderTestMatchCount = new Map<string, number[]>(allFolders.map((f) => [f, []]));
     // key is test category, value is a list of model test
     const opsetTests = new Map<string, Test.ModelTest[]>();
 
     allTests.forEach((test, i) => {
       const testName = typeof test === 'string' ? test : test.name;
       const matches = minimatch.match(allFolders, path.join('**', testName).replace(/\\/g, '/'));
-      matches.forEach(m => folderTestMatchCount.get(m)!.push(i));
+      matches.forEach((m) => folderTestMatchCount.get(m)!.push(i));
     });
 
     for (const folder of allFolders) {
@@ -234,7 +244,7 @@ async function main() {
       }
 
       const test = testIds && testIds.length > 0 ? allTests[testIds[0]] : undefined;
-      const condition = test && typeof test !== 'string' ? test.condition : undefined;
+      const platformCondition = test && typeof test !== 'string' ? test.platformCondition : undefined;
 
       const opsetVersion = folder.split('/')[0];
       const category = `node-${opsetVersion}-${backend}`;
@@ -243,25 +253,39 @@ async function main() {
         modelTests = [];
         opsetTests.set(category, modelTests);
       }
-      modelTests.push(modelTestFromFolder(path.resolve(TEST_DATA_MODEL_NODE_ROOT, folder), backend, condition, times));
+      modelTests.push(
+        modelTestFromFolder(path.resolve(TEST_DATA_MODEL_NODE_ROOT, folder), backend, platformCondition, times),
+      );
     }
 
-    return Array.from(opsetTests.keys()).map(category => ({name: category, tests: opsetTests.get(category)!}));
+    return Array.from(opsetTests.keys()).map((category) => ({ name: category, tests: opsetTests.get(category)! }));
   }
 
   function modelTestFromFolder(
-      testDataRootFolder: string, backend: string, condition?: Test.Condition, times?: number): Test.ModelTest {
+    testDataRootFolder: string,
+    backend: string,
+    platformCondition?: Test.PlatformCondition,
+    times?: number,
+  ): Test.ModelTest {
     if (times === 0) {
       npmlog.verbose('TestRunnerCli.Init.Model', `Skip test data from folder: ${testDataRootFolder}`);
-      return {name: path.basename(testDataRootFolder), backend, modelUrl: '', cases: []};
+      return {
+        name: path.basename(testDataRootFolder),
+        backend,
+        modelUrl: '',
+        cases: [],
+        ioBinding: args.ioBindingMode,
+      };
     }
 
-    let modelUrl: string|null = null;
+    let modelUrl: string | null = null;
     let cases: Test.ModelTestCase[] = [];
+    let externalData: Array<{ data: string; path: string }> | undefined;
 
     npmlog.verbose('TestRunnerCli.Init.Model', `Start to prepare test data from folder: ${testDataRootFolder}`);
 
     try {
+      const maybeExternalDataFiles: Array<[fileNameWithoutExtension: string, size: number]> = [];
       for (const thisPath of fs.readdirSync(testDataRootFolder)) {
         const thisFullPath = path.join(testDataRootFolder, thisPath);
         const stat = fs.lstatSync(thisFullPath);
@@ -276,6 +300,8 @@ async function main() {
             } else {
               throw new Error('there are multiple model files under the folder specified');
             }
+          } else {
+            maybeExternalDataFiles.push([path.parse(thisPath).name, stat.size]);
           }
         } else if (stat.isDirectory()) {
           const dataFiles: string[] = [];
@@ -286,20 +312,52 @@ async function main() {
             if (ext.toLowerCase() === '.pb') {
               const dataFileUrl = path.join(TEST_DATA_BASE, path.relative(TEST_ROOT, dataFileFullPath));
               dataFiles.push(dataFileUrl);
-              if (FILE_CACHE_ENABLED && !fileCache[dataFileUrl] &&
-                  fs.lstatSync(dataFileFullPath).size <= FILE_CACHE_MAX_FILE_SIZE) {
+              if (
+                FILE_CACHE_ENABLED &&
+                !fileCache[dataFileUrl] &&
+                fs.lstatSync(dataFileFullPath).size <= FILE_CACHE_MAX_FILE_SIZE
+              ) {
                 fileCache[dataFileUrl] = bufferToBase64(fs.readFileSync(dataFileFullPath));
               }
             }
           }
           if (dataFiles.length > 0) {
-            cases.push({dataFiles, name: thisPath});
+            cases.push({ dataFiles, name: thisPath });
           }
         }
       }
 
       if (modelUrl === null) {
         throw new Error('there are no model file under the folder specified');
+      }
+      // for performance consideration, we do not parse every model. when we think it's likely to have external
+      // data, we will parse it. We think it's "likely" when one of the following conditions is met:
+      // 1. any file in the same folder has the similar file name as the model file
+      //    (e.g., model file is "model_abc.onnx", and there is a file "model_abc.pb" or "model_abc.onnx.data")
+      // 2. the file size is larger than 1GB
+      const likelyToHaveExternalData = maybeExternalDataFiles.some(
+        ([fileNameWithoutExtension, size]) =>
+          path.basename(modelUrl!).startsWith(fileNameWithoutExtension) || size >= 1 * 1024 * 1024 * 1024,
+      );
+      if (likelyToHaveExternalData) {
+        const model = onnx.ModelProto.decode(fs.readFileSync(path.join(testDataRootFolder, path.basename(modelUrl!))));
+        const externalDataPathSet = new Set<string>();
+        for (const initializer of model.graph!.initializer!) {
+          if (initializer.externalData) {
+            for (const data of initializer.externalData) {
+              if (data.key === 'location') {
+                externalDataPathSet.add(data.value!);
+              }
+            }
+          }
+        }
+        externalData = [];
+        const externalDataPaths = [...externalDataPathSet];
+        for (const dataPath of externalDataPaths) {
+          const fullPath = path.resolve(testDataRootFolder, dataPath);
+          const url = path.join(TEST_DATA_BASE, path.relative(TEST_ROOT, fullPath));
+          externalData.push({ data: url, path: dataPath });
+        }
       }
     } catch (e) {
       npmlog.error('TestRunnerCli.Init.Model', `Failed to prepare test data. Error: ${inspect(e)}`);
@@ -311,7 +369,10 @@ async function main() {
       if (times > caseCount) {
         for (let i = 0; cases.length < times; i++) {
           const origin = cases[i % caseCount];
-          const duplicated = {name: `${origin.name} - copy ${Math.floor(i / caseCount)}`, dataFiles: origin.dataFiles};
+          const duplicated = {
+            name: `${origin.name} - copy ${Math.floor(i / caseCount)}`,
+            dataFiles: origin.dataFiles,
+          };
           cases.push(duplicated);
         }
       } else {
@@ -319,14 +380,39 @@ async function main() {
       }
     }
 
+    let ioBinding: Test.IOBindingMode;
+    if (!['webgpu', 'webnn'].includes(backend) && args.ioBindingMode !== 'none') {
+      npmlog.warn(
+        'TestRunnerCli.Init.Model',
+        `Ignoring IO Binding Mode "${args.ioBindingMode}" for backend "${backend}".`,
+      );
+      ioBinding = 'none';
+    } else {
+      ioBinding = args.ioBindingMode;
+    }
+
     npmlog.verbose('TestRunnerCli.Init.Model', 'Finished preparing test data.');
     npmlog.verbose('TestRunnerCli.Init.Model', '===============================================================');
     npmlog.verbose('TestRunnerCli.Init.Model', ` Model file: ${modelUrl}`);
     npmlog.verbose('TestRunnerCli.Init.Model', ` Backend: ${backend}`);
     npmlog.verbose('TestRunnerCli.Init.Model', ` Test set(s): ${cases.length} (${caseCount})`);
+    if (externalData) {
+      npmlog.verbose('TestRunnerCli.Init.Model', ` External data: ${externalData.length}`);
+      for (const data of externalData) {
+        npmlog.verbose('TestRunnerCli.Init.Model', `  - ${data.path}`);
+      }
+    }
     npmlog.verbose('TestRunnerCli.Init.Model', '===============================================================');
 
-    return {name: path.basename(testDataRootFolder), condition, modelUrl, backend, cases};
+    return {
+      name: path.basename(testDataRootFolder),
+      platformCondition,
+      modelUrl,
+      backend,
+      cases,
+      ioBinding,
+      externalData,
+    };
   }
 
   function tryLocateModelTestFolder(searchPattern: string): string {
@@ -338,17 +424,22 @@ async function main() {
 
     // 2 - check the globby result of searchPattern
     // 3 - check the globby result of ONNX root combined with searchPattern
-    const globbyPattern =
-        [searchPattern, path.join(TEST_DATA_MODEL_NODE_ROOT, '**', searchPattern).replace(/\\/g, '/')];
+    const globbyPattern = [
+      searchPattern,
+      path.join(TEST_DATA_MODEL_NODE_ROOT, '**', searchPattern).replace(/\\/g, '/'),
+    ];
     // 4 - check the globby result of NODE root combined with opset versions and searchPattern
-    globbyPattern.push(...DEFAULT_OPSET_VERSIONS.map(
-        v => path.join(TEST_DATA_MODEL_NODE_ROOT, `opset${v}`, '**', searchPattern).replace(/\\/g, '/')));
+    globbyPattern.push(
+      ...DEFAULT_OPSET_VERSIONS.map((v) =>
+        path.join(TEST_DATA_MODEL_NODE_ROOT, `opset${v}`, '**', searchPattern).replace(/\\/g, '/'),
+      ),
+    );
 
-    folderCandidates.push(...globbySync(globbyPattern, {onlyDirectories: true, absolute: true}));
+    folderCandidates.push(...globbySync(globbyPattern, { onlyDirectories: true, absolute: true }));
 
     // pick the first folder that matches the pattern
     for (const folderCandidate of folderCandidates) {
-      const modelCandidates = globbySync('*.{onnx,ort}', {onlyFiles: true, cwd: folderCandidate});
+      const modelCandidates = globbySync('*.{onnx,ort}', { onlyFiles: true, cwd: folderCandidate });
       if (modelCandidates && modelCandidates.length === 1) {
         return folderCandidate;
       }
@@ -380,12 +471,21 @@ async function main() {
     } else {
       npmlog.verbose('TestRunnerCli.Init.Op', `Start to prepare test data from manifest file: ${filePath}`);
       const jsonWithComments = fs.readFileSync(filePath).toString();
-      const json = stripJsonComments(jsonWithComments, {whitespace: true});
+      const json = stripJsonComments(jsonWithComments, { whitespace: true });
       tests = JSON.parse(json) as Test.OperatorTest[];
       // field 'verbose' and 'backend' is not set
       for (const test of tests) {
         test.backend = backend;
-        test.opsets = test.opsets || [{domain: '', version: MAX_OPSET_VERSION}];
+        test.opset = test.opset || { domain: '', version: MAX_OPSET_VERSION };
+        if (backend !== 'webgpu' && args.ioBindingMode !== 'none') {
+          npmlog.warn(
+            'TestRunnerCli.Init.Op',
+            `Ignoring IO Binding Mode "${args.ioBindingMode}" for backend "${backend}".`,
+          );
+          test.ioBinding = 'none';
+        } else {
+          test.ioBinding = args.ioBindingMode;
+        }
       }
       npmlog.verbose('TestRunnerCli.Init.Op', 'Finished preparing test data.');
       npmlog.verbose('TestRunnerCli.Init.Op', '===============================================================');
@@ -394,17 +494,19 @@ async function main() {
       npmlog.verbose('TestRunnerCli.Init.Op', ` Test case(s): ${tests.length}`);
       npmlog.verbose('TestRunnerCli.Init.Op', '===============================================================');
     }
-    return {name: path.relative(TEST_DATA_OP_ROOT, filePath), tests};
+    return { name: path.relative(TEST_DATA_OP_ROOT, filePath), tests };
   }
 
   function tryLocateOpTestManifest(searchPattern: string): string {
     for (const manifestCandidate of globbySync(
-             [
-               searchPattern, path.join(TEST_DATA_OP_ROOT, '**', searchPattern).replace(/\\/g, '/'),
-               path.join(TEST_DATA_OP_ROOT, '**', searchPattern + '.json').replace(/\\/g, '/'),
-               path.join(TEST_DATA_OP_ROOT, '**', searchPattern + '.jsonc').replace(/\\/g, '/')
-             ],
-             {onlyFiles: true, absolute: true, cwd: TEST_ROOT})) {
+      [
+        searchPattern,
+        path.join(TEST_DATA_OP_ROOT, '**', searchPattern).replace(/\\/g, '/'),
+        path.join(TEST_DATA_OP_ROOT, '**', searchPattern + '.json').replace(/\\/g, '/'),
+        path.join(TEST_DATA_OP_ROOT, '**', searchPattern + '.jsonc').replace(/\\/g, '/'),
+      ],
+      { onlyFiles: true, absolute: true, cwd: TEST_ROOT },
+    )) {
       return manifestCandidate;
     }
 
@@ -419,9 +521,11 @@ async function main() {
       config.fileCacheUrls = fileCacheUrls;
     }
     npmlog.info(
-        'TestRunnerCli.Run',
-        `(1/4) Writing file cache to file: testdata-file-cache-*.json ... ${
-            fileCacheUrls.length > 0 ? `DONE, ${fileCacheUrls.length} file(s) generated` : 'SKIPPED'}`);
+      'TestRunnerCli.Run',
+      `(1/4) Writing file cache to file: testdata-file-cache-*.json ... ${
+        fileCacheUrls.length > 0 ? `DONE, ${fileCacheUrls.length} file(s) generated` : 'SKIPPED'
+      }`,
+    );
 
     // STEP 2. write the config to testdata-config.json
     npmlog.info('TestRunnerCli.Run', '(2/4) Writing config to file: testdata-config.json ...');
@@ -432,11 +536,8 @@ async function main() {
     npmlog.info('TestRunnerCli.Run', '(3/4) Running build to generate bundle...');
     const buildCommand = `node ${path.join(__dirname, 'build')}`;
     const buildArgs = [`--bundle-mode=${args.env === 'node' ? 'node' : args.bundleMode}`];
-    if (args.backends.indexOf('wasm') === -1) {
-      buildArgs.push('--no-wasm');
-    }
     npmlog.info('TestRunnerCli.Run', `CMD: ${buildCommand} ${buildArgs.join(' ')}`);
-    const build = spawnSync(buildCommand, buildArgs, {shell: true, stdio: 'inherit'});
+    const build = spawnSync(buildCommand, buildArgs, { shell: true, stdio: 'inherit' });
     if (build.status !== 0) {
       console.error(build.error);
       process.exit(build.status === null ? undefined : build.status);
@@ -446,7 +547,7 @@ async function main() {
     if (args.env === 'node') {
       // STEP 5. run tsc and run mocha
       npmlog.info('TestRunnerCli.Run', '(4/4) Running tsc...');
-      const tsc = spawnSync('npx', ['tsc'], {shell: true, stdio: 'inherit'});
+      const tsc = spawnSync('npx', ['tsc'], { shell: true, stdio: 'inherit' });
       if (tsc.status !== 0) {
         console.error(tsc.error);
         process.exit(tsc.status === null ? undefined : tsc.status);
@@ -454,40 +555,64 @@ async function main() {
       npmlog.info('TestRunnerCli.Run', '(4/4) Running tsc... DONE');
 
       npmlog.info('TestRunnerCli.Run', '(4/4) Running mocha...');
-      const mochaArgs = ['mocha', path.join(TEST_ROOT, 'test-main'), `--timeout ${args.debug ? 9999999 : 60000}`];
+      const mochaArgs = [
+        'mocha',
+        '--timeout',
+        `${args.debug ? 9999999 : 60000}`,
+        '-r',
+        path.join(DIST_ROOT, 'ort.node.min.js'),
+        path.join(TEST_ROOT, 'test-main'),
+      ];
       npmlog.info('TestRunnerCli.Run', `CMD: npx ${mochaArgs.join(' ')}`);
-      const mocha = spawnSync('npx', mochaArgs, {shell: true, stdio: 'inherit'});
+      const mocha = spawnSync('npx', mochaArgs, { shell: true, stdio: 'inherit' });
       if (mocha.status !== 0) {
         console.error(mocha.error);
         process.exit(mocha.status === null ? undefined : mocha.status);
       }
       npmlog.info('TestRunnerCli.Run', '(4/4) Running mocha... DONE');
-
     } else {
       // STEP 5. use Karma to run test
       npmlog.info('TestRunnerCli.Run', '(4/4) Running karma to start test runner...');
       const webgpu = args.backends.indexOf('webgpu') > -1;
       const webnn = args.backends.indexOf('webnn') > -1;
-      const browser = getBrowserNameFromEnv(
-          args.env,
-          args.bundleMode === 'perf' ? 'perf' :
-              args.debug             ? 'debug' :
-                                       'test',
-          webgpu, webnn, config.options.globalEnvFlags?.webgpu?.profilingMode === 'default');
+      const browser = getBrowserNameFromEnv(args.env);
       const karmaArgs = ['karma', 'start', `--browsers ${browser}`];
+      const chromiumFlags = ['--enable-features=SharedArrayBuffer', ...args.chromiumFlags];
+      if (args.bundleMode === 'dev' && !args.debug) {
+        // use headless for 'test' mode (when 'perf' and 'debug' are OFF)
+        chromiumFlags.push('--headless=new');
+      }
       if (args.debug) {
         karmaArgs.push('--log-level info --timeout-mocha 9999999');
+        chromiumFlags.push('--remote-debugging-port=9333');
       } else {
         karmaArgs.push('--single-run');
       }
       if (args.noSandbox) {
         karmaArgs.push('--no-sandbox');
       }
-      if (webgpu || webnn) {
+
+      // When using BrowserStack with Safari, we need NOT to use 'localhost' as the hostname.
+      if (!(browser.startsWith('BS_') && browser.includes('Safari'))) {
         karmaArgs.push('--force-localhost');
       }
+      if (webgpu) {
+        // flag 'allow_unsafe_apis' is required to enable experimental features like fp16 and profiling inside pass.
+        // flag 'use_dxc' is required to enable DXC compiler.
+        chromiumFlags.push('--enable-dawn-features=allow_unsafe_apis,use_dxc');
+      }
+      if (webnn) {
+        chromiumFlags.push('--enable-features=WebMachineLearningNeuralNetwork');
+      }
+      if (process.argv.includes('--karma-debug')) {
+        karmaArgs.push('--log-level debug');
+      }
       karmaArgs.push(`--bundle-mode=${args.bundleMode}`);
-      if (browser === 'Edge') {
+      if (args.userDataDir) {
+        karmaArgs.push(`--user-data-dir="${args.userDataDir}"`);
+      }
+      karmaArgs.push(...chromiumFlags.map((flag) => `--chromium-flags=${flag}`));
+      if (browser.startsWith('Edge')) {
         // There are currently 2 Edge browser launchers:
         //  - karma-edge-launcher: used to launch the old Edge browser
         //  - karma-chromium-edge-launcher: used to launch the new chromium-kernel Edge browser
@@ -501,13 +626,16 @@ async function main() {
         //       - remove "karma-edge-launcher".
 
         // check if we have the latest Edge installed:
-        if (os.platform() === 'darwin' ||
-            (os.platform() === 'win32' &&
-             require('@chiragrupani/karma-chromium-edge-launcher/dist/Utilities').default.GetEdgeExe('Edge') !== '')) {
+        if (
+          os.platform() === 'darwin' ||
+          (os.platform() === 'win32' &&
+            require('@chiragrupani/karma-chromium-edge-launcher/dist/Utilities').default.GetEdgeExe('Edge') !== '')
+        ) {
           // use "@chiragrupani/karma-chromium-edge-launcher"
           karmaArgs.push(
-              '--karma-plugins=@chiragrupani/karma-chromium-edge-launcher',
-              '--karma-plugins=(?!karma-edge-launcher$)karma-*');
+            '--karma-plugins=@chiragrupani/karma-chromium-edge-launcher',
+            '--karma-plugins=(?!karma-edge-launcher$)karma-*',
+          );
         } else {
           // use "karma-edge-launcher"
 
@@ -521,7 +649,7 @@ async function main() {
           // == The Problem ==
           // every time when a test is completed, it will be added to the recovery page list.
           // if we run the test 100 times, there will be 100 previous tabs when we launch Edge again.
-          // this run out of resources quickly and fails the futher test.
+          // this run out of resources quickly and fails the further test.
           // and it cannot recover by itself because every time it is terminated forcely or crashes.
           // and the auto recovery feature has no way to disable by configuration/commandline/registry
           //
@@ -530,14 +658,14 @@ async function main() {
           // delete the files stores in the specific folder to clean up the recovery page list.
           // see also: https://www.laptopmag.com/articles/edge-browser-stop-tab-restore
           const deleteEdgeActiveRecoveryCommand =
-              // eslint-disable-next-line max-len
-              'del /F /Q % LOCALAPPDATA %\\Packages\\Microsoft.MicrosoftEdge_8wekyb3d8bbwe\\AC\\MicrosoftEdge\\User\\Default\\Recovery\\Active\\*';
+            // eslint-disable-next-line max-len
+            'del /F /Q % LOCALAPPDATA %\\Packages\\Microsoft.MicrosoftEdge_8wekyb3d8bbwe\\AC\\MicrosoftEdge\\User\\Default\\Recovery\\Active\\*';
           npmlog.info('TestRunnerCli.Run', `CMD: ${deleteEdgeActiveRecoveryCommand}`);
-          spawnSync(deleteEdgeActiveRecoveryCommand, {shell: true, stdio: 'inherit'});
+          spawnSync(deleteEdgeActiveRecoveryCommand, { shell: true, stdio: 'inherit' });
         }
       }
       npmlog.info('TestRunnerCli.Run', `CMD: npx ${karmaArgs.join(' ')}`);
-      const karma = spawnSync('npx', karmaArgs, {shell: true, stdio: 'inherit'});
+      const karma = spawnSync('npx', karmaArgs, { shell: true, stdio: 'inherit' });
       if (karma.status !== 0) {
         console.error(karma.error);
         process.exit(karma.status === null ? undefined : karma.status);
@@ -577,15 +705,16 @@ async function main() {
     fs.writeJSONSync(path.join(TEST_ROOT, './testdata-config.json'), config);
   }
 
-  function getBrowserNameFromEnv(
-      env: TestRunnerCliArgs['env'], mode: 'debug'|'perf'|'test', webgpu: boolean, webnn: boolean, profile: boolean) {
+  function getBrowserNameFromEnv(env: TestRunnerCliArgs['env']) {
     switch (env) {
       case 'chrome':
-        return selectChromeBrowser(mode, webgpu, webnn, profile);
+        return 'ChromeTest';
+      case 'chromecanary':
+        return 'ChromeCanaryTest';
       case 'edge':
-        return 'Edge';
+        return 'EdgeTest';
       case 'firefox':
-        return 'Firefox';
+        return 'FirefoxTest';
       case 'electron':
         return 'Electron';
       case 'safari':
@@ -594,33 +723,6 @@ async function main() {
         return process.env.ORT_WEB_TEST_BS_BROWSERS!;
       default:
         throw new Error(`env "${env}" not supported.`);
-    }
-  }
-
-  function selectChromeBrowser(mode: 'debug'|'perf'|'test', webgpu: boolean, webnn: boolean, profile: boolean) {
-    if (webgpu) {
-      switch (mode) {
-        case 'debug':
-          return profile ? 'ChromeWebGpuProfileDebug' : 'ChromeDebug';
-        default:
-          return profile ? 'ChromeWebGpuProfileTest' : 'ChromeTest';
-      }
-    } else if (webnn) {
-      switch (mode) {
-        case 'debug':
-          return 'ChromeCanaryDebug';
-        default:
-          return 'ChromeCanaryTest';
-      }
-    } else {
-      switch (mode) {
-        case 'debug':
-          return 'ChromeDebug';
-        case 'perf':
-          return 'ChromeTest';
-        default:
-          return 'ChromeTestHeadless';
-      }
     }
   }
 }

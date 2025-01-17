@@ -14,7 +14,13 @@ OrtValueTensorSlicer<T> OrtValueTensorSlicer<T>::Create(T& ort_value, int64_t sl
   ORT_ENFORCE(ort_value.IsTensor(), "Can't slice a non-tensor OrtValue. Type was ", ort_value.Type());
   ORT_ENFORCE(ort_value.IsAllocated(), "OrtValue has not been allocated so can't be sliced.");
 
-  auto& tensor_shape = ort_value.template Get<Tensor>().Shape();
+  const Tensor& tensor = ort_value.template Get<Tensor>();
+  auto* prim_type = tensor.DataType()->AsPrimitiveDataType();
+  if (prim_type != nullptr) {
+    // TODO(adrianlizarraga): Support slicing Tensors of subbyte element types (e.g., int4).
+    ORT_ENFORCE(!prim_type->HasSubElems(), "Can't slice a tensor with a subbyte element type");
+  }
+  auto& tensor_shape = tensor.Shape();
   ORT_ENFORCE(gsl::narrow_cast<int64_t>(tensor_shape.NumDimensions()) >= slice_dimension,
               "Insufficient dimensions to slice on ", slice_dimension, ". Shape:", tensor_shape);
 

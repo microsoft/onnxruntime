@@ -1,0 +1,183 @@
+parameters:
+- name: BuildArch
+  displayName: BuildArch
+  type: string
+  default: 'x64'
+
+- name: Runtime
+  displayName: MSVC Runtime, should be 'dynamic' or 'static'.
+  type: string
+  default: 'dynamic'
+
+jobs:
+- job: Windows_Packaging_${{ parameters.BuildArch }}_${{ parameters.Runtime }}
+  timeoutInMinutes: 180
+  templateContext:
+    outputs:
+    - output: pipelineArtifact
+      path: '$(Build.ArtifactStagingDirectory)'
+      artifact: drop_Windows_Build_Windows_Packaging_${{ parameters.BuildArch }}_${{ parameters.Runtime }}
+
+  steps:
+    - task: UseDotNet@2
+      inputs:
+        version: '6.x'
+
+    - task: UsePythonVersion@0
+      inputs:
+        versionSpec: '3.12'
+        addToPath: true
+        ${{ if eq(parameters.BuildArch, 'x86') }}:
+          architecture: 'x86'
+
+    - task: PipAuthenticate@1
+      displayName: 'Pip Authenticate'
+      inputs:
+        artifactFeeds: 'Lotus'
+
+    - template: telemetry-steps.yml
+
+    - task: NuGetCommand@2
+      displayName: 'NuGet restore'
+      inputs:
+        command: restore
+        feedsToUse: config
+        nugetConfigPath: $(Build.SourcesDirectory)\tools\ci_build\github\azure-pipelines\nuget\nuget_config\nuget.config
+        restoreDirectory: '$(Build.BinariesDirectory)'
+        ${{ if eq(parameters.BuildArch, 'x64') }}:
+          restoreSolution: $(Build.SourcesDirectory)\tools\ci_build\github\azure-pipelines\nuget\nuget_config\x64\packages.config
+        ${{ if eq(parameters.BuildArch, 'x86') }}:
+          restoreSolution: $(Build.SourcesDirectory)\.tools\ci_build\github\azure-pipelines\nuget\nuget_config\x86\packages.config
+        ${{ if eq(parameters.BuildArch, 'arm') }}:
+          restoreSolution: $(Build.SourcesDirectory)\tools\ci_build\github\azure-pipelines\nuget\nuget_config\x64\packages.config
+        ${{ if eq(parameters.BuildArch, 'arm64') }}:
+          restoreSolution: $(Build.SourcesDirectory)\tools\ci_build\github\azure-pipelines\nuget\nuget_config\x64\packages.config
+
+    - script: |
+        @echo off
+        set vswherepath="%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe"
+        for /f "usebackq delims=" %%i in (`%vswherepath% -latest -property installationPath`) do (
+          set vslatest="%%i"
+          if exist "%%i\Common7\Tools\vsdevcmd.bat" (
+            set vsdevcmd="%%i\Common7\Tools\vsdevcmd.bat"
+          )
+        )
+
+        @echo vslatest %vslatest%
+        @echo vsdevcmd %vsdevcmd%
+
+        @echo ##vso[task.setvariable variable=vslatest]%vslatest%
+        @echo ##vso[task.setvariable variable=vsdevcmd]%vsdevcmd% -arch=${{ parameters.BuildArch }}
+      displayName: 'locate vsdevcmd via vswhere'
+
+    - powershell: |
+       Write-Host "##vso[task.setvariable variable=BuildFlags]"
+       Write-Host "##vso[task.setvariable variable=ArtifactName]Microsoft.AI.MachineLearning.${{ parameters.BuildArch }}"
+      displayName: Initialize build flags
+
+    - powershell: |
+       Write-Host "##vso[task.setvariable variable=BuildFlags]$(BuildFlags) --${{ parameters.BuildArch }}"
+      displayName: Add cross compilation flags for ARM
+      condition: and(ne('${{ parameters.BuildArch }}', 'x64'), ne('${{ parameters.BuildArch }}', 'x86'))
+
+    - powershell: |
+       Write-Host "##vso[task.setvariable variable=BuildFlags]$(BuildFlags) --enable_msvc_static_runtime"
+       Write-Host "##vso[task.setvariable variable=ArtifactName]$(ArtifactName).StaticRuntime"
+      displayName: Add static runtime flags
+      condition: eq('${{ parameters.Runtime }}', 'static')
+
+    # must call vsdevcmd first to add cmake to PATH
+    - script: |
+        python --version
+        python "$(Build.SourcesDirectory)\tools\ci_build\build.py" --build_dir $(Build.BinariesDirectory) --parallel --use_binskim_compliant_compile_flags --build_shared_lib --enable_onnx_tests --ms_experimental --use_dml --use_winml --cmake_generator "Visual Studio 17 2022" --update --config RelWithDebInfo --enable_lto --use_telemetry --disable_rtti --enable_wcos --windows_sdk_version "10.0.22621.0" $(BuildFlags) --cmake_extra_defines "CMAKE_EXE_LINKER_FLAGS_RELWITHDEBINFO=/PROFILE" "CMAKE_SHARED_LINKER_FLAGS_RELWITHDEBINFO=/PROFILE"
+      workingDirectory: '$(Build.BinariesDirectory)'
+      displayName: 'Generate cmake config'
+
+    - task: VSBuild@1
+      displayName: 'Build'
+      inputs:
+        solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
+        ${{ if ne(parameters.BuildArch, 'x86') }}:
+          platform: ${{ parameters.BuildArch }}
+        ${{ if eq(parameters.BuildArch, 'x86') }}:
+          platform: 'Win32'
+        configuration: RelWithDebInfo
+        msbuildArchitecture: ${{ parameters.BuildArch }}
+        maximumCpuCount: true
+        logProjectEvents: true
+        workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+        createLogFile: true
+
+    - ${{ if eq(parameters.Runtime, 'dynamic') }}:
+      - script: |
+         xcopy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\winml_test_api.exe $(Build.ArtifactStagingDirectory)\test_artifact\
+         copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\winml_test_scenario.exe $(Build.ArtifactStagingDirectory)\test_artifact\
+         copy $(Build.SourcesDirectory)\winml\test\api\models\*.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
+         copy $(Build.SourcesDirectory)\winml\test\scenario\cppwinrt\*.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
+         copy $(Build.SourcesDirectory)\winml\test\scenario\models\*.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
+         copy $(Build.SourcesDirectory)\winml\test\common\testdata\squeezenet\* $(Build.ArtifactStagingDirectory)\test_artifact\
+         copy $(Build.SourcesDirectory)\winml\test\collateral\models\*.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
+         xcopy $(Build.SourcesDirectory)\winml\test\collateral\models\ModelSubdirectory $(Build.ArtifactStagingDirectory)\test_artifact\ModelSubdirectory\ /i
+         copy $(Build.SourcesDirectory)\winml\test\collateral\images\*.png $(Build.ArtifactStagingDirectory)\test_artifact\
+         copy $(Build.SourcesDirectory)\winml\test\collateral\images\*.jpg $(Build.ArtifactStagingDirectory)\test_artifact\
+         copy $(Build.SourcesDirectory)\onnxruntime\test\testdata\sequence_length.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
+         copy $(Build.SourcesDirectory)\onnxruntime\test\testdata\sequence_construct.onnx $(Build.ArtifactStagingDirectory)\test_artifact\
+        displayName: 'Copy WinML test collateral to artifact directory'
+
+
+    - ${{ if eq(parameters.BuildArch, 'x64') }}:
+      - script: |
+          call $(vsdevcmd)
+          msbuild Microsoft.AI.MachineLearning.Interop.csproj /p:Configuration=RelWithDebInfo /p:Platform="Any CPU" /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) -restore
+        workingDirectory: '$(Build.SourcesDirectory)\csharp\src\Microsoft.AI.MachineLearning.Interop'
+        displayName: 'Build Microsoft.AI.MachineLearning.Interop.dll'
+
+    - template: win-esrp-dll.yml
+      parameters:
+        FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+        DisplayName: 'Sign runtime DLLs'
+        Pattern: '*.exe,*.dll'
+
+    - ${{ if eq(parameters.BuildArch, 'x64') }}:
+      - script: |
+         call $(vsdevcmd)
+         msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreateWindowsAIPackage /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) /p:OnnxRuntimeSourceDirectory=$(Build.SourcesDirectory)
+         copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+         copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.snupkg $(Build.ArtifactStagingDirectory)
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        displayName: 'Create NuGet Package'
+
+    - ${{ if eq(parameters.BuildArch, 'x86') }}:
+      - script: |
+         call $(vsdevcmd)
+         msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreateWindowsAIPackage /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) /p:OnnxRuntimeSourceDirectory=$(Build.SourcesDirectory) /p:TargetArchitecture=x86
+         copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+         copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.snupkg $(Build.ArtifactStagingDirectory)
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        displayName: 'Create NuGet Package'
+
+    - ${{ if eq(parameters.BuildArch, 'arm64') }}:
+      - script: |
+         call $(vsdevcmd)
+         msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreateWindowsAIPackage /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) /p:OnnxRuntimeSourceDirectory=$(Build.SourcesDirectory) /p:TargetArchitecture=arm64 /p:ProtocDirectory=$(Build.BinariesDirectory)\host_protoc\Release
+         copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+         copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.snupkg $(Build.ArtifactStagingDirectory)
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        displayName: 'Create NuGet Package'
+
+    - ${{ if eq(parameters.BuildArch, 'arm') }}:
+      - script: |
+         call $(vsdevcmd)
+         msbuild $(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj /p:Configuration=RelWithDebInfo /t:CreateWindowsAIPackage /p:OnnxRuntimeBuildDirectory=$(Build.BinariesDirectory) /p:OnnxRuntimeSourceDirectory=$(Build.SourcesDirectory) /p:TargetArchitecture=arm /p:ProtocDirectory=$(Build.BinariesDirectory)\host_protoc\Release
+         copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.nupkg $(Build.ArtifactStagingDirectory)
+         copy $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\*.snupkg $(Build.ArtifactStagingDirectory)
+        workingDirectory: '$(Build.SourcesDirectory)\csharp'
+        displayName: 'Create NuGet Package'
+
+    # Only dynamic copied to test_artifact
+    - ${{ if eq(parameters.Runtime, 'dynamic') }}:
+      - template: win-esrp-dll.yml
+        parameters:
+          FolderPath: '$(Build.ArtifactStagingDirectory)\test_artifact'
+          DisplayName: 'Sign test_artifact'
+          Pattern: '*.exe,*.dll'

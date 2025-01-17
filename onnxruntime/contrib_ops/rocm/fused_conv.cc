@@ -76,7 +76,12 @@ struct FNVHash {
   void HashConvolutionDescriptor(miopenConvolutionDescriptor_t cdesc) {
     int spatial_dim = 1;
 #if ROCM_VERSION >= 50500
-    miopenGetConvolutionSpatialDim(cdesc, &spatial_dim);
+    MIOPEN_CALL(miopenGetConvolutionSpatialDim(cdesc, &spatial_dim));
+    std::vector<int> pads{spatial_dim};
+    std::vector<int> strides{spatial_dim};
+    std::vector<int> dilations{spatial_dim};
+    miopenConvolutionMode_t mode;
+    MIOPEN_CALL(miopenGetConvolutionNdDescriptor(cdesc, spatial_dim, &spatial_dim, pads.data(), strides.data(), dilations.data(), &mode));
 #else
     // Previous versions of MIOpen doesn't provide API to probe the dimension of a
     // miopenConvolutionDescriptor_t, so we have to guess.
@@ -100,11 +105,12 @@ struct FNVHash {
     pads.resize(spatial_dim);
     strides.resize(spatial_dim);
     dilations.resize(spatial_dim);
+#endif
     (*this) << spatial_dim;
     (*this) << pads;
     (*this) << strides;
     (*this) << dilations;
-#endif
+    (*this) << mode;
   }
 
  private:
@@ -138,7 +144,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
   }
 
   Status ComputeInternal(OpKernelContext* context) const override {
-    std::lock_guard<OrtMutex> lock(Base::s_.mutex);
+    std::lock_guard<std::mutex> lock(Base::s_.mutex);
 
     ORT_RETURN_IF_ERROR(Base::UpdateState(context, true));
     if (Base::s_.Y->Shape().Size() == 0) {
@@ -313,6 +319,8 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
       auto ret = miopenCompileFusionPlan(handle, fusion->plan);
       if (miopenStatusSuccess == ret) {
         fusion->compiled_on.insert(handle);
+      } else {
+        return ret;
       }
       return miopenStatusSuccess;
     }
@@ -334,7 +342,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
   };
 
   struct FusionPlanCache {
-    mutable OrtMutex mutex;
+    mutable std::mutex mutex;
     using HashKey = uint32_t;
     std::unordered_map<HashKey, FusionPlanCacheItem> cache_directory_;
 
@@ -343,7 +351,7 @@ class FusedConv : public onnxruntime::rocm::Conv<T, false> {
 
     FusionPlanCacheItem& FindOrCreateFusionPlanCache(HashKey key,
                                                      std::function<Status(FusedConvFusionData& fusion)> factory) {
-      std::lock_guard<OrtMutex> lock(mutex);
+      std::lock_guard<std::mutex> lock(mutex);
       auto iter = cache_directory_.find(key);
       if (iter == cache_directory_.end()) {
         cache_directory_[key].fusion = std::make_unique<FusedConvFusionData>();

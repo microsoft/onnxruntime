@@ -3,41 +3,32 @@
 
 #pragma once
 
+#include <filesystem>
+#include <functional>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
 #include <unordered_set>
 
-#ifdef _WIN32
-#pragma warning(push)
-// disable some warnings from protobuf to pass Windows build
-#pragma warning(disable : 4244)
-#endif
+#include "core/common/flatbuffers.h"
 
-#if !defined(ORT_MINIMAL_BUILD)
-#include "onnx/defs/schema.h"
-#include "core/common/inlined_containers.h"
-#else
-#include "onnx/defs/data_type_utils.h"
-#endif
-#include "onnx/onnx_pb.h"
-#include "onnx/onnx-operators_pb.h"
-
-#ifdef _WIN32
-#pragma warning(pop)
-#endif
-
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 
 #include "core/common/common.h"
+#include "core/common/path_string.h"
 #include "core/common/const_pointer_container.h"
 #include "core/common/inlined_containers_fwd.h"
-#include "core/common/path.h"
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/common/inlined_containers.h"
+#endif
 #include "core/common/span_utils.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
+#include "core/framework/prepacked_weights_container.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/constants.h"
 #include "core/graph/function.h"
@@ -48,16 +39,11 @@
 #include "core/graph/node_arg.h"
 #include "core/graph/ort_format_load_options.h"
 
-namespace flatbuffers {
-class FlatBufferBuilder;
-template <typename T>
-struct Offset;
-}  // namespace flatbuffers
-
 namespace onnxruntime {
 class Graph;
 struct IndexedSubGraph;
 class Model;
+struct ModelSavingOptions;
 class OpSignature;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -92,10 +78,10 @@ class Node {
        gsl::span<NodeArg* const> output_args,
        const NodeAttributes* attributes,
        std::string_view domain) {
-    Init(std::string{name}, std::string{op_type}, std::string{description},
-         std::vector<NodeArg*>{input_args.begin(), input_args.end()},
-         std::vector<NodeArg*>{output_args.begin(), output_args.end()},
-         attributes, std::string{domain});
+    Init(name, op_type, description,
+         input_args,
+         output_args,
+         attributes, domain);
   }
 #endif
 
@@ -155,7 +141,7 @@ class Node {
   const std::string& Domain() const noexcept { return domain_; }
 
   /** Gets the path of the owning model if any. */
-  const Path& ModelPath() const noexcept;
+  const std::filesystem::path& ModelPath() const noexcept;
 
   /** Gets the Node's execution priority.
   @remarks Lower value means higher priority  */
@@ -405,6 +391,10 @@ class Node {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   /** Remove the specified attribute from this Node */
   bool ClearAttribute(const std::string& attr_name);
+
+  /** Gets the Node's mutable attributes. */
+  NodeAttributes& GetMutableAttributes() noexcept { return attributes_; }
+
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   /**
@@ -414,8 +404,6 @@ class Node {
   int PruneRemovableAttributes(gsl::span<const std::string> removable_attributes);
 
 #if !defined(ORT_MINIMAL_BUILD)
-  /** Gets the Node's mutable attributes. */
-  NodeAttributes& GetMutableAttributes() noexcept { return attributes_; }
 
   /** Gets the Graph instance that is instantiated from a GraphProto attribute during Graph::Resolve.
   @param attr_name Attribute name for the GraphProto attribute.
@@ -446,6 +434,13 @@ class Node {
            nullptr if the Node has no subgraphs.
   */
   const std::unordered_map<std::string, gsl::not_null<Graph*>>& GetAttributeNameToMutableSubgraphMap() {
+    return attr_to_subgraph_map_;
+  }
+
+  /** Gets a map of attribute name to the mutable Graph instances for all subgraphs of the Node.
+   * @returns a mutable map of mutable subgraphs.
+   */
+  std::unordered_map<std::string, gsl::not_null<Graph*>>& GetMutableMapOfAttributeNameToSubgraph() {
     return attr_to_subgraph_map_;
   }
 
@@ -572,13 +567,20 @@ class Node {
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Node);
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
-  void Init(const std::string& name,
-            const std::string& op_type,
-            const std::string& description,
-            const std::vector<NodeArg*>& input_args,
-            const std::vector<NodeArg*>& output_args,
+  void Init(std::string_view name,
+            std::string_view op_type,
+            std::string_view description,
+            gsl::span<NodeArg* const> input_args,
+            gsl::span<NodeArg* const> output_args,
             const NodeAttributes* attributes,
-            const std::string& domain);
+            std::string_view domain);
+  void Init(std::string_view name,
+            std::string_view op_type,
+            std::string_view description,
+            gsl::span<NodeArg* const> input_args,
+            gsl::span<NodeArg* const> output_args,
+            NodeAttributes&& attributes,
+            std::string_view domain);
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -594,7 +596,7 @@ class Node {
   // create a Graph instance for an attribute that contains a GraphProto
   void CreateSubgraph(const std::string& attr_name);
 
-  const std::vector<std::unique_ptr<Graph>>& MutableSubgraphs() noexcept { return subgraphs_; }
+  std::vector<std::unique_ptr<Graph>>& MutableSubgraphs() noexcept { return subgraphs_; }
 
   // validate and update the input arg count
   common::Status UpdateInputArgCount();
@@ -620,6 +622,22 @@ class Node {
 
   // Reference to the function template defined in the model.
   const FunctionTemplate* func_template_ = nullptr;
+
+  // set/clear NodeProto that the Node was created from.
+  // Set by Graph ctor when loading a model from file.
+  // Cleared after first call to onnx::check_node in VerifyNodeAndOpMatch when the first Graph::Resolve runs.
+  void SetOriginalNodeProto(const ONNX_NAMESPACE::NodeProto* node_proto) {
+    original_node_proto_ = node_proto;
+  }
+
+  const ONNX_NAMESPACE::NodeProto* GetOriginalNodeProto() const {
+    return original_node_proto_;
+  }
+
+  // NodeProto that the Node was created from. We temporarily set this as a performance optimization to avoid calling
+  // Node::ToProto when running onnx::check_node in the first Graph::Resolve. At that point we know all the nodes are
+  // unchanged from the original model.
+  const ONNX_NAMESPACE::NodeProto* original_node_proto_ = nullptr;
 #endif
 
   // Execution priority, lower value for higher priority
@@ -667,7 +685,7 @@ class Node {
 The Graph representation containing the graph inputs and outputs, the Node instances,
 and the edges connecting the nodes.
 */
-class Graph {
+class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve existing data member order for readability
  public:
   /** Gets the Graph name. */
   const std::string& Name() const noexcept;
@@ -676,7 +694,7 @@ class Graph {
   const std::string& Description() const noexcept;
 
   /** Gets the path of the owning model, if any. */
-  const Path& ModelPath() const;
+  const std::filesystem::path& ModelPath() const;
 
   /** Returns true if this is a subgraph or false if it is a high-level graph. */
   bool IsSubgraph() const { return parent_graph_ != nullptr; }
@@ -710,6 +728,12 @@ class Graph {
    *    and replaces graph initializers with its content.
    */
   common::Status InjectExternalInitializedTensors(const InlinedHashMap<std::string, OrtValue>& external_initializers);
+
+  /** This function takes externally provided files in memory for initializers with external
+   *    data and replaces graph initializers with its content.
+   */
+  common::Status InjectExternalInitializersFromFilesInMemory(
+      const InlinedHashMap<PathString, std::pair<char*, size_t>>& external_initializer_files);
 #endif  // !defined(DISABLE_EXTERNAL_INITIALIZERS)
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -752,7 +776,6 @@ class Graph {
   cannot be overridden at runtime. If the initializer is not found or is not constant, a nullptr is returned.
   @param check_outer_scope If true and the graph is a subgraph,
          check ancestor graph/s for 'name' if not found in 'graph'.
-  @remarks check_outer_scope of true is not supported in a minimal build
   */
   const ONNX_NAMESPACE::TensorProto* GetConstantInitializer(const std::string& name, bool check_outer_scope) const;
 
@@ -895,12 +918,11 @@ class Graph {
   @returns NodeArg reference.
   */
   NodeArg& GetOrCreateNodeArg(const std::string& name, const ONNX_NAMESPACE::TypeProto* p_arg_type) {
-    auto iter = node_args_.find(name);
-    if (iter != node_args_.end()) {
-      return *(iter->second);
+    auto insert_result = node_args_.emplace(name, nullptr);
+    if (insert_result.second) {
+      insert_result.first->second = std::make_unique<NodeArg>(name, p_arg_type);
     }
-    auto result = node_args_.insert(std::make_pair(name, std::make_unique<NodeArg>(name, p_arg_type)));
-    return *(result.first->second);
+    return *(insert_result.first->second);
   }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -940,6 +962,13 @@ class Graph {
                 const NodeAttributes* attributes = nullptr,
                 const std::string& domain = kOnnxDomain);
 
+  Node& AddNode(const std::string& name,
+                const std::string& op_type,
+                const std::string& description,
+                gsl::span<NodeArg* const> input_args,
+                gsl::span<NodeArg* const> output_args,
+                NodeAttributes&& attributes,
+                const std::string& domain = kOnnxDomain);
   Node& AddNode(const std::string& name,
                 const std::string& op_type,
                 const std::string& description,
@@ -1088,6 +1117,19 @@ class Graph {
 
 #endif
 
+#ifdef ENABLE_TRAINING
+  /**
+   * @brief Performs topological sort with customized Kahn's algorithm on the graph/s.
+   *  This is a specialized version for training where need memory efficient topological sort.
+   * @param yield_op The YieldOp used in ORTModule training.
+   * @param shape_size_parents The shape size parents nodes.
+   * @param node_orders The output node orders.
+   */
+  void MemoryEfficientTopologicalSort(const Node* yield_op,
+                                      const InlinedHashMap<NodeIndex, InlinedVector<NodeIndex>>& shape_size_parents,
+                                      std::vector<NodeIndex>& node_orders) const;
+#endif
+
   /** Gets the map of operator domains to their opset versions. */
   const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept {
     return domain_to_version_;
@@ -1115,13 +1157,16 @@ class Graph {
   ONNX_NAMESPACE::GraphProto ToGraphProto() const;
 
   /** Gets the GraphProto representation of this Graph
-  @params external_file_name name of the binary file to use for initializers
+  @param external_file_path File path of the binary file to use for initializers.
+  @param model_file_path path of the model file.
   @param initializer_size_threshold initializers larger or equal to this threshold (in bytes) are saved
   in the external file. Initializer smaller than this threshold are included in the onnx file.
+  @param align_info offset alignment info.
   @returns GraphProto serialization of the graph.
   */
-  ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::string& external_file_name,
-                                                                  size_t initializer_size_threshold) const;
+  ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
+                                                                  const std::filesystem::path& model_file_path,
+                                                                  const ModelSavingOptions& model_saving_options) const;
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;
@@ -1143,14 +1188,49 @@ class Graph {
   Node& FuseSubGraph(const IndexedSubGraph& sub_graph, const std::string& fused_node_name);
 
   /**
+    Directly insert one of the If node branches into this Graph.
+    `If` node condition must be a constant. The function would
+    rename the nodes of the corresponding subgraph to make sure there is no conflict.
+
+    Explicit and implicit inputs references stay the same.
+
+    All of the outputs of the subgraph being inlined should be renamed
+    to the outputs of the If node.
+
+    The function will process any subgraphs in each of the nodes being inlined,
+    and will rename any references to the new names introduced.
+
+    @param condition_value If condition value
+    @param if_node - the node that contains the graph_to_inline. This node is going
+    to be deleted and replaced by the corresponding graph (either then or else)
+    @param logger
+  */
+  Status InlineIfSubgraph(bool condition_value, Node& if_node, const logging::Logger& logger);
+
+  /**
   Directly insert the nodes in the function Node provided into this Graph.
+  The Graph needs to be Resolve()d after this call.
   @param node Node with Node::Type of Node::Type::Fused
   @returns Status indicating success or providing an error message.
   */
   Status InlineFunction(Node& node);
 
+  /**
+  Directly insert the nodes in the function proto provided into the graph.
+  The function converts Constant nodes into the initializers in the graph.
+  It then creates a node in the graph for each of the function nodes.
+  All of the names are expected to be specialized, and, therefore unique.
+  See function_utils::Specialize().
+
+  The Graph needs to be Resolve()d after this call.
+  @param func_to_inline
+  @returns Status indicating success or providing an error message.
+  */
+
+  Status InlineFunctionProto(const ONNX_NAMESPACE::FunctionProto& func_to_inline);
+
   /** Mark a NodeArg name as coming from the outer scope when programmatically constructing a Graph that will
-  be used as a GraphProto attribute in another Node..
+  be used as a GraphProto attribute in another Node.
   e.g. when creating a Graph instance that will be used as a subgraph in a control flow operator, it is necessary to
   define placeholder NodeArgs for outer scope values. This prevents these values from becoming explicit graph inputs
   when the Graph is resolved.
@@ -1292,6 +1372,18 @@ class Graph {
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
+  // This function constructs PrepackedSharedContainer in the root graph only
+  // and initializes a reference to it in all (sub)graphs
+  void ConstructPrepackedSharedContainerAndSetMode(bool saving_mode_on);
+
+  const PrepackedWeightsForGraph& GetPrepacked() const noexcept {
+    return *prepacked_weights_for_graph_;
+  }
+
+  PrepackedWeightsForGraph& GetPrepacked() noexcept {
+    return *prepacked_weights_for_graph_;
+  }
+
   /** Returns the Node containing the GraphProto for this Graph instance if IsSubgraph is true */
   const Node* ParentNode() const { return parent_node_; }
 
@@ -1346,6 +1438,11 @@ class Graph {
   RuntimeOptimizationRecordContainer& MutableRuntimeOptimizations() {
     return runtime_optimizations_;
   }
+
+  // We don't run Graph::Resolve() on an ORT format model, but a compiling EP may copy initializers to its
+  // compiled model during partitioning, leaving them unused in the ORT Graph. To allow the memory to be freed
+  // we need to manually run the cleanup that would usually happen as part of Graph::Resolve.
+  Status RemovedUnusedInitializersOrtFormat();
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   // This friendship relationship should only be used to call Graph::Graph and
@@ -1398,6 +1495,38 @@ class Graph {
   // Add node with specified <node_proto>.
   Node& AddNode(const ONNX_NAMESPACE::NodeProto& node_proto,
                 const ArgNameToTypeMap& name_to_type);
+
+  /** Helper that converts and adds constant node proto to an initializer in the graph.
+   @param constant_node_proto Constant node to convert
+   @param new_name use the new name for the initializer.
+  */
+  Status AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& constant_node_proto,
+                                       std::optional<std::string_view> new_name);
+
+  /// <summary>
+  /// This function traverses the graph bottom up and externalizes
+  /// constant initializers along with their pre-packed blobs from different
+  /// kernels. Writes constant initializers to the external file with any pre-packed
+  /// blobs (if enabled and produced for this initializer) and then modifies TensorProto
+  /// entry with external data references.
+  /// </summary>
+  /// <param name="model_path">model file path from Model</param>
+  /// <param name="external_file_path">a binary file path for relative to the model file path
+  /// where the initializers data is written</param>
+  /// <param name="model_external_file_path">model file folder path with external file path appended</param>
+  /// <param name="model_saving_options">model saving options including alignment and pre-packs</param>
+  /// <param name="output_graph_proto">The graph proto to be modified</param>
+  /// <param name="external_stream">external file stream</param>
+  /// <param name="external_offset">current external file offset updated with each write</param>
+  /// <returns>Status instance</returns>
+  Status AddExternalInitializersToGraphProtoImpl(
+      const std::filesystem::path& model_path,
+      const std::filesystem::path& external_file_path,
+      const std::filesystem::path& model_external_file_path,
+      const ModelSavingOptions& model_saving_options,
+      ONNX_NAMESPACE::GraphProto& output_graph_proto,
+      std::ostream& external_stream,
+      int64_t& external_offset) const;
 
 #endif
 
@@ -1472,12 +1601,6 @@ class Graph {
 
   common::Status PerformTypeAndShapeInferencing(const ResolveOptions& options);
 
-  // Recursively find all subgraphs including nested subgraphs
-  void FindAllSubgraphs(std::vector<Graph*>& subgraphs);
-
-  // Iterate this Graph instance and all subgraphs, calling the provided function for each.
-  common::Status ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::function<Status(Graph&)> func);
-
   common::Status InferAndVerifyTypeMatch(Node& node, const ONNX_NAMESPACE::OpSchema& op, const ResolveOptions& options);
 
   // perform type and shape inferencing on the subgraph and Resolve to validate
@@ -1507,9 +1630,6 @@ class Graph {
   // Implementation for initializer replacement
   Status ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initializer, bool is_external);
 
-  // Clear all unused initializers and NodeArgs
-  void CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
-
   std::vector<NodeArg*> CreateNodeArgs(const google::protobuf::RepeatedPtrField<std::string>& names,
                                        const ArgNameToTypeMap& name_to_type_map);
 
@@ -1518,6 +1638,16 @@ class Graph {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+  // Recursively find all subgraphs including nested subgraphs
+  void FindAllSubgraphs(std::vector<Graph*>& subgraphs);
+
+  // Iterate this Graph instance and all subgraphs, calling the provided function for each.
+  common::Status ForThisAndAllSubgraphs(const std::vector<Graph*>& subgraphs, std::function<Status(Graph&)> func);
+
+  // Clear all unused initializers and NodeArgs
+  void CleanUnusedInitializersAndNodeArgs(const std::unordered_set<std::string>* initializer_names_to_preserve = nullptr);
+
   Status PopulateNodeArgToProducerConsumerLookupsFromNodes();
 
   template <typename TInstance>
@@ -1581,6 +1711,21 @@ class Graph {
   std::unordered_set<std::reference_wrapper<const std::string>,
                      std::hash<std::string>, std::equal_to<std::string>>
       sparse_tensor_names_;
+
+  // Prepacked blobs container that stored pre-packed initializers
+  // data that is:
+  // - mem-mapped from disk
+  // - shared within the session
+  // - shared across sessions by transferring the ownership of loaded data entries to
+  // SessionState::PrepackedWeightsContainer* if one is present.
+  // This container is optional because it is present only in the root graph.
+  std::optional<PrepackedKeyToBlobMap> prepacked_key_to_blobs_;
+
+  // This container contains a reference to the root prepacked_key_to_blobs_
+  // and also (in the save mode) records association between the initializer
+  // names and their pre-packed blobs (via keys).
+  // This is optional due to delayed construction.
+  std::optional<PrepackedWeightsForGraph> prepacked_weights_for_graph_;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // Runtime optimization storage.

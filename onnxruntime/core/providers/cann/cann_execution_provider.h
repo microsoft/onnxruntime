@@ -12,7 +12,7 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
-#include "core/platform/ort_mutex.h"
+#include <mutex>
 #include "core/providers/cann/cann_execution_provider_info.h"
 #include "core/providers/cann/cann_inc.h"
 #include "core/providers/cann/cann_utils.h"
@@ -33,7 +33,7 @@ class CANNExecutionProvider : public IExecutionProvider {
   explicit CANNExecutionProvider(const CANNExecutionProviderInfo& info);
   virtual ~CANNExecutionProvider();
 
-  Status OnRunStart() override;
+  Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
 
   template <typename T>
   Status Fill(Tensor* y, void* addr, aclrtStream stream) const {
@@ -81,6 +81,7 @@ class CANNExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, uint32_t> modelIDs_;
   std::unordered_map<std::string, std::string> models_;
   std::unordered_map<std::string, std::unordered_map<std::size_t, std::string>> names_;
+  std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
 };
 
 }  // namespace onnxruntime

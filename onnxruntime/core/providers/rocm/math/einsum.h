@@ -15,10 +15,9 @@ namespace rocm {
 class Einsum final : public onnxruntime::Einsum {
  public:
   Einsum(const OpKernelInfo& info) : onnxruntime::Einsum(info) {
-    // We need to cast away the const as PerThreadRocblasHandle() is currently a non-const method
+    // We need to cast away the const as PerThreadHipblasHandle() is currently a non-const method
     // TODO: Clean up the ROCMExecutionProvider interface to avoid this
-    rocm_ep_ = const_cast<ROCMExecutionProvider*>(
-        static_cast<const ROCMExecutionProvider*>(info.GetExecutionProvider()));
+    rocm_ep_ = static_cast<const ROCMExecutionProvider*>(info.GetExecutionProvider());
   }
 
   Status Compute(OpKernelContext* context) const override;
@@ -31,8 +30,8 @@ class Einsum final : public onnxruntime::Einsum {
   using onnxruntime::Einsum::einsum_equation_preprocessor_;
   using onnxruntime::Einsum::equation_;
 
-  // We need to access to the ROCM EP instance to get the rocblas/miopen handles
-  ROCMExecutionProvider* rocm_ep_;
+  // We need to access to the ROCM EP instance to get the hipblas/miopen handles
+  const ROCMExecutionProvider* rocm_ep_;
 };
 
 }  // namespace rocm

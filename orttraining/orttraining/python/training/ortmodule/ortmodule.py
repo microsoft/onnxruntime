@@ -3,8 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 # isort: skip_file
-# Import ordering is important in this module to aviod circular dependencies
-import logging
+# Import ordering is important in this module to avoid circular dependencies
+
 from ._torch_module_factory import TorchModuleFactory
 from ._torch_module_ort import TorchModuleORT
 from ._custom_op_symbolic_registry import CustomOpSymbolicRegistry
@@ -12,7 +12,7 @@ from ._custom_gradient_registry import CustomGradientRegistry
 from . import _utils
 from .options import DebugOptions
 from ._fallback import _FallbackManager, _FallbackPolicy, ORTModuleFallbackException
-from ._logger import ortmodule_loglevel_to_python_loglevel
+from ._logger import configure_ortmodule_logger
 from onnxruntime.training import ortmodule
 
 from onnxruntime.tools import pytorch_export_contrib_ops
@@ -53,8 +53,7 @@ class ORTModule(torch.nn.Module):
         if not debug_options:
             debug_options = DebugOptions()
 
-        self._logger = logging.getLogger(__name__)
-        self._logger.setLevel(ortmodule_loglevel_to_python_loglevel(debug_options.logging.log_level))
+        self._logger = configure_ortmodule_logger(debug_options.logging.log_level)
 
         # Fallback settings
         self._fallback_manager = _FallbackManager(
@@ -125,7 +124,7 @@ class ORTModule(torch.nn.Module):
         The first call to forward performs setup and checking steps. During this call,
         ORTModule determines whether the module can be trained with ONNX Runtime. For
         this reason, the first forward call execution takes longer than subsequent calls.
-        Execution is interupted if ONNX Runtime cannot process the model for training.
+        Execution is interrupted if ONNX Runtime cannot process the model for training.
 
         Args:
             inputs:  positional, variable positional inputs to the PyTorch module's forward method.
@@ -307,7 +306,9 @@ class ORTModule(torch.nn.Module):
             # Re-export will be avoided if _skip_check is enabled.
             if isinstance(self._torch_module, TorchModuleORT):
                 for training_mode in [False, True]:
-                    self._torch_module._execution_manager(training_mode).signal_model_changed()
+                    self._torch_module._execution_manager(
+                        training_mode
+                    )._graph_transition_manager.signal_model_changed()
 
         else:
             # Setting any new attributes should be done on ORTModule only when 'torch_module' is not defined

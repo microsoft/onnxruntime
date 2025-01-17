@@ -89,7 +89,13 @@ TRT_ENGINE_CACHE_DIR_NAME = "engine_cache"
 
 def split_and_sort_output(string_list):
     string_list = string_list.split("\n")
-    string_list.sort()
+
+    def custom_sort(item):
+        # Parse digits
+        numbers = re.findall(r"\d+", item)
+        return int(numbers[0]) if numbers else float("inf")
+
+    string_list.sort(key=custom_sort)
     return string_list
 
 
@@ -784,7 +790,7 @@ def skip_ep(model_name, ep, model_to_fail_ep):
 
     # if ep in fail_ep_list and fail_ep_list[ep] == "runtime error":
     if ep in fail_ep_list:
-        logger.info("Skip testing " + model_name + " using " + ep + " since it has some issues.")
+        logger.info("Skip testing " + model_name + " using " + ep + " since it has some issues.")  # noqa: G003
         return True
 
     return False
@@ -812,7 +818,7 @@ def write_map_to_file(result, file_name):
     if os.path.exists(file_name):
         existed_result = read_map_from_file(file_name)
 
-    for model, _ep_list in result.items():
+    for model in result:
         if model in existed_result:
             existed_result[model] = {**existed_result[model], **result[model]}
         else:
@@ -919,8 +925,8 @@ def find_model_path(path):
 
     logger.info(target_model_path)
     if len(target_model_path) > 1:
-        logger.error("We expect to find only one model in " + path)
-        raise
+        logger.error("We expect to find only one model in %s", path)
+        raise RuntimeError
 
     return target_model_path[0]
 
@@ -1001,7 +1007,7 @@ def parse_models_info_from_file(root_dir, path, models):
                 models[row["model_name"]] = {}
             else:
                 logger.error("Model name must be provided in models_info.json")
-                raise
+                raise RuntimeError
 
             model = models[row["model_name"]]
 
@@ -1012,19 +1018,19 @@ def parse_models_info_from_file(root_dir, path, models):
                     model["working_directory"] = os.path.join(root_working_directory, row["working_directory"])
             else:
                 logger.error("Model path must be provided in models_info.json")
-                raise
+                raise RuntimeError
 
             if "model_path" in row:
                 model["model_path"] = row["model_path"]
             else:
                 logger.error("Model path must be provided in models_info.json")
-                raise
+                raise RuntimeError
 
             if "test_data_path" in row:
                 model["test_data_path"] = row["test_data_path"]
             else:
                 logger.error("Test data path must be provided in models_info.json")
-                raise
+                raise RuntimeError
 
             if "model_path_fp16" in row:
                 model["model_path_fp16"] = row["model_path_fp16"]
@@ -1122,7 +1128,7 @@ def calculate_gain(value, ep1, ep2):
 
 
 def add_improvement_information(model_to_latency):
-    for _key, value in model_to_latency.items():
+    for value in model_to_latency.values():
         if trt in value and cuda in value:
             gain = calculate_gain(value, trt, cuda)
             value[trt_cuda_gain] = f"{gain:.2f} %"
@@ -1194,7 +1200,7 @@ def read_success_from_file(success_file):
     with open(success_file) as success:
         csv_reader = csv.DictReader(success)
         for row in csv_reader:
-            success_results.append(row)
+            success_results.append(row)  # noqa: PERF402
 
     success_json = json.loads(json.dumps(success_results, indent=4))
     return success_json
@@ -1209,13 +1215,13 @@ def add_status_dict(status_dict, model_name, ep, status):
 def build_status(status_dict, results, is_fail):
     if is_fail:
         for model, model_info in results.items():
-            for ep, _ep_info in model_info.items():
+            for ep in model_info:
                 model_name = model
                 status = "Fail"
                 add_status_dict(status_dict, model_name, ep, status)
     else:
         for model, value in results.items():
-            for ep, _ep_info in value.items():
+            for ep in value:
                 model_name = model
                 status = "Pass"
                 add_status_dict(status_dict, model_name, ep, status)
@@ -1569,19 +1575,45 @@ def output_metrics(model_to_metrics, csv_filename):
         for value in results:
             row = [
                 value["model_name"],
-                value["ratio_of_ops_in_cuda_not_fallback_cpu"]
-                if "ratio_of_ops_in_cuda_not_fallback_cpu" in value
-                else "  ",
-                value["total_ops_in_trt"] if "total_ops_in_trt" in value else "  ",
-                value["total_ops"] if "total_ops" in value else "  ",
-                value["ratio_of_ops_in_trt"] if "ratio_of_ops_in_trt" in value else "  ",
-                value["total_trt_execution_time"] if "total_trt_execution_time" in value else "  ",
-                value["total_execution_time"] if "total_execution_time" in value else "  ",
-                value["ratio_of_execution_time_in_trt"] if "ratio_of_execution_time_in_trt" in value else "  ",
+                value.get("ratio_of_ops_in_cuda_not_fallback_cpu", "  "),
+                value.get("total_ops_in_trt", "  "),
+                value.get("total_ops", "  "),
+                value.get("ratio_of_ops_in_trt", "  "),
+                value.get("total_trt_execution_time", "  "),
+                value.get("total_execution_time", "  "),
+                value.get("ratio_of_execution_time_in_trt", "  "),
             ]
             csv_writer.writerow(row)
 
     logger.info(f"Tensorrt ratio metrics are saved to csv file: {csv_filename}")
+
+
+def output_op_metrics(model_to_metrics, csv_filename):
+    with open(csv_filename, mode="w", newline="") as csv_file:
+        csv_writer = csv.writer(csv_file)
+        csv_writer.writerow([model_title, "Ep", "op percentage in each ep"])
+
+        for model, ep_info in model_to_metrics.items():
+            if cuda in ep_info:
+                cuda_data = ep_info[cuda]["ratio_of_ops_in_cuda_not_fallback_cpu"]
+                csv_writer.writerow([model, cuda, cuda_data])
+            if cuda_fp16 in ep_info:
+                cuda_fp16_data = ep_info[cuda_fp16]["ratio_of_ops_in_cuda_not_fallback_cpu"]
+                csv_writer.writerow([model, cuda_fp16, cuda_fp16_data])
+            if cuda in ep_info and trt in ep_info:
+                total_ops_in_cuda = ep_info[cuda]["total_ops"]
+                cuda_cpu_ops_in_trt = ep_info[trt]["total_ops"]
+                trt_data = (total_ops_in_cuda - cuda_cpu_ops_in_trt) / total_ops_in_cuda
+                csv_writer.writerow([model, trt, trt_data])
+            if cuda_fp16 in ep_info and trt_fp16 in ep_info:
+                total_ops_in_cuda = ep_info[cuda_fp16]["total_ops"]
+                cuda_cpu_ops_in_trt = ep_info[trt_fp16]["total_ops"]
+                trt_fp16_data = (total_ops_in_cuda - cuda_cpu_ops_in_trt) / total_ops_in_cuda
+                csv_writer.writerow([model, trt_fp16, trt_fp16_data])
+
+    logger.info(
+        f"op metrics for cuda/trt ep are saved to csv file: {csv_filename} and will be displayed at Perf Dashboard"
+    )
 
 
 def output_system_info(result, csv_filename):
@@ -2176,7 +2208,7 @@ def parse_arguments():
         required=False,
         default=True,
         action="store_true",
-        help="Inlcude Float16 into benchmarking.",
+        help="Include Float16 into benchmarking.",
     )
 
     parser.add_argument("--trtexec", required=False, default=None, help="trtexec executable path.")
@@ -2270,7 +2302,7 @@ def main():
     logger.info(f"\nTotal models: {len(models)}")
 
     fail_model_cnt = 0
-    for key, _value in models.items():
+    for key in models:
         if key in model_to_fail_ep:
             fail_model_cnt += 1
     logger.info(f"Fail models: {fail_model_cnt}")

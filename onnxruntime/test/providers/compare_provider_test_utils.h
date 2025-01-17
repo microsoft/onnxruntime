@@ -3,6 +3,11 @@
 
 #pragma once
 
+#include <string>
+#include <memory>
+#include <vector>
+#include <unordered_map>
+
 #include "core/graph/constants.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/providers/provider_test_utils.h"
@@ -22,6 +27,13 @@ class CompareOpTester : public OpTester {
                       double relative_per_sample_tolerance = 1e-4,
                       const bool need_cpu_cast = false,
                       const std::unordered_map<std::string, int>& extra_domain_to_version = {});
+
+  void CompareEPs(const std::shared_ptr<IExecutionProvider>& source_execution_provider,
+                  std::vector<std::shared_ptr<IExecutionProvider>>& target_execution_providers,
+                  double per_sample_tolerance,
+                  double relative_per_sample_tolerance = 1e-4,
+                  const bool need_cpu_cast = false,
+                  const std::unordered_map<std::string, int>& extra_domain_to_version = {});
 };
 
 }  // namespace test

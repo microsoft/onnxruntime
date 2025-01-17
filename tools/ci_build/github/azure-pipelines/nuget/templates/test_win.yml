@@ -3,19 +3,24 @@ parameters:
   NugetPackageName : ''
   ArtifactSuffix: ''
   StageSuffix: 'CPU'
-  # For inference packages, the test data artifact name is drop-nuget and no suffix is required.
+  # More Suffix is used to differentiate testing for GPU and GPU-Windows/GPU-Linux packages
+  MoreSuffix: ''
+  # For inference packages, the test data artifact name is drop-extra and no suffix is required.
   # For training packages, to differentiate the artifact name we add '-training' suffix. This needs to be passed from
   # the parent pipeline.
   TestDataArtifactSuffix: ''
   Skipx86Tests: 'false'
+  CudaVersion: ''
+  SpecificArtifact: false
+  BuildId: ''
 
 stages:
-- stage: NuGet_Test_Win_${{ parameters.StageSuffix }}
+- stage: NuGet_Test_Win_${{ parameters.StageSuffix }}${{ parameters.MoreSuffix }}
   dependsOn:
   - NuGet_Packaging_${{ parameters.StageSuffix }}
   condition: succeeded()
   jobs:
-  - job:
+  - job:  NuGet_Test_Win_${{ parameters.StageSuffix }}${{ parameters.MoreSuffix }}
     workspace:
       clean: all
     pool: ${{ parameters.AgentPool }}
@@ -27,47 +32,43 @@ stages:
       value: 'ON'
     - name: runCodesignValidationInjection
       value: false
+    - name: CUDA_MODULE_LOADINGL
+      value: 'LAZY'
+    - name: GRADLE_OPTS
+      value: '-Dorg.gradle.daemon=false'
 
     steps:
     - task: UsePythonVersion@0
       inputs:
-        versionSpec: '3.8'
+        versionSpec: '3.12'
         addToPath: true
         architecture: x64
 
     - task: NuGetToolInstaller@0
-      displayName: Use Nuget 5.7.0
+      displayName: Use Nuget 6.10.x
       inputs:
-        versionSpec: 5.7.0
-
-    - task: BatchScript@1
-      displayName: 'setup env'
-      inputs:
-        filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\setup_env_gpu.bat'
-        modifyEnvironment: true
-        workingFolder: '$(Build.BinariesDirectory)'
+        versionSpec: 6.10.x
+    - ${{ if ne( parameters.CudaVersion, '') }}:
+      - template: ../../templates/jobs/download_win_gpu_library.yml
+        parameters:
+          DownloadCUDA: true
+          DownloadTRT: true
+          CudaVersion: ${{ parameters.CudaVersion }}
 
     - task: BatchScript@1
       displayName: 'Setup Visual Studio env vars'
       inputs:
-        ${{ if eq(parameters.AgentPool, 'onnxruntime-gpu-tensorrt8-winbuild-t4') }}:
-          filename: 'C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
-        ${{ else }}:
-          filename: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+        filename: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
         arguments: 'amd64'
         modifyEnvironment: true
 
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact'
-      inputs:
-        artifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
-        targetPath: '$(Build.BinariesDirectory)\nuget-artifact'
-
-    - task: DownloadPipelineArtifact@0
-      displayName: 'Download Pipeline Artifact - testdata'
-      inputs:
-        artifactName: 'drop-nuget${{ parameters.TestDataArtifactSuffix }}'
-        targetPath: '$(Build.BinariesDirectory)\testdata'
+    - template: ../../templates/flex-downloadPipelineArtifact.yml
+      parameters:
+        StepName: 'Download Pipeline Artifact'
+        ArtifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
+        TargetPath: '$(Build.BinariesDirectory)\nuget-artifact'
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
     - template: get-nuget-package-version-as-variable.yml
       parameters:
@@ -82,7 +83,7 @@ stages:
 
     - script: |
        @echo "Running Runtest.bat"
-       test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp5.0 x64 $(NuGetPackageVersionNumber)
+       test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net8.0 x64 $(NuGetPackageVersionNumber)
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
       displayName: 'Run End to End Test (C#) .Net Core x64'
       env:
@@ -91,7 +92,7 @@ stages:
     - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
         - script: |
            @echo "Running Runtest.bat"
-           test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact netcoreapp5.0 x86 $(NuGetPackageVersionNumber)
+           test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net8.0 x86 $(NuGetPackageVersionNumber)
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
           displayName: 'Run End to End Test (C#) .Net Core x86'
           env:
@@ -101,7 +102,7 @@ stages:
 
     - script: |
        @echo "Running Runtest.bat"
-       test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x64 $(NuGetPackageVersionNumber)
+       test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net462 x64 $(NuGetPackageVersionNumber)
       workingDirectory: '$(Build.SourcesDirectory)\csharp'
       displayName: 'Run End to End Test (C#) .NetFramework x64'
       env:
@@ -110,7 +111,7 @@ stages:
     - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
         - script: |
            @echo "Running Runtest.bat"
-           test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net461 x86 $(NuGetPackageVersionNumber)
+           test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net462 x86 $(NuGetPackageVersionNumber)
           workingDirectory: '$(Build.SourcesDirectory)\csharp'
           displayName: 'Run End to End Test (C#) .NetFramework x86'
           enabled: false

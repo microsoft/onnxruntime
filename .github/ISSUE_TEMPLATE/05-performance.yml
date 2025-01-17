@@ -1,6 +1,7 @@
 name: Performance
 description: issues related to performance
 title: "[Performance] "
+labels: ["performance"]
 body:
   - type: markdown
     attributes:

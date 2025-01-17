@@ -2,7 +2,6 @@ import logging
 
 import numpy as np  # noqa: F401
 import onnx
-from onnx import onnx_pb as onnx_proto
 
 from ..quant_utils import find_by_name  # noqa: F401
 from ..quant_utils import get_mul_node  # noqa: F401
@@ -61,7 +60,7 @@ class QLinearGemm(QOpMatMul):
             ) = self.quantizer.quantize_activation(node, [0])
             quant_weight_tuple = self.quantizer.quantize_weight_per_channel(
                 node.input[1],
-                onnx_proto.TensorProto.INT8,
+                self.quantizer.weight_qType,
                 0 if is_B_transposed(node) else 1,
             )
             quantized_input_names.append(quant_weight_tuple[0])
@@ -95,6 +94,8 @@ class QLinearGemm(QOpMatMul):
             if not self.quantizer.is_input_a_initializer(node.input[2]):
                 return super().quantize()
 
+            # Note: if the quantized type is float 8, the bias is converted into float 16.
+            # cublasLtMatMul only supports (b)float16 or float32 bias.
             quantized_bias_name = self.quantizer.quantize_bias_static(
                 node.input[2], node.input[0], node.input[1], get_beta(self.node)
             )
@@ -125,6 +126,8 @@ class QLinearGemm(QOpMatMul):
             output_scale_name,
             output_zp_name,
             QuantizedValueType.Input,
+            node_type=node.op_type,
+            node_qtype=self.quantizer.weight_qType,
         )
         self.quantizer.quantized_value_map[node.output[0]] = q_output
 
@@ -143,18 +146,21 @@ class QDQGemm(QDQOperatorBase):
         if not self.disable_qdq_for_node_output:
             self.quantizer.quantize_activation_tensor(node.output[0])
 
-        if self.quantizer.is_per_channel():
-            self.quantizer.quantize_weight_tensor_per_channel(node.input[1], 0 if is_B_transposed(node) else 1)
+        is_weight_per_channel, weight_axis = self.quantizer.is_tensor_per_channel(
+            node.input[1], default_axis=0 if is_B_transposed(node) else 1
+        )
+        if is_weight_per_channel:
+            self.quantizer.quantize_weight_tensor_per_channel(node.input[1], weight_axis)
         else:
             self.quantizer.quantize_weight_tensor(node.input[1])
 
         if len(node.input) == 3:
             if self.quantizer.is_input_a_initializer(node.input[2]):
-                self.quantizer.quantize_bias_tensor(node.input[2], node.input[0], node.input[1], get_beta(self.node))
+                self.quantizer.quantize_bias_tensor(
+                    node.name, node.input[2], node.input[0], node.input[1], get_beta(self.node)
+                )
                 set_default_beta(self.node)
             else:
                 logging.warning(
-                    "Bias of Gemm node '{}' is not constant. Please exclude this node for better performance.".format(
-                        self.node.name
-                    )
+                    f"Bias of Gemm node '{self.node.name}' is not constant. Please exclude this node for better performance."
                 )

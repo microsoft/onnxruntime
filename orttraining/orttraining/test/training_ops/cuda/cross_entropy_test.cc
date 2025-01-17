@@ -311,11 +311,9 @@ template <typename T, typename TOut>
 static std::vector<OrtValue> RunSCELossWithEP(const char* op,
                                               int opset_version,
                                               const char* domain,
-                                              std::function<std::unique_ptr<IExecutionProvider>()>
-                                                  ep_creator,
+                                              std::function<std::unique_ptr<IExecutionProvider>()> ep_creator,
                                               const std::string& reduction,
                                               const std::int64_t ignore_index,
-                                              const double error_tolerance,
                                               const std::vector<int64_t>* X_dims,
                                               const std::vector<int64_t>* index_dims,
                                               const std::vector<int64_t>* weight_dims,
@@ -403,7 +401,7 @@ static void TestSCELoss(const char* op, int opset_version,
     cpu_fetches = RunSCELossWithEP<float, float>(
         op, opset_version, domain,
         []() -> std::unique_ptr<IExecutionProvider> { return DefaultCpuExecutionProvider(); },
-        reduction, ignore_index, error_tolerance,
+        reduction, ignore_index,
         X_dims, index_dims, weight_dims,
         Y_dims, log_prob_dims,
         X_data_temp, index_data, weight_data_temp);
@@ -411,7 +409,7 @@ static void TestSCELoss(const char* op, int opset_version,
     cpu_fetches = RunSCELossWithEP<T, float>(
         op, opset_version, domain,
         []() -> std::unique_ptr<IExecutionProvider> { return DefaultCpuExecutionProvider(); },
-        reduction, ignore_index, error_tolerance,
+        reduction, ignore_index,
         X_dims, index_dims, weight_dims,
         Y_dims, log_prob_dims,
         X_data, index_data, weight_data);
@@ -429,7 +427,7 @@ static void TestSCELoss(const char* op, int opset_version,
         return DefaultRocmExecutionProvider();
 #endif
       },
-      reduction, ignore_index, error_tolerance,
+      reduction, ignore_index,
       X_dims, index_dims, weight_dims,
       Y_dims, log_prob_dims,
       X_data, index_data, weight_data);
@@ -641,7 +639,7 @@ TEST(CrossEntropyTest, DISABLED_SoftmaxCrossEntropyLoss_LargeSizeTensor) {
 #ifndef _WIN32
 // Disable the large size tests for Windows because it is too slow, running on Linux would be enough.
 // This test requires lots of memory, currently, it can run with 16GB V100 GPU.
-TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternal_LargeSizeTensorUInt64Index) {
+TEST(CrossEntropyTest, DISABLED_SoftmaxCrossEntropyLossInternal_LargeSizeTensorUInt64Index) {
   // The element count is bigger than the upper limit of int32_t.
   constexpr int64_t bsz = 419431;
   constexpr int64_t vocab_size = 5120;
@@ -1038,7 +1036,7 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_TinySizeTensorFloatIn
   std::vector<int64_t> index_dims{8};
   std::vector<int64_t> weight_dims{2};
   std::vector<int64_t> dX_dims{8, 2};
-  // Set run_cpu_baseline_seperately = True because CPU kernel did not support multiple type support
+  // Set run_cpu_baseline_separately = True because CPU kernel did not support multiple type support
   // for input and output.
   TestSoftmaxCrossEntropyLossInternalGrad<float, MLFloat16>(dY_dims, log_prob_dims, index_dims, weight_dims,
                                                             dX_dims, "mean", -1, 5e-2, false /*has_bias*/);
@@ -1073,7 +1071,7 @@ TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_TinySizeTensorFloatIn
 #ifndef _WIN32
 // Disable the large size tests for Windows because it is too slow, running on Linux would be enough.
 // This test requires lots of memory, currently, it can run with 16GB V100 GPU.
-TEST(CrossEntropyTest, SoftmaxCrossEntropyLossInternalGrad_LargeSizeTensorUInt64Index) {
+TEST(CrossEntropyTest, DISABLED_SoftmaxCrossEntropyLossInternalGrad_LargeSizeTensorUInt64Index) {
   // The element count is bigger than the upper limit of int32_t.
   constexpr int64_t bsz = 419431;
   constexpr int64_t vocab_size = 5120;

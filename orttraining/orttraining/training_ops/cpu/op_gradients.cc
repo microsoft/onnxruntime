@@ -3,7 +3,7 @@
 
 #include "orttraining/training_ops/cpu/op_gradients.h"
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/mlas/inc/mlas.h"
 #include "core/providers/common.h"
 #include "core/providers/cpu/math/element_wise_ops.h"
@@ -257,6 +257,25 @@ Status QuickGeluGrad<T>::Compute(OpKernelContext* context) const {
         }
       },
       0);
+  return Status::OK();
+}
+
+ONNX_OPERATOR_KERNEL_EX(LeakyReluGrad, kMSDomain, 1, kCpuExecutionProvider,
+                        KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<float>()),
+                        LeakyReluGrad<float>);
+
+template <typename T>
+Status LeakyReluGrad<T>::Compute(OpKernelContext* context) const {
+  auto& dY = *context->Input<Tensor>(0);
+  auto& Y = *context->Input<Tensor>(1);
+  auto& dX = *context->Output(0, dY.Shape());
+  EigenVectorArrayMap<float> dx = EigenVectorArrayMap<float>(dX.template MutableData<T>(),
+                                                             narrow<Eigen::Index>(dX.Shape().Size()));
+  ConstEigenVectorArrayMap<float> y = ConstEigenVectorArrayMap<float>(Y.template Data<T>(),
+                                                                      narrow<Eigen::Index>(Y.Shape().Size()));
+  ConstEigenVectorArrayMap<float> dy = ConstEigenVectorArrayMap<float>(dY.template Data<T>(),
+                                                                       narrow<Eigen::Index>(dY.Shape().Size()));
+  dx = (y > 0.0f).select(dy, alpha_ * dy);
   return Status::OK();
 }
 

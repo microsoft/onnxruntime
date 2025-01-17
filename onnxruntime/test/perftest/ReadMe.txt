@@ -10,7 +10,7 @@ Options:
         -h: help
 
 Model path and input data dependency:
-    Performance test uses the same input structure as onnx_test_runner. It requrires the direcotry trees as below: 
+    Performance test uses the same input structure as onnx_test_runner. It requrires the directory trees as below: 
     
     --ModelName
         --test_data_set_0

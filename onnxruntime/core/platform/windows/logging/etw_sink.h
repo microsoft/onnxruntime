@@ -3,7 +3,9 @@
 
 #pragma once
 
+#include <Windows.h>
 #include <ntverp.h>
+#include <evntrace.h>
 
 // check for Windows 10 SDK or later
 // https://stackoverflow.com/questions/2665755/how-can-i-determine-the-version-of-the-windows-sdk-installed-on-my-computer
@@ -18,16 +20,18 @@
 #include <atomic>
 #include <iostream>
 #include <string>
+#include <vector>
 
 #include "core/common/logging/capture.h"
 #include "core/common/logging/isink.h"
+#include <mutex>
 
 namespace onnxruntime {
 namespace logging {
 
 class EtwSink : public ISink {
  public:
-  EtwSink() = default;
+  EtwSink() : ISink(SinkType::EtwSink) {}
   ~EtwSink() = default;
 
   constexpr static const char* kEventName = "ONNXRuntimeLogEvent";
@@ -41,6 +45,69 @@ class EtwSink : public ISink {
   // EtwTracingManager to ensure we cleanly unregister it
   static std::atomic_flag have_instance_;
 };
+
+class EtwRegistrationManager {
+  enum class InitializationStatus { NotInitialized,
+                                    Initializing,
+                                    Initialized,
+                                    Failed };
+
+ public:
+  using EtwInternalCallback = std::function<void(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level,
+                                                 ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,
+                                                 PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext)>;
+
+  // Singleton instance access
+  static EtwRegistrationManager& Instance();
+
+  // Check if ETW logging is enabled
+  bool IsEnabled() const;
+
+  // Get the current logging level
+  UCHAR Level() const;
+
+  Severity MapLevelToSeverity();
+
+  // Get the current keyword
+  uint64_t Keyword() const;
+
+  // Get the ETW registration status
+  HRESULT Status() const;
+
+  void RegisterInternalCallback(const EtwInternalCallback& callback);
+
+  void UnregisterInternalCallback(const EtwInternalCallback& callback);
+
+ private:
+  EtwRegistrationManager();
+  ~EtwRegistrationManager();
+  void LazyInitialize();
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(EtwRegistrationManager);
+
+  void InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword,
+                       ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext);
+
+  static void NTAPI ORT_TL_EtwEnableCallback(
+      _In_ LPCGUID SourceId,
+      _In_ ULONG IsEnabled,
+      _In_ UCHAR Level,
+      _In_ ULONGLONG MatchAnyKeyword,
+      _In_ ULONGLONG MatchAllKeyword,
+      _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
+      _In_opt_ PVOID CallbackContext);
+
+  std::vector<const EtwInternalCallback*> callbacks_;
+  std::mutex callbacks_mutex_;
+  mutable std::mutex provider_change_mutex_;
+  std::mutex init_mutex_;
+  InitializationStatus initialization_status_ = InitializationStatus::NotInitialized;
+  bool is_enabled_;
+  UCHAR level_;
+  ULONGLONG keyword_;
+  HRESULT etw_status_;
+};
+
 }  // namespace logging
 }  // namespace onnxruntime
 

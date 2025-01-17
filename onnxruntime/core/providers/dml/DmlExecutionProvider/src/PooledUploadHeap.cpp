@@ -7,9 +7,9 @@
 
 namespace Dml
 {
-    PooledUploadHeap::PooledUploadHeap(ID3D12Device* device, std::shared_ptr<ExecutionContext> executionContext)
+    PooledUploadHeap::PooledUploadHeap(ID3D12Device* device, ExecutionContext* executionContext)
         : m_device(device)
-        , m_executionContext(std::move(executionContext))
+        , m_executionContext(executionContext)
     {
     }
 
@@ -125,8 +125,8 @@ namespace Dml
 
         // No chunks were able to accommodate the allocation - create a new chunk and return that instead
 
-        // At least double the capacity of the pool
-        const size_t newChunkSize = std::max({ m_totalCapacity, c_minChunkSize, sizeInBytes });
+        // At least double the capacity of the pool, limit to c_maxChunkSize so DX12 does not reject size
+        const size_t newChunkSize = std::min(std::max({ m_totalCapacity, c_minChunkSize, sizeInBytes }), c_maxChunkSize);
         m_chunks.push_back(CreateChunk(m_device.Get(), newChunkSize));
         m_totalCapacity += newChunkSize;
 

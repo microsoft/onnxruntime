@@ -3,12 +3,26 @@
 
 'use strict';
 
-const bundleMode = require('minimist')(process.argv)['bundle-mode'] || 'dev';  // 'dev'|'perf'|undefined;
-const karmaPlugins = require('minimist')(process.argv)['karma-plugins'] || undefined;
-const timeoutMocha = require('minimist')(process.argv)['timeout-mocha'] || 60000;
-const forceLocalHost = !!require('minimist')(process.argv)['force-localhost'];
-const commonFile = bundleMode === 'dev' ? '../common/dist/ort-common.js' : '../common/dist/ort-common.min.js'
-const mainFile = bundleMode === 'dev' ? 'test/ort.dev.js' : 'test/ort.perf.js';
+const args = require('minimist')(process.argv, {});
+const bundleMode = args['bundle-mode'] || 'dev'; // 'dev'|'perf'
+const karmaPlugins = args['karma-plugins'] || undefined;
+const timeoutMocha = args['timeout-mocha'] || 60000;
+const forceLocalHost = !!args['force-localhost'];
+
+// user data directory; will be passed to the Edge/Chrome/ChromeCanary/Firefox launchers
+const userDataDir = args['user-data-dir'];
+// parse chromium flags
+let chromiumFlags = args['chromium-flags'];
+if (!chromiumFlags) {
+  chromiumFlags = [];
+} else if (typeof chromiumFlags === 'string') {
+  chromiumFlags = [chromiumFlags];
+} else if (!Array.isArray(chromiumFlags)) {
+  throw new Error(`Invalid command line arg: --chromium-flags: ${chromiumFlags}`);
+}
+
+const ORT_FILE = bundleMode === 'dev' ? 'dist/ort.all.js' : 'dist/ort.all.min.js';
+const TEST_FILE = bundleMode === 'dev' ? 'test/ort.test.js' : 'test/ort.test.min.js';
 
 // it's a known issue that Safari does not work with "localhost" in BrowserStack:
 // https://www.browserstack.com/question/663
@@ -55,30 +69,14 @@ module.exports = function (config) {
     },
     frameworks: ['mocha'],
     files: [
-      { pattern: commonFile },
-      { pattern: mainFile },
-      { pattern: 'test/testdata-file-cache-*.json', included: false },
-      { pattern: 'test/data/**/*', included: false, nocache: true },
-      { pattern: 'dist/ort-wasm.wasm', included: false },
-      { pattern: 'dist/ort-wasm-threaded.wasm', included: false },
-      { pattern: 'dist/ort-wasm-simd.wasm', included: false },
-      { pattern: 'dist/ort-wasm-simd-threaded.wasm', included: false },
-      { pattern: 'dist/ort-wasm-simd.jsep.wasm', included: false },
-      { pattern: 'dist/ort-wasm-simd-threaded.jsep.wasm', included: false },
-      { pattern: 'dist/ort-wasm-threaded.worker.js', included: false },
+      { pattern: ORT_FILE },
+      { pattern: TEST_FILE },
+      { pattern: 'test/testdata-file-cache-*.json', included: false, watched: false },
+      { pattern: 'test/data/**/*', included: false, nocache: true, watched: false },
+      { pattern: 'dist/*.*', included: false, watched: false },
     ],
-    proxies: {
-      '/base/test/ort-wasm.wasm': '/base/dist/ort-wasm.wasm',
-      '/base/test/ort-wasm-threaded.wasm': '/base/dist/ort-wasm-threaded.wasm',
-      '/base/test/ort-wasm-simd.wasm': '/base/dist/ort-wasm-simd.wasm',
-      '/base/test/ort-wasm-simd-threaded.wasm': '/base/dist/ort-wasm-simd-threaded.wasm',
-      '/base/test/ort-wasm-simd.jsep.wasm': '/base/dist/ort-wasm-simd.jsep.wasm',
-      '/base/test/ort-wasm-simd-threaded.jsep.wasm': '/base/dist/ort-wasm-simd-threaded.jsep.wasm',
-      '/base/test/ort-wasm-threaded.worker.js': '/base/dist/ort-wasm-threaded.worker.js',
-    },
     plugins: karmaPlugins,
     client: { captureConsole: true, mocha: { expose: ['body'], timeout: timeoutMocha } },
-    preprocessors: { mainFile: ['sourcemap'] },
     reporters: ['mocha', 'BrowserStack'],
     browsers: [],
     captureTimeout: 120000,
@@ -90,51 +88,12 @@ module.exports = function (config) {
     hostname,
     listenAddress,
     customLaunchers: {
-      ChromeTest: {
-        base: 'Chrome',
-        flags: ['--enable-features=SharedArrayBuffer']
-      },
-      ChromeTestHeadless: {
-        base: 'ChromeHeadless',
-        flags: ['--enable-features=SharedArrayBuffer']
-      },
-      ChromeDebug: {
-        debug: true,
-        base: 'Chrome', flags: ['--remote-debugging-port=9333', '--enable-features=SharedArrayBuffer']
-      },
-      ChromeCanaryTest: {
-        base: 'ChromeCanary',
-        flags: [
-          '--enable-features=SharedArrayBuffer',
-          '--enable-experimental-web-platform-features'
-        ]
-      },
-      ChromeCanaryDebug: {
-        debug: true,
-        base: 'ChromeCanary',
-        flags: [
-          '--remote-debugging-port=9333',
-          '--enable-features=SharedArrayBuffer',
-          '--enable-experimental-web-platform-features'
-        ]
-      },
-      ChromeWebGpuProfileTest: {
-        base: 'Chrome',
-        flags: [
-          '--window-size=1,1',
-          '--enable-features=SharedArrayBuffer',
-          '--disable-dawn-features=disallow_unsafe_apis'
-        ]
-      },
-      ChromeWebGpuProfileDebug: {
-        debug: true,
-        base: 'Chrome',
-        flags: [
-          '--remote-debugging-port=9333',
-          '--enable-features=SharedArrayBuffer',
-          '--disable-dawn-features=disallow_unsafe_apis',
-        ]
-      },
+      // Chromium-based browsers
+      EdgeTest: { base: 'Edge', flags: chromiumFlags, edgeDataDir: userDataDir },
+      ChromeTest: { base: 'Chrome', flags: chromiumFlags, chromeDataDir: userDataDir },
+      ChromeCanaryTest: { base: 'ChromeCanary', flags: chromiumFlags, chromeDataDir: userDataDir },
+      FirefoxTest: { base: 'Firefox', profile: userDataDir },
+
       //
       // ==== BrowserStack browsers ====
       //
@@ -146,21 +105,21 @@ module.exports = function (config) {
         os: 'Windows',
         os_version: '10',
         browser: 'Chrome',
-        browser_version: '91'
+        browser_version: '91',
       },
       BS_WIN_10_Edge_91: {
         base: 'BrowserStack',
         os: 'Windows',
         os_version: '10',
         browser: 'Edge',
-        browser_version: '91'
+        browser_version: '91',
       },
       BS_WIN_10_Firefox_89: {
         base: 'BrowserStack',
         os: 'Windows',
         os_version: '10',
         browser: 'Firefox',
-        browser_version: '89'
+        browser_version: '89',
       },
 
       // macOS
@@ -170,32 +129,20 @@ module.exports = function (config) {
         os: 'OS X',
         os_version: 'Big Sur',
         browser: 'Safari',
-        browser_version: '14.0'
+        browser_version: '14.0',
       },
       BS_MAC_11_Chrome_91: {
         base: 'BrowserStack',
         os: 'OS X',
         os_version: 'Big Sur',
         browser: 'Chrome',
-        browser_version: '91'
+        browser_version: '91',
       },
 
       // iPhone
       //
-      BS_IOS_14_iPhoneXS: {
-        base: 'BrowserStack',
-        device: 'iPhone XS',
-        real_mobile: true,
-        os: 'ios',
-        os_version: '14'
-      },
-      BS_IOS_13_iPhoneXS: {
-        base: 'BrowserStack',
-        device: 'iPhone XS',
-        real_mobile: true,
-        os: 'ios',
-        os_version: '13'
-      },
+      BS_IOS_14_iPhoneXS: { base: 'BrowserStack', device: 'iPhone XS', real_mobile: true, os: 'ios', os_version: '14' },
+      BS_IOS_13_iPhoneXS: { base: 'BrowserStack', device: 'iPhone XS', real_mobile: true, os: 'ios', os_version: '13' },
 
       // Android
       //
@@ -204,22 +151,22 @@ module.exports = function (config) {
         device: 'Google Pixel 5',
         real_mobile: true,
         os: 'android',
-        os_version: '11.0'
+        os_version: '11.0',
       },
       BS_ANDROID_11_Galaxy_S_21: {
         base: 'BrowserStack',
         device: 'Samsung Galaxy S21',
         real_mobile: true,
         os: 'android',
-        os_version: '11.0'
+        os_version: '11.0',
       },
       BS_ANDROID_10_Pixel_4: {
         base: 'BrowserStack',
         device: 'Google Pixel 4',
         real_mobile: true,
         os: 'android',
-        os_version: '10.0'
-      }
-    }
+        os_version: '10.0',
+      },
+    },
   });
 };

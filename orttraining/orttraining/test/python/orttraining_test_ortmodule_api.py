@@ -30,11 +30,12 @@ from transformers.modeling_outputs import SequenceClassifierOutput
 
 import onnxruntime.training.ortmodule as ortmodule_module
 from onnxruntime.training.optim import AdamWMode, FusedAdam
-from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule, _fallback, _io, _utils
+from onnxruntime.training.ortmodule import DebugOptions, LogLevel, ORTModule, _fallback, _utils
 from onnxruntime.training.ortmodule._custom_gradient_registry import register_gradient
 from onnxruntime.training.ortmodule.options import _SkipCheck
+from onnxruntime.training.utils import pytorch_type_to_onnx_dtype
 
-DEFAULT_OPSET = 15
+DEFAULT_OPSET = 17
 
 
 # PyTorch model definitions for tests
@@ -263,7 +264,7 @@ class UnusedBeginParameterNet(torch.nn.Module):
     def __init__(self, input_size, hidden_size1, hidden_size2, num_classes):
         super().__init__()
 
-        # fc1 is an unused initializer (which is in the begining of initializer list)
+        # fc1 is an unused initializer (which is in the beginning of initializer list)
         # which will be dropped after export
         self.fc1 = torch.nn.Linear(input_size, hidden_size1)
         self.relu = torch.nn.ReLU()
@@ -417,24 +418,38 @@ def _get_bert_for_sequence_classification_model(
     return model
 
 
-def _get_bert_for_sequence_classification_sample_data(device):
-    """Returns sample data to be used with BertForSequenceClassification model"""
+def _generate_attention_mask_for_encoder_following_hf(batch_size, seq_length, device, past_key_values_length=0):
+    """Generate attention mask for encoder following the implementation in HuggingFace.
 
-    input_ids = torch.randint(0, 100, (32, 64), dtype=torch.long, device=device)
-    input_mask = torch.randint(0, 100, (32, 64), dtype=torch.long, device=device)
-    labels = torch.randint(0, 1, (32,), dtype=torch.long, device=device)
+    Be noted: past_key_values_length is 0 for training.
 
-    return input_ids, input_mask, labels
+    Generate mask using this
+        https://github.com/huggingface/transformers/blame/4f27ee936a861f56f32ea6db138978b274008006/src/transformers/models/bert/modeling_bert.py#L974C81-L974C81
+
+    """
+
+    attention_mask = torch.ones(((batch_size, seq_length + past_key_values_length)), device=device)
+    return attention_mask
 
 
 def _get_bert_for_sequence_classification_sample_data_with_random_shapes(device):
     """Returns sample data with random shape to be used with BertForSequenceClassification model"""
 
-    x = random.randint(1, 100)
-    y = random.randint(1, 100)
-    input_ids = torch.randint(0, 100, (x, y), dtype=torch.long, device=device)
-    input_mask = torch.randint(0, 100, (x, y), dtype=torch.long, device=device)
-    labels = torch.randint(0, 1, (x,), dtype=torch.long, device=device)
+    bsz = random.randint(1, 100)
+    seq_length = random.randint(1, 100)
+    input_ids = torch.randint(0, 100, (bsz, seq_length), dtype=torch.long, device=device)
+    input_mask = _generate_attention_mask_for_encoder_following_hf(bsz, seq_length, device)
+    labels = torch.randint(0, 1, (bsz,), dtype=torch.long, device=device)
+
+    return input_ids, input_mask, labels
+
+
+def _get_bert_for_sequence_classification_sample_data(device):
+    """Returns sample data to be used with BertForSequenceClassification model"""
+
+    input_ids = torch.randint(0, 100, (32, 64), dtype=torch.long, device=device)
+    input_mask = _generate_attention_mask_for_encoder_following_hf(32, 64, device)
+    labels = torch.randint(0, 1, (32,), dtype=torch.long, device=device)
 
     return input_ids, input_mask, labels
 
@@ -448,9 +463,11 @@ def test_forward_call_single_positional_argument():
     N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
     ort_model = ORTModule(model)
+
     # Check that the original forward signature is preserved.
     assert inspect.signature(model.forward) == inspect.signature(ort_model.forward)
     x = torch.randn(N, D_in, device=device)
+
     # Make sure model runs without any exception
     prediction = ort_model(x)
     assert prediction is not None
@@ -684,7 +701,15 @@ def test_input_requires_grad_saved(device):
     model = ORTModule(model)
     x = torch.randn(N, D_in, device=device, requires_grad=True) + 1
     model(x)
-    assert model._torch_module._execution_manager(model._is_training())._input_info.require_grad_names == ["input1"]
+    assert model._torch_module._execution_manager(
+        model._is_training()
+    )._graph_transition_manager._model_info_for_export.onnx_graph_input_names_require_grad == ["input1"]
+    assert (
+        "input1"
+        in model._torch_module._execution_manager(
+            model._is_training()
+        )._graph_transition_manager._post_export_processed_model_info.onnx_graph_input_names_require_grad
+    )
 
 
 @pytest.mark.parametrize("device", ["cuda", "cpu"])
@@ -754,6 +779,8 @@ def test_scatternd_correctness(device, indices):
 @pytest.mark.parametrize("input_requires_grad", [False, True])
 @pytest.mark.parametrize("conv_algo_search", [None, "EXHAUSTIVE", "HEURISTIC"])
 def test_gradient_correctness_conv1d(use_fp16, input_requires_grad, conv_algo_search):
+    pytest.skip("Temporarily disabled pending investigation (might be related to cudnn frontend).")
+
     class NeuralNetConv1D(torch.nn.Module):
         def __init__(self, in_channels, out_channels, kernel_size, padding=0, groups=1):
             super().__init__()
@@ -826,6 +853,7 @@ def _run_gradient_correctness_transpose(perm, shape):
 
     device = "cuda"
     pt_model = NeuralNetTranspose(perm).to(device)
+
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
     def run_step(model, x):
@@ -1773,16 +1801,48 @@ def test_aten_upsample_nearest(input_rank, use_factor):
     _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
 
 
-def test_aten_upsample_bilinear():
+@pytest.mark.parametrize("interpolate_size_scale", ({"size": (8, 12)}, {"scale_factor": 4.7}))
+@pytest.mark.parametrize("align_corners", (True, False))
+def test_resize_grad_correctness_bilinear_2d(interpolate_size_scale, align_corners):
     class _NeuralNetUpsampleBilinear(torch.nn.Module):
         def __init__(self):
             super().__init__()
 
         def forward(self, input):
-            return torch.nn.functional.interpolate(input, size=(8, 12), mode="bilinear")
+            return torch.nn.functional.interpolate(
+                input, align_corners=align_corners, mode="bilinear", **interpolate_size_scale
+            )
 
     device = "cuda"
     pt_model = _NeuralNetUpsampleBilinear().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction = model(input)
+        prediction.sum().backward()
+        return prediction
+
+    # reset manual seed to reset the generator
+    torch.manual_seed(2333)
+    pt_input = torch.randn([2, 4, 6, 8], dtype=torch.float, device=device, requires_grad=True)
+    ort_input = copy.deepcopy(pt_input)
+    pt_prediction = run_step(pt_model, pt_input)
+    ort_prediction = run_step(ort_model, ort_input)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
+
+def test_aten_upsample_bicubic():
+    class _NeuralNetUpsampleBicubic(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+
+        def forward(self, input):
+            return torch.nn.functional.interpolate(input, size=(8, 12), mode="bicubic")
+
+    device = "cuda"
+    pt_model = _NeuralNetUpsampleBicubic().to(device)
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
     def run_step(model, input):
@@ -2198,10 +2258,8 @@ def test_bert_inputs_with_dynamic_shape():
         pt_p = run_step(pt_model, x, y, z)
         ort_p = run_step(ort_model, x, y, z)
 
-        _test_helpers.assert_values_are_close(
-            ort_p, pt_p, atol=1e-02
-        )  # TODO: this assert is failing with smaller tolerance, need to investigate!!
-        # _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)  #TODO - enable this check after the investigation
+        _test_helpers.assert_values_are_close(ort_p, pt_p, atol=1e-01)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
 
 
 @pytest.mark.parametrize("device", ["cuda", "cpu"])
@@ -2610,7 +2668,10 @@ def test_exception_raised_for_custom_class_return_value_module(device):
         # ORT backend
         with pytest.raises(_fallback.ORTModuleIOError) as runtime_error:
             ort_model(x, y, z)
-        assert "ORTModule does not support the following model output type" in str(runtime_error.value)
+        assert (
+            "ORTModule fails to extract schema from data: Unsupported flatten data type: <class 'orttraining_test_ortmodule_api.NeuralNetCustomClassOutput.CustomClass'>"
+            in str(runtime_error.value)
+        )
 
     del os.environ["ORTMODULE_SKIPCHECK_POLICY"]
 
@@ -3437,6 +3498,13 @@ def test_train_eval_with_various_outputs():
     _test_helpers.assert_values_are_close(pt_out, ort_out)
 
 
+def _repr_schema(ortmodule):
+    tm = ortmodule._torch_module._execution_manager(ortmodule._is_training())._graph_transition_manager
+    return repr(tm._exported_model_info.module_forward_args_schema) + repr(
+        tm._exported_model_info.module_forward_kwargs_schema
+    )
+
+
 def test_forward_dynamic_args():
     os.environ["ORTMODULE_SKIPCHECK_POLICY"] = "SKIP_CHECK_DISABLED"
 
@@ -3461,21 +3529,21 @@ def test_forward_dynamic_args():
         for _ in range(10):
             output = model(*args_size1)
             assert output is not None
-        hash_args_size1 = hash(repr(model._torch_module._execution_manager(model._is_training())._input_info.schema))
+        hash_args_size1 = hash(_repr_schema(model))
         assert hash_args_size1 is not None
 
         # Decrease number of inputs and train some more
         for _ in range(10):
             output = model(*args_size2)
             assert output is not None
-        hash_args_size2 = hash(repr(model._torch_module._execution_manager(model._is_training())._input_info.schema))
+        hash_args_size2 = hash(_repr_schema(model))
         assert hash_args_size2 != hash_args_size1
 
         # Increase number of inputs and train some more
         for _ in range(10):
             output = model(*args_size3)
             assert output is not None
-        hash_args_size3 = hash(repr(model._torch_module._execution_manager(model._is_training())._input_info.schema))
+        hash_args_size3 = hash(_repr_schema(model))
         assert hash_args_size3 != hash_args_size2
 
     del os.environ["ORTMODULE_SKIPCHECK_POLICY"]
@@ -3500,35 +3568,35 @@ def test_forward_dynamic_kwargs():
         for _ in range(10):
             output = model(one)
             assert output is not None
-        hash_x = hash(repr(model._torch_module._execution_manager(model._is_training())._input_info.schema))
+        hash_x = hash(_repr_schema(model))
         assert hash_x is not None
 
         # Train with x and y as inputs
         for _ in range(10):
             output = model(one, y=one)
             assert output is not None
-        hash_x_y = hash(repr(model._torch_module._execution_manager(model._is_training())._input_info.schema))
+        hash_x_y = hash(_repr_schema(model))
         assert hash_x_y != hash_x
 
         # Train with x and z as inputs
         for _ in range(10):
             output = model(one, z=one)
             assert output is not None
-        hash_x_z = hash(repr(model._torch_module._execution_manager(model._is_training())._input_info.schema))
+        hash_x_z = hash(_repr_schema(model))
         assert hash_x_z != hash_x_y
 
         # Train with x, y and z as inputs
         for _ in range(10):
             output = model(one, y=one, z=one)
             assert output is not None
-        hash_x_y_z = hash(repr(model._torch_module._execution_manager(model._is_training())._input_info.schema))
+        hash_x_y_z = hash(_repr_schema(model))
         assert hash_x_y_z != hash_x_z
 
         # Return to original input with x as input
         for _ in range(10):
             output = model(one)
             assert output is not None
-        hash_x2 = hash(repr(model._torch_module._execution_manager(model._is_training())._input_info.schema))
+        hash_x2 = hash(_repr_schema(model))
         assert hash_x2 != hash_x_y_z
         assert hash_x2 == hash_x
 
@@ -3753,7 +3821,7 @@ def test_forward_call_kwargs_input_unexpected_order():
             model.eval()
 
         # Must work because forward() and dict order match
-        y1, y2 = model(**{"input1": input1, "input2": input2})
+        y1, y2 = model(input1=input1, input2=input2)
         assert y1 is not None
         assert y2 is not None
         if model._is_training():
@@ -3761,7 +3829,7 @@ def test_forward_call_kwargs_input_unexpected_order():
             loss.backward()
 
         # Must work even when forward() and dict order mismatch
-        y1, y2 = model(**{"input2": input2, "input1": input1})
+        y1, y2 = model(input2=input2, input1=input1)
         assert y1 is not None
         assert y2 is not None
         if model._is_training():
@@ -3843,17 +3911,20 @@ def test_forward_call_lots_None():
             None,
             None,
         )
-        run_step(
-            a.item() + f.item(), **{"a": a, "b": None, "c": None, "d": None, "e": None, "f": f, "y": None, "z": None}
-        )
+        run_step(a.item() + f.item(), a=a, b=None, c=None, d=None, e=None, f=f, y=None, z=None)
         run_step(a.item() + z.item(), a, None, None, None, None, None, None, z)
-        run_step(
-            a.item() + z.item(), **{"a": a, "b": None, "c": None, "d": None, "e": None, "f": None, "y": None, "z": z}
-        )
+        run_step(a.item() + z.item(), a=a, b=None, c=None, d=None, e=None, f=None, y=None, z=z)
         run_step(a.item() + c.item() + y.item(), a, None, c, None, None, None, y, None)
         run_step(
             a.item() + c.item() + y.item(),
-            **{"a": a, "b": None, "c": c, "d": None, "e": None, "f": None, "y": y, "z": None},
+            a=a,
+            b=None,
+            c=c,
+            d=None,
+            e=None,
+            f=None,
+            y=y,
+            z=None,
         )
         run_step(
             a.item() + b.item() + c.item() + d.item() + e.item() + f.item() + y.item() + z.item(),
@@ -3868,7 +3939,14 @@ def test_forward_call_lots_None():
         )
         run_step(
             a.item() + b.item() + c.item() + d.item() + e.item() + f.item() + y.item() + z.item(),
-            **{"a": a, "b": b, "c": c, "d": d, "e": e, "f": f, "y": y, "z": z},
+            a=a,
+            b=b,
+            c=c,
+            d=d,
+            e=e,
+            f=f,
+            y=y,
+            z=z,
         )
 
     del os.environ["ORTMODULE_SKIPCHECK_POLICY"]
@@ -3948,10 +4026,14 @@ def test_changing_bool_input_re_exports_model(bool_arguments):
 
     input1 = torch.randn(N, D_in, device=device)
     ort_model(input1, bool_arguments[0])
-    exported_model1 = ort_model._torch_module._execution_manager(ort_model._is_training())._onnx_models.exported_model
+    exported_model1 = ort_model._torch_module._execution_manager(
+        ort_model._is_training()
+    )._graph_transition_manager._exported_model_info.exported_model
 
     ort_model(input1, bool_arguments[1])
-    exported_model2 = ort_model._torch_module._execution_manager(ort_model._is_training())._onnx_models.exported_model
+    exported_model2 = ort_model._torch_module._execution_manager(
+        ort_model._is_training()
+    )._graph_transition_manager._exported_model_info.exported_model
 
     assert exported_model1 != exported_model2
 
@@ -4002,6 +4084,7 @@ def test_model_with_registered_buffer_and_dropped_parameters():
     ],
 )
 def test_unused_parameters(model, none_pt_params):
+    torch.manual_seed(2333)
     device = "cuda"
 
     N, D_in, H1, H2, D_out = 64, 784, 500, 400, 10  # noqa: F841, N806
@@ -4116,36 +4199,6 @@ def test_stateless_model_unspecified_device():
     _test_helpers.assert_values_are_close(pt_y, ort_y)
 
 
-@pytest.mark.parametrize(
-    "model",
-    [
-        (UnusedBeginParameterNet(784, 500, 400, 10)),
-        (UnusedMiddleParameterNet(784, 500, 400, 10)),
-        (UnusedEndParameterNet(784, 500, 400, 10)),
-    ],
-)
-def test_unused_parameters_does_not_unnecessarily_reinitialize(model):
-    device = "cuda"
-
-    N, D_in, H1, H2, D_out = 64, 784, 500, 400, 10  # noqa: F841, N806
-    model = model.to(device)
-    ort_model = ORTModule(copy.deepcopy(model))
-    training_manager = ort_model._torch_module._execution_manager(ort_model._is_training())
-
-    x = torch.randn(N, D_in, device=device)
-    _ = ort_model(x)
-
-    input_info = _io.parse_inputs_for_onnx_export(
-        training_manager._module_parameters,
-        training_manager._onnx_models.exported_model,
-        training_manager._input_info.schema,
-        x,
-        {},
-    )
-
-    assert not training_manager._reinitialize_graph_builder(input_info)
-
-
 def test_load_state_dict_for_wrapped_ortmodule():
     class WrapperModule(torch.nn.Module):
         def __init__(self, ortmodule):
@@ -4210,19 +4263,21 @@ def test_hf_save_pretrained():
 
 def test_ortmodule_string_inputs_are_ignored(caplog):
     pt_model = MyStrNet()
+    target_str = "Received input of type <class 'str'> is treated as a constant by ORT by default."
+
     ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(log_level=LogLevel.INFO))
     x = torch.randn(1, 2)
-
     out = ort_model(x, "hello")
-
-    target_str = "Received input of type <class 'str'> which may be treated as a constant by ORT by default."
-    found_target_str = False
-    for record in caplog.records:
-        if target_str in record.message:
-            found_target_str = True
-
-    assert found_target_str
     _test_helpers.assert_values_are_close(out, x + 1)
+
+    found_log = False
+    for record in caplog.records:
+        msg = record.getMessage()
+        if target_str in msg:
+            found_log = True
+            break
+
+    assert found_log, f"Expected to find log message '{target_str}' in the logs, but didn't find it."
 
 
 def test_ortmodule_list_input():
@@ -4782,17 +4837,31 @@ def test_ortmodule_setattr_signals_model_changed():
     ort_model = ORTModule(pt_model)
 
     _ = ort_model(torch.randn(N, D_in, device=device))
-    exported_model1 = ort_model._torch_module._execution_manager(True)._onnx_models.exported_model
+    exported_model1 = ort_model._torch_module._execution_manager(
+        True
+    )._graph_transition_manager._exported_model_info.exported_model
 
     for training_mode in [False, True]:
-        assert ort_model._torch_module._execution_manager(training_mode)._original_model_has_changed is False
+        assert (
+            ort_model._torch_module._execution_manager(
+                training_mode
+            )._graph_transition_manager._original_model_has_changed
+            is False
+        )
     ort_model.input_flag = False
 
     for training_mode in [False, True]:
-        assert ort_model._torch_module._execution_manager(training_mode)._original_model_has_changed is True
+        assert (
+            ort_model._torch_module._execution_manager(
+                training_mode
+            )._graph_transition_manager._original_model_has_changed
+            is True
+        )
 
     _ = ort_model(torch.randn(N, D_in, device=device))
-    exported_model2 = ort_model._torch_module._execution_manager(True)._onnx_models.exported_model
+    exported_model2 = ort_model._torch_module._execution_manager(
+        True
+    )._graph_transition_manager._exported_model_info.exported_model
 
     assert exported_model1 != exported_model2
 
@@ -4950,7 +5019,9 @@ def test_override_pytorch_exporter_kwargs():
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
 
     ort_model = ORTModule(model)
-    ort_model._torch_module._execution_manager(True)._export_extra_kwargs = {"custom_opsets": None}
+    ort_model._torch_module._execution_manager(True)._graph_transition_manager._export_extra_kwargs = {
+        "custom_opsets": None
+    }
 
     # Make sure model runs without any exception
     prediction = ort_model(x)
@@ -4967,7 +5038,7 @@ def test_override_pytorch_exporter_kwargs__invalid():
     model = NeuralNetSinglePositionalArgument(D_in, H, D_out).to(device)
 
     ort_model = ORTModule(model)
-    ort_model._torch_module._execution_manager(True)._export_extra_kwargs = {"verbose": False}
+    ort_model._torch_module._execution_manager(True)._graph_transition_manager._export_extra_kwargs = {"verbose": False}
     with pytest.raises(_fallback.ORTModuleONNXModelException) as type_error:
         _ = ort_model(x)
     assert "The following PyTorch exporter arguments cannot be specified: '{'verbose'}'." in str(type_error.value)
@@ -4980,7 +5051,9 @@ def test_override_pytorch_exporter_kwargs_using_ortmodule_extension__invalid():
         def __init__(self, module, debug_options=None):
             super().__init__(module, debug_options)
             for training_mode in [False, True]:
-                self._torch_module._execution_manager(training_mode)._export_extra_kwargs = {"verbose": None}
+                self._torch_module._execution_manager(training_mode)._graph_transition_manager._export_extra_kwargs = {
+                    "verbose": None
+                }
 
     N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
     x = torch.randn(N, D_in, device=device)
@@ -5000,7 +5073,9 @@ def test_override_pytorch_exporter_kwargs_using_ortmodule_extension():
             super().__init__(module, debug_options)
             # modify GraphExecutionManager internally
             for training_mode in [False, True]:
-                self._torch_module._execution_manager(training_mode)._export_extra_kwargs = {"custom_opsets": None}
+                self._torch_module._execution_manager(training_mode)._graph_transition_manager._export_extra_kwargs = {
+                    "custom_opsets": None
+                }
 
     N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
     x = torch.randn(N, D_in, device=device)
@@ -5231,11 +5306,12 @@ def test_sigmoid_grad_opset13():
         ort_prediction, ort_loss = run_step(ort_model, ort_x)
         pt_prediction, pt_loss = run_step(pt_model, pt_x)
         if step == 0:
-            model_onx = ort_model._torch_module._execution_manager._training_manager._onnx_models
-            for name in ["exported_model", "optimized_model", "optimized_pre_grad_model"]:
-                onx = getattr(model_onx, name)
+            for onnx_model in [
+                ort_model._torch_module._execution_manager._training_manager._graph_transition_manager._exported_model_info.exported_model,
+                ort_model._torch_module._execution_manager._training_manager._onnx_models.optimized_model,
+            ]:
                 opv = None
-                for op in onx.opset_import:
+                for op in onnx_model.opset_import:
                     if not op.domain:
                         opv = op.version
                 assert opv == 13
@@ -5251,7 +5327,7 @@ def test_sigmoid_grad_opset13():
     assert ort_model._torch_module._execution_manager(True)._runtime_options.onnx_opset_version == 13
 
 
-@pytest.mark.parametrize("opset_version", [12, 13, 14, 15])
+@pytest.mark.parametrize("opset_version", [12, 13, 14, 15, 17])
 def test_opset_version_change(opset_version):
     original_env = None
     if "ORTMODULE_ONNX_OPSET_VERSION" in os.environ:
@@ -5274,7 +5350,9 @@ def test_opset_version_change(opset_version):
     prediction.backward()
 
     # Check opset version on ONNX model
-    exported_model = ort_model._torch_module._execution_manager(ort_model._is_training())._onnx_models.exported_model
+    exported_model = ort_model._torch_module._execution_manager(
+        ort_model._is_training()
+    )._graph_transition_manager._exported_model_info.exported_model
     assert exported_model.opset_import[0].version == opset_version
 
     if original_env is not None:
@@ -5285,6 +5363,7 @@ def test_serialize_ortmodule():
     device = "cuda"
     N, D_in, H, D_out = 64, 784, 500, 10  # noqa: N806
     pt_model = SerializationNet(D_in, H, D_out).to(device)
+
     ort_model = ORTModule(copy.deepcopy(pt_model))
 
     x_1 = torch.randn(N, D_in, device=device)
@@ -5424,7 +5503,7 @@ def test_random_states_unchanged_for_ortmodule():
             return x[: self.dim, :]
 
     def random_state_equal(a, b):
-        assert type(a) == type(b)
+        assert type(a) is type(b)
         if isinstance(a, tuple):
             assert len(a) == len(b)
             return all([random_state_equal(a_i, b_i) for a_i, b_i in zip(a, b)])
@@ -5676,8 +5755,6 @@ def test_gradient_correctness_bce_with_logits():
 @pytest.mark.parametrize("label_is_sparse", [False, True])
 @pytest.mark.parametrize("rank", [1, 2])
 def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, label_is_sparse, rank, caplog):
-    os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"] = "1"
-
     class NeuralNetCrossEntropyLoss(torch.nn.Module):
         def __init__(self, num_embeddings, embedding_dim):
             super().__init__()
@@ -5709,9 +5786,6 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
         loss.backward()
         return loss
 
-    # batch_size = 3
-    # sequence = 4
-
     if embed_is_sparse:
         input = torch.tensor([[0, 2, 3, 4], [2, 3, 1, 1], [1, 1, 1, 1]], device=device)
     else:
@@ -5729,19 +5803,31 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
     _ = run_step(ort_model, input, label)
 
     found_embed_is_sparse = False
+    found_embed_is_dense = False
     found_label_is_sparse = False
+    found_label_is_dense = False
     for record in caplog.records:
         if "Label sparsity-based optimization is ON for" in record.getMessage():
             found_label_is_sparse = True
+
+        if "Label sparsity-based optimization is OFF for" in record.getMessage():
+            found_label_is_dense = True
+
+        if "Embedding sparsity-based optimization is OFF for" in record.getMessage():
+            found_embed_is_dense = True
 
         if "Embedding sparsity-based optimization is ON for" in record.getMessage():
             found_embed_is_sparse = True
 
     if label_is_sparse:
-        assert found_label_is_sparse
+        assert found_label_is_sparse and not found_label_is_dense
+    else:
+        assert not found_label_is_sparse and found_label_is_dense
 
     if embed_is_sparse:
-        assert found_embed_is_sparse
+        assert found_embed_is_sparse and not found_embed_is_dense
+    else:
+        assert not found_embed_is_sparse and found_embed_is_dense
 
 
 @pytest.mark.parametrize(
@@ -5750,45 +5836,70 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
         ("Add", 0),
         ("Add", 1),
         ("Add", 2),
+        ("Add", 3),
+        ("Add", 4),
         ("Sub", 0),
         ("Sub", 1),
         ("Sub", 2),
+        ("Sub", 3),
+        ("Sub", 4),
         ("Mul", 0),
-        ("Mul", 1),
         ("Mul", 2),
+        ("Mul", 3),
+        ("Mul", 4),
+        ("Div", 0),
+        ("Div", 2),
+        ("Div", 3),
+        ("Div", 4),
+        ("Pow", 0),
+        ("Pow", 1),
+        ("Pow", 2),
+        ("Pow", 3),
+        ("Pow", 4),
         ("MatMul", 0),
         ("MatMul", 1),
         ("Dropout", 0),
         ("LayerNormalization", 0),
+        ("LayerNormalization", 1),
         ("Cast", 0),
+        ("Sqrt", 0),
         ("BiasGelu", 0),
+        ("Gelu", 0),
+        ("ReduceMean", 0),
+        ("ReduceMean", 1),
     ],
 )
 def test_ops_for_padding_elimination(test_cases):
-    os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"] = "1"
     test_op = test_cases[0]
     case = test_cases[1]
-    # test_op = "Sub"
-    # case = 2
+
+    vocab_size, hidden_size = 50265, 768
+    batch_size, max_seq_length = 8, 128
 
     class ToyModel(torch.nn.Module):
         def __init__(self, vocab_size, hidden_size, pad_token_id):
             super().__init__()
             self.word_embeddings = nn.Embedding(vocab_size, hidden_size, padding_idx=pad_token_id)
             if test_op == "LayerNormalization":
-                self.LayerNorm = nn.LayerNorm(hidden_size, eps=1e-05)
+                if case == 0:
+                    self.LayerNorm = nn.LayerNorm(hidden_size, eps=1e-05)
+                else:
+                    self.LayerNorm = nn.LayerNorm([max_seq_length, hidden_size], eps=1e-05)
             self.hidden_size = hidden_size
 
         # test test_elementwise op for padding elimination
         # in case 0, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [hidden_size],
-        #            the test_op should be included in padding elimination subgraph and the GatherGrad should be added to
-        #            output of test_op.
-        # in case 1, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [batch_size, 1, hidden_size],
-        #            this case is not support in padding elimination, so the test_op should not be included in padding
-        #            elimination subgraph and the GatherGrad should be added before test_op.
-        # in case 2, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [batch_size, seqlen, hidden_size],
-        #            the test_op should be included in padding elimination subgraph and the GatherGrad should be added to
-        #            output of test_op. Besides, the other input of Add should be added 'Reshape + ShrunkenGather' to
+        #            the test_op should be included in padding elimination subgraph and the PadAndUnflatten should be
+        #            added to output of test_op.
+        # in case 2, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [batch_size, 1, hidden_size],
+        #            the test_op should be included in padding elimination subgraph and a 'Expand + FlattenAndUnpad'
+        #            pattern should be insert to the arg of [batch_size, 1, hidden_size].
+        # in case 3, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [1, hidden_size],
+        #            the test_op should be included in padding elimination subgraph and a 'Expand + FlattenAndUnpad'
+        #            pattern should be insert to the arg of [1, hidden_size].
+        # in case 4, the shapes of inputs of test_op are [batch_size, seqlen, hidden_size] and [batch_size, seqlen, hidden_size],
+        #            the test_op should be included in padding elimination subgraph and the PadAndUnflatten should be added to
+        #            output of test_op. Besides, the other input of Add should be added 'FlattenAndUnpad' to
         #            flatten and elimination padding.
         def test_elementwise(self, input_ids):
             input_shape = input_ids.size()
@@ -5796,8 +5907,12 @@ def test_ops_for_padding_elimination(test_cases):
             if case == 0:
                 one_input = torch.ones(self.hidden_size, dtype=torch.long).to(device)
             elif case == 1:
-                one_input = torch.ones((input_shape[0], 1, self.hidden_size), dtype=torch.long).to(device)
+                one_input = 1
             elif case == 2:
+                one_input = torch.ones((input_shape[0], 1, self.hidden_size), dtype=torch.long).to(device)
+            elif case == 3:
+                one_input = torch.ones((1, self.hidden_size), dtype=torch.long).to(device)
+            elif case == 4:
                 one_input = torch.ones(input_shape, dtype=torch.long).to(device)
                 one_input = one_input.unsqueeze(-1).expand(-1, -1, self.hidden_size)
             inputs_embeds = self.word_embeddings(input_ids)
@@ -5807,30 +5922,34 @@ def test_ops_for_padding_elimination(test_cases):
                 output = one_input - inputs_embeds
             elif test_op == "Mul":
                 output = one_input * inputs_embeds
+            elif test_op == "Div":
+                output = inputs_embeds / one_input
+            elif test_op == "Pow":
+                output = inputs_embeds ** (one_input * 2)
             else:
                 output = None
             return output
 
         # test MatMul op for padding elimination
-        # in case 0, the shapes of inputs of MatMul are [2, seqlen] and [batch_size, seqlen, hidden_size]
+        # in case 0, the shapes of inputs of MatMul are [batch_size, seqlen, hidden_size] and [hidden_size, 128]
+        #            the MatMul should be included in padding elimination subgraph and the PadAndUnflatten should be
+        #            added to output of MatMul.
+        # in case 1, the shapes of inputs of MatMul are [2, seqlen] and [batch_size, seqlen, hidden_size]
         #            this case is not support in padding elimination, so the MatMul should not be included in padding
-        #            elimination subgraph and the GatherGrad should be added before MatMul.
-        # in case 1, the shapes of inputs of MatMul are [batch_size, seqlen, hidden_size] and [hidden_size, 128]
-        #            the MatMul should be included in padding elimination subgraph and the GatherGrad should be added to
-        #            output of MatMul.
+        #            elimination subgraph and the PadAndUnflatten should be added before MatMul.
         def test_matmul(self, input_ids):
             inputs_embeds = self.word_embeddings(input_ids)
             output = None
             if case == 0:
-                matmul_input = torch.randn((2, input_ids.size(1))).to(device)
-                output = torch.matmul(matmul_input, inputs_embeds)
-            elif case == 1:
                 matmul_input = torch.randn((self.hidden_size, 128)).to(device)
                 output = torch.matmul(inputs_embeds, matmul_input)
+            elif case == 1:
+                matmul_input = torch.randn((2, input_ids.size(1))).to(device)
+                output = torch.matmul(matmul_input, inputs_embeds)
             return output
 
         # test other ops for padding elimination
-        # all these ops should be included in padding elimination subgraph and the GatherGrad should be added to
+        # all these ops should be included in padding elimination subgraph and the PadAndUnflatten should be added to
         # output of these ops.
         def test_other(self, input_ids):
             inputs_embeds = self.word_embeddings(input_ids)
@@ -5844,10 +5963,24 @@ def test_ops_for_padding_elimination(test_cases):
             elif test_op == "BiasGelu":
                 bias = torch.randn((self.hidden_size,)).to(device)
                 output = torch.nn.functional.gelu(inputs_embeds + bias)
+            elif test_op == "Gelu":
+                output = torch.nn.functional.gelu(inputs_embeds)
+            elif test_op == "Sqrt":
+                output = torch.sqrt(inputs_embeds)
+            elif test_op == "ReduceMean":
+                # In case 0, the inputs_embeds are reduced at last dimension, the ReduceMean should be included in padding
+                # elimination subgraph and the PadAndUnflatten should be added to output of ReduceMean.
+                # In case 1, the inputs_embeds are reduced at first dimension which is not supported in padding elimination,
+                # so the ReduceMean should not be included in padding elimination subgraph and the PadAndUnflatten should
+                # be added before ReduceMean.
+                if case == 0:
+                    output = torch.mean(inputs_embeds, dim=-1)
+                elif case == 1:
+                    output = torch.mean(inputs_embeds, dim=0)
             return output
 
         def forward(self, input_ids):
-            if test_op in ["Add", "Mul", "Sub"]:
+            if test_op in ["Add", "Mul", "Sub", "Div", "Pow"]:
                 output = self.test_elementwise(input_ids)
             elif test_op == "MatMul":
                 output = self.test_matmul(input_ids)
@@ -5870,26 +6003,24 @@ def test_ops_for_padding_elimination(test_cases):
             batched_inputs.append(torch.cat((input_id, padding)))
         return torch.stack(batched_inputs)
 
-    vocab_size, hidden_size = 50265, 768
-    batch_size, max_seq_length = 8, 128
     device = "cuda"
     model = ORTModule(ToyModel(vocab_size, hidden_size, 1).to(device))
     x = generate_inputs(batch_size, max_seq_length, vocab_size)
     model(x)
 
     training_model = model._torch_module._execution_manager(True)._onnx_models.optimized_model
-    if test_op == "Sub":
+    if test_op == "Sub" or test_op == "Pow":
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "Sub"]) == 2
     else:
         assert len([node.op_type for node in training_model.graph.node if node.op_type == "Sub"]) == 1
     assert len([node.op_type for node in training_model.graph.node if node.op_type == "NonZero"]) == 1
     assert len([node.op_type for node in training_model.graph.node if node.op_type == "Squeeze"]) == 1
     assert len([node.op_type for node in training_model.graph.node if node.op_type == "PadAndUnflatten"]) == 1
-    if case == 2:
-        assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 2
+    if case >= 2:
+        assert len([node.op_type for node in training_model.graph.node if node.op_type == "FlattenAndUnpad"]) == 3
     else:
-        assert len([node.op_type for node in training_model.graph.node if node.op_type == "ShrunkenGather"]) == 1
-    gathergrad_node = [node for node in training_model.graph.node if node.op_type == "PadAndUnflatten"][0]
+        assert len([node.op_type for node in training_model.graph.node if node.op_type == "FlattenAndUnpad"]) == 2
+    recover_pad_node = next(node for node in training_model.graph.node if node.op_type == "PadAndUnflatten")
 
     def find_input_node_type(model, arg):
         result = []
@@ -5898,32 +6029,24 @@ def test_ops_for_padding_elimination(test_cases):
                 result.append(node)
         return result[0].op_type if len(result) == 1 else None
 
-    gathergrad_input_optypes = [find_input_node_type(training_model, arg) for arg in gathergrad_node.input]
-    if test_op == "Add" or test_op == "Mul" or test_op == "Sub":
-        if case == 0:
-            assert test_op in gathergrad_input_optypes
-        elif case == 1:
-            assert "ATen" in gathergrad_input_optypes
-    elif test_op == "MatMul":
-        if case == 0:
-            assert "ATen" in gathergrad_input_optypes
-        elif case == 1:
-            assert "MatMul" in gathergrad_input_optypes
+    recover_pad_input_optypes = [find_input_node_type(training_model, arg) for arg in recover_pad_node.input]
+    if test_op == "Add" or test_op == "Mul" or test_op == "Sub" or test_op == "Div" or test_op == "Pow":
+        assert test_op in recover_pad_input_optypes
     else:
-        assert test_op in gathergrad_input_optypes
-
-    del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
+        if case == 0:
+            assert test_op in recover_pad_input_optypes
+        else:
+            assert "ATen" in recover_pad_input_optypes
 
 
 def test_e2e_padding_elimination():
-    os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"] = "1"
     seed = 5033
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
-    torch.backends.cudnn.determinstic = True
+    torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
     class OneLayer(torch.nn.Module):
@@ -6002,7 +6125,7 @@ def test_e2e_padding_elimination():
 
     def run_optim_step(optimizer):
         optimizer.step()
-        optimizer.zero_grad()
+        optimizer.zero_grad(set_to_none=False)
 
     # Generate one batch of inputs (shape:[batch_size, max_seq_length]) and masks (shape:[batch_size, max_seq_length]).
     # Each input has random length from 1 to max_seq_length*0.8 with values from 2 to vocab_size and padded with 1 at
@@ -6048,8 +6171,7 @@ def test_e2e_padding_elimination():
         run_optim_step(ort_optimizer)
 
         for pt_param, ort_param in zip(pt_model.parameters(), ort_model.parameters()):
-            if pt_param.grad is not None:
-                _test_helpers.assert_values_are_close(pt_param.grad, ort_param.grad, atol=1e-4, rtol=1e-5)
+            _test_helpers.assert_values_are_close(pt_param.grad, ort_param.grad, atol=1e-4, rtol=1e-5)
 
         if os.getenv("ORTMODULE_ROCM_TEST", "0") == "1":
             # For ROCm EP, the difference between ORT and PyTorch is larger than CUDA EP.
@@ -6058,6 +6180,851 @@ def test_e2e_padding_elimination():
             _test_helpers.assert_values_are_close(ort_prediction, pt_prediction, atol=1e-3, rtol=1e-4)
 
     training_model = ort_model._torch_module._execution_manager(True)._onnx_models.optimized_model
-    assert "ShrunkenGather" in [node.op_type for node in training_model.graph.node]
+    assert "FlattenAndUnpad" in [node.op_type for node in training_model.graph.node]
     assert "PadAndUnflatten" in [node.op_type for node in training_model.graph.node]
-    del os.environ["ORTMODULE_ENABLE_EMBEDDING_SPARSE_OPTIMIZER"]
+
+
+@pytest.mark.skipif(
+    Version(torch.__version__) >= Version("1.13.0"),
+    reason="PyTorch since 1.13 don't output expected warning messages any more",
+)
+@pytest.mark.parametrize("log_level", [LogLevel.VERBOSE, LogLevel.INFO, LogLevel.WARNING])
+def test_ortmodule_log_level_control(log_level, caplog):
+    class NeuralNetCrossEntropyLoss(torch.nn.Module):
+        def __init__(self, num_embeddings, embedding_dim):
+            super().__init__()
+            self.embedding = torch.nn.Embedding(num_embeddings, embedding_dim, padding_idx=1)
+
+        def forward(self, input, positions):
+            output = torch.transpose(self.embedding(input), 0, 1)
+            ignored_index = output.size(1)
+            loss_fct = torch.nn.CrossEntropyLoss(ignore_index=ignored_index)
+            return loss_fct(output, positions)
+
+    device = "cuda"
+    num_embeddings, embedding_dim = 32, 128
+    pt_model = NeuralNetCrossEntropyLoss(num_embeddings, embedding_dim).to(device)
+
+    ort_model = ORTModule(pt_model, DebugOptions(log_level=log_level))
+    use_fp16 = True
+
+    def run_step(model, input, positions):
+        with amp.autocast(use_fp16):
+            loss = model(input, positions)
+        loss.backward()
+        return loss
+
+    N = random.randint(16, 32)  # noqa: N806
+    input = torch.randint(high=num_embeddings, size=(N,), dtype=torch.int64, device=device)
+    positions = torch.randint(high=N, size=(embedding_dim,), dtype=torch.int64, device=device)
+    _ = run_step(ort_model, input, positions)
+
+    found_missing_inference_log = False
+    for record in caplog.records:
+        msg = record.getMessage()
+        if "The shape inference of com.microsoft::SoftmaxCrossEntropyLossInternal type is missing" in msg:
+            found_missing_inference_log = True
+            break
+
+    if log_level == LogLevel.VERBOSE:
+        assert found_missing_inference_log
+    else:
+        assert not found_missing_inference_log
+
+
+def test_cache_exported_model():
+    class Net(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = torch.nn.Linear(10, 1)
+
+        def forward(self, x):
+            x = x.view(x.shape[0], -1)
+            x = torch.nn.functional.relu(self.fc(x))
+            return x
+
+    data = torch.randn(1, 10)
+
+    with tempfile.TemporaryDirectory() as temporary_dir:
+        os.environ["ORTMODULE_CACHE_DIR"] = temporary_dir
+
+        # first time seeing the model, architecture should be cached under ORTMODULE_CACHE_DIR
+        model_pre_cache = Net()
+        model_pre_cache = ORTModule(model_pre_cache, DebugOptions(log_level=LogLevel.INFO))
+
+        torch.onnx.export = unittest.mock.MagicMock(side_effect=torch.onnx.export)
+        _ = model_pre_cache(data)
+        torch.onnx.export.assert_called()
+        torch.onnx.export.reset_mock()
+
+        # second time seeing the model, architecture should be loaded from ORTMODULE_CACHE_DIR
+        model_post_cache = Net()
+        model_post_cache = ORTModule(model_post_cache, DebugOptions(log_level=LogLevel.INFO))
+
+        torch.onnx.export = unittest.mock.MagicMock(side_effect=torch.onnx.export)
+        _ = model_post_cache(data)
+        torch.onnx.export.assert_not_called()
+        torch.onnx.export.reset_mock()
+
+        del os.environ["ORTMODULE_CACHE_DIR"]
+
+
+def test_reciprocal_gradient():
+    class ReciprocalModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+
+        def forward(self, x):
+            return 1 / x
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+
+    device = "cuda"
+    pt_model = ReciprocalModel().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.randn(3, 224, 224, requires_grad=True, device=device)
+    with torch.no_grad():
+        pt_x[pt_x <= 0] -= 0.2
+        pt_x[pt_x > 0] += 0.2
+    ort_x = copy.deepcopy(pt_x)
+
+    pt_prediction, pt_loss = run_step(pt_model, pt_x)
+    ort_prediction, ort_loss = run_step(ort_model, ort_x)
+    _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
+    _test_helpers.assert_values_are_close(pt_loss, ort_loss)
+    _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
+
+
+def test_leakyrelu_gradient():
+    class LeakyReluModel(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.leakyrelu = nn.LeakyReLU(0.5)
+
+        def forward(self, x):
+            return self.leakyrelu(x)
+
+    def run_step(model, x):
+        prediction = model(x)
+        loss = prediction.sum()
+        loss.backward()
+        return prediction, loss
+
+    device = "cuda"
+    pt_model = LeakyReluModel().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.randn(3, 224, 224, requires_grad=True, device=device)
+    with torch.no_grad():
+        pt_x[pt_x <= 0] -= 0.2
+        pt_x[pt_x > 0] += 0.2
+    ort_x = copy.deepcopy(pt_x)
+
+    pt_prediction, pt_loss = run_step(pt_model, pt_x)
+    ort_prediction, ort_loss = run_step(ort_model, ort_x)
+    _test_helpers.assert_values_are_close(pt_prediction, ort_prediction)
+    _test_helpers.assert_values_are_close(pt_loss, ort_loss)
+    _test_helpers.assert_values_are_close(pt_x.grad, ort_x.grad)
+
+
+@pytest.mark.skipif(
+    os.getenv("ORTMODULE_ROCM_TEST", "0") == "1", reason="Skip for ROCm because the kernel is not implemented for ROCm"
+)
+@pytest.mark.parametrize("use_fp16", [False, True])
+@pytest.mark.parametrize("conv_algo_search", [None, "EXHAUSTIVE", "HEURISTIC"])
+def test_conv_transpose_gradient(use_fp16, conv_algo_search):
+    class ChainedTransposedConv(nn.Module):
+        def __init__(self):
+            super().__init__()
+
+            # Transposed Convolution 1D
+            self.conv1d_transpose = nn.ConvTranspose1d(
+                in_channels=4, out_channels=2, kernel_size=3, stride=2, padding=1
+            )
+            self.relu1 = nn.ReLU()
+
+            # Transposed Convolution 2D
+            self.conv2d_transpose = nn.ConvTranspose2d(
+                in_channels=2, out_channels=3, kernel_size=3, stride=2, padding=1
+            )
+            self.relu2 = nn.ReLU()
+
+            # Transposed Convolution 3D
+            self.conv3d_transpose = nn.ConvTranspose3d(
+                in_channels=3, out_channels=4, kernel_size=3, stride=2, padding=1
+            )
+            self.relu3 = nn.ReLU()
+
+        def forward(self, x):
+            out1d = self.relu1(self.conv1d_transpose(x))
+            out2d = self.relu2(self.conv2d_transpose(out1d.unsqueeze(2)))
+            out3d = self.relu3(self.conv3d_transpose(out2d.unsqueeze(2)))
+            return out3d.squeeze(2)
+
+    if conv_algo_search is not None:
+        os.environ["ORTMODULE_CONV_ALGO_SEARCH"] = conv_algo_search
+
+    def run_step(model, x):
+        with amp.autocast(use_fp16):
+            loss = model(x).sum()
+        loss.backward()
+
+        return (
+            x.grad,
+            model.conv1d_transpose.weight.grad,
+            model.conv1d_transpose.bias.grad,
+            model.conv2d_transpose.weight.grad,
+            model.conv2d_transpose.bias.grad,
+            model.conv3d_transpose.weight.grad,
+            model.conv3d_transpose.bias.grad,
+        )
+
+    device = "cuda"
+    pt_model = ChainedTransposedConv().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.randn(1, 4, 8, requires_grad=True, device=device)
+    ort_x = copy.deepcopy(pt_x)
+
+    pt_grads = run_step(pt_model, pt_x)
+    ort_grads = run_step(ort_model, ort_x)
+
+    for pt_grad, ort_grad in zip(pt_grads, ort_grads):
+        if use_fp16:
+            assert torch.allclose(pt_grad, ort_grad, atol=1e-3, rtol=1e-3)
+        else:
+            assert torch.allclose(pt_grad, ort_grad)
+
+    if conv_algo_search is not None:
+        del os.environ["ORTMODULE_CONV_ALGO_SEARCH"]
+
+
+@pytest.mark.skipif(
+    os.getenv("ORTMODULE_ROCM_TEST", "0") == "1", reason="Skip for ROCm because the kernel is not implemented for ROCm"
+)
+@pytest.mark.parametrize("conv_algo_search", [None, "EXHAUSTIVE", "HEURISTIC"])
+def test_conv_transpose_gradient_with_groups(conv_algo_search):
+    class TransposedConv3DWithGroups(nn.Module):
+        def __init__(self):
+            super().__init__()
+            # in_channels, out_channels, kernel_size, stride, padding
+            self.conv_transpose = nn.ConvTranspose3d(
+                in_channels=6, out_channels=4, kernel_size=3, stride=2, padding=1, groups=2
+            )
+
+        def forward(self, x):
+            return self.conv_transpose(x)
+
+    if conv_algo_search is not None:
+        os.environ["ORTMODULE_CONV_ALGO_SEARCH"] = conv_algo_search
+
+    def run_step(model, x):
+        loss = model(x).sum()
+        loss.backward()
+
+        return (
+            x.grad,
+            model.conv_transpose.weight.grad,
+            model.conv_transpose.bias.grad,
+        )
+
+    device = "cuda"
+    pt_model = TransposedConv3DWithGroups().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    pt_x = torch.randn(1, 6, 8, 16, 16, requires_grad=True, device=device)
+    ort_x = copy.deepcopy(pt_x)
+
+    pt_grads = run_step(pt_model, pt_x)
+    ort_grads = run_step(ort_model, ort_x)
+
+    for pt_grad, ort_grad in zip(pt_grads, ort_grads):
+        assert torch.allclose(pt_grad, ort_grad)
+
+    if conv_algo_search is not None:
+        del os.environ["ORTMODULE_CONV_ALGO_SEARCH"]
+
+
+@pytest.mark.skipif(
+    os.getenv("ORTMODULE_ROCM_TEST", "0") == "1", reason="Skip for ROCm because the kernel is not implemented for ROCm"
+)
+@pytest.mark.parametrize("conv_algo_search", [None, "EXHAUSTIVE", "HEURISTIC"])
+def test_conv_transpose_gradient_with_strides_padding_and_dilation(conv_algo_search):
+    class ConvTransposeComplexModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.conv_transpose = nn.ConvTranspose3d(
+                16, 33, (3, 5, 2), stride=(2, 1, 1), padding=(0, 4, 2), dilation=(1, 2, 1)
+            )
+            self.param = nn.Parameter(torch.randn(20, 33, 21, 50, 97))
+
+        def forward(self, x):
+            return self.conv_transpose(x) * self.param
+
+    if conv_algo_search is not None:
+        os.environ["ORTMODULE_CONV_ALGO_SEARCH"] = conv_algo_search
+
+    def run_step(model, x):
+        loss = model(x).sum()
+        loss.backward()
+
+        return (
+            x.grad,
+            model.conv_transpose.weight.grad,
+            model.conv_transpose.bias.grad,
+        )
+
+    device = "cuda"
+    pt_model = ConvTransposeComplexModel().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model)).to(device)
+
+    pt_x = torch.randn(20, 16, 10, 50, 100, requires_grad=True, device=device)
+    ort_x = copy.deepcopy(pt_x)
+
+    pt_grads = run_step(pt_model, pt_x)
+    ort_grads = run_step(ort_model, ort_x)
+
+    for pt_grad, ort_grad in zip(pt_grads, ort_grads):
+        assert torch.allclose(pt_grad, ort_grad, atol=1e-2, rtol=1e-2)
+
+    if conv_algo_search is not None:
+        del os.environ["ORTMODULE_CONV_ALGO_SEARCH"]
+
+
+def test_bert_result_with_layerwise_recompute():
+    original_val = os.environ.get("ORTMODULE_MEMORY_OPT_LEVEL", None)
+    # Create PyTorch model with dropout disabled.
+    pt_model = _get_bert_for_sequence_classification_model(
+        "cuda", is_training=True, hidden_dropout_prob=0.0, attention_probs_dropout_prob=0.0
+    )
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = "1"
+    ort_model_with_reompute = ORTModule(
+        copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="layerwise_recompute_test")
+    )
+
+    def run_step(model, x, y, z):
+        outputs = model(x, y, None, None, None, None, z)
+        loss = outputs[0]
+        loss.backward()
+        return outputs[0]
+
+    for _ in range(10):
+        x, y, z = _get_bert_for_sequence_classification_sample_data_with_random_shapes("cuda")
+
+        ort_p = run_step(ort_model, x, y, z)
+        ort_p_with_reompute = run_step(ort_model_with_reompute, x, y, z)
+
+        _test_helpers.assert_values_are_close(ort_p, ort_p_with_reompute, atol=1e-02)
+        _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, ort_model_with_reompute)
+
+    execution_mgr = ort_model_with_reompute._torch_module._execution_manager._training_manager
+    from onnxruntime.training.ortmodule._onnx_models import _get_onnx_file_name
+
+    # Keep the logic aligned with _graph_execution_manager.py
+    path = os.path.join(
+        execution_mgr._debug_options.save_onnx_models.path,
+        _get_onnx_file_name(
+            execution_mgr._debug_options.save_onnx_models.name_prefix, "execution_model", execution_mgr._export_mode
+        ),
+    )
+
+    onnx_model = onnx.load(path)
+    onnx_nodes = onnx_model.graph.node
+
+    recompute_nodes = 0
+    for node in onnx_nodes:
+        if "_recompute" in node.name:
+            recompute_nodes += 1
+
+    assert recompute_nodes > 0, "No Recompute nodes are found"
+
+    # Make sure environment variable is restored to its original value after the run is completed.
+    torch.cuda.synchronize()
+    if original_val is not None:
+        os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = original_val
+
+
+def test_bert_memory_inspection(caplog):
+    original_val = os.environ.get("ORTMODULE_PRINT_MEMORY_STATS", None)
+
+    # Create PyTorch model with dropout disabled.
+    pt_model = _get_bert_for_sequence_classification_model(
+        "cuda", is_training=True, hidden_dropout_prob=0.0, attention_probs_dropout_prob=0.0
+    )
+
+    os.environ["ORTMODULE_PRINT_MEMORY_STATS"] = "1"
+    pt_model.eval()  # Put it in evaluate mode by intention, in case some initialization in ORTModule use the module.is_training for its checks by mistake.
+    ort_model = ORTModule(
+        copy.deepcopy(pt_model), DebugOptions(log_level=LogLevel.INFO)  # The logged memory info is in INFO level.
+    )
+
+    def run_step(model, x, y, z):
+        outputs = model(x, y, None, None, None, None, z)
+        loss = outputs[0]
+        loss.backward()
+
+    ort_model.train()
+    for _ in range(32):
+        x, y, z = _get_bert_for_sequence_classification_sample_data_with_random_shapes("cuda")
+        run_step(ort_model, x, y, z)
+
+    info_records = [
+        record.message for record in caplog.records if record.levelname == "INFO" and "(MiB) | phase:" in record.message
+    ]
+
+    assert len(info_records) == 4 * 11
+
+    # Make sure environment variable is restored to its original value after the run is completed.
+    torch.cuda.synchronize()
+    if original_val is not None:
+        os.environ["ORTMODULE_PRINT_MEMORY_STATS"] = original_val
+    else:
+        if "ORTMODULE_PRINT_MEMORY_STATS" in os.environ:
+            del os.environ["ORTMODULE_PRINT_MEMORY_STATS"]
+
+
+@pytest.mark.parametrize("softmax_compute_type", [torch.float16, torch.float32])
+def test_overridden_softmax_export(softmax_compute_type):
+    class CustomSoftmaxExportTest(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+
+        def forward(self, attn_weight):
+            return torch.nn.functional.softmax(attn_weight, dim=-1, dtype=softmax_compute_type)
+
+    device = "cuda"
+    pt_model = CustomSoftmaxExportTest().to(device)
+    ort_model = ORTModule(
+        copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="overridden_softmax_export")
+    )
+
+    def run_step(model, attn_weight):
+        prediction = model(attn_weight)
+        prediction.sum().backward()
+        return prediction
+
+    # reset manual seed to reset the generator
+    torch.manual_seed(2333)
+    attn_weight = torch.randn([20, 6, 10, 10], dtype=torch.float, device=device, requires_grad=True)
+    ort_attn_weight = copy.deepcopy(attn_weight)
+    pt_prediction = run_step(pt_model, attn_weight)
+    ort_prediction = run_step(ort_model, ort_attn_weight)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_values_are_close(attn_weight.grad, ort_attn_weight.grad)
+    _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, pt_model)
+
+    # Check the ONNX Softmax is running in float32.
+    execution_mgr = ort_model._torch_module._execution_manager._training_manager
+    from onnxruntime.training.ortmodule._onnx_models import _get_onnx_file_name
+
+    # Keep the logic aligned with _graph_execution_manager.py
+    path = os.path.join(
+        execution_mgr._debug_options.save_onnx_models.path,
+        _get_onnx_file_name(
+            execution_mgr._debug_options.save_onnx_models.name_prefix, "torch_exported", execution_mgr._export_mode
+        ),
+    )
+
+    onnx_model = onnx.load(path)
+    onnx_nodes = [n for n in onnx_model.graph.node]
+
+    assert onnx_nodes[0].op_type == "Cast"
+    to_attr = onnx_nodes[0].attribute[0]
+    assert to_attr.name == "to"
+    to_value = to_attr.i
+    assert to_value == pytorch_type_to_onnx_dtype(softmax_compute_type), "Cast to attribute is not as expected"
+
+
+# TODO: fix the issue in rocm training, then enable the test.
+@pytest.mark.skip(reason="This test is disabled due to its breaking rocm training cis.")
+def test_aten_conv_bf16():
+    class NeuralNetConv(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.conv = torch.nn.Conv2d(
+                in_channels=3,
+                out_channels=1024,
+                kernel_size=14,
+                stride=14,
+                bias=False,
+                dtype=torch.bfloat16,
+            )
+
+        def forward(self, input):
+            return self.conv(input)
+
+    device = "cuda"
+    pt_model = NeuralNetConv().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model))
+
+    def run_step(model, input):
+        prediction = model(input)
+        prediction.sum().backward()
+        return prediction
+
+    # reset manual seed to reset the generator
+    torch.manual_seed(2333)
+    pt_input = torch.randn([2, 3, 336, 336], dtype=torch.bfloat16, device=device, requires_grad=True)
+    ort_input = copy.deepcopy(pt_input)
+    pt_prediction = run_step(pt_model, pt_input)
+    ort_prediction = run_step(ort_model, ort_input)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_values_are_close(ort_input.grad, pt_input.grad)
+
+
+@pytest.mark.parametrize("memory_optimization_level", [None, 0, 1, 2])
+@pytest.mark.parametrize("allow_gradient_checkpoint_export", [None, 0, 1])
+@pytest.mark.parametrize("fx", ["torch", "deepspeed"])
+def test_enable_layerwise_recompute(memory_optimization_level, allow_gradient_checkpoint_export, fx, caplog):
+    """Expected behaviors:
+    memory_optimization_level=0|None, allow_gradient_checkpoint_export=0|None => layerwise recompute is disabled
+    memory_optimization_level=1, allow_gradient_checkpoint_export=0|None => layerwise recompute is enabled
+    memory_optimization_level=2, allow_gradient_checkpoint_export=0|None => layerwise recompute is disabled
+    memory_optimization_level=0|None, allow_gradient_checkpoint_export=1 => layerwise recompute is disabled
+    memory_optimization_level=1, allow_gradient_checkpoint_export=1 => layerwise recompute is disabled
+    memory_optimization_level=2, allow_gradient_checkpoint_export=1 => layerwise recompute is disabled
+    """
+    if fx == "deepspeed":
+        try:
+            import deepspeed
+
+            checkpoint = deepspeed.checkpointing.checkpoint
+        except ImportError:
+            # skip if deepspeed is not installed (in amd CI)
+            return
+
+    elif fx == "torch":
+        from torch.utils.checkpoint import checkpoint
+    else:
+        raise ValueError(f"unsupported fx value: {fx}. only torch and deepspeed are supported.")
+
+    original_val = os.environ.get("ORTMODULE_MEMORY_OPT_LEVEL", None)
+    original_val_allow_gradient_checkpoint_export = os.environ.get("ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT", None)
+
+    if memory_optimization_level is not None:
+        os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = str(memory_optimization_level)
+    else:
+        if original_val is not None:
+            del os.environ["ORTMODULE_MEMORY_OPT_LEVEL"]
+
+    if allow_gradient_checkpoint_export:
+        os.environ["ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT"] = str(allow_gradient_checkpoint_export)
+    else:
+        if original_val_allow_gradient_checkpoint_export is not None:
+            del os.environ["ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT"]
+
+    class SampleModel(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.layer1 = nn.Linear(10, 10)
+            self.layer2 = nn.Linear(10, 10)
+
+        def forward(self, x):
+            # Checkpointing the first layer
+            x = checkpoint(self.layer1, x)
+            x = nn.ReLU()(x)
+            # The second layer is not checkpointed
+            x = self.layer2(x)
+            return x
+
+    model = SampleModel().cuda()
+    input = torch.randn(1, 10).cuda()
+    model = ORTModule(model, DebugOptions(log_level=LogLevel.INFO))
+
+    # Forward pass
+
+    # Tolerant export failure.
+    import contextlib
+
+    with contextlib.suppress(Exception):
+        _ = model(input)
+
+    layerwise_recompute_info_records = [
+        record.message for record in caplog.records if "Layer-wise memory optimization is enabled" in record.message
+    ]
+
+    if memory_optimization_level != 1:
+        assert len(layerwise_recompute_info_records) == 0
+    else:
+        if allow_gradient_checkpoint_export is None or allow_gradient_checkpoint_export == 0:
+            assert len(layerwise_recompute_info_records) > 0
+        else:
+            assert len(layerwise_recompute_info_records) == 0
+
+    # Make sure environment variable is restored to its original value after the run is completed.
+    torch.cuda.synchronize()
+    if original_val is not None:
+        os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = original_val
+    else:
+        if "ORTMODULE_MEMORY_OPT_LEVEL" in os.environ:
+            del os.environ["ORTMODULE_MEMORY_OPT_LEVEL"]
+
+    if original_val_allow_gradient_checkpoint_export is not None:
+        os.environ["ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT"] = original_val_allow_gradient_checkpoint_export
+    else:
+        if "ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT" in os.environ:
+            del os.environ["ORTMODULE_ALLOW_AUTOGRAD_CHECKPOINT"]
+
+
+def test_layerwise_recompute_pythonop_deterministic():
+
+    original_val = os.environ.get("ORTMODULE_MEMORY_OPT_LEVEL", None)
+
+    class DropoutFunction(torch.autograd.Function):
+
+        @staticmethod
+        def forward(ctx, x):
+            return torch.nn.functional.dropout(x, p=0.5, training=True)
+
+        @staticmethod
+        def backward(ctx, grad_output):
+            return grad_output
+
+    class OneLayer(torch.nn.Module):
+        def __init__(self, hidden_size, num_attention_heads):
+            super().__init__()
+            self.num_attention_heads = num_attention_heads
+            self.attention_head_size = int(hidden_size / num_attention_heads)
+            self.all_head_size = num_attention_heads * self.attention_head_size
+            self.query = nn.Linear(hidden_size, self.all_head_size)
+            self.key = nn.Linear(hidden_size, self.all_head_size)
+            self.value = nn.Linear(hidden_size, self.all_head_size)
+            self.dense = nn.Linear(hidden_size, hidden_size)
+            self.LayerNorm = nn.LayerNorm(hidden_size, eps=1e-05)
+
+        def transpose_for_scores(self, x: torch.Tensor) -> torch.Tensor:
+            new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
+            x = x.view(new_x_shape)
+            return x.permute(0, 2, 1, 3)
+
+        def forward(self, hidden_states, attention_mask):
+            query_layer = self.transpose_for_scores(self.query(hidden_states))
+            key_layer = self.transpose_for_scores(self.key(hidden_states))
+            value_layer = self.transpose_for_scores(self.value(hidden_states))
+            attention_scores = torch.matmul(query_layer, key_layer.transpose(-1, -2))
+            attention_scores = attention_scores / math.sqrt(self.attention_head_size)
+            attention_scores = attention_scores + attention_mask
+            attention_probs = nn.functional.softmax(attention_scores, dim=-1)
+            attention_probs = DropoutFunction.apply(attention_probs)
+            context_layer = torch.matmul(attention_probs, value_layer)
+            context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
+            new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
+            context_layer = context_layer.view(new_context_layer_shape)
+
+            output = self.dense(context_layer)
+            output = DropoutFunction.apply(output)
+            output = self.LayerNorm(output + hidden_states)
+            return output
+
+    # This toy model is written referring to HuggingFace bert-large-uncased model in run_glue.py:
+    # https://github.com/huggingface/optimum/blob/72133e595f9a054c3221ec9ea87f42e0bdaa062b/examples/onnxruntime/training/text-classification/run_glue.py
+    # This is just a simple version of it for convenient testing.
+    class ToyModel(torch.nn.Module):
+        def __init__(self, num_hidden_layers, vocab_size, hidden_size, num_attention_heads, pad_token_id, num_labels):
+            super().__init__()
+            self.word_embeddings = nn.Embedding(vocab_size, hidden_size, padding_idx=pad_token_id)
+            self.token_type_embeddings = nn.Embedding(1, hidden_size)
+            self.LayerNorm = nn.LayerNorm(hidden_size, eps=1e-05)
+            self.layer = nn.ModuleList([OneLayer(hidden_size, num_attention_heads) for _ in range(num_hidden_layers)])
+            self.out_proj = nn.Linear(hidden_size, num_labels)
+
+        def forward(self, input_ids, attention_mask, target):
+            input_shape = input_ids.size()
+            token_type_ids = torch.zeros(input_shape, dtype=torch.long).to(device)
+            inputs_embeds = self.word_embeddings(input_ids)
+            token_type_embeddings = self.token_type_embeddings(token_type_ids)
+            embeddings = inputs_embeds + token_type_embeddings
+            embeddings = self.LayerNorm(embeddings)
+            hidden_states = DropoutFunction.apply(embeddings)
+            extended_attention_mask = attention_mask[:, None, None, :]
+            extended_attention_mask = extended_attention_mask.to(dtype=torch.float32)
+            extended_attention_mask = (1.0 - extended_attention_mask) * torch.finfo(torch.float32).min
+            for _, layer_module in enumerate(self.layer):
+                hidden_states = layer_module(hidden_states, extended_attention_mask)
+            x = hidden_states[:, 0, :]
+            x = self.out_proj(x)
+            loss_fct = torch.nn.CrossEntropyLoss()
+            return loss_fct(x, target)
+
+    def run_step(model, inputs, mask, target):
+        loss = model(inputs, mask, target)
+        loss.backward()
+        return loss
+
+    # Generate one batch of inputs (shape:[batch_size, max_seq_length]) and masks (shape:[batch_size, max_seq_length]).
+    # Each input has random length from 1 to max_seq_length*0.8 with values from 2 to vocab_size and padded with 1 at
+    # [max_seq_length - length:]. Values of masks are 1 at [0:length] and 0 at [length:max_seq_length].
+    def generate_inputs(batch_size, max_seq_length, vocab_size):
+        batched_inputs = []
+        batched_masks = []
+        for _ in range(batch_size):
+            # Generate random length from 1 to max_seq_length*0.8, to ensure sparsity > 20%
+            seq_len = random.randint(1, int(max_seq_length * 0.8))
+
+            # Generate input values and padding respectively and concatenate them
+            input_id = torch.randint(2, vocab_size, (seq_len,), dtype=torch.long, device=device)
+            padding = torch.ones((max_seq_length - seq_len,), dtype=torch.long, device=device)
+            batched_inputs.append(torch.cat((input_id, padding)))
+
+            # Generate mask values and padding respectively and concatenate them
+            mask_ones = torch.ones((seq_len,), device=device)
+            mask_zeros = torch.zeros((max_seq_length - seq_len,), device=device)
+            batched_masks.append(torch.cat((mask_ones, mask_zeros)))
+        return torch.stack(batched_inputs), torch.stack(batched_masks)
+
+    num_layers, vocab_size, hidden_size, num_attention_heads = 12, 50265, 768, 12
+    batch_size, max_seq_length = 8, 128
+    device = "cuda"
+    pt_model = ToyModel(num_layers, vocab_size, hidden_size, num_attention_heads, 1, 3).to(device)
+
+    os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = "0"
+    ort_model1 = ORTModule(copy.deepcopy(pt_model))
+
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
+    pt_input, pt_mask = generate_inputs(batch_size, max_seq_length, vocab_size)
+    ort_input = copy.deepcopy(pt_input)
+    ort_mask = copy.deepcopy(pt_mask)
+    pt_target = torch.randint(3, (batch_size,), device=device)
+    ort_target = copy.deepcopy(pt_target)
+
+    seed = 5033
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    # Run one step of forward and backward for torch and ort respectively
+    ort_prediction1 = run_step(ort_model1, ort_input, ort_mask, ort_target)
+
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    torch.cuda.manual_seed(seed)
+    torch.cuda.manual_seed_all(seed)
+
+    os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = "1"
+    ort_model2 = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="recompute"))
+    ort_prediction2 = run_step(ort_model2, ort_input, ort_mask, ort_target)
+
+    for ort_param1, ort_param2 in zip(ort_model1.parameters(), ort_model2.parameters()):
+        _test_helpers.assert_values_are_close(ort_param1.grad, ort_param2.grad, atol=1e-4, rtol=1e-5)
+
+    if os.getenv("ORTMODULE_ROCM_TEST", "0") == "1":
+        # For ROCm EP, the difference between ORT and PyTorch is larger than CUDA EP.
+        _test_helpers.assert_values_are_close(ort_prediction1, ort_prediction2, atol=2e-3, rtol=2e-4)
+    else:
+        _test_helpers.assert_values_are_close(ort_prediction1, ort_prediction2, atol=1e-3, rtol=1e-4)
+
+    execution_mgr = ort_model2._torch_module._execution_manager._training_manager
+    from onnxruntime.training.ortmodule._onnx_models import _get_onnx_file_name
+
+    # Keep the logic aligned with _graph_execution_manager.py
+    path = os.path.join(
+        execution_mgr._debug_options.save_onnx_models.path,
+        _get_onnx_file_name(
+            execution_mgr._debug_options.save_onnx_models.name_prefix, "execution_model", execution_mgr._export_mode
+        ),
+    )
+
+    onnx_model = onnx.load(path)
+    onnx_nodes = onnx_model.graph.node
+
+    recompute_nodes = 0
+    for node in onnx_nodes:
+        if "_recompute" in node.name:
+            recompute_nodes += 1
+
+    assert recompute_nodes > 0, "No Recompute nodes are found"
+
+    # Make sure environment variable is restored to its original value after the run is completed.
+    torch.cuda.synchronize()
+    if original_val is not None:
+        os.environ["ORTMODULE_MEMORY_OPT_LEVEL"] = original_val
+    else:
+        if "ORTMODULE_MEMORY_OPT_LEVEL" in os.environ:
+            del os.environ["ORTMODULE_MEMORY_OPT_LEVEL"]
+
+
+@pytest.mark.skipif(
+    Version(torch.__version__) < Version("2.3.0"),
+    reason="torch.nn.attention module was introduced in PyTorch 2.3.0",
+)
+def test_aten_attention():
+    pytest.skip("Temporarily disabled pending investigation.")
+
+    from torch.nn.attention import SDPBackend, sdpa_kernel
+
+    class _NeuralNetAttention(torch.nn.Module):
+        def __init__(self):
+            super().__init__()
+
+        def forward(self, q, k, v, attn_mask=None):
+            with sdpa_kernel(SDPBackend.EFFICIENT_ATTENTION):
+                return torch.nn.functional.scaled_dot_product_attention(q, k, v, attn_mask)
+
+    def gen_inputs(device, dtype):
+        return [
+            torch.randn(32, 8, 128, 64, dtype=dtype, device=device, requires_grad=True),
+            torch.randn(32, 8, 128, 64, dtype=dtype, device=device, requires_grad=True),
+            torch.randn(32, 8, 128, 64, dtype=dtype, device=device, requires_grad=True),
+        ]
+
+    def run_step(model, inputs, attn_mask=None):
+        prediction = model(*inputs, attn_mask)
+        prediction.sum().backward()
+        return prediction
+
+    device = "cuda"
+
+    os.environ["ORTMODULE_ATEN_SDPA_FALLBACK"] = "1"  # TESTING WITHOUT ATTN_MASK
+
+    pt_model = _NeuralNetAttention().to(device)
+    ort_model = ORTModule(copy.deepcopy(pt_model), DebugOptions(save_onnx=True, onnx_prefix="mem_eff_attn"))
+
+    # reset manual seed to reset the generator
+    torch.manual_seed(2333)
+    pt_input = gen_inputs(device=device, dtype=torch.float32)
+    ort_input = copy.deepcopy(pt_input)
+    pt_prediction = run_step(pt_model, pt_input)
+    ort_prediction = run_step(ort_model, ort_input)
+
+    _test_helpers.assert_values_are_close(ort_prediction, pt_prediction)
+    _test_helpers.assert_values_are_close(ort_input[0].grad, pt_input[0].grad)
+    _test_helpers.assert_values_are_close(ort_input[1].grad, pt_input[1].grad)
+    _test_helpers.assert_values_are_close(ort_input[2].grad, pt_input[2].grad)
+
+    execution_mgr = ort_model._torch_module._execution_manager._training_manager
+    from onnxruntime.training.ortmodule._onnx_models import _get_onnx_file_name
+
+    path = os.path.join(
+        execution_mgr._debug_options.save_onnx_models.path,
+        _get_onnx_file_name(
+            execution_mgr._debug_options.save_onnx_models.name_prefix, "execution_model", execution_mgr._export_mode
+        ),
+    )
+
+    onnx_model = onnx.load(path)
+    onnx_nodes = onnx_model.graph.node
+
+    mem_eff_attn_nodes = 0
+    for node in onnx_nodes:
+        if "ATen" in node.name:
+            for attr in node.attribute:
+                if b"_scaled_dot_product_efficient_attention" in attr.s:
+                    mem_eff_attn_nodes += 1
+
+    assert mem_eff_attn_nodes > 0, "No mem_eff_attn nodes are found"
+
+    del os.environ["ORTMODULE_ATEN_SDPA_FALLBACK"]

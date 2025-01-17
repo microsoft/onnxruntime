@@ -55,14 +55,14 @@ def upload_whl(python_wheel_path, final_storage=False):
     with open(download_path_to_html) as f:
         lines = f.read().splitlines()
 
-    new_line = '<a href="{blobname}">{blobname}</a><br>'.format(blobname=blob_name_plus_replaced)
+    new_line = f'<a href="{blob_name_plus_replaced}">{blob_name_plus_replaced}</a><br>'
     if new_line not in lines:
         lines.append(new_line)
         lines.sort()
 
         with open(download_path_to_html, "w") as f:
             for item in lines:
-                f.write("%s\n" % item)
+                f.write(f"{item}\n")
     else:
         warnings.warn(f"'{new_line}' exists in {download_path_to_html}. The html file is not updated.")
     run_subprocess(

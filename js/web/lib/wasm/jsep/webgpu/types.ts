@@ -1,16 +1,31 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor, TensorView} from '../tensor';
+import { DataType } from '../../wasm-common';
+import { TensorView } from '../tensor-view';
 
-import {ShaderHelper} from './ops/common';
+import { ShaderHelper } from './ops/common';
+
+export type SessionState = 'default' | 'capturing' | 'replaying';
 
 export enum GpuDataType {
   default = 0,
   upload = 1,
-  profile = 2
+  profile = 2,
 }
 export type GpuDataId = number;
+
+export type GpuArchitecture = 'ampere' | 'gen-12lp';
+export type GpuVendor = 'amd' | 'intel' | 'nvidia';
+export interface AdapterInfo {
+  isArchitecture: (architecture: GpuArchitecture) => boolean;
+  isVendor: (vendor: GpuVendor) => boolean;
+}
+export interface DeviceInfo {
+  readonly subgroupsSupported: boolean;
+  readonly subgroupsF16Supported: boolean;
+  readonly subgroupSizeRange?: readonly [number, number];
+}
 
 export interface GpuData {
   type: GpuDataType;
@@ -19,78 +34,104 @@ export interface GpuData {
 }
 
 export interface TensorInfo {
-  id?: Tensor.Id;
   dims: readonly number[];
   dataType: number;
-  gpuDataType: GpuDataType;
 }
 
-
-export interface ProgramVariable {
-  type: 'float'|'int';
-  name: string;
-  arrayLength?: number;
-  data: number|number[];
+export interface ProgramUniform {
+  type: DataType;
+  data: number | readonly number[];
 }
 
+export type ProgramUniformVariableInfo = [type: DataType, length: number];
 
-export interface ProgramMetadata {
+/**
+ * Represent the dependency of a program on a specific input tensor.
+ *
+ * - 'none': the shader/uniform does not depend on this input's info
+ * - 'type': the shader/uniform depends on data type of this input
+ * - 'rank': the shader/uniform depends on data type and the rank of this input
+ * - 'dims': the shader/uniform depends on data type and the dims of this input
+ * - 'data': the shader/uniform depends on data type, the dims and the data of this input
+ */
+export type ProgramInputTensorInfoDependency = 'none' | 'type' | 'rank' | 'dims' | 'data';
+
+/**
+ * Represent information about a program's cache for shader.
+ */
+export interface ProgramShaderCacheInfo {
+  /**
+   * an optional string as a cache hint in the artifact cache. If this is not specified, the cache hint will be empty.
+   *
+   * This hint string should only contains initializing-time information, such as the attributes or any information of
+   * initializers. It should NOT contain any runtime information, such as the shape of inputs.
+   */
+  hint?: string;
+
+  /**
+   * an optional list of dependencies of the program on the input tensors. If this is not specified, the program depends
+   * on 'dims' of all inputs.
+   */
+  inputDependencies?: ProgramInputTensorInfoDependency[];
+}
+
+/**
+ * Represent information about a program's cache for uniform.
+ */
+export interface ProgramUniformCacheInfo {
+  /**
+   * an optional string as a cache hint in the uniform cache. If this is not specified, the cache hint will be empty.
+   *
+   * This hint string should only contains runtime information, such as the shape of inputs.
+   */
+  hint?: string;
+
+  /**
+   * an optional list of dependencies of the program on the input tensors. If this is not specified, the program depends
+   * on 'none' of all inputs.
+   */
+  inputDependencies?: ProgramInputTensorInfoDependency[];
+}
+
+/**
+ * A set of data that represent a shader program
+ */
+export interface ProgramInfo {
   /**
    * the name of the program. used for debugging and profiling
    */
   name: string;
 
   /**
-   * gpu data types for each input
+   * an optional object describing the cache information of the program shader.
+   *
+   * If this is not specified, assume hint is empty and inputDependencies are ['dims'] for all inputs.
    */
-  inputTypes: GpuDataType[];
-  /**
-   * an optional string as a cache hint in the artifact cache
-   */
-  cacheHint?: string;
-}
+  shaderCache?: ProgramShaderCacheInfo;
 
-/**
- * A ProgramInfoLoader allows
- */
-export interface ProgramInfoLoader extends ProgramMetadata {
   /**
-   * a function to get the program info
-   */
-  get(): ProgramInfo;
-}
-
-/**
- * A set of data that represent a shader program
- */
-export interface ProgramInfo extends ProgramMetadata {
-  /**
-   * information of uniform variables
-   */
-  variables?: ProgramVariable[];
-  /**
-   * tensor info for outputs
-   */
-  outputs: TensorInfo[];
-  /**
-   * the shader's processing source code
+   * the shader's processing source code.
+   *
+   * This function will be called when shader cache missed.
    */
   getShaderSource: (shaderHelper: ShaderHelper) => string;
-  /**
-   * default is "main"
-   */
-  // entryPoint: string;
 
-  dispatchGroup: (inputs: readonly TensorView[]) => {
-    x: number;
-    y?: number;
-    z?: number;
+  /**
+   * A function to get run data required to run the program.
+   *
+   * This function will be called every time the program is executed. Should keep this function as simple as possible.
+   */
+  getRunData: (inputs: readonly TensorView[]) => {
+    outputs: readonly TensorInfo[];
+    dispatchGroup: { x: number; y?: number; z?: number };
+    programUniforms?: readonly ProgramUniform[];
   };
 }
 
 export interface Artifact {
   programInfo: ProgramInfo;
   computePipeline: GPUComputePipeline;
+  uniformVariablesInfo: readonly ProgramUniformVariableInfo[] | undefined;
 }
 
 export interface ComputeContextInputsOutputsMapping {
@@ -101,7 +142,7 @@ export interface ComputeContextInputsOutputsMapping {
    *
    * if inputs is not specified, the mapping will be the kernel's inputs in order.
    */
-  readonly inputs?: ReadonlyArray<TensorView|number>;
+  readonly inputs?: ReadonlyArray<TensorView | number>;
   /**
    * specify the mapping to the program's outputs. the value must be a number.
    * - if it's a non-negative number, it's the index of the kernel's output
@@ -120,6 +161,16 @@ export interface ComputeContextInputsOutputsMapping {
  */
 export interface ComputeContext {
   /**
+   * gpu adapter info
+   */
+  readonly adapterInfo: AdapterInfo;
+
+  /**
+   * gpu device info
+   */
+  readonly deviceInfo: DeviceInfo;
+
+  /**
    * stores the pointer to OpKernelContext
    */
   readonly opKernelContext: number;
@@ -132,14 +183,20 @@ export interface ComputeContext {
   /**
    * a custom data object that can be used to store any data that is needed by the kernel
    */
-  readonly kernelCustomData: {[key: string]: unknown};
+  readonly kernelCustomData: { [key: string]: unknown };
 
   /**
    * a buffer that can be used to access custom data created each time the kernel is executed
    */
   readonly customDataBuffer: Uint8Array;
 
-  compute(program: ProgramInfoLoader|ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping):
-      TensorView[];
+  /**
+   * a number of outputs for the node
+   */
+  readonly outputCount: number;
+
+  compute(program: ProgramInfo, inputsOutputsMapping?: ComputeContextInputsOutputsMapping): TensorView[];
   output(index: number, dims: readonly number[]): number;
 }
+
+export type TimestampQuery = 'none' | 'inside-passes' | 'at-passes';

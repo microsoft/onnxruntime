@@ -428,7 +428,8 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
 
     nchwc_conv_W_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
     nchwc_conv_W_tensor_proto.set_name(graph_.GenerateNodeArgName("reorder"));
-    nchwc_conv_W_tensor_proto.set_raw_data(reordered_filter.data(), reordered_filter.size() * sizeof(float));
+    utils::SetRawDataInTensorProto(nchwc_conv_W_tensor_proto, reordered_filter.data(),
+                                   reordered_filter.size() * sizeof(float));
 
     nchwc_conv_W_tensor_proto.add_dims(nchwc_output_channels);
     nchwc_conv_W_tensor_proto.add_dims(filter_input_channels);
@@ -458,7 +459,8 @@ void NchwcTransformerImpl::TransformConv(Node& node) {
 
       nchwc_conv_B_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
       nchwc_conv_B_tensor_proto.set_name(graph_.GenerateNodeArgName("reorder"));
-      nchwc_conv_B_tensor_proto.set_raw_data(aligned_bias.data(), gsl::narrow<size_t>(nchwc_output_channels) * sizeof(float));
+      utils::SetRawDataInTensorProto(nchwc_conv_B_tensor_proto, aligned_bias.data(),
+                                     gsl::narrow<size_t>(nchwc_output_channels) * sizeof(float));
 
       nchwc_conv_B_tensor_proto.add_dims(nchwc_output_channels);
 
@@ -883,7 +885,8 @@ void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
   ONNX_NAMESPACE::TensorProto nchwc_conv_W_tensor_proto;
   nchwc_conv_W_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   nchwc_conv_W_tensor_proto.set_name(graph_.GenerateNodeArgName("bn_scale"));
-  nchwc_conv_W_tensor_proto.set_raw_data(padded_buffer.data(), gsl::narrow<size_t>(nchwc_channels) * sizeof(float));
+  utils::SetRawDataInTensorProto(nchwc_conv_W_tensor_proto, padded_buffer.data(),
+                                 gsl::narrow<size_t>(nchwc_channels) * sizeof(float));
   nchwc_conv_W_tensor_proto.add_dims(nchwc_channels);
   nchwc_conv_W_tensor_proto.add_dims(1);
   nchwc_conv_W_tensor_proto.add_dims(1);
@@ -896,7 +899,8 @@ void NchwcTransformerImpl::TransformBatchNormalization(Node& node) {
   ONNX_NAMESPACE::TensorProto nchwc_conv_B_tensor_proto;
   nchwc_conv_B_tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
   nchwc_conv_B_tensor_proto.set_name(graph_.GenerateNodeArgName("bn_B"));
-  nchwc_conv_B_tensor_proto.set_raw_data(padded_buffer.data(), gsl::narrow<size_t>(nchwc_channels) * sizeof(float));
+  utils::SetRawDataInTensorProto(nchwc_conv_B_tensor_proto, padded_buffer.data(),
+                                 gsl::narrow<size_t>(nchwc_channels) * sizeof(float));
   nchwc_conv_B_tensor_proto.add_dims(nchwc_channels);
 
   auto* nchwc_conv_B_arg = &graph_utils::AddInitializer(graph_, nchwc_conv_B_tensor_proto);

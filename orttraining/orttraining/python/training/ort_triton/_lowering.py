@@ -9,7 +9,7 @@ from collections import defaultdict
 from typing import Any, Dict, List, Set, Tuple
 
 import sympy
-from onnx import NodeProto
+from onnx import NodeProto, helper
 
 from ._common import AutotuneConfigs, TensorInfo
 from ._ir import (
@@ -28,7 +28,7 @@ from ._ir import (
 )
 from ._op_config import is_reduction_node
 from ._sorted_graph import SortedGraph
-from ._utils import get_reduce_info, sort_reduce_axes, to_numpy_array
+from ._utils import get_reduce_info, sort_reduce_axes, to_torch_tensor
 
 
 class NodeGroup:
@@ -51,10 +51,8 @@ class NodeGroup:
         # r_numel is meant to hint how many elements in a row of tensor will be processed by each kernel.
         # r is a abbreviation of reduction, so, it's only used for reduction nodes.
         r_numel: sympy.Expr = sympy.prod(r_dims) if len(r_dims) > 0 else sympy.Integer(1)
-        # Support concrete shape only for now.
-        assert x_numel.is_integer and r_numel.is_integer
         self.autotune_configs: AutotuneConfigs = AutotuneConfigs(
-            int(x_numel), int(r_numel), len(self.reduce_axes) == 0 or self.reduce_axes[-1] == rank - 1
+            x_numel, r_numel, len(self.reduce_axes) == 0 or self.reduce_axes[-1] == rank - 1
         )
         self.reduced_args: Set[str] = set()
         if keep_dims != 1:
@@ -69,10 +67,8 @@ class NodeGroup:
         if len(shape) > len(self.target_shape):
             return False
         shape = [sympy.Integer(1)] * (len(self.target_shape) - len(shape)) + shape
-        for axis in range(len(shape)):
-            if shape[axis] != self.target_shape[axis] and (
-                not shape[axis].is_number or shape[axis] != sympy.Integer(1)
-            ):
+        for axis, dim in enumerate(shape):
+            if dim != self.target_shape[axis] and (not dim.is_number or dim != sympy.Integer(1)):
                 return False
         return True
 
@@ -129,7 +125,7 @@ class NodeGroup:
         return not is_reduction_node(self.nodes_groups[0]) and len(self.reduced_args) > 0
 
     def dependent_nodes(self, keep_reduce_node: bool):
-        node_map = dict()
+        node_map = {}
         reduce_nodes = []
         if not keep_reduce_node and self.has_reduced_elementwise_nodes():
             for item in self.nodes_groups:
@@ -151,8 +147,8 @@ class NodeGroup:
             layers = []
             group_layer = [self]
             while len(group_layer) > 0:
-                node_map = dict()
-                reduce_node_map = dict()
+                node_map = {}
+                reduce_node_map = {}
                 next_layer = []
                 for group in group_layer:
                     sub_node_map, reduce_nodes = group.dependent_nodes(False)
@@ -201,7 +197,7 @@ class KernelIO:
         self.cross_kernel_inputs: List[str] = []
         self.constants: List[str] = []
         self.module_outputs: List[str] = []
-        self.cross_kernel_outputs: [str] = []
+        self.cross_kernel_outputs: List[str] = []
         self.internal_args: List[str] = []
 
 
@@ -249,10 +245,10 @@ class GraphLowering:
         self._module_outputs = [TensorArg(output.name, self._node_arg_infos[output.name]) for output in graph.output]
         self._module_output_names = set(arg.name for arg in self._module_outputs)
         for initializer in graph.initializer:
-            data = to_numpy_array(initializer)
+            data = to_torch_tensor(initializer)
             self._module_constants.append(TensorArg(initializer.name, data=data))
         for const_node in self._sorted_graph.const_nodes:
-            data = to_numpy_array(const_node)
+            data = to_torch_tensor(const_node)
             self._module_constants.append(TensorArg(const_node.output[0], data=data))
         self._module_constant_names = set(arg.name for arg in self._module_constants)
         self._tensor_args = dict(
@@ -284,7 +280,7 @@ class GraphLowering:
         return dependent_nodes
 
     def _group_nodes(self):
-        producers = dict()
+        producers = {}
         precessors = defaultdict(list)
         processed = set()
         groups = []
@@ -295,7 +291,7 @@ class GraphLowering:
             for input in node.input:
                 if input in producers:
                     precessors[node.name].append(producers[input])
-        for _, value in precessors.items():
+        for value in precessors.values():
             value.sort(key=sorted_nodes.index, reverse=True)
         for idx in range(len(sorted_nodes) - 1, -1, -1):
             node = sorted_nodes[idx]
@@ -316,18 +312,21 @@ class GraphLowering:
             for j in range(i + 1, len(groups)):
                 if any(output in group_inputs for output in groups[j].nodes_groups[0].output):
                     group_dependencies[i].add(j)
-                    for k in range(0, i):
+                    for k in range(i):
                         if i in group_dependencies[k]:
                             group_dependencies[k].add(j)
 
         flag = set()
-        for i in range(len(groups)):
-            if i not in flag:
-                for j in range(i + 1, len(groups)):
-                    if j not in flag and j not in group_dependencies[i] and groups[i].try_merge(groups[j]):
-                        flag.add(j)
-                self._groups.append(groups[i])
-                flag.add(i)
+        for i, group_i in enumerate(groups):
+            if i in flag:
+                continue
+            for j, group_j in enumerate(groups):
+                if j <= i:
+                    continue
+                if j not in flag and j not in group_dependencies[i] and group_i.try_merge(group_j):
+                    flag.add(j)
+            self._groups.append(group_i)
+            flag.add(i)
 
     def _get_node_io(self, node: NodeProto) -> Tuple[List[TensorArg], List[TensorArg]]:
         input_args = []
@@ -378,7 +377,10 @@ class GraphLowering:
             return DropoutNode(inputs, outputs, offset_calc)
         if is_reduction_node(node):
             return ReduceNode(op_type, inputs, outputs, offset_calc)
-        return ComputeNode(op_type, inputs, outputs)
+        attributes = {}
+        for attr in node.attribute:
+            attributes[attr.name] = helper.get_attribute_value(attr)
+        return ComputeNode(op_type, inputs, outputs, attributes)
 
     def _analyze_kernel_io_list(self):
         cross_kernel_inputs = set()
@@ -392,7 +394,7 @@ class GraphLowering:
 
     def _insert_load_and_store(self, kernel_node: KernelNode):
         input_names = [input.name for input in kernel_node.inputs]
-        output_name_map = dict()
+        output_name_map = {}
         for output in kernel_node.outputs:
             output_name_map[output.name] = 0
         for node in kernel_node.sub_nodes:
@@ -413,7 +415,7 @@ class GraphLowering:
             for idx in range(cur, nxt):
                 for input in sub_nodes[idx].inputs:
                     if input.name in kernel_node.constants or input.name in input_names:
-                        if (input.data is not None and input.data.size == 1) or input.name in load_cache:
+                        if (input.data is not None and input.data.numel() == 1) or input.name in load_cache:
                             continue
                         load_nodes.append(IONode(input, kernel_node.offset_calc, True))
                         load_cache.add(input.name)
@@ -430,7 +432,7 @@ class GraphLowering:
                 for reduce_node in sub_nodes[nxt].reduce_nodes:
                     input = reduce_node.inputs[0]
                     if input.name in kernel_node.constants or input.name in input_names:
-                        if (input.data is not None and input.data.size == 1) or input.name in load_cache:
+                        if (input.data is not None and input.data.numel() == 1) or input.name in load_cache:
                             continue
                         load_nodes.append(IONode(input, kernel_node.offset_calc, True))
                         load_cache.add(input.name)
@@ -496,7 +498,7 @@ class GraphLowering:
             warnings.warn("Use triton's random for Dropout, ignore the random seed from ORT.", UserWarning)
 
         self._analyze_kernel_io_list()
-        cross_kernel_arg_map = dict()
+        cross_kernel_arg_map = {}
         for idx, kernel_io in enumerate(self._kernel_io_list):
             for output in itertools.chain(kernel_io.cross_kernel_outputs, kernel_io.module_outputs):
                 cross_kernel_arg_map[output] = idx

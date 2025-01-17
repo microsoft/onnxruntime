@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Env, InferenceSession, Tensor} from 'onnxruntime-common';
+import { Env, InferenceSession, Tensor } from 'onnxruntime-common';
 
-import {Attribute} from '../lib/onnxjs/attribute';
-import {Logger} from '../lib/onnxjs/instrument';
+import { Attribute } from '../lib/onnxjs/attribute';
+import { Logger } from '../lib/onnxjs/instrument';
 
 export declare namespace Test {
   export interface NamedTensor extends Tensor {
@@ -30,23 +30,49 @@ export declare namespace Test {
   }
 
   /**
+   * This interface represent a placeholder for an empty tensor. Should only be used in testing.
+   */
+  interface EmptyTensorValue {
+    data: null;
+    type: Tensor.Type;
+  }
+
+  /**
    * Represent a string to describe the current environment.
    * Used in ModelTest and OperatorTest to determine whether to run the test or not.
    */
-  export type Condition = string;
+  export type PlatformCondition = string;
+
+  /**
+   * The IOBindingMode represents how to test a model with GPU data.
+   *
+   * - none: inputs will be pre-allocated as CPU tensors; no output will be pre-allocated; `preferredOutputLocation`
+   * will not be set.
+   * - gpu-location: inputs will be pre-allocated as GPU tensors; no output will be pre-allocated;
+   * `preferredOutputLocation` will be set to `gpu-buffer`.
+   * - gpu-tensor: inputs and outputs will all be pre-allocated as GPU tensors. `preferredOutputLocation`
+   * will not be set.
+   * - ml-location: inputs will be pre-allocated as ML tensors; no output will be pre-allocated;
+   * `preferredOutputLocation` will be set to `ml-tensor`.
+   * - ml-tensor: inputs and outputs will all be pre-allocated as MLTensor tensors. `preferredOutputLocation`
+   * will not be set.
+   */
+  export type IOBindingMode = 'none' | 'gpu-tensor' | 'gpu-location' | 'ml-tensor' | 'ml-location';
 
   export interface ModelTestCase {
     name: string;
     dataFiles: readonly string[];
-    inputs?: NamedTensor[];   // value should be populated at runtime
-    outputs?: NamedTensor[];  // value should be populated at runtime
+    inputs?: NamedTensor[]; // value should be populated at runtime
+    outputs?: NamedTensor[]; // value should be populated at runtime
   }
 
   export interface ModelTest {
     name: string;
     modelUrl: string;
-    backend?: string;  // value should be populated at build time
-    condition?: Condition;
+    externalData?: InferenceSession.SessionOptions['externalData'];
+    backend?: string; // value should be populated at build time
+    ioBinding: IOBindingMode;
+    platformCondition?: PlatformCondition;
     cases: readonly ModelTestCase[];
   }
 
@@ -57,8 +83,8 @@ export declare namespace Test {
 
   export interface OperatorTestCase {
     name: string;
-    inputs: readonly TensorValue[];
-    outputs: readonly TensorValue[];
+    inputs: ReadonlyArray<TensorValue | EmptyTensorValue>;
+    outputs: ReadonlyArray<TensorValue | EmptyTensorValue>;
   }
 
   export interface OperatorTestOpsetImport {
@@ -66,13 +92,17 @@ export declare namespace Test {
     version: number;
   }
 
+  export type InputShapeDefinition = ReadonlyArray<number | string>;
+
   export interface OperatorTest {
     name: string;
     operator: string;
-    opsets?: readonly OperatorTestOpsetImport[];
-    backend?: string;  // value should be populated at build time
-    condition?: Condition;
-    attributes: readonly AttributeValue[];
+    inputShapeDefinitions?: 'none' | 'rankOnly' | 'static' | ReadonlyArray<InputShapeDefinition | undefined>;
+    opset?: OperatorTestOpsetImport;
+    backend?: string; // value should be populated at build time
+    ioBinding: IOBindingMode;
+    platformCondition?: PlatformCondition;
+    attributes?: readonly AttributeValue[];
     cases: readonly OperatorTestCase[];
   }
 
@@ -86,9 +116,9 @@ export declare namespace Test {
     export type TestName = string;
     export interface TestDescription {
       name: string;
-      condition: Condition;
+      platformCondition: PlatformCondition;
     }
-    export type Test = TestName|TestDescription;
+    export type Test = TestName | TestDescription;
   }
 
   /**
@@ -96,7 +126,14 @@ export declare namespace Test {
    * A testlist should only be applied when running suite test cases (suite0)
    */
   export interface TestList {
-    [backend: string]: {[group: string]: readonly TestList.Test[]};
+    [backend: string]: { [group: string]: readonly TestList.Test[] };
+  }
+
+  interface EnvOptions extends Partial<Omit<Env, 'wasm' | 'webgl' | 'webgpu'>> {
+    wasm: Partial<Env.WebAssemblyFlags>;
+    webgl: Partial<Env.WebGLFlags>;
+    webgpu: Partial<Env.WebGpuFlags>;
+    logLevel?: Env['logLevel'];
   }
 
   /**
@@ -111,7 +148,8 @@ export declare namespace Test {
     cudaFlags?: Record<string, unknown>;
     wasmOptions?: InferenceSession.WebAssemblyExecutionProviderOption;
     webglOptions?: InferenceSession.WebGLExecutionProviderOption;
-    globalEnvFlags?: Partial<Env>;
+    webnnOptions?: InferenceSession.WebNNExecutionProviderOption;
+    globalEnvFlags?: EnvOptions;
   }
 
   /**
@@ -132,8 +170,9 @@ export declare namespace Test {
 
     fileCacheUrls?: readonly string[];
 
-    log: ReadonlyArray<{category: string; config: Logger.Config}>;
+    log: ReadonlyArray<{ category: string; config: Logger.Config }>;
     profile: boolean;
+    downloadModel: boolean;
     options: Options;
   }
 }

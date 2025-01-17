@@ -147,20 +147,17 @@ class BenchmarkOp(ABC):
 
     @classmethod
     @abstractmethod
-    def create_inputs_outputs(cls, op_param):
-        ...
+    def create_inputs_outputs(cls, op_param): ...
 
     def add_case(self, op_param, model):
         self.cases += [(op_param, model)]
 
     @abstractmethod
-    def create_cases(self):
-        ...
+    def create_cases(self): ...
 
     @classmethod
     @abstractmethod
-    def case_profile(cls, op_param, time):
-        ...
+    def case_profile(cls, op_param, time): ...
 
     def benchmark(self):
         self.create_cases()

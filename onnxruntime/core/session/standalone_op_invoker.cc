@@ -314,7 +314,8 @@ class StandAloneKernelContext : public OpKernelContext {
   AllocatorPtr allocator_;
 };  // StandAloneKernelContext
 
-onnxruntime::Status CreateOpAttr(const char* name, const void* data, int len, OrtOpAttrType type, OrtOpAttr** op_attr) {
+onnxruntime::Status CreateOpAttr(const char* name, const void* data, int len, OrtOpAttrType type,
+                                 OrtOpAttr** op_attr) {
   auto attr = std::make_unique<ONNX_NAMESPACE::AttributeProto>();
   onnxruntime::Status status = onnxruntime::Status::OK();
   attr->set_name(std::string{name});
@@ -410,7 +411,9 @@ onnxruntime::Status CreateOp(_In_ const OrtKernelInfo* info,
 
   node_ptr->SetSinceVersion(version);
 
-  auto status = kernel_registry->TryFindKernel(*node_ptr, ep->Type(), type_constraint_map, &kernel_create_info);
+  auto status = kernel_registry->TryFindKernel(*node_ptr, ep->Type(), type_constraint_map,
+                                               logging::LoggingManager::DefaultLogger(),  // no other logger available
+                                               &kernel_create_info);
   ORT_RETURN_IF_ERROR(status);
 
   auto& kernel_def = kernel_create_info->kernel_def;
@@ -421,7 +424,10 @@ onnxruntime::Status CreateOp(_In_ const OrtKernelInfo* info,
   static const OrtValueNameIdxMap kEmptyNameMap;
 
   OpKernelInfo tmp_kernel_info(*node_ptr.get(), *kernel_def, *ep, kEmptyValueMap, kEmptyNameMap,
-                               kernel_info->GetDataTransferManager(), kernel_info->GetAllocators());
+                               kernel_info->GetDataTransferManager(),
+                               kernel_info->GetAllocators(),
+                               kernel_info->GetConfigOptions());
+
   std::unique_ptr<onnxruntime::OpKernel> op_kernel;
 
   auto& node_repo = NodeRepo::GetInstance();
@@ -550,7 +556,7 @@ ORT_API_STATUS_IMPL(OrtApis::CopyKernelInfo, _In_ const OrtKernelInfo* info, _Ou
 ORT_API(void, OrtApis::ReleaseKernelInfo, _Frees_ptr_opt_ OrtKernelInfo* info_copy) {
   if (info_copy) {
     auto kernel_info = reinterpret_cast<onnxruntime::OpKernelInfo*>(info_copy);
-    GSL_SUPPRESS(r .11)
+    GSL_SUPPRESS(r.11)
     delete kernel_info;
   }
 }

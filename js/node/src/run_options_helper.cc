@@ -9,7 +9,7 @@
 #include "common.h"
 #include "run_options_helper.h"
 
-void ParseRunOptions(const Napi::Object options, Ort::RunOptions &runOptions) {
+void ParseRunOptions(const Napi::Object options, Ort::RunOptions& runOptions) {
   // Log severity level
   if (options.Has("logSeverityLevel")) {
     auto logLevelValue = options.Get("logSeverityLevel");

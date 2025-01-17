@@ -67,6 +67,8 @@ class IExecutionFrame {
 
                      const std::unordered_map<int, OrtValue>& initializers);
   Status GetOutputs(gsl::span<const int> fetch_mlvalue_idxs, std::vector<OrtValue>& fetches);
+  // if OOM happens, then release all values, so session can run next batch.
+  void ReleaseAllMLValues();
 #endif
 
   // TO DO: make it thread safe
@@ -165,7 +167,7 @@ class ExecutionFrame final : public IExecutionFrame {
   }
 
   // This function try retrieve the inferred shapes for the given NodeArg index.
-  // If the retrival is sucessful, this function returns true and false otherwise.
+  // If the retrival is successful, this function returns true and false otherwise.
   bool TryGetInferredShape(int index, TensorShape& shape) const override;
 
 #if !defined(ORT_MINIMAL_BUILD) && defined(ORT_MEMORY_PROFILE)

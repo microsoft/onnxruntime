@@ -3,7 +3,7 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 from logging import getLogger
-from typing import Tuple
+from typing import Optional, Tuple
 
 import numpy
 from numpy import array_equal, ndarray
@@ -29,17 +29,7 @@ class FusionUtils:
         return False, input_name
 
     def cast_input(self, input_name: str, target_type="int32"):
-        cast_output = input_name + "_" + target_type
-
-        # Avoid consequent Cast nodes.
-        inputs = [input_name]
-        output_name_to_node = self.model.output_name_to_node()
-        if input_name in output_name_to_node:
-            parent_node = output_name_to_node[input_name]
-            if parent_node and parent_node.op_type == "Cast":
-                inputs = [parent_node.input[0]]
-
-        cast_node = helper.make_node("Cast", inputs=inputs, outputs=[cast_output])
+        output_name = input_name + "_" + target_type
 
         if target_type == "int32":
             to_type = int(TensorProto.INT32)
@@ -50,10 +40,36 @@ class FusionUtils:
         else:
             raise ValueError("Invalid target_type: {target_type}")
 
-        cast_node.attribute.extend([helper.make_attribute("to", to_type)])
-        self.model.add_node(cast_node)
+        cast_node = self.add_cast_node(input_name, to_type, output_name)
 
-        return cast_output, cast_node
+        return output_name, cast_node
+
+    def add_cast_node(
+        self,
+        input_name: str,
+        to_type: int,
+        output_name: Optional[str] = None,
+        output_name_to_node=None,
+        graph_name: Optional[str] = None,
+    ):
+        if output_name is None:
+            output_name = input_name + f"_cast_to_{to_type}"
+
+        # Avoid consequent Cast nodes.
+        inputs = [input_name]
+        if output_name_to_node is None:
+            output_name_to_node = self.model.output_name_to_node()
+        if input_name in output_name_to_node:
+            parent_node = output_name_to_node[input_name]
+            if parent_node and parent_node.op_type == "Cast":
+                inputs = [parent_node.input[0]]
+
+        cast_node = helper.make_node("Cast", inputs=inputs, outputs=[output_name])
+
+        cast_node.attribute.extend([helper.make_attribute("to", to_type)])
+        self.model.add_node(cast_node, graph_name=graph_name)
+
+        return cast_node
 
     def cast_input_to_int32(self, input_name: str):
         return self.cast_input(input_name, "int32")
@@ -143,7 +159,7 @@ class FusionUtils:
             tensor (TensorProto): transposed tensor
         """
         if not isinstance(tensor, onnx_proto.TensorProto):
-            raise ValueError("Expected input type is an ONNX TensorProto but got %s" % type(tensor))
+            raise ValueError(f"Expected input type is an ONNX TensorProto but got {type(tensor)}")
 
         if len(tensor.dims) != 2 or tensor.data_type != onnx_proto.TensorProto.INT8:
             raise ValueError("Only INT8 2-D tensors can be transposed")
@@ -224,9 +240,10 @@ class FusionUtils:
     def remove_identity_nodes(self):
         """Remove Identity nodes, except those right before graph output."""
         nodes_to_remove = []
+        graph_output_names = self.model.get_graphs_output_names()
         for node in self.model.nodes():
             if node.op_type == "Identity":
-                if node.output[0] not in self.model.get_graphs_output_names():
+                if node.output[0] not in graph_output_names:
                     self.model.replace_input_of_all_nodes(node.output[0], node.input[0])
                     nodes_to_remove.append(node)
 

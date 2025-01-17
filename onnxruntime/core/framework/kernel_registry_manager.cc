@@ -24,7 +24,8 @@ Status KernelRegistryManager::CreateKernel(const Node& node,
                            session_state.GetConstantInitializedTensors(),
                            session_state.GetOrtValueNameIdxMap(),
                            session_state.GetDataTransferMgr(),
-                           session_state.GetAllocators());
+                           session_state.GetAllocators(),
+                           session_state.GetSessionOptions().config_options);
 
   return kernel_create_info.kernel_create_func(session_state.GetMutableFuncMgr(), kernel_info, out);
 }
@@ -56,15 +57,21 @@ void KernelRegistryManager::RegisterKernelRegistry(std::shared_ptr<KernelRegistr
 }
 #endif
 
-Status KernelRegistryManager::SearchKernelRegistry(const Node& node,
+Status KernelRegistryManager::SearchKernelRegistry(const Node& node, const logging::Logger& logger,
                                                    /*out*/ const KernelCreateInfo** kernel_create_info) const {
   Status status;
 
   auto create_error_message = [&node, &status](const std::string& prefix) {
     std::ostringstream errormsg;
-    errormsg << prefix << node.OpType() << "(" << node.SinceVersion() << ")";
-    if (!node.Name().empty()) errormsg << " (node " << node.Name() << "). ";
-    if (!status.IsOK()) errormsg << status.ErrorMessage();
+    errormsg << prefix;
+    const auto& domain = node.Domain();
+    if (!domain.empty()) {
+      errormsg << domain << ".";
+    }
+    errormsg << node.OpType() << "(" << node.SinceVersion() << ")"
+             << " (node:'" << node.Name() << "' ep:'" << node.GetExecutionProviderType() << "'). ";
+    if (!status.IsOK())
+      errormsg << status.ErrorMessage();
 
     return errormsg.str();
   };
@@ -75,7 +82,7 @@ Status KernelRegistryManager::SearchKernelRegistry(const Node& node,
   }
 
   for (auto& registry : custom_kernel_registries_) {
-    status = registry->TryFindKernel(node, std::string(), GetKernelTypeStrResolver(), kernel_create_info);
+    status = registry->TryFindKernel(node, std::string(), GetKernelTypeStrResolver(), logger, kernel_create_info);
     if (status.IsOK()) {
       return status;
     }
@@ -88,7 +95,7 @@ Status KernelRegistryManager::SearchKernelRegistry(const Node& node,
   }
 
   if (p != nullptr) {
-    status = p->TryFindKernel(node, std::string(), GetKernelTypeStrResolver(), kernel_create_info);
+    status = p->TryFindKernel(node, std::string(), GetKernelTypeStrResolver(), logger, kernel_create_info);
     if (status.IsOK()) {
       return status;
     }
@@ -97,10 +104,14 @@ Status KernelRegistryManager::SearchKernelRegistry(const Node& node,
   return Status(ONNXRUNTIME, NOT_IMPLEMENTED, create_error_message("Failed to find kernel for "));
 }
 
-bool KernelRegistryManager::HasImplementationOf(const KernelRegistryManager& r, const Node& node, const std::string& provider_type) {
+bool KernelRegistryManager::HasImplementationOf(const KernelRegistryManager& r,
+                                                const Node& node,
+                                                const std::string& provider_type,
+                                                const logging::Logger& logger) {
   const auto kernel_registries = r.GetKernelRegistriesByProviderType(provider_type);
   return std::any_of(kernel_registries.begin(), kernel_registries.end(), [&](const KernelRegistry* kernel_registry) {
-    return KernelRegistry::HasImplementationOf(*kernel_registry, node, provider_type, r.GetKernelTypeStrResolver());
+    return KernelRegistry::HasImplementationOf(*kernel_registry, node, provider_type, r.GetKernelTypeStrResolver(),
+                                               logger);
   });
 }
 

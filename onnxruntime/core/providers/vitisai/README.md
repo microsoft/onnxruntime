@@ -1,4 +1,4 @@
-VitsAI Execution Prividers
+VitisAI Execution Provider
 ============================
 
 

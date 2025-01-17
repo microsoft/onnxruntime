@@ -14,10 +14,10 @@
  * The tests validate that if a fusion occures the expected output matches
  * the output of each graph if they had not be done separatly.
  *
- * Unfortantly there is no hook to actually check that the fussion occured
+ * Unfortantly there is no hook to actually check that the fussion occurred
  * other than inspecting debug logs.
  *
- * The 8 tests use patterns that we have seen in actual models durring testing.
+ * The 8 tests use patterns that we have seen in actual models during testing.
  * Other tests validate that non-associative ops work as expected. We are able
  * to fuse the output of matmul divided by another value but we can not fuse
  * the a value divided by the output of matmul. Similar with Subtraction.
@@ -673,7 +673,7 @@ TEST(DnnlMatMulFusion, matmul_div_sub_1) {
 // in the matmul post op fusion to check that the 32 post op
 // limit is not exceded.
 // to do this we just run the matmul->[add->mul->sub-div] 9 times
-// input params are shared accross multiple ops
+// input params are shared across multiple ops
 class Dnnl_matmul_36_post_ops_PostOpTester : public OpTester {
  public:
   explicit Dnnl_matmul_36_post_ops_PostOpTester(int opset_version = 7)

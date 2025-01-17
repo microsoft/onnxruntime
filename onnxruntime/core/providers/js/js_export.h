@@ -7,8 +7,7 @@
 
 #include <stddef.h>
 
-// TODO: Move to api.h
-
 extern "C" {
-const void* EMSCRIPTEN_KEEPALIVE JsepOutput(void* context, int index, void* data);
+const void* EMSCRIPTEN_KEEPALIVE JsepOutput(void* context, int index, const void* data);
+const void* EMSCRIPTEN_KEEPALIVE JsepGetNodeName(const void* context);
 };

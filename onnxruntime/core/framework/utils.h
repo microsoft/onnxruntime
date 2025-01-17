@@ -47,7 +47,7 @@ void ConstructStrings(void* p_data, int64_t elements);
 
 /// <summary>
 /// Destroy std::string objects in the contiquous chunk of memory
-/// by explicitely invoking ~string();
+/// by explicitly invoking ~string();
 /// </summary>
 /// <param name="p_data"></param>
 /// <param name="elements"></param>
@@ -100,7 +100,7 @@ common::Status ExecuteGraph(const SessionState& session_state, FeedsFetchesManag
 
 #ifdef ENABLE_TRAINING
 common::Status ExecutePartialGraph(const SessionState& session_state, FeedsFetchesManager& feeds_fetches_manager,
-                                   gsl::span<const OrtValue> feeds, std::vector<OrtValue>& fetches,
+                                   std::vector<OrtValue>& feeds, std::vector<OrtValue>& fetches,
                                    const logging::Logger& logger, PartialGraphExecutionState& state,
                                    const OrtValueCachePtr& cache,
                                    const bool& terminate_flag,
@@ -121,6 +121,7 @@ common::Status ExecuteSubgraph(const SessionState& session_state, const FeedsFet
                                bool sync_subgraph_fetches = false);
 
 bool IsInputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index);
+bool IsOutputOnCpu(const Node& node, const KernelCreateInfo* p_kci, size_t index);
 
 template <typename T>
 constexpr ONNXTensorElementDataType GetONNXTensorElementDataType() {
@@ -221,9 +222,19 @@ constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Float8E5M2FNUZ>
 
 #endif
 
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<Int4x2>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4;
+}
+
+template <>
+constexpr ONNXTensorElementDataType GetONNXTensorElementDataType<UInt4x2>() {
+  return ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4;
+}
+
 int32_t ONNXTensorElementDataTypeToProtoTensorType(ONNXTensorElementDataType);
 
-#ifdef ENABLE_TRAINING_CORE
+#ifdef ENABLE_TRAINING
 common::Status VerifyInputTensorsAllocatedContiguously(OpKernelContext* context);
 #endif
 

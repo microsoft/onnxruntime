@@ -225,7 +225,9 @@ class GradientBuilderBase {
   }
 
   int OnnxOpSetVersion() const {
-    return graph_ != nullptr && graph_->DomainToVersionMap().find(kOnnxDomain) != graph_->DomainToVersionMap().end() ? graph_->DomainToVersionMap().at(kOnnxDomain) : -1;
+    return graph_ != nullptr && graph_->DomainToVersionMap().find(kOnnxDomain) != graph_->DomainToVersionMap().end()
+               ? graph_->DomainToVersionMap().at(kOnnxDomain)
+               : -1;
   }
 
   template <typename T>
@@ -269,6 +271,10 @@ class GradientBuilderBase {
       return ConstantScalarNode(BFloat16(value), {1}, arg_name);
     }
 
+    if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_DOUBLE) {
+      return ConstantScalarNode(double(value), {1}, arg_name);
+    }
+
 #if !defined(DISABLE_FLOAT8_TYPES)
 
     if (elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT8E4M3FN) {
@@ -288,6 +294,9 @@ class GradientBuilderBase {
     }
 
 #endif
+
+    ORT_ENFORCE(elem_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                "Unsupported element type for constant node: ", elem_type);
 
     return ConstantScalarNode(value, {1}, arg_name);
   }

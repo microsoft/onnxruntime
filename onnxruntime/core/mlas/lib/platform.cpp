@@ -20,8 +20,15 @@ Abstract:
 #include <thread>
 #include <mutex>
 
-#if defined(MLAS_TARGET_POWER) && defined(__linux__)
+#if defined(MLAS_TARGET_POWER)
+#if defined(__linux__)
 #include <sys/auxv.h>
+#elif defined(_AIX)
+#define POWER_10       0x40000
+#define POWER_10_ANDUP (POWER_10)
+#include <sys/systemcfg.h>
+#define __power_10_andup() (_system_configuration.implementation & POWER_10_ANDUP)
+#endif
 #endif
 
 #if defined(MLAS_TARGET_ARM64)
@@ -52,6 +59,18 @@ MLASCPUIDInfo::MLASCPUIDInfo()
 #define HWCAP_ASIMDDP (1 << 20)
 #endif
 
+#ifndef HWCAP2_I8MM
+#define HWCAP2_I8MM (1 << 13)
+#endif
+
+#ifndef HWCAP2_SVEI8MM
+#define HWCAP2_SVEI8MM (1 << 9)
+#endif
+
+#ifndef HWCAP2_BF16
+#define HWCAP2_BF16 (1 << 14)
+#endif
+
 #if defined(BUILD_MLAS_NO_ONNXRUNTIME)
 MLASCPUIDInfo::MLASCPUIDInfo()
 {
@@ -59,6 +78,11 @@ MLASCPUIDInfo::MLASCPUIDInfo()
 
     // raw hack! Need CPUIDInfo implementation for more precise detection
     has_fp16_ = has_arm_neon_dot_;
+
+    has_arm_neon_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_I8MM) != 0);
+    has_arm_sve_i8mm_ = ((getauxval(AT_HWCAP2) & HWCAP2_SVEI8MM) != 0);
+
+    has_arm_neon_bf16_ = ((getauxval(AT_HWCAP2) & HWCAP2_BF16) != 0);
 }
 #endif
 
@@ -112,6 +136,14 @@ MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const int16_t MlasOpmask16BitTableAvx512[
 #define _XCR_XFEATURE_ENABLED_MASK 0
 #endif
 
+#if !defined(XFEATURE_MASK_XTILE)
+#define XFEATURE_XTILECFG 17
+#define XFEATURE_XTILEDATA 18
+#define XFEATURE_MASK_XTILECFG (1 << XFEATURE_XTILECFG)
+#define XFEATURE_MASK_XTILEDATA (1 << XFEATURE_XTILEDATA)
+#define XFEATURE_MASK_XTILE (XFEATURE_MASK_XTILECFG | XFEATURE_MASK_XTILEDATA)
+#endif
+
 inline
 uint64_t
 MlasReadExtendedControlRegister(
@@ -142,11 +174,6 @@ bool
 MlasInitAMX()
 {
 #if defined(__linux__)
-#define XFEATURE_XTILECFG 17
-#define XFEATURE_XTILEDATA 18
-#define XFEATURE_MASK_XTILECFG (1 << XFEATURE_XTILECFG)
-#define XFEATURE_MASK_XTILEDATA (1 << XFEATURE_XTILEDATA)
-#define XFEATURE_MASK_XTILE (XFEATURE_MASK_XTILECFG | XFEATURE_MASK_XTILEDATA)
 
 #define ARCH_GET_XCOMP_PERM 0x1022
 #define ARCH_REQ_XCOMP_PERM 0x1023
@@ -171,6 +198,28 @@ MlasInitAMX()
 
 #endif // MLAS_TARGET_AMD64_IX86
 
+#ifdef MLAS_TARGET_LARCH64
+
+#if defined(__linux__)
+#include <sys/auxv.h>
+#include <asm/hwcap.h>
+#endif
+//
+// Stores a vector to build a conditional load/store mask for vmaskmovps.
+//
+
+MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveLasx[8], 32) = { 0, 1, 2, 3, 4, 5, 6, 7 };
+
+//
+// Stores a table of AVX vmaskmovps/vmaskmovpd load/store masks.
+//
+
+MLAS_INTERNAL_DATA MLAS_DECLSPEC_ALIGN(const uint32_t MlasMaskMoveTableLasx[16], 32) = {
+    0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0xFFFFFFFF,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000000,
+};
+
+#endif
 MLAS_PLATFORM::MLAS_PLATFORM(
     void
     )
@@ -195,6 +244,8 @@ Return Value:
     this->ConvDepthwiseU8U8Kernel = MlasConvDepthwiseKernel<uint8_t, uint8_t>;
     this->ConvDepthwiseS8S8Kernel = MlasConvDepthwiseKernel<int8_t, int8_t>;
     this->ConvDepthwiseS8U8Kernel = MlasConvDepthwiseKernel<int8_t, uint8_t>;
+    this->CastF16ToF32Kernel = nullptr;
+    this->CastF32ToF16Kernel = nullptr;
 
 #if defined(MLAS_TARGET_AMD64_IX86)
 
@@ -230,6 +281,17 @@ Return Value:
     this->QLinearAddU8Kernel = MlasQLinearAddU8Kernel;
     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8Kernel;
     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernel;
+    this->QuantizeLinearS16Kernel = MlasQuantizeLinearS16Kernel;
+    this->QuantizeLinearU16Kernel = MlasQuantizeLinearU16Kernel;
+    this->QuantizeLinearS4Kernel = MlasQuantizeLinearS4Kernel;
+    this->QuantizeLinearU4Kernel = MlasQuantizeLinearU4Kernel;
+#ifndef __APPLE__
+#ifndef FORCE_GENERIC_ALGORITHMS
+    this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelSse;
+#else  // FORCE_GENERIC_ALGORITHMS
+    this->CastF16ToF32Kernel = nullptr;
+#endif  // FORCE_GENERIC_ALGORITHMS
+#endif  // __APPLE__
 
     this->NchwcBlockSize = 8;
     this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
@@ -250,8 +312,11 @@ Return Value:
     //
     // Check if the processor supports SSE 4.1 instructions.
     //
-
+#ifndef FORCE_GENERIC_ALGORITHMS
     if ((Cpuid1[2] & 0x80000) != 0) {
+#else  // FORCE_GENERIC_ALGORITHMS
+    if (false) {
+#endif  // FORCE_GENERIC_ALGORITHMS
         this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchSse41;
     }
 
@@ -261,7 +326,11 @@ Return Value:
     // Check if the processor supports the AVX and OSXSAVE features.
     //
 
+#ifndef FORCE_GENERIC_ALGORITHMS
     if ((Cpuid1[2] & 0x18000000) == 0x18000000) {
+#else  // FORCE_GENERIC_ALGORITHMS
+    if (false) {
+#endif  // FORCE_GENERIC_ALGORITHMS
 
         //
         // Check if the operating system supports saving SSE and AVX states.
@@ -329,6 +398,10 @@ Return Value:
                 this->ConvDepthwiseS8S8Kernel = MlasConvDepthwiseKernelAvx2<int8_t, int8_t>;
                 this->ConvDepthwiseS8U8Kernel = MlasConvDepthwiseKernelAvx2<int8_t, uint8_t>;
                 this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelFma3;
+                this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2;
+                this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelAvx2;
+                this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelAvx2;
+
 
                 //
                 // Check if the processor supports Hybrid core architecture.
@@ -355,6 +428,7 @@ Return Value:
                     this->GemmU8S8Kernel = MlasGemmU8S8KernelAvxVnni;
                     this->GemvU8S8Kernel = MlasGemvU8S8KernelAvxVnni;
                     this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvxVnni;
+                    this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx2vnni;
                 }
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -377,6 +451,7 @@ Return Value:
                     this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelAvx512F;
                     this->ComputeExpF32Kernel = MlasComputeExpF32KernelAvx512F;
                     this->ComputeSumExpF32Kernel = MlasComputeSumExpF32KernelAvx512F;
+                    this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelAvx512F;
                     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelAvx512F;
                     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelAvx512F;
                     this->NchwcBlockSize = 16;
@@ -393,6 +468,8 @@ Return Value:
                         this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Core;
                         this->GemmU8U8Kernel = MlasGemmU8U8KernelAvx512Core;
                         this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Core;
+                        this->FpQ4GemmDispatch = &MlasFpQ4GemmDispatchAvx512;
+                        this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512;
 
                         //
                         // Check if the processor supports AVX512VNNI.
@@ -404,16 +481,41 @@ Return Value:
                             this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Vnni;
                             this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Vnni;
                             this->ConvSymU8S8Dispatch = &MlasConvSymDispatchAvx512Vnni;
+                            this->Q8Q4GemmDispatch = &MlasQ8Q4GemmDispatchAvx512vnni;
+                            this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchAvx512vnni;
                         }
                     }
                 }
 
+                //
+                // Check if the processor supports AVX-VNNI-INT8
+                //
+                if ((Cpuid7_1[3] & 0x10) != 0) {
+                    this->GemmU8U8Dispatch = &MlasGemmU8U8DispatchAvx2Vnni;
+                    this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchAvx2Vnni;
+                    this->GemmS8S8Kernel = MlasGemmS8S8KernelAvx2Vnni;
+                    this->GemmS8U8Dispatch = &MlasGemmS8U8DispatchAvx2Vnni;
+                    this->GemmS8U8Kernel = MlasGemmS8U8KernelAvx2Vnni;
+                }
+
 #ifndef __APPLE__
+#if (defined(_MSC_VER) && (_MSC_VER >= 1933)) || (defined(__GNUC__) && (__GNUC__ >= 13))
+                //
+                // Check if the processor supports AVX NE CONVERT.
+                //
+                if ((Cpuid7_1[3] & (0b1 << 5)) != 0) {
+                    this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelAvx;
+                }
+#endif  // (defined(_MSC_VER) && (_MSC_VER >= 1933)) || (defined(__GNUC__) && (__GNUC__ >= 13))
+
+
                 //
                 // Check if the processor supports AMX-TILE and AMX-INT8
                 // features.
                 //
-                if ((Cpuid7[3] & 0b1 << 24) != 0 && (Cpuid7[3] & 0b1 << 25) != 0) {
+                if ((Cpuid7[3] & 0b1 << 24) != 0 &&
+                    (Cpuid7[3] & 0b1 << 25) != 0 &&
+                    (xcr0 & XFEATURE_MASK_XTILE) == XFEATURE_MASK_XTILE) {
                     if (MlasInitAMX()) {
                         this->GemmU8U8Dispatch = &MlasGemmU8S8DispatchAmx;
                         this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAmx;
@@ -440,6 +542,8 @@ Return Value:
     this->SymmQgemmDispatch = &MlasSymmQgemmS8DispatchNeon;
     this->ConvSymU8S8Dispatch = &MlasConvSymU8DispatchNeon;
     this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchNeon;
+    this->QNBitGemmDispatch = &MlasSQNBitGemmDispatchNeon;
+    this->RopeDispatch = &MlasRopeDispatchNeon;
 
     //
     // Check if the processor supports ASIMD dot product instructions.
@@ -450,9 +554,16 @@ Return Value:
 #if defined(_WIN32)
     HasDotProductInstructions = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
 #else
-    uint64_t isar0_el1;
-    asm("mrs %[reg], ID_AA64ISAR0_EL1\n" : [reg] "=r"(isar0_el1) : :);
-    HasDotProductInstructions = ((isar0_el1 >> 44) & 0xfu) == 0x1u;
+    // Use the cpuinfo value which is read from sysctl and has some additional special cases.
+    // https://github.com/pytorch/cpuinfo/blob/959002f82d7962a473d8bf301845f2af720e0aa4/src/arm/mach/init.c#L369-L379
+    // Do NOT use ID_AA64ISAR0_EL1. It causes illegal instruction errors on Mac M1 and ARMv8-A chips
+    // as well as failing on other ARM chips as it is an EL1 level register that requires extra
+    // privileges to read.
+    //
+    // uint64_t isar0_el1;
+    // asm("mrs %[reg], ID_AA64ISAR0_EL1\n" : [reg] "=r"(isar0_el1) : :);
+    // HasDotProductInstructions = ((isar0_el1 >> 44) & 0xfu) == 0x1u;
+    HasDotProductInstructions = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot();
 #endif
 
     if (HasDotProductInstructions) {
@@ -464,17 +575,40 @@ Return Value:
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
     }
 
+#if defined(__linux__)
+    //
+    // Check if the processor supports ASIMD I8MM instructions.
+    //
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
+        this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchUmmla;
+        this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUmmla;
+        this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchSmmla;
+    }
+#endif
+
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED)
+    this->CastF16ToF32Kernel = &MlasCastF16ToF32KernelNeon;
+    this->CastF32ToF16Kernel = &MlasCastF32ToF16KernelNeon;
+#endif
+
 #endif // MLAS_TARGET_ARM64
 #if defined(MLAS_TARGET_POWER)
     this->GemmFloatKernel = MlasSgemmKernel;
     this->GemmDoubleKernel = MlasDgemmKernel;
     this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8Kernel;
     this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8Kernel;
+    this->QuantizeLinearS16Kernel = MlasQuantizeLinearS16Kernel;
+    this->QuantizeLinearU16Kernel = MlasQuantizeLinearU16Kernel;
+    this->QuantizeLinearS4Kernel = MlasQuantizeLinearS4Kernel;
+    this->QuantizeLinearU4Kernel = MlasQuantizeLinearU4Kernel;
 
 #if defined(__linux__)
     unsigned long hwcap2 = getauxval(AT_HWCAP2);
 
     bool HasP9Instructions = hwcap2 & PPC_FEATURE2_ARCH_3_00;
+#elif defined(_AIX)
+    bool HasP9Instructions = __power_9_andup();
+#endif // __linux__
     if (HasP9Instructions) {
         this->QuantizeLinearS8Kernel = MlasQuantizeLinearS8KernelVSX;
         this->QuantizeLinearU8Kernel = MlasQuantizeLinearU8KernelVSX;
@@ -483,7 +617,11 @@ Return Value:
 #if defined(POWER10)
 #if (defined(__GNUC__) && ((__GNUC__ > 10) || (__GNUC__== 10 && __GNUC_MINOR__ >= 2))) || \
     (defined(__clang__) && (__clang_major__ >= 12))
+#if defined(__linux__)
     bool HasP10Instructions = ((hwcap2 & PPC_FEATURE2_MMA) && (hwcap2 & PPC_FEATURE2_ARCH_3_1));
+#elif defined(_AIX)
+    bool HasP10Instructions = (__power_10_andup() && __power_mma_version() == MMA_V31);
+#endif // __linux__
     if (HasP10Instructions) {
         this->GemmFloatKernel = MlasSgemmKernelPOWER10;
         this->GemmDoubleKernel = MlasDgemmKernelPOWER10;
@@ -492,8 +630,64 @@ Return Value:
 #endif
 #endif
 
-#endif // __linux__
 #endif // MLAS_TARGET_POWER
+
+#if defined(MLAS_TARGET_LARCH64)
+
+    //
+    // Default to the baseline LSX support.
+    //
+
+    int hwcap = getauxval(AT_HWCAP);
+    bool cap_lasx = hwcap & HWCAP_LOONGARCH_LASX;
+    bool cap_lsx = hwcap & HWCAP_LOONGARCH_LSX;
+
+    if( cap_lasx ){
+        this->GemmFloatKernel = MlasGemmFloatKernelLasx;
+        this->GemmDoubleKernel = MlasGemmDoubleKernelLasx;
+        this->ConvNchwFloatKernel = MlasConvNchwFloatKernelLasx;
+        this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelLasx;
+        this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelLasx;
+        this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelLasx;
+        this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelLasx;
+        this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelLasx;
+        this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelLasx;
+        this->ReduceMaximumF32Kernel = MlasReduceMaximumF32KernelLasx;
+        this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32KernelLasx;
+        this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32KernelLasx;
+        this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4Lasx;
+
+        this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchLSX;
+        this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchLSX;
+    }else if( cap_lsx ){
+        this->GemmFloatKernel = MlasGemmFloatKernelLSX;
+        this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchLSX;
+        this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchLSX;
+        this->TransposePackB16x4Routine = MlasSgemmTransposePackB16x4LSX;
+        this->GemmDoubleKernel = MlasGemmDoubleKernelLSX;
+        this->ConvNchwFloatKernel = MlasConvNchwFloatKernelLSX;
+        this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelLSX;
+        this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelLSX;
+        this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelLSX;
+
+        this->PoolFloatKernel[MlasMaximumPooling] = MlasPoolMaximumFloatKernelLSX;
+        this->PoolFloatKernel[MlasAveragePoolingExcludePad] = MlasPoolAverageExcludePadFloatKernelLSX;
+        this->PoolFloatKernel[MlasAveragePoolingIncludePad] = MlasPoolAverageIncludePadFloatKernelLSX;
+        this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
+        this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
+        this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
+    }else{
+        this->ReduceMaximumF32Kernel = MlasReduceMaximumF32Kernel;
+        this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
+        this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
+    }
+
+    this->NchwcBlockSize = 8;
+    // this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
+
+    // this->MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
+
+#endif // MLAS_TARGET_LARCH64
 
 }
 
@@ -540,7 +734,6 @@ MlasPlatformU8S8Overflow(
 }
 
 #endif
-
 thread_local size_t ThreadedBufSize = 0;
 #ifdef _MSC_VER
 thread_local std::unique_ptr<uint8_t, decltype(&_aligned_free)> ThreadedBufHolder(nullptr, &_aligned_free);

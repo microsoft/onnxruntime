@@ -21,8 +21,8 @@ namespace {
 constexpr char GROUP_ZERO_NAME[] = "group0";
 static constexpr std::array CommonOptimizerInputs{"learning_rate", "step", "params", "gradients"};
 
-Status GraphInputsAreExpected(gsl::span<std::string> actual_graph_inputs,
-                              gsl::span<std::string> expected_graph_inputs) {
+Status GraphInputsAreExpected(gsl::span<const std::string> actual_graph_inputs,
+                              gsl::span<const std::string> expected_graph_inputs) {
   const auto stringify = [](const auto& container) {
     if (container.empty()) {
       return std::string("[]");
@@ -61,51 +61,31 @@ Status GraphInputsAreExpected(gsl::span<std::string> actual_graph_inputs,
 }  // namespace
 
 std::unique_ptr<OptimizerAlgorithmBase> OptimizerAlorithmFactory::CreateInstance(
-    const std::string& optim_path, int32_t& group_count) {
+    const GraphViewer& graph_viewer, int32_t& group_count) {
   std::map<std::pair<std::string, std::string>, int32_t> opt_type_to_freq_map;
-#if !defined(ORT_MINIMAL_BUILD)
-  if (const auto optim_path_str = ToPathString(optim_path);
-      fbs::utils::IsOrtFormatModel(optim_path_str)) {
-    // TODO (baijumeswani): Figure out the best way to extract the optimizer type
-    //                      from an ort format model.
-    opt_type_to_freq_map[std::make_pair(kMSDomain, "AdamWOptimizer")] = 1;
-  } else {
-    std::shared_ptr<Model> model;
-    ORT_ENFORCE(Model::Load(optim_path_str, model, nullptr,
-                            logging::LoggingManager::DefaultLogger())
-                    .IsOK());
-    Graph& graph = model->MainGraph();
-    for (auto& node : graph.Nodes()) {
-      if (node.Domain() == kMSDomain && (node.OpType() == "AdamWOptimizer" || node.OpType() == "SGDOptimizerV2")) {
-        auto domain_type_pair = std::make_pair(node.Domain(), node.OpType());
-        if (opt_type_to_freq_map.find(domain_type_pair) == opt_type_to_freq_map.end()) {
-          opt_type_to_freq_map[domain_type_pair] = 0;
-        }
 
-        opt_type_to_freq_map[domain_type_pair] += 1;
+  for (const auto& node : graph_viewer.Nodes()) {
+    if (node.Domain() == kMSDomain && (node.OpType() == "AdamWOptimizer" || node.OpType() == "SGDOptimizerV2")) {
+      auto domain_type_pair = std::make_pair(node.Domain(), node.OpType());
+      if (opt_type_to_freq_map.find(domain_type_pair) == opt_type_to_freq_map.end()) {
+        opt_type_to_freq_map[domain_type_pair] = 0;
       }
+
+      opt_type_to_freq_map[domain_type_pair] += 1;
     }
   }
-#else
-  // TODO (baijumeswani): Figure out the best way to extract the optimizer type
-  // from the model (either onnx model or ort format model) or from the checkpoint.
-  // For now, assume that the optimizer type is AdamWOptimizer in a minimal build.
-  ORT_UNUSED_PARAMETER(optim_path);
-
-  opt_type_to_freq_map[std::make_pair(kMSDomain, "AdamWOptimizer")] = 1;
-#endif
 
   ORT_ENFORCE(opt_type_to_freq_map.size() == 1U, "Only support one type of optimizer algorithm, but got: " +
                                                      std::to_string(opt_type_to_freq_map.size()));
   auto opt_it = opt_type_to_freq_map.begin();
+  auto& op_type = opt_it->first.second;
   group_count = opt_it->second;
-  auto& domain = opt_it->first.first;
-  auto& type = opt_it->first.second;
+  ORT_ENFORCE(group_count == 1, "Group count can only be 1, but got: " + std::to_string(group_count));
 
   // TODO: to support multiple groups, need to create a mapping between each group to its parameter list.
-  if (domain == kMSDomain && type == "AdamWOptimizer") {
+  if (op_type == "AdamWOptimizer") {
     return std::make_unique<AdamWOptimizerAlgorithm>();
-  } else if (domain == kMSDomain && type == "SGDOptimizerV2") {
+  } else if (op_type == "SGDOptimizerV2") {
     return std::make_unique<SGDOptimizerV2Algorithm>();
   } else {
     ORT_NOT_IMPLEMENTED("Not implemented for optimizer algo: " + opt_it->first.second);
@@ -200,14 +180,14 @@ Status Optimizer::ConstructInputs() {
   return Status::OK();
 }  // namespace api
 
-Optimizer::Optimizer(const std::string& optim_path_or_bytes,
+Optimizer::Optimizer(const ModelIdentifiers& model_identifiers,
                      CheckpointState* state,
                      const onnxruntime::SessionOptions& session_options,
                      const Environment& env,
                      const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
                      gsl::span<OrtCustomOpDomain* const> op_domains)
     : optim_sess_(std::make_unique<InferenceSession>(session_options, env)), state_(state) {
-  Initialize(optim_path_or_bytes, providers, op_domains);
+  Initialize(model_identifiers, providers, op_domains);
 
   ORT_ENFORCE(state != nullptr, "Checkpoint state cannot be null.");
   auto g_it = state_->optimizer_checkpoint_state.group_named_optimizer_states.find(GROUP_ZERO_NAME);
@@ -216,35 +196,55 @@ Optimizer::Optimizer(const std::string& optim_path_or_bytes,
     if (!find_group_zero)
       state_->optimizer_checkpoint_state.group_named_optimizer_states.insert(
           {GROUP_ZERO_NAME, std::make_shared<GroupOptimizerState>()});
-    ORT_THROW_IF_ERROR(GenerateMomentumNamedStates(state_->optimizer_checkpoint_state));
-    ORT_THROW_IF_ERROR(ConstructInputs());
+    if (!state_->module_checkpoint_state.is_nominal_state) {
+      // Construct the optimizer state and inputs only if the complete state
+      // is available.
+      // For a nominal state, delay the construction of the optimizer state
+      // and inputs until the complete state is available. Once the complete
+      // state is available, the optimizer state and inputs can be constructed
+      // by invoking ConstructOptimizerStateAndInputs().
+      ORT_THROW_IF_ERROR(ConstructOptimizerStateAndInputs());
+    } else {
+      delay_optimizer_state_construction_ = true;
+    }
   } else {
     ORT_THROW_IF_ERROR(LoadStateDict(state_->optimizer_checkpoint_state));
   }
 }
 
-void Optimizer::Initialize(const std::string& optim_path_or_bytes,
+void Optimizer::Initialize(const ModelIdentifiers& model_identifiers,
                            const std::vector<std::shared_ptr<IExecutionProvider>>& providers,
-                           gsl::span<OrtCustomOpDomain* const> op_domains) {
+                           [[maybe_unused]] gsl::span<OrtCustomOpDomain* const> op_domains) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   if (!op_domains.empty()) {
     ORT_THROW_IF_ERROR(optim_sess_->AddCustomOpDomains(op_domains));
   }
+#endif
 
   for (const auto& execution_provider : providers) {
     ORT_THROW_IF_ERROR(optim_sess_->RegisterExecutionProvider(execution_provider));
   }
 
-  ORT_THROW_IF_ERROR(optim_sess_->Load(optim_path_or_bytes));
+  ORT_ENFORCE(model_identifiers.IsOptimizerModelAvailable(), "Optimizer model is not available.");
+
+  if (std::holds_alternative<std::optional<std::string>>(model_identifiers.optim_model)) {
+    auto optimizer_model = std::get<std::optional<std::string>>(model_identifiers.optim_model);
+    // The above call to IsOptimizerModelAvailable() ensures that optimizer_model is not nullopt
+    ORT_THROW_IF_ERROR(optim_sess_->Load(optimizer_model.value()));
+  } else {
+    auto optimizer_model = std::get<gsl::span<const uint8_t>>(model_identifiers.optim_model);
+    ORT_THROW_IF_ERROR(optim_sess_->Load(optimizer_model.data(),
+                                         static_cast<int>(optimizer_model.size())));
+  }
+
   ORT_THROW_IF_ERROR(optim_sess_->Initialize());
+  optimizer_algo_ptr_ = OptimizerAlorithmFactory::CreateInstance(optim_sess_->GetSessionState().GetGraphViewer(),
+                                                                 group_count_);
 
   // Make sure that the checkpoint state can copy tensors
   state_->optimizer_checkpoint_state.optimizer_session_data_transfer_mgr = &optim_sess_->GetDataTransferManager();
 
   utils::GetGraphInputOutputNames(optim_sess_, input_names_, output_names_);
-
-  optimizer_algo_ptr_ = OptimizerAlorithmFactory::CreateInstance(optim_path_or_bytes, group_count_);
-  ORT_ENFORCE(group_count_ == 1, "Group count can only be 1, but got: " + std::to_string(group_count_));
-  ORT_ENFORCE(optimizer_algo_ptr_, "optimizer_algo_ptr_ should not be nullptr.");
 
   InlinedVector<std::string> all_input_names;
   all_input_names.reserve(CommonOptimizerInputs.size() + optimizer_algo_ptr_->optimizer_states_inputs.size());
@@ -256,6 +256,10 @@ void Optimizer::Initialize(const std::string& optim_path_or_bytes,
 }
 
 Status Optimizer::Step() {
+  if (delay_optimizer_state_construction_) {
+    ORT_RETURN_IF_ERROR(ConstructOptimizerStateAndInputs());
+  }
+
   OrtValue learning_rate_input, step_input;
   utils::WrapInOrtValue<float>(optimizer_state_->learning_rate, &learning_rate_input);
   // Use step count + 1 before running optimizer step.
@@ -270,7 +274,7 @@ Status Optimizer::Step() {
   ORT_THROW_IF_ERROR(status);
 
   // Extract step output and update
-  if (utils::GetScalarFromOrtValue<int64_t>(outputs[0]) == 1LL) {
+  if (utils::GetScalarFromOrtValue<bool>(outputs[0]) == true) {
     optimizer_state_->step++;
   }
 
@@ -329,6 +333,17 @@ Status Optimizer::LoadStateDict(OptimizerCheckpointState& optimizer_checkpoint_s
   }
 
   ORT_THROW_IF_ERROR(ConstructInputs());
+
+  return Status::OK();
+}
+
+Status Optimizer::ConstructOptimizerStateAndInputs() {
+  ORT_RETURN_IF(state_->module_checkpoint_state.is_nominal_state,
+                "The optimizer state cannot be constructed. Please load the model parameters first.");
+  ORT_RETURN_IF_ERROR(GenerateMomentumNamedStates(state_->optimizer_checkpoint_state));
+  ORT_RETURN_IF_ERROR(ConstructInputs());
+
+  delay_optimizer_state_construction_ = false;
 
   return Status::OK();
 }

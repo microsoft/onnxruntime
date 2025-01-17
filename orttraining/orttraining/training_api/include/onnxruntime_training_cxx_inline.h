@@ -24,6 +24,23 @@ inline TrainingSession::TrainingSession(const Env& env, const SessionOptions& se
   ThrowOnError(GetTrainingApi().TrainingSessionGetEvalModelOutputCount(p_, &eval_model_output_count_));
 }
 
+inline TrainingSession::TrainingSession(const Env& env, const SessionOptions& session_options,
+                                        CheckpointState& checkpoint_state,
+                                        const std::vector<uint8_t>& train_model_data,
+                                        const std::vector<uint8_t>& eval_model_data,
+                                        const std::vector<uint8_t>& optim_model_data) {
+  ThrowOnError(GetTrainingApi().CreateTrainingSessionFromBuffer(
+      env, session_options, checkpoint_state,
+      train_model_data.data(), train_model_data.size(),
+      eval_model_data.data(), eval_model_data.size(),
+      optim_model_data.data(), optim_model_data.size(),
+      &p_));
+
+  ThrowOnError(GetTrainingApi().TrainingSessionGetTrainingModelOutputCount(p_, &training_model_output_count_));
+
+  ThrowOnError(GetTrainingApi().TrainingSessionGetEvalModelOutputCount(p_, &eval_model_output_count_));
+}
+
 inline std::vector<Value> TrainingSession::TrainStep(const std::vector<Value>& input_values) {
   std::vector<Value> output_values;
   output_values.reserve(training_model_output_count_);
@@ -51,7 +68,7 @@ inline std::vector<Value> TrainingSession::EvalStep(const std::vector<Value>& in
   RunOptions run_options;
   ThrowOnError(GetTrainingApi().EvalStep(
       p_, run_options, input_values.size(), ort_input_values,
-      training_model_output_count_, ort_output_values));
+      eval_model_output_count_, ort_output_values));
 
   return output_values;
 }
@@ -151,22 +168,23 @@ inline void TrainingSession::FromBuffer(Value& buffer) {
 
   auto buffer_size = buffer_shape.front();
 
+  size_t session_buffer_size = 0U;
+  ThrowOnError(GetTrainingApi().GetParametersSize(p_, &session_buffer_size, false));
+
+  if (buffer_size == static_cast<int64_t>(session_buffer_size)) {
+    ThrowOnError(GetTrainingApi().CopyBufferToParameters(p_, buffer, false));
+    return;
+  }
+
   size_t session_buffer_size_trainable_only = 0U;
   ThrowOnError(GetTrainingApi().GetParametersSize(p_, &session_buffer_size_trainable_only, true));
 
   if (buffer_size == static_cast<int64_t>(session_buffer_size_trainable_only)) {
     ThrowOnError(GetTrainingApi().CopyBufferToParameters(p_, buffer, true));
     return;
-  }
-
-  size_t session_buffer_size = 0U;
-  ThrowOnError(GetTrainingApi().GetParametersSize(p_, &session_buffer_size, false));
-
-  if (buffer_size != static_cast<int64_t>(session_buffer_size)) {
+  } else {
     ThrowStatus(Status("Incorrect buffer size received.", OrtErrorCode::ORT_INVALID_ARGUMENT));
   }
-
-  ThrowOnError(GetTrainingApi().CopyBufferToParameters(p_, buffer, false));
 }
 
 inline CheckpointState CheckpointState::LoadCheckpoint(const std::basic_string<ORTCHAR_T>& path_to_checkpoint) {
@@ -260,6 +278,18 @@ inline Property CheckpointState::GetProperty(const std::string& property_name) {
   }
 
   return property;
+}
+
+inline void CheckpointState::UpdateParameter(const std::string& parameter_name, const Value& parameter) {
+  ThrowOnError(GetTrainingApi().UpdateParameter(p_, parameter_name.c_str(), parameter));
+}
+
+inline Value CheckpointState::GetParameter(const std::string& parameter_name) {
+  AllocatorWithDefaultOptions allocator;
+  OrtValue* parameter;
+  ThrowOnError(GetTrainingApi().GetParameter(p_, parameter_name.c_str(), allocator, &parameter));
+
+  return Value{parameter};
 }
 
 }  // namespace Ort

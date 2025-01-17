@@ -24,6 +24,7 @@
 #include "core/providers/cpu/tensor/size.h"
 #include "core/providers/cpu/tensor/scatter_nd.h"
 #include "core/providers/cpu/tensor/unsqueeze.h"
+#include "core/providers/cpu/tensor/upsamplebase.h"
 #include "core/providers/cpu/tensor/tile.h"
 
 #ifndef DISABLE_CONTRIB_OPS
@@ -166,9 +167,14 @@ MLDataType DataTypeImpl::GetType<Float8E5M2>() { return Provider_GetHost()->Data
 template <>
 MLDataType DataTypeImpl::GetType<Float8E5M2FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetType_Float8E5M2FNUZ(); }
 #endif
+template <>
+MLDataType DataTypeImpl::GetType<Int4x2>() { return Provider_GetHost()->DataTypeImpl__GetType_Int4x2(); }
+template <>
+MLDataType DataTypeImpl::GetType<UInt4x2>() { return Provider_GetHost()->DataTypeImpl__GetType_UInt4x2(); }
 
 template <>
 MLDataType DataTypeImpl::GetType<std::string>() { return Provider_GetHost()->DataTypeImpl__GetType_string(); }
+MLDataType DataTypeImpl::GetTensorTypeFromOnnxType(int onnx_type) { return Provider_GetHost()->DataTypeImpl__GetTensorTypeFromOnnxType(onnx_type); }
 template <>
 MLDataType DataTypeImpl::GetTensorType<bool>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_bool(); }
 template <>
@@ -206,6 +212,10 @@ MLDataType DataTypeImpl::GetTensorType<Float8E5M2>() { return Provider_GetHost()
 template <>
 MLDataType DataTypeImpl::GetTensorType<Float8E5M2FNUZ>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Float8E5M2FNUZ(); }
 #endif
+template <>
+MLDataType DataTypeImpl::GetTensorType<Int4x2>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_Int4x2(); }
+template <>
+MLDataType DataTypeImpl::GetTensorType<UInt4x2>() { return Provider_GetHost()->DataTypeImpl__GetTensorType_UInt4x2(); }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 template <>
@@ -329,10 +339,6 @@ common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
   return g_host->IExecutionProvider__Compile(this, fused_nodes_and_graphs, node_compute_funcs);
 }
 
-int IExecutionProvider::GenerateMetaDefId(const onnxruntime::GraphViewer& graph_viewer, HashValue& model_hash) const {
-  return g_host->IExecutionProvider__GenerateMetaDefId(this, graph_viewer, model_hash);
-}
-
 #ifdef USE_TENSORRT
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) {
   return g_host->CreateCUDAAllocator(device_id, name);
@@ -348,16 +354,12 @@ std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
 #endif
 
 #ifdef USE_MIGRAPHX
-std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name) {
-  return g_host->CreateROCMAllocator(device_id, name);
+std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateMIGraphXAllocator(device_id, name);
 }
 
-std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name) {
-  return g_host->CreateROCMPinnedAllocator(name);
-}
-
-std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
-  return g_host->CreateGPUDataTransfer();
+std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name) {
+  return g_host->CreateMIGraphXPinnedAllocator(device_id, name);
 }
 #endif
 
@@ -367,8 +369,9 @@ std::string GetEnvironmentVar(const std::string& var_name) {
 
 std::unordered_set<NodeIndex> GetCpuPreferredNodes(const onnxruntime::GraphViewer& graph,
                                                    const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                                   gsl::span<const NodeIndex> tentative_nodes) {
-  return g_host->GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes);
+                                                   gsl::span<const NodeIndex> tentative_nodes,
+                                                   const logging::Logger& logger) {
+  return g_host->GetCpuPreferredNodes(graph, kernel_lookup, tentative_nodes, logger);
 }
 
 namespace profiling {
@@ -481,6 +484,8 @@ Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_d
 template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ MLFloat16* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 template <>
+Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ BFloat16* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
+template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int8_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint8_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
@@ -496,6 +501,10 @@ template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ int64_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
 template <>
 Status UnpackTensor(const ONNX_NAMESPACE::TensorProto& tensor, const void* raw_data, size_t raw_data_len, /*out*/ uint64_t* p_data, size_t expected_size) { return g_host->UnpackTensor(tensor, raw_data, raw_data_len, p_data, expected_size); }
+Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, const std::filesystem::path& model_path,
+                             /*out*/ std::vector<uint8_t>& unpacked_tensor) {
+  return g_host->UnpackInitializerData(tensor, model_path, unpacked_tensor);
+}
 
 }  // namespace utils
 
@@ -508,6 +517,13 @@ Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, UnsqueezeBase::Prepar
 #if defined(USE_CUDA) || defined(USE_ROCM)
 bool TileOp::IsTileMemcpy(const TensorShape& input_shape, const int64_t* repeats, size_t rank, bool& is_batched_memcpy, size_t& num_of_elements_per_batch, size_t& num_of_copies_per_batch, size_t& num_of_batch_copies) {
   return g_host_cpu.TileOp__IsTileMemcpy(input_shape, repeats, rank, is_batched_memcpy, num_of_elements_per_batch, num_of_copies_per_batch, num_of_batch_copies);
+}
+
+Status SliceBase::FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::span<const int64_t> output_dims,
+                                    TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps,
+                                    TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims) {
+  return g_host_cpu.SliceBase__FlattenOutputDims(
+      input_dimensions, output_dims, starts, ends, steps, p_flattened_input_dims, p_flattened_output_dims);
 }
 
 Status SliceBase::PrepareForCompute(gsl::span<const int64_t> raw_starts,
@@ -540,7 +556,14 @@ Status ScatterND::ValidateShapes(const TensorShape& input_shape,
                                  const TensorShape& indice_shape,
                                  const TensorShape& update_shape) { return g_host_cpu.ScatterNDBase__ValidateShapes(input_shape, indice_shape, update_shape); }
 
-Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape) { return g_host_cpu.PadBase__HandleDimValueZero(mode, input_shape, output_shape); }
+Status PadBase::HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, const TensorShape& output_shape) {
+  return g_host_cpu.PadBase__HandleDimValueZero(mode, input_shape, output_shape);
+}
+
+void PadBase::ComputePads(OpKernelContext& ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
+                          PadsVector& pads) {
+  g_host_cpu.PadBase__ComputePads(ctx, data_rank, pads_data, pads);
+}
 
 Status ConcatBase::PrepareForCompute(OpKernelContext* ctx, const ConcatBase::InlinedTensorsVector& input_tensors,
                                      Prepare& p) const {
@@ -557,6 +580,11 @@ template <>
 std::unique_ptr<EinsumTypedComputeProcessor<double>> EinsumTypedComputeProcessor<double>::Create(OpKernelContext* context, AllocatorPtr allocator, concurrency::ThreadPool* tp, EinsumComputePreprocessor& einsum_compute_preprocessor, void* einsum_cuda_assets) { return g_host_cpu.EinsumTypedComputeProcessor_double__Create(context, allocator, tp, einsum_compute_preprocessor, einsum_cuda_assets); }
 template <>
 std::unique_ptr<EinsumTypedComputeProcessor<MLFloat16>> EinsumTypedComputeProcessor<MLFloat16>::Create(OpKernelContext* context, AllocatorPtr allocator, concurrency::ThreadPool* tp, EinsumComputePreprocessor& einsum_compute_preprocessor, void* einsum_cuda_assets) { return g_host_cpu.EinsumTypedComputeProcessor_MLFloat16__Create(context, allocator, tp, einsum_compute_preprocessor, einsum_cuda_assets); }
+
+void UpsampleBase::AdjustOutputSizeAsPolicy(TensorShapeVector& output_dims, gsl::span<const int64_t> input_dims,
+                                            InlinedVector<float>& scales) const {
+  g_host_cpu.UpsampleBase__AdjustOutputSizeAsPolicy(this, output_dims, input_dims, scales);
+}
 
 #ifndef DISABLE_CONTRIB_OPS
 namespace contrib {
@@ -582,12 +610,12 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const TensorShape& bias_shape,
                                   const Tensor*& mask_index,
                                   const Tensor* past,
-                                  const Tensor* relative_position_bias,
+                                  const Tensor* attention_bias,
                                   void* parameters,
                                   const int max_threads_per_block,
                                   const Tensor* past_seq_len) const {
   return g_host_cpu.AttentionBase__CheckInputs(this, input_shape, weights_shape, bias_shape,
-                                               mask_index, past, relative_position_bias, parameters,
+                                               mask_index, past, attention_bias, parameters,
                                                max_threads_per_block, past_seq_len);
 }
 Tensor* AttentionBase::GetPresent(OpKernelContext* context, const Tensor* past, int batch_size, int head_size,
@@ -605,6 +633,16 @@ Status BeamSearch::SetupSubgraphExecutionInfo(const SessionState& session_state,
                                               const SessionState& subgraph_session_state) {
   return g_host_cpu.BeamSearch__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state);
 }
+
+Status WhisperBeamSearch::Compute(OpKernelContext* ctx) const { return g_host_cpu.WhisperBeamSearch__Compute(this, ctx); }
+
+void BeamSearchParameters::ParseFromAttributes(const OpKernelInfo& info) { g_host_cpu.BeamSearchParameters__ParseFromAttributes(this, info); }
+
+void GreedySearchParameters::ParseFromAttributes(const OpKernelInfo& info) { g_host_cpu.GreedySearchParameters__ParseFromAttributes(this, info); }
+
+void SamplingParameters::ParseFromAttributes(const OpKernelInfo& info) { g_host_cpu.SamplingParameters__ParseFromAttributes(this, info); }
+
+void WhisperBeamSearchParameters::ParseFromAttributes(const OpKernelInfo& info) { g_host_cpu.WhisperBeamSearchParameters__ParseFromAttributes(this, info); }
 
 void GreedySearch::Init(const OpKernelInfo& info) { g_host_cpu.GreedySearch__Init(this, info); }
 
@@ -624,7 +662,6 @@ Status Sampling::SetupSubgraphExecutionInfo(const SessionState& session_state, c
                                             const SessionState& subgraph_session_state) {
   return g_host_cpu.Sampling__SetupSubgraphExecutionInfo(this, session_state, attribute_name, subgraph_session_state);
 }
-
 }  // namespace transformers
 
 #ifdef ENABLE_ATEN

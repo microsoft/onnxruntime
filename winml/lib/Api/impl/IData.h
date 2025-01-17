@@ -8,8 +8,8 @@
 namespace _winml {
 
 struct idata {
-  virtual ~idata(){}
-  
+  virtual ~idata() {}
+
   virtual size_t num_elements() = 0;
   virtual size_t size_in_bytes() = 0;
   virtual size_t num_buffers() = 0;

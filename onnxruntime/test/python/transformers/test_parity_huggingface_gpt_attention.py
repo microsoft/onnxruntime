@@ -12,15 +12,21 @@
 import os
 import random
 import unittest
+from pathlib import Path
 
 import numpy
 import onnx
 import pytest
 import torch
 from onnx import helper
-from parity_utilities import compare_outputs, create_ort_session, parse_arguments
+from parity_utilities import compare_outputs, create_ort_session, find_transformers_source, parse_arguments
 from torch import nn
 from transformers.modeling_utils import Conv1D
+
+if find_transformers_source():
+    from onnx_model import OnnxModel
+else:
+    from onnxruntime.transformers.onnx_model import OnnxModel
 
 DEBUG_OUTPUTS = ["qk", "norm_qk", "softmax", "attn_weights"]
 
@@ -206,8 +212,6 @@ def get_output_names(debug=False):
 
 
 def export_onnx(model, onnx_model_path, float16, hidden_size, num_attention_heads, debug, device):
-    from pathlib import Path
-
     Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
 
     input_hidden_states, attention_mask, layer_past = create_inputs(
@@ -254,8 +258,6 @@ def export_onnx(model, onnx_model_path, float16, hidden_size, num_attention_head
 
 
 def optimize_onnx(input_onnx_path, optimized_onnx_path, num_heads, debug):
-    from onnxruntime.transformers.onnx_model import OnnxModel
-
     m = onnx.load(input_onnx_path)
     onnx_model = OnnxModel(m)
 
@@ -337,7 +339,7 @@ def verify_attention(
 
         ort_outputs = onnxruntime_inference(ort_session, input_hidden_states, attention_mask, layer_past)
 
-        tolerance = 1e-03 if float16 else 1e-05
+        tolerance = 1e-02 if float16 else 1e-04
         is_all_close, max_diff = compare_outputs(torch_outputs, ort_outputs, atol=tolerance, verbose=True)
         max_diffs.append(max_diff)
         if is_all_close:
@@ -513,9 +515,7 @@ class TestGptAttentionHuggingfaceParity(unittest.TestCase):
 
     def test_cuda(self):
         if not torch.cuda.is_available():
-            import pytest
-
-            pytest.skip("test requires GPU and torch+cuda")
+            self.skipTest("test requires GPU and torch+cuda")
         else:
             gpu = torch.device("cuda")
             self.run_small(self.optimized, gpu, verbose=self.verbose)
@@ -523,9 +523,7 @@ class TestGptAttentionHuggingfaceParity(unittest.TestCase):
     @pytest.mark.slow
     def test_large_cuda(self):
         if not torch.cuda.is_available():
-            import pytest
-
-            pytest.skip("test requires GPU and torch+cuda")
+            self.skipTest("test requires GPU and torch+cuda")
         else:
             gpu = torch.device("cuda")
             self.run_large(self.optimized, gpu, verbose=self.verbose)

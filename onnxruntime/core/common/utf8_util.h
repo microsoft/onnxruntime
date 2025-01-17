@@ -8,8 +8,13 @@
 namespace onnxruntime {
 namespace utf8_util {
 
-// Returns the number of bytes in the utf8 character
-// by analyzing its leading byte
+/// <summary>
+/// Checks the extension bytes and returns a number of
+/// bytes in the UTF-8 character
+/// </summary>
+/// <param name="ch"></param>
+/// <param name="len">result</param>
+/// <returns>false if the char len is greater than 4 otherwise true</returns>
 inline bool utf8_bytes(unsigned char ch, size_t& len) {
   if ((ch & 0x80) == 0) {
     len = 1;

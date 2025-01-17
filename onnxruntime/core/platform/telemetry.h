@@ -38,6 +38,14 @@ class Telemetry {
   virtual void DisableTelemetryEvents() const;
   virtual void SetLanguageProjection(uint32_t projection) const;
 
+  virtual bool IsEnabled() const;
+
+  // Get the current logging level
+  virtual unsigned char Level() const;
+
+  // Get the current keyword
+  virtual uint64_t Keyword() const;
+
   virtual void LogProcessInfo() const;
 
   virtual void LogSessionCreationStart() const;
@@ -52,7 +60,7 @@ class Telemetry {
                                   const std::string& model_graph_name,
                                   const std::unordered_map<std::string, std::string>& model_metadata,
                                   const std::string& loadedFrom, const std::vector<std::string>& execution_provider_ids,
-                                  bool use_fp16) const;
+                                  bool use_fp16, bool captureState) const;
 
   virtual void LogRuntimeError(uint32_t session_id, const common::Status& status, const char* file,
                                const char* function, uint32_t line) const;

@@ -388,7 +388,7 @@ TEST_F(GraphTest, UnusedValueInfoSerializes) {
   std::shared_ptr<Model> model;
   ASSERT_STATUS_OK(Model::Load(std::move(m), model, nullptr, *logger_));
   model->MainGraph().SetGraphProtoSyncNeeded();
-  EXPECT_TRUE(Model::Save(*model, "graph_with_unused_value_info.onnx").IsOK());
+  EXPECT_TRUE(Model::Save(*model, ORT_TSTR("graph_with_unused_value_info.onnx")).IsOK());
 }
 
 TEST_F(GraphTest, WrongOpset) {
@@ -464,7 +464,7 @@ TEST_F(GraphTest, LocalCustomRegistry) {
 
 // Tests the case where function op and function body ops belong to different domains.
 // Tests that such a model can be loaded successfully, function body initialization is
-// successful and domain and verison mapping for each node is successful (by verifying
+// successful and domain and version mapping for each node is successful (by verifying
 // op schema for each of the function body nodes can be found).
 TEST_F(GraphTest, FunctionOpsetImportTest) {
   std::shared_ptr<Model> model;
@@ -481,7 +481,7 @@ TEST_F(GraphTest, FunctionOpsetImportTest) {
       // phase .i.e. Init function body only if none of EPs have a kernel matching the function op
       // then this check will not hold true and should be removed.
 
-      // We delay the funciton instantiate untill partition the graph
+      // We delay the function instantiate until partition the graph
       // this check is no longer valid anymore.
       /*ASSERT_TRUE(!schema->HasFunction() && !schema->HasContextDependentFunction());*/
       continue;
@@ -762,7 +762,7 @@ TEST_F(GraphTest, GraphConstruction_CheckIsAcyclic) {
   auto status = graph.Resolve();
   EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-  EXPECT_TRUE(Model::Save(model, "graph_1.onnx").IsOK());
+  EXPECT_TRUE(Model::Save(model, ORT_TSTR("graph_1.onnx")).IsOK());
   std::shared_ptr<Model> model2;
   EXPECT_TRUE(Model::Load(ORT_TSTR("graph_1.onnx"), model2, nullptr, *logger_).IsOK());
 
@@ -1476,7 +1476,7 @@ TEST_F(GraphTest, GraphConstruction_TypeInference) {
   EXPECT_EQ("node_4_out_1", graph.GetOutputs()[0]->Name());
   EXPECT_EQ(2u, graph.GetInputs().size());
 
-  EXPECT_TRUE(Model::Save(model, "model_x.onnx").IsOK());
+  EXPECT_TRUE(Model::Save(model, ORT_TSTR("model_x.onnx")).IsOK());
   std::shared_ptr<Model> loaded_model;
   EXPECT_TRUE(Model::Load(ORT_TSTR("model_x.onnx"), loaded_model, nullptr, *logger_).IsOK());
   EXPECT_EQ(2u, loaded_model->MainGraph().GetInputs().size());
@@ -1503,10 +1503,8 @@ TEST_F(GraphTest, ShapeInferenceErrorHandling) {
 
   graph.AddNode("node_1", "ShapeInferenceThrowsOp", "node 1", {&input_arg1}, {&output_arg1});
 
-  auto status = graph.Resolve();
-  EXPECT_FALSE(status.IsOK());
-  EXPECT_THAT(status.ErrorMessage(), testing::HasSubstr("Node (node_1) Op (ShapeInferenceThrowsOp) "
-                                                        "[ShapeInferenceError] try harder"));
+  EXPECT_STATUS_NOT_OK_AND_HAS_SUBSTR(graph.Resolve(),
+                                      "Node (node_1) Op (ShapeInferenceThrowsOp) [ShapeInferenceError] try harder");
 }
 
 TEST_F(GraphTest, AddTensorAttribute) {
@@ -1784,8 +1782,8 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
       {initializer_name, ort_value}};
 
   // We do not need actual files there since we are not going to load it.
-  const auto tensor_data_dir_path = Path::Parse(ToPathString("."));
-  const auto tensor_data_dir_relative_path = Path::Parse(ToPathString("external_data.bin"));
+  const auto tensor_data_dir_path = ORT_TSTR(".");
+  const auto tensor_data_dir_relative_path = ORT_TSTR("external_data.bin");
 
   const auto tensor_proto =
       [&]() {
@@ -1794,7 +1792,7 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
         tensor_proto.add_dims(tensor_data.size());
         tensor_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT32);
         tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
-        SetTensorProtoExternalData("location", ToUTF8String(tensor_data_dir_relative_path.ToPathString()),
+        SetTensorProtoExternalData("location", ToUTF8String(tensor_data_dir_relative_path),
                                    tensor_proto);
         SetTensorProtoExternalData("offset", "0", tensor_proto);
         SetTensorProtoExternalData("length", std::to_string(tensor_data.size() * sizeof(int32_t)), tensor_proto);
@@ -1829,7 +1827,7 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
     ASSERT_FALSE(utils::HasExternalData(*with_data));
     const auto& original_tensor = ort_value.Get<Tensor>();
     Tensor replaced_tensor(original_tensor.DataType(), data_shape, std::make_shared<CPUAllocator>());
-    ASSERT_STATUS_OK(utils::TensorProtoToTensor(Env::Default(), tensor_data_dir_path.ToPathString().c_str(), *with_data,
+    ASSERT_STATUS_OK(utils::TensorProtoToTensor(Env::Default(), tensor_data_dir_path, *with_data,
                                                 replaced_tensor));
     ASSERT_EQ(original_tensor.GetElementType(), replaced_tensor.GetElementType());
     const auto original_span = original_tensor.DataAsSpan<int32_t>();
@@ -2024,10 +2022,9 @@ TEST_F(GraphTest, LoadModelMissingInput) {
   SetTypeAndShape(output->mutable_type()->mutable_tensor_type(), 1, {2, 2});
 
   std::shared_ptr<Model> model;
-  Status st = Model::Load(std::move(m), model, nullptr, *logger_);
-  ASSERT_FALSE(st.IsOK());
-  ASSERT_THAT(st.ErrorMessage(), testing::HasSubstr("Invalid model. Node input 'y' is not a graph input, "
-                                                    "initializer, or output of a previous node."));
+  ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(Model::Load(std::move(m), model, nullptr, *logger_),
+                                      "Invalid model. Node input 'y' is not a graph input, "
+                                      "initializer, or output of a previous node.");
 }
 
 // if an initializer is backing an optional graph input, it can't be removed even if unused in the graph.
@@ -2126,6 +2123,254 @@ TEST_F(GraphTest, SubgraphOutputIsOuterScopeValue) {
   EXPECT_THAT(st.ErrorMessage(),
               ::testing::ContainsRegex("Subgraph output \\(.*\\) is an outer scope value being returned directly."));
 }
+
+#ifdef ENABLE_TRAINING
+
+TEST_F(GraphTest, GraphConstruction_MemoryEfficientTopologicalSort_Recompute) {
+  Model model("graph_1", false, *logger_);
+  auto& graph = model.MainGraph();
+
+  /*
+                         |
+                  node_0 (Identity)
+                     /       \
+        node_1 (Identity)     \
+                    |         |
+        node_4 (Identity)     |
+                    |         |
+                  YieldOp   recompute_node_1
+                     \       /
+               node_1_grad (Merge)
+                        |
+  */
+
+  TypeProto tensor_int32;
+  tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+  tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& input_arg0 = graph.GetOrCreateNodeArg("node_0_in_1", &tensor_int32);
+  auto& output_arg0 = graph.GetOrCreateNodeArg("node_0_out_1", &tensor_int32);
+  auto& output_arg1 = graph.GetOrCreateNodeArg("node_1_out_1", &tensor_int32);
+  auto& output_arg2 = graph.GetOrCreateNodeArg("node_2_out_1", &tensor_int32);
+  auto& output_arg4 = graph.GetOrCreateNodeArg("node_4_out_1", &tensor_int32);
+  auto& output_arg5 = graph.GetOrCreateNodeArg("node_yield_out_1", &tensor_int32);
+  auto& output_arg6 = graph.GetOrCreateNodeArg("node_5_out_1", &tensor_int32);
+
+  graph.AddNode("node_0", "Identity_Fake", "node 0", {&input_arg0}, {&output_arg0});
+  graph.AddNode("node_1", "Identity_Fake", "node 1", {&output_arg0}, {&output_arg1});
+  graph.AddNode("recompute_node_1", "Identity_Fake", "recompute node 1", {&output_arg0}, {&output_arg2});
+
+  graph.AddNode("node_4", "Identity_Fake", "node 4", {&output_arg1}, {&output_arg4});
+
+  ONNX_NAMESPACE::AttributeProto full_shape_outputs;
+  const std::string attribute_name = "full_shape_outputs";
+  full_shape_outputs.set_name(attribute_name);
+  full_shape_outputs.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
+  full_shape_outputs.add_ints(static_cast<int64_t>(0));
+  NodeAttributes attributes({{attribute_name, full_shape_outputs}});
+
+  graph.AddNode("node_yield", "YieldOp", "node yield", {&output_arg4}, {&output_arg5}, &attributes, kMSDomain);
+  graph.AddNode("node_1_grad", "Merge_Fake", "node_1 gradient", {&output_arg5, &output_arg2}, {&output_arg6});
+
+  auto status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  GraphViewer graph_viewer(graph);
+
+  // MEMORY_EFFICIENT order
+  {
+    auto& order = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::MEMORY_EFFICIENT);
+    const std::vector<std::string> expected_priority_based_order =
+        {"node_0", "node_1", "node_4", "node_yield", "recompute_node_1", "node_1_grad"};
+    for (size_t i = 0; i < order.size(); ++i) {
+      auto node = graph.GetNode(order[i]);
+      EXPECT_TRUE(node->Name() == expected_priority_based_order[i]) << "MEMORY_EFFICIENT based execution order is wrong.";
+    }
+  }
+}
+
+TEST_F(GraphTest, GraphConstruction_MemoryEfficientTopologicalSort_MultiLayerRecompute) {
+  Model model("graph_1", false, *logger_);
+  auto& graph = model.MainGraph();
+
+  /*
+                         |
+                  node_0 (Identity)
+                     /            \
+            node_1 (Identity)       \
+                    |        \        \
+           node_2 (Identity)   \        \
+                    |      \     \        \
+        node_3 (Identity)   \      \        \
+                    |    \   \       \        \
+          loss (Identity) \   \        \        \
+                    |     |    \         \        \
+              YieldOp     |     |         \        \
+               \         /      |          \        |
+                loss_grad  recom_node_3    |        |
+                     \         /           |        |
+                     node_3_grad      recom_node_2  |
+                            \          /            |
+                             node_2_grad       recom_node_1
+                                   \           /
+                                    node_1_grad
+                                         |
+  */
+
+  TypeProto tensor_int32;
+  tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+  tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  // FW graph
+  auto& input_arg0 = graph.GetOrCreateNodeArg("node_0_in", &tensor_int32);
+  auto& output_arg0 = graph.GetOrCreateNodeArg("node_0_out", &tensor_int32);
+  auto& output_arg1 = graph.GetOrCreateNodeArg("node_1_out", &tensor_int32);
+  auto& output_arg2 = graph.GetOrCreateNodeArg("node_2_out", &tensor_int32);
+  auto& output_arg3 = graph.GetOrCreateNodeArg("node_3_out", &tensor_int32);
+  auto& output_loss = graph.GetOrCreateNodeArg("loss_out", &tensor_int32);
+  auto& output_yield = graph.GetOrCreateNodeArg("yield_out", &tensor_int32);
+
+  graph.AddNode("node_0", "Identity_Fake", "node 0", {&input_arg0}, {&output_arg0});
+  graph.AddNode("node_1", "Identity_Fake", "node 1", {&output_arg0}, {&output_arg1});
+  graph.AddNode("node_2", "Identity_Fake", "node 2", {&output_arg1}, {&output_arg2});
+  graph.AddNode("node_3", "Identity_Fake", "node 3", {&output_arg2}, {&output_arg3});
+  graph.AddNode("loss", "Identity_Fake", "loss node", {&output_arg3}, {&output_loss});
+  ONNX_NAMESPACE::AttributeProto full_shape_outputs;
+  const std::string attribute_name = "full_shape_outputs";
+  full_shape_outputs.set_name(attribute_name);
+  full_shape_outputs.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
+  full_shape_outputs.add_ints(static_cast<int64_t>(0));
+  NodeAttributes attributes({{attribute_name, full_shape_outputs}});
+  graph.AddNode("node_yield", "YieldOp", "node yield", {&output_loss}, {&output_yield}, &attributes, kMSDomain);
+
+  // Recompute graph
+  auto& recomputed_arg3 = graph.GetOrCreateNodeArg("node_3_out_recomputed", &tensor_int32);
+  auto& recomputed_arg2 = graph.GetOrCreateNodeArg("node_2_out_recomputed", &tensor_int32);
+  auto& recomputed_arg1 = graph.GetOrCreateNodeArg("node_1_out_recomputed", &tensor_int32);
+
+  graph.AddNode("node_3_recompute", "Identity_Fake", "node 3 recompute", {&output_arg2}, {&recomputed_arg3});
+  graph.AddNode("node_2_recompute", "Identity_Fake", "node 2 recompute", {&output_arg1}, {&recomputed_arg2});
+  graph.AddNode("node_1_recompute", "Identity_Fake", "node 1 recompute", {&output_arg0}, {&recomputed_arg1});
+
+  // BW Graph
+  auto& loss_grad_output = graph.GetOrCreateNodeArg("loss_grad_output", &tensor_int32);
+  auto& node_3_grad_output = graph.GetOrCreateNodeArg("node_3_grad_output", &tensor_int32);
+  auto& node_2_grad_output = graph.GetOrCreateNodeArg("node_2_grad_output", &tensor_int32);
+  auto& node_1_grad_output = graph.GetOrCreateNodeArg("node_1_grad_output", &tensor_int32);
+
+  graph.AddNode("loss_grad", "Merge_Fake", "loss gradient", {&output_yield, &output_arg3}, {&loss_grad_output});
+  graph.AddNode("node_3_grad", "Merge_Fake", "node 3 gradient", {&loss_grad_output, &recomputed_arg3}, {&node_3_grad_output});
+  graph.AddNode("node_2_grad", "Merge_Fake", "node 2 gradient", {&node_3_grad_output, &recomputed_arg2}, {&node_2_grad_output});
+  graph.AddNode("node_1_grad", "Merge_Fake", "node 1 gradient", {&node_2_grad_output, &recomputed_arg1}, {&node_1_grad_output});
+
+  auto status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  GraphViewer graph_viewer(graph);
+
+  // MEMORY_EFFICIENT order
+  {
+    auto& order = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::MEMORY_EFFICIENT);
+    const std::vector<std::string> expected_priority_based_order = {
+        "node_0",
+        "node_1",
+        "node_2",
+        "node_3",
+        "loss",
+        "node_yield",
+        "loss_grad",
+        "node_3_recompute",
+        "node_3_grad",
+        "node_2_recompute",
+        "node_2_grad",
+        "node_1_recompute",
+        "node_1_grad",
+    };
+    for (size_t i = 0; i < order.size(); ++i) {
+      auto node = graph.GetNode(order[i]);
+      EXPECT_TRUE(node->Name() == expected_priority_based_order[i]) << "MEMORY_EFFICIENT based execution order is wrong.";
+    }
+  }
+}
+
+TEST_F(GraphTest, GraphConstruction_MemoryEfficientTopologicalSort_SubgraphGeneratingNodeHavingNoConsumers) {
+  Model model("graph_1", false, *logger_);
+  auto& graph = model.MainGraph();
+
+  /*
+                         |
+                  node_0 (Identity)
+                     /       \    \
+        node_1 (Identity)     \   Identity
+                    |         |       \_____graph_output_0
+        node_4 (Identity)     |
+                    |         |
+                  YieldOp   recompute_node_1
+                     \       /      \
+               node_1_grad (Merge)   Identity
+                        |               |
+                                   graph_output_1
+  */
+
+  TypeProto tensor_int32;
+  tensor_int32.mutable_tensor_type()->set_elem_type(TensorProto_DataType_INT32);
+  tensor_int32.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
+
+  auto& input_arg0 = graph.GetOrCreateNodeArg("node_0_in_1", &tensor_int32);
+  auto& output_arg0 = graph.GetOrCreateNodeArg("node_0_out_1", &tensor_int32);
+  auto& graph_output_0_identity = graph.GetOrCreateNodeArg("graphoutput_0_identity_out_1", &tensor_int32);
+  auto& output_arg1 = graph.GetOrCreateNodeArg("node_1_out_1", &tensor_int32);
+  auto& output_arg2 = graph.GetOrCreateNodeArg("node_2_out_1", &tensor_int32);
+  auto& output_arg4 = graph.GetOrCreateNodeArg("node_4_out_1", &tensor_int32);
+  auto& output_arg5 = graph.GetOrCreateNodeArg("node_yield_out_1", &tensor_int32);
+  auto& output_arg6 = graph.GetOrCreateNodeArg("node_5_out_1", &tensor_int32);
+
+  graph.AddNode("node_0", "Identity_Fake", "node 0", {&input_arg0}, {&output_arg0});
+  graph.AddNode("node_1", "Identity_Fake", "node 1", {&output_arg0}, {&output_arg1});
+  graph.AddNode("graph_output_0_identity", "Identity_Fake", "graph output 0 identity", {&output_arg0}, {&graph_output_0_identity});
+  graph.AddNode("recompute_node_1", "Identity_Fake", "recompute node 1", {&output_arg0}, {&output_arg2});
+
+  auto& graph_output1_identity = graph.GetOrCreateNodeArg("graphoutput_1_identity_out_1", &tensor_int32);
+  graph.AddNode("graph_output_1_identity", "Identity_Fake", "graph output 1 identity", {&output_arg2}, {&graph_output1_identity});
+
+  graph.AddNode("node_4", "Identity_Fake", "node 4", {&output_arg1}, {&output_arg4});
+
+  ONNX_NAMESPACE::AttributeProto full_shape_outputs;
+  const std::string attribute_name = "full_shape_outputs";
+  full_shape_outputs.set_name(attribute_name);
+  full_shape_outputs.set_type(ONNX_NAMESPACE::AttributeProto::INTS);
+  full_shape_outputs.add_ints(static_cast<int64_t>(0));
+  NodeAttributes attributes({{attribute_name, full_shape_outputs}});
+
+  graph.AddNode("node_yield", "YieldOp", "node yield", {&output_arg4}, {&output_arg5}, &attributes, kMSDomain);
+  graph.AddNode("node_1_grad", "Merge_Fake", "node_1 gradient", {&output_arg5, &output_arg2}, {&output_arg6});
+
+  auto status = graph.Resolve();
+  EXPECT_TRUE(status.IsOK()) << status.ErrorMessage();
+  GraphViewer graph_viewer(graph);
+
+  // MEMORY_EFFICIENT order
+  {
+    auto& order = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::MEMORY_EFFICIENT);
+    const std::vector<std::string> expected_order =
+        {
+            "node_0",
+            "node_1",
+            "node_4",
+            "node_yield",
+            "recompute_node_1",
+            "node_1_grad",
+            "graph_output_0_identity",
+            "graph_output_1_identity",
+        };
+    for (size_t i = 0; i < order.size(); ++i) {
+      auto node = graph.GetNode(order[i]);
+      EXPECT_TRUE(node->Name() == expected_order[i])
+          << "MEMORY_EFFICIENT based execution order is wrong. expected node is " << expected_order[i]
+          << " but got " << node->Name();
+    }
+  }
+}
+
+#endif
 
 }  // namespace test
 }  // namespace onnxruntime

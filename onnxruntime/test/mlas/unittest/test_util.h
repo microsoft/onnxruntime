@@ -9,6 +9,7 @@
 #include <stdio.h>
 #include <memory.h>
 #include <algorithm>
+#include <cmath>
 #include <limits>
 #include <memory>
 #include <random>
@@ -114,26 +115,24 @@ class MatrixGuardBuffer {
       return GetFilledBuffer(
           Elements,
           [](T* start, size_t size) {
-            std::fill_n(start, size, T(0));
+            std::fill_n(start, size, T(0.0f));
           });
     }
 
     return GetFilledBuffer(
         Elements,
         [](T* start, size_t size) {
-          constexpr int MinimumFillValue = -23;
-          constexpr int MaximumFillValue = 23;
+          constexpr float offset = -21.f;
+          constexpr float range = 43.f;
 
-          int FillValue = MinimumFillValue;
+          float FillValue = 11.f;
           T* FillAddress = start;
           for (size_t i = 0; i < size; i++) {
-            *FillAddress++ = (T)FillValue;
+            auto itemv = FillValue - offset;
+            *FillAddress++ = (T)(itemv);
 
-            FillValue++;
-
-            if (FillValue > MaximumFillValue) {
-              FillValue = MinimumFillValue;
-            }
+            FillValue += 7.f;
+            FillValue = FillValue >= range ? FillValue - range : FillValue;
           }
         });
   }
@@ -190,8 +189,7 @@ class MlasTestFixture : public testing::Test {
     mlas_tester = nullptr;
   };
 
-  // Do not forgot to define this static member element when upon usage.
-  static TMlasTester* mlas_tester;
+  static inline TMlasTester* mlas_tester = nullptr;
 };
 
 // Long Execute test. It is too heavy to register each single test, treat long execute big groups.
@@ -255,4 +253,17 @@ inline void ReorderInputNchw(const int64_t* input_shape, const float* S, float* 
     S += spatial_count * channel_count;
     D += spatial_count * nchwc_channel_count;
   }
+}
+
+inline bool CloseEnough(float actual, float expected) {
+  if (std::isnan(actual)) {
+    return std::isnan(expected);
+  }
+  float diff = std::abs(actual - expected);
+  float top = std::max(std::abs(actual), std::abs(expected));
+  float ratio = 0;
+  if (top > 0.0001) {
+    ratio = diff / top;
+  }
+  return ratio < 0.005;
 }

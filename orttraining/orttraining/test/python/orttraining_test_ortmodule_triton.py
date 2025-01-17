@@ -5,6 +5,7 @@ import copy
 import json
 import os
 import random
+import uuid
 
 import _test_helpers
 import onnx
@@ -135,8 +136,31 @@ def _torch_layer_norm(input, weight, bias, **kwargs):
     return torch.nn.functional.layer_norm(input, normalized_shape, weight, bias)
 
 
+def _torch_gelu(input):
+    return torch.nn.functional.gelu(input)
+
+
+def _torch_quick_gelu(input, **kwargs):
+    alpha = kwargs.get("alpha", 1.702)
+    return input * torch.sigmoid(input * alpha)
+
+
+def _torch_gelu_grad(dy, x):
+    alpha = 0.70710678118654752440
+    beta = 1.12837916709551257390 * 0.70710678118654752440 * 0.5
+    cdf = 0.5 * (1 + torch.erf(x * alpha))
+    pdf = beta * torch.exp(x * x * -0.5)
+    return dy * (cdf + x * pdf)
+
+
+def _torch_quick_gelu_grad(dy, x, **kwargs):
+    alpha = kwargs.get("alpha", 1.702)
+    sigmoid = torch.sigmoid(x * alpha)
+    return dy * sigmoid * (1.0 + x * alpha * (1.0 - sigmoid))
+
+
 class TorchFuncExecutor:
-    _INFER_FUNC_MAP = {
+    _TORCH_FUNC_MAP = {  # noqa: RUF012
         "Add": _torch_add,
         "Sub": _torch_sub,
         "Mul": _torch_mul,
@@ -154,13 +178,17 @@ class TorchFuncExecutor:
         "ReduceMin": _torch_reduce_min,
         "Softmax": _torch_softmax,
         "LayerNormalization": _torch_layer_norm,
+        "Gelu": _torch_gelu,
+        "QuickGelu": _torch_quick_gelu,
+        "GeluGrad": _torch_gelu_grad,
+        "QuickGeluGrad": _torch_quick_gelu_grad,
     }
 
     @classmethod
     def run(cls, op_type, *torch_tensors, **kwargs):
-        if op_type not in cls._INFER_FUNC_MAP:
+        if op_type not in cls._TORCH_FUNC_MAP:
             raise NotImplementedError(f"Unsupported op type: {op_type}")
-        return cls._INFER_FUNC_MAP[op_type](*torch_tensors, **kwargs)
+        return cls._TORCH_FUNC_MAP[op_type](*torch_tensors, **kwargs)
 
 
 def _run_op_test(op_type, onnx_dtype, create_model_func, gen_inputs_func, **kwargs):
@@ -169,9 +197,12 @@ def _run_op_test(op_type, onnx_dtype, create_model_func, gen_inputs_func, **kwar
     pt_inputs = gen_inputs_func(_onnx_dtype_to_torch_dtype(onnx_dtype))
     ort_inputs = copy.deepcopy(pt_inputs)
     ort_inputs = [tensor.to(torch.uint8) if tensor.dtype == torch.bool else tensor for tensor in ort_inputs]
+    if "::" in op_type:
+        _, op_type = op_type.split("::")
     pt_outputs = TorchFuncExecutor.run(op_type, *pt_inputs, **kwargs)
     model_str = create_model_func(op_type, onnx_dtype, **kwargs).SerializeToString()
-    ort_outputs = call_triton_by_onnx(hash(model_str), model_str, *[to_dlpack(tensor) for tensor in ort_inputs])
+    unique_id = uuid.uuid1().int >> 64
+    ort_outputs = call_triton_by_onnx(unique_id, model_str, *[to_dlpack(tensor) for tensor in ort_inputs])
     if isinstance(pt_outputs, tuple):
         assert isinstance(ort_outputs, tuple)
         assert len(pt_outputs) == len(ort_outputs)
@@ -200,9 +231,9 @@ def _run_module_test(module_cls, dtype, gen_inputs_func, triton_op_count, **kwar
         ort_output = _run_step(ort_model, *ort_inputs)
         _test_helpers.assert_values_are_close(pt_output, ort_output, rtol=rtol, atol=atol)
         _test_helpers.assert_gradients_match_and_reset_gradient(pt_model, ort_model, rtol=rtol, atol=atol)
-        for i in range(len(pt_inputs)):
-            if pt_inputs[i].requires_grad:
-                _test_helpers.assert_values_are_close(pt_inputs[i].grad, ort_inputs[i].grad, rtol=rtol, atol=atol)
+        for idx, pt_input in enumerate(pt_inputs):
+            if pt_input.requires_grad:
+                _test_helpers.assert_values_are_close(pt_input.grad, ort_inputs[idx].grad, rtol=rtol, atol=atol)
 
     assert os.path.exists(os.path.join(os.getcwd(), "triton_model_torch_exported_training.onnx"))
     assert os.path.exists(os.path.join(os.getcwd(), "triton_model_optimized_training.onnx"))
@@ -221,12 +252,12 @@ def _run_module_test(module_cls, dtype, gen_inputs_func, triton_op_count, **kwar
 
 
 def _run_tunable_op_test(module_cls, dtype, gen_inputs_func, tunable_op, impl_count, **kwargs):
+    os.environ["ORTMODULE_ENABLE_TUNING"] = "1"
+    os.environ["ORTMODULE_TUNING_RESULTS_PATH"] = "./"
     pt_model = module_cls().to(DEVICE).to(dtype)
     ort_model = ORTModule(copy.deepcopy(pt_model))
     rtol = kwargs.get("rtol", 1e-03 if dtype == torch.float16 else 1e-04)
     atol = kwargs.get("atol", 1e-03 if dtype == torch.float16 else 1e-05)
-    os.environ["ORTMODULE_ENABLE_TUNING"] = "1"
-    os.environ["ORTMODULE_TUNING_RESULTS_PATH"] = "./"
     for _ in range(5):
         pt_inputs = gen_inputs_func(dtype)
         ort_inputs = copy.deepcopy(pt_inputs)
@@ -236,7 +267,7 @@ def _run_tunable_op_test(module_cls, dtype, gen_inputs_func, tunable_op, impl_co
         _test_helpers.assert_gradients_match_and_reset_gradient(pt_model, ort_model, rtol=rtol, atol=atol)
     tunable_results_file = os.path.join(os.getcwd(), "tuning_results_training.json")
     assert os.path.exists(tunable_results_file)
-    with open(tunable_results_file) as f:
+    with open(tunable_results_file, encoding="UTF-8") as f:
         tunable_results = json.load(f)
     assert tunable_op in str(tunable_results)
     del os.environ["ORTMODULE_ENABLE_TUNING"]
@@ -246,7 +277,7 @@ def _run_tunable_op_test(module_cls, dtype, gen_inputs_func, tunable_op, impl_co
             if tunable_op in k:
                 for param, impl in v.items():
                     v[param] = (impl + 1 + i) % impl_count
-        with open(tunable_results_file, "w") as f:
+        with open(tunable_results_file, "w", encoding="UTF-8") as f:
             json.dump(new_tunable_results, f)
         ort_model = ORTModule(copy.deepcopy(pt_model))
         for _ in range(5):
@@ -260,13 +291,27 @@ def _run_tunable_op_test(module_cls, dtype, gen_inputs_func, tunable_op, impl_co
     del os.environ["ORTMODULE_TUNING_RESULTS_PATH"]
 
 
-@pytest.mark.parametrize("op_type", ["Add", "Sub", "Mul", "Div"])
+@pytest.mark.parametrize(
+    "op",
+    [
+        ("Add", {}),
+        ("Sub", {}),
+        ("Mul", {}),
+        ("Div", {}),
+        ("com.microsoft::GeluGrad", {}),
+        ("com.microsoft::QuickGeluGrad", {}),
+        ("com.microsoft::QuickGeluGrad", {"alpha": 1.0}),
+    ],
+)
 @pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT, TensorProto.FLOAT16])
 @pytest.mark.parametrize("input_shapes", [([1024, 2], [1024, 2]), ([2, 3, 3, 3], [3, 1, 3]), ([2049], [1])])
-def test_binary_elementwise_op(op_type, onnx_dtype, input_shapes):
-    def _create_model(op_type, onnx_dtype):
+def test_binary_elementwise_op(op, onnx_dtype, input_shapes):
+    def _create_model(op_type, onnx_dtype, **kwargs):
+        domain = ""
+        if "::" in op_type:
+            domain, op_type = op_type.split("::")
         graph = helper.make_graph(
-            [helper.make_node(op_type, ["X", "Y"], ["Z"], name="test")],
+            [helper.make_node(op_type, ["X", "Y"], ["Z"], name="test", domain=domain, **kwargs)],
             "test",
             [
                 helper.make_tensor_value_info("X", onnx_dtype, None),
@@ -282,7 +327,7 @@ def test_binary_elementwise_op(op_type, onnx_dtype, input_shapes):
             torch.randn(*input_shapes[1], dtype=dtype, device=DEVICE),
         ]
 
-    _run_op_test(op_type, onnx_dtype, _create_model, _gen_inputs)
+    _run_op_test(op[0], onnx_dtype, _create_model, _gen_inputs, **op[1])
 
 
 @pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT, TensorProto.FLOAT16])
@@ -303,13 +348,25 @@ def test_sum_op(onnx_dtype, input_shapes):
     _run_op_test("Sum", onnx_dtype, _create_model, _gen_inputs)
 
 
-@pytest.mark.parametrize("op_type", ["Sqrt", "Exp"])
+@pytest.mark.parametrize(
+    "op",
+    [
+        ("Sqrt", {}),
+        ("Exp", {}),
+        ("com.microsoft::Gelu", {}),
+        ("com.microsoft::QuickGelu", {}),
+        ("com.microsoft::QuickGelu", {"alpha": 1.0}),
+    ],
+)
 @pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT, TensorProto.FLOAT16])
 @pytest.mark.parametrize("input_shape", [[1024, 4], [2, 3, 3, 3], [2049, 1]])
-def test_unary_elementwise_op(op_type, onnx_dtype, input_shape):
-    def _create_model(op_type, onnx_dtype):
+def test_unary_elementwise_op(op, onnx_dtype, input_shape):
+    def _create_model(op_type, onnx_dtype, **kwargs):
+        domain = ""
+        if "::" in op_type:
+            domain, op_type = op_type.split("::")
         graph = helper.make_graph(
-            [helper.make_node(op_type, ["X"], ["Y"], name="test")],
+            [helper.make_node(op_type, ["X"], ["Y"], name="test", domain=domain, **kwargs)],
             "test",
             [helper.make_tensor_value_info("X", onnx_dtype, None)],
             [helper.make_tensor_value_info("Y", onnx_dtype, None)],
@@ -319,7 +376,7 @@ def test_unary_elementwise_op(op_type, onnx_dtype, input_shape):
     def _gen_inputs(dtype):
         return [torch.rand(*input_shape, dtype=dtype, device=DEVICE)]
 
-    _run_op_test(op_type, onnx_dtype, _create_model, _gen_inputs)
+    _run_op_test(op[0], onnx_dtype, _create_model, _gen_inputs, **op[1])
 
 
 @pytest.mark.parametrize("onnx_dtype", [TensorProto.FLOAT, TensorProto.FLOAT16])
@@ -486,6 +543,8 @@ def test_dropout_grad_op(onnx_dtype, input_shape_and_ratio):
         ([123, 4, 5, 6], [2], False),
         ([16, 8, 16, 8], [1, 3], True),
         ([16, 8, 16, 8], [0, 2], False),
+        ([16, 8, 16, 8], [0, 1, 2, 3], True),
+        ([16, 1, 16, 8], [0, 1, 2, 3], False),
     ],
 )
 def test_reduce_op(op_type, onnx_dtype, input_shape_and_reduce_info):
@@ -727,6 +786,43 @@ def test_layer_norm_module(dtype, input_shapes_and_axis):
 
 
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_dynamic_shapes_elementwise_module(dtype):
+    class NeuralNetSymbolicShapesElementwise(torch.nn.Module):
+        def forward(self, x, y, u, v):
+            return x * y - (u + v)
+
+    def _gen_inputs(dtype):
+        dim1 = 64 * random.randint(2, 4)
+        dim2 = 64 * random.randint(2, 4)
+        return [
+            torch.rand(16, dim1, dim2, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(16, 1, dim2, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(dim1, 1, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(16, dim1, dim2, dtype=dtype, device=DEVICE, requires_grad=True),
+        ]
+
+    _run_module_test(NeuralNetSymbolicShapesElementwise, dtype, _gen_inputs, 1)
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
+def test_dynamic_shapes_reduction_module(dtype):
+    class NeuralNetSymbolicShapesReduction(torch.nn.Module):
+        def forward(self, x, y, z):
+            return torch.softmax(x * y + z, dim=-1)
+
+    def _gen_inputs(dtype):
+        dim1 = 64 * random.randint(2, 4)
+        dim2 = 64 * random.randint(2, 4)
+        return [
+            torch.rand(16, dim1, dim2, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(16, 1, dim2, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(dim1, 1, dtype=dtype, device=DEVICE, requires_grad=True),
+        ]
+
+    _run_module_test(NeuralNetSymbolicShapesReduction, dtype, _gen_inputs, 2)
+
+
+@pytest.mark.parametrize("dtype", [torch.float32, torch.float16])
 @pytest.mark.parametrize("has_sum", [True, False])
 def test_slice_scel_module(dtype, has_sum):
     class NeuralNetSliceScel(torch.nn.Module):
@@ -777,3 +873,34 @@ def test_gemm_tunable_op(dtype, m_n_k):
         return [torch.rand(m_n_k[0], m_n_k[2], dtype=dtype, device=DEVICE, requires_grad=True)]
 
     _run_tunable_op_test(NeuralNetGemm, dtype, _gen_inputs, "GemmTunableOp", 2)
+
+
+def test_user_config():
+    n, d, h, w = 8, 768, 12, 64
+    dtype = torch.float32
+
+    class NeuralNetElementwise(torch.nn.Module):
+        def forward(self, input1, input2, input3, input4):
+            return input1 + input2 - input3 * input4
+
+    def _gen_inputs(dtype):
+        return [
+            torch.rand(n, d, h, w, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(w, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(d, 1, 1, dtype=dtype, device=DEVICE, requires_grad=True),
+            torch.rand(n, 1, h, w, dtype=dtype, device=DEVICE, requires_grad=True),
+        ]
+
+    user_config = (
+        '{"ops": {"Add": {"versions": [13, 14]}, "Mul": {"versions": [13, 14]}}, '
+        '"initializer": "scalar", "min_nodes": 2}'
+    )
+    with open("user_config.json", "w", encoding="UTF-8") as f:
+        f.write(user_config)
+    os.environ["ORTMODULE_TRITON_CONFIG_FILE"] = "./user_config.json"
+
+    # Mul is not supported, the graph is splited to 2 subgraphs with single Op, which will not be fused to TritonOp.
+    _run_module_test(NeuralNetElementwise, dtype, _gen_inputs, 0)
+
+    del os.environ["ORTMODULE_TRITON_CONFIG_FILE"]
+    os.remove(os.path.join(os.getcwd(), "user_config.json"))

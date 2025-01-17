@@ -9,9 +9,8 @@ import argparse
 import json
 import logging
 import platform
-import sys  # noqa: F401
 from os import environ
-from typing import Dict, List, Tuple, Union  # noqa: F401
+from typing import Dict, List
 
 import cpuinfo
 import psutil
@@ -130,8 +129,6 @@ class MachineInfo:
         related_packages = [
             "onnxruntime-gpu",
             "onnxruntime",
-            "ort-nightly-gpu",
-            "ort-nightly",
             "onnx",
             "transformers",
             "protobuf",

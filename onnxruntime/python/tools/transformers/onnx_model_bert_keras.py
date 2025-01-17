@@ -3,14 +3,10 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-import argparse  # noqa: F401
 import logging
-import sys  # noqa: F401
-from collections import deque  # noqa: F401
 
-import numpy as np  # noqa: F401
 import onnx
-from onnx import ModelProto, TensorProto, numpy_helper  # noqa: F401
+from onnx import numpy_helper
 from onnx_model_bert_tf import BertOnnxModelTF
 
 logger = logging.getLogger(__name__)
@@ -182,18 +178,17 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                 mask_index = self.attention_mask.process_mask(mask_nodes[-1].input[0])
                 logger.debug("Create an Attention node.")
                 attention_node = self.attention_fusion.create_attention_node(
-                    mask_index,
-                    matmul_q,
-                    matmul_k,
-                    matmul_v,
-                    add_q,
-                    add_k,
-                    add_v,
-                    self.num_heads,
-                    self.hidden_size,
-                    parent.output[0],
-                    reshape_qkv.output[0],
-                    None,
+                    mask_index=mask_index,
+                    q_matmul=matmul_q,
+                    k_matmul=matmul_k,
+                    v_matmul=matmul_v,
+                    q_add=add_q,
+                    k_add=add_k,
+                    v_add=add_v,
+                    num_heads=self.num_heads,
+                    hidden_size=self.hidden_size,
+                    first_input=parent.output[0],
+                    output=reshape_qkv.output[0],
                 )
                 if attention_node is None:
                     continue
@@ -439,7 +434,7 @@ class BertOnnxModelKeras(BertOnnxModelTF):
                     "SkipLayerNormalization",
                 ],
                 [None, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-            )  # yapf: disable
+            )
             if path is None:
                 continue
 

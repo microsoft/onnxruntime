@@ -29,15 +29,16 @@
  */
 
 #pragma once
-#include <stdlib.h>
+#include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 
 /** \brief The API version defined in this header
  *
  * This value is used by some API functions to behave as this version of the header expects.
  */
-#define ORT_API_VERSION 16
+#define ORT_API_VERSION 21
 
 #ifdef __cplusplus
 extern "C" {
@@ -45,7 +46,7 @@ extern "C" {
 
 //! @}
 // SAL2 Definitions
-#ifndef _WIN32
+#ifndef _MSC_VER
 #define _In_
 #define _In_z_
 #define _In_opt_
@@ -195,7 +196,10 @@ typedef enum ONNXTensorElementDataType {
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN,    // Non-IEEE floating-point format based on IEEE754 single-precision
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ,  // Non-IEEE floating-point format based on IEEE754 single-precision
   ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2,      // Non-IEEE floating-point format based on IEEE754 single-precision
-  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ   // Non-IEEE floating-point format based on IEEE754 single-precision
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ,  // Non-IEEE floating-point format based on IEEE754 single-precision
+  // Int4 types were introduced in ONNX 1.16. See https://onnx.ai/onnx/technical/int4.html
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT4,  // maps to a pair of packed uint4 values (size == 1 byte)
+  ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4    // maps to a pair of packed int4 values (size == 1 byte)
 } ONNXTensorElementDataType;
 
 // Synced with onnx TypeProto oneof
@@ -266,7 +270,7 @@ typedef enum OrtOpAttrType {
 //! @}
 #define ORT_RUNTIME_CLASS(X) \
   struct Ort##X;             \
-  typedef struct Ort##X Ort##X;
+  typedef struct Ort##X Ort##X
 
 /** \addtogroup Global
  * ONNX Runtime C API
@@ -299,6 +303,8 @@ ORT_RUNTIME_CLASS(DnnlProviderOptions);
 ORT_RUNTIME_CLASS(Op);
 ORT_RUNTIME_CLASS(OpAttr);
 ORT_RUNTIME_CLASS(Logger);
+ORT_RUNTIME_CLASS(ShapeInferContext);
+ORT_RUNTIME_CLASS(LoraAdapter);
 
 #ifdef _WIN32
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -317,6 +323,12 @@ typedef struct OrtAllocator {
   void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size);                ///< Returns a pointer to an allocated block of `size` bytes
   void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);                      ///< Free a block of memory previously allocated with OrtAllocator::Alloc
   const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);  ///< Return a pointer to an ::OrtMemoryInfo that describes this allocator
+  /**
+   * @brief Optional allocation function to use for memory allocations made during session initialization.
+   * Use this function if you want to separate allocations made by ORT during Run() calls from
+   * those made during session initialization. This allows for separate memory management strategies for these allocations.
+   */
+  void*(ORT_API_CALL* Reserve)(struct OrtAllocator* this_, size_t size);  ///< Returns a pointer to an allocated block of `size` bytes
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
@@ -462,13 +474,13 @@ typedef struct OrtCUDAProviderOptions {
 
   /** \brief Enable TunableOp for using.
    *   Set it to 1/0 to enable/disable TunableOp. Otherwise, it is disabled by default.
-   *   This option can be overriden by environment variable ORT_CUDA_TUNABLE_OP_ENABLE.
+   *   This option can be overridden by environment variable ORT_CUDA_TUNABLE_OP_ENABLE.
    */
   int tunable_op_enable;
 
   /** \brief Enable TunableOp for tuning.
    *   Set it to 1/0 to enable/disable TunableOp tuning. Otherwise, it is disabled by default.
-   *   This option can be overriden by environment variable ORT_CUDA_TUNABLE_OP_TUNING_ENABLE.
+   *   This option can be overridden by environment variable ORT_CUDA_TUNABLE_OP_TUNING_ENABLE.
    */
   int tunable_op_tuning_enable;
 
@@ -494,6 +506,7 @@ typedef struct OrtROCMProviderOptions {
         has_user_compute_stream{},
         user_compute_stream{},
         default_memory_arena_cfg{},
+        enable_hip_graph{false},
         tunable_op_enable{false},
         tunable_op_tuning_enable{false},
         tunable_op_max_tuning_duration_ms{} {}
@@ -546,15 +559,17 @@ typedef struct OrtROCMProviderOptions {
    */
   OrtArenaCfg* default_memory_arena_cfg;
 
+  int enable_hip_graph;
+
   /** \brief Enable TunableOp for using.
    *   Set it to 1/0 to enable/disable TunableOp. Otherwise, it is disabled by default.
-   *   This option can be overriden by environment variable ORT_ROCM_TUNABLE_OP_ENABLE.
+   *   This option can be overridden by environment variable ORT_ROCM_TUNABLE_OP_ENABLE.
    */
   int tunable_op_enable;
 
   /** \brief Enable TunableOp for tuning.
    *   Set it to 1/0 to enable/disable TunableOp tuning. Otherwise, it is disabled by default.
-   *   This option can be overriden by environment variable ORT_ROCM_TUNABLE_OP_TUNING_ENABLE.
+   *   This option can be overridden by environment variable ORT_ROCM_TUNABLE_OP_TUNING_ENABLE.
    */
   int tunable_op_tuning_enable;
 
@@ -598,19 +613,31 @@ typedef struct OrtTensorRTProviderOptions {
  * \see OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
  */
 typedef struct OrtMIGraphXProviderOptions {
-  int device_id;             // hip device id.
-  int migraphx_fp16_enable;  // enable MIGraphX FP16 precision. Default 0 = false, nonzero = true
-  int migraphx_int8_enable;  // enable MIGraphX INT8 precision. Default 0 = false, nonzero = true
+  int device_id;                                     // hip device id.
+  int migraphx_fp16_enable;                          // MIGraphX FP16 precision. Default 0 = false, nonzero = true
+  int migraphx_int8_enable;                          // MIGraphX INT8 precision. Default 0 = false, nonzero = true
+  int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, noznero = true
+  const char* migraphx_int8_calibration_table_name;  // MIGraphx INT8 calibration table name
+  int migraphx_save_compiled_model;                  // migraphx save compiled model. Default 0 = false, noznero = true
+  const char* migraphx_save_model_path;              // migraphx model path name
+  int migraphx_load_compiled_model;                  // migraphx int8 cal table. Default 0 = false, noznero = true
+  const char* migraphx_load_model_path;              // migraphx model path name
+  bool migraphx_exhaustive_tune;                     // migraphx tuned compile  Default = false
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options
- *
- * \see OrtApi::SessionOptionsAppendExecutionProvider_OpenVINO
+ *  \brief This Struct is frozen since ORT 1.13.0. Its maintained part of Legacy API for compatibility.
+ *  \brief For latest OpenVINO Provider Options update to the ProviderOptions map.
+ *  \brief Latest OpenVINO Provider Options are listed in the
+ *  \htmlonly
+ *  <a href="https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#summary-of-options">onnxruntime document.</a>
+ *  \endhtmlonly
+ * \see OrtApi::SessionOptionsAppendExecutionProvider()
  */
 typedef struct OrtOpenVINOProviderOptions {
 #ifdef __cplusplus
   OrtOpenVINOProviderOptions() : device_type{},
-                                 enable_vpu_fast_compile{},
+                                 enable_npu_fast_compile{},
                                  device_id{},
                                  num_of_threads{},
                                  cache_dir{},
@@ -623,7 +650,7 @@ typedef struct OrtOpenVINOProviderOptions {
    * Valid settings are one of: "CPU_FP32", "CPU_FP16", "GPU_FP32", "GPU_FP16"
    */
   const char* device_type;
-  unsigned char enable_vpu_fast_compile;  ///< 0 = disabled, nonzero = enabled
+  unsigned char enable_npu_fast_compile;  ///< 0 = disabled, nonzero = enabled
   const char* device_id;
   size_t num_of_threads;  ///< 0 = Use default number of threads
   const char* cache_dir;  // path is set to empty by default
@@ -745,6 +772,8 @@ struct OrtApi {
 
   /** \brief Create an OrtEnv
    *
+   * \note Invoking this function will return the same instance of the environment as that returned by a previous call
+   * to another env creation function; all arguments to this function will be ignored.
    * \param[in] log_severity_level The log severity level.
    * \param[in] logid The log identifier.
    * \param[out] out Returned newly created OrtEnv. Must be freed with OrtApi::ReleaseEnv
@@ -755,17 +784,20 @@ struct OrtApi {
 
   /** \brief Create an OrtEnv
    *
+   * \note Invoking this function will return the same instance of the environment as that returned by a previous call
+   * to another env creation function; all arguments to this function will be ignored. If you want to provide your
+   * own logging function, consider setting it using the SetUserLoggingFunction API instead.
    * \param[in] logging_function A pointer to a logging function.
    * \param[in] logger_param A pointer to arbitrary data passed as the ::OrtLoggingFunction `param` parameter to
-   *                         `logging_function`.
+   *                         `logging_function`. This parameter is optional.
    * \param[in] log_severity_level The log severity level.
    * \param[in] logid The log identifier.
    * \param[out] out Returned newly created OrtEnv. Must be freed with OrtApi::ReleaseEnv
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    */
-  ORT_API2_STATUS(CreateEnvWithCustomLogger, OrtLoggingFunction logging_function, _In_opt_ void* logger_param,
-                  OrtLoggingLevel log_severity_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
+  ORT_API2_STATUS(CreateEnvWithCustomLogger, _In_ OrtLoggingFunction logging_function, _In_opt_ void* logger_param,
+                  _In_ OrtLoggingLevel log_severity_level, _In_ const char* logid, _Outptr_ OrtEnv** out);
 
   /** \brief Enable Telemetry
    *
@@ -987,7 +1019,7 @@ struct OrtApi {
 
   /** \brief Set the optimization level to apply when loading a graph
    *
-   * Please see https://onnxruntime.ai/docs/performance/graph-optimizations.html for an in-depth explanation
+   * Please see https://onnxruntime.ai/docs/performance/model-optimizations/graph-optimizations.html for an in-depth explanation
    * \param[in,out] options The session options object
    * \param[in] graph_optimization_level The optimization level
    *
@@ -1825,14 +1857,30 @@ struct OrtApi {
 
   /** \brief Used for custom operators, get an input of a kernel
    *
-   * \see ::OrtCustomOp
+   * The function attempts fetches the input of the kernel. If the input is optional
+   * and not present, the function returns success and out is set to nullptr.
+   *
+   * \param[in] context ::OrtKernelContext instance
+   * \param[in] index See KernelContext_GetInputCount for boundaries check.
+   * \param[out] out OrtValue if the input is present otherwise is set nullptr
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API2_STATUS(KernelContext_GetInput, _In_ const OrtKernelContext* context, _In_ size_t index,
                   _Out_ const OrtValue** out);
 
   /** \brief Used for custom operators, get an output of a kernel
    *
-   * \see ::OrtCustomOp
+   * The function attempts fetches the output of the kernel. If the output is optional
+   * and not present, the function returns success and out is set to nullptr.
+   *
+   * \param[in] context ::OrtKernelContext instance
+   * \param[in] index See KernelContext_GetOutputCount for boundaries check.
+   * \param[in] dim_values output dimensions
+   * \param[in] dim_count number of dimensions
+   * \param[out] out a ptr to OrtValue to output otherwise set to nullptr
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
    */
   ORT_API2_STATUS(KernelContext_GetOutput, _Inout_ OrtKernelContext* context, _In_ size_t index,
                   _In_ const int64_t* dim_values, size_t dim_count, _Outptr_ OrtValue** out);
@@ -2757,7 +2805,7 @@ struct OrtApi {
    * "initial_growth_chunk_size_bytes": (Possible) Size of the second allocation in the arena.
    *  Only relevant if arena strategy is `kNextPowerOfTwo`. Use -1 to allow ORT to choose the default.
    * "max_power_of_two_extend_bytes": The maximum enxtend size if arena strategy is `kNextPowerOfTwo`.
-   *  It is not an allocation limit, it is only a limit for extention when requested byte is less than the limit.
+   *  It is not an allocation limit, it is only a limit for extension when requested byte is less than the limit.
    *  When requested bytes is more than the limit, allocator will still return as requested.
    *  Use -1 to allow ORT to choose the default 1GB for max_power_of_two_extend_bytes.
    *  Ultimately, the allocation size is determined by the allocation memory request.
@@ -2905,7 +2953,7 @@ struct OrtApi {
    *
    * Please refer to https://onnxruntime.ai/docs/execution-providers/TensorRT-ExecutionProvider.html#cc
    * to know the available keys and values. Key should be in null terminated string format of the member of ::OrtTensorRTProviderOptionsV2
-   * and value should be its related range.
+   * and value should be its related range. Recreates the options and only sets the supplied values.
    *
    * For example, key="trt_max_workspace_size" and value="2147483648"
    *
@@ -3401,7 +3449,7 @@ struct OrtApi {
    *
    * Please refer to https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#configuration-options
    * to know the available keys and values. Key should be in null terminated string format of the member of ::OrtCUDAProviderOptionsV2
-   * and value should be its related range.
+   * and value should be its related range. Recreates the options and only sets the supplied values.
    *
    * For example, key="device_id" and value="0"
    *
@@ -3474,15 +3522,15 @@ struct OrtApi {
    * \param[in] options
    * \param[in] initializer_names Array of null terminated UTF-8 encoded strings of the initializers names.
    * \param[in] initializers Array of ::OrtValue type
-   * \param[in] initializers_num Number of elements in the initializer_names and initializers
+   * \param[in] num_initializers Number of elements in the initializer_names and initializers
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.12.
    */
   ORT_API2_STATUS(AddExternalInitializers, _In_ OrtSessionOptions* options,
-                  _In_reads_(input_len) const char* const* initializer_names,
-                  _In_reads_(input_len) const OrtValue* const* initializers, size_t initializers_num);
+                  _In_reads_(num_initializers) const char* const* initializer_names,
+                  _In_reads_(num_initializers) const OrtValue* const* initializers, size_t num_initializers);
 
   /** \brief: Create attribute of onnxruntime operator
    *
@@ -3585,13 +3633,43 @@ struct OrtApi {
    *
    * QNN supported keys:
    *   "backend_path": file path to QNN backend library.
-   *   "qnn_context_cache_enable": 1 to enable QNN graph creation from cached QNN context file. If it's enabled: QNN EP will
-   *    load from cached QNN context binary if it exist. It will generate a context binary file if it's not exist
-   *   "qnn_context_cache_path": explicitly provide the QNN context cache file. Default to model_file.onnx.bin if not provided.
    *   "profiling_level": QNN profiling level, options: "off", "basic", "detailed". Default to off.
+   *   "profiling_file_path": QNN profiling file path if ETW not enabled.
    *   "rpc_control_latency": QNN RPC control latency.
+   *   "vtcm_mb": QNN VTCM size in MB. default to 0(not set).
    *   "htp_performance_mode": QNN performance mode, options: "burst", "balanced", "default", "high_performance",
-   *   "high_power_saver", "low_balanced", "low_power_saver", "power_saver", "sustained_high_performance". Default to "default".
+   *   "high_power_saver", "low_balanced", "extreme_power_saver", "low_power_saver", "power_saver", "sustained_high_performance". Default to "default".
+   *   "qnn_saver_path": File path to the QNN Saver backend library. If specified, QNN Saver will be enabled and will
+   *   dump QNN API calls to disk for replay/debugging. QNN Saver produces incorrect model inference results and
+   *   may alter model/EP partitioning. Use only for debugging.
+   *   "qnn_context_priority": QNN context priority, options: "low", "normal", "normal_high", "high". Default to "normal".
+   *   "htp_graph_finalization_optimization_mode": Set the optimization mode for graph finalization on the HTP backend. Available options:
+   *     - "0": Default.
+   *     - "1": Faster preparation time, less optimal graph.
+   *     - "2": Longer preparation time, more optimal graph.
+   *     - "3": Longest preparation time, most likely even more optimal graph. See QNN SDK documentation for specific details.
+   *   "soc_model": The SoC model number. Refer to the QNN SDK documentation for valid values. Defaults to "0" (unknown).
+   *   "htp_arch": The minimum HTP architecture the driver will use to select compatible QNN operators. Available options:
+   *     - "0": Default (none).
+   *     - "68"
+   *     - "69"
+   *     - "73"
+   *     - "75"
+   *   "device_id": The ID of the device to use when setting 'htp_arch'. Defaults to "0" (for single device).
+   *   "enable_htp_fp16_precision": Used for float32 model for HTP backend.
+   *   Enable the float32 model to be inferenced with fp16 precision. Otherwise, it will be fp32 precision.
+   *     - "0": With fp32 precision.
+   *     - "1": Default. With fp16 precision.
+   *   "enable_htp_weight_sharing": Enable QNN weight sharing feature while compiling multiple graphs into one QNN context.
+   *     - "0": Default. Disabled.
+   *     - "1": Enabled.
+   *   "offload_graph_io_quantization": Offload graph input quantization and graph output dequantization to another
+   *   execution provider (typically CPU EP).
+   *     - "0": Default. Disabled. QNN EP will handle quantization and dequantization of graph I/O.
+   *     - "1": Enabled.
+   *   "enable_htp_spill_fill_buffer": Enable HTP spill fill buffer setting. The flag is used while generating context binary.
+   *     - "0": Default. Disabled.
+   *     - "1": Enabled.
    *
    * SNPE supported keys:
    *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",
@@ -3717,7 +3795,7 @@ struct OrtApi {
 
   /** \brief Release an OrtCANNProviderOptions
    *
-   * \param[in] the pointer of OrtCANNProviderOptions which will been deleted
+   * \param[in] input The pointer of OrtCANNProviderOptions which will been deleted
    *
    * \since Version 1.13.
    */
@@ -4308,8 +4386,6 @@ struct OrtApi {
    */
   void(ORT_API_CALL* ReleaseROCMProviderOptions)(_Frees_ptr_opt_ OrtROCMProviderOptions* input);
 
-  /// @}
-
   /** \brief Create an allocator with specific type and register it with the ::OrtEnv
    *  This API enhance CreateAndRegisterAllocator that it can create an allocator with specific type, not just CPU allocator
    *  Enables sharing the allocator between multiple sessions that use the same env instance.
@@ -4335,8 +4411,12 @@ struct OrtApi {
    * \param[in] input_len Number of elements in the input_names and inputs arrays
    * \param[in] output_names Array of null terminated UTF8 encoded strings of the output names
    * \param[in] output_names_len Number of elements in the output_names and outputs array
-   * \param[out] output Array of OrtValue* owned by customers, size to output_names_len. It could simply be an array of nullptr
-   *             The array will be passed back to run_async_callback
+   * \param[out] output OrtValue* array of size output_names_len.
+   *             On calling RunAsync, output[i] could either be a null or a pointer to a preallocated OrtValue.
+   *             Later, the output array will be passed to run_async_callback with all null(s) filled with valid
+   *             OrtValue pointer(s) allocated by onnxruntime.
+   *             NOTE: it is customer's duty to finally release the output array and each of its member,
+   *             regardless of whether the member (OrtValue*) is allocated by onnxruntime or preallocated by the customer.
    * \param[in] run_async_callback Callback function on model run completion
    * \param[in] user_data User data that pass back to run_async_callback
    */
@@ -4346,6 +4426,358 @@ struct OrtApi {
                   _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
                   _Inout_updates_all_(output_names_len) OrtValue** output,
                   _In_ RunAsyncCallbackFn run_async_callback, _In_opt_ void* user_data);
+
+  /**
+   * Update TensorRT EP provider option where its data type is pointer, for example 'user_compute_stream'.
+   * If the data type of the provider option can be represented by string please use UpdateTensorRTProviderOptions.
+   *
+   * Note: It's caller's responsibility to properly manage the lifetime of the instance pointed by this pointer.
+   *
+   * \param tensorrt_options - OrtTensorRTProviderOptionsV2 instance
+   * \param key - Name of the provider option
+   * \param value - A pointer to the instance that will be assigned to this provider option
+   *
+   * \since Version 1.16.
+   */
+  ORT_API2_STATUS(UpdateTensorRTProviderOptionsWithValue, _Inout_ OrtTensorRTProviderOptionsV2* tensorrt_options, _In_ const char* key, _In_ void* value);
+
+  /**
+   * Get TensorRT EP provider option where its data type is pointer.
+   * If the data type of the provider option can be represented by string please use GetTensorRTProviderOptionsAsString.
+   *
+   * \param tensorrt_options - OrtTensorRTProviderOptionsV2 instance
+   * \param key - Name of the provider option
+   * \param ptr - A pointer to the instance that is kept by the provider option
+   *
+   * \since Version 1.16.
+   */
+  ORT_API2_STATUS(GetTensorRTProviderOptionsByName, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _In_ const char* key, _Outptr_ void** ptr);
+
+  /**
+   * Update CUDA EP provider option where its data type is pointer, for example 'user_compute_stream'.
+   * If the data type of the provider option can be represented by string please use UpdateCUDAProviderOptions.
+   *
+   * Note: It's caller's responsibility to properly manage the lifetime of the instance pointed by this pointer.
+   *
+   * \param cuda_options - OrtCUDAProviderOptionsV2 instance
+   * \param key - Name of the provider option
+   * \param value - A pointer to the instance that will be assigned to this provider option
+   *
+   * \since Version 1.16.
+   */
+  ORT_API2_STATUS(UpdateCUDAProviderOptionsWithValue, _Inout_ OrtCUDAProviderOptionsV2* cuda_options, _In_ const char* key, _In_ void* value);
+
+  /**
+   * Get CUDA EP provider option where its data type is pointer.
+   * If the data type of the provider option can be represented by string please use GetCUDAProviderOptionsAsString.
+   *
+   * \param cuda_options - OrtCUDAProviderOptionsV2 instance
+   * \param key - Name of the provider option
+   * \param ptr - A pointer to the instance that is kept by the provider option
+   *
+   * \since Version 1.16.
+   */
+  ORT_API2_STATUS(GetCUDAProviderOptionsByName, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _In_ const char* key, _Outptr_ void** ptr);
+
+  /**
+   * Get a EP resource.
+   * E.g. a cuda stream or a cublas handle
+   *
+   * \param context - Kernel context
+   * \param resource_version - Version of the resource
+   * \param resource_id - Type of resource
+   * \param resource - A pointer to returned resource
+   *
+   * \since Version 1.16.
+   */
+  ORT_API2_STATUS(KernelContext_GetResource, _In_ const OrtKernelContext* context, _In_ int resource_version,
+                  _In_ int resource_id, _Outptr_ void** resource);
+
+  /** \brief Set user logging function
+   *
+   *  By default the logger created by the CreateEnv* functions is used to create the session logger as well.
+   *  This function allows a user to override this default session logger with a logger of their own choosing. This way
+   *  the user doesn't have to create a separate environment with a custom logger. This addresses the problem when
+   *  the user already created an env but now wants to use a different logger for a specific session (for debugging or
+   *  other reasons).
+   *
+   * \param[in] options
+   * \param[in] user_logging_function A pointer to a logging function.
+   * \param[in] user_logging_param A pointer to arbitrary data passed as the ::OrtLoggingFunction `param` parameter to
+   *                         `user_logging_function`. This parameter is optional.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(SetUserLoggingFunction, _Inout_ OrtSessionOptions* options,
+                  _In_ OrtLoggingFunction user_logging_function, _In_opt_ void* user_logging_param);
+
+  /**
+   * Get number of input from OrtShapeInferContext
+   *
+   * \param[in] context
+   * \param[out] out The number of inputs
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(ShapeInferContext_GetInputCount, _In_ const OrtShapeInferContext* context, _Out_ size_t* out);
+
+  /**
+   * Get type and shape info of an input
+   *
+   * \param[in] context
+   * \param[in] index The index of the input
+   * \param[out] info Type shape info of the input
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(ShapeInferContext_GetInputTypeShape, _In_ const OrtShapeInferContext* context, _In_ size_t index, _Outptr_ OrtTensorTypeAndShapeInfo** info);
+
+  /**
+   * Get attribute from OrtShapeInferContext. Note that OrtShapeInferContext is a per-node context, one could only read attribute from current node.
+   *
+   * \param[in] context
+   * \param[in] attr_name Name of the attribute
+   * \param[out] attr Handle of the attribute fetched
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(ShapeInferContext_GetAttribute, _In_ const OrtShapeInferContext* context, _In_ const char* attr_name, _Outptr_ const OrtOpAttr** attr);
+
+  /**
+   * Set type and shape info of an output
+   *
+   * \param[in] context
+   * \param[in] index The index of the output
+   * \param[out] info Type shape info of the output
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(ShapeInferContext_SetOutputTypeShape, _In_ const OrtShapeInferContext* context, _In_ size_t index, _In_ const OrtTensorTypeAndShapeInfo* info);
+
+  /**
+   * Set symbolic shape to type shape info
+   *
+   * \param[in] info Type shape info
+   * \param[in] dim_params Symbolic strings
+   * \param[in] dim_params_length Number of strings
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(SetSymbolicDimensions, _In_ OrtTensorTypeAndShapeInfo* info, _In_ const char* dim_params[], _In_ size_t dim_params_length);
+
+  /**
+   * Read contents of an attribute to data
+   *
+   * \param[in] op_attr
+   * \param[in] type Attribute type
+   * \param[out] data Memory address to save raw content of the attribute
+   * \param[in] len Number of bytes allowed to store in data
+   * \param[out] out Number of bytes required to save the data when the call failed, or the real number of bytes saved to data on success
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ OrtOpAttrType type, _Inout_ void* data, _In_ size_t len, _Out_ size_t* out);
+
+  /** \brief Set whether to use deterministic compute.
+   *
+   * Default is false. If set to true, this will enable deterministic compute for GPU kernels where possible.
+   * Note that this most likely will have a performance cost.
+   *
+   * \param[in] options
+   * \param[in] value
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(SetDeterministicCompute, _Inout_ OrtSessionOptions* options, bool value);
+
+  /**
+   * Run fn in parallel
+   *
+   * \param[in] context
+   * \param[in] fn Function accepting usr_data and an integer as iterator
+   * \param[in] total The number of times fn is to be invoked
+   * \param[in] num_batch Number of batches by which the "total" is to be divided in maximum. When zero, there is no limit
+   * \param[in] usr_data User data to be passed back to fn
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(KernelContext_ParallelFor, _In_ const OrtKernelContext* context, _In_ void (*fn)(void*, size_t), _In_ size_t total, _In_ size_t num_batch, _In_ void* usr_data);
+
+  /** \brief Append OpenVINO execution provider to the session options
+   *
+   * If OpenVINO is not available (due to a non OpenVINO enabled build, or if OpenVINO is not installed on the system), this function will fail.
+   *
+   * \param[in] options
+   * \param[in] provider_options_keys
+   * \param[in] provider_options_values
+   * \param[in] num_keys
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.17.
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_OpenVINO_V2,
+                  _In_ OrtSessionOptions* options,
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
+                  _In_ size_t num_keys);
+
+  /** \brief Append VitisAI provider to session options
+   *
+   * If VitisAI is not available (due to a non VitisAI enabled build, or if VitisAI is not installed on the system), this function will return failure.
+   *
+   * \param[in] options
+   * \param[in] provider_options_keys
+   * \param[in] provider_options_values
+   * \param[in] num_keys
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.18.
+   */
+  ORT_API2_STATUS(SessionOptionsAppendExecutionProvider_VitisAI,
+                  _In_ OrtSessionOptions* options,
+                  _In_reads_(num_keys) const char* const* provider_options_keys,
+                  _In_reads_(num_keys) const char* const* provider_options_values,
+                  _In_ size_t num_keys);
+
+  /** \brief Get scratch buffer from the corresponding allocator under the sepcific OrtMemoryInfo object.
+   *         NOTE: callers are responsible to release this scratch buffer from the corresponding allocator
+   *  \param[in] context OrtKernelContext instance
+   *  \param[in] mem_info OrtMemoryInfo instance
+   *  \param[in] count_or_bytes How many bytes is this scratch buffer
+   *  \param[out] out A pointer to the scrach buffer
+   *
+   *  \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.18.
+   */
+  ORT_API2_STATUS(KernelContext_GetScratchBuffer, _In_ const OrtKernelContext* context, _In_ const OrtMemoryInfo* mem_info, _In_ size_t count_or_bytes, _Outptr_ void** out);
+
+  /** \brief Get allocator from KernelInfo for a specific memory type. Please use C API ReleaseAllocator to release out object
+   *
+   * \param[in] info OrtKernelInfo instance
+   * \param[in] mem_type OrtMemType object
+   * \param[out] out A pointer to OrtAllocator
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.18.
+   */
+  ORT_API2_STATUS(KernelInfoGetAllocator, _In_ const OrtKernelInfo* info, _In_ OrtMemType mem_type, _Outptr_ OrtAllocator** out);
+
+  /** \brief Replace initialized Tensors with external data with the provided files in memory
+   *
+   * The function will find the initialized TensorProtos with external data in the graph with the provided
+   * external file names and the file content in memory. The API gets the external file name, offset, data length
+   * from TensorProto, and locate the tensor data from the file in memory buffer.
+   * It creates a Tensor to replace the existing Tensor in graph. The replacement
+   * will occur before any of the optimizations take place. The data will be copied into the graph
+   * since TensorProto can't refer to the user provided buffers.
+   *
+   * \param[in] options
+   * \param[in] external_initializer_file_names Array of null terminated UTF-8 encoded strings of the file names
+   *            which holds the external initializers.
+   * \param[in] external_initializer_file_buffer_array Array of pointers to the buffer of the file content.
+   *            The buffer can be freed after session creation.
+   * \param[in] external_initializer_file_lengths Array of size_t to indicate the length of file content
+   * \param[in] num_external_initializer_files Number of external files
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.18.
+   */
+  ORT_API2_STATUS(AddExternalInitializersFromFilesInMemory, _In_ OrtSessionOptions* options,
+                  _In_reads_(num_external_initializer_files) const ORTCHAR_T* const* external_initializer_file_names,
+                  _In_reads_(num_external_initializer_files) char* const* external_initializer_file_buffer_array,
+                  _In_reads_(num_external_initializer_files) const size_t* external_initializer_file_lengths,
+                  size_t num_external_initializer_files);
+
+  /** \brief Create an OrtLoraAdapter
+   *
+   * The function attempts to locate file specified by adapter_file_path, read it and create an OrtLoraAdapter
+   * instance. The adapter_file_path should be a valid path to a file that contains a valid Lora Adapter
+   * format. The function attempts to validate the format at load time. The file will always be memory mapped, unless
+   * the platform does not support memory mapping, in which case the file will be read into memory.
+   *
+   * \param[in] adapter_file_path adapter file path.
+   * \param[in] allocator optional pointer to a device allocator. If specified
+   *            data is copied to the device at some point before Run() is invoked. If nullptr, data stays on CPU.
+   *            The data would still be copied to device if required by the model at inference time.
+   * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
+   *                  OrtApi::ReleaseLoraAdapter.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.20.
+   */
+  ORT_API2_STATUS(CreateLoraAdapter, const ORTCHAR_T* adapter_file_path, _In_ OrtAllocator* allocator,
+                  _Outptr_ OrtLoraAdapter** out);
+
+  /** \brief Create an OrtLoraAdapter
+   *
+   * The function copies the bytes from the array and creates an OrtLoraAdapter instance.
+   *
+   *
+   * \param[in] bytes pointer to a valid Lora Adapter format buffer.
+   * \param[in] num_bytes length of bytes buffer.
+   * \param[in] allocator optional pointer to a device allocator. If specified
+   *            data is copied to the device at some point before Run() is invoked. If nullptr, data stays on CPU.
+   *            The data would still be copied to device if required by the model at inference time.
+   * \param[out] out A pointer to a newly created OrtLoraAdapter instance. Must be released with
+   *                  OrtApi::ReleaseLoraAdapter.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.20.
+   */
+  ORT_API2_STATUS(CreateLoraAdapterFromArray, _In_ const void* bytes, size_t num_bytes, _In_ OrtAllocator* allocator,
+                  _Outptr_ OrtLoraAdapter** out);
+
+  /** \brief Release an ::OrtLoraAdapter obtained from OrtApi::CreateLoraAdapter
+   */
+  ORT_CLASS_RELEASE(LoraAdapter);
+
+  /** \brief Add the Lora Adapter to the list of active adapters.
+   *
+   * The function adds the Lora Adapter to the list of active adapters. The Lora Adapter must be created with
+   * OrtApi::CreateLoraAdapter or FromArray. The Lora Adapter will be used by the session to run the model.
+   * The instance of the OrtRunOptions can then be used to customize the Run() calls.
+   * More than one OrtLoraAdapter can be active at the same time. Lora Parameters that belong to different
+   * Lora adapters that will be active at the same time must not overlap.
+   * This setting does not affect RunWithBinding.
+   *
+   * \param[in] options OrtRunOptions instance
+   * \param[in] adapter OrtLoraAdapter instance
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.20.
+   */
+  ORT_API2_STATUS(RunOptionsAddActiveLoraAdapter, _Inout_ OrtRunOptions* options, _In_ const OrtLoraAdapter* adapter);
+
+  /// @}
+  /// \name OrtEpDynamicOptions
+  /// @{
+
+  /** \brief Set DynamicOptions for EPs (Execution Providers)
+   *
+   * Valid options can be found in `include\onnxruntime\core\session\onnxruntime_session_options_config_keys.h`
+   * Look for `kOrtEpDynamicOptions`
+   *
+   * \param[in] sess OrtSession
+   * \param[in] keys Array of null terminated UTF8 encoded strings of EP dynamic option keys
+   * \param[in] values Array of null terminated UTF8 encoded string of EP dynamic option values
+   * \param[in] kv_len Number of elements in the keys and values arrays
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.20.
+   */
+  ORT_API2_STATUS(SetEpDynamicOptions, _Inout_ OrtSession* sess, _In_reads_(kv_len) const char* const* keys,
+                  _In_reads_(kv_len) const char* const* values, _In_ size_t kv_len);
 };
 
 /*
@@ -4437,6 +4869,27 @@ struct OrtCustomOp {
 
   // Perform the computation step.
   OrtStatusPtr(ORT_API_CALL* KernelComputeV2)(_In_ void* op_kernel, _In_ OrtKernelContext* context);
+
+  OrtStatusPtr(ORT_API_CALL* InferOutputShapeFn)(_In_ const struct OrtCustomOp* op, _In_ OrtShapeInferContext*);
+
+  // Get start range
+  int(ORT_API_CALL* GetStartVersion)(_In_ const struct OrtCustomOp* op);
+  int(ORT_API_CALL* GetEndVersion)(_In_ const struct OrtCustomOp* op);
+
+  // Get the inplace_map that defines which output can reuse which input
+  // Callers will provide 2 raw int* and pass in their address, this function will fill these 2 arrays
+  // when return, output (*output_index)[i] may reuse the input (*input_index[i]).
+  // The return value is the size of these 2 arrays.
+  // Callers are responsible to delete these 2 arrays after use by calling OrtCustomOp::ReleaseMayInplace().
+  size_t(ORT_API_CALL* GetMayInplace)(_Out_ int** input_index, _Out_ int** output_index);
+
+  // Release the pointer input_index and output_index allocated from GetMayInplace() function.
+  // If GetMayInplace() is defined, this function MUST be defined as well.
+  void(ORT_API_CALL* ReleaseMayInplace)(_Frees_ptr_opt_ int* input_index, _Frees_ptr_opt_ int* output_index);
+
+  // Same as GetMayInplace() and ReleaseMayInplace()
+  size_t(ORT_API_CALL* GetAliasMap)(_Out_ int** input_index, _Out_ int** output_index);
+  void(ORT_API_CALL* ReleaseAliasMap)(_Frees_ptr_opt_ int* input_index, _Frees_ptr_opt_ int* output_index);
 };
 
 /*
@@ -4476,6 +4929,14 @@ ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_MIGraphX, _In_ OrtSessio
  * \param use_arena zero: false. non-zero: true.
  */
 ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Dnnl, _In_ OrtSessionOptions* options, int use_arena);
+
+/*
+ * This is the old way to add the TensorRT provider to the session, please use SessionOptionsAppendExecutionProvider_TensorRT_V2 above to access the latest functionality
+ * This function always exists, but will only succeed if Onnxruntime was built with TensorRT support and the TensorRT provider shared library exists
+ *
+ * \param device_id CUDA device id, starts from zero.
+ */
+ORT_API_STATUS(OrtSessionOptionsAppendExecutionProvider_Tensorrt, _In_ OrtSessionOptions* options, int device_id);
 
 #ifdef __cplusplus
 }

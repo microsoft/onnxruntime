@@ -104,12 +104,24 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(If,
                                    If);
 
 // float 8 support was added.
-ONNX_CPU_OPERATOR_KERNEL(If,
-                         19,
-                         KernelDefBuilder()
-                             .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
-                             .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv9()),
-                         If);
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
+    If,
+    19,
+    20,
+    KernelDefBuilder()
+        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv9()),
+    If);
+
+// uint4 and int4 support was added.
+// TODO(adrianlizarraga): Implement int4 and uint4 support.
+ONNX_CPU_OPERATOR_KERNEL(
+    If,
+    21,
+    KernelDefBuilder()
+        .TypeConstraint("B", DataTypeImpl::GetTensorType<bool>())
+        .TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv9()),
+    If);
 
 If::Info::Info(const onnxruntime::Node& node, const GraphViewer& subgraph_in) : subgraph(subgraph_in) {
   num_implicit_inputs = static_cast<int>(node.ImplicitInputDefs().size());
@@ -248,7 +260,12 @@ Status If::Compute(OpKernelContext* ctx) const {
 
   auto ctx_internal = static_cast<OpKernelContextInternal*>(ctx);
 
-  auto condition = *ctx->Input<Tensor>(0)->Data<bool>();
+  const auto& condition_tensor = *ctx->Input<Tensor>(0);
+
+  ORT_RETURN_IF_NOT(condition_tensor.Shape().Size() == 1,
+                    "If nodes condition input must have exactly one element");
+
+  auto condition = *condition_tensor.Data<bool>();
 
   auto attribute = condition ? "then_branch" : "else_branch";
   auto* session_state = ctx_internal->SubgraphSessionState(attribute);

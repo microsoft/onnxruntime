@@ -10,9 +10,7 @@
 # license information.
 # -------------------------------------------------------------------------
 
-import math  # noqa: F401
-import os  # noqa: F401
-from typing import Dict, List, Optional, Tuple  # noqa: F401
+from typing import List, Optional, Tuple
 
 import numpy
 import torch
@@ -239,7 +237,7 @@ class AttentionForONNX(nn.Module):
 
         return attn_output, new_key_cache, new_value_cache
 
-    def ORT_forward(  # noqa: N802
+    def ort_forward(
         self,
         query,
         key: Tensor,
@@ -458,7 +456,7 @@ def parity_check(
         use_past,
         has_key_padding_mask,
     )
-    attn_output_ort, new_key_cache_ort, new_value_cache_ort = attn.ORT_forward(
+    attn_output_ort, new_key_cache_ort, new_value_cache_ort = attn.ort_forward(
         query,
         key,
         key_padding_mask,
@@ -468,7 +466,7 @@ def parity_check(
         use_past,
         has_key_padding_mask,
     )
-    attn_output_ort_1, _, _ = attn.ORT_forward(
+    attn_output_ort_1, _, _ = attn.ort_forward(
         query,
         key,
         key_padding_mask,

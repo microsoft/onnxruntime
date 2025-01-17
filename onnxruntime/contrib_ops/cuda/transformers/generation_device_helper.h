@@ -7,7 +7,7 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/cuda/cuda_common.h"
 
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "contrib_ops/cpu/transformers/sequences.h"
 #include "contrib_ops/cpu/transformers/generation_shared.h"
 
@@ -72,7 +72,7 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
                      const transformers::IGenerationParameters* parameters,  // parameters
                      int step,                                               // iteration counter
                      Stream* stream,                                         // cuda stream (for CUDA only)
-                     const transformers::IConsoleDumper* dumper);            // tensor dumper
+                     const IConsoleDumper* dumper);                          // tensor dumper
 
 template <typename T>
 Status GreedySearchProcessLogits(const OrtValue& logits,                                 // logits output of subgraph
@@ -86,7 +86,7 @@ Status GreedySearchProcessLogits(const OrtValue& logits,                        
                                  bool do_sampling,                                       // whether to do sampling
                                  int step,                                               // iteration counter
                                  Stream* stream,                                         // cuda stream (for CUDA only)
-                                 const transformers::IConsoleDumper* dumper);            // tensor dumper
+                                 const IConsoleDumper* dumper);                          // tensor dumper
 
 template <typename T>
 Status DeviceCopy(gsl::span<T> target,
@@ -138,7 +138,7 @@ Status UpdateDecoderFeeds(
     bool past_present_share_buffer,
     bool need_cache_indir,
     transformers::Sequences& sequences,
-    const transformers::IConsoleDumper* dumper);
+    const IConsoleDumper* dumper);
 
 template <typename T>
 Status ExpandBuffer(
@@ -149,6 +149,34 @@ Status ExpandBuffer(
     OrtValue& expanded,
     bool only_copy_shape,
     int max_sequence_length = 0);
+
+Status UpdateDecoderCrossQK(
+    int iteration_number,
+    Stream* stream,
+    OrtValue* cross_qks,
+    IAllocatorUniquePtr<float*>& qk_layer_pointers,
+    int num_layers,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    float* cross_qk_buffer_data,
+    int max_length,
+    AllocatorPtr allocator);
+
+Status FinalizeDecoderCrossQK(
+    Stream* stream,
+    int iteration_number,
+    int context_decoding_len,
+    int batch_size,
+    int num_beams,
+    int max_length,
+    int cross_qk_layer_head_pair_count,
+    const int* cross_qk_layer_head_pairs,
+    int frames_of_k,
+    const float* cross_qk_buffer_data,
+    float* cross_qk_output,
+    int num_return_sequences,
+    const int* cache_indir_data,
+    gsl::span<const int32_t> beam_indices);
 
 }  // namespace GenerationCudaDeviceHelper
 }  // namespace contrib

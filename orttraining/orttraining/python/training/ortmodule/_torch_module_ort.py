@@ -19,7 +19,11 @@ T = TypeVar("T", bound="torch.nn.Module")
 
 class TorchModuleORT(TorchModuleInterface):
     def __init__(
-        self, module: torch.nn.Module, debug_options: DebugOptions, fallback_manager: _FallbackManager, logger: Logger
+        self,
+        module: torch.nn.Module,
+        debug_options: DebugOptions,
+        fallback_manager: _FallbackManager,
+        logger: Logger,
     ):
         super().__init__(module)
         self._flattened_module = _io._FlattenedModule(module)

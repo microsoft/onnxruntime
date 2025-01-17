@@ -30,11 +30,11 @@ std::string ConfigOptions::GetConfigOrDefault(const std::string& config_key,
 }
 
 Status ConfigOptions::AddConfigEntry(const char* config_key, const char* config_value) noexcept {
-  std::string key(config_key);
+  std::string key = config_key;
   if (key.empty() || key.length() > 128)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Config key is empty or longer than maximum length 128");
 
-  std::string val(config_value);
+  std::string val = config_value;
   if (val.length() > onnxruntime::kMaxStrLen)
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Config value is longer than maximum length: ",
@@ -50,6 +50,13 @@ Status ConfigOptions::AddConfigEntry(const char* config_key, const char* config_
   }
 
   return Status::OK();
+}
+
+std::ostream& operator<<(std::ostream& os, const ConfigOptions& config_options) {
+  for (const auto& [key, value] : config_options.configurations) {
+    os << "  " << key << ": " << value;
+  }
+  return os;
 }
 
 }  // namespace onnxruntime

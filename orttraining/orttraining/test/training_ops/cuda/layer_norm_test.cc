@@ -49,7 +49,7 @@ static void TestLayerNormGrad(
 
   test.AddAttribute("axis", axis);
 
-  RandomValueGenerator random{};
+  RandomValueGenerator random{optional<RandomValueGenerator::RandomSeedType>{2345}};
   const auto Y_grad_data = random.Uniform<float>(n_x_m_dims, k_random_data_min, k_random_data_max);
   const auto X_data = random.Uniform<float>(n_x_m_dims, k_random_data_min, k_random_data_max);
   const auto scale_data = random.Uniform<float>(m_dims, k_random_data_min, k_random_data_max);
@@ -152,7 +152,7 @@ static void TestInvertibleLayerNormGrad(
 
   test.AddAttribute("axis", axis);
 
-  RandomValueGenerator random{};
+  RandomValueGenerator random{optional<RandomValueGenerator::RandomSeedType>{2345}};
   const auto Y_grad_data = random.Uniform<float>(n_x_m_dims, k_random_data_min, k_random_data_max);
   const auto X_data = random.Uniform<float>(n_x_m_dims, k_random_data_min, k_random_data_max);
   const auto scale_data = random.Uniform<float>(m_dims, k_random_data_min, k_random_data_max);

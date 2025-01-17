@@ -96,7 +96,28 @@ enum class MLOperatorTensorDataType : uint32_t
     Complex64 = 14,
 
     //! 128 bit complex type (unsupported)
-    Complex128 = 15
+    Complex128 = 15,
+
+    //! bfloat16 type (unsupported)
+    TensorProto_DataType_BFLOAT16 = 16,
+
+    //! FLOAT8E4M3FN type (unsupported)
+    TensorProto_DataType_FLOAT8E4M3FN = 17,
+
+    //! FLOAT8E4M3FNUZ type (unsupported)
+    TensorProto_DataType_FLOAT8E4M3FNUZ = 18,
+
+    //! FLOAT8E5M2 type (unsupported)
+    TensorProto_DataType_FLOAT8E5M2 = 19,
+
+    //! FLOAT8E5M2FNUZ type (unsupported)
+    TensorProto_DataType_FLOAT8E5M2FNUZ = 20,
+
+    //! 4 bit unsigned integer
+    UInt4 = 21,
+
+    //! 4 bit signed integer
+    Int4 = 22
 };
 
 //! \enum MLOperatorEdgeType

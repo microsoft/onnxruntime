@@ -4,6 +4,7 @@
 #pragma once
 
 #include "GpuEvent.h"
+#include "core/providers/dml/DmlExecutionProvider/src/External/D3DX12/d3dx12.h"
 
 namespace Dml
 {
@@ -25,7 +26,7 @@ namespace Dml
         // Reserves descriptors from the end of the heap. Returns nullopt if there is
         // no space left in the heap.
         std::optional<DescriptorRange> TryAllocDescriptors(
-            uint32_t numDescriptors, 
+            uint32_t numDescriptors,
             GpuEvent completionEvent,
             D3D12_DESCRIPTOR_HEAP_FLAGS heapFlags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE
             );
@@ -41,7 +42,7 @@ namespace Dml
         }
 
     private:
-        ComPtr<ID3D12DescriptorHeap> m_heap;
+        Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> m_heap;
         uint32_t m_capacity = 0;
         uint32_t m_size = 0;
         uint32_t m_handleIncrementSize = 0;
@@ -60,7 +61,7 @@ namespace Dml
     public:
         DescriptorPool(ID3D12Device* device, uint32_t initialCapacity);
 
-        // Reserves a contiguous range of descriptors from a single descriptor heap. The 
+        // Reserves a contiguous range of descriptors from a single descriptor heap. The
         // lifetime of the referenced descriptor heap is managed by the DescriptorPool class.
         // The caller must supply a GpuEvent that informs the pool when the reserved descriptors
         // are no longer required.
@@ -78,7 +79,7 @@ namespace Dml
         uint32_t GetTotalCapacity() const;
 
     private:
-        ComPtr<ID3D12Device> m_device;
+        Microsoft::WRL::ComPtr<ID3D12Device> m_device;
         std::vector<DescriptorHeap> m_heaps;
         const uint32_t m_initialHeapCapacity;
 

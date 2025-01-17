@@ -102,7 +102,7 @@ def convert_and_save(metadata, header_file, out_dir, out_obj_file):
         # convert constants
         constants = []
         for k, v in m["constants"].items():
-            constants.append(f'{{ "{k}", {str(v)}}}')
+            constants.append(f'{{ "{k}", {v!s}}}')
         meta_ele.append(f"{{ { ', '.join(constants) } }}")
 
         c_metadata.append(f"{{ { ', '.join(meta_ele) } }}")

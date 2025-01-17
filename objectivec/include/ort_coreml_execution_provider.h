@@ -29,7 +29,10 @@ NS_ASSUME_NONNULL_BEGIN
  * Whether the CoreML execution provider should run on CPU only.
  */
 @property BOOL useCPUOnly;
-
+/**
+ * exclude ANE in CoreML.
+ */
+@property BOOL useCPUAndGPU;
 /**
  * Whether the CoreML execution provider is enabled on subgraphs.
  */
@@ -40,6 +43,17 @@ NS_ASSUME_NONNULL_BEGIN
  * Neural Engine (ANE).
  */
 @property BOOL onlyEnableForDevicesWithANE;
+
+/**
+ * Only allow CoreML EP to take nodes with inputs with static shapes. By default it will also allow inputs with
+ * dynamic shapes. However, the performance may be negatively impacted if inputs have dynamic shapes.
+ */
+@property BOOL onlyAllowStaticInputShapes;
+
+/**
+ * Create an MLProgram. By default it will create a NeuralNetwork model. Requires Core ML 5 or later.
+ */
+@property BOOL createMLProgram;
 
 @end
 
@@ -56,7 +70,22 @@ NS_ASSUME_NONNULL_BEGIN
  */
 - (BOOL)appendCoreMLExecutionProviderWithOptions:(ORTCoreMLExecutionProviderOptions*)options
                                            error:(NSError**)error;
-
+/**
+ * Enables the CoreML execution provider in the session configuration options.
+ * It is appended to the execution provider list which is ordered by
+ * decreasing priority.
+ *
+ * @param provider_options The CoreML execution provider options in dict.
+ *  available keys-values: more detail in core/providers/coreml/coreml_execution_provider.h
+ *      kCoremlProviderOption_MLComputeUnits: one of "CPUAndNeuralEngine", "CPUAndGPU", "CPUOnly", "All"
+ *      kCoremlProviderOption_ModelFormat: one of "MLProgram", "NeuralNetwork"
+ *      kCoremlProviderOption_RequireStaticInputShapes: "1" or "0"
+ *      kCoremlProviderOption_EnableOnSubgraphs: "1" or "0"
+ * @param error Optional error information set if an error occurs.
+ * @return Whether the provider was enabled successfully.
+ */
+- (BOOL)appendCoreMLExecutionProviderWithOptionsV2:(NSDictionary*)provider_options
+                                             error:(NSError**)error;
 @end
 
 NS_ASSUME_NONNULL_END

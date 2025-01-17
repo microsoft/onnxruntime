@@ -9,7 +9,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/contrib_ops/contrib_defs.h"
 #include "core/graph/contrib_ops/shape_inference_functions.h"
-#include "onnx/onnx-ml.pb.h" // ?
+#include "core/graph/onnx_protobuf.h"
 
 // Suppress a warning: global initializer calls a non-constexpr function 'symbol' which is from
 // ONNX_OPERATOR_SET_SCHEMA_EX macro and only happens in debug build
@@ -22,7 +22,9 @@ void RNNShapeInference(InferenceContext& ctx);
 void convTransposeShapeInference(InferenceContext& ctx);
 void convPoolShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, bool use_dilation, bool require_kernel_shape,
                             int input1Idx, int input2Idx);
-void matmulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int input1Idx, int input2Idx);
+namespace defs::math::utils {
+void MatMulShapeInference(ONNX_NAMESPACE::InferenceContext& ctx, int input1Idx, int input2Idx);
+}
 
 }  // namespace ONNX_NAMESPACE
 
@@ -136,8 +138,9 @@ Performs element-wise binary {name} on 8 bit data types (with Numpy-style broadc
 
 static const char* QuantizeLinear_ver1_doc = R"DOC(
 The linear quantization operator. It consumes a full precision data, a scale, a zero point to compute the low precision / quantized tensor.
-The quantization formula is y = saturate ((x / y_scale) + y_zero_point).For saturation, it saturates to [0, 255] if it's uint8, or [-128, 127] if it's int8.
-For (x / y_scale), it's rounding to nearest ties to even. Refer to https://en.wikipedia.org/wiki/Rounding for details.
+The quantization formula is y = saturate ((x / y_scale) + y_zero_point). For saturation, it saturates to [0, 255] if it's uint8, [-128, 127] if it's int8,
+[0, 65,535] if it's uint16, and [-32,768, 32,767] if it's int16. For (x / y_scale), it's rounding to nearest ties to even.
+Refer to https://en.wikipedia.org/wiki/Rounding for details.
 Scale and zero point must have same shape. They must be either scalar (per tensor) or 1-D tensor (per 'axis').)DOC";
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -152,23 +155,25 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT, false)
         .Input(0, "x", "N-D full precision Input tensor to be quantized.", "T1")
         .Input(1, "y_scale",
-               "Scale for doing quantization to get 'y'. It could be a scalar or a 1-D tensor,"
-               "which means a per-tensor or per-axis quantization. If it's a 1-D tensor, "
-               "its number of elements should be equal to the dimension value of 'axis' dimension of input 'x'.",
+               "Scale for doing quantization to get 'y'. It can be a scalar, which means per-tensor/layer "
+               "quantization, or a 1-D tensor for per-axis quantization.",
                "T1")
         .Input(2, "y_zero_point",
-               "Zero point for doing quantization to get 'y'. It could be a scalar or a 1-D tensor, which means a "
-               "per-tensor"
-               "or per-axis quantization. If it's a 1-D tensor, its number of elements should be equal to the "
-               "dimension value of 'axis' dimension of input 'x'.",
-               "T2")
+               "Zero point for doing quantization to get 'y'. Shape must match y_scale. Default is "
+               "uint8 with zero point of 0 if it's not specified.",
+               "T2", OpSchema::Optional)
         .Output(0, "y", "N-D quantized output tensor. It has same shape as input 'x'.", "T2")
         .TypeConstraint("T1", {"tensor(float16)", "tensor(float)"}, "Constrain 'x', 'y_scale' to float tensors.")
-        .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"},
-                        "Constrain 'y_zero_point' and 'y' to 8-bit integer tensors.")
+        .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)", "tensor(int16)", "tensor(uint16)", "tensor(int4)",
+                               "tensor(uint4)"},
+                        "Constrain 'y_zero_point' and 'y' to 8-bit and 16-bit integer tensors.")
         .SetDoc(QuantizeLinear_ver1_doc)
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
-          propagateElemTypeFromInputToOutput(ctx, 2, 0);
+          if (ctx.getNumInputs() == 3 && ctx.getInputType(2) != nullptr) {
+            propagateElemTypeFromInputToOutput(ctx, 2, 0);
+          } else {
+            updateOutputElemType(ctx, 0, ONNX_NAMESPACE::TensorProto::UINT8);
+          }
 
           if (!hasInputShape(ctx, 0)) return;
 
@@ -192,21 +197,20 @@ ONNX_MS_OPERATOR_SET_SCHEMA(DequantizeLinear, 1,
                                       AttributeProto::INT, false)
                                 .Input(0, "x", "N-D quantized Input tensor to be de-quantized.", "T1")
                                 .Input(1, "x_scale",
-                                       "Scale for input 'x'. It could be a scalar or a 1-D tensor, which means a "
-                                       "per-tensor or per-axis quantization."
-                                       "If it's a 1-D tensor, its number of elements should be equal to the dimension "
-                                       "value of 'axis' dimension of input 'x'.",
+                                       "Scale for input 'x'. It can be a scalar, which means a per-tensor/layer "
+                                       "dequantization, or a 1-D tensor for per-axis dequantization.",
                                        "T2")
                                 .Input(2, "x_zero_point",
-                                       "Zero point for input 'x'. It could be a scalar or a 1-D tensor, which means a "
-                                       "per-tensor or per-axis quantization."
-                                       "If it's a 1-D tensor, its number of elements should be equal to the dimension "
-                                       "value of 'axis' dimension of input 'x'.",
-                                       "T1")
+                                       "Zero point for input 'x'. Shape must match x_scale. It's optional. "
+                                       "Zero point is 0 when it's not specified.",
+                                       "T1", OpSchema::Optional)
                                 .Output(0, "y", "N-D full precision output tensor. It has same shape as input 'x'.",
                                         "T2")
-                                .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"},
-                                                "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors.")
+                                .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)", "tensor(int16)",
+                                                       "tensor(uint16)", "tensor(int32)", "tensor(int4)",
+                                                       "tensor(uint4)"},
+                                                "Constrain 'x' and 'x_zero_point' to 8-bit integer tensors, "
+                                                "16-bit integer tensors, or 32-bit signed integer tensors.")
                                 .TypeConstraint("T2", {"tensor(float16)", "tensor(float)"},
                                                 "Constrain 'y', 'x_scale' to float tensors.")
                                 .SetDoc(DequantizeLinear_ver1_doc)
@@ -400,7 +404,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input B data type to 8-bit integer tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
+          ONNX_NAMESPACE::defs::math::utils::MatMulShapeInference(ctx, 0, 1);
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -434,11 +438,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Output(0, "Y", "Matrix multiply results from A * B", "T3")
         .TypeConstraint("T1", {"tensor(int8)", "tensor(uint8)"}, "Constrain input A data type to 8-bit integer tensor.")
         .TypeConstraint("T2", {"tensor(int8)", "tensor(uint8)"}, "Constrain input B data type to 8-bit integer tensor.")
-        .TypeConstraint("T3", {"tensor(float)"},
+        .TypeConstraint("T3", {"tensor(float)", "tensor(float16)"},
                         "Constrain input a_scale, b_scale and output Y data type as float tensor.")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 2, 0);
-          ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 1);
+          ONNX_NAMESPACE::defs::math::utils::MatMulShapeInference(ctx, 0, 1);
         }));
 
 ONNX_MS_OPERATOR_SET_SCHEMA(
@@ -818,10 +822,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
             }
           }
 
-        if (all_lengths_known) {
-          output_shape->mutable_dim(axis)->set_dim_value(total_length);
-        }
-      }));
+          if (all_lengths_known) {
+            output_shape->mutable_dim(axis)->set_dim_value(total_length);
+          }
+        }));
 
   ONNX_MS_OPERATOR_SET_SCHEMA(QLinearWhere, 1, OpSchema()
     .SetDoc("Return elements, either from X or Y, depending on condition.")
@@ -951,7 +955,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               AttributeProto::INT, static_cast<int64_t>(0))
         .Attr("do_rotary", "Whether to use rotary position embedding. Default value is 0.",
               AttributeProto::INT, OPTIONAL_VALUE)
-        .Attr("past_present_share_buffer", "Corresponding past and present are same tensor, its shape is "
+        .Attr("past_present_share_buffer",
+              "Corresponding past and present are same tensor, its shape is "
               "(2, batch_size, num_heads, max_sequence_length, head_size)",
               AttributeProto::INT, OPTIONAL_VALUE)
         .Attr("mask_filter_value",
@@ -1129,7 +1134,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .TypeConstraint("S", {"tensor(float)"}, "Constrain bias and scales to float32")
         .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
           propagateElemTypeFromInputToOutput(ctx, 0, 0);
-          ONNX_NAMESPACE::matmulShapeInference(ctx, 0, 2);
+          ONNX_NAMESPACE::defs::math::utils::MatMulShapeInference(ctx, 0, 2);
         }));
 
 static const char* Attention_QOrdered_doc = R"DOC(
@@ -1142,7 +1147,7 @@ where value of each element is the end position, or valid length of actual seque
 left-side padding, mask_index has shape (2 * batch_size), where the values are the exclusive end positions followed by
 the inclusive start positions. When unidirectional is 1, and each token only attend to previous tokens. For GPT-2, both past
 and present state are optional. Present state could appear in output even when past state is not in input.
-Current version does not support past/present, relative_position_bias and qkv_hidden_sizes.
+Current version does not support past/present, attention_bias and qkv_hidden_sizes.
 TODO: Support them if needed in the future.
 )DOC";
 
@@ -1204,8 +1209,8 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(18, "past",
                "past state for key and value with shape (2, batch_size, num_heads, past_sequence_length, head_size).",
                "Q", OpSchema::Optional)
-        .Input(19, "relative_position_bias",
-               "additional add to QxK' with shape (batch_size, num_heads, sequence_length, sequence_length).", "S",
+        .Input(19, "attention_bias",
+               "additional add to QxK' with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length).", "S",
                OpSchema::Optional)
         .Output(0, "output", "3D output tensor with shape (batch_size, sequence_length, hidden_size)", "Q")
         .TypeConstraint("Q", {"tensor(int8)"}, "Constrain input and output types to int8 tensors.")

@@ -82,8 +82,8 @@ def _shape_to_string(shape):
     for dict_obj in shape:
         if len(dict_obj) > 1:
             raise ValueError("Unhandled type in _shape_to_string()")
-        key = list(dict_obj.keys())[0]
-        value = list(dict_obj.values())[0]
+        key = next(iter(dict_obj.keys()))
+        value = next(iter(dict_obj.values()))
         if len(res) != 0:
             res += ","
         res += f'{key}({"x".join(str(v) for v in value)})'

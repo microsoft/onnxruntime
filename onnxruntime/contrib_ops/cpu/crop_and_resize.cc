@@ -173,7 +173,7 @@ void CropAndResizeForward(const TensorShape& output_shape,
               }
             }
           }  // for pw
-        }    // for ph
+        }  // for ph
       },
       0);  // for n
 }

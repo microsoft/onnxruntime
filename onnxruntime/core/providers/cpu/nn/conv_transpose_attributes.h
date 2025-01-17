@@ -14,6 +14,7 @@
  * limitations under the License.
  */
 /* Modifications Copyright (c) Microsoft. */
+// Copyright (c) 2023 NVIDIA Corporation.
 
 #pragma once
 
@@ -43,18 +44,31 @@ struct ConvTransposeAttributes : public ConvAttributes {
     TensorShapeVector strides;
   };
 
+  // Viewing dim 1 of the X input as 'input channels' (C) and dim 1 of the Y output as 'output channels' (M),
+  // if is_nhwc is true, the input channels (dim 0) or output channels (dim 1) of the W input (the filter with
+  // shape {C, M/group, ...}) could be transposed to be last. transposed_input_channels indicates whether dim 0 or
+  // dim 1 was moved.
+  //
+  // e.g. XNNPACK moves the input channels dim to the end. CUDA moves the output channels dim to the end.
   Status PrepareForCompute(OpKernelContext* context, bool has_bias, Prepare& p,
-                           bool dynamic_padding = false, const TensorShape* filter_shape = nullptr) const {
+                           bool dynamic_padding = false, const TensorShape* filter_shape = nullptr,
+                           bool is_nhwc = false, bool transposed_input_channels = true) const {
     const Tensor* X = context->Input<Tensor>(0);
     const Tensor* F = (filter_shape != nullptr) ? nullptr : context->Input<Tensor>(1);
     const TensorShape& F_Shape = (filter_shape != nullptr) ? *filter_shape : F->Shape();
     const Tensor* Pads = dynamic_padding ? context->Input<Tensor>(2) : nullptr;
     const Tensor* B = has_bias ? (dynamic_padding ? context->Input<Tensor>(3) : context->Input<Tensor>(2)) : nullptr;
-    TensorShape input_shape = X->Shape().Slice(2);
 
-    const int64_t num_input_channels = X->Shape()[1];
+    const int rank = static_cast<int>(X->Shape().NumDimensions());
+    TensorShape input_shape = X->Shape().Slice(is_nhwc ? 1 : 2, is_nhwc ? rank - 1 : rank);
+    const int64_t num_input_channels = is_nhwc ? X->Shape()[rank - 1] : X->Shape()[1];
     const int64_t N = X->Shape()[0];
-    const int64_t num_output_channels_multiplier = F_Shape[1];
+
+    // W is {C, M/group, ....}. adjust for NHWC and transposed_input_channels
+    // If we transposed the input channels, {C, M/group, ...} becomes {M/group, ..., C}
+    // If we transposed the output channels, {C, M/group, ...} becomes {C, ..., M/group}
+    const auto M_div_group_dim = is_nhwc ? (transposed_input_channels ? 0 : F_Shape.NumDimensions() - 1) : 1;
+    const int64_t num_output_channels_multiplier = F_Shape[M_div_group_dim];
     const int64_t num_output_channels = num_output_channels_multiplier * group;
 
     // input validations
@@ -69,9 +83,10 @@ struct ConvTransposeAttributes : public ConvAttributes {
                              " W: ", F_Shape.ToString().c_str());
     }
 
-    if (F_Shape[0] != num_input_channels) {
+    const auto F_channels_dim = is_nhwc && transposed_input_channels ? F_Shape.NumDimensions() - 1 : 0;
+    if (F_Shape[F_channels_dim] != num_input_channels) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "filter number not equal to input channel number.",
-                             " filter_number: ", F_Shape[0],
+                             " filter_number: ", F_Shape[F_channels_dim],
                              " num_input_channels: ", num_input_channels);
     }
 
@@ -85,7 +100,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
     }
 
     TensorShapeVector kernel_shape;
-    ORT_RETURN_IF_ERROR(ComputeKernelShape(F_Shape, kernel_shape));
+    ORT_RETURN_IF_ERROR(ComputeKernelShape(F_Shape, kernel_shape, is_nhwc));
 
     TensorShapeVector local_output_padding(output_padding);
     if (local_output_padding.empty()) {
@@ -115,7 +130,7 @@ struct ConvTransposeAttributes : public ConvAttributes {
     TensorShapeVector Y_dims;
 
     ComputePadsAndOutputShape(input_shape, num_output_channels, kernel_shape,
-                              local_strides, local_dilations, local_output_padding, N, &local_pads, &Y_dims);
+                              local_strides, local_dilations, local_output_padding, N, &local_pads, &Y_dims, is_nhwc);
     TensorShape Yshape(Y_dims);
     Tensor* Y = context->Output(0, Yshape);
 
@@ -137,9 +152,14 @@ struct ConvTransposeAttributes : public ConvAttributes {
   void ComputePadsAndOutputShape(TensorShape input_shape, int64_t output_channel,
                                  const TensorShapeVector& kernel_shape, const TensorShapeVector& p_strides,
                                  const TensorShapeVector& p_dilations, const TensorShapeVector& p_output_padding, const int64_t N,
-                                 ConvPadVector* p_pads, TensorShapeVector* output_shape_p) const {
+                                 ConvPadVector* p_pads, TensorShapeVector* output_shape_p,
+                                 bool is_nhwc = false) const {
     size_t output_shape_size = output_shape.size();
-    output_shape_p->insert(output_shape_p->begin(), {N, output_channel});
+    if (is_nhwc) {
+      output_shape_p->insert(output_shape_p->begin(), {N});
+    } else {
+      output_shape_p->insert(output_shape_p->begin(), {N, output_channel});
+    }
 
     size_t rank = input_shape.NumDimensions();
     for (size_t dim = 0; dim < rank; ++dim) {
@@ -163,31 +183,15 @@ struct ConvTransposeAttributes : public ConvAttributes {
       ORT_ENFORCE(dim_size > 0, "Invalid input shape: ", input_shape.ToString());
       output_shape_p->push_back(dim_size);
     }
+    if (is_nhwc) {
+      output_shape_p->push_back(output_channel);
+    }
   }
 
   TensorShapeVector output_padding;
   TensorShapeVector output_shape;
 
  private:
-  int64_t ComputeTotalPad(int64_t in_size, int64_t stride, int64_t adj,
-                          int64_t kernel, int64_t dilation, int64_t out_size) const {
-    return std::max<int64_t>(0, (in_size - 1) * stride + adj + (kernel - 1) * dilation + 1 - out_size);
-  }
-
-  void DistributePadding(AutoPadType pad_type, const int64_t& total_pad,
-                         int64_t& pad_head, int64_t& pad_tail) const {
-    if (pad_type == AutoPadType::SAME_UPPER) {
-      // pad more on tail when total_pad is odd.
-      pad_head = total_pad / 2;
-      pad_tail = total_pad - total_pad / 2;
-    } else {
-      // When pad_type is NOTSET, SAME_LOWER or VALID,
-      // pad more on head when total_pad is odd.
-      pad_head = total_pad - total_pad / 2;
-      pad_tail = total_pad / 2;
-    }
-  }
-
   void ComputeTransposePadAndOutputShape(
       const int64_t in_size,
       const int64_t stride,

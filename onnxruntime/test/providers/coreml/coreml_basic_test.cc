@@ -2,16 +2,20 @@
 // Licensed under the MIT License.
 
 #include "core/common/logging/logging.h"
-#include "core/providers/coreml/coreml_execution_provider.h"
+#include "core/graph/graph.h"
+#include "core/graph/graph_viewer.h"
+#include "core/providers/coreml/coreml_provider_factory_creator.h"
 #include "core/providers/coreml/coreml_provider_factory.h"
 #include "core/session/inference_session.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/current_test_name.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
 #include "test/util/include/test_environment.h"
 #include "test/util/include/test_utils.h"
+#include "onnx/onnx_pb.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
 // if this is a full build we need the provider test utils
@@ -21,15 +25,19 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
-using namespace std;
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
 
 namespace onnxruntime {
 namespace test {
 
-// We want to run UT on CPU only to get output value without losing precision to pass the verification
-static constexpr uint32_t s_coreml_flags = COREML_FLAG_USE_CPU_ONLY;
+static std::unique_ptr<IExecutionProvider> MakeCoreMLExecutionProvider(
+    std::string ModelFormat = "NeuralNetwork", std::string ComputeUnits = "CPUOnly", std::string ModelCacheDirectory = "") {
+  std::unordered_map<std::string, std::string> provider_options = {{kCoremlProviderOption_MLComputeUnits, ComputeUnits},
+                                                                   {kCoremlProviderOption_ModelFormat, ModelFormat},
+                                                                   {kCoremlProviderOption_ModelCacheDirectory, ModelCacheDirectory}};
+  return CoreMLProviderFactoryCreator::Create(provider_options)->CreateProvider();
+}
 
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -88,18 +96,11 @@ TEST(CoreMLExecutionProviderTest, FunctionTest) {
   feeds.insert(std::make_pair("Y", ml_value_y));
   feeds.insert(std::make_pair("Z", ml_value_z));
 
-  RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.FunctionTest",
-                            std::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
+  RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
+                            MakeCoreMLExecutionProvider(),
                             feeds);
 #else
-  // test load only
-  SessionOptions so;
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<CoreMLExecutionProvider>(0)));
-  ASSERT_STATUS_OK(session_object.Load(model_file_name));
-  ASSERT_STATUS_OK(session_object.Initialize());
-  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kCoreMLExecutionProvider), 0)
-      << "Some nodes should have been taken by the CoreML EP";
+  TestModelLoad(model_file_name, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::Some);
 #endif
 }
 
@@ -121,18 +122,102 @@ TEST(CoreMLExecutionProviderTest, ArgMaxCastTest) {
   NameMLValMap feeds;
   feeds.insert(std::make_pair("X", ml_value_x));
 
-  RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.ArgMaxCastTest",
-                            std::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
-                            feeds);
+  EPVerificationParams verification_params{};
+  verification_params.ep_node_assignment = ExpectedEPNodeAssignment::All;
+
+  RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
+                            MakeCoreMLExecutionProvider(),
+                            feeds,
+                            verification_params);
+  RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            verification_params);
 #else
-  // test load only
-  SessionOptions so;
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<CoreMLExecutionProvider>(0)));
-  ASSERT_STATUS_OK(session_object.Load(model_file_name));
-  ASSERT_STATUS_OK(session_object.Initialize());
-  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kCoreMLExecutionProvider), 0)
-      << "Some nodes should have been taken by the CoreML EP";
+  TestModelLoad(model_file_name, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, ArgMaxUnsupportedCastTest) {
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/coreml_argmax_unsupported_cast_test.onnx");
+
+#if defined(__APPLE__)
+  std::vector<int64_t> dims_mul_x = {3, 2, 2};
+  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = std::make_shared<CPUAllocator>();
+  CreateMLValue<float>(allocator, dims_mul_x, values_mul_x, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+
+  const std::function<void(const Graph&)> graph_verifier = [](const Graph& graph) {
+    GraphViewer graph_viewer{graph};
+    const auto& node_indices_in_order = graph_viewer.GetNodesInTopologicalOrder();
+    ASSERT_EQ(node_indices_in_order.size(), size_t{2});
+    // second node should be an unsupported Cast
+    const auto* cast_node = graph.GetNode(node_indices_in_order[1]);
+    ASSERT_NE(cast_node, nullptr);
+    ASSERT_EQ(cast_node->OpType(), "Cast");
+    ASSERT_EQ(cast_node->GetExecutionProviderType(), kCpuExecutionProvider);
+  };
+
+  EPVerificationParams verification_params{};
+  verification_params.ep_node_assignment = ExpectedEPNodeAssignment::Some;
+  verification_params.graph_verifier = &graph_verifier;
+
+  RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
+                            MakeCoreMLExecutionProvider(),
+                            feeds,
+                            verification_params);
+
+  RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            feeds,
+                            verification_params);
+#else
+  TestModelLoad(model_file_name, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::Some);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, GatherWithScalarIndices) {
+  // For scalar inputs, the input shape is modified from [] -> [1] before passing the input to CoreML.
+  // This won't work for Gather because the output shape depends on the `indices` input shape which could be a scalar.
+  // Currently, we expect the CoreML EP to only take the Shape node in this graph (Gather -> Shape).
+  const auto model_file_name = ORT_TSTR("testdata/gather_with_scalar_indices_then_shape.onnx");
+
+#if defined(__APPLE__)
+  RandomValueGenerator gen{1234};
+  std::vector<int64_t> X_shape = {5, 3, 4};
+  std::vector<float> X_data = gen.Uniform<float>(X_shape, 0.0f, 1.0f);
+  OrtValue X = CreateInputOrtValueOnCPU<float>(X_shape, X_data);
+  OrtValue indices = CreateInputOrtValueOnCPU<int64_t>(AsSpan<int64_t>({}), AsSpan<int64_t>({1}));
+
+  RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
+                            MakeCoreMLExecutionProvider(),
+                            {{"X", X}, {"indices", indices}});
+#else
+  TestModelLoad(model_file_name, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::Some);
+#endif
+}
+
+TEST(CoreMLExecutionProviderTest, ShapeThenSliceAndGather) {
+  // This is a simple test model that provides the output of Shape to Slice and Gather.
+  // We expect the CoreML EP to support shape manipulations like this.
+  const auto model_file_name = ORT_TSTR("testdata/shape_then_slice_and_gather.onnx");
+
+#if defined(__APPLE__)
+  RandomValueGenerator gen{1234};
+  std::vector<int64_t> X_shape = {5, 3, 4, 1, 2};
+  std::vector<float> X_data = gen.Uniform<float>(X_shape, 0.0f, 1.0f);
+  OrtValue X = CreateInputOrtValueOnCPU<float>(X_shape, X_data);
+
+  RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
+                            MakeCoreMLExecutionProvider(),
+                            {{"X", X}},
+                            EPVerificationParams{ExpectedEPNodeAssignment::All});
+#else
+  TestModelLoad(model_file_name, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
 #endif
 }
 
@@ -153,20 +238,144 @@ TEST(CoreMLExecutionProviderTest, TestOrtFormatModel) {
   NameMLValMap feeds;
   feeds.insert(std::make_pair("Input3", ml_value));
 
-  RunAndVerifyOutputsWithEP(model_file_name, "CoreMLExecutionProviderTest.TestOrtFormatModel",
-                            std::make_unique<CoreMLExecutionProvider>(s_coreml_flags),
+  RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
+                            MakeCoreMLExecutionProvider(),
                             feeds);
 #else
-  // test load only
-  SessionOptions so;
-  InferenceSessionWrapper session_object{so, GetEnvironment()};
-  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::make_unique<CoreMLExecutionProvider>(0)));
-  ASSERT_STATUS_OK(session_object.Load(model_file_name));
-  ASSERT_STATUS_OK(session_object.Initialize());
-  ASSERT_GT(CountAssignedNodes(session_object.GetGraph(), kCoreMLExecutionProvider), 0)
-      << "Some nodes should have been taken by the CoreML EP";
+  TestModelLoad(model_file_name, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::Some);
 #endif
 }
 
+#if defined(COREML_ENABLE_MLPROGRAM)
+// Names in CoreML cannot start with [0-9] or contain anything but "[a-z][A-Z][0-9]_"
+// Test that we fix invalid names in model inputs, initializers and outputs.
+// This is only enforced for ML Program, so we only do name sanitization when creating an ML Program format model.
+TEST(CoreMLExecutionProviderTest, TestNameSanitization) {
+  OpTester test("Clip", 11);
+
+  std::vector<int64_t> dims{3, 3};
+  test.AddInput<float>("0", dims,
+                       {-1.0f, 0.0f, 1.0f,
+                        -6.0f, 0.0f, 6.0f,
+                        -5.4f, 2.0f, 6.0f});
+  test.AddInput<float>("1.min", {}, {-5}, true);  // add as initializers
+  test.AddInput<float>("2/max", {}, {5}, true);
+  test.AddOutput<float>("3", dims,
+                        {-1.0f, 0.0f, 1.0f,
+                         -5.0f, 0.0f, 5.0f,
+                         -5.0f, 2.0f, 5.0f});
+
+  // TensorRT does not support Clip opset 11 yet.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+#endif
+
+TEST(CoreMLExecutionProviderTest, TestModelCache) {
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/coreml_argmax_cast_test.onnx");
+
+  onnx::ModelProto model;
+  {
+    std::ifstream in(model_file_name, std::ios_base::binary);
+    model.ParseFromIstream(&in);
+    in.close();
+  }
+
+  std::string out_string;
+#if defined(__APPLE__)
+  std::vector<int64_t> dims_mul_x = {3, 2, 2};
+  std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
+  OrtValue ml_value_x;
+  AllocatorPtr allocator = std::make_shared<CPUAllocator>();
+  CreateMLValue<float>(allocator, dims_mul_x, values_mul_x, &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("X", ml_value_x));
+  std::string subgraph_name;
+  const std::function<void(const Graph&)> graph_verifier = [&subgraph_name](const Graph& graph) {
+    GraphViewer graph_viewer{graph};
+    const auto& node_indices_in_order = graph_viewer.GetNodesInTopologicalOrder();
+    const auto* node = graph.GetNode(node_indices_in_order[0]);
+    auto _first = node->Name().find('_') + 1;
+    auto _second = node->Name().find('_', _first);
+    subgraph_name = node->Name().substr(_first, _second - _first);
+  };
+  EPVerificationParams verification_params{.graph_verifier = &graph_verifier};
+
+  auto* metadata_props = model.add_metadata_props();
+  metadata_props->set_key(kCOREML_CACHE_KEY);
+  {  // test with valid model cache directory
+    metadata_props->set_value("legalhash123");
+    model.SerializeToString(&out_string);
+    gsl::span<const std::byte> model_data{reinterpret_cast<const std::byte*>(out_string.data()), out_string.size()};
+    RunAndVerifyOutputsWithEP(model_data, CurrentTestName(),
+                              MakeCoreMLExecutionProvider("MLProgram", "CPUOnly", ORT_TSTR("./tmp/")),
+                              feeds,
+                              verification_params);
+    ASSERT_EQ(std::filesystem::exists("./tmp/legalhash123"), true);
+  }
+  {
+    // test with invalid model cache directory, only alphanumeric characters are allowed
+    out_string.clear();
+    metadata_props->set_key(kCOREML_CACHE_KEY);
+    metadata_props->set_value("illegalhash__123");
+    model.SerializeToString(&out_string);
+    gsl::span<const std::byte> model_data{reinterpret_cast<const std::byte*>(out_string.data()), out_string.size()};
+    RunAndVerifyOutputsWithEP(model_data, CurrentTestName(),
+                              MakeCoreMLExecutionProvider("MLProgram", "CPUOnly", ORT_TSTR("./tmp")),
+                              feeds,
+                              verification_params);
+    ASSERT_EQ(std::filesystem::exists("./tmp/illegalhash__123"), false);
+    // the cache folder name should be the first part of the subgraph name
+    ASSERT_EQ(std::filesystem::exists("./tmp/" + subgraph_name), true);
+  }
+  {
+    // test with invalid model cache directory,  more than 64 characters
+    out_string.clear();
+    metadata_props->set_key(kCOREML_CACHE_KEY);
+    metadata_props->set_value("modelhashwithmorethan64charactersmodelhashwithmorethan64charactersmodelhashwithmorethan64characters");
+    model.SerializeToString(&out_string);
+    gsl::span<const std::byte> model_data{reinterpret_cast<const std::byte*>(out_string.data()), out_string.size()};
+    RunAndVerifyOutputsWithEP(model_data, CurrentTestName(),
+                              MakeCoreMLExecutionProvider("MLProgram", "CPUOnly", ORT_TSTR("./tmp")),
+                              feeds,
+                              verification_params);
+    ASSERT_EQ(std::filesystem::exists("./tmp/modelhashwithmorethan64charactersmodelhashwithmorethan64charactersmodelhashwithmorethan64characters"), false);
+    // the cache folder name should be the first part of the subgraph name
+    ASSERT_EQ(std::filesystem::exists("./tmp/" + subgraph_name), true);
+  }
+  {
+    // test with invalid model cache directory,  empty
+    out_string.clear();
+    metadata_props->set_key(kCOREML_CACHE_KEY);
+    metadata_props->set_value("");
+    model.SerializeToString(&out_string);
+    gsl::span<const std::byte> model_data{reinterpret_cast<const std::byte*>(out_string.data()), out_string.size()};
+    RunAndVerifyOutputsWithEP(model_data, CurrentTestName(),
+                              MakeCoreMLExecutionProvider("MLProgram", "CPUOnly", ORT_TSTR("./tmp")),
+                              feeds,
+                              verification_params);
+    // the cache folder name should be the first part of the subgraph name
+    ASSERT_EQ(std::filesystem::exists("./tmp/" + subgraph_name), true);
+  }
+  {
+    // test with invalid model cache directory, caching shall be disabled
+    out_string.clear();
+    metadata_props->set_key(kCOREML_CACHE_KEY);
+    metadata_props->set_value("");
+    model.SerializeToString(&out_string);
+    gsl::span<const std::byte> model_data{reinterpret_cast<const std::byte*>(out_string.data()), out_string.size()};
+    RunAndVerifyOutputsWithEP(model_data, CurrentTestName(),
+                              MakeCoreMLExecutionProvider("MLProgram", "CPUOnly", ORT_TSTR("/")),
+                              feeds,
+                              verification_params);
+    // this folder can't be created
+    ASSERT_EQ(std::filesystem::exists("/" + subgraph_name), false);
+  }
+#else
+  model.SerializeToString(&out_string);
+  gsl::span<const std::byte> model_data{reinterpret_cast<const std::byte*>(out_string.data()), out_string.size()};
+  TestModelLoad(model_data, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
+#endif
+}
 }  // namespace test
 }  // namespace onnxruntime

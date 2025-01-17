@@ -25,6 +25,7 @@
 #include "core/providers/cpu/tensor/tile.h"
 #include "core/providers/cpu/tensor/gather_elements.h"
 #include "core/providers/cpu/tensor/unsqueeze.h"
+#include "core/providers/cpu/tensor/upsamplebase.h"
 
 #ifndef DISABLE_CONTRIB_OPS
 #include "contrib_ops/cpu/bert/attention_base.h"
@@ -62,6 +63,7 @@
 #endif
 
 #include "cpu_provider_shared.h"
+#include <limits>
 
 namespace onnxruntime {
 // The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
@@ -87,7 +89,13 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                        const TensorShape& indice_shape,
                                        const TensorShape& update_shape) override { return ScatterND::ValidateShapes(input_shape, indice_shape, update_shape); }
   // From cpu/tensor/padbase.h (direct)
-  Status PadBase__HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, TensorShape& output_shape) override { return PadBase::HandleDimValueZero(mode, input_shape, output_shape); }
+  Status PadBase__HandleDimValueZero(const Mode& mode, const TensorShape& input_shape, const TensorShape& output_shape) override { return PadBase::HandleDimValueZero(mode, input_shape, output_shape); }
+
+  void PadBase__ComputePads(OpKernelContext& ctx, size_t data_rank, gsl::span<const int64_t> pads_data,
+                            PadsVector& pads) override {
+    PadBase::ComputePads(ctx, data_rank, pads_data, pads);
+  }
+
   // From cpu/tensor/split.h (direct)
   Status SplitBase__PrepareForCompute(const SplitBase* p, const TensorShape& input_shape, int num_outputs, int64_t& axis, int& before_dims,
                                       int& after_dims_including_split_axis, int& after_dims_excluding_split,
@@ -115,6 +123,12 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   Status PrepareOutputShape(const Tensor* indices, const int64_t depth_val, const int64_t axis, int64_t& prefix_dim_size, int64_t& suffix_dim_size, TensorShapeVector& output_shape) override { return onnxruntime::PrepareOutputShape(indices, depth_val, axis, prefix_dim_size, suffix_dim_size, output_shape); }
 
   // From cpu/tensor/slice.h (direct)
+  Status SliceBase__FlattenOutputDims(gsl::span<const int64_t> input_dimensions, gsl::span<const int64_t> output_dims,
+                                      TensorShapeVector& starts, TensorShapeVector& ends, TensorShapeVector& steps,
+                                      TensorShapeVector*& p_flattened_input_dims, TensorShapeVector*& p_flattened_output_dims) override {
+    return SliceBase::FlattenOutputDims(input_dimensions, output_dims, starts, ends, steps, p_flattened_input_dims, p_flattened_output_dims);
+  }
+
   Status SliceBase__PrepareForCompute(gsl::span<const int64_t> raw_starts,
                                       gsl::span<const int64_t> raw_ends,
                                       gsl::span<const int64_t> raw_axes,
@@ -178,6 +192,11 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
   Status EinsumTypedComputeProcessor__Run(EinsumTypedComputeProcessor<float>* p) override { return p->Run(); }
   Status EinsumTypedComputeProcessor__Run(EinsumTypedComputeProcessor<double>* p) override { return p->Run(); }
   Status EinsumTypedComputeProcessor__Run(EinsumTypedComputeProcessor<MLFloat16>* p) override { return p->Run(); }
+  void UpsampleBase__AdjustOutputSizeAsPolicy(const UpsampleBase* p, TensorShapeVector& output_dims,
+                                              gsl::span<const int64_t> input_dims,
+                                              InlinedVector<float>& scales) const override {
+    p->AdjustOutputSizeAsPolicy(output_dims, input_dims, scales);
+  }
 
 #ifndef DISABLE_CONTRIB_OPS
   Status embed_layer_norm__CheckInputs(const OpKernelContext* context, bool quantizedVersion) override {
@@ -206,12 +225,12 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                     const TensorShape& bias_shape,
                                     const Tensor*& mask_index,
                                     const Tensor* past,
-                                    const Tensor* relative_position_bias,
+                                    const Tensor* attention_bias,
                                     void* parameters,
                                     const int max_threads_per_block,
                                     const Tensor* past_seq_len) override {
     return p->contrib::AttentionBase::CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past,
-                                                  relative_position_bias,
+                                                  attention_bias,
                                                   parameters,
                                                   max_threads_per_block,
                                                   past_seq_len);
@@ -237,6 +256,26 @@ struct ProviderHostCPUImpl : ProviderHostCPU {
                                                 const SessionState& subgraph_session_state) override {
     return p->contrib::transformers::BeamSearch::SetupSubgraphExecutionInfo(session_state, attribute_name,
                                                                             subgraph_session_state);
+  }
+
+  Status WhisperBeamSearch__Compute(const contrib::transformers::WhisperBeamSearch* p, OpKernelContext* ctx) override {
+    return p->contrib::transformers::WhisperBeamSearch::Compute(ctx);
+  }
+
+  void BeamSearchParameters__ParseFromAttributes(contrib::transformers::BeamSearchParameters* p, const OpKernelInfo& info) override {
+    p->contrib::transformers::BeamSearchParameters::ParseFromAttributes(info);
+  }
+
+  void GreedySearchParameters__ParseFromAttributes(contrib::transformers::GreedySearchParameters* p, const OpKernelInfo& info) override {
+    p->contrib::transformers::GreedySearchParameters::ParseFromAttributes(info);
+  }
+
+  void SamplingParameters__ParseFromAttributes(contrib::transformers::SamplingParameters* p, const OpKernelInfo& info) override {
+    p->contrib::transformers::SamplingParameters::ParseFromAttributes(info);
+  }
+
+  void WhisperBeamSearchParameters__ParseFromAttributes(contrib::transformers::WhisperBeamSearchParameters* p, const OpKernelInfo& info) override {
+    p->contrib::transformers::WhisperBeamSearchParameters::ParseFromAttributes(info);
   }
 
   void GreedySearch__Init(contrib::transformers::GreedySearch* p, const OpKernelInfo& info) override {

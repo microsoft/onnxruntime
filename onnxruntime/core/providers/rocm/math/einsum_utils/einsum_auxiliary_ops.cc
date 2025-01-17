@@ -37,7 +37,7 @@ Status Transpose(const gsl::span<const size_t>& permutation, const Tensor& input
                  Tensor& output, const TensorShape* input_shape_override, void* einsum_rocm_assets) {
   return rocm::Transpose::DoTranspose(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->GetDeviceProp(),
                                       static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->GetRocmStream(),
-                                      static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocblas_handle_,
+                                      static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->hipblas_handle_,
                                       permutation, input, output, input_shape_override);
 }
 
@@ -53,8 +53,8 @@ Status MatMul(const T* input_1_data, const T* input_2_data, T* output_data,
   return blas::column_major::StridedBatchedGemm(
       static_cast<rocm::tunable::RocmTuningContext*>(
           static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocm_ep_->GetTuningContext()),
-      static_cast<hipStream_t>(static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->ort_stream_->GetHandle()),
-      static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->rocblas_handle_,
+      static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->ort_stream_,
+      static_cast<EinsumRocmAssets*>(einsum_rocm_assets)->hipblas_handle_,
       blas::BlasOp::NonTrans, blas::BlasOp::NonTrans,
       N, M, K,
       /*alpha=*/1.0f,

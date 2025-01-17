@@ -1,10 +1,32 @@
-resources:
-  repositories:
-  - repository: manylinux
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
+##### start trigger Don't edit it manually, Please do edit set-trigger-rules.py ####
+### please do rerun set-trigger-rules.py ###
+trigger:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+pr:
+  branches:
+    include:
+    - main
+    - rel-*
+  paths:
+    exclude:
+    - docs/**
+    - README.md
+    - CONTRIBUTING.md
+    - BUILD.md
+    - 'js/web'
+    - 'onnxruntime/core/providers/js'
+#### end trigger ####
 
 jobs:
 - job: Linux_py_Wheels
@@ -21,12 +43,13 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2014_cpu
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuild
 
   - task: CmdLine@2
+    displayName: 'Build and test'
     inputs:
       script: |
         mkdir -p $HOME/.onnx
@@ -39,7 +62,7 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
-            /opt/python/cp38-cp38/bin/python3.8 /onnxruntime_src/tools/ci_build/build.py \
+            /opt/python/cp310-cp310/bin/python3.10 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build \
               --config Debug Release \
               --skip_submodule_sync \
@@ -59,6 +82,3 @@ jobs:
       testRunTitle: 'Unit Test Run'
     condition: succeededOrFailed()
 
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()

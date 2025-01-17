@@ -161,7 +161,7 @@ Status Pool<T, PoolType>::Compute(OpKernelContext* context) const {
     armnn::TensorInfo outputTensorInfo(outputShape, armnn::DataType::Float32);
     pool_armnn->GetOutputSlot(0).SetTensorInfo(outputTensorInfo);
 
-    // Optimise ArmNN network
+    // Optimize ArmNN network
     armnn::IOptimizedNetworkPtr optNet = armnn::Optimize(*myNetwork, {armnn::Compute::CpuAcc}, Pool::run->GetDeviceSpec());
 
     if (optNet == nullptr) {
@@ -250,7 +250,7 @@ Status MaxPoolV8<T>::Compute(OpKernelContext* context) const {
     armnn::TensorInfo outputTensorInfo(outputShape, armnn::DataType::Float32);
     pool_armnn->GetOutputSlot(0).SetTensorInfo(outputTensorInfo);
 
-    // Optimise ArmNN network
+    // Optimize ArmNN network
     armnn::IOptimizedNetworkPtr optNet = armnn::Optimize(*myNetwork, {armnn::Compute::CpuAcc}, MaxPoolV8::run->GetDeviceSpec());
 
     if (optNet == nullptr) {

@@ -9,7 +9,7 @@
 namespace onnxruntime {
 namespace js {
 #define JSEP_DEFINE_REDUCE_KERNEL(ReduceKernel)                                                              \
-  template <typename T, bool allow_multi_axes = true>                                                        \
+  template <bool allow_multi_axes = true>                                                                    \
   class ReduceKernel : public JsKernel, public ReduceKernelBase<allow_multi_axes> {                          \
    public:                                                                                                   \
     using ReduceKernelBase<allow_multi_axes>::axes_;                                                         \
@@ -24,12 +24,12 @@ namespace js {
       JSEP_INIT_KERNEL_ATTRIBUTE(ReduceKernel, ({                                                            \
                                    "keepDims" : !!$1,                                                        \
                                    "noopWithEmptyAxes" : !!$2,                                               \
-                                   "axes" : $3 ? (Array.from(HEAP32.subarray($4, $4 + $3))) : [],            \
+                                   "axes" : $3 ? (Array.from(HEAP32.subarray(Number($3), Number($4)))) : [], \
                                  }),                                                                         \
                                  static_cast<int32_t>(keepdims_),                                            \
                                  static_cast<int32_t>(noop_with_empty_axes_),                                \
-                                 gsl::narrow_cast<int32_t>(axes.size()),                                     \
-                                 reinterpret_cast<int32_t>((axes.size() > 0) ? axes.data() : nullptr) >> 2); \
+                                 JSEP_HEAP32_INDEX_START(axes),                                              \
+                                 JSEP_HEAP32_INDEX_END(axes));                                               \
     }                                                                                                        \
   };
 

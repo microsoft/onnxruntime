@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #pragma once
@@ -23,7 +24,7 @@ struct OrtStatus {
   char msg[1];  // a null-terminated string
 };
 
-#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_TVM BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML BACKEND_CANN
+#define BACKEND_DEVICE BACKEND_PROC BACKEND_DNNL BACKEND_OPENVINO BACKEND_OPENBLAS BACKEND_MIGRAPHX BACKEND_ACL BACKEND_ARMNN BACKEND_DML BACKEND_CANN BACKEND_WEBGPU
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/providers.h"
 #include "core/providers/provider_factory_creators.h"
@@ -48,23 +49,14 @@ struct OrtStatus {
 #endif
 
 #ifdef USE_OPENVINO
-#if OPENVINO_CONFIG_CPU_FP32
-#define BACKEND_OPENVINO "-OPENVINO_CPU_FP32"
+#if OPENVINO_CONFIG_CPU
+#define BACKEND_OPENVINO "-OPENVINO_CPU"
 
-#elif OPENVINO_CONFIG_CPU_FP16
-#define BACKEND_OPENVINO "-OPENVINO_CPU_FP16"
+#elif OPENVINO_CONFIG_GPU
+#define BACKEND_OPENVINO "-OPENVINO_GPU"
 
-#elif OPENVINO_CONFIG_GPU_FP32
-#define BACKEND_OPENVINO "-OPENVINO_GPU_FP32"
-
-#elif OPENVINO_CONFIG_GPU_FP16
-#define BACKEND_OPENVINO "-OPENVINO_GPU_FP16"
-
-#elif OPENVINO_CONFIG_VPUX_FP16
-#define BACKEND_OPENVINO "-OPENVINO_VPUX_FP16"
-
-#elif OPENVINO_CONFIG_VPUX_U8
-#define BACKEND_OPENVINO "-OPENVINO_VPUX_U8"
+#elif OPENVINO_CONFIG_NPU
+#define BACKEND_OPENVINO "-OPENVINO_NPU"
 
 #elif OPENVINO_CONFIG_MULTI
 #define BACKEND_OPENVINO "-OPENVINO_MULTI"
@@ -74,22 +66,13 @@ struct OrtStatus {
 
 #elif OPENVINO_CONFIG_HETERO
 #define BACKEND_OPENVINO "-OPENVINO_HETERO"
+
+#elif OPENVINO_DISABLE_NPU_FALLBACK
+#define BACKEND_OPENVINO "-OPENVINO_DISABLE_NPU_FALLBACK"
 #endif
+
 #else
 #define BACKEND_OPENVINO ""
-#endif
-
-#ifdef USE_TVM
-#define BACKEND_TVM "-TVM"
-#else
-#define BACKEND_TVM ""
-#endif
-
-#if USE_VITISAI
-#define BACKEND_VITISAI "-VITISAI"
-#include "core/providers/vitisai/vitisai_execution_provider.h"
-#else
-#define BACKEND_VITISAI ""
 #endif
 
 #if USE_OPENBLAS
@@ -122,6 +105,12 @@ struct OrtStatus {
 #define BACKEND_CANN ""
 #endif
 
+#if USE_WEBGPU
+#define BACKEND_WEBGPU "-WEBGPU"
+#else
+#define BACKEND_WEBGPU ""
+#endif
+
 #ifdef USE_CUDA
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
@@ -145,9 +134,6 @@ namespace python {
 extern std::string openvino_device_type;
 }
 }  // namespace onnxruntime
-#endif
-#ifdef USE_TVM
-#include "core/providers/tvm/tvm_ep_options.h"
 #endif
 #ifdef USE_ACL
 #include "core/providers/acl/acl_provider_factory.h"
@@ -177,6 +163,13 @@ extern onnxruntime::cuda::TunableOpInfo tunable_op;
 extern onnxruntime::CUDAExecutionProviderExternalAllocatorInfo external_allocator_info;
 extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace python
+}  // namespace onnxruntime
+#endif
+
+#ifdef USE_TENSORRT
+namespace onnxruntime {
+ProviderInfo_TensorRT* TryGetProviderInfo_TensorRT();
+ProviderInfo_TensorRT& GetProviderInfo_TensorRT();
 }  // namespace onnxruntime
 #endif
 
@@ -399,6 +392,8 @@ void addIoBindingMethods(pybind11::module& m);
 
 void addSparseTensorMethods(pybind11::module& m);
 
+void addAdapterFormatMethods(pybind11::module& m);
+
 void addGlobalSchemaFunctions(pybind11::module& m);
 
 void addOpKernelSubmodule(pybind11::module& m);
@@ -440,19 +435,12 @@ std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGrap
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_MIGraphX(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Cuda(const OrtCUDAProviderOptions* params);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Dnnl(const OrtDnnlProviderOptions* params);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_OpenVINO(const OrtOpenVINOProviderOptions* params);
-#ifdef USE_TVM
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const tvm::TvmEPOptions& info);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Tvm(const char* params);
-#endif
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VITISAI(const char* backend_type, int device_id,
-                                                                                  const char* export_runtime_module,
-                                                                                  const char* load_runtime_module);
-std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(int use_arena);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ACL(bool enable_fast_math);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_ArmNN(int use_arena);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_DML(int device_id);
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Nnapi(
     uint32_t flags, const optional<std::string>& partitioning_stop_ops_list);
+std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_VSINPU();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_Rknpu();
 std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory_CoreML(uint32_t flags);
 constexpr const char* kDefaultExecutionProviderEntry = "GetProvider";

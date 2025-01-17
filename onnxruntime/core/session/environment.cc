@@ -117,15 +117,9 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
   }
 
   // determine if arena should be used
-  bool create_arena = mem_info.alloc_type == OrtArenaAllocator;
-
-#if defined(USE_JEMALLOC) || defined(USE_MIMALLOC)
-  // We use these allocators instead of the arena
-  create_arena = false;
-#elif !(defined(__amd64__) || defined(_M_AMD64))
-  // Disable Arena allocator for x86_32 build because it may run into infinite loop when integer overflow happens
-  create_arena = false;
-#endif
+  const bool create_arena = DoesCpuAllocatorSupportArenaUsage()
+                                ? (mem_info.alloc_type == OrtArenaAllocator)
+                                : false;
 
   AllocatorPtr allocator_ptr;
   // create appropriate DeviceAllocatorRegistrationInfo and allocator based on create_arena
@@ -240,12 +234,10 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 // Register contributed schemas.
 // The corresponding kernels are registered inside the appropriate execution provider.
 #ifndef DISABLE_CONTRIB_OPS
-#ifndef ORT_MINIMAL_BUILD
       RegisterOpSetSchema<contrib::OpSet_Microsoft_ver1>();
       RegisterOpSetSchema<contrib::OpSet_ONNX_Deprecated>();
       // internal opset that has NHWC versions of ONNX operators
       RegisterOpSetSchema<internal_nhwc_onnx::OpSet_Internal_NHWC_ONNX>();
-#endif
       contrib::RegisterContribSchemas();
 #endif
 

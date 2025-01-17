@@ -10,12 +10,16 @@ class DimensionValue(object):
     __slots__ = ['_tab']
 
     @classmethod
-    def GetRootAsDimensionValue(cls, buf, offset):
+    def GetRootAs(cls, buf, offset=0):
         n = flatbuffers.encode.Get(flatbuffers.packer.uoffset, buf, offset)
         x = DimensionValue()
         x.Init(buf, n + offset)
         return x
 
+    @classmethod
+    def GetRootAsDimensionValue(cls, buf, offset=0):
+        """This method is deprecated. Please switch to GetRootAs."""
+        return cls.GetRootAs(buf, offset)
     @classmethod
     def DimensionValueBufferHasIdentifier(cls, buf, offset, size_prefixed=False):
         return flatbuffers.util.BufferHasIdentifier(buf, offset, b"\x4F\x52\x54\x4D", size_prefixed=size_prefixed)
@@ -45,8 +49,32 @@ class DimensionValue(object):
             return self._tab.String(o + self._tab.Pos)
         return None
 
-def DimensionValueStart(builder): builder.StartObject(3)
-def DimensionValueAddDimType(builder, dimType): builder.PrependInt8Slot(0, dimType, 0)
-def DimensionValueAddDimValue(builder, dimValue): builder.PrependInt64Slot(1, dimValue, 0)
-def DimensionValueAddDimParam(builder, dimParam): builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(dimParam), 0)
-def DimensionValueEnd(builder): return builder.EndObject()
+def DimensionValueStart(builder):
+    builder.StartObject(3)
+
+def Start(builder):
+    DimensionValueStart(builder)
+
+def DimensionValueAddDimType(builder, dimType):
+    builder.PrependInt8Slot(0, dimType, 0)
+
+def AddDimType(builder, dimType):
+    DimensionValueAddDimType(builder, dimType)
+
+def DimensionValueAddDimValue(builder, dimValue):
+    builder.PrependInt64Slot(1, dimValue, 0)
+
+def AddDimValue(builder, dimValue):
+    DimensionValueAddDimValue(builder, dimValue)
+
+def DimensionValueAddDimParam(builder, dimParam):
+    builder.PrependUOffsetTRelativeSlot(2, flatbuffers.number_types.UOffsetTFlags.py_type(dimParam), 0)
+
+def AddDimParam(builder, dimParam):
+    DimensionValueAddDimParam(builder, dimParam)
+
+def DimensionValueEnd(builder):
+    return builder.EndObject()
+
+def End(builder):
+    return DimensionValueEnd(builder)

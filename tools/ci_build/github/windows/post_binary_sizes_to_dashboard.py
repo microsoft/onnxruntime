@@ -49,7 +49,7 @@ def get_binary_sizes(size_data_file):
                 break
             linedata = line.strip().split(",")
             tablerow = {}
-            for i in range(0, len(headers)):
+            for i in range(len(headers)):
                 if headers[i] == "size":
                     tablerow[headers[i]] = int(linedata[i])
                 else:

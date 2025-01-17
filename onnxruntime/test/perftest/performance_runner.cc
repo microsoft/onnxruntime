@@ -10,12 +10,8 @@
 #include <iostream>
 
 #include "TestCase.h"
-#include "TFModelInfo.h"
 #include "utils.h"
 #include "ort_test_session.h"
-#ifdef HAVE_TENSORFLOW
-#include "tf_test_session.h"
-#endif
 using onnxruntime::Status;
 
 // TODO: Temporary, while we bring up the threadpool impl...
@@ -115,6 +111,11 @@ void PerformanceResult::DumpToFile(const std::basic_string<ORTCHAR_T>& path, boo
   }
 }
 
+void PerformanceRunner::LogSessionCreationTime() {
+  std::chrono::duration<double> session_create_duration = session_create_end_ - session_create_start_;
+  std::cout << "\nSession creation time cost: " << session_create_duration.count() << " s\n";
+}
+
 Status PerformanceRunner::Run() {
   if (!Initialize()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "failed to initialize.");
@@ -188,8 +189,8 @@ Status PerformanceRunner::RunParallelDuration() {
   // TODO: Make each thread enqueue a new worker.
   auto tpool = GetDefaultThreadPool(Env::Default());
   std::atomic<int> counter = {0};
-  OrtMutex m;
-  OrtCondVar cv;
+  std::mutex m;
+  std::condition_variable cv;
 
   auto start = std::chrono::high_resolution_clock::now();
   auto end = start;
@@ -205,7 +206,7 @@ Status PerformanceRunner::RunParallelDuration() {
         if (!status.IsOK())
           std::cerr << status.ErrorMessage();
         // Simplified version of Eigen::Barrier
-        std::lock_guard<OrtMutex> lg(m);
+        std::lock_guard<std::mutex> lg(m);
         counter--;
         cv.notify_all();
       });
@@ -215,7 +216,7 @@ Status PerformanceRunner::RunParallelDuration() {
   } while (duration_seconds.count() < performance_test_config_.run_config.duration_in_seconds);
 
   // Join
-  std::unique_lock<OrtMutex> lock(m);
+  std::unique_lock<std::mutex> lock(m);
   cv.wait(lock, [&counter]() { return counter == 0; });
 
   return Status::OK();
@@ -227,8 +228,8 @@ Status PerformanceRunner::ForkJoinRepeat() {
   // create a threadpool with one thread per concurrent request
   auto tpool = std::make_unique<DefaultThreadPoolType>(run_config.concurrent_session_runs);
   std::atomic<int> counter{0}, requests{0};
-  OrtMutex m;
-  OrtCondVar cv;
+  std::mutex m;
+  std::condition_variable cv;
 
   // Fork
   for (size_t i = 0; i != run_config.concurrent_session_runs; ++i) {
@@ -241,61 +242,39 @@ Status PerformanceRunner::ForkJoinRepeat() {
       }
 
       // Simplified version of Eigen::Barrier
-      std::lock_guard<OrtMutex> lg(m);
+      std::lock_guard<std::mutex> lg(m);
       counter--;
       cv.notify_all();
     });
   }
 
   // Join
-  std::unique_lock<OrtMutex> lock(m);
+  std::unique_lock<std::mutex> lock(m);
   cv.wait(lock, [&counter]() { return counter == 0; });
 
   return Status::OK();
 }
 
 static std::unique_ptr<TestModelInfo> CreateModelInfo(const PerformanceTestConfig& performance_test_config_) {
-  if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("ort")) == 0) {
-    const auto& file_path = performance_test_config_.model_info.model_file_path;
+  const auto& file_path = performance_test_config_.model_info.model_file_path;
 #if !defined(ORT_MINIMAL_BUILD)
-    if (HasExtensionOf(file_path, ORT_TSTR("onnx"))) {
-      return TestModelInfo::LoadOnnxModel(performance_test_config_.model_info.model_file_path.c_str());
-    }
-#endif
-
-    if (HasExtensionOf(file_path, ORT_TSTR("ort"))) {
-      return TestModelInfo::LoadOrtModel(performance_test_config_.model_info.model_file_path.c_str());
-    }
-
-    ORT_NOT_IMPLEMENTED(ToUTF8String(file_path), " is not supported");
-  }
-
-  if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {
-    return TFModelInfo::Create(performance_test_config_.model_info.model_file_path.c_str());
-  }
-
-  ORT_NOT_IMPLEMENTED(ToUTF8String(performance_test_config_.backend), " is not supported");
-}
-
-static std::unique_ptr<TestSession> CreateSession(Ort::Env& env, std::random_device& rd,
-                                                  const PerformanceTestConfig& performance_test_config_,
-                                                  const TestModelInfo& test_model_info) {
-  if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("ort")) == 0) {
-    return std::make_unique<OnnxRuntimeTestSession>(env, rd, performance_test_config_, test_model_info);
-  }
-#ifdef HAVE_TENSORFLOW
-  if (CompareCString(performance_test_config_.backend.c_str(), ORT_TSTR("tf")) == 0) {
-    return new TensorflowTestSession(rd, performance_test_config_, test_model_info);
+  if (HasExtensionOf(file_path, ORT_TSTR("onnx"))) {
+    return TestModelInfo::LoadOnnxModel(performance_test_config_.model_info.model_file_path.c_str());
   }
 #endif
-  ORT_NOT_IMPLEMENTED(ToUTF8String(performance_test_config_.backend), " is not supported");
+
+  if (HasExtensionOf(file_path, ORT_TSTR("ort"))) {
+    return TestModelInfo::LoadOrtModel(performance_test_config_.model_info.model_file_path.c_str());
+  }
+
+  ORT_NOT_IMPLEMENTED(ToUTF8String(file_path), " is not supported");
 }
 
 PerformanceRunner::PerformanceRunner(Ort::Env& env, const PerformanceTestConfig& test_config, std::random_device& rd)
     : performance_test_config_(test_config),
       test_model_info_(CreateModelInfo(test_config)) {
   session_create_start_ = std::chrono::high_resolution_clock::now();
-  session_ = CreateSession(env, rd, test_config, *test_model_info_);
+  session_ = std::make_unique<OnnxRuntimeTestSession>(env, rd, performance_test_config_, *test_model_info_);
   session_create_end_ = std::chrono::high_resolution_clock::now();
 }
 

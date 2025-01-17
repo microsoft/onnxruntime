@@ -266,7 +266,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
       activation->GetOutputSlot(0).SetTensorInfo(outputTensorInfo);
     }
 
-    // Optimise ArmNN network
+    // Optimize ArmNN network
     armnn::IOptimizedNetworkPtr optNet = armnn::Optimize(*myNetwork, {armnn::Compute::CpuAcc}, Conv::run->GetDeviceSpec());
 
     if (optNet == nullptr) {

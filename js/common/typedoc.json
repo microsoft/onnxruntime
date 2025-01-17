@@ -1,8 +1,7 @@
 {
-  "entryPoints": [
-    "lib/index.ts"
-  ],
+  "entryPoints": ["lib/index.ts"],
   "excludeInternal": true,
+  "intentionallyNotExported": ["TryGetGlobalType"],
   "name": "ONNX Runtime JavaScript API",
   "readme": "none",
   "cleanOutputDir": true

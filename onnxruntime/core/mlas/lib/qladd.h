@@ -463,5 +463,132 @@ MlasPackS16_128<int8_t>(
 {
     return reinterpret_cast<MLAS_INT32X4>(vec_packs(a, b));
 }
+#elif defined(MLAS_LSX_INTRINSICS)
 
+#define LSX_DBG 1
+template <typename DataType>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasShiftRightInt32(
+    MLAS_INT32X4 v,
+    int imm
+    );
+
+template<>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasShiftRightInt32<int8_t>(
+    MLAS_INT32X4 v,
+    int imm
+    )
+{
+#if LSX_DBG
+    MLAS_INT32X4 imm_v = __lsx_vreplgr2vr_w(imm);
+    return __lsx_vsra_w(v, imm_v);
+#else
+    return __lsx_vsrai_w(v, imm);
+#endif
+}
+
+template<>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasShiftRightInt32<uint8_t>(
+    MLAS_INT32X4 v,
+    int imm
+    )
+{
+#if LSX_DBG
+    MLAS_INT32X4 imm_v = __lsx_vreplgr2vr_w(imm);
+    return __lsx_vsrl_w(v, imm_v);
+#else
+    return __lsx_vsrli_w(v, imm);
+#endif
+}
+
+template <typename DataType>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasShiftRightInt16(
+    MLAS_INT32X4 v,
+    int imm
+    );
+
+template<>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasShiftRightInt16<int8_t>(
+    MLAS_INT32X4 v,
+    int imm
+    )
+{
+#if LSX_DBG
+    MLAS_INT32X4 imm_v = __lsx_vreplgr2vr_h(imm);
+    return __lsx_vsra_h(v, imm_v);
+#else
+    return __lsx_vsrai_h(v, imm);
+#endif
+}
+
+template<>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasShiftRightInt16<uint8_t>(
+    MLAS_INT32X4 v,
+    int imm
+    )
+{
+#if LSX_DBG
+    MLAS_INT32X4 imm_v = __lsx_vreplgr2vr_h(imm);
+    return __lsx_vsrl_h(v, imm_v);
+#else
+    return __lsx_vsrli_h(v, imm);
+#endif
+}
+
+template <typename DataType>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasPackS16_128(
+    MLAS_INT32X4 a,
+    MLAS_INT32X4 b
+    );
+
+template <>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasPackS16_128<uint8_t>(
+    MLAS_INT32X4 a,
+    MLAS_INT32X4 b
+    )
+{
+    // return _mm_packus_epi16(a, b);
+    __m128i zero = __lsx_vldi(0);
+    __m128i tmp, tmp2, tmp3;
+
+    tmp = __lsx_vmax_h(zero, a);
+    tmp2 = __lsx_vsat_hu(tmp, 7);
+
+    tmp = __lsx_vmax_h(zero, b);
+    tmp3 = __lsx_vsat_hu(tmp, 7);
+    return  __lsx_vpickev_b(tmp3, tmp2);
+
+}
+
+template <>
+MLAS_FORCEINLINE
+MLAS_INT32X4
+MlasPackS16_128<int8_t>(
+    MLAS_INT32X4 a,
+    MLAS_INT32X4 b
+    )
+{
+    // return _mm_packs_epi16(a, b);
+    __m128i tmp, tmp1;
+
+    tmp = __lsx_vsat_h(a, 7);
+    tmp1 = __lsx_vsat_h(b, 7);
+    return __lsx_vpickev_b(tmp1, tmp);
+
+}
 #endif

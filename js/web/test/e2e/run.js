@@ -7,6 +7,18 @@ const path = require('path');
 const fs = require('fs-extra');
 const { spawn } = require('child_process');
 const startServer = require('./simple-http-server');
+const minimist = require('minimist');
+
+const { NODEJS_TEST_CASES, BROWSER_TEST_CASES, BUNDLER_TEST_CASES } = require('./run-data');
+
+// commandline arguments
+const parsedArgs = minimist(process.argv.slice(2));
+const BROWSER = parsedArgs.browser || 'Chrome_headless';
+// Preserve the existing test folder
+// When this flag is set, the test folder will not be cleared before running the tests.
+// NPM install will not be run again.
+// This is useful for debugging test failures as it makes it much faster to re-run.
+const PRESERVE = parsedArgs.preserve || parsedArgs.p;
 
 // copy whole folder to out-side of <ORT_ROOT>/js/ because we need to test in a folder that no `package.json` file
 // exists in its parent folder.
@@ -17,24 +29,25 @@ const JS_ROOT_FOLDER = path.resolve(__dirname, '../../..');
 const TEST_E2E_RUN_FOLDER = path.resolve(JS_ROOT_FOLDER, '../build/js/e2e');
 const NPM_CACHE_FOLDER = path.resolve(TEST_E2E_RUN_FOLDER, '../npm_cache');
 const CHROME_USER_DATA_FOLDER = path.resolve(TEST_E2E_RUN_FOLDER, '../user_data');
-fs.emptyDirSync(TEST_E2E_RUN_FOLDER);
-fs.emptyDirSync(NPM_CACHE_FOLDER);
-fs.emptyDirSync(CHROME_USER_DATA_FOLDER);
+if (!PRESERVE) {
+  fs.emptyDirSync(TEST_E2E_RUN_FOLDER);
+  fs.emptyDirSync(NPM_CACHE_FOLDER);
+  fs.emptyDirSync(CHROME_USER_DATA_FOLDER);
+}
 fs.copySync(TEST_E2E_SRC_FOLDER, TEST_E2E_RUN_FOLDER);
 
 // always use a new folder as user-data-dir
 let nextUserDataDirId = 0;
 function getNextUserDataDir() {
-  const dir = path.resolve(CHROME_USER_DATA_FOLDER, nextUserDataDirId.toString())
+  const dir = path.resolve(CHROME_USER_DATA_FOLDER, nextUserDataDirId.toString());
   nextUserDataDirId++;
   fs.emptyDirSync(dir);
   return dir;
 }
 
 async function main() {
-
   // find packed package
-  const {globbySync} = await import('globby');
+  const { globbySync } = await import('globby');
 
   const ORT_COMMON_FOLDER = path.resolve(JS_ROOT_FOLDER, 'common');
   const ORT_COMMON_PACKED_FILEPATH_CANDIDATES = globbySync('onnxruntime-common-*.tgz', { cwd: ORT_COMMON_FOLDER });
@@ -56,72 +69,149 @@ async function main() {
 
   // we start here:
 
-  // install dev dependencies
-  await runInShell(`npm install`);
+  if (!PRESERVE) {
+    // install dev dependencies
+    await runInShell(`npm install`);
 
-  // npm install with "--cache" to install packed packages with an empty cache folder
-  await runInShell(`npm install --cache "${NPM_CACHE_FOLDER}" ${PACKAGES_TO_INSTALL.map(i => `"${i}"`).join(' ')}`);
+    // npm install with "--cache" to install packed packages with an empty cache folder
+    await runInShell(`npm install --cache "${NPM_CACHE_FOLDER}" ${PACKAGES_TO_INSTALL.map((i) => `"${i}"`).join(' ')}`);
+  }
+
+  // perform exports testing
+  {
+    const testExportsMain = require(path.join(TEST_E2E_RUN_FOLDER, './exports/main'));
+    await testExportsMain(PRESERVE, PACKAGES_TO_INSTALL);
+  }
 
   // prepare .wasm files for path override testing
   prepareWasmPathOverrideFiles();
 
-  // test case run in Node.js
-  await testAllNodejsCases();
+  // Setup the wwwroot folder for hosting .wasm files (for cross-origin testing)
+  const serverWwwRoot = path.resolve(TEST_E2E_RUN_FOLDER, 'wwwroot');
+  fs.emptyDirSync(serverWwwRoot);
 
-  // test cases with self-host (ort hosted in same origin)
-  await testAllBrowserCases({ hostInKarma: true });
+  // prepare ESM loaders
+  prepareEsmLoaderFiles();
 
-  // test cases without self-host (ort hosted in same origin)
-  startServer(path.resolve(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web'));
-  await testAllBrowserCases({ hostInKarma: false });
+  await fs.symlink(
+    path.resolve(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web', 'dist'),
+    path.join(serverWwwRoot, 'dist'),
+    'junction',
+  );
+  await fs.symlink(
+    path.resolve(TEST_E2E_RUN_FOLDER, 'test-wasm-path-override'),
+    path.join(serverWwwRoot, 'test-wasm-path-override'),
+    'junction',
+  );
 
-  // no error occurs, exit with code 0
-  process.exit(0);
+  // start a HTTP server for hosting .wasm files (for cross-origin testing)
+  const server = startServer(serverWwwRoot, 8081);
+
+  // await delay(1000 * 3600);  // wait for 1 hour
+
+  try {
+    // test case run in Node.js
+    await testAllNodejsCases();
+
+    // test cases with self-host (ort hosted in same origin)
+    await testAllBrowserCases({ hostInKarma: true });
+
+    // test cases without self-host (ort hosted in different origin)
+    await testAllBrowserCases({ hostInKarma: false });
+
+    // run bundlers
+    await runInShell(`npm run build`);
+
+    // test package consuming test
+    await testAllBrowserPackagesConsumingCases();
+  } finally {
+    // close the server after all tests
+    await server.close();
+  }
+}
+
+function prepareEsmLoaderFiles() {
+  const allEsmFiles = [...new Set(BROWSER_TEST_CASES.map((i) => i[3]).filter((i) => i && i.endsWith('.mjs')))];
+
+  // self-hosted
+  fs.emptyDirSync(path.join(TEST_E2E_RUN_FOLDER, 'esm-loaders'));
+  fs.emptyDirSync(path.join(TEST_E2E_RUN_FOLDER, 'wwwroot', 'esm-loaders'));
+  allEsmFiles.forEach((i) => {
+    fs.writeFileSync(
+      path.join(TEST_E2E_RUN_FOLDER, 'esm-loaders', i),
+      `import * as x from '../node_modules/onnxruntime-web/dist/${i}'; globalThis.ort = x;`,
+    );
+    fs.writeFileSync(
+      path.join(TEST_E2E_RUN_FOLDER, 'wwwroot', 'esm-loaders', i),
+      `import * as x from '../dist/${i}'; globalThis.ort = x;`,
+    );
+  });
 }
 
 function prepareWasmPathOverrideFiles() {
   const folder = path.join(TEST_E2E_RUN_FOLDER, 'test-wasm-path-override');
-  const sourceFile = path.join(TEST_E2E_RUN_FOLDER, 'node_modules', 'onnxruntime-web', 'dist', 'ort-wasm.wasm');
+  const sourceFile = path.join(
+    TEST_E2E_RUN_FOLDER,
+    'node_modules',
+    'onnxruntime-web',
+    'dist',
+    'ort-wasm-simd-threaded',
+  );
   fs.emptyDirSync(folder);
-  fs.copyFileSync(sourceFile, path.join(folder, 'ort-wasm.wasm'));
-  fs.copyFileSync(sourceFile, path.join(folder, 'renamed.wasm'));
+  fs.copyFileSync(`${sourceFile}.mjs`, path.join(folder, 'ort-wasm-simd-threaded.mjs'));
+  fs.copyFileSync(`${sourceFile}.wasm`, path.join(folder, 'ort-wasm-simd-threaded.wasm'));
+  fs.copyFileSync(`${sourceFile}.mjs`, path.join(folder, 'renamed.mjs'));
+  fs.copyFileSync(`${sourceFile}.wasm`, path.join(folder, 'renamed.wasm'));
+  fs.copyFileSync(`${sourceFile}.jsep.mjs`, path.join(folder, 'ort-wasm-simd-threaded.jsep.mjs'));
+  fs.copyFileSync(`${sourceFile}.jsep.wasm`, path.join(folder, 'ort-wasm-simd-threaded.jsep.wasm'));
+  fs.copyFileSync(`${sourceFile}.jsep.mjs`, path.join(folder, 'jsep-renamed.mjs'));
+  fs.copyFileSync(`${sourceFile}.jsep.wasm`, path.join(folder, 'jsep-renamed.wasm'));
 }
 
 async function testAllNodejsCases() {
-  await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-main-no-threads.js');
-  await runInShell('node --experimental-wasm-threads ./node_modules/mocha/bin/mocha ./node-test-main-no-threads.js');
-
-  // The multi-threaded export on Node.js is not working. Need a fix. Currently disable these 2 cases temporarily.
-  // TODO: re-enable the following commented tests once it's fixed
-  //
-  // await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-main.js');
-  // await runInShell('node --experimental-wasm-threads ./node_modules/mocha/bin/mocha ./node-test-main.js');
-
-  await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-wasm-path-override-filename.js');
-  await runInShell('node ./node_modules/mocha/bin/mocha ./node-test-wasm-path-override-prefix.js');
+  for (const caseName of NODEJS_TEST_CASES) {
+    await runInShell(`node ./node_modules/mocha/bin/mocha --timeout 10000 ${caseName}`);
+  }
 }
 
 async function testAllBrowserCases({ hostInKarma }) {
-  await runKarma({ hostInKarma, main: './browser-test-webgl.js'});
-  await runKarma({ hostInKarma, main: './browser-test-webgl.js', ortMain: 'ort.webgl.min.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm.js', ortMain: 'ort.wasm.min.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm-multi-session-create.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm-no-threads.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm-no-threads.js', ortMain: 'ort.wasm-core.min.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm-proxy.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm-proxy-no-threads.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm-path-override-filename.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm-path-override-filename.js', ortMain: 'ort.wasm.min.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm-path-override-prefix.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm-path-override-prefix.js', ortMain: 'ort.wasm.min.js'});
-  await runKarma({ hostInKarma, main: './browser-test-wasm-image-tensor-image.js'});
+  for (const [testForSameOrigin, testForCrossOrigin, main, ortMain, args] of BROWSER_TEST_CASES) {
+    if (hostInKarma && testForSameOrigin) {
+      await runKarma({ hostInKarma, main, ortMain, args });
+      await runKarma({ hostInKarma, main, ortMain, args, enableSharedArrayBuffer: true });
+    }
+    if (!hostInKarma && testForCrossOrigin) {
+      await runKarma({ hostInKarma, main, ortMain, args });
+      await runKarma({ hostInKarma, main, ortMain, args, enableSharedArrayBuffer: true });
+    }
+  }
 }
 
-async function runKarma({ hostInKarma, main, browser = 'Chrome_default', ortMain = 'ort.min.js' }) {
+async function testAllBrowserPackagesConsumingCases() {
+  for (const [main, format] of BUNDLER_TEST_CASES) {
+    await runKarma({ hostInKarma: true, main, ortMain: '', format });
+    await runKarma({ hostInKarma: true, main, ortMain: '', format, enableSharedArrayBuffer: true });
+  }
+}
+
+async function runKarma({
+  hostInKarma,
+  main,
+  browser = BROWSER,
+  ortMain = 'ort.min.js',
+  format = 'iife',
+  enableSharedArrayBuffer = false,
+  args = [],
+}) {
   const selfHostFlag = hostInKarma ? '--self-host' : '';
+  const argsStr = args.map((i) => `--test-args=${i}`).join(' ');
+  const formatFlag = `--format=${format}`;
+  const enableSharedArrayBufferFlag = enableSharedArrayBuffer ? '--enable-shared-array-buffer' : '';
   await runInShell(
-    `npx karma start --single-run --browsers ${browser} ${selfHostFlag} --ort-main=${ortMain} --test-main=${main} --user-data=${getNextUserDataDir()}`);
+    `npx karma start --single-run --browsers ${browser} ${selfHostFlag} --ort-main=${ortMain} --test-main=${
+      main
+    } --user-data=${getNextUserDataDir()} ${argsStr} ${formatFlag} ${enableSharedArrayBufferFlag}`,
+  );
 }
 
 async function runInShell(cmd) {

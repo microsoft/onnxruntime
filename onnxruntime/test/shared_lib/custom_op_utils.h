@@ -381,9 +381,9 @@ struct StandaloneCustomOp : Ort::CustomOpBase<StandaloneCustomOp, StandaloneCust
 /////////////// structures to test multi-kernls-single-schema ///////////////
 
 struct MulTopKernelFloat {
-  MulTopKernelFloat(const OrtKernelInfo*){};
+  MulTopKernelFloat(const OrtKernelInfo*) {};
   ~MulTopKernelFloat() = default;
-  void Compute(OrtKernelContext*){};
+  void Compute(OrtKernelContext*) {};
 };
 
 struct MulTopOpFloat : Ort::CustomOpBase<MulTopOpFloat, MulTopKernelFloat> {
@@ -397,9 +397,9 @@ struct MulTopOpFloat : Ort::CustomOpBase<MulTopOpFloat, MulTopKernelFloat> {
 };
 
 struct MulTopKernelInt32 {
-  MulTopKernelInt32(const OrtKernelInfo*){};
+  MulTopKernelInt32(const OrtKernelInfo*) {};
   ~MulTopKernelInt32() = default;
-  void Compute(OrtKernelContext*){};
+  void Compute(OrtKernelContext*) {};
 };
 
 struct MulTopOpInt32 : Ort::CustomOpBase<MulTopOpInt32, MulTopKernelInt32> {
@@ -413,9 +413,9 @@ struct MulTopOpInt32 : Ort::CustomOpBase<MulTopOpInt32, MulTopKernelInt32> {
 };
 
 struct MulTopKernelDouble {
-  MulTopKernelDouble(const OrtKernelInfo*){};
+  MulTopKernelDouble(const OrtKernelInfo*) {};
   ~MulTopKernelDouble() = default;
-  void Compute(OrtKernelContext*){};
+  void Compute(OrtKernelContext*) {};
 };
 
 // MulTopOpDouble and MulTopOpFloat has input count mismatch
@@ -430,9 +430,9 @@ struct MulTopOpDouble : Ort::CustomOpBase<MulTopOpDouble, MulTopKernelDouble> {
 };
 
 struct MulTopKernelInt16 {
-  MulTopKernelInt16(const OrtKernelInfo*){};
+  MulTopKernelInt16(const OrtKernelInfo*) {};
   ~MulTopKernelInt16() = default;
-  void Compute(OrtKernelContext*){};
+  void Compute(OrtKernelContext*) {};
 };
 
 // MulTopOpInt16 and MulTopOpFloat has output count mismatch
@@ -448,9 +448,9 @@ struct MulTopOpInt16 : Ort::CustomOpBase<MulTopOpInt16, MulTopKernelInt16> {
 
 // MulTopKernelFloat16 and MulTopOpFloat has input characteristic mismatch
 struct MulTopKernelFloat16 {
-  MulTopKernelFloat16(const OrtKernelInfo*){};
+  MulTopKernelFloat16(const OrtKernelInfo*) {};
   ~MulTopKernelFloat16() = default;
-  void Compute(OrtKernelContext*){};
+  void Compute(OrtKernelContext*) {};
 };
 
 struct MulTopOpFloat16 : Ort::CustomOpBase<MulTopOpFloat16, MulTopKernelFloat16> {

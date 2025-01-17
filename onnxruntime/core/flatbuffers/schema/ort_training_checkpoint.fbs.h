@@ -4,7 +4,14 @@
 #ifndef FLATBUFFERS_GENERATED_ORTTRAININGCHECKPOINT_ONNXRUNTIME_FBS_H_
 #define FLATBUFFERS_GENERATED_ORTTRAININGCHECKPOINT_ONNXRUNTIME_FBS_H_
 
-#include "flatbuffers/flatbuffers.h"
+#include "core/common/flatbuffers.h"
+
+// Ensure the included flatbuffers.h is the same version as when this file was
+// generated, otherwise it may not be compatible.
+static_assert(FLATBUFFERS_VERSION_MAJOR == 23 &&
+              FLATBUFFERS_VERSION_MINOR == 5 &&
+              FLATBUFFERS_VERSION_REVISION == 26,
+             "Non-compatible flatbuffers version included");
 
 #include "ort.fbs.h"
 
@@ -35,19 +42,27 @@ struct PropertyBagBuilder;
 struct Checkpoint;
 struct CheckpointBuilder;
 
-struct ModuleState FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+struct ModuleState FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef ModuleStateBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_REQUIRES_GRAD_PARAMS = 4,
-    VT_FROZEN_PARAMS = 6
+    VT_FROZEN_PARAMS = 6,
+    VT_IS_NOMINAL_STATE = 8,
+    VT_HAS_EXTERNAL_DATA = 10
   };
-  const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *requires_grad_params() const {
-    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *>(VT_REQUIRES_GRAD_PARAMS);
+  const ::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::Tensor>> *requires_grad_params() const {
+    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::Tensor>> *>(VT_REQUIRES_GRAD_PARAMS);
   }
-  const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *frozen_params() const {
-    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *>(VT_FROZEN_PARAMS);
+  const ::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::Tensor>> *frozen_params() const {
+    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::Tensor>> *>(VT_FROZEN_PARAMS);
   }
-  bool Verify(flatbuffers::Verifier &verifier) const {
+  bool is_nominal_state() const {
+    return GetField<uint8_t>(VT_IS_NOMINAL_STATE, 0) != 0;
+  }
+  bool has_external_data() const {
+    return GetField<uint8_t>(VT_HAS_EXTERNAL_DATA, 0) != 0;
+  }
+  bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_REQUIRES_GRAD_PARAMS) &&
            verifier.VerifyVector(requires_grad_params()) &&
@@ -55,67 +70,82 @@ struct ModuleState FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
            VerifyOffset(verifier, VT_FROZEN_PARAMS) &&
            verifier.VerifyVector(frozen_params()) &&
            verifier.VerifyVectorOfTables(frozen_params()) &&
+           VerifyField<uint8_t>(verifier, VT_IS_NOMINAL_STATE, 1) &&
+           VerifyField<uint8_t>(verifier, VT_HAS_EXTERNAL_DATA, 1) &&
            verifier.EndTable();
   }
 };
 
 struct ModuleStateBuilder {
   typedef ModuleState Table;
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
-  void add_requires_grad_params(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>> requires_grad_params) {
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_requires_grad_params(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::Tensor>>> requires_grad_params) {
     fbb_.AddOffset(ModuleState::VT_REQUIRES_GRAD_PARAMS, requires_grad_params);
   }
-  void add_frozen_params(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>> frozen_params) {
+  void add_frozen_params(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::Tensor>>> frozen_params) {
     fbb_.AddOffset(ModuleState::VT_FROZEN_PARAMS, frozen_params);
   }
-  explicit ModuleStateBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+  void add_is_nominal_state(bool is_nominal_state) {
+    fbb_.AddElement<uint8_t>(ModuleState::VT_IS_NOMINAL_STATE, static_cast<uint8_t>(is_nominal_state), 0);
+  }
+  void add_has_external_data(bool has_external_data) {
+    fbb_.AddElement<uint8_t>(ModuleState::VT_HAS_EXTERNAL_DATA, static_cast<uint8_t>(has_external_data), 0);
+  }
+  explicit ModuleStateBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  ModuleStateBuilder &operator=(const ModuleStateBuilder &);
-  flatbuffers::Offset<ModuleState> Finish() {
+  ::flatbuffers::Offset<ModuleState> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<ModuleState>(end);
+    auto o = ::flatbuffers::Offset<ModuleState>(end);
     return o;
   }
 };
 
-inline flatbuffers::Offset<ModuleState> CreateModuleState(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>> requires_grad_params = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>> frozen_params = 0) {
+inline ::flatbuffers::Offset<ModuleState> CreateModuleState(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::Tensor>>> requires_grad_params = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::Tensor>>> frozen_params = 0,
+    bool is_nominal_state = false,
+    bool has_external_data = false) {
   ModuleStateBuilder builder_(_fbb);
   builder_.add_frozen_params(frozen_params);
   builder_.add_requires_grad_params(requires_grad_params);
+  builder_.add_has_external_data(has_external_data);
+  builder_.add_is_nominal_state(is_nominal_state);
   return builder_.Finish();
 }
 
-inline flatbuffers::Offset<ModuleState> CreateModuleStateDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    const std::vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *requires_grad_params = nullptr,
-    const std::vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *frozen_params = nullptr) {
-  auto requires_grad_params__ = requires_grad_params ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>(*requires_grad_params) : 0;
-  auto frozen_params__ = frozen_params ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>(*frozen_params) : 0;
+inline ::flatbuffers::Offset<ModuleState> CreateModuleStateDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    const std::vector<::flatbuffers::Offset<onnxruntime::fbs::Tensor>> *requires_grad_params = nullptr,
+    const std::vector<::flatbuffers::Offset<onnxruntime::fbs::Tensor>> *frozen_params = nullptr,
+    bool is_nominal_state = false,
+    bool has_external_data = false) {
+  auto requires_grad_params__ = requires_grad_params ? _fbb.CreateVector<::flatbuffers::Offset<onnxruntime::fbs::Tensor>>(*requires_grad_params) : 0;
+  auto frozen_params__ = frozen_params ? _fbb.CreateVector<::flatbuffers::Offset<onnxruntime::fbs::Tensor>>(*frozen_params) : 0;
   return onnxruntime::fbs::CreateModuleState(
       _fbb,
       requires_grad_params__,
-      frozen_params__);
+      frozen_params__,
+      is_nominal_state,
+      has_external_data);
 }
 
-struct ParameterOptimizerState FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+struct ParameterOptimizerState FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef ParameterOptimizerStateBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_PARAM_NAME = 4,
     VT_MOMENTUMS = 6
   };
-  const flatbuffers::String *param_name() const {
-    return GetPointer<const flatbuffers::String *>(VT_PARAM_NAME);
+  const ::flatbuffers::String *param_name() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_PARAM_NAME);
   }
-  const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *momentums() const {
-    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *>(VT_MOMENTUMS);
+  const ::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::Tensor>> *momentums() const {
+    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::Tensor>> *>(VT_MOMENTUMS);
   }
-  bool Verify(flatbuffers::Verifier &verifier) const {
+  bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_PARAM_NAME) &&
            verifier.VerifyString(param_name()) &&
@@ -128,49 +158,48 @@ struct ParameterOptimizerState FLATBUFFERS_FINAL_CLASS : private flatbuffers::Ta
 
 struct ParameterOptimizerStateBuilder {
   typedef ParameterOptimizerState Table;
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
-  void add_param_name(flatbuffers::Offset<flatbuffers::String> param_name) {
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_param_name(::flatbuffers::Offset<::flatbuffers::String> param_name) {
     fbb_.AddOffset(ParameterOptimizerState::VT_PARAM_NAME, param_name);
   }
-  void add_momentums(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>> momentums) {
+  void add_momentums(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::Tensor>>> momentums) {
     fbb_.AddOffset(ParameterOptimizerState::VT_MOMENTUMS, momentums);
   }
-  explicit ParameterOptimizerStateBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+  explicit ParameterOptimizerStateBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  ParameterOptimizerStateBuilder &operator=(const ParameterOptimizerStateBuilder &);
-  flatbuffers::Offset<ParameterOptimizerState> Finish() {
+  ::flatbuffers::Offset<ParameterOptimizerState> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<ParameterOptimizerState>(end);
+    auto o = ::flatbuffers::Offset<ParameterOptimizerState>(end);
     return o;
   }
 };
 
-inline flatbuffers::Offset<ParameterOptimizerState> CreateParameterOptimizerState(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::String> param_name = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>> momentums = 0) {
+inline ::flatbuffers::Offset<ParameterOptimizerState> CreateParameterOptimizerState(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::String> param_name = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::Tensor>>> momentums = 0) {
   ParameterOptimizerStateBuilder builder_(_fbb);
   builder_.add_momentums(momentums);
   builder_.add_param_name(param_name);
   return builder_.Finish();
 }
 
-inline flatbuffers::Offset<ParameterOptimizerState> CreateParameterOptimizerStateDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
+inline ::flatbuffers::Offset<ParameterOptimizerState> CreateParameterOptimizerStateDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
     const char *param_name = nullptr,
-    const std::vector<flatbuffers::Offset<onnxruntime::fbs::Tensor>> *momentums = nullptr) {
+    const std::vector<::flatbuffers::Offset<onnxruntime::fbs::Tensor>> *momentums = nullptr) {
   auto param_name__ = param_name ? _fbb.CreateString(param_name) : 0;
-  auto momentums__ = momentums ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::fbs::Tensor>>(*momentums) : 0;
+  auto momentums__ = momentums ? _fbb.CreateVector<::flatbuffers::Offset<onnxruntime::fbs::Tensor>>(*momentums) : 0;
   return onnxruntime::fbs::CreateParameterOptimizerState(
       _fbb,
       param_name__,
       momentums__);
 }
 
-struct OptimizerGroup FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+struct OptimizerGroup FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef OptimizerGroupBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_GROUP_NAME = 4,
@@ -178,8 +207,8 @@ struct OptimizerGroup FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
     VT_INITIAL_LEARNING_RATE = 8,
     VT_OPTIMIZER_STATES = 10
   };
-  const flatbuffers::String *group_name() const {
-    return GetPointer<const flatbuffers::String *>(VT_GROUP_NAME);
+  const ::flatbuffers::String *group_name() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_GROUP_NAME);
   }
   int64_t step() const {
     return GetField<int64_t>(VT_STEP, 0);
@@ -187,15 +216,15 @@ struct OptimizerGroup FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   float initial_learning_rate() const {
     return GetField<float>(VT_INITIAL_LEARNING_RATE, 0.0f);
   }
-  const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::ParameterOptimizerState>> *optimizer_states() const {
-    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::ParameterOptimizerState>> *>(VT_OPTIMIZER_STATES);
+  const ::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::ParameterOptimizerState>> *optimizer_states() const {
+    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::ParameterOptimizerState>> *>(VT_OPTIMIZER_STATES);
   }
-  bool Verify(flatbuffers::Verifier &verifier) const {
+  bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_GROUP_NAME) &&
            verifier.VerifyString(group_name()) &&
-           VerifyField<int64_t>(verifier, VT_STEP) &&
-           VerifyField<float>(verifier, VT_INITIAL_LEARNING_RATE) &&
+           VerifyField<int64_t>(verifier, VT_STEP, 8) &&
+           VerifyField<float>(verifier, VT_INITIAL_LEARNING_RATE, 4) &&
            VerifyOffset(verifier, VT_OPTIMIZER_STATES) &&
            verifier.VerifyVector(optimizer_states()) &&
            verifier.VerifyVectorOfTables(optimizer_states()) &&
@@ -205,9 +234,9 @@ struct OptimizerGroup FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 
 struct OptimizerGroupBuilder {
   typedef OptimizerGroup Table;
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
-  void add_group_name(flatbuffers::Offset<flatbuffers::String> group_name) {
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_group_name(::flatbuffers::Offset<::flatbuffers::String> group_name) {
     fbb_.AddOffset(OptimizerGroup::VT_GROUP_NAME, group_name);
   }
   void add_step(int64_t step) {
@@ -216,27 +245,26 @@ struct OptimizerGroupBuilder {
   void add_initial_learning_rate(float initial_learning_rate) {
     fbb_.AddElement<float>(OptimizerGroup::VT_INITIAL_LEARNING_RATE, initial_learning_rate, 0.0f);
   }
-  void add_optimizer_states(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::ParameterOptimizerState>>> optimizer_states) {
+  void add_optimizer_states(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::ParameterOptimizerState>>> optimizer_states) {
     fbb_.AddOffset(OptimizerGroup::VT_OPTIMIZER_STATES, optimizer_states);
   }
-  explicit OptimizerGroupBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+  explicit OptimizerGroupBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  OptimizerGroupBuilder &operator=(const OptimizerGroupBuilder &);
-  flatbuffers::Offset<OptimizerGroup> Finish() {
+  ::flatbuffers::Offset<OptimizerGroup> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<OptimizerGroup>(end);
+    auto o = ::flatbuffers::Offset<OptimizerGroup>(end);
     return o;
   }
 };
 
-inline flatbuffers::Offset<OptimizerGroup> CreateOptimizerGroup(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::String> group_name = 0,
+inline ::flatbuffers::Offset<OptimizerGroup> CreateOptimizerGroup(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::String> group_name = 0,
     int64_t step = 0,
     float initial_learning_rate = 0.0f,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::ParameterOptimizerState>>> optimizer_states = 0) {
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::ParameterOptimizerState>>> optimizer_states = 0) {
   OptimizerGroupBuilder builder_(_fbb);
   builder_.add_step(step);
   builder_.add_optimizer_states(optimizer_states);
@@ -245,14 +273,14 @@ inline flatbuffers::Offset<OptimizerGroup> CreateOptimizerGroup(
   return builder_.Finish();
 }
 
-inline flatbuffers::Offset<OptimizerGroup> CreateOptimizerGroupDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
+inline ::flatbuffers::Offset<OptimizerGroup> CreateOptimizerGroupDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
     const char *group_name = nullptr,
     int64_t step = 0,
     float initial_learning_rate = 0.0f,
-    const std::vector<flatbuffers::Offset<onnxruntime::fbs::ParameterOptimizerState>> *optimizer_states = nullptr) {
+    const std::vector<::flatbuffers::Offset<onnxruntime::fbs::ParameterOptimizerState>> *optimizer_states = nullptr) {
   auto group_name__ = group_name ? _fbb.CreateString(group_name) : 0;
-  auto optimizer_states__ = optimizer_states ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::fbs::ParameterOptimizerState>>(*optimizer_states) : 0;
+  auto optimizer_states__ = optimizer_states ? _fbb.CreateVector<::flatbuffers::Offset<onnxruntime::fbs::ParameterOptimizerState>>(*optimizer_states) : 0;
   return onnxruntime::fbs::CreateOptimizerGroup(
       _fbb,
       group_name__,
@@ -261,52 +289,51 @@ inline flatbuffers::Offset<OptimizerGroup> CreateOptimizerGroupDirect(
       optimizer_states__);
 }
 
-struct IntProperty FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+struct IntProperty FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef IntPropertyBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_NAME = 4,
     VT_VALUE = 6
   };
-  const flatbuffers::String *name() const {
-    return GetPointer<const flatbuffers::String *>(VT_NAME);
+  const ::flatbuffers::String *name() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_NAME);
   }
   int64_t value() const {
     return GetField<int64_t>(VT_VALUE, 0);
   }
-  bool Verify(flatbuffers::Verifier &verifier) const {
+  bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_NAME) &&
            verifier.VerifyString(name()) &&
-           VerifyField<int64_t>(verifier, VT_VALUE) &&
+           VerifyField<int64_t>(verifier, VT_VALUE, 8) &&
            verifier.EndTable();
   }
 };
 
 struct IntPropertyBuilder {
   typedef IntProperty Table;
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
-  void add_name(flatbuffers::Offset<flatbuffers::String> name) {
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_name(::flatbuffers::Offset<::flatbuffers::String> name) {
     fbb_.AddOffset(IntProperty::VT_NAME, name);
   }
   void add_value(int64_t value) {
     fbb_.AddElement<int64_t>(IntProperty::VT_VALUE, value, 0);
   }
-  explicit IntPropertyBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+  explicit IntPropertyBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  IntPropertyBuilder &operator=(const IntPropertyBuilder &);
-  flatbuffers::Offset<IntProperty> Finish() {
+  ::flatbuffers::Offset<IntProperty> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<IntProperty>(end);
+    auto o = ::flatbuffers::Offset<IntProperty>(end);
     return o;
   }
 };
 
-inline flatbuffers::Offset<IntProperty> CreateIntProperty(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::String> name = 0,
+inline ::flatbuffers::Offset<IntProperty> CreateIntProperty(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::String> name = 0,
     int64_t value = 0) {
   IntPropertyBuilder builder_(_fbb);
   builder_.add_value(value);
@@ -314,8 +341,8 @@ inline flatbuffers::Offset<IntProperty> CreateIntProperty(
   return builder_.Finish();
 }
 
-inline flatbuffers::Offset<IntProperty> CreateIntPropertyDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
+inline ::flatbuffers::Offset<IntProperty> CreateIntPropertyDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
     const char *name = nullptr,
     int64_t value = 0) {
   auto name__ = name ? _fbb.CreateString(name) : 0;
@@ -325,52 +352,51 @@ inline flatbuffers::Offset<IntProperty> CreateIntPropertyDirect(
       value);
 }
 
-struct FloatProperty FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+struct FloatProperty FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef FloatPropertyBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_NAME = 4,
     VT_VALUE = 6
   };
-  const flatbuffers::String *name() const {
-    return GetPointer<const flatbuffers::String *>(VT_NAME);
+  const ::flatbuffers::String *name() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_NAME);
   }
   float value() const {
     return GetField<float>(VT_VALUE, 0.0f);
   }
-  bool Verify(flatbuffers::Verifier &verifier) const {
+  bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_NAME) &&
            verifier.VerifyString(name()) &&
-           VerifyField<float>(verifier, VT_VALUE) &&
+           VerifyField<float>(verifier, VT_VALUE, 4) &&
            verifier.EndTable();
   }
 };
 
 struct FloatPropertyBuilder {
   typedef FloatProperty Table;
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
-  void add_name(flatbuffers::Offset<flatbuffers::String> name) {
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_name(::flatbuffers::Offset<::flatbuffers::String> name) {
     fbb_.AddOffset(FloatProperty::VT_NAME, name);
   }
   void add_value(float value) {
     fbb_.AddElement<float>(FloatProperty::VT_VALUE, value, 0.0f);
   }
-  explicit FloatPropertyBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+  explicit FloatPropertyBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  FloatPropertyBuilder &operator=(const FloatPropertyBuilder &);
-  flatbuffers::Offset<FloatProperty> Finish() {
+  ::flatbuffers::Offset<FloatProperty> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<FloatProperty>(end);
+    auto o = ::flatbuffers::Offset<FloatProperty>(end);
     return o;
   }
 };
 
-inline flatbuffers::Offset<FloatProperty> CreateFloatProperty(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::String> name = 0,
+inline ::flatbuffers::Offset<FloatProperty> CreateFloatProperty(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::String> name = 0,
     float value = 0.0f) {
   FloatPropertyBuilder builder_(_fbb);
   builder_.add_value(value);
@@ -378,8 +404,8 @@ inline flatbuffers::Offset<FloatProperty> CreateFloatProperty(
   return builder_.Finish();
 }
 
-inline flatbuffers::Offset<FloatProperty> CreateFloatPropertyDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
+inline ::flatbuffers::Offset<FloatProperty> CreateFloatPropertyDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
     const char *name = nullptr,
     float value = 0.0f) {
   auto name__ = name ? _fbb.CreateString(name) : 0;
@@ -389,19 +415,19 @@ inline flatbuffers::Offset<FloatProperty> CreateFloatPropertyDirect(
       value);
 }
 
-struct StringProperty FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+struct StringProperty FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef StringPropertyBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_NAME = 4,
     VT_VALUE = 6
   };
-  const flatbuffers::String *name() const {
-    return GetPointer<const flatbuffers::String *>(VT_NAME);
+  const ::flatbuffers::String *name() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_NAME);
   }
-  const flatbuffers::String *value() const {
-    return GetPointer<const flatbuffers::String *>(VT_VALUE);
+  const ::flatbuffers::String *value() const {
+    return GetPointer<const ::flatbuffers::String *>(VT_VALUE);
   }
-  bool Verify(flatbuffers::Verifier &verifier) const {
+  bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_NAME) &&
            verifier.VerifyString(name()) &&
@@ -413,38 +439,37 @@ struct StringProperty FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 
 struct StringPropertyBuilder {
   typedef StringProperty Table;
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
-  void add_name(flatbuffers::Offset<flatbuffers::String> name) {
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_name(::flatbuffers::Offset<::flatbuffers::String> name) {
     fbb_.AddOffset(StringProperty::VT_NAME, name);
   }
-  void add_value(flatbuffers::Offset<flatbuffers::String> value) {
+  void add_value(::flatbuffers::Offset<::flatbuffers::String> value) {
     fbb_.AddOffset(StringProperty::VT_VALUE, value);
   }
-  explicit StringPropertyBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+  explicit StringPropertyBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  StringPropertyBuilder &operator=(const StringPropertyBuilder &);
-  flatbuffers::Offset<StringProperty> Finish() {
+  ::flatbuffers::Offset<StringProperty> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<StringProperty>(end);
+    auto o = ::flatbuffers::Offset<StringProperty>(end);
     return o;
   }
 };
 
-inline flatbuffers::Offset<StringProperty> CreateStringProperty(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::String> name = 0,
-    flatbuffers::Offset<flatbuffers::String> value = 0) {
+inline ::flatbuffers::Offset<StringProperty> CreateStringProperty(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::String> name = 0,
+    ::flatbuffers::Offset<::flatbuffers::String> value = 0) {
   StringPropertyBuilder builder_(_fbb);
   builder_.add_value(value);
   builder_.add_name(name);
   return builder_.Finish();
 }
 
-inline flatbuffers::Offset<StringProperty> CreateStringPropertyDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
+inline ::flatbuffers::Offset<StringProperty> CreateStringPropertyDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
     const char *name = nullptr,
     const char *value = nullptr) {
   auto name__ = name ? _fbb.CreateString(name) : 0;
@@ -455,23 +480,23 @@ inline flatbuffers::Offset<StringProperty> CreateStringPropertyDirect(
       value__);
 }
 
-struct PropertyBag FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+struct PropertyBag FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef PropertyBagBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_INTS = 4,
     VT_FLOATS = 6,
     VT_STRINGS = 8
   };
-  const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::IntProperty>> *ints() const {
-    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::IntProperty>> *>(VT_INTS);
+  const ::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::IntProperty>> *ints() const {
+    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::IntProperty>> *>(VT_INTS);
   }
-  const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::FloatProperty>> *floats() const {
-    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::FloatProperty>> *>(VT_FLOATS);
+  const ::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::FloatProperty>> *floats() const {
+    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::FloatProperty>> *>(VT_FLOATS);
   }
-  const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::StringProperty>> *strings() const {
-    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::StringProperty>> *>(VT_STRINGS);
+  const ::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::StringProperty>> *strings() const {
+    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::StringProperty>> *>(VT_STRINGS);
   }
-  bool Verify(flatbuffers::Verifier &verifier) const {
+  bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
            VerifyOffset(verifier, VT_INTS) &&
            verifier.VerifyVector(ints()) &&
@@ -488,34 +513,33 @@ struct PropertyBag FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 
 struct PropertyBagBuilder {
   typedef PropertyBag Table;
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
-  void add_ints(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::IntProperty>>> ints) {
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
+  void add_ints(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::IntProperty>>> ints) {
     fbb_.AddOffset(PropertyBag::VT_INTS, ints);
   }
-  void add_floats(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::FloatProperty>>> floats) {
+  void add_floats(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::FloatProperty>>> floats) {
     fbb_.AddOffset(PropertyBag::VT_FLOATS, floats);
   }
-  void add_strings(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::StringProperty>>> strings) {
+  void add_strings(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::StringProperty>>> strings) {
     fbb_.AddOffset(PropertyBag::VT_STRINGS, strings);
   }
-  explicit PropertyBagBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+  explicit PropertyBagBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  PropertyBagBuilder &operator=(const PropertyBagBuilder &);
-  flatbuffers::Offset<PropertyBag> Finish() {
+  ::flatbuffers::Offset<PropertyBag> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<PropertyBag>(end);
+    auto o = ::flatbuffers::Offset<PropertyBag>(end);
     return o;
   }
 };
 
-inline flatbuffers::Offset<PropertyBag> CreatePropertyBag(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::IntProperty>>> ints = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::FloatProperty>>> floats = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::StringProperty>>> strings = 0) {
+inline ::flatbuffers::Offset<PropertyBag> CreatePropertyBag(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::IntProperty>>> ints = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::FloatProperty>>> floats = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::StringProperty>>> strings = 0) {
   PropertyBagBuilder builder_(_fbb);
   builder_.add_strings(strings);
   builder_.add_floats(floats);
@@ -523,14 +547,14 @@ inline flatbuffers::Offset<PropertyBag> CreatePropertyBag(
   return builder_.Finish();
 }
 
-inline flatbuffers::Offset<PropertyBag> CreatePropertyBagDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
-    const std::vector<flatbuffers::Offset<onnxruntime::fbs::IntProperty>> *ints = nullptr,
-    const std::vector<flatbuffers::Offset<onnxruntime::fbs::FloatProperty>> *floats = nullptr,
-    const std::vector<flatbuffers::Offset<onnxruntime::fbs::StringProperty>> *strings = nullptr) {
-  auto ints__ = ints ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::fbs::IntProperty>>(*ints) : 0;
-  auto floats__ = floats ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::fbs::FloatProperty>>(*floats) : 0;
-  auto strings__ = strings ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::fbs::StringProperty>>(*strings) : 0;
+inline ::flatbuffers::Offset<PropertyBag> CreatePropertyBagDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
+    const std::vector<::flatbuffers::Offset<onnxruntime::fbs::IntProperty>> *ints = nullptr,
+    const std::vector<::flatbuffers::Offset<onnxruntime::fbs::FloatProperty>> *floats = nullptr,
+    const std::vector<::flatbuffers::Offset<onnxruntime::fbs::StringProperty>> *strings = nullptr) {
+  auto ints__ = ints ? _fbb.CreateVector<::flatbuffers::Offset<onnxruntime::fbs::IntProperty>>(*ints) : 0;
+  auto floats__ = floats ? _fbb.CreateVector<::flatbuffers::Offset<onnxruntime::fbs::FloatProperty>>(*floats) : 0;
+  auto strings__ = strings ? _fbb.CreateVector<::flatbuffers::Offset<onnxruntime::fbs::StringProperty>>(*strings) : 0;
   return onnxruntime::fbs::CreatePropertyBag(
       _fbb,
       ints__,
@@ -538,7 +562,7 @@ inline flatbuffers::Offset<PropertyBag> CreatePropertyBagDirect(
       strings__);
 }
 
-struct Checkpoint FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+struct Checkpoint FLATBUFFERS_FINAL_CLASS : private ::flatbuffers::Table {
   typedef CheckpointBuilder Builder;
   enum FlatBuffersVTableOffset FLATBUFFERS_VTABLE_UNDERLYING_TYPE {
     VT_VERSION = 4,
@@ -552,15 +576,15 @@ struct Checkpoint FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const onnxruntime::fbs::ModuleState *module_state() const {
     return GetPointer<const onnxruntime::fbs::ModuleState *>(VT_MODULE_STATE);
   }
-  const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::OptimizerGroup>> *optimizer_groups() const {
-    return GetPointer<const flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::OptimizerGroup>> *>(VT_OPTIMIZER_GROUPS);
+  const ::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::OptimizerGroup>> *optimizer_groups() const {
+    return GetPointer<const ::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::OptimizerGroup>> *>(VT_OPTIMIZER_GROUPS);
   }
   const onnxruntime::fbs::PropertyBag *property_bag() const {
     return GetPointer<const onnxruntime::fbs::PropertyBag *>(VT_PROPERTY_BAG);
   }
-  bool Verify(flatbuffers::Verifier &verifier) const {
+  bool Verify(::flatbuffers::Verifier &verifier) const {
     return VerifyTableStart(verifier) &&
-           VerifyField<int32_t>(verifier, VT_VERSION) &&
+           VerifyField<int32_t>(verifier, VT_VERSION, 4) &&
            VerifyOffset(verifier, VT_MODULE_STATE) &&
            verifier.VerifyTable(module_state()) &&
            VerifyOffset(verifier, VT_OPTIMIZER_GROUPS) &&
@@ -574,38 +598,37 @@ struct Checkpoint FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
 
 struct CheckpointBuilder {
   typedef Checkpoint Table;
-  flatbuffers::FlatBufferBuilder &fbb_;
-  flatbuffers::uoffset_t start_;
+  ::flatbuffers::FlatBufferBuilder &fbb_;
+  ::flatbuffers::uoffset_t start_;
   void add_version(int32_t version) {
     fbb_.AddElement<int32_t>(Checkpoint::VT_VERSION, version, 0);
   }
-  void add_module_state(flatbuffers::Offset<onnxruntime::fbs::ModuleState> module_state) {
+  void add_module_state(::flatbuffers::Offset<onnxruntime::fbs::ModuleState> module_state) {
     fbb_.AddOffset(Checkpoint::VT_MODULE_STATE, module_state);
   }
-  void add_optimizer_groups(flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::OptimizerGroup>>> optimizer_groups) {
+  void add_optimizer_groups(::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::OptimizerGroup>>> optimizer_groups) {
     fbb_.AddOffset(Checkpoint::VT_OPTIMIZER_GROUPS, optimizer_groups);
   }
-  void add_property_bag(flatbuffers::Offset<onnxruntime::fbs::PropertyBag> property_bag) {
+  void add_property_bag(::flatbuffers::Offset<onnxruntime::fbs::PropertyBag> property_bag) {
     fbb_.AddOffset(Checkpoint::VT_PROPERTY_BAG, property_bag);
   }
-  explicit CheckpointBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+  explicit CheckpointBuilder(::flatbuffers::FlatBufferBuilder &_fbb)
         : fbb_(_fbb) {
     start_ = fbb_.StartTable();
   }
-  CheckpointBuilder &operator=(const CheckpointBuilder &);
-  flatbuffers::Offset<Checkpoint> Finish() {
+  ::flatbuffers::Offset<Checkpoint> Finish() {
     const auto end = fbb_.EndTable(start_);
-    auto o = flatbuffers::Offset<Checkpoint>(end);
+    auto o = ::flatbuffers::Offset<Checkpoint>(end);
     return o;
   }
 };
 
-inline flatbuffers::Offset<Checkpoint> CreateCheckpoint(
-    flatbuffers::FlatBufferBuilder &_fbb,
+inline ::flatbuffers::Offset<Checkpoint> CreateCheckpoint(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
     int32_t version = 0,
-    flatbuffers::Offset<onnxruntime::fbs::ModuleState> module_state = 0,
-    flatbuffers::Offset<flatbuffers::Vector<flatbuffers::Offset<onnxruntime::fbs::OptimizerGroup>>> optimizer_groups = 0,
-    flatbuffers::Offset<onnxruntime::fbs::PropertyBag> property_bag = 0) {
+    ::flatbuffers::Offset<onnxruntime::fbs::ModuleState> module_state = 0,
+    ::flatbuffers::Offset<::flatbuffers::Vector<::flatbuffers::Offset<onnxruntime::fbs::OptimizerGroup>>> optimizer_groups = 0,
+    ::flatbuffers::Offset<onnxruntime::fbs::PropertyBag> property_bag = 0) {
   CheckpointBuilder builder_(_fbb);
   builder_.add_property_bag(property_bag);
   builder_.add_optimizer_groups(optimizer_groups);
@@ -614,13 +637,13 @@ inline flatbuffers::Offset<Checkpoint> CreateCheckpoint(
   return builder_.Finish();
 }
 
-inline flatbuffers::Offset<Checkpoint> CreateCheckpointDirect(
-    flatbuffers::FlatBufferBuilder &_fbb,
+inline ::flatbuffers::Offset<Checkpoint> CreateCheckpointDirect(
+    ::flatbuffers::FlatBufferBuilder &_fbb,
     int32_t version = 0,
-    flatbuffers::Offset<onnxruntime::fbs::ModuleState> module_state = 0,
-    const std::vector<flatbuffers::Offset<onnxruntime::fbs::OptimizerGroup>> *optimizer_groups = nullptr,
-    flatbuffers::Offset<onnxruntime::fbs::PropertyBag> property_bag = 0) {
-  auto optimizer_groups__ = optimizer_groups ? _fbb.CreateVector<flatbuffers::Offset<onnxruntime::fbs::OptimizerGroup>>(*optimizer_groups) : 0;
+    ::flatbuffers::Offset<onnxruntime::fbs::ModuleState> module_state = 0,
+    const std::vector<::flatbuffers::Offset<onnxruntime::fbs::OptimizerGroup>> *optimizer_groups = nullptr,
+    ::flatbuffers::Offset<onnxruntime::fbs::PropertyBag> property_bag = 0) {
+  auto optimizer_groups__ = optimizer_groups ? _fbb.CreateVector<::flatbuffers::Offset<onnxruntime::fbs::OptimizerGroup>>(*optimizer_groups) : 0;
   return onnxruntime::fbs::CreateCheckpoint(
       _fbb,
       version,
@@ -630,11 +653,11 @@ inline flatbuffers::Offset<Checkpoint> CreateCheckpointDirect(
 }
 
 inline const onnxruntime::fbs::Checkpoint *GetCheckpoint(const void *buf) {
-  return flatbuffers::GetRoot<onnxruntime::fbs::Checkpoint>(buf);
+  return ::flatbuffers::GetRoot<onnxruntime::fbs::Checkpoint>(buf);
 }
 
 inline const onnxruntime::fbs::Checkpoint *GetSizePrefixedCheckpoint(const void *buf) {
-  return flatbuffers::GetSizePrefixedRoot<onnxruntime::fbs::Checkpoint>(buf);
+  return ::flatbuffers::GetSizePrefixedRoot<onnxruntime::fbs::Checkpoint>(buf);
 }
 
 inline const char *CheckpointIdentifier() {
@@ -642,29 +665,34 @@ inline const char *CheckpointIdentifier() {
 }
 
 inline bool CheckpointBufferHasIdentifier(const void *buf) {
-  return flatbuffers::BufferHasIdentifier(
+  return ::flatbuffers::BufferHasIdentifier(
       buf, CheckpointIdentifier());
 }
 
+inline bool SizePrefixedCheckpointBufferHasIdentifier(const void *buf) {
+  return ::flatbuffers::BufferHasIdentifier(
+      buf, CheckpointIdentifier(), true);
+}
+
 inline bool VerifyCheckpointBuffer(
-    flatbuffers::Verifier &verifier) {
+    ::flatbuffers::Verifier &verifier) {
   return verifier.VerifyBuffer<onnxruntime::fbs::Checkpoint>(CheckpointIdentifier());
 }
 
 inline bool VerifySizePrefixedCheckpointBuffer(
-    flatbuffers::Verifier &verifier) {
+    ::flatbuffers::Verifier &verifier) {
   return verifier.VerifySizePrefixedBuffer<onnxruntime::fbs::Checkpoint>(CheckpointIdentifier());
 }
 
 inline void FinishCheckpointBuffer(
-    flatbuffers::FlatBufferBuilder &fbb,
-    flatbuffers::Offset<onnxruntime::fbs::Checkpoint> root) {
+    ::flatbuffers::FlatBufferBuilder &fbb,
+    ::flatbuffers::Offset<onnxruntime::fbs::Checkpoint> root) {
   fbb.Finish(root, CheckpointIdentifier());
 }
 
 inline void FinishSizePrefixedCheckpointBuffer(
-    flatbuffers::FlatBufferBuilder &fbb,
-    flatbuffers::Offset<onnxruntime::fbs::Checkpoint> root) {
+    ::flatbuffers::FlatBufferBuilder &fbb,
+    ::flatbuffers::Offset<onnxruntime::fbs::Checkpoint> root) {
   fbb.FinishSizePrefixed(root, CheckpointIdentifier());
 }
 

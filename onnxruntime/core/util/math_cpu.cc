@@ -20,6 +20,7 @@
 #include "core/framework/float16.h"
 
 #include <algorithm>
+#include <type_traits>
 #include "core/common/narrow.h"
 #include "core/mlas/inc/mlas.h"
 #if defined(__GNUC__)
@@ -855,12 +856,28 @@ void Col2imNd<float, CPUMathUtil, StorageOrder::NCHW>(const float* data_col, con
 SPECIALIZED_COPYVECTOR(float)
 #undef SPECIALIZED_COPYVECTOR
 
+// like C++20's std::bit_cast
+// adapted from the example implementation here: https://en.cppreference.com/w/cpp/numeric/bit_cast
+// TODO replace this with std::bit_cast when we move to C++20
+template <typename Dst, typename Src>
+static std::enable_if_t<
+    sizeof(Src) == sizeof(Dst) &&
+        std::is_trivially_copyable_v<Src> &&
+        std::is_trivially_copyable_v<Dst> &&
+        std::is_trivially_constructible_v<Dst>,
+    Dst>
+BitCast(const Src& src) {
+  Dst dst;
+  std::memcpy(&dst, &src, sizeof(dst));
+  return dst;
+}
+
 uint16_t floatToHalf(float f) {
-  return Eigen::half_impl::float_to_half_rtne(f).x;
+  return BitCast<uint16_t>(Eigen::half_impl::float_to_half_rtne(f).x);
 }
 
 uint16_t doubleToHalf(double f) {
-  return Eigen::half_impl::float_to_half_rtne(static_cast<float>(f)).x;
+  return BitCast<uint16_t>(Eigen::half_impl::float_to_half_rtne(static_cast<float>(f)).x);
 }
 
 float halfToFloat(uint16_t h) {

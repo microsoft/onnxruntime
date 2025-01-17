@@ -25,7 +25,7 @@ const constexpr auto run_with_tunable_op = &run_options;
 
 }  // namespace
 
-// Only CUDA and ROCM kernel has float 16 support
+// Only CUDA, ROCM, CoreML and XNNPack kernels have float 16 support
 TEST(GemmOpTest, GemmNoTrans_f16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -34,36 +34,142 @@ TEST(GemmOpTest, GemmNoTrans_f16) {
     return;
   }
 #endif
-  OpTester test("Gemm", 13);
-
-  test.AddAttribute("transA", (int64_t)0);
-  test.AddAttribute("transB", (int64_t)0);
-  test.AddAttribute("alpha", 1.0f);
-  test.AddAttribute("beta", 1.0f);
 
   std::vector<float> A{1.0f, 2.0f, 3.0f, 4.0f,
                        -1.0f, -2.0f, -3.0f, -4.0f};
-  std::vector<float> B(12, 1.0f);
-  std::vector<float> C(6, 1.0f);
-  std::vector<float> Y{11.0f, 11.0f, 11.0f,
-                       -9.0f, -9.0f, -9.0f};
+  std::vector<float> B = {0.5f, 2.1f, 1.2f, -0.3f,
+                          -1.2f, 0.2f, 1.0f, -2.1f,
+                          1.3f, 4.1f, 1.3f, -8.1f};
+  std::vector<float> C = {0.5f, 2.1f, 1.2f,
+                          -0.3f, -1.2f, 0.2f};
 
   std::vector<MLFloat16> f_A(8);
   std::vector<MLFloat16> f_B(12);
-  std::vector<MLFloat16> f_C(6);
-  std::vector<MLFloat16> f_Y(6);
   ConvertFloatToMLFloat16(A.data(), f_A.data(), 8);
   ConvertFloatToMLFloat16(B.data(), f_B.data(), 12);
-  ConvertFloatToMLFloat16(C.data(), f_C.data(), 6);
-  ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
 
-  test.AddInput<MLFloat16>("A", {2, 4}, f_A);
-  test.AddInput<MLFloat16>("B", {4, 3}, f_B);
-  test.AddInput<MLFloat16>("C", {2, 3}, f_C);
-  test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
-  test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
-      .Config(run_with_tunable_op)
-      .RunWithConfig();
+  {
+    // bias has same shape as output
+    std::vector<MLFloat16> f_Y(6);
+    std::vector<float> Y{19.8f, 0.7f, -25.7f,
+                         -19.6f, 0.2f, 27.1f};
+    ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
+
+    std::vector<MLFloat16> f_C(6);
+    ConvertFloatToMLFloat16(C.data(), f_C.data(), 6);
+
+    OpTester test("Gemm", 13);
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 1.0f);
+    test.AddInput<MLFloat16>("A", {2, 4}, f_A);
+    test.AddInput<MLFloat16>("B", {4, 3}, f_B);
+    test.AddInput<MLFloat16>("C", {2, 3}, f_C);
+    test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
+    // we used float data with decimal instead of only integer, increase Tolerance to make test pass
+    test.SetOutputTolerance(0.005f);
+    test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
+        .Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
+  {
+    // bias has  shape {1,  output_features}
+    std::vector<MLFloat16> f_Y(6);
+    std::vector<float> Y{19.8f, 0.7f, -25.7f,
+                         -18.8f, 3.5f, 28.1f};
+    ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
+
+    std::vector<MLFloat16> f_C(3);
+    ConvertFloatToMLFloat16(C.data(), f_C.data(), 3);
+    // CoreML program require B/C are constant
+    OpTester test("Gemm", 13);
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 1.0f);
+    test.AddInput<MLFloat16>("A", {2, 4}, f_A);
+    test.AddInput<MLFloat16>("B", {4, 3}, f_B, true);
+    test.AddInput<MLFloat16>("C", {3}, f_C, true);
+    test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
+    test.SetOutputTolerance(0.005f);
+    test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
+        .Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
+  {
+    // bias is a scalar
+    std::vector<MLFloat16> f_Y(6);
+    std::vector<float> Y{19.8f, -0.9f, -26.4f,
+                         -18.8f, 1.9f, 27.4f};
+    ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
+
+    std::vector<MLFloat16> f_C(1);
+    ConvertFloatToMLFloat16(C.data(), f_C.data(), 1);
+    OpTester test("Gemm", 13);
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 1.0f);
+    test.AddInput<MLFloat16>("A", {2, 4}, f_A);
+    test.AddInput<MLFloat16>("B", {4, 3}, f_B, true);
+    test.AddInput<MLFloat16>("C", {1}, f_C, true);
+    test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
+    test.SetOutputTolerance(0.005f);
+    test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
+        .Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
+}
+
+// Only CUDA, ROCM and CoreML kernels have float 16 support
+TEST(GemmOpTest, GemmTransB_f16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware NOT support FP16";
+    return;
+  }
+#endif
+
+  std::vector<float> A{1.0f, 2.0f, 3.0f, 4.0f,
+                       -1.0f, -2.0f, -3.0f, -4.0f};
+  std::vector<float> B = {0.5f, 2.1f, 1.2f, -0.3f,
+                          -1.2f, 0.2f, 1.0f, -2.1f,
+                          1.3f, 4.1f, 1.3f, -8.1f};
+  std::vector<float> C = {0.5f, 2.1f, 1.2f,
+                          -0.3f, -1.2f, 0.2f};
+
+  std::vector<MLFloat16> f_A(8);
+  std::vector<MLFloat16> f_B(12);
+  ConvertFloatToMLFloat16(A.data(), f_A.data(), 8);
+  ConvertFloatToMLFloat16(B.data(), f_B.data(), 12);
+  {
+    // bias is a scalar and  transB is True
+    std::vector<MLFloat16> f_Y(6);
+    std::vector<float> Y{7.6f, -5.7f, -18.5f, -6.6f, 6.7f, 19.5f};
+    ConvertFloatToMLFloat16(Y.data(), f_Y.data(), 6);
+
+    std::vector<MLFloat16> f_C(1);
+    ConvertFloatToMLFloat16(C.data(), f_C.data(), 1);
+    OpTester test("Gemm", 13);
+
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)1);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 1.0f);
+    test.AddInput<MLFloat16>("A", {2, 4}, f_A);
+    test.AddInput<MLFloat16>("B", {3, 4}, f_B, true);
+    test.AddInput<MLFloat16>("C", {1}, f_C, true);
+    test.AddOutput<MLFloat16>("Y", {2, 3}, f_Y);
+    test.SetOutputTolerance(0.005f);
+    test.ConfigExcludeEps({kTensorrtExecutionProvider})  // TensorRT: fp16 is not supported
+        .Config(run_with_tunable_op)
+        .RunWithConfig();
+  }
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DNNL)
@@ -277,28 +383,35 @@ class GemmOpTypedTests : public ::testing::Test {
 // On CPUs without fp16 instructions the tests will output a warning:
 // "registered execution providers CPUExecutionProvider were unable to run the model"
 // , then they will still pass.
-using GemmOpTypedTestsTypes = ::testing::Types<float, double, MLFloat16>;
+using GemmOpTypedTestsTypes = ::testing::Types<float, double>;
 TYPED_TEST_SUITE(GemmOpTypedTests, GemmOpTypedTestsTypes);
 
 TYPED_TEST(GemmOpTypedTests, TestGemmScalarBroadcast) {
-  OpTester test("Gemm");
+  auto run_test = [](bool b_is_initializer, bool c_is_initializer) {
+    OpTester test("Gemm");
 
-  test.AddAttribute("transA", (int64_t)0);
-  test.AddAttribute("transB", (int64_t)0);
-  test.AddAttribute("alpha", 1.0f);
-  test.AddAttribute("beta", 1.0f);
+    test.AddAttribute("transA", (int64_t)0);
+    test.AddAttribute("transB", (int64_t)0);
+    test.AddAttribute("alpha", 1.0f);
+    test.AddAttribute("beta", 1.0f);
 
-  test.AddInput<TypeParam>("A", {2, 4},
-                           {static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f),
-                            static_cast<TypeParam>(-1.0f), static_cast<TypeParam>(-2.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-4.0f)});
-  test.AddInput<TypeParam>("B", {4, 3}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)));
-  test.AddInput<TypeParam>("C", {1}, std::vector<TypeParam>{static_cast<TypeParam>(1.0f)});
-  test.AddOutput<TypeParam>("Y", {2, 3},
-                            {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f),
-                             static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f)});
-  test.Config(run_with_tunable_op)
-      .RunWithConfig();
+    test.AddInput<TypeParam>("A", {2, 4},
+                             {static_cast<TypeParam>(1.0f), static_cast<TypeParam>(2.0f), static_cast<TypeParam>(3.0f), static_cast<TypeParam>(4.0f),
+                              static_cast<TypeParam>(-1.0f), static_cast<TypeParam>(-2.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-4.0f)});
+    test.AddInput<TypeParam>("B", {4, 3}, std::vector<TypeParam>(12, static_cast<TypeParam>(1.0f)), b_is_initializer);
+    test.AddInput<TypeParam>("C", {1}, std::vector<TypeParam>{static_cast<TypeParam>(1.0f)}, c_is_initializer);
+    test.AddOutput<TypeParam>("Y", {2, 3},
+                              {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f),
+                               static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f)});
+    test.Config(run_with_tunable_op)
+        .RunWithConfig();
+  };
+
+  run_test(false, false);
+  // CoreML EP requires weight and bias to be initializers
+  run_test(true, true);
 }
+
 TYPED_TEST(GemmOpTypedTests, TestGemm2DBroadcast_2) {
   OpTester test("Gemm");
 
@@ -357,10 +470,19 @@ TYPED_TEST(GemmOpTypedTests, TestGemmBroadcast) {
     test.AddOutput<TypeParam>("Y", {2, 3},
                               {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(12.0f), static_cast<TypeParam>(13.0f),
                                static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-8.0f), static_cast<TypeParam>(-7.0f)});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
-    test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
+
+    std::unordered_set<std::string> excluded_providers;
+#if defined(OPENVINO_CONFIG_GPU)
+    excluded_providers.insert(kOpenVINOExecutionProvider);  // OpenVINO: Temporarily disabled due to accuracy issues
 #endif
-    test.Config(run_with_tunable_op)
+
+    if (b_is_initializer && !c_is_initializer) {
+      // Accuracy issues on QNN's CPU backend with QNN SDK version 2.17
+      excluded_providers.insert(kQnnExecutionProvider);
+    }
+
+    test.ConfigExcludeEps(excluded_providers)
+        .Config(run_with_tunable_op)
         .RunWithConfig();
   };
 
@@ -389,7 +511,7 @@ TYPED_TEST(GemmOpTypedTests, TestGemmTrans) {
   test.AddOutput<TypeParam>("Y", {2, 3},
                             {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f),
                              static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f)});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU)
   test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #endif
   test.Config(run_with_tunable_op)
@@ -415,7 +537,7 @@ TYPED_TEST(GemmOpTypedTests, TestGemmTransB) {
     test.AddOutput<TypeParam>("Y", {2, 3},
                               {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f),
                                static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f)});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU)
     test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #endif
     test.Config(run_with_tunable_op)
@@ -445,7 +567,7 @@ TYPED_TEST(GemmOpTypedTests, TestGemmTransB_1) {
     test.AddOutput<TypeParam>("Y", {2, 3},
                               {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f), static_cast<TypeParam>(11.0f),
                                static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-9.0f)});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU)
     test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #endif
     test.Config(run_with_tunable_op)
@@ -475,7 +597,7 @@ TYPED_TEST(GemmOpTypedTests, TestGemmAlpha) {
   // test.AddOutput<TypeParam>("Y", {2, 3},
   //                   {5.0f, 5.0f, 5.0f,
   //                    -5.0f, -5.0f, -5.0f});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU)
   test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #else
   test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
@@ -500,7 +622,7 @@ TYPED_TEST(GemmOpTypedTests, TestGemmBeta) {
   test.AddOutput<TypeParam>("Y", {2, 3},
                             {static_cast<TypeParam>(12.0f), static_cast<TypeParam>(12.0f), static_cast<TypeParam>(12.0f),
                              static_cast<TypeParam>(-8.0f), static_cast<TypeParam>(-8.0f), static_cast<TypeParam>(-8.0f)});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU)
   test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #else
   test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
@@ -548,7 +670,7 @@ TYPED_TEST(GemmOpTypedTests, TestGemmAlphaBeta) {
   test.AddOutput<TypeParam>("Y", {2, 3},
                             {static_cast<TypeParam>(7.0f), static_cast<TypeParam>(7.0f), static_cast<TypeParam>(7.0f),
                              static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-3.0f), static_cast<TypeParam>(-3.0f)});
-#if defined(OPENVINO_CONFIG_GPU_FP16) || defined(OPENVINO_CONFIG_GPU_FP32)
+#if defined(OPENVINO_CONFIG_GPU)
   test.ConfigExcludeEps({kOpenVINOExecutionProvider});  // OpenVINO: Temporarily disabled due to accuracy issues
 #else
   test.ConfigExcludeEps({kTensorrtExecutionProvider});  // TensorRT: Seg fault in parser
@@ -625,6 +747,46 @@ TYPED_TEST(GemmOpTypedTests, GemmEmptyTensor) {
       .Config(run_with_tunable_op)
       .RunWithConfig();
 }
+
+TYPED_TEST(GemmOpTypedTests, ZeroKWithBias) {
+  OpTester test("Gemm", 13);
+
+  test.AddAttribute("transA", static_cast<int64_t>(0));
+  test.AddAttribute("transB", static_cast<int64_t>(0));
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", 1.0f);
+
+  test.AddInput<TypeParam>("A", {4, 0}, {});
+  test.AddInput<TypeParam>("B", {0, 4}, {});
+  test.AddInput<TypeParam>("C", {4}, std::vector<TypeParam>(4, static_cast<TypeParam>(1.0f)));
+  test.AddOutput<TypeParam>("Y", {4, 4}, std::vector<TypeParam>(16, static_cast<TypeParam>(1.0f)));
+
+  test.ConfigExcludeEps({kCoreMLExecutionProvider, kNnapiExecutionProvider,
+                         kDmlExecutionProvider, kDnnlExecutionProvider, kQnnExecutionProvider,
+                         kOpenVINOExecutionProvider})
+      .Config(run_with_tunable_op)
+      .RunWithConfig();
+}
+
+TYPED_TEST(GemmOpTypedTests, ZeroKWithNoBias) {
+  OpTester test("Gemm", 13);
+
+  test.AddAttribute("transA", static_cast<int64_t>(0));
+  test.AddAttribute("transB", static_cast<int64_t>(0));
+  test.AddAttribute("alpha", 1.0f);
+  test.AddAttribute("beta", .0f);
+
+  test.AddInput<TypeParam>("A", {4, 0}, {});
+  test.AddInput<TypeParam>("B", {0, 4}, {});
+  test.AddOutput<TypeParam>("Y", {4, 4}, std::vector<TypeParam>(16, static_cast<TypeParam>(0.0f)));
+
+  test.ConfigExcludeEps({kCoreMLExecutionProvider, kNnapiExecutionProvider,
+                         kDmlExecutionProvider, kDnnlExecutionProvider, kQnnExecutionProvider,
+                         kOpenVINOExecutionProvider})
+      .Config(run_with_tunable_op)
+      .RunWithConfig();
+}
+
 TYPED_TEST(GemmOpTypedTests, MissingBias) {
   OpTester test("Gemm", 11);
 

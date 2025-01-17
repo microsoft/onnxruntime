@@ -19,7 +19,7 @@ struct ConfigOptions {
 
   // Gets the config string associated with the given config_key.
   // If not found, an empty optional is returned.
-  optional<std::string> GetConfigEntry(const std::string& config_key) const noexcept;
+  std::optional<std::string> GetConfigEntry(const std::string& config_key) const noexcept;
 
   // Check if this instance of ConfigOptions has a config using the given config_key.
   // Returns true if found and copies the value into config_value.
@@ -32,6 +32,8 @@ struct ConfigOptions {
 
   // Add a config pair (config_key, config_value) to this instance of ConfigOptions
   Status AddConfigEntry(const char* config_key, const char* config_value) noexcept;
+
+  friend std::ostream& operator<<(std::ostream& os, const ConfigOptions& config_options);
 };
 
 }  // namespace onnxruntime

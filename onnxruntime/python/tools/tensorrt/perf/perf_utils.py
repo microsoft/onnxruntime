@@ -39,6 +39,7 @@ latency_over_time_name = "latency_over_time"
 specs_name = "specs"
 session_name = "session"
 session_over_time_name = "session_over_time"
+op_metrics_name = "op_metrics"
 
 # column names
 model_title = "Model"
@@ -233,7 +234,7 @@ def calculate_trt_op_percentage(trt_op_map, cuda_op_map):
 
     if total_ops == 0:
         print("Error ...")
-        raise
+        raise RuntimeError
 
     if len(trt_op_map) == 0:
         total_cuda_and_cpu_ops = total_ops
@@ -279,7 +280,7 @@ def calculate_trt_latency_percentage(trt_op_map):
             op_map = trt_op_map[ep]
 
             total_time = 0
-            for _key, value in op_map.items():
+            for value in op_map.values():
                 total_time += int(value)
 
             if ep == "TensorrtExecutionProvider":

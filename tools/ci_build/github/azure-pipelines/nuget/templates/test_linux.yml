@@ -1,25 +1,29 @@
 parameters:
-  AgentPool: 'onnxruntime-Ubuntu2004-AMD-CPU'
+  AgentPool: 'onnxruntime-Ubuntu2204-AMD-CPU'
   ArtifactSuffix: ''
   NugetPackageName : ''
   StageSuffix: 'CPU'
+  # More Suffix is used to differentiate testing for GPU and GPU-Windows/GPU-Linux packages
+  MoreSuffix: ''
   NativePackagePrefix: 'onnxruntime'
   SpecificArtifact: false
+  CustomOpArtifactName: 'onnxruntime-linux-x64'
   BuildId: '0'
-
+  CudaVersion: '11.8'
 stages:
-- stage: NuGet_Test_Linux_${{ parameters.StageSuffix }}
+- stage: NuGet_Test_Linux_${{ parameters.StageSuffix }}${{ parameters.MoreSuffix }}
   dependsOn:
   - NuGet_Packaging_${{ parameters.StageSuffix }}
   condition: succeeded()
   jobs:
-  - job:
+  - job: NuGet_Test_Linux_${{ parameters.StageSuffix }}${{ parameters.MoreSuffix }}
     workspace:
       clean: all
     timeoutInMinutes: 120
     pool: ${{ parameters.AgentPool }}
 
     variables:
+    - template: ../../templates/common-variables.yml
     - name: OnnxRuntimeBuildDirectory
       value: '$(Build.BinariesDirectory)'
 
@@ -35,7 +39,7 @@ stages:
     - template: ../../templates/flex-downloadPipelineArtifact.yml
       parameters:
         StepName: 'Download Linux CustomOp TestData'
-        ArtifactName: 'onnxruntime-linux-x64'
+        ArtifactName: ${{ parameters.CustomOpArtifactName }}
         TargetPath: '$(Build.BinariesDirectory)/testdata'
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
@@ -49,20 +53,62 @@ stages:
       inputs:
         script: |
           ln -sf /data/models $(Build.BinariesDirectory)
-
-    - task: Bash@3
-      displayName: 'Run Package Test'
-      inputs:
-        targetType: filePath
-        filePath: '$(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh'
-        arguments: '$(Build.BinariesDirectory)/nuget-artifact $(NuGetPackageVersionNumber)'
-        workingDirectory: $(Build.BinariesDirectory)
-      env:
-        OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
-        DisableContribOps: $(DisableContribOps)
-        DisableMlOps: $(DisableMlOps)
-        IsReleaseBuild: $(IsReleaseBuild)
-        PACKAGENAME: ${{ parameters.NugetPackageName }}
+    # As for Debian installation, replace '-1.' by '-1+' when assigning trt version below
+    - ${{if contains(parameters.StageSuffix , 'GPU') }}:
+      - template: ../../templates/get-docker-image-steps.yml
+        parameters:
+          Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.package_ubuntu_2004_gpu
+          Context: tools/ci_build/github/linux/docker/
+          ${{ if eq(parameters.CudaVersion, '12.2') }}:
+            DockerBuildArgs: "
+            --build-arg BASEIMAGE=nvidia/cuda:12.2.2-devel-ubuntu20.04
+            --build-arg TRT_VERSION=${{ replace(variables.linux_trt_version_cuda12, '-1.', '-1+') }}
+            --build-arg BUILD_UID=$( id -u )
+            "
+          ${{ else }}:
+            DockerBuildArgs: "
+            --build-arg BUILD_UID=$( id -u )
+            "
+          Repository: onnxruntimepackagestest
+      - bash: |
+          docker run --rm \
+            --gpus all \
+            --volume $(Build.SourcesDirectory):/onnxruntime_src \
+            --volume $(Build.BinariesDirectory):/build \
+            --volume /data/models:/build/models:ro \
+            -e BUILD_SOURCESDIRECTORY='/onnxruntime_src' \
+            -e OnnxRuntimeBuildDirectory='/build' \
+            -e DisableContribOps='$(DisableContribOps)' \
+            -e DisableMlOps='$(DisableMlOps)' \
+            -e IsReleaseBuild='$(IsReleaseBuild)' \
+            -e PACKAGENAME='${{ parameters.NugetPackageName }}' \
+            onnxruntimepackagestest \
+            /bin/bash -c "
+              set -ex; \
+              pushd /build; \
+              bash /onnxruntime_src/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh /build/nuget-artifact $(NuGetPackageVersionNumber); \
+              popd
+              "
+        displayName: 'Run Package Test'
+    - ${{ else }}:
+        - task: CmdLine@2
+          displayName: 'Create symlink for test models'
+          inputs:
+            script: |
+              ln -sf /data/models $(Build.BinariesDirectory)
+        - task: Bash@3
+          displayName: 'Run Package Test'
+          inputs:
+            targetType: filePath
+            filePath: '$(Build.SourcesDirectory)/csharp/test/Microsoft.ML.OnnxRuntime.EndToEndTests/runtest.sh'
+            arguments: '$(Build.BinariesDirectory)/nuget-artifact $(NuGetPackageVersionNumber)'
+            workingDirectory: $(Build.BinariesDirectory)
+          env:
+            OnnxRuntimeBuildDirectory: $(Build.BinariesDirectory)
+            DisableContribOps: $(DisableContribOps)
+            DisableMlOps: $(DisableMlOps)
+            IsReleaseBuild: $(IsReleaseBuild)
+            PACKAGENAME: ${{ parameters.NugetPackageName }}
 
     - template: ../../templates/component-governance-component-detection-steps.yml
       parameters:

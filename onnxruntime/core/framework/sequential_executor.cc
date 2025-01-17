@@ -68,7 +68,7 @@ static void CalculateTotalOutputSizes(OpKernelContextInternal* op_kernel_context
   int output_count = op_kernel_context->OutputCount();
   for (auto i = 0; i < output_count; i++) {
     const OrtValue* p_output = op_kernel_context->GetOutputMLValue(i);
-    if (p_output != nullptr && p_output->IsTensor()) {
+    if (p_output != nullptr && p_output->IsTensor() && p_output->IsAllocated()) {
       const auto& tensor = p_output->Get<Tensor>();
       size_t tensor_size = tensor.SizeInBytes();
 #if defined(TRACE_EXECUTION)
@@ -104,7 +104,7 @@ static void CalculateTotalInputSizes(const OpKernelContextInternal* op_kernel_co
   const int input_count = op_kernel_context->InputCount();
   for (auto i = 0; i < input_count; i++) {
     const OrtValue* p_input = op_kernel_context->GetInputMLValue(i);
-    if (p_input != nullptr && p_input->IsTensor()) {
+    if (p_input != nullptr && p_input->IsTensor() && p_input->IsAllocated()) {
       const OpKernelInfo& op_kernel_info = p_op_kernel->Info();
       const Tensor* p_tensor = nullptr;
       bool is_param = op_kernel_info.TryGetConstantInput(i, &p_tensor);
@@ -181,7 +181,7 @@ class SessionScope {
     }
 
     auto& logger = session_state_.Logger();
-    LOGS(logger, VERBOSE) << "Begin execution";
+    VLOGS(logger, 0) << "Begin execution";
     const SequentialExecutionPlan& seq_exec_plan = *session_state_.GetExecutionPlan();
     const auto& exec_plan_vec = seq_exec_plan.execution_plan;
     VLOGS(logger, 1) << "Size of execution plan vector: " << exec_plan_vec.size();
@@ -306,18 +306,20 @@ class KernelScope {
 #endif
 
 #ifdef ENABLE_NVTX_PROFILE
-    auto& node = kernel_.Node();
-    profile::NvtxRangeCreator& forward_range = session_scope_.forward_range_;
-    profile::NvtxRangeCreator& backward_range = session_scope_.backward_range_;
-    if (node.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
-      // Start timing forward pass when encountering the first forward node.
-      forward_range.Begin();
-    } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled() &&
-               forward_range.IsBeginCalled()) {
-      // Start timing backward pass when encountering the first backward node.
-      // In the meanwhile, forward range ends.
-      forward_range.End();
-      backward_range.Begin();
+    {
+      auto& node = kernel_.Node();
+      profile::NvtxRangeCreator& forward_range = session_scope_.forward_range_;
+      profile::NvtxRangeCreator& backward_range = session_scope_.backward_range_;
+      if (node.Description() != "Backward pass" && !forward_range.IsBeginCalled()) {
+        // Start timing forward pass when encountering the first forward node.
+        forward_range.Begin();
+      } else if (node.Description() == "Backward pass" && !backward_range.IsBeginCalled() &&
+                 forward_range.IsBeginCalled()) {
+        // Start timing backward pass when encountering the first backward node.
+        // In the meanwhile, forward range ends.
+        forward_range.End();
+        backward_range.Begin();
+      }
     }
 #endif
 
@@ -337,12 +339,6 @@ class KernelScope {
     if (session_state_.Profiler().IsEnabled()) {
       auto& node = kernel.Node();
       node_name_ = node.Name().empty() ? MakeString(node.OpType(), "_", node.Index()) : node.Name();
-      auto& profiler = session_state_.Profiler();
-      auto sync_time_begin = profiler.Start();
-      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                     node_name_ + "_fence_before",
-                                     sync_time_begin,
-                                     {{"op_name", kernel_.KernelDef().OpName()}});
       concurrency::ThreadPool::StartProfiling(session_state_.GetThreadPool());
       VLOGS(session_state_.Logger(), 1) << "Computing kernel: " << node_name_;
       kernel_begin_time_ = session_state_.Profiler().Start();
@@ -379,11 +375,6 @@ class KernelScope {
                                          {"thread_scheduling_stats",
                                           concurrency::ThreadPool::StopProfiling(session_state_.GetThreadPool())},
                                      });
-      auto sync_time_begin = profiler.Start();
-      profiler.EndTimeAndRecordEvent(profiling::NODE_EVENT,
-                                     node_name_ + "_fence_after",
-                                     sync_time_begin,
-                                     {{"op_name", kernel_.KernelDef().OpName()}});
     }
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
@@ -440,7 +431,7 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
   if (p_kernel->KernelDef().OpName() == "YieldOp") {
     // Do not execute YieldOp (it is an no-op anyways).
     // Decrement the reference count of tensors that are not needed beyond this point.
-    // REVEIW(codemzs): The current model assumes the intermediate tensors that are exported
+    // REVIEW(codemzs): The current model assumes the intermediate tensors that are exported
     // as graph outputs are owned by ORT, the risk of caller freeing the tensor or manipulating tensor
     // memory lingers while the tensor is used downstream after the export.
     ctx.RecycleNodeInputs(idx);
@@ -515,7 +506,7 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
     return Status(status.Category(), status.Code(), msg_string);
   }
   ctx.RecycleNodeInputs(idx);
-  LOGS(logger, VERBOSE) << "stream " << stream_idx << " launch kernel with idx " << idx;
+  VLOGS(logger, 0) << "stream " << stream_idx << " launch kernel with idx " << idx;
   return Status::OK();
 }
 
@@ -531,7 +522,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
                                    const bool only_execute_path_to_fetches,
                                    bool single_thread_mode) {
   auto* execution_plan = session_state.GetExecutionPlan();
-  LOGS(logger, VERBOSE) << "Number of streams: " << execution_plan->execution_plan.size();
+  VLOGS(logger, 0) << "Number of streams: " << execution_plan->execution_plan.size();
   int32_t valid_streams = 0;
   for (auto& stream : execution_plan->execution_plan) {
     if (stream && stream->steps_.size() > 0)
@@ -613,7 +604,8 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 
 #ifdef ENABLE_TRAINING
 onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl::span<const int> feed_mlvalue_idxs,
-                                          gsl::span<const OrtValue> feeds, gsl::span<const int> fetch_mlvalue_idxs,
+                                          std::vector<OrtValue>& feeds,
+                                          gsl::span<const int> fetch_mlvalue_idxs,
                                           std::vector<OrtValue>& fetches,
                                           const std::unordered_map<size_t, IExecutor::CustomAllocator>&
                                               fetch_allocators,
@@ -624,8 +616,10 @@ onnxruntime::Status PartialExecuteThePlan(const SessionState& session_state, gsl
                                           PartialGraphExecutionState& state,
                                           const OrtValueCachePtr& cache,
                                           int32_t partial_graph_index) {
+  // Be noted: feeds will be std::move to ctx, so it will be empty after this function.
   auto& ctx = state.GetExecutionContext(feed_mlvalue_idxs, feeds, fetch_mlvalue_idxs, fetches,
                                         fetch_allocators, session_state, logger, device_streams);
+
   auto* plan = session_state.GetExecutionPlan();
 
   ctx.SetCurrentRange(&state.GetProgramRegions(session_state));

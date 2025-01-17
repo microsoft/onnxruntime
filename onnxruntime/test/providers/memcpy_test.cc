@@ -47,6 +47,7 @@ TEST(MemcpyTest, copy1) {
   PutAllNodesOnOneProvider(model.MainGraph(), onnxruntime::kCpuExecutionProvider);
 
   DataTransferManager dtm;
+  ExternalDataLoaderManager edlm;
   profiling::Profiler profiler;
 
   SessionOptions sess_options;
@@ -55,7 +56,7 @@ TEST(MemcpyTest, copy1) {
   sess_options.use_deterministic_compute = false;
   sess_options.enable_mem_reuse = true;
 
-  SessionState s(model.MainGraph(), execution_providers, &tp, nullptr, dtm,
+  SessionState s(model.MainGraph(), execution_providers, &tp, nullptr, dtm, edlm,
                  DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
 
   ASSERT_STATUS_OK(s.FinalizeSessionState(ORT_TSTR(""), kernel_registry_manager));

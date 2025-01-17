@@ -14,8 +14,7 @@ enum class EventCategory {
 
 class TelemetryEvent {
  public:
-  TelemetryEvent(
-      EventCategory eventCategory);
+  TelemetryEvent(EventCategory eventCategory);
 
   ~TelemetryEvent();
 

@@ -9,6 +9,7 @@ import functools
 import getpass
 import hashlib
 import os
+import sys
 import tempfile
 from types import ModuleType
 from typing import Tuple
@@ -48,7 +49,7 @@ def _write(source_code, ext, extra=""):
 
 
 class PyCodeCache:
-    cache = dict()
+    cache = dict()  # noqa: RUF012
     clear = staticmethod(cache.clear)
 
     @classmethod
@@ -61,13 +62,14 @@ class PyCodeCache:
                 mod.__file__ = path
                 mod.key = key
                 exec(code, mod.__dict__, mod.__dict__)
+                sys.modules[mod.__name__] = mod
                 # another thread might set this first
                 cls.cache.setdefault(key, mod)
         return cls.cache[key]
 
 
 class ModuleCache:
-    cache = dict()
+    cache = dict()  # noqa: RUF012
     clear = staticmethod(cache.clear)
 
     @classmethod

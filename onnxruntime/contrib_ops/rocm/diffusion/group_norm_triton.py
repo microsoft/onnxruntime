@@ -12,16 +12,22 @@ import triton.language as tl
 @triton.jit
 def group_norm_kernel(
     input_ptr,
+    skip_ptr,
+    bias_ptr,
     output_ptr,
+    add_out_ptr,
     gamma_ptr,
     beta_ptr,
     img_size,
     c,
     c_per_group,
     eps,
+    has_skip,
+    has_bias,
+    broadcast_skip,
     BLOCK_SIZE: tl.constexpr,
     HW_SIZE: tl.constexpr,
-    ACTIVATION_SWISH: tl.constexpr,
+    ACTIVATION_SILU: tl.constexpr,
 ):
     row_x = tl.program_id(0)
     row_y = tl.program_id(1)
@@ -36,14 +42,35 @@ def group_norm_kernel(
     offsets = hw[:, None] * c + cols[None, :]
     mask = (cols < c_per_group)[None, :]
 
+    bias = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    if has_skip:
+        add_out_ptr += row_x * stride + row_y * c_per_group
+        if broadcast_skip:
+            broadcast_skip_ptr = skip_ptr + row_x * c + row_y * c_per_group
+            bias += tl.load(broadcast_skip_ptr + cols, mask=cols < c_per_group, other=0.0).to(tl.float32)
+        else:
+            skip_ptr += row_x * stride + row_y * c_per_group
+    if has_bias:
+        bias_ptr += row_y * c_per_group
+        bias += tl.load(bias_ptr + cols, mask=cols < c_per_group, other=0.0).to(tl.float32)
+
     # Calculate mean and variance
     _sum = tl.zeros([HW_SIZE, BLOCK_SIZE], dtype=tl.float32)
     _square_sum = tl.zeros([HW_SIZE, BLOCK_SIZE], dtype=tl.float32)
     for i in range(tl.cdiv(img_size, HW_SIZE)):
         x_ptr = input_ptr + i * HW_SIZE * c
         a = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        if has_skip and not broadcast_skip:
+            s_ptr = skip_ptr + i * HW_SIZE * c
+            s = tl.load(s_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+            a += s
+        if has_bias or broadcast_skip:
+            a += bias
         _sum += a
         _square_sum += a * a
+        if has_skip:
+            add_y_ptr = add_out_ptr + i * HW_SIZE * c
+            tl.store(add_y_ptr + offsets, a, mask=mask)
 
     # Set axis=None (or leave it unspecified) to reduce all axes.
     # TODO: In older Triton we have to reduce an axis at a time, but in our case
@@ -57,12 +84,16 @@ def group_norm_kernel(
     gamma = tl.load(gamma_ptr + cols, mask=cols < c_per_group).to(tl.float32)
     beta = tl.load(beta_ptr + cols, mask=cols < c_per_group).to(tl.float32)
     for i in range(tl.cdiv(img_size, HW_SIZE)):
-        x_ptr = input_ptr + i * HW_SIZE * c
         y_ptr = output_ptr + i * HW_SIZE * c
-        x = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        if has_skip:
+            add_y_ptr = add_out_ptr + i * HW_SIZE * c
+            x = tl.load(add_y_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+        else:
+            x_ptr = input_ptr + i * HW_SIZE * c
+            x = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
         x_hat = (x - group_mean) * rstd
         y = x_hat * gamma + beta
-        if ACTIVATION_SWISH:
+        if ACTIVATION_SILU:
             y *= tl.sigmoid(y)
         tl.store(y_ptr + offsets, y, mask=mask)
 
@@ -71,27 +102,27 @@ def group_norm_kernel(
 # blocks = [16, 32, 64, 128, 256, 512]
 # hw_sizes = [8, 16, 32, 64, 128, 256, 512]
 # but this will result in too many functions and slow down the compilation.
-with_swish = [True, False]
+with_silu = [True, False]
 dtypes = ["fp32", "fp16"]
 blocks = [16, 32, 64, 128]
 hw_sizes = [8, 16, 32, 64, 128, 256]
 warps = [1, 2, 4, 8, 16]
 name_pattern = "GroupNormTriton_{}_{}_b{}_hw{}_w{}"
-sig_pattern = "*{},*{},*fp32,*fp32,i32,i32,i32,fp32"
+sig_pattern = "*{},*{},*{},*{},*{},*fp32,*fp32,i32,i32,i32,fp32,i1,i1,i1"
 group_pattern = "GroupNormTriton_{}_{}"
 
 
 def get_function_table():
     func_table = []
 
-    for swish, dtype, hw_size, warp, b in product(with_swish, dtypes, hw_sizes, warps, blocks):
-        swish_suffix = "Swish" if swish else "Pass"
-        name = name_pattern.format(swish_suffix, dtype, b, hw_size, warp)
-        group = group_pattern.format(swish_suffix, dtype)
-        sig = sig_pattern.format(dtype, dtype)
+    for silu, dtype, hw_size, warp, b in product(with_silu, dtypes, hw_sizes, warps, blocks):
+        silu_suffix = "Silu" if silu else "Pass"
+        name = name_pattern.format(silu_suffix, dtype, b, hw_size, warp)
+        group = group_pattern.format(silu_suffix, dtype)
+        sig = sig_pattern.format(dtype, dtype, dtype, dtype, dtype)
         kwargs = {
             "num_warps": warp,
-            "constants": {"BLOCK_SIZE": b, "HW_SIZE": hw_size, "ACTIVATION_SWISH": int(swish)},
+            "constants": {"BLOCK_SIZE": b, "HW_SIZE": hw_size, "ACTIVATION_SILU": int(silu)},
         }
         func_desc = {"name": name, "group": group, "func": group_norm_kernel, "sig": sig, "kwargs": kwargs}
         func_table.append(func_desc)

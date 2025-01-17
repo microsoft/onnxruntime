@@ -5,7 +5,7 @@
 
 set -e
 set -x
-export PATH=/opt/python/cp38-cp38/bin:$PATH
+export PATH=/opt/python/cp310-cp310/bin:$PATH
 
 BUILD_DIR=${1:?"usage: $0 <build directory>"}
 
@@ -22,11 +22,11 @@ python3 /onnxruntime_src/tools/ci_build/build.py \
     --build_dir ${BUILD_DIR} --cmake_generator Ninja \
     --config Debug \
     --skip_submodule_sync \
-    --parallel \
+    --parallel --use_binskim_compliant_compile_flags \
     --build_wheel \
     --skip_tests \
     --enable_training_ops \
-    --enable_pybind --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp38-cp38/include/python3.8 PYTHON_LIBRARY=/usr/lib64/librt.so \
+    --enable_pybind --cmake_extra_defines PYTHON_INCLUDE_DIR=/opt/python/cp310-cp310/include/python3.10 PYTHON_LIBRARY=/usr/lib64/librt.so \
     --use_nnapi \
     --use_coreml
 

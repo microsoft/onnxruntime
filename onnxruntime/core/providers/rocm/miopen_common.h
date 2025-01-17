@@ -33,7 +33,7 @@ class MiopenTensor final {
   ~MiopenTensor();
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(MiopenTensor);
 
-  Status Set(gsl::span<const int64_t> input_dims, miopenDataType_t dataType);
+  Status Set(gsl::span<const int64_t> input_dims, miopenDataType_t dataType, bool is_nhwc = false);
   Status Set(miopenDataType_t dataType, miopenTensorLayout_t tensor_layout, int n, int c, int h, int w);
   Status Set(const MiopenTensor& x_desc, miopenBatchNormMode_t mode);
 

@@ -10,11 +10,10 @@ Decompose a complicated op into a series of simple ops.
 
 from typing import List
 
-import numpy as np
 import sympy
 from onnx import GraphProto, NodeProto, TensorProto, helper
 
-from ._utils import get_attribute, get_reduce_info, to_numpy_type
+from ._utils import get_attribute, get_reduce_info
 
 
 def _is_half_dtype(dtype: int):
@@ -58,7 +57,7 @@ class DecomposeDispatch:
         arg_info = node_arg_infos[arg_name]
         return arg_info.dtype, arg_info.shape
 
-    def _decompose_elementwise_precision(self, node: NodeProto, graph: GraphProto, **kwargs):
+    def _decompose_elementwise_precision(self, node: NodeProto, **kwargs):
         x = node.input[0]
         dtype, _ = self._get_dtype_and_shape(x, **kwargs)
         if not _is_half_dtype(dtype):
@@ -79,15 +78,19 @@ class DecomposeDispatch:
         return [*cast_nodes, op_node, cast_node1]
 
     def Exp(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
-        return self._decompose_elementwise_precision(node, graph, **kwargs)
+        # pylint: disable=unused-argument
+        return self._decompose_elementwise_precision(node, **kwargs)
 
     def Pow(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
-        return self._decompose_elementwise_precision(node, graph, **kwargs)
+        # pylint: disable=unused-argument
+        return self._decompose_elementwise_precision(node, **kwargs)
 
     def Sqrt(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
-        return self._decompose_elementwise_precision(node, graph, **kwargs)
+        # pylint: disable=unused-argument
+        return self._decompose_elementwise_precision(node, **kwargs)
 
     def LayerNormalization(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
+        # pylint: disable=unused-argument
         node_name = node.name
         x = node.input[0]
         w = node.input[1]
@@ -128,7 +131,7 @@ class DecomposeDispatch:
         if axis < 0:
             axis += rank
         axes = list(range(axis, rank))
-        epsilon_tensor = helper.make_tensor(name="epsilon_const", data_type=xdtype, dims=(1,), vals=np.array([epsilon]))
+        epsilon_tensor = helper.make_tensor(name="epsilon_const", data_type=xdtype, dims=(1,), vals=[epsilon])
         const_node, const_out = self._new_node(node_name, "Constant", [], value=epsilon_tensor)
         reducemean_node, reducemean_out = self._new_node(node_name, "ReduceMean", [x], outputs=[mean], axes=axes)
         sub_node, sub_out = self._new_node(node_name, "Sub", [x, reducemean_out])
@@ -153,6 +156,7 @@ class DecomposeDispatch:
         ]
 
     def LayerNormalizationGrad(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
+        # pylint: disable=unused-argument
         node_name = node.name
         dy = node.input[0]
         x = node.input[1]
@@ -241,6 +245,7 @@ class DecomposeDispatch:
         return decomposed_nodes
 
     def Softmax(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
+        # pylint: disable=unused-argument
         node_name = node.name
         x = node.input[0]
         y = node.output[0]
@@ -259,6 +264,7 @@ class DecomposeDispatch:
         return [max_node, sub_node, exp_node, sum_node, div_node]
 
     def SoftmaxGrad_13(self, node: NodeProto, graph: GraphProto, **kwargs):  # noqa: N802
+        # pylint: disable=unused-argument
         node_name = node.name
         dy = node.input[0]
         y = node.input[1]
@@ -364,7 +370,7 @@ class DecomposeDispatch:
             name=f"{node_name}_denominator",
             dims=(),
             data_type=dtype,
-            vals=np.array([denominator], dtype=to_numpy_type(dtype)),
+            vals=[denominator],
         )
         denominator_node, denominator_out = self._new_node(node_name, "Constant", [], value=denominator_tensor)
         div_node, _ = self._new_node(node_name, "Div", [sum_out, denominator_out], outputs=[y])

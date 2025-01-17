@@ -32,7 +32,7 @@ struct GemmPermuteParams : onnxruntime::rocm::tunable::OpParams {
     return MakeString("M", m, "_N", n, "_K", k, "_B", batch);
   }
 
-  rocblas_handle handle;
+  hipblasHandle_t handle;
   const AttentionParameters* attention;
   const hipDeviceProp_t* device_prop;
 
@@ -107,7 +107,7 @@ struct GemmPermuteGenericPipeline {
     auto* attn = params->attention;
     // input should be BxSx3xNxH => gemm_buffer: 3xBxNxSxH
     return LaunchTransQkv(
-        params->Stream(), 3, attn->sequence_length, attn->batch_size, attn->head_size, attn->num_heads,
+        params->StreamHandle(), 3, attn->sequence_length, attn->batch_size, attn->head_size, attn->num_heads,
         params->device_prop->maxThreadsPerBlock, false, params->workspace_buffer, params->out_buffer);
   }
 

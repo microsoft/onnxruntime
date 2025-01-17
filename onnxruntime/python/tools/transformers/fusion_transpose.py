@@ -128,7 +128,9 @@ class FusionInsertTranspose(Fusion):
             return
 
         if not (
-            self.model.get_constant_value(unsqueeze_3.input[1]) == 3
+            len(unsqueeze_3.input) == 2
+            and self.model.get_constant_value(unsqueeze_3.input[1]) == 3
+            and len(unsqueeze_2.input) == 2
             and self.model.get_constant_value(unsqueeze_2.input[1]) == 2
             and len(self.model.get_children(gemm, input_name_to_nodes)) == 1
             and len(self.model.get_children(unsqueeze_3, input_name_to_nodes)) == 1
@@ -139,23 +141,23 @@ class FusionInsertTranspose(Fusion):
         # Here we use hard-coded name so that it could be shared for the whole model.
         axes_1 = "ort_const_unsqueeze_axes_1"
         if self.model.get_initializer(axes_1) is None:
-            axes_1_tensor = helper.make_tensor(
+            self.add_initializer(
                 name=axes_1,
                 data_type=TensorProto.INT64,
                 dims=[1],
                 vals=[1],
+                raw=False,
             )
-            self.model.add_initializer(axes_1_tensor, self.this_graph_name)
 
         axes_2 = "ort_const_unsqueeze_axes_2"
         if self.model.get_initializer(axes_2) is None:
-            axes_2_tensor = helper.make_tensor(
+            self.add_initializer(
                 name=axes_2,
                 data_type=TensorProto.INT64,
                 dims=[1],
                 vals=[2],
+                raw=False,
             )
-            self.model.add_initializer(axes_2_tensor, self.this_graph_name)
 
         unsqueeze_3.input[1] = "ort_const_unsqueeze_axes_2"
         unsqueeze_2.input[1] = "ort_const_unsqueeze_axes_1"

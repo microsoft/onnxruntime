@@ -23,13 +23,15 @@ class GemmOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
+  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
 Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
-                                            const logging::Logger& /* logger */) const {
+                                            const logging::Logger& logger) const {
   const auto& op_type = node.OpType();
   const auto& input_defs = node.InputDefs();
   const size_t a_idx = 0, b_idx = 1, c_idx = 2;  // A*B+C
@@ -37,10 +39,94 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
   emscripten::val a = model_builder.GetOperand(node.InputDefs()[a_idx]->Name());
   emscripten::val b = model_builder.GetOperand(node.InputDefs()[b_idx]->Name());
   emscripten::val output = emscripten::val::object();
+  emscripten::val options = emscripten::val::object();
+  options.set("label", node.Name());
   if (op_type == "MatMul") {
-    output = model_builder.GetBuilder().call<emscripten::val>("matmul", a, b);
+    std::vector<int64_t> a_shape;
+    if (!GetShape(*input_defs[a_idx], a_shape, logger)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Can not get shape of A.");
+    }
+    std::vector<int64_t> b_shape;
+    if (!GetShape(*input_defs[b_idx], b_shape, logger)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Can not get shape of B.");
+    }
+    // If the first argument is 1-D, it is promoted to a matrix by prepending a 1 to its dimensions.
+    bool extended_a_shape = false;
+    if (a_shape.size() == 1) {
+      extended_a_shape = true;
+      a_shape.insert(a_shape.begin(), 1);
+      emscripten::val reshape_a_options = emscripten::val::object();
+      reshape_a_options.set("label", node.Name() + "_reshape_a");
+      a = model_builder.GetBuilder().call<emscripten::val>("reshape", a,
+                                                           emscripten::val::array(GetVecUint32FromVecInt64(a_shape)),
+                                                           reshape_a_options);
+    }
+    // If the second argument is 1-D, it is promoted to a matrix by appending a 1 to its dimensions.
+    bool extended_b_shape = false;
+    if (b_shape.size() == 1) {
+      extended_b_shape = true;
+      b_shape.push_back(1);
+      emscripten::val reshape_b_options = emscripten::val::object();
+      reshape_b_options.set("label", node.Name() + "_reshape_b");
+      b = model_builder.GetBuilder().call<emscripten::val>("reshape", b,
+                                                           emscripten::val::array(GetVecUint32FromVecInt64(b_shape)),
+                                                           reshape_b_options);
+    }
+
+    output = model_builder.GetBuilder().call<emscripten::val>("matmul", a, b, options);
+
+    emscripten::val reshape_output_options = emscripten::val::object();
+    reshape_output_options.set("label", node.Name() + "_reshape_output");
+    // If the inputs are both 1D， reduce the output to a scalar.
+    if (extended_a_shape && extended_b_shape) {
+      output = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                                output,
+                                                                emscripten::val::array(),
+                                                                reshape_output_options);
+    }
+    // After matrix multiplication the prepended 1 is removed.
+    else if (extended_a_shape) {
+      std::vector<uint32_t> new_shape;
+      for (size_t i = 0; i < b_shape.size() - 2; i++) {
+        new_shape.push_back(narrow<uint32_t>(b_shape[i]));
+      }
+      new_shape.push_back(narrow<uint32_t>(b_shape.back()));
+      output = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                                output,
+                                                                emscripten::val::array(new_shape),
+                                                                reshape_output_options);
+    }
+    // After matrix multiplication the appended 1 is removed.
+    else if (extended_b_shape) {
+      std::vector<uint32_t> new_shape;
+      for (size_t i = 0; i < a_shape.size() - 1; i++) {
+        new_shape.push_back(narrow<uint32_t>(a_shape[i]));
+      }
+      output = model_builder.GetBuilder().call<emscripten::val>("reshape",
+                                                                output,
+                                                                emscripten::val::array(new_shape),
+                                                                reshape_output_options);
+    }
+  } else if (op_type == "MatMulInteger") {
+    emscripten::val a_zero_point = emscripten::val::null();
+    emscripten::val b_zero_point = emscripten::val::null();
+    if (input_defs.size() >= 3) {
+      a_zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
+    } else {
+      a_zero_point = model_builder.CreateOrGetConstant<uint8_t>(ONNX_NAMESPACE::TensorProto_DataType_UINT8, 0);
+    }
+    if (input_defs.size() >= 4) {
+      b_zero_point = model_builder.GetOperand(node.InputDefs()[3]->Name());
+    } else {
+      b_zero_point = model_builder.CreateOrGetConstant<uint8_t>(ONNX_NAMESPACE::TensorProto_DataType_UINT8, 0);
+    }
+    output = model_builder.GetBuilder().call<emscripten::val>("matmulInteger",
+                                                              a,
+                                                              a_zero_point,
+                                                              b,
+                                                              b_zero_point,
+                                                              options);
   } else {  // Gemm
-    emscripten::val options = emscripten::val::object();
     NodeAttrHelper helper(node);
     const auto transA = helper.Get("transA", 0);
     options.set("aTranspose", emscripten::val(transA == 1));
@@ -65,46 +151,34 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
 
 // Operator support related.
 
-bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
                                       const Node& node,
                                       const WebnnDeviceType /* device_type */,
                                       const logging::Logger& logger) const {
-  (void)initializers;
   const auto& op_type = node.OpType();
   const auto& input_defs(node.InputDefs());
   const size_t a_idx = 0, b_idx = 1, c_idx = 2;  // A*B+C
 
+  std::vector<int64_t> a_shape;
+  if (!GetShape(*input_defs[a_idx], a_shape, logger))
+    return false;
+  if (Product(a_shape) == 0) {
+    LOGS(logger, VERBOSE) << "A must be non-empty";
+    return false;
+  }
+
+  std::vector<int64_t> b_shape;
+  if (!GetShape(*input_defs[b_idx], b_shape, logger))
+    return false;
+  if (Product(b_shape) == 0) {
+    LOGS(logger, VERBOSE) << "B must be non-empty";
+    return false;
+  }
+
   if (op_type == "Gemm") {
-    std::vector<int64_t> a_shape;
-    {
-      if (!GetShape(*input_defs[a_idx], a_shape, logger))
-        return false;
-
-      if (a_shape.size() != 2) {
-        LOGS(logger, VERBOSE) << "A must be 2D";
-        return false;
-      }
-
-      if (Product(a_shape) == 0) {
-        LOGS(logger, VERBOSE) << "A must be non-empty";
-        return false;
-      }
-    }
-
-    std::vector<int64_t> b_shape;
-    {
-      if (!GetShape(*input_defs[b_idx], b_shape, logger))
-        return false;
-
-      if (b_shape.size() != 2) {
-        LOGS(logger, VERBOSE) << "B must be 2D";
-        return false;
-      }
-
-      if (Product(b_shape) == 0) {
-        LOGS(logger, VERBOSE) << "B must be non-empty";
-        return false;
-      }
+    if (a_shape.size() != 2 || b_shape.size() != 2) {
+      LOGS(logger, VERBOSE) << "A and B must be 2D for Gemm";
+      return false;
     }
 
     // C of Gemm.
@@ -141,14 +215,47 @@ bool GemmOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   return true;
 }
 
+bool GemmOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+                                           const emscripten::val& wnn_limits, const logging::Logger& logger) const {
+  const auto& input_defs = node.InputDefs();
+  const auto& op_type = node.OpType();
+  int32_t input0_type;  // A data type
+  int32_t input1_type;  // B data type
+  int32_t input2_type;  // C or a_zero_point data type
+  int32_t input3_type;  // b_zero_point data type
+  bool has_input2 = TensorExists(input_defs, 2);
+  bool has_input3 = TensorExists(input_defs, 3);
+
+  if (!GetType(*input_defs[0], input0_type, logger) ||
+      !GetType(*input_defs[1], input1_type, logger) ||
+      (has_input2 && !GetType(*input_defs[2], input2_type, logger)) ||
+      (has_input3 && !GetType(*input_defs[3], input3_type, logger))) {
+    return false;
+  }
+
+  InlinedVector<int32_t, 4> input_types = {input0_type, input1_type};
+  if (has_input2) {
+    input_types.push_back(input2_type);
+  }
+  if (has_input3) {
+    input_types.push_back(input3_type);
+  }
+  if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+    return false;
+  }
+
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "a", "A", logger);
+}
+
 void CreateGemmOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
-  if (op_registrations.op_builder_map.find(op_type) != op_registrations.op_builder_map.cend())
+  if (op_registrations.op_builder_map.count(op_type) > 0)
     return;
 
   static std::vector<std::string> op_types =
       {
           "Gemm",
           "MatMul",
+          "MatMulInteger",
       };
 
   op_registrations.builders.push_back(std::make_unique<GemmOpBuilder>());

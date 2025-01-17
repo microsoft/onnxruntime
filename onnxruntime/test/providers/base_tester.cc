@@ -73,7 +73,7 @@ void BaseTester::AddInitializers(onnxruntime::Graph& graph) {
       }
     } else {
       auto buffer_size = tensor.DataType()->Size() * shape.Size();
-      tensor_proto.set_raw_data(tensor.DataRaw(), buffer_size);
+      utils::SetRawDataInTensorProto(tensor_proto, tensor.DataRaw(), buffer_size);
     }
 
     // 4. name
@@ -118,6 +118,20 @@ void BaseTester::SetOutputRelErr(const char* name, float v) {
                          [name](Data& data) { return (data.def.Name() == name); });
   ORT_ENFORCE(it != output_data_.end());
   it->validation_params.relative_error = optional<float>(v);
+}
+
+void BaseTester::SetOutputTolerance(float abs_error, float rel_error) {
+  for (auto& output : output_data_) {
+    if (output.def.Exists()) {
+      if (abs_error >= 0.0f) {
+        output.validation_params.absolute_error = optional<float>(abs_error);
+      }
+
+      if (rel_error >= 0.0f) {
+        output.validation_params.relative_error = optional<float>(rel_error);
+      }
+    }
+  }
 }
 
 std::vector<int64_t> BaseTester::GetDimsForProto(gsl::span<const int64_t> dims) {
@@ -399,11 +413,14 @@ bool SetEpsForAllNodes(Graph& graph,
                        const std::vector<std::unique_ptr<IExecutionProvider>>& execution_providers,
                        const std::vector<std::shared_ptr<CustomRegistry>>* custom_registries) {
   const OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
+  const KernelRegistry::TypeConstraintMap type_constraint_map{};
+
   for (auto& node : graph.Nodes()) {
     if (node.OpType() == kConstant)
       continue;
 
     bool found = false;
+    const auto& logger = DefaultLoggingManager().DefaultLogger();
 
     for (const auto& ep : execution_providers) {
       auto provider_type = ep->Type();
@@ -412,6 +429,7 @@ bool SetEpsForAllNodes(Graph& graph,
       if (provider_type == onnxruntime::kOpenVINOExecutionProvider ||
           provider_type == onnxruntime::kTensorrtExecutionProvider ||
           provider_type == onnxruntime::kNnapiExecutionProvider ||
+          provider_type == onnxruntime::kVSINPUExecutionProvider ||
           provider_type == onnxruntime::kCoreMLExecutionProvider ||
           provider_type == onnxruntime::kDnnlExecutionProvider ||
           provider_type == onnxruntime::kQnnExecutionProvider ||
@@ -421,18 +439,35 @@ bool SetEpsForAllNodes(Graph& graph,
       }
 
       // Check the EP has an impl for the node from builtin registry.
-      if (KernelRegistry::HasImplementationOf(*ep->GetKernelRegistry(), node, ep->Type(), kernel_type_str_resolver)) {
+      if (KernelRegistry::HasImplementationOf(*ep->GetKernelRegistry(), node, ep->Type(), kernel_type_str_resolver,
+                                              logger)) {
         found = true;
         break;
+      }
+
+      // check the internal NHWC domain if EP requests NHWC as it may only have a kernel registered in that domain
+      if (ep->GetPreferredLayout() == DataLayout::NHWC) {
+        const KernelCreateInfo* kci = nullptr;
+        auto status = ep->GetKernelRegistry()->TryFindKernel(ep->Type(),
+                                                             std::string_view(node.OpType()),
+                                                             std::string_view(kMSInternalNHWCDomain),
+                                                             node.SinceVersion(),
+                                                             type_constraint_map,
+                                                             logger,
+                                                             &kci);
+        if (status.IsOK() && kci != nullptr) {
+          found = true;
+          break;
+        }
       }
 
       // Check the EP has an impl for the node from custom_registries
       if (custom_registries != nullptr &&
           std::any_of(custom_registries->cbegin(), custom_registries->cend(),
-                      [&](auto reg) { return KernelRegistry::HasImplementationOf(
-                                          *reg->GetKernelRegistry(),
-                                          node, ep->Type(),
-                                          kernel_type_str_resolver); })) {
+                      [&](auto reg) {
+                        return KernelRegistry::HasImplementationOf(*reg->GetKernelRegistry(), node, ep->Type(),
+                                                                   kernel_type_str_resolver, logger);
+                      })) {
         found = true;
         break;
       }
@@ -596,6 +631,9 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
                          number_of_pre_packed_weights_counter,
                          number_of_shared_pre_packed_weights_counter);
     } else {
+      // synthetic EP name for testing CoreML EP with ML Program
+      constexpr const char* kCoreMLExecutionProviderMLProgram = "CoreMLExecutionProvider_MLProgram";
+
 #ifdef USE_TENSORRT
       // only run trt ep to reduce test time
       static const std::string all_provider_types[] = {
@@ -605,6 +643,9 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
       static const std::string all_provider_types[] = {
           kCpuExecutionProvider,
           kCudaExecutionProvider,
+#ifdef ENABLE_CUDA_NHWC_OPS
+          kCudaNHWCExecutionProvider,
+#endif
           kDnnlExecutionProvider,
           kTensorrtExecutionProvider,
           kOpenVINOExecutionProvider,
@@ -612,12 +653,20 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           kAclExecutionProvider,
           kArmNNExecutionProvider,
           kNnapiExecutionProvider,
+          kVSINPUExecutionProvider,
           kRocmExecutionProvider,
           kCoreMLExecutionProvider,
+          kCoreMLExecutionProviderMLProgram,
           kQnnExecutionProvider,
           kSnpeExecutionProvider,
           kXnnpackExecutionProvider,
+          kWebGpuExecutionProvider,
       };
+
+      // need to special case any synthetic EP names in the exclude list
+      if (ctx_.excluded_provider_types.count(kCoreMLExecutionProvider) > 0) {
+        ctx_.excluded_provider_types.insert(kCoreMLExecutionProviderMLProgram);
+      }
 #endif
 
       bool has_run = false;
@@ -633,6 +682,10 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultCpuExecutionProvider();
         else if (provider_type == onnxruntime::kCudaExecutionProvider)
           execution_provider = DefaultCudaExecutionProvider();
+#ifdef ENABLE_CUDA_NHWC_OPS
+        else if (provider_type == onnxruntime::kCudaNHWCExecutionProvider)
+          execution_provider = DefaultCudaNHWCExecutionProvider();
+#endif
         else if (provider_type == onnxruntime::kDnnlExecutionProvider)
           execution_provider = DefaultDnnlExecutionProvider();
         else if (provider_type == onnxruntime::kOpenVINOExecutionProvider)
@@ -641,6 +694,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultTensorrtExecutionProvider();
         else if (provider_type == onnxruntime::kNnapiExecutionProvider)
           execution_provider = DefaultNnapiExecutionProvider();
+        else if (provider_type == onnxruntime::kVSINPUExecutionProvider)
+          execution_provider = DefaultVSINPUExecutionProvider();
         else if (provider_type == onnxruntime::kRknpuExecutionProvider)
           execution_provider = DefaultRknpuExecutionProvider();
         else if (provider_type == onnxruntime::kAclExecutionProvider)
@@ -651,6 +706,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultRocmExecutionProvider();
         else if (provider_type == onnxruntime::kCoreMLExecutionProvider)
           execution_provider = DefaultCoreMLExecutionProvider();
+        else if (provider_type == kCoreMLExecutionProviderMLProgram)
+          execution_provider = DefaultCoreMLExecutionProvider(/*use_mlprogram*/ true);
         else if (provider_type == onnxruntime::kSnpeExecutionProvider)
           execution_provider = DefaultSnpeExecutionProvider();
         else if (provider_type == onnxruntime::kQnnExecutionProvider)
@@ -659,6 +716,8 @@ void BaseTester::RunWithConfig(size_t* number_of_pre_packed_weights_counter,
           execution_provider = DefaultXnnpackExecutionProvider();
         else if (provider_type == onnxruntime::kDmlExecutionProvider)
           execution_provider = DefaultDmlExecutionProvider();
+        else if (provider_type == onnxruntime::kWebGpuExecutionProvider)
+          execution_provider = DefaultWebGpuExecutionProvider();
 
         // skip if execution provider is disabled
         if (execution_provider == nullptr)
@@ -760,7 +819,7 @@ void BaseTester::ExecuteModelForEps(
     for (const auto& ep : execution_providers) {
       providers.append(ep->Type() + " ");
     }
-    LOGS_DEFAULT(WARNING) << "registered execution providers " << providers << "were unable to run the model.";
+    LOGS_DEFAULT(WARNING) << "registered execution providers " << providers << " were unable to run the model.";
     return;
   }
 
@@ -770,6 +829,8 @@ void BaseTester::ExecuteModelForEps(
   }
 
   provider_type.resize(provider_type.size() - 1);  // remove the trailing ':'
+
+  SCOPED_TRACE(MakeString("registered execution providers: ", provider_type));
 
   if (custom_registries != nullptr) {
     for (const auto& reg : *custom_registries) {

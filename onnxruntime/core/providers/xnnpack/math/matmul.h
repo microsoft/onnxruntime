@@ -31,15 +31,10 @@ class MatMul : public XnnpackKernel {
   BufferUniquePtr packed_b_;
   AllocatorPtr myAlloc;
 
-  XnnpackOperator op0_ = nullptr;
+  OpComputeType op_type_ = OpComputeType::op_compute_type_invalid;
+  std::string op_type_str_ = "";
 
-#ifdef XNN_CACHE_ENABLE
-#if XNN_PLATFORM_JIT
-  xnn_code_cache code_cache_;
-#endif
-  xnn_caches xnn_caches_ = {0, 0};
-  xnn_weights_cache weights_cache_;
-#endif
+  XnnpackOperator op0_ = nullptr;
 };
 
 }  // namespace xnnpack

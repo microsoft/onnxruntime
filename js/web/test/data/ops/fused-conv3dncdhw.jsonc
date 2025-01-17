@@ -1,0 +1,112 @@
+[
+  {
+    "name": "fused conv3d with relu, x=[1, 1, 2, 1, 2], f=[2, 1, 2, 1, 2], s=1, d=1, p=valid, relu",
+    "operator": "FusedConv",
+    "opset": { "domain": "com.microsoft", "version": 1 },
+    "attributes": [
+      { "name": "activation", "data": "Relu", "type": "string" },
+      { "name": "kernel_shape", "data": [2, 1, 2], "type": "ints" },
+      { "name": "auto_pad", "data": "VALID", "type": "string" },
+      { "name": "strides", "data": [1, 1, 1], "type": "ints" },
+      { "name": "dilations", "data": [1, 1, 1], "type": "ints" }
+    ],
+    "cases": [
+      {
+        "name": "T[0]",
+        "inputs": [
+          {
+            "data": [0.25, 0.5, 0.75, 1],
+            "dims": [1, 1, 2, 1, 2],
+            "type": "float32"
+          },
+          {
+            "data": [-0.125, -0.25, -0.375, 0.5, 0.625, -0.75, -0.875, -1],
+            "dims": [2, 1, 2, 1, 2],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.0625, 0],
+            "dims": [1, 2, 1, 1, 1],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "fused conv3d with clip",
+    "operator": "FusedConv",
+    "opset": { "domain": "com.microsoft", "version": 1 },
+    "attributes": [
+      { "name": "activation", "data": "Clip", "type": "string" },
+      { "name": "activation_params", "data": [1.0, 3.0], "type": "floats" },
+      { "name": "kernel_shape", "data": [2, 1, 2], "type": "ints" },
+      { "name": "auto_pad", "data": "VALID", "type": "string" },
+      { "name": "strides", "data": [1, 1, 1], "type": "ints" },
+      { "name": "dilations", "data": [1, 1, 1], "type": "ints" }
+    ],
+    "cases": [
+      {
+        "name": "T[0]",
+        "inputs": [
+          {
+            "data": [0.25, 0.5, 0.75, 1],
+            "dims": [1, 1, 2, 1, 2],
+            "type": "float32"
+          },
+          {
+            "data": [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1],
+            "dims": [2, 1, 2, 1, 2],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [1, 2.1875],
+            "dims": [1, 2, 1, 1, 1],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "name": "fused conv3d with HardSigmoid, x=[1, 1, 2, 1, 2], f=[2, 1, 2, 1, 2], s=1, d=1, p=valid, relu",
+    "operator": "FusedConv",
+    "opset": { "domain": "com.microsoft", "version": 1 },
+    "attributes": [
+      { "name": "activation", "data": "HardSigmoid", "type": "string" },
+      { "name": "activation_params", "data": [0.1, 0.3], "type": "floats" },
+      { "name": "kernel_shape", "data": [2, 1, 2], "type": "ints" },
+      { "name": "auto_pad", "data": "VALID", "type": "string" },
+      { "name": "strides", "data": [1, 1, 1], "type": "ints" },
+      { "name": "dilations", "data": [1, 1, 1], "type": "ints" }
+    ],
+    "cases": [
+      {
+        "name": "T[0]",
+        "inputs": [
+          {
+            "data": [0.25, 0.5, 0.75, 1],
+            "dims": [1, 1, 2, 1, 2],
+            "type": "float32"
+          },
+          {
+            "data": [0.125, 0.25, 0.375, 0.5, 0.625, 0.75, 0.875, 1],
+            "dims": [2, 1, 2, 1, 2],
+            "type": "float32"
+          }
+        ],
+        "outputs": [
+          {
+            "data": [0.39375001192092896, 0.518750011920929],
+            "dims": [1, 2, 1, 1, 1],
+            "type": "float32"
+          }
+        ]
+      }
+    ]
+  }
+]

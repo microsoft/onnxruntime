@@ -30,11 +30,13 @@ static size_t EstimateInputsOutputs(gsl::span<const Node* const> nodes) {
 
 OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const InitializedTensorSet& initialized_tensor_set,
-                                    const Path& model_path,
+                                    const std::filesystem::path& model_path,
                                     const IExecutionProvider& execution_provider,
-                                    const std::function<bool(const std::string&)>& is_sparse_initializer_func)
+                                    const std::function<bool(const std::string&)>& is_sparse_initializer_func,
+                                    const logging::Logger& logger)
     : execution_provider_(execution_provider),
-      is_sparse_initializer_func_(is_sparse_initializer_func) {
+      is_sparse_initializer_func_(is_sparse_initializer_func),
+      logger_(logger) {
   allocator_ptr_ = std::make_shared<CPUAllocator>();
   ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
 
@@ -49,19 +51,13 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
     InitializedTensorSet::const_iterator it = initialized_tensor_set.find(arg.Name());
     if (it != initialized_tensor_set.cend()) {
       const auto& tensor_proto = *(it->second);
-      size_t cpu_tensor_length;
-      ORT_RETURN_IF_ERROR(utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &cpu_tensor_length));
       OrtValue ort_value;
-      std::unique_ptr<char[]> data = std::make_unique<char[]>(cpu_tensor_length);
-      std::unique_ptr<Tensor> p_tensor;
-      ORT_RETURN_IF_ERROR(utils::TensorProtoToMLValue(Env::Default(),
-                                                      model_path.IsEmpty() ? nullptr : model_path.ToPathString().c_str(),
-                                                      tensor_proto,
-                                                      MemBuffer(data.get(), cpu_tensor_length, allocator_ptr_->Info()),
-                                                      ort_value));
+      ORT_RETURN_IF_ERROR(
+          utils::TensorProtoToOrtValue(Env::Default(),
+                                       model_path,
+                                       tensor_proto, allocator_ptr_, ort_value));
 
-      initializers_[idx] = ort_value;
-      buffer_for_initialized_tensors_[idx] = std::move(data);
+      initializers_[idx] = std::move(ort_value);
     }
 
     return Status::OK();
@@ -72,7 +68,6 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
   ort_value_name_idx_map_.Reserve(num_inputs_outputs);
   ort_value_idx_nodearg_map_.reserve(num_inputs_outputs);
   initializers_.reserve(initialized_tensor_set.size());
-  buffer_for_initialized_tensors_.reserve(initialized_tensor_set.size());
 
   for (auto* node : nodes) {
     ORT_THROW_IF_ERROR(onnxruntime::Node::ForEachWithIndex(node->InputDefs(), initialize_maps));
@@ -84,19 +79,20 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
 
 OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
                                     const std::unordered_map<std::string, OrtValue>& initialized_tensor_set,
-                                    const Path& model_path,
+                                    const std::filesystem::path& /* model_path */,
                                     const IExecutionProvider& execution_provider,
-                                    const std::function<bool(const std::string&)>& is_sparse_initializer_func)
+                                    const std::function<bool(const std::string&)>& is_sparse_initializer_func,
+                                    const logging::Logger& logger)
     : execution_provider_(execution_provider),
-      is_sparse_initializer_func_(is_sparse_initializer_func) {
+      is_sparse_initializer_func_(is_sparse_initializer_func),
+      logger_(logger) {
   allocator_ptr_ = std::make_shared<CPUAllocator>();
   ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
 
   ORT_THROW_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));
 
   // Create MLValues related maps
-  auto initialize_maps = [this, &initialized_tensor_set, &model_path](const NodeArg& arg, size_t /*index*/) -> Status {
-    (void)model_path;
+  auto initialize_maps = [this, &initialized_tensor_set](const NodeArg& arg, size_t /*index*/) -> Status {
     int idx = ort_value_name_idx_map_.Add(arg.Name());
     ort_value_idx_nodearg_map_.insert_or_assign(idx, &arg);
 
@@ -125,7 +121,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
 Status OptimizerExecutionFrame::Info::TryFindKernel(const Node* node, const KernelCreateInfo** out) const {
   std::shared_ptr<KernelRegistry> kernel_registry = execution_provider_.GetKernelRegistry();
   const OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
-  return kernel_registry->TryFindKernel(*node, execution_provider_.Type(), kernel_type_str_resolver, out);
+  return kernel_registry->TryFindKernel(*node, execution_provider_.Type(), kernel_type_str_resolver, logger_, out);
 }
 
 static Status TryCreateKernel(const Node& node,
@@ -135,26 +131,35 @@ static Status TryCreateKernel(const Node& node,
                               const OrtValueNameIdxMap& ort_value_name_idx_map,
                               FuncManager& funcs_mgr,
                               const DataTransferManager& data_transfer_mgr,
+                              const ConfigOptions& config_options,
+                              const logging::Logger& logger,
                               /*out*/ std::unique_ptr<OpKernel>& op_kernel) {
   const OpSchemaKernelTypeStrResolver kernel_type_str_resolver{};
   const KernelCreateInfo* kernel_create_info = nullptr;
-  ORT_RETURN_IF_ERROR(kernel_registry.TryFindKernel(node, execution_provider.Type(), kernel_type_str_resolver,
+  ORT_RETURN_IF_ERROR(kernel_registry.TryFindKernel(node, execution_provider.Type(), kernel_type_str_resolver, logger,
                                                     &kernel_create_info));
+
+  static const AllocatorMap dummy_allocators;
+
   OpKernelInfo kernel_info(node,
                            *kernel_create_info->kernel_def,
                            execution_provider,
                            constant_initialized_tensors,
                            ort_value_name_idx_map,
-                           data_transfer_mgr);
+                           data_transfer_mgr,
+                           dummy_allocators,
+                           config_options);
+
   return kernel_create_info->kernel_create_func(funcs_mgr, kernel_info, op_kernel);
 }
 
-std::unique_ptr<const OpKernel> OptimizerExecutionFrame::Info::CreateKernel(const Node* node) const {
+std::unique_ptr<const OpKernel>
+OptimizerExecutionFrame::Info::CreateKernel(const Node* node, const ConfigOptions& config_options) const {
   std::unique_ptr<OpKernel> op_kernel;
   std::shared_ptr<KernelRegistry> kernel_registry = execution_provider_.GetKernelRegistry();
   FuncManager func;
   auto status = TryCreateKernel(*node, *kernel_registry, execution_provider_, initializers_,
-                                ort_value_name_idx_map_, func, data_transfer_mgr_,
+                                ort_value_name_idx_map_, func, data_transfer_mgr_, config_options, logger_,
                                 op_kernel);
 
   // Kernel found in the CPU kernel registry

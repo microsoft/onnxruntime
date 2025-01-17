@@ -247,5 +247,15 @@ TEST(CumSumTest, _1DTestdouble_WithInt64Axis) {
   test.AddOutput<double>("y", {5}, {1., 3., 6., 10., 15.});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
+TEST(CumSumTest, _1DTestLong) {
+  OpTester test("CumSum", 11, onnxruntime::kOnnxDomain);
+  constexpr int N = 100000;
+  std::vector<int32_t> output_value(N);
+  std::iota(output_value.begin(), output_value.end(), 1);
+  test.AddInput<int32_t>("x", {N}, std::vector<int32_t>(N, 1));
+  test.AddInput<int32_t>("axis", {}, {0});
+  test.AddOutput<int32_t>("y", {N}, output_value);
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
 }  // namespace test
 }  // namespace onnxruntime

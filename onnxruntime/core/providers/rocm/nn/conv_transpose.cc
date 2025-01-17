@@ -16,7 +16,7 @@ namespace rocm {
       T,                                                                                   \
       kRocmExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      ConvTranspose<T>);                                                                   \
+      ConvTranspose<T, false>);                                                            \
   ONNX_OPERATOR_TYPED_KERNEL_EX(                                                           \
       ConvTranspose,                                                                       \
       kOnnxDomain,                                                                         \
@@ -24,20 +24,20 @@ namespace rocm {
       T,                                                                                   \
       kRocmExecutionProvider,                                                              \
       (*KernelDefBuilder::Create()).TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      ConvTranspose<T>);
+      ConvTranspose<T, false>);
 
 REGISTER_KERNEL_TYPED(float)
 // not yet supported in MIOpen
 // REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
 
-template <typename T>
-Status ConvTranspose<T>::ComputeInternal(OpKernelContext* context) const {
+template <typename T, bool NHWC>
+Status ConvTranspose<T, NHWC>::ComputeInternal(OpKernelContext* context) const {
   return DoConvTranspose(context, false);
 }
 
-template <typename T>
-Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const {
+template <typename T, bool NHWC>
+Status ConvTranspose<T, NHWC>::DoConvTranspose(OpKernelContext* context, bool dynamic_padding) const {
   typedef typename ToHipType<T>::MappedType HipT;
 
   const Tensor* X = context->Input<Tensor>(0);
@@ -66,7 +66,7 @@ Status ConvTranspose<T>::DoConvTranspose(OpKernelContext* context, bool dynamic_
   }
 
   {
-    std::lock_guard<OrtMutex> lock(s_.mutex);
+    std::lock_guard<std::mutex> lock(s_.mutex);
     // TODO: add a global cache if need to handle cases for multiple frames running simultaneously with different batch_size
     bool input_dims_changed = (s_.last_x_dims.AsShapeVector() != x_dims);
     bool w_dims_changed = (s_.last_w_dims.AsShapeVector() != w_dims);

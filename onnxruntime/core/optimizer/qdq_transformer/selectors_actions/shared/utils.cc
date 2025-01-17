@@ -13,6 +13,7 @@
 #include <core/providers/common.h>
 
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
+#include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 
 namespace onnxruntime {
 namespace QDQ {
@@ -27,18 +28,24 @@ void Selectors::RegisterSelector(const OpVersionsAndSelector::OpVersionsMap& ops
 }
 
 /* static methods to return different operator's OpVersionMap */
+
+// These are operators that do not change the data and therefore the input DQ and
+// output Q have the same scale and zero_point.
 static const OpVersionsAndSelector::OpVersionsMap GetMiscOpVersionsMap() {
   return {{"Gather", {}},
+          {"GatherElements", {}},
           {"Reshape", {}},
+          {"Expand", {}},
           {"Flatten", {}},
           {"Transpose", {}},
           {"MaxPool", {12}},
           {"Resize", {}},
-          {"Split", {}},
           {"Squeeze", {}},
-          {"Unsqueeze", {}}};
+          {"Unsqueeze", {}},
+          {"Tile", {}}};
 }
 
+// These produce int64 indices output, which can't be quantized, so there's no downstream Q node.
 static const OpVersionsAndSelector::OpVersionsMap GetDropDQOpVersionsMap() {
   return {{"ArgMax", {}},
           {"ArgMin", {}}};
@@ -47,6 +54,7 @@ static const OpVersionsAndSelector::OpVersionsMap GetDropDQOpVersionsMap() {
 static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
   return {{"AveragePool", {}},
           {"GlobalAveragePool", {}},
+          {"GlobalMaxPool", {}},
           {"LeakyRelu", {}},
           {"ReduceMean", {}},
           {"ReduceMin", {}},
@@ -56,25 +64,48 @@ static const OpVersionsAndSelector::OpVersionsMap GetUnaryOpVersionsMap() {
           {"Relu", {}},
           {"Gelu", {}},
           {"Elu", {}},
+          {"HardSigmoid", {}},
           {"HardSwish", {}},
           {"Sigmoid", {}},
           {"Slice", {}},
+          {"LogSoftmax", {}},
           {"Softmax", {}},
           {"Sqrt", {}},
           {"Atan", {}},
+          {"Asin", {}},
+          {"Sin", {}},
+          {"Cos", {}},
+          {"Sign", {}},
           {"Tanh", {}},
           {"Exp", {}},
-          {"LRN", {}}};
+          {"Log", {}},
+          {"LRN", {}},
+          {"Ceil", {}},
+          {"Floor", {}},
+          {"Round", {}},
+          {"Abs", {}},
+          {"Neg", {}},
+          {"DepthToSpace", {}},
+          {"SpaceToDepth", {}},
+          {"Clip", {}},
+          {"LpNormalization", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBinaryOpVersionsMap() {
   return {{"Add", {}},
           {"Div", {}},
           {"Mul", {}},
           {"Pow", {}},
-          {"Sub", {}}};
+          {"Sub", {}},
+          {"PRelu", {}},
+          {"GridSample", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetVariadicOpVersionsMap() {
-  return {{"Concat", {}}};
+  return {{"Concat", {}},
+          {"Max", {}},
+          {"Min", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetSplitOpVersionsMap() {
+  return {{"Split", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetConvOpVersionsMap() {
   return {{"Conv", {}}};
@@ -88,8 +119,9 @@ static const OpVersionsAndSelector::OpVersionsMap GetMatMulOpVersionsMap() {
 static const OpVersionsAndSelector::OpVersionsMap GetGemmOpVersionsMap() {
   return {{"Gemm", {}}};
 }
-static const OpVersionsAndSelector::OpVersionsMap GetInstanceNormalizationOpVersionsMap() {
-  return {{"InstanceNormalization", {}}};
+static const OpVersionsAndSelector::OpVersionsMap GetInstanceAndLayerNormalizationOpVersionsMap() {
+  return {{"InstanceNormalization", {}},
+          {"LayerNormalization", {}}};
 }
 static const OpVersionsAndSelector::OpVersionsMap GetBatchNormalizationOpVersionsMap() {
   return {{"BatchNormalization", {}}};
@@ -100,6 +132,16 @@ static const OpVersionsAndSelector::OpVersionsMap GetLogicalComparisonOpVersions
           {"GreaterOrEqual", {}},
           {"Less", {}},
           {"LessOrEqual", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetWhereOpVersionsMap() {
+  return {{"Where", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetPadOpVersionsMap() {
+  return {{"Pad", {}}};
+}
+
+static const OpVersionsAndSelector::OpVersionsMap GetTopKOpVersionsMap() {
+  return {{"TopK", {}}};
 }
 
 /* Selector rules registration related */
@@ -138,6 +180,13 @@ void RegisterVariadicSelectors(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterSplitSelector(Selectors& qdq_selectors) {
+  /* register selectors for Split op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<SplitNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetSplitOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void RegisterConvSelector(Selectors& qdq_selectors) {
   /* register selector for conv op */
   std::unique_ptr<NodeGroupSelector> selector = std::make_unique<ConvNodeGroupSelector>();
@@ -167,10 +216,10 @@ void RegisterGemmSelector(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
-void RegisterInstanceNormalizationSelector(Selectors& qdq_selectors) {
+void RegisterInstanceAndLayerNormalizationSelector(Selectors& qdq_selectors) {
   /* register selector for InstanceNormalization op */
-  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<InstanceNormalizationNodeGroupSelector>();
-  qdq_selectors.RegisterSelector(GetInstanceNormalizationOpVersionsMap(),
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<InstanceAndLayerNormalizationNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetInstanceAndLayerNormalizationOpVersionsMap(),
                                  std::move(selector));
 }
 
@@ -188,19 +237,44 @@ void RegisterLogicalComparisonSelectors(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterWhereSelectors(Selectors& qdq_selectors) {
+  /* register selectors for Where ops */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<WhereNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetWhereOpVersionsMap(),
+                                 std::move(selector));
+}
+
+void RegisterPadSelectors(Selectors& qdq_selectors) {
+  /* register selectors for Pad ops */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<PadNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetPadOpVersionsMap(),
+                                 std::move(selector));
+}
+
+void RegisterTopKSelector(Selectors& qdq_selectors) {
+  /* register selector for TopK op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<TopKNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetTopKOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void SelectorManager::CreateSelectors() {
   RegisterMiscSelectors(qdq_selectors_);
   RegisterDropDQSelectors(qdq_selectors_);
   RegisterUnarySelectors(qdq_selectors_);
   RegisterBinarySelectors(qdq_selectors_);
   RegisterVariadicSelectors(qdq_selectors_);
+  RegisterSplitSelector(qdq_selectors_);
   RegisterConvSelector(qdq_selectors_);
   RegisterConvTransposeSelector(qdq_selectors_);
   RegisterMatMulSelector(qdq_selectors_);
   RegisterGemmSelector(qdq_selectors_);
-  RegisterInstanceNormalizationSelector(qdq_selectors_);
+  RegisterInstanceAndLayerNormalizationSelector(qdq_selectors_);
   RegisterBatchNormalizationSelector(qdq_selectors_);
   RegisterLogicalComparisonSelectors(qdq_selectors_);
+  RegisterWhereSelectors(qdq_selectors_);
+  RegisterPadSelectors(qdq_selectors_);
+  RegisterTopKSelector(qdq_selectors_);
 }
 
 void SelectorManager::InitializeSelectorsMap() {
@@ -217,7 +291,8 @@ SelectorManager::SelectorManager() {
   InitializeSelectorsMap();
 }
 
-std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& graph_viewer) const {
+std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& graph_viewer,
+                                                         const logging::Logger& logger) const {
   std::vector<NodeGroup> qdq_selections;
   for (auto index : graph_viewer.GetNodesInTopologicalOrder()) {
     const auto* node = graph_viewer.GetNode(index);
@@ -239,7 +314,7 @@ std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& grap
     const auto& versions = op_versions_and_selector.op_versions_map.find(node->OpType())->second;
     if (!versions.empty()) {
       if (std::find(versions.cbegin(), versions.cend(), node->SinceVersion()) == versions.cend()) {
-        LOGS_DEFAULT(VERBOSE) << "Op version is not supported for" << node->OpType();
+        LOGS(logger, VERBOSE) << "Op version is not supported for" << node->OpType();
         continue;
       }
     }
@@ -254,28 +329,51 @@ std::vector<NodeGroup> SelectorManager::GetQDQSelections(const GraphViewer& grap
   return qdq_selections;
 }
 
-Status ValidateNodeGroupDQNodes(const GraphViewer& graph_viewer,
-                                const Node& target_node,
-                                gsl::span<const Node* const> dq_nodes) {
-  // Within a QDQ node group, a target node input is the only consumer of each DQ.
-  // This should have been ensured by the EnsureUniqueDQForNodeUnit graph transformer, but other graph modifications
-  // may have happened since. Verify that this is still true.
-  for (const auto* dq_node : dq_nodes) {
-    const bool dq_produces_graph_output = graph_viewer.NodeProducesGraphOutput(*dq_node);
-    ORT_RETURN_IF(dq_produces_graph_output,
-                  "QDQ node group cannot have DQ node that produces a graph output. DQ node: ", dq_node->Name(),
-                  ", target node: ", target_node.Name());
+std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
+GetAllNodeUnits(const GraphViewer& graph_viewer, const logging::Logger& logger) {
+  std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
+  std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
 
-    const bool dq_has_single_output_edge_to_target =
-        dq_node->GetOutputEdgesCount() == 1 &&
-        dq_node->OutputEdgesBegin()->GetNode().Index() == target_node.Index();
-    ORT_RETURN_IF_NOT(dq_has_single_output_edge_to_target,
-                      "QDQ node group cannot have DQ that doesn't have a single output edge to the target node. "
-                      "DQ node: ",
-                      dq_node->Name(), ", target node: ", target_node.Name());
+  const auto add_node_unit_to_map = [&](const std::vector<NodeIndex>& node_indices, const NodeUnit* node_unit) {
+    for (const auto& node_idx : node_indices) {
+      const auto* node = graph_viewer.GetNode(node_idx);
+      node_unit_map.insert({node, node_unit});
+    }
+  };
+
+  // Get QDQ NodeUnits first
+  QDQ::SelectorManager selector_mgr;
+  const auto qdq_selections = selector_mgr.GetQDQSelections(graph_viewer, logger);
+
+  for (const auto& qdq_selection : qdq_selections) {
+    auto qdq_unit = std::make_unique<NodeUnit>(graph_viewer, qdq_selection);
+
+    // Fill the node to node_unit map for all nodes in the QDQ Group
+    add_node_unit_to_map(qdq_selection.dq_nodes, qdq_unit.get());
+    add_node_unit_to_map(qdq_selection.q_nodes, qdq_unit.get());
+    add_node_unit_to_map({qdq_selection.target_node}, qdq_unit.get());
+    if (qdq_selection.redundant_clip_node.has_value()) {
+      add_node_unit_to_map({qdq_selection.redundant_clip_node.value()}, qdq_unit.get());
+    }
+
+    node_unit_holder.push_back(std::move(qdq_unit));
   }
 
-  return Status::OK();
+  // Get the left over SingleNode NodeUnits
+  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
+  for (const auto node_idx : node_indices) {
+    const auto* node(graph_viewer.GetNode(node_idx));
+
+    // This is already part of a QDQ NodeUnit
+    if (node_unit_map.find(node) != node_unit_map.cend())
+      continue;
+
+    auto node_unit = std::make_unique<NodeUnit>(*node);
+    node_unit_map[node] = node_unit.get();
+    node_unit_holder.push_back(std::move(node_unit));
+  }
+
+  return std::make_pair(std::move(node_unit_holder), std::move(node_unit_map));
 }
 
 }  // namespace QDQ

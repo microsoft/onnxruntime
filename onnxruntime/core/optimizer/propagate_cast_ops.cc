@@ -171,7 +171,7 @@ static bool IsFP16Allow(const Node* node, size_t level, const FP16AllowOps& fp16
 
   using OpsSetType = InlinedHashSet<std::string_view>;
   static const OpsSetType level1_fp16_allow_set =
-      {"Expand", "Transpose", "Relu", "Reshape", "Split", "Tanh", "Squeeze", "Unsqueeze", "Gelu"};
+      {"Expand", "Transpose", "Relu", "Reshape", "Split", "Tanh", "Squeeze", "Unsqueeze", "Gelu", "Slice", "PadAndUnflatten"};
   static const OpsSetType level2_fp16_allow_set = {
       "Add", "BiasGelu", "Dropout", "FastGelu", "Gather", "LayerNormalization", "Where"};
 

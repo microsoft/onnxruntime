@@ -6,9 +6,10 @@
 
 namespace Dml
 {
-    CommandQueue::CommandQueue(ID3D12CommandQueue* existingQueue)
+    CommandQueue::CommandQueue(ID3D12CommandQueue* existingQueue, bool cpuSyncSpinningEnabled)
         : m_queue(existingQueue)
         , m_type(existingQueue->GetDesc().Type)
+        , m_cpuSyncSpinningEnabled(cpuSyncSpinningEnabled)
     {
         ComPtr<ID3D12Device> device;
         GRAPHICS_THROW_IF_FAILED(m_queue->GetDevice(IID_GRAPHICS_PPV_ARGS(device.GetAddressOf())));
@@ -46,12 +47,12 @@ namespace Dml
         return GpuEvent{ m_lastFenceValue + 1, m_fence };
     }
 
-    void CommandQueue::QueueReference(IUnknown* object, bool waitForUnsubmittedWork) 
+    void CommandQueue::QueueReference(IUnknown* object, bool waitForUnsubmittedWork)
     {
-        // If the CommandQueue is closing, then m_queuedReferences is being cleared -- it is not OK 
-        // to queue additional references at this time, since those references would be leaked. This 
-        // affects any objects in m_queuedReferences whose destructors indirectly call QueueReference; 
-        // for example, an allocation from BucketizedBufferAllocator attempts to queue a reference 
+        // If the CommandQueue is closing, then m_queuedReferences is being cleared -- it is not OK
+        // to queue additional references at this time, since those references would be leaked. This
+        // affects any objects in m_queuedReferences whose destructors indirectly call QueueReference;
+        // for example, an allocation from BucketizedBufferAllocator attempts to queue a reference
         // to its underlying D3D resource when freed. Furthermore, these references are unnecessary
         // since Close() already blocks for scheduled GPU work before clearing m_queuedReferences.
         if (!m_closing)
@@ -68,18 +69,18 @@ namespace Dml
             m_queuedReferences.push_back(queuedReference);
         }
     }
-    
+
     void CommandQueue::Close()
     {
         // Wait for flushed work:
         assert(!m_closing);
         m_closing = true;
         GpuEvent event = GetCurrentCompletionEvent();
-        event.WaitForSignal();
+        event.WaitForSignal(m_cpuSyncSpinningEnabled);
         m_queuedReferences.clear();
         m_closing = false;
     }
-    
+
     void CommandQueue::ReleaseCompletedReferences()
     {
         uint64_t completedValue = GetFence()->GetCompletedValue();
@@ -88,6 +89,5 @@ namespace Dml
             m_queuedReferences.pop_front();
         }
     }
-
 
 } // namespace Dml

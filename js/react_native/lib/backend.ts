@@ -1,38 +1,52 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Backend, InferenceSession, SessionHandler, Tensor,} from 'onnxruntime-common';
-import {Platform} from 'react-native';
+import {
+  type Backend,
+  InferenceSession,
+  type InferenceSessionHandler,
+  type SessionHandler,
+  Tensor,
+} from 'onnxruntime-common';
+import { Platform } from 'react-native';
 
-import {binding, Binding, JSIBlob, jsiHelper} from './binding';
+import { binding, type Binding, type JSIBlob, jsiHelper } from './binding';
 
 type SupportedTypedArray = Exclude<Tensor.DataType, string[]>;
 
-const tensorTypeToTypedArray = (type: Tensor.Type):|Float32ArrayConstructor|Int8ArrayConstructor|Int16ArrayConstructor|
-    Int32ArrayConstructor|BigInt64ArrayConstructor|Float64ArrayConstructor|Uint8ArrayConstructor => {
-      switch (type) {
-        case 'float32':
-          return Float32Array;
-        case 'int8':
-          return Int8Array;
-        case 'uint8':
-          return Uint8Array;
-        case 'int16':
-          return Int16Array;
-        case 'int32':
-          return Int32Array;
-        case 'bool':
-          return Int8Array;
-        case 'float64':
-          return Float64Array;
-        case 'int64':
-          /* global BigInt64Array */
-          /* eslint no-undef: ["error", { "typeof": true }] */
-          return BigInt64Array;
-        default:
-          throw new Error(`unsupported type: ${type}`);
-      }
-    };
+const tensorTypeToTypedArray = (
+  type: Tensor.Type,
+):
+  | Float32ArrayConstructor
+  | Int8ArrayConstructor
+  | Int16ArrayConstructor
+  | Int32ArrayConstructor
+  | BigInt64ArrayConstructor
+  | Float64ArrayConstructor
+  | Uint8ArrayConstructor => {
+  switch (type) {
+    case 'float32':
+      return Float32Array;
+    case 'int8':
+      return Int8Array;
+    case 'uint8':
+      return Uint8Array;
+    case 'int16':
+      return Int16Array;
+    case 'int32':
+      return Int32Array;
+    case 'bool':
+      return Int8Array;
+    case 'float64':
+      return Float64Array;
+    case 'int64':
+      /* global BigInt64Array */
+      /* eslint no-undef: ["error", { "typeof": true }] */
+      return BigInt64Array;
+    default:
+      throw new Error(`unsupported type: ${type}`);
+  }
+};
 
 const normalizePath = (path: string): string => {
   // remove 'file://' prefix in iOS
@@ -43,16 +57,16 @@ const normalizePath = (path: string): string => {
   return path;
 };
 
-class OnnxruntimeSessionHandler implements SessionHandler {
+class OnnxruntimeSessionHandler implements InferenceSessionHandler {
   #inferenceSession: Binding.InferenceSession;
   #key: string;
 
-  #pathOrBuffer: string|Uint8Array;
+  #pathOrBuffer: string | Uint8Array;
 
   inputNames: string[];
   outputNames: string[];
 
-  constructor(pathOrBuffer: string|Uint8Array) {
+  constructor(pathOrBuffer: string | Uint8Array) {
     this.#inferenceSession = binding;
     this.#pathOrBuffer = pathOrBuffer;
     this.#key = '';
@@ -66,12 +80,14 @@ class OnnxruntimeSessionHandler implements SessionHandler {
       let results: Binding.ModelLoadInfoType;
       // load a model
       if (typeof this.#pathOrBuffer === 'string') {
+        // load model from model path
         results = await this.#inferenceSession.loadModel(normalizePath(this.#pathOrBuffer), options);
       } else {
+        // load model from buffer
         if (!this.#inferenceSession.loadModelFromBlob) {
           throw new Error('Native module method "loadModelFromBlob" is not defined');
         }
-        const modelBlob = jsiHelper.storeArrayBuffer(this.#pathOrBuffer);
+        const modelBlob = jsiHelper.storeArrayBuffer(this.#pathOrBuffer.buffer);
         results = await this.#inferenceSession.loadModelFromBlob(modelBlob, options);
       }
       // resolve promise if onnxruntime session is successfully created
@@ -94,14 +110,18 @@ class OnnxruntimeSessionHandler implements SessionHandler {
     // TODO: implement profiling
   }
 
-  async run(feeds: SessionHandler.FeedsType, fetches: SessionHandler.FetchesType, options: InferenceSession.RunOptions):
-      Promise<SessionHandler.ReturnType> {
+  async run(
+    feeds: SessionHandler.FeedsType,
+    fetches: SessionHandler.FetchesType,
+    options: InferenceSession.RunOptions,
+  ): Promise<SessionHandler.ReturnType> {
     const outputNames: Binding.FetchesType = [];
     for (const name in fetches) {
       if (Object.prototype.hasOwnProperty.call(fetches, name)) {
         if (fetches[name]) {
           throw new Error(
-              'Preallocated output is not supported and only names as string array is allowed as parameter');
+            'Preallocated output is not supported and only names as string array is allowed as parameter',
+          );
         }
         outputNames.push(name);
       }
@@ -112,12 +132,11 @@ class OnnxruntimeSessionHandler implements SessionHandler {
     return output;
   }
 
-
   encodeFeedsType(feeds: SessionHandler.FeedsType): Binding.FeedsType {
-    const returnValue: {[name: string]: Binding.EncodedTensorType} = {};
+    const returnValue: { [name: string]: Binding.EncodedTensorType } = {};
     for (const key in feeds) {
       if (Object.hasOwnProperty.call(feeds, key)) {
-        let data: JSIBlob|string[];
+        let data: JSIBlob | string[];
 
         if (Array.isArray(feeds[key].data)) {
           data = feeds[key].data as string[];
@@ -163,8 +182,10 @@ class OnnxruntimeBackend implements Backend {
     return Promise.resolve();
   }
 
-  async createSessionHandler(pathOrBuffer: string|Uint8Array, options?: InferenceSession.SessionOptions):
-      Promise<SessionHandler> {
+  async createInferenceSessionHandler(
+    pathOrBuffer: string | Uint8Array,
+    options?: InferenceSession.SessionOptions,
+  ): Promise<InferenceSessionHandler> {
     const handler = new OnnxruntimeSessionHandler(pathOrBuffer);
     await handler.loadModel(options || {});
     return handler;

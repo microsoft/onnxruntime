@@ -4,8 +4,7 @@
     "outDir": "./dist/esm",
     "declaration": true,
     "declarationMap": true,
-    "esModuleInterop": false,
-    "noUnusedParameters": true,
+    "esModuleInterop": false
   },
   "include": ["lib"]
 }

@@ -1,10 +1,10 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-import {Tensor} from '../../../tensor';
-import {WebGLInferenceHandler} from '../inference-handler';
+import { Tensor } from '../../../tensor';
+import { WebGLInferenceHandler } from '../inference-handler';
 
-export const shape = (inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
+export const shape = (_inferenceHandler: WebGLInferenceHandler, inputs: Tensor[]): Tensor[] => {
   validateInputs(inputs);
   return [new Tensor([inputs[0].dims.length], 'int32', undefined, undefined, new Int32Array(inputs[0].dims))];
 };

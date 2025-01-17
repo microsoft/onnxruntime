@@ -6,7 +6,6 @@
 
 import logging
 import os
-import sys
 from pathlib import Path
 
 import numpy
@@ -18,8 +17,11 @@ from quantize_helper import QuantizeHelper
 from torch_onnx_export_helper import torch_onnx_export
 from transformers import AutoConfig, AutoFeatureExtractor, AutoTokenizer, LxmertConfig, TransfoXLConfig
 
-sys.path.append(os.path.join(os.path.dirname(__file__), "models", "gpt2"))
-from gpt2_helper import PRETRAINED_GPT2_MODELS, GPT2ModelNoPastState, TFGPT2ModelNoPastState  # noqa: E402
+from onnxruntime.transformers.models.gpt2.gpt2_helper import (
+    PRETRAINED_GPT2_MODELS,
+    GPT2ModelNoPastState,
+    TFGPT2ModelNoPastState,
+)
 
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "2"
 
@@ -390,11 +392,13 @@ def validate_and_optimize_onnx(
             False,
             output_names,
         )
-    if optimize_info == OptimizerInfo.NOOPT:
+    if optimize_info.name == OptimizerInfo.NOOPT.name:
         return onnx_model_path, is_valid_onnx_model, config.vocab_size
 
     if (
-        optimize_info == OptimizerInfo.BYSCRIPT or precision == Precision.FLOAT16 or precision == Precision.INT8
+        optimize_info.name == OptimizerInfo.BYSCRIPT.name
+        or precision == Precision.FLOAT16
+        or precision == Precision.INT8
     ):  # Use script (optimizer.py) to optimize
         optimized_model_path = get_onnx_file_path(
             onnx_dir,
@@ -437,7 +441,7 @@ def validate_and_optimize_onnx(
             QuantizeHelper.quantize_onnx_model(onnx_model_path, onnx_model_path, use_external_data_format)
             logger.info(f"Finished quantizing model: {onnx_model_path}")
 
-    if optimize_info == OptimizerInfo.BYORT:  # Use OnnxRuntime to optimize
+    if optimize_info.name == OptimizerInfo.BYORT.name:  # Use OnnxRuntime to optimize
         if is_valid_onnx_model:
             ort_model_path = add_filename_suffix(onnx_model_path, "_ort")
             optimize_onnx_model_by_ort(
@@ -490,10 +494,7 @@ def export_onnx_model_from_pt(
         example_inputs = image_processor(data, return_tensors="pt")
     else:
         tokenizer = AutoTokenizer.from_pretrained(model_name, cache_dir=cache_dir)
-        max_input_size = (
-            tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
-        )
-
+        max_input_size = tokenizer.model_max_length
         example_inputs = tokenizer.encode_plus("This is a sample input", return_tensors="pt")
 
     example_inputs = filter_inputs(example_inputs, input_names)
@@ -597,9 +598,7 @@ def export_onnx_model_from_tf(
     # Fix "Using pad_token, but it is not set yet" error.
     if tokenizer.pad_token is None:
         tokenizer.add_special_tokens({"pad_token": "[PAD]"})
-    max_input_size = (
-        tokenizer.max_model_input_sizes[model_name] if model_name in tokenizer.max_model_input_sizes else 1024
-    )
+    max_input_size = tokenizer.model_max_length
 
     config, model = load_tf_model(model_name, model_class, cache_dir, config_modifier)
     model.resize_token_embeddings(len(tokenizer))

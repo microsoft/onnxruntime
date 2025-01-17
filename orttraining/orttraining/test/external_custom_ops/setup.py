@@ -28,9 +28,7 @@ class CMakeBuild(build_ext):
         subprocess.check_call(
             [
                 "cmake",
-                "-DPYBIND11_PYTHON_VERSION={}.{}.{}".format(
-                    sys.version_info.major, sys.version_info.minor, sys.version_info.micro
-                ),
+                f"-DPYBIND11_PYTHON_VERSION={sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}",
                 f"-Dpybind11_DIR={pybind11.get_cmake_dir()}",
                 f"-DONNX_INCLUDE={os.path.dirname(os.path.dirname(onnx.__file__))}",
                 "-DONNXRUNTIME_EXTERNAL_INCLUDE={}".format(

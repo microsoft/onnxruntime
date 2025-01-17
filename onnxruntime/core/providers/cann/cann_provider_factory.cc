@@ -77,6 +77,7 @@ struct CANN_Provider : Provider {
     info.arena_extend_strategy = params->arena_extend_strategy;
     info.enable_cann_graph = params->enable_cann_graph != 0;
     info.dump_graphs = params->dump_graphs != 0;
+    info.dump_om_model = params->dump_om_model != 0;
     info.precision_mode = params->precision_mode;
     info.op_select_impl_mode = params->op_select_impl_mode;
     info.optypelist_for_implmode = params->optypelist_for_implmode;
@@ -94,6 +95,7 @@ struct CANN_Provider : Provider {
     cann_options.arena_extend_strategy = internal_options.arena_extend_strategy;
     cann_options.enable_cann_graph = internal_options.enable_cann_graph;
     cann_options.dump_graphs = internal_options.dump_graphs;
+    cann_options.dump_om_model = internal_options.dump_om_model;
     cann_options.precision_mode = internal_options.precision_mode;
     cann_options.op_select_impl_mode = internal_options.op_select_impl_mode;
     cann_options.optypelist_for_implmode = internal_options.optypelist_for_implmode;

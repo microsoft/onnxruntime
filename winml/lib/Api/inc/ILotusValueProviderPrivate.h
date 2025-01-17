@@ -12,8 +12,10 @@ namespace _winml {
 
 class PoolObjectWrapper;
 
-enum class BindingType { kInput,
-                         kOutput };
+enum class BindingType {
+  kInput,
+  kOutput
+};
 
 struct BindingContext {
   BindingType type = BindingType::kInput;
@@ -23,7 +25,8 @@ struct BindingContext {
   std::shared_ptr<PoolObjectWrapper> converter;
 };
 
-struct __declspec(uuid("27e2f437-0112-4693-849e-e04323a620fb")) __declspec(novtable) ILotusValueProviderPrivate : IUnknown {
+struct __declspec(uuid("27e2f437-0112-4693-849e-e04323a620fb")) __declspec(novtable) ILotusValueProviderPrivate
+  : IUnknown {
   virtual HRESULT __stdcall GetValue(BindingContext& binding_context, _winml::IValue** out) = 0;
   virtual HRESULT __stdcall IsPlaceholder(bool* is_placeholder) = 0;
   virtual HRESULT __stdcall UpdateSourceResourceData(BindingContext& binding_context, _winml::IValue* value) = 0;

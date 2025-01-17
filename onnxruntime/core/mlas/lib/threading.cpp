@@ -93,3 +93,41 @@ MlasTrySimpleParallel(
     MLAS_THREADPOOL::TrySimpleParallelFor(ThreadPool, Iterations, Work);
 #endif
 }
+
+
+void
+MlasTryBatchParallel(
+	MLAS_THREADPOOL * ThreadPool,
+	const std::ptrdiff_t Iterations,
+	const std::function<void(std::ptrdiff_t tid)>& Work)
+{
+    //
+    // Execute the routine directly if only one iteration is specified.
+    //
+    if (Iterations == 1) {
+        Work(0);
+        return;
+    }
+
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
+    MLAS_UNREFERENCED_PARAMETER(ThreadPool);
+
+    //
+    // Fallback to OpenMP or a serialized implementation.
+    //
+
+    //
+    // Execute the routine for the specified number of iterations.
+    //
+    for (ptrdiff_t tid = 0; tid < Iterations; tid++) {
+        Work(tid);
+    }
+#else
+    //
+    // Schedule the threaded iterations using the thread pool object.
+    //
+
+    MLAS_THREADPOOL::TryBatchParallelFor(ThreadPool, Iterations, Work, 0);
+#endif
+
+}

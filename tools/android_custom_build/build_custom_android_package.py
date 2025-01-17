@@ -11,8 +11,6 @@ import subprocess
 import sys
 
 SCRIPT_DIR = pathlib.Path(__file__).parent.resolve()
-DEFAULT_OPS_CONFIG_RELATIVE_PATH = "tools/ci_build/github/android/mobile_package.required_operators.config"
-DEFAULT_BUILD_SETTINGS_RELATIVE_PATH = "tools/ci_build/github/android/default_mobile_aar_build_settings.json"
 
 
 def is_windows():
@@ -22,7 +20,7 @@ def is_windows():
 def run(cmd_arg_list, **kwargs):
     print(f"Running command:\n  {shlex.join(cmd_arg_list)}")
     kwargs.update({"check": True})
-    return subprocess.run(cmd_arg_list, **kwargs)
+    return subprocess.run(cmd_arg_list, **kwargs)  # noqa: PLW1510
 
 
 def parse_args():
@@ -53,16 +51,18 @@ def parse_args():
     parser.add_argument(
         "--include_ops_by_config",
         type=pathlib.Path,
-        help="The configuration file specifying which ops to include. "
+        help="The optional configuration file specifying which ops to include. "
         "Such a configuration file is generated during ONNX to ORT format model conversion. "
-        f"The default is {DEFAULT_OPS_CONFIG_RELATIVE_PATH} in the ONNX Runtime repo.",
+        "When providing this option, consider also enabling op type support reduction by specifying "
+        "the build.py --enable_reduced_operator_type_support option in the build settings configuration file.",
     )
 
     parser.add_argument(
         "--build_settings",
         type=pathlib.Path,
+        required=True,
         help="The configuration file specifying the build.py options. "
-        f"The default is {DEFAULT_BUILD_SETTINGS_RELATIVE_PATH} in the ONNX Runtime repo.",
+        "For an example, see tools/ci_build/github/android/default_full_aar_build_settings.json.",
     )
 
     default_config = "Release"
@@ -95,6 +95,12 @@ def parse_args():
 
     args = parser.parse_args()
 
+    if not args.build_settings.is_file():
+        raise ValueError(f"--build_settings argument is not a file: {args.build_settings}")
+
+    if args.include_ops_by_config is not None and not args.include_ops_by_config.is_file():
+        raise ValueError(f"--include_ops_by_config argument is not a file: {args.include_ops_by_config}")
+
     if args.docker_path is None:
         raise ValueError("Unable to determine docker path. Please provide it with --docker_path.")
 
@@ -120,7 +126,8 @@ def main():
         "--file",
         str(SCRIPT_DIR / "Dockerfile"),
         *docker_build_image_args,
-    ] + [str(SCRIPT_DIR)]
+        str(SCRIPT_DIR),
+    ]
 
     run(docker_build_image_cmd)
 
@@ -128,7 +135,7 @@ def main():
     working_dir.mkdir(parents=True, exist_ok=True)
     working_dir = working_dir.resolve()
 
-    # copy over any custom build configuration files
+    # copy over custom build configuration files
     config_files = [f for f in [args.include_ops_by_config, args.build_settings] if f]
     if config_files:
         input_dir = working_dir / "input"
@@ -140,31 +147,30 @@ def main():
     output_dir.mkdir(exist_ok=True)
 
     container_ops_config_file = (
-        f"/workspace/shared/input/{args.include_ops_by_config.name}"
-        if args.include_ops_by_config
-        else f"/workspace/onnxruntime/{DEFAULT_OPS_CONFIG_RELATIVE_PATH}"
+        f"/workspace/shared/input/{args.include_ops_by_config.name}" if args.include_ops_by_config else None
     )
 
-    container_build_settings_file = (
-        f"/workspace/shared/input/{args.build_settings.name}"
-        if args.build_settings
-        else f"/workspace/onnxruntime/{DEFAULT_BUILD_SETTINGS_RELATIVE_PATH}"
-    )
+    container_build_settings_file = f"/workspace/shared/input/{args.build_settings.name}"
 
     # enable use of Ctrl-C to stop when running interactively
     docker_run_interactive_args = ["-it"] if sys.stdin.isatty() else []
 
-    docker_container_build_cmd = [args.docker_path, "run", *docker_run_interactive_args] + [
+    docker_container_build_cmd = [
+        args.docker_path,
+        "run",
+        *docker_run_interactive_args,
         f"--name={args.docker_container_name}" if args.docker_container_name is not None else "--rm",
         f"--volume={working_dir}:/workspace/shared",
         args.docker_image_tag,
         "/bin/bash",
         "/workspace/scripts/build.sh",
         args.config,
-        container_ops_config_file,
-        container_build_settings_file,
         "/workspace/shared/output",
+        container_build_settings_file,
     ]
+
+    if container_ops_config_file is not None:
+        docker_container_build_cmd += [container_ops_config_file]
 
     run(docker_container_build_cmd)
 

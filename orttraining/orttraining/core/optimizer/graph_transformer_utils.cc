@@ -51,21 +51,29 @@
 #include "orttraining/core/framework/distributed_run_context.h"
 #include "orttraining/core/optimizer/batchnorm_replacement.h"
 #include "orttraining/core/optimizer/bitmask_dropout_replacement.h"
+#include "orttraining/core/optimizer/cast_sce_loss_fusion.h"
 #include "orttraining/core/optimizer/concat_replacement.h"
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
+#include "orttraining/core/optimizer/gru_replacement.h"
 #include "orttraining/core/optimizer/insert_output_rewriter.h"
 #include "orttraining/core/optimizer/localized_recompute.h"
 #include "orttraining/core/optimizer/loss_rewriter.h"
 #include "orttraining/core/optimizer/lstm_replacement.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
 #include "orttraining/core/optimizer/qdq_fusion.h"
+#include "orttraining/core/optimizer/scaled_sum_fusion.h"
 #include "orttraining/core/optimizer/shape_optimizer.h"
 #include "orttraining/core/optimizer/transformer_layer_recompute.h"
-#include "core/optimizer/pre_shape_node_elimination.h"
+#include "orttraining/core/optimizer/transpose_replacement.h"
 #include "core/optimizer/compute_optimizer/upstream_gather.h"
 #include "core/optimizer/compute_optimizer/upstream_reshape.h"
+#include "core/optimizer/pre_shape_node_elimination.h"
 #include "orttraining/core/optimizer/compute_optimizer/padding_elimination.h"
 #include "orttraining/core/optimizer/compute_optimizer/sceloss_compute_optimization.h"
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+#include "orttraining/core/optimizer/pythonop_rewriter.h"
+#endif
+#include "orttraining/core/optimizer/conv1d_replacement.h"
 
 namespace onnxruntime {
 namespace training {
@@ -103,13 +111,17 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<NotWhereFusion>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<InsertSoftmaxCrossEntropyLossOutput>()));
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<LSTMReplacement>()));
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<GRUReplacement>()));
+#ifdef ENABLE_TRAINING_TORCH_INTEROP
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<PythonOpRewriter>()));
+#endif
 
       // Put ConstantSharing before CommonSubexpressionElimination by intention as it can create more opportunities for
-      // CSE. For example, if A and B nodes both do Add operation with a same value but different initializers, by
-      // default, CSE will not merge them, because the different initializers are represented by different NodeArg.
+      // CSE. For example, if A and B nodes consume different initializers with same value, by default,
+      // CSE will not merge them.
       transformers.emplace_back(std::make_unique<ConstantSharing>(compatible_eps));
       // LayerNormFusion must be applied before CommonSubexpressionElimination as the latter will break the pattern when 2 LayerNormFusion share the same input.
-      transformers.emplace_back(std::make_unique<LayerNormFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<LayerNormFusion>(compatible_eps, level, true));
       // Remove duplicate nodes. Must be applied before any recompute transformations.
       if (config.gelu_recompute || config.attn_dropout_recompute || config.transformer_layer_recompute) {
         transformers.emplace_back(std::make_unique<CommonSubexpressionEliminationApplyOnce>(compatible_eps));
@@ -117,7 +129,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
         transformers.emplace_back(std::make_unique<CommonSubexpressionElimination>(compatible_eps));
       }
 
-      transformers.emplace_back(std::make_unique<GeluFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<GeluFusion>(compatible_eps, level, true));
 #if defined(USE_CUDA) || defined(USE_ROCM)
       transformers.emplace_back(std::make_unique<SimplifiedLayerNormFusion>(compatible_eps,
                                                                             true /* skip_device_check*/));
@@ -127,25 +139,29 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
       transformers.emplace_back(std::make_unique<FastGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<QuickGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<SoftmaxCrossEntropyLossInternalFusion>(compatible_eps));
-      transformers.emplace_back(std::make_unique<GatherToSplitFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<GatherSliceToSplitFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<GatherToSliceFusion>(compatible_eps));
       // If a model with Q, DQ nodes is being used for the purpose of training, it must be for
       // Quantization Aware Training. So, replace QDQ nodes with FakeQuant.
       transformers.emplace_back(std::make_unique<QDQFusion>(compatible_eps));
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
-      // We are supposed to use execution provider as indicator, but here we don't have access to the registered EP at this point
+      // We are supposed to use the execution provider as an indicator,
+      //  but here we don't have access to the registered EP at this point
       // as the session is not initialized yet. So using macro for now.
       transformers.emplace_back(std::make_unique<BiasGeluFusion>(compatible_eps));
       transformers.emplace_back(std::make_unique<IsInfReduceSumFusion>(compatible_eps));
+      transformers.emplace_back(std::make_unique<ScaledSumFusion>(compatible_eps));
 #endif
 
       if (config.enable_gelu_approximation) {
         transformers.emplace_back(std::make_unique<GeluApproximation>(compatible_eps));
       }
       InlinedHashSet<std::string> excluded_initializers(weights_to_train.begin(), weights_to_train.end());
+      static const ConfigOptions empty_config_options;
       transformers.emplace_back(std::make_unique<ConstantFolding>(
-          execution_provider, false /*skip_dequantize_linear*/, compatible_eps, excluded_initializers));
+          execution_provider, false /*skip_dequantize_linear*/, empty_config_options, compatible_eps,
+          excluded_initializers));
       transformers.emplace_back(std::make_unique<ReshapeFusion>(compatible_eps));
       // Put fine-grained optimizer (e.g. ShapeOptimizer) after ReshapeFusion to avoid it breaks the strong patterns
       // it defines. ReshapeFusion depends on subgraph pattern matching and do replacement accordingly, ShapeOptimizer
@@ -171,17 +187,19 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
                                                                      config.propagate_cast_ops_config.allow,
                                                                      cuda_execution_provider));
       }
+      transformers.emplace_back(std::make_unique<CastSceLossFusion>(compatible_eps));
 
       if (config.enable_compute_optimizer) {
         transformers.emplace_back(std::make_unique<UpStreamGatherGraphTransformer>(compatible_eps));
         transformers.emplace_back(std::make_unique<UpStreamReshapeGraphTransformer>(compatible_eps));
         transformers.emplace_back(std::make_unique<InsertGatherBeforeSceLoss>(compatible_eps,
-                                                                              config.sparse_label_input_names));
+                                                                              config.print_input_density));
 #if defined(USE_CUDA) || defined(USE_ROCM)
         // Put this under CUDA/ROCM guard as it depends on PadAndUnflatten CUDA/ROCM kernel.
         // Once we have a CPU kernel for PadAndUnflatten, we can remove the guard.
         transformers.emplace_back(std::make_unique<PaddingElimination>(compatible_eps,
-                                                                       config.sparse_embedding_input_names));
+                                                                       config.print_input_density));
+        transformers.emplace_back(std::make_unique<Conv1dReplacement>(compatible_eps));
 #endif
       }
 
@@ -192,6 +210,7 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
           std::make_unique<RuleBasedGraphTransformer>(optimizer_utils::GenerateRuleBasedTransformerName(level),
                                                       compatible_eps);
       ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<ConcatReplacement>()));
+      ORT_THROW_IF_ERROR(rule_transformer->Register(std::make_unique<TransposeReplacement>()));
     } break;
 
     case TransformerLevel::Level3: {

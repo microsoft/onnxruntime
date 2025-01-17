@@ -144,7 +144,7 @@ def main():
             all_nodes.append(node)
 
     for node in layer_norm_nodes:
-        all_nodes.append(node)
+        all_nodes.append(node)  # noqa: PERF402
 
     graph_proto.ClearField("node")
     graph_proto.node.extend(all_nodes)
@@ -164,7 +164,7 @@ def main():
     vocab_size = 30528
 
     # Create a fake data point.
-    vocab_size = 30528  # It shoudl match the value from BERT config file.
+    vocab_size = 30528  # It should match the value from BERT config file.
     input_ids = np.random.randint(low=0, high=vocab_size, size=(batch, sq_length), dtype=np.int64)
     segment_ids = np.random.randint(low=0, high=2, size=(batch, sq_length), dtype=np.int64)
     input_mask = np.ones((batch, sq_length), dtype=np.int64)

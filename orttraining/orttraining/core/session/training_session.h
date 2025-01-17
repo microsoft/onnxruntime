@@ -46,7 +46,7 @@ class TrainingSession : public InferenceSession {
 
   TrainingSession(const SessionOptions& session_options, const Environment& env)
       : InferenceSession(session_options, env), is_mixed_precision_enabled_(false) {}
-  virtual ~TrainingSession(){};
+  virtual ~TrainingSession() {};
 
   /**
    * The training configuration options.
@@ -215,11 +215,11 @@ class TrainingSession : public InferenceSession {
       // If the edge is unique, i.e. only have one consumer node, or all the edges
       // with the same node_arg_name needs to be cut, specify the node_arg_name
       // suffices.
-      CutEdge(std::string edge) : node_arg_name(edge){};
+      CutEdge(std::string edge) : node_arg_name(edge) {};
       // If the edges with same node_arg_name belongs to different cut, i.e. some of its
       // consumer node belongs to one partition, and some belongs to another, specify
       // the consumer node names which you want to perform the cut on.
-      CutEdge(std::string edge, std::vector<std::string> nodes) : node_arg_name(edge), consumer_nodes(nodes){};
+      CutEdge(std::string edge, std::vector<std::string> nodes) : node_arg_name(edge), consumer_nodes(nodes) {};
     };
     // CutInfo is a group of CutEdges that describes a specific cut that composed of splitting those edges.
     typedef std::vector<CutEdge> CutInfo;
@@ -489,7 +489,8 @@ class TrainingSession : public InferenceSession {
       GraphTransformerManager& transformer_manager,
       TransformerLevel graph_optimization_level,
       MinimalBuildOptimizationHandling minimal_build_optimization_handling,
-      RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn) const override;
+      RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn,
+      const logging::Logger& logger) const override;
 
   /** Perform auto-diff to add backward graph into the model.
   @param weights_to_train a set of weights to be training.

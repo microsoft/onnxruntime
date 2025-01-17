@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Copyright (c) 2020, NXP Semiconductor, Inc. All rights reserved.
+// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include "core/providers/acl/tensor/concat.h"
@@ -9,6 +10,8 @@
 
 #include "core/providers/acl/acl_common.h"
 #include "core/providers/acl/acl_fwd.h"
+
+#include <iostream>
 
 #define PREF_DIM 4
 
@@ -22,17 +25,27 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
     return onnxruntime::Concat::Compute(ctx);
   }
 
+  if (axis_ < 0) {
+    LOGS_DEFAULT(WARNING) << "ACL does not have support for negative axis; defaulting to cpu implementation";
+    return onnxruntime::Concat::Compute(ctx);
+  }
+
   // Number of input tensors to concatenate
   auto input_count = Node().InputArgCount().front();
 
   // Hold pointers to the input tensors to be used in the PrepareForCompute() step
   std::vector<const Tensor*> input_tensors;
-  input_tensors.reserve(input_count);
+  int empty_tensors = 0;
   for (int i = 0; i < input_count; ++i) {
+    if (ctx->Input<Tensor>(i)->Shape().Size() == 0) {
+      empty_tensors++;
+      continue;
+    }
     input_tensors.push_back(ctx->Input<Tensor>(i));
   }
+  input_count -= empty_tensors;
 
-  auto output_dims = input_tensors[0]->Shape().AsShapeVector();
+  auto output_dims = ctx->Input<Tensor>(0)->Shape().AsShapeVector();
 
   // 'Concat' mode
   if (!is_stack_) {
@@ -64,7 +77,7 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
   LOGS_DEFAULT(VERBOSE) << "Concat ACL:";
 
   arm_compute::Tensor output;
-  std::vector<arm_compute::ITensor*> inputs_vector;
+  std::vector<const arm_compute::ITensor*> inputs_vector;
   for (int i = 0; i < input_count; i++) {
     arm_compute::Tensor* input = new arm_compute::Tensor();
     auto X = input_tensors[i];
@@ -75,7 +88,9 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
   }
 
   arm_compute::NEConcatenateLayer layer;
-  layer.configure(inputs_vector, &output, 3 - axis_);
+  if (input_count > 0) {
+    layer.configure(inputs_vector, &output, 3 - axis_);
+  }
 
   LOGS_DEFAULT(VERBOSE) << "axis: " << axis_;
   LOGS_DEFAULT(VERBOSE) << std::endl;
@@ -83,7 +98,7 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
   for (int i = 0; i < input_count; i++) {
     auto X = input_tensors[i];
     const T* x_data = X->Data<T>();
-    arm_compute::Tensor* in = static_cast<arm_compute::Tensor*>(inputs_vector[i]);
+    arm_compute::Tensor* in = const_cast<arm_compute::Tensor*>(static_cast<const arm_compute::Tensor*>(inputs_vector[i]));
 
     if (X->Shape().Size() != 0 && in->info()->has_padding()) {
       in->allocator()->allocate();
@@ -101,7 +116,9 @@ Status Concat<T>::Compute(OpKernelContext* ctx) const {
     ACLImportMemory(output.allocator(), (void*)y_data, Y->Shape().Size() * 4);
   }
 
-  layer.run();
+  if (input_count > 0) {
+    layer.run();
+  }
 
   if (Y->Shape().Size() != 0 && output.info()->has_padding()) {
     importDataFromTensor<T>(&output, y_data);

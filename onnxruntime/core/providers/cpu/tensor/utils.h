@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "core/common/gsl.h"
+#include <gsl/gsl>
 #include "core/common/narrow.h"
 
 #ifndef SHARED_PROVIDER

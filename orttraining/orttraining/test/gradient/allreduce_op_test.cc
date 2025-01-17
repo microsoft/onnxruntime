@@ -472,7 +472,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerTest) {
   build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::GpuHierarchicalReduction, true /*build_optimizer*/,
                         false /*half_precision*/);
 
-  std::string model_file_name = "GPUHierarchicalAdasumAllreduceOptimizerTest.onnx";
+  PathString model_file_name = ORT_TSTR("GPUHierarchicalAdasumAllreduceOptimizerTest.onnx");
   auto status = onnxruntime::Model::Save(model, model_file_name);
 
   SessionOptions so;
@@ -649,7 +649,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceOptimizerFP16Test) {
   build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::GpuHierarchicalReduction, true /*build_optimizer*/,
                         true /*half_precision*/);
 
-  std::string model_file_name = "GPUHierarchicalAdasumAllreduceOptimizerFP16Test.onnx";
+  PathString model_file_name = ORT_TSTR("GPUHierarchicalAdasumAllreduceOptimizerFP16Test.onnx");
   auto status = onnxruntime::Model::Save(model, model_file_name);
 
   SessionOptions so;
@@ -791,7 +791,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumAllreduceTest) {
   adasum_graph_configs.push_back(adasum_graph_config);
   build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::GpuHierarchicalReduction);
 
-  std::string model_file_name = "GPUHierarchicalAdasumAllreduceTest.onnx";
+  PathString model_file_name = ORT_TSTR("GPUHierarchicalAdasumAllreduceTest.onnx");
   auto status = onnxruntime::Model::Save(model, model_file_name);
 
   SessionOptions so;
@@ -896,7 +896,7 @@ TEST(AllreduceTest, GPUHierarchicalAdasumFP16AllreduceTest) {
                         false /*build_optimizer*/,
                         true /*half_precision*/);
 
-  std::string model_file_name = "GPUHierarchicalAdasumFP16AllreduceTest.onnx";
+  PathString model_file_name = ORT_TSTR("GPUHierarchicalAdasumFP16AllreduceTest.onnx");
   auto status = onnxruntime::Model::Save(model, model_file_name);
 
   SessionOptions so;
@@ -1003,7 +1003,7 @@ TEST(AllreduceTest, GPUAdasumAllreduceTest) {
 
   build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::CpuReduction);
 
-  std::string model_file_name = "GPUAdasumAllreduceTest.onnx";
+  PathString model_file_name = ORT_TSTR("GPUAdasumAllreduceTest.onnx");
   auto status = onnxruntime::Model::Save(model, model_file_name);
 
   SessionOptions so;
@@ -1110,7 +1110,7 @@ TEST(AllreduceTest, GPUAdasumFP16AllreduceTest) {
 
   build_allreduce_graph(graph, adasum_graph_configs, training::AdasumReductionType::CpuReduction, true /*half_precision*/);
 
-  std::string model_file_name = "GPUAdasumFP16AllreduceTest.onnx";
+  PathString model_file_name = ORT_TSTR("GPUAdasumFP16AllreduceTest.onnx");
   auto status = onnxruntime::Model::Save(model, model_file_name);
 
   SessionOptions so;
