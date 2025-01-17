@@ -24,9 +24,9 @@ ANDROID_SDK_HOME="/android_home"
 ANDROID_NDK_HOME="/ndk_home"
 QNN_HOME="/qnn_home"
 
-python3.12 -m pip install -r /onnxruntime_src/tools/ci_build/requirements/pybind/requirements.txt
+python3 -m pip install -r /onnxruntime_src/tools/ci_build/requirements/pybind/requirements.txt
 # Base command for building the AAR package
-COMMAND="python3.12 $BUILD_SCRIPT --build_dir /build --config $BUILD_CONFIG --android_sdk_path $ANDROID_SDK_HOME --android_ndk_path $ANDROID_NDK_HOME $BUILD_SETTINGS"
+COMMAND="python3 $BUILD_SCRIPT --build_dir /build --config $BUILD_CONFIG --android_sdk_path $ANDROID_SDK_HOME --android_ndk_path $ANDROID_NDK_HOME $BUILD_SETTINGS"
 
 # Check if the include ops config file exists and modify command if it does
 if [ -f "$INCLUDE_OPS_CONFIG" ]; then

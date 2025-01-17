@@ -11,7 +11,7 @@ ENABLE_CACHE=false
 # config to Azure DevOps Artifacts and download them to a Ubuntu 22.04 machine to run the tests.
 PYTHON_EXES=(
   "/opt/python/cp311-cp311/bin/python3.11"
-  "/opt/python/cp312-cp312/bin/python3.12"
+  "/opt/python/cp312-cp312/bin/python3"
   "/opt/python/cp313-cp313/bin/python3.13"
   "/opt/python/cp313-cp313t/bin/python3.13t"
   "/opt/python/cp310-cp310/bin/python3.10"
