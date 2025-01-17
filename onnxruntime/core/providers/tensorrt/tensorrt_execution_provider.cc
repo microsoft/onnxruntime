@@ -1723,16 +1723,6 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   {
     auto lock = GetApiLock();
     runtime_ = std::unique_ptr<nvinfer1::IRuntime>(nvinfer1::createInferRuntime(GetTensorrtLogger(detailed_build_log_)));
-#if NV_TENSORRT_MAJOR >= 10
-    // There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) when running TRT EP with TRT 10.
-    // The reason is when cudaStreamSynchronize being called after inference, the gpu memory will be released back to OS and for the next inference
-    // run, TRT will allocate gpu memory from OS again. This introduces overheads and end up having performance degradation.
-    // The fix is to increase mem pool threshold so TRT can hold the allocated memory to prevent overhead.
-    if (is_dds_op_in_graph_) {
-      trt_gpu_allocator_ = std::make_unique<onnxruntime::PoolAllocator>();
-      runtime_->setGpuAllocator(trt_gpu_allocator_.get());
-    }
-#endif
   }
 
   trt_version_ = getInferLibVersion();
@@ -2333,12 +2323,6 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
              * TODO: Remove the subgraph_node_index
              */
             next_nodes_list[i].first[j] = group.first[subgraph_node_index[next_nodes_list[i].first[j]]];
-
-            // Check if it's DDS op. TRT EP will have corresponding action later to prevent performance degradation if the graph has DDS op that run by TRT 10.
-            if (!is_dds_op_in_graph_) {
-              const auto& node = graph.GetNode(next_nodes_list[i].first[j]);
-              if (dds_op_set_.find(node->OpType()) != dds_op_set_.end()) is_dds_op_in_graph_ = true;
-            }
           }
           nodes_list_output.push_back(next_nodes_list[i]);
         }
@@ -2664,6 +2648,10 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
       }
       LOGS_DEFAULT(INFO) << "[TensorRT EP] Whole graph will run on TensorRT execution provider";
 
+#if NV_TENSORRT_MAJOR >= 10
+      // TRT EP will take appropriate actions later to prevent performance degradation if the graph has DDS op that run by TRT 10.
+      is_dds_op_in_graph_ = IsDDSOpInSubGraph(graph, result, dds_op_set_);
+#endif
       // The context map is only used during EP compile time, release it to save memory space.
       subgraph_context_map_.clear();
       return result;
@@ -2679,6 +2667,11 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
       subgraph_index++;
     }
   }
+
+  #if NV_TENSORRT_MAJOR >= 10
+  // TRT EP will take appropriate actions later to prevent performance degradation if the graph has DDS op that run by TRT 10.
+  is_dds_op_in_graph_ = IsDDSOpInSubGraph(graph, result, dds_op_set_);
+  #endif
 
   const size_t number_of_subgraphs = supported_nodes_vector.size();
   if (number_of_trt_nodes == 0) {
@@ -2780,6 +2773,18 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
 
 common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                                   std::vector<NodeComputeInfo>& node_compute_funcs) {
+  
+ #if NV_TENSORRT_MAJOR >= 10
+  // There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) when running TRT EP with TRT 10.
+  // The issue arises because when cudaStreamSynchronize is called after inference, GPU memory is released back to the OS.
+  // As a result, for the next inference run, TRT reallocates GPU memory from the OS, introducing overhead and leading to performance degradation.
+  // The solution is to increase the memory pool threshold, allowing TRT to retain the allocated memory and reduce this overhead.
+  if (is_dds_op_in_graph_) {
+    trt_gpu_allocator_ = std::make_unique<onnxruntime::PoolAllocator>();
+    runtime_->setGpuAllocator(trt_gpu_allocator_.get());
+  }
+#endif
+    
   for (auto& fused_node_graph : fused_nodes_and_graphs) {
     const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
     const Node& fused_node = fused_node_graph.fused_node;
