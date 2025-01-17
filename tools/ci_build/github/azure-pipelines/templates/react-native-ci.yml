@@ -282,7 +282,7 @@ stages:
   jobs:
   - job: ReactNative_CI_Android
     pool:
-      vmImage: 'macOS-13'
+      vmImage: 'onnxruntime-Ubuntu2204-AMD-CPU'
     variables:
       runCodesignValidationInjection: false
     timeoutInMinutes: 90
