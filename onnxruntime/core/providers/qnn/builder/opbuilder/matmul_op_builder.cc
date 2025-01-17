@@ -129,8 +129,8 @@ Status MatMulOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper, const 
       std::vector<uint8_t> unpacked_tensor;
       if (use_fully_connected && !reshape_input_1) {
         // 2D initializer should be transposed to [n, k].
-        ORT_RETURN_IF_ERROR(TwoDimensionTranspose(qnn_model_wrapper, input_info_1.shape,
-                                                  *input_info_1.initializer_tensor, unpacked_tensor));
+        ORT_RETURN_IF_ERROR(utils::TwoDimensionTranspose(qnn_model_wrapper, input_info_1.shape,
+                                                         *input_info_1.initializer_tensor, unpacked_tensor));
       } else {
         ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_info_1.initializer_tensor, unpacked_tensor));
       }
