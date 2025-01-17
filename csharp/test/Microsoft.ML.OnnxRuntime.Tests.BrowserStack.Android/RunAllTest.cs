@@ -80,7 +80,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests.BrowserStack.Android
         public async Task ClickRunAllTest()
         {
             // XAML for the main page:
-            // https://github.com/mattleibow/DeviceRunners/blob/main/src/DeviceRunners.VisualRunners.Maui/App/Pages/HomePage.xaml
+            // https://github.com/mattleibow/DeviceRunners/blob/cba7644e07b305ba64dc930b01c3eee55ef2b93d/src/DeviceRunners.VisualRunners.Maui/App/Pages/HomePage.xaml
             AppiumElement runAllButton = FindAppiumElementThenClick("//android.widget.Button", "Run All");
 
             while (!runAllButton.Enabled)
@@ -93,7 +93,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests.BrowserStack.Android
 
             if (numFailed == 0)
             {
-                Assert.Pass();
                 return;
             }
 
