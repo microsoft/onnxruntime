@@ -654,32 +654,28 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
   }
 
-  fn loadSHMB(b_global_base:u32, kidx_v:u32, subtile_id: u32, sg_id: u32)
+  fn loadSHMB(b_global_base:u32, kidx_v:u32, row: u32, col: u32)
   {
-      // Workgroup needs to fill 64 slots, there are 16 subgroups in the workgroup.
-      // Each subgroup fills out 4 slots.
-      let b_slot = subtile_id * 4 + sg_id/4;
-      let weight_offset:u32 = kidx_v + sg_id%4;
-      let b_global = b_global_base + b_slot;
+      let b_global = b_global_base + row;
       if (b_global >= uniforms.N)
       {
         return;
       }
 
-      let b_value = input_b[b_global*uniforms.K16+weight_offset];
+      let b_value = input_b[b_global*uniforms.K16+kidx_v+col];
       var b_value_lower = vec4<i32>(unpack4xU8(b_value[0] & 0x0F0F0F0Fu)) - vec4<i32>(8);
       var b_value_upper = vec4<i32>(unpack4xU8((b_value[0] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
-      tile_B[b_slot][sg_id%4][0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
-      tile_B[b_slot][sg_id%4][1] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+      tile_B[row][col][0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+      tile_B[row][col][1] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
       b_value_lower = vec4<i32>(unpack4xU8(b_value[1] & 0x0F0F0F0Fu)) - vec4<i32>(8);
       b_value_upper = vec4<i32>(unpack4xU8((b_value[1] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
-      tile_B[b_slot][sg_id%4][2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
-      tile_B[b_slot][sg_id%4][3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
-      if (sg_id%4 == 0)
+      tile_B[row][col][2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+      tile_B[row][col][3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+      if (col == 0)
       {
         // kidx_v - each kidx_v covers 16 values of k, therefore 4 index must share
         // a single scale kidx_v/2. But scales_b is a vec2, making the math same as A.
-        scale_B[b_slot] = scales_b[b_global*(uniforms.K/64) + kidx_v/4];
+        scale_B[row] = scales_b[b_global*(uniforms.K/64) + kidx_v/4];
       }
   }
 
@@ -738,6 +734,8 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   let a_global_base = workgroup_id.x * tile_size_a;
   let b_global_base = workgroup_id.y * tile_size_b;
+  // During the load phase we use all 256 threads to load 64 rows of A/B.
+  // For each row we load 4 vectorized elements, which are 64 elements of K.
   let load_row = u32(local_idx/4);
   let load_col = u32(local_idx%4);
 
@@ -747,7 +745,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   {
     // Populate shared memory for the workgroup
     loadSHMA(a_global_base, kidx_v, load_row, load_col);
-    loadSHMB(b_global_base, kidx_v, subtile_id, sg_id);
+    loadSHMB(b_global_base, kidx_v, load_row, load_col);
     workgroupBarrier();
 
     // Perform the matmul for the subtile this subgroup is responsible for.
