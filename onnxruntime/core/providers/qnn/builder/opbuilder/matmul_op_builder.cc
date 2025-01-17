@@ -36,15 +36,15 @@ class MatMulOpBuilder : public BaseOpBuilder {
  private:
   Status ProcessInputsForQnnMatMul(QnnModelWrapper& qnn_model_wrapper,
                                    const NodeUnit& node_unit,
-                                   TensorInfo&& input_info_0,
-                                   TensorInfo&& input_info_1,
+                                   const TensorInfo& input_info_0,
+                                   const TensorInfo& input_info_1,
                                    const logging::Logger& logger,
                                    std::vector<std::string>& input_names,
                                    bool do_op_validation) const ORT_MUST_USE_RESULT;
   Status ProcessInputsForQnnFullyConnected(QnnModelWrapper& qnn_model_wrapper,
                                            const NodeUnit& node_unit,
-                                           TensorInfo&& input_info_0,
-                                           TensorInfo&& input_info_1,
+                                           const TensorInfo& input_info_0,
+                                           const TensorInfo& input_info_1,
                                            const logging::Logger& logger,
                                            std::vector<std::string>& input_names,
                                            bool do_op_validation) const ORT_MUST_USE_RESULT;
@@ -190,8 +190,8 @@ Status MatMulOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper, const 
 
 Status MatMulOpBuilder::ProcessInputsForQnnMatMul(QnnModelWrapper& qnn_model_wrapper,
                                                   const NodeUnit& node_unit,
-                                                  TensorInfo&& input_info_0,
-                                                  TensorInfo&& input_info_1,
+                                                  const TensorInfo& input_info_0,
+                                                  const TensorInfo& input_info_1,
                                                   const logging::Logger& logger,
                                                   std::vector<std::string>& input_names,
                                                   bool do_op_validation) const {
@@ -282,8 +282,8 @@ Status MatMulOpBuilder::ProcessInputsForQnnMatMul(QnnModelWrapper& qnn_model_wra
 
 Status MatMulOpBuilder::ProcessInputsForQnnFullyConnected(QnnModelWrapper& qnn_model_wrapper,
                                                           const NodeUnit& node_unit,
-                                                          TensorInfo&& input_info_0,
-                                                          TensorInfo&& input_info_1,
+                                                          const TensorInfo& input_info_0,
+                                                          const TensorInfo& input_info_1,
                                                           const logging::Logger& logger,
                                                           std::vector<std::string>& input_names,
                                                           bool do_op_validation) const {
@@ -320,8 +320,11 @@ Status MatMulOpBuilder::ProcessInputsForQnnFullyConnected(QnnModelWrapper& qnn_m
     std::vector<uint8_t> unpacked_tensor;
     if (!reshape_input_1) {
       // 2D initializer should be transposed to [n, k].
-      ORT_RETURN_IF_ERROR(TwoDimensionTranspose(qnn_model_wrapper, input_info_1.shape,
-                                                *input_info_1.initializer_tensor, unpacked_tensor));
+      std::vector<uint32_t> original_shape_copy = input_info_1.shape;
+      ORT_RETURN_IF_ERROR(TwoDimensionTranspose(qnn_model_wrapper,
+                                                original_shape_copy,  // Will be modified to new shape (unnecessary)
+                                                *input_info_1.initializer_tensor,
+                                                unpacked_tensor));
     } else {
       ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_info_1.initializer_tensor, unpacked_tensor));
     }

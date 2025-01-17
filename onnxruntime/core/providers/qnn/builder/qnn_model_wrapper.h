@@ -66,9 +66,9 @@ class QnnModelWrapper {
 
   // Make a QnnTensorWrapper from an onnx input or output.
   Status MakeTensorWrapper(const NodeUnitIODef& tensor, QnnTensorWrapper& tensor_wrapper) const;
-  Status QnnModelWrapper::MakeTensorWrapper(const TensorInfo& tensor_info,
-                                            const std::string& tensor_name,
-                                            QnnTensorWrapper& tensor_wrapper) const;
+  Status MakeTensorWrapper(const TensorInfo& tensor_info,
+                           const std::string& tensor_name,
+                           QnnTensorWrapper& tensor_wrapper) const;
 
   // Add to internal tensor wrapper table
   bool AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper);
