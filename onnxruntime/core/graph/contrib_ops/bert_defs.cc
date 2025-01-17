@@ -1059,7 +1059,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("num_heads", "Number of attention heads for q", AttributeProto::INT)
         .Attr("kv_num_heads", "Number of attention heads for k and v", AttributeProto::INT)
         .Attr("unidirectional",
-              "Whether every token can only attend to previous tokens. Default value is 1.",
+              "Whether every token can only attend to previous tokens. Only supported by CPU/CUDA/ROCm EP. Default value is 1.",
               AttributeProto::INT,
               static_cast<int64_t>(1))
         .Attr("scale",
