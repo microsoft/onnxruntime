@@ -1960,6 +1960,12 @@ static bool CreateSessionWithQnnEpAndQnnHtpSharedMemoryAllocator(PATH_TYPE model
     return true;
   } catch (const Ort::Exception& e) {
     // handle particular exception that indicates that the libcdsprpc.so / dll can't be loaded
+    // NOTE: To run this on a local Windows ARM64 device, you need to copy libcdsprpc.dll to the build directory:
+    //  - Open File Explorer
+    //  - Go to C:/Windows/System32/DriverStore/FileRepository/
+    //  - Search for a folder that begins with qcnspmcdm8380.inf_arm64_ and open it
+    //  - Copy the libcdsprpc.dll into the build/[PATH CONTAINING onnxruntime.dll] directory of the application.
+    // TODO(adrianlizarraga): Update CMake build for unittests to automatically copy libcdsprpc.dll into build directory
     std::string_view error_message = e.what();
 
 #if defined(_WIN32)
@@ -2275,8 +2281,11 @@ TEST(CApiTest, io_binding_qnn_htp_shared) {
   Ort::Value bound_x = Ort::Value::CreateTensor(info_qnn_htp_shared, reinterpret_cast<float*>(input_data.get()), x_values.size(),
                                                 x_shape.data(), x_shape.size());
 
+  // Setup expected output (y) from model. Note that QNN EP runs float32 operators as float16,
+  // so the output will not be exactly equal.
   const std::array<int64_t, 2> expected_y_shape = {3, 2};
   const std::array<float, 3 * 2> expected_y = {1.0f, 4.0f, 9.0f, 16.0f, 25.0f, 36.0f};
+  constexpr float y_max_abs_err = 1e-5f;
   auto output_data = qnn_htp_shared_allocator.GetAllocation(expected_y.size() * sizeof(float));
   ASSERT_NE(output_data.get(), nullptr);
 
@@ -2293,7 +2302,7 @@ TEST(CApiTest, io_binding_qnn_htp_shared) {
   // Check the values against the bound raw memory
   {
     gsl::span y{reinterpret_cast<const float*>(output_data.get()), expected_y.size()};
-    ASSERT_TRUE(std::equal(std::begin(y), std::end(y), std::begin(expected_y)));
+    EXPECT_THAT(expected_y, ::testing::Pointwise(::testing::FloatNear(y_max_abs_err), y));
   }
 
   // Now compare values via GetOutputValues
@@ -2308,7 +2317,7 @@ TEST(CApiTest, io_binding_qnn_htp_shared) {
     ASSERT_EQ(expected_y.size(), count);
 
     gsl::span y{Y_value.GetTensorData<float>(), count};
-    ASSERT_TRUE(std::equal(std::begin(y), std::end(y), std::begin(expected_y)));
+    EXPECT_THAT(expected_y, ::testing::Pointwise(::testing::FloatNear(y_max_abs_err), y));
   }
 
   {
@@ -2336,7 +2345,7 @@ TEST(CApiTest, io_binding_qnn_htp_shared) {
     ASSERT_EQ(expected_y.size(), count);
 
     gsl::span y{Y_value.GetTensorData<float>(), count};
-    ASSERT_TRUE(std::equal(std::begin(y), std::end(y), std::begin(expected_y)));
+    EXPECT_THAT(expected_y, ::testing::Pointwise(::testing::FloatNear(y_max_abs_err), y));
   }
 
   // Clean up

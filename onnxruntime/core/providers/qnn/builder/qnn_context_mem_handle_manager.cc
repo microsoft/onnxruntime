@@ -86,13 +86,17 @@ Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, co
 
     LOGS(logger_, VERBOSE) << "Registered QNN mem handle. mem_handle: " << raw_mem_handle;
 
-    const auto unregister_mem_handle = [this](Qnn_MemHandle_t raw_mem_handle) {
-      LOGS(logger_, VERBOSE) << "Unregistering QNN mem handle. mem_handle: " << raw_mem_handle;
+    // NOTE: Must use the default ORT logger inside this lambda. Don't capture this->logger_ because it may be deleted
+    // by the time we need to unregister all memory handles. This happens when this->logger_ is a session logger:
+    //   ~InferenceSession() -> ~Logger() -> ~QnnExecutionProvider() -> ~QnnBackendManager() ->
+    //   ~QnnContextMemHandleManager() -> unregister_mem_handle() segfault
+    const auto unregister_mem_handle = [&qnn_interface = this->qnn_interface_](Qnn_MemHandle_t raw_mem_handle) {
+      LOGS_DEFAULT(VERBOSE) << "Unregistering QNN mem handle. mem_handle: " << raw_mem_handle;
 
-      const auto unregister_result = qnn_interface_.memDeRegister(&raw_mem_handle, 1);
+      const auto unregister_result = qnn_interface.memDeRegister(&raw_mem_handle, 1);
       if (unregister_result != QNN_SUCCESS) {
-        LOGS(logger_, ERROR) << "qnn_interface.memDeRegister() failed: "
-                             << utils::GetVerboseQnnErrorMessage(qnn_interface_, unregister_result);
+        LOGS_DEFAULT(ERROR) << "qnn_interface.memDeRegister() failed: "
+                            << utils::GetVerboseQnnErrorMessage(qnn_interface, unregister_result);
       }
     };
 
