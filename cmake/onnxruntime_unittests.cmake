@@ -221,19 +221,11 @@ function(AddTest)
         )
       else()
         set(TEST_NODE_FLAGS)
-        if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-          list(APPEND TEST_NODE_FLAGS "--experimental-wasm-threads")
-        endif()
-        if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-          list(APPEND TEST_NODE_FLAGS "--experimental-wasm-simd")
-        endif()
 
         # prefer Node from emsdk so the version is more deterministic
         if (DEFINED ENV{EMSDK_NODE})
           set(NODE_EXECUTABLE $ENV{EMSDK_NODE})
         else()
-          # warning as we don't know what node version is being used and whether things like the TEST_NODE_FLAGS
-          # will be valid. e.g. "--experimental-wasm-simd" is not valid with node v20 or later.
           message(WARNING "EMSDK_NODE environment variable was not set. Falling back to system `node`.")
           set(NODE_EXECUTABLE node)
         endif()
@@ -524,6 +516,9 @@ set (onnxruntime_global_thread_pools_test_SRC
 
 set (onnxruntime_webgpu_external_dawn_test_SRC
           ${TEST_SRC_DIR}/webgpu/external_dawn/main.cc)
+
+set (onnxruntime_webgpu_delay_load_test_SRC
+          ${TEST_SRC_DIR}/webgpu/delay_load/main.cc)
 
 # tests from lowest level library up.
 # the order of libraries should be maintained, with higher libraries being added first in the list
@@ -1862,6 +1857,15 @@ if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN)
           DEPENDS ${all_dependencies}
   )
   onnxruntime_add_include_to_target(onnxruntime_webgpu_external_dawn_test dawn::dawncpp_headers dawn::dawn_headers)
+endif()
+
+if (onnxruntime_USE_WEBGPU AND WIN32 AND onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)
+  AddTest(DYN
+          TARGET onnxruntime_webgpu_delay_load_test
+          SOURCES ${onnxruntime_webgpu_delay_load_test_SRC}
+          LIBS ${SYS_PATH_LIB}
+          DEPENDS ${all_dependencies}
+  )
 endif()
 
 include(onnxruntime_fuzz_test.cmake)

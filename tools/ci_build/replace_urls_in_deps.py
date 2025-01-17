@@ -4,6 +4,7 @@
 
 # This file replaces https URLs in deps.txt to local file paths. It runs after we download the dependencies from Azure
 # DevOps Artifacts
+from __future__ import annotations
 
 import argparse
 import csv

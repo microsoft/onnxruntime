@@ -7,7 +7,6 @@
 import logging
 import os
 from pathlib import Path
-from typing import Dict, Tuple, Union
 
 import numpy as np
 import torch
@@ -117,7 +116,7 @@ class WhisperHelper:
         device: torch.device,
         merge_encoder_and_decoder_init: bool = True,
         state_dict_path: str = "",
-    ) -> Dict[str, torch.nn.Module]:
+    ) -> dict[str, torch.nn.Module]:
         """Load model given a pretrained name or path, then build models for ONNX conversion.
 
         Args:
@@ -170,7 +169,7 @@ class WhisperHelper:
 
     @staticmethod
     def export_onnx(
-        model: Union[WhisperEncoder, WhisperDecoder, WhisperDecoderInit, WhisperEncoderDecoderInit],
+        model: WhisperEncoder | WhisperDecoder | WhisperDecoderInit | WhisperEncoderDecoderInit,
         device: torch.device,
         onnx_model_path: str,
         verbose: bool = True,
@@ -209,7 +208,7 @@ class WhisperHelper:
     @staticmethod
     def auto_mixed_precision(
         onnx_model: OnnxModel,
-        op_block_list: Tuple[str] = (
+        op_block_list: tuple[str] = (
             "SimplifiedLayerNormalization",
             "SkipSimplifiedLayerNormalization",
             "Relu",
@@ -224,7 +223,7 @@ class WhisperHelper:
         Returns:
             parameters(dict): a dictionary of parameters used in float16 conversion
         """
-        op_full_set = set([node.op_type for node in onnx_model.nodes()])
+        op_full_set = {node.op_type for node in onnx_model.nodes()}
         fp32_op_set = set(op_block_list)
         fp16_op_set = op_full_set.difference(fp32_op_set)
         logger.info(f"fp32 op: {fp32_op_set} fp16 op: {fp16_op_set}")
@@ -445,11 +444,11 @@ class WhisperHelper:
 
         start_id = [config.decoder_start_token_id]  # ex: [50258]
         prompt_ids = processor.get_decoder_prompt_ids(language="english", task="transcribe")
-        prompt_ids = list(map(lambda token: token[1], prompt_ids))  # ex: [50259, 50358, 50363]
+        prompt_ids = [token[1] for token in prompt_ids]  # ex: [50259, 50358, 50363]
         forced_decoder_ids = start_id + prompt_ids  # ex: [50258, 50259, 50358, 50363]
 
-        ort_names = list(map(lambda entry: entry.name, ort_session.get_inputs()))
-        ort_dtypes = list(map(lambda entry: entry.type, ort_session.get_inputs()))
+        ort_names = [entry.name for entry in ort_session.get_inputs()]
+        ort_dtypes = [entry.type for entry in ort_session.get_inputs()]
         ort_to_np = {
             "tensor(float)": np.float32,
             "tensor(float16)": np.float16,
@@ -460,7 +459,7 @@ class WhisperHelper:
         }
 
         use_extra_decoding_ids = "extra_decoding_ids" in ort_names
-        for name, dtype in zip(ort_names, ort_dtypes):
+        for name, dtype in zip(ort_names, ort_dtypes, strict=False):
             if name == "input_features":
                 inputs[name] = inputs[name].detach().cpu().numpy()
             elif name == "vocab_mask":

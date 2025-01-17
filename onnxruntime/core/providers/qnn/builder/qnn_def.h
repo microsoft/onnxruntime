@@ -105,6 +105,7 @@ void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, const std::vector<uint32_t>
 void SetQnnTensorClientBuf(Qnn_Tensor_t& qnn_tensor, void* buf_data, uint32_t buf_size);
 void SetQnnTensorClientBufSize(Qnn_Tensor_t& qnn_tensor, uint32_t client_buf_size);
 void SetQnnTensorClientBufData(Qnn_Tensor_t& qnn_tensor, void* client_buf_data);
+void SetQnnTensorMemHandle(Qnn_Tensor_t& qnn_tensor, Qnn_MemHandle_t mem_handle);
 void SetQnnTensorQParams(Qnn_Tensor_t& qnn_tensor, const Qnn_QuantizeParams_t& quantize_params);
 bool CreateTensorInQnnGraph(const QNN_INTERFACE_VER_TYPE& qnn_interface,
                             const Qnn_GraphHandle_t& graph,
@@ -123,7 +124,9 @@ Qnn_TensorMemType_t GetQnnTensorMemType(const Qnn_Tensor_t& qnn_tensor);
 uint32_t GetQnnTensorRank(const Qnn_Tensor_t& qnn_tensor);
 uint32_t* GetQnnTensorDims(const Qnn_Tensor_t& qnn_tensor);
 const Qnn_ClientBuffer_t& GetQnnTensorClientBuf(const Qnn_Tensor_t& qnn_tensor);
+Qnn_MemHandle_t GetQnnTensorMemHandle(const Qnn_Tensor_t& qnn_tensor);
 const Qnn_QuantizeParams_t& GetQnnTensorQParams(const Qnn_Tensor_t& qnn_tensor);
+uint8_t* GetQnnTensorIsDynamicDimensions(const Qnn_Tensor_t& qnn_tensor);
 
 /**
  * Compares two sets of quantization parameters. Sets the parameters `scale_diff` and `offset_diff`
@@ -465,11 +468,13 @@ class QnnOpProperty {
 
 class GraphInfo {
  public:
-  GraphInfo(const Qnn_GraphHandle_t graph,
+  GraphInfo(Qnn_GraphHandle_t graph,
             const std::string& name,
+            Qnn_ContextHandle_t graph_context,
             std::vector<QnnTensorWrapper>&& input_tensors,
             std::vector<QnnTensorWrapper>&& output_tensors) : graph_name_(name),
                                                               graph_(graph),
+                                                              graph_context_(graph_context),
                                                               input_tensors_(std::move(input_tensors)),
                                                               output_tensors_(std::move(output_tensors)) {
   }
@@ -479,12 +484,15 @@ class GraphInfo {
   const std::string& Name() const { return graph_name_; }
   const std::vector<QnnTensorWrapper>& InputTensors() const { return input_tensors_; }
   const std::vector<QnnTensorWrapper>& OutputTensors() const { return output_tensors_; }
-  const Qnn_GraphHandle_t& Graph() const { return graph_; }
+  Qnn_GraphHandle_t Graph() const { return graph_; }
+  Qnn_ContextHandle_t GraphContext() const { return graph_context_; }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphInfo);
 
  private:
   std::string graph_name_;
   Qnn_GraphHandle_t graph_;
+  // QNN context that holds the QNN graph referenced by `graph_`
+  Qnn_ContextHandle_t graph_context_;
   std::vector<QnnTensorWrapper> input_tensors_;
   std::vector<QnnTensorWrapper> output_tensors_;
 };

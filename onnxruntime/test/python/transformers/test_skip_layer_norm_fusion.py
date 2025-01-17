@@ -6,7 +6,6 @@
 
 import os
 import unittest
-from typing import Dict, List
 
 import numpy as np
 import onnx
@@ -21,7 +20,7 @@ else:
     from onnxruntime.transformers.optimizer import optimize_model
 
 
-def float_tensor(name: str, shape: List[int], random=False):
+def float_tensor(name: str, shape: list[int], random=False):
     low = 0.0
     high = 1.0
     total_elements = 1
@@ -35,9 +34,9 @@ class TestFusion(unittest.TestCase):
     def verify_skip_layer_norm_fusion(
         self,
         model_path: str,
-        expected_counter: Dict[str, int],
-        expected_inputs: List[str],
-        expected_outputs: List[str],
+        expected_counter: dict[str, int],
+        expected_inputs: list[str],
+        expected_outputs: list[str],
     ):
         options = FusionOptions("bert")
         optimized_model = optimize_model(model_path, optimization_options=options, opt_level=0)

@@ -31,15 +31,8 @@ class Flatten final : public OpKernel {
       return Status(common::ONNXRUNTIME, common::FAIL, "Invalid value for axis, must be less than or equal to input_rank");
     }
 
-    int64_t first_dim = 1;
-    for (int64_t i = 0; i < axis; i++) {
-      first_dim *= input_shape[i];
-    }
-
-    int64_t second_dim = 1;
-    for (int64_t i = axis; i < input_rank; i++) {
-      second_dim *= input_shape[i];
-    }
+    int64_t first_dim = input_shape.SizeToDimension(static_cast<size_t>(axis));
+    int64_t second_dim = input_shape.SizeFromDimension(static_cast<size_t>(axis));
 
     TensorShape output_shape({first_dim, second_dim});
     Tensor* output_tensor = context->Output(0, output_shape);

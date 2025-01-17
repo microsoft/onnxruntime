@@ -532,17 +532,6 @@ void BaseTester::Run(ExpectResult expect_result, const std::string& expected_fai
   so.use_deterministic_compute = use_determinism_;
   so.graph_optimization_level = TransformerLevel::Default;  // 'Default' == off
 
-  // remove nullptr in execution_providers.
-  // it's a little ugly but we need to do this because DefaultXXXExecutionProvider() can return nullptr in Runtime.
-  // And there're many places adding DefaultXXXExecutionProvider() to execution_providers directly.
-  if (execution_providers != nullptr) {
-    execution_providers->erase(std::remove(execution_providers->begin(), execution_providers->end(), nullptr), execution_providers->end());
-    if (execution_providers->size() == 0) {
-      // In fact, no ep is needed to run
-      return;
-    }
-  }
-
   Run(so, expect_result, expected_failure_string, excluded_provider_types, run_options, execution_providers, options);
 }
 

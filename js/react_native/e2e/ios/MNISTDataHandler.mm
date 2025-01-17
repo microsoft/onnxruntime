@@ -46,10 +46,7 @@ RCT_EXPORT_METHOD(getImagePath : (RCTPromiseResolveBlock)resolve reject : (RCTPr
 
 // It gets raw input data, which can be uri or byte array and others,
 // returns cooked data formatted as input of a model.
-RCT_EXPORT_METHOD(preprocess
-                  : (NSString*)uri resolve
-                  : (RCTPromiseResolveBlock)resolve reject
-                  : (RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(preprocess : (NSString*)uri resolve : (RCTPromiseResolveBlock)resolve reject : (RCTPromiseRejectBlock)reject) {
   @try {
     NSDictionary* inputDataMap = [self preprocess:uri];
     resolve(inputDataMap);
@@ -60,10 +57,7 @@ RCT_EXPORT_METHOD(preprocess
 
 // It gets a result from onnxruntime and a duration of session time for input data,
 // returns output data formatted as React Native map.
-RCT_EXPORT_METHOD(postprocess
-                  : (NSDictionary*)result resolve
-                  : (RCTPromiseResolveBlock)resolve reject
-                  : (RCTPromiseRejectBlock)reject) {
+RCT_EXPORT_METHOD(postprocess : (NSDictionary*)result resolve : (RCTPromiseResolveBlock)resolve reject : (RCTPromiseRejectBlock)reject) {
   @try {
     NSDictionary* cookedMap = [self postprocess:result];
     resolve(cookedMap);

@@ -77,6 +77,7 @@ if(WIN32)
   onnxruntime_add_shared_library(onnxruntime
     ${SYMBOL_FILE}
     "${ONNXRUNTIME_ROOT}/core/dll/dllmain.cc"
+    "${ONNXRUNTIME_ROOT}/core/dll/delay_load_hook.cc"
     "${ONNXRUNTIME_ROOT}/core/dll/onnxruntime.rc"
   )
 elseif(onnxruntime_BUILD_APPLE_FRAMEWORK)

@@ -23,7 +23,7 @@ from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, Ru
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
     os.add_dll_directory(os.getcwd())
 
-available_providers = [provider for provider in onnxrt.get_available_providers()]
+available_providers = list(onnxrt.get_available_providers())
 
 # TVM EP doesn't support:
 # * calling Run() on different threads using the same session object
@@ -85,7 +85,7 @@ class TestInferenceSession(unittest.TestCase):
         if result != 0:
             error_str = ctypes.c_char_p()
             cuda_lib.cuGetErrorString(result, ctypes.byref(error_str))
-            print("cuDeviceGetCount failed with error code %d: %s" % (result, error_str.value.decode()))
+            print(f"cuDeviceGetCount failed with error code {result}: {error_str.value.decode()}")
             return -1
         return num_device.value
 

@@ -58,9 +58,6 @@ jobs:
     test_data_directory: $(Build.SourcesDirectory)/.test_data
 
   steps:
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
 
   - checkout: self
     clean: true
@@ -70,10 +67,10 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
-      Context: tools/ci_build/github/linux/docker
+      Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
+      Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-      Repository: onnxruntimecpubuild
+      Repository: onnxruntimecpubuildcentos8x64_packaging
 
   - task: CmdLine@2
     displayName: Create test data directory
@@ -107,7 +104,7 @@ jobs:
                 -e BUILD_BUILDNUMBER \
                 -e CCACHE_DIR=/cache \
                 -e ORT_BUILD_WITH_CACHE=1 \
-                onnxruntimecpubuild \
+                onnxruntimecpubuildcentos8x64_packaging \
                   /bin/bash -c "
                     set -e -x;
                     /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_full_ort_and_create_ort_files.sh /build/1; \
@@ -127,8 +124,8 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimecpubuild \
-            /opt/python/cp310-cp310/bin/python3.10 /onnxruntime_src/tools/ci_build/build.py \
+          onnxruntimecpubuildcentos8x64_packaging \
+            bash -c "python3 -m pip install -r /onnxruntime_src/tools/ci_build/requirements/pybind/requirements.txt && python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build/2 --cmake_generator Ninja \
               --config Debug \
               --skip_submodule_sync \
@@ -137,7 +134,7 @@ jobs:
               --skip_tests \
               --minimal_build \
               --disable_exceptions \
-              --enable_training_ops
+              --enable_training_ops"
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -151,7 +148,7 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimecpubuild \
+          onnxruntimecpubuildcentos8x64_packaging \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
               --build-directory /build/3a \
               --reduced-ops-config /home/onnxruntimedev/.test_data/required_ops.ort_models.config \
@@ -169,7 +166,7 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimecpubuild \
+          onnxruntimecpubuildcentos8x64_packaging \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
               --build-directory /build/3b \
               --reduced-ops-config /home/onnxruntimedev/.test_data/required_ops_and_types.ort_models.config \
@@ -191,7 +188,7 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimecpubuild \
+          onnxruntimecpubuildcentos8x64_packaging \
             /bin/bash /onnxruntime_src/tools/ci_build/github/linux/ort_minimal/build_minimal_ort_and_run_tests.sh \
               --build-directory /build/4 \
               --reduced-ops-config /home/onnxruntimedev/.test_data/globally_allowed_types.config \
@@ -209,14 +206,14 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimecpubuild \
-            /opt/python/cp310-cp310/bin/python3.10 /onnxruntime_src/tools/ci_build/build.py \
+          onnxruntimecpubuildcentos8x64_packaging \
+            bash -c "python3 -m pip install -r /onnxruntime_src/tools/ci_build/requirements/pybind/requirements.txt && python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build/5 --cmake_generator Ninja \
               --config Debug \
               --skip_submodule_sync \
               --build_shared_lib --use_binskim_compliant_compile_flags \
               --parallel \
-              --minimal_build extended
+              --minimal_build extended"
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -230,8 +227,8 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimecpubuild \
-            /opt/python/cp310-cp310/bin/python3.10 /onnxruntime_src/tools/ci_build/build.py \
+          onnxruntimecpubuildcentos8x64_packaging \
+            bash -c "python3 -m pip install -r /onnxruntime_src/tools/ci_build/requirements/pybind/requirements.txt && python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build/6a \
               --cmake_generator Ninja \
               --config MinSizeRel \
@@ -243,7 +240,7 @@ jobs:
               --disable_ml_ops \
               --disable_types sparsetensor float8 optional \
               --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config \
-              --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+              --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF"
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -257,8 +254,8 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimecpubuild \
-            /opt/python/cp310-cp310/bin/python3.10 /onnxruntime_src/tools/ci_build/build.py \
+          onnxruntimecpubuildcentos8x64_packaging \
+            bash -c "python3 -m pip install -r /onnxruntime_src/tools/ci_build/requirements/pybind/requirements.txt && python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build/6b \
               --cmake_generator Ninja \
               --config MinSizeRel \
@@ -272,7 +269,7 @@ jobs:
               --enable_reduced_operator_type_support \
               --disable_types sparsetensor optional float8 \
               --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config \
-              --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+              --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF"
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -286,8 +283,8 @@ jobs:
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
-          onnxruntimecpubuild \
-            /opt/python/cp310-cp310/bin/python3.10 /onnxruntime_src/tools/ci_build/build.py \
+          onnxruntimecpubuildcentos8x64_packaging \
+            bash -c "python3 -m pip install -r /onnxruntime_src/tools/ci_build/requirements/pybind/requirements.txt && python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build/6c \
               --cmake_generator Ninja \
               --config MinSizeRel \
@@ -301,7 +298,7 @@ jobs:
               --enable_reduced_operator_type_support \
               --disable_types sparsetensor optional float8 \
               --include_ops_by_config /home/onnxruntimedev/.test_data/include_no_operators.config \
-              --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+              --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF"
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: CmdLine@2
@@ -316,8 +313,8 @@ jobs:
           --volume $NDK_HOME:/ndk_home \
           -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
           -e NIGHTLY_BUILD \
-          onnxruntimecpubuild \
-            /opt/python/cp310-cp310/bin/python3.10 /onnxruntime_src/tools/ci_build/build.py \
+          onnxruntimecpubuildcentos8x64_packaging \
+            bash -c "python3 -m pip install -r /onnxruntime_src/tools/ci_build/requirements/pybind/requirements.txt && python3 /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build/7 \
               --cmake_generator Ninja \
               --config MinSizeRel \
@@ -333,7 +330,7 @@ jobs:
               --build_shared_lib \
               --disable_ml_ops \
               --disable_exceptions \
-              --skip_tests --path_to_protoc_exe /usr/bin/protoc
+              --skip_tests"
       workingDirectory: $(Build.SourcesDirectory)
 
   - template: templates/explicitly-defined-final-tasks.yml

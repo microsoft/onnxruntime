@@ -3,7 +3,7 @@
         "arm64-v8a"
     ],
     "android_min_sdk_version": 24,
-    "android_target_sdk_version": 31,
+    "android_target_sdk_version": 34,
     "build_params": [
         "--enable_lto",
         "--android",

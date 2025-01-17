@@ -266,7 +266,7 @@ TEST(XnnpackEP, TestQDQConvS8S8_per_channel) {
   RunModelTestWithPath(ort_model_path, "xnnpack_qdq_test_graph_conv_s8s8_perchannel", graph_verify, 0.2f);
 }
 
-TEST(XnnpackEP, DISABLED_TestAveragePool) {  // [ONNXRuntimeError] : 9 : NOT_IMPLEMENTED : Could not find an implementation for AveragePool(19) node with name 'node'
+TEST(XnnpackEP, TestAveragePool) {
   const std::vector<int64_t> input_shape = {1, 2, 3, 3};
   auto modelBuilder = [&input_shape](ModelTestBuilder& builder) {
     auto* input_arg = builder.MakeInput<float>(input_shape, -1.f, 1.f);
@@ -360,7 +360,7 @@ TEST(XnnpackEP, TestQDQSoftMax_axisZero_v13) {
                {ExpectedEPNodeAssignment::None});
 }
 
-TEST(XnnpackEP, TestSoftMax_axisLast) {
+TEST(XnnpackEP, TestSoftMax_axisLast) {  // error: Expected equality of these values
   const std::vector<int64_t> input_shape = {1, 2, 3, 5};
   int64_t axis = input_shape.size() - 1;
   auto modelCreater = [input_shape, axis](ModelTestBuilder& builder) {
@@ -379,7 +379,7 @@ TEST(XnnpackEP, TestSoftMax_axisLast) {
                {ExpectedEPNodeAssignment::All});
 }
 
-TEST(XnnpackEP, TestQDQSoftMax_axisLast) {
+TEST(XnnpackEP, TestQDQSoftMax_axisLast) {  // error: Expected equality of these values
   RunModelTest(BuildQDQSoftMaxTestCase<uint8_t, uint8_t>(
                    {1, 2, 3, 5} /* input_shape */,
                    static_cast<int64_t>(3) /* axis */,

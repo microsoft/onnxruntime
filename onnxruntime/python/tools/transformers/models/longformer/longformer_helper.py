@@ -6,7 +6,6 @@
 # This script helps creating dummy inputs for Longformer model.
 
 import logging
-from typing import Dict, List, Tuple, Union
 
 import numpy
 import torch
@@ -23,16 +22,16 @@ PRETRAINED_LONGFORMER_MODELS = {
 class LongformerInputs:
     def __init__(self, input_ids, attention_mask, global_attention_mask):
         self.input_ids: torch.LongTensor = input_ids
-        self.attention_mask: Union[torch.FloatTensor, torch.HalfTensor] = attention_mask
-        self.global_attention_mask: Union[torch.FloatTensor, torch.HalfTensor] = global_attention_mask
+        self.attention_mask: torch.FloatTensor | torch.HalfTensor = attention_mask
+        self.global_attention_mask: torch.FloatTensor | torch.HalfTensor = global_attention_mask
 
-    def to_list(self) -> List:
+    def to_list(self) -> list:
         return [v for v in [self.input_ids, self.attention_mask, self.global_attention_mask] if v is not None]
 
-    def to_tuple(self) -> Tuple:
+    def to_tuple(self) -> tuple:
         return tuple(v for v in self.to_list())
 
-    def get_ort_inputs(self) -> Dict:
+    def get_ort_inputs(self) -> dict:
         return {
             "input_ids": numpy.ascontiguousarray(self.input_ids.cpu().numpy()),
             "attention_mask": numpy.ascontiguousarray(self.attention_mask.cpu().numpy()),
@@ -69,7 +68,7 @@ class LongformerHelper:
         return LongformerInputs(input_ids, attention_mask, global_attention_mask)
 
     @staticmethod
-    def get_output_shapes(batch_size: int, sequence_length: int, hidden_size: int) -> Dict[str, List[int]]:
+    def get_output_shapes(batch_size: int, sequence_length: int, hidden_size: int) -> dict[str, list[int]]:
         """Returns a dictionary with output name as key, and shape as value."""
         return {
             "last_state": [batch_size, sequence_length, hidden_size],
