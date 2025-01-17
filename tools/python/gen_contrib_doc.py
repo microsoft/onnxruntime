@@ -322,15 +322,15 @@ def main(output_path: str, domain_filter: [str]):
 
         # Preprocess the Operator Schemas
         # [(domain, [(support_level, [(schema name, current schema, all versions schemas)])])]
-        operator_schemas = list()  # type: List[Tuple[Text, List[Tuple[int, List[Tuple[Text, OpSchema, List[OpSchema]]]]]]]
+        operator_schemas = []  # type: List[Tuple[Text, List[Tuple[int, List[Tuple[Text, OpSchema, List[OpSchema]]]]]]]
         exsting_ops = set()  # type: Set[Text]
         for domain, _supportmap in sorted(index.items()):
             if not should_render_domain(domain, domain_filter):
                 continue
 
-            processed_supportmap = list()
+            processed_supportmap = []
             for _support, _namemap in sorted(_supportmap.items()):
-                processed_namemap = list()
+                processed_namemap = []
                 for n, unsorted_versions in sorted(_namemap.items()):
                     versions = sorted(unsorted_versions, key=lambda s: s.since_version)
                     schema = versions[-1]

@@ -84,9 +84,7 @@ def get_sample_with_past_kv_inputs(
     attention_mask = attention_mask.numpy() if engine == "ort" else attention_mask.to(device)
     position_ids = position_ids.numpy() if engine == "ort" else position_ids.to(device)
     past_kv = (
-        flatten_past_kv_inputs(past_kv)
-        if engine == "ort"
-        else [(kv[0].to(device), kv[1].to(device)) for kv in past_kv]
+        flatten_past_kv_inputs(past_kv) if engine == "ort" else [(kv[0].to(device), kv[1].to(device)) for kv in past_kv]
     )
 
     if not return_dict:
@@ -143,9 +141,7 @@ def get_merged_sample_with_past_kv_inputs(
     attention_mask = attention_mask.numpy() if engine == "ort" else attention_mask.to(device)
     position_ids = position_ids.numpy() if engine == "ort" else position_ids.to(device)
     past_kv = (
-        flatten_past_kv_inputs(past_kv)
-        if engine == "ort"
-        else [(kv[0].to(device), kv[1].to(device)) for kv in past_kv]
+        flatten_past_kv_inputs(past_kv) if engine == "ort" else [(kv[0].to(device), kv[1].to(device)) for kv in past_kv]
     )
 
     if not return_dict:

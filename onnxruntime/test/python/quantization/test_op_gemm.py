@@ -458,7 +458,7 @@ class TestOpGemm(unittest.TestCase):
         C = np.array([[0, 0], [0, 0]], dtype=np.int32)
         scale = np.array([1], dtype=np.float32)
         zp = np.array([0], dtype=np.uint8)
-        feeds = {"A": A, "scaleA": scaleA, "zpA": zpA, "B": B, "scaleB": scaleB, "zpB": zpB, "C": C, "scale": scale, "zp": zp}
+        feeds = dict(A=A, scaleA=scaleA, zpA=zpA, B=B, scaleB=scaleB, zpB=zpB, C=C, scale=scale, zp=zp)
         expected = sess.run(None, feeds)[0]
         got = ref.run(None, feeds)[0]
         assert_allclose(expected, got)
@@ -550,7 +550,17 @@ class TestOpGemm(unittest.TestCase):
         C = np.array([[0, 0], [0, 0]], dtype=np.int32)
         scale = np.array([1], dtype=np.float32)
         zp = np.array([0], dtype=np.int8)
-        feeds = {"A": A, "scaleA": scaleA, "zpA": zpA, "B": B, "scaleB": scaleB, "zpB": zpB, "C": C, "scale": scale, "zp": zp}
+        feeds = {
+            "A": A,
+            "scaleA": scaleA,
+            "zpA": zpA,
+            "B": B,
+            "scaleB": scaleB,
+            "zpB": zpB,
+            "C": C,
+            "scale": scale,
+            "zp": zp,
+        }
         expected = sess.run(None, feeds)[0]
         got = ref.run(None, feeds)[0]
         assert_allclose(expected, got)
