@@ -546,14 +546,16 @@ Status QnnBackendManager::CreateContext() {
 
   QnnContext_Config_t context_priority_config = QNN_CONTEXT_CONFIG_INIT;
   ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, context_priority_config));
-  const QnnContext_Config_t* context_configs[] = {&context_priority_config,
+  const QnnContext_Config_t* npu_context_configs[] = {&context_priority_config,
                                                   &context_config_weight_sharing,
                                                   nullptr};
+  const QnnContext_Config_t* empty_context_configs[] = {nullptr};
+  bool is_npu_backend = IsNpuBackend(GetQnnBackendType());
 
   Qnn_ContextHandle_t context = nullptr;
   Qnn_ErrorHandle_t result = qnn_interface_.contextCreate(backend_handle_,
                                                           device_handle_,
-                                                          context_configs,
+                                                          is_npu_backend ? npu_context_configs : empty_context_configs,
                                                           &context);
 
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result));
