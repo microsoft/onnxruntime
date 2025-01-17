@@ -12,8 +12,6 @@ Mostly, Nodes are classified into two categories:
 
 """
 
-from typing import Tuple
-
 import sympy
 import torch
 from sympy.codegen.rewriting import create_expand_pow_optimization
@@ -49,7 +47,7 @@ class TritonCodegen(NodeVisitor):
         assert func is not None, f"unimplemented node: {node.__class__.__name__}"
         func(node, context, code_buffer, indent)
 
-    def _get_elementwise_offset_mask(self, offset_calc: OffsetCalculator, arg_name: str) -> Tuple[str, str]:
+    def _get_elementwise_offset_mask(self, offset_calc: OffsetCalculator, arg_name: str) -> tuple[str, str]:
         if offset_calc.is_x_reduced(arg_name):
             # Scalar.
             return "tl.full([1], 0, tl.int32)", ""
@@ -61,7 +59,7 @@ class TritonCodegen(NodeVisitor):
         offset_str = str(expand_opt(sympy_dot(parse_shape(idx_var), strides)))
         return offset_str, "xmask" if offset_calc.requires_x_mask else ""
 
-    def _get_reduce_offset_mask(self, offset_calc: OffsetCalculator, arg_name: str) -> Tuple[str, str]:
+    def _get_reduce_offset_mask(self, offset_calc: OffsetCalculator, arg_name: str) -> tuple[str, str]:
         offset_strs = []
         mask_strs = []
         if not offset_calc.is_x_reduced(arg_name):
@@ -93,7 +91,7 @@ class TritonCodegen(NodeVisitor):
             offset_strs.append("tl.full([1, 1], 0, tl.int32)")
         return " + ".join(offset_strs), " & ".join(mask_strs)
 
-    def _get_offset_mask(self, offset_calc: OffsetCalculator, arg_name: str) -> Tuple[str, str]:
+    def _get_offset_mask(self, offset_calc: OffsetCalculator, arg_name: str) -> tuple[str, str]:
         return (
             self._get_reduce_offset_mask(offset_calc, arg_name)
             if offset_calc.is_reduction
