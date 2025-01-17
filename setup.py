@@ -487,10 +487,10 @@ with open(README, encoding="utf-8") as fdesc:
 if path.isdir(path.join("onnxruntime", "external")):
     # Gather all files under onnxruntime/external directory.
     extra.extend(
-        list(
+        [
             str(Path(*Path(x).parts[1:]))
             for x in list(iglob(path.join(path.join("onnxruntime", "external"), "**/*.*"), recursive=True))
-        )
+        ]
     )
 
 packages = [
