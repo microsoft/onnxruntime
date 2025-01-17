@@ -23,7 +23,7 @@ import onnxruntime
 if platform.system() == "Windows" and sys.version_info[:2] >= (3, 8):
     os.add_dll_directory(os.getcwd())
 
-available_providers = [provider for provider in onnxruntime.get_available_providers()]
+available_providers = list(onnxruntime.get_available_providers())
 
 
 class TestInferenceSession(unittest.TestCase):

@@ -842,7 +842,7 @@ class QDQQuantizer(BaseQuantizer):
 
             <Producer> ---> Q1 ---> DQ1 ---> Q2 ---> DQ2 ---> <Graph output>
         """
-        tensor_recv_nodes = set([node.name for node in self.tensor_to_its_receiving_nodes.get(tensor_name, [])])
+        tensor_recv_nodes = {node.name for node in self.tensor_to_its_receiving_nodes.get(tensor_name, [])}
 
         if (
             self.dedicated_qdq_pair

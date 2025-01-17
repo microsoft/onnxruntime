@@ -87,7 +87,7 @@ class OffsetCalculator:
             for i in range(self.r_rank - 2, -1, -1):
                 self.r_strides.insert(0, self.r_strides[0] * self.r_dims[i + 1])
         self.r_compute_dims: set[int] = set()
-        self.input_strides: dict[str, list[sympy.Expr]] = dict()
+        self.input_strides: dict[str, list[sympy.Expr]] = {}
         self.autotune_configs: AutotuneConfigs = AutotuneConfigs(
             self.x_numel, self.r_numel, not self.is_reduction or self.reduce_axes[-1] == self.rank - 1
         )
@@ -305,10 +305,10 @@ class KernelNode(IRNode):
         super().__init__(inputs, outputs)
         self.name: str = gen_unique_name("triton")
         self.internal_args: set[str] = set()
-        self.constants: dict[str, TensorArg] = dict()
+        self.constants: dict[str, TensorArg] = {}
         self.target_shape: list[sympy.Expr] = target_shape
         self.sub_nodes: list[IRNode] = []
-        self.var_map: dict[str, str] = dict()
+        self.var_map: dict[str, str] = {}
         self.has_dropout: bool = False
         self.offset_calc: OffsetCalculator = OffsetCalculator(target_shape, reduce_axes)
 
@@ -372,7 +372,7 @@ class ModuleNode(IRNode):
         # Currently need inputs and outputs only. May need intermediate vars and constants later.
         self.constants: list[TensorArg] = constants
         self.kernels: list[KernelNode] = kernels
-        self.var_map: dict[str, str] = dict()
+        self.var_map: dict[str, str] = {}
         existing_names = set()
         for input in self.inputs:
             name = gen_variable_name(input.name, "in", existing_names)

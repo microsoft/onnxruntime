@@ -84,7 +84,7 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
         if op_grad_type is not None:
             if isinstance(op_grad_type, tuple):
                 text = str(onnx_graph_train)
-                if all(map(lambda op: (f'op_type: "{op}"') not in text, op_grad_type)):
+                if all((f'op_type: "{op}"') not in text for op in op_grad_type):
                     raise AssertionError("Operator {} not found in {}.".format(" or ".join(op_grad_type), text))
             else:
                 self.assertIn(f'op_type: "{op_grad_type}"', str(onnx_graph_train))
@@ -133,7 +133,7 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
                     out = self.fc2(out)
                     return out
 
-            return TestGatherElement, "GatherElementsGrad", dict(rtol=1e-04, atol=1e-05)
+            return TestGatherElement, "GatherElementsGrad", {"rtol": 1e-04, "atol": 1e-05}
 
         raise AssertionError(f"Unexpected name={name!r}.")
 

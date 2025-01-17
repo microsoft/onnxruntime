@@ -258,7 +258,7 @@ class SymbolicShapeInference:
         self.prefix_ = prefix
 
     def _add_suggested_merge(self, symbols, apply=False):
-        assert all([(type(s) is str and s in self.symbolic_dims_) or is_literal(s) for s in symbols])
+        assert all((type(s) is str and s in self.symbolic_dims_) or is_literal(s) for s in symbols)
         symbols = set(symbols)
         for k, v in self.suggested_merge_.items():
             if k in symbols:
@@ -328,7 +328,7 @@ class SymbolicShapeInference:
         )
 
     def _merge_symbols(self, dims):
-        if not all([type(d) is str for d in dims]):
+        if not all(type(d) is str for d in dims):
             if self.auto_merge_:
                 unique_dims = list(set(dims))
                 is_int = [is_literal(d) for d in unique_dims]
@@ -347,10 +347,10 @@ class SymbolicShapeInference:
                     return dims[0]
             else:
                 return None
-        if all([d == dims[0] for d in dims]):
+        if all(d == dims[0] for d in dims):
             return dims[0]
         merged = [self.suggested_merge_.get(d, d) for d in dims]
-        if all([d == merged[0] for d in merged]):
+        if all(d == merged[0] for d in merged):
             assert merged[0] in self.symbolic_dims_
             return merged[0]
         else:
@@ -607,7 +607,7 @@ class SymbolicShapeInference:
             return int(value)
 
         values = [self._try_get_value(node, i) for i in range(len(node.input))]
-        if all([v is not None for v in values]):
+        if all(v is not None for v in values):
             # some shape compute is in floating point, cast to int for sympy
             for i, v in enumerate(values):
                 if type(v) is not np.ndarray:
@@ -647,7 +647,7 @@ class SymbolicShapeInference:
         else:
             values = self._get_int_or_float_values(node, broadcast=True)
 
-        if all([v is not None for v in values]):
+        if all(v is not None for v in values):
             is_list = [isinstance(v, list) for v in values]
             as_list = any(is_list)
             if as_list:
@@ -763,7 +763,7 @@ class SymbolicShapeInference:
     def _check_merged_dims(self, dims, allow_broadcast=True):
         if allow_broadcast:
             dims = [d for d in dims if not (is_literal(d) and int(d) <= 1)]
-        if not all([d == dims[0] for d in dims]):
+        if not all(d == dims[0] for d in dims):
             self._add_suggested_merge(dims, apply=True)
 
     def _compute_matmul_shape(self, node, output_dtype=None):
@@ -897,9 +897,9 @@ class SymbolicShapeInference:
         )
 
     def _infer_Concat(self, node):  # noqa: N802
-        if any([i in self.sympy_data_ or i in self.initializers_ for i in node.input]):
+        if any(i in self.sympy_data_ or i in self.initializers_ for i in node.input):
             values = self._get_int_or_float_values(node)
-            if all([v is not None for v in values]):
+            if all(v is not None for v in values):
                 assert get_attribute(node, "axis") == 0
                 self.sympy_data_[node.output[0]] = []
                 for i in range(len(node.input)):
@@ -921,7 +921,7 @@ class SymbolicShapeInference:
             if d == axis:
                 continue
             dims = [self._get_shape(node, i_idx)[d] for i_idx in range(len(node.input)) if self._get_shape(node, i_idx)]
-            if all([d == dims[0] for d in dims]):
+            if all(d == dims[0] for d in dims):
                 continue
             merged = self._merge_symbols(dims)
             if type(merged) is str:
@@ -968,7 +968,7 @@ class SymbolicShapeInference:
                 sympy_shape = [sympy_shape]
             self._update_computed_dims(sympy_shape)
             # update sympy data if output type is int, and shape is known
-            if vi.type.tensor_type.elem_type == onnx.TensorProto.INT64 and all([is_literal(x) for x in sympy_shape]):
+            if vi.type.tensor_type.elem_type == onnx.TensorProto.INT64 and all(is_literal(x) for x in sympy_shape):
                 self.sympy_data_[node.output[0]] = np.ones(
                     [int(x) for x in sympy_shape], dtype=np.int64
                 ) * numpy_helper.to_array(get_attribute(node, "value", 0))
@@ -1552,7 +1552,7 @@ class SymbolicShapeInference:
     def _infer_Range(self, node):  # noqa: N802
         vi = self.known_vi_[node.output[0]]
         input_data = self._get_int_or_float_values(node)
-        if all([i is not None for i in input_data]):
+        if all(i is not None for i in input_data):
             start = as_scalar(input_data[0])
             limit = as_scalar(input_data[1])
             delta = as_scalar(input_data[2])
@@ -2670,25 +2670,25 @@ class SymbolicShapeInference:
         # topological sort nodes, note there might be dead nodes so we check if all graph outputs are reached to terminate
         sorted_nodes = []
         sorted_known_vi = {i.name for i in list(self.out_mp_.graph.input) + list(self.out_mp_.graph.initializer)}
-        if any([o.name in sorted_known_vi for o in self.out_mp_.graph.output]):
+        if any(o.name in sorted_known_vi for o in self.out_mp_.graph.output):
             # Loop/Scan will have some graph output in graph inputs, so don't do topological sort
             sorted_nodes = self.out_mp_.graph.node
         else:
-            while not all([o.name in sorted_known_vi for o in self.out_mp_.graph.output]):
+            while not all(o.name in sorted_known_vi for o in self.out_mp_.graph.output):
                 old_sorted_nodes_len = len(sorted_nodes)
                 for node in self.out_mp_.graph.node:
                     if (node.output[0] not in sorted_known_vi) and all(
-                        [i in sorted_known_vi for i in prereq_for_node[node.output[0]] if i]
+                        i in sorted_known_vi for i in prereq_for_node[node.output[0]] if i
                     ):
                         sorted_known_vi.update(node.output)
                         sorted_nodes.append(node)
                 if old_sorted_nodes_len == len(sorted_nodes) and not all(
-                    [o.name in sorted_known_vi for o in self.out_mp_.graph.output]
+                    o.name in sorted_known_vi for o in self.out_mp_.graph.output
                 ):
                     raise Exception("Invalid model with cyclic graph")
 
         for node in sorted_nodes:
-            assert all([i in self.known_vi_ for i in node.input if i])
+            assert all(i in self.known_vi_ for i in node.input if i)
             self._onnx_infer_single_node(node)
             known_aten_op = False
             if node.op_type in self.dispatcher_:

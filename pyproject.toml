@@ -13,6 +13,7 @@ line-length = 120
 [tool.ruff.lint]
 select = [
     "B", # flake8-bugbear
+    "C4", # flake8-comprehensions
     "E", # pycodestyle
     "F", # Pyflakes
     "FURB", # refurb
@@ -39,6 +40,7 @@ select = [
 # Always include a comment to explain why.
 ignore = [
     "B028", # FIXME: Add stacklevel to warnings
+    "C408", # Sometimes it is preferable when we construct kwargs
     "E501", # Line length controlled by black
     "G004", # FIXME: Enable when the rule can be autofixed
     "N803", # Argument casing
@@ -57,7 +59,6 @@ ignore = [
     "SIM116", # Don't use dict lookup to replace if-else
     "UP038", # Using X | Y in isinstance checks is a little aggresive
 ]
-ignore-init-module-imports = true
 
 [tool.ruff.lint.per-file-ignores]
 # NOTE: Refrain from growing the ignore list unless for exceptional cases.

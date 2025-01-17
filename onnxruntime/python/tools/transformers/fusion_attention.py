@@ -579,7 +579,7 @@ class FusionAttention(Fusion):
             logger.debug("input hidden size %d is not a multiple of num of heads %d", hidden_size, num_heads)
             return None
 
-        graph_input_names = set([node.name for node in self.model.graph().input])
+        graph_input_names = {node.name for node in self.model.graph().input}
         mha_node_name = self.model.create_node_name("Attention")
 
         # Add initial Q/K/V inputs for MHA

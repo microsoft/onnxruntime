@@ -143,11 +143,11 @@ class TestOrtValue(unittest.TestCase):
             self.assertIn("PyCapsule", str(type(converted_values[0])))
             converted_values = [C_OrtValue.from_dlpack(o, False) for o in converted_values]
         else:
-            assert all(map(lambda v: isinstance(v, tensor_type), converted_values))
+            assert all(isinstance(v, tensor_type) for v in converted_values)
 
         # We make sure the function does not leak any python object.
         cf = [sys.getrefcount(o) for o in converted_values]
-        dummy = [np.array([[0, 1]]), dict(a=3)]
+        dummy = [np.array([[0, 1]]), {"a": 3}]
         cf2 = [sys.getrefcount(o) for o in dummy]
         self.assertEqual(cf, cf2)  # it should be [3, 3]
 
@@ -285,7 +285,7 @@ class TestOrtValue(unittest.TestCase):
         for t in tensors:
             assert isinstance(t, torch.Tensor)
         self.assertEqual(ptr, [t.data_ptr() for t in tensors])
-        assert all(map(lambda v: isinstance(v, tensor_type), tensors))
+        assert all(isinstance(v, tensor_type) for v in tensors)
 
     def test_ortvalues_to_torch_tensor_ortvaluevector_cpu_new(self):
         device = torch.device("cpu")
@@ -336,7 +336,7 @@ class TestOrtValue(unittest.TestCase):
             tensors = _ortvalues_to_torch_tensor(vect, device)
         self.assertEqual(len(tensors), len(vect))
         self.assertEqual(ptr, [t.data_ptr() for t in tensors])
-        assert all(map(lambda v: isinstance(v, tensor_type), tensors))
+        assert all(isinstance(v, tensor_type) for v in tensors)
 
     def test_ortvalues_to_torch_tensor_list_cpu_new(self):
         device = torch.device("cpu")

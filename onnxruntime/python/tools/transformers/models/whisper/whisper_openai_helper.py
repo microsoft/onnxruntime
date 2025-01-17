@@ -33,7 +33,7 @@ class WhisperDecoderInitOpenai(torch.nn.Module):
         remove_hooks=False,
     ):
         # Create a kv_cache for past_values
-        past_kv_cache = dict()
+        past_kv_cache = {}
         if past is not None:
             # Convert past values from 4D to 3D
             past = [torch.transpose(val, 1, 2) for val in past]

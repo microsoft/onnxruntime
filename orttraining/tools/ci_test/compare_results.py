@@ -31,7 +31,7 @@ def _printf_stderr(fmt, *args):
 def _read_results_file(results_path):
     with open(results_path) as results_file:
         csv_reader = csv.DictReader(results_file)
-        return [row for row in csv_reader]
+        return list(csv_reader)
 
 
 def _compare_results(expected_results, actual_results, field_comparisons):

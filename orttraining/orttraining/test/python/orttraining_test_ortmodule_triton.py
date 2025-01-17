@@ -99,7 +99,7 @@ def _torch_softmax(input, **kwargs):
 
 def _torch_reduce(input, func, **kwargs):
     rank = len(input.shape)
-    axes = kwargs.get("axes", [idx for idx in range(rank)])
+    axes = kwargs.get("axes", list(range(rank)))
     keepdims = kwargs.get("keepdims", True)
     axes = [axis if axis >= 0 else rank + axis for axis in axes]
     axes.sort(reverse=True)

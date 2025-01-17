@@ -132,7 +132,7 @@ class BertOnnxModel(OnnxModel):
                 self.model.graph.node,
             )
         )
-        non_ms_domains_to_keep = set(map(lambda node: node.domain, rot_emb_nodes))
+        non_ms_domains_to_keep = {node.domain for node in rot_emb_nodes}
         i = 0
         while i < len(self.model.functions):
             fn = self.model.functions[i]

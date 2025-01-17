@@ -316,8 +316,8 @@ def create_weight_matching(float_model_path: str, qdq_model_path: str) -> dict[s
         # Perform dequantization:
         if weight_scale.size == weight_zp.size == 1:
             # Avoids the confusion between a scaler and a tensor of one element.
-            weight_scale = weight_scale.reshape(tuple())
-            weight_zp = weight_zp.reshape(tuple())
+            weight_scale = weight_scale.reshape(())
+            weight_zp = weight_zp.reshape(())
         if weight_scale.shape != weight_zp.shape:
             raise RuntimeError(
                 f"scale and zero_point must have the same shape but {weight_scale.shape} != {weight_zp.shape}"

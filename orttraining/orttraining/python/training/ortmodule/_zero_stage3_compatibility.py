@@ -140,7 +140,7 @@ def post_processing_enable_zero_stage3_compat(
 
         # Update consumer's input to use the full-sized parameter output of ORTZeROOffloadPreForwardFunction.
         for c in consumers:
-            new_inputs = [c_input for c_input in c.input]
+            new_inputs = list(c.input)
             for c_input_index in range(len(c.input)):
                 if c.input[c_input_index] == graph_input.name:
                     new_inputs[c_input_index] = ready_weight_name

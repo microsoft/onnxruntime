@@ -223,7 +223,7 @@ class WhisperHelper:
         Returns:
             parameters(dict): a dictionary of parameters used in float16 conversion
         """
-        op_full_set = set([node.op_type for node in onnx_model.nodes()])
+        op_full_set = {node.op_type for node in onnx_model.nodes()}
         fp32_op_set = set(op_block_list)
         fp16_op_set = op_full_set.difference(fp32_op_set)
         logger.info(f"fp32 op: {fp32_op_set} fp16 op: {fp16_op_set}")
@@ -444,11 +444,11 @@ class WhisperHelper:
 
         start_id = [config.decoder_start_token_id]  # ex: [50258]
         prompt_ids = processor.get_decoder_prompt_ids(language="english", task="transcribe")
-        prompt_ids = list(map(lambda token: token[1], prompt_ids))  # ex: [50259, 50358, 50363]
+        prompt_ids = [token[1] for token in prompt_ids]  # ex: [50259, 50358, 50363]
         forced_decoder_ids = start_id + prompt_ids  # ex: [50258, 50259, 50358, 50363]
 
-        ort_names = list(map(lambda entry: entry.name, ort_session.get_inputs()))
-        ort_dtypes = list(map(lambda entry: entry.type, ort_session.get_inputs()))
+        ort_names = [entry.name for entry in ort_session.get_inputs()]
+        ort_dtypes = [entry.type for entry in ort_session.get_inputs()]
         ort_to_np = {
             "tensor(float)": np.float32,
             "tensor(float16)": np.float16,

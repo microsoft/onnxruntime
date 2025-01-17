@@ -140,7 +140,7 @@ def _process_lines(lines: list[str], offset: int, registration_processor: Regist
     onnx_two_typed_op_len = len(onnx_two_typed_op)
     onnx_versioned_two_typed_op = "ONNX_OPERATOR_VERSIONED_TWO_TYPED_KERNEL_CLASS_NAME"
     onnx_versioned_two_typed_op_len = len(onnx_versioned_two_typed_op)
-    end_marks = tuple([");", ")>", ")>,", ")>,};", ")>};"])
+    end_marks = (");", ")>", ")>,", ")>,};", ")>};")
 
     end_mark = ""
     lines_to_process = []

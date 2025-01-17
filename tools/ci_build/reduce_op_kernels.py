@@ -69,7 +69,7 @@ def _adapt_filters_for_extended_minimal_build(
     if base_required_ops is not None:
         adapted_required_ops = base_required_ops.copy()
         for domain, optype, opset in extended_minimal_build_required_op_ids:
-            adapted_required_ops.setdefault(domain, dict()).setdefault(opset, set()).add(optype)
+            adapted_required_ops.setdefault(domain, {}).setdefault(opset, set()).add(optype)
 
     adapted_op_type_impl_filter = None
     if base_op_type_impl_filter is not None:

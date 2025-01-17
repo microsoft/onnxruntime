@@ -596,7 +596,7 @@ def main():
         Path(args.model).parent,
         "perf_results_{}_B{}_S{}_{}.txt".format(
             "GPU" if args.use_gpu else "CPU",
-            "-".join([str(x) for x in sorted(list(batch_size_set))]),
+            "-".join([str(x) for x in sorted(batch_size_set)]),
             args.sequence_length,
             datetime.now().strftime("%Y%m%d-%H%M%S"),
         ),

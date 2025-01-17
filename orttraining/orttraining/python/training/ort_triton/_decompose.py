@@ -63,7 +63,7 @@ class DecomposeDispatch:
         node_name = node.name
         y = node.output[0]
         op_type = node.op_type
-        inputs = [input for input in node.input]
+        inputs = list(node.input)
         cast_nodes = []
         for idx, input in enumerate(inputs):
             dtype, _ = self._get_dtype_and_shape(input, **kwargs)

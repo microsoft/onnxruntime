@@ -284,7 +284,7 @@ def _map_node_dependencies(graph: onnx.GraphProto, node_to_producers: dict, node
         return value in producers or value in initializers or value in graph_inputs
 
     for node in graph.node:
-        inputs = [i for i in node.input]
+        inputs = list(node.input)
 
         for attr in node.attribute:
             if attr.HasField("g"):
