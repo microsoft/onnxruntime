@@ -669,7 +669,7 @@ if (onnxruntime_USE_WEBGPU)
     #
     # We keep a copy of the missing file(s) in ${PROJECT_SOURCE_DIR}/patches/emscripten/, and now we extract them to the
     # emscripten toolchain folder.
-    execute_process(COMMAND ${CMAKE_COMMAND} -E tar x "${PROJECT_SOURCE_DIR}/patches/emscripten/patch_3.1.74.tgz"
+    execute_process(COMMAND ${CMAKE_COMMAND} -E tar x "${PROJECT_SOURCE_DIR}/patches/emscripten/patch_4.0.1.tgz"
                     WORKING_DIRECTORY ${DAWN_EMSCRIPTEN_TOOLCHAIN})
   else()
     if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
