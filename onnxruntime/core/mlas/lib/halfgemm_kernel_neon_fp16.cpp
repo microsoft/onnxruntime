@@ -449,6 +449,10 @@ void HGemm_TransposedB_Kernel_M1(
             float16x8_t b1 = MlasLoadFloat16x8(b + ldb);
             float16x8_t b2 = MlasLoadFloat16x8(b + 2 * ldb);
             float16x8_t b3 = MlasLoadFloat16x8(b + 3 * ldb);
+            float16x8_t b4 = MlasLoadFloat16x8(b + 4 * ldb);
+            float16x8_t b5 = MlasLoadFloat16x8(b + 5 * ldb);
+            float16x8_t b6 = MlasLoadFloat16x8(b + 6 * ldb);
+            float16x8_t b7 = MlasLoadFloat16x8(b + 7 * ldb);
             float16x8_t a0 = MlasLoadFloat16x8(a);
             accu0 = vfmaq_f16(accu0, b0, a0);
             accu1 = vfmaq_f16(accu1, b1, a0);
@@ -503,18 +507,14 @@ void HGemm_TransposedB_Kernel_M1(
             Transpose4x4(b0, b1, b2, b3);
             Transpose4x4(b4, b5, b6, b7);
             float16x8_t v0 = vcombine_f16(b0, b4), v1, v2;
-            if (k > 1) {
-                v1 = vcombine_f16(b1, b5);
-            }
-            if (k > 2) {
-                v2 = vcombine_f16(b2, b6);
-            }
             float16x4_t a0 = MlasLoadPartialFloat16x4(a, k);
             accu0 = vfmaq_lane_f16(accu0, v0, a0, 0);
             if (k > 1) {
+                v1 = vcombine_f16(b1, b5);
                 accu0 = vfmaq_lane_f16(accu0, v1, a0, 1);
             }
             if (k > 2) {
+                v2 = vcombine_f16(b2, b6);
                 accu0 = vfmaq_lane_f16(accu0, v2, a0, 2);
             }
         }
@@ -689,7 +689,348 @@ void HGemm_TransposedB_Kernel_M2(
     float16_t alpha,
     float16_t beta
 ) {
+    for (; CountN >= 8; CountN -= 8, B_data += 8 * ldb, C_data += 8) {
+        const auto* a = A_data;
+        const auto* b = B_data;
+        size_t k = CountK;
+        float16x8_t accu00 = MlasZeroFloat16x8();
+        float16x8_t accu01 = MlasZeroFloat16x8();
+        float16x8_t accu02 = MlasZeroFloat16x8();
+        float16x8_t accu03 = MlasZeroFloat16x8();
+        float16x8_t accu04 = MlasZeroFloat16x8();
+        float16x8_t accu05 = MlasZeroFloat16x8();
+        float16x8_t accu06 = MlasZeroFloat16x8();
+        float16x8_t accu07 = MlasZeroFloat16x8();
+        float16x8_t accu10 = MlasZeroFloat16x8();
+        float16x8_t accu11 = MlasZeroFloat16x8();
+        float16x8_t accu12 = MlasZeroFloat16x8();
+        float16x8_t accu13 = MlasZeroFloat16x8();
+        float16x8_t accu14 = MlasZeroFloat16x8();
+        float16x8_t accu15 = MlasZeroFloat16x8();
+        float16x8_t accu16 = MlasZeroFloat16x8();
+        float16x8_t accu17 = MlasZeroFloat16x8();
+        for (; k >= 8; k -= 8, a += 8, b += 8) {
+            float16x8_t b0 = MlasLoadFloat16x8(b);
+            float16x8_t b1 = MlasLoadFloat16x8(b + ldb);
+            float16x8_t b2 = MlasLoadFloat16x8(b + 2 * ldb);
+            float16x8_t b3 = MlasLoadFloat16x8(b + 3 * ldb);
+            float16x8_t b4 = MlasLoadFloat16x8(b + 4 * ldb);
+            float16x8_t b5 = MlasLoadFloat16x8(b + 5 * ldb);
+            float16x8_t b6 = MlasLoadFloat16x8(b + 6 * ldb);
+            float16x8_t b7 = MlasLoadFloat16x8(b + 7 * ldb);
+            float16x8_t a0 = MlasLoadFloat16x8(a);
+            float16x8_t a1 = MlasLoadFloat16x8(a + lda);
+            accu00 = vfmaq_f16(accu00, b0, a0);
+            accu01 = vfmaq_f16(accu01, b1, a0);
+            accu02 = vfmaq_f16(accu02, b2, a0);
+            accu03 = vfmaq_f16(accu03, b3, a0);
+            accu04 = vfmaq_f16(accu04, b4, a0);
+            accu05 = vfmaq_f16(accu05, b5, a0);
+            accu06 = vfmaq_f16(accu06, b6, a0);
+            accu07 = vfmaq_f16(accu07, b7, a0);
+            accu10 = vfmaq_f16(accu10, b0, a1);
+            accu11 = vfmaq_f16(accu11, b1, a1);
+            accu12 = vfmaq_f16(accu12, b2, a1);
+            accu13 = vfmaq_f16(accu13, b3, a1);
+            accu14 = vfmaq_f16(accu14, b4, a1);
+            accu15 = vfmaq_f16(accu15, b5, a1);
+            accu16 = vfmaq_f16(accu16, b6, a1);
+            accu17 = vfmaq_f16(accu17, b7, a1);
+        }
+        Transpose8x8(accu00, accu01, accu02, accu03, accu04, accu05, accu06, accu07);
+        Transpose8x8(accu10, accu11, accu12, accu13, accu14, accu15, accu16, accu17);
+        accu00 = vaddq_f16(accu00, accu01);
+        accu02 = vaddq_f16(accu02, accu03);
+        accu04 = vaddq_f16(accu04, accu05);
+        accu06 = vaddq_f16(accu06, accu07);
+        accu00 = vaddq_f16(accu00, accu02);
+        accu04 = vaddq_f16(accu04, accu06);
+        accu00 = vaddq_f16(accu00, accu04); // accumulator of 8 columns
+        accu10 = vaddq_f16(accu10, accu11);
+        accu12 = vaddq_f16(accu12, accu13);
+        accu14 = vaddq_f16(accu14, accu15);
+        accu16 = vaddq_f16(accu16, accu17);
+        accu10 = vaddq_f16(accu10, accu12);
+        accu14 = vaddq_f16(accu14, accu16);
+        accu10 = vaddq_f16(accu10, accu14); // accumulator of 8 columns
 
+        if (k & 4) {
+            float16x4_t b0 = MlasLoadFloat16x4(b);
+            float16x4_t b1 = MlasLoadFloat16x4(b + ldb);
+            float16x4_t b2 = MlasLoadFloat16x4(b + 2 * ldb);
+            float16x4_t b3 = MlasLoadFloat16x4(b + 3 * ldb);
+            float16x4_t b4 = MlasLoadFloat16x4(b + 4 * ldb);
+            float16x4_t b5 = MlasLoadFloat16x4(b + 5 * ldb);
+            float16x4_t b6 = MlasLoadFloat16x4(b + 6 * ldb);
+            float16x4_t b7 = MlasLoadFloat16x4(b + 7 * ldb);
+            Transpose4x4(b0, b1, b2, b3);
+            Transpose4x4(b4, b5, b6, b7);
+            float16x8_t v0 = vcombine_f16(b0, b4);
+            float16x8_t v1 = vcombine_f16(b1, b5);
+            float16x8_t v2 = vcombine_f16(b2, b6);
+            float16x8_t v3 = vcombine_f16(b3, b7);
+            float16x4_t a0 = MlasLoadFloat16x4(a);
+            float16x4_t a1 = MlasLoadFloat16x4(a + lda);
+            accu00 = vfmaq_lane_f16(accu00, v0, a0, 0);
+            accu00 = vfmaq_lane_f16(accu00, v1, a0, 1);
+            accu00 = vfmaq_lane_f16(accu00, v2, a0, 2);
+            accu00 = vfmaq_lane_f16(accu00, v3, a0, 3);
+            accu10 = vfmaq_lane_f16(accu10, v0, a1, 0);
+            accu10 = vfmaq_lane_f16(accu10, v1, a1, 1);
+            accu10 = vfmaq_lane_f16(accu10, v2, a1, 2);
+            accu10 = vfmaq_lane_f16(accu10, v3, a1, 3);
+            k -= 4, a += 4, b += 4;
+        }
+
+        if (k > 0) {
+            float16x4_t b0 = MlasLoadPartialFloat16x4(b, k);
+            float16x4_t b1 = MlasLoadPartialFloat16x4(b + ldb, k);
+            float16x4_t b2 = MlasLoadPartialFloat16x4(b + 2 * ldb, k);
+            float16x4_t b3 = MlasLoadPartialFloat16x4(b + 3 * ldb, k);
+            float16x4_t b4 = MlasLoadPartialFloat16x4(b + 4 * ldb, k);
+            float16x4_t b5 = MlasLoadPartialFloat16x4(b + 5 * ldb, k);
+            float16x4_t b6 = MlasLoadPartialFloat16x4(b + 6 * ldb, k);
+            float16x4_t b7 = MlasLoadPartialFloat16x4(b + 7 * ldb, k);
+            Transpose4x4(b0, b1, b2, b3);
+            Transpose4x4(b4, b5, b6, b7);
+            float16x8_t v0 = vcombine_f16(b0, b4);
+            float16x4_t a0 = MlasLoadPartialFloat16x4(a, k);
+            float16x4_t a1 = MlasLoadPartialFloat16x4(a + lda, k);
+            accu00 = vfmaq_lane_f16(accu00, v0, a0, 0);
+            accu10 = vfmaq_lane_f16(accu10, v0, a1, 0);
+            if (k > 1) {
+                float16x8_t v1 = vcombine_f16(b1, b5);
+                accu00 = vfmaq_lane_f16(accu00, v1, a0, 1);
+                accu10 = vfmaq_lane_f16(accu10, v1, a1, 1);
+            }
+            if (k > 2) {
+                float16x8_t v2 = vcombine_f16(b2, b6);
+                accu00 = vfmaq_lane_f16(accu00, v2, a0, 2);
+                accu10 = vfmaq_lane_f16(accu10, v2, a1, 2);
+            }
+        }
+
+        if (beta == 1.0f16) {
+            float16x8_t c0 = MlasLoadFloat16x8(C_data);
+            float16x8_t c1 = MlasLoadFloat16x8(C_data + ldc);
+            accu00 = vfmaq_n_f16(c0, accu00, alpha);
+            accu10 = vfmaq_n_f16(c1, accu10, alpha);
+            MlasStoreFloat16x8(C_data, accu00);
+            MlasStoreFloat16x8(C_data + ldc, accu10);
+        } else if (beta != 0.0f16) {
+            float16x8_t c0 = MlasLoadFloat16x8(C_data);
+            float16x8_t c1 = MlasLoadFloat16x8(C_data + ldc);
+            accu00 = vfmaq_n_f16(vmulq_n_f16(c0, beta), accu00, alpha);
+            accu10 = vfmaq_n_f16(vmulq_n_f16(c1, beta), accu10, alpha);
+            MlasStoreFloat16x8(C_data, accu00);
+            MlasStoreFloat16x8(C_data + ldc, accu10);
+        } else {
+            accu00 = vmulq_n_f16(accu00, alpha);
+            accu10 = vmulq_n_f16(accu10, alpha);
+            MlasStoreFloat16x8(C_data, accu00);
+            MlasStoreFloat16x8(C_data + ldc, accu10);
+        }
+    }
+
+    if (CountN & 4) {
+        const auto* a = A_data;
+        const auto* b = B_data;
+        size_t k = CountK;
+        float16x8_t accu00 = MlasZeroFloat16x8();
+        float16x8_t accu01 = MlasZeroFloat16x8();
+        float16x8_t accu02 = MlasZeroFloat16x8();
+        float16x8_t accu03 = MlasZeroFloat16x8();
+        float16x8_t accu10 = MlasZeroFloat16x8();
+        float16x8_t accu11 = MlasZeroFloat16x8();
+        float16x8_t accu12 = MlasZeroFloat16x8();
+        float16x8_t accu13 = MlasZeroFloat16x8();
+        for (; k >= 8; k -= 8, a += 8, b += 8) {
+            float16x8_t b0 = MlasLoadFloat16x8(b);
+            float16x8_t b1 = MlasLoadFloat16x8(b + ldb);
+            float16x8_t b2 = MlasLoadFloat16x8(b + 2 * ldb);
+            float16x8_t b3 = MlasLoadFloat16x8(b + 3 * ldb);
+            float16x8_t a0 = MlasLoadFloat16x8(a);
+            float16x8_t a1 = MlasLoadFloat16x8(a + lda);
+            accu00 = vfmaq_f16(accu00, b0, a0);
+            accu01 = vfmaq_f16(accu01, b1, a0);
+            accu02 = vfmaq_f16(accu02, b2, a0);
+            accu03 = vfmaq_f16(accu03, b3, a0);
+            accu10 = vfmaq_f16(accu10, b0, a1);
+            accu11 = vfmaq_f16(accu11, b1, a1);
+            accu12 = vfmaq_f16(accu12, b2, a1);
+            accu13 = vfmaq_f16(accu13, b3, a1);
+        }
+        Transpose4x8(accu00, accu01, accu02, accu03);
+        Transpose4x8(accu10, accu11, accu12, accu13);
+        accu00 = vaddq_f16(accu00, accu01);
+        accu02 = vaddq_f16(accu02, accu03);
+        accu00 = vaddq_f16(accu00, accu02); // final
+        accu10 = vaddq_f16(accu10, accu11);
+        accu12 = vaddq_f16(accu12, accu13);
+        accu10 = vaddq_f16(accu10, accu12); // final
+        float16x4_t accu0 = vadd_f16(vget_low_f16(accu00), vget_high_f16(accu00));
+        float16x4_t accu1 = vadd_f16(vget_low_f16(accu10), vget_high_f16(accu10));
+
+        if (k & 4) {
+            float16x4_t b0 = MlasLoadFloat16x4(b);
+            float16x4_t b1 = MlasLoadFloat16x4(b + ldb);
+            float16x4_t b2 = MlasLoadFloat16x4(b + 2 * ldb);
+            float16x4_t b3 = MlasLoadFloat16x4(b + 3 * ldb);
+            Transpose4x4(b0, b1, b2, b3);
+            float16x4_t a0 = MlasLoadFloat16x4(a);
+            float16x4_t a1 = MlasLoadFloat16x4(a + lda);
+            accu0 = vfma_lane_f16(accu0, b0, a0, 0);
+            accu0 = vfma_lane_f16(accu0, b1, a0, 1);
+            accu0 = vfma_lane_f16(accu0, b2, a0, 2);
+            accu0 = vfma_lane_f16(accu0, b3, a0, 3);
+            accu1 = vfma_lane_f16(accu1, b0, a1, 0);
+            accu1 = vfma_lane_f16(accu1, b1, a1, 1);
+            accu1 = vfma_lane_f16(accu1, b2, a1, 2);
+            accu1 = vfma_lane_f16(accu1, b3, a1, 3);
+            k -= 4, a += 4, b += 4;
+        }
+
+        if (k > 0) {
+            float16x4_t b0 = MlasLoadPartialFloat16x4(b, k);
+            float16x4_t b1 = MlasLoadPartialFloat16x4(b + ldb, k);
+            float16x4_t b2 = MlasLoadPartialFloat16x4(b + 2 * ldb, k);
+            float16x4_t b3 = MlasLoadPartialFloat16x4(b + 3 * ldb, k);
+            Transpose4x4(b0, b1, b2, b3);
+            float16x4_t a0 = MlasLoadPartialFloat16x4(a, k);
+            float16x4_t a1 = MlasLoadPartialFloat16x4(a + lda, k);
+            accu0 = vfma_lane_f16(accu0, b0, a0, 0);
+            accu1 = vfma_lane_f16(accu1, b0, a1, 0);
+            if (k > 1) {
+                accu0 = vfma_lane_f16(accu0, b1, a0, 1);
+                accu1 = vfma_lane_f16(accu1, b1, a1, 1);
+            }
+            if (k > 2) {
+                accu0 = vfma_lane_f16(accu0, b2, a0, 2);
+                accu1 = vfma_lane_f16(accu1, b2, a1, 2);
+            }
+        }
+
+        if (beta == 1.0f16) {
+            float16x4_t c0 = MlasLoadFloat16x4(C_data);
+            float16x4_t c1 = MlasLoadFloat16x4(C_data + ldc);
+            accu0 = vfma_n_f16(c0, accu0, alpha);
+            accu1 = vfma_n_f16(c1, accu1, alpha);
+            MlasStoreFloat16x4(C_data, accu0);
+            MlasStoreFloat16x4(C_data + ldc, accu1);
+        } else if (beta != 0.0f16) {
+            float16x4_t c0 = MlasLoadFloat16x4(C_data);
+            float16x4_t c1 = MlasLoadFloat16x4(C_data + ldc);
+            accu0 = vfma_n_f16(vmul_n_f16(c0, beta), accu0, alpha);
+            accu1 = vfma_n_f16(vmul_n_f16(c1, beta), accu1, alpha);
+            MlasStoreFloat16x4(C_data, accu0);
+            MlasStoreFloat16x4(C_data + ldc, accu1);
+        } else {
+            accu0 = vmulq_n_f16(accu0, alpha);
+            accu1 = vmulq_n_f16(accu1, alpha);
+            MlasStoreFloat16x4(C_data, accu0);
+            MlasStoreFloat16x4(C_data + ldc, accu1);
+        }
+
+        CountN -= 4, B_data += 4 * ldb, C_data += 4;
+    }
+
+    if (CountN > 0) {
+        const auto* a = A_data;
+        const auto* b = B_data;
+        size_t k = CountK;
+        float16x8_t accu0[4];
+        float16x8_t accu1[4];
+        size_t i = 0;
+        for (i = 0; i < 4; ++i) {
+            accu0[i] = MlasZeroFloat16x8();
+            accu1[i] = MlasZeroFloat16x8();
+        }
+        for (; k >= 8; k -= 8, a += 8, b += 8) {
+            float16x8_t a0 = MlasLoadFloat16x8(a);
+            float16x8_t a1 = MlasLoadFloat16x8(a + lda);
+            for (i = 0; i < CountN; ++i) {
+                float16x8_t bi = MlasLoadFloat16x8(b + i * ldb);
+                accu0[i] = vfmaq_f16(accu0[i], bi, a0);
+                accu1[i] = vfmaq_f16(accu1[i], bi, a1);
+            }
+        }
+        Transpose4x8(accu0[0], accu0[1], accu0[2], accu0[3]);
+        Transpose4x8(accu1[0], accu1[1], accu1[2], accu1[3]);
+        float16x8_t accu00 = vaddq_f16(accu0[0], accu0[1]);
+        float16x8_t accu02 = vaddq_f16(accu0[2], accu0[3]);
+        accu00 = vaddq_f16(accu00, accu02);
+        float16x4_t accu_0 = vadd_f16(vget_low_f16(accu00), vget_high_f16(accu00));
+        float16x8_t accu10 = vaddq_f16(accu1[0], accu1[1]);
+        float16x8_t accu12 = vaddq_f16(accu1[2], accu1[3]);
+        accu10 = vaddq_f16(accu10, accu12);
+        float16x4_t accu_1 = vadd_f16(vget_low_f16(accu10), vget_high_f16(accu10));
+
+        if (k & 4) {
+            float16x4_t b[4];
+            for (i = 0; i < CountN; ++i) {
+                b[i] = MlasLoadFloat16x4(b + i * ldb);
+            }
+            for (; i < 4; ++i) {
+                b[i] = MlasZeroFloat16x4();
+            }
+            Transpose4x4(b[0], b[1], b[2], b[3]);
+            float16x4_t a0 = MlasLoadFloat16x4(a);
+            float16x4_t a1 = MlasLoadFloat16x4(a + lda);
+            accu_0 = vfma_lane_f16(accu_0, b[0], a0, 0);
+            accu_0 = vfma_lane_f16(accu_0, b[1], a0, 1);
+            accu_0 = vfma_lane_f16(accu_0, b[2], a0, 2);
+            accu_0 = vfma_lane_f16(accu_0, b[3], a0, 3);
+            accu_1 = vfma_lane_f16(accu_1, b[0], a1, 0);
+            accu_1 = vfma_lane_f16(accu_1, b[1], a1, 1);
+            accu_1 = vfma_lane_f16(accu_1, b[2], a1, 2);
+            accu_1 = vfma_lane_f16(accu_1, b[3], a1, 3);
+            k -= 4, a += 4, b += 4;
+        }
+
+        if (k > 0) {
+            float16x4_t b[4];
+            for (i = 0; i < CountN; ++i) {
+                b[i] = MlasLoadPartialFloat16x4(b + i * ldb, k);
+            }
+            for (; i < 4; ++i) {
+                b[i] = MlasZeroFloat16x4();
+            }
+            Transpose4x4(b[0], b[1], b[2], b[3]);
+            float16x4_t a0 = MlasLoadPartialFloat16x4(a, k);
+            float16x4_t a1 = MlasLoadPartialFloat16x4(a + lda, k);
+            accu_0 = vfma_lane_f16(accu_0, b[0], a0, 0);
+            accu_1 = vfma_lane_f16(accu_1, b[0], a1, 0);
+            if (k > 1) {
+                accu_0 = vfma_lane_f16(accu_0, b[1], a0, 1);
+                accu_1 = vfma_lane_f16(accu_1, b[1], a1, 1);
+            }
+            if (k > 2) {
+                accu_0 = vfma_lane_f16(accu_0, b[2], a0, 2);
+                accu_1 = vfma_lane_f16(accu_1, b[2], a1, 2);
+            }
+        }
+
+        if (beta == 1.0f16) {
+            float16x4_t c0 = MlasLoadPartialFloat16x4(C_data, CountN);
+            float16x4_t c1 = MlasLoadPartialFloat16x4(C_data + ldc, CountN);
+            accu_0 = vfma_n_f16(c0, accu_0, alpha);
+            accu_1 = vfma_n_f16(c1, accu_1, alpha);
+            MlasStorePartialFloat16x4(C_data, accu_0, CountN);
+            MlasStorePartialFloat16x4(C_data + ldc, accu_1, CountN);
+        } else if (beta != 0.0f16) {
+            float16x4_t c0 = MlasLoadPartialFloat16x4(C_data, CountN);
+            float16x4_t c1 = MlasLoadPartialFloat16x4(C_data + ldc, CountN);
+            accu_0 = vfma_n_f16(vmul_n_f16(c0, beta), accu_0, alpha);
+            accu_1 = vfma_n_f16(vmul_n_f16(c1, beta), accu_1, alpha);
+            MlasStorePartialFloat16x4(C_data, accu_0, CountN);
+            MlasStorePartialFloat16x4(C_data + ldc, accu_1, CountN);
+        } else {
+            accu_0 = vmulq_n_f16(accu_0, alpha);
+            accu_1 = vmulq_n_f16(accu_1, alpha);
+            MlasStorePartialFloat16x4(C_data, accu_0, CountN);
+            MlasStorePartialFloat16x4(C_data + ldc, accu_1, CountN);
+        }
+    }
 }
 
 // Full K. Directly save to C.
