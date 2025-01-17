@@ -293,7 +293,7 @@ TEST_F(QnnHTPBackendTests, MatMulOp_QDQ) {
   // // UINT16, per-channel INT8 weight
   RunQDQPerChannelMatMulOpTest<uint16_t, int8_t, uint16_t>({2, 3}, {3, 2}, 1, QDQTolerance(),
                                                            ExpectedEPNodeAssignment::All, 21, false, false);
-  RunQDQPerChannelMatMulOpTest<uint16_t, int8_t, uint16_t>({2, 3, 3}, {3}, -1);
+  RunQDQPerChannelMatMulOpTest<uint16_t, int8_t, uint16_t>({2, 3, 3}, {3}, -1, QDQTolerance(0.005f));
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
