@@ -827,8 +827,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   uint32_t components = GetMaxComponents(N);
 
   const bool has_zero_points = zero_points != nullptr;
-  if (block_size == 32 && batch_count == 1 &&
-      components_a == 4 && K % 64 == 0 &&
+  if (accuracy_level_ == 4 && block_size == 32 &&
+      batch_count == 1 && components_a == 4 && K % 64 == 0 &&
       !has_zero_points && M >= kMinMForTileOptimization) {
     constexpr uint32_t kVec4Components = 4;
     constexpr uint32_t kVec2Components = 2;
@@ -837,14 +837,14 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     constexpr uint32_t kBlockSizeA = 128;
     DP4AMatMulQuantizeProgram quantize_program;
     quantize_program.SetWorkgroupSize(32);
-    quantize_program.SetDispatchGroupSize(M*K/kBlockSizeA, 1, 1);
-    TensorShape a_quant_shape{1, M, K/kU32Components};
+    quantize_program.SetDispatchGroupSize(M * K / kBlockSizeA, 1, 1);
+    TensorShape a_quant_shape{1, M, K / kU32Components};
     Tensor a_quant = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), a_quant_shape);
-    TensorShapeVector a_scales_dims({1, 1, M, K/kBlockSizeA});
+    TensorShapeVector a_scales_dims({1, 1, M, K / kBlockSizeA});
     Tensor a_scale = context.CreateGPUTensor(a->DataType(), a_scales_dims);
     quantize_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components)}})
-          .AddOutputs({{&a_quant, ProgramTensorMetadataDependency::Rank, a_quant.Shape(), gsl::narrow<int>(1)},
-                      {&a_scale, ProgramTensorMetadataDependency::Rank, a_scale.Shape(), gsl::narrow<int>(1)}});
+        .AddOutputs({{&a_quant, ProgramTensorMetadataDependency::Rank, a_quant.Shape(), gsl::narrow<int>(1)},
+                     {&a_scale, ProgramTensorMetadataDependency::Rank, a_scale.Shape(), gsl::narrow<int>(1)}});
     ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
 
     constexpr uint32_t kTileSize = 64;
@@ -852,19 +852,18 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     DP4AMatMulNBitsProgram mul_program;
     mul_program.SetWorkgroupSize(256);
     mul_program.SetDispatchGroupSize(
-      (M + kTileSize - 1) / kTileSize,
-      (N + kTileSize - 1) / kTileSize, 1);
-    mul_program.AddInputs({
-        {&a_quant, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components)},
-        {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)},
-        {b, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec2Components * kU32Components)},
-        {scales, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec2Components)}})
-      .AddUniformVariables({{static_cast<uint32_t>(M)},
-                            {static_cast<uint32_t>(N)},
-                            {static_cast<uint32_t>(K)},
-                            {static_cast<uint32_t>(K/8)},
-                            {static_cast<uint32_t>(K/16)}})
-      .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, gsl::narrow<int>(kVec4Components)});
+        (M + kTileSize - 1) / kTileSize,
+        (N + kTileSize - 1) / kTileSize, 1);
+    mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components)},
+                           {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)},
+                           {b, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec2Components * kU32Components)},
+                           {scales, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec2Components)}})
+        .AddUniformVariables({{static_cast<uint32_t>(M)},
+                              {static_cast<uint32_t>(N)},
+                              {static_cast<uint32_t>(K)},
+                              {static_cast<uint32_t>(K / 8)},
+                              {static_cast<uint32_t>(K / 16)}})
+        .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, gsl::narrow<int>(kVec4Components)});
     return context.RunProgram(mul_program);
   }
 
