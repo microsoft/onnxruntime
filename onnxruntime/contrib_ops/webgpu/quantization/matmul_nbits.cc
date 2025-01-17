@@ -827,9 +827,10 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   uint32_t components = GetMaxComponents(N);
 
   const bool has_zero_points = zero_points != nullptr;
+  const bool has_subgroup = context.Device().HasFeature(wgpu::FeatureName::Subgroups);
   if (accuracy_level_ == 4 && block_size == 32 &&
       batch_count == 1 && components_a == 4 && K % 64 == 0 && N % 16 == 0 &&
-      !has_zero_points && M >= kMinMForTileOptimization) {
+      !has_zero_points && has_subgroup && M >= kMinMForTileOptimization) {
     constexpr uint32_t kVec4Components = 4;
     constexpr uint32_t kVec2Components = 2;
     constexpr uint32_t kU32Components = 4;
@@ -870,7 +871,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   // TODO: Support output_number > 1. Some cases are failed when output_number > 1.
   constexpr uint32_t output_number = 1;
   const uint32_t tile_m = M > kMinMForTileOptimization ? 4 : 1;
-  const bool use_subgroup = context.Device().HasFeature(wgpu::FeatureName::Subgroups) && context.AdapterInfo().vendor == std::string_view{"intel"} && components_a == 4 && block_size == 32;
+  const bool use_subgroup = has_subgroup && context.AdapterInfo().vendor == std::string_view{"intel"} && components_a == 4 && block_size == 32;
   MatMulNBitsProgram program{output_number, block_size, tile_m, gsl::narrow<int>(components_b), has_zero_points, use_subgroup};
   if (M > kMinMForTileOptimization && block_size == 32) {
     components = 1;
