@@ -6,7 +6,6 @@ import logging
 import os
 import pathlib
 from enum import Enum
-from typing import List, Optional, Union
 
 import onnx
 
@@ -40,18 +39,18 @@ class OptimType(Enum):
 
 
 def generate_artifacts(
-    model: Union[onnx.ModelProto, str],
-    requires_grad: Optional[List[str]] = None,
-    frozen_params: Optional[List[str]] = None,
-    loss: Optional[Union[LossType, onnxblock.Block]] = None,
-    optimizer: Optional[Union[OptimType, onnxblock.Block]] = None,
-    artifact_directory: Optional[Union[str, bytes, os.PathLike]] = None,
+    model: onnx.ModelProto | str,
+    requires_grad: list[str] | None = None,
+    frozen_params: list[str] | None = None,
+    loss: LossType | onnxblock.Block | None = None,
+    optimizer: OptimType | onnxblock.Block | None = None,
+    artifact_directory: str | bytes | os.PathLike | None = None,
     prefix: str = "",
     ort_format: bool = False,
-    custom_op_library: Optional[Union[str, bytes, os.PathLike]] = None,
-    additional_output_names: Optional[List[str]] = None,
+    custom_op_library: str | bytes | os.PathLike | None = None,
+    additional_output_names: list[str] | None = None,
     nominal_checkpoint: bool = False,
-    loss_input_names: Optional[List[str]] = None,
+    loss_input_names: list[str] | None = None,
 ) -> None:
     """Generates artifacts required for training with ORT training api.
 
