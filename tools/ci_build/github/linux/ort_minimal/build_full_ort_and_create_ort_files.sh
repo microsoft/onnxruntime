@@ -8,7 +8,7 @@ set -x
 
 BUILD_DIR=${1:?"usage: $0 <build directory>"}
 
-python3.12 -m pip install -r /onnxruntime_src/tools/ci_build/requirements/pybind/requirements.txt
+python3.12 -m pip install -r /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt
 # Validate the operator kernel registrations, as the ORT model uses hashes of the kernel registration details
 # to find kernels. If the hashes from the registration details are incorrect we will produce a model that will break
 # when the registration is fixed in the future.

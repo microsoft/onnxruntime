@@ -65,7 +65,7 @@ if [[ -z "${BUILD_DIR}" || -z "${REDUCED_OPS_CONFIG_FILE}" ]]; then
     echo "$USAGE_TEXT"
     exit 1
 fi
-python3.12 -m pip install -r /onnxruntime_src/tools/ci_build/requirements/pybind/requirements.txt
+python3.12 -m pip install -r /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt
 # Perform a minimal build with required ops and run ORT minimal build UTs
 python3.12 /onnxruntime_src/tools/ci_build/build.py \
     --build_dir ${BUILD_DIR} --cmake_generator Ninja \
