@@ -281,8 +281,7 @@ stages:
   - Build_Android_Packages
   jobs:
   - job: ReactNative_CI_Android
-    pool:
-      vmImage: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
     variables:
       runCodesignValidationInjection: false
     timeoutInMinutes: 90
