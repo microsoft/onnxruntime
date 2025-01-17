@@ -8,7 +8,6 @@ import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import List, Optional, Union
 
 import numpy
 import onnx
@@ -34,7 +33,7 @@ class WhisperDecoderInit(torch.nn.Module):
         self,
         decoder: torch.nn.Module,
         config: WhisperConfig,
-        decoder_start_token_id: Optional[int] = None,
+        decoder_start_token_id: int | None = None,
     ):
         super().__init__()
         self.decoder = decoder
@@ -115,7 +114,7 @@ class WhisperDecoderInputs:
         past_key_values=None,
     ):
         self.decoder_input_ids: torch.LongTensor = decoder_input_ids
-        self.past_key_values: Union[List[torch.FloatTensor], List[torch.HalfTensor], None] = past_key_values
+        self.past_key_values: list[torch.FloatTensor] | list[torch.HalfTensor] | None = past_key_values
 
     @staticmethod
     def create_dummy(
@@ -186,7 +185,7 @@ class WhisperDecoderInputs:
 
         return WhisperDecoderInputs(decoder_input_ids, past)
 
-    def to_list(self) -> List:
+    def to_list(self) -> list:
         input_list = [self.decoder_input_ids]
         if self.past_key_values:
             input_list.extend(self.past_key_values)
@@ -333,7 +332,7 @@ class WhisperDecoderHelper:
 
     @staticmethod
     def verify_onnx(
-        model: Union[WhisperDecoder, WhisperDecoderInit],
+        model: WhisperDecoder | WhisperDecoderInit,
         ort_session: InferenceSession,
         device: torch.device,
         use_int32_inputs: bool,

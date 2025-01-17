@@ -23,7 +23,6 @@ import timeit
 from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import psutil
@@ -55,8 +54,8 @@ class ModelSetting:
     segment_ids_name: str
     input_mask_name: str
     opt_level: int
-    input_tuning_results: Optional[str]
-    output_tuning_results: Optional[str]
+    input_tuning_results: str | None
+    output_tuning_results: str | None
     mask_type: int
 
 

@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 import logging
-from typing import Optional
 
 from fusion_attention import AttentionMask
 from fusion_bart_attention import FusionBartAttention
@@ -127,7 +126,7 @@ class BartOnnxModel(BertOnnxModel):
         self.attention_fusion = FusionBartAttention(self, self.hidden_size, self.num_heads, self.attention_mask)
         self.bart_reshape_fusion_preprocess = FusionBartReshape(self)
 
-    def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
+    def optimize(self, options: FusionOptions | None = None, add_dynamic_axes: bool = False):
         self.attention_fusion.use_multi_head_attention = False if options is None else options.use_multi_head_attention
         self.attention_fusion.disable_multi_head_attention_bias = (
             False if options is None else options.disable_multi_head_attention_bias

@@ -9,7 +9,6 @@ import os
 import re
 import sys
 from types import ModuleType
-from typing import List, Tuple, Union
 
 import onnx
 from onnx import ModelProto
@@ -29,7 +28,7 @@ _CUSTOM_KERNELS = dict()
 
 
 @functools.lru_cache(None)
-def _gen_module_internal(sorted_graph: SortedGraph) -> Tuple[str, str, ModuleType]:
+def _gen_module_internal(sorted_graph: SortedGraph) -> tuple[str, str, ModuleType]:
     func_name = gen_unique_name("func")
     src_code = codegen(func_name, sorted_graph)
     return func_name, src_code, PyCodeCache().load(src_code)
@@ -58,7 +57,7 @@ class _ShapeCache:
                 cls.symbolic_shape_hint[k] = v
 
     @classmethod
-    def get_shape(cls, onnx_key: int, model: ModelProto, shapes: List[List[int]]) -> List[List[Union[int, str]]]:
+    def get_shape(cls, onnx_key: int, model: ModelProto, shapes: list[list[int]]) -> list[list[int | str]]:
         if onnx_key not in cls.cache:
             if cls.symbolic_shape_hint is not None:
                 for i, input in enumerate(model.graph.input):
@@ -90,12 +89,12 @@ class _ShapeCache:
         return cls.cache[onnx_key]
 
 
-def _gen_key(onnx_key: int, model: ModelProto, shapes: List[List[Union[int, str]]]) -> int:
+def _gen_key(onnx_key: int, model: ModelProto, shapes: list[list[int | str]]) -> int:
     # pylint: disable=unused-argument
     return hash(f"{onnx_key}|{str(shapes).replace(' ', '')}")
 
 
-def _gen_module(onnx_key: int, model: ModelProto, shapes: List[List[Union[int, str]]]) -> Tuple[str, ModuleType]:
+def _gen_module(onnx_key: int, model: ModelProto, shapes: list[list[int | str]]) -> tuple[str, ModuleType]:
     sorted_graph = SortedGraph(model, [parse_shape(shape) for shape in shapes])
     if _DEBUG_MODE:
         os.makedirs(os.path.dirname("triton_debug/"), exist_ok=True)

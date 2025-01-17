@@ -11,8 +11,8 @@ import argparse
 import csv
 import statistics
 import time
+from collections.abc import Mapping
 from datetime import datetime
-from typing import List, Mapping, Optional
 
 import torch
 from image_decoder import SAM2ImageDecoder
@@ -84,7 +84,7 @@ class TestConfig:
     def __repr__(self):
         return f"{vars(self)}"
 
-    def shape_dict(self) -> Mapping[str, List[int]]:
+    def shape_dict(self) -> Mapping[str, list[int]]:
         if self.component == "image_encoder":
             return encoder_shape_dict(self.batch_size, self.height, self.width)
         else:
@@ -283,7 +283,7 @@ def run_torch(config: TestConfig):
 
 def run_test(
     args: argparse.Namespace,
-    csv_writer: Optional[csv.DictWriter] = None,
+    csv_writer: csv.DictWriter | None = None,
 ):
     use_gpu: bool = args.use_gpu
     enable_cuda_graph: bool = args.use_cuda_graph

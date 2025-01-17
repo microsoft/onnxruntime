@@ -95,7 +95,7 @@ def assert_gradients_match_and_reset_gradient(
     pt_named_params = list(pt_model.named_parameters())
     assert len(ort_named_params) == len(pt_named_params)
 
-    for ort_named_param, pt_named_param in zip(ort_named_params, pt_named_params):
+    for ort_named_param, pt_named_param in zip(ort_named_params, pt_named_params, strict=False):
         ort_name, ort_param = ort_named_param
         pt_name, pt_param = pt_named_param
 
@@ -180,7 +180,7 @@ def run_with_ort_on_device(device, model, input_list, label_input, is_eval_mode=
 
 
 def compare_tensor_list(val_list_a, val_list_b):
-    for val_a, val_b in zip(val_list_a, val_list_b):
+    for val_a, val_b in zip(val_list_a, val_list_b, strict=False):
         assert_values_are_close(val_a, val_b, atol=1e-7, rtol=1e-6)
 
 

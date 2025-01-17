@@ -8,7 +8,6 @@ import logging
 import os
 import tempfile
 from pathlib import Path
-from typing import List, Optional, Union
 
 import numpy
 import onnx
@@ -33,8 +32,8 @@ class T5EncoderDecoderInit(torch.nn.Module):
         encoder: torch.nn.Module,
         decoder: torch.nn.Module,
         lm_head: torch.nn.Module,
-        config: Union[T5Config, MT5Config],
-        decoder_start_token_id: Optional[int] = None,
+        config: T5Config | MT5Config,
+        decoder_start_token_id: int | None = None,
     ):
         super().__init__()
         self.config = config
@@ -62,7 +61,7 @@ class T5EncoderDecoderInitInputs:
 
     @staticmethod
     def create_dummy(
-        config: Union[T5Config, MT5Config],
+        config: T5Config | MT5Config,
         batch_size: int,
         encode_sequence_length: int,
         use_decoder_input_ids: int,
@@ -83,7 +82,7 @@ class T5EncoderDecoderInitInputs:
 
         return T5EncoderDecoderInitInputs(encoder_inputs.input_ids, encoder_inputs.attention_mask, decoder_input_ids)
 
-    def to_list(self) -> List:
+    def to_list(self) -> list:
         input_list = [self.encoder_input_ids, self.encoder_attention_mask]
         if self.decoder_input_ids is not None:
             input_list.append(self.decoder_input_ids)

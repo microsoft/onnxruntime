@@ -5,7 +5,6 @@
 # --------------------------------------------------------------------------
 
 import logging
-from typing import List, Tuple
 
 import torch
 
@@ -71,7 +70,7 @@ class PastKeyValuesHelper:
         )
 
     @staticmethod
-    def back_group_by_layer(past_key_values: Tuple[Tuple[torch.Tensor]]):
+    def back_group_by_layer(past_key_values: tuple[tuple[torch.Tensor]]):
         """Categorize present_key_values from self and cross attention to layer by layer.
 
         Reorder past state from grouped by self/cross attention to grouped by layer.
@@ -101,7 +100,7 @@ class PastKeyValuesHelper:
         return past_tuples
 
     @staticmethod
-    def group_by_self_and_cross(present_key_values: Tuple[torch.Tensor], concat: bool = False):
+    def group_by_self_and_cross(present_key_values: tuple[torch.Tensor], concat: bool = False):
         """Categorize present_key_values into self and cross attention.
 
         Split present state from grouped by layer to grouped by self/cross attention.
@@ -118,8 +117,8 @@ class PastKeyValuesHelper:
             present_self (Tuple[torch.Tensor]): present key and values from self attention
             present_cross (Tuple[torch.Tensor]): present key and values from cross attention
         """
-        present_self: List[torch.Tensor] = []
-        present_cross: List[torch.Tensor] = []
+        present_self: list[torch.Tensor] = []
+        present_cross: list[torch.Tensor] = []
         for _, present_layer_i in enumerate(present_key_values):
             assert len(present_layer_i) == 4, f"Expected to have four items. Got {len(present_layer_i)}"
             present_key_self, present_value_self, present_key_cross, present_value_cross = present_layer_i
@@ -131,7 +130,7 @@ class PastKeyValuesHelper:
             return present_self, present_cross
 
     @staticmethod
-    def get_input_names(past_key_values: Tuple[Tuple[torch.Tensor]], encoder=True):
+    def get_input_names(past_key_values: tuple[tuple[torch.Tensor]], encoder=True):
         """Process input names of model wrapper.
 
         Args:

@@ -4,7 +4,6 @@
 # --------------------------------------------------------------------------
 
 from logging import getLogger
-from typing import List, Optional
 
 from convert_to_packing_mode import PackingMode
 from fusion_attention import AttentionMask, FusionAttention
@@ -147,7 +146,7 @@ class BertOnnxModel(OnnxModel):
         fusion = FusionQOrderedMatMul(self)
         fusion.apply()
 
-    def get_graph_inputs_from_node_type(self, op_type: str, input_indices: List[int], casted: bool):
+    def get_graph_inputs_from_node_type(self, op_type: str, input_indices: list[int], casted: bool):
         """
         Get graph inputs that feed into node type (like EmbedLayerNormalization or Attention).
         Returns a list of the graph input names based on the filter whether it is casted or not.
@@ -323,7 +322,7 @@ class BertOnnxModel(OnnxModel):
         self.clean_graph()
         self.prune_graph()
 
-    def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
+    def optimize(self, options: FusionOptions | None = None, add_dynamic_axes: bool = False):
         if (options is not None) and not options.enable_shape_inference:
             self.disable_shape_inference()
 

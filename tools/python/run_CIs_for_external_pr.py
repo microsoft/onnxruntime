@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+from __future__ import annotations
 
 import argparse
 import json
 import os
 import subprocess
 import sys
-import typing
 
 
 def get_pipeline_names():
@@ -72,7 +72,7 @@ def _parse_args():
     return args
 
 
-def run_gh_pr_command(command: typing.List[str], check: bool = True):
+def run_gh_pr_command(command: list[str], check: bool = True):
     try:
         return subprocess.run(["gh", "pr", *command], capture_output=True, text=True, check=check)
     except subprocess.CalledProcessError as cpe:

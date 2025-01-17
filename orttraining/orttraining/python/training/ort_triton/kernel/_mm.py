@@ -6,7 +6,6 @@
 import math
 import os
 from types import ModuleType
-from typing import Tuple
 
 import torch
 
@@ -310,7 +309,7 @@ def _gen_mm_key(dtype: torch.dtype, m: int, n: int, k: int, trans_a: bool, trans
 
 def _gen_mm_module(
     dtype: torch.dtype, m: int, n: int, k: int, trans_a: bool, trans_b: bool, alpha: float
-) -> Tuple[str, ModuleType]:
+) -> tuple[str, ModuleType]:
     func_name = gen_unique_name("mm")
     kwargs = _mm_configs(dtype, m, n, k, trans_a, trans_b, alpha, func_name)
     src_code = _MM_TEMPLATE.format(**kwargs)
@@ -347,7 +346,7 @@ def _gen_gemm_module(
     trans_b: bool,
     alpha: float,
     beta: float,
-) -> Tuple[str, ModuleType]:
+) -> tuple[str, ModuleType]:
     func_name = gen_unique_name("gemm")
     kwargs = _mm_configs(dtype, m, n, k, trans_a, trans_b, alpha, func_name)
     kwargs["stride_cm"] = stride_cm
@@ -369,7 +368,7 @@ def _gen_bmm_key(
 
 def _gen_bmm_module(
     dtype: torch.dtype, m: int, n: int, k: int, batch_a: int, batch_b: int, trans_a: bool, trans_b: bool, alpha: float
-) -> Tuple[str, ModuleType]:
+) -> tuple[str, ModuleType]:
     func_name = gen_unique_name("bmm")
     kwargs = _mm_configs(dtype, m, n, k, trans_a, trans_b, alpha, func_name)
     batch = max(batch_a, batch_b)

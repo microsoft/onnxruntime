@@ -11,9 +11,9 @@ import io
 import logging
 import os
 from collections import OrderedDict
+from collections.abc import Mapping, Sequence
 from functools import partial
 from hashlib import md5 as hash_fn
-from typing import Mapping, Sequence
 
 import onnx
 import torch

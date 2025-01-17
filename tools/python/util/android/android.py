@@ -1,5 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+from __future__ import annotations
 
 import collections
 import contextlib
@@ -108,7 +109,7 @@ def _stop_process_with_pid(pid: int):
 def start_emulator(
     sdk_tool_paths: SdkToolPaths,
     avd_name: str,
-    extra_args: typing.Optional[typing.Sequence[str]] = None,
+    extra_args: typing.Sequence[str] | None = None,
     timeout_minutes: int = 20,
 ) -> subprocess.Popen:
     if check_emulator_running_using_avd_name(avd_name=avd_name):
@@ -326,7 +327,7 @@ def stop_emulator_by_pid(emulator_pid: int, timeout_seconds: int = 120):
     _log.info("Emulator stopped successfully.")
 
 
-def stop_emulator(emulator_proc_or_pid: typing.Union[subprocess.Popen, int], timeout_seconds: int = 120):
+def stop_emulator(emulator_proc_or_pid: subprocess.Popen | int, timeout_seconds: int = 120):
     """
     Stops the emulator process, checking its running status before and after stopping.
     :param emulator_proc_or_pid: The emulator process (subprocess.Popen) or PID (int).

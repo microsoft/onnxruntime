@@ -120,7 +120,7 @@ class TestSymbolicShapeInferenceForOperators(unittest.TestCase):
         vis_names = {x.name for x in vis}
         inferred_vis_names = {x.name for x in inferred_vis}
         assert vis_names == inferred_vis_names, (vis_names, inferred_vis_names)
-        for vi, inferred_vi in zip(vis, inferred_vis):
+        for vi, inferred_vi in zip(vis, inferred_vis, strict=False):
             assert vi == inferred_vi, f"\n{vi}\n{inferred_vi}\n"
         raise AssertionError()
 

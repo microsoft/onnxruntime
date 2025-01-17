@@ -9,7 +9,8 @@ import collections.abc
 import os
 import typing
 import warnings
-from typing import Any, Sequence
+from collections.abc import Sequence
+from typing import Any
 
 from onnxruntime.capi import _pybind_state as C
 
@@ -143,7 +144,7 @@ def check_and_normalize_provider_args(
         if not all([isinstance(options_for_provider, dict) for options_for_provider in provider_options]):
             raise ValueError("'provider_options' values must be dicts.")
 
-        for name, options in zip(providers, provider_options):
+        for name, options in zip(providers, provider_options, strict=False):
             set_provider_options(name, options)
 
     else:

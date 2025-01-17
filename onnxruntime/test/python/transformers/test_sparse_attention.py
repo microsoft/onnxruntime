@@ -9,7 +9,6 @@ Parity test and benchmark performance of SparseAttention. Requires Nvidia GPU of
 
 import math
 import unittest
-from typing import Optional, Union
 
 import torch
 from benchmark_mha import InputFormats
@@ -34,7 +33,7 @@ class AttentionConfig:
         num_heads: int,
         kv_num_heads: int,
         head_size: int,
-        softmax_scale: Optional[float],
+        softmax_scale: float | None,
         do_rotary: bool,
         rotary_interleaved: bool,
         provider: str = "CUDAExecutionProvider",
@@ -602,8 +601,8 @@ def group_query_attention_reference(
     key: Tensor,
     value: Tensor,
     config: GroupQueryAttentionConfig,
-    scale: Optional[float] = None,
-    mask: Optional[Tensor] = None,
+    scale: float | None = None,
+    mask: Tensor | None = None,
 ):
     if scale is None:
         scale = 1.0 / (config.head_size**0.5)
@@ -704,7 +703,7 @@ class TorchGroupQueryAttention:
 
 
 def create_ort_session(
-    config: Union[SparseAttentionConfig, GroupQueryAttentionConfig], session_options=None, enable_cuda_graph=False
+    config: SparseAttentionConfig | GroupQueryAttentionConfig, session_options=None, enable_cuda_graph=False
 ) -> CudaSession:
     if isinstance(config, SparseAttentionConfig):
         onnx_model_str = create_sparse_attention_onnx_model(config)
