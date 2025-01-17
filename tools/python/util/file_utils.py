@@ -1,12 +1,13 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+from __future__ import annotations
 
 import os
 import pathlib
 import typing
 
 
-def path_match_suffix_ignore_case(path: typing.Union[pathlib.Path, str], suffix: str) -> bool:
+def path_match_suffix_ignore_case(path: pathlib.Path | str, suffix: str) -> bool:
     """
     Returns whether `path` ends in `suffix`, ignoring case.
     """
@@ -16,8 +17,8 @@ def path_match_suffix_ignore_case(path: typing.Union[pathlib.Path, str], suffix:
 
 
 def files_from_file_or_dir(
-    file_or_dir_path: typing.Union[pathlib.Path, str], predicate: typing.Callable[[pathlib.Path], bool] = lambda _: True
-) -> typing.List[pathlib.Path]:
+    file_or_dir_path: pathlib.Path | str, predicate: typing.Callable[[pathlib.Path], bool] = lambda _: True
+) -> list[pathlib.Path]:
     """
     Gets the files in `file_or_dir_path` satisfying `predicate`.
     If `file_or_dir_path` is a file, the single file is considered. Otherwise, all files in the directory are

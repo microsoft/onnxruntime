@@ -4,7 +4,6 @@
 # --------------------------------------------------------------------------
 
 from logging import getLogger
-from typing import List, Optional
 
 import numpy as np
 from dynamo_onnx_helper import DynamoOnnxHelper
@@ -70,7 +69,7 @@ class Fission(Fusion):
     def __init__(
         self,
         model: OnnxModel,
-        nodes_to_find: List[str],
+        nodes_to_find: list[str],
     ):
         super().__init__(model, "DONOTUSE", nodes_to_find)
 
@@ -129,7 +128,7 @@ class Fission(Fusion):
         self.model.graph().value_info.extend([new_value_info])
 
     def set_unique_name_and_add_nodes(
-        self, subgraph_nodes: List[NodeProto], layer_id: int, layer_known_edges_names: List[str]
+        self, subgraph_nodes: list[NodeProto], layer_id: int, layer_known_edges_names: list[str]
     ):
         for new_node in subgraph_nodes:
             for i, name in enumerate(new_node.input):
@@ -148,7 +147,7 @@ class Fission(Fusion):
             self.nodes_to_add.append(new_node)
             self.node_name_to_graph_name[new_node.name] = self.this_graph_name
 
-    def layernorm(self, inputs: List[str], outputs: List[str], prefix: str = ""):
+    def layernorm(self, inputs: list[str], outputs: list[str], prefix: str = ""):
         assert len(inputs) == 3
         assert len(outputs) == 1
         node = helper.make_node(
@@ -160,7 +159,7 @@ class Fission(Fusion):
         )
         return [node]
 
-    def gemm(self, inputs: List[str], outputs: List[str], prefix: str = ""):
+    def gemm(self, inputs: list[str], outputs: list[str], prefix: str = ""):
         assert len(inputs) == 3
         assert len(outputs) == 1
         matmul = helper.make_node(
@@ -177,7 +176,7 @@ class Fission(Fusion):
         )
         return [matmul, add]
 
-    def rotary(self, inputs: List[str], outputs: List[str], prefix: str = "", rot_dim=32, num_heads=32):
+    def rotary(self, inputs: list[str], outputs: list[str], prefix: str = "", rot_dim=32, num_heads=32):
         assert len(inputs) == 4
         assert len(outputs) == 1
         node = helper.make_node(
@@ -191,7 +190,7 @@ class Fission(Fusion):
         )
         return [node]
 
-    def fastgelu(self, inputs: List[str], outputs: List[str], prefix: str = ""):
+    def fastgelu(self, inputs: list[str], outputs: list[str], prefix: str = ""):
         assert len(inputs) == 1
         assert len(outputs) == 1
         node = helper.make_node(
@@ -203,7 +202,7 @@ class Fission(Fusion):
         )
         return [node]
 
-    def add(self, inputs: List[str], outputs: List[str], prefix: str = ""):
+    def add(self, inputs: list[str], outputs: list[str], prefix: str = ""):
         assert len(inputs) == 2
         assert len(outputs) == 1
         node = helper.make_node(
@@ -214,7 +213,7 @@ class Fission(Fusion):
         )
         return [node]
 
-    def mha(self, inputs: List[str], outputs: List[str], prefix: str = "", num_heads=32):
+    def mha(self, inputs: list[str], outputs: list[str], prefix: str = "", num_heads=32):
         assert len(inputs) == 8
         assert len(outputs) == 3
         node = helper.make_node(
@@ -228,7 +227,7 @@ class Fission(Fusion):
         )
         return [node]
 
-    def gqa(self, inputs: List[str], outputs: List[str], prefix: str = "", num_heads=32):
+    def gqa(self, inputs: list[str], outputs: list[str], prefix: str = "", num_heads=32):
         assert len(inputs) == 7
         assert len(outputs) == 3
         node = helper.make_node(
@@ -242,7 +241,7 @@ class Fission(Fusion):
         )
         return [node]
 
-    def attention(self, inputs: List[str], outputs: List[str], prefix: str = "", num_heads=32):
+    def attention(self, inputs: list[str], outputs: list[str], prefix: str = "", num_heads=32):
         assert len(inputs) == 5
         assert len(outputs) == 2
         node = helper.make_node(
@@ -260,8 +259,8 @@ class Fission(Fusion):
 
     def paged_attn(
         self,
-        inputs: List[str],
-        outputs: List[str],
+        inputs: list[str],
+        outputs: list[str],
         prefix: str = "",
         num_heads=32,
         head_size=80,
@@ -853,7 +852,7 @@ class PhiOnnxModel(OnnxModel):
         self.fission_transformer_layernorm = FissionTransformerLayerNormPhi(self)
         self.fission_transformer_embedding = FissionTransformerEmbeddingPhi(self)
 
-    def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
+    def optimize(self, options: FusionOptions | None = None, add_dynamic_axes: bool = False):
         assert options is not None
         attn_op_type = options.attention_op_type
 
