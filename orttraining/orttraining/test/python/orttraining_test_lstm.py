@@ -867,7 +867,7 @@ def test_lstm_forward(sequence_length, batch_size, input_size, hidden_size):
         inputs, weights, recurrence_weights, bias, initial_hidden_state, initial_cell_state, peephole_weights
     )
 
-    for ort_out, np_out in zip(outs_ort, outs_np):
+    for ort_out, np_out in zip(outs_ort, outs_np, strict=False):
         assert np.allclose(ort_out, np_out, rtol=1e-03, atol=1e-05)
 
 
@@ -933,5 +933,5 @@ def test_lstm_backward(sequence_length, batch_size, input_size, hidden_size):
         grad_final_cell_state,
     )
 
-    for ort_out, np_out in zip(outs_ort, outs_np):
+    for ort_out, np_out in zip(outs_ort, outs_np, strict=False):
         assert np.allclose(ort_out, np_out, rtol=1e-03, atol=1e-05)

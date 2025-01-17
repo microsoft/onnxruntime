@@ -5,7 +5,7 @@
 import logging
 import os
 import sys
-from typing import List, Mapping, Union
+from collections.abc import Mapping
 
 import torch
 from sam2.build_sam import build_sam2
@@ -27,7 +27,7 @@ def _get_model_cfg(model_type) -> str:
     return model_cfg
 
 
-def load_sam2_model(sam2_dir, model_type, device: Union[str, torch.device] = "cpu") -> SAM2Base:
+def load_sam2_model(sam2_dir, model_type, device: str | torch.device = "cpu") -> SAM2Base:
     checkpoints_dir = os.path.join(sam2_dir, "checkpoints")
     sam2_config_dir = os.path.join(sam2_dir, "sam2_configs")
     if not os.path.exists(sam2_dir):
@@ -65,7 +65,7 @@ def sam2_onnx_path(output_dir, model_type, component, multimask_output=False, su
         )
 
 
-def encoder_shape_dict(batch_size: int, height: int, width: int) -> Mapping[str, List[int]]:
+def encoder_shape_dict(batch_size: int, height: int, width: int) -> Mapping[str, list[int]]:
     assert height == 1024 and width == 1024, "Only 1024x1024 images are supported."
     return {
         "image": [batch_size, 3, height, width],
