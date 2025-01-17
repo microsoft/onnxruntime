@@ -675,7 +675,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
       return local_sum;
   }
 
-  // Implement a 16x64x16 matrix multipy primitive using the 16 lanes of the subgroup.
+  // Implement a 16x64x16 matrix multiply primitive using the 16 lanes of the subgroup.
   // Each Lane first loads a row of A and a column of B.
   // Then each lane becomes responsible for a row and loops through the columns to compute
   // dot product. The columns are fetched from other owning lanes using subgroupShuffle.
