@@ -187,7 +187,7 @@ def _get_params_for_current_module(module: torch.nn.Module) -> list[torch.nn.par
     from deepspeed.runtime.zero.partitioned_param_coordinator import iter_params
 
     # Retrieve all parameters for this module.
-    partitioned_params = [param for param in iter_params(module)]
+    partitioned_params = list(iter_params(module))
 
     return partitioned_params
 

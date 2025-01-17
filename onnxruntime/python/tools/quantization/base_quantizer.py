@@ -118,9 +118,9 @@ class BaseQuantizer:
                     'Conv_4:0': [np.float32(1), np.float32(3.5)]
                 }
         """
-        if tensors_range is not None and any(map(lambda t: not isinstance(t, TensorData), tensors_range.values())):
+        if tensors_range is not None and any(not isinstance(t, TensorData) for t in tensors_range.values()):
             raise TypeError(
-                f"tensors_range contains unexpected types {set(type(v) for v in tensors_range.values())}, not TensorData."
+                f"tensors_range contains unexpected types { {type(v) for v in tensors_range.values()} }, not TensorData."
             )
         self.tensors_range = tensors_range
         self.nodes_to_quantize = nodes_to_quantize  # specific nodes to quantize

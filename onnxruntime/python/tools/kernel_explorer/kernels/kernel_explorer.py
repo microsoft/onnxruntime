@@ -220,7 +220,7 @@ def register_common_arguments(parser: ArgumentParser):
         from difflib import SequenceMatcher as Matcher
 
         valid_names = list(_ke_context.dispatchable.keys())
-        scored_names = list(reversed(sorted([(Matcher(None, name, a).ratio(), a) for a in valid_names])))
+        scored_names = sorted([(Matcher(None, name, a).ratio(), a) for a in valid_names], reverse=True)
         top10 = "\n    ".join([a for _, a in scored_names[:10]])
         msg = f"'{name}' is not registered for dispatch. Top 10 matches are:\n    {top10}"
         print(msg)

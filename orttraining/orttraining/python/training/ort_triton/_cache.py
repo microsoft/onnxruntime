@@ -48,7 +48,7 @@ def _write(source_code, ext, extra=""):
 
 
 class PyCodeCache:
-    cache = dict()  # noqa: RUF012
+    cache = {}  # noqa: RUF012
     clear = staticmethod(cache.clear)
 
     @classmethod
@@ -68,7 +68,7 @@ class PyCodeCache:
 
 
 class ModuleCache:
-    cache = dict()  # noqa: RUF012
+    cache = {}  # noqa: RUF012
     clear = staticmethod(cache.clear)
 
     @classmethod
