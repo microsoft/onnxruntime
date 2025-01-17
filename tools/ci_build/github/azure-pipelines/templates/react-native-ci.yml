@@ -305,16 +305,13 @@ stages:
         versionSpec: '20.x'
 
     - script:
-        brew install coreutils ninja npm yarn
+        sudo apt install coreutils ninja-build nodejs npm yarn
+        npm install --global yarn
       displayName: Install coreutils, ninja, npm, and yarn
 
     - script:
         yarn global add detox-cli
       displayName: Install detox cli tools
-
-    - script:
-        brew tap wix/brew
-      displayName: brew tap wix/brew
 
     - task: DownloadPipelineArtifact@2
       inputs:
