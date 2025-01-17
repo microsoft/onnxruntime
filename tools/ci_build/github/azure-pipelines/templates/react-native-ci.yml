@@ -304,14 +304,11 @@ stages:
       inputs:
         versionSpec: '20.x'
 
-    - script:
+    - script: |
         sudo apt install coreutils ninja-build nodejs npm yarn
         npm install --global yarn
-      displayName: Install coreutils, ninja, npm, and yarn
-
-    - script:
         yarn global add detox-cli
-      displayName: Install detox cli tools
+      displayName: Install coreutils, ninja, npm, and yarn, detox cli tools
 
     - task: DownloadPipelineArtifact@2
       inputs:
