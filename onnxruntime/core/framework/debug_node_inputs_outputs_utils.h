@@ -20,6 +20,7 @@
 #include "core/framework/session_state.h"
 #include "core/graph/graph.h"
 #include <unordered_set>
+#include <unordered_map>
 #include <mutex>
 #include <string>
 
