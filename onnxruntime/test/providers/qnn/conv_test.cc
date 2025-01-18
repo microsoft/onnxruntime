@@ -1136,7 +1136,12 @@ TEST_F(QnnHTPBackendTests, Conv_PerChannel_UnsupportedAxis) {
 // QnnDsp <V> Wake up free backend 1 thread(s)
 // QnnDsp <I> QnnGraph_finalize done. status 0x3ea
 // onnxruntime::qnn::QnnModel::FinalizeGraphs] Failed to finalize QNN graph.
+// Issue fixed in 2.30
+#if (QNN_API_VERSION_MAJOR == 2) && (QNN_API_VERSION_MINOR >= 23)
+TEST_F(QnnHTPBackendTests, Conv3D_U8S8S32_PerChannel) {
+#else
 TEST_F(QnnHTPBackendTests, DISABLED_Conv3D_U8S8S32_PerChannel) {
+#endif
   std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
   std::vector<int64_t> weight_shape = {3, 2, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
@@ -1201,7 +1206,12 @@ TEST_F(QnnHTPBackendTests, ConvDepthwiseU8S8S32_PerChannel) {
 // QnnDsp <V> Wake up free backend 1 thread(s)
 // QnnDsp <I> QnnGraph_finalize done. status 0x3ea
 // onnxruntime::qnn::QnnModel::FinalizeGraphs] Failed to finalize QNN graph.
+// Issue fixed in 2.30
+#if (QNN_API_VERSION_MAJOR == 2) && (QNN_API_VERSION_MINOR >= 23)
+TEST_F(QnnHTPBackendTests, Conv3D_U8S8S32_PerChannel2) {
+#else
 TEST_F(QnnHTPBackendTests, DISABLED_Conv3D_U8S8S32_PerChannel2) {
+#endif
   std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
   std::vector<int64_t> weight_shape = {2, 1, 2, 2, 2};
   std::vector<int64_t> bias_shape = {2};
@@ -1286,7 +1296,12 @@ TEST_F(QnnHTPBackendTests, ConvTranspose_PerChannel_UnsupportedAxis) {
 
 // ConvTranspose3D per-channel
 // Disable it for 2.21 since it failed, re-enabled it for 2.22
+// Issue fixed in 2.30
+#if (QNN_API_VERSION_MAJOR == 2) && (QNN_API_VERSION_MINOR >= 23)
+TEST_F(QnnHTPBackendTests, ConvTranspose3D_U8S8S32_PerChannel) {
+#else
 TEST_F(QnnHTPBackendTests, DISABLED_ConvTranspose3D_U8S8S32_PerChannel) {
+#endif
   std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
   std::vector<int64_t> weight_shape = {2, 3, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
@@ -1350,7 +1365,12 @@ TEST_F(QnnHTPBackendTests, ConvU16S8S32_PerChannel) {
 // QnnDsp <V> Wake up free backend 1 thread(s)
 // QnnDsp <I> QnnGraph_finalize done. status 0x3ea
 // onnxruntime::qnn::QnnModel::FinalizeGraphs] Failed to finalize QNN graph.
+// Issue fixed in 2.30
+#if (QNN_API_VERSION_MAJOR == 2) && (QNN_API_VERSION_MINOR >= 23)
+TEST_F(QnnHTPBackendTests, Conv3D_U16S8S32_PerChannel) {
+#else
 TEST_F(QnnHTPBackendTests, DISABLED_Conv3D_U16S8S32_PerChannel) {
+#endif
   std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
   std::vector<int64_t> weight_shape = {3, 2, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
@@ -1406,7 +1426,12 @@ TEST_F(QnnHTPBackendTests, ConvTransposeU16S8S32_PerChannel) {
 }
 
 // Disable it for 2.21, re-enable it for 2.22
+// Issue fixed in 2.30
+#if (QNN_API_VERSION_MAJOR == 2) && (QNN_API_VERSION_MINOR >= 23)
+TEST_F(QnnHTPBackendTests, ConvTranspose3D_U16S8S32_PerChannel) {
+#else
 TEST_F(QnnHTPBackendTests, DISABLED_ConvTranspose3D_U16S8S32_PerChannel) {
+#endif
   std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
   std::vector<int64_t> weight_shape = {2, 3, 2, 2, 2};
   std::vector<int64_t> bias_shape = {3};
@@ -1471,7 +1496,12 @@ TEST_F(QnnHTPBackendTests, ConvDepthwiseU16S8S32_PerChannel) {
 // QnnDsp <V> Wake up free backend 1 thread(s)
 // QnnDsp <I> QnnGraph_finalize done. status 0x3ea
 // onnxruntime::qnn::QnnModel::FinalizeGraphs] Failed to finalize QNN graph.
+// Issue fixed in 2.30
+#if (QNN_API_VERSION_MAJOR == 2) && (QNN_API_VERSION_MINOR >= 23)
+TEST_F(QnnHTPBackendTests, Conv3D_U16S8S32_PerChannel2) {
+#else
 TEST_F(QnnHTPBackendTests, DISABLED_Conv3D_U16S8S32_PerChannel2) {
+#endif
   std::vector<int64_t> input_shape = {1, 2, 4, 4, 4};
   std::vector<int64_t> weight_shape = {2, 1, 2, 2, 2};
   std::vector<int64_t> bias_shape = {2};
@@ -1824,7 +1854,12 @@ TEST_F(QnnHTPBackendTests, ConvTransposeU8U8S32_DynamicWeight_NoBias) {
 // Exception from backendValidateOpConfig:
 // Exception thrown at 0x00007FFF9E0128B0 (QnnHtpPrepare.dll) in onnxruntime_test_all.exe:
 // 0xC0000005: Access violation reading location 0x7079745F656C706D.
+// Issue fixed in 2.30
+#if (QNN_API_VERSION_MAJOR == 2) && (QNN_API_VERSION_MINOR >= 23)
+TEST_F(QnnHTPBackendTests, ConvTranspose3D_U8U8S32_DynamicWeight_NoBias) {
+#else
 TEST_F(QnnHTPBackendTests, DISABLED_ConvTranspose3D_U8U8S32_DynamicWeight_NoBias) {
+#endif
   RunHTPConvOpTest<uint8_t, uint8_t>("ConvTranspose",
                                      TestInputDef<float>({1, 3, 32, 32, 32}, false, -10.0f, 10.0f),  // Input
                                      TestInputDef<float>({3, 1, 4, 4, 4}, false, -10.0f, 10.0f),     // Weights

@@ -149,7 +149,12 @@ TEST_F(QnnHTPBackendTests, GatherOp_IndicesDynamicInt32_Axis0) {
 // nodes are supported by the QNN EP, and that the inference results are as accurate as CPU EP.
 //
 // Static int32 indices with axis = 1
+// Issue fixed in 2.30
+#if (QNN_API_VERSION_MAJOR == 2) && (QNN_API_VERSION_MINOR >= 23)
+TEST_F(QnnHTPBackendTests, GatherOp_IndicesStaticInt32_Axis1) {
+#else
 TEST_F(QnnHTPBackendTests, DISABLED_GatherOp_IndicesStaticInt32_Axis1) {
+#endif
   RunQDQGatherOpTest<uint8_t, int32_t>(TestInputDef<float>({3, 3}, false, {1.0f, 1.2f, 1.9f, 2.3f, 3.4f, 3.9f, 4.5f, 5.7f, 5.9f}),
                                        TestInputDef<int32_t>({1, 2}, true, {0, 2}),
                                        {utils::MakeAttribute("axis", static_cast<int64_t>(1))},
