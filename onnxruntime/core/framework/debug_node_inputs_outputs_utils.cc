@@ -8,7 +8,10 @@
 #include "core/framework/print_tensor_statistics_utils.h"
 #include <iomanip>
 #include <cctype>
+#include <vector>
 #include <string>
+#include <algorithm>
+#include <utility>
 
 #ifdef DEBUG_NODE_INPUTS_OUTPUTS_ENABLE_DUMP_TO_SQLDB
 #include <sqlite3.h>
