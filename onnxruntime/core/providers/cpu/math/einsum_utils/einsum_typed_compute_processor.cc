@@ -367,14 +367,19 @@ Status EinsumTypedComputeProcessor<T>::Run() {
     if (has_empty_input) {
       const auto output_dims = einsum_compute_preprocessor_.GetOutputDims();
       Tensor& output = *context_->Output(0, output_dims);
+      Tensor candidate_output(raw_inputs[0]->DataType(), output_dims, allocator_);
 
       if constexpr (std::is_integral<T>::value) {
-        std::fill_n(reinterpret_cast<T*>(output.MutableDataRaw()), output.Shape().Size(), T(0));
+        std::fill_n(reinterpret_cast<T*>(candidate_output.MutableDataRaw()), candidate_output.Shape().Size(), T(0));
       } else {
-        std::fill_n(reinterpret_cast<T*>(output.MutableDataRaw()), output.Shape().Size(), T(0.f));
+        std::fill_n(reinterpret_cast<T*>(candidate_output.MutableDataRaw()), candidate_output.Shape().Size(), T(0.f));
       }
 
-      return Status::OK();
+      auto status = device_data_copy_func_(candidate_output, output, einsum_ep_assets_);
+      ORT_ENFORCE(status.IsOK(), "Einsum op: Could not copy the intermediate output's buffer into the op's output buffer. Error: ",
+                  status.ErrorMessage());
+
+      return status;
     }
   }
 
