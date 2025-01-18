@@ -22,7 +22,7 @@ parameters:
 - name: QnnSDKVersion
   displayName: QNN SDK Version
   type: string
-  default: '2.28.0.241029'
+  default: '2.30.0.250109'
 
 jobs:
 - job: Final_AAR_Testing_Android_${{ parameters.job_name_suffix }}
