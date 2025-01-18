@@ -221,19 +221,11 @@ function(AddTest)
         )
       else()
         set(TEST_NODE_FLAGS)
-        if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-          list(APPEND TEST_NODE_FLAGS "--experimental-wasm-threads")
-        endif()
-        if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-          list(APPEND TEST_NODE_FLAGS "--experimental-wasm-simd")
-        endif()
 
         # prefer Node from emsdk so the version is more deterministic
         if (DEFINED ENV{EMSDK_NODE})
           set(NODE_EXECUTABLE $ENV{EMSDK_NODE})
         else()
-          # warning as we don't know what node version is being used and whether things like the TEST_NODE_FLAGS
-          # will be valid. e.g. "--experimental-wasm-simd" is not valid with node v20 or later.
           message(WARNING "EMSDK_NODE environment variable was not set. Falling back to system `node`.")
           set(NODE_EXECUTABLE node)
         endif()

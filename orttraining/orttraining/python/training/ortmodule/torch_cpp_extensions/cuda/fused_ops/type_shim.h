@@ -51,7 +51,7 @@ __device__ __forceinline__ T reduce_block_into_lanes(T* x, T val, int lanes = 1,
       final = x[tid] + x[tid + 32];
     else
       final = val;
-      // __SYNCWARP();
+    // __SYNCWARP();
 
 #pragma unroll
 #if defined(CUDA_VERSION) && CUDA_VERSION >= 9000

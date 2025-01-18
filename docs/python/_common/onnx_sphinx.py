@@ -2,6 +2,7 @@
 """
 Automates the generation of ONNX operators.
 """
+
 import importlib
 import inspect
 import keyword
@@ -281,7 +282,7 @@ def get_domain_list():
     """
     Returns the list of available domains.
     """
-    return list(sorted(set(map(lambda s: s.domain, get_all_schemas_with_history()))))
+    return sorted({s.domain for s in get_all_schemas_with_history()})
 
 
 def get_operator_schemas(op_name, version=None, domain=None):
@@ -778,9 +779,9 @@ def onnx_documentation_folder(folder, title="ONNX Operators in onnxruntime", flo
                 name = op["name"]
                 dom = self.domain.replace(".", "-")
                 table_dom.append(f"    * - :ref:`l-onnx-doc{dom}-{name}`")
-                versions = list(reversed(sorted((k, v) for k, v in op["links"].items() if isinstance(k, int))))
+                versions = sorted(((k, v) for k, v in op["links"].items() if isinstance(k, int)), reverse=True)
                 col1 = ", ".join(f":ref:`{k} <{v}>`" for k, v in versions)
-                diffs = list(reversed(sorted((k, v) for k, v in op["links"].items() if isinstance(k, tuple))))
+                diffs = sorted(((k, v) for k, v in op["links"].items() if isinstance(k, tuple)), reverse=True)
                 col2 = ", ".join(f":ref:`{k[1]}/{k[0]} <{v}>`" for k, v in diffs)
                 table_dom.append(f"      - {col1}")
                 table_dom.append(f"      - {col2}")

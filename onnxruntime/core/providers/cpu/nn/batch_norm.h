@@ -75,9 +75,11 @@ class BatchNorm : public OpKernel {
     const TensorShape& x_shape = X->Shape();
     Tensor* Y = p_op_kernel_context->Output(0, x_shape);
 
+    // X shape is [N, C, D1, D2, ... Dn], but it can also be 1-D according to onnx spec:
+    // "The op also accepts single dimension input of size N in which case C is assumed to be 1"
     const auto& dims_vec = x_shape.GetDims();
     const size_t N = onnxruntime::narrow<size_t>(dims_vec[0]);
-    const size_t C = onnxruntime::narrow<size_t>(dims_vec[1]);  // assume NCHW as per the spec
+    const size_t C = dims_vec.size() == 1 ? 1 : onnxruntime::narrow<size_t>(dims_vec[1]);
 
     // calculate sample_size (per individual channel)
     size_t sample_size = 1;

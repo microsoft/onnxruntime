@@ -48,6 +48,7 @@ void CreateQDQOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_r
 void CreateReductionOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateReshapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateResizeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateRotaryEmbeddingOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateScatterElementsOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateScatterNDOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateShapeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);

@@ -48,7 +48,7 @@ import os
 import time
 from enum import Enum
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
+from typing import Any
 
 import numpy as np
 import onnx
@@ -86,7 +86,7 @@ class GenerationType(Enum):
         return self.value
 
 
-def parse_arguments(argv: Optional[List[str]] = None) -> argparse.Namespace:
+def parse_arguments(argv: list[str] | None = None) -> argparse.Namespace:
     """Parse arguments
 
     Args:
@@ -883,8 +883,8 @@ def remove_shared_initializers(
     graph2: GraphProto,
     shared_prefix: str = "shared_",
     min_elements: int = 1024,
-    signature_cache1: Optional[dict] = None,
-    signature_cache2: Optional[dict] = None,
+    signature_cache1: dict | None = None,
+    signature_cache2: dict | None = None,
 ):
     """Remove initializers with same value from two graphs.
 
@@ -1005,7 +1005,7 @@ def get_shared_initializers(encoder_model: ModelProto, decoder_model: ModelProto
 def move_initializers(
     graph: GraphProto,
     min_elements: int = 1024,
-) -> List[TensorProto]:
+) -> list[TensorProto]:
     """Remove initializers of a graph, when they have number of elements larger than a threshold.
 
     Args:
@@ -2585,13 +2585,13 @@ def convert_generation_model(args: argparse.Namespace, generation_type: Generati
 
 def test_torch_performance(
     args: argparse.Namespace,
-    model: Union[GPT2LMHeadModel, T5ForConditionalGeneration],
+    model: GPT2LMHeadModel | T5ForConditionalGeneration,
     input_ids: torch.Tensor,
     attention_mask: torch.Tensor,
     eos_token_id: int,
     pad_token_id: int,
-    bad_words_ids: List[List[int]],
-) -> Dict[str, Any]:
+    bad_words_ids: list[list[int]],
+) -> dict[str, Any]:
     """Test PyTorch performance of text generation.
 
     Args:
@@ -2661,7 +2661,7 @@ def create_attention_mask(input_ids, pad_token_id):
     return attention_mask
 
 
-def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = None, is_greedy: bool = False):
+def test_gpt_model(args: argparse.Namespace, sentences: list[str] | None = None, is_greedy: bool = False):
     """Test GPT-2 model
 
     Args:
@@ -2872,7 +2872,7 @@ def test_gpt_model(args: argparse.Namespace, sentences: Optional[List[str]] = No
     return output
 
 
-def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = None):
+def test_t5_model(args: argparse.Namespace, sentences: list[str] | None = None):
     """Test T5 or MT5 model
 
     Args:
@@ -3061,7 +3061,7 @@ def test_t5_model(args: argparse.Namespace, sentences: Optional[List[str]] = Non
     return output
 
 
-def main(argv: Optional[List[str]] = None, sentences: Optional[List[str]] = None):
+def main(argv: list[str] | None = None, sentences: list[str] | None = None):
     """Main entry function
 
     Args:
