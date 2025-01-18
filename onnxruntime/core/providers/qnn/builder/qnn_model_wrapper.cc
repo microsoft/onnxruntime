@@ -74,6 +74,20 @@ Status QnnModelWrapper::MakeTensorWrapper(const NodeUnitIODef& tensor, QnnTensor
   return Status::OK();
 }
 
+Status QnnModelWrapper::MakeTensorWrapper(const TensorInfo& tensor_info,
+                                          const std::string& tensor_name,
+                                          QnnTensorWrapper& tensor_wrapper) const {
+  std::vector<uint8_t> unpacked_tensor;
+  if (tensor_info.is_initializer) {
+    ORT_RETURN_IF_ERROR(UnpackInitializerData(*tensor_info.initializer_tensor, unpacked_tensor));
+  }
+
+  tensor_wrapper = QnnTensorWrapper(tensor_name, GetTensorType(tensor_name), tensor_info.qnn_data_type,
+                                    tensor_info.quant_param.Copy(), std::vector<uint32_t>(tensor_info.shape),
+                                    std::move(unpacked_tensor));
+  return Status::OK();
+}
+
 bool QnnModelWrapper::AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper) {
   // Keep a copy of tensor name sine it will be moved with the wrapper into model_tensors_map_
   std::string tensor_name = tensor_wrapper.GetName();
