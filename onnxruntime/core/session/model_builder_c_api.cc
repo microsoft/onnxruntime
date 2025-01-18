@@ -48,13 +48,15 @@ ORT_API_STATUS_IMPL(OrtModelBuilderAPI::CreateValueInfo, _In_ const char* name, 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelBuilderAPI::GetValueInfoName, _In_ const OrtValueInfo* value_info, _Out_ const char** name) {
+ORT_API_STATUS_IMPL(OrtModelBuilderAPI::GetValueInfoName, _In_ const OrtValueInfo* value_info,
+                    _Out_ const char** name) {
   API_IMPL_BEGIN
   *name = value_info->name.c_str();
   return nullptr;
   API_IMPL_END
 }
-ORT_API_STATUS_IMPL(OrtModelBuilderAPI::GetValueInfoTypeInfo, _In_ const OrtValueInfo* value_info, _Outptr_ const OrtTypeInfo** type_info) {
+ORT_API_STATUS_IMPL(OrtModelBuilderAPI::GetValueInfoTypeInfo, _In_ const OrtValueInfo* value_info,
+                    _Outptr_ const OrtTypeInfo** type_info) {
   API_IMPL_BEGIN
 
   *type_info = value_info->type_info.get();

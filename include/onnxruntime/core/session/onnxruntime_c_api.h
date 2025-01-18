@@ -5047,7 +5047,7 @@ struct OrtModelBuilderApi {
   /** \brief Create an OrtValueInfo for use as an OrtGraph input or output.
    *
    * \param[in] name The name of the input or output.
-   * \param[in] type_info The type information for the input or output.
+   * \param[in] type_info The type information for the input or output. The provided value is copied.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5102,7 +5102,7 @@ struct OrtModelBuilderApi {
    *
    * \since Version 1.21.
    */
-  ORT_API2_STATUS(CreateNode, _In_ const char* operator_name, const char* domain_name, _In_ const char* node_name,
+  ORT_API2_STATUS(CreateNode, _In_ const char* operator_name, _In_ const char* domain_name, _In_ const char* node_name,
                   _In_reads_(input_names_len) const char* const* input_names, size_t input_names_len,
                   _In_reads_(output_names_len) const char* const* output_names, size_t output_names_len,
                   _In_reads_(attribs_len) _In_opt_ OrtOpAttr** attributes, _In_ size_t attribs_len,
@@ -5263,8 +5263,15 @@ struct OrtModelBuilderApi {
 
   /** \brief Create an OrtSession using the OrtModel.
    *
-   * Create an inference session using the OrtModel.
+   * Create an inference session using the OrtModel instance.
+   * The OrtModel should have been populated with an OrtGraph containing nodes and initializers, and SetGraphInputs
+   * and SetGraphOutputs must have been called.
    * This will validate the model, run optimizers, and prepare the session for inferencing.
+   *
+   * \param[in] env The OrtEnv instance.
+   * \param[in] model The OrtModel instance.
+   * \param[in] options The OrtSessionOptions instance.
+   * \param[out] out The OrtSession instance.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5275,11 +5282,17 @@ struct OrtModelBuilderApi {
 
   /** \brief Create an OrtSession to augment an existing model.
    *
-   * Create an OrtSession with an existing model that can be augmented with additional nodes.
-   * Nodes can be added to the model using AddNodeToGraph.
-   * Graph inputs/outputs should be updated wtih SetGraphInputs and SetGraphOutputs to reflect the new nodes.
-   * Apply the changes with ApplyModelToSession and prepare the session for inferencing by calling
-   * FinalizeModelBuilderSession.
+   * Create an OrtSession with an existing model that will be augmented with additional nodes and initializers.
+   * Nodes can be added before or after the existing nodes in the model. ONNX Runtime will connect the nodes when the
+   * model is finalized.
+   *
+   * To add nodes and initializers to the existing model, first create an OrtModel using CreateModel.
+   * Add nodes and initializers to the OrtModel using AddNodeToGraph and AddInitializerToGraph.
+   * Graph inputs/outputs should be updated with SetGraphInputs and SetGraphOutputs as needed to reflect changes made
+   * by the new nodes. The list of graph inputs/outputs should be for the overall model and not just the new nodes.
+   *
+   * Add the new information from the OrtModel to the original model using ApplyModelToSession, and prepare the
+   * session for inferencing by calling FinalizeModelBuilderSession.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5291,11 +5304,22 @@ struct OrtModelBuilderApi {
 
   /** \brief Create an OrtSession to augment an existing model.
    *
-   * Create an OrtSession with an existing model that can be augmented with additional nodes.
-   * Nodes can be added to the model using AddNodeToGraph.
-   * Graph inputs/outputs should be updated wtih SetGraphInputs and SetGraphOutputs to reflect the new nodes.
-   * Apply the changes with ApplyModelToSession and prepare the session for inferencing by calling
-   * FinalizeModelBuilderSession.
+   * Create an OrtSession with an existing model that will be augmented with additional nodes and initializers.
+   * Nodes can be added before or after the existing nodes in the model. ONNX Runtime will connect the nodes when the
+   * model is finalized.
+   *
+   * To add nodes and initializers to the existing model, first create an OrtModel using CreateModel.
+   * Add nodes and initializers to the OrtModel using AddNodeToGraph and AddInitializerToGraph.
+   * Graph inputs/outputs should be updated with SetGraphInputs and SetGraphOutputs as needed to reflect changes made
+   * by the new nodes. The list of graph inputs/outputs should be for the overall model and not just the new nodes.
+   *
+   * Add the new information from the OrtModel to the original model using ApplyModelToSession, and prepare the
+   * session for inferencing by calling FinalizeModelBuilderSession.
+   *
+   * \param{in} env The OrtEnv instance.
+   * \param{in} model_data The model data for the existing model to augment.
+   * \param{in} model_data_length The length of the model data.
+   * \param{in} options The OrtSessionOptions instance.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5308,12 +5332,12 @@ struct OrtModelBuilderApi {
 
   /** \brief Apply the changes from the model to the session.
    *
-   * Apply the changes from the model to the session that was created using CreateModelBuilderSession[FromArray].
+   * Apply the changes from the model to a session that was created using CreateModelBuilderSession[FromArray].
    * All changes will be validated.
    * Call FinalizeModelBuilderSession to prepare the session for inferencing.
    *
    * Existing input/outputs will only be updated if the OrtGraph inputs/outputs are set in the OrtModel.
-   *   i.e. you don't need to call SetGraphInputs/Outputs if they are unchanged.
+   *   i.e. you don't need to call SetGraphInputs/SetGraphOutputs if they are unchanged.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *

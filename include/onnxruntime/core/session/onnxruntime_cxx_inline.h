@@ -10,7 +10,9 @@
 #include <algorithm>
 #include <functional>
 #include <iterator>
+#include <string>
 #include <type_traits>
+#include <vector>
 
 // Convert OrtStatus to Ort::Status and return
 // instead of throwing
@@ -1107,6 +1109,36 @@ inline int ConstSessionImpl<T>::GetOpset(const std::string& domain) const {
   int opset;
   ThrowOnError(GetApi().SessionGetOpsetForDomain(this->p_, domain.c_str(), &opset));
   return opset;
+}
+
+template <typename T>
+std::vector<ModelBuilderAPI::ValueInfo> ConstSessionImpl<T>::GetInputs() const {
+  const std::vector<std::string> input_names = GetInputNames();
+
+  std::vector<ModelBuilderAPI::ValueInfo> inputs;
+  inputs.reserve(input_names.size());
+
+  for (size_t i = 0; i < input_names.size(); ++i) {
+    auto type_info = GetInputTypeInfo(i);
+    inputs.emplace_back(ModelBuilderAPI::ValueInfo{input_names[i], type_info.GetConst()});
+  }
+
+  return inputs;
+}
+
+template <typename T>
+std::vector<ModelBuilderAPI::ValueInfo> ConstSessionImpl<T>::GetOutputs() const {
+  const std::vector<std::string> output_names = GetOutputNames();
+
+  std::vector<ModelBuilderAPI::ValueInfo> outputs;
+  outputs.reserve(output_names.size());
+
+  for (size_t i = 0; i < output_names.size(); ++i) {
+    auto type_info = GetOutputTypeInfo(i);
+    outputs.emplace_back(ModelBuilderAPI::ValueInfo{output_names[i], type_info.GetConst()});
+  }
+
+  return outputs;
 }
 
 template <typename T>
@@ -2328,6 +2360,7 @@ inline const OrtOpAttr* ShapeInferContext::GetAttrHdl(const char* attr_name) con
 }
 
 namespace ModelBuilderAPI {
+namespace detail {
 inline std::vector<const char*> StringsToCharPtrs(const std::vector<std::string>& strings) {
   std::vector<const char*> ptrs;
   ptrs.reserve(strings.size());
@@ -2336,6 +2369,7 @@ inline std::vector<const char*> StringsToCharPtrs(const std::vector<std::string>
 
   return ptrs;
 }
+}  // namespace detail
 
 // static
 inline void Node::Init(const std::string& operator_name, const std::string& operator_domain,
@@ -2344,8 +2378,8 @@ inline void Node::Init(const std::string& operator_name, const std::string& oper
                        const std::vector<std::string>& output_names,
                        std::vector<OpAttr>& attributes,
                        OrtNode*& node) {
-  auto inputs = StringsToCharPtrs(input_names);
-  auto outputs = StringsToCharPtrs(output_names);
+  auto inputs = detail::StringsToCharPtrs(input_names);
+  auto outputs = detail::StringsToCharPtrs(output_names);
 
   std::vector<OrtOpAttr*> attributes_ptrs;
   attributes_ptrs.reserve(attributes.size());

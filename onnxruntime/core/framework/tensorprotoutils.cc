@@ -1289,22 +1289,15 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor,
     const auto* raw_data = tensor.DataRaw();
     ORT_ENFORCE(raw_data, "Missing raw data for tensor proto. Invalid tensor.");
     static_assert(sizeof(void*) <= sizeof(ExternalDataInfo::OFFSET_TYPE));
-    tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
 
     // we reinterpret_cast this back to void* in tensorprotoutils.cc:GetExtDataFromTensorProto.
     // use intptr_t as OFFSET_TYPE is signed. in theory you could get a weird looking value if the address uses the
     // high bit, but that should be unlikely in a scenario where we care about memory usage enough to use this path.
     auto offset = narrow<ExternalDataInfo::OFFSET_TYPE>(reinterpret_cast<intptr_t>(raw_data));
 
-    ONNX_NAMESPACE::StringStringEntryProto* entry = tensor_proto.mutable_external_data()->Add();
-    entry->set_key("location");
-    entry->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoMemoryAddressTag));
-    entry = tensor_proto.mutable_external_data()->Add();
-    entry->set_key("offset");
-    entry->set_value(std::to_string(offset));
-    entry = tensor_proto.mutable_external_data()->Add();
-    entry->set_key("length");
-    entry->set_value(std::to_string(tensor.SizeInBytes()));
+    ExternalDataInfo::SetExternalLocationToProto(onnxruntime::utils::kTensorProtoMemoryAddressTag,
+                                                 offset, tensor.SizeInBytes(), tensor_proto);
+
   } else {
     utils::SetRawDataInTensorProto(tensor_proto, tensor.DataRaw(), tensor.SizeInBytes());
   }

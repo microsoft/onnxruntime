@@ -667,7 +667,8 @@ struct ModelMetadata;
 
 namespace ModelBuilderAPI {
 struct Model;
-}
+struct ValueInfo;
+}  // namespace ModelBuilderAPI
 
 /** \brief unique_ptr typedef used to own strings allocated by OrtAllocators
  *  and release them at the end of the scope. The lifespan of the given allocator
@@ -1120,6 +1121,11 @@ struct ConstSessionImpl : Base<T> {
   TypeInfo GetOverridableInitializerTypeInfo(size_t index) const;  ///< Wraps OrtApi::SessionGetOverridableInitializerTypeInfo
 
   int GetOpset(const std::string& domain) const;  ///< Wraps OrtApi::SessionGetOpsetForDomain
+
+  // NOTE: We will probably move ValueInfo from ModelBuilderAPI to the ORT API as it will also be relevant to the Plugin EP API.
+  // Will move before checkin if that's the case.
+  std::vector<ModelBuilderAPI::ValueInfo> GetInputs() const;
+  std::vector<ModelBuilderAPI::ValueInfo> GetOutputs() const;
 };
 
 template <typename T>
@@ -2592,9 +2598,6 @@ struct NodeImpl : Ort::detail::Base<T> {
 };
 }  // namespace detail
 
-// Const object holder that does not own the underlying object
-using ConstNode = detail::NodeImpl<Ort::detail::Unowned<const OrtNode>>;
-
 /** \brief Wrapper around ::OrtNode
  *
  */
@@ -2615,8 +2618,6 @@ struct Node : detail::NodeImpl<OrtNode> {
        const std::vector<std::string>& input_names,
        const std::vector<std::string>& output_names,
        std::vector<OpAttr>& attributes);
-
-  ConstNode GetConst() const { return ConstNode{this->p_}; }
 
  private:
   static void Init(const std::string& operator_name, const std::string& operator_domain,
@@ -2640,9 +2641,6 @@ struct GraphImpl : Ort::detail::Base<T> {
 };
 }  // namespace detail
 
-// Const object holder that does not own the underlying object
-using ConstGraph = detail::GraphImpl<Ort::detail::Unowned<const OrtGraph>>;
-
 /** \brief Wrapper around ::OrtGraph
  *
  */
@@ -2650,8 +2648,6 @@ struct Graph : detail::GraphImpl<OrtGraph> {
   explicit Graph(std::nullptr_t) {}                        ///< No instance is created
   explicit Graph(OrtGraph* p) : GraphImpl<OrtGraph>{p} {}  ///< Take ownership of a pointer created by C API
   Graph();
-
-  ConstGraph GetConst() const { return ConstGraph{this->p_}; }
 };
 
 namespace detail {
@@ -2675,7 +2671,7 @@ struct Model : detail::ModelImpl<OrtModel> {
 
   explicit Model(std::nullptr_t) {}                        ///< No instance is created
   explicit Model(OrtModel* p) : ModelImpl<OrtModel>{p} {}  ///< Take ownership of a pointer created by C API
-  Model(const std::vector<DomainOpsetPair>& opsets);
+  explicit Model(const std::vector<DomainOpsetPair>& opsets);
 
   ConstModel GetConst() const { return ConstModel{this->p_}; }
 };

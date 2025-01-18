@@ -627,7 +627,7 @@ class InferenceSession {
   /// convenience pointer to logger. should always be the same as session_state_.Logger();
   const logging::Logger* session_logger_;
 
-  // The list of execution providers. 
+  // The list of execution providers.
   // This MUST be prior to model_ in case there are values in the model that were allocated using an allocator
   // provided by the EP. If that is the case the allocator's `free` implementation may depend on other parts of the
   // EP instance.

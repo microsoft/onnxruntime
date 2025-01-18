@@ -40,7 +40,7 @@
 #include "core/graph/node_arg.h"
 #include "core/graph/ort_format_load_options.h"
 
-// Type from Graph API in ORT C API so can't be in a namespace
+// Type from Model Builder API in ORT C API so can't be in a namespace
 struct OrtGraph;
 
 namespace onnxruntime {

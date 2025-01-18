@@ -5807,21 +5807,11 @@ Status Graph::LoadFromModelBuilderApiModel(const OrtGraph& api_graph, bool updat
 
       if (is_external) {
         // pre-existing memory that we don't own. avoid a copy by storing the pointer in the ExternalDataInfo
-        tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL);
-
         const void* data_offset = t.DataRaw();  // address of memory not offset into file
         auto offset = narrow<ExternalDataInfo::OFFSET_TYPE>(reinterpret_cast<intptr_t>(data_offset));
 
-        ONNX_NAMESPACE::StringStringEntryProto* entry = tensor_proto.mutable_external_data()->Add();
-        entry->set_key("location");
-        // magic tag for existing memory that causes 'offset' to be treated as a pointer to the memory
-        entry->set_value(ToUTF8String(onnxruntime::utils::kTensorProtoMemoryAddressTag));
-        entry = tensor_proto.mutable_external_data()->Add();
-        entry->set_key("offset");
-        entry->set_value(std::to_string(offset));
-        entry = tensor_proto.mutable_external_data()->Add();
-        entry->set_key("length");
-        entry->set_value(std::to_string(t.SizeInBytes()));
+        ExternalDataInfo::SetExternalLocationToProto(onnxruntime::utils::kTensorProtoMemoryAddressTag,
+                                                     offset, t.SizeInBytes(), tensor_proto);
 
         // copy OrtValue to keep it alive and to store the deleter if provided.
         ortvalue_initializers_.emplace(name, v);
