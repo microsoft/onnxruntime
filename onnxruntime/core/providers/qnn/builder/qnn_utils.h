@@ -52,7 +52,7 @@ inline Status GetOnnxTensorElemDataType(const NodeArg& node_arg, /*out*/ int32_t
 }
 
 template <typename IntType>
-static Status InvertPerm(gsl::span<const IntType> perm, /*out*/ gsl::span<IntType> perm_inv) {
+Status InvertPerm(gsl::span<const IntType> perm, /*out*/ gsl::span<IntType> perm_inv) {
   static_assert(std::is_integral<IntType>::value, "permutation arrays must contain integer elements");
 
   size_t rank = perm.size();
@@ -70,7 +70,7 @@ static Status InvertPerm(gsl::span<const IntType> perm, /*out*/ gsl::span<IntTyp
 // Utility function that checks if an array of strings contains a specific string.
 // Used to validate ONNX operator attributes.
 template <size_t N>
-static bool ArrayHasString(const std::array<std::string_view, N>& strings, std::string_view str) {
+bool ArrayHasString(const std::array<std::string_view, N>& strings, std::string_view str) {
   for (auto s : strings) {
     if (s == str) {
       return true;
