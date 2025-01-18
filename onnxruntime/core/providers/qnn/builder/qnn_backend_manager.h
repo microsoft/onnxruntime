@@ -106,9 +106,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
     return contexts_.size();
   }
 
-  const Qnn_BackendHandle_t& GetQnnBackendHandle() { return backend_handle_; }
+  const Qnn_BackendHandle_t& GetQnnBackendHandle() { return backend_handle_.get(); }
 
-  const Qnn_ProfileHandle_t& GetQnnProfileHandle() { return profile_backend_handle_; }
+  const Qnn_ProfileHandle_t& GetQnnProfileHandle() { return profile_backend_handle_.get(); }
 
   // Resets the QNN log level to the given ORT log level or to the default log level if the argument is
   // std::nullopt.
@@ -246,13 +246,19 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Status AddQnnContextHandle(Qnn_ContextHandle_t context_handle);
 
  private:
-  // assume Qnn_ContextHandle_t is a pointer and able to be wrapped with std::unique_ptr
+  // assume QNN handle types are pointer types and able to be wrapped with smart pointers
+  static_assert(std::is_pointer_v<Qnn_BackendHandle_t>);
+  static_assert(std::is_pointer_v<Qnn_LogHandle_t>);
+  static_assert(std::is_pointer_v<Qnn_DeviceHandle_t>);
   static_assert(std::is_pointer_v<Qnn_ContextHandle_t>);
-  using UniqueQnnContextHandle =
-      std::unique_ptr<std::remove_pointer_t<Qnn_ContextHandle_t>, std::function<void(Qnn_ContextHandle_t)>>;
+  static_assert(std::is_pointer_v<Qnn_ProfileHandle_t>);
+
+  template<typename QnnHandleType>
+  using UniqueQnnHandle =
+      std::unique_ptr<std::remove_pointer_t<QnnHandleType>, std::function<void(QnnHandleType)>>;
 
   struct QnnContextHandleRecord {
-    UniqueQnnContextHandle context_handle;
+    UniqueQnnHandle<Qnn_ContextHandle_t> context_handle;
     std::unique_ptr<QnnContextMemHandleManager> mem_handles;
   };
 
@@ -260,14 +266,13 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   const std::string backend_path_;
   std::recursive_mutex logger_recursive_mutex_;
   const logging::Logger* logger_ = nullptr;
-  QNN_INTERFACE_VER_TYPE qnn_interface_ = QNN_INTERFACE_VER_TYPE_INIT;
-  QNN_SYSTEM_INTERFACE_VER_TYPE qnn_sys_interface_ = QNN_SYSTEM_INTERFACE_VER_TYPE_INIT;
   void* backend_lib_handle_ = nullptr;
   void* system_lib_handle_ = nullptr;
-  Qnn_BackendHandle_t backend_handle_ = nullptr;
-  QnnBackend_Config_t** backend_config_ = nullptr;
-  Qnn_LogHandle_t log_handle_ = nullptr;
-  Qnn_DeviceHandle_t device_handle_ = nullptr;
+  QNN_INTERFACE_VER_TYPE qnn_interface_ = QNN_INTERFACE_VER_TYPE_INIT;
+  QNN_SYSTEM_INTERFACE_VER_TYPE qnn_sys_interface_ = QNN_SYSTEM_INTERFACE_VER_TYPE_INIT;
+  UniqueQnnHandle<Qnn_BackendHandle_t> backend_handle_{};
+  UniqueQnnHandle<Qnn_LogHandle_t> log_handle_{};
+  UniqueQnnHandle<Qnn_DeviceHandle_t> device_handle_{};
 
   // Map of Qnn_ContextHandle_t to QnnContextHandleRecord.
   // The QnnContextHandleRecord has ownership of the Qnn_ContextHandle_t.
@@ -288,7 +293,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   bool backend_setup_completed_ = false;
   // NPU backend requires quantized model
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
-  Qnn_ProfileHandle_t profile_backend_handle_ = nullptr;
+  UniqueQnnHandle<Qnn_ProfileHandle_t> profile_backend_handle_{};
   std::vector<std::string> op_package_paths_;
   ContextPriority context_priority_;
   std::string sdk_build_version_ = "";

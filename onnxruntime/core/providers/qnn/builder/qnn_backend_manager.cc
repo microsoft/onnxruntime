@@ -273,29 +273,22 @@ Status QnnBackendManager::InitializeQnnLog(const logging::Logger& logger) {
   QnnLog_Level_t qnn_log_level = MapOrtSeverityToQNNLogLevel(ort_log_level);
   LOGS(*logger_, VERBOSE) << "Set Qnn log level: " << qnn_log_level;
 
-  Qnn_ErrorHandle_t result = qnn_interface_.logCreate(QnnLogging, qnn_log_level, &log_handle_);
+  Qnn_LogHandle_t raw_log_handle{};
+  Qnn_ErrorHandle_t result = qnn_interface_.logCreate(QnnLogging, qnn_log_level, &raw_log_handle);
+  ORT_RETURN_IF(result != QNN_SUCCESS,
+                "Failed to initialize logging in the QNN backend. Error: ", QnnErrorHandleToString(result));
 
-  if (result != QNN_SUCCESS) {
-    switch (result) {
-      case QNN_COMMON_ERROR_NOT_SUPPORTED:
-        LOGS(*logger_, ERROR) << "Logging not supported in the QNN backend.";
-        break;
-      case QNN_LOG_ERROR_INVALID_ARGUMENT:
-        LOGS(*logger_, ERROR) << "Invalid argument provided to QnnLog_create.";
-        break;
-      case QNN_LOG_ERROR_MEM_ALLOC:
-        LOGS(*logger_, ERROR) << "Memory allocation error during QNN logging initialization.";
-        break;
-      case QNN_LOG_ERROR_INITIALIZATION:
-        LOGS(*logger_, ERROR) << "Initialization of logging failed in the QNN backend.";
-        break;
-      default:
-        LOGS(*logger_, WARNING) << "Unknown error occurred while initializing logging in the QNN backend.";
-        break;
+  auto free_log_handle = [this](Qnn_LogHandle_t raw_log_handle) {
+    if (qnn_interface_.logFree != nullptr) {
+      const auto free_result = qnn_interface_.logFree(raw_log_handle);
+      if (free_result != QNN_SUCCESS) {
+        // use default logger because logger_ might already be destroyed
+        LOGS_DEFAULT(ERROR) << "Failed to free QNN log handle: " << QnnErrorHandleToString(free_result);
+      }
     }
-  }
+  };
 
-  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to initialize logging in the QNN backend. Error: ", QnnErrorHandleToString(result));
+  log_handle_ = UniqueQnnHandle<Qnn_LogHandle_t>{raw_log_handle, free_log_handle};
   return Status::OK();
 }
 
@@ -320,7 +313,7 @@ Status QnnBackendManager::ResetQnnLogLevel(std::optional<logging::Severity> ort_
   if (!backend_setup_completed_ || logger_ == nullptr) {
     return Status::OK();
   }
-  ORT_RETURN_IF(nullptr == log_handle_, "Unable to update QNN Log Level. Invalid QNN log handle.");
+  ORT_RETURN_IF(!log_handle_, "Unable to update QNN Log Level. Invalid QNN log handle.");
 
   logging::Severity actual_log_level = ort_log_level.has_value() ? *ort_log_level : logger_->GetSeverity();
   QnnLog_Level_t qnn_log_level = MapOrtSeverityToQNNLogLevel(actual_log_level);
@@ -328,7 +321,7 @@ Status QnnBackendManager::ResetQnnLogLevel(std::optional<logging::Severity> ort_
   LOGS(*logger_, INFO) << "Updating Qnn log level to: " << qnn_log_level;
 
   // Use the QnnLog_setLogLevel API to set the new log level
-  Qnn_ErrorHandle_t result = qnn_interface_.logSetLogLevel(log_handle_, qnn_log_level);
+  Qnn_ErrorHandle_t result = qnn_interface_.logSetLogLevel(log_handle_.get(), qnn_log_level);
   if (QNN_SUCCESS != result) {
     if (result == QNN_LOG_ERROR_INVALID_ARGUMENT) {
       LOGS(*logger_, ERROR) << "Invalid log level argument provided to QnnLog_setLogLevel.";
@@ -347,9 +340,22 @@ Status QnnBackendManager::InitializeBackend() {
     return Status::OK();
   }
 
-  Qnn_ErrorHandle_t result = qnn_interface_.backendCreate(log_handle_, (const QnnBackend_Config_t**)backend_config_, &backend_handle_);
-  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to initialize backend. Error: ", QnnErrorHandleToString(result));
+  const QnnBackend_Config_t** backend_config = nullptr;
+  Qnn_BackendHandle_t raw_backend_handle{};
+  Qnn_ErrorHandle_t result = qnn_interface_.backendCreate(log_handle_.get(), backend_config, &raw_backend_handle);
+  ORT_RETURN_IF(result != QNN_SUCCESS, "Failed to initialize backend. Error: ", QnnErrorHandleToString(result));
 
+  auto free_backend_handle = [this](Qnn_BackendHandle_t raw_backend_handle) {
+    if (qnn_interface_.backendFree != nullptr) {
+      const auto free_result = qnn_interface_.backendFree(raw_backend_handle);
+      if (free_result != QNN_SUCCESS) {
+        // use default logger because logger_ might already be destroyed
+        LOGS_DEFAULT(ERROR) << "Failed to shutdown backend. Error: ", QnnErrorHandleToString(free_result);
+      }
+    }
+  };
+
+  backend_handle_ = UniqueQnnHandle<Qnn_BackendHandle_t>{raw_backend_handle, free_backend_handle};
   backend_initialized_ = true;
   return Status::OK();
 }
@@ -359,10 +365,7 @@ Status QnnBackendManager::ShutdownBackend() {
     return Status::OK();
   }
 
-  if (nullptr != qnn_interface_.backendFree) {
-    ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != qnn_interface_.backendFree(backend_handle_),
-                  "Failed to shutdown backend!");
-  }
+  backend_handle_.reset();
 
   backend_initialized_ = false;
 
@@ -422,12 +425,25 @@ Status QnnBackendManager::CreateDevice() {
   }
 
   LOGS_DEFAULT(INFO) << "Create device.";
-  if (nullptr != qnn_interface_.deviceCreate) {
-    Qnn_ErrorHandle_t result = qnn_interface_.deviceCreate(log_handle_, device_configs_builder.GetQnnConfigs(), &device_handle_);
-    if (QNN_SUCCESS != result) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to create device. Error: ", QnnErrorHandleToString(result));
-    }
+  if (qnn_interface_.deviceCreate != nullptr) {
+    Qnn_DeviceHandle_t raw_device_handle{};
+    Qnn_ErrorHandle_t result = qnn_interface_.deviceCreate(log_handle_.get(), device_configs_builder.GetQnnConfigs(),
+                                                           &raw_device_handle);
+    ORT_RETURN_IF(result != QNN_SUCCESS, "Failed to create device. Error: ", QnnErrorHandleToString(result));
+
+    auto free_device_handle = [this](Qnn_DeviceHandle_t raw_device_handle) {
+      if (qnn_interface_.deviceFree != nullptr) {
+        Qnn_ErrorHandle_t free_result = qnn_interface_.deviceFree(raw_device_handle);
+        if (free_result != QNN_SUCCESS) {
+          // use default logger because logger_ might already be destroyed
+          LOGS_DEFAULT(ERROR) << "Failed to release device. Error: ", QnnErrorHandleToString(free_result);
+        }
+      }
+    };
+
+    device_handle_ = UniqueQnnHandle<Qnn_DeviceHandle_t>{raw_device_handle, free_device_handle};
   }
+
   device_created_ = true;
 
   return Status::OK();
@@ -438,12 +454,7 @@ Status QnnBackendManager::ReleaseDevice() {
     return Status::OK();
   }
 
-  if (nullptr != qnn_interface_.deviceFree) {
-    Qnn_ErrorHandle_t result = qnn_interface_.deviceFree(device_handle_);
-    if (QNN_SUCCESS != result) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to release device. Error: ", QnnErrorHandleToString(result));
-    }
-  }
+  device_handle_.reset();
 
   device_created_ = false;
 
@@ -468,19 +479,27 @@ Status QnnBackendManager::InitializeProfiling() {
   } else if (ProfilingLevel::DETAILED == profiling_level_merge_) {
     qnn_profile_level = QNN_PROFILE_LEVEL_DETAILED;
   }
-  Qnn_ErrorHandle_t result = qnn_interface_.profileCreate(backend_handle_, qnn_profile_level, &profile_backend_handle_);
-  ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result, "Failed to create QNN profile! Error: ", QnnErrorHandleToString(result));
+
+  Qnn_ProfileHandle_t raw_profile_handle{};
+  Qnn_ErrorHandle_t result = qnn_interface_.profileCreate(backend_handle_.get(), qnn_profile_level, &raw_profile_handle);
+  ORT_RETURN_IF(result != QNN_SUCCESS, "Failed to create profile. Error: ", QnnErrorHandleToString(result));
+
+  auto free_profile = [this](Qnn_ProfileHandle_t raw_profile_handle) {
+    const auto free_result = qnn_interface_.profileFree(raw_profile_handle);
+    if (free_result != QNN_SUCCESS) {
+      // use default logger because logger_ might already be destroyed
+      LOGS_DEFAULT(ERROR) << "Failed to free profile. Error: " << QnnErrorHandleToString(free_result);
+    }
+  };
+
+  profile_backend_handle_ = UniqueQnnHandle<Qnn_ProfileHandle_t>{raw_profile_handle, free_profile};
 
   return Status::OK();
 }
 
 Status QnnBackendManager::ReleaseProfilehandle() {
   // Free Profiling object if it was created
-  if (nullptr != profile_backend_handle_) {
-    ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != qnn_interface_.profileFree(profile_backend_handle_),
-                  "Could not free backend profile handle!");
-  }
-  profile_backend_handle_ = nullptr;
+  profile_backend_handle_.reset();
 
   return Status::OK();
 }
@@ -551,8 +570,8 @@ Status QnnBackendManager::CreateContext() {
                                                   nullptr};
 
   Qnn_ContextHandle_t context = nullptr;
-  Qnn_ErrorHandle_t result = qnn_interface_.contextCreate(backend_handle_,
-                                                          device_handle_,
+  Qnn_ErrorHandle_t result = qnn_interface_.contextCreate(backend_handle_.get(),
+                                                          device_handle_.get(),
                                                           context_configs,
                                                           &context);
 
@@ -764,13 +783,13 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
   ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinary,
                 "Invalid function pointer for contextCreateFromBinary.");
   Qnn_ContextHandle_t context = nullptr;
-  rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
-                                              device_handle_,
+  rt = qnn_interface_.contextCreateFromBinary(backend_handle_.get(),
+                                              device_handle_.get(),
                                               context_configs,
-                                              static_cast<void*>(buffer),
+                                              buffer,
                                               buffer_length,
                                               &context,
-                                              profile_backend_handle_);
+                                              profile_backend_handle_.get());
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary. Error code: ", rt);
   ORT_RETURN_IF_ERROR(AddQnnContextHandle(context));
   if (1 == graph_count) {
@@ -1084,14 +1103,7 @@ Status QnnBackendManager::TerminateQnnLog() {
     return Status::OK();
   }
 
-  if (nullptr != qnn_interface_.logFree && nullptr != log_handle_) {
-    auto ret_val = qnn_interface_.logFree(log_handle_);
-
-    // Reset QNN log handle to nullptr so other threads that are waiting on logger_recursive_mutex_ know it was freed.
-    log_handle_ = nullptr;
-    ORT_RETURN_IF(QNN_SUCCESS != ret_val,
-                  "Unable to terminate logging in the backend.");
-  }
+  log_handle_.reset();
 
   return Status::OK();
 }
@@ -1173,7 +1185,7 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
 
   const QnnProfile_EventId_t* profile_events{nullptr};
   uint32_t num_events{0};
-  Qnn_ErrorHandle_t result = qnn_interface_.profileGetEvents(profile_backend_handle_, &profile_events, &num_events);
+  Qnn_ErrorHandle_t result = qnn_interface_.profileGetEvents(profile_backend_handle_.get(), &profile_events, &num_events);
   if (!qnn_saver_path_.empty()) {  // Using QNN Saver backend
     // QNN SDK 2.28.2 returns QNN_SAVER_ERROR_DUMMY_RETVALUE, but previous QNN versions return QNN_PROFILE_NO_ERROR.
     // We accept both values.
@@ -1695,16 +1707,17 @@ void* QnnBackendManager::LibFunction(void* handle, const char* symbol, std::stri
 Status QnnBackendManager::AddQnnContextHandle(Qnn_ContextHandle_t raw_context_handle) {
   ORT_RETURN_IF(logger_ == nullptr, "logger_ should be set.");
 
-  auto free_context_handle = [this, &logger = *logger_](Qnn_ContextHandle_t raw_context_handle) {
+  auto free_context_handle = [this](Qnn_ContextHandle_t raw_context_handle) {
     const auto free_result = qnn_interface_.contextFree(raw_context_handle, nullptr);
     if (free_result != QNN_CONTEXT_NO_ERROR) {
-      LOGS(logger, ERROR) << "qnn_interface.contextFree() failed: "
+      // use default logger because logger_ might already be destroyed
+      LOGS_DEFAULT(ERROR) << "qnn_interface.contextFree() failed: "
                           << utils::GetVerboseQnnErrorMessage(qnn_interface_, free_result);
     }
   };
 
   // take ownership of `raw_context_handle`
-  auto context_handle = UniqueQnnContextHandle(raw_context_handle, free_context_handle);
+  auto context_handle = UniqueQnnHandle<Qnn_ContextHandle_t>(raw_context_handle, free_context_handle);
   auto mem_handle_manager = std::make_unique<QnnContextMemHandleManager>(GetQnnInterface(), raw_context_handle,
                                                                          *logger_);
 
