@@ -1053,6 +1053,8 @@ def generate_build_tree(
         # interface variables are used only for building onnxruntime/onnxruntime_shared.dll but not EPs
         "-Donnxruntime_USE_TENSORRT_INTERFACE="
         + ("ON" if (args.enable_generic_interface and not enable_qnn_interface) else "OFF"),
+        "-Donnxruntime_USE_CUDA_INTERFACE="
+        + ("ON" if (args.enable_generic_interface and not enable_qnn_interface) else "OFF"),
         "-Donnxruntime_USE_OPENVINO_INTERFACE="
         + ("ON" if (args.enable_generic_interface and not enable_qnn_interface) else "OFF"),
         "-Donnxruntime_USE_VITISAI_INTERFACE="
