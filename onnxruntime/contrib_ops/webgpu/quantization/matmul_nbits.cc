@@ -531,12 +531,12 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddOutput("output", ShaderUsage::UseUniform);
   shader.AddOutput("scales", ShaderUsage::UseUniform);
 
   shader.AdditionalImplementation() << R"ADDNL_FN(
-    var<workgroup> max_values : array<f16, 4>;
+    var<workgroup> max_values : array<input_a_element_t, 4>;
  )ADDNL_FN";
 
   shader.MainFunctionBody() << R"MAIN_FN(
@@ -580,7 +580,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("scales_a", ShaderUsage::UseUniform);
   shader.AddInput("input_b", ShaderUsage::UseUniform);
   shader.AddInput("scales_b", ShaderUsage::UseUniform);
-  shader.AddOutput("output", ShaderUsage::UseUniform);
+  shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
   // This shader implements co-operative matrix multiply. The key idea here is to
   // assume there is a primitive for medium size matrix multiply a subgroup can perform,
@@ -618,12 +618,12 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   // Shared memory
   var<workgroup> tile_A : array<array<vec2<u32>, tile_size_k_vec>, tile_size>;                     // 64 x 32
-  var<workgroup> scale_A : array<f16, tile_size>;                                                  // 64 x 1
+  var<workgroup> scale_A : array<output_element_t, tile_size>;                                                  // 64 x 1
   var<workgroup> tile_B : array<array<vec2<u32>, tile_size_k_vec>, tile_size>;                     // 64 x 32
-  var<workgroup> scale_B : array<f16, tile_size>;                                                  // 64 x 1
+  var<workgroup> scale_B : array<output_element_t, tile_size>;                                                  // 64 x 1
 
   // Private memory
-  var<private> lane_output: array<f16, 16>;
+  var<private> lane_output: array<output_element_t, 16>;
 
   fn loadSHMA(a_global_base:u32, kidx_v:u32, row: u32, col: u32)
   {
@@ -700,19 +700,19 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
     var own_a0: vec4<u32> = vec4<u32>(tile_A[base_A + a_idx][0], tile_A[base_A + a_idx][1]);
     var own_a1: vec4<u32> = vec4<u32>(tile_A[base_A + a_idx][2], tile_A[base_A + a_idx][3]);
-    var own_scale_a: f16 = scale_A[base_A + a_idx];
+    var own_scale_a = scale_A[base_A + a_idx];
     if (sg_size == 16)
     {
       var own_b0: vec4<u32> = vec4<u32>(tile_B[base_B + sg_id][0], tile_B[base_B + sg_id][1]);
       var own_b1: vec4<u32> = vec4<u32>(tile_B[base_B + sg_id][2], tile_B[base_B + sg_id][3]);
-      var own_scale_b: f16  = scale_B[base_B + sg_id];
+      var own_scale_b = scale_B[base_B + sg_id];
       for (var col:u32 = 0; col < 16; col++)
       {
         var local_scale_b = subgroupShuffle(own_scale_b, col);
         local_scale_b = local_scale_b * own_scale_a;
         var local_sum = DP4AI(own_a0, subgroupShuffle(own_b0, col));
         local_sum += DP4AI(own_a1, subgroupShuffle(own_b1, col));
-        lane_output[col] += (f16(local_sum) * local_scale_b);
+        lane_output[col] += (output_element_t(local_sum) * local_scale_b);
       }
     }
     else
@@ -723,7 +723,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
         var b1: vec4<u32> = vec4<u32>(tile_B[base_B + col][2], tile_B[base_B + col][3]);
         var local_sum = DP4AI(own_a0, b0);
         local_sum += DP4AI(own_a1, b1);
-        lane_output[col] += (f16(local_sum) *  own_scale_a * scale_B[base_B + col]);
+        lane_output[col] += (output_element_t(local_sum) *  own_scale_a * scale_B[base_B + col]);
       }
     }
     workgroupBarrier();
@@ -738,7 +738,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     for (var i:u32 = 0; i < 4; i++)
     {
       let lidx = i * 4;
-      output[output_idx+i] = vec4<f16>(lane_output[lidx], lane_output[lidx+1] , lane_output[lidx+2], lane_output[lidx+3]);
+      output[output_idx+i] = vec4<output_element_t>(lane_output[lidx], lane_output[lidx+1] , lane_output[lidx+2], lane_output[lidx+3]);
     }
   }
 )MAIN_FN";
