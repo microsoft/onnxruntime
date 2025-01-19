@@ -610,17 +610,17 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AdditionalImplementation() << R"ADDNL_FN(
   const tile_size = 64;
   const subtile_size = 16;
-  const tile_size_k =  64;
+  const tile_size_k =  32;
   const vec_factor = 4;
   const u32_factor = 4;
   const tile_size_k_vec = 4;
   const block_size = 32;
 
   // Shared memory
-  var<workgroup> tile_A : array<array<vec4<u32>, tile_size_k_vec>, tile_size>;                     // 64 x 64
+  var<workgroup> tile_A : array<array<vec2<u32>, tile_size_k_vec>, tile_size>;                     // 64 x 32
   var<workgroup> scale_A : array<f16, tile_size>;                                                  // 64 x 1
-  var<workgroup> tile_B : array<array<vec4<u32>, tile_size_k_vec>, tile_size>;                     // 64 x 64
-  var<workgroup> scale_B : array<vec2<f16>, tile_size>;                                            // 64 x 2
+  var<workgroup> tile_B : array<array<vec2<u32>, tile_size_k_vec>, tile_size>;                     // 64 x 32
+  var<workgroup> scale_B : array<f16, tile_size>;                                                  // 64 x 1
 
   // Private memory
   var<private> lane_output: array<f16, 16>;
@@ -632,12 +632,11 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     {
       return;
     }
-    tile_A[row][col] = input_a[a_global*uniforms.K16+kidx_v+col];
+    tile_A[row][col] = input_a[a_global*uniforms.K8+kidx_v+col];
     if (col == 0)
     {
-      // kidx_v - each kidx_v covers 16 values of k, therefore 8 index
-      // (8*14 = 128) will share a single scale, index by kidx_v/8 below.
-      scale_A[row] = scales_a[a_global*(uniforms.K/128) + kidx_v/8];
+      // kidx_v - covers 8 values of k
+      scale_A[row] = scales_a[a_global*(uniforms.K/128) + kidx_v/16];
     }
   }
 
@@ -649,20 +648,15 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
         return;
       }
 
-      let b_value = input_b[b_global*uniforms.K16+kidx_v+col];
-      var b_value_lower = vec4<i32>(unpack4xU8(b_value[0] & 0x0F0F0F0Fu)) - vec4<i32>(8);
-      var b_value_upper = vec4<i32>(unpack4xU8((b_value[0] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      let b_value = input_b[b_global*uniforms.K8+kidx_v+col];
+      var b_value_lower = vec4<i32>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      var b_value_upper = vec4<i32>(unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
       tile_B[row][col][0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
       tile_B[row][col][1] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
-      b_value_lower = vec4<i32>(unpack4xU8(b_value[1] & 0x0F0F0F0Fu)) - vec4<i32>(8);
-      b_value_upper = vec4<i32>(unpack4xU8((b_value[1] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
-      tile_B[row][col][2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
-      tile_B[row][col][3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
       if (col == 0)
       {
-        // kidx_v - each kidx_v covers 16 values of k, therefore 4 index must share
-        // a single scale kidx_v/2. But scales_b is a vec2, making the math same as A.
-        scale_B[row] = scales_b[b_global*(uniforms.K/64) + kidx_v/4];
+        // kidx_v - each kidx_v covers 8 values of k
+        scale_B[row] = scales_b[b_global*(uniforms.K/32) + kidx_v/4];
       }
   }
 
@@ -675,70 +669,11 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
       return local_sum;
   }
 
-  // Implement a 16x64x16 matrix multiply primitive using the 16 lanes of the subgroup.
-  // Each Lane first loads a row of A and a column of B.
-  // Then each lane becomes responsible for a row and loops through the columns to compute
-  // dot product. The columns are fetched from other owning lanes using subgroupShuffle.
-  fn perform16_64_16MatMul_sgsize16(base_A:u32, base_B:u32, sg_id:u32)
-  {
-    var own_a0: vec4<u32> = tile_A[base_A + sg_id][0];
-    var own_a1: vec4<u32> = tile_A[base_A + sg_id][1];
-    var own_a2: vec4<u32> = tile_A[base_A + sg_id][2];
-    var own_a3: vec4<u32> = tile_A[base_A + sg_id][3];
-    var own_b0: vec4<u32> = tile_B[base_B + sg_id][0];
-    var own_b1: vec4<u32> = tile_B[base_B + sg_id][1];
-    var own_b2: vec4<u32> = tile_B[base_B + sg_id][2];
-    var own_b3: vec4<u32> = tile_B[base_B + sg_id][3];
-    var own_scale_b: vec2<f16> = scale_B[base_B + sg_id];
-    var own_scale_a: f16 = scale_A[base_A+sg_id];;
-
-    for (var col:u32 = 0; col < 16; col++)
-    {
-      var local_scale_b = subgroupShuffle(own_scale_b, col);
-      local_scale_b = local_scale_b * own_scale_a;
-      var local_b = own_b0;
-      local_b = subgroupShuffle(local_b, col);
-      var local_sum = DP4AI(own_a0, local_b);
-      local_b = own_b1;
-      local_b = subgroupShuffle(local_b, col);
-      local_sum += DP4AI(own_a1, local_b);
-      local_b = own_b2;
-      local_b = subgroupShuffle(local_b, col);
-      var local_sum2 = DP4AI(own_a2, local_b);
-      local_b = own_b3;
-      local_b = subgroupShuffle(local_b, col);
-      local_sum2 += DP4AI(own_a3, local_b);
-      lane_output[col] += (f16(local_sum) * local_scale_b[0] + f16(local_sum2) * local_scale_b[1]);
-    }
-  }
-
-  fn perform16_64_16MatMul_NoSubgroup(base_A:u32, base_B:u32, a_idx:u32)
-  {
-    var own_a0: vec4<u32> = tile_A[base_A + a_idx][0];
-    var own_a1: vec4<u32> = tile_A[base_A + a_idx][1];
-    var own_a2: vec4<u32> = tile_A[base_A + a_idx][2];
-    var own_a3: vec4<u32> = tile_A[base_A + a_idx][3];
-    var own_scale_a: f16 = scale_A[base_A + a_idx];
-    for (var col:u32 = 0; col < 16; col++)
-    {
-      var scale: vec2<f16> = scale_B[base_B + col];
-      scale = scale * own_scale_a;
-      var b0: vec4<u32> = tile_B[base_B + col][0];
-      var b1: vec4<u32> = tile_B[base_B + col][1];
-      var b2: vec4<u32> = tile_B[base_B + col][2];
-      var b3: vec4<u32> = tile_B[base_B + col][3];
-      var local_sum = DP4AI(own_a0, b0);
-      local_sum += DP4AI(own_a1, b1);
-      var local_sum2 = DP4AI(own_a2, b2);
-      local_sum2 += DP4AI(own_a3, b3);
-      lane_output[col] += (f16(local_sum) * scale[0] + f16(local_sum2) * scale[1]);
-    }
-  }
 )ADDNL_FN";
 
   shader.MainFunctionBody() << R"MAIN_FN(
   // During the load phase we use all 256 threads to load 64 rows of A/B.
-  // For each row we load 4 vectorized elements, which are 64 elements of K.
+  // For each row we load 4 vectorized elements, which are 32 elements of K.
   let a_global_base = workgroup_id.x * tile_size;
   let b_global_base = workgroup_id.y * tile_size;
   let load_row = u32(local_idx/4);
@@ -749,34 +684,53 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   let subtile_id = u32(local_idx / subtile_size);
   let subtile_idx = u32(subtile_id / 4);
   let subtile_idy = u32(subtile_id % 4);
-  let subtile_a_base = subtile_idx * 16;
-  let subtile_b_base = subtile_idy * 16;
+  let base_A = subtile_idx * 16;
+  let base_B = subtile_idy * 16;
   // For each subtile we have 16 threads assigned.
-  let subtile_thread_id = u32(local_idx % subtile_size);
+  let a_idx = u32(local_idx % subtile_size);
 
-  // K's vectrorization is 16 items per index. See input_a/input_b.
-  // tile_size_k_vec - is the k tile size in vectorized k units/space (1/16).
-  for (var kidx_v:u32 = 0; kidx_v < uniforms.K16; kidx_v+=tile_size_k_vec)
+  // K's vectrorization is 8 items per index. See input_a/input_b.
+  // tile_size_k_vec - is the k tile size in vectorized k units/space (1/8).
+  for (var kidx_v:u32 = 0; kidx_v < uniforms.K8; kidx_v+=tile_size_k_vec)
   {
     // Populate shared memory for the workgroup
     loadSHMA(a_global_base, kidx_v, load_row, load_col);
     loadSHMB(b_global_base, kidx_v, load_row, load_col);
     workgroupBarrier();
 
-    // Perform the matmul for the subtile this subgroup is responsible for.
+    var own_a0: vec4<u32> = vec4<u32>(tile_A[base_A + a_idx][0], tile_A[base_A + a_idx][1]);
+    var own_a1: vec4<u32> = vec4<u32>(tile_A[base_A + a_idx][2], tile_A[base_A + a_idx][3]);
+    var own_scale_a: f16 = scale_A[base_A + a_idx];
     if (sg_size == 16)
     {
-       perform16_64_16MatMul_sgsize16(subtile_a_base, subtile_b_base, sg_id);
+      var own_b0: vec4<u32> = vec4<u32>(tile_B[base_B + sg_id][0], tile_B[base_B + sg_id][1]);
+      var own_b1: vec4<u32> = vec4<u32>(tile_B[base_B + sg_id][2], tile_B[base_B + sg_id][3]);
+      var own_scale_b: f16  = scale_B[base_B + sg_id];
+      for (var col:u32 = 0; col < 16; col++)
+      {
+        var local_scale_b = subgroupShuffle(own_scale_b, col);
+        local_scale_b = local_scale_b * own_scale_a;
+        var local_sum = DP4AI(own_a0, subgroupShuffle(own_b0, col));
+        local_sum += DP4AI(own_a1, subgroupShuffle(own_b1, col));
+        lane_output[col] += (f16(local_sum) * local_scale_b);
+      }
     }
     else
     {
-      perform16_64_16MatMul_NoSubgroup(subtile_a_base, subtile_b_base, subtile_thread_id);
+      for (var col:u32 = 0; col < 16; col++)
+      {
+        var b0: vec4<u32> = vec4<u32>(tile_B[base_B + col][0], tile_B[base_B + col][1]);
+        var b1: vec4<u32> = vec4<u32>(tile_B[base_B + col][2], tile_B[base_B + col][3]);
+        var local_sum = DP4AI(own_a0, b0);
+        local_sum += DP4AI(own_a1, b1);
+        lane_output[col] += (f16(local_sum) *  own_scale_a * scale_B[base_B + col]);
+      }
     }
     workgroupBarrier();
   }
 
-  let a_global = a_global_base + subtile_a_base + subtile_thread_id;
-  let b_global = b_global_base + subtile_b_base;
+  let a_global = a_global_base + base_A + a_idx;
+  let b_global = b_global_base + base_B;
   let output_idx = ((a_global) * uniforms.N + b_global)/4;
   // This creates a shader requirement that uniforms.N % 16 == 0
   if (a_global < uniforms.M && b_global < uniforms.N)
@@ -855,10 +809,10 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     mul_program.SetDispatchGroupSize(
         (M + kTileSize - 1) / kTileSize,
         (N + kTileSize - 1) / kTileSize, 1);
-    mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components)},
+    mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec2Components)},
                            {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)},
-                           {b, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec2Components * kU32Components)},
-                           {scales, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec2Components)}})
+                           {b, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kU32Components)},
+                           {scales, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)}})
         .AddUniformVariables({{static_cast<uint32_t>(M)},
                               {static_cast<uint32_t>(N)},
                               {static_cast<uint32_t>(K)},
