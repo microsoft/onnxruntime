@@ -49,6 +49,7 @@ class BaseOpBuilder : public IOpBuilder {
    * \param input_names Names of all inputs consumed by this QNN node.
    * \param output_index The index in node_unit.Outputs() of the output for which to return information.
    * \param qnn_data_type The output's data type.
+   * \param do_op_validation True if validating the operator.
    * \param quant_param The quantization parameter object that is overridden.
    * \return An onnxruntime::Status object indicating failure or success.
    */
@@ -58,6 +59,7 @@ class BaseOpBuilder : public IOpBuilder {
                                           const std::vector<std::string>& input_names,
                                           size_t output_index,
                                           Qnn_DataType_t qnn_data_type,
+                                          bool do_op_validation,
                                           QnnQuantParamsWrapper& quant_param) const ORT_MUST_USE_RESULT {
     // Do nothing by default. Op builders like Split implement this function to override output quant params.
     ORT_UNUSED_PARAMETER(qnn_model_wrapper);
@@ -66,6 +68,7 @@ class BaseOpBuilder : public IOpBuilder {
     ORT_UNUSED_PARAMETER(input_names);
     ORT_UNUSED_PARAMETER(output_index);
     ORT_UNUSED_PARAMETER(qnn_data_type);
+    ORT_UNUSED_PARAMETER(do_op_validation);
     ORT_UNUSED_PARAMETER(quant_param);
     return Status::OK();
   }

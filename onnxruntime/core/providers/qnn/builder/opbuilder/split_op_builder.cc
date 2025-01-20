@@ -38,6 +38,7 @@ class SplitOpBuilder : public BaseOpBuilder {
                                   const std::vector<std::string>& input_names,
                                   size_t output_index,
                                   Qnn_DataType_t qnn_data_type,
+                                  bool do_op_validation,
                                   QnnQuantParamsWrapper& quant_param) const override ORT_MUST_USE_RESULT;
 };
 
@@ -150,7 +151,9 @@ Status SplitOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapp
                                                 const std::vector<std::string>& input_names,
                                                 size_t output_index,
                                                 Qnn_DataType_t qnn_data_type,
+                                                bool do_op_validation,
                                                 QnnQuantParamsWrapper& quant_param) const {
+  ORT_UNUSED_PARAMETER(do_op_validation);
   if (!quant_param.IsPerTensor()) {
     return Status::OK();
   }
