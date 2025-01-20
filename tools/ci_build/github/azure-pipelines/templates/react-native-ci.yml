@@ -380,7 +380,17 @@ stages:
       displayName: Install detox cli tools
 
     - script: |
-        detox build --configuration android.emu.release
+        YARN_GLOBAL_BIN=$(yarn global bin)
+        DETOX_EXECUTABLE="$YARN_GLOBAL_BIN/detox"
+
+        if [ -x "$DETOX_EXECUTABLE" ]; then
+          echo "Found Detox at $DETOX_EXECUTABLE"
+        else
+          echo "Detox not found at $DETOX_EXECUTABLE"
+          exit 1
+        fi
+        
+        $$DETOX_EXECUTABLE build --configuration android.emu.release
       workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
       displayName: Build React Native Detox Android e2e Tests
 
