@@ -203,7 +203,12 @@ export const createConvTranspose2DProgramInfo = (
             // Convolve dy(?, ?, d2) with w(:, :, d1, d2) to compute dx(xR, xC, d1).
             // ? = to be determined. : = across all values in that axis.
             var dotProd = ${output.type.value}(0.0);
-            for (var wR: u32 = 0; wR < uniforms.effective_filter_dims.x; wR = wR + 1) {
+            var wR: u32 = 0;
+            if (uniforms.dilations.x == 1) {
+              // Minimum wR >= 0 that satisfies (dyRCorner + wR) % (uniforms.strides.x) == 0
+              wR = u32(((dyRCorner + i32(uniforms.strides.x) - 1) / i32(uniforms.strides.x)) * i32(uniforms.strides.x) - dyRCorner);
+            }
+            for (; wR < uniforms.effective_filter_dims.x; wR = wR + 1) {
               if (wR % uniforms.dilations.x != 0) {
                 continue;
               }
@@ -214,8 +219,12 @@ export const createConvTranspose2DProgramInfo = (
                 continue;
               }
               let idyR: u32 = u32(dyR);
-
-              for (var wC: u32 = 0; wC < uniforms.effective_filter_dims.y; wC = wC + 1) {
+              var wC: u32 = 0;
+              if (uniforms.dilations.y == 1) {
+                // Minimum wC >= 0 that satisfies (dyCCorner + wC) % (uniforms.strides.y) == 0
+                wC = u32(((dyCCorner + i32(uniforms.strides.y) - 1) / i32(uniforms.strides.y)) * i32(uniforms.strides.y) - dyCCorner);
+              }
+              for (; wC < uniforms.effective_filter_dims.y; wC = wC + 1) {
                 if (wC % uniforms.dilations.y != 0) {
                   continue;
                 }
