@@ -267,74 +267,6 @@ class OnnxModel:
 
         return output_name_to_node[input]
 
-    # def _get_path_to_subgraph_containing_node(self, target_node):
-    #     """
-    #     Get path to subgraph containing [target_node] when starting from parent-most graph
-
-    #     Args:
-    #         target_node (NodeProto): node to find.
-
-    #     Returns:
-    #         path (str): Path to subgraph. None if not found.
-    #     """
-    #     class GraphPath:
-    #         def __init__(self, graph, node_idxs=[], attr_idxs=[], graph_idxs=[]):
-    #             self.graph = graph
-    #             self.node_idxs = node_idxs
-    #             self.attr_idxs = attr_idxs
-    #             self.graph_idxs = graph_idxs
-
-    #         def __repr__(self):
-    #             return self.__str__()
-
-    #         def __str__(self):
-    #             assert len(node_idxs) == len(attr_idxs)
-    #             assert len(attr_idxs) == len(graph_idxs)
-
-    #             path = "self.model.graph"
-    #             for n, a, g in zip(self.node_idxs, self.attr_idxs, self.graph_idxs):
-    #                 node_path = f".node[{n}]"
-    #                 attr_path = f".attribute[{a}]"
-
-    #                 if g is None:
-    #                     subgraph_path = f".g"
-    #                 else:
-    #                     subgraph_path = f".graphs[{g}]"
-
-    #                 path += node_path + attr_path + subgraph_path
-                
-    #             return path
-
-    #     graph_queue = [GraphPath(self.model.graph)]
-    #     while graph_queue:
-    #         graph_path = graph_queue.pop(0)
-            
-    #         node_idxs = graph_path.node_idxs
-    #         attr_idxs = graph_path.attr_idxs
-    #         graph_idxs = graph_path.graph_idxs
-    #         graph = graph_path.graph
-
-    #         for n, node in enumerate(graph.node):
-    #             if node == target_node:
-    #                 # graph_path.node_idxs.append(n)
-    #                 return graph_path
-
-    #             for a, attr in enumerate(node.attribute):
-    #                 if attr.type == AttributeProto.AttributeType.GRAPH:
-    #                     assert isinstance(attr.g, GraphProto)
-    #                     graph_queue.append(
-    #                         GraphPath(attr.g, node_idxs + [n], attr_idxs + [a], graph_idxs + [None])
-    #                     )
-
-    #                 if attr.type == AttributeProto.AttributeType.GRAPHS:
-    #                     for g, subgraph in enumerate(attr.graphs):
-    #                         assert isinstance(subgraph, GraphProto)
-    #                         graph_queue.append(
-    #                             GraphPath(subgraph, node_idxs + [n], attr_idxs + [a], graph_idxs + [g])
-    #                         )
-
-    #     return None
-
     def match_first_parent(self, node, parent_op_type, output_name_to_node, exclude=[]):  # noqa: B006
         """
         Find parent node based on constraints on op_type.
@@ -1077,25 +1009,9 @@ class OnnxModel:
             else:
                 num_nodes_removed += 1
 
-        # print("Before clearing...")
-        # g = self.graphs()
-        # print(id(g[1]))
-        # print(len(g[1].node))
-        # L = list(filter(lambda n: n.op_type == "If", self.model.graph.node))[0].attribute[0].g
-        # print(id(L))
-        # print(len(L.node))
-
-        self.all_graphs = None  # to prevent pass-by-copy after ClearField(), use pass-by-reference instead
+        self.all_graphs = None  # to prevent pass-by-copy after ClearField(), forces the use of pass-by-reference instead
         self.model.graph.ClearField("node")
         self.model.graph.node.extend(nodes_to_keep)
-
-        # print("After clearing...")
-        # g = self.graphs()
-        # print(id(g[1]))
-        # print(len(g[1].node))
-        # L = list(filter(lambda n: n.op_type == "If", self.model.graph.node))[0].attribute[0].g
-        # print(id(L))
-        # print(len(L.node))
 
         # Remove graph outputs not in list
         output_to_remove = []
@@ -1304,7 +1220,7 @@ class OnnxModel:
         else:
             save_model(model, output_path)
 
-    def save_model_to_file(self, output_path, use_external_data_format=False, all_tensors_to_one_file=True, size_threshold=0, convert_attribute=False):
+    def save_model_to_file(self, output_path, use_external_data_format=False, all_tensors_to_one_file=True, size_threshold=1024, convert_attribute=False):
         logger.info("Sort graphs in topological order")
         self.topological_sort()
 

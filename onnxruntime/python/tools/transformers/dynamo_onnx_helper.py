@@ -163,13 +163,6 @@ class DynamoOnnxHelper:
 
             nodes_to_remove.append(node)
 
-            # Update nodes that use output of Constant op to use initializer name
-            # for child_node in input_name_to_nodes[node.output[0]]:
-            #     for i, child_input in enumerate(child_node.input):
-            #         if child_input == node.output[0]:
-            #             child_node.input[i] = INITIALIZER_NAME_WHEN_CREATED
-            #             break
-
         # Remove Constant ops from graph
         self.model.remove_nodes(nodes_to_remove)
 
