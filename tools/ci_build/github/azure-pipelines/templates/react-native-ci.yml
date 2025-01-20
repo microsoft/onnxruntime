@@ -307,8 +307,7 @@ stages:
     - script: |
         sudo apt install coreutils ninja-build nodejs npm yarn
         npm install --global yarn
-        yarn global add detox-cli
-      displayName: Install coreutils, ninja, npm, and yarn, detox cli tools
+      displayName: Install coreutils, ninja, npm, and yarn
 
     - task: DownloadPipelineArtifact@2
       inputs:
@@ -375,6 +374,10 @@ stages:
         contents: onnxruntime-*.aar
         targetFolder: $(Build.SourcesDirectory)/js/react_native/e2e/android/app/libs
       displayName: Copy Android package to Android e2e test directory
+
+    - script:
+        yarn global add detox-cli
+      displayName: Install detox cli tools
 
     - script: |
         detox build --configuration android.emu.release
