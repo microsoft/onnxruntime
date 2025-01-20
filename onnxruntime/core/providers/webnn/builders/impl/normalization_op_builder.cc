@@ -275,7 +275,7 @@ bool NormalizationOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& 
                                                     const emscripten::val& wnn_limits,
                                                     const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input0_type;  // input data type
   int32_t input1_type;  // scale data type
   int32_t input2_type;  // B data type
@@ -311,8 +311,8 @@ bool NormalizationOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& 
     // SkipSimplifiedLayerNormalization and SimplifiedLayerNormalization are supported by decomposed WebNN ops.
     // Check if the input data type is supported by each decomposed WebNN op.
     // Decomposed ops include: "add", "div", "mul", "pow", "reduceMean" and "sqrt".
-    for (const auto& webnn_op_type : decomposed_op_map.at(op_type)) {
-      const auto webnn_input_name = GetWebNNOpFirstInputName(webnn_op_type);
+    for (const std::string_view webnn_op_type : decomposed_op_map.at(op_type)) {
+      const std::string_view webnn_input_name = GetWebNNOpFirstInputName(webnn_op_type);
       if (!IsDataTypeSupportedByWebNNOp(
               op_type, webnn_op_type, input0_type, wnn_limits, webnn_input_name, "input", logger)) {
         return false;
@@ -328,7 +328,7 @@ bool NormalizationOpBuilder::HasSupportedOutputsImpl(const Node& node,
                                                      const emscripten::val& wnn_limits,
                                                      const logging::Logger& logger) const {
   const auto& output_defs = node.OutputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t output_type = 0;
   if (!GetType(*output_defs[0], output_type, logger)) {
     return false;
@@ -336,7 +336,7 @@ bool NormalizationOpBuilder::HasSupportedOutputsImpl(const Node& node,
 
   if (op_type == "SimplifiedLayerNormalization" || op_type == "SkipSimplifiedLayerNormalization") {
     // Check if the output data type is supported by every decomposed WebNN op.
-    for (const auto& webnn_op_type : decomposed_op_map.at(op_type)) {
+    for (const std::string_view webnn_op_type : decomposed_op_map.at(op_type)) {
       if (!IsDataTypeSupportedByWebNNOp(op_type, webnn_op_type, output_type, wnn_limits, "output", "output", logger)) {
         return false;
       }

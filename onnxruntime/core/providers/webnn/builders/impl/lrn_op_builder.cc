@@ -149,7 +149,7 @@ bool LRNOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
 bool LRNOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                                           const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input_type = 0;
   if (!GetType(*input_defs[0], input_type, logger)) {
     return false;
@@ -157,8 +157,8 @@ bool LRNOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initial
 
   // Check if the input data type is supported by each decomposed WebNN op.
   // Decomposed ops include: "add", "averagePool2d", "div", "mul", "pad", "pow" and "transpose".
-  for (const auto& webnn_op_type : decomposed_op_map.at(op_type)) {
-    const auto webnn_input_name = GetWebNNOpFirstInputName(webnn_op_type);
+  for (const std::string_view webnn_op_type : decomposed_op_map.at(op_type)) {
+    const std::string_view webnn_input_name = GetWebNNOpFirstInputName(webnn_op_type);
     if (!IsDataTypeSupportedByWebNNOp(op_type, webnn_op_type, input_type, wnn_limits, webnn_input_name, "X", logger)) {
       return false;
     }
@@ -171,14 +171,14 @@ bool LRNOpBuilder::HasSupportedOutputsImpl(const Node& node,
                                            const emscripten::val& wnn_limits,
                                            const logging::Logger& logger) const {
   const auto& output_defs = node.OutputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t output_type = 0;
   if (!GetType(*output_defs[0], output_type, logger)) {
     return false;
   }
 
   // Check if the output data type is supported by every decomposed WebNN op.
-  for (const auto& webnn_op_type : decomposed_op_map.at(op_type)) {
+  for (const std::string_view webnn_op_type : decomposed_op_map.at(op_type)) {
     if (!IsDataTypeSupportedByWebNNOp(op_type, webnn_op_type, output_type, wnn_limits, "output", "Y", logger)) {
       return false;
     }

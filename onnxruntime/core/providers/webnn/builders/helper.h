@@ -196,14 +196,14 @@ std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewe
                                                   const logging::Logger& logger);
 
 // Some ONNX ops are supported by decomposed WebNN ops.
-static const InlinedHashMap<std::string, std::vector<std::string>> decomposed_op_map = {
+const std::map<std::string_view, std::vector<std::string_view>> decomposed_op_map = {
     {"LRN", {"add", "averagePool2d", "div", "mul", "pad", "pow", "transpose"}},
     {"RotaryEmbedding", {"add", "concat", "gather", "mul", "reshape", "split"}},
     {"SimplifiedLayerNormalization", {"add", "div", "mul", "pow", "reduceMean", "sqrt"}},
     {"SkipSimplifiedLayerNormalization", {"add", "div", "mul", "pow", "reduceMean", "sqrt"}},
 };
 // ONNX op type to WebNN op type mapping.
-static const InlinedHashMap<std::string, std::string> op_map = {
+const std::map<std::string_view, std::string_view> op_map = {
     {"Abs", "abs"},
     {"Add", "add"},
     {"And", "logicalAnd"},
@@ -307,7 +307,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
 
 // WebNN op name to its first input name mapping, only record the name that is different from "input".
 // This map is used to determine the first input name of a WebNN op and is utilized by OpSupportLimits.
-static const InlinedHashMap<std::string, std::string> webnn_op_first_input_name_map = {
+const std::map<std::string_view, std::string_view> webnn_op_first_input_name_map = {
     {"add", "a"},
     {"concat", "inputs"},
     {"div", "a"},
@@ -333,22 +333,18 @@ static const InlinedHashMap<std::string, std::string> webnn_op_first_input_name_
 // Retrieve the first input name of a WebNN op used for validating supported input data types.
 // WebNN ops have various first input names such as 'a', 'input', 'inputs', etc.
 // Special names other than 'input' are recorded in the webnn_op_first_input_name_map.
-inline std::string GetWebNNOpFirstInputName(const std::string& webnn_op_type) {
+inline std::string_view GetWebNNOpFirstInputName(const std::string_view webnn_op_type) {
   auto it = webnn_op_first_input_name_map.find(webnn_op_type);
   return (it != webnn_op_first_input_name_map.end()) ? it->second : "input";
 }
 
-inline bool GetWebNNOpType(const std::string& op_type, std::string& webnn_op_type) {
+inline std::string_view GetWebNNOpType(const std::string_view op_type) {
   auto it = op_map.find(op_type);
-  // Returns false if the op_type is not listed in the op_map.
-  if (it == op_map.end()) {
-    return false;
-  }
-  webnn_op_type = it->second;
-  return true;
+  // Return an empty string if the op_type is not listed in the op_map.
+  return (it != op_map.end()) ? it->second : "";
 }
 
-static const InlinedHashMap<ONNX_NAMESPACE::TensorProto_DataType, std::string> onnx_to_webnn_data_type_map = {
+const std::map<ONNX_NAMESPACE::TensorProto_DataType, std::string_view> onnx_to_webnn_data_type_map = {
     {ONNX_NAMESPACE::TensorProto_DataType_INT4, "int4"},
     {ONNX_NAMESPACE::TensorProto_DataType_UINT4, "uint4"},
     {ONNX_NAMESPACE::TensorProto_DataType_BOOL, "uint8"},
@@ -362,22 +358,22 @@ static const InlinedHashMap<ONNX_NAMESPACE::TensorProto_DataType, std::string> o
     {ONNX_NAMESPACE::TensorProto_DataType_UINT64, "uint64"},
 };
 
-bool AreInputDataTypesSame(const std::string& op_type,
+bool AreInputDataTypesSame(const std::string_view op_type,
                            gsl::span<const int32_t> input_types,
                            const logging::Logger& logger);
-bool IsSupportedDataType(const int32_t& onnx_data_type, const emscripten::val& webnn_supported_data_types);
-bool IsDataTypeSupportedByOp(const std::string& onnx_op_type,
-                             const int32_t& onnx_data_type,
+bool IsSupportedDataType(const int32_t onnx_data_type, const emscripten::val& webnn_supported_data_types);
+bool IsDataTypeSupportedByOp(const std::string_view onnx_op_type,
+                             const int32_t onnx_data_type,
                              const emscripten::val& wnn_limits,
-                             const std::string& webnn_input_output_name,
-                             const std::string& onnx_input_output_name,
+                             const std::string_view webnn_input_output_name,
+                             const std::string_view onnx_input_output_name,
                              const logging::Logger& logger);
-bool IsDataTypeSupportedByWebNNOp(const std::string& onnx_op_type,
-                                  const std::string& webnn_op_type,
-                                  const int32_t& onnx_data_type,
+bool IsDataTypeSupportedByWebNNOp(const std::string_view onnx_op_type,
+                                  const std::string_view webnn_op_type,
+                                  const int32_t onnx_data_type,
                                   const emscripten::val& wnn_limits,
-                                  const std::string& webnn_input_output_name,
-                                  const std::string& onnx_input_output_name,
+                                  const std::string_view webnn_input_output_name,
+                                  const std::string_view onnx_input_output_name,
                                   const logging::Logger& logger);
 
 bool GetBidirectionalBroadcastShape(std::vector<int64_t>& shape_a,
