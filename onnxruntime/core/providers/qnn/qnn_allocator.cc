@@ -60,7 +60,7 @@ size_t DivRoundUp(size_t a, size_t b) {  // TODO is there already a helper funct
 }
 
 bool IsAligned(const void* address, size_t alignment) {
-  assert((alignment & alignment - 1) == 0);  // alignment must be a power of two
+  assert((alignment & (alignment - 1)) == 0);  // alignment must be a power of two
   return (reinterpret_cast<uintptr_t>(address) & (alignment - 1)) == 0;
 }
 
