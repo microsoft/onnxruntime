@@ -242,11 +242,11 @@ stages:
 
     - template: explicitly-defined-final-tasks.yml
 
-- stage: Build_iOS_Packages
-  displayName: Build_iOS_Packages
+- stage: ReactNative_CI_iOS
+  displayName: ReactNative_CI_iOS
   dependsOn: '${{parameters.InitialStageDependsOn}}'
   jobs:
-  - job: Build_Ios_Pod_For_React_Native
+  - job: ReactNative_CI_iOS
     pool:
       vmImage: 'macOS-13'
 
@@ -269,7 +269,7 @@ stages:
     - script: |
         pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
       displayName: "Install Python requirements"
-
+# Build the iOS package
     - template: mac-build-step-with-cache.yml
       parameters:
         WithCache: true
@@ -281,7 +281,7 @@ stages:
             set -e -x
             python $(Build.SourcesDirectory)/tools/ci_build/github/apple/build_and_assemble_apple_pods.py \
               --build-dir "$(Build.BinariesDirectory)/ios_framework_full" \
-              --staging-dir "$(Build.BinariesDirectory)/staging" \
+              --staging-dir "$(Build.BinariesDirectory)/ios-full-pod" \
               --variant Full \
               --build-settings-file $(Build.SourcesDirectory)/tools/ci_build/github/js/react_native_e2e_full_ios_framework_build_settings.json
           displayName: Build iOS package and assemble pods
@@ -292,22 +292,7 @@ stages:
             CCACHE_DEPEND: 1
             CCACHE_SLOPPINESS: modules
             CCACHE_DIR: $(ORT_CACHE_DIR)
-    - task: PublishPipelineArtifact@1
-      inputs:
-        targetPath: '$(Build.BinariesDirectory)/staging'
-        artifact: 'onnxruntime-ios-full-pod'
-
-- stage: ReactNative_CI_iOS
-  displayName: ReactNative_CI_iOS
-  dependsOn:
-  - Build_iOS_Packages
-  jobs:
-  - job: ReactNative_CI_iOS
-    pool:
-      vmImage: 'macOS-13'
-    timeoutInMinutes: 90
-    steps:
-    - template: use-xcode-version.yml
+# Test the iOS package
     - task: NodeTool@0
       inputs:
         versionSpec: '20.x'
@@ -326,13 +311,6 @@ stages:
     - script:
         brew install applesimutils
       displayName: Install applesimutils tools required by detox ios
-
-    - task: DownloadPipelineArtifact@2
-      inputs:
-        buildType: 'current'
-        artifactName: 'onnxruntime-ios-full-pod'
-        targetPath: '$(Build.BinariesDirectory)/ios-full-pod'
-      displayName: Download iOS pod artifacts
 
     - script: |
         npm ci
