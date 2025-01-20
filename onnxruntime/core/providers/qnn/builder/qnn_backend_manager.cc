@@ -251,6 +251,12 @@ void QnnLogging(const char* format,
   ORT_UNUSED_PARAMETER(level);
   ORT_UNUSED_PARAMETER(timestamp);
 
+  if (!::onnxruntime::logging::LoggingManager::HasDefaultLogger()) {
+    // QNN may call this logging callback at any point, which means that we need to explicitly check
+    // that the default logger has been initialized before trying to use it (otherwise get segfault).
+    return;
+  }
+
   const auto& logger = ::onnxruntime::logging::LoggingManager::DefaultLogger();
   const auto severity = ::onnxruntime::logging::Severity::kVERBOSE;
   const auto data_type = ::onnxruntime::logging::DataType::SYSTEM;
@@ -273,6 +279,9 @@ Status QnnBackendManager::InitializeQnnLog(const logging::Logger& logger) {
   QnnLog_Level_t qnn_log_level = MapOrtSeverityToQNNLogLevel(ort_log_level);
   LOGS(*logger_, VERBOSE) << "Set Qnn log level: " << qnn_log_level;
 
+  // NOTE: Even if logCreate() fails and QNN does not return a valid log_handle_, QNN may still
+  // call the QnnLogging() callback. So, we have to make sure that QnnLogging() can handle calls
+  // in which ORT logging is not available.
   Qnn_ErrorHandle_t result = qnn_interface_.logCreate(QnnLogging, qnn_log_level, &log_handle_);
 
   if (result != QNN_SUCCESS) {
@@ -1099,39 +1108,35 @@ Status QnnBackendManager::TerminateQnnLog() {
 }
 
 void QnnBackendManager::ReleaseResources() {
-  if (!backend_setup_completed_) {
-    return;
-  }
-
   auto result = ReleaseContext();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to ReleaseContext.";
+    LOGS_DEFAULT(ERROR) << "Failed to ReleaseContext: " << result.ErrorMessage();
   }
 
   result = ReleaseProfilehandle();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to ReleaseProfilehandle.";
+    LOGS_DEFAULT(ERROR) << "Failed to ReleaseProfilehandle: " << result.ErrorMessage();
   }
 
   result = ReleaseDevice();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to ReleaseDevice.";
+    LOGS_DEFAULT(ERROR) << "Failed to ReleaseDevice: " << result.ErrorMessage();
   }
 
   result = ShutdownBackend();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to ShutdownBackend.";
+    LOGS_DEFAULT(ERROR) << "Failed to ShutdownBackend: " << result.ErrorMessage();
   }
 
   result = TerminateQnnLog();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to TerminateQnnLog.";
+    LOGS_DEFAULT(ERROR) << "Failed to TerminateQnnLog: " << result.ErrorMessage();
   }
 
   if (backend_lib_handle_) {
     result = UnloadLib(backend_lib_handle_);
     if (Status::OK() != result) {
-      LOGS_DEFAULT(ERROR) << "Failed to unload backend library.";
+      LOGS_DEFAULT(ERROR) << "Failed to unload backend library: " << result.ErrorMessage();
     }
   }
 
