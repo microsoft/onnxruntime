@@ -33,7 +33,6 @@ class SimpleOpBuilder : public BaseOpBuilder {
                                   const std::vector<std::string>& input_names,
                                   size_t output_index,
                                   Qnn_DataType_t qnn_data_type,
-                                  bool do_op_validation,
                                   QnnQuantParamsWrapper& quant_param) const override ORT_MUST_USE_RESULT;
 
  private:
@@ -263,6 +262,22 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     if (node_unit.Domain() != kMSInternalNHWCDomain && (op_type == "DepthToSpace" || op_type == "SpaceToDepth" || op_type == "GridSample")) {
       return Status::OK();
     }
+
+#if QNN_API_VERSION_MAJOR >= 2 && QNN_API_VERSION_MINOR >= 21 && QNN_API_VERSION_MINOR <= 23
+    // Skip QNN validation for Tanh with uint16 (quantized) output.
+    // This gets around a Tanh QNN validation bug in QNN SDK 2.28.0 - 2.30.0.
+    // The QNN documentation states that the output scale and offset for ufixed_point_16 should be
+    // (1/32768) and -32768, respectively. However, the QNN validator incorrectly rejects these values.
+    if (op_type == "Tanh") {
+      TensorInfo output_info = {};
+      ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Outputs()[0], output_info));
+      if (output_info.qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16) {
+        LOGS(logger, INFO) << "Skipping QNN validation for Tanh node '"
+                           << node_unit.Name() << "' with quantized unit16 output.";
+        return Status::OK();
+      }
+    }
+#endif
   }
 
   std::vector<std::string> param_tensor_names;
@@ -350,7 +365,7 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
  * \return True if the offset and scale were overridden.
  */
 static bool OverrideQuantParams(const std::string& op_type, Qnn_DataType_t qnn_data_type,
-                                bool do_op_validation, Qnn_ScaleOffset_t& quant_params) {
+                                Qnn_ScaleOffset_t& quant_params) {
   const int32_t orig_offset = quant_params.offset;
   const float orig_scale = quant_params.scale;
 
@@ -382,17 +397,6 @@ static bool OverrideQuantParams(const std::string& op_type, Qnn_DataType_t qnn_d
       default:
         break;  // Do nothing.
     }
-#if QNN_API_VERSION_MAJOR >= 2 && QNN_API_VERSION_MINOR >= 21 && QNN_API_VERSION_MINOR <= 23
-    // This gets around a Tanh QNN validation bug in QNN SDK 2.28.0 - 2.30.0.
-    // The QNN documentation states that the output scale and offset for ufixed_point_16 should be
-    // (1/32768) and -32768, respectively. However, the QNN validator incorrectly rejects these values.
-    // So, we set dummy values that pass validation, but we'll always use the correct values when building
-    // the actual qnn graph (i.e., do_op_validation == false).
-    if (do_op_validation && qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16) {
-      quant_params.offset = 0;
-      quant_params.scale = 1.0f / 32768.0f;
-    }
-#endif
   }
 
   return quant_params.offset != orig_offset || quant_params.scale != orig_scale;
@@ -404,7 +408,6 @@ Status SimpleOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrap
                                                  const std::vector<std::string>& input_names,
                                                  size_t output_index,
                                                  Qnn_DataType_t qnn_data_type,
-                                                 bool do_op_validation,
                                                  QnnQuantParamsWrapper& quant_param) const {
   ORT_UNUSED_PARAMETER(input_names);
   const std::string& op_type = node_unit.OpType();
@@ -421,7 +424,7 @@ Status SimpleOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrap
     const std::string& output_name = output.node_arg.Name();
 
     if (quant_param.IsPerTensor(/*include_bw*/ false)) {
-      if (OverrideQuantParams(op_type, qnn_data_type, do_op_validation, quant_param.Get().scaleOffsetEncoding)) {
+      if (OverrideQuantParams(op_type, qnn_data_type, quant_param.Get().scaleOffsetEncoding)) {
         const int32_t offset = quant_param.Get().scaleOffsetEncoding.offset;
         const float scale = quant_param.Get().scaleOffsetEncoding.scale;
 

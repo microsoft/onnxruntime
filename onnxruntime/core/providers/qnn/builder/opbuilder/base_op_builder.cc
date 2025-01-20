@@ -180,8 +180,7 @@ Status BaseOpBuilder::ProcessOutputs(QnnModelWrapper& qnn_model_wrapper,
 
     if (output_info.quant_param.IsQuantized()) {
       ORT_RETURN_IF_ERROR(OverrideOutputQuantParam(qnn_model_wrapper, node_unit, logger, input_names,
-                                                   output_i, output_info.qnn_data_type, do_op_validation,
-                                                   output_info.quant_param));
+                                                   output_i, output_info.qnn_data_type, output_info.quant_param));
     }
 
     Qnn_DataType_t supported_qnn_data_type = GetSupportedOutputDataType(output_i, output_info.qnn_data_type);
