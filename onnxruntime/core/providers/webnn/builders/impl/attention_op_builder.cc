@@ -31,21 +31,21 @@ class AttentionOpBuilder : public BaseOpBuilder {
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
-std::vector<int64_t> generate_indices(int64_t batch_size, int64_t num_heads, int64_t sequence_length) {
+std::vector<int64_t> generate_indices(int64_t batch_size, int64_t kv_num_heads, int64_t sequence_length) {
   std::vector<int64_t> indices;
   for (int64_t i = 0; i < sequence_length; ++i) {
-    for (int64_t j = 0; j < batch_size * num_heads; ++j) {
-      indices.push_back(j / num_heads);
-      indices.push_back(j % num_heads);
+    for (int64_t j = 0; j < batch_size * kv_num_heads; ++j) {
+      indices.push_back(j / kv_num_heads);
+      indices.push_back(j % kv_num_heads);
     }
   }
   return indices;
 }
 
-std::vector<int64_t> repeat_sequence(int64_t sequence_length, int64_t num_heads, int64_t batch_size) {
+std::vector<int64_t> repeat_sequence(int64_t sequence_length, int64_t kv_num_heads, int64_t batch_size) {
   std::vector<int64_t> repeated;
   for (int64_t i = 0; i < sequence_length; ++i) {
-    for (int64_t j = 0; j < batch_size * num_heads; ++j) {
+    for (int64_t j = 0; j < batch_size * kv_num_heads; ++j) {
       repeated.push_back(i);
     }
   }
@@ -135,9 +135,6 @@ Status AttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   uint32_t group_size = SafeInt<uint32_t>(num_heads / kv_num_heads);
 
   std::vector<uint32_t> reshape_output_shape = {qkv_batch_size, qkv_sequence_length, qkv_hidden_size};
-  std::vector<uint32_t> expand_shape_qkv_batch_size = {num_heads, qkv_sequence_length, qkv_batch_size};
-  std::vector<uint32_t> expand_shape_constant_num_heads = {qkv_sequence_length, qkv_batch_size, num_heads};
-  std::vector<uint32_t> expand_shape_qkv_sequence_length = {qkv_batch_size, num_heads, qkv_sequence_length};
   std::vector<uint32_t> scatter_indices_shape = {qkv_batch_size, kv_num_heads, qkv_sequence_length, 3};
   std::vector<uint32_t> reshape_tensor_shape = {qkv_batch_size, qkv_sequence_length, num_heads, head_size};
   std::vector<uint32_t> group_broadcast_tensor_shape_1 = {qkv_batch_size, past_sequence_length, kv_num_heads, 1,
@@ -179,7 +176,7 @@ Status AttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   emscripten::val desc_left = emscripten::val::object();
   ORT_RETURN_IF_NOT(SetWebnnDataType(desc_left, ONNX_NAMESPACE::TensorProto_DataType_INT64), "Unsupported data type");
   emscripten::val dims_left =
-      emscripten::val::array(std::vector<uint32_t>({qkv_batch_size * num_heads * qkv_sequence_length, 2}));
+      emscripten::val::array(std::vector<uint32_t>({qkv_batch_size * kv_num_heads * qkv_sequence_length, 2}));
   desc_left.set("dimensions", dims_left);
   desc_left.set("shape", dims_left);
   emscripten::val left_buffer = emscripten::val::global("BigInt64Array").new_(emscripten::val::array(left));
@@ -188,7 +185,7 @@ Status AttentionOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, co
   emscripten::val desc_right = emscripten::val::object();
   ORT_RETURN_IF_NOT(SetWebnnDataType(desc_right, ONNX_NAMESPACE::TensorProto_DataType_INT64), "Unsupported data type");
   emscripten::val dims_right =
-      emscripten::val::array(std::vector<uint32_t>({qkv_batch_size * num_heads * qkv_sequence_length, 1}));
+      emscripten::val::array(std::vector<uint32_t>({qkv_batch_size * kv_num_heads * qkv_sequence_length, 1}));
   desc_right.set("dimensions", dims_right);
   desc_right.set("shape", dims_right);
   emscripten::val right_buffer = emscripten::val::global("BigInt64Array").new_(emscripten::val::array(right));
