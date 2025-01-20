@@ -239,7 +239,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Tanh) {
 // QnnDsp <E> Failed to validate op node_token_6 with error 0xc26
 // Tests accuracy of 16-bit QDQ Tanh.
 //
-// We now have a validation workaround for QNN SDK 2.28.0 to 2.30.0
+// We now skip QNN validation as a workaround for QNN SDK 2.28.0 to 2.30.0
 TEST_F(QnnHTPBackendTests, UnaryOp_Tanh_U16) {
   RunQDQOpTest<uint16_t>("Tanh",
                          {TestInputDef<float>({1, 2, 64}, false, GetFloatDataInRange(-10.0f, 10.0f, 128))},
