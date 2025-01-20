@@ -29,8 +29,8 @@ parameters:
   type: boolean
 
 stages:
-- stage: Build_Android_Packages
-  displayName: Build_Android_Packages
+- stage: ReactNative_CI_Android
+  displayName: ReactNative_CI_Android
   dependsOn: '${{parameters.InitialStageDependsOn}}'
   jobs:
   - template: android-java-api-aar.yml
@@ -42,6 +42,12 @@ stages:
       enable_code_sign: '${{parameters.enable_code_sign}}'
       pool_name: '${{parameters.PoolName}}'
       packageName: 'onnxruntime-android'
+  - template: ../stages/jobs/react-natvie-andriod-e2e-test-job.yml
+    parameters:
+      PackageName: '${{parameters.PackageName}}'
+      ArtifactName: 'onnxruntime-android-full-aar'
+      NpmPackagingMode: '${{parameters.NpmPackagingMode}}'
+
 - stage: ReactNative_CI_Android
   displayName: ReactNative_CI_Android
   dependsOn:
