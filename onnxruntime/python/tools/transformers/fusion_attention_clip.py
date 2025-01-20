@@ -91,7 +91,6 @@ class FusionAttentionClip(FusionAttention):
                 skip_input_index = i
                 node_before_layer_norm = parent
 
-        # import pdb; pdb.set_trace()
         root_input = None
         if node_before_layer_norm is not None:
             root_input = node_before_layer_norm.output[0]

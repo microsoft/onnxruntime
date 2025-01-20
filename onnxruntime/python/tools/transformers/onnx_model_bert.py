@@ -10,6 +10,8 @@ from convert_to_packing_mode import PackingMode
 from fusion_attention import AttentionMask, FusionAttention
 from fusion_bart_attention import FusionBartAttention
 from fusion_biasgelu import FusionBiasGelu
+from fusion_constant_fold import FusionConstantFold
+# from fusion_dynamo import FusionDynamo
 from fusion_embedlayer import FusionEmbedLayerNormalization
 from fusion_fastgelu import FusionFastGelu
 from fusion_gelu import FusionGelu
@@ -55,6 +57,12 @@ class BertOnnxModel(OnnxModel):
             self, self.hidden_size, self.num_heads, self.attention_mask
         )
         self.utils = FusionUtils(self)
+
+    def dynamo(self):
+        fusion = FusionConstantFold(self)
+        fusion.apply()
+        # fusion = FusionDynamo(self)
+        # fusion.apply()
 
     def fuse_attention(self):
         self.attention_fusion.apply()
@@ -332,6 +340,9 @@ class BertOnnxModel(OnnxModel):
         # Remove cast nodes that having same data type of input and output based on symbolic shape inference.
         self.utils.remove_useless_cast_nodes()
 
+        # Apply any Dynamo-exported model optimizations
+        self.dynamo()
+
         if (options is None) or options.enable_layer_norm:
             self.fuse_layer_norm()
             self.fuse_simplified_layer_norm()
@@ -385,6 +396,8 @@ class BertOnnxModel(OnnxModel):
             # Fuse Gelu and Add Bias before it.
             self.fuse_bias_gelu(is_fastgelu=True)
             self.fuse_bias_gelu(is_fastgelu=False)
+
+        # OnnxModel.save(self.model, "temp.onnx", save_as_external_data=True, size_threshold=100, convert_attribute=True)
 
         if (options is None) or options.enable_bias_skip_layer_norm:
             # Fuse SkipLayerNormalization and Add Bias before it.
