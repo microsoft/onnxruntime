@@ -123,12 +123,12 @@ jobs:
   #
   # Unit tests and E2E tests with Android emulator
   #
-  - template: use-android-emulator.yml
+  - template: ../../templates/use-android-emulator.yml
     parameters:
       create: true
       start: true
 
-  - template: android-dump-logs-from-steps.yml
+  - template: ../../templates/android-dump-logs-from-steps.yml
     parameters:
       steps:
       - task: Gradle@3
@@ -153,7 +153,7 @@ jobs:
     workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
     displayName: Run React Native Detox Android e2e Tests
 
-  - template: use-android-emulator.yml
+  - template: ../../templates/use-android-emulator.yml
     parameters:
       stop: true
 
@@ -205,4 +205,4 @@ jobs:
       targetPath: '$(Build.ArtifactStagingDirectory)'
     displayName: Publish Pipeline Artifact
 
-  - template: explicitly-defined-final-tasks.yml
+  - template: ../../templates/explicitly-defined-final-tasks.yml
