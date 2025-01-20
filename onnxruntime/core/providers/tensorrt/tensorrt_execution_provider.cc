@@ -2033,6 +2033,23 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
       }
     } else {
       for (const auto& output : node->OutputDefs()) {
+        // Check if output is one of the output edges / input to another node)
+        bool output_consumed_by_another_node = false;
+        for (auto edge_it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); edge_it != end; ++edge_it) {
+          const onnxruntime::NodeArg* edge_output;
+          const auto dest_arg_index = edge_it->GetDstArgIndex();
+          const auto explicit_input_size = static_cast<int>(edge_it->GetNode().InputDefs().size());
+          if (dest_arg_index< explicit_input_size) {
+            edge_output = (edge_it->GetNode()).InputDefs()[dest_arg_index];
+          } else {
+            edge_output = (edge_it->GetNode()).ImplicitInputDefs()[dest_arg_index - explicit_input_size];
+          }
+          if (edge_output == output) {
+            output_consumed_by_another_node = true;
+            break;
+          }
+        }
+
         const auto& it = fused_inputs.find(output);
         if (it != fused_inputs.end()) {
           fused_inputs.erase(it);
@@ -2043,7 +2060,9 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
           if (graph_output_names.find(output->Name()) != graph_output_names.end()) {
             graph_outputs_to_add[output] = output_order;
           }
-          fused_outputs[output] = output_order++;
+          if (output_consumed_by_another_node) {
+            fused_outputs[output] = output_order++;
+          }
         }
       }
     }
@@ -2078,6 +2097,15 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
 
   for (const auto& initializer : initializers) {
     meta_def->constant_initializers().push_back(initializer);
+  }
+
+  // Final output 2339, 2342, 2405, 2471, 2409
+  // Print graph output for subgraph 15
+  if (subgraph_index==15) {
+    LOGS_DEFAULT(VERBOSE) << "Finall graph output for subgraph 15 =";
+    for (const auto& output : outputs) {
+      LOGS_DEFAULT(VERBOSE) << output.second->Name() << ",";
+    }
   }
 
   for (const auto& output : outputs) {
