@@ -278,7 +278,11 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   ProfilingLevel profiling_level_merge_;
   const std::string profiling_file_path_;
   bool context_created_ = false;
-  std::atomic<bool> backend_setup_completed_ = false;
+
+  // backend_setup_completed_ is set to true once all backend setup has been successfully completed.
+  // It will not be reset to false after that.
+  std::atomic<bool> backend_setup_completed_{false};
+
   // NPU backend requires quantized model
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   UniqueQnnHandle<Qnn_ProfileHandle_t> profile_backend_handle_{};

@@ -782,76 +782,50 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
     return Status::OK();
   }
 
-  Status status = Status::OK();
   if (qnn_saver_path_.empty()) {
-    status = LoadBackend();
+    ORT_RETURN_IF_ERROR(LoadBackend());
   } else {
-    status = LoadQnnSaverBackend();
+    ORT_RETURN_IF_ERROR(LoadQnnSaverBackend());
   }
-  if (status.IsOK()) {
-    LOGS(logger, VERBOSE) << "LoadBackend succeed.";
+  LOGS(logger, VERBOSE) << "Backend library loaded.";
+
+  if (load_from_cached_context || need_load_system_lib) {
+    ORT_RETURN_IF_ERROR(LoadQnnSystemLib());
   }
 
-  if (status.IsOK() && (load_from_cached_context || need_load_system_lib)) {
-    status = LoadQnnSystemLib();
-  }
+  sdk_build_version_ = GetBackendBuildId();
+  LOGS(logger, VERBOSE) << "Backend build version: "
+                        << sdk_build_version_;
 
-  if (status.IsOK()) {
-    sdk_build_version_ = GetBackendBuildId();
-    LOGS(logger, VERBOSE) << "Backend build version: "
-                          << sdk_build_version_;
-  }
+  ORT_RETURN_IF_ERROR(InitializeQnnLog(logger));
+  LOGS(logger, VERBOSE) << "Logger initialized.";
 
-  if (status.IsOK()) {
-    status = InitializeQnnLog(logger);
-  }
-  if (status.IsOK()) {
-    LOGS(logger, VERBOSE) << "SetLogger succeed.";
-  }
+  ORT_RETURN_IF_ERROR(InitializeBackend());
+  LOGS(logger, VERBOSE) << "Backend initialized.";
 
-  if (status.IsOK()) {
-    status = InitializeBackend();
-  }
-  if (status.IsOK()) {
-    LOGS(logger, VERBOSE) << "InitializeBackend succeed.";
-  }
+  ORT_RETURN_IF_ERROR(CreateDevice());
+  LOGS(logger, VERBOSE) << "Device created.";
 
-  if (status.IsOK()) {
-    status = CreateDevice();
-  }
-  if (status.IsOK()) {
-    LOGS(logger, VERBOSE) << "CreateDevice succeed.";
-  }
-
-  if (status.IsOK()) {
-    status = InitializeProfiling();
-  }
-  if (status.IsOK()) {
-    LOGS(logger, VERBOSE) << "InitializeProfiling succeed.";
-  }
+  ORT_RETURN_IF_ERROR(InitializeProfiling());
+  LOGS(logger, VERBOSE) << "Profiling initialized.";
 
   if (!load_from_cached_context) {
-    if (status.IsOK()) {
-      status = CreateContext();
-    }
-    if (status.IsOK()) {
-      LOGS(logger, VERBOSE) << "CreateContext succeed.";
-    }
+    ORT_RETURN_IF_ERROR(CreateContext());
+    LOGS(logger, VERBOSE) << "Context created.";
   }
 
-  if (status.IsOK()) {
-    LOGS(logger, VERBOSE) << "QNN SetupBackend succeed";
-    backend_setup_completed_.store(true);
-  }
+  backend_setup_completed_.store(true);
+  LOGS(logger, VERBOSE) << "QNN backend setup successfully completed.";
 
-  return status;
+  return Status::OK();
 }
 
 Status QnnBackendManager::CreateHtpPowerCfgId(uint32_t device_id, uint32_t core_id, uint32_t& htp_power_config_id) {
   // This function is called in QNN EP's OnRunStart() even if QNN backend setup failed and the model is assigned
   // to a different EP. Therefore, we have to check that backend setup actually completed before trying to
   // create an HTP power config ID. Otherwise, this causes a segfault because the QNN backend lib is unloaded.
-  ORT_RETURN_IF_NOT(backend_setup_completed_, "Cannot create HTP power config ID if backend setup is not complete.");
+  ORT_RETURN_IF_NOT(backend_setup_completed_.load(),
+                    "Cannot create HTP power config ID if backend setup is not complete.");
   QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
   auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
   ORT_RETURN_IF(QNN_SUCCESS != status, "backendGetPerfInfrastructure failed.");
@@ -872,7 +846,8 @@ Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
   // This function is called in QNN EP's OnRunStart() even if QNN backend setup failed and the model is assigned
   // to a different EP. Therefore, we have to check that backend setup actually completed before trying to
   // set an HTP power config ID. Otherwise, this causes a segfault because the QNN backend lib is unloaded.
-  ORT_RETURN_IF_NOT(backend_setup_completed_, "Cannot set HTP power config ID if backend setup is not complete.");
+  ORT_RETURN_IF_NOT(backend_setup_completed_.load(),
+                    "Cannot set HTP power config ID if backend setup is not complete.");
   QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
   auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
   ORT_RETURN_IF(QNN_SUCCESS != status, "backendGetPerfInfrastructure failed.");
@@ -1017,7 +992,8 @@ Status QnnBackendManager::SetRpcControlLatency(uint32_t htp_power_config_client_
   // This function is called in QNN EP's OnRunStart() even if QNN backend setup failed and the model is assigned
   // to a different EP. Therefore, we have to check that backend setup actually completed before trying to
   // set RPC control latency. Otherwise, this causes a segfault because the QNN backend library is unloaded.
-  ORT_RETURN_IF_NOT(backend_setup_completed_, "Cannot set HTP RPC control latency if backend setup is not complete.");
+  ORT_RETURN_IF_NOT(backend_setup_completed_.load(),
+                    "Cannot set HTP RPC control latency if backend setup is not complete.");
   if (rpc_control_latency != 0) {
     QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
     auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
