@@ -18,18 +18,11 @@ Status GeneratePositionIDs(onnxruntime::webgpu::ComputeContext& context, bool is
 
 class GeneratePositionIDsProgram final : public Program<GeneratePositionIDsProgram> {
  public:
-  GeneratePositionIDsProgram(const WebgpuAttentionParameters& params) : Program{"GeneratePositionIDs"}, params_(params) {}
+  GeneratePositionIDsProgram() : Program{"GeneratePositionIDs"} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32},
-                                          {"sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"num_heads", ProgramUniformVariableDataType::Uint32},
-                                          {"head_size", ProgramUniformVariableDataType::Uint32},
-                                          {"rotary_embedding_dim", ProgramUniformVariableDataType::Uint32},
-                                          {"interleaved", ProgramUniformVariableDataType::Uint32},
-                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32},
-                                          {"total_seqlen", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"sequence_length", ProgramUniformVariableDataType::Uint32});
 };
 
 class SplitPackedQKVProgram final : public Program<SplitPackedQKVProgram> {

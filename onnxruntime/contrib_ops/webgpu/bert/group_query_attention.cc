@@ -86,18 +86,12 @@ Status GeneratePositionIDsProgram::GenerateShaderCode(ShaderHelper& sh) const {
 }
 
 Status GeneratePositionIDs(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params, const Tensor* seqlens, Tensor* output_tensor) {
-  GeneratePositionIDsProgram program(params);
-  auto output_size = params.is_first_prompt_ ? 1 : params.batch_size_ * params.sequence_length_;
-  program.AddInput(seqlens)
-      .AddOutput(output_tensor)
-      .AddUniformVariables({{static_cast<uint32_t>(params.batch_size_)},
-                            {static_cast<uint32_t>(params.sequence_length_)},
-                            {static_cast<uint32_t>(params.num_heads_)},
-                            {static_cast<uint32_t>(params.head_size_)},
-                            {static_cast<uint32_t>(params.rotary_dim_)},
-                            {static_cast<uint32_t>(params.rotary_interleaved_)},
-                            {static_cast<uint32_t>(params.is_first_prompt_ ? 0 : 1)},
-                            {static_cast<uint32_t>(params.total_sequence_length_)}})
+  GeneratePositionIDsProgram program;
+  auto output_size = params.batch_size_ * params.sequence_length_;
+  program.CacheHint(params.batch_size_, params.sequence_length_)
+      .AddInput({seqlens, ProgramTensorMetadataDependency::Rank})
+      .AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank})
+      .AddUniformVariables({{static_cast<uint32_t>(params.sequence_length_)}})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
   return context.RunProgram(program);
 }
