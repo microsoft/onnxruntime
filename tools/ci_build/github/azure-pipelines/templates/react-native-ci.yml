@@ -29,8 +29,8 @@ parameters:
   type: boolean
 
 stages:
-- stage: ReactNative_CI_Android
-  displayName: ReactNative_CI_Android
+- stage: Build_Android_Packages
+  displayName: Build_Android_Packages
   dependsOn: '${{parameters.InitialStageDependsOn}}'
   jobs:
   - template: android-java-api-aar.yml

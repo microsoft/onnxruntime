@@ -178,7 +178,7 @@ class DeepSpeedZeROModifier(FP16OptimizerModifier):
 
                 #### THIS IS THE FASTER IMPLEMENTATION ####
                 grads_for_norm = []
-                for g, p in zip(gradients, params):
+                for g, p in zip(gradients, params, strict=False):
                     if is_model_parallel_parameter(p) or (target.model_parallel_rank == 0):
                         # BE NOTED: deepspeed original give a double type conversion here, not sure whether this is impacting some models.
                         # https://github.com/microsoft/DeepSpeed/blob/9e5c0c5c3ecabb68b7e9dffac0e9b8d167e3cab8/deepspeed/runtime/zero/stage2.py#L1501

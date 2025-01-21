@@ -84,9 +84,7 @@ def get_sample_with_past_kv_inputs(
     attention_mask = attention_mask.numpy() if engine == "ort" else attention_mask.to(device)
     position_ids = position_ids.numpy() if engine == "ort" else position_ids.to(device)
     past_kv = (
-        flatten_past_kv_inputs(past_kv)
-        if engine == "ort"
-        else list(map(lambda kv: (kv[0].to(device), kv[1].to(device)), past_kv))
+        flatten_past_kv_inputs(past_kv) if engine == "ort" else [(kv[0].to(device), kv[1].to(device)) for kv in past_kv]
     )
 
     if not return_dict:
@@ -143,9 +141,7 @@ def get_merged_sample_with_past_kv_inputs(
     attention_mask = attention_mask.numpy() if engine == "ort" else attention_mask.to(device)
     position_ids = position_ids.numpy() if engine == "ort" else position_ids.to(device)
     past_kv = (
-        flatten_past_kv_inputs(past_kv)
-        if engine == "ort"
-        else list(map(lambda kv: (kv[0].to(device), kv[1].to(device)), past_kv))
+        flatten_past_kv_inputs(past_kv) if engine == "ort" else [(kv[0].to(device), kv[1].to(device)) for kv in past_kv]
     )
 
     if not return_dict:
@@ -289,7 +285,7 @@ def enable_past_present_share_buffer(ort_inputs: dict, past_seq_len: int, max_se
 # Verify ONNX Runtime inputs with model
 def verify_ort_inputs(model: InferenceSession, ort_inputs: dict):
     # Check that all model inputs will be provided
-    model_inputs = set(map(lambda model_input: model_input.name, model.get_inputs()))
+    model_inputs = {model_input.name for model_input in model.get_inputs()}
     user_inputs = set(ort_inputs.keys())
     missing_inputs = model_inputs - user_inputs
     if len(missing_inputs):
@@ -317,7 +313,7 @@ def add_io_bindings_as_ortvalues(
 ):
     io_binding = model.io_binding()
 
-    model_inputs = set(map(lambda i: i.name, model.get_inputs()))
+    model_inputs = {i.name for i in model.get_inputs()}
     for k, v in ort_inputs.items():
         # Use this check to handle scenarios such as INT4 CUDA and FP16 CUDA models with
         # GQA + RotaryEmbedding fusion where `position_ids` is removed as an ONNX model input
