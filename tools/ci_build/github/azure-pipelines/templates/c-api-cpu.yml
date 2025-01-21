@@ -87,8 +87,8 @@ stages:
   jobs:
   - template: android-java-api-aar-test.yml
     parameters:
-      artifactName: 'onnxruntime-training-android-full-aar'
-      packageName: onnxruntime-training-android
+      artifactName: 'onnxruntime-android-full-aar'
+      ReleaseVersionSuffix: $(ReleaseVersionSuffix)
 
 - stage: Android_Java_API_AAR_Packaging_QNN
   dependsOn: Setup # Setup stage defined in set_packaging_variables_stage.yml creates the ReleaseVersionSuffix variable
@@ -112,8 +112,8 @@ stages:
   jobs:
   - template: android-java-api-aar-test.yml
     parameters:
-      artifactName: 'onnxruntime-training-android-full-aar'
-      packageName: onnxruntime-training-android
+      artifactName: 'onnxruntime-android-qnn-aar'
+      packageName: 'onnxruntime-android-qnn'
       QnnSDKVersion: ${{ parameters.QnnSDKVersion }}
 
 - stage: iOS_Full_xcframework
