@@ -631,78 +631,99 @@ if (onnxruntime_USE_WEBGPU)
       URL_HASH SHA1=${DEP_SHA1_dawn}
       # All previous patches are merged into the upstream dawn project. We don't need to apply any patches right now.
       # if we need to apply patches in the future, we can uncomment the following line.
-      # PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
+      PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
     )
   endif()
 
-  if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
-    set(DAWN_BUILD_MONOLITHIC_LIBRARY ON CACHE BOOL "" FORCE)
-    set(DAWN_ENABLE_INSTALL ON CACHE BOOL "" FORCE)
-
-    if (onnxruntime_USE_EXTERNAL_DAWN)
-      message(FATAL_ERROR "onnxruntime_USE_EXTERNAL_DAWN and onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY cannot be enabled at the same time.")
-    endif()
-  else()
-    # use dawn::dawn_native and dawn::dawn_proc instead of the monolithic dawn::webgpu_dawn to minimize binary size
-    set(DAWN_BUILD_MONOLITHIC_LIBRARY OFF CACHE BOOL "" FORCE)
-    set(DAWN_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
-  endif()
   set(DAWN_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
   set(DAWN_ENABLE_NULL OFF CACHE BOOL "" FORCE)
   set(DAWN_FETCH_DEPENDENCIES ON CACHE BOOL "" FORCE)
 
-  # disable things we don't use
-  set(DAWN_DXC_ENABLE_ASSERTS_IN_NDEBUG OFF)
-  set(DAWN_ENABLE_DESKTOP_GL OFF CACHE BOOL "" FORCE)
-  set(DAWN_ENABLE_OPENGLES OFF CACHE BOOL "" FORCE)
-  set(DAWN_SUPPORTS_GLFW_FOR_WINDOWING OFF CACHE BOOL "" FORCE)
-  set(DAWN_USE_GLFW OFF CACHE BOOL "" FORCE)
-  set(DAWN_USE_WINDOWS_UI OFF CACHE BOOL "" FORCE)
-  set(DAWN_USE_X11 OFF CACHE BOOL "" FORCE)
+  if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    set(DAWN_EMSCRIPTEN_TOOLCHAIN "${REPO_ROOT}/cmake/external/emsdk/upstream/emscripten" CACHE STRING "" FORCE)
 
-  set(TINT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-  set(TINT_BUILD_CMD_TOOLS OFF CACHE BOOL "" FORCE)
-  set(TINT_BUILD_GLSL_WRITER OFF CACHE BOOL "" FORCE)
-  set(TINT_BUILD_GLSL_VALIDATOR OFF CACHE BOOL "" FORCE)
-  set(TINT_BUILD_IR_BINARY OFF CACHE BOOL "" FORCE)
-  set(TINT_BUILD_SPV_READER OFF CACHE BOOL "" FORCE)  # don't need. disabling is a large binary size saving
-  set(TINT_BUILD_WGSL_WRITER ON CACHE BOOL "" FORCE)  # needed to create cache key. runtime error if not enabled.
+    # Add the missing files from the emsdk installation
+    #
+    # For a "standard" emscripten build, the folder "${DAWN_EMSCRIPTEN_TOOLCHAIN}/tools/maint/" is not used. This is the
+    # reason why EMSDK installation does not include it.
+    # However, currently the WebGPU support in Emscripten is still being developed and the Dawn project is maintaining
+    # a fork of the Emscripten toolchain. As an extra build step, Dawn needs to generate some files using the file
+    # "${DAWN_EMSCRIPTEN_TOOLCHAIN}/tools/maint/gen_struct_info.py" from emscripten, which is missing in the emscripten
+    # installed by emsdk.
+    #
+    # We keep a copy of the missing file(s) in ${PROJECT_SOURCE_DIR}/patches/emscripten/, and now we extract them to the
+    # emscripten toolchain folder.
+    execute_process(COMMAND ${CMAKE_COMMAND} -E tar x "${PROJECT_SOURCE_DIR}/patches/emscripten/patch_3.1.74.tgz"
+                    WORKING_DIRECTORY ${DAWN_EMSCRIPTEN_TOOLCHAIN})
+  else()
+    if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
+      set(DAWN_BUILD_MONOLITHIC_LIBRARY ON CACHE BOOL "" FORCE)
+      set(DAWN_ENABLE_INSTALL ON CACHE BOOL "" FORCE)
 
-  # SPIR-V validation shouldn't be required given we're using Tint to create the SPIR-V.
-  set(DAWN_ENABLE_SPIRV_VALIDATION OFF CACHE BOOL "" FORCE)
-
-  if (WIN32)
-    # building this requires the HLSL writer to be enabled in Tint. TBD if that we need either of these to be ON.
-    set(DAWN_USE_BUILT_DXC ON CACHE BOOL "" FORCE)
-    set(TINT_BUILD_HLSL_WRITER ON CACHE BOOL "" FORCE)
-
-    if ((NOT onnxruntime_ENABLE_DAWN_BACKEND_VULKAN) AND (NOT onnxruntime_ENABLE_DAWN_BACKEND_D3D12))
-      message(FATAL_ERROR "At least one of onnxruntime_ENABLE_DAWN_BACKEND_VULKAN or onnxruntime_ENABLE_DAWN_BACKEND_D3D12 must be enabled when using Dawn on Windows.")
-    endif()
-    if (onnxruntime_ENABLE_DAWN_BACKEND_VULKAN)
-      set(DAWN_ENABLE_VULKAN ON CACHE BOOL "" FORCE)
-      set(TINT_BUILD_SPV_WRITER ON CACHE BOOL "" FORCE)
+      if (onnxruntime_USE_EXTERNAL_DAWN)
+        message(FATAL_ERROR "onnxruntime_USE_EXTERNAL_DAWN and onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY cannot be enabled at the same time.")
+      endif()
     else()
-      set(DAWN_ENABLE_VULKAN OFF CACHE BOOL "" FORCE)
+      # use dawn::dawn_native and dawn::dawn_proc instead of the monolithic dawn::webgpu_dawn to minimize binary size
+      set(DAWN_BUILD_MONOLITHIC_LIBRARY OFF CACHE BOOL "" FORCE)
+      set(DAWN_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
     endif()
-    if (onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
-      set(DAWN_ENABLE_D3D12 ON CACHE BOOL "" FORCE)
-    else()
-      set(DAWN_ENABLE_D3D12 OFF CACHE BOOL "" FORCE)
+
+    # disable things we don't use
+    set(DAWN_DXC_ENABLE_ASSERTS_IN_NDEBUG OFF)
+    set(DAWN_ENABLE_DESKTOP_GL OFF CACHE BOOL "" FORCE)
+    set(DAWN_ENABLE_OPENGLES OFF CACHE BOOL "" FORCE)
+    set(DAWN_SUPPORTS_GLFW_FOR_WINDOWING OFF CACHE BOOL "" FORCE)
+    set(DAWN_USE_GLFW OFF CACHE BOOL "" FORCE)
+    set(DAWN_USE_WINDOWS_UI OFF CACHE BOOL "" FORCE)
+    set(DAWN_USE_X11 OFF CACHE BOOL "" FORCE)
+
+    set(TINT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    set(TINT_BUILD_CMD_TOOLS OFF CACHE BOOL "" FORCE)
+    set(TINT_BUILD_GLSL_WRITER OFF CACHE BOOL "" FORCE)
+    set(TINT_BUILD_GLSL_VALIDATOR OFF CACHE BOOL "" FORCE)
+    set(TINT_BUILD_IR_BINARY OFF CACHE BOOL "" FORCE)
+    set(TINT_BUILD_SPV_READER OFF CACHE BOOL "" FORCE)  # don't need. disabling is a large binary size saving
+    set(TINT_BUILD_WGSL_WRITER ON CACHE BOOL "" FORCE)  # needed to create cache key. runtime error if not enabled.
+
+    # SPIR-V validation shouldn't be required given we're using Tint to create the SPIR-V.
+    set(DAWN_ENABLE_SPIRV_VALIDATION OFF CACHE BOOL "" FORCE)
+
+    if (WIN32)
+      # building this requires the HLSL writer to be enabled in Tint. TBD if that we need either of these to be ON.
+      set(DAWN_USE_BUILT_DXC ON CACHE BOOL "" FORCE)
+      set(TINT_BUILD_HLSL_WRITER ON CACHE BOOL "" FORCE)
+
+      if ((NOT onnxruntime_ENABLE_DAWN_BACKEND_VULKAN) AND (NOT onnxruntime_ENABLE_DAWN_BACKEND_D3D12))
+        message(FATAL_ERROR "At least one of onnxruntime_ENABLE_DAWN_BACKEND_VULKAN or onnxruntime_ENABLE_DAWN_BACKEND_D3D12 must be enabled when using Dawn on Windows.")
+      endif()
+      if (onnxruntime_ENABLE_DAWN_BACKEND_VULKAN)
+        set(DAWN_ENABLE_VULKAN ON CACHE BOOL "" FORCE)
+        set(TINT_BUILD_SPV_WRITER ON CACHE BOOL "" FORCE)
+      else()
+        set(DAWN_ENABLE_VULKAN OFF CACHE BOOL "" FORCE)
+      endif()
+      if (onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
+        set(DAWN_ENABLE_D3D12 ON CACHE BOOL "" FORCE)
+      else()
+        set(DAWN_ENABLE_D3D12 OFF CACHE BOOL "" FORCE)
+      endif()
+      # We are currently always using the D3D12 backend.
+      set(DAWN_ENABLE_D3D11 OFF CACHE BOOL "" FORCE)
     endif()
-    # We are currently always using the D3D12 backend.
-    set(DAWN_ENABLE_D3D11 OFF CACHE BOOL "" FORCE)
   endif()
 
   onnxruntime_fetchcontent_makeavailable(dawn)
 
-  if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::webgpu_dawn)
-  else()
-    if (NOT onnxruntime_USE_EXTERNAL_DAWN)
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::dawn_native)
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::webgpu_dawn)
+    else()
+      if (NOT onnxruntime_USE_EXTERNAL_DAWN)
+        list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::dawn_native)
+      endif()
+      list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::dawn_proc)
     endif()
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::dawn_proc)
   endif()
 endif()
 

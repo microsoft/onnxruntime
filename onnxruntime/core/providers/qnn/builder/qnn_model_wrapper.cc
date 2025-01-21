@@ -30,21 +30,23 @@ bool QnnModelWrapper::CreateQnnGraph(const Qnn_ContextHandle_t& context,
     return false;
   }
   if (graph_name.length() == 0) {
-    LOGS(logger_, ERROR) << "Empty grpah name.";
+    LOGS(logger_, ERROR) << "Empty graph name.";
     return false;
   }
 
-  graph_name_ = graph_name;
-  auto rt = qnn_interface_.graphCreate(context, graph_name_.c_str(), graph_configs, &graph_);
+  auto rt = qnn_interface_.graphCreate(context, graph_name.c_str(), graph_configs, &graph_);
   if (rt != QNN_GRAPH_NO_ERROR || graph_ == nullptr) {
-    rt = qnn_interface_.graphRetrieve(context, graph_name_.c_str(), &graph_);
+    rt = qnn_interface_.graphRetrieve(context, graph_name.c_str(), &graph_);
     if (rt != QNN_GRAPH_NO_ERROR || graph_ == nullptr) {
       LOGS(logger_, ERROR) << "Failed to create Qnn graph: " << graph_name;
       return false;
     }
   }
+
   LOGS(logger_, VERBOSE) << "Created Qnn graph: " << graph_name;
 
+  graph_name_ = graph_name;
+  graph_context_ = context;
   return true;
 }
 
@@ -69,6 +71,20 @@ Status QnnModelWrapper::MakeTensorWrapper(const NodeUnitIODef& tensor, QnnTensor
 
   tensor_wrapper = QnnTensorWrapper(tensor_name, GetTensorType(tensor_name), tensor_info.qnn_data_type,
                                     std::move(tensor_info.quant_param), std::move(tensor_info.shape),
+                                    std::move(unpacked_tensor));
+  return Status::OK();
+}
+
+Status QnnModelWrapper::MakeTensorWrapper(const TensorInfo& tensor_info,
+                                          const std::string& tensor_name,
+                                          QnnTensorWrapper& tensor_wrapper) const {
+  std::vector<uint8_t> unpacked_tensor;
+  if (tensor_info.is_initializer) {
+    ORT_RETURN_IF_ERROR(UnpackInitializerData(*tensor_info.initializer_tensor, unpacked_tensor));
+  }
+
+  tensor_wrapper = QnnTensorWrapper(tensor_name, GetTensorType(tensor_name), tensor_info.qnn_data_type,
+                                    tensor_info.quant_param.Copy(), std::vector<uint32_t>(tensor_info.shape),
                                     std::move(unpacked_tensor));
   return Status::OK();
 }

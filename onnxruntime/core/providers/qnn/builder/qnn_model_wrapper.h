@@ -66,6 +66,9 @@ class QnnModelWrapper {
 
   // Make a QnnTensorWrapper from an onnx input or output.
   Status MakeTensorWrapper(const NodeUnitIODef& tensor, QnnTensorWrapper& tensor_wrapper) const;
+  Status MakeTensorWrapper(const TensorInfo& tensor_info,
+                           const std::string& tensor_name,
+                           QnnTensorWrapper& tensor_wrapper) const;
 
   // Add to internal tensor wrapper table
   bool AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper);
@@ -93,9 +96,11 @@ class QnnModelWrapper {
 
   bool ComposeQnnGraph();
 
-  Qnn_GraphHandle_t GetQnnGraph() { return graph_; }
+  Qnn_GraphHandle_t GetQnnGraph() const { return graph_; }
 
   std::string GetQnnGraphName() const { return graph_name_; }
+
+  Qnn_ContextHandle_t GetQnnGraphContext() const { return graph_context_; }
 
   // Move input tensor wrappers to GraphInfo, QnnModelWrapper end of live
   std::vector<QnnTensorWrapper>&& GetGraphInputTensorWrappers() {
@@ -299,6 +304,8 @@ class QnnModelWrapper {
   const Qnn_BackendHandle_t& backend_handle_;
   Qnn_GraphHandle_t graph_ = nullptr;
   std::string graph_name_ = "";
+  // QNN context that holds the QNN graph referenced by `graph_`
+  Qnn_ContextHandle_t graph_context_ = nullptr;
 
   std::vector<std::string> model_input_names_;
   std::vector<std::string> model_output_names_;

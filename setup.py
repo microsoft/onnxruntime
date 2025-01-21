@@ -66,6 +66,8 @@ if wheel_name_suffix == "gpu":
 elif parse_arg_remove_boolean(sys.argv, "--use_rocm"):
     is_rocm = True
     rocm_version = parse_arg_remove_string(sys.argv, "--rocm_version=")
+    if parse_arg_remove_boolean(sys.argv, "--use_migraphx"):
+        is_migraphx = True
 elif parse_arg_remove_boolean(sys.argv, "--use_migraphx"):
     is_migraphx = True
 elif parse_arg_remove_boolean(sys.argv, "--use_openvino"):
@@ -90,8 +92,10 @@ elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
     is_qnn = True
     package_name = "onnxruntime-qnn"
 
-if is_rocm or is_migraphx:
-    package_name = "onnxruntime-rocm"
+if is_rocm:
+    package_name = "onnxruntime-rocm" if not nightly_build else "ort-rocm-nightly"
+elif is_migraphx:
+    package_name = "onnxruntime-migraphx" if not nightly_build else "ort-migraphx-nightly"
 
 # PEP 513 defined manylinux1_x86_64 and manylinux1_i686
 # PEP 571 defined manylinux2010_x86_64 and manylinux2010_i686
@@ -477,10 +481,10 @@ with open(README, encoding="utf-8") as fdesc:
 if path.isdir(path.join("onnxruntime", "external")):
     # Gather all files under onnxruntime/external directory.
     extra.extend(
-        list(
+        [
             str(Path(*Path(x).parts[1:]))
             for x in list(iglob(path.join(path.join("onnxruntime", "external"), "**/*.*"), recursive=True))
-        )
+        ]
     )
 
 packages = [
