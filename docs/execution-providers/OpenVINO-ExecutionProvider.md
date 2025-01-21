@@ -548,6 +548,22 @@ For NPU is model is not supported we fallback to CPU.
 | microsoft_resnet-50 | Yes |
 | realesrgan-x4 | Yes |
 | timm_inception_v4.tf_in1k | Yes |
+| squeezenet1.0-qdq | Yes |
+| vgg16 | Yes |
+| caffenet-qdq | Yes |
+| zfnet512 | Yes |
+| shufflenet-v2 | Yes |
+| zfnet512-qdq | Yes |
+| googlenet | Yes |
+| googlenet-qdq | Yes |
+| caffenet | Yes |
+| bvlcalexnet-qdq | Yes |
+| vgg16-qdq | Yes |
+| mnist | Yes |
+| ResNet101-DUC | Yes |
+| shufflenet-v2-qdq | Yes |
+| bvlcalexnet | Yes |
+| squeezenet1.0 | Yes |
 
 **Note:** We have added support for INT8 models, quantized with Neural Network Compression Framework (NNCF). To know more about NNCF refer [here](https://github.com/openvinotoolkit/nncf).
 
