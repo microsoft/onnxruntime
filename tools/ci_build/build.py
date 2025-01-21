@@ -1021,7 +1021,16 @@ def generate_build_tree(
     disable_optional_type = "optional" in types_to_disable
     disable_sparse_tensors = "sparsetensor" in types_to_disable
 
-    enable_qnn_interface = bool((args.arm64 or args.arm or args.arm64ec) and (args.enable_generic_interface))
+    enable_qnn_interface = False
+    if args.enable_generic_interface:
+        host_arch = platform.machine()
+        if host_arch == "AMD64":
+            if args.arm64 or args.arm or args.arm64ec:
+                enable_qnn_interface = True
+        elif host_arch == "ARM64":
+            enable_qnn_interface = True
+        else:
+            raise BuildError("unknown python arch")
 
     cmake_args += [
         "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
