@@ -82,7 +82,7 @@ stages:
       packageName: 'onnxruntime-android'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
 
-- stage: Final_AAR_Testing_Android_Training_Full
+- stage: Android_Java_API_AAR_Testing_Full
   dependsOn: Android_Java_API_AAR_Packaging_Full
   jobs:
   - template: android-java-api-aar-test.yml
