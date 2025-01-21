@@ -30,20 +30,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests.BrowserStack.Android
         }
 
         /// <summary>
-        /// Sends a log to BrowserStack that is visible in the text logs and labeled as ANNOTATION.
-        /// </summary>
-        /// <param name="text">Log text to send.</param>
-        /// <param name="logLevel">Log level -- choose between info, debug, warning, and error</param>
-        public void browserStackLog(String text, String logLevel = "info")
-        {
-            String jsonToSend = String.Format(
-                "browserstack_executor: {\"action\": \"annotate\", \"arguments\": {\"data\": {0}, \"level\": {1}}}",
-                JsonConvert.ToString(text), JsonConvert.ToString(logLevel));
-
-            ((IJavaScriptExecutor)driver).ExecuteScript(jsonToSend);
-        }
-
-        /// <summary>
         /// Passes the correct test status to BrowserStack and ensures the driver quits.
         /// </summary>
         [TearDown]
