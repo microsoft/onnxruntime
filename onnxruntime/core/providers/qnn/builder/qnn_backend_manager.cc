@@ -766,7 +766,6 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
   sys_ctx_handle = nullptr;
 
   ORT_RETURN_IF_ERROR(ExtractBackendProfilingInfo());
-  context_created_ = true;
 
   LOGS(*logger_, VERBOSE) << "Load from cached QNN Context completed.";
   return Status::OK();

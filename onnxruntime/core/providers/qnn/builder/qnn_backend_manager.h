@@ -277,7 +277,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   ProfilingLevel profiling_level_;
   ProfilingLevel profiling_level_merge_;
   const std::string profiling_file_path_;
-  bool context_created_ = false;
 
   // backend_setup_completed_ is set to true once all backend setup has been successfully completed.
   // It will not be reset to false after that.
