@@ -148,6 +148,7 @@ stages:
       displayName: Pack NPM packages
 
     - script: |
+        set -x -e
         mv $(Build.SourcesDirectory)/js/common/onnxruntime-common*.tgz onnxruntime-common.tgz
         yarn add --no-lockfile file:./onnxruntime-common.tgz
         mv $(Build.SourcesDirectory)/js/react_native/onnxruntime-react-native*.tgz onnxruntime-react-native.tgz
