@@ -84,7 +84,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
                                         int64_t max_spill_fill_size);
 
   // Initializes handles to QNN resources (device, logger, etc.).
-  // NOTE: This function locks the internal `logger_recursive_mutex_`.
+  // NOTE: This function locks the internal `logger_mutex_`.
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context, bool need_load_system_lib);
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
@@ -112,7 +112,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   // Resets the QNN log level to the given ORT log level or to the default log level if the argument is
   // std::nullopt.
-  // NOTE: This function locks the internal `logger_recursive_mutex_`.
+  // NOTE: This function indirectly locks the internal `logger_mutex_` via nested function calls.
   Status ResetQnnLogLevel(std::optional<logging::Severity> ort_log_level = std::nullopt);
 
   Status ExtractBackendProfilingInfo();
@@ -142,6 +142,10 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
                                        Qnn_MemHandle_t& mem_handle);
 
  private:
+  // Initializes handles to QNN resources (device, logger, etc.).
+  // NOTE: This function locks the internal `logger_mutex_`.
+  Status SetupBackendImpl(const logging::Logger& logger, bool load_from_cached_context, bool need_load_system_lib);
+
   Status LoadBackend();
 
   Status InitializeBackend();
@@ -161,15 +165,15 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Status ReleaseContext();
 
   // Sets the ORT logger and creates a corresponding QNN logger with the same log level.
-  // NOTE: caller must lock the `logger_recursive_mutex_` before calling this function.
+  // NOTE: caller must lock the `logger_mutex_` before calling this function.
   Status InitializeQnnLog(const logging::Logger& logger);
 
   // Terminate logging in the backend
-  // NOTE: This function locks the internal `logger_recursive_mutex_`.
+  // NOTE: This function locks the internal `logger_mutex_`.
   Status TerminateQnnLog();
 
   // Releases all QNN resources. Called in the destructor.
-  // NOTE: This function indirectly locks the internal `logger_recursive_mutex_` via nested function calls.
+  // NOTE: This function indirectly locks the internal `logger_mutex_` via nested function calls.
   void ReleaseResources();
 
   void* LoadLib(const char* file_name, int flags, std::string& error_msg);
@@ -258,7 +262,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
  private:
   const std::string backend_path_;
-  std::recursive_mutex logger_recursive_mutex_;
+  std::mutex logger_mutex_;
   const logging::Logger* logger_ = nullptr;
   QNN_INTERFACE_VER_TYPE qnn_interface_ = QNN_INTERFACE_VER_TYPE_INIT;
   QNN_SYSTEM_INTERFACE_VER_TYPE qnn_sys_interface_ = QNN_SYSTEM_INTERFACE_VER_TYPE_INIT;

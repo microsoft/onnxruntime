@@ -251,6 +251,10 @@ void QnnLogging(const char* format,
   ORT_UNUSED_PARAMETER(level);
   ORT_UNUSED_PARAMETER(timestamp);
 
+  if (!format) {
+    return;
+  }
+
   if (!::onnxruntime::logging::LoggingManager::HasDefaultLogger()) {
     // QNN may call this logging callback at any point, which means that we need to explicitly check
     // that the default logger has been initialized before trying to use it (otherwise get segfault).
@@ -325,7 +329,7 @@ QnnLog_Level_t QnnBackendManager::MapOrtSeverityToQNNLogLevel(logging::Severity 
 }
 
 Status QnnBackendManager::ResetQnnLogLevel(std::optional<logging::Severity> ort_log_level) {
-  std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
+  std::lock_guard<std::mutex> lock(logger_mutex_);
   if (!backend_setup_completed_ || logger_ == nullptr) {
     return Status::OK();
   }
@@ -810,10 +814,10 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 
 // need to load system lib if load from Qnn context binary
 // or generate Qnn context binary is enabled -- to get the max spill fill buffer size
-Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
-                                       bool load_from_cached_context,
-                                       bool need_load_system_lib) {
-  std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
+Status QnnBackendManager::SetupBackendImpl(const logging::Logger& logger,
+                                           bool load_from_cached_context,
+                                           bool need_load_system_lib) {
+  std::lock_guard<std::mutex> lock(logger_mutex_);
   if (backend_setup_completed_) {
     LOGS(logger, VERBOSE) << "Backend setup already!";
     return Status::OK();
@@ -879,8 +883,20 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
   if (status.IsOK()) {
     LOGS(logger, VERBOSE) << "QNN SetupBackend succeed";
     backend_setup_completed_ = true;
-  } else {
-    LOGS_DEFAULT(WARNING) << "Failed to setup so cleaning up";
+  }
+
+  return status;
+}
+
+// need to load system lib if load from Qnn context binary
+// or generate Qnn context binary is enabled -- to get the max spill fill buffer size
+Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
+                                       bool load_from_cached_context,
+                                       bool need_load_system_lib) {
+  Status status = SetupBackendImpl(logger, load_from_cached_context, need_load_system_lib);
+
+  if (!status.IsOK()) {
+    LOGS_DEFAULT(WARNING) << "Failed to setup so cleaning up. Error: " << status.ErrorMessage();
     ReleaseResources();
   }
 
@@ -1090,7 +1106,7 @@ Status QnnBackendManager::DestroyHTPPowerConfigID(uint32_t htp_power_config_id) 
 }
 
 Status QnnBackendManager::TerminateQnnLog() {
-  std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
+  std::lock_guard<std::mutex> lock(logger_mutex_);
   if (logger_ == nullptr) {
     return Status::OK();
   }
