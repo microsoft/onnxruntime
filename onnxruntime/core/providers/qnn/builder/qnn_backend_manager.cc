@@ -250,6 +250,12 @@ void QnnLogging(const char* format,
   ORT_UNUSED_PARAMETER(level);
   ORT_UNUSED_PARAMETER(timestamp);
 
+  if (!::onnxruntime::logging::LoggingManager::HasDefaultLogger()) {
+    // QNN may call this logging callback at any point, which means that we need to explicitly check
+    // that the default logger has been initialized before trying to use it (otherwise get segfault).
+    return;
+  }
+
   const auto& logger = ::onnxruntime::logging::LoggingManager::DefaultLogger();
   const auto severity = ::onnxruntime::logging::Severity::kVERBOSE;
   const auto data_type = ::onnxruntime::logging::DataType::SYSTEM;
@@ -272,6 +278,9 @@ Status QnnBackendManager::InitializeQnnLog(const logging::Logger& logger) {
   QnnLog_Level_t qnn_log_level = MapOrtSeverityToQNNLogLevel(ort_log_level);
   LOGS(*logger_, VERBOSE) << "Set Qnn log level: " << qnn_log_level;
 
+  // NOTE: Even if logCreate() fails and QNN does not return a valid log_handle_, QNN may still
+  // call the QnnLogging() callback. So, we have to make sure that QnnLogging() can handle calls
+  // in which ORT logging is not available.
   Qnn_LogHandle_t raw_log_handle{};
   Qnn_ErrorHandle_t result = qnn_interface_.logCreate(QnnLogging, qnn_log_level, &raw_log_handle);
   ORT_RETURN_IF(result != QNN_SUCCESS,
@@ -524,14 +533,16 @@ Status QnnBackendManager::CreateContext() {
 
   QnnContext_Config_t context_priority_config = QNN_CONTEXT_CONFIG_INIT;
   ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, context_priority_config));
-  const QnnContext_Config_t* context_configs[] = {&context_priority_config,
-                                                  &context_config_weight_sharing,
-                                                  nullptr};
+  const QnnContext_Config_t* npu_context_configs[] = {&context_priority_config,
+                                                      &context_config_weight_sharing,
+                                                      nullptr};
+  const QnnContext_Config_t* empty_context_configs[] = {nullptr};
+  bool is_npu_backend = IsNpuBackend(GetQnnBackendType());
 
   Qnn_ContextHandle_t context = nullptr;
   Qnn_ErrorHandle_t result = qnn_interface_.contextCreate(backend_handle_.get(),
                                                           device_handle_.get(),
-                                                          context_configs,
+                                                          is_npu_backend ? npu_context_configs : empty_context_configs,
                                                           &context);
 
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result));
@@ -837,6 +848,10 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
 }
 
 Status QnnBackendManager::CreateHtpPowerCfgId(uint32_t device_id, uint32_t core_id, uint32_t& htp_power_config_id) {
+  // This function is called in QNN EP's OnRunStart() even if QNN backend setup failed and the model is assigned
+  // to a different EP. Therefore, we have to check that backend setup actually completed before trying to
+  // create an HTP power config ID. Otherwise, this causes a segfault because the QNN backend lib is unloaded.
+  ORT_RETURN_IF_NOT(backend_setup_completed_, "Cannot create HTP power config ID if backend setup is not complete.");
   QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
   auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
   ORT_RETURN_IF(QNN_SUCCESS != status, "backendGetPerfInfrastructure failed.");
@@ -854,6 +869,10 @@ Status QnnBackendManager::CreateHtpPowerCfgId(uint32_t device_id, uint32_t core_
 
 Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
                                             HtpPerformanceMode htp_performance_mode) {
+  // This function is called in QNN EP's OnRunStart() even if QNN backend setup failed and the model is assigned
+  // to a different EP. Therefore, we have to check that backend setup actually completed before trying to
+  // set an HTP power config ID. Otherwise, this causes a segfault because the QNN backend lib is unloaded.
+  ORT_RETURN_IF_NOT(backend_setup_completed_, "Cannot set HTP power config ID if backend setup is not complete.");
   QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
   auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
   ORT_RETURN_IF(QNN_SUCCESS != status, "backendGetPerfInfrastructure failed.");
@@ -995,6 +1014,10 @@ Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
 
 Status QnnBackendManager::SetRpcControlLatency(uint32_t htp_power_config_client_id,
                                                uint32_t rpc_control_latency) {
+  // This function is called in QNN EP's OnRunStart() even if QNN backend setup failed and the model is assigned
+  // to a different EP. Therefore, we have to check that backend setup actually completed before trying to
+  // set RPC control latency. Otherwise, this causes a segfault because the QNN backend library is unloaded.
+  ORT_RETURN_IF_NOT(backend_setup_completed_, "Cannot set HTP RPC control latency if backend setup is not complete.");
   if (rpc_control_latency != 0) {
     QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
     auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);

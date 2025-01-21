@@ -230,7 +230,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Tanh) {
 }
 
 // disabled for QNN 2.28.0.241029 backendValidateOpConfig failed
-// still fails on QNN 2.28.2.
+// still fails on QNN 2.28.2 and QNN 2.30.0
 // QnnDsp <E> [4294967295] has incorrect Value -32768, expected equal to 0.
 // QnnDsp <V> validateNativeOps node_token_6:qti.aisw:Tanh htp op validator failed 3110
 // QnnDsp <V> registered validator failed => 3110
@@ -238,9 +238,11 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Tanh) {
 // QnnDsp <V> Wake up free backend (id: 1)'s thread(s)
 // QnnDsp <E> Failed to validate op node_token_6 with error 0xc26
 // Tests accuracy of 16-bit QDQ Tanh.
-TEST_F(QnnHTPBackendTests, DISABLED_UnaryOp_Tanh_U16) {
+//
+// We now skip QNN validation as a workaround for QNN SDK 2.28.0 to 2.30.0
+TEST_F(QnnHTPBackendTests, UnaryOp_Tanh_U16) {
   RunQDQOpTest<uint16_t>("Tanh",
-                         {TestInputDef<float>({1, 2, 3}, false, GetFloatDataInRange(-10.0f, 10.0f, 6))},
+                         {TestInputDef<float>({1, 2, 64}, false, GetFloatDataInRange(-10.0f, 10.0f, 128))},
                          {},
                          13,
                          ExpectedEPNodeAssignment::All,
@@ -665,7 +667,12 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Ceil) {
 // CPU EP f32 model output: [-12.0, -7.0, -2.0, 3.0, 8.0, 12.0]
 // CPU EP qdq model output: [-12.0, -6.99, -1.99, 3.0, 8.0, 11.99]
 // QNN EP qdq model output: [-11.0 (WRONG), -7.0, -2.0, 2.99, 8.0, 11.99]
+// Issue fixed in 2.30
+#if (QNN_API_VERSION_MAJOR == 2) && (QNN_API_VERSION_MINOR >= 23)
+TEST_F(QnnHTPBackendTests, UnaryOp_Ceil_U16) {
+#else
 TEST_F(QnnHTPBackendTests, DISABLED_UnaryOp_Ceil_U16) {
+#endif
   const std::vector<float> input_data = GetFloatDataInRange(-12.0f, 12.0f, 6);
   RunQDQOpTest<uint16_t>("Ceil",
                          {TestInputDef<float>({1, 2, 3}, false, input_data)},
@@ -1070,7 +1077,12 @@ TEST_F(QnnHTPBackendTests, GridSample_U16_AlignCorners) {
 // Expected val: 3.3620510101318359
 // QNN QDQ val: 3.2922921180725098 (err 0.069758892059326172)
 // CPU QDQ val: 3.3850328922271729 (err 0.022981882095336914)
+// Issue fixed in 2.30
+#if (QNN_API_VERSION_MAJOR == 2) && (QNN_API_VERSION_MINOR >= 23)
+TEST_F(QnnHTPBackendTests, GridSample_BorderPadding) {
+#else
 TEST_F(QnnHTPBackendTests, DISABLED_GridSample_BorderPadding) {
+#endif
   RunQDQOpTest<uint8_t>("GridSample",
                         {TestInputDef<float>({1, 1, 3, 2}, false, -10.0f, 10.0f),
                          TestInputDef<float>({1, 2, 4, 2}, false, -10.0f, 10.0f)},
