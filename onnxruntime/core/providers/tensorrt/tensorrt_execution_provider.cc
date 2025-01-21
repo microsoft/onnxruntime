@@ -2495,55 +2495,30 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   strncpy(model_path_, path_string.c_str(), sizeof(model_path_) - 1);
 #endif
   model_path_[sizeof(model_path_) - 1] = '\0';
-  
-  // If the model consists of only a single "EPContext" contrib op, it means TRT EP can fetch the precompiled engine info from the node and
-  // load the engine directly without having to go through the processes of graph proto reconstruction, calling TRT parser and engine compilation.
-  // So, simply return the ComputeCapability here.
-  if (GraphHasCtxNode(graph)) {
-    if (graph.NumberOfNodes() == 1) {
-      SubGraph_t supported_node_vector = {{0}, true};
-      std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, TRTGenerateId(graph), 0);
-      result.push_back(ComputeCapability::Create(std::move(sub_graph)));
-      return result;
-    } else {
-      const size_t number_of_ort_nodes = graph.NumberOfNodes();
-      SubGraphCollection_t supported_node_vectors;
-      std::vector<long unsigned int> subgraph_indices;
-      const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);
-      for (size_t i = 0; i < number_of_ort_nodes; i++) {
-        const auto& node = graph.GetNode(node_index[i]);
-        const bool is_context_node = node && !node->OpType().empty() && node->OpType() == "EPContext";
-        if (is_context_node) {
-          // Add previous nonempty subgraph
-          if (subgraph_indices.size() > 0) {
-            supported_node_vectors.emplace_back(subgraph_indices, true); 
-          }
-          // Add epcontext node, which is always just 1 node
-          supported_node_vectors.emplace_back(std::vector<long unsigned int>{i}, true); 
-          subgraph_indices = {};
-        } else {
-          subgraph_indices.emplace_back(i);
-        }
-        if (i == number_of_ort_nodes - 1 && !is_context_node) {
-          supported_node_vectors.emplace_back(subgraph_indices, true); 
-        }
-      }
-
-      for (auto supported_node_vector: supported_node_vectors) {
-        auto subgraph_idx = supported_node_vector.first[0];
-        std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, TRTGenerateId(graph), subgraph_idx);
-        result.push_back(ComputeCapability::Create(std::move(sub_graph)));
-      }
-      return result;
-    }
-    
-  }
-
-  // Generate unique kernel name for TRT graph
-  HashValue model_hash = TRTGenerateId(graph);
 
   // Get supported node list from TensorRT parser
   const int number_of_ort_nodes = graph.NumberOfNodes();
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);
+  // Generate unique kernel name for TRT graph
+  const HashValue model_hash = TRTGenerateId(graph);
+  
+  // If there're "EPContext" contrib ops in the model, it means TRT EP can fetch the precompiled engine info from the cached context nodes and
+  // load the engine directly without having to go through the processes of graph proto reconstruction, calling TRT parser and engine compilation.
+  // So, simply return subgraphs consists of single ep context nodes here.
+  if (GraphHasCtxNode(graph)) {
+    int subgraph_idx = 0;
+    for (size_t i = 0; i < static_cast<size_t>(number_of_ort_nodes); i++) {
+        const auto& node = graph.GetNode(node_index[i]);
+        const bool is_context_node = node && !node->OpType().empty() && node->OpType() == "EPContext";
+        if (is_context_node) {
+          SubGraph_t supported_node_vector = {std::vector<long unsigned int>{i}, true};
+          std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, TRTGenerateId(graph), subgraph_idx++);
+          result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+        }
+    }
+    return result;
+  }
+
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
 
@@ -2558,7 +2533,6 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   }
 
   SubGraphCollection_t parser_nodes_vector, supported_nodes_vector;
-  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);
   bool new_subgraph = true;
 
   /* Iterate all the nodes and exclude the node if:
