@@ -30,6 +30,42 @@ ONNX_OPERATOR_KERNEL_EX(
         .InputMemoryType(OrtMemTypeCPUInput, 6),
     GroupQueryAttention);
 
+Status SplitPackedQKVProgram::GenerateShaderCode(ShaderHelper& sh) const {
+  const auto& packed_qkv = sh.AddInput("packed_qkv", ShaderUsage::UseOffsetToIndices | ShaderUsage::UseUniform);
+  const auto& query = sh.AddOutput("query", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
+  const auto& key = sh.AddOutput("key", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
+  const auto& value = sh.AddOutput("val", ShaderUsage::UseSetByIndices | ShaderUsage::UseUniform);
+  sh.MainFunctionBody() << "  let packed_qkv_indices = " << packed_qkv.OffsetToIndices("global_idx") << ";\n"
+                        << "  let input_data = " << packed_qkv.GetByOffset("global_idx") << ";\n"
+                        << "  let index = " << packed_qkv.IndicesGet("packed_qkv_indices", "2") << ";\n"
+                        << "  if (index < uniforms.hidden_size) {\n"
+                        << "    " << query.SetByIndices("packed_qkv_indices", "input_data") << ";\n"
+                        << "  } else if (index < (uniforms.hidden_size + uniforms.kv_hidden_size)) {\n"
+                        << "    var key_indices = packed_qkv_indices;\n"
+                        << "   " << key.IndicesSet("key_indices", "2", "u32(index - uniforms.hidden_size)") << ";\n"
+                        << "   " << key.SetByIndices("key_indices", "input_data") << ";\n"
+                        << "  } else {\n"
+                        << "    var val_indices = packed_qkv_indices;\n"
+                        << "   " << value.IndicesSet("val_indices", "2", "u32(index - uniforms.hidden_size - uniforms.kv_hidden_size)") << ";\n"
+                        << "   " << value.SetByIndices("val_indices", "input_data") << ";\n"
+                        << "  }";
+  return Status::OK();
+}
+
+Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params, const Tensor* packedQKV, Tensor* query, Tensor* key, Tensor* val) {
+  SplitPackedQKVProgram program(params);
+  auto input_size = packedQKV->Shape().Size();
+  program
+      .AddInput({packedQKV, ProgramTensorMetadataDependency::Rank})
+      .AddOutputs({{query, ProgramTensorMetadataDependency::Rank}, {key, ProgramTensorMetadataDependency::Rank}, {val, ProgramTensorMetadataDependency::Rank}})
+      .AddUniformVariables({
+          {static_cast<uint32_t>(params.hidden_size_)},
+          {static_cast<uint32_t>(params.kv_hidden_size_)},
+      })
+      .SetDispatchGroupSize((input_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+  return context.RunProgram(program);
+}
+
 Status GeneratePositionIDsProgram::GenerateShaderCode(ShaderHelper& sh) const {
   sh.AddInput("seqlens", ShaderUsage::UseUniform);
   sh.AddOutput("output", ShaderUsage::UseUniform);
