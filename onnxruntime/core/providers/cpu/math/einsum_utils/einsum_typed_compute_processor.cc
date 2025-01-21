@@ -365,9 +365,12 @@ Status EinsumTypedComputeProcessor<T>::Run() {
     });
     // Skip all the work, fill with zeros if needed
     if (has_empty_input) {
+      AllocatorPtr cpu_allocator;
+      ORT_RETURN_IF_ERROR(context_->GetTempSpaceAllocator(&cpu_allocator));
+
       const auto output_dims = einsum_compute_preprocessor_.GetOutputDims();
       Tensor& output = *context_->Output(0, output_dims);
-      Tensor candidate_output(raw_inputs[0]->DataType(), output_dims, allocator_);
+      Tensor candidate_output(raw_inputs[0]->DataType(), output_dims, cpu_allocator);
 
       if constexpr (std::is_integral<T>::value) {
         std::fill_n(reinterpret_cast<T*>(candidate_output.MutableDataRaw()), candidate_output.Shape().Size(), T(0));
