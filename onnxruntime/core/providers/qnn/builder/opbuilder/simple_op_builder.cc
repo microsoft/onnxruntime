@@ -262,6 +262,22 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     if (node_unit.Domain() != kMSInternalNHWCDomain && (op_type == "DepthToSpace" || op_type == "SpaceToDepth" || op_type == "GridSample")) {
       return Status::OK();
     }
+
+#if QNN_API_VERSION_MAJOR >= 2 && QNN_API_VERSION_MINOR >= 21 && QNN_API_VERSION_MINOR <= 23
+    // Skip QNN validation for Tanh with uint16 (quantized) output.
+    // This gets around a Tanh QNN validation bug in QNN SDK 2.28.0 - 2.30.0.
+    // The QNN documentation states that the output scale and offset for ufixed_point_16 should be
+    // (1/32768) and -32768, respectively. However, the QNN validator incorrectly rejects these values.
+    if (op_type == "Tanh") {
+      TensorInfo output_info = {};
+      ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Outputs()[0], output_info));
+      if (output_info.qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16) {
+        LOGS(logger, INFO) << "Skipping QNN validation for Tanh node '"
+                           << node_unit.Name() << "' with quantized unit16 output.";
+        return Status::OK();
+      }
+    }
+#endif
   }
 
   std::vector<std::string> param_tensor_names;
