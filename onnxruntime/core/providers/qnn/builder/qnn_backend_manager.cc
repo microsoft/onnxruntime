@@ -797,7 +797,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
                         << sdk_build_version_;
 
   ORT_RETURN_IF_ERROR(InitializeQnnLog(logger));
-  LOGS(logger, VERBOSE) << "Logger initialized.";
+  LOGS(logger, VERBOSE) << "Logging initialized.";
 
   ORT_RETURN_IF_ERROR(InitializeBackend());
   LOGS(logger, VERBOSE) << "Backend initialized.";
