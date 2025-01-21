@@ -97,6 +97,56 @@ Status TransposeProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
+Status Transpose::DoTranspose(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output) {
+  const auto& input_shape = input.Shape();
+  int32_t rank = gsl::narrow_cast<int32_t>(input_shape.NumDimensions());
+
+
+  TensorShapeVector output_dims(rank);
+  InlinedVector<size_t> default_perm(rank);
+  const InlinedVector<size_t>* p_perm = nullptr;
+  ORT_RETURN_IF_ERROR(ComputeOutputShape(input, output_dims, default_perm, p_perm));
+  TensorShape output_shape(output_dims);
+
+  InlinedVector<int64_t> new_shape{};
+  InlinedVector<int64_t> new_perm{};
+  SqueezeShape(input_shape.GetDims(), *p_perm, new_shape, new_perm);
+  const bool channels_last = new_perm == InlinedVector<int64_t>({2, 3, 1});
+  const bool channels_first = new_perm == InlinedVector<int64_t>({3, 1, 2});
+  const bool use_shared = (new_shape.size() == 2 && new_perm[0] > new_perm[1]) || channels_last || channels_first;
+  auto new_input_shape = input_shape;
+
+  if (use_shared) {
+    new_input_shape = channels_last
+                          ? TensorShape({new_shape[0], new_shape[1] * new_shape[2]})
+                      : channels_first
+                          ? TensorShape({new_shape[0] * new_shape[1], new_shape[2]})
+                          : new_shape;
+    new_output_shape = TensorShape({new_input_shape[1], new_input_shape[0]});
+  }
+
+  uint32_t output_size = gsl::narrow_cast<int32_t>(input.Shape().Size());
+  TransposeProgram program{*p_perm, use_shared};
+  if (use_shared) {
+    program.SetWorkgroupSize(TILE_SIZE, TILE_SIZE, 1);
+  }
+
+  program
+      .CacheHint(absl::StrJoin(*p_perm, "-"))
+      .AddInputs({{*input, ProgramTensorMetadataDependency::TypeAndRank, new_input_shape, 1}})
+      .AddOutputs({{*output, ProgramTensorMetadataDependency::None, new_output_shape, 1}})
+      .SetDispatchGroupSize(static_cast<uint32_t>((new_output_shape[1] + TILE_SIZE - 1) / TILE_SIZE),
+                            static_cast<uint32_t>(((new_output_shape[0] + TILE_SIZE - 1) / TILE_SIZE)))
+      .AddUniformVariables({
+          {static_cast<uint32_t>(output_size)},
+      });
+
+  use_shared ? program.SetDispatchGroupSize(static_cast<uint32_t>((new_output_shape[1] + TILE_SIZE - 1) / TILE_SIZE),
+                                            static_cast<uint32_t>(((new_output_shape[0] + TILE_SIZE - 1) / TILE_SIZE)))
+             : program.SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+  return context.RunProgram(program);
+}
+
 Status Transpose::ComputeInternal(ComputeContext& context) const {
   const auto* input_tensor = context.Input(0);
   const TensorShape& input_shape = input_tensor->Shape();
