@@ -111,8 +111,10 @@ jobs:
 
   - script: |
       yarn global add detox-cli
+      echo "Path: $PATH"
       echo "##vso[task.prependpath]$(yarn global bin)"
       echo "Updated PATH: $PATH"
+      echo "Detox bin directory: $(yarn global bin)"
       ls $(yarn global bin)
     displayName: Install detox cli tools and prepend to PATH
 
