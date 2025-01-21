@@ -329,7 +329,7 @@ QnnLog_Level_t QnnBackendManager::MapOrtSeverityToQNNLogLevel(logging::Severity 
 }
 
 Status QnnBackendManager::ResetQnnLogLevel(std::optional<logging::Severity> ort_log_level) {
-  std::lock_guard<std::mutex> lock(logger_mutex_);
+  std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
   if (!backend_setup_completed_ || logger_ == nullptr) {
     return Status::OK();
   }
@@ -814,10 +814,10 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 
 // need to load system lib if load from Qnn context binary
 // or generate Qnn context binary is enabled -- to get the max spill fill buffer size
-Status QnnBackendManager::SetupBackendImpl(const logging::Logger& logger,
-                                           bool load_from_cached_context,
-                                           bool need_load_system_lib) {
-  std::lock_guard<std::mutex> lock(logger_mutex_);
+Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
+                                       bool load_from_cached_context,
+                                       bool need_load_system_lib) {
+  std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
   if (backend_setup_completed_) {
     LOGS(logger, VERBOSE) << "Backend setup already!";
     return Status::OK();
@@ -883,20 +883,8 @@ Status QnnBackendManager::SetupBackendImpl(const logging::Logger& logger,
   if (status.IsOK()) {
     LOGS(logger, VERBOSE) << "QNN SetupBackend succeed";
     backend_setup_completed_ = true;
-  }
-
-  return status;
-}
-
-// need to load system lib if load from Qnn context binary
-// or generate Qnn context binary is enabled -- to get the max spill fill buffer size
-Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
-                                       bool load_from_cached_context,
-                                       bool need_load_system_lib) {
-  Status status = SetupBackendImpl(logger, load_from_cached_context, need_load_system_lib);
-
-  if (!status.IsOK()) {
-    LOGS_DEFAULT(WARNING) << "Failed to setup so cleaning up. Error: " << status.ErrorMessage();
+  } else {
+    LOGS_DEFAULT(WARNING) << "Failed to setup so cleaning up";
     ReleaseResources();
   }
 
@@ -904,6 +892,10 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
 }
 
 Status QnnBackendManager::CreateHtpPowerCfgId(uint32_t device_id, uint32_t core_id, uint32_t& htp_power_config_id) {
+  // This function is called in QNN EP's OnRunStart() even if QNN backend setup failed and the model is assigned
+  // to a different EP. Therefore, we have to check that backend setup actually completed before trying to
+  // create an HTP power config ID. Otherwise, this causes a segfault because the QNN backend lib is unloaded.
+  ORT_RETURN_IF_NOT(backend_setup_completed_, "Cannot create HTP power config ID if backend setup is not complete.");
   QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
   auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
   ORT_RETURN_IF(QNN_SUCCESS != status, "backendGetPerfInfrastructure failed.");
@@ -921,6 +913,10 @@ Status QnnBackendManager::CreateHtpPowerCfgId(uint32_t device_id, uint32_t core_
 
 Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
                                             HtpPerformanceMode htp_performance_mode) {
+  // This function is called in QNN EP's OnRunStart() even if QNN backend setup failed and the model is assigned
+  // to a different EP. Therefore, we have to check that backend setup actually completed before trying to
+  // set an HTP power config ID. Otherwise, this causes a segfault because the QNN backend lib is unloaded.
+  ORT_RETURN_IF_NOT(backend_setup_completed_, "Cannot set HTP power config ID if backend setup is not complete.");
   QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
   auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
   ORT_RETURN_IF(QNN_SUCCESS != status, "backendGetPerfInfrastructure failed.");
@@ -1062,6 +1058,10 @@ Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
 
 Status QnnBackendManager::SetRpcControlLatency(uint32_t htp_power_config_client_id,
                                                uint32_t rpc_control_latency) {
+  // This function is called in QNN EP's OnRunStart() even if QNN backend setup failed and the model is assigned
+  // to a different EP. Therefore, we have to check that backend setup actually completed before trying to
+  // set RPC control latency. Otherwise, this causes a segfault because the QNN backend library is unloaded.
+  ORT_RETURN_IF_NOT(backend_setup_completed_, "Cannot set HTP RPC control latency if backend setup is not complete.");
   if (rpc_control_latency != 0) {
     QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
     auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
@@ -1106,7 +1106,7 @@ Status QnnBackendManager::DestroyHTPPowerConfigID(uint32_t htp_power_config_id) 
 }
 
 Status QnnBackendManager::TerminateQnnLog() {
-  std::lock_guard<std::mutex> lock(logger_mutex_);
+  std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
   if (logger_ == nullptr) {
     return Status::OK();
   }
