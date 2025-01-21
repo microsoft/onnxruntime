@@ -40,8 +40,8 @@ class MatMul final : public CudaKernel {
           }
         }
 
-  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool save_prepacked_initializers,
-                 bool& is_packed, PrePackedWeights* prepacked_weights) override;
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc, bool& is_packed,
+                 PrePackedWeights* prepacked_weights) override;
   Status ComputeInternal(OpKernelContext* context) const override;
   Status ComputeDefault(OpKernelContext* context, MatMulComputeHelper& helper) const;
 
