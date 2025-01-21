@@ -11,6 +11,7 @@
 #include <dlfcn.h>
 #endif
 
+#include <atomic>
 #include <memory>
 #include <mutex>
 #include <string>
@@ -84,7 +85,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
                                         int64_t max_spill_fill_size);
 
   // Initializes handles to QNN resources (device, logger, etc.).
-  // NOTE: This function locks the internal `logger_recursive_mutex_`.
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context, bool need_load_system_lib);
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
@@ -106,13 +106,12 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
     return contexts_.size();
   }
 
-  const Qnn_BackendHandle_t& GetQnnBackendHandle() { return backend_handle_.get(); }
+  Qnn_BackendHandle_t GetQnnBackendHandle() { return backend_handle_.get(); }
 
-  const Qnn_ProfileHandle_t& GetQnnProfileHandle() { return profile_backend_handle_.get(); }
+  Qnn_ProfileHandle_t GetQnnProfileHandle() { return profile_backend_handle_.get(); }
 
   // Resets the QNN log level to the given ORT log level or to the default log level if the argument is
   // std::nullopt.
-  // NOTE: This function locks the internal `logger_recursive_mutex_`.
   Status ResetQnnLogLevel(std::optional<logging::Severity> ort_log_level = std::nullopt);
 
   Status ExtractBackendProfilingInfo();
@@ -142,35 +141,37 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
                                        Qnn_MemHandle_t& mem_handle);
 
  private:
+  using UniqueLibraryHandle = std::unique_ptr<void, std::function<void(void*)>>;
+
+  // assume QNN handle types are pointer types and able to be wrapped with smart pointers
+  static_assert(std::is_pointer_v<Qnn_BackendHandle_t>);
+  static_assert(std::is_pointer_v<Qnn_LogHandle_t>);
+  static_assert(std::is_pointer_v<Qnn_DeviceHandle_t>);
+  static_assert(std::is_pointer_v<Qnn_ContextHandle_t>);
+  static_assert(std::is_pointer_v<Qnn_ProfileHandle_t>);
+
+  template <typename QnnHandleType>
+  using UniqueQnnHandle =
+      std::unique_ptr<std::remove_pointer_t<QnnHandleType>, std::function<void(QnnHandleType)>>;
+
+  struct QnnContextHandleRecord {
+    UniqueQnnHandle<Qnn_ContextHandle_t> context_handle;
+    std::unique_ptr<QnnContextMemHandleManager> mem_handles;
+  };
+
+ private:
   Status LoadBackend();
 
   Status InitializeBackend();
 
   Status CreateDevice();
 
-  Status ReleaseDevice();
-
-  Status ShutdownBackend();
-
   Status InitializeProfiling();
-
-  Status ReleaseProfilehandle();
 
   Status CreateContext();
 
-  Status ReleaseContext();
-
   // Sets the ORT logger and creates a corresponding QNN logger with the same log level.
-  // NOTE: caller must lock the `logger_recursive_mutex_` before calling this function.
   Status InitializeQnnLog(const logging::Logger& logger);
-
-  // Terminate logging in the backend
-  // NOTE: This function locks the internal `logger_recursive_mutex_`.
-  Status TerminateQnnLog();
-
-  // Releases all QNN resources. Called in the destructor.
-  // NOTE: This function indirectly locks the internal `logger_recursive_mutex_` via nested function calls.
-  void ReleaseResources();
 
   void* LoadLib(const char* file_name, int flags, std::string& error_msg);
 
@@ -195,7 +196,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   template <typename F, class T>
   Status GetQnnInterfaceProvider(const char* lib_path,
                                  const char* interface_provider_name,
-                                 void** backend_lib_handle,
+                                 UniqueLibraryHandle& backend_lib_handle,
                                  Qnn_Version_t req_version,
                                  T** interface_provider);
 
@@ -246,30 +247,19 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Status AddQnnContextHandle(Qnn_ContextHandle_t context_handle);
 
  private:
-  // assume QNN handle types are pointer types and able to be wrapped with smart pointers
-  static_assert(std::is_pointer_v<Qnn_BackendHandle_t>);
-  static_assert(std::is_pointer_v<Qnn_LogHandle_t>);
-  static_assert(std::is_pointer_v<Qnn_DeviceHandle_t>);
-  static_assert(std::is_pointer_v<Qnn_ContextHandle_t>);
-  static_assert(std::is_pointer_v<Qnn_ProfileHandle_t>);
-
-  template<typename QnnHandleType>
-  using UniqueQnnHandle =
-      std::unique_ptr<std::remove_pointer_t<QnnHandleType>, std::function<void(QnnHandleType)>>;
-
-  struct QnnContextHandleRecord {
-    UniqueQnnHandle<Qnn_ContextHandle_t> context_handle;
-    std::unique_ptr<QnnContextMemHandleManager> mem_handles;
-  };
-
- private:
   const std::string backend_path_;
-  std::recursive_mutex logger_recursive_mutex_;
   const logging::Logger* logger_ = nullptr;
-  void* backend_lib_handle_ = nullptr;
-  void* system_lib_handle_ = nullptr;
+
+  // Note: The data member ordering is significant.
+  // E.g., backend_lib_handle_ should only be destroyed after every usage of QNN interface functions, so it is declared
+  // before the other UniqueQnnHandle data members so that the backend_lib_handle_ destructor will be run after the
+  // UniqueQnnHandle destructors.
+
+  UniqueLibraryHandle backend_lib_handle_{};
+  UniqueLibraryHandle system_lib_handle_{};
   QNN_INTERFACE_VER_TYPE qnn_interface_ = QNN_INTERFACE_VER_TYPE_INIT;
   QNN_SYSTEM_INTERFACE_VER_TYPE qnn_sys_interface_ = QNN_SYSTEM_INTERFACE_VER_TYPE_INIT;
+
   UniqueQnnHandle<Qnn_BackendHandle_t> backend_handle_{};
   UniqueQnnHandle<Qnn_LogHandle_t> log_handle_{};
   UniqueQnnHandle<Qnn_DeviceHandle_t> device_handle_{};
@@ -287,10 +277,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   ProfilingLevel profiling_level_;
   ProfilingLevel profiling_level_merge_;
   const std::string profiling_file_path_;
-  bool backend_initialized_ = false;
-  bool device_created_ = false;
   bool context_created_ = false;
-  bool backend_setup_completed_ = false;
+  std::atomic<bool> backend_setup_completed_ = false;
   // NPU backend requires quantized model
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   UniqueQnnHandle<Qnn_ProfileHandle_t> profile_backend_handle_{};

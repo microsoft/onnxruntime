@@ -59,18 +59,28 @@ static const char* DlError() {
 template <typename F, class T>
 Status QnnBackendManager::GetQnnInterfaceProvider(const char* lib_path,
                                                   const char* interface_provider_name,
-                                                  void** backend_lib_handle,
+                                                  UniqueLibraryHandle& backend_lib_handle_result,
                                                   Qnn_Version_t req_version,
                                                   T** interface_provider) {
   std::string error_msg;
-  *backend_lib_handle = LoadLib(lib_path,
-                                static_cast<int>(DlOpenFlag::DL_NOW) | static_cast<int>(DlOpenFlag::DL_LOCAL),
-                                error_msg);
-  ORT_RETURN_IF(nullptr == *backend_lib_handle, "Unable to load backend, error: ", error_msg, " ", DlError());
+  void* raw_backend_lib_handle = LoadLib(lib_path,
+                                         static_cast<int>(DlOpenFlag::DL_NOW) | static_cast<int>(DlOpenFlag::DL_LOCAL),
+                                         error_msg);
+  ORT_RETURN_IF(raw_backend_lib_handle == nullptr, "Unable to load backend, error: ", error_msg, " ", DlError());
+
+  auto unload_library = [this](void* raw_library_handle) {
+    const auto result = UnloadLib(raw_library_handle);
+    if (!result.IsOK()) {
+      // use default logger because logger_ might already be destroyed
+      LOGS_DEFAULT(ERROR) << "Failed to unload library: " << result.ErrorMessage();
+    }
+  };
+
+  UniqueLibraryHandle backend_lib_handle{raw_backend_lib_handle, unload_library};
 
   // Get QNN Interface providers
   F GetInterfaceProviders{nullptr};
-  GetInterfaceProviders = ResolveSymbol<F>(*backend_lib_handle, interface_provider_name, *logger_);
+  GetInterfaceProviders = ResolveSymbol<F>(backend_lib_handle.get(), interface_provider_name, *logger_);
   ORT_RETURN_IF(nullptr == GetInterfaceProviders, "Failed to get QNN providers!");
 
   T** interface_providers{nullptr};
@@ -103,6 +113,7 @@ Status QnnBackendManager::GetQnnInterfaceProvider(const char* lib_path,
 
   ORT_RETURN_IF_NOT(found_valid_interface, "Unable to find a valid interface for ", lib_path);
 
+  backend_lib_handle_result = std::move(backend_lib_handle);
   return Status::OK();
 }
 
@@ -132,7 +143,7 @@ Status QnnBackendManager::LoadBackend() {
   auto rt = GetQnnInterfaceProvider<QnnInterfaceGetProvidersFn_t,
                                     QnnInterface_t>(backend_path_.c_str(),
                                                     "QnnInterface_getProviders",
-                                                    &backend_lib_handle_,
+                                                    backend_lib_handle_,
                                                     {QNN_API_VERSION_MAJOR,
                                                      QNN_API_VERSION_MINOR,
                                                      QNN_API_VERSION_PATCH},
@@ -158,25 +169,13 @@ Status QnnBackendManager::LoadBackend() {
 // QNN Saver is a "debugging" backend that serializes all QNN API calls (and weights) into local files.
 // This information can be used to debug issues by replaying QNN API calls with another backend.
 Status QnnBackendManager::LoadQnnSaverBackend() {
-  void* backend_lib_handle = nullptr;
-
-  // Helper that unloads the intended backend library handle when the `unload_backend_lib` variable
-  // goes out of scope. Similar to `defer` in other languages.
-  auto unload_backend_lib = gsl::finally([&] {
-    if (backend_lib_handle != nullptr) {
-      auto result = UnloadLib(backend_lib_handle);
-      if (Status::OK() != result) {
-        ORT_THROW("Failed to unload backend library.");
-      }
-    }
-  });
-
   // Load the intended backend (e.g., HTP, CPU) to ensure it is valid and to get its type.
+  UniqueLibraryHandle intended_backend_lib_handle{};
   QnnInterface_t* backend_interface_provider{nullptr};
   auto rt = GetQnnInterfaceProvider<QnnInterfaceGetProvidersFn_t,
                                     QnnInterface_t>(backend_path_.c_str(),
                                                     "QnnInterface_getProviders",
-                                                    &backend_lib_handle,
+                                                    intended_backend_lib_handle,
                                                     {QNN_API_VERSION_MAJOR,
                                                      QNN_API_VERSION_MINOR,
                                                      QNN_API_VERSION_PATCH},
@@ -192,7 +191,7 @@ Status QnnBackendManager::LoadQnnSaverBackend() {
   auto saver_rt = GetQnnInterfaceProvider<QnnInterfaceGetProvidersFn_t,
                                           QnnInterface_t>(qnn_saver_path_.c_str(),
                                                           "QnnInterface_getProviders",
-                                                          &backend_lib_handle_,  // NOTE: QNN Saver library handle is set
+                                                          backend_lib_handle_,  // NOTE: QNN Saver library handle is set
                                                           {QNN_API_VERSION_MAJOR,
                                                            QNN_API_VERSION_MINOR,
                                                            QNN_API_VERSION_PATCH},
@@ -228,7 +227,7 @@ Status QnnBackendManager::LoadQnnSystemLib() {
   auto rt = GetQnnInterfaceProvider<QnnSystemInterfaceGetProvidersFn_t,
                                     QnnSystemInterface_t>(sys_file_path.c_str(),
                                                           "QnnSystemInterface_getProviders",
-                                                          &system_lib_handle_,
+                                                          system_lib_handle_,
                                                           {QNN_SYSTEM_API_VERSION_MAJOR,
                                                            QNN_SYSTEM_API_VERSION_MINOR,
                                                            QNN_SYSTEM_API_VERSION_PATCH},
@@ -309,10 +308,10 @@ QnnLog_Level_t QnnBackendManager::MapOrtSeverityToQNNLogLevel(logging::Severity 
 }
 
 Status QnnBackendManager::ResetQnnLogLevel(std::optional<logging::Severity> ort_log_level) {
-  std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
-  if (!backend_setup_completed_ || logger_ == nullptr) {
+  if (!backend_setup_completed_.load()) {
     return Status::OK();
   }
+
   ORT_RETURN_IF(!log_handle_, "Unable to update QNN Log Level. Invalid QNN log handle.");
 
   logging::Severity actual_log_level = ort_log_level.has_value() ? *ort_log_level : logger_->GetSeverity();
@@ -335,7 +334,7 @@ Status QnnBackendManager::ResetQnnLogLevel(std::optional<logging::Severity> ort_
 }
 
 Status QnnBackendManager::InitializeBackend() {
-  if (true == backend_initialized_) {
+  if (backend_handle_ != nullptr) {
     LOGS_DEFAULT(INFO) << "Backend initialized already.";
     return Status::OK();
   }
@@ -356,19 +355,6 @@ Status QnnBackendManager::InitializeBackend() {
   };
 
   backend_handle_ = UniqueQnnHandle<Qnn_BackendHandle_t>{raw_backend_handle, free_backend_handle};
-  backend_initialized_ = true;
-  return Status::OK();
-}
-
-Status QnnBackendManager::ShutdownBackend() {
-  if (false == backend_initialized_) {
-    return Status::OK();
-  }
-
-  backend_handle_.reset();
-
-  backend_initialized_ = false;
-
   return Status::OK();
 }
 
@@ -385,7 +371,7 @@ bool QnnBackendManager::IsDevicePropertySupported() {
 }
 
 Status QnnBackendManager::CreateDevice() {
-  if (true == device_created_) {
+  if (device_handle_ != nullptr) {
     LOGS_DEFAULT(INFO) << "Device initialized already.";
     return Status::OK();
   }
@@ -444,20 +430,6 @@ Status QnnBackendManager::CreateDevice() {
     device_handle_ = UniqueQnnHandle<Qnn_DeviceHandle_t>{raw_device_handle, free_device_handle};
   }
 
-  device_created_ = true;
-
-  return Status::OK();
-}
-
-Status QnnBackendManager::ReleaseDevice() {
-  if (false == device_created_) {
-    return Status::OK();
-  }
-
-  device_handle_.reset();
-
-  device_created_ = false;
-
   return Status::OK();
 }
 
@@ -497,26 +469,13 @@ Status QnnBackendManager::InitializeProfiling() {
   return Status::OK();
 }
 
-Status QnnBackendManager::ReleaseProfilehandle() {
-  // Free Profiling object if it was created
-  profile_backend_handle_.reset();
-
-  return Status::OK();
-}
-
 Status QnnBackendManager::SetProfilingLevelETW(ProfilingLevel profiling_level_etw_param) {
   if (profiling_level_etw_ != profiling_level_etw_param) {
     profiling_level_etw_ = profiling_level_etw_param;
 
-    auto result = ReleaseProfilehandle();
-    if (Status::OK() != result) {
-      ORT_THROW("Failed to ReleaseProfilehandle for previous QNN profiling");
-    }
+    profile_backend_handle_.reset();
 
-    result = InitializeProfiling();
-    if (Status::OK() != result) {
-      ORT_THROW("Failed to Re-InitializeProfiling for QNN ETW profiling");
-    }
+    ORT_RETURN_IF_ERROR(InitializeProfiling());
   }
   return Status::OK();
 }
@@ -551,7 +510,7 @@ Status SetQnnContextConfig(ContextPriority context_priority, QnnContext_Config_t
 }
 
 Status QnnBackendManager::CreateContext() {
-  if (true == context_created_) {
+  if (!context_map_.empty()) {
     LOGS_DEFAULT(INFO) << "Context created already.";
     return Status::OK();
   }
@@ -579,20 +538,6 @@ Status QnnBackendManager::CreateContext() {
 
   ORT_RETURN_IF_ERROR(AddQnnContextHandle(context));
 
-  context_created_ = true;
-  return Status::OK();
-}
-
-Status QnnBackendManager::ReleaseContext() {
-  if (false == context_created_) {
-    return Status::OK();
-  }
-
-  // release QNN context handles
-  contexts_.clear();
-  context_map_.clear();
-
-  context_created_ = false;
   return Status::OK();
 }
 
@@ -821,8 +766,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
                                        bool load_from_cached_context,
                                        bool need_load_system_lib) {
-  std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
-  if (backend_setup_completed_) {
+  if (backend_setup_completed_.load()) {
     LOGS(logger, VERBOSE) << "Backend setup already!";
     return Status::OK();
   }
@@ -886,10 +830,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
 
   if (status.IsOK()) {
     LOGS(logger, VERBOSE) << "QNN SetupBackend succeed";
-    backend_setup_completed_ = true;
-  } else {
-    LOGS_DEFAULT(WARNING) << "Failed to setup so cleaning up";
-    ReleaseResources();
+    backend_setup_completed_.store(true);
   }
 
   return status;
@@ -1095,59 +1036,6 @@ Status QnnBackendManager::DestroyHTPPowerConfigID(uint32_t htp_power_config_id) 
   Qnn_ErrorHandle_t destroy_ret = htp_perf_infra.destroyPowerConfigId(htp_power_config_id);
   ORT_RETURN_IF(QNN_SUCCESS != destroy_ret, "destroyPowerConfigId failed.");
   return Status::OK();
-}
-
-Status QnnBackendManager::TerminateQnnLog() {
-  std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
-  if (logger_ == nullptr) {
-    return Status::OK();
-  }
-
-  log_handle_.reset();
-
-  return Status::OK();
-}
-
-void QnnBackendManager::ReleaseResources() {
-  if (!backend_setup_completed_) {
-    return;
-  }
-
-  auto result = ReleaseContext();
-  if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to ReleaseContext.";
-  }
-
-  result = ReleaseProfilehandle();
-  if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to ReleaseProfilehandle.";
-  }
-
-  result = ReleaseDevice();
-  if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to ReleaseDevice.";
-  }
-
-  result = ShutdownBackend();
-  if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to ShutdownBackend.";
-  }
-
-  result = TerminateQnnLog();
-  if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to TerminateQnnLog.";
-  }
-
-  if (backend_lib_handle_) {
-    result = UnloadLib(backend_lib_handle_);
-    if (Status::OK() != result) {
-      LOGS_DEFAULT(ERROR) << "Failed to unload backend library.";
-    }
-  }
-
-  backend_setup_completed_ = false;
-
-  return;
 }
 
 Status QnnBackendManager::ExtractBackendProfilingInfo() {
@@ -1514,7 +1402,6 @@ const std::string QnnBackendManager::ExtractQnnScalarValue(const Qnn_Scalar_t& s
 }
 
 QnnBackendManager::~QnnBackendManager() {
-  ReleaseResources();
 }
 
 void* QnnBackendManager::LoadLib(const char* file_name, int flags, std::string& error_msg) {
