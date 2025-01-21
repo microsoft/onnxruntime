@@ -14,7 +14,7 @@ ComputeContext::ComputeContext(OpKernelContext& kernel_context)
 }
 
 void ComputeContext::PushErrorScope() {
-  if (webgpu_context_.ValidationMode() >= ValidationMode::Basic) {
+  if (webgpu_context_.ValidationMode() > ValidationMode::Basic) {
     webgpu_context_.Device().PushErrorScope(wgpu::ErrorFilter::Validation);
   }
 }
@@ -22,7 +22,7 @@ void ComputeContext::PushErrorScope() {
 Status ComputeContext::PopErrorScope() {
   Status status{};
 
-  if (webgpu_context_.ValidationMode() >= ValidationMode::Basic) {
+  if (webgpu_context_.ValidationMode() > ValidationMode::Basic) {
     ORT_RETURN_IF_ERROR(webgpu_context_.Wait(
         webgpu_context_.Device().PopErrorScope(
             wgpu::CallbackMode::WaitAnyOnly, [](wgpu::PopErrorScopeStatus pop_status, wgpu::ErrorType error_type, char const* message, Status* status) {
