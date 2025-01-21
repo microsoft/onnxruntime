@@ -251,10 +251,6 @@ void QnnLogging(const char* format,
   ORT_UNUSED_PARAMETER(level);
   ORT_UNUSED_PARAMETER(timestamp);
 
-  if (!format) {
-    return;
-  }
-
   if (!::onnxruntime::logging::LoggingManager::HasDefaultLogger()) {
     // QNN may call this logging callback at any point, which means that we need to explicitly check
     // that the default logger has been initialized before trying to use it (otherwise get segfault).
