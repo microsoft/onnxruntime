@@ -250,10 +250,14 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   const std::string backend_path_;
   const logging::Logger* logger_ = nullptr;
 
-  // Note: The data member ordering is significant.
-  // E.g., backend_lib_handle_ should only be destroyed after every usage of QNN interface functions, so it is declared
-  // before the other UniqueQnnHandle data members so that the backend_lib_handle_ destructor will be run after the
-  // UniqueQnnHandle destructors.
+  // Note: The data member ordering is significant. The data member destructors are run in reverse order.
+  // - backend_lib_handle_ should be destroyed after every usage of QNN interface functions, which includes the
+  //   destructors of the UniqueQnnHandle data members.
+  // - On Windows, mod_handles_ should be destroyed after backend_lib_handle_ and system_lib_handle_ are destroyed.
+
+#ifdef _WIN32
+  std::set<HMODULE> mod_handles_;
+#endif
 
   UniqueLibraryHandle backend_lib_handle_{};
   UniqueLibraryHandle system_lib_handle_{};
@@ -288,9 +292,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   std::vector<std::string> op_package_paths_;
   ContextPriority context_priority_;
   std::string sdk_build_version_ = "";
-#ifdef _WIN32
-  std::set<HMODULE> mod_handles_;
-#endif
   const std::string qnn_saver_path_;
   uint32_t device_id_ = 0;
   QnnHtpDevice_Arch_t htp_arch_ = QNN_HTP_DEVICE_ARCH_NONE;
