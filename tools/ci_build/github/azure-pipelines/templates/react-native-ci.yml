@@ -42,6 +42,10 @@ stages:
       enable_code_sign: '${{parameters.enable_code_sign}}'
       pool_name: '${{parameters.PoolName}}'
       packageName: 'onnxruntime-android'
+- stage: ReactNative_CI_Android
+  displayName: ReactNative_CI_Android
+  dependsOn: Build_Android_Packages
+  jobs:
   - template: ../stages/jobs/react-natvie-andriod-e2e-test-job.yml
     parameters:
       PackageName: '${{parameters.PackageName}}'
@@ -75,7 +79,7 @@ stages:
     - script: |
         pip install -r tools/ci_build/github/apple/ios_packaging/requirements.txt
       displayName: "Install Python requirements"
-# Build the iOS package
+    # Build the iOS package
     - template: mac-build-step-with-cache.yml
       parameters:
         WithCache: true
@@ -98,7 +102,7 @@ stages:
             CCACHE_DEPEND: 1
             CCACHE_SLOPPINESS: modules
             CCACHE_DIR: $(ORT_CACHE_DIR)
-# Test the iOS package
+    # Test the iOS package
     - task: NodeTool@0
       inputs:
         versionSpec: '20.x'
