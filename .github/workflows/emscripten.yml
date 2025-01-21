@@ -54,14 +54,17 @@ jobs:
       - name: "Run build.py"
         run: |
           git config --global --add safe.directory ${{ github.workspace }}
+          git config --global --add safe.directory /__w/onnxruntime/onnxruntime
           # "/emsdk/node/20.18.0_64bit/bin/..."
           export EMSDK_NODE=$(which node)
-          python3 ./tools/ci_build/build.py --allow_running_as_root \
+          python3 ./tools/ci_build/build.py --allow_running_as_root --compile_no_warning_as_error \
             --build_dir ./build \
             --build_wasm \
             --parallel \
             --use_vcpkg \
             --skip_submodule_sync \
+            --enable_wasm_simd \
+            --enable_wasm_threads \
             --cmake_extra_defines "CMAKE_TOOLCHAIN_FILE:FILEPATH=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" \
             --cmake_extra_defines "VCPKG_TARGET_TRIPLET=wasm32-emscripten" \
             --cmake_extra_defines "VCPKG_INSTALLED_DIR:PATH=${{ github.workspace }}/.build"
