@@ -83,7 +83,7 @@ stages:
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
 
 - stage: Final_AAR_Testing_Android_Training_Full
-  dependsOn: Android_Java_API_AAR_Packaging_Training_Full
+  dependsOn: Android_Java_API_AAR_Packaging_Full
   jobs:
   - template: android-java-api-aar-test.yml
     parameters:
