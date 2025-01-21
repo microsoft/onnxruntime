@@ -15,6 +15,7 @@
   },
   "version": "1.21.0",
   "dependencies": {
+    "global-agent": "^3.0.0",
     "onnxruntime-common": "file:../common",
     "tar": "^7.0.1"
   },

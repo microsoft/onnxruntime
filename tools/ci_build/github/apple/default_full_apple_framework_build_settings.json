@@ -24,15 +24,15 @@
         ],
         "macosx": [
             "--macos=MacOSX",
-            "--apple_deploy_target=11.0"
+            "--apple_deploy_target=13.3"
         ],
         "iphoneos": [
             "--ios",
-            "--apple_deploy_target=13.0"
+            "--apple_deploy_target=15.1"
         ],
         "iphonesimulator": [
             "--ios",
-            "--apple_deploy_target=13.0"
+            "--apple_deploy_target=15.1"
         ]
     }
 }

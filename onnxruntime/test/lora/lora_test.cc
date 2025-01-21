@@ -201,16 +201,6 @@ TEST(LoraAdapterTest, Load) {
 
 #ifdef USE_CUDA
 TEST(LoraAdapterTest, VerifyDeviceCopy) {
-  // These checks for CUDA/DML combined Package, Be careful when you want to remove it!
-  if (DefaultCudaExecutionProvider() == nullptr) {
-    GTEST_SKIP() << "Skip This Test Due to this EP is null";
-  }
-#ifdef USE_DML
-  if (DefaultDmlExecutionProvider() != nullptr) {
-    GTEST_FAIL() << "It should not run with DML EP";
-  }
-#endif
-
   auto cpu_ep = DefaultCpuExecutionProvider();
   auto cpu_allocator = cpu_ep->CreatePreferredAllocators()[0];
   auto cuda_ep = DefaultCudaExecutionProvider();

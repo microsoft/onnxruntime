@@ -45,7 +45,7 @@ std::vector<std::vector<NodeIndex>> IdenticalChildrenConsolidation::DivideIdenti
     const Graph& graph,
     Node* node,
     const string_view& op) {
-  unordered_map<string_view, std::vector<NodeIndex>> identical_children_map;
+  unordered_map<std::string, std::vector<NodeIndex>> identical_children_map;
   for (auto i = node->OutputEdgesBegin(); i != node->OutputEdgesEnd(); ++i) {
     if (i->GetNode().OpType() == op) {
       identical_children_map[IdentityBuilder(graph, i->GetNode())].push_back(i->GetNode().Index());

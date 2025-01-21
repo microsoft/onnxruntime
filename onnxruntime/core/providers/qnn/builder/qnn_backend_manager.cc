@@ -7,20 +7,22 @@
 #include <fstream>
 #include <string>
 #include "QnnOpDef.h"
-#include "HTP/QnnHtpPerfInfrastructure.h"
-#include "HTP/QnnHtpSystemContext.h"
 #include "CPU/QnnCpuCommon.h"
 // TODO: not exist for Windows yet
 // #include "GPU/QnnGpuCommon.h"
 #include "DSP/QnnDspCommon.h"
 #include "HTP/QnnHtpCommon.h"
 #include "HTP/QnnHtpContext.h"
+#include "HTP/QnnHtpPerfInfrastructure.h"
+#include "HTP/QnnHtpSystemContext.h"
 #include "Saver/QnnSaver.h"
 #include <gsl/gsl>
 #include "core/framework/endian_utils.h"
 #include "core/common/logging/capture.h"
+#include "core/providers/qnn/qnn_allocator.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 #include "core/providers/qnn/builder/qnn_configs_helper.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 
 #ifdef _WIN32
 #include <winmeta.h>
@@ -44,6 +46,14 @@ static Qnn_Version_t GetQnnInterfaceApiVersion(const QnnInterface_t* qnn_interfa
 
 static Qnn_Version_t GetQnnInterfaceApiVersion(const QnnSystemInterface_t* qnn_interface) {
   return qnn_interface->systemApiVersion;
+}
+
+static const char* DlError() {
+#ifdef _WIN32
+  return "";
+#else
+  return ::dlerror();
+#endif
 }
 
 template <typename F, class T>
@@ -255,7 +265,9 @@ void QnnLogging(const char* format,
   }
 }
 
-Status QnnBackendManager::InitializeQnnLog() {
+Status QnnBackendManager::InitializeQnnLog(const logging::Logger& logger) {
+  logger_ = &logger;
+
   // Set Qnn log level align with Ort log level
   auto ort_log_level = logger_->GetSeverity();
   QnnLog_Level_t qnn_log_level = MapOrtSeverityToQNNLogLevel(ort_log_level);
@@ -303,23 +315,15 @@ QnnLog_Level_t QnnBackendManager::MapOrtSeverityToQNNLogLevel(logging::Severity 
   }
 }
 
-Status QnnBackendManager::ResetQnnLogLevel() {
-  std::lock_guard<std::mutex> lock(logger_mutex_);
-
-  if (backend_setup_completed_ && logger_ != nullptr) {
-    auto ort_log_level = logger_->GetSeverity();
-    LOGS(*logger_, INFO) << "Reset Qnn log level to ORT Logger level: " << (unsigned int)ort_log_level;
-    return UpdateQnnLogLevel(ort_log_level);
+Status QnnBackendManager::ResetQnnLogLevel(std::optional<logging::Severity> ort_log_level) {
+  std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
+  if (!backend_setup_completed_ || logger_ == nullptr) {
+    return Status::OK();
   }
-  return Status::OK();
-}
-
-Status QnnBackendManager::UpdateQnnLogLevel(logging::Severity ort_log_level) {
   ORT_RETURN_IF(nullptr == log_handle_, "Unable to update QNN Log Level. Invalid QNN log handle.");
-  ORT_RETURN_IF(false == backend_setup_completed_, "Unable to update QNN Log Level. Backend setup not completed.");
-  ORT_RETURN_IF(nullptr == logger_, "Unable to update QNN Log Level. Invalid logger.");
 
-  QnnLog_Level_t qnn_log_level = MapOrtSeverityToQNNLogLevel(ort_log_level);
+  logging::Severity actual_log_level = ort_log_level.has_value() ? *ort_log_level : logger_->GetSeverity();
+  QnnLog_Level_t qnn_log_level = MapOrtSeverityToQNNLogLevel(actual_log_level);
 
   LOGS(*logger_, INFO) << "Updating Qnn log level to: " << qnn_log_level;
 
@@ -332,7 +336,8 @@ Status QnnBackendManager::UpdateQnnLogLevel(logging::Severity ort_log_level) {
       LOGS(*logger_, ERROR) << "Invalid log handle provided to QnnLog_setLogLevel.";
     }
   }
-  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result, "Failed to set log level in Qnn backend. Error: ", QnnErrorHandleToString(result));
+  ORT_RETURN_IF(QNN_BACKEND_NO_ERROR != result,
+                "Failed to set log level in Qnn backend. Error: ", QnnErrorHandleToString(result));
   return Status::OK();
 }
 
@@ -541,18 +546,21 @@ Status QnnBackendManager::CreateContext() {
 
   QnnContext_Config_t context_priority_config = QNN_CONTEXT_CONFIG_INIT;
   ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, context_priority_config));
-  const QnnContext_Config_t* context_configs[] = {&context_priority_config,
-                                                  &context_config_weight_sharing,
-                                                  nullptr};
+  const QnnContext_Config_t* npu_context_configs[] = {&context_priority_config,
+                                                      &context_config_weight_sharing,
+                                                      nullptr};
+  const QnnContext_Config_t* empty_context_configs[] = {nullptr};
+  bool is_npu_backend = IsNpuBackend(GetQnnBackendType());
 
   Qnn_ContextHandle_t context = nullptr;
   Qnn_ErrorHandle_t result = qnn_interface_.contextCreate(backend_handle_,
                                                           device_handle_,
-                                                          context_configs,
+                                                          is_npu_backend ? npu_context_configs : empty_context_configs,
                                                           &context);
-  contexts_.push_back(context);
 
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result));
+
+  ORT_RETURN_IF_ERROR(AddQnnContextHandle(context));
 
   context_created_ = true;
   return Status::OK();
@@ -563,14 +571,9 @@ Status QnnBackendManager::ReleaseContext() {
     return Status::OK();
   }
 
-  bool failed = false;
-  for (auto context : contexts_) {
-    Qnn_ErrorHandle_t result = qnn_interface_.contextFree(context, nullptr);
-    if (QNN_CONTEXT_NO_ERROR != result) {
-      failed = true;
-    }
-  }
-  ORT_RETURN_IF(failed, "Failed to release context.");
+  // release QNN context handles
+  contexts_.clear();
+  context_map_.clear();
 
   context_created_ = false;
   return Status::OK();
@@ -619,6 +622,9 @@ std::unique_ptr<unsigned char[]> QnnBackendManager::GetContextBinaryBuffer(uint6
 Status QnnBackendManager::GetMaxSpillFillBufferSize(unsigned char* buffer,
                                                     uint64_t buffer_length,
                                                     uint64_t& max_spill_fill_buffer_size) {
+  max_spill_fill_buffer_size = 0;
+  // spill fill starts from 2.28
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 21)
   bool result = nullptr == qnn_sys_interface_.systemContextCreate ||
                 nullptr == qnn_sys_interface_.systemContextGetBinaryInfo ||
                 nullptr == qnn_sys_interface_.systemContextFree;
@@ -672,6 +678,10 @@ Status QnnBackendManager::GetMaxSpillFillBufferSize(unsigned char* buffer,
       LOGS(*logger_, VERBOSE) << "Unknown context binary graph info version.";
     }
   }
+#else
+  ORT_UNUSED_PARAMETER(buffer);
+  ORT_UNUSED_PARAMETER(buffer_length);
+#endif
 
   LOGS(*logger_, VERBOSE) << "Get max spill fill buffer size completed.";
   return Status::OK();
@@ -705,16 +715,23 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
   ORT_RETURN_IF(nullptr == binary_info, "Qnn cached binary info is nullptr.");
   uint32_t graph_count = 0;
   QnnSystemContext_GraphInfo_t* graphs_info = nullptr;
-  if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_3) {
-    graph_count = binary_info->contextBinaryInfoV3.numGraphs;
-    graphs_info = binary_info->contextBinaryInfoV3.graphs;
-  } else if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_2) {
-    graph_count = binary_info->contextBinaryInfoV2.numGraphs;
-    graphs_info = binary_info->contextBinaryInfoV2.graphs;
-  } else if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_1) {
+  if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_1) {
     graph_count = binary_info->contextBinaryInfoV1.numGraphs;
     graphs_info = binary_info->contextBinaryInfoV1.graphs;
-  } else {
+  }
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 15)  // starts from 2.22
+  else if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_2) {
+    graph_count = binary_info->contextBinaryInfoV2.numGraphs;
+    graphs_info = binary_info->contextBinaryInfoV2.graphs;
+  }
+#endif
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 21)  // starts from 2.28
+  else if (binary_info->version == QNN_SYSTEM_CONTEXT_BINARY_INFO_VERSION_3) {
+    graph_count = binary_info->contextBinaryInfoV3.numGraphs;
+    graphs_info = binary_info->contextBinaryInfoV3.graphs;
+  }
+#endif
+  else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported context binary info version.");
   }
 
@@ -757,7 +774,7 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
                                               &context,
                                               profile_backend_handle_);
   ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary. Error code: ", rt);
-  contexts_.push_back(context);
+  ORT_RETURN_IF_ERROR(AddQnnContextHandle(context));
   if (1 == graph_count) {
     // in case the EPContext node is generated from script
     // the graph name from the context binary may not match the EPContext node name
@@ -787,50 +804,78 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
 Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
                                        bool load_from_cached_context,
                                        bool need_load_system_lib) {
-  std::lock_guard<std::mutex> lock(logger_mutex_);
+  std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
   if (backend_setup_completed_) {
     LOGS(logger, VERBOSE) << "Backend setup already!";
     return Status::OK();
   }
 
+  Status status = Status::OK();
   if (qnn_saver_path_.empty()) {
-    ORT_RETURN_IF_ERROR(LoadBackend());
+    status = LoadBackend();
   } else {
-    ORT_RETURN_IF_ERROR(LoadQnnSaverBackend());
+    status = LoadQnnSaverBackend();
+  }
+  if (status.IsOK()) {
+    LOGS(logger, VERBOSE) << "LoadBackend succeed.";
   }
 
-  LOGS(logger, VERBOSE) << "LoadBackend succeed.";
-
-  if (load_from_cached_context || need_load_system_lib) {
-    ORT_RETURN_IF_ERROR(LoadQnnSystemLib());
+  if (status.IsOK() && (load_from_cached_context || need_load_system_lib)) {
+    status = LoadQnnSystemLib();
   }
 
-  sdk_build_version_ = GetBackendBuildId();
-  LOGS(logger, VERBOSE) << "Backend build version: "
-                        << sdk_build_version_;
+  if (status.IsOK()) {
+    sdk_build_version_ = GetBackendBuildId();
+    LOGS(logger, VERBOSE) << "Backend build version: "
+                          << sdk_build_version_;
+  }
 
-  SetLogger(&logger);
-  LOGS(logger, VERBOSE) << "SetLogger succeed.";
+  if (status.IsOK()) {
+    status = InitializeQnnLog(logger);
+  }
+  if (status.IsOK()) {
+    LOGS(logger, VERBOSE) << "SetLogger succeed.";
+  }
 
-  ORT_RETURN_IF_ERROR(InitializeBackend());
-  LOGS(logger, VERBOSE) << "InitializeBackend succeed.";
+  if (status.IsOK()) {
+    status = InitializeBackend();
+  }
+  if (status.IsOK()) {
+    LOGS(logger, VERBOSE) << "InitializeBackend succeed.";
+  }
 
-  ORT_RETURN_IF_ERROR(CreateDevice());
-  LOGS(logger, VERBOSE) << "CreateDevice succeed.";
+  if (status.IsOK()) {
+    status = CreateDevice();
+  }
+  if (status.IsOK()) {
+    LOGS(logger, VERBOSE) << "CreateDevice succeed.";
+  }
 
-  ORT_RETURN_IF_ERROR(InitializeProfiling());
-  LOGS(logger, VERBOSE) << "InitializeProfiling succeed.";
+  if (status.IsOK()) {
+    status = InitializeProfiling();
+  }
+  if (status.IsOK()) {
+    LOGS(logger, VERBOSE) << "InitializeProfiling succeed.";
+  }
 
   if (!load_from_cached_context) {
-    ORT_RETURN_IF_ERROR(CreateContext());
-    LOGS(logger, VERBOSE) << "CreateContext succeed.";
+    if (status.IsOK()) {
+      status = CreateContext();
+    }
+    if (status.IsOK()) {
+      LOGS(logger, VERBOSE) << "CreateContext succeed.";
+    }
   }
 
-  LOGS(logger, VERBOSE) << "QNN SetupBackend succeed";
+  if (status.IsOK()) {
+    LOGS(logger, VERBOSE) << "QNN SetupBackend succeed";
+    backend_setup_completed_ = true;
+  } else {
+    LOGS_DEFAULT(WARNING) << "Failed to setup so cleaning up";
+    ReleaseResources();
+  }
 
-  backend_setup_completed_ = true;
-
-  return Status::OK();
+  return status;
 }
 
 Status QnnBackendManager::CreateHtpPowerCfgId(uint32_t device_id, uint32_t core_id, uint32_t& htp_power_config_id) {
@@ -1035,6 +1080,24 @@ Status QnnBackendManager::DestroyHTPPowerConfigID(uint32_t htp_power_config_id) 
   return Status::OK();
 }
 
+Status QnnBackendManager::TerminateQnnLog() {
+  std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
+  if (logger_ == nullptr) {
+    return Status::OK();
+  }
+
+  if (nullptr != qnn_interface_.logFree && nullptr != log_handle_) {
+    auto ret_val = qnn_interface_.logFree(log_handle_);
+
+    // Reset QNN log handle to nullptr so other threads that are waiting on logger_recursive_mutex_ know it was freed.
+    log_handle_ = nullptr;
+    ORT_RETURN_IF(QNN_SUCCESS != ret_val,
+                  "Unable to terminate logging in the backend.");
+  }
+
+  return Status::OK();
+}
+
 void QnnBackendManager::ReleaseResources() {
   if (!backend_setup_completed_) {
     return;
@@ -1042,34 +1105,33 @@ void QnnBackendManager::ReleaseResources() {
 
   auto result = ReleaseContext();
   if (Status::OK() != result) {
-    ORT_THROW("Failed to ReleaseContext.");
+    LOGS_DEFAULT(ERROR) << "Failed to ReleaseContext.";
   }
 
   result = ReleaseProfilehandle();
   if (Status::OK() != result) {
-    ORT_THROW("Failed to ReleaseProfilehandle.");
+    LOGS_DEFAULT(ERROR) << "Failed to ReleaseProfilehandle.";
   }
 
   result = ReleaseDevice();
   if (Status::OK() != result) {
-    ORT_THROW("Failed to ReleaseDevice.");
+    LOGS_DEFAULT(ERROR) << "Failed to ReleaseDevice.";
   }
 
   result = ShutdownBackend();
   if (Status::OK() != result) {
-    ORT_THROW("Failed to ShutdownBackend.");
+    LOGS_DEFAULT(ERROR) << "Failed to ShutdownBackend.";
   }
 
-  std::lock_guard<std::mutex> lock(logger_mutex_);
   result = TerminateQnnLog();
   if (Status::OK() != result) {
-    ORT_THROW("Failed to TerminateQnnLog.");
+    LOGS_DEFAULT(ERROR) << "Failed to TerminateQnnLog.";
   }
 
   if (backend_lib_handle_) {
     result = UnloadLib(backend_lib_handle_);
     if (Status::OK() != result) {
-      ORT_THROW("Failed to unload backend library.");
+      LOGS_DEFAULT(ERROR) << "Failed to unload backend library.";
     }
   }
 
@@ -1398,13 +1460,8 @@ const char* QnnBackendManager::QnnProfileErrorToString(QnnProfile_Error_t error)
   }
 }
 
-const char* QnnBackendManager::QnnErrorHandleToString(Qnn_ErrorHandle_t error) {
-  // From QNN SDK: The memory is statically owned and should not be freed by the caller.
-  const char* error_msg = nullptr;
-  if (QNN_SUCCESS == qnn_interface_.errorGetMessage(error, &error_msg)) {
-    return error_msg;
-  }
-  return "Unknown";
+std::string_view QnnBackendManager::QnnErrorHandleToString(Qnn_ErrorHandle_t error) {
+  return utils::GetQnnErrorMessage(qnn_interface_, error);
 }
 
 const std::string QnnBackendManager::ExtractQnnScalarValue(const Qnn_Scalar_t& scalar) {
@@ -1635,6 +1692,91 @@ void* QnnBackendManager::LibFunction(void* handle, const char* symbol, std::stri
 
   return ::dlsym(handle, symbol);
 #endif
+}
+
+Status QnnBackendManager::AddQnnContextHandle(Qnn_ContextHandle_t raw_context_handle) {
+  ORT_RETURN_IF(logger_ == nullptr, "logger_ should be set.");
+
+  auto free_context_handle = [this, &logger = *logger_](Qnn_ContextHandle_t raw_context_handle) {
+    const auto free_result = qnn_interface_.contextFree(raw_context_handle, nullptr);
+    if (free_result != QNN_CONTEXT_NO_ERROR) {
+      LOGS(logger, ERROR) << "qnn_interface.contextFree() failed: "
+                          << utils::GetVerboseQnnErrorMessage(qnn_interface_, free_result);
+    }
+  };
+
+  // take ownership of `raw_context_handle`
+  auto context_handle = UniqueQnnContextHandle(raw_context_handle, free_context_handle);
+  auto mem_handle_manager = std::make_unique<QnnContextMemHandleManager>(GetQnnInterface(), raw_context_handle,
+                                                                         *logger_);
+
+  auto context_handle_record = std::make_shared<QnnContextHandleRecord>();
+  context_handle_record->context_handle = std::move(context_handle);
+  context_handle_record->mem_handles = std::move(mem_handle_manager);
+
+  const bool inserted = context_map_.try_emplace(raw_context_handle, std::move(context_handle_record)).second;
+  ORT_RETURN_IF_NOT(inserted, "QNN context was already added: ", raw_context_handle);
+
+  contexts_.push_back(raw_context_handle);
+
+  return Status::OK();
+}
+
+Status QnnBackendManager::GetOrRegisterContextMemHandle(Qnn_ContextHandle_t context_handle,
+                                                        void* shared_memory_address,
+                                                        const Qnn_Tensor_t& qnn_tensor,
+                                                        Qnn_MemHandle_t& mem_handle) {
+  // Multi-threading situations to consider:
+  // 1) Shared memory allocation is being freed in another thread while we are processing `shared_memory_address`.
+  //    This implies incorrect usage as the memory is being freed while it is still in use. Let's assume this won't
+  //    happen.
+  // 2) The shared memory allocation clean up function is being run from another thread while the
+  //    QnnContextHandleRecord or QnnBackendManager objects are being destroyed.
+  //    Usage of weak_ptrs from the clean up function should ensure that those objects are only accessed while they are
+  //    in scope.
+
+  const auto context_handle_record_it = context_map_.find(context_handle);
+  ORT_RETURN_IF_NOT(context_handle_record_it != context_map_.end(), "QNN context not found: ", context_handle);
+
+  auto& context_handle_record = context_handle_record_it->second;
+  auto& context_mem_handle_manager = context_handle_record->mem_handles;
+
+  bool did_register{};
+  ORT_RETURN_IF_ERROR(context_mem_handle_manager->GetOrRegister(shared_memory_address, qnn_tensor,
+                                                                mem_handle, did_register));
+
+  if (did_register) {
+    HtpSharedMemoryAllocator::AllocationCleanUpFn unregister_mem_handle =
+        [&logger = *logger_,
+         weak_backend_manager = weak_from_this(),
+         weak_context_handle_record = std::weak_ptr{context_handle_record}](
+            void* shared_memory_address) {
+          // Lock QnnBackendManager shared_ptr to ensure that QNN interface is still valid.
+          auto backend_manager = weak_backend_manager.lock();
+          if (!backend_manager) {
+            return;
+          }
+
+          // Lock QnnContextHandleRecord shared_ptr to ensure that QNN context handle is still valid.
+          auto context_handle_record = weak_context_handle_record.lock();
+          if (!context_handle_record) {
+            return;
+          }
+
+          auto& context_mem_handle_manager = context_handle_record->mem_handles;
+
+          auto unregister_status = context_mem_handle_manager->Unregister(shared_memory_address);
+          if (!unregister_status.IsOK()) {
+            LOGS(logger, ERROR) << "Failed to unregister shared memory mem handle for address: "
+                                << shared_memory_address << ", error: " << unregister_status.ErrorMessage();
+          }
+        };
+
+    ORT_RETURN_IF_ERROR(HtpSharedMemoryAllocator::AddAllocationCleanUp(shared_memory_address,
+                                                                       std::move(unregister_mem_handle)));
+  }
+
+  return Status::OK();
 }
 
 }  // namespace qnn

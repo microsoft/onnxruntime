@@ -3,10 +3,6 @@
 
 #pragma once
 
-#ifdef __EMSCRIPTEN__
-#include <emscripten/emscripten.h>
-#endif
-
 #include <webgpu/webgpu_cpp.h>
 
 #include <utility>
@@ -40,6 +36,9 @@ class ComputeContext {
   }
   inline const wgpu::Limits& DeviceLimits() const {
     return webgpu_context_.DeviceLimits();
+  }
+  inline const wgpu::Device& Device() const {
+    return webgpu_context_.Device();
   }
 
   //

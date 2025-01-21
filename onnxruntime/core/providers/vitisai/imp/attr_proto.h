@@ -23,5 +23,6 @@ const ONNX_NAMESPACE::TensorProto& attr_proto_get_tensor(const ONNX_NAMESPACE::A
 gsl::span<const int64_t> attr_proto_get_ints(const ONNX_NAMESPACE::AttributeProto& attr);
 gsl::span<const float> attr_proto_get_floats(const ONNX_NAMESPACE::AttributeProto& attr);
 std::vector<std::string> attr_proto_get_strings(const ONNX_NAMESPACE::AttributeProto& attr);
+std::string* attr_proto_release_string(ONNX_NAMESPACE::AttributeProto* attr);
 
 }  // namespace vaip
