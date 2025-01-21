@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "onnxruntime_config.h"
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
