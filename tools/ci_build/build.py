@@ -1383,7 +1383,6 @@ def generate_build_tree(
             cmake_args += ["-DCMAKE_XCODE_ATTRIBUTE_DEVELOPMENT_TEAM=" + args.xcode_code_signing_team_id]
 
     if args.use_qnn:
-
         if args.qnn_home is None or os.path.exists(args.qnn_home) is False:
             raise BuildError("qnn_home=" + qnn_home + " not valid." + " qnn_home paths must be specified and valid.")
         cmake_args += ["-Donnxruntime_USE_QNN=ON"]
