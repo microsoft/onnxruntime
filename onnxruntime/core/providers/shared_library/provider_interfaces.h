@@ -1221,6 +1221,8 @@ struct ProviderHost {
   virtual Status LoadDynamicLibrary(onnxruntime::PathString library_name) = 0;
 #endif
 
+  virtual Status GetEPOptimizerByName(const std::string& optimizer_name, std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>& selection_func) = 0;
+
   // ModelMetadefIdGenerator
   virtual std::unique_ptr<ModelMetadefIdGenerator> ModelMetadefIdGenerator__construct() = 0;
   virtual void ModelMetadefIdGenerator__operator_delete(ModelMetadefIdGenerator* p) = 0;

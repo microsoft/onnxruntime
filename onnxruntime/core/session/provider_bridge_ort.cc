@@ -203,6 +203,29 @@ common::Status LoadDynamicLibraryFromProvider(onnxruntime::PathString library_na
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
+Status ApplyConstantFoldingOnDQ(const Graph&, const ComputeCapability& this_optimization, ComputeCapability& cc_to_update) {
+  
+  return Status::OK();
+}
+
+std::vector<std::unique_ptr<ComputeCapability>> dq_nodes_to_constant_fold(const GraphViewer& graph_viewer) {
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+  std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+  const std::vector<NodeIndex>& node_index = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED /*priority-based topological sort*/);
+  for (const auto& index : node_index) {
+    const auto& node = graph_viewer.GetNode(index);
+    if (node->OpType() != "DequantizeLinear") {
+      continue;
+    }
+    sub_graph->nodes.push_back(index);
+    std::cout << node->Name() << ", op type: " << node->OpType() << std::endl;
+  }
+
+  result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+  result.back()->optimization_func = ApplyConstantFoldingOnDQ;
+  return result;
+}
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26436)
@@ -1485,7 +1508,14 @@ struct ProviderHostImpl : ProviderHost {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   Status LoadDynamicLibrary(onnxruntime::PathString library_name) override { return LoadDynamicLibraryFromProvider(library_name); };
 #endif
+
+  Status GetEPOptimizerByName(const std::string& optimizer_name, std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>& selection_func) override {
+    selection_func = dq_nodes_to_constant_fold;
+    return Status::OK();
+  };
+
 } provider_host_;
+
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif

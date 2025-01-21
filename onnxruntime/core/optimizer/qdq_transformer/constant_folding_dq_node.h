@@ -4,6 +4,7 @@
 #pragma once
 
 #include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/constant_folding.h"
 #include "core/framework/ort_value.h"
 #include <memory>
 #include "core/framework/execution_provider.h"
@@ -16,23 +17,25 @@ namespace onnxruntime {
 Transformer that traverses the graph top-down and performs constant folding, i.e.,
 it statically computes parts of the graph that rely only on constant initializers.
 */
-class ConstantFolding : public GraphTransformer {
+class ConstantFoldingDQ : public ConstantFolding {
  public:
   /*! Constant folding will not be applied to nodes that have one of initializers from excluded_initializers as input.
       For pre-training, the trainable weights are those initializers to be excluded.
       \param execution_provider Execution provider instance to execute constant folding.
   */
-  ConstantFolding(const IExecutionProvider& execution_provider,
-                  bool skip_dequantize_linear,
-                  const ConfigOptions& config_options,
-                  const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
-                  const InlinedHashSet<std::string>& excluded_initializers = {}) noexcept;
+  ConstantFoldingDQ(const IExecutionProvider& execution_provider,
+                    bool skip_dequantize_linear,
+                    const ConfigOptions& config_options,
+                    const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
+                    const InlinedHashSet<std::string>& excluded_initializers = {},
+                    const InlinedHashSet<onnxruntime::NodeIndex>& node_index_in_compute_capability = {}) noexcept;
 
-  virtual bool AllowConstantFolding(const Node&) const { return true; } 
+  bool AllowConstantFolding(const Node&) const; 
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
-
+  
+  const InlinedHashSet<onnxruntime::NodeIndex>& node_index_in_compute_capability_;
   bool skip_dequantize_linear_;
   const ConfigOptions& config_options_;
   const InlinedHashSet<std::string> excluded_initializers_;
