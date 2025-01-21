@@ -548,14 +548,16 @@ Status QnnBackendManager::CreateContext() {
 
   QnnContext_Config_t context_priority_config = QNN_CONTEXT_CONFIG_INIT;
   ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, context_priority_config));
-  const QnnContext_Config_t* context_configs[] = {&context_priority_config,
-                                                  &context_config_weight_sharing,
-                                                  nullptr};
+  const QnnContext_Config_t* npu_context_configs[] = {&context_priority_config,
+                                                      &context_config_weight_sharing,
+                                                      nullptr};
+  const QnnContext_Config_t* empty_context_configs[] = {nullptr};
+  bool is_npu_backend = IsNpuBackend(GetQnnBackendType());
 
   Qnn_ContextHandle_t context = nullptr;
   Qnn_ErrorHandle_t result = qnn_interface_.contextCreate(backend_handle_,
                                                           device_handle_,
-                                                          context_configs,
+                                                          is_npu_backend ? npu_context_configs : empty_context_configs,
                                                           &context);
 
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result));
@@ -1099,35 +1101,39 @@ Status QnnBackendManager::TerminateQnnLog() {
 }
 
 void QnnBackendManager::ReleaseResources() {
+  if (!backend_setup_completed_) {
+    return;
+  }
+
   auto result = ReleaseContext();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to ReleaseContext: " << result.ErrorMessage();
+    LOGS_DEFAULT(ERROR) << "Failed to ReleaseContext.";
   }
 
   result = ReleaseProfilehandle();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to ReleaseProfilehandle: " << result.ErrorMessage();
+    LOGS_DEFAULT(ERROR) << "Failed to ReleaseProfilehandle.";
   }
 
   result = ReleaseDevice();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to ReleaseDevice: " << result.ErrorMessage();
+    LOGS_DEFAULT(ERROR) << "Failed to ReleaseDevice.";
   }
 
   result = ShutdownBackend();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to ShutdownBackend: " << result.ErrorMessage();
+    LOGS_DEFAULT(ERROR) << "Failed to ShutdownBackend.";
   }
 
   result = TerminateQnnLog();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to TerminateQnnLog: " << result.ErrorMessage();
+    LOGS_DEFAULT(ERROR) << "Failed to TerminateQnnLog.";
   }
 
   if (backend_lib_handle_) {
     result = UnloadLib(backend_lib_handle_);
     if (Status::OK() != result) {
-      LOGS_DEFAULT(ERROR) << "Failed to unload backend library: " << result.ErrorMessage();
+      LOGS_DEFAULT(ERROR) << "Failed to unload backend library.";
     }
   }
 
