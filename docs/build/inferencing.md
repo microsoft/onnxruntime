@@ -187,14 +187,14 @@ To initiate build, run the below command
 ### Architectures
 {: .no_toc }
 
-|           | x86_32       | x86_64       | ARM32v7      | ARM64        | PPC64LE | RISCV64 | PPC64BE |
-|-----------|:------------:|:------------:|:------------:|:------------:|:-------:|:-------:| :------:|
-|Windows    | YES          | YES          |  YES         | YES          | NO      | NO      | NO      |
-|Linux      | YES          | YES          |  YES         | YES          | YES     | YES     | NO      |
-|macOS      | NO           | YES          |  NO          | NO           | NO      | NO      | NO      |
-|Android      | NO           | NO          |  YES          | YES           | NO      | NO      | NO     |
-|iOS      | NO           | NO          |  NO          | YES           | NO      | NO      |  NO     |
-|AIX        | NO           | NO          |  NO          | NO           | NO      | NO      |  YES     |
+|           | x86_32       | x86_64       | ARM32v7      | ARM64        | PPC64LE | RISCV64 | PPC64BE | S390X |
+|-----------|:------------:|:------------:|:------------:|:------------:|:-------:|:-------:| :------:|:-----:|
+|Windows    | YES          | YES          |  YES         | YES          | NO      | NO      | NO      | NO    |
+|Linux      | YES          | YES          |  YES         | YES          | YES     | YES     | NO      | YES   |
+|macOS      | NO           | YES          |  NO          | NO           | NO      | NO      | NO      | NO    |
+|Android      | NO           | NO          |  YES          | YES           | NO      | NO      | NO     | NO    |
+|iOS      | NO           | NO          |  NO          | YES           | NO      | NO      |  NO     | NO    |
+|AIX        | NO           | NO          |  NO          | NO           | NO      | NO      |  YES     | NO    |
 
 ### Build Environments(Host)
 {: .no_toc }
