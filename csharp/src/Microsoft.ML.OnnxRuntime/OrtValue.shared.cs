@@ -6,16 +6,14 @@ using System;
 using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
-using System.Reflection;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
-using System.Xml.Linq;
-
 
 #if NET8_0_OR_GREATER
-using DotnetTensors = System.Numerics.Tensors;
+using System.Diagnostics.CodeAnalysis;
+using System.Reflection;
+using System.Runtime.CompilerServices;
+using SystemNumericsTensors = System.Numerics.Tensors;
 using TensorPrimitives = System.Numerics.Tensors.TensorPrimitives;
 #endif
 
@@ -216,7 +214,6 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
 #if NET8_0_OR_GREATER
-#pragma warning disable SYSLIB5001 // System.Numerics.Tensors is only in preview so we can continue receiving API feedback
         /// <summary>
         /// Returns a ReadOnlyTensorSpan<typeparamref name="T"/> over tensor native buffer that
         /// provides a read-only view.
@@ -230,7 +227,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <typeparam name="T"></typeparam>
         /// <returns>ReadOnlySpan<typeparamref name="T"/></returns>
         /// <exception cref="OnnxRuntimeException"></exception>
-        public DotnetTensors.ReadOnlyTensorSpan<T> GetTensorDataAsTensorSpan<T>() where T : unmanaged
+        [Experimental("SYSLIB5001")]
+        public SystemNumericsTensors.ReadOnlyTensorSpan<T> GetTensorDataAsTensorSpan<T>() where T : unmanaged
         {
             var byteSpan = GetTensorBufferRawData(typeof(T));
 
@@ -238,9 +236,8 @@ namespace Microsoft.ML.OnnxRuntime
             var shape = GetTypeInfo().TensorTypeAndShapeInfo.Shape;
             nint[] nArray = Array.ConvertAll(shape, new Converter<long, nint>(x => (nint)x));
 
-            return new DotnetTensors.ReadOnlyTensorSpan<T>(typeSpan, nArray, []);
+            return new SystemNumericsTensors.ReadOnlyTensorSpan<T>(typeSpan, nArray, []);
         }
-#pragma warning restore SYSLIB5001 // System.Numerics.Tensors is only in preview so it can continue receiving API feedback
 #endif
 
         /// <summary>
@@ -264,7 +261,6 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
 #if NET8_0_OR_GREATER
-#pragma warning disable SYSLIB5001 // System.Numerics.Tensors is only in preview so we can continue receiving API feedback
         /// <summary>
         /// Returns a TensorSpan<typeparamref name="T"/> over tensor native buffer.
         ///
@@ -277,7 +273,8 @@ namespace Microsoft.ML.OnnxRuntime
         /// <typeparam name="T"></typeparam>
         /// <returns>ReadOnlySpan<typeparamref name="T"/></returns>
         /// <exception cref="OnnxRuntimeException"></exception>
-        public DotnetTensors.TensorSpan<T> GetTensorMutableDataAsTensorSpan<T>() where T : unmanaged
+        [Experimental("SYSLIB5001")]
+        public SystemNumericsTensors.TensorSpan<T> GetTensorMutableDataAsTensorSpan<T>() where T : unmanaged
         {
             var byteSpan = GetTensorBufferRawData(typeof(T));
 
@@ -285,9 +282,8 @@ namespace Microsoft.ML.OnnxRuntime
             var shape = GetTypeInfo().TensorTypeAndShapeInfo.Shape;
             nint[] nArray = Array.ConvertAll(shape, new Converter<long, nint>(x => (nint)x));
 
-            return new DotnetTensors.TensorSpan<T>(typeSpan, nArray, []);
+            return new SystemNumericsTensors.TensorSpan<T>(typeSpan, nArray, []);
         }
-#pragma warning restore SYSLIB5001 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
 #endif
 
         /// <summary>
@@ -300,21 +296,20 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
 #if NET8_0_OR_GREATER
-#pragma warning disable SYSLIB5001 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
         /// <summary>
         /// Provides mutable raw native buffer access.
         /// </summary>
         /// <returns>TensorSpan over the native buffer bytes</returns>
-        public DotnetTensors.TensorSpan<byte> GetTensorSpanMutableRawData<T>() where T : unmanaged
+        [Experimental("SYSLIB5001")]
+        public SystemNumericsTensors.TensorSpan<byte> GetTensorSpanMutableRawData<T>() where T : unmanaged
         {
             var byteSpan = GetTensorBufferRawData(typeof(T));
 
             var shape = GetTypeInfo().TensorTypeAndShapeInfo.Shape;
             nint[] nArray = Array.ConvertAll(shape, new Converter<long, nint>(x => (nint)x));
 
-            return new DotnetTensors.TensorSpan<byte>(byteSpan, nArray, []);
+            return new SystemNumericsTensors.TensorSpan<byte>(byteSpan, nArray, []);
         }
-#pragma warning restore SYSLIB5001 // System.Numerics.Tensors is only in preview so it can continue receiving API feedback
 #endif
 
         /// <summary>
@@ -689,7 +684,6 @@ namespace Microsoft.ML.OnnxRuntime
         }
 
 #if NET8_0_OR_GREATER
-#pragma warning disable SYSLIB5001 // System.Numerics.Tensors is only in preview so it can continue receiving API feedback
         /// <summary>
         /// This is a factory method creates a native Onnxruntime OrtValue containing a tensor.
         /// The method will attempt to pin managed memory so no copying occurs when data is passed down
@@ -698,11 +692,12 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="value">Tensor object</param>
         /// <param name="elementType">discovered tensor element type</param>
         /// <returns>And instance of OrtValue constructed on top of the object</returns>
-        public static OrtValue CreateTensorValueFromDotnetTensorObject<T>(DotnetTensors.ITensor<DotnetTensors.Tensor<T>, T> tensor) where T : unmanaged
+        [Experimental("SYSLIB5001")]
+        public static OrtValue CreateTensorValueFromSystemNumericsTensorObject<T>(SystemNumericsTensors.Tensor<T> tensor) where T : unmanaged
         {
             if (!IsContiguousAndDense(tensor))
             {
-                var newTensor = DotnetTensors.Tensor.Create<T>(tensor.Lengths);
+                var newTensor = SystemNumericsTensors.Tensor.Create<T>(tensor.Lengths);
                 tensor.CopyTo(newTensor);
                 tensor = newTensor;
             }
@@ -745,7 +740,8 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
-        private static bool IsContiguousAndDense<T>(DotnetTensors.ITensor<DotnetTensors.Tensor<T>, T> tensor) where T : unmanaged
+        [Experimental("SYSLIB5001")]
+        private static bool IsContiguousAndDense<T>(SystemNumericsTensors.Tensor<T> tensor) where T : unmanaged 
         {
             // Right most dimension must be 1 for a dense tensor.
             if (tensor.Strides[^1] != 1)
@@ -759,7 +755,6 @@ namespace Microsoft.ML.OnnxRuntime
             }
             return true;
         }
-#pragma warning restore SYSLIB5001 // System.Numerics.Tensors is only in preview so it can continue receiving API feedback
 #endif
 
         /// <summary>

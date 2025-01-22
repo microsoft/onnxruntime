@@ -113,7 +113,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                     Assert.Equal(typeof(float), inputMeta[name].ElementType);
                     Assert.True(inputMeta[name].IsTensor);
                     var tensor = DotnetTensors.Tensor.Create<float>(inputData, inputMeta[name].Dimensions.Select(x => (nint)x).ToArray());
-                    inputOrtValues.Add(new DisposableTestPair<OrtValue>(name, OrtValue.CreateTensorValueFromDotnetTensorObject<float>(tensor)));
+                    inputOrtValues.Add(new DisposableTestPair<OrtValue>(name, OrtValue.CreateTensorValueFromSystemNumericsTensorObject<float>(tensor)));
 
                 }
 
@@ -163,7 +163,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                             Assert.Equal(typeof(float), inputMeta[name].ElementType);
                             Assert.True(inputMeta[name].IsTensor);
                             var tensor = DotnetTensors.Tensor.Create<float>(inputData, inputMeta[name].Dimensions.Select(x => (nint) x).ToArray());
-                            inputOrtValues.Add(new DisposableTestPair<OrtValue>(name, OrtValue.CreateTensorValueFromDotnetTensorObject<float>(tensor)));
+                            inputOrtValues.Add(new DisposableTestPair<OrtValue>(name, OrtValue.CreateTensorValueFromSystemNumericsTensorObject<float>(tensor)));
                         }
                         
                         // Run inference with named inputs and outputs created with in Run()
@@ -203,8 +203,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 var tensor = DotnetTensors.Tensor.Create<float>(inputData, Array.ConvertAll<int, nint>(inputTensor.Dimensions.ToArray(), x => (nint)x));
 
-                inputOrtValues.Add(new DisposableTestPair<OrtValue>("data_0", OrtValue.CreateTensorValueFromDotnetTensorObject<float>(tensor)));
-                outputOrtValues.Add(new DisposableTestPair<OrtValue>("bad_output_name", OrtValue.CreateTensorValueFromDotnetTensorObject(tensor)));
+                inputOrtValues.Add(new DisposableTestPair<OrtValue>("data_0", OrtValue.CreateTensorValueFromSystemNumericsTensorObject<float>(tensor)));
+                outputOrtValues.Add(new DisposableTestPair<OrtValue>("bad_output_name", OrtValue.CreateTensorValueFromSystemNumericsTensorObject(tensor)));
 
                 var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(runOptions, ["data_0"], [inputOrtValues[0].Value], ["bad_output_name"], [outputOrtValues[0].Value]));
                 Assert.Contains("Output name: 'bad_output_name' is not in the metadata", ex.Message);
@@ -228,8 +228,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 var tensor = DotnetTensors.Tensor.Create<float>(inputData, Array.ConvertAll<int, nint>(inputTensor.Dimensions.ToArray(), x => (nint)x));
 
-                inputOrtValues.Add(new DisposableTestPair<OrtValue>("data_0", OrtValue.CreateTensorValueFromDotnetTensorObject<float>(tensor)));
-                outputOrtValues.Add(new DisposableTestPair<OrtValue>("softmaxout_1", OrtValue.CreateTensorValueFromDotnetTensorObject(outputTensor)));
+                inputOrtValues.Add(new DisposableTestPair<OrtValue>("data_0", OrtValue.CreateTensorValueFromSystemNumericsTensorObject<float>(tensor)));
+                outputOrtValues.Add(new DisposableTestPair<OrtValue>("softmaxout_1", OrtValue.CreateTensorValueFromSystemNumericsTensorObject(outputTensor)));
                 
                 var ex = Assert.Throws<OnnxRuntimeException>(() => session.Run(runOptions, ["data_0"], [inputOrtValues[0].Value], ["softmaxout_1"], [outputOrtValues[0].Value]));
             }
@@ -252,8 +252,8 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             {
                 var tensor = DotnetTensors.Tensor.Create<float>(inputData, Array.ConvertAll<int, nint>(inputTensor.Dimensions.ToArray(), x => (nint)x));
 
-                inputOrtValues.Add(new DisposableTestPair<OrtValue>("data_0", OrtValue.CreateTensorValueFromDotnetTensorObject<float>(tensor)));
-                outputOrtValues.Add(new DisposableTestPair<OrtValue>("softmaxout_1", OrtValue.CreateTensorValueFromDotnetTensorObject(outputTensor)));
+                inputOrtValues.Add(new DisposableTestPair<OrtValue>("data_0", OrtValue.CreateTensorValueFromSystemNumericsTensorObject<float>(tensor)));
+                outputOrtValues.Add(new DisposableTestPair<OrtValue>("softmaxout_1", OrtValue.CreateTensorValueFromSystemNumericsTensorObject(outputTensor)));
                 OrtValue[] outputs = [];
                 var ex = Assert.Throws<ArgumentException>(() => session.Run(runOptions, ["data_0"], [inputOrtValues[0].Value], ["softmaxout_1"], outputs));
                 Assert.StartsWith("Length of outputNames (1) must match that of outputValues (0).", ex.Message);
