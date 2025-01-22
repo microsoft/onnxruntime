@@ -382,6 +382,7 @@ def generate_files(line_list, args):
             "tensorrt_ep_shared_lib": "onnxruntime_providers_tensorrt.dll",
             "openvino_ep_shared_lib": "onnxruntime_providers_openvino.dll",
             "cuda_ep_shared_lib": "onnxruntime_providers_cuda.dll",
+            "qnn_ep_shared_lib": "onnxruntime_providers_qnn.dll",
             "onnxruntime_perf_test": "onnxruntime_perf_test.exe",
             "onnx_test_runner": "onnx_test_runner.exe",
         }
@@ -772,6 +773,24 @@ def generate_files(line_list, args):
             "<file src="
             + '"'
             + os.path.join(args.native_build_path, nuget_dependencies["cuda_ep_shared_lib"])
+            + runtimes_target
+            + args.target_architecture
+            + '\\native" />'
+        )
+
+    if args.execution_provider == "qnn" or (is_qnn_package and not is_ado_packaging_build):
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, nuget_dependencies["providers_shared_lib"])
+            + runtimes_target
+            + args.target_architecture
+            + '\\native" />'
+        )
+        files_list.append(
+            "<file src="
+            + '"'
+            + os.path.join(args.native_build_path, nuget_dependencies["qnn_ep_shared_lib"])
             + runtimes_target
             + args.target_architecture
             + '\\native" />'

@@ -76,6 +76,9 @@ final class OnnxRuntime {
   /** The short name of the ONNX runtime TensorRT provider library */
   static final String ONNXRUNTIME_LIBRARY_TENSORRT_NAME = "onnxruntime_providers_tensorrt";
 
+  /** The short name of the ONNX runtime QNN provider library */
+  static final String ONNXRUNTIME_LIBRARY_QNN_NAME = "onnxruntime_providers_qnn";
+
   /** The OS & CPU architecture string */
   private static final String OS_ARCH_STR = initOsArch();
 
@@ -159,8 +162,11 @@ final class OnnxRuntime {
       // the ONNX Runtime native library will load it
       extractProviderLibrary(ONNXRUNTIME_LIBRARY_SHARED_NAME);
 
-      load(ONNXRUNTIME_LIBRARY_NAME);
+      if (!isAndroid()) {
+        load(ONNXRUNTIME_LIBRARY_NAME);
+      }
       load(ONNXRUNTIME_JNI_LIBRARY_NAME);
+
       ortApiHandle = initialiseAPIBase(ORT_API_VERSION_14);
       if (ortApiHandle == 0L) {
         throw new IllegalStateException(
@@ -253,6 +259,16 @@ final class OnnxRuntime {
   }
 
   /**
+   * Extracts the QNN provider library from the classpath resources if present, or checks to see if
+   * the QNN provider library is in the directory specified by {@link #ONNXRUNTIME_NATIVE_PATH}.
+   *
+   * @return True if the QNN provider library is ready for loading, false otherwise.
+   */
+  static boolean extractQNN() {
+    return extractProviderLibrary(ONNXRUNTIME_LIBRARY_QNN_NAME);
+  }
+
+  /**
    * Extracts a shared provider library from the classpath resources if present, or checks to see if
    * that library is in the directory specified by {@link #ONNXRUNTIME_NATIVE_PATH}.
    *
@@ -260,7 +276,7 @@ final class OnnxRuntime {
    * @return True if the library is ready for loading by ORT's native code, false otherwise.
    */
   static synchronized boolean extractProviderLibrary(String libraryName) {
-    // Android does not need to extract library and it has no shared provider library
+    // Android does not need to extract provider libraries.
     if (isAndroid()) {
       return false;
     }
@@ -312,7 +328,7 @@ final class OnnxRuntime {
   private static void load(String library) throws IOException {
     // On Android, we simply use System.loadLibrary
     if (isAndroid()) {
-      System.loadLibrary("onnxruntime4j_jni");
+      System.loadLibrary(library);
       return;
     }
 

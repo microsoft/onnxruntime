@@ -22,9 +22,8 @@
 #include "QnnLog.h"
 #include "QnnTypes.h"
 #include "System/QnnSystemInterface.h"
-#include "core/common/status.h"
-#include "core/common/logging/logging.h"
-#include "core/common/path_string.h"
+
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_context_mem_handle_manager.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 

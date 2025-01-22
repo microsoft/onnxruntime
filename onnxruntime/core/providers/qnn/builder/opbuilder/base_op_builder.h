@@ -3,11 +3,11 @@
 
 #pragma once
 
-#include "core/providers/shared/utils/utils.h"
+#include "core/providers/qnn/ort_api.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder.h"
 #include "core/providers/qnn/builder/qnn_quant_params_wrapper.h"
-#include "core/framework/allocator.h"
 
 #include "QnnOpDef.h"
 
@@ -215,7 +215,8 @@ class BaseOpBuilder : public IOpBuilder {
   }
 
   // NCHW shape to channel last
-  Status NchwShapeToNhwc(const std::vector<uint32_t>& nchw_shape, std::vector<uint32_t>& nhwc_shape) const {
+  template <typename T>
+  Status NchwShapeToNhwc(gsl::span<const T> nchw_shape, gsl::span<T> nhwc_shape) const {
     ORT_RETURN_IF_NOT(nchw_shape.size() == 4, "shape should have 4 dimension NCHW.");
     nhwc_shape[0] = nchw_shape[0];
     nhwc_shape[1] = nchw_shape[2];
@@ -226,7 +227,8 @@ class BaseOpBuilder : public IOpBuilder {
   }
 
   // NCHW shape to HWCN shape, required for Conv weight
-  Status NchwShapeToHwcn(const std::vector<uint32_t>& nchw_shape, std::vector<uint32_t>& hwcn_shape) const {
+  template <typename T>
+  Status NchwShapeToHwcn(gsl::span<const T> nchw_shape, gsl::span<T> hwcn_shape) const {
     if (nchw_shape.size() == 4) {
       hwcn_shape[0] = nchw_shape[2];
       hwcn_shape[1] = nchw_shape[3];
@@ -246,7 +248,8 @@ class BaseOpBuilder : public IOpBuilder {
   }
 
   // CNHW shape to HWCN shape, required for Conv weight
-  Status CnhwShapeToHwcn(const std::vector<uint32_t>& cnhw_shape, std::vector<uint32_t>& hwcn_shape) const {
+  template <typename T>
+  Status CnhwShapeToHwcn(gsl::span<const T> cnhw_shape, gsl::span<T> hwcn_shape) const {
     if (cnhw_shape.size() == 4) {
       hwcn_shape[0] = cnhw_shape[2];
       hwcn_shape[1] = cnhw_shape[3];
@@ -264,37 +267,31 @@ class BaseOpBuilder : public IOpBuilder {
 
     return Status::OK();
   }
-  Status TransposeInitializer(const QnnModelWrapper& qnn_model_wrapper,
-                              const onnx::TensorProto& initializer,
-                              const std::vector<size_t>& perm,
-                              std::vector<uint8_t>& transposed_data) const;
 
   Status TransposeFromNchwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
                                  const onnx::TensorProto& initializer,
                                  std::vector<uint8_t>& transposed_data,
-                                 bool is_3d = false) const {
-    auto& perm = is_3d ? nchw2hwcn_perm_3d : nchw2hwcn_perm;
-    return TransposeInitializer(qnn_model_wrapper, initializer, perm, transposed_data);
-  }
+                                 bool is_3d = false) const;
+  Status TransposeFromNchwToHwcn(std::vector<int64_t>&& input_shape_dims,
+                                 size_t elem_byte_size,
+                                 gsl::span<const uint8_t> input_buffer,
+                                 gsl::span<uint8_t> output_buffer,
+                                 bool is_3d = false) const;
 
   Status TransposeFromCnhwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
                                  const onnx::TensorProto& initializer,
                                  std::vector<uint8_t>& transposed_data,
-                                 bool is_3d = false) const {
-    auto& perm = is_3d ? cnhw2hwcn_perm_3d : cnhw2hwcn_perm;
-    return TransposeInitializer(qnn_model_wrapper, initializer, perm, transposed_data);
-  }
+                                 bool is_3d = false) const;
+  Status TransposeFromCnhwToHwcn(std::vector<int64_t>&& input_shape_dims,
+                                 size_t elem_byte_size,
+                                 gsl::span<const uint8_t> input_buffer,
+                                 gsl::span<uint8_t> output_buffer,
+                                 bool is_3d = false) const;
 
   Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper,
                                std::vector<uint32_t>& data_shape,
                                const onnx::TensorProto& initializer,
-                               std::vector<uint8_t>& transposed_data) const {
-    auto tmp = data_shape[0];
-    data_shape[0] = data_shape[1];
-    data_shape[1] = tmp;
-    std::vector<size_t> two_dim_trans_perm{1, 0};
-    return TransposeInitializer(qnn_model_wrapper, initializer, two_dim_trans_perm, transposed_data);
-  }
+                               std::vector<uint8_t>& transposed_data) const;
 
   // Onnx Pads is [x1_begin, x2_begin, x1_end, x2_end], QNN requires [x1_begin, x1_end, x2_begin, x2_end]
   void ReArranagePads(std::vector<uint32_t>& pads) const {

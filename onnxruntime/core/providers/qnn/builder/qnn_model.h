@@ -6,14 +6,11 @@
 #include <mutex>
 #include <vector>
 
-#include "core/common/status.h"
-#include "core/framework/node_unit.h"
-#include "core/graph/graph_viewer.h"
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/qnn_backend_manager.h"
 #include "core/providers/qnn/rpcmem_library.h"
-#include "core/session/onnxruntime_cxx_api.h"
 
 namespace onnxruntime {
 namespace qnn {
