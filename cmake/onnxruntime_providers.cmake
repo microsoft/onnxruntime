@@ -160,7 +160,7 @@ if (onnxruntime_USE_JSEP)
   include(onnxruntime_providers_js.cmake)
 endif()
 
-if (onnxruntime_USE_QNN OR onnxruntime_USE_QNN_INTERFACE) #TODO[Low] Revisit when QNN EP becomes dynamic lib.
+if (onnxruntime_USE_QNN OR onnxruntime_USE_QNN_INTERFACE)
   include(onnxruntime_providers_qnn.cmake)
 endif()
 
