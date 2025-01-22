@@ -249,7 +249,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       if (!disable_quant_qdq) {
         transformers.emplace_back(std::make_unique<QDQPropagationTransformer>());
-        transformers.emplace_back(std::make_unique<WeightBiasQuantization>());
+        //transformers.emplace_back(std::make_unique<WeightBiasQuantization>());
 
         // EnsureUniqueDQForNodeUnit is actually a required graph transformation. The unique DQ per QDQ node unit input
         // condition that it ensures is important for the partitioning that happens after Level1 optimizers are run.
