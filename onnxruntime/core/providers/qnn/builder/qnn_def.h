@@ -9,8 +9,7 @@
 #include <memory>
 #include <climits>
 #include <type_traits>
-#include "core/graph/basic_types.h"
-#include "core/common/common.h"
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_quant_params_wrapper.h"
 
 namespace onnxruntime {
