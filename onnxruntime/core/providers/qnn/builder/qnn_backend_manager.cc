@@ -17,17 +17,13 @@
 #include "HTP/QnnHtpSystemContext.h"
 #include "Saver/QnnSaver.h"
 #include <gsl/gsl>
-#include "core/framework/endian_utils.h"
-#include "core/common/logging/capture.h"
+
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/qnn_allocator.h"
+#include "core/providers/qnn/qnn_telemetry.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 #include "core/providers/qnn/builder/qnn_configs_helper.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
-
-#ifdef _WIN32
-#include <winmeta.h>
-#include "core/platform/tracing.h"
-#endif
 
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1
@@ -253,17 +249,23 @@ void QnnLogging(const char* format,
   ORT_UNUSED_PARAMETER(level);
   ORT_UNUSED_PARAMETER(timestamp);
 
+  if (!::onnxruntime::logging::LoggingManager::HasDefaultLogger()) {
+    // QNN may call this logging callback at any point, which means that we need to explicitly check
+    // that the default logger has been initialized before trying to use it (otherwise get segfault).
+    return;
+  }
+
   const auto& logger = ::onnxruntime::logging::LoggingManager::DefaultLogger();
   const auto severity = ::onnxruntime::logging::Severity::kVERBOSE;
   const auto data_type = ::onnxruntime::logging::DataType::SYSTEM;
 
   if (logger.OutputIsEnabled(severity, data_type)) {
-    ::onnxruntime::logging::Capture(logger,
-                                    severity,
-                                    ::onnxruntime::logging::Category::onnxruntime,
-                                    data_type,
-                                    ORT_WHERE)
-        .ProcessPrintf(format, argument_parameter);
+    auto log_capture = Factory<logging::Capture>::Create(logger,
+                                                         severity,
+                                                         logging::Category::onnxruntime,
+                                                         data_type,
+                                                         ORT_WHERE);
+    log_capture->ProcessPrintf(format, argument_parameter);
   }
 }
 
@@ -275,6 +277,9 @@ Status QnnBackendManager::InitializeQnnLog(const logging::Logger& logger) {
   QnnLog_Level_t qnn_log_level = MapOrtSeverityToQNNLogLevel(ort_log_level);
   LOGS(*logger_, VERBOSE) << "Set Qnn log level: " << qnn_log_level;
 
+  // NOTE: Even if logCreate() fails and QNN does not return a valid log_handle_, QNN may still
+  // call the QnnLogging() callback. So, we have to make sure that QnnLogging() can handle calls
+  // in which ORT logging is not available.
   Qnn_ErrorHandle_t result = qnn_interface_.logCreate(QnnLogging, qnn_log_level, &log_handle_);
 
   if (result != QNN_SUCCESS) {
@@ -401,25 +406,25 @@ Status QnnBackendManager::CreateDevice() {
     // Set SoC Model. The *enum* Qnn_SocModel_t is deprecated and will not be updated in the future. Therefore,
     // must use the latest SDK documentation to get the SoC model of the latest HW.
     if (soc_model_ != QNN_SOC_MODEL_UNKNOWN) {
-      QnnHtpDevice_CustomConfig_t& custom_config = device_configs_builder.PushCustomConfig();
-      custom_config.option = QNN_HTP_DEVICE_CONFIG_OPTION_SOC;
-      custom_config.socModel = soc_model_;
+      gsl::not_null<QnnHtpDevice_CustomConfig_t*> custom_config = device_configs_builder.PushCustomConfig();
+      custom_config->option = QNN_HTP_DEVICE_CONFIG_OPTION_SOC;
+      custom_config->socModel = soc_model_;
 
-      QnnDevice_Config_t& device_config = device_configs_builder.PushConfig();
-      device_config.option = QNN_DEVICE_CONFIG_OPTION_CUSTOM;
-      device_config.customConfig = &custom_config;
+      gsl::not_null<QnnDevice_Config_t*> device_config = device_configs_builder.PushConfig();
+      device_config->option = QNN_DEVICE_CONFIG_OPTION_CUSTOM;
+      device_config->customConfig = custom_config;
     }
 
     // Set the minimum HTP architecture. The driver will use ops that are compatible with this minimum architecture.
     if (htp_arch_ != QNN_HTP_DEVICE_ARCH_NONE) {
-      QnnHtpDevice_CustomConfig_t& custom_config = device_configs_builder.PushCustomConfig();
-      custom_config.option = QNN_HTP_DEVICE_CONFIG_OPTION_ARCH;
-      custom_config.arch.arch = htp_arch_;
-      custom_config.arch.deviceId = device_id_;
+      gsl::not_null<QnnHtpDevice_CustomConfig_t*> custom_config = device_configs_builder.PushCustomConfig();
+      custom_config->option = QNN_HTP_DEVICE_CONFIG_OPTION_ARCH;
+      custom_config->arch.arch = htp_arch_;
+      custom_config->arch.deviceId = device_id_;
 
-      QnnDevice_Config_t& device_config = device_configs_builder.PushConfig();
-      device_config.option = QNN_DEVICE_CONFIG_OPTION_CUSTOM;
-      device_config.customConfig = &custom_config;
+      gsl::not_null<QnnDevice_Config_t*> device_config = device_configs_builder.PushConfig();
+      device_config->option = QNN_DEVICE_CONFIG_OPTION_CUSTOM;
+      device_config->customConfig = custom_config;
     }
   }
 
@@ -881,6 +886,10 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
 }
 
 Status QnnBackendManager::CreateHtpPowerCfgId(uint32_t device_id, uint32_t core_id, uint32_t& htp_power_config_id) {
+  // This function is called in QNN EP's OnRunStart() even if QNN backend setup failed and the model is assigned
+  // to a different EP. Therefore, we have to check that backend setup actually completed before trying to
+  // create an HTP power config ID. Otherwise, this causes a segfault because the QNN backend lib is unloaded.
+  ORT_RETURN_IF_NOT(backend_setup_completed_, "Cannot create HTP power config ID if backend setup is not complete.");
   QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
   auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
   ORT_RETURN_IF(QNN_SUCCESS != status, "backendGetPerfInfrastructure failed.");
@@ -898,6 +907,10 @@ Status QnnBackendManager::CreateHtpPowerCfgId(uint32_t device_id, uint32_t core_
 
 Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
                                             HtpPerformanceMode htp_performance_mode) {
+  // This function is called in QNN EP's OnRunStart() even if QNN backend setup failed and the model is assigned
+  // to a different EP. Therefore, we have to check that backend setup actually completed before trying to
+  // set an HTP power config ID. Otherwise, this causes a segfault because the QNN backend lib is unloaded.
+  ORT_RETURN_IF_NOT(backend_setup_completed_, "Cannot set HTP power config ID if backend setup is not complete.");
   QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
   auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
   ORT_RETURN_IF(QNN_SUCCESS != status, "backendGetPerfInfrastructure failed.");
@@ -1039,6 +1052,10 @@ Status QnnBackendManager::SetHtpPowerConfig(uint32_t htp_power_config_client_id,
 
 Status QnnBackendManager::SetRpcControlLatency(uint32_t htp_power_config_client_id,
                                                uint32_t rpc_control_latency) {
+  // This function is called in QNN EP's OnRunStart() even if QNN backend setup failed and the model is assigned
+  // to a different EP. Therefore, we have to check that backend setup actually completed before trying to
+  // set RPC control latency. Otherwise, this causes a segfault because the QNN backend library is unloaded.
+  ORT_RETURN_IF_NOT(backend_setup_completed_, "Cannot set HTP RPC control latency if backend setup is not complete.");
   if (rpc_control_latency != 0) {
     QnnDevice_Infrastructure_t qnn_device_infra = nullptr;
     auto status = qnn_interface_.deviceGetInfrastructure(&qnn_device_infra);
@@ -1101,39 +1118,35 @@ Status QnnBackendManager::TerminateQnnLog() {
 }
 
 void QnnBackendManager::ReleaseResources() {
-  if (!backend_setup_completed_) {
-    return;
-  }
-
   auto result = ReleaseContext();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to ReleaseContext.";
+    LOGS_DEFAULT(ERROR) << "Failed to ReleaseContext: " << result.ErrorMessage();
   }
 
   result = ReleaseProfilehandle();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to ReleaseProfilehandle.";
+    LOGS_DEFAULT(ERROR) << "Failed to ReleaseProfilehandle: " << result.ErrorMessage();
   }
 
   result = ReleaseDevice();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to ReleaseDevice.";
+    LOGS_DEFAULT(ERROR) << "Failed to ReleaseDevice: " << result.ErrorMessage();
   }
 
   result = ShutdownBackend();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to ShutdownBackend.";
+    LOGS_DEFAULT(ERROR) << "Failed to ShutdownBackend: " << result.ErrorMessage();
   }
 
   result = TerminateQnnLog();
   if (Status::OK() != result) {
-    LOGS_DEFAULT(ERROR) << "Failed to TerminateQnnLog.";
+    LOGS_DEFAULT(ERROR) << "Failed to TerminateQnnLog: " << result.ErrorMessage();
   }
 
   if (backend_lib_handle_) {
     result = UnloadLib(backend_lib_handle_);
     if (Status::OK() != result) {
-      LOGS_DEFAULT(ERROR) << "Failed to unload backend library.";
+      LOGS_DEFAULT(ERROR) << "Failed to unload backend library: " << result.ErrorMessage();
     }
   }
 
@@ -1148,15 +1161,16 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
   }
 
   bool tracelogging_provider_ep_enabled = false;
-  const Env& env = Env::Default();
-  auto& provider = env.GetTelemetryProvider();
-  auto level = provider.Level();
+#ifdef _WIN32
+  auto& provider = QnnTelemetry::Instance();
   if (provider.IsEnabled()) {
+    auto level = provider.Level();
     auto keyword = provider.Keyword();
     if ((keyword & static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0 && level >= 5) {
       tracelogging_provider_ep_enabled = true;
     }
   }
+#endif  // defined(_WIN32)
 
   // ETW disabled previously, but enabled now
   if (ProfilingLevel::INVALID == profiling_level_etw_ && tracelogging_provider_ep_enabled) {
@@ -1374,18 +1388,8 @@ void QnnBackendManager::LogQnnProfileEventAsTraceLogging(
     const std::string& timingSource,
     const std::string& eventLevel,
     const char* eventIdentifier) {
-  TraceLoggingWrite(
-      telemetry_provider_handle,
-      "QNNProfilingEvent",
-      TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)),
-      TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
-      TraceLoggingValue(timestamp, "Timestamp"),
-      TraceLoggingString(message.c_str(), "Message"),
-      TraceLoggingString(qnnScalarValue.c_str(), "Value"),
-      TraceLoggingString(unit.c_str(), "Unit of Measurement"),
-      TraceLoggingString(timingSource.c_str(), "Timing Source"),
-      TraceLoggingString(eventLevel.c_str(), "Event Level"),
-      TraceLoggingString(eventIdentifier, "Event Identifier"));
+  QnnTelemetry& qnn_telemetry = QnnTelemetry::Instance();
+  qnn_telemetry.LogQnnProfileEvent(timestamp, message, qnnScalarValue, unit, timingSource, eventLevel, eventIdentifier);
 }
 #endif
 
@@ -1538,7 +1542,8 @@ void* QnnBackendManager::LoadLib(const char* file_name, int flags, std::string& 
   if (!file_path.is_absolute()) {
     LOGS_DEFAULT(VERBOSE) << "LoadLib relative path: " << file_name;
     // construct an absolute path from ORT runtime path + file_name and check whether it exists.
-    auto pathstring = Env::Default().GetRuntimePath() + ToPathString(file_name);
+    const Env& env = GetDefaultEnv();
+    auto pathstring = env.GetRuntimePath() + ToPathString(file_name);
     auto absolute_path = pathstring.c_str();
     if (std::filesystem::exists(std::filesystem::path(absolute_path))) {
       LOGS_DEFAULT(VERBOSE) << "LoadLib relative path now absolute_path: " << absolute_path;
