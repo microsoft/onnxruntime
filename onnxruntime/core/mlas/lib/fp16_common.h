@@ -16,7 +16,6 @@ Abstract:
 
 #pragma once
 
-#include <arm_neon.h>
 #include "mlas_float16.h"
 #include "mlasi.h"
 
