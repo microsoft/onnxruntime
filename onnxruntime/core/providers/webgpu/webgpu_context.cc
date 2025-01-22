@@ -4,11 +4,19 @@
 #include <memory>
 #include <cmath>
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
+
 #if !defined(__wasm__)
 #include "dawn/dawn_proc.h"
 #if !defined(USE_EXTERNAL_DAWN)
 #include "dawn/native/DawnNative.h"
 #endif
+#endif
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
 #endif
 
 #include "core/common/common.h"

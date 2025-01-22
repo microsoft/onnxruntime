@@ -194,6 +194,10 @@ class Clip final : public UnaryElementwise {
                          "Clip",
                          std::is_same_v<T, MLFloat16> ? ClipF16Impl : ClipImpl,
                          "", ShaderUsage::UseElementTypeAlias} {}
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
 
   Status ConfigureProgram(const ComputeContext& context, UnaryElementwiseProgram& program) const override {
     const auto* clip_min_tensor = context.Input<Tensor>(1);
@@ -214,6 +218,9 @@ class Clip final : public UnaryElementwise {
     }
     return Status::OK();
   }
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
   // uniforms.attr is a f32 value. It is encoded as a float for 2 f16 values.
   // bitcast<vec2<f16>>(uniforms.attr)[0] is clip_min, bitcast<vec2<f16>>(uniforms.attr)[1] is clip_max
