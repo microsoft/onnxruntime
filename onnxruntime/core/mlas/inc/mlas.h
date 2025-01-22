@@ -1462,14 +1462,14 @@ MlasRotaryEmbedOneRow(
  * @brief Supply matrices data information to half precision gemm functions
  */
 struct MLAS_HGEMM_DATA_PARAMS {
-    const MLAS_FP16* A = nullptr;      /**< Supplies the address of matrix A */
-    size_t lda = 0;                    /**< Supplies the first dimension of matrix A. */
-    const MLAS_FP16* B = nullptr;      /**< Supplies the address of matrix B */
-    size_t ldb = 0;                    /**< Supplies the first dimension of matrix B. */
-    MLAS_FP16* C = nullptr;            /**< Supplies the address of matrix C */
-    size_t ldc = 0;                    /**< Supplies the first dimension of matrix C. */
-    MLAS_FP16 alpha = MLAS_FP16(1.0f); /**< Supplies the scalar alpha multiplier (see GEMM definition) */
-    MLAS_FP16 beta = MLAS_FP16(0.0f);  /**< Supplies the scalar beta multiplier (see GEMM definition) */
+    const MLAS_FP16* A; /**< Supplies the address of matrix A */
+    size_t lda;         /**< Supplies the first dimension of matrix A. */
+    const MLAS_FP16* B; /**< Supplies the address of matrix B */
+    size_t ldb;         /**< Supplies the first dimension of matrix B. */
+    MLAS_FP16* C;       /**< Supplies the address of matrix C */
+    size_t ldc;         /**< Supplies the first dimension of matrix C. */
+    uint16_t alpha;     /**< Supplies the scalar alpha multiplier (see GEMM definition). FP16 encoding. */
+    uint16_t beta;      /**< Supplies the scalar beta multiplier (see GEMM definition). FP16 encoding. */
 };
 
 /**
@@ -1542,19 +1542,19 @@ MlasGemm(
     size_t ldb,
     MLAS_FP16* C,
     size_t ldc,
-    MLAS_FP16 alpha,
-    MLAS_FP16 beta,
+    uint16_t alpha,
+    uint16_t beta,
     MLAS_THREADPOOL* ThreadPool
 ) {
     MLAS_HGEMM_DATA_PARAMS Data;
-    Data.alpha = alpha;
     Data.A = A;
     Data.lda = lda;
     Data.B = B;
     Data.ldb = ldb;
-    Data.beta = beta;
     Data.C = C;
     Data.ldc = ldc;
+    Data.alpha = alpha;
+    Data.beta = beta;
     MlasGemmBatch(TransA, TransB, M, N, K, &Data, 1, ThreadPool);
 }
 

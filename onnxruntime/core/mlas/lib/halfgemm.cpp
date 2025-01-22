@@ -355,8 +355,8 @@ HGemmOperation(
     const size_t lda = DataParams->lda;
     const size_t ldb = DataParams->ldb;
     const size_t ldc = DataParams->ldc;
-    const MLAS_FP16 alpha = DataParams->alpha;
-    const MLAS_FP16 beta = DataParams->beta;
+    const _mlas_fp16_ alpha = DataParams->alpha;
+    const _mlas_fp16_ beta = DataParams->beta;
     auto* dispatch = GetMlasPlatform().HGemmDispatch;
     constexpr size_t StrideM = 2;
     const auto beta_add = MLAS_FP16(1.0f);
@@ -403,7 +403,7 @@ HGemmOperation(
                         countM = std::min(StrideM, RangeCountM - m);
                         // First K iteration, beta is applied to the whole C. In rest K iterations, use add mode.
                         dispatch->HGemmKernel_TransposedPackedB(
-                            aa, PackedB, cc, countM, countN, countK, lda, ldc, alpha, k == 0 ? beta : beta_add);
+                            aa, PackedB, cc, countM, countN, countK, lda, ldc, alpha, k == 0 ? beta : beta_add.val);
                         aa += countM * lda;
                         cc += countM * ldc;
                     }

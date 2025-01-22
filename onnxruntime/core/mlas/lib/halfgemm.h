@@ -534,8 +534,8 @@ void HGemm_TransposedB_Kernel(
     size_t lda,
     size_t ldb,
     size_t ldc,
-    MLAS_FP16 alpha,
-    MLAS_FP16 beta
+    _mlas_fp16_ alpha,
+    _mlas_fp16_ beta
 );
 
 void HGemm_TransposedPackedB_Kernel(
@@ -547,8 +547,8 @@ void HGemm_TransposedPackedB_Kernel(
     size_t CountK,
     size_t lda,
     size_t ldc,
-    MLAS_FP16 alpha,
-    MLAS_FP16 beta
+    _mlas_fp16_ alpha,
+    _mlas_fp16_ beta
 );
 
 }  // namespace hgemm_neon
@@ -599,8 +599,8 @@ struct MLAS_HGEMM_DISPATCH {
         size_t lda,
         size_t ldb,
         size_t ldc,
-        MLAS_FP16 alpha,
-        MLAS_FP16 beta
+        _mlas_fp16_ alpha,
+        _mlas_fp16_ beta
     );
 
     HGemmKernel_TransposedB_Fn* HGemmKernel_TransposedB = nullptr;
@@ -629,8 +629,8 @@ struct MLAS_HGEMM_DISPATCH {
         size_t CountK,
         size_t lda,
         size_t ldc,
-        MLAS_FP16 alpha,
-        MLAS_FP16 beta
+        _mlas_fp16_ alpha,
+        _mlas_fp16_ beta
     );
 
     HGemmKernel_TransposedPackedB_Fn* HGemmKernel_TransposedPackedB = nullptr;
