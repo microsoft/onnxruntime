@@ -16,6 +16,12 @@ Abstract:
 
 #include <arm_neon.h>
 
+// Check if float16_t is defined, if not, define it
+#ifndef __FLT16_MIN__
+#define __FLT16_MIN__ 6.103515625e-05F16
+typedef __fp16 float16_t;
+#endif
+
 #include "halfgemm.h"
 #include "fp16_common.h"
 
