@@ -96,11 +96,11 @@ class FusionConformerAttention(FusionAttention):
             _, _, where_qk, add_qk, matmul_qk = qk_nodes_2
             mask_nodes = self.model.match_parent_path(
                 where_qk,
-                ["Equal", "Cast", "Unsqueeze", "Expand"],
+                ["Equal", "Unsqueeze", "Cast", "Expand"],
                 [0, 0, 0, 0],
             )
             if mask_nodes is not None:
-                attn_mask = mask_nodes[-1].output[0]
+                attn_mask = mask_nodes[-2].output[0]
             qk_nodes = qk_nodes_2
         else:
             logger.debug("fuse_conformer_attention: failed to match qk path")
