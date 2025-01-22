@@ -53,6 +53,7 @@ def get_qnn_qdq_config(
     weight_symmetric: bool | None = None,
     keep_removable_activations: bool = False,
     stride: int | None = None,
+    op_types_to_quantize: list[str] | None = None,
 ) -> StaticQuantConfig:
     """
     Returns a static quantization configuration suitable for running QDQ models on QNN EP.
@@ -117,6 +118,7 @@ def get_qnn_qdq_config(
                         are automatically removed if activations are asymmetrically quantized. Keeping these activations
                         is necessary if optimizations or EP transformations will later remove
                         QuantizeLinear/DequantizeLinear operators from the model.
+        op_types_to_quantize: If set to None, all operator types will be quantized except for OP_TYPES_TO_EXCLUDE
 
     Returns:
         A StaticQuantConfig object
@@ -162,6 +164,9 @@ def get_qnn_qdq_config(
     )
 
     for node in model.graph.node:
+        if op_types_to_quantize:
+            if node.op_type not in op_types_to_quantize:
+                continue
         op_types.add(node.op_type)
         qnn_compat.process_node(node)
 
@@ -189,7 +194,7 @@ def get_qnn_qdq_config(
         calibrate_method=calibrate_method,
         activation_type=activation_type,
         weight_type=weight_type,
-        op_types_to_quantize=list(op_types.difference(OP_TYPES_TO_EXCLUDE)),
+        op_types_to_quantize=op_types_to_quantize if op_types_to_quantize else list(op_types.difference(OP_TYPES_TO_EXCLUDE)),
         per_channel=per_channel,
         use_external_data_format=(model_has_external_data or model.ByteSize() >= MODEL_SIZE_THRESHOLD),
         extra_options=extra_options,
