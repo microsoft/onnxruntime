@@ -1,8 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
-#include "core/framework/utils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 namespace onnxruntime {
 namespace qnn {
 const int TOPK_MIN_INPUT = 2;
