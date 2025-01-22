@@ -113,8 +113,8 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const std::string_view webnn_op_type = GetWebNNOpType(op_type);
   ORT_RETURN_IF(webnn_op_type.empty(), "Cannot get WebNN op type");
 
-  emscripten::val output =
-      model_builder.GetBuilder().call<emscripten::val>(webnn_op_type.data(), input, scale, zero_point, options);
+  emscripten::val output = model_builder.GetBuilder().call<emscripten::val>(
+      std::string(webnn_op_type).c_str(), input, scale, zero_point, options);
 
   model_builder.AddOperand(output_defs[0]->Name(), std::move(output));
 

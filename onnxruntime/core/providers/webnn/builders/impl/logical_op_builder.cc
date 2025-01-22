@@ -43,10 +43,11 @@ Status LogicalOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
 
   if (input_defs.size() == 1) {
     // Not
-    output = model_builder.GetBuilder().call<emscripten::val>(webnn_op_type.data(), input0, options);
+    output = model_builder.GetBuilder().call<emscripten::val>(std::string(webnn_op_type).c_str(), input0, options);
   } else {
     input1 = model_builder.GetOperand(input_defs[1]->Name());
-    output = model_builder.GetBuilder().call<emscripten::val>(webnn_op_type.data(), input0, input1, options);
+    output = model_builder.GetBuilder().call<emscripten::val>(
+        std::string(webnn_op_type).c_str(), input0, input1, options);
   }
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
