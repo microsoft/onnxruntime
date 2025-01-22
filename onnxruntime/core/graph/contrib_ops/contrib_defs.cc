@@ -3360,6 +3360,7 @@ void RegisterContribSchemas() {
            "tensor(int16)",
            "tensor(int32)",
            "tensor(int64)",
+           "tensor(bool)",
            "tensor(uint8)",
            "tensor(uint16)",
            "tensor(uint32)",

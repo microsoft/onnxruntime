@@ -54,27 +54,6 @@ const std::filesystem::path& GetModelPath(const GraphViewer& graph_viewer) {
 }
 
 /*
- * Update ep_cache_context attribute of the EP context node with the given engine binary data
- */
-void UpdateCtxNodeModelEngineContext(ONNX_NAMESPACE::ModelProto* model_proto,
-                                     char* engine_data,
-                                     size_t size) {
-  ONNX_NAMESPACE::GraphProto* graph_proto = model_proto->mutable_graph();
-  ONNX_NAMESPACE::NodeProto* node_proto = graph_proto->mutable_node(0);
-
-  for (int i = 0; i < node_proto->attribute_size(); ++i) {
-    ONNX_NAMESPACE::AttributeProto* attribute_proto = node_proto->mutable_attribute(i);
-    if (attribute_proto->name() == EP_CACHE_CONTEXT) {
-      std::string engine_data_str = "";
-      if (size > 0) {
-        engine_data_str.assign(engine_data, size);
-      }
-      attribute_proto->set_s(engine_data_str);
-    }
-  }
-}
-
-/*
  * Create "EP context node" model where engine information is embedded
  */
 std::unique_ptr<Model> CreateCtxModel(const GraphViewer& graph_viewer,
@@ -138,7 +117,8 @@ std::unique_ptr<Model> CreateCtxModel(const GraphViewer& graph_viewer,
 
   // Create EP context node
   graph_build.AddNode(fused_subgraph_name, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
-  ORT_ENFORCE(graph_build.Resolve().IsOK());
+  auto status = graph_build.Resolve();
+  ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
 
   return model_build;
 }
@@ -207,17 +187,6 @@ std::string GetCtxModelPath(const std::string& ep_context_file_path,
     }
   }
   return ctx_model_path;
-}
-
-/*
- * Dump "EP context" model
- *
- */
-void DumpCtxModel(ONNX_NAMESPACE::ModelProto* model_proto,
-                  const std::string& ctx_model_path) {
-  std::fstream dump(ctx_model_path, std::ios::out | std::ios::trunc | std::ios::binary);
-  model_proto->SerializeToOstream(dump);
-  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Dumped " + ctx_model_path;
 }
 
 bool IsAbsolutePath(const std::string& path_string) {

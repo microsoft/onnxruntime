@@ -3848,10 +3848,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         }
       }
 
-      // dump ep context model
+      // Give a warning that ep context need to be regenerated
       if (dump_ep_context_model_ && ep_context_embed_mode_) {
-        UpdateCtxNodeModelEngineContext(model_proto_.get(), reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
-        DumpCtxModel(model_proto_.get(), ctx_model_path_);
+        LOGS_DEFAULT(WARNING) << "Engine was updated during inference due to dynamic input changed change. Please regenerate EP context model.";
       }
       context_update = true;
 
