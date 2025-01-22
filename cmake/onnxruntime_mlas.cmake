@@ -95,6 +95,7 @@ function(setup_mlas_source_for_windows)
         ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.h
         ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.cpp
         ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon_fp16.cpp
+        ${MLAS_SRC_DIR}/hgemm_kernel_neon.cpp
         ${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp
       )
 
@@ -375,6 +376,7 @@ else()
           ${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.h
           ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon.cpp
+          ${MLAS_SRC_DIR}/hgemm_kernel_neon.cpp
         )
         set_source_files_properties(${MLAS_SRC_DIR}/sqnbitgemm_kernel_neon_int8.cpp
                                     PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+dotprod")
