@@ -1400,6 +1400,8 @@ def generate_build_tree(
             cmake_args += ["-Donnxruntime_BUILD_QNN_EP_STATIC_LIB=ON"]
         if args.android and args.use_qnn != "static_lib":
             raise BuildError("Only support Android + QNN builds with QNN EP built as a static library.")
+        if args.use_qnn == "static_lib" and args.enable_generic_interface:
+            raise BuildError("Generic ORT interface only supported with QNN EP built as a shared library.")
 
     if args.use_coreml:
         cmake_args += ["-Donnxruntime_USE_COREML=ON"]
