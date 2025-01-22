@@ -641,7 +641,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   /**
    * Check if DDS op is in the ComputeCapability/subgraph.
-   */ 
+   */
   bool IsDDSOpInSubGraph(const GraphViewer& graph,
                          std::vector<std::unique_ptr<ComputeCapability>>& compute_capabilities,
                          std::unordered_set<std::string>& dds_op_set) const;

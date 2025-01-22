@@ -261,13 +261,13 @@ void TensorrtExecutionProvider::SetAllGraphInputs(Graph& graph) const {
 
 // Check if DDS op is in the ComputeCapability/subgraph.
 bool TensorrtExecutionProvider::IsDDSOpInSubGraph(const GraphViewer& graph,
-                       std::vector<std::unique_ptr<ComputeCapability>>& compute_capabilities,
-                       std::unordered_set<std::string>& dds_op_set) const {
+                                                  std::vector<std::unique_ptr<ComputeCapability>>& compute_capabilities,
+                                                  std::unordered_set<std::string>& dds_op_set) const {
   auto is_dds_op = [&](const auto& node) {
     if (dds_op_set.find(node->OpType()) != dds_op_set.end()) return true;
     return false;
   };
-    
+
   for (auto& compute_capability : compute_capabilities) {
     auto& indexed_sub_graph = compute_capability->SubGraph();
     for (auto i : indexed_sub_graph->Nodes()) {

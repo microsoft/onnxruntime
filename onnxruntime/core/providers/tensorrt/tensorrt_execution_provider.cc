@@ -2481,7 +2481,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
 
-  std::set<std::string> exclude_ops_set; // currently not support to exclude ops
+  std::set<std::string> exclude_ops_set;  // currently not support to exclude ops
 
   /*
    * There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) when running TRT EP with TRT 10.
@@ -2668,10 +2668,10 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     }
   }
 
-  #if NV_TENSORRT_MAJOR >= 10
+#if NV_TENSORRT_MAJOR >= 10
   // TRT EP will take appropriate actions later to prevent performance degradation if the graph has DDS op that run by TRT 10.
   is_dds_op_in_graph_ = IsDDSOpInSubGraph(graph, result, dds_op_set_);
-  #endif
+#endif
 
   const size_t number_of_subgraphs = supported_nodes_vector.size();
   if (number_of_trt_nodes == 0) {
@@ -2773,8 +2773,7 @@ common::Status TensorrtExecutionProvider::RefitEngine(std::string onnx_model_fil
 
 common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                                   std::vector<NodeComputeInfo>& node_compute_funcs) {
-  
- #if NV_TENSORRT_MAJOR >= 10
+#if NV_TENSORRT_MAJOR >= 10
   // There is a known performance issue with the DDS ops (NonMaxSuppression, NonZero and RoiAlign) when running TRT EP with TRT 10.
   // The issue arises because when cudaStreamSynchronize is called after inference, GPU memory is released back to the OS.
   // As a result, for the next inference run, TRT reallocates GPU memory from the OS, introducing overhead and leading to performance degradation.
@@ -2784,7 +2783,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     runtime_->setGpuAllocator(trt_gpu_allocator_.get());
   }
 #endif
-    
+
   for (auto& fused_node_graph : fused_nodes_and_graphs) {
     const GraphViewer& graph_body_viewer = fused_node_graph.filtered_graph;
     const Node& fused_node = fused_node_graph.fused_node;
