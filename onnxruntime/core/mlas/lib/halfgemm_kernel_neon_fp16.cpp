@@ -926,23 +926,23 @@ void HGemm_TransposedB_Kernel(
     const auto* A_data = reinterpret_cast<const _mlas_fp16_*>(A);
     const auto* B_data = reinterpret_cast<const _mlas_fp16_*>(B);
     auto* C_data = reinterpret_cast<_mlas_fp16_*>(C);
-    auto alpha_f16 = *reinterpret_cast<float16_t*>(&alpha);
-    auto beta_f16 = *reinterpret_cast<float16_t*>(&beta);
+    auto* alpha_f16 = reinterpret_cast<float16_t*>(&alpha);
+    auto* beta_f16 = reinterpret_cast<float16_t*>(&beta);
     if (CountM == 1) {
-        if (beta_f16 == 0.0f16) {
-            HGemm_TransposedB_Kernel_M1<0>(A_data, B_data, C_data, CountN, CountK, ldb, alpha_f16, beta_f16);
-        } else if (beta_f16 == 1.0f) {
-            HGemm_TransposedB_Kernel_M1<1>(A_data, B_data, C_data, CountN, CountK, ldb, alpha_f16, beta_f16);
+        if (*beta_f16 == 0.0f16) {
+            HGemm_TransposedB_Kernel_M1<0>(A_data, B_data, C_data, CountN, CountK, ldb, *alpha_f16, *beta_f16);
+        } else if (*beta_f16 == 1.0f) {
+            HGemm_TransposedB_Kernel_M1<1>(A_data, B_data, C_data, CountN, CountK, ldb, *alpha_f16, *beta_f16);
         } else {
-            HGemm_TransposedB_Kernel_M1<2>(A_data, B_data, C_data, CountN, CountK, ldb, alpha_f16, beta_f16);
+            HGemm_TransposedB_Kernel_M1<2>(A_data, B_data, C_data, CountN, CountK, ldb, *alpha_f16, *beta_f16);
         }
     } else {
-        if (beta_f16 == 0.0f16) {
-            HGemm_TransposedB_Kernel_M2<0>(A_data, B_data, C_data, CountN, CountK, lda, ldb, ldc, alpha_f16, beta_f16);
-        } else if (beta_f16 == 1.0f16) {
-            HGemm_TransposedB_Kernel_M2<1>(A_data, B_data, C_data, CountN, CountK, lda, ldb, ldc, alpha_f16, beta_f16);
+        if (*beta_f16 == 0.0f16) {
+            HGemm_TransposedB_Kernel_M2<0>(A_data, B_data, C_data, CountN, CountK, lda, ldb, ldc, *alpha_f16, *beta_f16);
+        } else if (*beta_f16 == 1.0f16) {
+            HGemm_TransposedB_Kernel_M2<1>(A_data, B_data, C_data, CountN, CountK, lda, ldb, ldc, *alpha_f16, *beta_f16);
         } else {
-            HGemm_TransposedB_Kernel_M2<2>(A_data, B_data, C_data, CountN, CountK, lda, ldb, ldc, alpha_f16, beta_f16);
+            HGemm_TransposedB_Kernel_M2<2>(A_data, B_data, C_data, CountN, CountK, lda, ldb, ldc, *alpha_f16, *beta_f16);
         }
     }
 }
@@ -1489,23 +1489,23 @@ void HGemm_TransposedPackedB_Kernel(
     const auto* A_data = reinterpret_cast<const _mlas_fp16_*>(A);
     const auto* PackedB_data = reinterpret_cast<const _mlas_fp16_*>(PackedB);
     auto* C_data = reinterpret_cast<_mlas_fp16_*>(C);
-    auto alpha_fp16 = *reinterpret_cast<float16_t*>(&alpha);
-    auto beta_fp16 = *reinterpret_cast<float16_t*>(&beta);
+    auto* alpha_fp16 = reinterpret_cast<float16_t*>(&alpha);
+    auto* beta_fp16 = reinterpret_cast<float16_t*>(&beta);
     if (CountM == 1) {
-        if (beta_fp16 == 0.0f16) {
-            HGemm_TransposedPackedB_Kernel_M1<0>(A_data, PackedB_data, C_data, CountN, CountK, alpha_fp16, beta_fp16);
-        } else if (beta_fp16 == 1.0f16) {
-            HGemm_TransposedPackedB_Kernel_M1<1>(A_data, PackedB_data, C_data, CountN, CountK, alpha_fp16, beta_fp16);
+        if (*beta_fp16 == 0.0f16) {
+            HGemm_TransposedPackedB_Kernel_M1<0>(A_data, PackedB_data, C_data, CountN, CountK, *alpha_fp16, *beta_fp16);
+        } else if (*beta_fp16 == 1.0f16) {
+            HGemm_TransposedPackedB_Kernel_M1<1>(A_data, PackedB_data, C_data, CountN, CountK, *alpha_fp16, *beta_fp16);
         } else {
-            HGemm_TransposedPackedB_Kernel_M1<2>(A_data, PackedB_data, C_data, CountN, CountK, alpha_fp16, beta_fp16);
+            HGemm_TransposedPackedB_Kernel_M1<2>(A_data, PackedB_data, C_data, CountN, CountK, *alpha_fp16, *beta_fp16);
         }
     } else {
-        if (beta_fp16 == 0.0f16) {
-            HGemm_TransposedPackedB_Kernel_M2<0>(A_data, PackedB_data, C_data, CountN, CountK, lda, ldc, alpha_fp16, beta_fp16);
-        } else if (beta_fp16 == 1.0f16) {
-            HGemm_TransposedPackedB_Kernel_M2<1>(A_data, PackedB_data, C_data, CountN, CountK, lda, ldc, alpha_fp16, beta_fp16);
+        if (*beta_fp16 == 0.0f16) {
+            HGemm_TransposedPackedB_Kernel_M2<0>(A_data, PackedB_data, C_data, CountN, CountK, lda, ldc, *alpha_fp16, *beta_fp16);
+        } else if (*beta_fp16 == 1.0f16) {
+            HGemm_TransposedPackedB_Kernel_M2<1>(A_data, PackedB_data, C_data, CountN, CountK, lda, ldc, *alpha_fp16, *beta_fp16);
         } else {
-            HGemm_TransposedPackedB_Kernel_M2<2>(A_data, PackedB_data, C_data, CountN, CountK, lda, ldc, alpha_fp16, beta_fp16);
+            HGemm_TransposedPackedB_Kernel_M2<2>(A_data, PackedB_data, C_data, CountN, CountK, lda, ldc, *alpha_fp16, *beta_fp16);
         }
     }
 }
