@@ -417,19 +417,13 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   // Register callback for ETW capture state (rundown)
   callback_ETWSink_provider_ = onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback(
       [&etwRegistrationManager, this](
-          LPCGUID SourceId,
+          LPCGUID /* SourceId */,
           ULONG IsEnabled,
           UCHAR Level,
           ULONGLONG MatchAnyKeyword,
-          ULONGLONG MatchAllKeyword,
-          PEVENT_FILTER_DESCRIPTOR FilterData,
-          PVOID CallbackContext) {
-        ORT_UNUSED_PARAMETER(SourceId);
-        ORT_UNUSED_PARAMETER(MatchAnyKeyword);
-        ORT_UNUSED_PARAMETER(MatchAllKeyword);
-        ORT_UNUSED_PARAMETER(FilterData);
-        ORT_UNUSED_PARAMETER(CallbackContext);
-
+          ULONGLONG /* MatchAllKeyword */,
+          PEVENT_FILTER_DESCRIPTOR /* FilterData */,
+          PVOID /* CallbackContext */) {
         if (IsEnabled == EVENT_CONTROL_CODE_ENABLE_PROVIDER) {
           if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)) != 0) {
             auto ortETWSeverity = etwRegistrationManager.MapLevelToSeverity();
