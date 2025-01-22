@@ -160,7 +160,7 @@ if (onnxruntime_USE_JSEP)
   include(onnxruntime_providers_js.cmake)
 endif()
 
-if (onnxruntime_USE_QNN OR onnxruntime_USE_QNN_INTERFACE)
+if (onnxruntime_USE_QNN)
   include(onnxruntime_providers_qnn.cmake)
 endif()
 
