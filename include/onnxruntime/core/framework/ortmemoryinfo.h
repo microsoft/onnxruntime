@@ -6,6 +6,8 @@
 #include <string_view>
 
 #include "core/common/hash_combine.h"
+#include "core/framework/ortdevice.h"
+#include "core/session/onnxruntime_c_api.h"  // for OrtMemType, OrtAllocatorType
 
 struct OrtMemoryInfo {
   OrtMemoryInfo() = default;  // to allow default construction of Tensor

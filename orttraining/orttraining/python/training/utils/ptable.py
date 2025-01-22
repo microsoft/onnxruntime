@@ -3,14 +3,12 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
-from typing import List
-
 
 class Row:
     """A row in a PTable"""
 
-    def __init__(self, columns: List[str]) -> None:
-        self._columns: List[str] = columns  # List of strings
+    def __init__(self, columns: list[str]) -> None:
+        self._columns: list[str] = columns  # List of strings
         self._annotation_table = None  # Optional PTable used for displaying detailed information about the feature row.
 
     def append_annotation_table(self, ptable) -> None:
@@ -21,11 +19,11 @@ class PTable:
     """A table that can be printed to the console."""
 
     def __init__(self, sortable=False) -> None:
-        self._rows: List[Row] = []
+        self._rows: list[Row] = []
         self._column_count = None
         self._sortable = sortable  # allow the rows to be sorted by the first column
 
-    def add_row(self, columns: List[str]) -> Row:
+    def add_row(self, columns: list[str]) -> Row:
         """Add a row to the table. The number of columns must match the number of columns in the table."""
         if self._column_count is None:
             self._column_count = len(columns)

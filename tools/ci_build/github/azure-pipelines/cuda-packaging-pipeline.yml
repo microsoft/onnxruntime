@@ -78,11 +78,7 @@ resources:
       type: github
       endpoint: ort-examples
       name: microsoft/onnxruntime-inference-examples
-    - repository: manylinux
-      type: Github
-      endpoint: Microsoft
-      name: pypa/manylinux
-      ref: 5eda9aded5462201e6310105728d33016e637ea7
+
 
 stages:
   # Set ReleaseVersionSuffix

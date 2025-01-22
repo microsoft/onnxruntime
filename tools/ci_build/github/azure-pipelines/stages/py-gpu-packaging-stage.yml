@@ -56,7 +56,7 @@ stages:
           PYTHON_VERSION: ${{ python_version }}
           EP_NAME: gpu
           CudaVersion: ${{ parameters.cuda_version }}
-          EP_BUILD_FLAGS: --enable_lto --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=52;60;61;70;75;80"
+          EP_BUILD_FLAGS: --enable_lto --cuda_home=$(Agent.TempDirectory)\v${{ parameters.cuda_version }} --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75;80;90"
           use_tensorrt: True
 
   - ${{ if eq(parameters.enable_linux_cuda, true) }}:

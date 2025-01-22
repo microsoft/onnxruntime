@@ -222,10 +222,9 @@ TEST(FusedMatMulOpTest, FloatTypeNoTranspose) {
 }
 
 #if defined(USE_CUDA) || defined(USE_ROCM)  // double support only implemented in CUDA/ROCM kernel
-// CUDAExecutionProvider cannot be used with this model due to its ONNX opset not being supported by the layout transformer.
-// TEST(FusedMatMulOpTest, DoubleTypeNoTranspose) {
-//   RunFusedMatMulTest<double>("FusedMatMul", 1);
-// }
+TEST(FusedMatMulOpTest, DoubleTypeNoTranspose) {
+  RunFusedMatMulTest<double>("FusedMatMul", 1);
+}
 #endif
 
 TEST(FusedMatMulOpTest, FloatTypeTransposeA) {

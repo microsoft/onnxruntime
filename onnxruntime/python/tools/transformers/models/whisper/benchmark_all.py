@@ -372,9 +372,7 @@ def main():
 
     # Calculate forced decoder input ids
     hf_forced_decoder_ids = processor.get_decoder_prompt_ids(language=args.language, task=args.task)
-    ort_forced_decoder_ids = [config.decoder_start_token_id] + list(  # noqa: RUF005
-        map(lambda token_id: token_id[1], hf_forced_decoder_ids)
-    )
+    ort_forced_decoder_ids = [config.decoder_start_token_id] + [token_id[1] for token_id in hf_forced_decoder_ids]
     hf_decoder_input_ids_cmd = (
         ["--decoder-input-ids", str(hf_forced_decoder_ids)] if args.language and args.task else []
     )

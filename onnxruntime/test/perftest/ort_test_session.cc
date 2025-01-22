@@ -202,7 +202,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                         {"backend_path", "profiling_file_path", "profiling_level", "rpc_control_latency",
                          "vtcm_mb", "soc_model", "device_id", "htp_performance_mode", "qnn_saver_path",
                          "htp_graph_finalization_optimization_mode", "qnn_context_priority", "htp_arch",
-                         "enable_htp_fp16_precision", "offload_graph_io_quantization", "enable_htp_spill_fill_buffer"});
+                         "enable_htp_fp16_precision", "offload_graph_io_quantization", "enable_htp_spill_fill_buffer",
+                         "enable_htp_shared_memory_allocator"});
     for (const auto& provider_option : provider_options) {
       const std::string& key = provider_option.first;
       const std::string& value = provider_option.second;
@@ -231,7 +232,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
       } else if (key == "qnn_saver_path") {
         // no validation
       } else if (key == "htp_graph_finalization_optimization_mode") {
-        std::unordered_set<std::string> supported_htp_graph_final_opt_modes = {"0", "1", "2", "3"};
+        std::set<std::string> supported_htp_graph_final_opt_modes = {"0", "1", "2", "3"};
         if (supported_htp_graph_final_opt_modes.find(value) == supported_htp_graph_final_opt_modes.end()) {
           std::ostringstream str_stream;
           std::copy(supported_htp_graph_final_opt_modes.begin(), supported_htp_graph_final_opt_modes.end(),
@@ -245,7 +246,7 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           ORT_THROW("Supported qnn_context_priority: low, normal, normal_high, high");
         }
       } else if (key == "htp_arch") {
-        std::unordered_set<std::string> supported_htp_archs = {"0", "68", "69", "73", "75"};
+        std::set<std::string> supported_htp_archs = {"0", "68", "69", "73", "75"};
         if (supported_htp_archs.find(value) == supported_htp_archs.end()) {
           std::ostringstream str_stream;
           std::copy(supported_htp_archs.begin(), supported_htp_archs.end(),
@@ -253,14 +254,22 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
           std::string str = str_stream.str();
           ORT_THROW("Wrong value for htp_arch. select from: " + str);
         }
-      } else if (key == "enable_htp_fp16_precision" || key == "offload_graph_io_quantization" || key == "enable_htp_spill_fill_buffer") {
-        std::unordered_set<std::string> supported_options = {"0", "1"};
+      } else if (key == "enable_htp_fp16_precision" ||
+                 key == "offload_graph_io_quantization" ||
+                 key == "enable_htp_spill_fill_buffer" ||
+                 key == "enable_htp_shared_memory_allocator") {
+        std::set<std::string> supported_options = {"0", "1"};
         if (supported_options.find(value) == supported_options.end()) {
           std::ostringstream str_stream;
           std::copy(supported_options.begin(), supported_options.end(),
                     std::ostream_iterator<std::string>(str_stream, ","));
           std::string str = str_stream.str();
           ORT_THROW("Wrong value for ", key, ". select from: ", str);
+        }
+
+        if (key == "enable_htp_shared_memory_allocator" && value == "1") {
+          // if this option is set, also use the enabled allocator
+          device_memory_name_ = "QnnHtpShared";
         }
       }
     }
@@ -505,10 +514,6 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
   } else if (provider_name_ == onnxruntime::kMIGraphXExecutionProvider) {
 #ifdef USE_MIGRAPHX
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_MIGraphX(session_options, 0));
-    OrtROCMProviderOptions rocm_options;
-    rocm_options.miopen_conv_exhaustive_search = performance_test_config.run_config.cudnn_conv_algo;
-    rocm_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
-    session_options.AppendExecutionProvider_ROCM(rocm_options);
 #else
     ORT_THROW("MIGraphX is not supported in this build\n");
 #endif
@@ -838,8 +843,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     };
   } else {
     Ort::MemoryInfo memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
-    custom_allocator_ = std::make_unique<Ort::Allocator>(session_, memory_info);
-    allocator_ = *custom_allocator_;
+    custom_allocator_ = Ort::Allocator(session_, memory_info);
+    allocator_ = custom_allocator_;
 
     // free dimensions are treated as 1 if not overridden
     transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };
