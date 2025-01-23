@@ -85,7 +85,7 @@ if (onnxruntime_USE_MPI)
   target_include_directories(onnxruntime_framework PUBLIC ${MPI_CXX_INCLUDE_DIRS})
 endif()
 
-if (onnxruntime_ENABLE_DLPACK)
+if (onnxruntime_ENABLE_ATEN)
   # DLPack is a header-only dependency
   set(DLPACK_INCLUDE_DIR ${dlpack_SOURCE_DIR}/include)
   target_include_directories(onnxruntime_framework PRIVATE ${DLPACK_INCLUDE_DIR})

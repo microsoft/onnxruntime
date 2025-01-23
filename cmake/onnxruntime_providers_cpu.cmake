@@ -103,7 +103,7 @@ if (onnxruntime_ENABLE_TRAINING_OPS AND NOT onnxruntime_ENABLE_TRAINING)
   list(REMOVE_ITEM onnxruntime_providers_src ${onnxruntime_cpu_full_training_only_srcs})
 endif()
 
-if (onnxruntime_ENABLE_DLPACK)
+if (onnxruntime_ENABLE_ATEN)
   file(GLOB_RECURSE onnxruntime_providers_dlpack_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_converter.cc"
     "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_converter.h"
@@ -191,9 +191,6 @@ endif()
 
 if (onnxruntime_ENABLE_ATEN)
   target_compile_definitions(onnxruntime_providers PRIVATE ENABLE_ATEN)
-endif()
-
-if (onnxruntime_ENABLE_DLPACK)
   # DLPack is a header-only dependency
   set(DLPACK_INCLUDE_DIR ${dlpack_SOURCE_DIR}/include)
   target_include_directories(onnxruntime_providers PRIVATE ${DLPACK_INCLUDE_DIR})
