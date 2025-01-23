@@ -241,6 +241,9 @@ option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
 # ATen fallback support
 option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
+# dlpack support
+option(onnxruntime_ENABLE_DLPACK "Enable dlpack" ON)
+
 # Triton support
 option(onnxruntime_ENABLE_TRITON "Enable Triton" OFF)
 
