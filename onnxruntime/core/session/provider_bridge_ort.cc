@@ -1559,9 +1559,7 @@ struct ProviderHostImpl : ProviderHost {
   training::DistributedRunContext& GetDistributedRunContextInstance() override { return training::DistributedRunContext::GetInstance(); }
 #endif
 
-  // #if defined(USE_CUDA) || defined(USE_ROCM)
   PhiloxGenerator& PhiloxGenerator__Default() override { return PhiloxGenerator::Default(); }
-  // #endif
 
 #ifdef ENABLE_TRAINING_TORCH_INTEROP
   void contrib__PythonOpBase__Init(contrib::PythonOpBase* p, const OpKernelInfo& info) override { p->PythonOpBase::Init(info); }
