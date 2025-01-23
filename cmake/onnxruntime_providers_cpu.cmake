@@ -191,6 +191,10 @@ endif()
 
 if (onnxruntime_ENABLE_ATEN)
   target_compile_definitions(onnxruntime_providers PRIVATE ENABLE_ATEN)
+endif()
+
+if (onnxruntime_ENABLE_DLPACK)
+  target_compile_definitions(onnxruntime_providers PRIVATE ENABLE_DLPACK)
   # DLPack is a header-only dependency
   set(DLPACK_INCLUDE_DIR ${dlpack_SOURCE_DIR}/include)
   target_include_directories(onnxruntime_providers PRIVATE ${DLPACK_INCLUDE_DIR})
