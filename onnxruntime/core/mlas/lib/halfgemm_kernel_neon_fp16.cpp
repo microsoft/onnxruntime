@@ -953,7 +953,7 @@ void HGemm_TransposedB_Kernel(
     }
 }
 
-template <int beta_behaviour> // 0: beta == 0, 1: beta == 1, 2: beta != 0 && beta != 1
+template <int beta_behavior> // 0: beta == 0, 1: beta == 1, 2: beta != 0 && beta != 1
 void HGemm_TransposedPackedB_Kernel_M1(
     const _mlas_fp16_* A,
     const _mlas_fp16_* PackedB,
@@ -1027,14 +1027,14 @@ void HGemm_TransposedPackedB_Kernel_M1(
             PackedB += k * 16;
         }
 
-        if constexpr (beta_behaviour == 1) {
+        if constexpr (beta_behavior == 1) {
             float16x8_t c0 = MlasLoadFloat16x8(C);
             float16x8_t c1 = MlasLoadFloat16x8(C + 8);
             accu0 = vfmaq_n_f16(c0, accu0, alpha);
             accu1 = vfmaq_n_f16(c1, accu1, alpha);
             MlasStoreFloat16x8(C, accu0);
             MlasStoreFloat16x8(C + 8, accu1);
-        } else if constexpr (beta_behaviour == 2) {
+        } else if constexpr (beta_behavior == 2) {
             float16x8_t c0 = MlasLoadFloat16x8(C);
             float16x8_t c1 = MlasLoadFloat16x8(C + 8);
             accu0 = vfmaq_n_f16(vmulq_n_f16(c0, beta), accu0, alpha);
@@ -1091,11 +1091,11 @@ void HGemm_TransposedPackedB_Kernel_M1(
             PackedB += k * 8;
         }
 
-        if constexpr (beta_behaviour == 1) {
+        if constexpr (beta_behavior == 1) {
             float16x8_t c0 = MlasLoadFloat16x8(C);
             accu0 = vfmaq_n_f16(c0, accu0, alpha);
             MlasStoreFloat16x8(C, accu0);
-        } else if constexpr (beta_behaviour == 2) {
+        } else if constexpr (beta_behavior == 2) {
             float16x8_t c0 = MlasLoadFloat16x8(C);
             accu0 = vfmaq_n_f16(vmulq_n_f16(c0, beta), accu0, alpha);
             MlasStoreFloat16x8(C, accu0);
@@ -1153,10 +1153,10 @@ void HGemm_TransposedPackedB_Kernel_M1(
         float16x4_t accu_high = vget_high_f16(accu0);
 
         if (CountN & 4) {
-            if constexpr (beta_behaviour == 1) {
+            if constexpr (beta_behavior == 1) {
                 float16x4_t c0 = MlasLoadFloat16x4(C);
                 MlasStoreFloat16x4(C, vfma_n_f16(c0, accu_low, alpha));
-            } else if constexpr (beta_behaviour == 2) {
+            } else if constexpr (beta_behavior == 2) {
                 float16x4_t c0 = MlasLoadFloat16x4(C);
                 MlasStoreFloat16x4(C, vfma_n_f16(vmul_n_f16(c0, beta), accu_low, alpha));
             } else {
@@ -1167,10 +1167,10 @@ void HGemm_TransposedPackedB_Kernel_M1(
         }
 
         if (CountN) {
-            if constexpr (beta_behaviour == 1) {
+            if constexpr (beta_behavior == 1) {
                 float16x4_t c0 = MlasLoadPartialFloat16x4(C, CountN);
                 MlasStorePartialFloat16x4(C, vfma_n_f16(c0, accu_high, alpha), CountN);
-            } else if constexpr (beta_behaviour == 2) {
+            } else if constexpr (beta_behavior == 2) {
                 float16x4_t c0 = MlasLoadPartialFloat16x4(C, CountN);
                 MlasStorePartialFloat16x4(C, vfma_n_f16(vmul_n_f16(c0, beta), accu_high, alpha), CountN);
             } else {
@@ -1180,7 +1180,7 @@ void HGemm_TransposedPackedB_Kernel_M1(
     }
 }
 
-template <int beta_behaviour> // 0: beta == 0, 1: beta == 1, 2: beta != 0 && beta != 1
+template <int beta_behavior> // 0: beta == 0, 1: beta == 1, 2: beta != 0 && beta != 1
 void HGemm_TransposedPackedB_Kernel_M2(
     const _mlas_fp16_* A,
     const _mlas_fp16_* PackedB,
@@ -1270,7 +1270,7 @@ void HGemm_TransposedPackedB_Kernel_M2(
             PackedB += k * 16;
         }
 
-        if constexpr (beta_behaviour == 1) {
+        if constexpr (beta_behavior == 1) {
             float16x8_t c00 = MlasLoadFloat16x8(C);
             float16x8_t c01 = MlasLoadFloat16x8(C + 8);
             float16x8_t c10 = MlasLoadFloat16x8(C + ldc);
@@ -1283,7 +1283,7 @@ void HGemm_TransposedPackedB_Kernel_M2(
             MlasStoreFloat16x8(C + 8, accu01);
             MlasStoreFloat16x8(C + ldc, accu10);
             MlasStoreFloat16x8(C + ldc + 8, accu11);
-        } else if constexpr (beta_behaviour == 2) {
+        } else if constexpr (beta_behavior == 2) {
             float16x8_t c00 = MlasLoadFloat16x8(C);
             float16x8_t c01 = MlasLoadFloat16x8(C + 8);
             float16x8_t c10 = MlasLoadFloat16x8(C + ldc);
@@ -1359,14 +1359,14 @@ void HGemm_TransposedPackedB_Kernel_M2(
             PackedB += k * 8;
         }
 
-        if constexpr (beta_behaviour == 1) {
+        if constexpr (beta_behavior == 1) {
             float16x8_t c0 = MlasLoadFloat16x8(C);
             float16x8_t c1 = MlasLoadFloat16x8(C + ldc);
             accu00 = vfmaq_n_f16(c0, accu00, alpha);
             accu10 = vfmaq_n_f16(c1, accu10, alpha);
             MlasStoreFloat16x8(C, accu00);
             MlasStoreFloat16x8(C + ldc, accu10);
-        } else if constexpr (beta_behaviour == 2) {
+        } else if constexpr (beta_behavior == 2) {
             float16x8_t c0 = MlasLoadFloat16x8(C);
             float16x8_t c1 = MlasLoadFloat16x8(C + ldc);
             accu00 = vfmaq_n_f16(vmulq_n_f16(c0, beta), accu00, alpha);
@@ -1440,12 +1440,12 @@ void HGemm_TransposedPackedB_Kernel_M2(
         float16x4_t accu1_high = vget_high_f16(accu1);
 
         if (CountN & 4) {
-            if constexpr (beta_behaviour == 1) {
+            if constexpr (beta_behavior == 1) {
                 float16x4_t c0 = MlasLoadFloat16x4(C);
                 float16x4_t c1 = MlasLoadFloat16x4(C + ldc);
                 MlasStoreFloat16x4(C, vfma_n_f16(c0, accu0_low, alpha));
                 MlasStoreFloat16x4(C + ldc, vfma_n_f16(c1, accu1_low, alpha));
-            } else if constexpr (beta_behaviour == 2) {
+            } else if constexpr (beta_behavior == 2) {
                 float16x4_t c0 = MlasLoadFloat16x4(C);
                 float16x4_t c1 = MlasLoadFloat16x4(C + ldc);
                 MlasStoreFloat16x4(C, vfma_n_f16(vmul_n_f16(c0, beta), accu0_low, alpha));
@@ -1458,12 +1458,12 @@ void HGemm_TransposedPackedB_Kernel_M2(
         }
 
         if (CountN) {
-            if constexpr (beta_behaviour == 1) {
+            if constexpr (beta_behavior == 1) {
                 float16x4_t c0 = MlasLoadPartialFloat16x4(C, CountN);
                 float16x4_t c1 = MlasLoadPartialFloat16x4(C + ldc, CountN);
                 MlasStorePartialFloat16x4(C, vfma_n_f16(c0, accu0_high, alpha), CountN);
                 MlasStorePartialFloat16x4(C + ldc, vfma_n_f16(c1, accu1_high, alpha), CountN);
-            } else if constexpr (beta_behaviour == 2) {
+            } else if constexpr (beta_behavior == 2) {
                 float16x4_t c0 = MlasLoadPartialFloat16x4(C, CountN);
                 float16x4_t c1 = MlasLoadPartialFloat16x4(C + ldc, CountN);
                 MlasStorePartialFloat16x4(C, vfma_n_f16(vmul_n_f16(c0, beta), accu0_high, alpha), CountN);
