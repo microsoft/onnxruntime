@@ -88,7 +88,7 @@ class MlasNeonHGemmPackBTest : public MlasTestBase {
 
  public:
   MlasNeonHGemmPackBTest()
-    : seed_(rd_()), gen_(seed_), distrib_(-100.f, 100.f) {
+      : seed_(rd_()), gen_(seed_), distrib_(-100.f, 100.f) {
   }
 
   static const char* GetTestSuiteName() {
@@ -144,9 +144,9 @@ class MlasNeonHGemmTransposedBTest : public MlasTestBase {
     size_t n = M * N;
     for (size_t i = 0; i < n; ++i) {
       ASSERT_TRUE(FloatEqual(C[i], ref[i], 0.02f, 0.055f))
-        << " seed " << seed_ << " i " << i
-        << " M " << M << " N " << N << " K " << K
-        << " v0 " << C[i] << " v1 " << ref[i];
+          << " seed " << seed_ << " i " << i
+          << " M " << M << " N " << N << " K " << K
+          << " v0 " << C[i] << " v1 " << ref[i];
     }
   }
 
@@ -169,7 +169,7 @@ class MlasNeonHGemmTransposedBTest : public MlasTestBase {
 
  public:
   MlasNeonHGemmTransposedBTest()
-    : seed_(1928375), gen_(seed_), distrib_(-1.f, 1.f) {
+      : seed_(1928375), gen_(seed_), distrib_(-1.f, 1.f) {
   }
 
   static const char* GetTestSuiteName() {
@@ -251,9 +251,9 @@ class MlasNeonHGemmTransposedPackedBTest : public MlasTestBase {
     size_t n = M * N;
     for (size_t i = 0; i < n; ++i) {
       ASSERT_TRUE(FloatEqual(C[i], ref[i], 0.02f, 0.055f))
-        << " seed " << seed_ << " i " << i
-        << " M " << M << " K " << K << " N " << N
-        << " v0 " << C[i] << " v1 " << ref[i];
+          << " seed " << seed_ << " i " << i
+          << " M " << M << " K " << K << " N " << N
+          << " v0 " << C[i] << " v1 " << ref[i];
     }
   }
 
@@ -276,7 +276,7 @@ class MlasNeonHGemmTransposedPackedBTest : public MlasTestBase {
 
  public:
   MlasNeonHGemmTransposedPackedBTest()
-    : seed_(1928372), gen_(seed_), distrib_(-1.f, 1.f) {
+      : seed_(1928372), gen_(seed_), distrib_(-1.f, 1.f) {
   }
 
   static const char* GetTestSuiteName() {
@@ -332,9 +332,9 @@ class MlasNeonHGemmTest : public MlasTestBase {
     for (size_t i = 0; i < M; ++i) {
       for (size_t j = 0; j < N; ++j) {
         ASSERT_TRUE(FloatEqual(C[i * N + j], ref[i * N + j], 0.02f, 0.055f))
-          << " seed " << seed_ << " i " << i << " j " << j
-          << " M " << M << " K " << K << " N " << N
-          << " v0 " << C[i * N + j] << " v1 " << ref[i * N + j];
+            << " seed " << seed_ << " i " << i << " j " << j
+            << " M " << M << " K " << K << " N " << N
+            << " v0 " << C[i * N + j] << " v1 " << ref[i * N + j];
       }
     }
   }
@@ -358,7 +358,7 @@ class MlasNeonHGemmTest : public MlasTestBase {
 
  public:
   MlasNeonHGemmTest()
-    : seed_(192837), gen_(seed_), distrib_(-0.25f, 0.25f) {
+      : seed_(192837), gen_(seed_), distrib_(-0.25f, 0.25f) {
   }
 
   static const char* GetTestSuiteName() {
