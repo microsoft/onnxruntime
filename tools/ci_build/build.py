@@ -731,6 +731,8 @@ def parse_arguments():
         help="Disable exceptions to reduce binary size. Requires --minimal_build.",
     )
 
+    parser.add_argument("--disable_dlpack", action="store_true", help="Disable dlpack")
+
     parser.add_argument("--rocm_version", help="The version of ROCM stack to use. ")
     parser.add_argument("--use_rocm", action="store_true", help="Build with ROCm")
     parser.add_argument("--rocm_home", help="Path to ROCm installation dir")
@@ -1086,6 +1088,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_EXTERNAL_DAWN=" + ("ON" if args.use_external_dawn else "OFF"),
         # Training related flags
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + ("ON" if args.enable_nvtx_profile else "OFF"),
+        "-Donnxruntime_ENABLE_DLPACK=" + ("OFF" if args.disable_dlpack else "ON"),
         "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING_OPS=" + ("ON" if args.enable_training_ops else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING_APIS=" + ("ON" if args.enable_training_apis else "OFF"),
