@@ -14,19 +14,23 @@ ENV PATH=/usr/local/nvidia/bin:/usr/local/cuda/bin:${ONNXRUNTIME_LOCAL_CODE_DIR}
 ENV DEBIAN_FRONTEND=noninteractive
 
 RUN apt-get update &&\
-    apt-get install -y sudo git bash unattended-upgrades wget
-RUN unattended-upgrade
+    apt-get install -y sudo git bash unattended-upgrades wget software-properties-common &&\
+    add-apt-repository -y ppa:deadsnakes/ppa &&\
+    apt-get update
 
 # Install python3
 RUN apt-get install -y --no-install-recommends \
-    python3 \
+    python3.10 \
+    python3.10-dev \
+    python3.10-venv \
+    python3.10-distutils \
     python3-pip \
-    python3-dev \
     python3-wheel &&\
     cd /usr/local/bin &&\
-    ln -s /usr/bin/python3 python &&\
+    ln -sf /usr/bin/python3.10 python &&\
     ln -s /usr/bin/pip3 pip;
 
+RUN unattended-upgrade
 RUN pip install --upgrade pip 
 RUN pip install setuptools>=68.2.2
 
