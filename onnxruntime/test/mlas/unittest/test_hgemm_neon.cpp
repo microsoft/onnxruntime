@@ -27,7 +27,7 @@ class MlasNeonHGemmPackBTest : public MlasTestBase {
  private:
   unsigned int seed_;
   std::mt19937 gen_;  // mersenne_twister_engine seeded with rd()
-  std::uniform_int_distribution<uint16_t> distrib_;
+  std::uniform_real_distribution<float> distrib_;
   MatrixGuardBuffer<MLAS_FP16> input_, ref_, packed_;
 
   template <size_t N, size_t K>
@@ -52,11 +52,11 @@ class MlasNeonHGemmPackBTest : public MlasTestBase {
     }
     if (i < N) {
       for (size_t j = 0; j < K; ++j) {
-        for (size_t k = 0; k < N; ++k) {
+        for (size_t k = 0; k < N - i; ++k) {
           *dst = src[(i + k) * K + j];
           ++dst;
         }
-        dst += 8 - N;
+        dst += 8 - (N - i);
       }
     }
   }
@@ -65,7 +65,7 @@ class MlasNeonHGemmPackBTest : public MlasTestBase {
   MLAS_FORCEINLINE void Check(const MLAS_FP16* packed, const MLAS_FP16* ref) {
     size_t n = ((N + 7) & ~7) * K;
     for (size_t i = 0; i < n; ++i) {
-      ASSERT_EQ(packed[i], ref[i]) << " seed " << seed_ << " i " << i;
+      ASSERT_EQ(packed[i].val, ref[i].val) << " seed " << seed_ << " i " << i;
     }
   }
 
@@ -73,13 +73,13 @@ class MlasNeonHGemmPackBTest : public MlasTestBase {
   void TestPackB() {
     auto InitializeBuffer = [this](MLAS_FP16* buffer, size_t count) {
       for (size_t i = 0; i < count; i++) {
-        buffer[i] = MLAS_FP16::FromBits(distrib_(gen_));
+        buffer[i] = MLAS_FP16(distrib_(gen_));
       }
     };
 
     const auto* input = input_.GetFilledBuffer(N * K, InitializeBuffer);
-    auto* packed = packed_.GetBuffer(K * ((N + 7) / 8 * 8), true);
-    auto* ref = ref_.GetBuffer(K * ((N + 7) / 8 * 8), true);
+    auto* packed = packed_.GetBuffer(K * ((N + 7) & ~7), true);
+    auto* ref = ref_.GetBuffer(K * ((N + 7) & ~7), true);
     hgemm_neon::HPackB_TransposedB_Kernel(input, packed, N, K, K);
     PackB<N, K>(input, ref);
     Check<N, K>(packed, ref);
@@ -87,7 +87,7 @@ class MlasNeonHGemmPackBTest : public MlasTestBase {
 
  public:
   MlasNeonHGemmPackBTest()
-      : seed_(19287), gen_(seed_), distrib_(0, 65535) {
+    : seed_(std::rand()), gen_(seed_), distrib_(-100.f, 100.f) {
   }
 
   static const char* GetTestSuiteName() {
@@ -141,7 +141,10 @@ class MlasNeonHGemmTransposedBTest : public MlasTestBase {
   MLAS_FORCEINLINE void Check(const MLAS_FP16* C, const MLAS_FP16* ref) {
     size_t n = M * N;
     for (size_t i = 0; i < n; ++i) {
-      ASSERT_TRUE(FloatEqual(C[i], ref[i], 0.02f, 0.055f)) << " seed " << seed_ << " i " << i;
+      ASSERT_TRUE(FloatEqual(C[i], ref[i], 0.02f, 0.055f))
+        << " seed " << seed_ << " i " << i
+        << " M " << M << " N " << N << " K " << K
+        << " v0 " << C[i] << " v1 " << ref[i];
     }
   }
 
@@ -164,7 +167,7 @@ class MlasNeonHGemmTransposedBTest : public MlasTestBase {
 
  public:
   MlasNeonHGemmTransposedBTest()
-      : seed_(19287), gen_(seed_), distrib_(-100.f, 100.f) {
+    : seed_(192872), gen_(seed_), distrib_(-1.f, 1.f) {
   }
 
   static const char* GetTestSuiteName() {
@@ -244,7 +247,10 @@ class MlasNeonHGemmTransposedPackedBTest : public MlasTestBase {
   MLAS_FORCEINLINE void Check(const MLAS_FP16* C, const MLAS_FP16* ref) {
     size_t n = M * N;
     for (size_t i = 0; i < n; ++i) {
-      ASSERT_TRUE(FloatEqual(C[i], ref[i], 0.02f, 0.055f)) << " seed " << seed_ << " i " << i;
+      ASSERT_TRUE(FloatEqual(C[i], ref[i], 0.02f, 0.055f))
+        << " seed " << seed_ << " i " << i
+        << " M " << M << " K " << K << " N " << N
+        << " v0 " << C[i] << " v1 " << ref[i];
     }
   }
 
@@ -267,7 +273,7 @@ class MlasNeonHGemmTransposedPackedBTest : public MlasTestBase {
 
  public:
   MlasNeonHGemmTransposedPackedBTest()
-      : seed_(19287), gen_(seed_), distrib_(-100.f, 100.f) {
+    : seed_(1928378), gen_(seed_), distrib_(-1.f, 1.f) {
   }
 
   static const char* GetTestSuiteName() {
@@ -288,6 +294,8 @@ class MlasNeonHGemmTransposedPackedBTest : public MlasTestBase {
     TestHGemm<2, 267, 79>(MLAS_FP16(1.5f), MLAS_FP16(1.0f));
   }
 };
+
+// TODO: add mlas call UT
 
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   size_t count = 0;

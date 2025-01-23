@@ -1163,18 +1163,19 @@ void HGemm_TransposedPackedB_Kernel_M1(
                 MlasStoreFloat16x4(C, vmul_n_f16(accu_low, alpha));
             }
 
-            CountN -= 4;
+            CountN -= 4, C += 4;
+            accu_low = accu_high;
         }
 
         if (CountN) {
             if constexpr (beta_behavior == 1) {
                 float16x4_t c0 = MlasLoadPartialFloat16x4(C, CountN);
-                MlasStorePartialFloat16x4(C, vfma_n_f16(c0, accu_high, alpha), CountN);
+                MlasStorePartialFloat16x4(C, vfma_n_f16(c0, accu_low, alpha), CountN);
             } else if constexpr (beta_behavior == 2) {
                 float16x4_t c0 = MlasLoadPartialFloat16x4(C, CountN);
-                MlasStorePartialFloat16x4(C, vfma_n_f16(vmul_n_f16(c0, beta), accu_high, alpha), CountN);
+                MlasStorePartialFloat16x4(C, vfma_n_f16(vmul_n_f16(c0, beta), accu_low, alpha), CountN);
             } else {
-                MlasStorePartialFloat16x4(C, vmul_n_f16(accu_high, alpha), CountN);
+                MlasStorePartialFloat16x4(C, vmul_n_f16(accu_low, alpha), CountN);
             }
         }
     }
@@ -1454,23 +1455,25 @@ void HGemm_TransposedPackedB_Kernel_M2(
                 MlasStoreFloat16x4(C, vmul_n_f16(accu0_low, alpha));
                 MlasStoreFloat16x4(C + ldc, vmul_n_f16(accu1_low, alpha));
             }
-            CountN -= 4;
+            CountN -= 4, C += 4;
+            accu0_low = accu0_high;
+            accu1_low = accu1_high;
         }
 
         if (CountN) {
             if constexpr (beta_behavior == 1) {
                 float16x4_t c0 = MlasLoadPartialFloat16x4(C, CountN);
                 float16x4_t c1 = MlasLoadPartialFloat16x4(C + ldc, CountN);
-                MlasStorePartialFloat16x4(C, vfma_n_f16(c0, accu0_high, alpha), CountN);
-                MlasStorePartialFloat16x4(C + ldc, vfma_n_f16(c1, accu1_high, alpha), CountN);
+                MlasStorePartialFloat16x4(C, vfma_n_f16(c0, accu0_low, alpha), CountN);
+                MlasStorePartialFloat16x4(C + ldc, vfma_n_f16(c1, accu1_low, alpha), CountN);
             } else if constexpr (beta_behavior == 2) {
                 float16x4_t c0 = MlasLoadPartialFloat16x4(C, CountN);
                 float16x4_t c1 = MlasLoadPartialFloat16x4(C + ldc, CountN);
-                MlasStorePartialFloat16x4(C, vfma_n_f16(vmul_n_f16(c0, beta), accu0_high, alpha), CountN);
-                MlasStorePartialFloat16x4(C + ldc, vfma_n_f16(vmul_n_f16(c1, beta), accu1_high, alpha), CountN);
+                MlasStorePartialFloat16x4(C, vfma_n_f16(vmul_n_f16(c0, beta), accu0_low, alpha), CountN);
+                MlasStorePartialFloat16x4(C + ldc, vfma_n_f16(vmul_n_f16(c1, beta), accu1_low, alpha), CountN);
             } else {
-                MlasStorePartialFloat16x4(C, vmul_n_f16(accu0_high, alpha), CountN);
-                MlasStorePartialFloat16x4(C + ldc, vmul_n_f16(accu1_high, alpha), CountN);
+                MlasStorePartialFloat16x4(C, vmul_n_f16(accu0_low, alpha), CountN);
+                MlasStorePartialFloat16x4(C + ldc, vmul_n_f16(accu1_low, alpha), CountN);
             }
         }
     }
