@@ -66,8 +66,44 @@ jobs:
       - store_artifacts:
           path: /Users/distiller/project/onnxruntime_xcframework.zip
           destination: onnxruntime_xcframework.zip
+
+  build-and-test-wasm:
+    macos:
+      xcode: << pipeline.parameters.xcode-version >>
+    resource_class: << pipeline.parameters.macos-resource-class >>
+
+    shell: /bin/bash --login -o pipefail
+
+    steps:
+      - run:
+          name: check Xcode version and Python 3
+          command: |
+            /usr/bin/xcodebuild -version
+            python3 --version
+            python --version
+            which python3
+            echo $CIRCLE_WORKING_DIRECTORY
+      - checkout
+      - run:
+          name: create directory to store the library
+          command: |
+            mkdir -p $HOME/onnxlibrary/macabi_release_v20230327_2320
+      - run:
+          name: install tools for build
+          command: |
+            brew install cmake
+            pip install -r ${CIRCLE_WORKING_DIRECTORY}/requirements-dev.txt
+      - run:
+          name: build static wasm library
+          command: |
+            export PYTHONPATH=${CIRCLE_WORKING_DIRECTORY}/tools/python:$PYTHONPATH
+            bash ${CIRCLE_WORKING_DIRECTORY}/build.sh --build_wasm_static_lib --enable_wasm_simd --enable_wasm_threads
+
 workflows:
   version: 2
   build-and-test-xcframework:
     jobs:
       - build-and-test-xcframework
+  build-and-test-wasm:
+    jobs:
+      - build-and-test-wasm
