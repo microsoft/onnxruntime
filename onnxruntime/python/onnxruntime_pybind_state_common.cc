@@ -43,6 +43,8 @@ onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
 
+#ifdef ENABLE_DLPACK
+
 void DlpackCapsuleDestructor(PyObject* data) {
   DLManagedTensor* dlmanaged_tensor = reinterpret_cast<DLManagedTensor*>(PyCapsule_GetPointer(data, "dltensor"));
   if (dlmanaged_tensor) {
@@ -73,6 +75,8 @@ OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor) {
   PyCapsule_SetName(dlpack_tensor, "used_dltensor");
   return ort_value;
 }
+
+#endif
 
 #if !defined(DISABLE_SPARSE_TENSORS)
 std::unique_ptr<OrtValue> PySparseTensor::AsOrtValue() const {

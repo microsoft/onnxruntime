@@ -12,7 +12,9 @@
 #include "core/session/environment.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/inference_session.h"
+#ifdef ENABLE_DLPACK
 #include "core/dlpack/dlpack_converter.h"
+#endif
 
 #include "onnxruntime_pybind.h"  // must use this for the include of <pybind11/pybind11.h>
 
@@ -408,6 +410,8 @@ bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
                    const std::string& name,
                    /*out*/ ONNX_NAMESPACE::TypeProto& type_proto);
 
+#ifdef ENABLE_DLPACK
+
 // Allocate a new Capsule object, which takes the ownership of OrtValue.
 // Caller is responsible for releasing.
 // This function calls OrtValueToDlpack(...).
@@ -419,6 +423,8 @@ OrtValue FromDlpack(PyObject* dlpack_tensor, const bool is_bool_tensor);
 
 // Destructor for Capsule object holding a DLPack structure.
 void DlpackCapsuleDestructor(PyObject* data);
+
+#endif
 
 }  // namespace python
 

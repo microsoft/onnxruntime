@@ -1606,6 +1606,10 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
 endif()
 
+if (onnxruntime_ENABLE_DLPACK)
+  add_compile_definitions(ENABLE_DLPACK)
+endif()
+
 if (UNIX OR onnxruntime_USE_NCCL)
   # MPI is INDEPENDENT of NCCL for now. You can build NCLL without MPI and launch multi-GPU with your own launcher.
   if (onnxruntime_USE_MPI)
