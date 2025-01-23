@@ -16,7 +16,7 @@ from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from enum import Enum
 from time import sleep
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import coloredlogs
 import numpy
@@ -405,7 +405,7 @@ def set_random_seed(seed=123):
     # torch.backends.cudnn.deterministic = True
 
 
-def get_gpu_info() -> Optional[List[Dict[str, Any]]]:
+def get_gpu_info() -> list[dict[str, Any]] | None:
     from py3nvml.py3nvml import (
         NVMLError,
         nvmlDeviceGetCount,
@@ -459,7 +459,7 @@ class MemoryMonitor(ABC):
         return max_usage
 
     @abstractmethod
-    def measure_gpu_usage(self) -> Optional[List[Dict[str, Any]]]:
+    def measure_gpu_usage(self) -> list[dict[str, Any]] | None:
         raise NotImplementedError()
 
 
@@ -467,7 +467,7 @@ class CudaMemoryMonitor(MemoryMonitor):
     def __init__(self, keep_measuring=True):
         super().__init__(keep_measuring)
 
-    def measure_gpu_usage(self) -> Optional[List[Dict[str, Any]]]:
+    def measure_gpu_usage(self) -> list[dict[str, Any]] | None:
         from py3nvml.py3nvml import (
             NVMLError,
             nvmlDeviceGetCount,

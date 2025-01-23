@@ -505,6 +505,9 @@ Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, const st
                              /*out*/ std::vector<uint8_t>& unpacked_tensor) {
   return g_host->UnpackInitializerData(tensor, model_path, unpacked_tensor);
 }
+Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& tensor, /*out*/ std::vector<uint8_t>& unpacked_tensor) {
+  return g_host->UnpackInitializerData(tensor, std::filesystem::path(), unpacked_tensor);
+}
 
 }  // namespace utils
 
@@ -788,5 +791,5 @@ std::string ToUTF8String(const std::wstring& s) {
 std::wstring ToWideString(const std::string& s) {
   return g_host->ToWideString(s);
 }
-#endif
+#endif  // _WIN32
 }  // namespace onnxruntime
