@@ -397,6 +397,7 @@ struct ProviderHostImpl : ProviderHost {
 
   // logging::LoggingManager (wrapped)
   const logging::Logger& logging__LoggingManager__DefaultLogger() override { return logging::LoggingManager::DefaultLogger(); }
+  bool logging__LoggingManager__HasDefaultLogger() override { return logging::LoggingManager::HasDefaultLogger(); }
 
   // logging::Capture (wrapped)
   std::unique_ptr<logging::Capture> logging__Capture__construct(const logging::Logger& logger,

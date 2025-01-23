@@ -32,6 +32,7 @@ struct Logger final {
 
 struct LoggingManager final {
   static const Logger& DefaultLogger() { return g_host->logging__LoggingManager__DefaultLogger(); }
+  static bool HasDefaultLogger() { return g_host->logging__LoggingManager__HasDefaultLogger(); }
 
   PROVIDER_DISALLOW_ALL(LoggingManager)
 };

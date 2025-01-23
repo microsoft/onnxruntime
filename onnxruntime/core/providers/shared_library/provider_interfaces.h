@@ -286,6 +286,7 @@ struct ProviderHost {
 
   // logging::LoggingManager
   virtual const logging::Logger& logging__LoggingManager__DefaultLogger() = 0;
+  virtual bool logging__LoggingManager__HasDefaultLogger() = 0;
 
   // logging::Capture
   virtual std::unique_ptr<logging::Capture> logging__Capture__construct(const logging::Logger& logger,
