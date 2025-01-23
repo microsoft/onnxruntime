@@ -685,7 +685,7 @@ namespace Microsoft.ML.OnnxRuntime
 
 #if NET8_0_OR_GREATER
         /// <summary>
-        /// This is a factory method creates a native Onnxruntime OrtValue containing a tensor.
+        /// This is a factory method creates a native Onnxruntime OrtValue containing a tensor on top of the existing tensor managed memory.
         /// The method will attempt to pin managed memory so no copying occurs when data is passed down
         /// to native code.
         /// </summary>

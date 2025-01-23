@@ -1,17 +1,14 @@
 ﻿using Microsoft.ML.OnnxRuntime.Tensors;
-using Microsoft.VisualStudio.TestPlatform.Utilities;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
-using System.Xml.Linq;
 using Xunit;
 
 #if NET8_0_OR_GREATER
-using DotnetTensors = System.Numerics.Tensors;
-using TensorPrimitives = System.Numerics.Tensors.TensorPrimitives;
+using SystemNumericsTensors = System.Numerics.Tensors;
 #endif
 
 namespace Microsoft.ML.OnnxRuntime.Tests
@@ -91,28 +88,27 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 SessionOptions options = new SessionOptions();
                 cleanUp.Add(options);
                 options.GraphOptimizationLevel = graphOptimizationLevel;
-                if (enableParallelExecution) options.ExecutionMode = ExecutionMode.ORT_PARALLEL;
 
                 var session = new InferenceSession(model, options);
                 cleanUp.Add(session);
 
                 using var runOptions = new RunOptions();
-                using var inputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.InputMetadata.Count);
                 var inputMeta = session.InputMetadata;
                 var outputMeta = session.OutputMetadata;
 
                 float[] expectedOutput = TestDataLoader.LoadTensorFromEmbeddedResource("bench.expected_out");
                 long[] expectedDimensions = { 1, 1000, 1, 1 };  // hardcoded for now for the test data
                 ReadOnlySpan<long> expectedOutputDimensions = expectedDimensions;
-                string[] expectedOutputNames = new string[] { "softmaxout_1" };
 
                 float[] inputData = TestDataLoader.LoadTensorFromEmbeddedResource("bench.in"); // this is the data for only one input tensor for this model
+
+                using var inputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.InputMetadata.Count);
 
                 foreach (var name in inputMeta.Keys)
                 {
                     Assert.Equal(typeof(float), inputMeta[name].ElementType);
                     Assert.True(inputMeta[name].IsTensor);
-                    var tensor = DotnetTensors.Tensor.Create<float>(inputData, inputMeta[name].Dimensions.Select(x => (nint)x).ToArray());
+                    var tensor = SystemNumericsTensors.Tensor.Create<float>(inputData, inputMeta[name].Dimensions.Select(x => (nint)x).ToArray());
                     inputOrtValues.Add(new DisposableTestPair<OrtValue>(name, OrtValue.CreateTensorValueFromSystemNumericsTensorObject<float>(tensor)));
 
                 }
@@ -131,8 +127,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         ValidateRunResult(r, expectedOutput, expectedDimensions);
                     }
                 }
-
-                session.Dispose();
             }
         }
 
@@ -162,7 +156,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                         {
                             Assert.Equal(typeof(float), inputMeta[name].ElementType);
                             Assert.True(inputMeta[name].IsTensor);
-                            var tensor = DotnetTensors.Tensor.Create<float>(inputData, inputMeta[name].Dimensions.Select(x => (nint) x).ToArray());
+                            var tensor = SystemNumericsTensors.Tensor.Create<float>(inputData, inputMeta[name].Dimensions.Select(x => (nint) x).ToArray());
                             inputOrtValues.Add(new DisposableTestPair<OrtValue>(name, OrtValue.CreateTensorValueFromSystemNumericsTensorObject<float>(tensor)));
                         }
                         
@@ -201,7 +195,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             using (var inputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.InputMetadata.Count))
             using (var outputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.OutputMetadata.Count))
             {
-                var tensor = DotnetTensors.Tensor.Create<float>(inputData, Array.ConvertAll<int, nint>(inputTensor.Dimensions.ToArray(), x => (nint)x));
+                var tensor = SystemNumericsTensors.Tensor.Create<float>(inputData, Array.ConvertAll<int, nint>(inputTensor.Dimensions.ToArray(), x => (nint)x));
 
                 inputOrtValues.Add(new DisposableTestPair<OrtValue>("data_0", OrtValue.CreateTensorValueFromSystemNumericsTensorObject<float>(tensor)));
                 outputOrtValues.Add(new DisposableTestPair<OrtValue>("bad_output_name", OrtValue.CreateTensorValueFromSystemNumericsTensorObject(tensor)));
@@ -220,13 +214,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests
             var session = tuple.Item1;
             var inputData = tuple.Item2;
             var inputTensor = tuple.Item3;
-            var outputTensor = DotnetTensors.Tensor.Create<float>([1, 1001, 1, 1]);
+            var outputTensor = SystemNumericsTensors.Tensor.Create<float>([1, 1001, 1, 1]);
 
             using (var runOptions = new RunOptions())
             using (var inputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.InputMetadata.Count))
             using (var outputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.OutputMetadata.Count))
             {
-                var tensor = DotnetTensors.Tensor.Create<float>(inputData, Array.ConvertAll<int, nint>(inputTensor.Dimensions.ToArray(), x => (nint)x));
+                var tensor = SystemNumericsTensors.Tensor.Create<float>(inputData, Array.ConvertAll<int, nint>(inputTensor.Dimensions.ToArray(), x => (nint)x));
 
                 inputOrtValues.Add(new DisposableTestPair<OrtValue>("data_0", OrtValue.CreateTensorValueFromSystemNumericsTensorObject<float>(tensor)));
                 outputOrtValues.Add(new DisposableTestPair<OrtValue>("softmaxout_1", OrtValue.CreateTensorValueFromSystemNumericsTensorObject(outputTensor)));
@@ -241,16 +235,18 @@ namespace Microsoft.ML.OnnxRuntime.Tests
         private void ThrowInconsistentPinnedOutputsDotnetTensors()
         {
             var tuple = OpenSessionSqueezeNet();
+            using var cleanUp = new DisposableListTest<IDisposable>();
+            cleanUp.Add(tuple.Item1);
             var session = tuple.Item1;
             var inputData = tuple.Item2;
             var inputTensor = tuple.Item3;
-            var outputTensor = DotnetTensors.Tensor.Create([1, 1001, 1, 1], [4]);
+            var outputTensor = SystemNumericsTensors.Tensor.Create([1, 1001, 1, 1], [4]);
 
             using (var runOptions = new RunOptions())
             using (var inputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.InputMetadata.Count))
             using (var outputOrtValues = new DisposableListTest<DisposableTestPair<OrtValue>>(session.OutputMetadata.Count))
             {
-                var tensor = DotnetTensors.Tensor.Create<float>(inputData, Array.ConvertAll<int, nint>(inputTensor.Dimensions.ToArray(), x => (nint)x));
+                var tensor = SystemNumericsTensors.Tensor.Create<float>(inputData, Array.ConvertAll<int, nint>(inputTensor.Dimensions.ToArray(), x => (nint)x));
 
                 inputOrtValues.Add(new DisposableTestPair<OrtValue>("data_0", OrtValue.CreateTensorValueFromSystemNumericsTensorObject<float>(tensor)));
                 outputOrtValues.Add(new DisposableTestPair<OrtValue>("softmaxout_1", OrtValue.CreateTensorValueFromSystemNumericsTensorObject(outputTensor)));
@@ -258,7 +254,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests
                 var ex = Assert.Throws<ArgumentException>(() => session.Run(runOptions, ["data_0"], [inputOrtValues[0].Value], ["softmaxout_1"], outputs));
                 Assert.StartsWith("Length of outputNames (1) must match that of outputValues (0).", ex.Message);
             }
-            session.Dispose();
         }
 #pragma warning restore SYSLIB5001 // System.Numerics.Tensors is only in preview so we can continue receiving API feedback
 #endif
@@ -1615,7 +1610,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests
 
 #if NET8_0_OR_GREATER
 #pragma warning disable SYSLIB5001 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
-        private void ValidateRunResultData(DotnetTensors.Tensor<float> resultTensor, float[] expectedOutput, int[] expectedDimensions)
+        private void ValidateRunResultData(SystemNumericsTensors.Tensor<float> resultTensor, float[] expectedOutput, int[] expectedDimensions)
         {
             Assert.Equal(expectedDimensions.Length, resultTensor.Rank);
 
