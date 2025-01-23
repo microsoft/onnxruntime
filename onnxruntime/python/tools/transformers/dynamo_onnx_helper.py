@@ -174,3 +174,31 @@ class DynamoOnnxHelper:
             graph.ClearField("metadata_props")
         for node in self.model.nodes():
             node.ClearField("metadata_props")
+
+    @staticmethod
+    def fold_transpose_initializers(model) -> None:
+        """
+        Constant fold Transpose initializers without changing the initializer names
+        """
+        from onnxscript import ir
+
+        for name, initializer in model.graph.initializers.items():
+            user_nodes = initializer.consumers()
+            if len(user_nodes) == 1 and user_nodes[0].op_type == "Transpose":
+                transpose_node = user_nodes[0]
+                perm = transpose_node.attributes.get("perm")
+                if perm is None:
+                    transposed_tensor = ir.tensor(initializer.const_value.numpy().transpose())
+                else:
+                    transposed_tensor = ir.tensor(
+                        initializer.const_value.numpy().transpose(perm.as_ints())
+                    )
+                new_initializer = ir.Value(
+                    name=initializer.name,
+                    shape=transposed_tensor.shape,
+                    type=ir.TensorType(transposed_tensor.dtype),
+                    const_value=transposed_tensor,
+                )
+                ir.convenience.replace_all_uses_with(transpose_node.outputs[0], new_initializer)
+                model.graph.initializers[name] = new_initializer
+                transpose_node.graph.remove(transpose_node, safe=True)
