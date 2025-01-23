@@ -59,7 +59,6 @@ Status QnnBackendManager::GetQnnInterfaceProvider(const char* lib_path,
                                                   Qnn_Version_t req_version,
                                                   T** interface_provider) {
   std::string error_msg;
-  LOGS_DEFAULT(VERBOSE) << "LoadLib -> lib_path: " << lib_path;
   *backend_lib_handle = LoadLib(lib_path,
                                 static_cast<int>(DlOpenFlag::DL_NOW) | static_cast<int>(DlOpenFlag::DL_LOCAL),
                                 error_msg);
@@ -126,7 +125,6 @@ void QnnBackendManager::SetQnnBackendType(uint32_t backend_id) {
 
 Status QnnBackendManager::LoadBackend() {
   QnnInterface_t* backend_interface_provider{nullptr};
-  LOGS_DEFAULT(VERBOSE) << "GetQnnInterfaceProvider -> Backend path: " << backend_path_;
   auto rt = GetQnnInterfaceProvider<QnnInterfaceGetProvidersFn_t,
                                     QnnInterface_t>(backend_path_.c_str(),
                                                     "QnnInterface_getProviders",
@@ -1540,22 +1538,18 @@ void* QnnBackendManager::LoadLib(const char* file_name, int flags, std::string& 
   HMODULE mod;
   auto file_path = std::filesystem::path(file_name);
   if (!file_path.is_absolute()) {
-    LOGS_DEFAULT(VERBOSE) << "LoadLib relative path: " << file_name;
     // construct an absolute path from ORT runtime path + file_name and check whether it exists.
     const Env& env = GetDefaultEnv();
     auto pathstring = env.GetRuntimePath() + ToPathString(file_name);
     auto absolute_path = pathstring.c_str();
     if (std::filesystem::exists(std::filesystem::path(absolute_path))) {
-      LOGS_DEFAULT(VERBOSE) << "LoadLib relative path now absolute_path: " << absolute_path;
       // load library from absolute path and search for dependencies there.
       mod = LoadLibraryExW(absolute_path, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);
     } else {
-      LOGS_DEFAULT(VERBOSE) << "LoadLib relative path default dll search order for file_name " << file_name;
       // use default dll search order for file_name.
       mod = LoadLibraryExA(file_name, nullptr, 0);
     }
   } else {
-    LOGS_DEFAULT(VERBOSE) << "LoadLib absolute path: " << file_name;
     // file_name represents an absolute path.
     // load library from absolute path and search for dependencies there.
     mod = LoadLibraryExA(file_name, nullptr, LOAD_WITH_ALTERED_SEARCH_PATH);

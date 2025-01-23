@@ -367,7 +367,6 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
   }
 
-  LOGS_DEFAULT(VERBOSE) << "QnnBackendManagerConfig -> Backend path: " << backend_path;
   qnn_backend_manager_ = qnn::QnnBackendManager::Create(
       qnn::QnnBackendManagerConfig{backend_path,
                                    profiling_level_etw,
