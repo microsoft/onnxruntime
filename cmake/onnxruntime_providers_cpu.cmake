@@ -103,7 +103,7 @@ if (onnxruntime_ENABLE_TRAINING_OPS AND NOT onnxruntime_ENABLE_TRAINING)
   list(REMOVE_ITEM onnxruntime_providers_src ${onnxruntime_cpu_full_training_only_srcs})
 endif()
 
-if (onnxruntime_ENABLE_ATEN)
+if (onnxruntime_ENABLE_DLPACK)
   file(GLOB_RECURSE onnxruntime_providers_dlpack_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_converter.cc"
     "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_converter.h"
