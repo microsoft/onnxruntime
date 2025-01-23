@@ -961,6 +961,7 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"reduce_prod_empty_set", "unknown version", {}},
       {"reduce_sum_empty_set", "unknown version", {}},
       {"reduce_sum_square_empty_set_expanded", "unknown version", {}},
+      {"averagepool_3d_dilations_large_count_include_pad_is_1_ceil_mode_is_True", "TODO(titaiwang): enable this in the next ONNX release."},
 #ifdef ENABLE_TRAINING_CORE
       {"adagrad", "not a registered function/op", {}},                  // Op not registered.
       {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
@@ -1400,7 +1401,6 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
                           "output=Y:expected 1 (3f800000), got 4 (40800000), diff: 3, tol=0.002 idx=24. 13 of 49 differ. CPU test passed."});
     broken_tests->insert({"convtranspose_group_2", "Segmentation fault (core dumped). CPU test passed."});
     broken_tests->insert({"convtranspose_group_2_image_3", "Segmentation fault (core dumped). CPU test passed."});
-    broken_tests->insert({"averagepool_3d_dilations_large_count_include_pad_is_1_ceil_mode_is_True", "TODO: enable this in the next ONNX release."});
   }
 
 #ifdef DISABLE_CONTRIB_OPS
