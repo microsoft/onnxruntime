@@ -163,9 +163,11 @@ def get_qnn_qdq_config(
         name_to_initializer,
     )
 
+    op_types_to_quantize_set = set(op_types_to_quantize) if op_types_to_quantize else None
+
     for node in model.graph.node:
-        if op_types_to_quantize:
-            if node.op_type not in op_types_to_quantize:
+        if op_types_to_quantize_set:
+            if node.op_type not in op_types_to_quantize_set:
                 continue
         op_types.add(node.op_type)
         qnn_compat.process_node(node)
