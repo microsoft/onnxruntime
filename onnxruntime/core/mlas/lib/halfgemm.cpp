@@ -375,7 +375,7 @@ HGemmOperation(
             // When M is small, B is visited once. The overhead of Pack(B') exceeds the benefits
             // from A x Pack(B'). Therefore directly calculate A x B'.
             // Without PackB, to utilize memory locality, iterate full K.
-            const size_t StrideN = 16;
+            constexpr size_t StrideN = 16;
             for (size_t n = 0, countN; n < RangeCountN; n += countN) {
                 countN = std::min(StrideN, RangeCountN - n);
                 dispatch->HGemmKernel_TransposedB(A, B, C, RangeCountM, countN, K, lda, ldb, ldc, alpha, beta);
