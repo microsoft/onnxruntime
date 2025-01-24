@@ -15,7 +15,7 @@ Version 0.6.0 adds support for "chat mode", also known as _continuation_, _conti
 
 In summary, the new API adds an `AppendTokens` function to the generator, which allows for multi-turn conversations. Previously, input was set in `GeneratorParams` prior to the creation of the generator.
 
-Calling `AddTokens` outside of the loop also adds support for system prompt caching.
+Calling `AppendTokens` outside of the conversation loop can be used to implement system prompt caching.
 
 Note: chat mode and system prompt caching is only supported when running on CPU, NVIDIA GPUs with the CUDA EP, and all GPUs with the Web GPU native EP. It is not supported on NPU or GPUs running with the DirecML EP. For Q&A mode, the migrations described below *are* required.
 
