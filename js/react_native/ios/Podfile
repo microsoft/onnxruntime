@@ -2,14 +2,20 @@ require_relative '../node_modules/react-native/scripts/react_native_pods'
 require_relative '../node_modules/@react-native-community/cli-platform-ios/native_modules'
 
 platform :ios, '15.1'
+prepare_react_native_project!
+# pre_install do |installer|
+#   # Custom pre-install script or commands
+#   puts "Running pre-install script..."
+#
+#   # Recommended fix for https://github.com/facebook/react-native/issues/32483
+#   # from https://github.com/facebook/react-native/issues/32483#issuecomment-966784501
+#   system("sed -i '' 's/typedef uint8_t clockid_t;//' \"./Pods/RCT-Folly/folly/portability/Time.h\"")
+# end
 
-pre_install do |installer|
-  # Custom pre-install script or commands
-  puts "Running pre-install script..."
-
-  # Recommended fix for https://github.com/facebook/react-native/issues/32483
-  # from https://github.com/facebook/react-native/issues/32483#issuecomment-966784501
-  system("sed -i '' 's/typedef uint8_t clockid_t;//' \"./Pods/RCT-Folly/folly/portability/Time.h\"")
+linkage = ENV['USE_FRAMEWORKS']
+if linkage != nil
+  Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
+  use_frameworks! :linkage => linkage.to_sym
 end
 
 def shared
@@ -21,11 +27,9 @@ def shared
     # Hermes is now enabled by default. Disable by setting this flag to false.
     # Upcoming versions of React Native may rely on get_default_flags(), but
     # we make it explicit here to aid in the React Native upgrade process.
-    :hermes_enabled => false
+    :hermes_enabled => false,
+    :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
-
-  # Comment the next line if you don't want to use dynamic frameworks
-  use_frameworks!
 
   ort_c_local_pod_path = ENV['ORT_C_LOCAL_POD_PATH']
   if ort_c_local_pod_path != nil
