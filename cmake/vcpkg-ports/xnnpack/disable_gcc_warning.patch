@@ -1,0 +1,12 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 4a9fad59a..2713cded3 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -334,6 +334,7 @@ ENDIF()
+ IF(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+   # Disable "note: parameter passing for argument of type ... changed/will change in ..."
+   ADD_COMPILE_OPTIONS("-Wno-psabi")
++  ADD_COMPILE_OPTIONS("-Wno-incompatible-pointer-types")
+ ENDIF()
+ 
+ # ---[ Build flags

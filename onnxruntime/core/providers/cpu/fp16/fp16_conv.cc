@@ -596,9 +596,15 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
 // Operator definitions
 //
 
+ONNX_CPU_OPERATOR_VERSIONED_TYPED_KERNEL(
+    Conv,
+    11, 21, MLFloat16,
+    KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
+    FusedConvFp16);
+
 ONNX_CPU_OPERATOR_TYPED_KERNEL(
     Conv,
-    11,
+    22,
     MLFloat16,
     KernelDefBuilder().TypeConstraint("T", DataTypeImpl::GetTensorType<MLFloat16>()),
     FusedConvFp16);

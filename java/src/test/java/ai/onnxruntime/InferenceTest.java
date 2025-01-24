@@ -737,7 +737,6 @@ public class InferenceTest {
     runProvider(OrtProvider.CORE_ML);
   }
 
-  @Disabled("DirectML Java API hasn't been supported yet")
   @Test
   @EnabledIfSystemProperty(named = "USE_DML", matches = "1")
   public void testDirectML() throws OrtException {

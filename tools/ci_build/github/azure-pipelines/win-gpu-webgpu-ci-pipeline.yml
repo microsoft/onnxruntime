@@ -48,7 +48,7 @@ stages:
           --enable_pybind
           --build_nodejs
           --use_webgpu
-          --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON
+          --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY=ON
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_RelWithDebInfo

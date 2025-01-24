@@ -7,7 +7,7 @@
 include(FindJava)
 find_package(Java REQUIRED)
 include(UseJava)
-if (NOT CMAKE_SYSTEM_NAME STREQUAL "Android")
+if (NOT ANDROID)
     find_package(JNI REQUIRED)
 endif()
 
@@ -21,23 +21,28 @@ endif()
 
 set(GRADLE_EXECUTABLE "${JAVA_ROOT}/gradlew")
 
+set(COMMON_GRADLE_ARGS --console=plain)
+if(WIN32)
+  list(APPEND COMMON_GRADLE_ARGS -Dorg.gradle.daemon=false)
+elseif (ANDROID)
+  # For Android build, we may run gradle multiple times in same build,
+  # sometimes gradle JVM will run out of memory if we keep the daemon running
+  # it is better to not keep a daemon running
+  list(APPEND COMMON_GRADLE_ARGS --no-daemon)
+endif()
+
 # Specify the Java source files
 file(GLOB_RECURSE onnxruntime4j_gradle_files "${JAVA_ROOT}/*.gradle")
 file(GLOB_RECURSE onnxruntime4j_src "${JAVA_ROOT}/src/main/java/ai/onnxruntime/*.java")
 set(JAVA_OUTPUT_JAR ${JAVA_ROOT}/build/libs/onnxruntime.jar)
 # this jar is solely used to signaling mechanism for dependency management in CMake
 # if any of the Java sources change, the jar (and generated headers) will be regenerated and the onnxruntime4j_jni target will be rebuilt
-set(GRADLE_ARGS --console=plain clean jar -x test)
-if(WIN32)
-  set(GRADLE_ARGS ${GRADLE_ARGS} -Dorg.gradle.daemon=false)
-elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
-  # For Android build, we may run gradle multiple times in same build,
-  # sometimes gradle JVM will run out of memory if we keep the daemon running
-  # it is better to not keep a daemon running
-  set(GRADLE_ARGS ${GRADLE_ARGS} --no-daemon)
-endif()
+set(GRADLE_ARGS clean jar -x test)
 
-add_custom_command(OUTPUT ${JAVA_OUTPUT_JAR} COMMAND ${GRADLE_EXECUTABLE} ${GRADLE_ARGS} WORKING_DIRECTORY ${JAVA_ROOT} DEPENDS ${onnxruntime4j_gradle_files} ${onnxruntime4j_src})
+add_custom_command(OUTPUT ${JAVA_OUTPUT_JAR}
+                   COMMAND ${GRADLE_EXECUTABLE} ${COMMON_GRADLE_ARGS} ${GRADLE_ARGS}
+                   WORKING_DIRECTORY ${JAVA_ROOT}
+                   DEPENDS ${onnxruntime4j_gradle_files} ${onnxruntime4j_src})
 add_custom_target(onnxruntime4j DEPENDS ${JAVA_OUTPUT_JAR})
 set_source_files_properties(${JAVA_OUTPUT_JAR} PROPERTIES GENERATED TRUE)
 set_property(TARGET onnxruntime4j APPEND PROPERTY ADDITIONAL_CLEAN_FILES "${JAVA_OUTPUT_DIR}")
@@ -62,7 +67,7 @@ target_link_libraries(onnxruntime4j_jni PUBLIC onnxruntime)
 
 set(JAVA_PACKAGE_OUTPUT_DIR ${JAVA_OUTPUT_DIR}/build)
 file(MAKE_DIRECTORY ${JAVA_PACKAGE_OUTPUT_DIR})
-if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+if (ANDROID)
   set(ANDROID_PACKAGE_OUTPUT_DIR ${JAVA_PACKAGE_OUTPUT_DIR}/android)
   file(MAKE_DIRECTORY ${ANDROID_PACKAGE_OUTPUT_DIR})
 endif()
@@ -88,7 +93,7 @@ if(APPLE)
    elseif(JNI_ARCH STREQUAL "arm64")
        set(JNI_ARCH aarch64)
    endif()
-elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
+elseif (ANDROID)
   set(JNI_ARCH ${ANDROID_ABI})
 elseif (ARM64)
   set(JNI_ARCH aarch64)
@@ -143,7 +148,7 @@ if (WIN32)
   if(NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
     add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_FILE_NAME:onnxruntime>)
     add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime4j_jni> ${JAVA_PACKAGE_JNI_DIR}/$<TARGET_FILE_NAME:onnxruntime4j_jni>)
-    if (onnxruntime_USE_CUDA OR onnxruntime_USE_DNNL OR onnxruntime_USE_OPENVINO OR onnxruntime_USE_TENSORRT)
+    if (onnxruntime_USE_CUDA OR onnxruntime_USE_DNNL OR onnxruntime_USE_OPENVINO OR onnxruntime_USE_TENSORRT OR (onnxruntime_USE_QNN AND NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB))
       add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime_providers_shared> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_FILE_NAME:onnxruntime_providers_shared>)
     endif()
     if (onnxruntime_USE_CUDA)
@@ -158,11 +163,14 @@ if (WIN32)
     if (onnxruntime_USE_TENSORRT)
       add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime_providers_tensorrt> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_FILE_NAME:onnxruntime_providers_tensorrt>)
     endif()
+    if (onnxruntime_USE_QNN AND NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
+      add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime_providers_qnn> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_FILE_NAME:onnxruntime_providers_qnn>)
+    endif()
   endif()
 else()
   add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime>)
   add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime4j_jni> ${JAVA_PACKAGE_JNI_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime4j_jni>)
-  if (onnxruntime_USE_CUDA OR onnxruntime_USE_DNNL OR onnxruntime_USE_OPENVINO OR onnxruntime_USE_TENSORRT)
+  if (onnxruntime_USE_CUDA OR onnxruntime_USE_DNNL OR onnxruntime_USE_OPENVINO OR onnxruntime_USE_TENSORRT OR (onnxruntime_USE_QNN AND NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB))
     add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime_providers_shared> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime_providers_shared>)
   endif()
   if (onnxruntime_USE_CUDA)
@@ -177,18 +185,13 @@ else()
   if (onnxruntime_USE_TENSORRT)
     add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime_providers_tensorrt> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime_providers_tensorrt>)
   endif()
+  if (onnxruntime_USE_QNN AND NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
+    add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime_providers_qnn> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime_providers_qnn>)
+  endif()
 endif()
 
 # run the build process (this copies the results back into CMAKE_CURRENT_BINARY_DIR)
-set(GRADLE_ARGS --console=plain cmakeBuild -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR})
-if(WIN32)
-  set(GRADLE_ARGS ${GRADLE_ARGS} -Dorg.gradle.daemon=false)
-elseif (CMAKE_SYSTEM_NAME STREQUAL "Android")
-  # For Android build, we may run gradle multiple times in same build,
-  # sometimes gradle JVM will run out of memory if we keep the daemon running
-  # it is better to not keep a daemon running
-  set(GRADLE_ARGS ${GRADLE_ARGS} --no-daemon)
-endif()
+set(GRADLE_ARGS cmakeBuild -DcmakeBuildDir=${CMAKE_CURRENT_BINARY_DIR})
 
 # Append relevant native build flags to gradle command
 set(GRADLE_ARGS ${GRADLE_ARGS} ${ORT_PROVIDER_FLAGS})
@@ -197,9 +200,11 @@ if (onnxruntime_ENABLE_TRAINING_APIS)
 endif()
 
 message(STATUS "GRADLE_ARGS: ${GRADLE_ARGS}")
-add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${GRADLE_EXECUTABLE} ${GRADLE_ARGS} WORKING_DIRECTORY ${JAVA_ROOT})
+add_custom_command(TARGET onnxruntime4j_jni POST_BUILD
+                   COMMAND ${GRADLE_EXECUTABLE} ${COMMON_GRADLE_ARGS} ${GRADLE_ARGS}
+                   WORKING_DIRECTORY ${JAVA_ROOT})
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+if (ANDROID)
   set(ANDROID_PACKAGE_JNILIBS_DIR ${JAVA_OUTPUT_DIR}/android)
   set(ANDROID_PACKAGE_ABI_DIR ${ANDROID_PACKAGE_JNILIBS_DIR}/${ANDROID_ABI})
   file(MAKE_DIRECTORY ${ANDROID_PACKAGE_JNILIBS_DIR})
@@ -214,6 +219,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android")
     POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E echo "Generating Android AAR package..."
     COMMAND ${GRADLE_EXECUTABLE}
+      ${COMMON_GRADLE_ARGS}
       build
       -b build-android.gradle -c settings-android.gradle
       -DjniLibsDir=${ANDROID_PACKAGE_JNILIBS_DIR} -DbuildDir=${ANDROID_PACKAGE_OUTPUT_DIR}
@@ -237,6 +243,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Android")
       POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E echo "Building and running Android test for Android AAR package..."
       COMMAND ${GRADLE_EXECUTABLE}
+        ${COMMON_GRADLE_ARGS}
         clean assembleDebug assembleDebugAndroidTest
         -DminSdkVer=${ANDROID_MIN_SDK}
         --stacktrace

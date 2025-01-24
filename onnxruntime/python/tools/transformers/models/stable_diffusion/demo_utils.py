@@ -23,7 +23,7 @@ import argparse
 import os
 import sys
 from importlib.metadata import PackageNotFoundError, version
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 import controlnet_aux
 import cv2
@@ -307,7 +307,7 @@ def max_batch(args):
     return max_batch_size
 
 
-def get_metadata(args, is_xl: bool = False) -> Dict[str, Any]:
+def get_metadata(args, is_xl: bool = False) -> dict[str, Any]:
     metadata = {
         "command": " ".join(['"' + x + '"' if " " in x else x for x in sys.argv]),
         "args.prompt": args.prompt,
@@ -410,7 +410,7 @@ def initialize_pipeline(
     lora_scale: float = 1.0,
     use_fp16_vae: bool = True,
     use_vae: bool = True,
-    framework_model_dir: Optional[str] = None,
+    framework_model_dir: str | None = None,
     max_cuda_graphs: int = 1,
 ):
     pipeline_info = PipelineInfo(
@@ -649,7 +649,7 @@ def get_canny_image(image) -> Image.Image:
     return image
 
 
-def process_controlnet_images_xl(args) -> List[Image.Image]:
+def process_controlnet_images_xl(args) -> list[Image.Image]:
     """
     Process control image for SDXL control net.
     """

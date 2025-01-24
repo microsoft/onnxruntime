@@ -125,42 +125,31 @@ Status PrepareQkv_Attention(contrib::AttentionParameters& parameters,
   bool use_fused_kernel = (nullptr != fused_runner && !parameters.is_unidirectional);
   bool use_fused_causal = (nullptr != fused_runner && parameters.is_unidirectional);
 
-  if (data.bias == nullptr) {
-    assert(nullptr == fused_runner);
-    // For quantized attention, bias has been added so only need transpose here.
-    // gemm_buffer should be BxSx3xNxH => qkv: 3xBxNxSxH
-    assert(qk_head_size == v_head_size);
-    int matrix_to_trans = (past_present_share_buffer ? 1 : 3);
-    ORT_RETURN_IF_ERROR(LaunchTransQkv(stream, matrix_to_trans, sequence_length, batch_size, qk_head_size, num_heads,
-                                       max_threads_per_block, false, data.gemm_buffer, qkv, 3));
-    data.qkv_format = AttentionQkvFormat::Q_K_V_BNSH;
-  } else {
-    // For fused TRT attention, transpose qkv to BxSxNx3xH (format 2)
-    // For flash or memory efficient attention, transpose to 3xBxSxNxH (format 3)
-    // For unfused kernel, transpose to 3xBxNxSxH (format 1)
-    // For fused causal kernel, use format 1 since we need have K and V to update present state,
-    //   at the same time, we update gemm_buffer BxSx3xNxH with bias which is used as input for fused causal kernel.
-    const int format = (use_fused_kernel ? 2 : (use_flash_or_efficient_attention ? 3 : 1));
-    data.qkv_format = use_fused_kernel
-                          ? AttentionQkvFormat::QKV_BSN3H
-                          : (use_flash_or_efficient_attention
-                                 ? AttentionQkvFormat::Q_K_V_BSNH
-                                 : (use_fused_causal
-                                        ? AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH
-                                        : AttentionQkvFormat::Q_K_V_BNSH));
+  // For fused TRT attention, transpose qkv to BxSxNx3xH (format 2)
+  // For flash or memory efficient attention, transpose to 3xBxSxNxH (format 3)
+  // For unfused kernel, transpose to 3xBxNxSxH (format 1)
+  // For fused causal kernel, use format 1 since we need have K and V to update present state,
+  //   at the same time, we update gemm_buffer BxSx3xNxH with bias which is used as input for fused causal kernel.
+  const int format = (use_fused_kernel ? 2 : (use_flash_or_efficient_attention ? 3 : 1));
+  data.qkv_format = use_fused_kernel
+                        ? AttentionQkvFormat::QKV_BSN3H
+                        : (use_flash_or_efficient_attention
+                               ? AttentionQkvFormat::Q_K_V_BSNH
+                               : (use_fused_causal
+                                      ? AttentionQkvFormat::Q_K_V_BNSH_QKV_BS3NH
+                                      : AttentionQkvFormat::Q_K_V_BNSH));
 
-    // For fused causal, we will update gemm_buffer with bias directly.
-    T* qkv_add_bias = use_fused_causal ? data.gemm_buffer : nullptr;
+  // For fused causal, we will update gemm_buffer with bias directly.
+  T* qkv_add_bias = use_fused_causal ? data.gemm_buffer : nullptr;
 
-    int matrix_to_transpose = ((format == AttentionQkvFormat::Q_K_V_BNSH && past_present_share_buffer) ? 1 : 3);
-    // format 1: BxSx(NH + NH + NH_v) => BxNxSxH + BxNxSxH + BxNxSxH_v
-    // format 2: BxSx(NH + NH + NH) => BxSxNx(H + H + H)
-    LaunchAddBiasTranspose(stream, matrix_to_transpose, format, max_threads_per_block,
-                           batch_size, sequence_length, num_heads, qk_head_size,
-                           data.gemm_buffer, data.bias, qkv, true, v_head_size, qkv_add_bias,
-                           3, parameters.do_rotary, parameters.rotary_embedding,
-                           parameters.past_sequence_length);
-  }
+  int matrix_to_transpose = ((format == AttentionQkvFormat::Q_K_V_BNSH && past_present_share_buffer) ? 1 : 3);
+  // format 1: BxSx(NH + NH + NH_v) => BxNxSxH + BxNxSxH + BxNxSxH_v
+  // format 2: BxSx(NH + NH + NH) => BxSxNx(H + H + H)
+  LaunchAddBiasTranspose(stream, matrix_to_transpose, format, max_threads_per_block,
+                         batch_size, sequence_length, num_heads, qk_head_size,
+                         data.gemm_buffer, data.bias, qkv, true, v_head_size, qkv_add_bias,
+                         3, parameters.do_rotary, parameters.rotary_embedding,
+                         parameters.past_sequence_length);
   return Status::OK();
 }
 

@@ -221,19 +221,11 @@ function(AddTest)
         )
       else()
         set(TEST_NODE_FLAGS)
-        if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
-          list(APPEND TEST_NODE_FLAGS "--experimental-wasm-threads")
-        endif()
-        if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
-          list(APPEND TEST_NODE_FLAGS "--experimental-wasm-simd")
-        endif()
 
         # prefer Node from emsdk so the version is more deterministic
         if (DEFINED ENV{EMSDK_NODE})
           set(NODE_EXECUTABLE $ENV{EMSDK_NODE})
         else()
-          # warning as we don't know what node version is being used and whether things like the TEST_NODE_FLAGS
-          # will be valid. e.g. "--experimental-wasm-simd" is not valid with node v20 or later.
           message(WARNING "EMSDK_NODE environment variable was not set. Falling back to system `node`.")
           set(NODE_EXECUTABLE node)
         endif()
@@ -525,6 +517,9 @@ set (onnxruntime_global_thread_pools_test_SRC
 set (onnxruntime_webgpu_external_dawn_test_SRC
           ${TEST_SRC_DIR}/webgpu/external_dawn/main.cc)
 
+set (onnxruntime_webgpu_delay_load_test_SRC
+          ${TEST_SRC_DIR}/webgpu/delay_load/main.cc)
+
 # tests from lowest level library up.
 # the order of libraries should be maintained, with higher libraries being added first in the list
 
@@ -624,16 +619,13 @@ if(onnxruntime_USE_ARMNN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_armnn)
 endif()
 
-set(ONNXRUNTIME_TEST_LIBS
-    onnxruntime_session
-    ${ONNXRUNTIME_INTEROP_TEST_LIBS}
-    ${onnxruntime_libs}
-    # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime
+set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
+    # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime.
+    # QNN EP can be built as either a dynamic and static libs.
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_VSINPU}
     ${PROVIDERS_JS}
     ${PROVIDERS_WEBGPU}
-    ${PROVIDERS_QNN}
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
@@ -642,6 +634,17 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_COREML}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_AZURE}
+)
+
+if (onnxruntime_BUILD_QNN_EP_STATIC_LIB)
+  list(APPEND ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS onnxruntime_providers_qnn)
+endif()
+
+set(ONNXRUNTIME_TEST_LIBS
+    onnxruntime_session
+    ${ONNXRUNTIME_INTEROP_TEST_LIBS}
+    ${onnxruntime_libs}
+    ${ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -705,7 +708,9 @@ if(onnxruntime_USE_QNN AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_RED
   list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/qnn/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_qnn)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_qnn)
-  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_qnn)
+  if(NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
+    list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_shared)
+  endif()
 endif()
 
 if(onnxruntime_USE_SNPE)
@@ -1862,6 +1867,15 @@ if (onnxruntime_USE_WEBGPU AND onnxruntime_USE_EXTERNAL_DAWN)
           DEPENDS ${all_dependencies}
   )
   onnxruntime_add_include_to_target(onnxruntime_webgpu_external_dawn_test dawn::dawncpp_headers dawn::dawn_headers)
+endif()
+
+if (onnxruntime_USE_WEBGPU AND WIN32 AND onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)
+  AddTest(DYN
+          TARGET onnxruntime_webgpu_delay_load_test
+          SOURCES ${onnxruntime_webgpu_delay_load_test_SRC}
+          LIBS ${SYS_PATH_LIB}
+          DEPENDS ${all_dependencies}
+  )
 endif()
 
 include(onnxruntime_fuzz_test.cmake)
