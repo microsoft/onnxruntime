@@ -10,7 +10,7 @@
 namespace onnxruntime {
 namespace cann {
 
-static int lower_bound = 8;   // Supported domain version lower bounds
+static int lower_bound = 8;  // Supported domain version lower bounds
 
 std::once_flag flag;
 
