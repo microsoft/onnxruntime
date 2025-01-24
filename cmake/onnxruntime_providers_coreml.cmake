@@ -8,8 +8,6 @@ endif()
 add_compile_definitions(USE_COREML=1)
 
 # Check if we can build the coremltools code for creating an mlpackage with an mlprogram.
-# TODO: remove the following variable
-set(_enable_ML_PROGRAM ON)
 if(LINUX)
   find_library(LibUUID_LIBRARY NAMES uuid)
   find_path(LibUUID_INCLUDE_DIR NAMES uuid/uuid.h)
@@ -19,9 +17,9 @@ if(LINUX)
   endif()
 endif()
 
-if (_enable_ML_PROGRAM)
-  add_compile_definitions(COREML_ENABLE_MLPROGRAM=1)
-endif()
+
+add_compile_definitions(COREML_ENABLE_MLPROGRAM=1)
+
 
 # Compile CoreML proto definition to ${CMAKE_CURRENT_BINARY_DIR}/coreml_proto
 set(COREML_PROTO_ROOT ${coremltools_SOURCE_DIR}/mlmodel/format)
@@ -88,10 +86,10 @@ file(GLOB_RECURSE
   "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/*.cc"
 )
 
-if(_enable_ML_PROGRAM)
+
   # Add helpers to create mlpackage weights. limit to just the files we need to minimize the changes to make them
   # build on Windows and Linux.
-  file(GLOB
+file(GLOB
     onnxruntime_providers_coreml_milblob_cc_srcs CONFIGURE_DEPENDS
     "${coremltools_SOURCE_DIR}/mlmodel/src/MILBlob/*.hpp"
     "${coremltools_SOURCE_DIR}/mlmodel/src/MILBlob/*.cpp"
@@ -100,22 +98,22 @@ if(_enable_ML_PROGRAM)
     "${coremltools_SOURCE_DIR}/mlmodel/src/MILBlob/Blob/StorageFormat.hpp"
     "${coremltools_SOURCE_DIR}/mlmodel/src/MILBlob/Blob/FileWriter.?pp"
     "${coremltools_SOURCE_DIR}/mlmodel/src/MILBlob/Blob/StorageWriter.?pp"
-  )
+)
 
-  # Add helpers to create mlpackage
-  file(GLOB
+# Add helpers to create mlpackage
+file(GLOB
     onnxruntime_providers_coreml_modelpackage_cc_srcs CONFIGURE_DEPENDS
     "${coremltools_SOURCE_DIR}/modelpackage/src/ModelPackage.?pp"
     "${coremltools_SOURCE_DIR}/modelpackage/src/utils/JsonMap.?pp"
-  )
+)
 
-  set(coremltools_srcs
+set(coremltools_srcs
     ${onnxruntime_providers_coreml_milblob_cc_srcs}
     ${onnxruntime_providers_coreml_modelpackage_cc_srcs}
-  )
+)
 
-  source_group(TREE ${coremltools_SOURCE_DIR} PREFIX coremltools FILES ${coremltools_srcs})
-endif()
+source_group(TREE ${coremltools_SOURCE_DIR} PREFIX coremltools FILES ${coremltools_srcs})
+
 
 # Add CoreML objective c++ source code
 if (APPLE)
@@ -169,33 +167,33 @@ if (APPLE)
   target_compile_definitions(onnxruntime_providers_coreml PRIVATE __APPLE__)
 endif()
 
-if (_enable_ML_PROGRAM)
-  # Setup coremltools fp16 and json dependencies for creating an mlpackage.
-  #
-  # fp16 depends on psimd
-  FetchContent_Declare(psimd URL ${DEP_URL_psimd} URL_HASH SHA1=${DEP_SHA1_psimd})
-  onnxruntime_fetchcontent_makeavailable(psimd)
-  set(PSIMD_SOURCE_DIR ${psimd_SOURCE_DIR})
-  FetchContent_Declare(fp16 URL ${DEP_URL_fp16} URL_HASH SHA1=${DEP_SHA1_fp16})
-  set(FP16_BUILD_TESTS OFF CACHE INTERNAL "")
-  set(FP16_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
-  onnxruntime_fetchcontent_makeavailable(fp16)
 
-  # need to tweak the include paths to match what the coreml source code expects
-  target_include_directories(onnxruntime_providers_coreml PRIVATE
-                            ${fp16_SOURCE_DIR}/include
-                            ${nlohmann_json_SOURCE_DIR}/single_include/nlohmann
-                            ${coremltools_SOURCE_DIR}
-                            ${coremltools_SOURCE_DIR}/mlmodel/src/
-                            ${coremltools_SOURCE_DIR}/modelpackage/src/
-  )
+# Setup coremltools fp16 and json dependencies for creating an mlpackage.
+#
+# fp16 depends on psimd
+FetchContent_Declare(psimd URL ${DEP_URL_psimd} URL_HASH SHA1=${DEP_SHA1_psimd})
+onnxruntime_fetchcontent_makeavailable(psimd)
+set(PSIMD_SOURCE_DIR ${psimd_SOURCE_DIR})
+FetchContent_Declare(fp16 URL ${DEP_URL_fp16} URL_HASH SHA1=${DEP_SHA1_fp16})
+set(FP16_BUILD_TESTS OFF CACHE INTERNAL "")
+set(FP16_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
+onnxruntime_fetchcontent_makeavailable(fp16)
 
-  add_dependencies(onnxruntime_providers_coreml nlohmann_json::nlohmann_json fp16)
+# need to tweak the include paths to match what the coreml source code expects
+target_include_directories(onnxruntime_providers_coreml PRIVATE
+                          ${fp16_SOURCE_DIR}/include
+                          ${nlohmann_json_SOURCE_DIR}/single_include/nlohmann
+                          ${coremltools_SOURCE_DIR}
+                          ${coremltools_SOURCE_DIR}/mlmodel/src/
+                          ${coremltools_SOURCE_DIR}/modelpackage/src/
+)
 
-  if (LINUX)
-    target_link_libraries(onnxruntime_providers_coreml PRIVATE uuid)
-  endif()
+add_dependencies(onnxruntime_providers_coreml nlohmann_json::nlohmann_json fp16)
+
+if (LINUX)
+  target_link_libraries(onnxruntime_providers_coreml PRIVATE uuid)
 endif()
+
 
 if (APPLE)
   target_link_libraries(onnxruntime_providers_coreml PRIVATE "-framework Foundation" "-framework CoreML")
