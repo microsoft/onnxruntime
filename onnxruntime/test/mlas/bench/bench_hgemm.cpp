@@ -48,20 +48,20 @@ void HGEMM(benchmark::State& state, bool transA, bool transB) {
 
   for (auto _ : state) {
     MlasGemm(
-      transA ? CblasTrans : CblasNoTrans,
-      transB ? CblasTrans : CblasNoTrans,
-      static_cast<size_t>(M),
-      static_cast<size_t>(N),
-      static_cast<size_t>(K),
-      A.data(),
-      transA ? M : K,
-      B.data(),
-      transB ? K : N,
-      C.data(),
-      N,
-      alpha.val,
-      beta.val,
-      tp.get());
+        transA ? CblasTrans : CblasNoTrans,
+        transB ? CblasTrans : CblasNoTrans,
+        static_cast<size_t>(M),
+        static_cast<size_t>(N),
+        static_cast<size_t>(K),
+        A.data(),
+        transA ? M : K,
+        B.data(),
+        transB ? K : N,
+        C.data(),
+        N,
+        alpha.val,
+        beta.val,
+        tp.get());
   }
 }
 
