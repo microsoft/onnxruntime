@@ -24,18 +24,35 @@ For Nightly PyTorch builds please see [Pytorch home](https://pytorch.org/) and s
 
 Pre-built binaries of ONNX Runtime with MIGraphX EP are published for most language bindings. Please reference [Install ORT](../install).
 
+As of ROCm version 6.0.2 AMD supplies pre-built debian binaries hosted on (https://repo.radeon.com/manylinux)
+
 ## Requirements
 
+Below is the matrix of supported ROCm versions.
 
-|ONNX Runtime|MIGraphX|
+Links for prebuild Ubuntu binaries are linked below corresponding to python versions for the host OS based on support.
+
+
+|ONNX Runtime|MIGraphX| Repo.Radeon link|
 |---|---|
-|main|5.4|
-|1.14|5.4|
-|1.13|5.4|
-|1.13|5.3.2|
-|1.12|5.2.3|
-|1.12|5.2|
-
+|main|5.4||
+|1.14|5.4||
+|1.13|5.4||
+|1.13|5.3.2||
+|1.12|5.2.3||
+|1.12|5.2||
+|1.13|5.3||
+|1.14|5.4||
+|1.15|5.4.x||
+|1.16|6.0.0||
+|1.16|6.0.2| [Python 3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.0.2/onnxruntime_rocm-inference-1.17.0-cp310-cp310-linux_x86_64.whl)|
+|1.17|6.1| [Python 3.8](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.1/onnxruntime_rocm-inference-1.17.0-cp38-cp38-linux_x86_64.whl) [Python 3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.1/onnxruntime_rocm-inference-1.17.0-cp310-cp310-linux_x86_64.whl)|
+|1.17|6.1.3| [Python 3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.1.3/onnxruntime_rocm-inference-1.17.0-cp310-cp310-linux_x86_64.whl)|
+|1.18|6.2| [Python 3.8](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2/onnxruntime_rocm-1.18.0-cp38-cp38-linux_x86_64.whl) [Python 3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2/onnxruntime_rocm-1.18.0-cp310-cp310-linux_x86_64.whl)|
+|1.18|6.2.3| [Python 3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2.3/onnxruntime_rocm-1.18.0-cp310-cp310-linux_x86_64.whl)|
+|1.18|6.2.4| [Python 3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2.4/onnxruntime_rocm-1.18.0-cp310-cp310-linux_x86_64.whl)|
+|1.19|6.3| [Python 3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.3/onnxruntime_rocm-1.19.0-cp310-cp310-linux_x86_64.whl) [Python 3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.3/onnxruntime_rocm-1.19.0-cp312-cp312-linux_x86_64.whl)|
+|1.19|6.3.1| [Python 3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.3.1/onnxruntime_rocm-1.19.0-cp310-cp310-linux_x86_64.whl) [Python 3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.3.1/onnxruntime_rocm-1.19.0-cp312-cp312-linux_x86_64.whl)|
 
 ## Build
 For build instructions, please see the [BUILD page](../build/eps.md#amd-migraphx).
