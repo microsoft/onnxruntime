@@ -385,7 +385,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     // Register callback for ETW capture state (rundown)
     callback_ETWSink_provider_ = onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback(
         [&etwRegistrationManager, this](
-            LPCGUID SourceId,
+            LPCGUID /* SourceId */,
             ULONG IsEnabled,
             UCHAR Level,
             ULONGLONG MatchAnyKeyword,
