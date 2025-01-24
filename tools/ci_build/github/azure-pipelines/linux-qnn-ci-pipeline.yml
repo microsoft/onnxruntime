@@ -78,6 +78,12 @@ jobs:
         displayName: Build QNN EP
 
       - script: |
+          export ORT_UNIT_TEST_MAIN_LOG_LEVEL=0
+          ./onnxruntime_test_all --gtest_filter="QnnCPUBackendTests.AveragePool_AsGlobal"
+        displayName: Run QnnCPUBackendTests.AveragePool_AsGlobal unit test
+        workingDirectory: $(Build.SourcesDirectory)/build/Release
+
+      - script: |
           python3 tools/ci_build/build.py \
             --build_dir build \
             --config Release \
