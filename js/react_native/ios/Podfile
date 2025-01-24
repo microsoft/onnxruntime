@@ -4,24 +4,12 @@ require_relative '../node_modules/@react-native-community/cli-platform-ios/nativ
 platform :ios, '15.1'
 
 prepare_react_native_project!
-
-linkage = ENV['USE_FRAMEWORKS']
-if linkage != nil
-  Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
-  use_frameworks! :linkage => linkage.to_sym
-end
-
-pre_install do |installer|
-  # Custom pre-install script or commands
-  puts "Running pre-install script..."
-
-  # Recommended fix for https://github.com/facebook/react-native/issues/32483
-  # from https://github.com/facebook/react-native/issues/32483#issuecomment-966784501
-  system("sed -i '' 's/typedef uint8_t clockid_t;//' \"./Pods/RCT-Folly/folly/portability/Time.h\"")
-end
+# use_frameworks need to be loaded before use_react_native! for now
+use_frameworks!
 
 def shared
   config = use_native_modules!
+
   # Flags change depending on the env values.
   flags = get_default_flags()
 
@@ -32,10 +20,8 @@ def shared
     # we make it explicit here to aid in the React Native upgrade process.
     :hermes_enabled => false,
     :fabric_enabled => false,
+    :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
-
-  # Comment the next line if you don't want to use dynamic frameworks
-  use_frameworks!
 
   ort_c_local_pod_path = ENV['ORT_C_LOCAL_POD_PATH']
   if ort_c_local_pod_path != nil
@@ -44,7 +30,7 @@ def shared
   else
     pod 'onnxruntime-c'
   end
-  inherit! :search_paths
+  inherit! :complete
 end
 
 target 'OnnxruntimeModule' do
