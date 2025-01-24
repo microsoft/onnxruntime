@@ -33,8 +33,8 @@ Below is the matrix of supported ROCm versions.
 Links for prebuild Ubuntu binaries are linked below corresponding to python versions for the host OS based on support.
 
 
-|ONNX Runtime|MIGraphX| Repo.Radeon link|
-|---|---|
+|ONNX Runtime Version|MIGraphX ROCm Release| Repo.Radeon link|
+|---|---|---|
 |main|5.4||
 |1.14|5.4||
 |1.13|5.4||
