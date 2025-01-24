@@ -13,7 +13,7 @@ import argparse
 import inspect
 import itertools
 from abc import ABC, abstractmethod
-from typing import Callable, List
+from collections.abc import Callable
 
 import numpy as np
 import onnx
@@ -203,7 +203,7 @@ class HierarchicalNameTransformer(TransformerBase):
                 if len(sec) > 0:
                     self.sections.add(sec)
 
-    def _get_sections(self, curr_name: str, sections: List[str]) -> None:
+    def _get_sections(self, curr_name: str, sections: list[str]) -> None:
         for section in self.sections:
             if curr_name.startswith(section) and (len(curr_name) == len(section) or curr_name[len(section)] == "."):
                 sections.append(section)
@@ -217,8 +217,7 @@ class HierarchicalNameTransformer(TransformerBase):
         if "/" in name:
             if name.startswith(f"/{self.original_module_name}/"):
                 name = name[len(self.original_module_name) + 2 :]
-            if name.startswith("/"):
-                name = name[1:]
+            name = name.removeprefix("/")
             return name
 
         sections = []

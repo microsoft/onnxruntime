@@ -2,12 +2,14 @@
 // Licensed under the MIT License.
 
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
-#include "core/graph/constants.h"
-#include "core/providers/qnn/builder/qnn_model.h"
 
 #include <iostream>
 #include <fstream>
 #include <filesystem>
+
+#include "core/providers/qnn/ort_api.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
+#include "core/providers/qnn/builder/qnn_model.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -51,9 +53,9 @@ Status GetMainContextNode(const std::vector<IExecutionProvider::FusedNodeAndGrap
     // There is only one EPContext node in one filtered graph -- this is guaranteed by GetCapability
     const onnxruntime::GraphViewer& graph_viewer(fused_nodes_and_graphs[i].filtered_graph);
     ORT_RETURN_IF(graph_viewer.NumberOfNodes() != 1, "One filtered graph should has only one EPContext node!");
-    const auto& ep_context_node = graph_viewer.Nodes().begin();
-    ORT_RETURN_IF_NOT(EPCONTEXT_OP == ep_context_node->OpType(), "Should only filter in the EPContext node.");
-    NodeAttrHelper node_helper(*ep_context_node);
+    const Node& ep_context_node = *graph_viewer.Nodes().begin();
+    ORT_RETURN_IF_NOT(EPCONTEXT_OP == ep_context_node.OpType(), "Should only filter in the EPContext node.");
+    NodeAttrHelper node_helper(ep_context_node);
     int64_t is_main_context = node_helper.Get(MAIN_CONTEXT, static_cast<int64_t>(0));
     if (1 == is_main_context) {
       main_context_pos.push_back(static_cast<int>(i));
@@ -68,17 +70,16 @@ Status CreateNodeArgs(const std::vector<std::string>& names,
                       const std::unordered_map<std::string, OnnxTensorInfo>& tensor_info_table,
                       std::vector<NodeArg*>& node_args,
                       onnxruntime::Graph& graph) {
-  using namespace ONNX_NAMESPACE;
   for (size_t i = 0; i < names.size(); ++i) {
     std::string name = names[i];
     ORT_RETURN_IF(tensor_info_table.find(name) == tensor_info_table.end(), "Tensor name: ", name, " not found in tensor_info_table");
     const OnnxTensorInfo& tensor_info = tensor_info_table.at(name);
-    TypeProto tensor_type;
-    tensor_type.mutable_tensor_type()->set_elem_type(tensor_info.data_type_);
+    std::unique_ptr<ONNX_NAMESPACE::TypeProto> tensor_type = Factory<ONNX_NAMESPACE::TypeProto>::Create();
+    tensor_type->mutable_tensor_type()->set_elem_type(tensor_info.data_type_);
     for (size_t j = 0; j < tensor_info.shape_.size(); ++j) {
-      tensor_type.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(tensor_info.shape_[j]);
+      tensor_type->mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(tensor_info.shape_[j]);
     }
-    auto& input_arg = graph.GetOrCreateNodeArg(name, &tensor_type);
+    auto& input_arg = graph.GetOrCreateNodeArg(name, tensor_type.get());
     node_args.push_back(&input_arg);
   }
   return Status::OK();
@@ -87,7 +88,8 @@ Status CreateNodeArgs(const std::vector<std::string>& names,
 Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
                                 const onnxruntime::PathString& ctx_onnx_model_path,
                                 QnnBackendManager* qnn_backend_manager,
-                                QnnModelLookupTable& qnn_models) {
+                                QnnModelLookupTable& qnn_models,
+                                int64_t max_spill_fill_size) {
   ORT_RETURN_IF_NOT(EPCONTEXT_OP == main_context_node.OpType(), "Should only filter in the EPContext node.");
   NodeAttrHelper node_helper(main_context_node);
   bool is_embed_mode = node_helper.Get(EMBED_MODE, true);
@@ -96,7 +98,8 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
     return qnn_backend_manager->LoadCachedQnnContextFromBuffer(const_cast<char*>(context_binary.c_str()),
                                                                static_cast<uint64_t>(context_binary.length()),
                                                                main_context_node.Name(),
-                                                               qnn_models);
+                                                               qnn_models,
+                                                               max_spill_fill_size);
   }
 
   std::filesystem::path folder_path = std::filesystem::path(ctx_onnx_model_path).parent_path();
@@ -145,17 +148,46 @@ Status GetEpContextFromMainNode(const onnxruntime::Node& main_context_node,
   return qnn_backend_manager->LoadCachedQnnContextFromBuffer(buffer.get(),
                                                              static_cast<uint64_t>(buffer_size),
                                                              main_context_node.Name(),
-                                                             qnn_models);
+                                                             qnn_models,
+                                                             max_spill_fill_size);
+}
+
+Status TryGetMaxSpillFillSize(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs,
+                              uint32_t total_context_size,
+                              int64_t& max_spill_fill_size,
+                              std::vector<int>& main_context_pos_list) {
+  max_spill_fill_size = 0;
+  int max_size_index = 0;
+  for (uint32_t i = 0; i < total_context_size; ++i) {
+    auto index = main_context_pos_list[i];
+    const onnxruntime::GraphViewer& main_ctx_graph_viewer(fused_nodes_and_graphs[index].filtered_graph);
+    ORT_RETURN_IF(main_ctx_graph_viewer.NumberOfNodes() != 1, "One filtered graph should has only one EPContext node!");
+    const Node& ep_context_node = *main_ctx_graph_viewer.Nodes().begin();
+    NodeAttrHelper node_helper(ep_context_node);
+    int64_t max_size = node_helper.Get(MAX_SIZE, static_cast<int64_t>(0));
+    if (max_size > max_spill_fill_size) {
+      max_spill_fill_size = max_size;
+      max_size_index = i;
+    }
+  }
+  if (0 != max_size_index) {
+    int tmp_index = main_context_pos_list[0];
+    main_context_pos_list[0] = main_context_pos_list[max_size_index];
+    main_context_pos_list[max_size_index] = tmp_index;
+  }
+
+  return Status::OK();
 }
 
 Status LoadQnnCtxFromOnnxGraph(const onnxruntime::GraphViewer& graph_viewer,
                                const onnxruntime::PathString& ctx_onnx_model_path,
                                QnnBackendManager* qnn_backend_manager,
                                QnnModelLookupTable& qnn_models,
-                               const logging::Logger& logger) {
+                               const logging::Logger& logger,
+                               int64_t max_spill_fill_size) {
   ORT_RETURN_IF(graph_viewer.NumberOfNodes() != 1, "One filtered graph should has only one EPContext node!");
   Status status = GetEpContextFromMainNode(*graph_viewer.Nodes().begin(), ctx_onnx_model_path, qnn_backend_manager,
-                                           qnn_models);
+                                           qnn_models, max_spill_fill_size);
 
   // This is the protocol with customer that status with INVALID_GRAPH will be generated if failed to load context model
   if (!status.IsOK()) {
@@ -196,6 +228,7 @@ Status CreateEPContextNodes(Model* model,
                             const QnnModelLookupTable& qnn_models,
                             const onnxruntime::PathString& context_cache_path,
                             bool qnn_context_embed_mode,
+                            uint64_t max_spill_fill_buffer_size,
                             const logging::Logger& logger) {
   auto& graph = model->MainGraph();
 
@@ -238,6 +271,7 @@ Status CreateEPContextNodes(Model* model,
         }
         of_stream.write(reinterpret_cast<char*>(buffer), buffer_size);
         ep_node.AddAttribute(EP_CACHE_CONTEXT, context_cache_name);
+        ep_node.AddAttribute(MAX_SIZE, static_cast<int64_t>(max_spill_fill_buffer_size));
       }
     } else {
       ep_node.AddAttribute(MAIN_CONTEXT, static_cast<int64_t>(0));

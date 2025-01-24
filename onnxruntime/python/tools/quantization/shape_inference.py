@@ -9,7 +9,6 @@ import logging
 import tempfile
 import traceback
 from pathlib import Path
-from typing import Optional, Union
 
 import onnx
 
@@ -23,8 +22,8 @@ logger = logging.getLogger(__name__)
 
 
 def quant_pre_process(
-    input_model: Optional[Union[str, Path, onnx.ModelProto]] = None,
-    output_model_path: Optional[Union[str, Path]] = None,
+    input_model: str | Path | onnx.ModelProto | None = None,
+    output_model_path: str | Path | None = None,
     skip_optimization: bool = False,
     skip_onnx_shape: bool = False,
     skip_symbolic_shape: bool = False,
@@ -34,7 +33,7 @@ def quant_pre_process(
     verbose: int = 0,
     save_as_external_data: bool = False,
     all_tensors_to_one_file: bool = False,
-    external_data_location: Optional[str] = None,
+    external_data_location: str | None = None,
     external_data_size_threshold: int = 1024,
     **deprecated_kwargs,
 ) -> None:

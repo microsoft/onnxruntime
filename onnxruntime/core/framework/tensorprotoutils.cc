@@ -234,7 +234,8 @@ Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                            const std::filesystem::path& tensor_proto_dir,
                            std::basic_string<ORTCHAR_T>& external_file_path,
                            onnxruntime::FileOffsetType& file_offset,
-                           SafeInt<size_t>& tensor_byte_size) {
+                           SafeInt<size_t>& tensor_byte_size,
+                           ExternalDataInfo::PrepackedInfos* prepacked_infos) {
   ORT_RETURN_IF_NOT(onnxruntime::utils::HasExternalData(tensor_proto),
                     "Tensor does not have external data to read from.");
 
@@ -257,6 +258,10 @@ Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                     ", external_data.length: ", external_data_length);
 
   file_offset = external_data_info->GetOffset();
+
+  if (prepacked_infos != nullptr && external_data_info->HasPrepackedInfo()) {
+    *prepacked_infos = external_data_info->TakePrepackedInfos();
+  }
 
   return Status::OK();
 }
@@ -988,7 +993,8 @@ static Status GetFileContent(const Env& env, const std::filesystem::path& file_p
 Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& model_path,
                                  const ONNX_NAMESPACE::TensorProto& tensor_proto, void*& ext_data_buf,
                                  SafeInt<size_t>& ext_data_len, OrtCallback& ext_data_deleter,
-                                 Tensor* buffered_tensor) {
+                                 Tensor* buffered_tensor,
+                                 PrepackedWeightsForGraph* prepacked_info) {
   ORT_ENFORCE(utils::HasExternalData(tensor_proto));
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
   if (!model_path.empty()) {
@@ -997,8 +1003,13 @@ Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& mo
   std::basic_string<ORTCHAR_T> external_data_file_path;
   FileOffsetType file_offset;
   SafeInt<size_t> raw_data_safe_len = 0;
+  std::optional<ExternalDataInfo::PrepackedInfos> prepacked_infos;
+  if (prepacked_info != nullptr) {
+    prepacked_infos.emplace();
+  }
   ORT_RETURN_IF_ERROR(
-      GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset, raw_data_safe_len));
+      GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_data_file_path, file_offset,
+                          raw_data_safe_len, (prepacked_info != nullptr) ? &*prepacked_infos : nullptr));
 
   if (external_data_file_path == onnxruntime::utils::kTensorProtoMemoryAddressTag) {
     // the value in location is the memory address of the data
@@ -1042,6 +1053,33 @@ Status GetExtDataFromTensorProto(const Env& env, const std::filesystem::path& mo
     ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path.c_str(), file_offset, raw_data_safe_len,
                                        ext_data_buf, ext_data_deleter));
     ext_data_len = raw_data_safe_len;
+
+    if (prepacked_info != nullptr && !prepacked_infos->empty()) {
+      for (const auto& [key, blobs] : *prepacked_infos) {
+        PrePackedWeights prepacked_weights;
+        prepacked_weights.buffers_.reserve(blobs.size());
+        prepacked_weights.buffer_sizes_.reserve(blobs.size());
+        for (const auto& blob : blobs) {
+          const auto blob_offset = std::get<0>(blob);
+          const auto blob_length = std::get<1>(blob);
+          SafeInt<FileOffsetType> end_of_blob{blob_offset};
+          end_of_blob += blob_length;
+          ORT_RETURN_IF(blob_offset < 0 || static_cast<uintmax_t>(end_of_blob) > file_length,
+                        "Pre-packed blob: ", key, " offset: ", blob_offset, " file_length: ", file_length,
+                        " is out of bounds and can not read in full");
+          void* data_ptr;
+          OrtCallback data_deleter;
+          ORT_RETURN_IF_ERROR(GetFileContent(env, external_data_file_path.c_str(), blob_offset, blob_length,
+                                             data_ptr, data_deleter));
+          IAllocatorUniquePtr<void> data_ptr_unique{data_ptr, OrtCallbackInvoker(data_deleter)};
+          prepacked_weights.buffers_.push_back(std::move(data_ptr_unique));
+          prepacked_weights.buffer_sizes_.push_back(blob_length);
+        }
+        if (!blobs.empty()) {
+          prepacked_info->InsertPrepackedWeights(key, std::move(prepacked_weights));
+        }
+      }
+    }
 #endif
   }
 

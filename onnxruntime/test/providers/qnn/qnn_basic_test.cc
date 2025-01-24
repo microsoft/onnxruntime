@@ -5,11 +5,14 @@
 #include <string>
 #include <thread>
 
+#include "core/providers/cpu/cpu_provider_factory.h"  // For OrtSessionOptionsAppendExecutionProvider_CPU
+#if BUILD_QNN_EP_STATIC_LIB
+#include "core/providers/qnn/qnn_allocator.h"  // Used by QnnHTPBackendTests.UseHtpSharedMemoryAllocatorForInputs
+#endif
+#include "core/session/inference_session.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/onnxruntime_run_options_config_keys.h"
-#include "core/providers/cpu/cpu_provider_factory.h"  // For OrtSessionOptionsAppendExecutionProvider_CPU
-#include "core/session/inference_session.h"
 
 #include "test/providers/qnn/qnn_test_utils.h"
 
@@ -1023,7 +1026,7 @@ TEST_F(QnnHTPBackendTests, EPRejectsDynamicShapesF32) {
                   &ep_graph_checker);
 }
 
-TEST_F(QnnHTPBackendTests, DumpQNNJsonGraph) {
+TEST_F(QnnHTPBackendTests, DumpJsonQNNGraph) {
   Ort::SessionOptions so;
   onnxruntime::ProviderOptions options;
 #if defined(_WIN32)
@@ -1032,7 +1035,7 @@ TEST_F(QnnHTPBackendTests, DumpQNNJsonGraph) {
   options["backend_path"] = "libQnnHtp.so";
 #endif
 
-  options["enable_qnn_graph_dump"] = "1";
+  options["dump_json_qnn_graph"] = "1";
 
   so.AppendExecutionProvider("QNN", options);
 
@@ -1118,6 +1121,57 @@ TEST_F(QnnHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
     }
   }
 }
+
+// Only compile this test when QNN EP is built as a static library. When QNN EP is a shared library,
+// we cannot include internal QNN EP headers that use the provider-bridge API.
+#if BUILD_QNN_EP_STATIC_LIB
+TEST_F(QnnHTPBackendTests, UseHtpSharedMemoryAllocatorForInputs) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["enable_htp_shared_memory_allocator"] = "1";
+
+  std::unique_ptr<IExecutionProvider> qnn_ep;
+  try {
+    qnn_ep = QnnExecutionProviderWithOptions(provider_options);
+  } catch (const OnnxRuntimeException& e) {
+    // handle particular exception that indicates that the libcdsprpc.so / dll can't be loaded
+    // NOTE: To run this on a local Windows ARM64 device, you need to copy libcdsprpc.dll to the build directory:
+    //  - Open File Explorer
+    //  - Go to C:/Windows/System32/DriverStore/FileRepository/
+    //  - Search for a folder that begins with qcnspmcdm8380.inf_arm64_ and open it
+    //  - Copy the libcdsprpc.dll into the build/[PATH CONTAINING onnxruntime.dll] directory of the application.
+    // TODO(adrianlizarraga): Update CMake build for unittests to automatically copy libcdsprpc.dll into build directory
+#if defined(_WIN32)
+    constexpr const char* expected_error_message = "Failed to load libcdsprpc.dll";
+#else
+    constexpr const char* expected_error_message = "Failed to load libcdsprpc.so";
+#endif
+    ASSERT_THAT(e.what(), testing::HasSubstr(expected_error_message));
+    GTEST_SKIP() << "HTP shared memory allocator is unavailable.";
+  }
+
+  AllocatorPtr htp_shared_memory_allocator{};
+  {
+    auto allocators = qnn_ep->CreatePreferredAllocators();
+    ASSERT_FALSE(allocators.empty());
+    auto& allocator = allocators[0];
+    ASSERT_EQ(allocator->Info(), qnn::HtpSharedMemoryAllocator::AssociatedMemoryInfo());
+    htp_shared_memory_allocator = std::move(allocator);
+  }
+
+  auto input_defs = {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
+                     TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)};
+  RunQnnModelTest(BuildOpTestCase<float>("Add", input_defs, {}, {}, kOnnxDomain, htp_shared_memory_allocator),
+                  provider_options,
+                  13,
+                  ExpectedEPNodeAssignment::All,
+                  0.008f);
+}
+#endif  // BUILD_QNN_EP_STATIC_LIB
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 #endif  // !defined(ORT_MINIMAL_BUILD)

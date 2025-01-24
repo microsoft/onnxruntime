@@ -164,22 +164,16 @@ dependencies to run linters locally.
 If you want to see what lintrunner init will install, run
 `lintrunner init --dry-run`.
 
-To lint local changes:
-
-```bash
-lintrunner
-```
-
-To format files and apply suggestions:
+To format local changes:
 
 ```bash
 lintrunner -a
 ```
 
-To lint all files:
+To format all files:
 
 ```bash
-lintrunner --all-files
+lintrunner -a --all-files
 ```
 
 To show help text:

@@ -7,15 +7,13 @@
 #include <string>
 #include <vector>
 
-#include "core/common/status.h"
 #include "QnnInterface.h"
+#include "nlohmann/json.hpp"
+
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_def.h"
-#include "core/providers/qnn/builder/qnn_utils.h"
-#include "core/common/logging/logging.h"
-#include "core/framework/node_unit.h"
-#include "core/graph/graph_viewer.h"
-#include "core/providers/shared/utils/utils.h"
 #include "core/providers/qnn/builder/qnn_quant_params_wrapper.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -67,6 +65,9 @@ class QnnModelWrapper {
 
   // Make a QnnTensorWrapper from an onnx input or output.
   Status MakeTensorWrapper(const NodeUnitIODef& tensor, QnnTensorWrapper& tensor_wrapper) const;
+  Status MakeTensorWrapper(const TensorInfo& tensor_info,
+                           const std::string& tensor_name,
+                           QnnTensorWrapper& tensor_wrapper) const;
 
   // Add to internal tensor wrapper table
   bool AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper);
@@ -94,9 +95,11 @@ class QnnModelWrapper {
 
   bool ComposeQnnGraph(bool build_debug_json_graph = false);
 
-  Qnn_GraphHandle_t GetQnnGraph() { return graph_; }
+  Qnn_GraphHandle_t GetQnnGraph() const { return graph_; }
 
   std::string GetQnnGraphName() const { return graph_name_; }
+
+  Qnn_ContextHandle_t GetQnnGraphContext() const { return graph_context_; }
 
   // Move input tensor wrappers to GraphInfo, QnnModelWrapper end of live
   std::vector<QnnTensorWrapper>&& GetGraphInputTensorWrappers() {
@@ -145,6 +148,17 @@ class QnnModelWrapper {
   }
 
   Status GetTensorInfo(const NodeUnitIODef& input, TensorInfo& input_info) const;
+
+  Status AddReshapeNode(const std::string& input_name,
+                        const std::string& output_name,
+                        const std::vector<uint32_t>& input_shape,
+                        const std::vector<uint32_t>& output_shape,
+                        const Qnn_DataType_t& tensor_data_type,
+                        const QnnQuantParamsWrapper& input_quantize_param,
+                        const QnnQuantParamsWrapper& output_quantize_param,
+                        bool do_op_validation,
+                        bool is_for_input = true,
+                        bool is_for_output = false);
 
   Status AddReshapeNode(const std::string& input_name,
                         const std::string& output_name,
@@ -218,6 +232,24 @@ class QnnModelWrapper {
                             tensor_data_type, quantize_param, do_op_validation, is_for_input, is_for_output);
   }
 
+  Status AddInt64CastNode(const std::string& input_name, std::string& cast_output_name,
+                          std::vector<uint32_t>&& cast_output_shape, bool do_op_validation) {
+    cast_output_name = input_name + "_ort_qnn_ep_cast";
+    QnnTensorWrapper cast_output(cast_output_name, QNN_TENSOR_TYPE_NATIVE, QNN_DATATYPE_INT_32,
+                                 QnnQuantParamsWrapper(), std::move(cast_output_shape));
+    ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(cast_output)), "Failed to add tensor.");
+    ORT_RETURN_IF_NOT(CreateQnnNode(cast_output_name,
+                                    QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                    "Cast",
+                                    {input_name},
+                                    {cast_output_name},
+                                    {},
+                                    do_op_validation),
+                      "Failed to add node.");
+
+    return Status::OK();
+  }
+
   Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
                                std::vector<uint8_t>& unpacked_tensor) const;
 
@@ -275,7 +307,8 @@ class QnnModelWrapper {
   const Qnn_BackendHandle_t& backend_handle_;
   Qnn_GraphHandle_t graph_ = nullptr;
   std::string graph_name_ = "";
-  utils::QnnJSONGraph debug_json_graph_;
+  // QNN context that holds the QNN graph referenced by `graph_`
+  Qnn_ContextHandle_t graph_context_ = nullptr;
 
   std::vector<std::string> model_input_names_;
   std::vector<std::string> model_output_names_;
@@ -294,6 +327,7 @@ class QnnModelWrapper {
   const std::unordered_set<std::string>& initializer_lookup_;
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   ModelSettings model_settings_ = {};
+  utils::QnnJSONGraph debug_json_graph_;
 };  // QnnModelWrapper
 
 }  // namespace qnn

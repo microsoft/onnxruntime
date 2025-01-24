@@ -1365,6 +1365,7 @@
       "gather.jsonc",
       "gather-block-quantized.jsonc",
       "gather-elements.jsonc",
+      "gather-nd.jsonc",
       "gemm.jsonc",
       "global-average-pool.jsonc",
       "greater.jsonc",

@@ -12,15 +12,6 @@ if (ANDROID)
   set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,max-page-size=16384")
 endif()
 
-# Suggested by https://gitlab.kitware.com/cmake/cmake/-/issues/20132
-# MacCatalyst is not well supported in CMake
-# The error that can emerge without this flag can look like:
-# "clang : error : overriding '-mmacosx-version-min=11.0' option with '-target x86_64-apple-ios14.0-macabi' [-Werror,-Woverriding-t-option]"
-if (PLATFORM_NAME STREQUAL "macabi")
-  add_compile_options(-Wno-overriding-t-option)
-  add_link_options(-Wno-overriding-t-option)
-endif()
-
 # Enable space optimization for gcc/clang
 # Cannot use "-ffunction-sections -fdata-sections" if we enable bitcode (iOS)
 if (NOT MSVC AND NOT onnxruntime_ENABLE_BITCODE)
@@ -338,6 +329,10 @@ else()
     # suppress warnings from flatbuffers
     string(APPEND CMAKE_CXX_FLAGS " -Wno-restrict ")
     string(APPEND CMAKE_C_FLAGS   " -Wno-restrict ")
+    if(onnxruntime_USE_XNNPACK)
+      # https://github.com/google/XNNPACK/issues/7650
+      string(APPEND CMAKE_C_FLAGS   " -Wno-incompatible-pointer-types ")
+    endif()
   endif()
   # Check support for AVX and f16c.
   include(CheckCXXCompilerFlag)
@@ -373,4 +368,8 @@ if (WIN32)
     string(APPEND CMAKE_CXX_FLAGS " -DEIGEN_HAS_C99_MATH")
 elseif(LINUX)
     add_compile_definitions("_GNU_SOURCE")
+endif()
+
+if (onnxruntime_USE_EXTENSIONS)
+    include_directories(${REPO_ROOT}/include/onnxruntime/core/session)
 endif()

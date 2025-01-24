@@ -70,6 +70,9 @@ endif()
 onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
 
 if(MSVC)
+  # The following source file is only needed for the EPs that use delayloading. Namely, DML and WebGPU.
+  target_sources(onnxruntime_pybind11_state PRIVATE "${ONNXRUNTIME_ROOT}/core/dll/delay_load_hook.cc")
+
   target_compile_options(onnxruntime_pybind11_state PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /utf-8>" "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
   target_compile_options(onnxruntime_pybind11_state PRIVATE "/bigobj")
 endif()
@@ -166,11 +169,9 @@ if (onnxruntime_ENABLE_LAZY_TENSOR)
   endif()
 endif()
 
-target_link_libraries(onnxruntime_pybind11_state PRIVATE
-    onnxruntime_session
-    ${onnxruntime_libs}
-    ${PROVIDERS_TVM}
+set(onnxruntime_pybind11_state_static_providers
     ${PROVIDERS_NNAPI}
+    ${PROVIDERS_VSINPU}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_COREML}
     ${PROVIDERS_RKNPU}
@@ -180,11 +181,19 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_WEBGPU}
     ${PROVIDERS_AZURE}
-    ${PROVIDERS_QNN}
+)
+
+if(onnxruntime_BUILD_QNN_EP_STATIC_LIB)
+  list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_qnn)
+endif()
+
+target_link_libraries(onnxruntime_pybind11_state PRIVATE
+    onnxruntime_session
+    ${onnxruntime_libs}
+    ${onnxruntime_pybind11_state_static_providers}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
-    ${onnxruntime_tvm_libs}
     onnxruntime_lora
     onnxruntime_framework
     onnxruntime_util
@@ -965,37 +974,6 @@ if (onnxruntime_USE_ROCM)
     )
 endif()
 
-if (onnxruntime_USE_TVM)
-  file(GLOB onnxruntime_python_providers_tvm_srcs CONFIGURE_DEPENDS
-    "${ONNXRUNTIME_ROOT}/python/providers/tvm/*.py"
-  )
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers
-    COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/tvm
-    COMMAND ${CMAKE_COMMAND} -E copy
-        ${onnxruntime_python_providers_tvm_srcs}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/tvm
-    COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:onnxruntime_providers_tvm>
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  )
-
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-      WORKING_DIRECTORY ${tvm_SOURCE_DIR}/python
-      COMMAND ${Python_EXECUTABLE} setup.py bdist_wheel
-    )
-
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${Python_EXECUTABLE}
-          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/providers/tvm/extend_python_file.py
-          --target_file $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/_ld_preload.py
-  )
-
-endif()
-
 if (onnxruntime_USE_DML)
   if (NOT onnxruntime_USE_CUSTOM_DIRECTML)
     set(dml_shared_lib_path ${DML_PACKAGE_DIR}/bin/${onnxruntime_target_platform}-win/${DML_SHARED_LIB})
@@ -1029,6 +1007,16 @@ if (onnxruntime_USE_COREML)
 endif()
 
 if (onnxruntime_USE_QNN)
+  if(NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_qnn>
+        $<TARGET_FILE:onnxruntime_providers_shared>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+    )
+  endif()
+
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
@@ -1049,6 +1037,15 @@ if (onnxruntime_USE_QNN)
           $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
     )
   endif()
+endif()
+
+if (onnxruntime_USE_VSINPU)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_vsinpu>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
 endif()
 
 endif()

@@ -23,11 +23,11 @@ DEFAULT_BUILD_ABIS = ["armeabi-v7a", "arm64-v8a", "x86", "x86_64"]
 
 # Onnx Runtime native library is built against NDK API 21 by default
 # It is possible to build from source for Android API levels below 21, but it is not guaranteed
-DEFAULT_ANDROID_MIN_SDK_VER = 21
+DEFAULT_ANDROID_MIN_SDK_VER = 24
 
 # Android API 24 is the default target API version for Android builds, based on Microsoft 1CS requirements
 # It is possible to build from source using API level 21 and higher as the target SDK version
-DEFAULT_ANDROID_TARGET_SDK_VER = 24
+DEFAULT_ANDROID_TARGET_SDK_VER = 34
 
 
 def _parse_build_settings(args):
@@ -41,10 +41,7 @@ def _parse_build_settings(args):
 
     build_settings = {}
 
-    if "build_abis" in build_settings_data:
-        build_settings["build_abis"] = build_settings_data["build_abis"]
-    else:
-        build_settings["build_abis"] = DEFAULT_BUILD_ABIS
+    build_settings["build_abis"] = build_settings_data.get("build_abis", DEFAULT_BUILD_ABIS)
 
     build_params = []
     if "build_params" in build_settings_data:
@@ -75,11 +72,15 @@ def _parse_build_settings(args):
     return build_settings
 
 
+def _is_qnn_android_build(build_settings):
+    return any(build_arg.startswith("--use_qnn") for build_arg in build_settings["build_params"])
+
+
 def _build_aar(args):
     build_settings = _parse_build_settings(args)
     build_dir = os.path.abspath(args.build_dir)
     ops_config_path = os.path.abspath(args.include_ops_by_config) if args.include_ops_by_config else None
-    qnn_android_build = "--use_qnn" in build_settings["build_params"]
+    qnn_android_build = _is_qnn_android_build(build_settings)
 
     # Setup temp environment for building
     temp_env = os.environ.copy()

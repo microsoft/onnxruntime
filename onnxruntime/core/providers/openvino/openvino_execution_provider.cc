@@ -3,6 +3,8 @@
 #include <filesystem>
 #include <utility>
 #include <string>
+#include <memory>
+#include <vector>
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/openvino/openvino_execution_provider.h"
 #include "core/providers/openvino/contexts.h"
@@ -187,15 +189,23 @@ common::Status OpenVINOExecutionProvider::Compile(
 
 #ifdef USE_OVEP_NPU_MEMORY
 std::vector<AllocatorPtr> OpenVINOExecutionProvider::CreatePreferredAllocators() {
-  AllocatorCreationInfo npu_allocator_info{
-      [this](OrtDevice::DeviceId device_id) {
-        return std::make_unique<OVRTAllocator>(global_context_->ie_core.Get(), OrtDevice::NPU, device_id, OpenVINO_RT_NPU);
-      },
-      0,
-  };
+  if (global_context_->device_type.find("NPU") != std::string::npos) {
+    AllocatorCreationInfo npu_allocator_info{
+        [this](OrtDevice::DeviceId device_id) {
+          return std::make_unique<OVRTAllocator>(
+              global_context_->ie_core.Get(),
+              OrtDevice::NPU,
+              device_id,
+              OpenVINO_RT_NPU);
+        },
+        0,
+    };
 
-  // fill in allocator
-  return std::vector<AllocatorPtr>{CreateAllocator(npu_allocator_info)};
+    // fill in allocator
+    return std::vector<AllocatorPtr>{CreateAllocator(npu_allocator_info)};
+  } else {
+    return std::vector<AllocatorPtr>{};
+  }
 }
 #endif
 

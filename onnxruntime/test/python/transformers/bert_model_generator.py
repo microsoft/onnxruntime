@@ -5,7 +5,6 @@
 # --------------------------------------------------------------------------
 
 import math
-from typing import List
 
 import numpy as np
 import onnx
@@ -13,7 +12,7 @@ from onnx import TensorProto, helper
 from packaging import version
 
 
-def float_tensor(name: str, shape: List[int], random=False):
+def float_tensor(name: str, shape: list[int], random=False):
     low = 0.0
     high = 1.0
     total_elements = 1

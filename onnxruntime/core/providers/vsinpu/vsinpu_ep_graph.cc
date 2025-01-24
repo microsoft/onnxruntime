@@ -34,7 +34,8 @@ namespace onnxruntime {
 
 namespace vsi {
 namespace npu {
-GraphEP::GraphEP(const onnxruntime::GraphViewer& graph_viewer) : graph_viewer_(graph_viewer) {
+GraphEP::GraphEP(const onnxruntime::GraphViewer& graph_viewer, const logging::Logger& logger)
+    : graph_viewer_(graph_viewer), logger_(logger) {
   Prepare();
   context_ = tim::vx::Context::Create();
   graph_ = context_->CreateGraph();
@@ -42,7 +43,7 @@ GraphEP::GraphEP(const onnxruntime::GraphViewer& graph_viewer) : graph_viewer_(g
 }
 
 bool GraphEP::Prepare() {
-  std::tie(node_unit_holder_, node_unit_map_) = QDQ::GetAllNodeUnits(graph_viewer_);
+  std::tie(node_unit_holder_, node_unit_map_) = QDQ::GetAllNodeUnits(graph_viewer_, logger_);
   for (const auto& node_unit : node_unit_holder_) {
     auto quant_op_type = util::GetQuantizedOpType(*node_unit);
 

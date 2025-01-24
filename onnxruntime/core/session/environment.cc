@@ -117,8 +117,9 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
   }
 
   // determine if arena should be used
-  const bool is_arena_requested = mem_info.alloc_type == OrtArenaAllocator;
-  const bool create_arena = ShouldCpuAllocatorUseArena(is_arena_requested);
+  const bool create_arena = DoesCpuAllocatorSupportArenaUsage()
+                                ? (mem_info.alloc_type == OrtArenaAllocator)
+                                : false;
 
   AllocatorPtr allocator_ptr;
   // create appropriate DeviceAllocatorRegistrationInfo and allocator based on create_arena

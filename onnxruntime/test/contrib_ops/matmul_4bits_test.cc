@@ -82,6 +82,7 @@ struct TestOptions {
   bool has_bias{false};
 
   std::optional<float> output_abs_error{};
+  std::optional<float> output_rel_error{};
 };
 
 std::ostream& operator<<(std::ostream& os, const TestOptions& opts) {
@@ -253,6 +254,10 @@ void RunTest(const TestOptions& opts,
     test.SetOutputAbsErr("Y", *opts.output_abs_error);
   }
 
+  if (opts.output_rel_error.has_value()) {
+    test.SetOutputRelErr("Y", *opts.output_rel_error);
+  }
+
   if (!explicit_eps.empty()) {
     test.ConfigEps(std::move(explicit_eps));
   }
@@ -271,14 +276,10 @@ void TestMatMulNBitsTyped() {
 
   if (base_opts.accuracy_level == 4) {
     base_opts.output_abs_error = 0.1f;
-  } else {
-    if constexpr (std::is_same<AType, MLFloat16>::value) {
-#ifdef USE_WEBGPU
-      base_opts.output_abs_error = 0.03f;
-#else
-      base_opts.output_abs_error = 0.01f;
-#endif
-    }
+    base_opts.output_rel_error = 0.02f;
+  } else if constexpr (std::is_same<AType, MLFloat16>::value) {
+    base_opts.output_abs_error = 0.055f;
+    base_opts.output_rel_error = 0.02f;
   }
 
   {
@@ -391,46 +392,46 @@ TEST(MatMulNBits, Float32_Accuracy4) {
   TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 4>();
 }
 
-#ifdef MLAS_TARGET_AMD64_IX86
+#if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64)
 #if !defined(USE_DML)
 // Actual and expected difference is over 0.01 with DmlExecutionProvider.
 // Skip the tests instead of raising the tolerance to make is pass.
-TEST(MatMulNBits, Float16_Accuracy0) {
-  TestMatMulNBitsTyped<MLFloat16, 1, 1, 16, 16, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 2, 16, 16, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 32, 16, 16, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 32, 32, 16, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 32, 16, 128, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 288, 16, 16, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 288, 1024, 16, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 288, 1024, 128, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 288, 93, 32, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 288, 93, 128, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 288, 1234, 16, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 2, 1, 16, 16, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 2, 2, 16, 16, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 1, 16, 16, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 2, 16, 16, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 32, 16, 16, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 32, 32, 16, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 32, 16, 128, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 16, 16, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 16, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 128, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 128, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 0>();
+TEST(MatMulNBits, Float16_Accuracy2) {
+  TestMatMulNBitsTyped<MLFloat16, 1, 1, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 1, 2, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 1, 32, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 1, 32, 32, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 1, 32, 16, 128, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 1, 288, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 1, 288, 1024, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 1, 288, 1024, 128, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 1, 288, 93, 32, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 1, 288, 93, 128, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 1, 288, 1234, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 2, 1, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 2, 2, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 1, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 2, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 32, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 32, 32, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 32, 16, 128, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 288, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 128, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 128, 2>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 2>();
 }
 
-TEST(MatMulNBits, Float16_Accuracy1) {
-  TestMatMulNBitsTyped<MLFloat16, 1, 1, 16, 16, 1>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 288, 93, 32, 1>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 288, 1234, 16, 1>();
-  TestMatMulNBitsTyped<MLFloat16, 2, 1, 16, 16, 1>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 2, 16, 16, 1>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 128, 1>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 1>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 1>();
+TEST(MatMulNBits, Float16_Accuracy0) {
+  TestMatMulNBitsTyped<MLFloat16, 1, 1, 16, 16, 0>();
+  TestMatMulNBitsTyped<MLFloat16, 1, 288, 93, 32, 0>();
+  TestMatMulNBitsTyped<MLFloat16, 1, 288, 1234, 16, 0>();
+  TestMatMulNBitsTyped<MLFloat16, 2, 1, 16, 16, 0>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 2, 16, 16, 0>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 128, 0>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 0>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 0>();
 }
 
 TEST(MatMulNBits, Float16_Accuracy4) {
@@ -489,17 +490,13 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accura
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
   if (use_float16) {
 #ifdef USE_CUDA
-    if (DefaultCudaExecutionProvider() != nullptr) {
-      execution_providers.push_back(DefaultCudaExecutionProvider());
-    }
+    execution_providers.push_back(DefaultCudaExecutionProvider());
 #endif
 #ifdef USE_ROCM
     execution_providers.push_back(DefaultRocmExecutionProvider());
 #endif
 #ifdef USE_DML
-    if (DefaultDmlExecutionProvider() != nullptr) {
-      execution_providers.push_back(DefaultDmlExecutionProvider());
-    }
+    execution_providers.push_back(DefaultDmlExecutionProvider());
 #endif
 #ifdef USE_WEBGPU
     execution_providers.push_back(DefaultWebGpuExecutionProvider());
@@ -517,11 +514,8 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accura
 }  // namespace
 
 TEST(MatMulNBits, Float16Cuda) {
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
-  std::vector<bool> has_gidx_options = {true, false};
-  if (DefaultDmlExecutionProvider() != nullptr) {
-    has_gidx_options.assign(1, false);
-  }
+#if defined(USE_CUDA) || defined(USE_ROCM)
+  auto has_gidx_options = {true, false};
 #else
   auto has_gidx_options = {false};
 #endif
@@ -532,9 +526,7 @@ TEST(MatMulNBits, Float16Cuda) {
         for (auto block_size : {16, 32, 64, 128}) {
           for (auto has_gidx : has_gidx_options) {
 #ifdef USE_DML
-            if (DefaultDmlExecutionProvider() != nullptr) {
-              RunTest(M, N, K, block_size, 0, false, true, has_gidx, true, 0.04f);
-            }
+            RunTest(M, N, K, block_size, 0, false, true, has_gidx, true, 0.04f);
 #else
             RunTest(M, N, K, block_size, 0, false, true, has_gidx);
             RunTest(M, N, K, block_size, 0, true, true, has_gidx, false);
@@ -547,19 +539,15 @@ TEST(MatMulNBits, Float16Cuda) {
 }
 
 TEST(MatMulNBits, Float16Large) {
-#if defined(USE_CUDA) || defined(USE_DML)
+#ifdef USE_DML
   // For some reason, the A10 machine that runs these tests during CI has a much bigger error than all retail
   // machines we tested on. All consumer-grade machines from Nvidia/AMD/Intel seem to pass these tests with an
   // absolute error of 0.08, but the A10 has errors going as high as 0.22. Ultimately, given the large number
   // of elements in this test, ULPs should probably be used instead of absolute/relative tolerances.
-  float abs_error = 0.05f;
-  if (DefaultDmlExecutionProvider() != nullptr) {
-    // it means the ep is dml in runtime, the abs_error is changed to 0.3f
-    abs_error = 0.3f;
-  }
+  float abs_error = 0.3f;
 #elif USE_WEBGPU
-  // See Intel A770 to pass these tests with an absolute error of 0.08.
-  float abs_error = 0.08f;
+  // Use absolute error of 0.1 for WebGPU with subgroup implementation
+  float abs_error = 0.1f;
 #else
   float abs_error = 0.05f;
 #endif
@@ -572,6 +560,7 @@ TEST(MatMulNBits, Float16Large) {
     }
   }
 }
+
 #endif  // defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
 }  // namespace test
 }  // namespace onnxruntime
