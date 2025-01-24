@@ -5,7 +5,7 @@
 // cub.cuh includes device/dispatch_radix_sort.cuh which has assignment in conditional expressions
 #if defined(_MSC_VER)
 #pragma warning(push)
-#pragma warning(disable : 4706)  
+#pragma warning(disable : 4706)
 #endif
 #include <cub/cub.cuh>
 #if defined(_MSC_VER)
@@ -406,6 +406,9 @@ __global__ void BeamSearchScorer_Process(BeamScorerState& state_cpu,
         beam_hyp.done_ = true;
         if (atomicAdd(&state.not_done_count_, -1) == 1)
           state_cpu.not_done_count_ = 0;  // Update the CPU side
+
+        printf("\n --- BeamSearchScorer_Process updated cpu state for batch %d\n", threadIdx.x);
+        state_cpu.Print();
       }
     }
   } else {

@@ -722,6 +722,9 @@ void CudaBeamSearchScorer::Process(transformers::ISequences& sequences,
                                    gsl::span<const float>& next_scores,
                                    gsl::span<const int32_t>& next_tokens,
                                    gsl::span<const int32_t>& next_indices) {
+  printf("\n---Process ---\n");
+  state_cpu_->Print();
+
   cuda::LaunchBeamSearchScorer_Process(*state_cpu_,
                                        *state_gpu_,
                                        sequences.GetCurrentDeviceSequences(),
@@ -735,6 +738,7 @@ void CudaBeamSearchScorer::Process(transformers::ISequences& sequences,
                                        next_tokens,
                                        next_indices,
                                        stream_);
+
   CUDA_CALL_THROW(cudaEventRecord(event_process_complete_.Get(), stream_));
 
   cuda::LaunchBeamSearchScorer_AppendNextTokenToSequences(*state_cpu_,
@@ -749,6 +753,10 @@ void CudaBeamSearchScorer::Process(transformers::ISequences& sequences,
 
 bool CudaBeamSearchScorer::IsDoneLater() const {
   CUDA_CALL_THROW(cudaEventSynchronize(event_process_complete_.Get()));
+
+  printf("\n---IsDoneLater ---\n");
+  state_cpu_->Print();
+
   return state_cpu_->not_done_count_ == 0;
 }
 
