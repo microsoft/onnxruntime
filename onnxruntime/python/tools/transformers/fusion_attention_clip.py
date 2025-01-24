@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 from logging import getLogger
-from typing import Tuple
 
 from fusion_attention import AttentionMask, FusionAttention
 from fusion_options import AttentionMaskFormat
@@ -36,7 +35,7 @@ class FusionAttentionClip(FusionAttention):
             search_op_types=["SkipLayerNormalization"],
         )
 
-    def get_num_heads_and_hidden_size(self, reshape_q: NodeProto) -> Tuple[int, int]:
+    def get_num_heads_and_hidden_size(self, reshape_q: NodeProto) -> tuple[int, int]:
         """Detect num_heads and hidden_size for ONNX model from MiDaS
         Args:
             reshape_q (NodeProto): reshape node for q
@@ -239,9 +238,9 @@ class FusionAttentionClip(FusionAttention):
             v_add=add_v,
             num_heads=num_heads,
             hidden_size=hidden_size,
-            input=root_input,
+            first_input=root_input,
             output=attention_last_node.output[0],
-            add_qk_str=None,
+            add_qk_str="",
             scale=None,
             causal=(add_mask is not None),
         )

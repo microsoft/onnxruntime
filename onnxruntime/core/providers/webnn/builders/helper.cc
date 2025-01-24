@@ -69,7 +69,8 @@ bool IsNodeSupported(const Node& node, const GraphViewer& graph_viewer, const We
   }
 }
 
-bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_name, const logging::Logger& logger) {
+bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_name,
+                            const logging::Logger& logger, bool allow_empty_input) {
   const auto& node_arg_name = node_arg.Name();
   const auto* shape_proto = node_arg.Shape();
   // Optional tensors can be indicated by an empty name, just ignore it.
@@ -89,7 +90,7 @@ bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_n
                             << "use sessionOptions.FreeDimensionOverrides to set a fixed shape: " << node_arg_name;
       return false;
     }
-    if (dim.dim_value() == 0) {
+    if (dim.dim_value() == 0 && !allow_empty_input) {
       LOGS(logger, VERBOSE) << "The shape of [" << node_arg_name << "] has 0 dimension which is not supported by WebNN";
       return false;
     }
@@ -98,44 +99,30 @@ bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_n
   return true;
 }
 
-std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer,
-                                                      const emscripten::val& wnn_builder,
-                                                      const WebnnDeviceType device_type,
-                                                      const emscripten::val& wnn_limits,
-                                                      const logging::Logger& logger) {
-  std::vector<std::vector<size_t>> supported_node_groups;
-  std::vector<size_t> supported_node_group;
-  const auto& node_indices = graph_viewer.GetNodesInTopologicalOrder();
+std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
+                                                  const emscripten::val& wnn_builder,
+                                                  const WebnnDeviceType device_type,
+                                                  const emscripten::val& wnn_limits,
+                                                  const logging::Logger& logger) {
+  std::unordered_set<const Node*> supported_nodes;
 
-  for (size_t i = 0; i < node_indices.size(); i++) {
-    auto node_idx = node_indices[i];
-    const auto* node(graph_viewer.GetNode(node_idx));
+  for (const auto& node : graph_viewer.Nodes()) {
     bool supported = false;
     // Firstly check if platform supports the WebNN op.
-    if (CheckSingleOp(node->OpType(), wnn_builder, device_type)) {
-      supported = IsNodeSupported(*node, graph_viewer, device_type, wnn_limits, logger);
+    if (CheckSingleOp(node.OpType(), wnn_builder, device_type)) {
+      supported = IsNodeSupported(node, graph_viewer, device_type, wnn_limits, logger);
     }
-
-    LOGS(logger, VERBOSE) << "Operator type: [" << node->OpType()
-                          << "] index: [" << node_idx
-                          << "] name: [" << node->Name()
+    LOGS(logger, VERBOSE) << "Operator type: [" << node.OpType()
+                          << "] index: [" << node.Index()
+                          << "] name: [" << node.Name()
                           << "] supported: [" << supported
                           << "]";
     if (supported) {
-      supported_node_group.push_back(node_idx);
-    } else {
-      if (!supported_node_group.empty()) {
-        supported_node_groups.push_back(supported_node_group);
-        supported_node_group.clear();
-      }
+      supported_nodes.insert(&node);
     }
   }
 
-  if (!supported_node_group.empty()) {
-    supported_node_groups.push_back(supported_node_group);
-  }
-
-  return supported_node_groups;
+  return supported_nodes;
 }
 
 bool AreInputDataTypesSame(const std::string& op_type,
@@ -177,14 +164,31 @@ bool IsDataTypeSupportedByOp(const std::string& onnx_op_type,
   if (!GetWebNNOpType(onnx_op_type, webnn_op_type))
     return false;
 
-  if (!IsSupportedDataType(onnx_data_type, wnn_limits[webnn_op_type][webnn_input_output_name]["dataTypes"])) {
-    LOGS(logger, VERBOSE) << "[" << onnx_op_type
-                          << "] " << onnx_input_output_name
-                          << " type: [" << onnx_data_type
-                          << "] is not supported for now";
+  return IsDataTypeSupportedByWebNNOp(onnx_op_type, webnn_op_type, onnx_data_type, wnn_limits,
+                                      webnn_input_output_name, onnx_input_output_name, logger);
+}
+
+bool IsDataTypeSupportedByWebNNOp(const std::string& onnx_op_type,
+                                  const std::string& webnn_op_type,
+                                  const int32_t onnx_data_type,
+                                  const emscripten::val& wnn_limits,
+                                  const std::string& webnn_input_output_name,
+                                  const std::string& onnx_input_output_name,
+                                  const logging::Logger& logger) {
+  if (wnn_limits[webnn_op_type].isUndefined()) {
+    LOGS(logger, VERBOSE) << "[" << onnx_op_type << "] WebNN op [" << webnn_op_type << "] is not supported for now";
     return false;
   }
-
+  if (wnn_limits[webnn_op_type][webnn_input_output_name].isUndefined()) {
+    LOGS(logger, VERBOSE) << "[" << onnx_op_type << "] WebNN op [" << webnn_op_type << "] doesn't have parameter ["
+                          << webnn_input_output_name << "]";
+    return false;
+  }
+  if (!IsSupportedDataType(onnx_data_type, wnn_limits[webnn_op_type][webnn_input_output_name]["dataTypes"])) {
+    LOGS(logger, VERBOSE) << "[" << onnx_op_type << "] " << onnx_input_output_name << "'s data type: ["
+                          << onnx_data_type << "] is not supported by WebNN op [" << webnn_op_type << "] for now";
+    return false;
+  }
   return true;
 }
 

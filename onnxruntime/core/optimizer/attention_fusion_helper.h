@@ -1,5 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
+#include <limits>
 #include "onnx/defs/shape_inference.h"
 #include "onnx/defs/tensor_proto_util.h"
 #include "core/framework/tensorprotoutils.h"
@@ -280,8 +281,8 @@ bool ValidateUnidirMask(std::vector<T> mask_data, int64_t w, bool& is_undirectio
     is_undirectional = true;
 
     const T* p = mask_data.data();
-    for (int i = 0; i < w; i++) {
-      for (int j = 0; j < w; j++) {
+    for (int64_t i = 0; i < w; i++) {
+      for (int64_t j = 0; j < w; j++) {
         if (*p != static_cast<T>(1)) {
           is_one = false;
         }
@@ -767,7 +768,8 @@ bool MatchInputMaskSubgraph(const Graph& graph, const Node& layer_norm, const No
   }
 
   // check where has X=-Infinity
-  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(where.InputDefs()[1]), -INFINITY, true)) {
+  if (!optimizer_utils::IsInitializerWithExpectedValue(graph, *(where.InputDefs()[1]),
+                                                       -std::numeric_limits<float>::infinity(), true)) {
     DEBUG_LOG("where const not matched.");
     return false;
   }

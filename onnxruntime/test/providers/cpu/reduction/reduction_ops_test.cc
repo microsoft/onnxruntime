@@ -1375,7 +1375,7 @@ TEST(ReductionOpTest, ReduceMax_double) {
   test.Run();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM)
 TEST(ReductionOpTest, ReduceMax_half) {
   OpTester test("ReduceMax");
   test.AddAttribute("axes", std::vector<int64_t>{1, 2});
@@ -2158,7 +2158,7 @@ TEST(ReductionOpTest, ReduceMin_double) {
   test.Run();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM)
 TEST(ReductionOpTest, ReduceMin_half) {
   OpTester test("ReduceMin");
   test.AddAttribute("axes", std::vector<int64_t>{0, 2});
@@ -2356,7 +2356,7 @@ TEST(ReductionOpTest, ReduceSum_int32) {
   test.Run();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM)
 TEST(ReductionOpTest, ReduceSumHalfHalf) {
   OpTester test("ReduceSum");
   test.AddAttribute("keepdims", (int64_t)0);
@@ -4500,15 +4500,14 @@ TEST(ReductionOpTest, OptimizeShapeForFastReduce_KR) {
 TEST(ReductionOpTest, OptimizeShapeForFastReduce_KR_neg) {
   FastReduceKind fast_kind;
   TensorShapeVector fast_shape, fast_output_shape, fast_axes;
-  TensorShapeVector expected_fast_shape, expected_fast_output_shape, expected_fast_axes;
 
   // KR - keep_dims=1
   fast_kind = OptimizeShapeForFastReduce(
       TensorShapeVector{10, 11}, TensorShapeVector{-1},
       fast_shape, fast_output_shape, fast_axes, true);
-  expected_fast_shape = TensorShapeVector{10, 11};
-  expected_fast_output_shape = TensorShapeVector{10, 1};
-  expected_fast_axes = TensorShapeVector{1};
+  TensorShapeVector expected_fast_shape{10, 11};
+  TensorShapeVector expected_fast_output_shape{10, 1};
+  TensorShapeVector expected_fast_axes{1};
   ASSERT_EQ(fast_kind, FastReduceKind::kKR);
   ASSERT_EQ(fast_shape, expected_fast_shape);
   ASSERT_EQ(fast_output_shape, expected_fast_output_shape);
@@ -5681,7 +5680,7 @@ TEST(ReductionOpTest, ReduceSum_RK_parallel) {
   test.AddOutput<float>("reduced", {32}, expected);
 
   // CoreML does not provide 1e-5 precision here (it's off by 1e-4)
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kCoreMLExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
 TEST(ReductionOpTest, ReduceSum_RK_keepdims) {

@@ -16,7 +16,6 @@
 #include "core/common/logging/sinks/clog_sink.h"
 
 #include "core/graph/model.h"
-#include "core/providers/shared/utils/utils.h"
 #include "core/session/environment.h"
 #include "core/common/logging/logging.h"
 
@@ -31,20 +30,41 @@ static void CheckStatus(const Status& status) {
   }
 }
 
+static int64_t GetNodeAttr(const Node& node, const std::string& attr_name, int64_t default_val) {
+  const auto& attributes = node.GetAttributes();
+  if (auto entry = attributes.find(attr_name); entry != attributes.end()) {
+    return entry->second.i();
+  }
+
+  return default_val;
+}
+
+static const std::string& GetNodeAttr(const Node& node, const std::string& attr_name, const std::string& default_val) {
+  const auto& attributes = node.GetAttributes();
+  if (auto entry = attributes.find(attr_name); entry != attributes.end()) {
+    return entry->second.s();
+  }
+
+  return default_val;
+}
+
 // from the last context cache Onnx model, find the EPContext node with main_context=1,
 // and get the QNN context binary file name, this context binary contains all graphs from all Onnx models
+// get the max spill fill buffer size
 static void GetLastContextBinaryFileName(const std::basic_string<ORTCHAR_T> last_onnx_ctx_file,
-                                         std::string& last_ctx_bin_file) {
+                                         std::string& last_ctx_bin_file,
+                                         int64_t& max_size) {
+  max_size = 0;
   std::shared_ptr<Model> ctx_model;
   CheckStatus(Model::Load(ToPathString(last_onnx_ctx_file), ctx_model, nullptr,
                           (*((OrtEnv*)*ort_env.get())->GetEnvironment().GetLoggingManager()).DefaultLogger()));
   auto& ctx_graph = ctx_model->MainGraph();
   for (auto& node : ctx_graph.Nodes()) {
     if (node.OpType() == "EPContext") {
-      NodeAttrHelper node_helper(node);
-      int64_t is_main_context = node_helper.Get("main_context", static_cast<int64_t>(0));
+      int64_t is_main_context = GetNodeAttr(node, "main_context", static_cast<int64_t>(0));
+      max_size = GetNodeAttr(node, "max_size", static_cast<int64_t>(0));
       if (1 == is_main_context) {
-        last_ctx_bin_file = node_helper.Get("ep_cache_context", "");
+        last_ctx_bin_file = GetNodeAttr(node, "ep_cache_context", "");
         return;
       }
     }
@@ -55,7 +75,8 @@ static void GetLastContextBinaryFileName(const std::basic_string<ORTCHAR_T> last
 // the last QNN context binary file
 // Remove not used QNN context binary file, only keep the last one which contains all graphs
 static void UpdateEpContextModel(const std::vector<std::basic_string<ORTCHAR_T>>& ep_ctx_files,
-                                 const std::string& last_qnn_ctx_binary_file_name) {
+                                 const std::string& last_qnn_ctx_binary_file_name,
+                                 int64_t max_size) {
   for (auto ep_ctx_file : ep_ctx_files) {
     std::shared_ptr<Model> ctx_model;
     auto path_str = ToPathString(ep_ctx_file);
@@ -67,14 +88,15 @@ static void UpdateEpContextModel(const std::vector<std::basic_string<ORTCHAR_T>>
 
     for (auto& node : ctx_graph.Nodes()) {
       if (node.OpType() == "EPContext") {
-        NodeAttrHelper node_helper(node);
-        int64_t is_main_context = node_helper.Get("main_context", static_cast<int64_t>(0));
+        int64_t is_main_context = GetNodeAttr(node, "main_context", static_cast<int64_t>(0));
         if (1 == is_main_context) {
-          std::string old_qnn_ctx_binary_file_name = node_helper.Get("ep_cache_context", "");
+          std::string old_qnn_ctx_binary_file_name = GetNodeAttr(node, "ep_cache_context", "");
           auto file_path = path.replace_filename(old_qnn_ctx_binary_file_name);
           std::remove(file_path.string().c_str());
           node.ClearAttribute("ep_cache_context");
           node.AddAttribute("ep_cache_context", last_qnn_ctx_binary_file_name);
+          node.ClearAttribute("max_size");
+          node.AddAttribute("max_size", max_size);
         }
       }
     }
@@ -181,7 +203,8 @@ int real_main(int argc, char* argv[]) {
 
     // Get the last context binary file name
     std::string last_qnn_ctx_binary_file_name;
-    GetLastContextBinaryFileName(ep_ctx_files.back(), last_qnn_ctx_binary_file_name);
+    int64_t max_size = 0;
+    GetLastContextBinaryFileName(ep_ctx_files.back(), last_qnn_ctx_binary_file_name, max_size);
     std::cout << "The last context binary file: " << last_qnn_ctx_binary_file_name << std::endl;
     if (last_qnn_ctx_binary_file_name.empty()) {
       throw Ort::Exception("Can't find QNN context binary file from the Onnx model.", OrtErrorCode::ORT_FAIL);
@@ -191,7 +214,7 @@ int real_main(int argc, char* argv[]) {
     // Update generated context cache Onnx model to make the main EPContext node point to
     // the last QNN context binary file
     // Remove not used QNN context binary file, only keep the last one which contains all graphs
-    UpdateEpContextModel(ep_ctx_files, last_qnn_ctx_binary_file_name);
+    UpdateEpContextModel(ep_ctx_files, last_qnn_ctx_binary_file_name, max_size);
   }
   ORT_CATCH(const Ort::Exception& e) {
     fprintf(stderr, "Failed to generate context cache file: %s \n", e.what());

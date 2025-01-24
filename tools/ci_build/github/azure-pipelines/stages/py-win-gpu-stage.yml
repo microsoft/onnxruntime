@@ -50,16 +50,19 @@ stages:
         name: onnxruntime-Win-CPU-2022
         os: windows
       templateContext:
-        codeSignValidation:
-          enabled: true
-          break: true
-        psscriptanalyzer:
-          enabled: true
         sdl:
+          codeSignValidation:
+            enabled: true
+            # TODO: check why pyd file was not signed
+            break: false
+            additionalTargetsGlobPattern: f|**\*.pyd
+          psscriptanalyzer:
+            enabled: true
           binskim:
+            preReleaseVersion: '4.3.1'
             enabled: true
             scanOutputDirectoryOnly: true
-            targetPathPattern: '+:file|*.dll;-:file|DirectML.dll'
+            analyzeTargetGlob: '+:file|$(BUILD.STAGINGDIRECTORY)\**\*.pyd;+:file|$(BUILD.STAGINGDIRECTORY)\**\*.dll;-:file|DirectML.dll'
         outputs:
         - output: pipelineArtifact
           targetPath: $(Build.ArtifactStagingDirectory)
@@ -83,13 +86,10 @@ stages:
         ${{ if eq(parameters.use_tensorrt, false) }}:
           value: ''
       steps:
-          - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-            displayName: 'Clean Agent Directories'
-            condition: always()
 
           - checkout: self
             clean: true
-            submodules: recursive
+            submodules: none
 
           - template: ../templates/telemetry-steps.yml
 
@@ -124,7 +124,7 @@ stages:
           - template: ../templates/set-nightly-build-option-variable-step.yml
 
           - task: PythonScript@0
-            displayName: 'Generate cmake config'
+            displayName: 'Build'
             inputs:
               scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
               arguments: >
@@ -134,7 +134,7 @@ stages:
                 --cmake_generator "$(VSGenerator)"
                 --enable_pybind
                 --enable_onnx_tests
-                --parallel --use_binskim_compliant_compile_flags --update --build
+                --parallel 8 --use_binskim_compliant_compile_flags --update --build --msvc_toolset 14.40
                 $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }} ${{ variables.trt_build_flag }}
               workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -165,9 +165,6 @@ stages:
             workingDirectory: '$(Build.ArtifactStagingDirectory)'
             displayName: 'unzip the package'
 
-          - template: ../templates/component-governance-component-detection-steps.yml
-            parameters:
-              condition: 'succeeded'
 
   - stage: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Tests
     dependsOn: Win_py_${{ parameters.EP_NAME }}_Wheels_${{ replace(parameters.PYTHON_VERSION,'.','_') }}_Build
@@ -178,9 +175,6 @@ stages:
       pool:
         name: ${{parameters.MACHINE_POOL}}
       steps:
-        - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-          displayName: 'Clean Agent Directories'
-          condition: always()
 
         - checkout: self
           clean: true

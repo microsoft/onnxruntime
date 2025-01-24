@@ -7,7 +7,6 @@ import copy
 import logging
 import os
 from abc import ABC, abstractmethod  # noqa: F401
-from typing import Dict, List, Optional, Tuple
 
 import onnx
 import torch
@@ -30,7 +29,7 @@ from .torch_cpp_extensions.cpu.aten_op_executor import load_aten_op_executor_cpp
 
 
 class _RunStateInfo:
-    def __init__(self, state, output_info: List[Tuple[torch.Size, torch.device, torch.dtype]]):
+    def __init__(self, state, output_info: list[tuple[torch.Size, torch.device, torch.dtype]]):
         """
         :param state: State of partial run that contains intermediate tensors needed to resume the run later.
         :param output_info: Output info.
@@ -74,7 +73,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._flattened_module = module
 
         self._onnx_models = _onnx_models.ONNXModels()
-        self._graph_transition_manager: Optional[GraphTransitionManager] = None
+        self._graph_transition_manager: GraphTransitionManager | None = None
 
         # Model after inference optimization and then gradient building.
         self._graph_builder = None
@@ -341,7 +340,7 @@ class GraphExecutionManager(GraphExecutionInterface):
         return self._graph_transition_manager._device
 
     @_logger.TrackTime(_logger.ORTModuleInitPhase.DETECTION)
-    def _detect_from_inputs(self, inputs: Tuple, kwargs: Dict):
+    def _detect_from_inputs(self, inputs: tuple, kwargs: dict):
         """
         Based on runtime inspection, enable conditional optimizations if applicable.
 
@@ -381,7 +380,7 @@ class GraphExecutionManager(GraphExecutionInterface):
                 [f"{k}:{v:.0f}%" for k, v in self._runtime_inspector._embedding_module_to_padding_density_map.items()]
             )
 
-    def _append_pull_weight_trigger_as_input(self, kwargs: Dict, device: torch.device):
+    def _append_pull_weight_trigger_as_input(self, kwargs: dict, device: torch.device):
         if self._runtime_options.enable_zero_stage3_support:
             from ._zero_stage3_compatibility import (
                 STAGE3_PULL_WEIGHT_TRIGGER_NAME,

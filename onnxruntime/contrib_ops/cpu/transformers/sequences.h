@@ -25,6 +25,9 @@ class Sequences : public ISequences {
   // Returns current sequence length.
   int GetSequenceLength() const override;
 
+  // Returns max sequence length.
+  int GetMaxLength() const override;
+
 #ifdef DEBUG_GENERATION
   // Print the sequences to StdOut in debug mode
   void PrintSequences(const IConsoleDumper* dumper) const;

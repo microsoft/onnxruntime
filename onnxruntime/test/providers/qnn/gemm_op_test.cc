@@ -9,7 +9,7 @@
 #include "test/providers/qnn/qnn_test_utils.h"
 #include "core/graph/node_attr_utils.h"
 
-#include "onnx/onnx_pb.h"
+#include "core/graph/onnx_protobuf.h"
 #include "gtest/gtest.h"
 
 namespace onnxruntime {
@@ -335,7 +335,12 @@ TEST_F(QnnHTPBackendTests, Gemm_Broadcast_Bias_DynamicA_StaticB_StaticC) {
 // Expected val: 120.73912048339844
 // QNN QDQ val: 0 (err 120.73912048339844)
 // CPU QDQ val: 120.73889923095703 (err 0.00022125244140625)
+// Issue fixed in 2.30
+#if (QNN_API_VERSION_MAJOR == 2) && (QNN_API_VERSION_MINOR >= 23)
+TEST_F(QnnHTPBackendTests, Gemm_Dynamic_A_Static_B_Dynamic_Bias_U16) {
+#else
 TEST_F(QnnHTPBackendTests, DISABLED_Gemm_Dynamic_A_Static_B_Dynamic_Bias_U16) {
+#endif
   std::vector<float> input_a_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
   std::vector<float> input_b_data = GetFloatDataInRange(-5.0f, 5.0f, 24);
   std::vector<float> input_c_data = GetFloatDataInRange(-1.0f, 1.0f, 4);
@@ -368,7 +373,12 @@ TEST_F(QnnHTPBackendTests, Gemm_Dynamic_A_Static_B_Dynamic_Bias_U16Act_U8Weight)
 // Expected val: 120.73912048339844
 // QNN QDQ val: 77.012794494628906 (err 43.726325988769531)
 // CPU QDQ val: 119.85115814208984 (err 0.88796234130859375)
+// Issue fixed in 2.30
+#if (QNN_API_VERSION_MAJOR == 2) && (QNN_API_VERSION_MINOR >= 23)
+TEST_F(QnnHTPBackendTests, Gemm_Dynamic_A_B_Static_Bias) {
+#else
 TEST_F(QnnHTPBackendTests, DISABLED_Gemm_Dynamic_A_B_Static_Bias) {
+#endif
   std::vector<float> input_a_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
   std::vector<float> input_b_data = GetFloatDataInRange(-5.0f, 5.0f, 24);
   std::vector<float> input_c_data = GetFloatDataInRange(-1.0f, 1.0f, 4);

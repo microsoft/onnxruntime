@@ -109,7 +109,7 @@ OVExeNetwork OVCore::CompileModel(const std::string& onnx_model,
   }
 }
 
-OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_stream,
+OVExeNetwork OVCore::ImportModel(const std::string& model_string,
                                  std::string hw_target,
                                  const ov::AnyMap& device_config,
                                  bool embed_mode,
@@ -117,10 +117,10 @@ OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_strea
   try {
     ov::CompiledModel obj;
     if (embed_mode) {
-      obj = oe.import_model(*model_stream, hw_target, device_config);
+      std::istringstream model_stream(model_string);
+      obj = oe.import_model(model_stream, hw_target, device_config);
     } else {
-      std::string blob_file_path = (*model_stream).str();
-      std::ifstream modelStream(blob_file_path, std::ios_base::binary | std::ios_base::in);
+      std::ifstream modelStream(model_string, std::ios_base::binary | std::ios_base::in);
       obj = oe.import_model(modelStream,
                             hw_target,
                             {});

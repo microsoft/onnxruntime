@@ -1,81 +1,118 @@
-diff --git a/src/dawn/native/CMakeLists.txt b/src/dawn/native/CMakeLists.txt
-index 9c0bd6fa4e..bf8a57aeac 100644
---- a/src/dawn/native/CMakeLists.txt
-+++ b/src/dawn/native/CMakeLists.txt
-@@ -857,6 +857,11 @@ if (DAWN_ENABLE_SWIFTSHADER)
-     target_compile_definitions(dawn_native PRIVATE "DAWN_ENABLE_SWIFTSHADER")
- endif()
-
-+if (IOS)
-+    target_compile_options(dawn_native_objects PRIVATE -fno-objc-arc)
-+    target_compile_options(dawn_native PRIVATE -fno-objc-arc)
-+endif()
+diff --git a/src/emdawnwebgpu/CMakeLists.txt b/src/emdawnwebgpu/CMakeLists.txt
+index de673537d3..c98dc46de7 100644
+--- a/src/emdawnwebgpu/CMakeLists.txt
++++ b/src/emdawnwebgpu/CMakeLists.txt
+@@ -78,6 +78,7 @@ if (${DAWN_ENABLE_EMSCRIPTEN})
+         endif()
+ 
+         set(ARGS
++            ${Python3_EXECUTABLE}
+             "${DAWN_EMSCRIPTEN_TOOLCHAIN}/tools/maint/gen_struct_info.py"
+             -q
+             "${EM_BUILD_GEN_DIR}/struct_info_webgpu.json"
+diff --git a/third_party/emdawnwebgpu/library_webgpu.js b/third_party/emdawnwebgpu/library_webgpu.js
+index d1835cb090..df03ea2f94 100644
+--- a/third_party/emdawnwebgpu/library_webgpu.js
++++ b/third_party/emdawnwebgpu/library_webgpu.js
+@@ -16,10 +16,19 @@
+     throw new Error("To use Dawn's library_webgpu.js, disable -sUSE_WEBGPU and first include Dawn's library_webgpu_struct_info.js and library_webgpu_enum_tables.js (before library_webgpu.js)");
+   }
+ 
++  if (MEMORY64) {
++    throw new Error("The current implementation of Dawn's library_webgpu.js does not support MEMORY64 yet");
++  }
 +
- if (DAWN_BUILD_MONOLITHIC_LIBRARY)
-     ###############################################################################
-     # Do the 'complete_lib' build.
-diff --git a/src/dawn/native/Surface_metal.mm b/src/dawn/native/Surface_metal.mm
-index ce55acbd43..2cfd363479 100644
---- a/src/dawn/native/Surface_metal.mm
-+++ b/src/dawn/native/Surface_metal.mm
-@@ -33,10 +33,18 @@
-
- #import <QuartzCore/CAMetalLayer.h>
-
-+#include "dawn/common/Platform.h"
-+
- namespace dawn::native {
-
- bool InheritsFromCAMetalLayer(void* obj) {
--    id<NSObject> object = static_cast<id>(obj);
-+    id<NSObject> object =
-+#if DAWN_PLATFORM_IS(IOS)
-+        (__bridge id)obj;
-+#else   // DAWN_PLATFORM_IS(IOS)
-+        static_cast<id>(obj);
-+#endif  // DAWN_PLATFORM_IS(IOS)
-+
-     return [object isKindOfClass:[CAMetalLayer class]];
- }
-
-diff --git a/src/dawn/native/metal/SharedFenceMTL.mm b/src/dawn/native/metal/SharedFenceMTL.mm
-index bde8bfea07..8906185d6f 100644
---- a/src/dawn/native/metal/SharedFenceMTL.mm
-+++ b/src/dawn/native/metal/SharedFenceMTL.mm
-@@ -25,6 +25,8 @@
- // OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
- // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
-
-+#include "dawn/common/Platform.h"
-+
- #include "dawn/native/metal/SharedFenceMTL.h"
-
- #include "dawn/native/ChainUtils.h"
-@@ -39,8 +41,13 @@ ResultOrError<Ref<SharedFence>> SharedFence::Create(
-     const SharedFenceMTLSharedEventDescriptor* descriptor) {
-     DAWN_INVALID_IF(descriptor->sharedEvent == nullptr, "MTLSharedEvent is missing.");
-     if (@available(macOS 10.14, iOS 12.0, *)) {
--        return AcquireRef(new SharedFence(
--            device, label, static_cast<id<MTLSharedEvent>>(descriptor->sharedEvent)));
-+        return AcquireRef(new SharedFence(device, label,
-+#if DAWN_PLATFORM_IS(IOS)
-+                                          (__bridge id<MTLSharedEvent>)(descriptor->sharedEvent)
-+#else   // DAWN_PLATFORM_IS(IOS)
-+                                          static_cast<id<MTLSharedEvent>>(descriptor->sharedEvent)
-+#endif  // DAWN_PLATFORM_IS(IOS)
-+                                              ));
-     } else {
-         return DAWN_INTERNAL_ERROR("MTLSharedEvent not supported.");
-     }
-diff --git a/src/tint/api/BUILD.cmake b/src/tint/api/BUILD.cmake
-index 0037d83276..6372c4ee77 100644
---- a/src/tint/api/BUILD.cmake
-+++ b/src/tint/api/BUILD.cmake
-@@ -57,6 +57,7 @@ tint_target_add_dependencies(tint_api lib
-   tint_lang_wgsl_ast_transform
-   tint_lang_wgsl_common
-   tint_lang_wgsl_features
-+  tint_lang_wgsl_inspector
-   tint_lang_wgsl_program
-   tint_lang_wgsl_sem
-   tint_lang_wgsl_writer_ir_to_program
+   // Helper functions for code generation
+   globalThis.gpu = {
+-    convertSentinelToUndefined: function(name) {
+-      return `if (${name} == -1) ${name} = undefined;`;
++    convertSentinelToUndefined: function(name, isPtr = false) {
++      // When `CAN_ADDRESS_2GB` is true, value `-1` is normalized to `0xFFFFFFFF` for pointer.
++      if (CAN_ADDRESS_2GB && isPtr) {
++        return `if (${name} == 0xFFFFFFFF) ${name} = undefined;`;
++      } else {
++        return `if (${name} == -1) ${name} = undefined;`;
++      }
+     },
+ 
+     makeGetBool: function(struct, offset) {
+@@ -700,6 +709,7 @@ var LibraryWebGPU = {
+     {{{ makeSetValue('info', C_STRUCTS.WGPUAdapterInfo.adapterType, 'adapterType', 'i32') }}};
+     {{{ makeSetValue('info', C_STRUCTS.WGPUAdapterInfo.vendorID, '0', 'i32') }}};
+     {{{ makeSetValue('info', C_STRUCTS.WGPUAdapterInfo.deviceID, '0', 'i32') }}};
++    return 1;
+   },
+ 
+   wgpuAdapterGetLimits: (adapterPtr, limitsOutPtr) => {
+@@ -882,7 +892,7 @@ var LibraryWebGPU = {
+ 
+     if (size === 0) warnOnce('getMappedRange size=0 no longer means WGPU_WHOLE_MAP_SIZE');
+ 
+-    {{{ gpu.convertSentinelToUndefined('size') }}}
++    {{{ gpu.convertSentinelToUndefined('size', true) }}}
+ 
+     var mapped;
+     try {
+@@ -909,7 +919,7 @@ var LibraryWebGPU = {
+ 
+     if (size === 0) warnOnce('getMappedRange size=0 no longer means WGPU_WHOLE_MAP_SIZE');
+ 
+-    {{{ gpu.convertSentinelToUndefined('size') }}}
++    {{{ gpu.convertSentinelToUndefined('size', true) }}}
+ 
+     var mapped;
+     try {
+@@ -950,7 +960,7 @@ var LibraryWebGPU = {
+     var buffer = WebGPU.getJsObject(bufferPtr);
+     WebGPU.Internals.bufferOnUnmaps[bufferPtr] = [];
+ 
+-    {{{ gpu.convertSentinelToUndefined('size') }}}
++    {{{ gpu.convertSentinelToUndefined('size', true) }}}
+ 
+     {{{ runtimeKeepalivePush() }}}
+     WebGPU.Internals.futureInsert(futureId, buffer.mapAsync(mode, offset, size).then(() => {
+@@ -1145,7 +1155,7 @@ var LibraryWebGPU = {
+ 
+   wgpuCommandEncoderClearBuffer: (encoderPtr, bufferPtr, offset, size) => {
+     var commandEncoder = WebGPU.getJsObject(encoderPtr);
+-    {{{ gpu.convertSentinelToUndefined('size') }}}
++    {{{ gpu.convertSentinelToUndefined('size', true) }}}
+ 
+     var buffer = WebGPU.getJsObject(bufferPtr);
+     commandEncoder.clearBuffer(buffer, offset, size);
+@@ -2103,7 +2113,7 @@ var LibraryWebGPU = {
+   wgpuRenderBundleEncoderSetIndexBuffer: (passPtr, bufferPtr, format, offset, size) => {
+     var pass = WebGPU.getJsObject(passPtr);
+     var buffer = WebGPU.getJsObject(bufferPtr);
+-    {{{ gpu.convertSentinelToUndefined('size') }}}
++    {{{ gpu.convertSentinelToUndefined('size', true) }}}
+     pass.setIndexBuffer(buffer, WebGPU.IndexFormat[format], offset, size);
+   },
+ 
+@@ -2116,7 +2126,7 @@ var LibraryWebGPU = {
+   wgpuRenderBundleEncoderSetVertexBuffer: (passPtr, slot, bufferPtr, offset, size) => {
+     var pass = WebGPU.getJsObject(passPtr);
+     var buffer = WebGPU.getJsObject(bufferPtr);
+-    {{{ gpu.convertSentinelToUndefined('size') }}}
++    {{{ gpu.convertSentinelToUndefined('size', true) }}}
+     pass.setVertexBuffer(slot, buffer, offset, size);
+   },
+ 
+@@ -2211,7 +2221,7 @@ var LibraryWebGPU = {
+   wgpuRenderPassEncoderSetIndexBuffer: (passPtr, bufferPtr, format, offset, size) => {
+     var pass = WebGPU.getJsObject(passPtr);
+     var buffer = WebGPU.getJsObject(bufferPtr);
+-    {{{ gpu.convertSentinelToUndefined('size') }}}
++    {{{ gpu.convertSentinelToUndefined('size', true) }}}
+     pass.setIndexBuffer(buffer, WebGPU.IndexFormat[format], offset, size);
+   },
+ 
+@@ -2234,7 +2244,7 @@ var LibraryWebGPU = {
+   wgpuRenderPassEncoderSetVertexBuffer: (passPtr, slot, bufferPtr, offset, size) => {
+     var pass = WebGPU.getJsObject(passPtr);
+     var buffer = WebGPU.getJsObject(bufferPtr);
+-    {{{ gpu.convertSentinelToUndefined('size') }}}
++    {{{ gpu.convertSentinelToUndefined('size', true) }}}
+     pass.setVertexBuffer(slot, buffer, offset, size);
+   },
+ 

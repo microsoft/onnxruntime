@@ -1142,9 +1142,6 @@ namespace Microsoft.ML.OnnxRuntime
 
         [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
         public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_MIGraphX(IntPtr /*(OrtSessionOptions*)*/ options, int device_id);
-
-        [DllImport(NativeLib.DllName, CharSet = CharSet.Ansi)]
-        public static extern IntPtr /*(OrtStatus*)*/ OrtSessionOptionsAppendExecutionProvider_Tvm(IntPtr /*(OrtSessionOptions*) */ options, byte[] /*(char char*)*/ settings);
 #endif
         /// <summary>
         /// Append a TensorRT EP instance (configured based on given provider options) to the native OrtSessionOptions instance
@@ -1272,7 +1269,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// Append an execution provider instance to the native OrtSessionOptions instance.
         ///
-        /// 'SNPE' and 'XNNPACK' are currently supported as providerName values.
+        /// 'SNPE', 'XNNPACK' and 'CoreML' are currently supported as providerName values.
         ///
         /// The number of providerOptionsKeys must match the number of providerOptionsValues and equal numKeys.
         /// </summary>

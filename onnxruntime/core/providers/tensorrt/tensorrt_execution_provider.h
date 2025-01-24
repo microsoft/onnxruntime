@@ -57,7 +57,6 @@ static const std::string kDumpEpContextModel = "ORT_DUMP_EP_CONTEXT_MODEL";
 static const std::string kEpContextEmbedMode = "ORT_EP_CONTEXT_EMBED_MODE";
 static const std::string kEpContextComputeCapabilityEnable = "ORT_EP_CONTEXT_COMPUTE_CAPABILITY_ENABLE";
 static const std::string kEngineCachePrefix = "ORT_TENSORRT_CACHE_PREFIX";
-static const std::string kOpTypesToExclude = "ORT_TENSORRT_OP_TYPES_TO_EXCLUDE";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 }  // namespace tensorrt_env_vars
@@ -336,6 +335,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   // The format is as for TENSORRT_VERSION: (MAJOR * 100 + MINOR) * 100 + PATCH
   int32_t trt_version_;
+  int32_t cuda_version_;
 
   // The OrtAllocator object will be get during ep compute time
   // and should be kept for the lifetime of TRT EP object.

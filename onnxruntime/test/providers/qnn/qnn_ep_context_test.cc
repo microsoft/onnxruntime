@@ -7,7 +7,6 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/inference_session.h"
-#include "core/providers/shared/utils/utils.h"
 
 #include "test/providers/qnn/qnn_test_utils.h"
 
@@ -24,6 +23,24 @@ namespace onnxruntime {
 namespace test {
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+
+static int64_t GetNodeAttr(const Node& node, const std::string& attr_name, int64_t default_val) {
+  const auto& attributes = node.GetAttributes();
+  if (auto entry = attributes.find(attr_name); entry != attributes.end()) {
+    return entry->second.i();
+  }
+
+  return default_val;
+}
+
+static const std::string& GetNodeAttr(const Node& node, const std::string& attr_name, const std::string& default_val) {
+  const auto& attributes = node.GetAttributes();
+  if (auto entry = attributes.find(attr_name); entry != attributes.end()) {
+    return entry->second.s();
+  }
+
+  return default_val;
+}
 
 // Create a model with FusedMatMul + Add (quantized)
 // input1 -> Add -> Q -> DQ \
@@ -873,10 +890,9 @@ static void GetLastContextBinaryFileName(const std::string last_onnx_ctx_file,
   auto& ctx_graph = ctx_model->MainGraph();
   for (auto& node : ctx_graph.Nodes()) {
     if (node.OpType() == "EPContext") {
-      NodeAttrHelper node_helper(node);
-      int64_t is_main_context = node_helper.Get("main_context", static_cast<int64_t>(0));
+      int64_t is_main_context = GetNodeAttr(node, "main_context", static_cast<int64_t>(0));
       if (1 == is_main_context) {
-        last_ctx_bin_file = node_helper.Get("ep_cache_context", "");
+        last_ctx_bin_file = GetNodeAttr(node, "ep_cache_context", "");
         return;
       }
     }
@@ -899,10 +915,9 @@ static void UpdateEpContextModel(const std::vector<std::string>& ep_ctx_files,
 
     for (auto& node : ctx_graph.Nodes()) {
       if (node.OpType() == "EPContext") {
-        NodeAttrHelper node_helper(node);
-        int64_t is_main_context = node_helper.Get("main_context", static_cast<int64_t>(0));
+        int64_t is_main_context = GetNodeAttr(node, "main_context", static_cast<int64_t>(0));
         if (1 == is_main_context) {
-          std::string old_qnn_ctx_binary_file_name = node_helper.Get("ep_cache_context", "");
+          std::string old_qnn_ctx_binary_file_name = GetNodeAttr(node, "ep_cache_context", "");
           auto file_path = path.replace_filename(old_qnn_ctx_binary_file_name);
           std::remove(file_path.string().c_str());
           node.ClearAttribute("ep_cache_context");
