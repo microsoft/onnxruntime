@@ -6,7 +6,9 @@
 #include <thread>
 
 #include "core/providers/cpu/cpu_provider_factory.h"  // For OrtSessionOptionsAppendExecutionProvider_CPU
-#include "core/providers/qnn/qnn_allocator.h"
+#if BUILD_QNN_EP_STATIC_LIB
+#include "core/providers/qnn/qnn_allocator.h"  // Used by QnnHTPBackendTests.UseHtpSharedMemoryAllocatorForInputs
+#endif
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -1099,6 +1101,9 @@ TEST_F(QnnHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
   }
 }
 
+// Only compile this test when QNN EP is built as a static library. When QNN EP is a shared library,
+// we cannot include internal QNN EP headers that use the provider-bridge API.
+#if BUILD_QNN_EP_STATIC_LIB
 TEST_F(QnnHTPBackendTests, UseHtpSharedMemoryAllocatorForInputs) {
   ProviderOptions provider_options;
 #if defined(_WIN32)
@@ -1145,6 +1150,7 @@ TEST_F(QnnHTPBackendTests, UseHtpSharedMemoryAllocatorForInputs) {
                   ExpectedEPNodeAssignment::All,
                   0.008f);
 }
+#endif  // BUILD_QNN_EP_STATIC_LIB
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 #endif  // !defined(ORT_MINIMAL_BUILD)

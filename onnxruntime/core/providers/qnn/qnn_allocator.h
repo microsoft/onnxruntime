@@ -6,11 +6,7 @@
 #include <memory>
 #include <mutex>
 
-#include "core/common/common.h"
-#include "core/common/inlined_containers.h"
-#include "core/common/logging/logging.h"
-#include "core/common/status.h"
-#include "core/framework/allocator.h"
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/rpcmem_library.h"
 
 namespace onnxruntime::qnn {

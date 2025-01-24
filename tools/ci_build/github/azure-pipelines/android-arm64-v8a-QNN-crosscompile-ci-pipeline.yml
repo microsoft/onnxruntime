@@ -72,7 +72,8 @@ jobs:
         --android_abi=x86_64 \
         --android_api=31 \
         --parallel \
-        --use_qnn \
+        --build_shared_lib \
+        --use_qnn static_lib \
         --qnn_home $(QnnSDKRootDir) \
         --cmake_generator=Ninja \
         --skip_tests
