@@ -24,13 +24,13 @@ For Nightly PyTorch builds please see [Pytorch home](https://pytorch.org/) and s
 
 Pre-built binaries of ONNX Runtime with MIGraphX EP are published for most language bindings. Please reference [Install ORT](../install).
 
-As of ROCm version 6.0.2 AMD supplies pre-built debian binaries hosted on (https://repo.radeon.com/manylinux)
+Since ROCm 6.0.2, AMD supplies pre-built python wheels hosted on (https://repo.radeon.com/manylinux)
 
 ## Requirements
 
-Below is the matrix of supported ROCm versions.
+Below is the matrix of supported ROCm versions corresponding to Ubuntu builds.
 
-Links for prebuild Ubuntu binaries are linked below corresponding to python versions for the host OS based on support.
+Links for prebuild Python Wheels (.whl) are linked below corresponding to python versions for the host OS based on Ubuntu support.
 
 
 |ONNX Runtime Version|MIGraphX ROCm Release| Repo.Radeon link|
