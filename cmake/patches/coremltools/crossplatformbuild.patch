@@ -16,14 +16,15 @@ index adc7bfcf..7b2bf9cc 100644
  using namespace MILBlob;
  using namespace MILBlob::Blob;
 diff --git a/mlmodel/src/MILBlob/Blob/FileWriter.hpp b/mlmodel/src/MILBlob/Blob/FileWriter.hpp
-index 2bc99403..8400fb76 100644
+index 2bc99403..49239513 100644
 --- a/mlmodel/src/MILBlob/Blob/FileWriter.hpp
 +++ b/mlmodel/src/MILBlob/Blob/FileWriter.hpp
-@@ -6,7 +6,7 @@
+@@ -6,7 +6,8 @@
  #pragma once
  
  #include "MILBlob/Util/Span.hpp"
 -
++// ORT_EDIT: add missing header
 +#include <cstdint>
  #include <fstream>
  #include <string>
@@ -168,14 +169,15 @@ index 8fee56b9..5508e316 100644
  
  std::string ModelPackage::setRootModel(const std::string& path, const std::string& name, const std::string& author, const std::string& description)
 diff --git a/modelpackage/src/utils/JsonMap.hpp b/modelpackage/src/utils/JsonMap.hpp
-index 0d7dc3f4..ba6a9d19 100644
+index 0d7dc3f4..b700cfd5 100644
 --- a/modelpackage/src/utils/JsonMap.hpp
 +++ b/modelpackage/src/utils/JsonMap.hpp
-@@ -10,7 +10,7 @@
+@@ -10,7 +10,8 @@
  #include <iostream>
  #include <vector>
  #include <string>
 -
++// ORT_EDIT: add missing header
 +#include <memory>
  class JsonMapImpl;
  
