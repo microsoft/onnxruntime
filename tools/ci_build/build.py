@@ -1049,16 +1049,11 @@ def generate_build_tree(
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER="
         + ("ON" if args.use_tensorrt_builtin_parser and not args.use_tensorrt_oss_parser else "OFF"),
         # interface variables are used only for building onnxruntime/onnxruntime_shared.dll but not EPs
-        "-Donnxruntime_USE_TENSORRT_INTERFACE="
-        + ("ON" if args.enable_generic_interface else "OFF"),
-        "-Donnxruntime_USE_CUDA_INTERFACE="
-        + ("ON" if args.enable_generic_interface else "OFF"),
-        "-Donnxruntime_USE_OPENVINO_INTERFACE="
-        + ("ON" if args.enable_generic_interface else "OFF"),
-        "-Donnxruntime_USE_VITISAI_INTERFACE="
-        + ("ON" if args.enable_generic_interface else "OFF"),
-        "-Donnxruntime_USE_QNN_INTERFACE="
-        + ("ON" if args.enable_generic_interface else "OFF"),
+        "-Donnxruntime_USE_TENSORRT_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
+        "-Donnxruntime_USE_CUDA_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
+        "-Donnxruntime_USE_OPENVINO_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
+        "-Donnxruntime_USE_VITISAI_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
+        "-Donnxruntime_USE_QNN_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         # set vars for migraphx
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
