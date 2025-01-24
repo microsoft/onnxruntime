@@ -17,7 +17,7 @@ In summary, the new API adds an `AppendTokens` function to the generator, which 
 
 Calling `AppendTokens` outside of the conversation loop can be used to implement system prompt caching.
 
-Note: chat mode and system prompt caching is only supported when running on CPU, NVIDIA GPUs with the CUDA EP, and all GPUs with the Web GPU native EP. It is not supported on NPU or GPUs running with the DirecML EP. For Q&A mode, the migrations described below *are* required.
+Note: chat mode and system prompt caching are only supported for batch size 1. Furthermore, they are currently supported on CPU, NVIDIA GPUs with the CUDA EP, and all GPUs with the Web GPU native EP. They are not supported on NPU or GPUs running with the DirecML EP. For Q&A mode, the migrations described below *are* required.
 
 ## Python
 
