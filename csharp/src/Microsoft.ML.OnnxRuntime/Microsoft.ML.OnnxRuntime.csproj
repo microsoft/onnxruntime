@@ -127,6 +127,11 @@
     <OrtConstants>$(OrtConstants);__ENABLE_TRAINING_APIS__</OrtConstants>
   </PropertyGroup>
 
+  <!-- Enable same optimizations as configuration Release for the custom RelWithDebInfo -->
+  <PropertyGroup Condition="'$(Configuration)' == 'RelWithDebInfo'">
+    <Optimize>true</Optimize>
+  </PropertyGroup>
+
   <!--
     Properties that are used when creating the managed package using the Pack target.
   -->
