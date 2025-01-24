@@ -13,7 +13,7 @@ Learn how to migrate from ONNX Runtime generate() version 0.5.2 to version 0.6.0
 
 Version 0.6.0 adds support for "chat mode", also known as _continuation_, _continous decoding_, and _interactive decoding_. The introduction of chat mode necessitated a change to the API, which breaks the previous API.
 
-In summary, the new API adds support for `AppendTokens`, which allows turn taking in the conversation. Previously, there was a simple API to `SetInputs`.
+In summary, the new API adds an `AppendTokens` function to the generator, which allows for multi-turn conversations. Previously, input was set in `GeneratorParams` prior to the creation of the generator.
 
 Calling `AddTokens` outside of the loop also adds support for system prompt caching.
 
