@@ -9,7 +9,6 @@ import os
 import tempfile
 from itertools import chain
 from pathlib import Path
-from typing import List, Optional
 
 import numpy as np
 import onnx

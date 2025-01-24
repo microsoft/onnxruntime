@@ -291,9 +291,9 @@ class TinyBertOnnxModel(OnnxModel):
                 reshapes[initializer.name] = new_shape
                 print("initializer", initializer.name, tensor.shape, "=>", new_shape)
 
-        for initializer_name in reshapes:
+        for initializer_name, reshape_name in reshapes.items():
             self.replace_input_of_all_nodes(initializer_name, initializer_name + "_resize")
-            tensor = self.resize_weight(initializer_name, reshapes[initializer_name])
+            tensor = self.resize_weight(initializer_name, reshape_name)
             self.model.graph.initializer.extend([tensor])
 
         self.use_dynamic_axes()

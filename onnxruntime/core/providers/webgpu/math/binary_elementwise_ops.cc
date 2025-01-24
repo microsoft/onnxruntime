@@ -123,10 +123,10 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
     if (a_last_dim_divisible_by_4 || b_last_dim_divisible_by_4) {
       vectorize = true;
     } else {
-      size_t shared_dimension = 1;
+      int64_t shared_dimension = 1;
       for (size_t i = 1; i < output_shape.NumDimensions(); i++) {
-        size_t dimA = lhs_shape.NumDimensions() >= i ? lhs_shape[lhs_shape.NumDimensions() - i] : 1;
-        size_t dimB = rhs_shape.NumDimensions() >= i ? rhs_shape[rhs_shape.NumDimensions() - i] : 1;
+        int64_t dimA = lhs_shape.NumDimensions() >= i ? lhs_shape[lhs_shape.NumDimensions() - i] : 1;
+        int64_t dimB = rhs_shape.NumDimensions() >= i ? rhs_shape[rhs_shape.NumDimensions() - i] : 1;
         if (dimA == dimB) {
           shared_dimension *= dimA;
           num_shared_dimension++;
@@ -193,10 +193,7 @@ Status BinaryElementwise::ComputeInternal(ComputeContext& context) const {
         .AddIndices(reshaped_output_shape)
         .AddIndices(reshaped_lhs_shape)
         .AddIndices(reshaped_rhs_shape)
-        .CacheHint("V" + absl::StrJoin({reshaped_lhs_shape.NumDimensions(),
-                                        reshaped_rhs_shape.NumDimensions(),
-                                        reshaped_output_shape.NumDimensions()},
-                                       ";"));
+        .CacheHint("V");
   } else {
     // Mode Broadcast
     // cache hint: "B"

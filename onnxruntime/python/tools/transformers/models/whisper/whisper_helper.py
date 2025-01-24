@@ -7,7 +7,6 @@
 import logging
 import os
 from pathlib import Path
-from typing import Dict, Tuple, Union
 
 import numpy as np
 import torch
@@ -83,7 +82,7 @@ class WhisperHelper:
         no_beam_search_op: bool = False,
         output_qk: bool = False,
         state_dict_path: str = "",
-    ) -> Dict[str, torch.nn.Module]:
+    ) -> dict[str, torch.nn.Module]:
         """Load model given a pretrained name or path, then build models for ONNX conversion.
 
         Args:
@@ -377,11 +376,11 @@ class WhisperHelper:
 
         start_id = [config.decoder_start_token_id]  # ex: [50258]
         prompt_ids = processor.get_decoder_prompt_ids(language="english", task="transcribe")
-        prompt_ids = list(map(lambda token: token[1], prompt_ids))  # ex: [50259, 50358, 50363]
+        prompt_ids = [token[1] for token in prompt_ids]  # ex: [50259, 50358, 50363]
         forced_decoder_ids = start_id + prompt_ids  # ex: [50258, 50259, 50358, 50363]
 
-        ort_names = list(map(lambda entry: entry.name, ort_session.get_inputs()))
-        ort_dtypes = list(map(lambda entry: entry.type, ort_session.get_inputs()))
+        ort_names = [entry.name for entry in ort_session.get_inputs()]
+        ort_dtypes = [entry.type for entry in ort_session.get_inputs()]
         ort_to_np = {
             "tensor(float)": np.float32,
             "tensor(float16)": np.float16,
@@ -392,7 +391,7 @@ class WhisperHelper:
         }
 
         use_extra_decoding_ids = "extra_decoding_ids" in ort_names
-        for name, dtype in zip(ort_names, ort_dtypes):
+        for name, dtype in zip(ort_names, ort_dtypes, strict=False):
             if name == "input_features":
                 inputs[name] = inputs[name].detach().cpu().numpy()
             elif name == "vocab_mask":

@@ -3,16 +3,14 @@
 
 #pragma once
 
+#include <mutex>
 #include <vector>
 
-#include "core/common/status.h"
-#include "core/framework/node_unit.h"
-#include "core/graph/graph_viewer.h"
-#include <mutex>
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/qnn_backend_manager.h"
-#include "core/session/onnxruntime_cxx_api.h"
+#include "core/providers/qnn/rpcmem_library.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -43,7 +41,8 @@ class QnnModel {
 
   Status SetupQnnInputOutput(const logging::Logger& logger);
 
-  Status ExecuteGraph(const Ort::KernelContext& context, const logging::Logger& logger);
+  Status ExecuteGraph(const Ort::KernelContext& context,
+                      const logging::Logger& logger);
 
   const OnnxTensorInfo* GetOutputInfo(const std::string& name) const {
     auto it = outputs_info_.find(name);
@@ -110,10 +109,6 @@ class QnnModel {
   const NodeUnit& GetNodeUnit(const Node* node,
                               const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map) const;
   bool GetGraphInfoFromModel(QnnModelWrapper& model_wrapper, const logging::Logger& logger);
-
-  Status GetQnnTensorDataLength(const std::vector<uint32_t>& dims,
-                                Qnn_DataType_t data_type,
-                                size_t& data_length) const;
 
   Status SetupTensors(std::vector<QnnTensorInfo>& tensors, const std::vector<QnnTensorWrapper>& tensor_wrappers,
                       bool is_input = true);

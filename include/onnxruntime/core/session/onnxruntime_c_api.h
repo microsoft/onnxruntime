@@ -46,7 +46,7 @@ extern "C" {
 
 //! @}
 // SAL2 Definitions
-#ifndef _WIN32
+#ifndef _MSC_VER
 #define _In_
 #define _In_z_
 #define _In_opt_
@@ -3668,6 +3668,10 @@ struct OrtApi {
    *     - "0": Default. Disabled. QNN EP will handle quantization and dequantization of graph I/O.
    *     - "1": Enabled.
    *   "enable_htp_spill_fill_buffer": Enable HTP spill fill buffer setting. The flag is used while generating context binary.
+   *     - "0": Default. Disabled.
+   *     - "1": Enabled.
+   *   "enable_htp_shared_memory_allocator": Enable the QNN HTP shared memory allocator. Requires libcdsprpc.so/dll to
+   *   be available.
    *     - "0": Default. Disabled.
    *     - "1": Enabled.
    *

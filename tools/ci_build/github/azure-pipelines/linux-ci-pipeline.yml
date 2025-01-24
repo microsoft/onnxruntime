@@ -42,9 +42,6 @@ stages:
         TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
       pool: onnxruntime-Ubuntu2204-AMD-CPU
       steps:
-      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-        displayName: 'Clean Agent Directories'
-        condition: always()
 
       - checkout: self
         clean: true
@@ -82,7 +79,7 @@ stages:
                     onnxruntimecpubuildcentos8x64 \
                     /bin/bash -c '
                       set -ex; \
-                      python3.12 /onnxruntime_src/tools/ci_build/build.py \
+                      python3 /onnxruntime_src/tools/ci_build/build.py \
                         --build_dir /build --cmake_generator 'Ninja' \
                         --config Debug \
                         --skip_submodule_sync \
@@ -90,7 +87,7 @@ stages:
                         --parallel --use_binskim_compliant_compile_flags \
                         --enable_onnx_tests --enable_address_sanitizer \
                         --update --build;
-                      python3.12 /onnxruntime_src/tools/ci_build/build.py \
+                      python3 /onnxruntime_src/tools/ci_build/build.py \
                         --build_dir /build --cmake_generator 'Ninja' \
                         --config Debug \
                         --skip_submodule_sync \
@@ -119,9 +116,6 @@ stages:
         TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
       pool: onnxruntime-Ubuntu2204-AMD-CPU
       steps:
-      - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-        displayName: 'Clean Agent Directories'
-        condition: always()
 
       - checkout: self
         clean: true

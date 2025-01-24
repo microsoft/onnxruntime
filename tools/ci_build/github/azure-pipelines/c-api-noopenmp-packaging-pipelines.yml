@@ -62,7 +62,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.28.0.241029
+  default: 2.30.0.250109
 
 resources:
   repositories:
@@ -70,11 +70,6 @@ resources:
     type: github
     endpoint: ort-examples
     name: microsoft/onnxruntime-inference-examples
-  - repository: manylinux
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 variables:
 - template: templates/common-variables.yml
@@ -216,9 +211,6 @@ stages:
       clean: all
     pool: 'onnxruntime-Win2022-GPU-dml-A10'
     steps:
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
     - task: DownloadPipelineArtifact@0
       displayName: 'Download Pipeline Artifact - NuGet DirectML'
       inputs:
