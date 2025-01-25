@@ -115,9 +115,9 @@ def optimize_onnx(
     onnx_model.save_model_to_file(optimized_onnx_path)
 
     if expected_op is not None:
-        assert (
-            len(onnx_model.get_nodes_by_op_type(expected_op)) == 1
-        ), f"Expected {expected_op} node not found in the optimized model {optimized_onnx_path}"
+        assert len(onnx_model.get_nodes_by_op_type(expected_op)) == 1, (
+            f"Expected {expected_op} node not found in the optimized model {optimized_onnx_path}"
+        )
 
 
 def diff_outputs(torch_outputs, ort_outputs, index):

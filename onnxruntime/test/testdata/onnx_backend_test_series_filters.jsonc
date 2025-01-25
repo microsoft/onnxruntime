@@ -323,46 +323,7 @@
         "^test_dequantizelinear_int4",
         "^test_dequantizelinear_uint4",
         "^test_quantizelinear_int4",
-        "^test_quantizelinear_uint4",
-        // onnx 1.17.0 op tests: skip until implemented in ORT
-        "^test_acos*",  // Could not find an implementation for Acos(22)
-        "^test_acosh*", // Could not find an implementation for Acosh(22)
-        "^test_asin*",  // Could not find an implementation for Asin(22)
-        "^test_asinh*", // Could not find an implementation for Asinh(22)
-        "^test_atan*",  // Could not find an implementation for Atan(22)
-        "^test_atanh*", // Could not find an implementation for Atanh(22)
-        "^test_basic_conv_with_padding*",   // Could not find an implementation for Conv(22)
-        "^test_basic_conv_without_padding*",    // Could not find an implementation for Conv(22)
-        "^test_conv*",  // Could not find an implementation for Conv(22)
-        "^test_convtranspose*", // Could not find an implementation for ConvTranspose(22)
-        "^test_cos*",   // Could not find an implementation for Cos(22)
-        "^test_cosh*",  // Could not find an implementation for Cosh(22)
-        "^test_det*",   // Could not find an implementation for Det(22)
-        "^test_dropout*",   // Could not find an implementation for Dropout(22)
-        "^test_elu*",   // Could not find an implementation for Elu(22)
-        "^test_eyelike*",   // Could not find an implementation for EyeLike(22)
-        "^test_globalaveragepool*", // Could not find an implementation for GlobalAveragePool(22)
-        "^test_globalmaxpool*", // Could not find an implementation for GlobalMaxPool(22)
-        "^test_gridsample*",  // Could not find an implementation for GridSample(22)
-        "^test_gru*",   // Could not find an implementation for GRU(22)
-        "^test_hardsigmoid*",   // Could not find an implementation for HardSigmoid(22)
-        "^test_hardswish*", // Could not find an implementation for HardSigmoid(22)
-        "^test_instancenorm*",  // Could not find an implementation for InstanceNormalization(22)
-        "^test_lppool*",    // Could not find an implementation for LpPool(22)
-        "^test_lstm*",  // Could not find an implementation for LSTM(22)
-        "^test_maxpool*",   // Could not find an implementation for MaxPool(22)
-        "^test_maxunpool*", // Could not find an implementation for MaxUnpool(22)
-        "^test_mish*",  // Could not find an implementation for Softplus(22)
-        "^test_rnn*",   // Could not find an implementation for RNN(22)
-        "^test_round*", // Could not find an implementation for Round(22)
-        "^test_selu*",  // Could not find an implementation for Selu(22)
-        "^test_simple_rnn*",    // Could not find an implementation for RNN(22)
-        "^test_sin*",   // Could not find an implementation for Sin(22)
-        "^test_sinh*",  // Could not find an implementation for Sinh(22)
-        "^test_softplus*",  // Could not find an implementation for Softplus(22)
-        "^test_softsign*",  // Could not find an implementation for Softsign(22)
-        "^test_tan*",   // Could not find an implementation for Tan(22)
-        "^test_thresholdedrelu*"    // Could not find an implementation for ThresholdedRelu(22)
+        "^test_quantizelinear_uint4"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
@@ -739,7 +700,9 @@
         "^test_layer_normalization_default_axis_cpu",
         "^test_gelu_tanh_1_expanded_cpu",
         "^test_gelu_tanh_2_expanded_cpu",
-        "^test_dynamicquantizelinear_expanded_cpu"
+        "^test_dynamicquantizelinear_expanded_cpu",
+        "^test_center_crop_pad_crop_negative_axes_hwc*", // failed due to new types or shape infer with negative axis for CenterCropPad.
+        "^test_center_crop_pad_crop_negative_axes_hwc_expanded*" // failed due to new types or shape infer with negative axis for CenterCropPad.
     ],
     "current_failing_tests_pure_DML": [
         "^test_negative_log_likelihood_loss_input_shape_is_NCd1d2d3_none_no_weight_negative_ignore_index_cpu",

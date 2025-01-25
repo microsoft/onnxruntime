@@ -2,8 +2,8 @@
 # Licensed under the MIT License.
 
 import unittest
+from collections.abc import Sequence
 from copy import deepcopy
-from typing import Optional, Sequence, Tuple
 
 import numpy as np
 from onnx import ModelProto, NodeProto, TensorProto, ValueInfoProto, checker, helper
@@ -31,7 +31,7 @@ def make_optional_tensor_value_info(name: str, elem_type: int, shape: Sequence[i
     return vi
 
 
-def make_optional_vi(vi: ValueInfoProto, name: Optional[str] = None) -> ValueInfoProto:
+def make_optional_vi(vi: ValueInfoProto, name: str | None = None) -> ValueInfoProto:
     """Makes a copy of `vi` with optional type."""
     name = name or vi.name + ".opt"
     vi_type = vi.type.tensor_type
@@ -40,7 +40,7 @@ def make_optional_vi(vi: ValueInfoProto, name: Optional[str] = None) -> ValueInf
     return opt_vi
 
 
-def make_const(vi: ValueInfoProto, name: str, value: int = 0) -> Tuple[ValueInfoProto, NodeProto, TensorProto]:
+def make_const(vi: ValueInfoProto, name: str, value: int = 0) -> tuple[ValueInfoProto, NodeProto, TensorProto]:
     """Creates a constant 1D tensor from `vi`."""
     const_vi = make_vi_like(vi, name)
     const_shape = [d.dim_value for d in vi.type.tensor_type.shape.dim]
