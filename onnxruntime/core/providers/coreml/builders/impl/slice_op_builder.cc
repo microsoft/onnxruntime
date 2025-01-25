@@ -127,7 +127,6 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
   SliceOp::PrepareForComputeMetadata compute_metadata{data_shape};
   ORT_RETURN_IF_ERROR(PrepareSliceComputeMetadata(node, model_builder.GetGraphViewer(), compute_metadata));
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;  // NOLINT
     // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.tensor_transformation.slice_by_index
@@ -178,9 +177,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
 
     model_builder.AddOperation(std::move(op));
 
-  } else  // NOLINT
-#endif    // defined(COREML_ENABLE_MLPROGRAM)
-  {
+  } else {
     auto layer = model_builder.CreateNNLayer(node);
     *layer->mutable_input()->Add() = input_defs[0]->Name();
     *layer->mutable_output()->Add() = output_defs[0]->Name();
@@ -222,7 +219,6 @@ bool SliceOpBuilder::HasSupportedInputsImpl(const Node& node,
     return false;
   }
 
-#ifdef COREML_ENABLE_MLPROGRAM
   // The [Doc](https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.tensor_transformation.slice_by_index)
   // says ML Program slice_by_index supports fp16 in CoreML 5 (iOS 15).
   // It's incorrect and CoreML 6+ (iOS16, CoreML spec version >= 7) is required otherwise only float is supported.
@@ -230,13 +226,11 @@ bool SliceOpBuilder::HasSupportedInputsImpl(const Node& node,
   // CoreML 6:https://github.com/apple/coremltools/blob/c3ea4cf56fef1176417246c1b85363417f3e713d/coremltools/converters/mil/mil/ops/defs/iOS15/tensor_transformation.py#L495
   if (input_params.create_mlprogram && input_params.coreml_version >= 6 &&
       input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
-  } else
-#endif  // nolint
-    if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
-        input_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-      LOGS(logger, VERBOSE) << "[" << node.OpType() << "] Input type: [" << input_type << "] is not supported";
-      return false;
-    }
+  } else if (input_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT &&
+             input_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+    LOGS(logger, VERBOSE) << "[" << node.OpType() << "] Input type: [" << input_type << "] is not supported";
+    return false;
+  }
 
   return true;
 }

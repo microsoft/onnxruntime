@@ -50,7 +50,6 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   // ReshapeHelper applies the ONNX rules to create the concrete output shape
   ReshapeHelper helper(TensorShape(input_shape), new_shape);
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
 
@@ -64,9 +63,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     AddOperationOutput(*reshape_op, *node.OutputDefs()[0]);
 
     model_builder.AddOperation(std::move(reshape_op));
-  } else
-#endif  // defined(COREML_ENABLE_MLPROGRAM)
-  {
+  } else {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 
     *layer->mutable_reshapestatic()->mutable_targetshape() = {new_shape.cbegin(), new_shape.cend()};

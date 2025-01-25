@@ -32,7 +32,7 @@ void TestBinaryFloat16(const char* op_name,
                        bool enable_bf16 = true) {
   {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-#ifdef COREML_ENABLE_MLPROGRAM
+#ifdef USE_COREML
     execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
 #elif USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
@@ -76,7 +76,7 @@ void TestUnaryFloat16(const char* op_name,
                       bool run_bf16 = true) {
   {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-#ifdef COREML_ENABLE_MLPROGRAM
+#ifdef USE_COREML
     execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
 #elif USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
@@ -1409,7 +1409,7 @@ TEST(MathOpTest, Pow_float16_float16) {
                     dims, {1.0f, 256.0f, 2.0f, 1.0f}, false);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_COREML)
 TEST(MathOpTest, Pow_float_float16) {
   OpTester test("Pow", 12);
   std::vector<int64_t> dims{4};
@@ -1423,7 +1423,7 @@ TEST(MathOpTest, Pow_float_float16) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
-#elif COREML_ENABLE_MLPROGRAM
+#elif USE_COREML
   execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
 #endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);

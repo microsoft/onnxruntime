@@ -17,20 +17,17 @@
 #include "core/providers/coreml/shape_utils.h"
 #include "core/optimizer/initializer.h"
 
-#if defined(COREML_ENABLE_MLPROGRAM)
 // includes from coremltools-src in _deps
 #include "modelpackage/src/ModelPackage.hpp"
 #include "mlmodel/src/MILBlob/Blob/StorageWriter.hpp"
 using MILBlob::Blob::StorageWriter;
-#endif
-
 using namespace CoreML::Specification;
 
 namespace onnxruntime {
 namespace coreml {
 
 namespace {
-#if defined(COREML_ENABLE_MLPROGRAM)
+
 // Should the initializer be written to file or kept as an immediate value
 bool ShouldWriteInitializerToWeightsFile(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
   // https://github.com/apple/coremltools/blob/dbb0094fd0cb936469e35320bf37e866ef7a1da4/coremltools/converters/mil/backend/mil/load.py#L51-L57
@@ -388,8 +385,6 @@ void CreateEmptyFile(const std::string& filename) {
   ORT_ENFORCE(file.is_open(), "Failed to open file ", filename);
 }
 
-#endif  // defined(COREML_ENABLE_MLPROGRAM)
-
 std::string GetModelOutputPath(const CoreMLOptions& coreml_options,
                                const GraphViewer& graph_viewer,
                                const logging::Logger& logger) {
@@ -479,7 +474,6 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
   }
 
   if (create_ml_program_) {
-#if defined(COREML_ENABLE_MLPROGRAM)
     coreml_model_->set_specificationversion(CoreMLSpecVersion());
     MILSpec::Program& mlprogram = *coreml_model_->mutable_mlprogram();
     mlprogram.set_version(1);
@@ -503,12 +497,6 @@ ModelBuilder::ModelBuilder(const GraphViewer& graph_viewer, const logging::Logge
                                                  "CoreML Model Weights");
     auto weights_info = mlpackage_->findItem(weights_id);
     weights_file_writer_ = std::make_unique<StorageWriter>(weights_info->path() + "/weight.bin");
-#else
-    // should never happen due to handling in coreml_execution_provider.cc
-    // throw here so all other code in this class can assume create_ml_program_ is only ever true in a build
-    // where ML Program support is enabled.
-    ORT_THROW("ML Program is not enabled in this build");
-#endif
   } else {
     // We support CorelML Specification Version 4 (Core ML 3)
     coreml_model_->set_specificationversion(4);
@@ -561,7 +549,6 @@ void ModelBuilder::AddLayer(std::unique_ptr<NeuralNetworkLayer> layer) {
 /*
  * ML Program related helpers
  */
-#if defined(COREML_ENABLE_MLPROGRAM)
 const std::string& ModelBuilder::GetSafeName(const std::string& name) {
   // Check the name is valid according to the MILSpec rules
   // `Identifiers, generally used for names and keys, must match the regular expression [A-Za-z\_][A-Za-z0-9\_@]*.`
@@ -737,8 +724,6 @@ std::string_view ModelBuilder::AddConstantImpl(std::string_view op_type, std::st
   return AddTensorValueAsConstantOperation(op_type, value_type, std::move(input_value));
 }
 
-#endif  // defined(COREML_ENABLE_MLPROGRAM)
-
 /*
  * General implementation
  */
@@ -775,13 +760,10 @@ Status ModelBuilder::RegisterInitializers() {
       continue;
     }
 
-#if defined(COREML_ENABLE_MLPROGRAM)
     if (create_ml_program_) {
       MILSpec::Value coreml_tensor = OnnxTensorToCoreMLTensor(tensor, *weights_file_writer_);
       ORT_IGNORE_RETURN_VALUE(AddConstantOperation(name, std::move(coreml_tensor)));
-    } else
-#endif
-    {
+    } else {
       std::unique_ptr<NeuralNetworkLayer> layer = std::make_unique<NeuralNetworkLayer>();
       layer->set_name(GetUniqueName("initializer_" + name));
 
@@ -915,7 +897,6 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     return Status::OK();
   }
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (create_ml_program_) {
     if (is_input) {
       // the model inputs need to be wired up as args to the 'main' function.
@@ -935,7 +916,6 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
       *mlprogram_main_block_->mutable_outputs()->Add() = name;
     }
   }
-#endif  // defined(COREML_ENABLE_MLPROGRAM)
 
   return Status::OK();
 }
@@ -980,11 +960,9 @@ Status ModelBuilder::CreateModel() {
   ORT_RETURN_IF_ERROR(ProcessNodes());
   ORT_RETURN_IF_ERROR(RegisterModelOutputs());
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (create_ml_program_) {
     SanitizeNames();
   }
-#endif
 
   return Status::OK();
 }
@@ -992,7 +970,6 @@ Status ModelBuilder::CreateModel() {
 Status ModelBuilder::SaveModel() {
   std::string output_path = model_output_path_;
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (create_ml_program_) {
     // we need to jump through some hoops to get the model path the ML Program load wants.
     std::string tmp_model_path = model_output_path_ + "/tmp/model.mlmodel";
@@ -1003,7 +980,6 @@ Status ModelBuilder::SaveModel() {
     auto model_info = mlpackage_->findItem(model_id);
     output_path = model_info->path();
   }
-#endif
 
   // scope this so the stream is closed and flushed by the ofstream dtor
   {
@@ -1012,19 +988,16 @@ Status ModelBuilder::SaveModel() {
     ORT_RETURN_IF_NOT(coreml_model_->SerializeToOstream(&stream), "Saving the CoreML model failed. Path=", output_path);
   }
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   // need to delete the ModelPackage instance for it to write out the manifest. clear out the other ML Program
   // related types as well.
   mlprogram_main_block_ = nullptr;
   mlpackage_.reset();
   weights_file_writer_.reset();
-#endif
 
   return Status::OK();
 }
 
 Status ModelBuilder::LoadModel(std::unique_ptr<Model>& model) {
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (create_ml_program_) {
     // we need to provide the sanitized names for model inputs/outputs so that info is captured.
     // the input/output matching when we execute the model from the CoreML EP is based on order, so the change
@@ -1058,9 +1031,7 @@ Status ModelBuilder::LoadModel(std::unique_ptr<Model>& model) {
                                     std::move(scalar_outputs_),
                                     std::move(int64_outputs_),
                                     logger_, coreml_options_);
-  } else
-#endif
-  {
+  } else {
     model = std::make_unique<Model>(model_output_path_,
                                     std::move(onnx_input_names_),
                                     std::move(onnx_output_names_),
@@ -1073,7 +1044,6 @@ Status ModelBuilder::LoadModel(std::unique_ptr<Model>& model) {
   return model->LoadModel();  // load using CoreML API, including compilation
 }
 
-#if defined(COREML_ENABLE_MLPROGRAM)
 std::string_view ModelBuilder::AddConstant(std::string_view op_type, std::string_view value_type,
                                            const ONNX_NAMESPACE::TensorProto& tensor,
                                            std::optional<gsl::span<const int64_t>> shape) {
@@ -1114,7 +1084,6 @@ std::string_view ModelBuilder::AddConstant(std::string_view op_type, std::string
 
   return ret;
 }
-#endif
 // static
 Status ModelBuilder::Build(const GraphViewer& graph_viewer, const logging::Logger& logger,
                            int32_t coreml_version, const CoreMLOptions& coreml_options,

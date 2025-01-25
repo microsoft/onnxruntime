@@ -246,7 +246,7 @@ TEST(CoreMLExecutionProviderTest, TestOrtFormatModel) {
 #endif
 }
 
-#if defined(COREML_ENABLE_MLPROGRAM)
+#if defined(USE_COREML)
 // Names in CoreML cannot start with [0-9] or contain anything but "[a-z][A-Z][0-9]_"
 // Test that we fix invalid names in model inputs, initializers and outputs.
 // This is only enforced for ML Program, so we only do name sanitization when creating an ML Program format model.

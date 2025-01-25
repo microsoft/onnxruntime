@@ -28,7 +28,6 @@ class ConvTransposeOpBuilder : public BaseOpBuilder {
 Status ConvTransposeOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuilder& model_builder,
                                                      [[maybe_unused]] const Node& node,
                                                      const logging::Logger& /*logger*/) const {
-#if defined(COREML_ENABLE_MLPROGRAM)
   using namespace CoreML::Specification::MILSpec;  // NOLINT
   const auto input_defs = node.InputDefs();
   const auto output_defs = node.OutputDefs();
@@ -80,7 +79,6 @@ Status ConvTransposeOpBuilder::AddToModelBuilderImpl([[maybe_unused]] ModelBuild
   AddOperationOutput(*op, *output_defs[0]);
 
   model_builder.AddOperation(std::move(op));
-#endif  // defined(COREML_ENABLE_MLPROGRAM)
 
   return Status::OK();
 }

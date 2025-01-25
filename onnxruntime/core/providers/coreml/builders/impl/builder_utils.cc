@@ -150,7 +150,6 @@ void CreateCoreMLWeight(CoreML::Specification::WeightParams& weight, gsl::span<c
   CreateCoreMLWeightConvertingDataToFloats(weight, data);
 }
 
-#if defined(COREML_ENABLE_MLPROGRAM)
 //
 // ML Program Utils
 //
@@ -448,6 +447,5 @@ void AddPadTypeAndPads(COREML_SPEC::MILSpec::Operation& op, ModelBuilder& model_
     }
   }
 }
-#endif  // defined(COREML_ENABLE_MLPROGRAM)
 }  // namespace coreml
 }  // namespace onnxruntime

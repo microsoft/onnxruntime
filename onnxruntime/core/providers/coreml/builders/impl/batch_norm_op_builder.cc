@@ -57,7 +57,6 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
   const auto eps = helper.Get("epsilon", 1e-5f);
   const auto channels = scale_tensor.dims()[0];
 
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
     // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.normalization.batch_norm
@@ -78,9 +77,7 @@ Status BatchNormalizationOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_bu
 
     AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
-  } else
-#endif  // (COREML_ENABLE_MLPROGRAM)
-  {
+  } else {
     auto* coreml_batch_norm = layer->mutable_batchnorm();
     coreml_batch_norm->set_channels(channels);
     coreml_batch_norm->set_epsilon(eps);
