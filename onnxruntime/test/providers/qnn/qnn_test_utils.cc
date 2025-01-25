@@ -98,7 +98,7 @@ void TryEnableQNNSaver(ProviderOptions& qnn_options) {
 
 void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
-                     float fp32_abs_err, logging::Severity log_severity, bool verify_outputs,
+                     float fp32_abs_err, std::optional<logging::Severity> log_severity, bool verify_outputs,
                      std::function<void(const Graph&)>* ep_graph_checker) {
   EPVerificationParams verification_params;
   verification_params.ep_node_assignment = expected_ep_assignment;
@@ -108,7 +108,8 @@ void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions prov
   const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
 
   auto& logging_manager = DefaultLoggingManager();
-  logging_manager.SetDefaultLoggerSeverity(log_severity);
+
+  ScopedDefaultLoggerSeverity scoped_log_severity{logging_manager, log_severity};
 
   onnxruntime::Model model("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
                            IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
