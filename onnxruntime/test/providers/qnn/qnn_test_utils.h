@@ -30,7 +30,7 @@ class ScopedDefaultLoggerSeverity {
  public:
   ScopedDefaultLoggerSeverity(logging::LoggingManager& logging_manager, std::optional<logging::Severity> severity)
       : logging_manager_{logging_manager},
-        original_severity_{} {
+        original_severity_{std::nullopt} {
     if (severity.has_value()) {
       original_severity_ = logging_manager_.DefaultLogger().GetSeverity();
       logging_manager_.SetDefaultLoggerSeverity(*severity);
