@@ -16,6 +16,7 @@
 #include "core/graph/function_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/graph/model_saving_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 // uncomment this line to count non-CUDA ops in ONNX domain
@@ -645,6 +646,8 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
 static Status CreateEpContextModel(const ExecutionProviders& execution_providers,
                                    const Graph& graph,
                                    const std::filesystem::path& ep_context_path,
+                                   const std::filesystem::path& ep_context_ext_ini_path,
+                                   size_t size_threshold,
                                    const logging::Logger& logger) {
   InlinedVector<const Node*> all_ep_context_nodes;
   for (const auto& ep : execution_providers) {
@@ -672,6 +675,15 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     context_cache_path = ep_context_path;
   } else if (!model_path.empty()) {
     context_cache_path = model_path.native() + ORT_TSTR("_ctx.onnx");
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty");
+  }
+
+  std::filesystem::path context_cache_ext_ini_path;
+  if (!ep_context_ext_ini_path.empty()) {
+    context_cache_ext_ini_path = ep_context_ext_ini_path;
+  } else if (!model_path.empty()) {
+    context_cache_ext_ini_path = model_path.filename().native() + ORT_TSTR("_ext.bin");
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty");
   }
@@ -727,7 +739,9 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     }
   }
 
-  ORT_RETURN_IF_ERROR(Model::Save(ep_context_model, context_cache_path));
+  ModelSavingOptions model_saving_options{size_threshold};
+  ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(ep_context_model, context_cache_path,
+                                                          context_cache_ext_ini_path, model_saving_options));
 
   return Status::OK();
 }
@@ -993,9 +1007,14 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode, providers_, kernel_registry_mgr_, logger));
 
     bool ep_context_enabled = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
-    std::string ep_context_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
     if (ep_context_enabled) {
-      ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_path, logger));
+      std::string ep_context_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+      std::string external_ini_file_name = config_options.GetConfigOrDefault(kOrtSessionOptionsEpContextModelExternalInitializersFileName, "");
+      const size_t model_external_initializers_min_size_in_bytes =
+          ParseStringWithClassicLocale<size_t>(config_options.GetConfigOrDefault(
+              kOrtSessionOptionsEpContextModelExternalInitializersMinSizeInBytes, "1024000"));
+      ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_path, external_ini_file_name,
+                                               model_external_initializers_min_size_in_bytes, logger));
     }
 #else
     ORT_UNUSED_PARAMETER(config_options);
