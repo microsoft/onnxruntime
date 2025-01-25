@@ -176,6 +176,10 @@ class ShaderVariableHelper : public ShaderIndicesHelper {
   template <typename TOffset>
   inline std::string GetByOffset(TOffset&& offset) const;
 
+  std::string_view StorageType() const;
+  std::string_view ValueType() const;
+  std::string_view ElementType() const;
+
  private:
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ShaderVariableHelper);
 
@@ -183,9 +187,7 @@ class ShaderVariableHelper : public ShaderIndicesHelper {
 
   std::string GetByOffsetImpl(std::string_view offset) const;
   std::string SetByOffsetImpl(std::string_view offset, std::string_view value) const;
-  std::string_view StorageType() const;
-  std::string_view ValueType() const;
-  std::string_view ElementType() const;
+
 
   friend class ShaderHelper;
 };
