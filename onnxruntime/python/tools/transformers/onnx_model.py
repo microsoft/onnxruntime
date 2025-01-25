@@ -1362,7 +1362,7 @@ class OnnxModel:
                 return
         logger.warning("Failed to remove initializer %s", initializer)  # It might be a bug to hit this line.
 
-    def remove_duplicated_initializer(self, cache: Optional[dict] = None):
+    def remove_duplicated_initializer(self, cache: dict | None):
         """Remove initializers with duplicated values, and only keep the first one.
         It could help reduce size of models (like ALBert) with shared weights.
         If require_raw_data passed, method will only compare raw_data initializers to speed runtime

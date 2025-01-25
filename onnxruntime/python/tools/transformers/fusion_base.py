@@ -118,7 +118,7 @@ class Fusion:
     def remove_initializer(self, tensor: TensorProto):
         self.model.remove_initializer(tensor)
 
-    def add_nodes_to_remove(self, nodes: List[NodeProto]):
+    def add_nodes_to_remove(self, nodes: list[NodeProto]):
         # Some nodes are shared between paths (e.g. rotary embedding nodes in the Q and K paths).
         # When path A is fused, its shared nodes are added to `self.nodes_to_remove`. But when path B
         # is fused, its shared nodes are also added to `self.nodes_to_remove`. When the nodes are

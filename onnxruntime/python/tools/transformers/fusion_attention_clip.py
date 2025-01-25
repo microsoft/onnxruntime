@@ -155,6 +155,7 @@ class FusionAttentionClip(FusionAttention):
             (_, _, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes_2
             qkv_nodes = qkv_nodes_2
         else:
+            logger.debug("fuse_attention: failed to match qkv path")
             return
 
         v_nodes = None
@@ -299,8 +300,8 @@ class FusionAttentionClip(FusionAttention):
 
         self.nodes_to_add.append(new_node)
         self.node_name_to_graph_name[new_node.name] = self.this_graph_name
-
         self.nodes_to_remove.extend([attention_last_node, transpose_qkv])
+        self.increase_counter(new_node.op_type)
 
         # Use prune graph to remove nodes since they are shared by all attention nodes.
         self.prune_graph = True
