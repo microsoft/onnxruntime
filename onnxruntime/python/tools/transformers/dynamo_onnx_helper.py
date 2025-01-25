@@ -2,9 +2,10 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
+from collections.abc import Sequence
 from logging import getLogger
 from onnx import helper
-from typing import Any, Sequence
+from typing import Any
 
 import numpy as np
 import onnx
