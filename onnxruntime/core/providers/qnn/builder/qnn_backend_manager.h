@@ -249,6 +249,22 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   const std::string backend_path_;
   const logging::Logger* logger_ = nullptr;
 
+  ProfilingLevel profiling_level_etw_;
+  ProfilingLevel profiling_level_;
+  ProfilingLevel profiling_level_merge_;
+  const std::string profiling_file_path_;
+
+  // NPU backend requires quantized model
+  QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
+  std::vector<std::string> op_package_paths_;
+  ContextPriority context_priority_;
+  std::string sdk_build_version_ = "";
+  const std::string qnn_saver_path_;
+  uint32_t device_id_ = 0;
+  QnnHtpDevice_Arch_t htp_arch_ = QNN_HTP_DEVICE_ARCH_NONE;
+  uint32_t soc_model_ = QNN_SOC_MODEL_UNKNOWN;
+  bool enable_htp_weight_sharing_ = false;
+
   // Note: The data member ordering is significant. The data member destructors are run in reverse order.
   // - backend_lib_handle_ should be destroyed after every usage of QNN interface functions, which includes the
   //   destructors of the UniqueQnnHandle data members.
@@ -263,9 +279,10 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   QNN_INTERFACE_VER_TYPE qnn_interface_ = QNN_INTERFACE_VER_TYPE_INIT;
   QNN_SYSTEM_INTERFACE_VER_TYPE qnn_sys_interface_ = QNN_SYSTEM_INTERFACE_VER_TYPE_INIT;
 
-  UniqueQnnHandle<Qnn_BackendHandle_t> backend_handle_{};
   UniqueQnnHandle<Qnn_LogHandle_t> log_handle_{};
+  UniqueQnnHandle<Qnn_BackendHandle_t> backend_handle_{};
   UniqueQnnHandle<Qnn_DeviceHandle_t> device_handle_{};
+  UniqueQnnHandle<Qnn_ProfileHandle_t> profile_backend_handle_{};
 
   // Map of Qnn_ContextHandle_t to QnnContextHandleRecord.
   // The QnnContextHandleRecord has ownership of the Qnn_ContextHandle_t.
@@ -276,26 +293,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // Vector of Qnn_ContextHandle_t. The context handles are owned by context_map_.
   std::vector<Qnn_ContextHandle_t> contexts_;
 
-  ProfilingLevel profiling_level_etw_;
-  ProfilingLevel profiling_level_;
-  ProfilingLevel profiling_level_merge_;
-  const std::string profiling_file_path_;
-
   // backend_setup_completed_ is set to true once all backend setup has been successfully completed.
   // It will not be reset to false after that.
   std::atomic<bool> backend_setup_completed_{false};
-
-  // NPU backend requires quantized model
-  QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
-  UniqueQnnHandle<Qnn_ProfileHandle_t> profile_backend_handle_{};
-  std::vector<std::string> op_package_paths_;
-  ContextPriority context_priority_;
-  std::string sdk_build_version_ = "";
-  const std::string qnn_saver_path_;
-  uint32_t device_id_ = 0;
-  QnnHtpDevice_Arch_t htp_arch_ = QNN_HTP_DEVICE_ARCH_NONE;
-  uint32_t soc_model_ = QNN_SOC_MODEL_UNKNOWN;
-  bool enable_htp_weight_sharing_ = false;
 };
 
 }  // namespace qnn
