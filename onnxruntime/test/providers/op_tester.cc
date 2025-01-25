@@ -6,7 +6,7 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
 
-#include "test/util/include/test_environment.h"
+#include "test/util/include/test/test_environment.h"
 namespace onnxruntime {
 namespace test {
 
