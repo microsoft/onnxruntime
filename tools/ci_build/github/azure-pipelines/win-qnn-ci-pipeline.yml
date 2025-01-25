@@ -89,6 +89,12 @@ jobs:
       BuildConfig: $(BuildConfig)
 
   - script: |
+      set ORT_UNIT_TEST_MAIN_LOG_LEVEL=0
+      .\onnxruntime_test_all --gtest_filter="QnnCPUBackendTests.AveragePool_AsGlobal"
+    displayName: Run QnnCPUBackendTests.AveragePool_AsGlobal unit test
+    workingDirectory: $(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)
+
+  - script: |
       python $(Build.SourcesDirectory)\tools\ci_build\build.py ^
         --config $(BuildConfig) ^
         --build_dir $(Build.BinariesDirectory) ^
