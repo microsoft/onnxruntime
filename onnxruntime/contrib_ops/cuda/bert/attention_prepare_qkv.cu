@@ -739,7 +739,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
 
 #if DUMP_TENSOR_LEVEL > 1
   DUMP_STRING_INIT();
-  DUMP_STRING("DumpInputs...");
+  DUMP_STRING("Dump Inputs Before PrepareQkv...");
   DumpInputs(parameters, data);
 #endif
 
@@ -752,7 +752,7 @@ Status PrepareQkv(contrib::AttentionParameters& parameters,
   assert(data.qkv_format != AttentionQkvFormat::UNKNOWN);
 
 #if DUMP_TENSOR_LEVEL > 1
-  DUMP_STRING("DumpQkv...");
+  DUMP_STRING("Dump Inputs After PrepareQkv...");
   DumpQkv(parameters, data);
 #endif
 
