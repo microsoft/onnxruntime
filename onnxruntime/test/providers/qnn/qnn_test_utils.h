@@ -5,6 +5,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include <cmath>
+#include <optional>
 #include <string>
 #include <type_traits>
 #include <unordered_map>
@@ -22,6 +23,32 @@
 
 namespace onnxruntime {
 namespace test {
+
+// Class that sets (on construction) and resets (on destruction) a default logger's severity.
+// The specified severity is optional. If not provided, the instance doesn't modify the severity.
+class ScopedDefaultLoggerSeverity {
+ public:
+  ScopedDefaultLoggerSeverity(logging::LoggingManager& logging_manager, std::optional<logging::Severity> severity)
+      : logging_manager_{logging_manager},
+        original_severity_{} {
+    if (severity.has_value()) {
+      original_severity_ = logging_manager_.DefaultLogger().GetSeverity();
+      logging_manager_.SetDefaultLoggerSeverity(*severity);
+    }
+  }
+
+  ~ScopedDefaultLoggerSeverity() {
+    if (original_severity_.has_value()) {
+      logging_manager_.SetDefaultLoggerSeverity(*original_severity_);
+    }
+  }
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ScopedDefaultLoggerSeverity);
+
+ private:
+  logging::LoggingManager& logging_manager_;
+  std::optional<logging::Severity> original_severity_;
+};
 
 // Signature for function that builds a float32 model.
 using GetTestModelFn = std::function<void(ModelTestBuilder& builder)>;
@@ -525,7 +552,7 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
                                  ProviderOptions qnn_options, int opset_version,
                                  ExpectedEPNodeAssignment expected_ep_assignment,
                                  QDQTolerance tolerance = QDQTolerance(),
-                                 logging::Severity log_severity = logging::Severity::kERROR,
+                                 std::optional<logging::Severity> log_severity = {},
                                  const std::string& qnn_ctx_model_path = "",
                                  const std::unordered_map<std::string, std::string>& session_option_pairs = {},
                                  std::function<void(const Graph&)>* qnn_ep_graph_checker = nullptr) {
@@ -537,7 +564,7 @@ inline void TestQDQModelAccuracy(const GetTestModelFn& f32_model_fn, const GetTe
   // Uncomment to dump LOGGER() output to stdout.
   // logging_manager.RemoveSink(logging::SinkType::EtwSink);
 
-  logging_manager.SetDefaultLoggerSeverity(log_severity);
+  ScopedDefaultLoggerSeverity scoped_log_severity{logging_manager, log_severity};
 
   // Create float model and serialize it to a string.
   onnxruntime::Model f32_model("f32_model", false, ModelMetaData(), PathString(),
@@ -738,14 +765,15 @@ inline void TestFp16ModelAccuracy(const GetTestModelFn& f32_model_fn,
                                   int opset_version,
                                   ExpectedEPNodeAssignment expected_ep_assignment,
                                   float tolerance = 0.004,
-                                  logging::Severity log_severity = logging::Severity::kERROR,
+                                  std::optional<logging::Severity> log_severity = {},
                                   const std::string& qnn_ctx_model_path = "",
                                   const std::unordered_map<std::string, std::string>& session_option_pairs = {}) {
   // Add kMSDomain to cover contrib op like Gelu
   const std::unordered_map<std::string, int> domain_to_version = {{"", opset_version}, {kMSDomain, 1}};
 
   auto& logging_manager = DefaultLoggingManager();
-  logging_manager.SetDefaultLoggerSeverity(log_severity);
+
+  ScopedDefaultLoggerSeverity scoped_log_severity{logging_manager, log_severity};
 
   // Create float model and serialize it to a string.
   onnxruntime::Model f32_model("f32_model", false, ModelMetaData(), PathString(),
@@ -1082,7 +1110,7 @@ inline GetTestQDQModelFn<QuantType> BuildQDQOpTestCase(
 void RunQnnModelTest(const GetTestModelFn& build_test_case, ProviderOptions provider_options,
                      int opset_version, ExpectedEPNodeAssignment expected_ep_assignment,
                      float fp32_abs_err = 1e-5f,
-                     logging::Severity log_severity = logging::Severity::kERROR,
+                     std::optional<logging::Severity> log_severity = {},
                      bool verify_outputs = true,
                      std::function<void(const Graph&)>* ep_graph_checker = nullptr);
 
