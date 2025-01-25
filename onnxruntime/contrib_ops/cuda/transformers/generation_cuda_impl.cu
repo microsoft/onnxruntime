@@ -434,6 +434,10 @@ void LaunchBeamSearchScorer_Process(BeamScorerState& state_cpu,
                                     gsl::span<const int32_t> next_tokens,
                                     gsl::span<const int32_t> next_indices,
                                     cudaStream_t stream) {
+  for (size_t i = 0; i < beam_hyps.length(); i++) {
+    dump_beam_hypotheses(&beam_hyps[i]);
+  }
+
   BeamSearchScorer_Process<<<1, state_cpu.batch_size_, 0, stream>>>(state_cpu,
                                                                     state,
                                                                     sequences.data(),
