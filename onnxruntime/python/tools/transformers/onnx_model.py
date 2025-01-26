@@ -198,7 +198,7 @@ class OnnxModel:
                 node.input[j] = new_input_name
 
     def replace_input_of_all_nodes(self, old_input_name, new_input_name):
-        for node in self.model.graph.node:
+        for node in self.nodes():
             OnnxModel.replace_node_input(node, old_input_name, new_input_name)
 
     @staticmethod
