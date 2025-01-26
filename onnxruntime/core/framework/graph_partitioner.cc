@@ -58,6 +58,7 @@ struct PartitionParams {
   std::reference_wrapper<int> fused_node_unique_id;
   std::reference_wrapper<const layout_transformation::TransformLayoutFunction> transform_layout_function;
   std::reference_wrapper<const layout_transformation::DebugGraphFn> debug_graph_fn;
+  std::reference_wrapper<const onnxruntime::GraphTransformerManager> graph_transformer_manager;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 };
 }  // namespace
@@ -130,13 +131,20 @@ struct GetCapabilityForEPParams {
   GraphPartitioner::Mode mode;
   std::reference_wrapper<const layout_transformation::TransformLayoutFunction> transform_layout;
   std::reference_wrapper<const layout_transformation::DebugGraphFn> debug_graph_fn;
+  std::reference_wrapper<const onnxruntime::GraphTransformerManager> graph_transformer_manager;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 };
 
 auto get_capabilities = [](const IExecutionProvider& ep,
                            const GraphViewer& graph_viewer,
-                           const IExecutionProvider::IKernelLookup& kernel_lookup) {
-  auto capabilities = ep.GetCapability(graph_viewer, kernel_lookup);
+                           const IExecutionProvider::IKernelLookup& kernel_lookup,
+                           const onnxruntime::GraphTransformerManager& graph_transformer_manager) {
+  std::vector<std::unique_ptr<ComputeCapability>> capabilities;
+  if (ep.RequestCustomizedGraphOptimizationForEP()) {
+    capabilities = ep.GetCapability(graph_viewer, kernel_lookup, graph_transformer_manager);
+  } else {
+    //capabilities = ep.GetCapability(graph_viewer, kernel_lookup);
+  }
 
   // In theory an EP could return an empty capability. Remove those.
   capabilities.erase(std::remove_if(capabilities.begin(), capabilities.end(),
@@ -170,10 +178,11 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
 
   auto& graph = params.graph.get();
   auto& capabilities = params.capabilities.get();
+  auto& graph_transformer_manager = params.graph_transformer_manager.get();
 
   {
     const GraphViewer graph_viewer(graph);
-    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup);
+    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, graph_transformer_manager);
 
     if (capabilities.empty()) {
       return Status::OK();
@@ -211,7 +220,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     capabilities.clear();
 
     const GraphViewer graph_viewer(graph);
-    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup);
+    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, graph_transformer_manager);
 
     // all nodes with an index >= first_new_node with domain of kMSInternalNHWCDomain should be in the capabilities
     InlinedHashSet<NodeIndex> new_nodes_in_capabilities;
@@ -248,6 +257,7 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
 // It also does not perform layout transformation. This will be done during normal partitioning.
 static Status GetCapabilityForEPForAotInlining(const GraphViewer& graph_viewer,
                                                const KernelRegistryManager& kernel_registry_mgr,
+                                               const GraphTransformerManager& graph_transformer_mgr,
                                                const IExecutionProvider& current_ep,
                                                const logging::Logger& logger,
                                                std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
@@ -260,7 +270,7 @@ static Status GetCapabilityForEPForAotInlining(const GraphViewer& graph_viewer,
                                    logger};
 
   // TODO: Provide EP with a capability to look inside the functions.
-  capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup);
+  capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, graph_transformer_mgr);
 
   return Status::OK();
 }
@@ -363,6 +373,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                            int& fused_node_unique_id,
                                            const layout_transformation::TransformLayoutFunction& transform_layout_fn,
                                            const layout_transformation::DebugGraphFn& debug_graph_fn,
+                                           const onnxruntime::GraphTransformerManager& graph_transfomer_manager,
                                            const logging::Logger& logger) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
@@ -377,7 +388,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       // we pass through the FuncManager from the top level graph
       ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(*subgraph, func_mgr, kernel_registry_mgr,
                                                        fused_kernel_registry, current_ep, mode, fused_node_unique_id,
-                                                       transform_layout_fn, debug_graph_fn, logger));
+                                                       transform_layout_fn, debug_graph_fn, graph_transfomer_manager, logger));
     }
   }
 
@@ -400,7 +411,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       std::ref(capabilities),
       mode,
       std::cref(transform_layout_fn),
-      std::cref(debug_graph_fn)};
+      std::cref(debug_graph_fn),
+      std::cref(graph_transfomer_manager)};
 
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params, logger));
   if (capabilities.empty()) {
@@ -562,6 +574,7 @@ static Status InlineNodes(Graph& graph, bool& modified_graph) {
 
 static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_providers,
                                      const KernelRegistryManager& kernel_registry_mgr,
+                                     const GraphTransformerManager& graph_transformer_mgr,
                                      Graph& graph,
                                      const logging::Logger& logger,
                                      InlinedHashSet<std::string>& not_inlined,
@@ -578,6 +591,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
       // we pass through the FuncManager from the top level graph
       ORT_RETURN_IF_ERROR(InlineFunctionsAOTImpl(execution_providers,
                                                  kernel_registry_mgr,
+                                                 graph_transformer_mgr,
                                                  *subgraph,
                                                  logger,
                                                  not_inlined,
@@ -603,7 +617,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
   InlinedHashSet<NodeIndex> claimed_by_ep;
   for (const auto& ep : execution_providers) {
     std::vector<std::unique_ptr<ComputeCapability>> capabilities;
-    ORT_RETURN_IF_ERROR(GetCapabilityForEPForAotInlining(graph_viewer, kernel_registry_mgr, *ep, logger,
+    ORT_RETURN_IF_ERROR(GetCapabilityForEPForAotInlining(graph_viewer, kernel_registry_mgr, graph_transformer_mgr, * ep, logger,
                                                          capabilities));
     for (auto& capability : capabilities) {
       const auto& nodes = capability->sub_graph->nodes;
@@ -743,6 +757,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
   auto& fused_kernel_registry = partition_params.fused_kernel_registry.get();
   auto& fused_node_unique_id = partition_params.fused_node_unique_id.get();
   const auto& transform_layout_function = partition_params.transform_layout_function;
+  const auto& graph_transformer_manager = partition_params.graph_transformer_manager;
 
   do {
     // process full graph with each EP
@@ -751,6 +766,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                                        fused_kernel_registry, *ep, mode, fused_node_unique_id,
                                                        transform_layout_function,
                                                        partition_params.debug_graph_fn,
+                                                       graph_transformer_manager,
                                                        logger));
     }
 
@@ -802,6 +818,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
       GraphPartitioner::Mode::kOrtFormatLoad,
       std::cref(partition_params.transform_layout_function),
       std::cref(partition_params.debug_graph_fn),
+      std::cref(partition_params.graph_transformer_manager),
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   };
   // clang-format on
@@ -917,6 +934,7 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
     size_t inlined_count = 0;
     ORT_RETURN_IF_ERROR(InlineFunctionsAOTImpl(execution_providers,
                                                kernel_registry_manager,
+                                               graph_transformer_mgr_,
                                                graph,
                                                logger,
                                                not_inlined,
@@ -975,6 +993,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
       std::ref(fused_node_unique_id),
       std::cref(transform_layout_function),
       std::cref(debug_graph_fn),
+      std::cref(graph_transformer_mgr_),
   };
 
 #else  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

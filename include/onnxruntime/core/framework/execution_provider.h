@@ -20,6 +20,7 @@ struct ComputeCapability;
 class KernelRegistry;
 struct KernelCreateInfo;
 class Node;
+class GraphTransformerManager;
 }  // namespace onnxruntime
 #else
 #include <memory>
@@ -128,9 +129,18 @@ class IExecutionProvider {
      For kernels registered in a kernel registry, `kernel_lookup` must be used
      to find a matching kernel for this EP.
   */
+  /*
   virtual std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                 const IKernelLookup& kernel_lookup) const;
+  */
+
+  virtual std::vector<std::unique_ptr<ComputeCapability>>
+  GetCapability(const onnxruntime::GraphViewer& graph_viewer,
+                const IKernelLookup& kernel_lookup,
+                const onnxruntime::GraphTransformerManager& graph_transformer_mgr) const;
+
+  virtual bool RequestCustomizedGraphOptimizationForEP() const { return false; }
 
   /**
      Get kernel registry per execution provider type.

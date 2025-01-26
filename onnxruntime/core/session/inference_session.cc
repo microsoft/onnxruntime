@@ -1207,7 +1207,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   // 7. insert copy nodes (required transformer).
 
   // Run Ahead Of time function inlining
-  GraphPartitioner partitioner(kernel_registry_manager_, execution_providers_);
+  GraphPartitioner partitioner(kernel_registry_manager_, graph_transformer_mgr_, execution_providers_);
   if (const bool disable_aot_function_inlining =
           session_options_.config_options.GetConfigOrDefault(
               kOrtSessionOptionsDisableAheadOfTimeFunctionInlining, "0") == "1";
@@ -1598,6 +1598,7 @@ namespace {
 Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                const ExecutionProviders& providers,
                                KernelRegistryManager& kernel_registry_manager,
+                               const onnxruntime::GraphTransformerManager& graph_transformer_manager,
                                SessionState& session_state,
                                const ConfigOptions& config_options,
                                const logging::Logger& logger) {
@@ -1617,7 +1618,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-  GraphPartitioner partitioner(kernel_registry_manager, providers);
+  GraphPartitioner partitioner(kernel_registry_manager, graph_transformer_manager, providers);
   ORT_RETURN_IF_ERROR(partitioner.Partition(graph,
                                             session_state.GetMutableFuncMgr(),
                                             transform_layout_fn,
@@ -2052,7 +2053,7 @@ common::Status InferenceSession::Initialize() {
                           "Loading anything other than ORT format models is not enabled in this build."));
 #endif  // !defined(ORT_MINIMAL_BUILD)
     } else {
-      ORT_RETURN_IF_ERROR_SESSIONID_(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
+      ORT_RETURN_IF_ERROR_SESSIONID_(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_, graph_transformer_mgr_,
                                                              *session_state_, session_options_.config_options, *session_logger_));
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

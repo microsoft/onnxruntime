@@ -203,8 +203,10 @@ common::Status LoadDynamicLibraryFromProvider(onnxruntime::PathString library_na
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
+//onnxruntime::GraphTransformerManager graph_transformer_mgr_(10 /*max_num_graph_transformation_steps*/);
+
 Status ApplyConstantFoldingOnDQ(const Graph&, const ComputeCapability& this_optimization, ComputeCapability& cc_to_update) {
-  
+  //auto logger = const_cast<logging::Logger*>(&logging::LoggingManager::DefaultLogger());
   return Status::OK();
 }
 
@@ -359,8 +361,9 @@ struct ProviderHostImpl : ProviderHost {
   // IExecutionProvider (direct)
   std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(
       const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
-      const IExecutionProvider::IKernelLookup& kernel_lookup) override {
-    return p->IExecutionProvider::GetCapability(graph_viewer, kernel_lookup);
+      const IExecutionProvider::IKernelLookup& kernel_lookup,
+      const onnxruntime::GraphTransformerManager& graph_transformer_mgr) override {
+    return p->IExecutionProvider::GetCapability(graph_viewer, kernel_lookup, graph_transformer_mgr);
   }
 
   common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) override {
