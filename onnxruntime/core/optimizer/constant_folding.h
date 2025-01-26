@@ -28,7 +28,16 @@ class ConstantFolding : public GraphTransformer {
                   const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
                   const InlinedHashSet<std::string>& excluded_initializers = {}) noexcept;
 
-  virtual bool AllowConstantFolding(const Node&) const { return true; } 
+  /* Same as above but with a name provided by derived class.
+  */
+  ConstantFolding(const std::string& name,
+                  const IExecutionProvider& execution_provider,
+                  bool skip_dequantize_linear,
+                  const ConfigOptions& config_options,
+                  const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
+                  const InlinedHashSet<std::string>& excluded_initializers = {}) noexcept;
+
+  virtual bool AllowConstantFolding(const Node& node) const { return true; } 
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;

@@ -55,4 +55,11 @@ common::Status GraphTransformerManager::Register(std::unique_ptr<GraphTransforme
   level_to_transformer_map_[level].push_back(std::move(transformer));
   return Status::OK();
 }
+
+GraphTransformer* GraphTransformerManager::GetTransformerByName(std::string& name) const {
+  if (transformers_info_.find(name) != transformers_info_.end()) {
+    return transformers_info_.at(name);
+  }
+  return nullptr;
+}
 }  // namespace onnxruntime

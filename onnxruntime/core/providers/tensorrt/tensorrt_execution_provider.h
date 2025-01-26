@@ -591,5 +591,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    * This function only creates the instance at the first time it's being called."
    */
   nvinfer1::IBuilder* GetBuilder(TensorrtLogger& trt_logger) const;
+
+  void CreateConsumerToDqMap(const GraphViewer& graph, std::unordered_map<NodeIndex, NodeIndex>& map) const;
 };
 }  // namespace onnxruntime

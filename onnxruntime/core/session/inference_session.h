@@ -712,9 +712,15 @@ class InferenceSession {
       RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn,
       const logging::Logger& logger) const;
 
+  virtual common::Status AddPredefinedTransformersForEP(
+      GraphTransformerManager& transformer_manager,
+      TransformerLevel graph_optimization_level,
+      const logging::Logger& logger) const;
+
   common::Status TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format);
 
   onnxruntime::GraphTransformerManager graph_transformer_mgr_;
+  onnxruntime::GraphTransformerManager ep_graph_transformer_mgr_;
 
   InlinedHashSet<gsl::not_null<const ONNX_NAMESPACE::OpSchema*>> saved_runtime_optimization_produced_node_op_schemas_;
 #endif

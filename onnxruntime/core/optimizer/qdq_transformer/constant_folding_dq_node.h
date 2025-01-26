@@ -30,16 +30,10 @@ class ConstantFoldingDQ : public ConstantFolding {
                     const InlinedHashSet<std::string>& excluded_initializers = {},
                     const InlinedHashSet<onnxruntime::NodeIndex>& node_index_in_compute_capability = {}) noexcept;
 
-  bool AllowConstantFolding(const Node&) const; 
+  bool AllowConstantFolding(const Node& node) const; 
 
  private:
-  Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
-  
   const InlinedHashSet<onnxruntime::NodeIndex>& node_index_in_compute_capability_;
-  bool skip_dequantize_linear_;
-  const ConfigOptions& config_options_;
-  const InlinedHashSet<std::string> excluded_initializers_;
-  const IExecutionProvider& execution_provider_;
 };
 
 }  // namespace onnxruntime

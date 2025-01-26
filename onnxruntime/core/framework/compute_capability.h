@@ -28,7 +28,7 @@ struct ComputeCapability {
   // optional function to optimize this ComputeCapability
   // this will be called by ORT once the ComputeCapability is assigned to the EP
   // Optimization: std::function<Status(const Graph&, const ComputeCapability& this_optimization, ComputeCapability& cc_to_update)>
-  std::function<Status(const Graph&, const ComputeCapability&, ComputeCapability&)> optimization_func;
+  std::function<Status(Graph&, const ComputeCapability&, ComputeCapability&)> optimization_func;
 
   // optional ComputeCapability instances for sets of nodes within this ComputeCapability that should be optimized.
   // when an optimization is applied, ORT will update this ComputeCapability to reflect the changes made.

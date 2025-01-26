@@ -28,6 +28,19 @@ ConstantFolding::ConstantFolding(const IExecutionProvider& execution_provider,
       execution_provider_(execution_provider) {
 }
 
+ConstantFolding::ConstantFolding(const std::string& name,
+                                 const IExecutionProvider& execution_provider,
+                                 bool skip_dequantize_linear,
+                                 const ConfigOptions& config_options,
+                                 const InlinedHashSet<std::string_view>& compatible_execution_providers,
+                                 const InlinedHashSet<std::string>& excluded_initializers) noexcept
+    : GraphTransformer(name, compatible_execution_providers),
+      skip_dequantize_linear_(skip_dequantize_linear),
+      config_options_(config_options),
+      excluded_initializers_(excluded_initializers),
+      execution_provider_(execution_provider) {
+}
+
 // We need to handle a Shape node separately as the input doesn't need to be a constant initializer for
 // Shape to be able to be constant folded.
 static bool ConstantFoldShapeNode(Graph& graph, Node& node) {
@@ -144,7 +157,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
 
   for (NodeIndex i : order) {
     auto* node = graph.GetNode(i);
-    if (!node) {
+    if (!node || !AllowConstantFolding(*node)) {
       continue;
     }
 

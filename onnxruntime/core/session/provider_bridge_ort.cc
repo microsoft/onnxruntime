@@ -203,17 +203,16 @@ common::Status LoadDynamicLibraryFromProvider(onnxruntime::PathString library_na
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
-//onnxruntime::GraphTransformerManager graph_transformer_mgr_(10 /*max_num_graph_transformation_steps*/);
-
-Status ApplyConstantFoldingOnDQ(const Graph&, const ComputeCapability& this_optimization, ComputeCapability& cc_to_update) {
-  //auto logger = const_cast<logging::Logger*>(&logging::LoggingManager::DefaultLogger());
+/*
+Status ApplyConstantFoldingDQ(const Graph&, const ComputeCapability& this_optimization, ComputeCapability& cc_to_update) {
+  auto logger = const_cast<logging::Logger*>(&logging::LoggingManager::DefaultLogger());
   return Status::OK();
 }
 
-std::vector<std::unique_ptr<ComputeCapability>> dq_nodes_to_constant_fold(const GraphViewer& graph_viewer) {
+std::vector<std::unique_ptr<ComputeCapability>> ConstantFoldingDQ(const GraphViewer& graph_viewer) {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
-  const std::vector<NodeIndex>& node_index = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED /*priority-based topological sort*/);
+  const std::vector<NodeIndex>& node_index = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
   for (const auto& index : node_index) {
     const auto& node = graph_viewer.GetNode(index);
     if (node->OpType() != "DequantizeLinear") {
@@ -224,9 +223,24 @@ std::vector<std::unique_ptr<ComputeCapability>> dq_nodes_to_constant_fold(const 
   }
 
   result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
-  result.back()->optimization_func = ApplyConstantFoldingOnDQ;
+  result.back()->optimization_func = ApplyConstantFoldingDQ;
   return result;
 }
+
+Status GetPredefinedEPGraphTransformersForLookUp(std::unordered_map<std::string, std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>>& map) {
+  static const std::string kEP_GRAPH_TRANSFORMER_CONSTANT_FOLDING_DQ = "ConstantFoldingDQ";
+  static std::unordered_map<std::string, std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>> ep_transformers_map;
+
+  if (ep_transformers_map.find(kEP_GRAPH_TRANSFORMER_CONSTANT_FOLDING_DQ) == ep_transformers_map.end()) {
+    ep_transformers_map[kEP_GRAPH_TRANSFORMER_CONSTANT_FOLDING_DQ] = ConstantFoldingDQ;
+  }
+
+  map = ep_transformers_map;
+  return Status::OK();
+}
+*/
+
+const GraphTransformerManager* graph_transformer_manager;
 
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
@@ -237,6 +251,60 @@ std::vector<std::unique_ptr<ComputeCapability>> dq_nodes_to_constant_fold(const 
 // direct = Same implementation is used for shared providers & core code, but some of the methods need to be routed through here to make the linker happy
 struct ProviderHostImpl : ProviderHost {
   const OrtApiBase* OrtGetApiBase() override { return ::OrtGetApiBase(); }
+
+  Status GetEPOptimizerByName(const std::string& name,
+                              const GraphTransformerManager& graph_transformer_mgr,
+                              std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>& selection_func) override {
+    std::string optimizer_name(name);
+
+    // pre-defined graph transformers/optimizers
+    static const std::string kEP_GRAPH_TRANSFORMER_CONSTANT_FOLDING_DQ = "ConstantFoldingDQ";
+
+    // optimization function of constant folding dq
+    auto constant_folding_dq_optimization = [&](Graph& graph, const ComputeCapability& this_optimization, ComputeCapability& cc_to_update) -> Status {
+      auto logger = const_cast<logging::Logger*>(&logging::LoggingManager::DefaultLogger());
+      auto transformer = graph_transformer_mgr.GetTransformerByName(optimizer_name);
+      bool graph_changed = false;
+      bool modified = false;
+
+      auto status = transformer->Apply(graph, modified, *logger);
+      graph_changed = graph_changed || modified;
+
+      return Status::OK();
+    };
+
+    // selection function of constant folding dq
+    auto constant_folding_dq_selection = [&](const GraphViewer& graph_viewer) -> std::vector<std::unique_ptr<ComputeCapability>> {
+      std::vector<std::unique_ptr<ComputeCapability>> result;
+      std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+      const std::vector<NodeIndex>& node_index = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED /*priority-based topological sort*/);
+      for (const auto& index : node_index) {
+        const auto& node = graph_viewer.GetNode(index);
+        if (node->OpType() != "DequantizeLinear") {
+          continue;
+        }
+        sub_graph->nodes.push_back(index);
+        std::cout << node->Name() << ", op type: " << node->OpType() << std::endl;
+      }
+
+      result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
+      result.back()->optimization_func = constant_folding_dq_optimization;
+      return result;
+    };
+
+    // optimizer lookup table
+    static std::unordered_map<std::string, std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>> ep_transformers_map;
+    if (ep_transformers_map.find(kEP_GRAPH_TRANSFORMER_CONSTANT_FOLDING_DQ) == ep_transformers_map.end()) {
+      ep_transformers_map[kEP_GRAPH_TRANSFORMER_CONSTANT_FOLDING_DQ] = constant_folding_dq_selection;
+    }
+
+
+    auto transformer = graph_transformer_mgr.GetTransformerByName(optimizer_name);
+    if (transformer) {
+      selection_func = ep_transformers_map[optimizer_name];
+    }
+    return Status::OK();
+  };
 
   void* HeapAllocate(size_t size) override { return new uint8_t[size]; }
   void HeapFree(void* p) override { delete[] reinterpret_cast<uint8_t*>(p); }
@@ -1511,12 +1579,6 @@ struct ProviderHostImpl : ProviderHost {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   Status LoadDynamicLibrary(onnxruntime::PathString library_name) override { return LoadDynamicLibraryFromProvider(library_name); };
 #endif
-
-  Status GetEPOptimizerByName(const std::string& optimizer_name, std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>& selection_func) override {
-    selection_func = dq_nodes_to_constant_fold;
-    return Status::OK();
-  };
-
 } provider_host_;
 
 #if defined(_MSC_VER) && !defined(__clang__)

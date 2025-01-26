@@ -140,11 +140,14 @@ auto get_capabilities = [](const IExecutionProvider& ep,
                            const IExecutionProvider::IKernelLookup& kernel_lookup,
                            const onnxruntime::GraphTransformerManager& graph_transformer_manager) {
   std::vector<std::unique_ptr<ComputeCapability>> capabilities;
+  capabilities = ep.GetCapability(graph_viewer, kernel_lookup, graph_transformer_manager);
+  /*
   if (ep.RequestCustomizedGraphOptimizationForEP()) {
     capabilities = ep.GetCapability(graph_viewer, kernel_lookup, graph_transformer_manager);
   } else {
     //capabilities = ep.GetCapability(graph_viewer, kernel_lookup);
   }
+  */
 
   // In theory an EP could return an empty capability. Remove those.
   capabilities.erase(std::remove_if(capabilities.begin(), capabilities.end(),

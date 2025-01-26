@@ -69,6 +69,7 @@
 #include "core/optimizer/qdq_transformer/qdq_propagation.h"
 #include "core/optimizer/qdq_transformer/qdq_s8_to_u8.h"
 #include "core/optimizer/qdq_transformer/relu_quantizelinear.h"
+#include "core/optimizer/qdq_transformer/constant_folding_dq_node.h"
 #include "core/optimizer/quick_gelu_fusion.h"
 #include "core/optimizer/relu_clip_fusion.h"
 #include "core/optimizer/reshape_fusion.h"
@@ -184,6 +185,30 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(
   }
 
   return rule_transformer;
+}
+
+InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForEP(
+    TransformerLevel level,
+    const SessionOptions& session_options,
+    const IExecutionProvider& cpu_execution_provider, /*required by constant folding*/
+    const logging::Logger& logger) {
+  InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
+  switch (level) {
+    case TransformerLevel::Level1: {
+      break;
+    }
+    case TransformerLevel::Level2: {
+      transformers.emplace_back(std::make_unique<ConstantFoldingDQ>(cpu_execution_provider, false /*skip_dequantize_linear*/,
+                                                                    session_options.config_options));
+      break;
+    }
+    case TransformerLevel::Level3: {
+      break;
+    }
+    default:
+      ORT_THROW("Unsupported optimization level: ", static_cast<int>(level));
+  }
+  return transformers;
 }
 
 InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(

@@ -258,4 +258,17 @@ void TensorrtExecutionProvider::SetAllGraphInputs(Graph& graph) const {
 
   graph.SetInputs(graph_inputs_including_initializers);
 }
+
+void TensorrtExecutionProvider::CreateConsumerToDqMap(const GraphViewer& graph, std::unordered_map<NodeIndex, NodeIndex>& map) const {
+  LOGS_DEFAULT(VERBOSE) << "Create consumer node to DQ node map ...";
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);
+  for (auto index : node_index) {
+    auto* node = graph.GetNode(index);
+    if (node->OpType() == "DequantizeLinear" && node->GetOutputEdgesCount() == 1) { // DQ does not produce graph output, single consumer
+      const Node& consumer_node = *node->OutputNodesBegin();
+      map[consumer_node.Index()] = index;
+      LOGS_DEFAULT(VERBOSE) << consumer_node.Name() << " <- " << node->Name();
+    }
+  }
+}
 }  // namespace onnxruntime

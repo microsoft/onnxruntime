@@ -2555,7 +2555,8 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   }
 
   bool early_termination = false;
-  supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
+  //supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
+  supported_nodes_vector = parser_nodes_vector;
   if (early_termination) {
     supported_nodes_vector.clear();
   }
@@ -2656,11 +2657,23 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     }
   }
 
+  std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)> selection_func;
+  auto status = g_host->GetEPOptimizerByName("ConstantFoldingDQ", graph_transformer_mgr, selection_func);
+  auto optimizer_cc = selection_func(graph);
+
+  std::unordered_map<NodeIndex, NodeIndex> consumer_to_dq; 
+  CreateConsumerToDqMap(graph, consumer_to_dq);
+
+
   int number_of_trt_nodes = 0, subgraph_index = 0;
   for (const auto& group : supported_nodes_vector) {
     if (!group.first.empty()) {
       std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph, model_hash, subgraph_index);
-      result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+      auto compute_capability = ComputeCapability::Create(std::move(sub_graph));
+      
+      
+      result.push_back(std::move(compute_capability));
+      //result.push_back(ComputeCapability::Create(std::move(sub_graph)));
       number_of_trt_nodes += static_cast<int>(group.first.size());
       subgraph_index++;
     }
