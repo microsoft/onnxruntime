@@ -62,6 +62,20 @@ endif()
 
 set(ONNXRUNTIME_MLAS_LIBS onnxruntime_mlas)
 
+function(remove_mcpu_flags var_name)
+  set(_original "${${var_name}}")
+  string(REGEX REPLACE "-mcpu=[^ ]*" "" _updated "${_original}")
+  if (NOT _original STREQUAL _updated)
+      message("Dropped -mcpu flags from ${var_name} updated to: ${_updated}")
+      set(${var_name} "${_updated}" PARENT_SCOPE)
+  endif()
+endfunction()
+
+# Remove -mcpu flags from ASM, C and CXX flags
+remove_mcpu_flags(CMAKE_ASM_FLAGS)
+remove_mcpu_flags(CMAKE_C_FLAGS)
+remove_mcpu_flags(CMAKE_CXX_FLAGS)
+
 #TODO: set MASM flags properly
 function(setup_mlas_source_for_windows)
 
