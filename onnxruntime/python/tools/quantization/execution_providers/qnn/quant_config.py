@@ -195,7 +195,9 @@ def get_qnn_qdq_config(
         calibrate_method=calibrate_method,
         activation_type=activation_type,
         weight_type=weight_type,
-        op_types_to_quantize=op_types_to_quantize if op_types_to_quantize else list(op_types.difference(OP_TYPES_TO_EXCLUDE)),
+        op_types_to_quantize=op_types_to_quantize
+        if op_types_to_quantize
+        else list(op_types.difference(OP_TYPES_TO_EXCLUDE)),
         per_channel=per_channel,
         use_external_data_format=(model_has_external_data or model.ByteSize() >= MODEL_SIZE_THRESHOLD),
         extra_options=extra_options,
