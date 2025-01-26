@@ -49,6 +49,7 @@ try:
         set_default_logger_severity,  # noqa: F401
         set_default_logger_verbosity,  # noqa: F401
         set_seed,  # noqa: F401
+        set_global_thread_pool_sizes, # noqa: F401
     )
 
     import_capi_exception = None
