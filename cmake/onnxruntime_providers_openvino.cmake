@@ -30,7 +30,7 @@
   endif()
 
   list(APPEND OPENVINO_LIB_LIST openvino::frontend::onnx openvino::runtime ${PYTHON_LIBRARIES})
-  if ((DEFINED ENV{OPENCL_LIBS}) AND (DEFINED ENV{OPENCL_INCS}))
+  if ((DEFINED ENV{OPENCL_LIBS}) AND (DEFINED ENV{OPENCL_INCS}) AND onnxruntime_USE_OPENVINO_GPU)
     add_definitions(-DIO_BUFFER_ENABLED=1)
     list(APPEND OPENVINO_LIB_LIST $ENV{OPENCL_LIBS})
   endif()
