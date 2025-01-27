@@ -1,3 +1,4 @@
+// This is needed for Paths.get() to work
 import java.nio.file.Paths
 
 buildscript {
@@ -15,10 +16,27 @@ buildscript {
 apply plugin: 'com.android.library'
 
 def reactNativeArchitectures() {
-  def value = project.getProperties().get("reactNativeArchitectures")
+  def value = rootProject.getProperties().get("reactNativeArchitectures")
   return value ? value.split(",") : ["armeabi-v7a", "x86", "x86_64", "arm64-v8a"]
 }
 
+def isNewArchitectureEnabled() {
+  return rootProject.hasProperty("newArchEnabled") && rootProject.getProperty("newArchEnabled") == "true"
+}
+
+if (isNewArchitectureEnabled()) {
+  apply plugin: "com.facebook.react"
+}
+
+def getExtOrDefault(name) {
+  return rootProject.ext.has(name) ? rootProject.ext.get(name) : project.properties["OnnxruntimeReactNative_" + name]
+}
+
+def getExtOrIntegerDefault(name) {
+  return rootProject.ext.has(name) ? rootProject.ext.get(name) : (project.properties["OnnxruntimeReactNative_" + name]).toInteger()
+}
+
+// Unique to ORT not a general React Native module setting
 def resolveBuildType() {
   Gradle gradle = getGradle()
   String tskReqStr = gradle.getStartParameter().getTaskRequests()['args'].toString()
@@ -62,14 +80,16 @@ def REACT_NATIVE_VERSION = ['node', '--print', "JSON.parse(require('fs').readFil
 def REACT_NATIVE_MINOR_VERSION = REACT_NATIVE_VERSION.split("\\.")[1].toInteger()
 
 android {
-  compileSdkVersion 34
-  buildToolsVersion "33.0.0"
+	namespace "ai.onnxruntime.reactnative"
+
+  compileSdkVersion getExtOrIntegerDefault('compileSdkVersion')
+  buildToolsVersion getExtOrDefault('buildToolsVersion')
   defaultConfig {
-    minSdkVersion 24
-    targetSdkVersion 34
-    versionCode 1
-    versionName "1.0"
+    minSdkVersion getExtOrIntegerDefault("minSdkVersion")
+    targetSdkVersion getExtOrIntegerDefault("targetSdkVersion")
+
     testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
     externalNativeBuild {
       cmake {
         cppFlags "-O2 -frtti -fexceptions -Wall -Wno-unused-variable -fstack-protector-all"
@@ -210,7 +230,8 @@ repositories {
 }
 
 dependencies {
-  api "com.facebook.react:react-native:" + REACT_NATIVE_VERSION
+  //noinspection GradleDynamicVersion
+  implementation "com.facebook.react:react-native:+"
   api "org.mockito:mockito-core:2.28.2"
 
   androidTestImplementation "androidx.test:runner:1.5.2"
