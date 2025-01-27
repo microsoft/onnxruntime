@@ -236,7 +236,6 @@ class TestInferenceSession(unittest.TestCase):
 
         # Remove model 1 to make sure optimized model 2 can be loaded independently from model 1
         os.remove(optimized_model_filepath)
-        os.remove(external_initializers_file)
 
         session3 = onnxrt.InferenceSession(optimized_model_filepath_2, sess_options=onnxrt.SessionOptions())
         del session3
