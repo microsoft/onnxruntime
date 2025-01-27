@@ -112,6 +112,8 @@ android {
   }
 
   packagingOptions {
+    pickFirst '**/libc++_shared.so'
+    pickFirst '**/libfbjni.so'
     doNotStrip resolveBuildType() == 'debug' ? "**/**/*.so" : ''
     excludes = [
       "META-INF",
