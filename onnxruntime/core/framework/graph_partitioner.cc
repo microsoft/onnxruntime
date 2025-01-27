@@ -679,15 +679,6 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty");
   }
 
-  std::filesystem::path context_cache_ext_ini_path;
-  if (!ep_context_ext_ini_path.empty()) {
-    context_cache_ext_ini_path = ep_context_ext_ini_path;
-  } else if (!model_path.empty()) {
-    context_cache_ext_ini_path = model_path.filename().native() + ORT_TSTR("_ext.bin");
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty");
-  }
-
   if (std::filesystem::exists(context_cache_path)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to generate EP context model since the file '",
                            context_cache_path, "' exist already.");
@@ -739,9 +730,13 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     }
   }
 
-  ModelSavingOptions model_saving_options{size_threshold};
-  ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(ep_context_model, context_cache_path,
-                                                          context_cache_ext_ini_path, model_saving_options));
+  if (ep_context_ext_ini_path.empty()) {
+    ORT_RETURN_IF_ERROR(Model::Save(ep_context_model, context_cache_path));
+  } else {
+    ModelSavingOptions model_saving_options{size_threshold};
+    ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(ep_context_model, context_cache_path,
+                                                            ep_context_ext_ini_path, model_saving_options));
+  }
 
   return Status::OK();
 }
