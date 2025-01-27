@@ -24,11 +24,11 @@ if (isNewArchitectureEnabled()) {
 }
 
 def getExtOrDefault(name) {
-  return rootProject.ext.has(name) ? rootProject.ext.get(name) : project.properties["OnnxruntimeReactNative_" + name]
+  return rootProject.ext.has(name) ? rootProject.ext.get(name) : project.properties["OnnxruntimeModule_" + name]
 }
 
 def getExtOrIntegerDefault(name) {
-  return rootProject.ext.has(name) ? rootProject.ext.get(name) : (project.properties["OnnxruntimeReactNative_" + name]).toInteger()
+  return rootProject.ext.has(name) ? rootProject.ext.get(name) : (project.properties["OnnxruntimeModule_" + name]).toInteger()
 }
 
 def reactNativeArchitectures() {
