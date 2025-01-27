@@ -223,7 +223,7 @@ repositories {
 
 dependencies {
   //noinspection GradleDynamicVersion
-  api "com.facebook.react:react-native:+"
+  implementation "com.facebook.react:react-android:"+ REACT_NATIVE_VERSION
   api "org.mockito:mockito-core:2.28.2"
 
   androidTestImplementation "androidx.test:runner:1.5.2"
