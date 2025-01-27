@@ -631,7 +631,7 @@ if (onnxruntime_USE_WEBGPU)
       URL_HASH SHA1=${DEP_SHA1_dawn}
       # All previous patches are merged into the upstream dawn project. We don't need to apply any patches right now.
       # if we need to apply patches in the future, we can uncomment the following line.
-      PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
+      # PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
     )
   endif()
 
