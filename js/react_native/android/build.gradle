@@ -23,11 +23,6 @@ if (isNewArchitectureEnabled()) {
   apply plugin: "com.facebook.react"
 }
 
-def reactNativeArchitectures() {
-  def value = rootProject.getProperties().get("reactNativeArchitectures")
-  return value ? value.split(",") : ["armeabi-v7a", "x86", "x86_64", "arm64-v8a"]
-}
-
 def getExtOrDefault(name) {
   return rootProject.ext.has(name) ? rootProject.ext.get(name) : project.properties["OnnxruntimeReactNative_" + name]
 }
@@ -36,7 +31,11 @@ def getExtOrIntegerDefault(name) {
   return rootProject.ext.has(name) ? rootProject.ext.get(name) : (project.properties["OnnxruntimeReactNative_" + name]).toInteger()
 }
 
-// Unique to ORT not a general React Native module setting
+def reactNativeArchitectures() {
+  def value = rootProject.getProperties().get("reactNativeArchitectures")
+  return value ? value.split(",") : ["armeabi-v7a", "x86", "x86_64", "arm64-v8a"]
+}
+
 def resolveBuildType() {
   Gradle gradle = getGradle()
   String tskReqStr = gradle.getStartParameter().getTaskRequests()['args'].toString()
