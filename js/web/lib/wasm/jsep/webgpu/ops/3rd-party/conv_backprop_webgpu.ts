@@ -46,7 +46,7 @@ export const createConvTranspose2DProgramInfo = (
   const inputChannelsPerGroup = wShape[2] / group;
   const outputChannelsPerGroup = wShape[3];
   const aComponents = isChannelsLast ? getMaxComponents(inputChannelsPerGroup) : 1;
-  const packInputAs4 = isChannelsLast && outputChannelsPerGroup === 1;
+  const packInputAs4 = isChannelsLast && outputChannelsPerGroup === 1 && inputChannelsPerGroup % 4 === 0;
   const inputChannelsPerGroupInt = packInputAs4
     ? Math.floor(inputChannelsPerGroup / 4) * 4
     : Math.floor(inputChannelsPerGroup / aComponents) * aComponents;
