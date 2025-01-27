@@ -12,6 +12,7 @@
 #include "core/framework/kernel_lookup.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/kernel_registry.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/function.h"
 #include "core/graph/function_utils.h"
 #include "core/graph/graph_viewer.h"
@@ -645,7 +646,8 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
 static Status CreateEpContextModel(const ExecutionProviders& execution_providers,
                                    const Graph& graph,
                                    const std::filesystem::path& ep_context_path,
-                                   const logging::Logger& logger) {
+                                   const logging::Logger& logger,
+                                   bool is_embed_external_data) {
   InlinedVector<const Node*> all_ep_context_nodes;
   for (const auto& ep : execution_providers) {
     const InlinedVector<const Node*> ep_context_nodes = ep->GetEpContextNodes();
@@ -719,11 +721,24 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
       ep_graph.AddNode(node);
     }
   }
-
   // handle initializers
   for (const auto& initialized_tensor : graph.GetAllInitializedTensors()) {
     if (ep_graph.GetNodeArg(initialized_tensor.first) != nullptr) {
-      ep_graph.AddInitializedTensor(*initialized_tensor.second);
+      auto t = initialized_tensor.second;
+      bool is_external = utils::HasExternalData(*t);
+      if (is_external && is_embed_external_data) {
+        const DataTypeImpl* const type =
+            DataTypeImpl::TensorTypeFromONNXEnum(t->data_type())->GetElementType();
+        auto tensor_shape = utils::GetTensorShapeFromTensorProto(*t);
+        std::vector<uint8_t> data;
+        std::ignore = utils::UnpackInitializerData(*t, model_path, data);
+        auto tensor = Tensor(type, tensor_shape, data.data(),
+                             OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator));
+        auto new_tensor_proto = utils::TensorToTensorProto(tensor, t->name());
+        ep_graph.AddInitializedTensor(new_tensor_proto);
+      } else {
+        ep_graph.AddInitializedTensor(*initialized_tensor.second);
+      }
     }
   }
 
@@ -995,7 +1010,8 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     bool ep_context_enabled = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
     std::string ep_context_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
     if (ep_context_enabled) {
-      ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_path, logger));
+      bool ep_context_embed_external_data = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedExternalData, "0") == "1";
+      ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_path, logger, ep_context_embed_external_data));
     }
 #else
     ORT_UNUSED_PARAMETER(config_options);

@@ -276,6 +276,11 @@ static const char* const kOrtSessionOptionEpContextFilePath = "ep.context_file_p
 // "1": dump the EP context into the Onnx model.
 static const char* const kOrtSessionOptionEpContextEmbedMode = "ep.context_embed_mode";
 
+// Flag to specify whether dumped EP context embed the external data.
+// "0": The EP context may still depends on the external data  (default).
+// "1": The external data, if needed, would be embed into EP context.
+static const char* const kOrtSessionOptionEpContextEmbedExternalData = "ep.context_embed_external_data";
+
 // Specify the EPContext node name prefix to make it unique
 // in case user need to merge/connect multiple EPContext nodes in one model
 static const char* const kOrtSessionOptionEpContextNodeNamePrefix = "ep.context_node_name_prefix";
