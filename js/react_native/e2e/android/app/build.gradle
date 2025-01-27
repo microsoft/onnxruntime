@@ -1,5 +1,12 @@
 apply plugin: "com.android.application"
-apply plugin: "com.facebook.react"
+
+def isNewArchitectureEnabled() {
+  return rootProject.hasProperty("newArchEnabled") && rootProject.getProperty("newArchEnabled") == "true"
+}
+
+if (isNewArchitectureEnabled()) {
+  apply plugin: "com.facebook.react"
+}
 
 import com.android.build.OutputFile
 
