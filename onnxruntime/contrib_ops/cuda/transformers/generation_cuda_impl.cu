@@ -343,6 +343,37 @@ __device__ void BeamHypotheses::Output(
   }
 }
 
+// Function to dump the data in the struct
+__device__ void dump_hypothesis_score(const struct HypothesisScore* hs) {
+    printf("HypothesisScore Dump:\n");
+    printf("  hypothesis_length: %d\n", hs->hypothesis_length);
+    printf("  score: %f\n", hs->score);
+
+    printf("  hypothesis: ");
+    if (hs->hypothesis_length > 0 && hs->hypothesis != NULL) {
+        for (int i = 0; i < hs->hypothesis_length; ++i) {
+            printf("%d ", hs->hypothesis[i]);
+        }
+    } else {
+        printf("(empty)");
+    }
+    printf("\n");
+}
+
+__device__ void dump_beam_hypotheses(const struct BeamHypotheses* bh) {
+    printf("BeamHypotheses Dump:\n");
+    printf("  beams_count_: %d\n", bh->beams_count_);
+    printf("  beams_used_: %d\n", bh->beams_used_);
+    printf("  length_penalty_: %f\n", bh->length_penalty_);
+    printf("  done_: %s\n", bh->done_ ? "true" : "false");
+
+    printf("  beams_:\n");
+    for (int i = 0; i < bh->beams_used_; ++i) {
+        printf("    Beam %d:\n", i + 1);
+        dump_hypothesis_score(&bh->beams_[i]);
+    }
+}
+
 __global__ void BeamSearchScorer_Process(BeamScorerState& state_cpu,
                                          BeamScorerState& state,
                                          const int32_t* sequences_buffer,
@@ -402,6 +433,8 @@ __global__ void BeamSearchScorer_Process(BeamScorerState& state_cpu,
 
     //  Check if we are done so that we can save a pad step if all(done)
     if (beam_hyp.beams_used_ == state.num_beams_) {
+      dump_beam_hypotheses(&beam_hyp);
+
       if (state.early_stopping_ || !beam_hyp.CanImprove(*std::max_element(next_scores + batch_start, next_scores + batch_start + top_k), sequence_length)) {
         beam_hyp.done_ = true;
         if (atomicAdd(&state.not_done_count_, -1) == 1)
@@ -434,10 +467,6 @@ void LaunchBeamSearchScorer_Process(BeamScorerState& state_cpu,
                                     gsl::span<const int32_t> next_tokens,
                                     gsl::span<const int32_t> next_indices,
                                     cudaStream_t stream) {
-  for (size_t i = 0; i < beam_hyps.length(); i++) {
-    dump_beam_hypotheses(&beam_hyps[i]);
-  }
-
   BeamSearchScorer_Process<<<1, state_cpu.batch_size_, 0, stream>>>(state_cpu,
                                                                     state,
                                                                     sequences.data(),
