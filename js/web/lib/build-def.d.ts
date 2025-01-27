@@ -52,6 +52,11 @@ interface BuildDefinitions {
    * placeholder for the import.meta.url in ESM. in CJS, this is undefined.
    */
   readonly ESM_IMPORT_META_URL: string | undefined;
+  /**
+   * placeholder for the import.meta.meta in ESM. in CJS, this is undefined.
+   */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  readonly ESM_IMPORT_META_ENV: any;
 
   // #endregion
 

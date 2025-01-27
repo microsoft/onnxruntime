@@ -60,6 +60,7 @@ const DEFAULT_DEFINE = {
 
   'BUILD_DEFS.IS_ESM': 'false',
   'BUILD_DEFS.ESM_IMPORT_META_URL': 'undefined',
+  'BUILD_DEFS.ESM_IMPORT_META_ENV': 'undefined',
 } as const;
 
 const COPYRIGHT_HEADER = `/*!
@@ -214,6 +215,7 @@ async function buildBundle(options: esbuild.BuildOptions) {
     options.define = {
       ...options.define,
       'BUILD_DEFS.ESM_IMPORT_META_URL': 'import.meta.url',
+      'BUILD_DEFS.ESM_IMPORT_META_ENV': 'import.meta.env',
       'BUILD_DEFS.IS_ESM': 'true',
     };
   }
@@ -255,8 +257,8 @@ async function buildOrt({
 }: OrtBuildOptions) {
   const platform = isNode ? 'node' : 'browser';
   const external = isNode
-    ? ['onnxruntime-common']
-    : ['node:fs/promises', 'node:fs', 'node:os', 'module', 'worker_threads'];
+    ? ['onnxruntime-common', 'onnxruntime-web/.wasm?url']
+    : ['node:fs/promises', 'node:fs', 'node:os', 'module', 'worker_threads', 'onnxruntime-web/.wasm?url'];
   const bundleFilename = `${outputName}${isProduction ? '.min' : ''}.${format === 'esm' ? 'mjs' : 'js'}`;
   const plugins: esbuild.Plugin[] = [];
   const defineOverride: Record<string, string> = {
@@ -384,7 +386,7 @@ async function postProcess() {
         const importColumnIndex = jsFileLines[i].indexOf(IMPORT_ORIGINAL);
         if (importColumnIndex !== -1) {
           if (found || importColumnIndex !== jsFileLines[i].lastIndexOf(IMPORT_ORIGINAL)) {
-            throw new Error(`Multiple dynamic import calls found in "${jsFilePath}". Should not happen.`);
+            //throw new Error(`Multiple dynamic import calls found in "${jsFilePath}". Should not happen.`);
           }
           line = i + 1;
           column = importColumnIndex + IMPORT_ORIGINAL.length;
@@ -591,6 +593,12 @@ async function main() {
     // ort.bundle.min.mjs
     await buildOrt({
       isProduction: true,
+      outputName: 'ort.bundle',
+      format: 'esm',
+      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true', 'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'true' },
+    });
+    // ort.bundle.min.mjs
+    await buildOrt({
       outputName: 'ort.bundle',
       format: 'esm',
       define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true', 'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'true' },

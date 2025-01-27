@@ -213,3 +213,35 @@ export const importWasmModule = async (
     return [needPreload ? url : undefined, await dynamicImportDefault<EmscriptenModuleFactory<OrtWasmModule>>(url)];
   }
 };
+
+/**
+ * Try to overwrite the default wasm URL for bundlers if needed.
+ *
+ * This function is used to provide best-effort support for out of the box compatibility with bundlers.
+ *
+ * @returns - A promise that resolves to the new wasm URL, or undefined if no overwrite is needed.
+ */
+export const tryOverwriteDefaultWasmUrlForBundlers = async (): Promise<string | undefined> => {
+  // === workaround for Vite. ===
+  //
+  // Vite uses rollup, which does not add the .wasm file into the asset list automatically like webpack. So we
+  // need to do this manually using the "Explicit URL Imports" feature described in
+  // https://vite.dev/guide/assets#explicit-url-imports
+  //
+  // The following condition is used to detect if the current environment is Vite. Since Vite does not provide an
+  // official way to detect if the current environment is Vite, we check if `import.meta.env.SSR` is `false`.
+  //
+  // According to the Vite documentation, `import.meta.env.SSR` is always set to a boolean value.
+  // See https://vite.dev/guide/env-and-mode#env-variables
+  //
+  if (BUILD_DEFS.ESM_IMPORT_META_ENV?.SSR === false) {
+    try {
+      //const wasmFileUrlForVite = (await import(/* webpackIgnore: true */ 'onnxruntime-web/.wasm?url')).default;
+      //return wasmFileUrlForVite;
+    } catch {
+      // ignore the error if the module is not found.
+    }
+  }
+
+  return undefined;
+};

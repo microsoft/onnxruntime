@@ -13,7 +13,7 @@
     "flatbuffers": "^1.12.0",
     "guid-typescript": "^1.0.9",
     "long": "^5.2.3",
-    "onnxruntime-common": "file:../common",
+    "onnxruntime-common": "1.21.0",
     "platform": "^1.3.6",
     "protobufjs": "^7.2.4"
   },
@@ -73,7 +73,7 @@
         "import": "./dist/ort.node.min.mjs",
         "require": "./dist/ort.node.min.js"
       },
-      "import": "./dist/ort.bundle.min.mjs",
+      "import": "./dist/ort.bundle.mjs",
       "require": "./dist/ort.min.js",
       "types": "./types.d.ts"
     },
