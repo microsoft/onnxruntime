@@ -16,7 +16,7 @@ parameters:
 - name: RunAndroidE2eTests
   displayName: 'Run E2E tests'
   type: boolean
-  default: false
+  default: true
 
 - name: PublishNpmPackages
   displayName: 'Publish NPM packages'
