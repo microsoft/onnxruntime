@@ -96,7 +96,10 @@ android {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
     }
-
+	  packagingOptions {
+	    pickFirst '**/libc++_shared.so'
+	    pickFirst '**/libfbjni.so'
+		}
     defaultConfig {
         applicationId "com.example.reactnativeonnxruntimemodule"
         minSdkVersion rootProject.ext.minSdkVersion
@@ -155,7 +158,7 @@ repositories {
 }
 
 dependencies {
-    androidTestImplementation('com.wix:detox:20.32.0')
+    androidTestImplementation('com.wix:detox:+')
     implementation 'androidx.appcompat:appcompat:1.1.0'
 
     implementation fileTree(dir: "libs", include: ["*.jar"])
