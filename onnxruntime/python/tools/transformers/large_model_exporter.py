@@ -13,7 +13,6 @@ import math
 import os
 import tempfile
 from pathlib import Path
-from typing import Optional
 
 import onnx
 import torch
@@ -50,7 +49,7 @@ def get_model_parameter_size(model: nn.Module):
     return all_size
 
 
-def initialize_model_and_sample_inputs(hf_model: str, cache_dir: Optional[str], tokenizer=None):
+def initialize_model_and_sample_inputs(hf_model: str, cache_dir: str | None, tokenizer=None):
     """
     get the pretrained torch model from hugginface,
     and sample model-inputs
@@ -155,7 +154,7 @@ def retrieve_onnx_inputs(model: nn.Module, sample_inputs: tuple, with_past: bool
     for key, value in user_inputs[1].items():
         idx = input_keys.index(key)
         onnx_inputs[idx] = value
-    for idx, (key, value) in enumerate(zip(input_keys, onnx_inputs)):
+    for idx, (key, value) in enumerate(zip(input_keys, onnx_inputs, strict=False)):
         if type(value) is torch.Tensor:
             value.to(model.device)
         if "use_cache" in key:
@@ -309,7 +308,7 @@ def do_export_internal(model: nn.Module, onnx_io_tuple: tuple, onnx_inputs: tupl
 
 
 @torch.no_grad()
-def export_onnx(hf_model: str, cache_dir: Optional[str], onnx_path_str: str, with_past: bool, opset: int):
+def export_onnx(hf_model: str, cache_dir: str | None, onnx_path_str: str, with_past: bool, opset: int):
     """
     do export
     model: torch model

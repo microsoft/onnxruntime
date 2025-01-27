@@ -2,6 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 # Licensed under the MIT License.
+from __future__ import annotations
 
 import argparse
 import contextlib
@@ -126,6 +127,17 @@ def _openvino_verify_device_type(device_read):
         invalid_hetero_build()
 
     return device_read
+
+
+def _qnn_verify_library_kind(library_kind):
+    choices = ["shared_lib", "static_lib"]
+    if library_kind not in choices:
+        print("\nYou have specified an invalid library kind for QNN EP.")
+        print(f"The invalid library kind was: {library_kind}")
+        print("Provide a library kind from the following options: ", choices)
+        print(f"Example: --use_qnn {choices[0]}")
+        sys.exit("Incorrect build configuration")
+    return library_kind
 
 
 def parse_arguments():
@@ -577,7 +589,14 @@ def parse_arguments():
     parser.add_argument("--use_jsep", action="store_true", help="Build with JavaScript kernels.")
     parser.add_argument("--use_webgpu", action="store_true", help="Build with WebGPU support.")
     parser.add_argument("--use_external_dawn", action="store_true", help="Treat Dawn as an external dependency.")
-    parser.add_argument("--use_qnn", action="store_true", help="Build with QNN support.")
+    parser.add_argument(
+        "--use_qnn",
+        nargs="?",
+        const="shared_lib",  # If provide --use_qnn without an arg, defaults to a shared library.
+        type=_qnn_verify_library_kind,
+        help="Build with QNN support. Specify 'shared_lib' or 'static_lib' to build QNN EP "
+        "as a shared or static library, respectively.",
+    )
     parser.add_argument("--qnn_home", help="Path to QNN SDK dir.")
     parser.add_argument("--use_rknpu", action="store_true", help="Build with RKNPU.")
     parser.add_argument("--use_preinstalled_eigen", action="store_true", help="Use pre-installed Eigen.")
@@ -1349,6 +1368,11 @@ def generate_build_tree(
             raise BuildError("qnn_home=" + qnn_home + " not valid." + " qnn_home paths must be specified and valid.")
         cmake_args += ["-Donnxruntime_USE_QNN=ON"]
 
+        if args.use_qnn == "static_lib":
+            cmake_args += ["-Donnxruntime_BUILD_QNN_EP_STATIC_LIB=ON"]
+        if args.android and args.use_qnn != "static_lib":
+            raise BuildError("Only support Android + QNN builds with QNN EP built as a static library.")
+
     if args.use_coreml:
         cmake_args += ["-Donnxruntime_USE_COREML=ON"]
 
@@ -1387,7 +1411,7 @@ def generate_build_tree(
         if not all(needed_args):
             raise BuildError(
                 "iOS/MacOS framework build on MacOS canceled due to missing arguments: "
-                + ", ".join(val for val, cond in zip(arg_names, needed_args) if not cond)
+                + ", ".join(val for val, cond in zip(arg_names, needed_args, strict=False) if not cond)
             )
         # note: this value is mainly used in framework_info.json file to specify the build osx type
         platform_name = "macabi" if args.macos == "Catalyst" else args.apple_sysroot
@@ -2400,9 +2424,11 @@ def build_nuget_package(
     elif use_rocm:
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm"
     elif use_qnn:
+        if use_qnn != "shared_lib":
+            raise BuildError("Currently NuGet packages with QNN require QNN EP to be built as a shared library.")
         execution_provider = "/p:ExecutionProvider=qnn"
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.QNN"
-    elif any(map(lambda x: "OrtPackageId=" in x, msbuild_extra_options)):
+    elif any("OrtPackageId=" in x for x in msbuild_extra_options):
         pass
     else:
         # we currently only allow building with mobile targets on Windows.

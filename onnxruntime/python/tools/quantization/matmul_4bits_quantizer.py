@@ -1186,7 +1186,7 @@ class MatMul4BitsQuantizer:
         }
         for node in self.model.model.graph.node:
             if node.op_type in ["MatMul"]:
-                if not all([self.model.get_initializer(i) is None for i in node.input]):
+                if not all(self.model.get_initializer(i) is None for i in node.input):
                     q4_node_config[node.name] = template_config_q4
         return q4_node_config
 
