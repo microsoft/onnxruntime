@@ -50,7 +50,7 @@ static const std::string& GetNodeAttr(const Node& node, const std::string& attr_
 static GetTestModelFn BuildGraphWithQAndNonQ(bool single_ep_node = true) {
   return [single_ep_node](ModelTestBuilder& builder) {
     // Creat non-quantized FusedMatMul node1
-    std::vector<float> data(200*200, 1.0f);
+    std::vector<float> data(200 * 200, 1.0f);
     NodeArg* input1 = MakeTestInput(builder, TestInputDef<float>({200, 200}, false, data));
     NodeArg* add1_ini_input2 = MakeTestInput(builder, TestInputDef<float>({200, 200}, true, data));
 
@@ -220,7 +220,7 @@ void EpCtxCpuNodeWithExternalIniFileTestBody(bool expect_external_ini_file) {
   if (expect_external_ini_file) {
     // Set the threshold to a small size so FusedMatMul node with weights float[200, 200] will dump to external data file
     so.AddConfigEntry(kOrtSessionOptionsEpContextModelExternalInitializersMinSizeInBytes, "1024");
-  } // otherwise it will use default value 1024,000, so the initializer is in Onnx file, no external data file generated
+  }  // otherwise it will use default value 1024,000, so the initializer is in Onnx file, no external data file generated
 
   Ort::Session session(*ort_env, ToPathString(model_with_ext).c_str(), so);
 
