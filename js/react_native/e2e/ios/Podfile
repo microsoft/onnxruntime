@@ -9,21 +9,9 @@ require Pod::Executable.execute_command('node', ['-p',
 platform :ios, '15.1'
 
 prepare_react_native_project!
+# use_frameworks need to be loaded before use_react_native! for now
+use_frameworks!
 
-linkage = ENV['USE_FRAMEWORKS']
-if linkage != nil
-  Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
-  use_frameworks! :linkage => linkage.to_sym
-end
-
-pre_install do |installer|
-  # Custom pre-install script or commands
-  puts "Running pre-install script..."
-
-  # Recommended fix for https://github.com/facebook/react-native/issues/32483
-  # from https://github.com/facebook/react-native/issues/32483#issuecomment-966784501
-  system("sed -i '' 's/typedef uint8_t clockid_t;//' \"./Pods/RCT-Folly/folly/portability/Time.h\"")
-end
 
 target 'OnnxruntimeModuleExample' do
   config = use_native_modules!
