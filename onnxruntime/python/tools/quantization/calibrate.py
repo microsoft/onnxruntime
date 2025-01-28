@@ -1177,6 +1177,7 @@ def create_calibrator(
     augmented_model_path="augmented_model.onnx",
     calibrate_method=CalibrationMethod.MinMax,
     use_external_data_format=False,
+    providers=None,
     extra_options={},  # noqa: B006
 ):
     calibrator = None
@@ -1243,6 +1244,8 @@ def create_calibrator(
 
     if calibrator:
         calibrator.augment_graph()
+        if providers:
+            calibrator.execution_providers = providers
         calibrator.create_inference_session()
         return calibrator
 
