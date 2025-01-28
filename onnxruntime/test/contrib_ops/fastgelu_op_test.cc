@@ -457,8 +457,8 @@ TEST(FastGeluTest, FastGeluWithBias_Double) {
       -0.5, 0.6, 1.2, 2.1};
 
   std::vector<double> Y = {
-      0.1851806640625, 0.054046630859375, 1.0615234375, 3.095703125,
-      0, 0.63037109375, 1.3984375, 1.3984375};
+      0.185371, 0.053983, 1.061703, 3.097373,
+      0.000000, 0.630432, 1.399572, 1.399572};
 
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> bias_dims = {hidden_size};
