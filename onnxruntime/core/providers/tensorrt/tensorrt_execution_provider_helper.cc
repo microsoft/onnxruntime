@@ -259,7 +259,13 @@ void TensorrtExecutionProvider::SetAllGraphInputs(Graph& graph) const {
   graph.SetInputs(graph_inputs_including_initializers);
 }
 
-void TensorrtExecutionProvider::CreateConsumerToDqMap(const GraphViewer& graph,
+/**
+ *  This is the helper function for ConstantFoldingDQ graph transformer.
+ *  
+ *  It selects the qualified/required DQ node to be optimized as well as provides a mapping table 
+ *  to help TRT EP later include the DQ node which is filtered out by TRT parser.
+ */
+void TensorrtExecutionProvider::SelectQualifiedDQNode(const GraphViewer& graph,
                                                       std::unordered_set<NodeIndex>& selection_node_set,
                                                       std::unordered_map<NodeIndex, NodeIndex>& consumer_to_dq) const {
   LOGS_DEFAULT(VERBOSE) << "Select qualified DQ nodes ...";
@@ -289,7 +295,39 @@ void TensorrtExecutionProvider::CreateConsumerToDqMap(const GraphViewer& graph,
       consumer_to_dq[consumer_node.Index()] = index;
       LOGS_DEFAULT(VERBOSE) << consumer_node.Name() << " <- " << node->Name();
     }
-    LOGS_DEFAULT(VERBOSE) << "Total " << selection_node_set.size() << " DequantizeLinear nodes are selected.";
   }
+  LOGS_DEFAULT(VERBOSE) << "Total " << selection_node_set.size() << " DequantizeLinear node(s) are selected.";
+}
+
+/**
+ * This function returns an optimization ComputeCapability that is limited to:
+ *  1. the DQ nodes in this individual TRT ComputeCapability
+ *  2. the DQ nodes that are qualified and selected by TRT EP
+ * 
+ * It also needs to make sure the DQ nodes is a subset of the complete list of DQ nodes to optimize in original selection ComputeCapability.
+ * Finally, copy the optimization function from the original selection ComputeCapability.
+ */
+std::unique_ptr<ComputeCapability> TensorrtExecutionProvider::CreateOptimizationComputeCapability(ComputeCapability* selection_cc,
+                                                                                                  std::unordered_set<NodeIndex>& trt_selection_node_set,
+                                                                                                  ComputeCapability* trt_cc) const {
+  auto sub_graph = onnxruntime::IndexedSubGraph::Create();
+  std::unordered_set<NodeIndex> selection_node_set;
+
+  for (auto index : selection_cc->SubGraph()->Nodes()) {
+    selection_node_set.insert(index);
+  }
+
+  for (auto index : trt_cc->SubGraph()->Nodes()) {
+    if (selection_node_set.find(index) == selection_node_set.end()) {
+      continue;
+    }
+    if (trt_selection_node_set.find(index) == trt_selection_node_set.end()) {
+      continue;
+    }
+    sub_graph->Nodes().push_back(index);
+  }
+  auto compute_capability = ComputeCapability::Create(std::move(sub_graph));
+  compute_capability->copy_optimization_func(selection_cc);
+  return compute_capability;
 }
 }  // namespace onnxruntime

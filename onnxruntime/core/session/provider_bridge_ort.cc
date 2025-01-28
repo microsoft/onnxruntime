@@ -259,10 +259,10 @@ struct ProviderHostImpl : ProviderHost {
     static const GraphTransformerManager& graph_transformer_mgr = transformer_mgr;
     std::string optimizer_name(name);
 
-    // pre-defined graph transformers/optimizers
+    // Pre-defined graph transformers/optimizers
     static const std::string kEP_GRAPH_TRANSFORMER_CONSTANT_FOLDING_DQ = "ConstantFoldingDQ";
 
-    // ConstantFoldingDQ's optimization function
+    // ConstantFoldingDQ optimization function
     auto constant_folding_dq_optimization = [&](Graph& graph, const ComputeCapability& optimization_cc, ComputeCapability& cc_to_update) -> Status {
       std::string optimizer_name = kEP_GRAPH_TRANSFORMER_CONSTANT_FOLDING_DQ;
       auto logger = const_cast<logging::Logger*>(&logging::LoggingManager::DefaultLogger());
@@ -331,7 +331,7 @@ struct ProviderHostImpl : ProviderHost {
       return Status::OK();
     };
 
-    // ConstantFoldingDQ's selection function
+    // ConstantFoldingDQ selection function
     auto constant_folding_dq_selection = [&](const GraphViewer& graph_viewer) -> std::vector<std::unique_ptr<ComputeCapability>> {
       std::vector<std::unique_ptr<ComputeCapability>> result;
       std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
@@ -356,7 +356,7 @@ struct ProviderHostImpl : ProviderHost {
       return result;
     };
 
-    // optimizer lookup table
+    // Optimizer lookup table
     static std::unordered_map<std::string, std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>> optimizer_to_selection_function;
     if (optimizer_to_selection_function.find(kEP_GRAPH_TRANSFORMER_CONSTANT_FOLDING_DQ) == optimizer_to_selection_function.end()) {
       optimizer_to_selection_function[kEP_GRAPH_TRANSFORMER_CONSTANT_FOLDING_DQ] = constant_folding_dq_selection;
