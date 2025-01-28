@@ -2239,5 +2239,23 @@ IMPLEMENT_GRADIENT_BUILDER(GetAtanGradient) {
   return result;
 }
 
+IMPLEMENT_GRADIENT_BUILDER(GetGlobalMaxPoolGradient) {
+  // For GlobalMaxPool's gradient, a binary mask flags max elements.
+  // We multiply that mask by the incoming gradient, passing gradients only to maxima.
+  std::vector<NodeDef> result;
+  result.push_back(NodeDef("Shape", {I(0)}, {IA("X_shape")}));
+  result.push_back(NodeDef("Expand", {O(0), IA("X_shape")}, {IA("expanded_Y")}));
+  result.push_back(NodeDef("Equal", {I(0), IA("expanded_Y")}, {IA("mask")}));
+  result.push_back(NodeDef("Cast",
+                           {IA("mask")},
+                           {IA("mask_cast")},
+                           {MakeAttribute("to", static_cast<int64_t>(IElemType(0)))}));
+
+  result.push_back(NodeDef("Expand", {GO(0), IA("X_shape")}, {IA("expanded_dY")}));
+  result.push_back(NodeDef("Mul", {IA("mask_cast"), IA("expanded_dY")}, {GI(0)}));
+
+  return result;
+}
+
 }  // namespace training
 }  // namespace onnxruntime
