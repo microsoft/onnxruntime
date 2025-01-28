@@ -130,9 +130,6 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
       if (qnn_options.find("backend_path") == qnn_options.end()) {
         qnn_options["backend_path"] = "QnnHtp.dll";
       }
-      if (qnn_options.find("enable_htp_fp16_precision") == qnn_options.end()) {
-        qnn_options["enable_htp_fp16_precision"] = "1";
-      }
 
       sessionOptions.AppendExecutionProvider("QNN", qnn_options);
 #endif
