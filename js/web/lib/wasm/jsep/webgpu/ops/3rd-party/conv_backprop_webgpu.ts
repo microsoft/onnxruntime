@@ -150,13 +150,13 @@ export const createConvTranspose2DProgramInfo = (
         `;
         if (aComponents === 1) {
           calcStr += `
-          let w_offset = ${w.indicesToOffset(`${w.type.indices}(u32(wRPerm), u32(wCPerm), inputChannel, wOutChannel)`)};
+          let w_offset = ${w.indicesToOffset(`${w.type.indices}(u32(wRPerm), u32(wCPerm), inputChannel % uniforms.input_channels_per_group, wOutChannel)`)};
           let wValue = ${w.getByOffset(`w_offset / ${bComponents}`)};
           dotProd = dotProd + xValue * wValue;`;
         } else {
           for (let c = 0; c < aComponents; c++) {
             calcStr += `
-            let wValue${c} = ${w.getByOffset(`${w.indicesToOffset(`${w.type.indices}(u32(wRPerm), u32(wCPerm), inputChannel + ${c}, wOutChannel)`)} / ${bComponents}`)};
+            let wValue${c} = ${w.getByOffset(`${w.indicesToOffset(`${w.type.indices}(u32(wRPerm), u32(wCPerm), inputChannel % uniforms.input_channels_per_group / ${aComponents}, wOutChannel)`)} / ${bComponents}`)}[${c}];
             dotProd = dotProd + xValue[${c}] * wValue${c};`;
           }
         }
@@ -240,7 +240,7 @@ export const createConvTranspose2DProgramInfo = (
                   packInputAs4
                     ? `
                 var x_offset = ${dy.indicesToOffset(`${dy.type.indices}(batch, idyR, idyC, inputChannel)`)} / ${aComponents};
-                var w_offset = ${w.indicesToOffset(`${w.type.indices}(wRPerm, wCPerm, inputChannel, wOutChannel)`)} / ${bComponents};
+                var w_offset = ${w.indicesToOffset(`${w.type.indices}(wRPerm, wCPerm, 0, wOutChannel)`)} / ${bComponents};
                   `
                     : ''
                 }
