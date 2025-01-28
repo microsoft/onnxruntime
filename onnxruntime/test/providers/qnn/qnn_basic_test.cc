@@ -1045,7 +1045,6 @@ TEST_F(QnnHTPBackendTests, DumpJsonQNNGraph) {
   ASSERT_TRUE(std::filesystem::create_directory(dump_dir));
 
   so.AppendExecutionProvider("QNN", options);
-  Ort::Status status(OrtSessionOptionsAppendExecutionProvider_CPU(so, 1));
   Ort::Session session(*ort_env, ort_model_path, so);
 
   // Check that QNN JSON file(s) exist.
