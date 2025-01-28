@@ -2657,20 +2657,26 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     }
   }
 
+  // Enable EP related L2+ graph optimizations:
+  // 1. Dequantize INT32, UINT16, INT16 constant to FP32 -> Apply constant folding on DQ nodes
   std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)> selection_func;
   auto status = g_host->GetEPOptimizerByName("ConstantFoldingDQ", graph_transformer_mgr, selection_func);
-  auto optimizer_cc = selection_func(graph);
+  auto optimization_cc = selection_func(graph);
 
   std::unordered_map<NodeIndex, NodeIndex> consumer_to_dq; 
   CreateConsumerToDqMap(graph, consumer_to_dq);
 
-
+  // Create compute capability
   int number_of_trt_nodes = 0, subgraph_index = 0;
   for (const auto& group : supported_nodes_vector) {
     if (!group.first.empty()) {
       std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph, model_hash, subgraph_index);
       auto compute_capability = ComputeCapability::Create(std::move(sub_graph));
       
+      // update compute capability to add node_to_optimize
+      for (auto& cc : optimization_cc) {
+        compute_capability->add_nodes_to_optimize(std::move(cc));
+      }
       
       result.push_back(std::move(compute_capability));
       //result.push_back(ComputeCapability::Create(std::move(sub_graph)));

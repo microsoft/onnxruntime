@@ -499,6 +499,8 @@ struct ComputeCapability final {
 
   std::unique_ptr<IndexedSubGraph>& SubGraph() { return g_host->ComputeCapability__SubGraph(this); }
 
+  void add_nodes_to_optimize(std::unique_ptr<ComputeCapability> optimization_cc) { g_host->ComputeCapability__add_nodes_to_optimize(this, std::move(optimization_cc)); }
+
   ComputeCapability() = delete;
   ComputeCapability(const ComputeCapability&) = delete;
   void operator=(const ComputeCapability&) = delete;

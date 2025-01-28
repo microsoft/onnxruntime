@@ -198,8 +198,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForEP(
       break;
     }
     case TransformerLevel::Level2: {
+      const InlinedHashSet<NodeIndex> node_index_set = {};
       transformers.emplace_back(std::make_unique<ConstantFoldingDQ>(cpu_execution_provider, false /*skip_dequantize_linear*/,
-                                                                    session_options.config_options));
+                                                                    session_options.config_options, node_index_set));
       break;
     }
     case TransformerLevel::Level3: {

@@ -142,6 +142,10 @@ struct Node__EdgeIterator {
 struct ProviderHost {
   virtual const OrtApiBase* OrtGetApiBase() = 0;
 
+  virtual Status GetEPOptimizerByName(const std::string& name,
+                                      const GraphTransformerManager& graph_transformer_mgr,
+                                      std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>& selection_func) = 0;
+
   virtual void* HeapAllocate(size_t size) = 0;
   virtual void HeapFree(void*) = 0;
 
@@ -595,6 +599,7 @@ struct ProviderHost {
   virtual std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) = 0;
   virtual void ComputeCapability__operator_delete(ComputeCapability* p) = 0;
   virtual std::unique_ptr<IndexedSubGraph>& ComputeCapability__SubGraph(ComputeCapability* p) = 0;
+  virtual void ComputeCapability__add_nodes_to_optimize(ComputeCapability* p, std::unique_ptr<ComputeCapability> optimization_cc) = 0;
 
   // DataTransferManager
   virtual Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst) = 0;
@@ -1221,10 +1226,6 @@ struct ProviderHost {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   virtual Status LoadDynamicLibrary(onnxruntime::PathString library_name) = 0;
 #endif
-
-  virtual Status GetEPOptimizerByName(const std::string& optimizer_name,
-                                      const GraphTransformerManager& graph_transformer_mgr,
-                                      std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>& selection_func) = 0;
 
   // ModelMetadefIdGenerator
   virtual std::unique_ptr<ModelMetadefIdGenerator> ModelMetadefIdGenerator__construct() = 0;

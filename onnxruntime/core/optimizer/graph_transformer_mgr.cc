@@ -44,6 +44,27 @@ common::Status GraphTransformerManager::ApplyTransformers(Graph& graph, Transfor
   return Status::OK();
 }
 
+common::Status GraphTransformerManager::ApplyTransformer(Graph& graph, std::string& name,
+                                                         const logging::Logger& logger) const {
+  auto transformer = GetTransformerByName(name);
+  if (!transformer) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "This transformer is not registered " + name);
+  }
+  
+  bool modified = false;
+  for (unsigned step = 0; step < steps_; ++step) {
+    if (step > 0 && transformer->ShouldOnlyApplyOnce()) {
+      break;
+    }
+    ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, logger));
+    if (!modified) {
+      break;
+    }
+  }
+
+  return Status::OK();
+}
+
 common::Status GraphTransformerManager::Register(std::unique_ptr<GraphTransformer> transformer,
                                                  TransformerLevel level) {
   const auto& name = transformer->Name();

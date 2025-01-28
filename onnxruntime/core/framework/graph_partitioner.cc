@@ -293,11 +293,14 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
                        IExecutionProvider::FusionStyle fusion_style,
                        const std::string& provider_type,
                        GraphPartitioner::Mode mode,
-                       int& fused_node_unique_id) {
+                       int& fused_node_unique_id,
+                       bool* subgraph_assigned_to_ep) {
   Node* result = nullptr;
+  *subgraph_assigned_to_ep = false;
 
   if (nullptr == capability.GetMetaDef()) {
     TryAssignSingleNode(graph, capability, provider_type);
+    *subgraph_assigned_to_ep = true;
   } else {
     // The <provider> can run a fused <sub_graph> in the <graph>.
 
@@ -360,10 +363,15 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
           }
         }
       }
+      *subgraph_assigned_to_ep = true;
     }
   }
 
   return result;
+}
+
+static Status TransformGraph(Graph& graph, const ComputeCapability& this_optimization, ComputeCapability& cc_to_update) {
+
 }
 
 // for the current EP, recursively iterate through the Graph and any nested subgraphs (recursion is bottom-up).
@@ -441,7 +449,20 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                                          entry->sub_graph->GetMetaDef() != nullptr;
                                                 }));
   for (auto& capability : capabilities) {
-    Node* n = PlaceNode(graph, *capability->sub_graph, fusion_style, type, mode, fused_node_unique_id);
+    bool subgraph_assigned_to_ep = false;
+    Node* n = PlaceNode(graph, *capability->sub_graph, fusion_style, type, mode, fused_node_unique_id, &subgraph_assigned_to_ep);
+
+    // If the subgraph is assigned to the ep and the ComputeCapability has nodes_to_optimize,
+    // run EP related optimizations and update compute capability (cc).
+    if (subgraph_assigned_to_ep && !capability->nodes_to_optimize.empty()) {
+      for (auto& optimization_cc : capability->nodes_to_optimize) {
+        if (optimization_cc->optimization_func) {
+          optimization_cc->optimization_func(graph, *optimization_cc, *capability);
+          // #TODO: Handle nested optimization func?
+        }
+      }
+    }
+
     if (n != nullptr) {
       // searching in kernel registries, if no kernel registered for the fused_node, use compile approach
       if (!KernelRegistryManager::HasImplementationOf(kernel_registry_mgr, *n, type, logger)) {
