@@ -84,8 +84,40 @@ You can check [here](https://github.com/scxiao/ort_test/tree/master/python/run_o
 model on either the CPU or MIGraphX Execution Provider.
 
 
-## Configuration Options
-MIGraphX providers an environment variable ORT_MIGRAPHX_FP16_ENABLE to enable the FP16 mode.
+## Session Options
+
+These flags can be invoked via the Execution Provider Options when creating an Onnxruntime Session Object
+
+|Session Option Flag | Values | Description|
+|---|---|---|
+
+
+## Environment Variaables
+
+Envirinoment variables can be invoked on a global level. These are typically used via 
+
+export ORT_MIGRAPHX_XXXXX = <value> 
+
+or invoked before running a binary as
+
+ORT_MIGRAPHX_XXXX=<value> python3 example_script.py
+
+This will start an inference session and superceed inputs invoked via Session() 
+
+|Environment Option Flag | Values | Description|
+|---|---|---|
+| ORT_MIGRAPHX_DUMP_MODEL_OPS | 1 or 0 | enable 
+| ORT_MIGRAPHX_FP16_ENABLE | 1 or 0 | enable FP16 quantization mode via the MIGraphX API of the input model|
+| ORT_MIGRAPHX_INT8_ENABLE | 1 or 0 | enable int8 static quantization mode of the input model via the MIGraphX API.\n Requires calibration table path vars to be set.|
+| ORT_MIGRAPHX_INT8_CALIBRATION_TABLE_NAME | <absolute path to calibration table> | Path to a set of input calibration data for int8 static model quantization |
+| ORT_MIGRAPHX_INT8_USE_NATIVE_CALIBRATION_TABLE | 1 or 0 | Use a calibration table from Nvidia native int8 format or |
+| ORT_MIGRAPHX_SAVE_COMPILED_MODEL | 1 or 0 | Enable saving a model as an MIGraphX (.mxr) format after compile |
+| ORT_MIGRAPHX_SAVE_COMPILED_PATH | <string> - Path to write .mxr file (default is ./compiled_model.mxr) | Path where the MIGraphX compiled model is stored. |
+| ORT_MIGRAPHX_LOAD_COMPILED_MODEL | 1 or 0 | Enable loading a model as an MIGraphX (.mxr) format after compile |
+| ORT_MIGRAPHX_LOAD_COMPILED_PATH | <string> - Path to read .mxr file (default is ./compiled_model.mxr) | Path where the MIGraphX compiled model is stored. |
+| ORT_MIGRAPHX_EXHAUSTIVE_TUNE | 1 or 0 (default 0) | Enable exhaustive tuning of parameters as part of compilation via the MIGraphX API. Adds additional compile time for a potential perf boost.|
+
+
 
 ## Samples
 
