@@ -499,6 +499,7 @@ struct ComputeCapability final {
 
   std::unique_ptr<IndexedSubGraph>& SubGraph() { return g_host->ComputeCapability__SubGraph(this); }
 
+  void copy_optimization_func(ComputeCapability* selection_cc) { g_host->ComputeCapability__copy_optimization_func(this, selection_cc); }
   void add_nodes_to_optimize(std::unique_ptr<ComputeCapability> optimization_cc) { g_host->ComputeCapability__add_nodes_to_optimize(this, std::move(optimization_cc)); }
 
   ComputeCapability() = delete;

@@ -592,6 +592,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    */
   nvinfer1::IBuilder* GetBuilder(TensorrtLogger& trt_logger) const;
 
-  void CreateConsumerToDqMap(const GraphViewer& graph, std::unordered_map<NodeIndex, NodeIndex>& map) const;
+  void CreateConsumerToDqMap(const GraphViewer& graph, std::unordered_set<NodeIndex>& selection_node_set, std::unordered_map<NodeIndex, NodeIndex>& consumer_to_dq) const;
+  std::unique_ptr<ComputeCapability> TensorrtExecutionProvider::CreateOptimizationComputeCapability(ComputeCapability* selection_cc,
+                                                                                                    std::unordered_set<NodeIndex>& trt_selection_node_set,
+                                                                                                    ComputeCapability* trt_cc) const;
 };
 }  // namespace onnxruntime

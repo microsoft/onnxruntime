@@ -259,16 +259,37 @@ void TensorrtExecutionProvider::SetAllGraphInputs(Graph& graph) const {
   graph.SetInputs(graph_inputs_including_initializers);
 }
 
-void TensorrtExecutionProvider::CreateConsumerToDqMap(const GraphViewer& graph, std::unordered_map<NodeIndex, NodeIndex>& map) const {
-  LOGS_DEFAULT(VERBOSE) << "Create consumer node to DQ node map ...";
+void TensorrtExecutionProvider::CreateConsumerToDqMap(const GraphViewer& graph,
+                                                      std::unordered_set<NodeIndex>& selection_node_set,
+                                                      std::unordered_map<NodeIndex, NodeIndex>& consumer_to_dq) const {
+  LOGS_DEFAULT(VERBOSE) << "Select qualified DQ nodes ...";
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);
   for (auto index : node_index) {
     auto* node = graph.GetNode(index);
-    if (node->OpType() == "DequantizeLinear" && node->GetOutputEdgesCount() == 1) { // DQ does not produce graph output, single consumer
+    if (!node) {
+      continue;
+    }
+
+    const auto* input_def = node->InputDefs()[0];  // Get NodeArg of the initializer of the DequantizeLinear node;
+    auto data_type = input_def->TypeAsProto()->tensor_type().elem_type();
+    auto constant_initializer = graph.IsConstantInitializer(input_def->Name(), true);
+
+    // Node selection: (i.e. initializer -> DQ -> bias of X)
+    // 1. DequantizeLinear op
+    // 2. DQ node does not produce graph output, single consumer
+    // 3. The fist input of DQ is constant initializer.
+    // 4. The data type of initializer is INT32, UINT16 or INT16
+    // 4. X should be Gemm, Conv or LayerNormalization ?
+    if (node->OpType() == "DequantizeLinear" && 
+        node->GetOutputEdgesCount() == 1 &&
+        (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32 || data_type == ONNX_NAMESPACE::TensorProto_DataType_INT16 || data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT16) &&
+        constant_initializer) {
       const Node& consumer_node = *node->OutputNodesBegin();
-      map[consumer_node.Index()] = index;
+      selection_node_set.insert(index);
+      consumer_to_dq[consumer_node.Index()] = index;
       LOGS_DEFAULT(VERBOSE) << consumer_node.Name() << " <- " << node->Name();
     }
+    LOGS_DEFAULT(VERBOSE) << "Total " << selection_node_set.size() << " DequantizeLinear nodes are selected.";
   }
 }
 }  // namespace onnxruntime

@@ -599,6 +599,7 @@ struct ProviderHost {
   virtual std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) = 0;
   virtual void ComputeCapability__operator_delete(ComputeCapability* p) = 0;
   virtual std::unique_ptr<IndexedSubGraph>& ComputeCapability__SubGraph(ComputeCapability* p) = 0;
+  virtual void ComputeCapability__copy_optimization_func(ComputeCapability* p, ComputeCapability* selection_cc) = 0;
   virtual void ComputeCapability__add_nodes_to_optimize(ComputeCapability* p, std::unique_ptr<ComputeCapability> optimization_cc) = 0;
 
   // DataTransferManager

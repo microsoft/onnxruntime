@@ -263,7 +263,7 @@ struct ProviderHostImpl : ProviderHost {
     static const std::string kEP_GRAPH_TRANSFORMER_CONSTANT_FOLDING_DQ = "ConstantFoldingDQ";
 
     // ConstantFoldingDQ's optimization function
-    auto constant_folding_dq_optimization = [&](Graph& graph, const ComputeCapability& this_optimization, ComputeCapability& cc_to_update) -> Status {
+    auto constant_folding_dq_optimization = [&](Graph& graph, const ComputeCapability& optimization_cc, ComputeCapability& cc_to_update) -> Status {
       std::string optimizer_name = kEP_GRAPH_TRANSFORMER_CONSTANT_FOLDING_DQ;
       auto logger = const_cast<logging::Logger*>(&logging::LoggingManager::DefaultLogger());
       std::unordered_set<std::string> original_initializers_to_remove;
@@ -274,7 +274,7 @@ struct ProviderHostImpl : ProviderHost {
       //   1. get original initializers to remove 
       //   2. add new initializers
       //   3. create dq node index set
-      for (const auto& index : this_optimization.sub_graph->nodes) {
+      for (const auto& index : optimization_cc.sub_graph->nodes) {
         auto node = graph.GetNode(index);
         if (node->OpType() != "DequantizeLinear") {
           continue;
@@ -339,7 +339,7 @@ struct ProviderHostImpl : ProviderHost {
       InitializedTensorSet constant_inputs;
       const InlinedHashSet<std::string> excluded_initializers;
 
-      // Select DequantizeLinear node which dequantizes the bias/constant of Conv, Gemm, LayerNormalization node ... (i.e. initializer -> DQ -> bias of X):
+      // Select DequantizeLinear node where all inputs are constant
       for (const auto& index : node_index) {
         const auto& node = graph_viewer.GetNode(index);
         if (node->OpType() != "DequantizeLinear") {
@@ -362,7 +362,6 @@ struct ProviderHostImpl : ProviderHost {
       optimizer_to_selection_function[kEP_GRAPH_TRANSFORMER_CONSTANT_FOLDING_DQ] = constant_folding_dq_selection;
     }
 
-    // auto transformer = graph_transformer_mgr->GetTransformerByName(optimizer_name);
     auto look_up = optimizer_to_selection_function.find(optimizer_name);
     if (look_up != optimizer_to_selection_function.end()) {
       selection_func = optimizer_to_selection_function[optimizer_name];
@@ -883,6 +882,7 @@ struct ProviderHostImpl : ProviderHost {
   std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) override { return std::make_unique<ComputeCapability>(std::move(t_sub_graph)); }
   void ComputeCapability__operator_delete(ComputeCapability* p) override { delete p; }
   std::unique_ptr<IndexedSubGraph>& ComputeCapability__SubGraph(ComputeCapability* p) override { return p->sub_graph; }
+  void ComputeCapability__copy_optimization_func(ComputeCapability* p, ComputeCapability* selection_cc) override { p->optimization_func = selection_cc->optimization_func; }
   void ComputeCapability__add_nodes_to_optimize(ComputeCapability* p, std::unique_ptr<ComputeCapability> optimization_cc) override { p->nodes_to_optimize.push_back(std::move(optimization_cc)); }
 
   // DataTransferManager (wrapped)

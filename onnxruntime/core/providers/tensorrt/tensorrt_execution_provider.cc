@@ -2658,13 +2658,17 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   }
 
   // Enable EP related L2+ graph optimizations:
-  // 1. Dequantize INT32, UINT16, INT16 constant to FP32 -> Apply constant folding on DQ nodes
+  // 1. Dequantize INT32, UINT16, INT16 constant to FP32 (Apply constant folding on DQ nodes)
   std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)> selection_func;
   auto status = g_host->GetEPOptimizerByName("ConstantFoldingDQ", graph_transformer_mgr, selection_func);
-  auto optimization_cc = selection_func(graph);
+  std::vector<std::unique_ptr<ComputeCapability>> selection_cc;
+  if (selection_func) {
+    selection_cc = selection_func(graph);
+  }
 
-  std::unordered_map<NodeIndex, NodeIndex> consumer_to_dq; 
-  CreateConsumerToDqMap(graph, consumer_to_dq);
+  std::unordered_set<NodeIndex> trt_selection_node_set;
+  std::unordered_map<NodeIndex, NodeIndex> consumer_to_dq; // consumer node -> dq node
+  CreateConsumerToDqMap(graph, trt_selection_node_set, consumer_to_dq);
 
   // Create compute capability
   int number_of_trt_nodes = 0, subgraph_index = 0;
@@ -2673,13 +2677,13 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
       std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph, model_hash, subgraph_index);
       auto compute_capability = ComputeCapability::Create(std::move(sub_graph));
       
-      // update compute capability to add node_to_optimize
-      for (auto& cc : optimization_cc) {
-        compute_capability->add_nodes_to_optimize(std::move(cc));
+      // add optimization compute capability to node_to_optimize
+      for (auto& cc : selection_cc) {
+        std::unique_ptr<ComputeCapability> optimization_cc = CreateOptimizationComputeCapability(cc.get(), trt_selection_node_set, compute_capability.get());
+        compute_capability->add_nodes_to_optimize(std::move(optimization_cc));
       }
       
       result.push_back(std::move(compute_capability));
-      //result.push_back(ComputeCapability::Create(std::move(sub_graph)));
       number_of_trt_nodes += static_cast<int>(group.first.size());
       subgraph_index++;
     }
@@ -2697,6 +2701,30 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   // The context map is only used during EP compile time, release it to save memory space.
   subgraph_context_map_.clear();
   return result;
+}
+
+std::unique_ptr<ComputeCapability> TensorrtExecutionProvider::CreateOptimizationComputeCapability(ComputeCapability* selection_cc,
+                                                                                                  std::unordered_set<NodeIndex>& trt_selection_node_set,
+                                                                                                  ComputeCapability* trt_cc) const {
+  auto sub_graph = onnxruntime::IndexedSubGraph::Create();
+  std::unordered_set<NodeIndex> selection_node_set;
+
+  for (auto index : selection_cc->SubGraph()->Nodes()) {
+    selection_node_set.insert(index);
+  }
+
+  for (auto index : trt_cc->SubGraph()->Nodes()) {
+    if (selection_node_set.find(index) == selection_node_set.end()) {
+      continue;
+    }
+    if (trt_selection_node_set.find(index) == trt_selection_node_set.end()) {
+      continue;
+    }
+    sub_graph->Nodes().push_back(index);
+  }
+  auto compute_capability = ComputeCapability::Create(std::move(sub_graph));
+  compute_capability->copy_optimization_func(selection_cc);
+  return compute_capability;
 }
 
 /**
