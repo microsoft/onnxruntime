@@ -7,7 +7,7 @@
 
 set -e
 set -x
-export PATH=/opt/python/cp310-cp310/bin:$PATH
+
 USAGE_TEXT="Usage:
   -b|--build-directory <build directory>
     Specifies the build directory. Required.
@@ -65,7 +65,7 @@ if [[ -z "${BUILD_DIR}" || -z "${REDUCED_OPS_CONFIG_FILE}" ]]; then
     echo "$USAGE_TEXT"
     exit 1
 fi
-
+python3 -m pip install -r /onnxruntime_src/tools/ci_build/github/linux/python/requirements.txt
 # Perform a minimal build with required ops and run ORT minimal build UTs
 python3 /onnxruntime_src/tools/ci_build/build.py \
     --build_dir ${BUILD_DIR} --cmake_generator Ninja \

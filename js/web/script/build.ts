@@ -145,51 +145,15 @@ async function minifyWasmModuleJsForBrowser(filepath: string): Promise<string> {
       `new Worker(import.meta.url.startsWith('file:')?new URL(BUILD_DEFS.BUNDLE_FILENAME, import.meta.url):new URL(import.meta.url),`,
     );
 
-    // Find the first and the only occurrence of minified function implementation of "_emscripten_thread_set_strongref":
-    // ```js
-    // _emscripten_thread_set_strongref: (thread) => {
-    //   if (ENVIRONMENT_IS_NODE) {
-    //     PThread.pthreads[thread].ref();
-    //   }
-    // }
-    // ```
-    //
-    // It is minified to: (example)
-    // ```js
-    // function Pb(a){D&&N[a>>>0].ref()}
-    // ```
-
-    // The following code will look for the function name and mark the function call as pure, so that Terser will
-    // minify the code correctly.
-
-    const markedAsPure = [];
-    // First, try if we are working on the original (not minified) source file. This is when we are working with the
-    // debug build.
-    const isOriginal = contents.includes('PThread.pthreads[thread].ref()');
-    if (isOriginal) {
-      markedAsPure.push('PThread.pthreads[thread].ref');
-    } else {
-      // If it is not the original source file, we need to find the minified function call.
-      const matches = [...contents.matchAll(/\{[_a-zA-Z][_a-zA-Z0-9]*&&([_a-zA-Z][_a-zA-Z0-9]*\[.+?]\.ref)\(\)}/g)];
-      if (matches.length !== 1) {
-        throw new Error(
-          `Unexpected number of matches for minified "PThread.pthreads[thread].ref()" in "${filepath}": ${
-            matches.length
-          }.`,
-        );
-      }
-      // matches[0] is the first and the only match.
-      // matches[0][0] is the full matched string and matches[0][1] is the first capturing group.
-      markedAsPure.push(matches[0][1]);
-    }
-
+    // Use terser to minify the code with special configurations:
+    // - use `global_defs` to define `process` and `globalThis.process` as `undefined`, so terser can tree-shake the
+    //   Node.js specific code.
     const terser = await import('terser');
     const result = await terser.minify(contents, {
       module: true,
       compress: {
         passes: 2,
         global_defs: { process: undefined, 'globalThis.process': undefined },
-        pure_funcs: markedAsPure,
       },
     });
 

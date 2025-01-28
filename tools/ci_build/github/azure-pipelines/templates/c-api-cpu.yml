@@ -51,7 +51,7 @@ parameters:
 - name: QnnSDKVersion
   displayName: QNN SDK Version
   type: string
-  default: 2.28.0.241029
+  default: 2.30.0.250109
 
 stages:
 - template: linux-cpu-packaging-pipeline.yml
@@ -82,10 +82,12 @@ stages:
       packageName: 'onnxruntime-android'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
 
+- stage: Android_Java_API_AAR_Testing_Full
+  dependsOn: Android_Java_API_AAR_Packaging_Full
+  jobs:
   - template: android-java-api-aar-test.yml
     parameters:
       artifactName: 'onnxruntime-android-full-aar'
-      job_name_suffix: 'Full'
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
 
 - stage: Android_Java_API_AAR_Packaging_QNN
@@ -105,10 +107,12 @@ stages:
       ReleaseVersionSuffix: $(ReleaseVersionSuffix)
       QnnSDKVersion: ${{ parameters.QnnSDKVersion }}
 
+- stage: Final_AAR_Testing_Android_QNN
+  dependsOn: Android_Java_API_AAR_Packaging_QNN
+  jobs:
   - template: android-java-api-aar-test.yml
     parameters:
       artifactName: 'onnxruntime-android-qnn-aar'
-      job_name_suffix: 'QNN'
       packageName: 'onnxruntime-android-qnn'
       QnnSDKVersion: ${{ parameters.QnnSDKVersion }}
 
