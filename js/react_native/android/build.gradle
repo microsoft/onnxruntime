@@ -13,7 +13,6 @@ buildscript {
 }
 
 apply plugin: 'com.android.library'
-// apply plugin: "com.facebook.react"
 
 def getExtOrDefault(name) {
   return rootProject.ext.has(name) ? rootProject.ext.get(name) : project.properties['OnnxruntimeModule_' + name]
@@ -71,6 +70,7 @@ def REACT_NATIVE_VERSION = ['node', '--print', "JSON.parse(require('fs').readFil
 def REACT_NATIVE_MINOR_VERSION = REACT_NATIVE_VERSION.split("\\.")[1].toInteger()
 
 android {
+// This is needed by the new AndroidManifestNew.xml
   namespace "ai.onnxruntime.reactnative"
   compileSdkVersion getExtOrIntegerDefault('compileSdkVersion')
   buildToolsVersion getExtOrDefault('buildToolsVersion')
