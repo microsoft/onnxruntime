@@ -2106,15 +2106,6 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
     meta_def->constant_initializers().push_back(initializer);
   }
 
-  // Final output 2339, 2342, 2405, 2471, 2409
-  // Print graph output for subgraph 15
-  if (subgraph_index==15) {
-    LOGS_DEFAULT(VERBOSE) << "Finall graph output for subgraph 15 =";
-    for (const auto& output : outputs) {
-      LOGS_DEFAULT(VERBOSE) << output.second->Name() << ",";
-    }
-  }
-
   for (const auto& output : outputs) {
     if (output.second->Exists()) {
       meta_def->outputs().push_back(output.second->Name());
@@ -2507,7 +2498,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
         const bool is_context_node = node && !node->OpType().empty() && node->OpType() == "EPContext";
         if (is_context_node) {
           SubGraph_t supported_node_vector = {std::vector<long unsigned int>{i}, true};
-          std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, TRTGenerateId(graph), subgraph_idx++);
+          std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, model_hash, subgraph_idx++);
           result.push_back(ComputeCapability::Create(std::move(sub_graph)));
         }
     }
