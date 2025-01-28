@@ -21,7 +21,7 @@ parameters:
 - name: PublishNpmPackages
   displayName: 'Publish NPM packages'
   type: boolean
-  default: false
+  default: true
 
 jobs:
 - job: ReactNative_CI_Android
