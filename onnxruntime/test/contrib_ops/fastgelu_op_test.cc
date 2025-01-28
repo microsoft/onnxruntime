@@ -389,7 +389,7 @@ TEST(FastGeluTest, FastGeluWithoutBiasFloat16_8) {
 #if defined(USE_CUDA) || defined(USE_ROCM)
 TEST(FastGeluTest, FastGeluWithBias_BFloat16) {
 #ifdef USE_CUDA
-  int min_cuda_architecture = 530;
+  int min_cuda_architecture = 800;
   if (!HasCudaEnvironment(min_cuda_architecture)) {
     LOGS_DEFAULT(WARNING) << "Hardware NOT support BFP16";
     return;
@@ -429,6 +429,44 @@ TEST(FastGeluTest, FastGeluWithBias_BFloat16) {
   tester.AddInput<BFloat16>("X", input_dims, f_X);
   tester.AddInput<BFloat16>("bias", bias_dims, f_B);
   tester.AddOutput<BFloat16>("Y", output_dims, f_Y);
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#ifdef USE_CUDA
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#elif USE_ROCM
+  execution_providers.push_back(DefaultRocmExecutionProvider());
+#endif
+  tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
+}
+#endif
+
+// CUDA and ROCm only for double type.
+#if defined(USE_CUDA) || defined(USE_ROCM)
+TEST(FastGeluTest, FastGeluWithBias_Double) {
+  OpTester tester("FastGelu", 1, onnxruntime::kMSDomain);
+
+  int batch_size = 1;
+  int sequence_length = 2;
+  int hidden_size = 4;
+
+  std::vector<double> X = {
+      0.8, -0.5, 0.0, 1.0,
+      0.5, 0.2, 0.3, -0.6};
+
+  std::vector<double> B = {
+      -0.5, 0.6, 1.2, 2.1};
+
+  std::vector<double> Y = {
+      0.1851806640625, 0.054046630859375, 1.0615234375, 3.095703125,
+      0, 0.63037109375, 1.3984375, 1.3984375};
+
+  std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
+  std::vector<int64_t> bias_dims = {hidden_size};
+  std::vector<int64_t> output_dims = input_dims;
+
+  tester.AddInput<double>("X", input_dims, X);
+  tester.AddInput<double>("bias", bias_dims, B);
+  tester.AddOutput<double>("Y", output_dims, Y);
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
