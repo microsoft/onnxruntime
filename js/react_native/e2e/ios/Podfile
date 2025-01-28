@@ -3,6 +3,14 @@ require_relative '../node_modules/@react-native-community/cli-platform-ios/nativ
 
 platform :ios, '15.1'
 
+prepare_react_native_project!
+
+linkage = ENV['USE_FRAMEWORKS']
+if linkage != nil
+  Pod::UI.puts "Configuring Pod with #{linkage}ally linked Frameworks".green
+  use_frameworks! :linkage => linkage.to_sym
+end
+
 pre_install do |installer|
   # Custom pre-install script or commands
   puts "Running pre-install script..."
@@ -27,7 +35,6 @@ target 'OnnxruntimeModuleExample' do
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
-  use_frameworks!
 
   ort_c_local_pod_path = ENV['ORT_C_LOCAL_POD_PATH']
   if ort_c_local_pod_path != nil
@@ -38,10 +45,11 @@ target 'OnnxruntimeModuleExample' do
 
   inherit! :search_paths
   post_install do |installer|
-    # https://github.com/facebook/react-native/blob/main/packages/react-native/scripts/react_native_pods.rb#L197-L202
     react_native_post_install(
       installer,
       config[:reactNativePath],
+    # Set `mac_catalyst_enabled` to `true` in order to apply patches
+	  # necessary for Mac Catalyst builds
       :mac_catalyst_enabled => false,
     )
     __apply_Xcode_12_5_M1_post_install_workaround(installer)

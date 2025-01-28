@@ -366,7 +366,7 @@ def run_tuning_step0(task, fp16_baseline, all_ops, optimized_ops):
 
     # Only weights in FP16
     task.run(
-        fp16_baseline + fp32_io + ["--op_block_list"] + [o for o in all_ops] + ["--force_fp16_initializers"],
+        fp16_baseline + fp32_io + ["--op_block_list"] + list(all_ops) + ["--force_fp16_initializers"],
         "FP32 except weights in FP16",
     )
 
