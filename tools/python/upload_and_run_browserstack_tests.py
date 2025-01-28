@@ -169,4 +169,5 @@ if __name__ == "__main__":
     print("Test suite details: ", test_suite_details_url)
     print("=" * 30)
     if tests_status != "passed":
-        raise Exception(f"Tests failed. Go to {test_suite_details_url} for more details.")
+        output_str = f"Tests failed. Go to {test_suite_details_url} for more details & go to 'End-to-end tests for iOS & Android ' in the ORT Mobile OneNote to see more details on how to access the BrowserStack logs."
+        raise Exception(output_str)
