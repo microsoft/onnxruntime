@@ -17,17 +17,13 @@
 #include "HTP/QnnHtpSystemContext.h"
 #include "Saver/QnnSaver.h"
 #include <gsl/gsl>
-#include "core/framework/endian_utils.h"
-#include "core/common/logging/capture.h"
+
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/qnn_allocator.h"
+#include "core/providers/qnn/qnn_telemetry.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 #include "core/providers/qnn/builder/qnn_configs_helper.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
-
-#ifdef _WIN32
-#include <winmeta.h>
-#include "core/platform/tracing.h"
-#endif
 
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1
@@ -262,12 +258,12 @@ void QnnLogging(const char* format,
   const auto data_type = ::onnxruntime::logging::DataType::SYSTEM;
 
   if (logger.OutputIsEnabled(severity, data_type)) {
-    ::onnxruntime::logging::Capture(logger,
-                                    severity,
-                                    ::onnxruntime::logging::Category::onnxruntime,
-                                    data_type,
-                                    ORT_WHERE)
-        .ProcessPrintf(format, argument_parameter);
+    auto log_capture = Factory<logging::Capture>::Create(logger,
+                                                         severity,
+                                                         logging::Category::onnxruntime,
+                                                         data_type,
+                                                         ORT_WHERE);
+    log_capture->ProcessPrintf(format, argument_parameter);
   }
 }
 
@@ -408,25 +404,25 @@ Status QnnBackendManager::CreateDevice() {
     // Set SoC Model. The *enum* Qnn_SocModel_t is deprecated and will not be updated in the future. Therefore,
     // must use the latest SDK documentation to get the SoC model of the latest HW.
     if (soc_model_ != QNN_SOC_MODEL_UNKNOWN) {
-      QnnHtpDevice_CustomConfig_t& custom_config = device_configs_builder.PushCustomConfig();
-      custom_config.option = QNN_HTP_DEVICE_CONFIG_OPTION_SOC;
-      custom_config.socModel = soc_model_;
+      gsl::not_null<QnnHtpDevice_CustomConfig_t*> custom_config = device_configs_builder.PushCustomConfig();
+      custom_config->option = QNN_HTP_DEVICE_CONFIG_OPTION_SOC;
+      custom_config->socModel = soc_model_;
 
-      QnnDevice_Config_t& device_config = device_configs_builder.PushConfig();
-      device_config.option = QNN_DEVICE_CONFIG_OPTION_CUSTOM;
-      device_config.customConfig = &custom_config;
+      gsl::not_null<QnnDevice_Config_t*> device_config = device_configs_builder.PushConfig();
+      device_config->option = QNN_DEVICE_CONFIG_OPTION_CUSTOM;
+      device_config->customConfig = custom_config;
     }
 
     // Set the minimum HTP architecture. The driver will use ops that are compatible with this minimum architecture.
     if (htp_arch_ != QNN_HTP_DEVICE_ARCH_NONE) {
-      QnnHtpDevice_CustomConfig_t& custom_config = device_configs_builder.PushCustomConfig();
-      custom_config.option = QNN_HTP_DEVICE_CONFIG_OPTION_ARCH;
-      custom_config.arch.arch = htp_arch_;
-      custom_config.arch.deviceId = device_id_;
+      gsl::not_null<QnnHtpDevice_CustomConfig_t*> custom_config = device_configs_builder.PushCustomConfig();
+      custom_config->option = QNN_HTP_DEVICE_CONFIG_OPTION_ARCH;
+      custom_config->arch.arch = htp_arch_;
+      custom_config->arch.deviceId = device_id_;
 
-      QnnDevice_Config_t& device_config = device_configs_builder.PushConfig();
-      device_config.option = QNN_DEVICE_CONFIG_OPTION_CUSTOM;
-      device_config.customConfig = &custom_config;
+      gsl::not_null<QnnDevice_Config_t*> device_config = device_configs_builder.PushConfig();
+      device_config->option = QNN_DEVICE_CONFIG_OPTION_CUSTOM;
+      device_config->customConfig = custom_config;
     }
   }
 
@@ -1163,15 +1159,16 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
   }
 
   bool tracelogging_provider_ep_enabled = false;
-  const Env& env = Env::Default();
-  auto& provider = env.GetTelemetryProvider();
-  auto level = provider.Level();
+#ifdef _WIN32
+  auto& provider = QnnTelemetry::Instance();
   if (provider.IsEnabled()) {
+    auto level = provider.Level();
     auto keyword = provider.Keyword();
     if ((keyword & static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)) != 0 && level >= 5) {
       tracelogging_provider_ep_enabled = true;
     }
   }
+#endif  // defined(_WIN32)
 
   // ETW disabled previously, but enabled now
   if (ProfilingLevel::INVALID == profiling_level_etw_ && tracelogging_provider_ep_enabled) {
@@ -1389,18 +1386,8 @@ void QnnBackendManager::LogQnnProfileEventAsTraceLogging(
     const std::string& timingSource,
     const std::string& eventLevel,
     const char* eventIdentifier) {
-  TraceLoggingWrite(
-      telemetry_provider_handle,
-      "QNNProfilingEvent",
-      TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Profiling)),
-      TraceLoggingLevel(WINEVENT_LEVEL_VERBOSE),
-      TraceLoggingValue(timestamp, "Timestamp"),
-      TraceLoggingString(message.c_str(), "Message"),
-      TraceLoggingString(qnnScalarValue.c_str(), "Value"),
-      TraceLoggingString(unit.c_str(), "Unit of Measurement"),
-      TraceLoggingString(timingSource.c_str(), "Timing Source"),
-      TraceLoggingString(eventLevel.c_str(), "Event Level"),
-      TraceLoggingString(eventIdentifier, "Event Identifier"));
+  QnnTelemetry& qnn_telemetry = QnnTelemetry::Instance();
+  qnn_telemetry.LogQnnProfileEvent(timestamp, message, qnnScalarValue, unit, timingSource, eventLevel, eventIdentifier);
 }
 #endif
 
@@ -1552,7 +1539,8 @@ void* QnnBackendManager::LoadLib(const char* file_name, int flags, std::string& 
   auto file_path = std::filesystem::path(file_name);
   if (!file_path.is_absolute()) {
     // construct an absolute path from ORT runtime path + file_name and check whether it exists.
-    auto pathstring = Env::Default().GetRuntimePath() + ToPathString(file_name);
+    const Env& env = GetDefaultEnv();
+    auto pathstring = env.GetRuntimePath() + ToPathString(file_name);
     auto absolute_path = pathstring.c_str();
     if (std::filesystem::exists(std::filesystem::path(absolute_path))) {
       // load library from absolute path and search for dependencies there.
