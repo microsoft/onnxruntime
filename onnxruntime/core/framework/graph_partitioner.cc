@@ -141,13 +141,6 @@ auto get_capabilities = [](const IExecutionProvider& ep,
                            const onnxruntime::GraphTransformerManager& graph_transformer_manager) {
   std::vector<std::unique_ptr<ComputeCapability>> capabilities;
   capabilities = ep.GetCapability(graph_viewer, kernel_lookup, graph_transformer_manager);
-  /*
-  if (ep.RequestCustomizedGraphOptimizationForEP()) {
-    capabilities = ep.GetCapability(graph_viewer, kernel_lookup, graph_transformer_manager);
-  } else {
-    //capabilities = ep.GetCapability(graph_viewer, kernel_lookup);
-  }
-  */
 
   // In theory an EP could return an empty capability. Remove those.
   capabilities.erase(std::remove_if(capabilities.begin(), capabilities.end(),
@@ -452,13 +445,13 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     bool subgraph_assigned_to_ep = false;
     Node* n = PlaceNode(graph, *capability->sub_graph, fusion_style, type, mode, fused_node_unique_id, &subgraph_assigned_to_ep);
 
-    // If the subgraph is assigned to the ep and the ComputeCapability has nodes_to_optimize,
-    // run EP related optimizations and update compute capability (cc).
+    // If the subgraph is assigned to the EP and the ComputeCapability has nodes_to_optimize,
+    // run EP related optimizations and update ComputeCapability.
     if (subgraph_assigned_to_ep && !capability->nodes_to_optimize.empty()) {
       for (auto& optimization_cc : capability->nodes_to_optimize) {
         if (optimization_cc->optimization_func) {
           optimization_cc->optimization_func(graph, *optimization_cc, *capability);
-          // #TODO: Handle nested optimization func?
+          // #TODO: Handle nested optimization ComputeCapability
         }
       }
     }

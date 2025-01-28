@@ -140,8 +140,6 @@ class IExecutionProvider {
                 const IKernelLookup& kernel_lookup,
                 const onnxruntime::GraphTransformerManager& graph_transformer_mgr) const;
 
-  virtual bool RequestCustomizedGraphOptimizationForEP() const { return false; }
-
   /**
      Get kernel registry per execution provider type.
      The KernelRegistry share pointer returned is shared across sessions.

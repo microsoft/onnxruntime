@@ -25,9 +25,9 @@ struct ComputeCapability {
   ComputeCapability(std::unique_ptr<IndexedSubGraph> t_sub_graph)
       : sub_graph(std::move(t_sub_graph)) {}
      
-  // optional function to optimize this ComputeCapability
-  // this will be called by ORT once the ComputeCapability is assigned to the EP
-  // Optimization: std::function<Status(const Graph&, const ComputeCapability& this_optimization, ComputeCapability& cc_to_update)>
+  // Optional function to optimize this ComputeCapability.
+  // This will be called by ORT once the ComputeCapability is assigned to the EP
+  // Optimization: std::function<Status(const Graph& graph, const ComputeCapability& this_optimization, ComputeCapability& cc_to_update)>
   std::function<Status(Graph&, const ComputeCapability&, ComputeCapability&)> optimization_func;
 
   // optional ComputeCapability instances for sets of nodes within this ComputeCapability that should be optimized.
