@@ -287,11 +287,6 @@ static const char* const kOrtSessionOptionShareEpContexts = "ep.share_ep_context
 static const char* const kOrtSessionOptionsEpContextModelExternalInitializersFileName =
     "ep.context_model_external_initializers_file_name";
 
-// For nodes fallback to CPU use this config to control the minimum size of the initializer
-// when externalizing it during serialization for EP context model
-static const char* const kOrtSessionOptionsEpContextModelExternalInitializersMinSizeInBytes =
-    "ep.context_model_external_initializers_min_size_in_bytes";
-
 // Gemm fastmath mode provides fp32 gemm acceleration with bfloat16 based matmul.
 // Option values:
 // - "0": Gemm FastMath mode is not enabled. [DEFAULT]

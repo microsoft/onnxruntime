@@ -216,11 +216,10 @@ void EpCtxCpuNodeWithExternalIniFileTestBody(bool expect_external_ini_file) {
   const std::string ep_context_model_file = "./qnn_ctx_part_external_ini_ctx.onnx";
   so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, ep_context_model_file.c_str());
   const std::string external_ini_file = "./qnn_ctx_part_external_ini.bin";
-  so.AddConfigEntry(kOrtSessionOptionsEpContextModelExternalInitializersFileName, external_ini_file.c_str());
   if (expect_external_ini_file) {
-    // Set the threshold to a small size so FusedMatMul node with weights float[200, 200] will dump to external data file
-    so.AddConfigEntry(kOrtSessionOptionsEpContextModelExternalInitializersMinSizeInBytes, "1024");
-  }  // otherwise it will use default value 1024,000, so the initializer is in Onnx file, no external data file generated
+    // Set the external ini file name will force all initializers to the external file
+    so.AddConfigEntry(kOrtSessionOptionsEpContextModelExternalInitializersFileName, external_ini_file.c_str());
+  }  // otherwise all initializers are in Onnx file, no external data file generated
 
   Ort::Session session(*ort_env, ToPathString(model_with_ext).c_str(), so);
 

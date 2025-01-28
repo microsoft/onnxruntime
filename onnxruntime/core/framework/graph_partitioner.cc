@@ -647,7 +647,6 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
                                    const Graph& graph,
                                    const std::filesystem::path& ep_context_path,
                                    const std::filesystem::path& ep_context_ext_ini_path,
-                                   size_t size_threshold,
                                    const logging::Logger& logger) {
   InlinedVector<const Node*> all_ep_context_nodes;
   for (const auto& ep : execution_providers) {
@@ -730,13 +729,20 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     }
   }
 
+  size_t ini_size_threshold = 0;
+  std::filesystem::path external_ini_path;
   if (ep_context_ext_ini_path.empty()) {
-    ORT_RETURN_IF_ERROR(Model::Save(ep_context_model, context_cache_path));
+    // Set the threshold to the max so all initializers are forced into the Onnx file
+    ini_size_threshold = SIZE_MAX;
+    external_ini_path = "./model_ext_ini.bin";
   } else {
-    ModelSavingOptions model_saving_options{size_threshold};
-    ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(ep_context_model, context_cache_path,
-                                                            ep_context_ext_ini_path, model_saving_options));
+    // Set the theshold to 0 so all initializers are forced into the external file
+    ini_size_threshold = 0;
+    external_ini_path = ep_context_ext_ini_path;
   }
+  ModelSavingOptions model_saving_options{ini_size_threshold};
+  ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(ep_context_model, context_cache_path,
+                                                          external_ini_path, model_saving_options));
 
   return Status::OK();
 }
@@ -1005,11 +1011,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     if (ep_context_enabled) {
       std::string ep_context_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
       std::string external_ini_file_name = config_options.GetConfigOrDefault(kOrtSessionOptionsEpContextModelExternalInitializersFileName, "");
-      const size_t model_external_initializers_min_size_in_bytes =
-          ParseStringWithClassicLocale<size_t>(config_options.GetConfigOrDefault(
-              kOrtSessionOptionsEpContextModelExternalInitializersMinSizeInBytes, "1024000"));
-      ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_path, external_ini_file_name,
-                                               model_external_initializers_min_size_in_bytes, logger));
+      ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_path, external_ini_file_name, logger));
     }
 #else
     ORT_UNUSED_PARAMETER(config_options);
