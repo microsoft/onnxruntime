@@ -156,7 +156,7 @@ export const createConvTranspose2DProgramInfo = (
         } else {
           for (let c = 0; c < aComponents; c++) {
             calcStr += `
-            let wValue${c} = ${w.getByOffset(`${w.indicesToOffset(`${w.type.indices}(u32(wRPerm), u32(wCPerm), inputChannel % uniforms.input_channels_per_group / ${aComponents}, wOutChannel)`)} / ${bComponents}`)}[${c}];
+            let wValue${c} = ${w.getByOffset(`${w.indicesToOffset(`${w.type.indices}(u32(wRPerm), u32(wCPerm), inputChannel % uniforms.input_channels_per_group, wOutChannel)`)} / ${bComponents}`)}[${c}];
             dotProd = dotProd + xValue[${c}] * wValue${c};`;
           }
         }
