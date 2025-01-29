@@ -268,7 +268,7 @@ void TensorrtExecutionProvider::SetAllGraphInputs(Graph& graph) const {
 void TensorrtExecutionProvider::SelectQualifiedDQNode(const GraphViewer& graph,
                                                       std::unordered_set<NodeIndex>& selection_node_set,
                                                       std::unordered_map<NodeIndex, NodeIndex>& consumer_to_dq) const {
-  LOGS_DEFAULT(VERBOSE) << "Select qualified DQ nodes ...";
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Select qualified DQ nodes ...";
   const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);
   for (auto index : node_index) {
     auto* node = graph.GetNode(index);
@@ -293,10 +293,10 @@ void TensorrtExecutionProvider::SelectQualifiedDQNode(const GraphViewer& graph,
       const Node& consumer_node = *node->OutputNodesBegin();
       selection_node_set.insert(index);
       consumer_to_dq[consumer_node.Index()] = index;
-      LOGS_DEFAULT(VERBOSE) << consumer_node.Name() << " <- " << node->Name();
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << consumer_node.Name() << " < -" << node->Name();
     }
   }
-  LOGS_DEFAULT(VERBOSE) << "Total " << selection_node_set.size() << " DequantizeLinear node(s) are selected.";
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Total " << selection_node_set.size() << " DequantizeLinear node(s) are selected.";
 }
 
 /**
