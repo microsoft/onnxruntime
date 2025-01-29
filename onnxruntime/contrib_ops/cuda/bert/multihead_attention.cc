@@ -508,12 +508,13 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
 
   // For past-present buffer sharing.
   if (parameters.past_present_share_buffer) {
+    std::vector<int64_t> seqlens_k(parameters.batch_size, parameters.total_sequence_length - 1);
     size_t seqlens_k_bytes = 0;
     seqlens_k_bytes = sizeof(int) * parameters.batch_size;
     auto seqlens_k_buffer = GetScratchBuffer<void>(seqlens_k_bytes, context->GetComputeStream());
     if (seqlens_k_buffer != nullptr) {
       data.seqlens_k_total = reinterpret_cast<int*>(seqlens_k_buffer.get());
-      CUDA_RETURN_IF_ERROR(cudaMemsetAsync(data.seqlens_k_total, parameters.past_sequence_length, seqlens_k_bytes, stream));
+      CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(data.seqlens_k_total, seqlens_k.data(), seqlens_k_bytes, cudaMemcpyHostToDevice, stream));
     }
   }
 
