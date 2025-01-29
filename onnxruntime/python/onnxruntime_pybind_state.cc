@@ -855,6 +855,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           0,
           0,
           0,
+          0,
           nullptr,
           1,
           "./compiled_model.mxr",
@@ -876,6 +877,16 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           } else {
             ORT_THROW(
                 "[ERROR] [MIGraphX] The value for the key 'trt_fp16_enable' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else if (option.first == "migraphx_fp8_enable") {
+          if (option.second == "True" || option.second == "true") {
+            params.migraphx_fp8_enable = true;
+          } else if (option.second == "False" || option.second == "false") {
+            params.migraphx_fp8_enable = false;
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migx_fp8_enable' should be"
                 " 'True' or 'False'. Default value is 'False'.\n");
           }
         } else if (option.first == "migraphx_int8_enable") {
