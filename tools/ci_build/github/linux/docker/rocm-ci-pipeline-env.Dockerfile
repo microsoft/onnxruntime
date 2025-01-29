@@ -46,7 +46,7 @@ ENV LANG C.UTF-8
 WORKDIR /stage
 
 # Cmake
-ENV CMAKE_VERSION=3.30.1
+ENV CMAKE_VERSION 3.30.1
 RUN cd /usr/local && \
     wget -q https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz && \
     tar -zxf /usr/local/cmake-3.30.1-Linux-x86_64.tar.gz --strip=1 -C /usr
@@ -66,5 +66,5 @@ RUN python3 -m venv /ort/env && . /ort/env/bin/activate && \
     pip install -r /ort/requirements.txt && \
     pip install ml_dtypes pytest-xdist pytest-rerunfailures scipy
 
-ENV LD_LIBRARY_PATH=/opt/rocm/lib:/usr/lib/x86_64-linux-gnu
-ENV PATH=/opt/rocm/bin:/usr/bin:/bin:/usr/sbin:/usr/local/bin
+ENV LD_LIBRARY_PATH /opt/rocm/lib:/usr/lib/x86_64-linux-gnu
+ENV PATH /opt/rocm/bin:/usr/bin:/bin:/usr/sbin:/usr/local/bin
