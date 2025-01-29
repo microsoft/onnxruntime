@@ -2,12 +2,16 @@
 // Licensed under the MIT License.
 
 #include "core/common/inlined_containers.h"
+#include "core/common/parse_string.h"
 #include "core/framework/prepacked_weights.h"
 #include "core/framework/prepacked_weights_container.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
 #include "test/util/include/asserts.h"
 #include "file_util.h"
+
+#include <cstdint>
+#include <limits>
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -21,6 +25,74 @@ using namespace ONNX_NAMESPACE;
 
 namespace onnxruntime {
 namespace test {
+
+// if `expected_error_message_substring` is nullptr, parsing is expected to be successful
+static void TestExternalDataInfoParsingOffsetAndLengthWithStrings(
+    std::string_view offset_str,
+    std::string_view length_str,
+    const char* expected_error_message_substring = nullptr) {
+  SCOPED_TRACE(MakeString("offset: \"", offset_str, "\", length: \"", length_str, "\""));
+
+  ONNX_NAMESPACE::TensorProto tensor_proto;
+  const std::filesystem::path kExternalDataPath("test.bin");
+
+  tensor_proto.set_data_location(ONNX_NAMESPACE::TensorProto_DataLocation::TensorProto_DataLocation_EXTERNAL);
+
+  auto* location_entry = tensor_proto.add_external_data();
+  location_entry->set_key("location");
+  location_entry->set_value(ToUTF8String(kExternalDataPath.native()));
+
+  auto* offset_entry = tensor_proto.add_external_data();
+  offset_entry->set_key("offset");
+  offset_entry->set_value(offset_str.data(), offset_str.size());
+
+  auto* length_entry = tensor_proto.add_external_data();
+  length_entry->set_key("length");
+  length_entry->set_value(length_str.data(), length_str.size());
+
+  std::unique_ptr<ExternalDataInfo> external_data_info{};
+  const auto create_status = ExternalDataInfo::Create(tensor_proto.external_data(), external_data_info);
+  if (expected_error_message_substring) {
+    ASSERT_STATUS_NOT_OK_AND_HAS_SUBSTR(create_status, expected_error_message_substring);
+    return;
+  }
+  ASSERT_STATUS_OK(create_status);
+
+  // if we got this far, assume that offset_str and length_str are able to be parsed.
+  const auto expected_offset = ParseStringWithClassicLocale<ExternalDataInfo::OFFSET_TYPE>(offset_str);
+  const auto expected_length = ParseStringWithClassicLocale<size_t>(length_str);
+
+  ASSERT_EQ(external_data_info->GetOffset(), expected_offset);
+  ASSERT_EQ(external_data_info->GetLength(), expected_length);
+}
+
+// if `expected_error_message_substring` is nullptr, parsing is expected to be successful
+static void TestExternalDataInfoParsingOffsetAndLength(intmax_t offset,
+                                                       uintmax_t length,
+                                                       const char* expected_error_message_substring = nullptr) {
+  TestExternalDataInfoParsingOffsetAndLengthWithStrings(std::to_string(offset), std::to_string(length),
+                                                        expected_error_message_substring);
+}
+
+TEST(TensorProtoUtilsTest, ParseExternalDataInfoOffsetAndLength) {
+  TestExternalDataInfoParsingOffsetAndLength(0, 0);
+
+  TestExternalDataInfoParsingOffsetAndLength(0, 1024);
+  TestExternalDataInfoParsingOffsetAndLength(0, std::numeric_limits<size_t>::max());
+
+  TestExternalDataInfoParsingOffsetAndLength(1024, 1024);
+  TestExternalDataInfoParsingOffsetAndLength(std::numeric_limits<ExternalDataInfo::OFFSET_TYPE>::max(), 1024);
+
+  {
+    // assuming that this value is too large to fit in either size_t or ExternalDataInfo::OFFSET_TYPE
+    const std::string_view two_to_the_65th_power = "36893488147419103232";
+    const std::string_view zero = "0";
+    TestExternalDataInfoParsingOffsetAndLengthWithStrings(two_to_the_65th_power, zero, "Failed to parse value");
+    TestExternalDataInfoParsingOffsetAndLengthWithStrings(zero, two_to_the_65th_power, "Failed to parse value");
+  }
+
+  // TODO should ExternalDataInfo::Create() also reject negative offset values?
+}
 
 // Test ExternalData functionality
 TEST(TensorProtoUtilsTest, SetExternalDataInformation) {
