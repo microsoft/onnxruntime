@@ -363,10 +363,6 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
   return result;
 }
 
-static Status TransformGraph(Graph& graph, const ComputeCapability& this_optimization, ComputeCapability& cc_to_update) {
-
-}
-
 // for the current EP, recursively iterate through the Graph and any nested subgraphs (recursion is bottom-up).
 // assign any nodes to the EP that are currently unassigned, and that the EP can handle.
 static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,

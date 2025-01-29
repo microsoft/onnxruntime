@@ -204,43 +204,6 @@ common::Status LoadDynamicLibraryFromProvider(onnxruntime::PathString library_na
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
-/*
-Status ApplyConstantFoldingDQ(const Graph&, const ComputeCapability& this_optimization, ComputeCapability& cc_to_update) {
-  auto logger = const_cast<logging::Logger*>(&logging::LoggingManager::DefaultLogger());
-  return Status::OK();
-}
-
-std::vector<std::unique_ptr<ComputeCapability>> ConstantFoldingDQ(const GraphViewer& graph_viewer) {
-  std::vector<std::unique_ptr<ComputeCapability>> result;
-  std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
-  const std::vector<NodeIndex>& node_index = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED);
-  for (const auto& index : node_index) {
-    const auto& node = graph_viewer.GetNode(index);
-    if (node->OpType() != "DequantizeLinear") {
-      continue;
-    }
-    sub_graph->nodes.push_back(index);
-    std::cout << node->Name() << ", op type: " << node->OpType() << std::endl;
-  }
-
-  result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
-  result.back()->optimization_func = ApplyConstantFoldingDQ;
-  return result;
-}
-
-Status GetPredefinedEPGraphTransformersForLookUp(std::unordered_map<std::string, std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>>& map) {
-  static const std::string kEP_GRAPH_TRANSFORMER_CONSTANT_FOLDING_DQ = "ConstantFoldingDQ";
-  static std::unordered_map<std::string, std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>> ep_transformers_map;
-
-  if (ep_transformers_map.find(kEP_GRAPH_TRANSFORMER_CONSTANT_FOLDING_DQ) == ep_transformers_map.end()) {
-    ep_transformers_map[kEP_GRAPH_TRANSFORMER_CONSTANT_FOLDING_DQ] = ConstantFoldingDQ;
-  }
-
-  map = ep_transformers_map;
-  return Status::OK();
-}
-*/
-
 const GraphTransformerManager* graph_transformer_manager;
 
 #if defined(_MSC_VER) && !defined(__clang__)
