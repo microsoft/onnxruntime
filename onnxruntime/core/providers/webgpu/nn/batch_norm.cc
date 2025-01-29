@@ -11,25 +11,25 @@
 namespace onnxruntime {
 namespace webgpu {
 
-#define WEBGPU_BATCH_NORM_VERSIONED_KERNEL(start, end, domain)  \
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                            \
-      BatchNormalization,                                       \
-      domain,                                                   \
-      start,                                                    \
-      end,                                                      \
-      kWebGpuExecutionProvider,                                 \
-      (*KernelDefBuilder::Create())                             \
-          .TypeConstraint("T", WebGpuSupportedFloatTypes()),    \
+#define WEBGPU_BATCH_NORM_VERSIONED_KERNEL(start, end, domain) \
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                           \
+      BatchNormalization,                                      \
+      domain,                                                  \
+      start,                                                   \
+      end,                                                     \
+      kWebGpuExecutionProvider,                                \
+      (*KernelDefBuilder::Create())                            \
+          .TypeConstraint("T", WebGpuSupportedFloatTypes()),   \
       BatchNormalization);
 
-#define WEBGPU_BATCH_NORM_KERNEL(version, domain)               \
-  ONNX_OPERATOR_KERNEL_EX(                                      \
-      BatchNormalization,                                       \
-      domain,                                                   \
-      version,                                                  \
-      kWebGpuExecutionProvider,                                 \
-      (*KernelDefBuilder::Create())                             \
-          .TypeConstraint("T", WebGpuSupportedFloatTypes()),    \
+#define WEBGPU_BATCH_NORM_KERNEL(version, domain)            \
+  ONNX_OPERATOR_KERNEL_EX(                                   \
+      BatchNormalization,                                    \
+      domain,                                                \
+      version,                                               \
+      kWebGpuExecutionProvider,                              \
+      (*KernelDefBuilder::Create())                          \
+          .TypeConstraint("T", WebGpuSupportedFloatTypes()), \
       BatchNormalization);
 
 WEBGPU_BATCH_NORM_VERSIONED_KERNEL(7, 8, kOnnxDomain)
@@ -102,7 +102,7 @@ Status BatchNormalization::ComputeInternal(ComputeContext& context) const {
   const auto* input_tensor = context.Input(0);
   const TensorShape& input_shape = input_tensor->Shape();
   size_t input_rank = input_shape.NumDimensions();
-  const int components = spatial_ ? ((input_shape[input_rank-1] % 4 == 0) ? 4 : ((input_shape[input_rank-1] % 2 == 0) ? 2 : 1)) : 1;
+  const int components = spatial_ ? ((input_shape[input_rank - 1] % 4 == 0) ? 4 : ((input_shape[input_rank - 1] % 2 == 0) ? 2 : 1)) : 1;
 
   auto output_dims = input_shape.AsShapeVector();
   TensorShape output_shape(output_dims);
