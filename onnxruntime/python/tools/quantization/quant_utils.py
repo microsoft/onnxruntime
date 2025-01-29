@@ -197,9 +197,9 @@ def _check_type(*args, zero_point_index=-1):
 
 
 def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
-    assert qType in ONNX_TYPE_TO_NP_TYPE, (
-        f"Unexpected data type {qType} requested. Only INT8, UINT8, INT16, and UINT16 are supported."
-    )
+    assert (
+        qType in ONNX_TYPE_TO_NP_TYPE
+    ), f"Unexpected data type {qType} requested. Only INT8, UINT8, INT16, and UINT16 are supported."
     if qType in (
         onnx_proto.TensorProto.FLOAT8E4M3FN,
         onnx_proto.TensorProto.FLOAT8E4M3FNUZ,
@@ -233,6 +233,7 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
         ref = ReferenceEvaluator(onnx_model)
         return _check_type(ref.run(None, {"X": arr, "scale": scale})[0])
     else:
+        arr = numpy.clip(arr, -3e38, None)
         # Quantizes data for all integer types.
         #
         # For int4 types, the quantized data is returned as either np.int8 or np.uint8,
@@ -438,6 +439,7 @@ def quantize_data(
     - *S*: scale
     - *z*: zero point
     """
+    data = numpy.clip(data, -3e38, None)
     zero_point, scale = compute_data_quant_params(
         data,
         qType,
@@ -574,7 +576,7 @@ def get_qmin_qmax_for_qType(qType, reduce_range=False, symmetric=False):  # noqa
     qmin, qmax = qrange
     if qmin > 0 or qmax < 0:
         raise ValueError(
-            f"qmin and qmax must meet requirement: qmin <= 0 <= qmax while "
+            "qmin and qmax must meet requirement: qmin <= 0 <= qmax while "
             f"qmin:{qmin}, qmmax:{qmax}, dtype={qmin.dtype}, reduce_range={reduce_range}, "
             f"symmetric={symmetric}, qType={qType}"
         )

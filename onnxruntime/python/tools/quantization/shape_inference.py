@@ -119,6 +119,12 @@ def quant_pre_process(
                     external_names, external_values = extract_raw_data_from_model(input_model)
                     sess_option.add_external_initializers(list(external_names), list(external_values))
                     input_model = input_model.SerializeToString()
+                # the saved optimized model otherwise points to the original external data file name
+                # which is not available relative to the optimized model file
+                elif skip_symbolic_shape and save_as_external_data:
+                    sess_option.add_session_config_entry(
+                        "session.optimized_model_external_initializers_file_name", "optimized.onnx.data"
+                    )
 
                 sess = onnxruntime.InferenceSession(input_model, sess_option, providers=["CPUExecutionProvider"])
                 # Close the session to avoid the cleanup error on Windows for temp folders
@@ -162,6 +168,7 @@ def quant_pre_process(
                     size_threshold=external_data_size_threshold,
                     convert_attribute=False,
                 )
+            print("Performing ONNX shape inference...")
 
             inferred_model_path = str(temp_path / "onnx_shape_inferred.onnx")
             onnx.shape_inference.infer_shapes_path(input_model, inferred_model_path)

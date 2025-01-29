@@ -232,6 +232,13 @@ class CalibraterBase:
         """
         sess_options = onnxruntime.SessionOptions()
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
+        print(f"Execution providers: {self.execution_providers}")
+        # import onnx
+
+        # model_proto = onnx.load(self.augmented_model_path)
+        # onnx.save(model_proto, "models/augmented_model.onnx", save_as_external_data=True)
+        # sdvfd
+
         self.infer_session = onnxruntime.InferenceSession(
             self.augmented_model_path,
             sess_options=sess_options,
@@ -380,7 +387,7 @@ class MinMaxCalibrater(CalibraterBase):
             else:
                 raise ValueError(
                     f"Unable to guess tensor type for tensor {tensor_name!r}, "
-                    f"running shape inference before quantization may resolve this issue."
+                    "running shape inference before quantization may resolve this issue."
                 )
 
             # Include axes in reduce_op when per_channel, always keeping axis=1
@@ -413,11 +420,17 @@ class MinMaxCalibrater(CalibraterBase):
         self.intermediate_outputs = []
 
     def collect_data(self, data_reader: CalibrationDataReader):
+        count = 0
         while True:
             inputs = data_reader.get_next()
             if not inputs:
                 break
+            print(count)
+            count += 1
+            # for k, v in inputs.items():
+            #     print(k, v.shape)
             self.intermediate_outputs.append(self.infer_session.run(None, inputs))
+            # print(len(self.intermediate_outputs[-1]))
             if (
                 self.max_intermediate_outputs is not None
                 and len(self.intermediate_outputs) == self.max_intermediate_outputs
@@ -594,7 +607,10 @@ class HistogramCalibrater(CalibraterBase):
             inputs = data_reader.get_next()
             if not inputs:
                 break
+            # for k, v in inputs.items():
+            #     print(k, v.shape)
             outputs = self.infer_session.run(None, inputs)
+            # print(len(outputs))
 
             # Copy np.ndarray only for graph outputs that are also graph inputs to workaround bug:
             # https://github.com/microsoft/onnxruntime/issues/21922
@@ -824,9 +840,9 @@ class HistogramCollector(CalibrationDataCollector):
                 for arr in data_arr:
                     assert isinstance(arr, np.ndarray), f"Unexpected type {type(arr)} for tensor={tensor!r}"
                 dtypes = {a.dtype for a in data_arr}
-                assert len(dtypes) == 1, (
-                    f"The calibration expects only one element type but got {dtypes} for tensor={tensor!r}"
-                )
+                assert (
+                    len(dtypes) == 1
+                ), f"The calibration expects only one element type but got {dtypes} for tensor={tensor!r}"
                 data_arr_np = np.asarray(data_arr)
             elif not isinstance(data_arr, np.ndarray):
                 raise ValueError(f"Unexpected type {type(data_arr)} for tensor={tensor!r}")
@@ -846,9 +862,9 @@ class HistogramCollector(CalibrationDataCollector):
                 # first time it uses num_bins to compute histogram.
                 hist, hist_edges = np.histogram(data_arr_np, bins=self.num_bins)
                 hist_edges = hist_edges.astype(data_arr_np.dtype)
-                assert data_arr_np.dtype != np.float64, (
-                    "only float32 or float16 is supported, every constant must be explicitly typed"
-                )
+                assert (
+                    data_arr_np.dtype != np.float64
+                ), "only float32 or float16 is supported, every constant must be explicitly typed"
                 self.histogram_dict[tensor] = (hist, hist_edges, min_value, max_value)
             else:
                 old_histogram = self.histogram_dict[tensor]
@@ -868,9 +884,9 @@ class HistogramCollector(CalibrationDataCollector):
                 hist, hist_edges = np.histogram(data_arr_np, bins=old_hist_edges)
                 hist_edges = hist_edges.astype(data_arr_np.dtype)
                 hist[: len(old_hist)] += old_hist
-                assert data_arr_np.dtype != np.float64, (
-                    "only float32 or float16 is supported, every constant must be explicitly typed"
-                )
+                assert (
+                    data_arr_np.dtype != np.float64
+                ), "only float32 or float16 is supported, every constant must be explicitly typed"
                 self.histogram_dict[tensor] = (hist, hist_edges, min(old_min, min_value), max(old_max, max_value))
 
     def collect_value(self, name_to_arr):
