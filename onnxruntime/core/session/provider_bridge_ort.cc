@@ -2406,12 +2406,11 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
         new_tensorrt_options.trt_ep_context_embed_mode = 1;
       } else if ("0" == embed_mode) {
         new_tensorrt_options.trt_ep_context_embed_mode = 0;
-        new_tensorrt_options.trt_engine_cache_enable = 1; // Enable engine cache if not embedded mode
+        new_tensorrt_options.trt_engine_cache_enable = 1;  // Enable engine cache if not embedded mode
       } else {
         LOGS_DEFAULT(VERBOSE) << "Invalid ep.context_embed_mode: " << embed_mode << " only 0 or 1 allowed. Set to 1.";
       }
       LOGS_DEFAULT(VERBOSE) << "User specified context cache embed mode: " << embed_mode;
-      
     }
     factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&new_tensorrt_options);
   } else {

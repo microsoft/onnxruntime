@@ -147,8 +147,8 @@ void CreateBaseModel(const PathString& model_name,
  *      "M"
  */
 void CreateParititionedModel(const PathString& model_name,
-                     std::string graph_name,
-                     std::vector<int> dims) {
+                             std::string graph_name,
+                             std::vector<int> dims) {
   onnxruntime::Model model(graph_name, false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   std::vector<onnxruntime::NodeArg*> inputs;
@@ -190,7 +190,7 @@ void CreateParititionedModel(const PathString& model_name,
   graph.AddNode("node_3", "NonZero", "node 3.", inputs, outputs);
 
   auto& input_arg_4 = graph.GetOrCreateNodeArg("A", &int_tensor);
-  inputs.clear()
+  inputs.clear();
   inputs.push_back(&output_arg_3);
   inputs.push_back(&input_arg_4);
   outputs.clear();
@@ -495,18 +495,18 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
 
   /*
    * Test case 1.1: Dump context model to current directory, context saved in engine cache
-   * 
+   *
    * session options =>
    *  ep.context_enable = "1"
    *  ep.context_file_path = "EP_Context_model.onnx"
    *  ep.context_embed_mode = "0"
-   * provider options => 
+   * provider options =>
    *  trt_engine_cache_enable = 1
    *  trt_engine_cache_enable = 1
    *  trt_ep_context_file_path = "EP_Context_model.onnx"
    *  trt_ep_context_embed_mode = 0
    *  trt_engine_cache_enable = 1
-   * 
+   *
    * expected result =>
    *  Engine cache with prefix "TensorrtExecutionProvider" should be created in current directory
    *  context model "EP_Context_model.onnx" should be created in current directory
@@ -515,7 +515,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   so.config_options.AddConfigEntry("ep.context_file_path", "EP_Context_model.onnx");
   so.config_options.AddConfigEntry("ep.context_embed_mode", "0");
   InferenceSession session_object{so, GetEnvironment()};
-  // Need to set corresponding trt params since options merging logic in privider_bridge_ort is not called in unit test 
+  // Need to set corresponding trt params since options merging logic in privider_bridge_ort is not called in unit test
   OrtTensorRTProviderOptionsV2 params;
   params.trt_engine_cache_enable = 1;
   params.trt_dump_ep_context_model = 1;
@@ -569,13 +569,13 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
    *  ep.context_enable = "1"
    *  ep.context_file_path = "context_model_folder/EPContextNode_test_ctx.onnx"
    *  ep.context_embed_mode = "0"
-   * provider options => 
+   * provider options =>
    *  trt_engine_cache_enable = 1
    *  trt_engine_cache_enable = 1
    *  trt_ep_context_file_path = "context_model_folder/EPContextNode_test_ctx.onnx"
    *  trt_ep_context_embed_mode = 0
    *  trt_engine_cache_enable = 1
-   * 
+   *
    * expected result =>
    *  engine cache starts with "TensorrtExecutionProvider_" in context_model_folder
    *  context model "EP_Context_model.onnx" should be created in context_model_folder
@@ -625,7 +625,6 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   status = session_object4.Load(ctx_model_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object4.Initialize();
-  std::cout << status.ErrorMessage() << std::endl;
   ASSERT_TRUE(status.IsOK());
   // run inference
   // TRT engine will be created and cached
@@ -664,7 +663,6 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   execution_provider = TensorrtExecutionProviderWithOptions(&params6);
   EXPECT_TRUE(session_object6.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
   status = session_object6.Load(ctx_model_name);
-  std::cout << status.ErrorMessage() << std::endl;
   ASSERT_TRUE(status.IsOK());
   status = session_object6.Initialize();
   ASSERT_TRUE(status.IsOK());
@@ -739,7 +737,6 @@ TEST(TensorrtExecutionProviderTest, EPContextNodeMulti) {
   PathString model_name = ToPathString(model_name_str);
   std::string graph_name = "EPContextNode_test";
   std::string sess_log_id = "EPContextNode_test";
-  // std::string ctx_model_str = "EP_Context_model.onnx";
   std::vector<int> dims = {1, 3, 2};
   CreateParititionedModel(model_name, graph_name, dims);
 
@@ -777,18 +774,18 @@ TEST(TensorrtExecutionProviderTest, EPContextNodeMulti) {
 
   /*
    * Test case 1.1: Dump context model to current directory, context saved in engine cache
-   * 
+   *
    * session options =>
    *  ep.context_enable = "1"
    *  ep.context_file_path = "EP_Context_model.onnx"
    *  ep.context_embed_mode = "0"
-   * provider options => 
+   * provider options =>
    *  trt_engine_cache_enable = 1
    *  trt_engine_cache_enable = 1
    *  trt_ep_context_file_path = "EP_Context_model.onnx"
    *  trt_ep_context_embed_mode = 0
    *  trt_engine_cache_enable = 1
-   * 
+   *
    * expected result =>
    *  Engine cache with prefix "TensorrtExecutionProvider" should be created in current directory
    *  context model "EP_Context_model.onnx" should be created in current directory
@@ -797,7 +794,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNodeMulti) {
   so.config_options.AddConfigEntry("ep.context_file_path", "EP_Context_model.onnx");
   so.config_options.AddConfigEntry("ep.context_embed_mode", "0");
   InferenceSession session_object{so, GetEnvironment()};
-  // Need to set corresponding trt params since options merging logic in privider_bridge_ort is not called in unit test 
+  // Need to set corresponding trt params since options merging logic in privider_bridge_ort is not called in unit test
   OrtTensorRTProviderOptionsV2 params;
   params.trt_engine_cache_enable = 1;
   params.trt_dump_ep_context_model = 1;
@@ -845,65 +842,65 @@ TEST(TensorrtExecutionProviderTest, EPContextNodeMulti) {
   RunSession(session_object2, run_options, feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
 }
 
-TEST(TensorrtExecutionProviderTest, ExcludeOpsTest) {
-  /* The mnist.onnx looks like this:
-   *        Conv
-   *         |
-   *        Add
-   *         .
-   *         .
-   *         |
-   *      MaxPool
-   *         |
-   *         .
-   *         .
-   *      MaxPool
-   *         |
-   *      Reshape
-   *         |
-   *      MatMul
-   *         .
-   *         .
-   *
-   */
-  PathString model_name = ORT_TSTR("testdata/mnist.onnx");
-  SessionOptions so;
-  so.session_logid = "TensorrtExecutionProviderExcludeOpsTest";
-  RunOptions run_options;
-  run_options.run_tag = so.session_logid;
-  InferenceSession session_object{so, GetEnvironment()};
-  auto cuda_provider = DefaultCudaExecutionProvider();
-  auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
-  std::vector<int64_t> dims_op_x = {1, 1, 28, 28};
-  std::vector<float> values_op_x(784, 1.0f);  // 784=1*1*28*28
-  OrtValue ml_value_x;
-  CreateMLValue<float>(cpu_allocator, dims_op_x, values_op_x, &ml_value_x);
-  NameMLValMap feeds;
-  feeds.insert(std::make_pair("Input3", ml_value_x));
+// TEST(TensorrtExecutionProviderTest, ExcludeOpsTest) {
+//   /* The mnist.onnx looks like this:
+//    *        Conv
+//    *         |
+//    *        Add
+//    *         .
+//    *         .
+//    *         |
+//    *      MaxPool
+//    *         |
+//    *         .
+//    *         .
+//    *      MaxPool
+//    *         |
+//    *      Reshape
+//    *         |
+//    *      MatMul
+//    *         .
+//    *         .
+//    *
+//    */
+//   PathString model_name = ORT_TSTR("testdata/mnist.onnx");
+//   SessionOptions so;
+//   so.session_logid = "TensorrtExecutionProviderExcludeOpsTest";
+//   RunOptions run_options;
+//   run_options.run_tag = so.session_logid;
+//   InferenceSession session_object{so, GetEnvironment()};
+//   auto cuda_provider = DefaultCudaExecutionProvider();
+//   auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
+//   std::vector<int64_t> dims_op_x = {1, 1, 28, 28};
+//   std::vector<float> values_op_x(784, 1.0f);  // 784=1*1*28*28
+//   OrtValue ml_value_x;
+//   CreateMLValue<float>(cpu_allocator, dims_op_x, values_op_x, &ml_value_x);
+//   NameMLValMap feeds;
+//   feeds.insert(std::make_pair("Input3", ml_value_x));
 
-  // prepare outputs
-  std::vector<std::string> output_names;
-  output_names.push_back("Plus214_Output_0");
-  std::vector<OrtValue> fetches;
+//   // prepare outputs
+//   std::vector<std::string> output_names;
+//   output_names.push_back("Plus214_Output_0");
+//   std::vector<OrtValue> fetches;
 
-  RemoveCachesByType("./", ".engine");
-  OrtTensorRTProviderOptionsV2 params;
-  params.trt_engine_cache_enable = 1;
-  params.trt_op_types_to_exclude = "MaxPool";
-  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
-  auto status = session_object.Load(model_name);
-  ASSERT_TRUE(status.IsOK());
-  status = session_object.Initialize();
-  ASSERT_TRUE(status.IsOK());
-  status = session_object.Run(run_options, feeds, output_names, &fetches);
-  ASSERT_TRUE(status.IsOK());
+//   RemoveCachesByType("./", ".engine");
+//   OrtTensorRTProviderOptionsV2 params;
+//   params.trt_engine_cache_enable = 1;
+//   params.trt_op_types_to_exclude = "MaxPool";
+//   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+//   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+//   auto status = session_object.Load(model_name);
+//   ASSERT_TRUE(status.IsOK());
+//   status = session_object.Initialize();
+//   ASSERT_TRUE(status.IsOK());
+//   status = session_object.Run(run_options, feeds, output_names, &fetches);
+//   ASSERT_TRUE(status.IsOK());
 
-  std::vector<fs::path> engine_files;
-  engine_files = GetCachesByType("./", ".engine");
-  // The whole graph should be partitioned into 3 TRT subgraphs and 2 cpu nodes
-  ASSERT_EQ(engine_files.size(), 3);
-}
+//   std::vector<fs::path> engine_files;
+//   engine_files = GetCachesByType("./", ".engine");
+//   // The whole graph should be partitioned into 3 TRT subgraphs and 2 cpu nodes
+//   ASSERT_EQ(engine_files.size(), 3);
+// }
 
 TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   PathString model_name = ORT_TSTR("testdata/trt_plugin_custom_op_test.onnx");

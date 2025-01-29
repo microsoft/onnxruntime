@@ -30,12 +30,11 @@ bool GraphHasCtxNode(const GraphViewer& graph_viewer) {
 }
 
 int FindCtxNodeInGraph(const GraphViewer& graph_viewer) {
-  // Assumes there's only 1 context node in this subgraph (graph_viewer) 
+  // Assumes there's only 1 context node in this subgraph (graph_viewer)
   // Returns index of node
   for (int i = 0; i < graph_viewer.MaxNodeIndex(); ++i) {
     auto node = graph_viewer.GetNode(i);
     if (node != nullptr && node->OpType() == EPCONTEXT_OP) {
-      LOGS_DEFAULT(VERBOSE) << "*#* context node found at index=" << i;
       return i;
     }
   }
@@ -57,14 +56,14 @@ const std::filesystem::path& GetModelPath(const GraphViewer& graph_viewer) {
  * Create "EP context node" model where engine information is embedded
  */
 std::unique_ptr<Model> CreateCtxModel(const GraphViewer& graph_viewer,
-                                           const std::string fused_subgraph_name,
-                                           const std::string engine_cache_path,
-                                           char* engine_data,
-                                           size_t size,
-                                           const int64_t embed_mode,
-                                           const std::string compute_capability,
-                                           const std::string onnx_model_path,
-                                           const logging::Logger* logger) {
+                                      const std::string fused_subgraph_name,
+                                      const std::string engine_cache_path,
+                                      char* engine_data,
+                                      size_t size,
+                                      const int64_t embed_mode,
+                                      const std::string compute_capability,
+                                      const std::string onnx_model_path,
+                                      const logging::Logger* logger) {
   auto model_build = graph_viewer.CreateModel(*logger);
   auto& graph_build = model_build->MainGraph();
 
@@ -363,7 +362,7 @@ bool TensorRTCacheModelHandler::ValidateEPCtxNode(const GraphViewer& graph_viewe
   auto& attrs = node->GetAttributes();
 
   // Show the warning if compute capability is not matched
-  if (attrs.find(COMPUTE_CAPABILITY)!=attrs.end() && attrs.count(COMPUTE_CAPABILITY) > 0) {
+  if (attrs.find(COMPUTE_CAPABILITY) != attrs.end() && attrs.count(COMPUTE_CAPABILITY) > 0) {
     std::string model_compute_capability = attrs.at(COMPUTE_CAPABILITY).s();
     // Verify if engine was compiled with ampere+ hardware compatibility enabled
     if (model_compute_capability == "80+") {
