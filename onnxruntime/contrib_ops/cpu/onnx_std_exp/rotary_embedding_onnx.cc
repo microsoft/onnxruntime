@@ -69,13 +69,20 @@ Status RunRotaryEmbeddingONNX(concurrency::ThreadPool* tp, RotaryParameters para
       const T* input_data = input + block_offset;
       T* output_data = output + block_offset;
 
-      // Cache is (M, H/2) or (M, rotary_embedding_dim/2)
-      const int position_id = (position_ids_format == 0)
-                                  ? static_cast<int>(position_ids[0]) + s
-                                  : static_cast<int>(position_ids[b * sequence_length + s]);
-      const int cache_offset = position_id * half_rotary_emb_dim;
-      const T* cos_data = cos_cache + cache_offset;
-      const T* sin_data = sin_cache + cache_offset;
+      const T* cos_data;
+      const T* sin_data;
+      int cache_offset;
+      if (position_ids_format == -1) {
+        cache_offset = (b * sequence_length + s) * half_rotary_emb_dim;
+      } else {
+        // Cache is (M, H/2) or (M, rotary_embedding_dim/2)
+        const int position_id = (position_ids_format == 0)
+                                    ? static_cast<int>(position_ids[0]) + s
+                                    : static_cast<int>(position_ids[b * sequence_length + s]);
+        cache_offset = position_id * half_rotary_emb_dim;
+      }
+      cos_data = cos_cache + cache_offset;
+      sin_data = sin_cache + cache_offset;
 
       MlasRotaryEmbedOneRow<T>(input_data, sin_data, cos_data, rotary_emb_dim, interleaved, output_data);
 
@@ -103,7 +110,7 @@ Status RotaryEmbeddingONNX<T>::Compute(OpKernelContext* context) const {
   const Tensor* input = context->Input<Tensor>(0);
   const Tensor* cos_cache = context->Input<Tensor>(1);
   const Tensor* sin_cache = context->Input<Tensor>(2);
-  const Tensor* position_ids = context->Input<Tensor>(3);
+  const Tensor* position_ids = context->Input<Tensor>(3);  // position_ids are optional
 
   RotaryParameters parameters = {};
   ORT_RETURN_IF_ERROR(rotary_embedding_onnx_helper::CheckInputs<Tensor>(input,
@@ -124,7 +131,7 @@ Status RotaryEmbeddingONNX<T>::Compute(OpKernelContext* context) const {
   const T* input_src = input->Data<T>();
   const T* cos_cache_data = cos_cache->Data<T>();
   const T* sin_cache_data = sin_cache->Data<T>();
-  const int64_t* pos_ids_data = position_ids->Data<int64_t>();
+  const int64_t* pos_ids_data = (nullptr == position_ids) ? nullptr : position_ids->Data<int64_t>();
   T* output_dest = output->MutableData<T>();
 
   AllocatorPtr allocator;
