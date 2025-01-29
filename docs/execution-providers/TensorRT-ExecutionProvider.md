@@ -417,14 +417,14 @@ TensorRT configurations can be set by execution provider options. It's useful wh
 
 
 * Description: control if sparsity can be used by TRT.
-  * Check `--sparsity` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
+  * Check `--sparsity` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/latest/reference/command-line-programs.html#commonly-used-command-line-flags).
 
 ##### trt_builder_optimization_level
 
 
 * Description: set the builder optimization level.
 
-  > WARNING: levels below 3 do not guarantee good engine performance, but greatly improve build time.  Default 3, valid range [0-5]. Check `--builderOptimizationLevel` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
+  > WARNING: levels below 3 do not guarantee good engine performance, but greatly improve build time.  Default 3, valid range [0-5]. Check `--builderOptimizationLevel` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/latest/reference/command-line-programs.html#commonly-used-command-line-flags).
 
 ##### trt_auxiliary_streams
 
@@ -432,7 +432,7 @@ TensorRT configurations can be set by execution provider options. It's useful wh
 * Description: set maximum number of auxiliary streams per inference stream.
   * Setting this value to 0 will lead to optimal memory usage.
   * Default -1 = heuristics.
-  * Check `--maxAuxStreams` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
+  * Check `--maxAuxStreams` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/latest/reference/command-line-programs.html#commonly-used-command-line-flags).
 
 ##### trt_tactic_sources
 
@@ -519,11 +519,11 @@ Following environment variables can be set for TensorRT execution provider. Clic
 
 * `ORT_TENSORRT_BUILD_HEURISTICS_ENABLE`: Build engine using heuristics to reduce build time. Default 0 = false, nonzero = true.
 
-* `ORT_TENSORRT_SPARSITY_ENABLE`: Control if sparsity can be used by TRT. Default 0 = false, 1 = true. Check `--sparsity` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
+* `ORT_TENSORRT_SPARSITY_ENABLE`: Control if sparsity can be used by TRT. Default 0 = false, 1 = true. Check `--sparsity` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/latest/reference/command-line-programs.html#commonly-used-command-line-flags).
 
-* `ORT_TENSORRT_BUILDER_OPTIMIZATION_LEVEL`: Set the builder optimization level. WARNING: levels below 3 do not guarantee good engine performance, but greatly improve build time.  Default 3, valid range [0-5]. Check `--builderOptimizationLevel` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
+* `ORT_TENSORRT_BUILDER_OPTIMIZATION_LEVEL`: Set the builder optimization level. WARNING: levels below 3 do not guarantee good engine performance, but greatly improve build time.  Default 3, valid range [0-5]. Check `--builderOptimizationLevel` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/latest/reference/command-line-programs.html#commonly-used-command-line-flags).
 
-* `ORT_TENSORRT_AUXILIARY_STREAMS`: Set maximum number of auxiliary streams per inference stream. Setting this value to 0 will lead to optimal memory usage. Default -1 = heuristics. Check `--maxAuxStreams` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#trtexec-flags).
+* `ORT_TENSORRT_AUXILIARY_STREAMS`: Set maximum number of auxiliary streams per inference stream. Setting this value to 0 will lead to optimal memory usage. Default -1 = heuristics. Check `--maxAuxStreams` in `trtexec` command-line flags for [details](https://docs.nvidia.com/deeplearning/tensorrt/latest/reference/command-line-programs.html#commonly-used-command-line-flags).
 
 * `ORT_TENSORRT_TACTIC_SOURCES`: Specify the tactics to be used by adding (+) or removing (-) tactics from the default tactic sources (default = all available tactics) e.g. "-CUDNN,+CUBLAS" available keys: "CUBLAS", "CUBLAS_LT", "CUDNN" or "EDGE_MASK_CONVOLUTIONS".
 
