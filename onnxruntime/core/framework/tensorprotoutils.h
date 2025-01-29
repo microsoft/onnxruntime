@@ -74,17 +74,6 @@ void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, T1* raw_
  * @returns                 None
  */
 void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::string&& param);
-
-/**
- * Pack data into TensorProto
- * @param tensor_proto      given initializer tensor
- * @param unpacked_data     unpacked data in 8bit vector
- * @param data_size         size of data in original data type, size got from shape/dims
- * @returns                 None
- */
-void PackDataIntoTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto,
-                             const std::vector<uint8_t>& unpacked_data,
-                             int64_t data_size);
 }  // namespace utils
 }  // namespace onnxruntime
 

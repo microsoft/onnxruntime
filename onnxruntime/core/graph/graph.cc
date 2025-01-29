@@ -4180,8 +4180,7 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
         // instead of leaving it in the old external initializer file for the old Onnx file
         if (initializer.data_location() == TensorProto_DataLocation_EXTERNAL) {
           TensorShape shape(initializer.dims());
-          auto data_size = shape.Size();
-          utils::PackDataIntoTensorProto(*output_proto, raw_data, data_size);
+          output_proto->set_raw_data(std::move(std::string(raw_data.begin(), raw_data.end())));
           output_proto->clear_data_location();
         }
         if (process_prepacks) {
