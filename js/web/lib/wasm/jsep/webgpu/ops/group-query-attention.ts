@@ -379,8 +379,8 @@ export const groupQueryAttention = (context: ComputeContext, attributes: GroupQu
 
   applyAttention(
     context,
-    attributes.doRotary ? qRotary! : Q,
-    attributes.doRotary ? kRotary! : K,
+    Q,
+    K,
     V,
     undefined,
     undefined,
