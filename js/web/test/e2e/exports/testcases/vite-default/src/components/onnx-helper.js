@@ -4,7 +4,7 @@ import * as ort from 'onnxruntime-web';
 //
 // see https://vite.dev/guide/assets.html#explicit-url-imports
 //
-import wasmFileUrl from '/node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.jsep.wasm?url';
+import wasmFileUrl from 'onnxruntime-web/.wasm?url';
 
 // wasmFileUrl is the URL of the wasm file. Vite will make sure it's available in both development and production.
 ort.env.wasm.wasmPaths = { wasm: wasmFileUrl };
