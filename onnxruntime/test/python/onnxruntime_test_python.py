@@ -183,7 +183,7 @@ class TestInferenceSession(unittest.TestCase):
             so.add_session_config_entry(
                 "session.optimized_model_external_initializers_file_name", external_initializers_file
             )
-            so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "100")
+            so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "20")
             onnxrt.InferenceSession(get_name("model_with_orig_ext_data.onnx"), sess_options=so)
             self.assertTrue(os.path.isfile(so.optimized_model_filepath))
             self.assertTrue(os.path.isfile(os.path.join(directory, external_initializers_file)))
@@ -213,14 +213,10 @@ class TestInferenceSession(unittest.TestCase):
             "session.optimized_model_external_initializers_file_name", external_initializers_file
         )
 
-        # TODO(anyone): Set this to 100 will cause test error since some tensor below the threshold
-        # still refers to the original external data file. We shall fix this issue so that the
-        # optimized model only refers to one external data file.
-        so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "10")
+        so.add_session_config_entry("session.optimized_model_external_initializers_min_size_in_bytes", "100")
         session1 = onnxrt.InferenceSession(get_name("model_with_orig_ext_data.onnx"), sess_options=so)
         del session1
         self.assertTrue(os.path.isfile(optimized_model_filepath))
-        self.assertTrue(os.path.isfile(external_initializers_file))
 
         so2 = onnxrt.SessionOptions()
         so2.log_severity_level = 1
@@ -240,7 +236,6 @@ class TestInferenceSession(unittest.TestCase):
 
         # Remove model 1 to make sure optimized model 2 can be loaded independently from model 1
         os.remove(optimized_model_filepath)
-        os.remove(external_initializers_file)
 
         session3 = onnxrt.InferenceSession(optimized_model_filepath_2, sess_options=onnxrt.SessionOptions())
         del session3
