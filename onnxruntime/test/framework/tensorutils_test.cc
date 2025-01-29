@@ -26,11 +26,12 @@ using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
 namespace test {
 
+// if `expected_error_message_substring` is nullptr, parsing is expected to be successful
 static void TestExternalDataInfoParsingOffsetAndLengthWithStrings(
     std::string_view offset_str,
     std::string_view length_str,
     const char* expected_error_message_substring = nullptr) {
-  SCOPED_TRACE(MakeString("offset: ", offset_str, ", length: ", length_str));
+  SCOPED_TRACE(MakeString("offset: \"", offset_str, "\", length: \"", length_str, "\""));
 
   ONNX_NAMESPACE::TensorProto tensor_proto;
   const std::filesystem::path kExternalDataPath("test.bin");
@@ -57,7 +58,7 @@ static void TestExternalDataInfoParsingOffsetAndLengthWithStrings(
   }
   ASSERT_STATUS_OK(create_status);
 
-  // now we assume that offset_str and length_str are able to be parsed
+  // if we got this far, assume that offset_str and length_str are able to be parsed.
   const auto expected_offset = ParseStringWithClassicLocale<ExternalDataInfo::OFFSET_TYPE>(offset_str);
   const auto expected_length = ParseStringWithClassicLocale<size_t>(length_str);
 
@@ -65,6 +66,7 @@ static void TestExternalDataInfoParsingOffsetAndLengthWithStrings(
   ASSERT_EQ(external_data_info->GetLength(), expected_length);
 }
 
+// if `expected_error_message_substring` is nullptr, parsing is expected to be successful
 static void TestExternalDataInfoParsingOffsetAndLength(intmax_t offset,
                                                        uintmax_t length,
                                                        const char* expected_error_message_substring = nullptr) {
