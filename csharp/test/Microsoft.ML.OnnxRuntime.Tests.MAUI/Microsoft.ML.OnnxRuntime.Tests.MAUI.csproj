@@ -17,6 +17,7 @@
         either BOTH runtimes must be indicated or ONLY macatalyst-x64. -->
 		<!-- For example: <RuntimeIdentifiers>maccatalyst-x64;maccatalyst-arm64</RuntimeIdentifiers> -->
 
+		<OutputType>Exe</OutputType>
 		<RootNamespace>Microsoft.ML.OnnxRuntime.Tests.MAUI</RootNamespace>
 		<UseMaui>true</UseMaui>
 		<SingleProject>true</SingleProject>
@@ -84,15 +85,9 @@
 	</ItemGroup>
 
 	<ItemGroup>
-		<ProjectReference
-            Include="..\..\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj"
-            name="Microsoft.ML.OnnxRuntime" />
-		<ProjectReference
-            Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Microsoft.ML.OnnxRuntime.Tests.Common.csproj"
-            name="Microsoft.ML.OnnxRuntime.Tests.Common" />
-		<ProjectReference
-            Include="..\Microsoft.ML.OnnxRuntime.Tests.Devices\Microsoft.ML.OnnxRuntime.Tests.Devices.csproj"
-            name="Microsoft.ML.OnnxRuntime.Tests.Devices" />
+		<ProjectReference Include="..\..\src\Microsoft.ML.OnnxRuntime\Microsoft.ML.OnnxRuntime.csproj" name="Microsoft.ML.OnnxRuntime" />
+		<ProjectReference Include="..\Microsoft.ML.OnnxRuntime.Tests.Common\Microsoft.ML.OnnxRuntime.Tests.Common.csproj" name="Microsoft.ML.OnnxRuntime.Tests.Common" />
+		<ProjectReference Include="..\Microsoft.ML.OnnxRuntime.Tests.Devices\Microsoft.ML.OnnxRuntime.Tests.Devices.csproj" name="Microsoft.ML.OnnxRuntime.Tests.Devices" />
 	</ItemGroup>
 
 	<ItemGroup>
@@ -116,16 +111,22 @@
 
 	<Target Name="RemoveVisualStudioTestRunner" BeforeTargets="_ComputeAppxPackagePayload">
 		<ItemGroup>
-			<_VisualStudioTestRunnerFiles
-                Include="@(PackagingOutputs)"
-                Condition="$([System.String]::Copy('%(PackagingOutputs.FullPath)').Contains('xunit.runner.visualstudio'))" />
+			<_VisualStudioTestRunnerFiles Include="@(PackagingOutputs)" Condition="$([System.String]::Copy('%(PackagingOutputs.FullPath)').Contains('xunit.runner.visualstudio'))" />
 			<PackagingOutputs Remove="@(_VisualStudioTestRunnerFiles)" />
 		</ItemGroup>
+	</Target>
+
+	<Target Name="CleanPublishFolder" AfterTargets="Clean">
+		<RemoveDir Directories="$(PublishDir)" />
 	</Target>
 
 	<PropertyGroup Condition="'$(IsAndroidTarget)' !='true'">
 		<GenerateProgramFile>false</GenerateProgramFile>
 		<DefaultLanguage>en</DefaultLanguage>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="'$(IsAndroidTarget)' == 'true'">
+	  <AndroidPackageFormat>apk</AndroidPackageFormat>
 	</PropertyGroup>
 
 </Project>
