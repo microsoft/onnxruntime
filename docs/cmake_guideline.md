@@ -10,6 +10,34 @@ If you want to change some setting, please try to scope down the impact to be lo
 
 For example, to add a macro definition to one VC project, you should use target\_compile\_definitions, not the add\_definitions.
 
+# Setting CMAKE_C_FLAGS/CMAKE_CXX_FLAGS/CMAKE_CXX_FLAGS_DEBUG/...
+CMake supports multiple programming languges. For example, C, C++, CUDA, assembly.      
+CMAKE_C_FLAGS/CMAKE_CXX_FLAGS are the default compile flags for every C/C++ source file. For example, in a Linux build `CMAKE_CXX_FLAGS` is default empty.     
+If you want to **override** the default value, you may pass `-DCMAKE_CXX_FLAGS=soemthing` to doing cmake config. For example:
+```bash
+cmake .. -DCMAKE_CXX_FLAGS="-fno-exception"
+```
+Our build.py has a lot of such logic.
+
+ CMAKE_CXX_FLAGS_DEBUG/CMAKE_CXX_FLAGS_RELEASE/... flags per config flags that are appended after CMAKE_CXX_FLAGS. For example, in a Linux build `CMAKE_CXX_FLAGS_DEBUG` is default to `-g`. If you want to override the flags, please be careful that you must keep `-DNDEBUG` in non-Debug builds.
+
+If you want to append values to the flags(instead of overriding the default), you should set `CFLAGS`/`CXXFLAGS` environment variables instead. Like
+```bash
+CXXFLAGS="-frtti"  cmake ..
+```
+If `CXXFLAGS` env var and `CMAKE_CXX_FLAGS` are both used, `CMAKE_CXX_FLAGS` takes higher precedence and the other one gets ignored. 
+
+Our [adjust_global_compile_flags.cmake](/cmake/adjust_global_compile_flags.cmake) also has logics of appending C/C++ flags. It's another way of doing that. 
+
+The above settings affects all ONNX Runtime C/C++ code and third-party libraries(like protobuf) when vcpkg is not used.
+When vcpkg is enabled, they do not affect third-party code. The compile flags for the dependent packages are controlled by the triplets files in [/cmake/vcpkg-triplets](/cmake/vcpkg-triplets). Since we support both vcpkg and non-vcpkg build, it's crucial to make them consistent.  For example, in [adjust_global_compile_flags.cmake](/cmake/adjust_global_compile_flags.cmake)  we have:
+```cmake
+  if (onnxruntime_ENABLE_WEBASSEMBLY_SIMD)
+    string(APPEND CMAKE_C_FLAGS " -msimd128")
+    string(APPEND CMAKE_CXX_FLAGS " -msimd128")
+  endif()
+```
+It means in `vcpkg-triplets` folder we need to have two different triplets that either with the "-msimd128" flag or not. 
 
 # Static library order matters
 First, you should know, when you link static libraries to an executable(or shared library) target, the order matters a lot.
@@ -113,14 +141,10 @@ Another related thing is: if std::atomic was in use, please also add the atomic 
 
 NOTE: However, in rare cases, even you told linker to link the program with pthread, sometimes it doesn't listen to you. It may ignore your order, cause issues. see [https://github.com/protocolbuffers/protobuf/issues/5923](https://github.com/protocolbuffers/protobuf/issues/5923). 
 
-# Don't use the "-pthread" flag directly. 
-Because:
-1. It doesn't work with nvcc(the CUDA compiler)
-2. Not portable. 
+# The "-pthread" flag
+"-pthread" is a flag for GCC/Clang compilers and it work in both compiling and linking stage. Howevery, usually you do not need to manually specify the flag. Historically(in the previous century) you need to apply this flag when compiling multithreading C/C++ code. But it is no longer true. Now for all the platforms we support it is only needed for WebAssembly build. It is useless for Linux build that is based on Glibc. 
 
-Don't bother to add this flag to your compile time flags. On Linux, it's useless. On some very old unix-like system, it may be helpful, but we only support Ubuntu 16.04.
-
-Use "Threads::Threads" for linking. Use nothing for compiling.
+We still need to add "Threads::Threads" to link libraries, which effectively will add "-pthread" to the link command.
 
 # CUDA projects should use the new cmake CUDA approach
 There are two ways of enabling CUDA in cmake.
