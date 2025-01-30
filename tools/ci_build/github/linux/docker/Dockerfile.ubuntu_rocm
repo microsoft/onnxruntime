@@ -15,8 +15,9 @@ LABEL PYTHON_VERSION="${PYTHON_VERSION}"
 ENV DEBIAN_FRONTEND=noninteractive \
     LC_ALL=C.UTF-8 \
     LANG=C.UTF-8 \
-    LD_LIBRARY_PATH=/opt/rocm/lib:/usr/lib/x86_64-linux-gnu \
-    PATH=/opt/rocm/bin:/usr/bin:/bin:/usr/sbin:/usr/local/bin
+    VIRTUAL_ENV=/opt/venv \
+    LD_LIBRARY_PATH=/opt/rocm/lib:/usr/lib/x86_64-linux-gnu::/opt/amdgpu/lib/x86_64-linux-gnu \
+    PATH=/opt/venv/bin:/opt/rocm/bin:/usr/bin:/bin:/usr/sbin:/usr/local/bin
 
 # Set default shell
 SHELL ["/bin/bash", "-c"]
@@ -82,8 +83,8 @@ RUN mkdir -p /tmp/ccache && \
 # Set up virtual environment for Python and install dependencies
 WORKDIR /ort
 COPY scripts/requirements.txt /ort/
-RUN python3 -m venv /ort/env && \
-    source /ort/env/bin/activate && \
+RUN python3 -m venv ${VIRTUAL_ENV} && \
+    source ${VIRTUAL_ENV}/bin/activate && \
     pip install --upgrade pip setuptools wheel && \
     pip install -r /ort/requirements.txt && \
     pip install ml_dtypes pytest-xdist pytest-rerunfailures scipy
