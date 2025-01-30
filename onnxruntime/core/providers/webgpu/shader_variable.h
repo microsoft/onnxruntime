@@ -188,7 +188,6 @@ class ShaderVariableHelper : public ShaderIndicesHelper {
   std::string GetByOffsetImpl(std::string_view offset) const;
   std::string SetByOffsetImpl(std::string_view offset, std::string_view value) const;
 
-
   friend class ShaderHelper;
 };
 
