@@ -242,8 +242,7 @@ option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
 option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
 # dlpack support
-cmake_dependent_option(onnxruntime_ENABLE_DLPACK "Enable dlpack" ON "onnxruntime_ENABLE_TRAINING 
- OR onnxruntime_ENABLE_ATEN OR onnxruntime_ENABLE_PYTHON" OFF)
+cmake_dependent_option(onnxruntime_ENABLE_DLPACK "Enable dlpack" ON "onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_ATEN OR onnxruntime_ENABLE_PYTHON" OFF)
 
 # Triton support
 option(onnxruntime_ENABLE_TRITON "Enable Triton" OFF)
