@@ -425,7 +425,7 @@ class MinMaxCalibrater(CalibraterBase):
             inputs = data_reader.get_next()
             if not inputs:
                 break
-            print(count)
+            print(count, flush=True)
             count += 1
             # for k, v in inputs.items():
             #     print(k, v.shape)

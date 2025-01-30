@@ -166,6 +166,7 @@ class SymbolicShapeInference:
             "Range": self._infer_Range,
             "Reciprocal": self._pass_on_shape_and_type,
             "ReduceSum": self._infer_ReduceSum,
+            "ReduceMean": self._infer_ReduceMean,
             "ReduceProd": self._infer_ReduceProd,
             "Reshape": self._infer_Reshape,
             "Resize": self._infer_Resize,
@@ -338,7 +339,8 @@ class SymbolicShapeInference:
                     int_dim = is_int.index(1)
                     if self.verbose_ > 0:
                         logger.debug(
-                            f"dim {unique_dims[:int_dim] + unique_dims[int_dim + 1 :]} has been merged with value {unique_dims[int_dim]}"
+                            f"dim {unique_dims[:int_dim] + unique_dims[int_dim + 1 :]} has been merged with value"
+                            f" {unique_dims[int_dim]}"
                         )
                     self._check_merged_dims(unique_dims, allow_broadcast=False)
                     return unique_dims[int_dim]
@@ -1603,6 +1605,11 @@ class SymbolicShapeInference:
                     )
                 )
 
+    def _infer_ReduceMean(self, node):  # noqa: N802
+        if get_opset(self.out_mp_) >= 18:
+            # reduce mean spec 18+ is same as reduce sum spec 13+
+            self._infer_ReduceSum(node)
+
     def _infer_ReduceProd(self, node):  # noqa: N802
         axes = get_attribute(node, "axes")
         keep_dims = get_attribute(node, "keepdims", 1)
@@ -1819,12 +1826,12 @@ class SymbolicShapeInference:
 
                 def replace_min_with_arg(arg_idx):
                     replaced = list(expr.args)
-                    assert isinstance(replaced[min_pos], sympy.Min), (
-                        f"Expected a sympy.Min() at position {min_pos}, got {replaced[min_pos]}"
-                    )
-                    assert len(replaced[min_pos].args) == 2, (
-                        f"Expected a sympy.Min() with exactly 2 arguments, got {replaced[min_pos]}"
-                    )
+                    assert isinstance(
+                        replaced[min_pos], sympy.Min
+                    ), f"Expected a sympy.Min() at position {min_pos}, got {replaced[min_pos]}"
+                    assert (
+                        len(replaced[min_pos].args) == 2
+                    ), f"Expected a sympy.Min() with exactly 2 arguments, got {replaced[min_pos]}"
                     replaced[min_pos] = replaced[min_pos].args[arg_idx]
                     return sympy.Add(*replaced)
 
@@ -2782,7 +2789,8 @@ class SymbolicShapeInference:
                 out_type_undefined = out_type.tensor_type.elem_type == onnx.TensorProto.UNDEFINED
                 if self.verbose_ > 2:
                     logger.debug(
-                        f"  {node.output[i_o]}: {out_shape!s} {onnx.TensorProto.DataType.Name(vi.type.tensor_type.elem_type)}"
+                        f"  {node.output[i_o]}:"
+                        f" {out_shape!s} {onnx.TensorProto.DataType.Name(vi.type.tensor_type.elem_type)}"
                     )
                     if node.output[i_o] in self.sympy_data_:
                         logger.debug("  Sympy Data: " + str(self.sympy_data_[node.output[i_o]]))  # noqa: G003
@@ -2886,7 +2894,8 @@ class SymbolicShapeInference:
                             if self.verbose_ > 0:
                                 if is_unknown_op:
                                     logger.debug(
-                                        f"Possible unknown op: {node.op_type} node: {node.name}, guessing {vi.name} shape"
+                                        f"Possible unknown op: {node.op_type} node: {node.name}, guessing"
+                                        f" {vi.name} shape"
                                     )
                                 if self.verbose_ > 2:
                                     logger.debug(f"  {node.output[i_o]}: {new_shape!s} {vi.type.tensor_type.elem_type}")
