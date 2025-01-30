@@ -731,8 +731,6 @@ def parse_arguments():
         help="Disable exceptions to reduce binary size. Requires --minimal_build.",
     )
 
-    parser.add_argument("--enable_dlpack", action="store_true", help="Enables dlpack, also enabled on pybind build")
-
     parser.add_argument("--rocm_version", help="The version of ROCM stack to use. ")
     parser.add_argument("--use_rocm", action="store_true", help="Build with ROCm")
     parser.add_argument("--rocm_home", help="Path to ROCm installation dir")
@@ -1088,7 +1086,6 @@ def generate_build_tree(
         "-Donnxruntime_USE_EXTERNAL_DAWN=" + ("ON" if args.use_external_dawn else "OFF"),
         # Training related flags
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + ("ON" if args.enable_nvtx_profile else "OFF"),
-        "-Donnxruntime_ENABLE_DLPACK=" + ("ON" if args.enable_dlpack else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING_OPS=" + ("ON" if args.enable_training_ops else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING_APIS=" + ("ON" if args.enable_training_apis else "OFF"),
@@ -2719,9 +2716,6 @@ def main():
 
         if args.minimal_build is not None:
             raise BuildError("Python bindings are not supported in a minimal build.")
-
-        if args.enable_dlpack is None:
-            args.enable_dlpack = True
 
     if args.nnapi_min_api:
         if not args.use_nnapi:
