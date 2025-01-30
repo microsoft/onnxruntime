@@ -37,7 +37,7 @@ variables:
   - name: render
     value: 109
   - name: RocmVersion
-    value: 6.3.2
+    value: 6.2.3
 
 jobs:
 - job: Linux_Build
@@ -59,10 +59,10 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.ubuntu_rocm
+      Dockerfile: tools/ci_build/github/linux/docker/migraphx-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion) --build-arg USE_MIGRAPHX=1"
-      Repository: onnxruntime-migraphx-cibuild-rocm$(RocmVersion)
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
+      Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
 
   - task: Cache@2
     inputs:
@@ -90,10 +90,9 @@ jobs:
           --volume $(CCACHE_DIR):/cache \
           -e CCACHE_DIR=/cache \
           --workdir /onnxruntime_src \
-          onnxruntime-migraphx-cibuild-rocm$(RocmVersion) \
+          onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion) \
           /bin/bash -c "
             set -ex; \
-            source /ort/env/bin/activate; \
             env; \
             ccache -s; \
             python tools/ci_build/build.py \
@@ -105,7 +104,6 @@ jobs:
                 onnxruntime_USE_COMPOSABLE_KERNEL=OFF \
               --mpi_home /opt/ompi \
               --use_migraphx \
-              --migraphx_home /opt/rocm \
               --rocm_version=$(RocmVersion) \
               --rocm_home /opt/rocm \
               --nccl_home /opt/rocm \
@@ -160,10 +158,10 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.ubuntu_rocm
+      Dockerfile: tools/ci_build/github/linux/docker/migraphx-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion) --build-arg USE_MIGRAPHX=1"
-      Repository: onnxruntime-migraphx-cibuild-rocm$(RocmVersion)
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
+      Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
 
   - task: CmdLine@2
     inputs:
@@ -179,10 +177,9 @@ jobs:
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --workdir /build/Release \
-          onnxruntime-migraphx-cibuild-rocm$(RocmVersion) \
+          onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion) \
           /bin/bash -c "
             set -ex; \
-            source /ort/env/bin/activate; \
             cd /build/Release && xargs -a /build/Release/perms.txt chmod a+x; \
             bash /onnxruntime_src/tools/ci_build/github/pai/pai_test_launcher.sh"
       workingDirectory: $(Build.SourcesDirectory)
