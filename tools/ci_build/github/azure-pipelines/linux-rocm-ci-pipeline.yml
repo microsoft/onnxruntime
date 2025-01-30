@@ -233,7 +233,6 @@ jobs:
             set -ex; \
             source /ort/env/bin/activate; \
             python --version; \
-            ls /opt/miniconda/envs/rocm-ci/lib/; \
             pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run kernel explorer tests'
