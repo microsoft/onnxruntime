@@ -77,22 +77,16 @@
       "require": "./dist/ort.min.js",
       "types": "./types.d.ts"
     },
-    "./.mjs": "./dist/ort-wasm-simd-threaded.jsep.mjs",
-    "./.wasm": "./dist/ort-wasm-simd-threaded.jsep.wasm",
     "./all": {
       "import": "./dist/ort.all.bundle.min.mjs",
       "require": "./dist/ort.all.min.js",
       "types": "./types.d.ts"
     },
-    "./all/.mjs": "./dist/ort-wasm-simd-threaded.jsep.mjs",
-    "./all/.wasm": "./dist/ort-wasm-simd-threaded.jsep.wasm",
     "./wasm": {
       "import": "./dist/ort.wasm.bundle.min.mjs",
       "require": "./dist/ort.wasm.min.js",
       "types": "./types.d.ts"
     },
-    "./wasm/.mjs": "./dist/ort-wasm-simd-threaded.mjs",
-    "./wasm/.wasm": "./dist/ort-wasm-simd-threaded.wasm",
     "./webgl": {
       "import": "./dist/ort.webgl.min.mjs",
       "require": "./dist/ort.webgl.min.js",
