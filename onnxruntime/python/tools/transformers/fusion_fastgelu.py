@@ -386,9 +386,6 @@ class FusionFastGelu(Fusion):
 
         if not self.model.has_constant_input(add_after_tanh, 1.0):
             return
-        j = self.model.find_constant_input(add_after_tanh, 1.0)
-        if j < 0:
-            return
 
         if add_after_tanh.output[0] not in input_name_to_nodes:
             return
@@ -405,9 +402,6 @@ class FusionFastGelu(Fusion):
         mul_half = children[0]
 
         if not self.model.has_constant_input(mul_half, 0.5):
-            return
-        i = self.model.find_constant_input(mul_half, 0.5)
-        if i < 0:
             return
 
         root_input = mul_after_tanh.input[0 if mul_after_tanh.input[1] == add_after_tanh.output[0] else 1]
