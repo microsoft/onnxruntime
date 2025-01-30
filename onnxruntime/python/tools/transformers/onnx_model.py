@@ -1376,7 +1376,7 @@ class OnnxModel:
             if tensor in graph.initializer:
                 graph.initializer.remove(tensor)
                 return
-        logger.warning("Failed to remove initializer %s", initializer)  # It might be a bug to hit this line.
+        logger.warning("Failed to remove initializer %s", tensor)  # It might be a bug to hit this line.
 
     def remove_duplicated_initializer(self, cache: dict | None):
         """Remove initializers with duplicated values, and only keep the first one.

@@ -163,8 +163,8 @@ class FusionAttentionClip(FusionAttention):
                 logger.debug("fuse_attention: failed to match v path")
                 return
 
-        reshape_v, add_v, matmul_v = v_nodes[-3], v_nodes[-2], v_nodes[-1]
-        
+        add_v, matmul_v = v_nodes[-2], v_nodes[-1]
+
         add_mask = None
         add_mask_indices = []
         qk_nodes = None
