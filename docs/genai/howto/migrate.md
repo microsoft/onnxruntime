@@ -7,17 +7,17 @@ grand_parent: Generate API (Preview)
 nav_order: 5
 ---
 
-# Migrate ONNX Runtime generateA() API from 0.5.2 to 0.6.0
+# Migrate ONNX Runtime generate() API from 0.5.2 to 0.6.0
 
 Learn how to migrate from ONNX Runtime generate() version 0.5.2 to version 0.6.0. 
 
-Version 0.6.0 adds support for "chat mode", also known as _continuation_, _continous decoding_, and _interactive decoding_. The introduction of chat mode necessitated a change to the API, which breaks the previous API.
+Version 0.6.0 adds support for "chat mode", also known as _continuation_, _continuous decoding_, and _interactive decoding_. With the introduction of chat mode, a breaking API change was made.
 
-In summary, the new API adds an `AppendTokens` function to the generator, which allows for multi-turn conversations. Previously, input was set in `GeneratorParams` prior to the creation of the generator.
+In summary, the new API adds an `AppendTokens` method to the `Generator`, which allows for multi-turn conversations. Previously, input was set in `GeneratorParams` prior to the creation of the `Generator`.
 
 Calling `AppendTokens` outside of the conversation loop can be used to implement system prompt caching.
 
-Note: chat mode and system prompt caching are only supported for batch size 1. Furthermore, they are currently supported on CPU, NVIDIA GPUs with the CUDA EP, and all GPUs with the Web GPU native EP. They are not supported on NPU or GPUs running with the DirecML EP. For Q&A mode, the migrations described below *are* required.
+Note: chat mode and system prompt caching are only supported for batch size 1. Furthermore, they are currently supported on CPU, NVIDIA GPUs with the CUDA EP, and all GPUs with the Web GPU native EP. They are not supported on NPU or GPUs running with the DirecML EP. For question & answer (Q&A) mode, the migrations described below *are* still required.
 
 ## Python
 
@@ -25,8 +25,9 @@ Note: chat mode and system prompt caching are only supported for batch size 1. F
 
 1. Replace calls to `params.input_ids = input_tokens` with `generator.append_tokens(input_tokens)` after the generator object has been created.
 2. Remove calls to `generator.compute_logits()`
+3. If the application has a Q&A loop, delete the `generator` between `append_token` call to reset the state of the model.
 
-### Add system prompt caching
+### Add system prompt caching to Python applications
 
 1. Create and tokenize the system prompt and call `generator.append_tokens(system_tokens)`. This call can be done before the user is asked for their prompt.
 
@@ -35,7 +36,7 @@ Note: chat mode and system prompt caching are only supported for batch size 1. F
    generator.append_tokens(system_tokens)
    ```
 
-### Add chat mode
+### Add chat mode to Python applications
 
 1. Create a loop in your application, and call `generator.append_tokens(prompt)` every time the user provides new input:
    
@@ -54,19 +55,70 @@ Note: chat mode and system prompt caching are only supported for batch size 1. F
         print()
     ```
 
-## C/C++ 
+## C++ 
 
-### Migrate C/C++ question and answer (single turn) code to 0.6.0
+### Migrate C++ question and answer (single turn) code to 0.6.0
 
 1. Replace calls to `params->SetInputSequences(*sequences)` with `generator->AppendTokenSequences(*sequences)`
 2. Remove calls to `generator->ComputeLogits()`
+
+### Add system prompt caching to C++ applications
+
+1. Create and tokenize the system prompt and call `generator->AppendTokenSequences(*sequences)`. This call can be done before the user is asked for their prompt.
+
+   ```c++
+   auto sequences = OgaSequences::Create();
+   tokenizer->Encode(system_prompt.c_str(), *sequences);
+   generator->AppendTokenSequences(*sequences);
+   generator.append_tokens(system_tokens)
+   ```
+
+### Add chat mode to your C++ application
+
+1. Add a chat loop to your application 
+   ```c++
+   std::cout << "Generating response..." << std::endl;
+   auto params = OgaGeneratorParams::Create(*model);
+   params->SetSearchOption("max_length", 1024);
+
+   auto generator = OgaGenerator::Create(*model, *params);
+
+   while (true) {
+     std::string text;
+     std::cout << "Prompt: "  << std::endl;
+     std::getline(std::cin, prompt);
+
+     auto sequences = OgaSequences::Create();
+     tokenizer->Encode(prompt.c_str(), *sequences);
+
+     generator->AppendTokenSequences(*sequences);
+
+     while (!generator->IsDone()) {
+       generator->GenerateNextToken();
+
+       const auto num_tokens = generator->GetSequenceCount(0);
+       const auto new_token = generator->GetSequenceData(0)[num_tokens - 1];
+      std::cout << tokenizer_stream->Decode(new_token) << std::flush;
+      }
+   }
+    ```
 
 ## C#
 
 ### Migrate C# question and answer (single turn) code to 0.6.0
 
-1. Replace calls to `generatorParams.SetInputSequences(sequences)` with generator.AppendTokenSequences(sequences)`
+1. Replace calls to `generatorParams.SetInputSequences(sequences)` with `generator.AppendTokenSequences`(sequences)`
 2. Remove calls to `generator.ComputeLogits()`
+
+### Add system prompt caching to your C# application
+
+1. Create and tokenize the system prompt and call `generator->AppendTokenSequences()`. This call can be done before the user is asked for their prompt.
+
+   ```csharp
+   auto sequences = OgaSequences::Create();
+   tokenizer->Encode(system_prompt.c_str(), *sequences);
+   generator->AppendTokenSequences(*sequences);
+   ```
 
 ## Java
 
