@@ -6,6 +6,8 @@
 Builds an Ubuntu-based Docker image with TensorRT.
 """
 
+from __future__ import annotations
+
 import argparse
 import os
 import pty
