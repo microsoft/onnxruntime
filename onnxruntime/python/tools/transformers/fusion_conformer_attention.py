@@ -104,6 +104,15 @@ class FusionConformerAttention(FusionAttention):
 
         reshape_q, add_q, matmul_q = q_nodes[-3], q_nodes[-2], q_nodes[-1]
 
+        extra_q_nodes = self.model.match_parent_path(
+            add_qk,
+            ["Reshape", "Transpose", "MatMul", "Transpose", "Reshape", "Div"],
+            [1, 0, 0, 0, 0, 0],
+        )
+        if extra_q_nodes is not None and q_nodes[0] != extra_q_nodes[-1]:
+            logger.debug("fuse_conformer_attention: failed to match extra q path")
+            return
+
         past_k, present_k = "", ""
         k_nodes = self.model.match_parent_path(
             matmul_qk,
@@ -133,7 +142,7 @@ class FusionConformerAttention(FusionAttention):
             return
 
         new_node = None
-        use_packed_attention_op = matmul_q.input[0] == matmul_k.input[0] and matmul_k.input[0] == matmul_v.input[0]
+        use_packed_attention_op = matmul_q.input[0] == matmul_k.input[0] and matmul_k.input[0] == matmul_v.input[0] and extra_q_nodes is None
         if use_packed_attention_op:
             # Self-attention, use Attention op
             new_node = self.create_attention_node(
@@ -193,7 +202,12 @@ class FusionConformerAttention(FusionAttention):
             if v_nodes[-1].op_type == "MatMul":
                 v_nodes.pop()
 
-        self.nodes_to_remove.extend(q_nodes)
+        if extra_q_nodes is None:
+            # Don't remove Q nodes for conformer-transducer (CT) model since it has
+            # an extra set of nodes attached to the output of the Q path that are not
+            # part of the attention computation
+            self.nodes_to_remove.extend(q_nodes)
+
         self.nodes_to_remove.extend(k_nodes)
         self.nodes_to_remove.extend(v_nodes)
 

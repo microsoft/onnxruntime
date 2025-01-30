@@ -410,9 +410,7 @@ class FusionFastGelu(Fusion):
         if mul_before_tanh is None:
             return
 
-        if not self.model.has_constant_input(mul_before_tanh, 0.7978):
-            return
-        k = self.model.find_constant_input(mul_before_tanh, 0.7978, delta=0.0001)
+        k = self.model.find_constant_input(mul_before_tanh, 0.7978, delta=0.01)
         if k < 0:
             return
 
@@ -431,9 +429,7 @@ class FusionFastGelu(Fusion):
         if mul_after_pow is None:
             return
 
-        if not self.model.has_constant_input(mul_after_pow, 0.0447):
-            return
-        m = self.model.find_constant_input(mul_after_pow, 0.0447, delta=0.0001)
+        m = self.model.find_constant_input(mul_after_pow, 0.0447, delta=0.01)
         if m < 0:
             return
 

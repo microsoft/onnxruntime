@@ -165,6 +165,7 @@ class FusionAttentionClip(FusionAttention):
 
         add_v, matmul_v = v_nodes[-2], v_nodes[-1]
 
+        causal_mask_input_index = None
         add_mask = None
         add_mask_indices = []
         qk_nodes = self.model.match_parent_path(
