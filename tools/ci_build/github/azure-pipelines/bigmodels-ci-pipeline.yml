@@ -164,7 +164,7 @@ stages:
       hitAnother: 'False'
     workspace:
       clean: all
-    pool: onnxruntime-Linux-GPU-A10-12G
+    pool: Onnxruntime-Linux-GPU-A100-WUS3
     steps:
     - checkout: self
       clean: true
