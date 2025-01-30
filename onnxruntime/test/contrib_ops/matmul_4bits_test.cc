@@ -32,8 +32,10 @@ namespace test {
 
 namespace {
 
-constexpr int QBits = 4;
+constexpr int Q2Bits = 2;
+constexpr int Q4Bits = 4;
 
+template<int qbits>
 void QuantizeDequantize(std::vector<float>& raw_vals,
                         std::vector<uint8_t>& quant_vals,
                         std::vector<float>& scales,
@@ -44,7 +46,7 @@ void QuantizeDequantize(std::vector<float>& raw_vals,
   auto& ortenv = **ort_env.get();
   onnxruntime::concurrency::ThreadPool* tp = ortenv.GetEnvironment().GetIntraOpThreadPool();
 
-  MlasQuantizeBlockwise<float, QBits>(
+  MlasQuantizeBlockwise<float, qbits>(
       quant_vals.data(),
       scales.data(),
       zp != nullptr ? zp->data() : nullptr,
@@ -57,7 +59,7 @@ void QuantizeDequantize(std::vector<float>& raw_vals,
       tp);
 
   // Note that raw_vals is NxK after dequant
-  MlasDequantizeBlockwise<float, QBits>(
+  MlasDequantizeBlockwise<float, qbits>(
       raw_vals.data(),                       // dequantized output
       quant_vals.data(),                     // quantized input
       scales.data(),                         // quantization scales
@@ -95,7 +97,7 @@ std::ostream& operator<<(std::ostream& os, const TestOptions& opts) {
             << ", has_bias:" << opts.has_bias;
 }
 
-template <typename T1>
+template <typename T1, int qbits>
 void RunTest(const TestOptions& opts,
              std::vector<std::unique_ptr<IExecutionProvider>>&& explicit_eps = {}) {
   SCOPED_TRACE(opts);
@@ -121,12 +123,12 @@ void RunTest(const TestOptions& opts,
 #endif
 
   int q_rows, q_cols;
-  MlasBlockwiseQuantizedShape<float, QBits>(static_cast<int>(opts.block_size), /* columnwise */ true,
+  MlasBlockwiseQuantizedShape<float, qbits>(static_cast<int>(opts.block_size), /* columnwise */ true,
                                             static_cast<int>(K), static_cast<int>(N),
                                             q_rows, q_cols);
 
   size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
-  MlasBlockwiseQuantizedBufferSizes(QBits, static_cast<int>(opts.block_size), /* columnwise */ true,
+  MlasBlockwiseQuantizedBufferSizes<qbits>(static_cast<int>(opts.block_size), /* columnwise */ true,
                                     static_cast<int>(K), static_cast<int>(N),
                                     q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 
@@ -134,7 +136,7 @@ void RunTest(const TestOptions& opts,
   std::vector<float> scales(q_scale_size);
   std::vector<uint8_t> zp(q_zp_size_in_bytes);
 
-  QuantizeDequantize(input1_f_vals,
+  QuantizeDequantize<qbits>(input1_f_vals,
                      input1_vals,
                      scales,
                      opts.has_zero_point ? &zp : nullptr,
@@ -175,7 +177,7 @@ void RunTest(const TestOptions& opts,
   test.AddAttribute<int64_t>("K", K);
   test.AddAttribute<int64_t>("N", N);
   test.AddAttribute<int64_t>("block_size", opts.block_size);
-  test.AddAttribute<int64_t>("bits", QBits);
+  test.AddAttribute<int64_t>("bits", qbits);
   test.AddAttribute<int64_t>("accuracy_level", opts.accuracy_level);
 
   if constexpr (use_float16) {
@@ -267,7 +269,7 @@ void RunTest(const TestOptions& opts,
 
 }  // namespace
 
-template <typename AType, int M, int N, int K, int block_size, int accuracy_level>
+template <typename AType, int qbits, int M, int N, int K, int block_size, int accuracy_level>
 void TestMatMulNBitsTyped() {
   TestOptions base_opts{};
   base_opts.M = M, base_opts.N = N, base_opts.K = K;
@@ -282,24 +284,27 @@ void TestMatMulNBitsTyped() {
     base_opts.output_rel_error = 0.02f;
   }
 
+  if constexpr (qbits == 4)
   {
     TestOptions opts = base_opts;
-    RunTest<AType>(opts);
+    RunTest<AType, qbits>(opts);
   }
 
   {
     TestOptions opts = base_opts;
     opts.has_zero_point = true;
-    RunTest<AType>(opts);
+    RunTest<AType, qbits>(opts);
   }
 
 #if !defined(USE_DML) && !defined(USE_WEBGPU)
+  if constexpr (qbits == 4)
   {
     TestOptions opts = base_opts;
     opts.has_g_idx = true;
-    RunTest<AType>(opts);
+    RunTest<AType, qbits>(opts);
   }
 
+  if constexpr (qbits == 4)
   {
     TestOptions opts = base_opts;
     opts.has_g_idx = true;
@@ -316,80 +321,84 @@ void TestMatMulNBitsTyped() {
     // only enabled for CPU EP for now
     std::vector<std::unique_ptr<IExecutionProvider>> explicit_eps;
     explicit_eps.emplace_back(DefaultCpuExecutionProvider());
-    RunTest<AType>(opts, std::move(explicit_eps));
+    RunTest<AType, qbits>(opts, std::move(explicit_eps));
   }
 
   {
     TestOptions opts = base_opts;
     opts.has_zero_point = true, opts.zp_is_4bit = false;
-    RunTest<AType>(opts);
+    RunTest<AType, qbits>(opts);
   }
 #endif  // !defined(USE_DML) && !defined(USE_WEBGPU)
 }
 
 TEST(MatMulNBits, Float32_Accuracy0) {
-  TestMatMulNBitsTyped<float, 1, 1, 16, 16, 0>();
-  TestMatMulNBitsTyped<float, 1, 2, 16, 16, 0>();
-  TestMatMulNBitsTyped<float, 1, 32, 16, 16, 0>();
-  TestMatMulNBitsTyped<float, 1, 32, 32, 16, 0>();
-  TestMatMulNBitsTyped<float, 1, 32, 16, 128, 0>();
-  TestMatMulNBitsTyped<float, 1, 288, 16, 16, 0>();
-  TestMatMulNBitsTyped<float, 1, 288, 1024, 16, 0>();
-  TestMatMulNBitsTyped<float, 1, 288, 1024, 128, 0>();
-  TestMatMulNBitsTyped<float, 1, 288, 93, 32, 0>();
-  TestMatMulNBitsTyped<float, 1, 288, 93, 128, 0>();
-  TestMatMulNBitsTyped<float, 1, 288, 1234, 16, 0>();
-  TestMatMulNBitsTyped<float, 2, 1, 16, 16, 0>();
-  TestMatMulNBitsTyped<float, 2, 2, 16, 16, 0>();
-  TestMatMulNBitsTyped<float, 100, 1, 16, 16, 0>();
-  TestMatMulNBitsTyped<float, 100, 2, 16, 16, 0>();
-  TestMatMulNBitsTyped<float, 100, 32, 16, 16, 0>();
-  TestMatMulNBitsTyped<float, 100, 32, 32, 16, 0>();
-  TestMatMulNBitsTyped<float, 100, 32, 16, 128, 0>();
-  TestMatMulNBitsTyped<float, 100, 288, 16, 16, 0>();
-  TestMatMulNBitsTyped<float, 100, 288, 1024, 16, 0>();
-  TestMatMulNBitsTyped<float, 100, 288, 1024, 128, 0>();
-  TestMatMulNBitsTyped<float, 100, 288, 93, 32, 0>();
-  TestMatMulNBitsTyped<float, 100, 288, 93, 128, 0>();
-  TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 1, 16, 16, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 2, 16, 16, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 32, 16, 16, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 32, 32, 16, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 32, 16, 128, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 288, 16, 16, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 288, 1024, 16, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 288, 1024, 128, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 288, 93, 32, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 288, 93, 128, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 288, 1234, 16, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 2, 1, 16, 16, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 2, 2, 16, 16, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 1, 16, 16, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 2, 16, 16, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 32, 16, 16, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 32, 32, 16, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 32, 16, 128, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 288, 16, 16, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 288, 1024, 16, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 288, 1024, 128, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 288, 93, 32, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 288, 93, 128, 0>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 288, 1234, 16, 0>();
 }
 
 TEST(MatMulNBits, Float32_Accuracy1) {
-  TestMatMulNBitsTyped<float, 1, 1, 16, 16, 1>();
-  TestMatMulNBitsTyped<float, 1, 288, 1024, 128, 1>();
-  TestMatMulNBitsTyped<float, 1, 288, 93, 32, 1>();
-  TestMatMulNBitsTyped<float, 1, 288, 1234, 16, 1>();
-  TestMatMulNBitsTyped<float, 100, 32, 16, 128, 1>();
-  TestMatMulNBitsTyped<float, 100, 288, 1024, 128, 1>();
-  TestMatMulNBitsTyped<float, 100, 288, 93, 128, 1>();
-  TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 1>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 1, 16, 16, 1>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 288, 1024, 128, 1>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 288, 93, 32, 1>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 288, 1234, 16, 1>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 32, 16, 128, 1>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 288, 1024, 128, 1>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 288, 93, 128, 1>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 288, 1234, 16, 1>();
 }
 
 TEST(MatMulNBits, Float32_Accuracy4) {
-  TestMatMulNBitsTyped<float, 1, 1, 16, 16, 4>();
-  TestMatMulNBitsTyped<float, 1, 2, 16, 16, 4>();
-  TestMatMulNBitsTyped<float, 1, 32, 16, 16, 4>();
-  TestMatMulNBitsTyped<float, 1, 32, 32, 16, 4>();
-  TestMatMulNBitsTyped<float, 1, 32, 16, 128, 4>();
-  TestMatMulNBitsTyped<float, 1, 288, 16, 16, 4>();
-  TestMatMulNBitsTyped<float, 1, 288, 1024, 16, 4>();
-  TestMatMulNBitsTyped<float, 1, 288, 1024, 128, 4>();
-  TestMatMulNBitsTyped<float, 1, 288, 93, 32, 4>();
-  TestMatMulNBitsTyped<float, 1, 288, 93, 128, 4>();
-  TestMatMulNBitsTyped<float, 1, 288, 1234, 16, 4>();
-  TestMatMulNBitsTyped<float, 2, 1, 16, 16, 4>();
-  TestMatMulNBitsTyped<float, 2, 2, 16, 16, 4>();
-  TestMatMulNBitsTyped<float, 100, 1, 16, 16, 4>();
-  TestMatMulNBitsTyped<float, 100, 2, 16, 16, 4>();
-  TestMatMulNBitsTyped<float, 100, 32, 16, 16, 4>();
-  TestMatMulNBitsTyped<float, 100, 32, 32, 16, 4>();
-  TestMatMulNBitsTyped<float, 100, 32, 16, 128, 4>();
-  TestMatMulNBitsTyped<float, 100, 288, 16, 16, 4>();
-  TestMatMulNBitsTyped<float, 100, 288, 1024, 16, 4>();
-  TestMatMulNBitsTyped<float, 100, 288, 1024, 128, 4>();
-  TestMatMulNBitsTyped<float, 100, 288, 93, 32, 4>();
-  TestMatMulNBitsTyped<float, 100, 288, 93, 128, 4>();
-  TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 1, 16, 16, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 2, 16, 16, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 32, 16, 16, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 32, 32, 16, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 32, 16, 128, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 288, 16, 16, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 288, 1024, 16, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 288, 1024, 128, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 288, 93, 32, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 288, 93, 128, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 1, 288, 1234, 16, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 2, 1, 16, 16, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 2, 2, 16, 16, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 1, 16, 16, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 2, 16, 16, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 32, 16, 16, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 32, 32, 16, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 32, 16, 128, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 288, 16, 16, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 288, 1024, 16, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 288, 1024, 128, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 288, 93, 32, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 288, 93, 128, 4>();
+  TestMatMulNBitsTyped<float, Q4Bits, 100, 288, 1234, 16, 4>();
+}
+
+TEST(MatMulNBits, DISABLED_Float32_Accuracy4_Q2) {
+  TestMatMulNBitsTyped<float, Q2Bits, 2, 1, 1, 32, 4>();
 }
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64)
@@ -397,68 +406,68 @@ TEST(MatMulNBits, Float32_Accuracy4) {
 // Actual and expected difference is over 0.01 with DmlExecutionProvider.
 // Skip the tests instead of raising the tolerance to make is pass.
 TEST(MatMulNBits, Float16_Accuracy2) {
-  TestMatMulNBitsTyped<MLFloat16, 1, 1, 16, 16, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 2, 16, 16, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 32, 16, 16, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 32, 32, 16, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 32, 16, 128, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 288, 16, 16, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 288, 1024, 16, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 288, 1024, 128, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 288, 93, 32, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 288, 93, 128, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 288, 1234, 16, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 2, 1, 16, 16, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 2, 2, 16, 16, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 1, 16, 16, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 2, 16, 16, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 32, 16, 16, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 32, 32, 16, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 32, 16, 128, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 16, 16, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 16, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 128, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 128, 2>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 1, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 2, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 32, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 32, 32, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 32, 16, 128, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 288, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 288, 1024, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 288, 1024, 128, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 288, 93, 32, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 288, 93, 128, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 288, 1234, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 2, 1, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 2, 2, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 1, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 2, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 32, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 32, 32, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 32, 16, 128, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 288, 16, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 288, 1024, 16, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 288, 1024, 128, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 288, 93, 32, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 288, 93, 128, 2>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 288, 1234, 16, 2>();
 }
 
 TEST(MatMulNBits, Float16_Accuracy0) {
-  TestMatMulNBitsTyped<MLFloat16, 1, 1, 16, 16, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 288, 93, 32, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 288, 1234, 16, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 2, 1, 16, 16, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 2, 16, 16, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 128, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 0>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 0>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 1, 16, 16, 0>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 288, 93, 32, 0>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 288, 1234, 16, 0>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 2, 1, 16, 16, 0>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 2, 16, 16, 0>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 288, 1024, 128, 0>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 288, 93, 32, 0>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 288, 1234, 16, 0>();
 }
 
 TEST(MatMulNBits, Float16_Accuracy4) {
-  TestMatMulNBitsTyped<MLFloat16, 1, 1, 16, 16, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 2, 16, 16, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 32, 16, 16, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 32, 32, 16, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 32, 16, 128, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 288, 16, 16, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 288, 1024, 16, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 288, 1024, 128, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 288, 93, 32, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 288, 93, 128, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 1, 288, 1234, 16, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 2, 1, 16, 16, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 2, 2, 16, 16, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 1, 16, 16, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 2, 16, 16, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 32, 16, 16, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 32, 32, 16, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 32, 16, 128, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 16, 16, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 16, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 128, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 32, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 128, 4>();
-  TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 1, 16, 16, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 2, 16, 16, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 32, 16, 16, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 32, 32, 16, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 32, 16, 128, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 288, 16, 16, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 288, 1024, 16, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 288, 1024, 128, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 288, 93, 32, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 288, 93, 128, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 1, 288, 1234, 16, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 2, 1, 16, 16, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 2, 2, 16, 16, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 1, 16, 16, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 2, 16, 16, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 32, 16, 16, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 32, 32, 16, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 32, 16, 128, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 288, 16, 16, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 288, 1024, 16, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 288, 1024, 128, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 288, 93, 32, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 288, 93, 128, 4>();
+  TestMatMulNBitsTyped<MLFloat16, Q4Bits, 100, 288, 1234, 16, 4>();
 }
 #endif
 #endif

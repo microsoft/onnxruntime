@@ -7930,7 +7930,7 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
                                                 q_rows, q_cols);
 
       size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
-      MlasBlockwiseQuantizedBufferSizes(qbits, block_size, /* columnwise */ true,
+      MlasBlockwiseQuantizedBufferSizes<qbits>(block_size, /* columnwise */ true,
                                         K, N,
                                         q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 
