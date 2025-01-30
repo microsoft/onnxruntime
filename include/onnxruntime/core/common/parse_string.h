@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <charconv>
 #include <locale>
 #include <sstream>
 #include <string_view>
@@ -12,18 +13,9 @@
 
 namespace onnxruntime {
 
-/**
- * Tries to parse a value from an entire string.
- */
 template <typename T>
-bool TryParseStringWithClassicLocale(std::string_view str, T& value) {
-  if constexpr (std::is_integral<T>::value && std::is_unsigned<T>::value) {
-    // if T is unsigned integral type, reject negative values which will wrap
-    if (!str.empty() && str[0] == '-') {
-      return false;
-    }
-  }
-
+std::enable_if_t<!std::is_arithmetic_v<T>, bool>
+TryParseStringWithClassicLocale(std::string_view str, T& value) {
   // don't allow leading whitespace
   if (!str.empty() && std::isspace(str[0], std::locale::classic())) {
     return false;
@@ -41,6 +33,22 @@ bool TryParseStringWithClassicLocale(std::string_view str, T& value) {
   }
 
   value = std::move(parsed_value);
+  return true;
+}
+
+template <typename T>
+std::enable_if_t<std::is_arithmetic_v<T>, bool>
+TryParseStringWithClassicLocale(std::string_view str, T& value) {
+  const auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), value);
+
+  if (ec != std::errc{}) {
+    return false;
+  }
+
+  if (ptr != str.data() + str.size()) {
+    return false;
+  }
+
   return true;
 }
 
