@@ -17,12 +17,12 @@ namespace detail {
 
 // Whether we will use std::from_chars() to parse to `T`.
 #if defined(__ANDROID__)
-// Note: As of Android NDK r27c, std::from_chars() doesn't support floating point types
+// Note: As of Android NDK r27c, std::from_chars() doesn't support floating point types.
 template<typename T>
-constexpr bool ParseWithFromChars = std::is_integral_v<T>;
+constexpr bool ParseWithFromChars = !std::is_same_v<bool, T> && std::is_integral_v<T>;
 #else
 template <typename T>
-constexpr bool ParseWithFromChars = std::is_integral_v<T> || std::is_floating_point_v<T>;
+constexpr bool ParseWithFromChars = !std::is_same_v<bool, T> && (std::is_integral_v<T> || std::is_floating_point_v<T>);
 #endif
 
 }
