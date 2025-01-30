@@ -5,10 +5,8 @@
 
 from logging import getLogger
 
-from dynamo_onnx_helper import DynamoOnnxHelper
 from fusion_base import Fusion
 from fusion_utils import NumpyHelper
-from onnx import helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -42,7 +40,7 @@ class FusionConstantFold(Fusion):
         if len(node.input) != 1 or len(node.output) != 1:
             logger.debug("fuse_constant_fold: node has more than one input or output")
             return
-    
+
         # Check if input is initializer data
         proto = self.model.get_initializer(node.input[0])
         if proto is None:
@@ -114,7 +112,7 @@ class FusionConstantFold(Fusion):
         if len(node.input) != 1 or len(node.output) != 1:
             logger.debug("fuse_constant_fold: node has more than one input or output")
             return
-    
+
         # Check if parent node is Transpose node with only one input and one output
         parent_node = self.model.match_parent(node, "Transpose", 0)
         if parent_node is None:

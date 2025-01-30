@@ -162,9 +162,7 @@ class FusionAttentionClip(FusionAttention):
         v_nodes_1 = self.model.match_parent_path(
             matmul_qkv, ["Reshape", "Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, 0, None]
         )
-        v_nodes_2 = self.model.match_parent_path(
-            matmul_qkv, ["Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, 1]
-        )
+        v_nodes_2 = self.model.match_parent_path(matmul_qkv, ["Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, 1])
         if v_nodes_1 is not None:
             (_, _, reshape_v, add_v, matmul_v) = v_nodes_1
             v_nodes = v_nodes_1
@@ -185,11 +183,11 @@ class FusionAttentionClip(FusionAttention):
             return_indice=add_mask_indices,
         )
         qk_nodes_2 = self.model.match_parent_path(
-            matmul_qkv, ["Softmax", "MatMul"], [0, 0],
+            matmul_qkv,
+            ["Softmax", "MatMul"],
+            [0, 0],
         )
-        qk_nodes_3 = self.model.match_parent_path(
-            matmul_qkv, ["Softmax", "Add", "Mul", "MatMul"], [0, 0, 0, 0]
-        )
+        qk_nodes_3 = self.model.match_parent_path(matmul_qkv, ["Softmax", "Add", "Mul", "MatMul"], [0, 0, 0, 0])
         qk_nodes_4 = self.model.match_parent_path(
             matmul_qkv, ["Cast", "Cast", "Softmax", "Add", "Mul", "MatMul"], [0, 0, 0, 0, 0, 0]
         )
@@ -216,9 +214,7 @@ class FusionAttentionClip(FusionAttention):
         q_nodes_1 = self.model.match_parent_path(
             matmul_qk, ["Reshape", "Transpose", "Reshape", "Mul", "Add", "MatMul"], [0, 0, 0, 0, None, None]
         )
-        q_nodes_2 = self.model.match_parent_path(
-            matmul_qk, ["Transpose", "Reshape", "Add", "MatMul"], [0, 0, 0, 1]
-        )
+        q_nodes_2 = self.model.match_parent_path(matmul_qk, ["Transpose", "Reshape", "Add", "MatMul"], [0, 0, 0, 1])
         if q_nodes_1 is not None:
             (_, _, reshape_q, mul_q, add_q, matmul_q) = q_nodes_1
             q_nodes = q_nodes_1
@@ -233,9 +229,7 @@ class FusionAttentionClip(FusionAttention):
         k_nodes_1 = self.model.match_parent_path(
             matmul_qk, ["Transpose", "Reshape", "Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, 0, 0, None]
         )
-        k_nodes_2 = self.model.match_parent_path(
-            matmul_qk, ["Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, 1]
-        )
+        k_nodes_2 = self.model.match_parent_path(matmul_qk, ["Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, 1])
         if k_nodes_1 is not None:
             (_, _, _, _, add_k, matmul_k) = k_nodes_1
             k_nodes = k_nodes_1

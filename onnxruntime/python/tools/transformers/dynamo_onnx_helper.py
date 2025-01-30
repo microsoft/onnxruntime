@@ -4,12 +4,11 @@
 # --------------------------------------------------------------------------
 from collections.abc import Sequence
 from logging import getLogger
-from onnx import helper
 from typing import Any
 
 import numpy as np
 import onnx
-
+from onnx import helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -137,11 +136,11 @@ class DynamoOnnxHelper:
         self.model.add_initializer(tensor)
         return tensor
 
-    def convert_constants_to_initializers(self, minimum = 100) -> None:
+    def convert_constants_to_initializers(self, min_size: int = 1) -> None:
         """
-        Converts Constant ops of size [minimum] or higher to initializers
+        Converts Constant ops of size [min_size] or higher to initializers
         """
-        logger.info(f"Converting constants greater than size {minimum} to initializers")
+        logger.info(f"Converting constants greater than size {min_size} to initializers")
 
         constant_nodes = self.model.get_nodes_by_op_type("Constant")
         nodes_to_remove = []
@@ -150,17 +149,20 @@ class DynamoOnnxHelper:
             # Get info from Constant op
             np_data = self.model.get_constant_value(node.output[0])
 
-            # Skip if there are less than [minimum] elements
-            if np_data is None or np_data.size < minimum:
+            # Skip if there are less than [min_size] elements
+            if np_data is None or np_data.size < min_size:
                 continue
 
             # Add new initializer with same name as Constant op's output
-            self.add_initializer(
-                name=node.output[0],
-                data_type=node.attribute[0].t.data_type,
-                dims=list(np_data.shape),
-                vals=np_data,
-            )
+            for att in node.attribute:
+                if att.name == "value":
+                    self.add_initializer(
+                        name=node.output[0],
+                        data_type=att.t.data_type,
+                        dims=list(np_data.shape),
+                        vals=np_data,
+                    )
+                    break
 
             nodes_to_remove.append(node)
 
@@ -191,9 +193,7 @@ class DynamoOnnxHelper:
                 if perm is None:
                     transposed_tensor = ir.tensor(initializer.const_value.numpy().transpose())
                 else:
-                    transposed_tensor = ir.tensor(
-                        initializer.const_value.numpy().transpose(perm.as_ints())
-                    )
+                    transposed_tensor = ir.tensor(initializer.const_value.numpy().transpose(perm.as_ints()))
                 new_initializer = ir.Value(
                     name=initializer.name,
                     shape=transposed_tensor.shape,
