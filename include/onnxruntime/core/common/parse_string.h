@@ -16,8 +16,8 @@ namespace onnxruntime {
 namespace detail {
 
 // Whether we will use std::from_chars() to parse to `T`.
-#if defined(__ANDROID__)
-// Note: As of Android NDK r27c, std::from_chars() doesn't support floating point types.
+#if defined(_LIBCPP_VERSION)
+// Note: Currently (e.g., in LLVM 19), libc++'s std::from_chars() doesn't support floating point types yet.
 template <typename T>
 constexpr bool ParseWithFromChars = !std::is_same_v<bool, T> && std::is_integral_v<T>;
 #else
