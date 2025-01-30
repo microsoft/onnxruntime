@@ -94,7 +94,6 @@ jobs:
           /bin/bash -c "
             set -ex; \
             ccache -s; \
-            source /ort/env/bin/activate; \
             env; \
             python tools/ci_build/build.py \
               --config Release \
