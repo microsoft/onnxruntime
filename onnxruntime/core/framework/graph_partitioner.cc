@@ -683,7 +683,9 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
                            context_cache_path, "' exist already.");
   }
 
-  Model ep_context_model(graph.Name(), false, graph.GetModel().MetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList{graph.GetSchemaRegistry()},
+  Model ep_context_model(graph.Name(), false, graph.GetModel().MetaData(),
+                         graph.GetModel().ModelPath(),  // use source model path so that external initializers can find the data file path
+                         IOnnxRuntimeOpSchemaRegistryList{graph.GetSchemaRegistry()},
                          graph.DomainToVersionMap(), {}, logger);
   auto& ep_graph = ep_context_model.MainGraph();
   ep_graph.SetDescription(graph.Description());
