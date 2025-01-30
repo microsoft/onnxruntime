@@ -167,40 +167,37 @@ class FusionAttentionClip(FusionAttention):
 
         add_mask = None
         add_mask_indices = []
-        qk_nodes = None
-        qk_nodes_1 = self.model.match_parent_path(
+        qk_nodes = self.model.match_parent_path(
             matmul_qkv,
             ["Softmax", "Reshape", "Add", "Reshape", "MatMul"],
             [0, 0, 0, None, 0],
             return_indice=add_mask_indices,
         )
-        qk_nodes_2 = self.model.match_parent_path(
-            matmul_qkv,
-            ["Softmax", "MatMul"],
-            [0, 0],
-        )
-        qk_nodes_3 = self.model.match_parent_path(matmul_qkv, ["Softmax", "Add", "Mul", "MatMul"], [0, 0, 0, 0])
-        qk_nodes_4 = self.model.match_parent_path(
-            matmul_qkv, ["Cast", "Cast", "Softmax", "Add", "Mul", "MatMul"], [0, 0, 0, 0, 0, 0]
-        )
-        if qk_nodes_1 is not None:
+        if qk_nodes is None:
+            qk_nodes = self.model.match_parent_path(
+                matmul_qkv,
+                ["Softmax", "MatMul"],
+                [0, 0],
+            )
+            if qk_nodes is None:
+                qk_nodes = self.model.match_parent_path(matmul_qkv, ["Softmax", "Add", "Mul", "MatMul"], [0, 0, 0, 0])
+                if qk_nodes is None:
+                    qk_nodes = self.model.match_parent_path(
+                        matmul_qkv, ["Cast", "Cast", "Softmax", "Add", "Mul", "MatMul"], [0, 0, 0, 0, 0, 0]
+                    )
+                    if qk_nodes is None:
+                        logger.debug("fuse_attention: failed to match qk path")
+                        return
+                    else:
+                        add_mask = qk_nodes[3]
+                else:
+                    add_mask = qk_nodes[1]
+        else:
             assert len(add_mask_indices) == 1
             causal_mask_input_index = 1 - add_mask_indices[0]
+            add_mask = qk_nodes[2]
 
-            (_, _, add_mask, _, matmul_qk) = qk_nodes_1
-            qk_nodes = qk_nodes_1
-        elif qk_nodes_2 is not None:
-            (_, matmul_qk) = qk_nodes
-            qk_nodes = qk_nodes_2
-        elif qk_nodes_3 is not None:
-            (_, add_mask, _, matmul_qk) = qk_nodes_3
-            qk_nodes = qk_nodes_3
-        elif qk_nodes_4 is not None:
-            (_, _, _, add_mask, _, matmul_qk) = qk_nodes_4
-            qk_nodes = qk_nodes_4
-        else:
-            logger.debug("fuse_attention: failed to match qk path")
-            return
+        matmul_qk = qk_nodes[-1]
 
         q_nodes = self.model.match_parent_path(
             matmul_qk, ["Reshape", "Transpose", "Reshape", "Mul", "Add", "MatMul"], [0, 0, 0, 0, None, None]
