@@ -202,13 +202,15 @@ void EpCtxCpuNodeWithExternalIniFileTestBody(bool expect_external_ini_file) {
   helper.SetGraphOutputs();
   ASSERT_STATUS_OK(model.MainGraph().Resolve());
   ModelSavingOptions model_saving_options{10};
-  const std::string model_with_ext = "model_external.onnx";
+  // dump the model in testdata folder in case it hides the bug that not able to find model not in current dir
+  const std::string model_with_ext = "./testdata/model_external.onnx";
   const std::string model_ext_file = "model_external.bin";
   ASSERT_STATUS_OK(Model::SaveWithExternalInitializers(model, model_with_ext,
                                                        model_ext_file, model_saving_options));
 
   EXPECT_TRUE(std::filesystem::exists(model_with_ext.c_str()));
-  EXPECT_TRUE(std::filesystem::exists(model_ext_file.c_str()));
+  std::string model_ext_file_full_path = "./testdata/" + model_ext_file;
+  EXPECT_TRUE(std::filesystem::exists(model_ext_file_full_path.c_str()));
 
   Ort::SessionOptions so;
   so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
@@ -233,7 +235,7 @@ void EpCtxCpuNodeWithExternalIniFileTestBody(bool expect_external_ini_file) {
 
   // clean up
   ASSERT_EQ(std::remove(model_with_ext.c_str()), 0);
-  ASSERT_EQ(std::remove(model_ext_file.c_str()), 0);
+  ASSERT_EQ(std::remove(model_ext_file_full_path.c_str()), 0);
   ASSERT_EQ(std::remove(ep_context_model_file.c_str()), 0);
 }
 
