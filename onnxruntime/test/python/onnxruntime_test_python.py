@@ -17,6 +17,7 @@ import numpy as np
 from helper import get_name
 
 import onnxruntime as onnxrt
+from onnxruntime.capi import _pybind_state as C
 from onnxruntime.capi.onnxruntime_pybind11_state import Fail, OrtValueVector, RunOptions
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
@@ -324,8 +325,6 @@ class TestInferenceSession(unittest.TestCase):
             self.assertEqual(option["trt_force_sequential_engine_build"], "1")
             self.assertEqual(option["user_compute_stream"], "1")
             self.assertEqual(option["has_user_compute_stream"], "1")
-
-            from onnxruntime.capi import _pybind_state as C
 
             session_options = C.get_default_session_options()
 
@@ -1421,34 +1420,30 @@ class TestInferenceSession(unittest.TestCase):
                 outs = session.run(output_names=["output"], input_feed=upstreams_onnxrt)[0]
                 self.assertTrue(np.allclose(inps, outs))
 
+    @unittest.skipIf(not hasattr(C.OrtValue, "from_dlpack"), "dlpack not enabled in this build")
     def test_ort_value_dlpack(self):
-        from onnxruntime.capi import _pybind_state as C
+        # Tests originally from orttraining/orttraining/test/python/orttraining_test_ortvalue.py testOrtValueDlPack_float32
+        numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input)
+        self.assertEqual(numpy_arr_input.shape, tuple(ortvalue.shape()))
+        ptr = ortvalue._ortvalue.data_ptr()
 
-        if hasattr(C.OrtValue, "from_dlpack"):
-            # Tests originally from orttraining/orttraining/test/python/orttraining_test_ortvalue.py testOrtValueDlPack_float32
-            numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
-            ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input)
-            self.assertEqual(numpy_arr_input.shape, tuple(ortvalue.shape()))
-            ptr = ortvalue._ortvalue.data_ptr()
+        dlp = ortvalue._ortvalue.to_dlpack()
+        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
+        ortvalue2 = C.OrtValue.from_dlpack(dlp, False)
+        self.assertEqual(ptr, ortvalue2.data_ptr())
+        new_array = ortvalue2.numpy()
+        np.testing.assert_equal(numpy_arr_input, new_array)
 
-            dlp = ortvalue._ortvalue.to_dlpack()
-            self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
-            ortvalue2 = C.OrtValue.from_dlpack(dlp, False)
-            self.assertEqual(ptr, ortvalue2.data_ptr())
-            new_array = ortvalue2.numpy()
-            np.testing.assert_almost_equal(numpy_arr_input, new_array)
+        dlp = ortvalue._ortvalue.__dlpack__()
+        self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
+        ortvalue2 = C.OrtValue.from_dlpack(dlp, False)
+        self.assertEqual(ptr, ortvalue2.data_ptr())
+        new_array = ortvalue2.numpy()
+        np.testing.assert_equal(numpy_arr_input, new_array)
 
-            dlp = ortvalue._ortvalue.__dlpack__()
-            self.assertFalse(C.is_dlpack_uint8_tensor(dlp))
-            ortvalue2 = C.OrtValue.from_dlpack(dlp, False)
-            self.assertEqual(ptr, ortvalue2.data_ptr())
-            new_array = ortvalue2.numpy()
-            np.testing.assert_almost_equal(numpy_arr_input, new_array)
-
-            device = ortvalue._ortvalue.__dlpack_device__()
-            self.assertEqual((1, 0), device)
-        else:
-            print("Skipping dlpack test for build without dlpack")
+        device = ortvalue._ortvalue.__dlpack_device__()
+        self.assertEqual((1, 0), device)
 
     def test_sparse_tensor_coo_format(self):
         cpu_device = onnxrt.OrtDevice.make("cpu", 0)
@@ -1723,8 +1718,6 @@ class TestInferenceSession(unittest.TestCase):
         check_failure([("a", {1: 2})], [{3: 4}])
 
     def test_register_custom_e_ps_library(self):
-        from onnxruntime.capi import _pybind_state as C
-
         available_eps = C.get_available_providers()
         # skip amd gpu build
         if "ROCMExecutionProvider" in available_eps:
