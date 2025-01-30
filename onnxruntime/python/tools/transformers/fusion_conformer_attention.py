@@ -142,7 +142,9 @@ class FusionConformerAttention(FusionAttention):
             return
 
         new_node = None
-        use_packed_attention_op = matmul_q.input[0] == matmul_k.input[0] and matmul_k.input[0] == matmul_v.input[0] and extra_q_nodes is None
+        use_packed_attention_op = (
+            matmul_q.input[0] == matmul_k.input[0] and matmul_k.input[0] == matmul_v.input[0] and extra_q_nodes is None
+        )
         if use_packed_attention_op:
             # Self-attention, use Attention op
             new_node = self.create_attention_node(
