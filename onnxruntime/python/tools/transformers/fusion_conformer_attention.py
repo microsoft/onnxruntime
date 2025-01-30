@@ -26,74 +26,57 @@ class FusionConformerAttention(FusionAttention):
 
     def fuse(self, normalize_node, input_name_to_nodes, output_name_to_node):
         # SkipLayerNormalization has two inputs, and one of them is the root input for attention.
-        qkv_nodes_1 = self.model.match_parent_path(
+        qkv_nodes = self.model.match_parent_path(
             normalize_node,
             ["Add", "MatMul", "Reshape", "Transpose", "MatMul"],
-            [1, 1, 0, 0, 0],
+            [1, None, 0, 0, 0],
         )
-        qkv_nodes_2 = self.model.match_parent_path(
-            normalize_node,
-            ["Add", "MatMul", "Reshape", "Transpose", "MatMul"],
-            [1, 0, 0, 0, 0],
-        )
-
-        qkv_nodes = None
-        if qkv_nodes_1 is not None:
-            (_, _, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes_1
-            qkv_nodes = qkv_nodes_1
-        elif qkv_nodes_2 is not None:
-            (_, _, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes_2
-            qkv_nodes = qkv_nodes_2
-        else:
+        if qkv_nodes is None:
             logger.debug("fuse_conformer_attention: failed to match qkv path")
             return
 
-        v_nodes_1 = self.model.match_parent_path(
+        reshape_qkv, transpose_qkv, matmul_qkv = qkv_nodes[-3], qkv_nodes[-2], qkv_nodes[-1]
+
+        past_v, present_v = "", ""
+        v_nodes = self.model.match_parent_path(
             matmul_qkv,
             ["Concat", "Transpose", "Reshape", "Add", "MatMul"],
             [1, 1, 0, 0, 1],
         )
-        v_nodes_2 = self.model.match_parent_path(
-            matmul_qkv,
-            ["Transpose", "Reshape", "Add", "MatMul"],
-            [1, 0, 0, 0],
-        )
-
-        v_nodes = None
-        add_v = None
-        past_v, present_v = "", ""
-        if v_nodes_1 is not None:
-            (concat_v, _, _, add_v, matmul_v) = v_nodes_1
+        if v_nodes is None:
+            v_nodes = self.model.match_parent_path(
+                matmul_qkv,
+                ["Transpose", "Reshape", "Add", "MatMul"],
+                [1, 0, 0, 0],
+            )
+            if v_nodes is None:
+                logger.debug("fuse_conformer_attention: failed to match v path")
+                return
+        else:
+            concat_v = v_nodes[0]
             concat_parent = self.model.get_parent(concat_v, 0, None)
             present_v = concat_v.output[0]
             past_v = concat_parent.output[0]
-            v_nodes = v_nodes_1
-        elif v_nodes_2 is not None:
-            (_, _, add_v, matmul_v) = v_nodes_2
-            v_nodes = v_nodes_2
-        else:
-            logger.debug("fuse_conformer_attention: failed to match v path")
-            return
 
-        qk_nodes_1 = self.model.match_parent_path(
+        add_v, matmul_v = v_nodes[-2], v_nodes[-1]
+
+        attn_mask = ""
+        qk_nodes = self.model.match_parent_path(
             matmul_qkv,
             ["Softmax", "Add", "MatMul"],
             [0, 0, 0],
         )
-        qk_nodes_2 = self.model.match_parent_path(
-            matmul_qkv,
-            ["Where", "Softmax", "Where", "Add", "MatMul"],
-            [0, 2, 0, 2, 0],
-        )
+        if qk_nodes is None:
+            qk_nodes = self.model.match_parent_path(
+                matmul_qkv,
+                ["Where", "Softmax", "Where", "Add", "MatMul"],
+                [0, 2, 0, 2, 0],
+            )
+            if qk_nodes is None:
+                logger.debug("fuse_conformer_attention: failed to match qk path")
+                return
 
-        qk_nodes = None
-        add_qk = None
-        attn_mask = ""
-        if qk_nodes_1 is not None:
-            _, add_qk, matmul_qk = qk_nodes_1
-            qk_nodes = qk_nodes_1
-        elif qk_nodes_2 is not None:
-            _, _, where_qk, add_qk, matmul_qk = qk_nodes_2
+            where_qk = qk_nodes[2]
             mask_nodes = self.model.match_parent_path(
                 where_qk,
                 ["Equal", "Unsqueeze", "Cast", "Expand"],
@@ -101,59 +84,48 @@ class FusionConformerAttention(FusionAttention):
             )
             if mask_nodes is not None:
                 attn_mask = mask_nodes[-2].output[0]
-            qk_nodes = qk_nodes_2
-        else:
-            logger.debug("fuse_conformer_attention: failed to match qk path")
-            return
 
-        q_nodes_1 = self.model.match_parent_path(
+        add_qk, matmul_qk = qk_nodes[-2], qk_nodes[-1]
+
+        q_nodes = self.model.match_parent_path(
             matmul_qk,
             ["Div", "Transpose", "Reshape", "Add", "MatMul"],
             [0, 0, 0, 0, 1],
         )
-        q_nodes_2 = self.model.match_parent_path(
-            matmul_qk,
-            ["Mul", "Transpose", "Reshape", "Add", "MatMul"],
-            [0, 0, 0, 0, 0],
-        )
+        if q_nodes is None:
+            q_nodes = self.model.match_parent_path(
+                matmul_qk,
+                ["Mul", "Transpose", "Reshape", "Add", "MatMul"],
+                [0, 0, 0, 0, 0],
+            )
+            if q_nodes is None:
+                logger.debug("fuse_conformer_attention: failed to match q path")
+                return
 
-        q_nodes = None
-        if q_nodes_1 is not None:
-            _, _, reshape_q, add_q, matmul_q = q_nodes_1
-            q_nodes = q_nodes_1
-        elif q_nodes_2 is not None:
-            _, _, reshape_q, add_q, matmul_q = q_nodes_2
-            q_nodes = q_nodes_2
-        else:
-            logger.debug("fuse_conformer_attention: failed to match q path")
-            return
+        reshape_q, add_q, matmul_q = q_nodes[-3], q_nodes[-2], q_nodes[-1]
 
-        k_nodes_1 = self.model.match_parent_path(
+        past_k, present_k = "", ""
+        k_nodes = self.model.match_parent_path(
             matmul_qk,
             ["Transpose", "Concat", "Transpose", "Reshape", "Add", "MatMul"],
             [1, 0, 1, 0, 0, 1],
         )
-        k_nodes_2 = self.model.match_parent_path(
-            matmul_qk,
-            ["Transpose", "Transpose", "Reshape", "Add", "MatMul"],
-            [1, 0, 0, 0, 0],
-        )
-
-        k_nodes = None
-        matmul_k = None
-        past_k, present_k = "", ""
-        if k_nodes_1 is not None:
-            _, concat_k, _, _, add_k, matmul_k = k_nodes_1
+        if k_nodes is None:
+            k_nodes = self.model.match_parent_path(
+                matmul_qk,
+                ["Transpose", "Transpose", "Reshape", "Add", "MatMul"],
+                [1, 0, 0, 0, 0],
+            )
+            if k_nodes is None:
+                logger.debug("fuse_conformer_attention: failed to match k path")
+                return
+        else:
+            concat_k = k_nodes[1]
             concat_parent = self.model.get_parent(concat_k, 0, None)
             past_k = concat_parent.output[0]
             present_k = concat_k.output[0]
-            k_nodes = k_nodes_1
-        elif k_nodes_2 is not None:
-            _, _, _, add_k, matmul_k = k_nodes_2
-            k_nodes = k_nodes_2
-        else:
-            logger.debug("fuse_conformer_attention: failed to match k path")
-            return
+
+        add_k, matmul_k = k_nodes[-2], k_nodes[-1]
 
         num_heads, hidden_size = self.get_num_heads_and_hidden_size(reshape_q)
         if num_heads <= 0 or hidden_size <= 0 or (hidden_size % num_heads) != 0:

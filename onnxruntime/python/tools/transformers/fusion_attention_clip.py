@@ -137,42 +137,34 @@ class FusionAttentionClip(FusionAttention):
             if skip_input_index is None:
                 return
 
-        qkv_nodes = None
-        qkv_nodes_1 = self.model.match_parent_path(
+        qkv_nodes = self.model.match_parent_path(
             normalize_node,
             ["Add", "MatMul", "Reshape", "Transpose", "Reshape", "MatMul"],
             [1 - skip_input_index, None, None, 0, 0, 0],
         )
-        qkv_nodes_2 = self.model.match_parent_path(
-            normalize_node,
-            ["Add", "MatMul", "Reshape", "Transpose", "MatMul"],
-            [1, 1, 0, 0, 0],
-        )
-        if qkv_nodes_1 is not None:
-            (_, _, reshape_qkv, transpose_qkv, _, matmul_qkv) = qkv_nodes_1
-            qkv_nodes = qkv_nodes_1
-        elif qkv_nodes_2 is not None:
-            (_, _, reshape_qkv, transpose_qkv, matmul_qkv) = qkv_nodes_2
-            qkv_nodes = qkv_nodes_2
-        else:
-            logger.debug("fuse_attention: failed to match qkv path")
-            return
+        if qkv_nodes is None:
+            qkv_nodes = self.model.match_parent_path(
+                normalize_node,
+                ["Add", "MatMul", "Reshape", "Transpose", "MatMul"],
+                [1, 1, 0, 0, 0],
+            )
+            if qkv_nodes is None:
+                logger.debug("fuse_attention: failed to match qkv path")
+                return
 
-        v_nodes = None
-        v_nodes_1 = self.model.match_parent_path(
+        reshape_qkv, transpose_qkv, matmul_qkv = qkv_nodes[2], qkv_nodes[3], qkv_nodes[-1]
+
+        v_nodes = self.model.match_parent_path(
             matmul_qkv, ["Reshape", "Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, 0, None]
         )
-        v_nodes_2 = self.model.match_parent_path(matmul_qkv, ["Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, 1])
-        if v_nodes_1 is not None:
-            (_, _, reshape_v, add_v, matmul_v) = v_nodes_1
-            v_nodes = v_nodes_1
-        elif v_nodes_2 is not None:
-            (_, reshape_v, add_v, matmul_v) = v_nodes_2
-            v_nodes = v_nodes_2
-        else:
-            logger.debug("fuse_attention: failed to match v path")
-            return
+        if v_nodes is None:
+            v_nodes = self.model.match_parent_path(matmul_qkv, ["Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, 1])
+            if v_nodes is None:
+                logger.debug("fuse_attention: failed to match v path")
+                return
 
+        reshape_v, add_v, matmul_v = v_nodes[-3], v_nodes[-2], v_nodes[-1]
+        
         add_mask = None
         add_mask_indices = []
         qk_nodes = None
@@ -201,44 +193,40 @@ class FusionAttentionClip(FusionAttention):
             (_, matmul_qk) = qk_nodes
             qk_nodes = qk_nodes_2
         elif qk_nodes_3 is not None:
-            (_, add_mask, mul_q, matmul_qk) = qk_nodes_3
+            (_, add_mask, _, matmul_qk) = qk_nodes_3
             qk_nodes = qk_nodes_3
         elif qk_nodes_4 is not None:
-            (_, _, _, add_mask, mul_q, matmul_qk) = qk_nodes_4
+            (_, _, _, add_mask, _, matmul_qk) = qk_nodes_4
             qk_nodes = qk_nodes_4
         else:
             logger.debug("fuse_attention: failed to match qk path")
             return
 
-        q_nodes = None
-        q_nodes_1 = self.model.match_parent_path(
+        q_nodes = self.model.match_parent_path(
             matmul_qk, ["Reshape", "Transpose", "Reshape", "Mul", "Add", "MatMul"], [0, 0, 0, 0, None, None]
         )
-        q_nodes_2 = self.model.match_parent_path(matmul_qk, ["Transpose", "Reshape", "Add", "MatMul"], [0, 0, 0, 1])
-        if q_nodes_1 is not None:
-            (_, _, reshape_q, mul_q, add_q, matmul_q) = q_nodes_1
-            q_nodes = q_nodes_1
-        elif q_nodes_2 is not None:
-            (_, reshape_q, add_q, matmul_q) = q_nodes_2
-            q_nodes = q_nodes_2
-        else:
-            logger.debug("fuse_attention: failed to match q path")
-            return
+        if q_nodes is None:
+            q_nodes = self.model.match_parent_path(matmul_qk, ["Transpose", "Reshape", "Add", "MatMul"], [0, 0, 0, 1])
+            if q_nodes is None:
+                logger.debug("fuse_attention: failed to match q path")
+                return
 
-        k_nodes = None
-        k_nodes_1 = self.model.match_parent_path(
+            reshape_q = q_nodes[1]
+        else:
+            reshape_q = q_nodes[2]
+
+        add_q, matmul_q = q_nodes[-2], q_nodes[-1]
+
+        k_nodes = self.model.match_parent_path(
             matmul_qk, ["Transpose", "Reshape", "Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, 0, 0, None]
         )
-        k_nodes_2 = self.model.match_parent_path(matmul_qk, ["Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, 1])
-        if k_nodes_1 is not None:
-            (_, _, _, _, add_k, matmul_k) = k_nodes_1
-            k_nodes = k_nodes_1
-        elif k_nodes_2 is not None:
-            (_, _, add_k, matmul_k) = k_nodes_2
-            k_nodes = k_nodes_2
-        else:
-            logger.debug("fuse_attention: failed to match k path")
-            return
+        if k_nodes is None:
+            k_nodes = self.model.match_parent_path(matmul_qk, ["Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, 1])
+            if k_nodes is None:
+                logger.debug("fuse_attention: failed to match k path")
+                return
+
+        add_k, matmul_k = k_nodes[-2], k_nodes[-1]
 
         if matmul_q.input[0] != root_input or matmul_k.input[0] != root_input or matmul_v.input[0] != root_input:
             logger.debug("fuse_attention: expect to have same input to q, k and v matmul")
