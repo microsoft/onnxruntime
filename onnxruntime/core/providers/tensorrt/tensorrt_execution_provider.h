@@ -136,12 +136,20 @@ class PoolAllocator : public nvinfer1::IGpuAsyncAllocator {
     cudaMemPoolSetAttribute(mPool, cudaMemPoolAttrReleaseThreshold, &maxThreshold);
   }
 
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4100)
+#endif
   void* allocateAsync(uint64_t const size, uint64_t const alignment, nvinfer1::AllocatorFlags const flags,
                       cudaStream_t stream) noexcept override {
     void* memory{nullptr};
     cudaMallocFromPoolAsync(&memory, size, mPool, stream);
     return memory;
   }
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+
   bool deallocateAsync(void* const memory, cudaStream_t stream) noexcept override {
     cudaFreeAsync(memory, stream);
     return true;
