@@ -13,8 +13,44 @@
 
 namespace onnxruntime {
 
+namespace detail {
+
+// Whether we will use std::from_chars() to parse to `T`.
+#if defined(__ANDROID__)
+// Note: As of Android NDK r27c, std::from_chars() doesn't support floating point types
+template<typename T>
+constexpr bool ParseWithFromChars = std::is_integral_v<T>;
+#else
 template <typename T>
-std::enable_if_t<!std::is_arithmetic_v<T>, bool>
+constexpr bool ParseWithFromChars = std::is_integral_v<T> || std::is_floating_point_v<T>;
+#endif
+
+}
+
+/**
+ * Tries to parse a value from an entire string.
+ * If successful, sets `value` and returns true. Otherwise, does not modify `value` and returns false.
+ */
+template <typename T>
+std::enable_if_t<detail::ParseWithFromChars<T>, bool>
+TryParseStringWithClassicLocale(std::string_view str, T& value) {
+  T parsed_value{};
+  const auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), parsed_value);
+
+  if (ec != std::errc{}) {
+    return false;
+  }
+
+  if (ptr != str.data() + str.size()) {
+    return false;
+  }
+
+  value = parsed_value;
+  return true;
+}
+
+template <typename T>
+std::enable_if_t<!detail::ParseWithFromChars<T>, bool>
 TryParseStringWithClassicLocale(std::string_view str, T& value) {
   // don't allow leading whitespace
   if (!str.empty() && std::isspace(str[0], std::locale::classic())) {
@@ -33,22 +69,6 @@ TryParseStringWithClassicLocale(std::string_view str, T& value) {
   }
 
   value = std::move(parsed_value);
-  return true;
-}
-
-template <typename T>
-std::enable_if_t<std::is_arithmetic_v<T>, bool>
-TryParseStringWithClassicLocale(std::string_view str, T& value) {
-  const auto [ptr, ec] = std::from_chars(str.data(), str.data() + str.size(), value);
-
-  if (ec != std::errc{}) {
-    return false;
-  }
-
-  if (ptr != str.data() + str.size()) {
-    return false;
-  }
-
   return true;
 }
 
