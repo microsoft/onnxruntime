@@ -45,7 +45,7 @@ class DynamoOnnxHelper:
         """
         Unrolls the function with the given name in the model.
         """
-        logger.info(f"Unrolling function {func_name}...")
+        logger.debug(f"Unrolling function {func_name}...")
         nodes_to_remove = []
         nodes_to_add = []
         edges_to_remove = []
@@ -99,14 +99,14 @@ class DynamoOnnxHelper:
         """
         Removes the dropout layer in the model.
         """
-        logger.info("Removing dropout layer...")
+        logger.debug("Removing dropout layer...")
         self.remove_function("Dropout", 0, 0)
 
     def remove_lm_head_layer(self) -> None:
         """
         Removes the LM head layer in the model.
         """
-        logger.info("Removing LM head layer...")
+        logger.debug("Removing LM head layer...")
         # bugbug: need to copy the right vi over
         self.remove_function("Linear_lm_head", 2, 0)
 
@@ -140,7 +140,7 @@ class DynamoOnnxHelper:
         """
         Converts Constant ops of size [min_size] or higher to initializers
         """
-        logger.info(f"Converting constants greater than size {min_size} to initializers")
+        logger.debug(f"Converting constants greater than size {min_size} to initializers")
 
         constant_nodes = self.model.get_nodes_by_op_type("Constant")
         nodes_to_remove = []
