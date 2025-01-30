@@ -403,7 +403,7 @@ class FusionFastGelu(Fusion):
         if len(children) != 1 or children[0].op_type != "Mul":
             return
         mul_half = children[0]
-        
+
         if not self.model.has_constant_input(mul_half, 0.5):
             return
         i = self.model.find_constant_input(mul_half, 0.5)

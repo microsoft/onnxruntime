@@ -1029,7 +1029,9 @@ class OnnxModel:
             else:
                 num_nodes_removed += 1
 
-        self.all_graphs = None  # to prevent pass-by-copy after ClearField(), forces the use of pass-by-reference instead
+        self.all_graphs = (
+            None  # to prevent pass-by-copy after ClearField(), forces the use of pass-by-reference instead
+        )
         self.model.graph.ClearField("node")
         self.model.graph.node.extend(nodes_to_keep)
 
@@ -1240,7 +1242,14 @@ class OnnxModel:
         else:
             save_model(model, output_path)
 
-    def save_model_to_file(self, output_path, use_external_data_format=False, all_tensors_to_one_file=True, size_threshold=1024, convert_attribute=False):
+    def save_model_to_file(
+        self,
+        output_path,
+        use_external_data_format=False,
+        all_tensors_to_one_file=True,
+        size_threshold=1024,
+        convert_attribute=False,
+    ):
         logger.info("Sort graphs in topological order")
         self.topological_sort()
 
@@ -1248,7 +1257,14 @@ class OnnxModel:
         #       You need reload the onnx model if you want to read tensor from self.model object.
         #       It is because the base directory is not updated for self.model object so attempt to read tensor data
         #       might encounter error since external data cannot be located.
-        OnnxModel.save(self.model, output_path, use_external_data_format, all_tensors_to_one_file, size_threshold, convert_attribute)
+        OnnxModel.save(
+            self.model,
+            output_path,
+            use_external_data_format,
+            all_tensors_to_one_file,
+            size_threshold,
+            convert_attribute,
+        )
         logger.info(f"Model saved to {output_path}")
 
     def get_graph_inputs_excluding_initializers(self):

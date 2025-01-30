@@ -6,7 +6,6 @@
 import os
 import unittest
 
-import numpy as np
 import onnx
 from bert_model_generator import float_tensor
 from onnx import TensorProto, helper, numpy_helper
@@ -20,6 +19,7 @@ else:
     from onnxruntime.transformers.fusion_options import FusionOptions
     from onnxruntime.transformers.onnx_model import OnnxModel
     from onnxruntime.transformers.optimizer import optimize_model
+
 
 class TestConstantFoldFusion(unittest.TestCase):
     def setUp(self):
@@ -79,7 +79,9 @@ class TestConstantFoldFusion(unittest.TestCase):
         # Create expected model
         data = numpy_helper.to_array(initializers[0])
         data = data.T
-        initializers = [helper.make_tensor("w", initializers[0].data_type, dims=[data.shape[0], data.shape[1]], vals=data)]
+        initializers = [
+            helper.make_tensor("w", initializers[0].data_type, dims=[data.shape[0], data.shape[1]], vals=data)
+        ]
         nodes = [
             helper.make_node("MatMul", inputs=["x", "w"], outputs=["y"], name="MatMul_0"),
         ]
@@ -87,7 +89,10 @@ class TestConstantFoldFusion(unittest.TestCase):
         self.make_model(expected_name, nodes, initializers)
 
         # Compare models
-        self.verify_fusion(os.path.join(os.path.dirname(__file__), f"{expected_name}.onnx"), os.path.join(os.path.dirname(__file__), f"{original_name}.onnx"))
+        self.verify_fusion(
+            os.path.join(os.path.dirname(__file__), f"{expected_name}.onnx"),
+            os.path.join(os.path.dirname(__file__), f"{original_name}.onnx"),
+        )
 
     def test_folding_transpose_transpose(self):
         # Create original model
@@ -108,7 +113,11 @@ class TestConstantFoldFusion(unittest.TestCase):
         self.make_model(expected_name, nodes, initializers)
 
         # Compare models
-        self.verify_fusion(os.path.join(os.path.dirname(__file__), f"{expected_name}.onnx"), os.path.join(os.path.dirname(__file__), f"{original_name}.onnx"))
+        self.verify_fusion(
+            os.path.join(os.path.dirname(__file__), f"{expected_name}.onnx"),
+            os.path.join(os.path.dirname(__file__), f"{original_name}.onnx"),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

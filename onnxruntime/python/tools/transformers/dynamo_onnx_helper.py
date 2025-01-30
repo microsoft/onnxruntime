@@ -4,12 +4,11 @@
 # --------------------------------------------------------------------------
 from collections.abc import Sequence
 from logging import getLogger
-from onnx import helper
 from typing import Any
 
 import numpy as np
 import onnx
-
+from onnx import helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -137,7 +136,7 @@ class DynamoOnnxHelper:
         self.model.add_initializer(tensor)
         return tensor
 
-    def convert_constants_to_initializers(self, minimum = 100) -> None:
+    def convert_constants_to_initializers(self, minimum=100) -> None:
         """
         Converts Constant ops of size [minimum] or higher to initializers
         """
@@ -191,9 +190,7 @@ class DynamoOnnxHelper:
                 if perm is None:
                     transposed_tensor = ir.tensor(initializer.const_value.numpy().transpose())
                 else:
-                    transposed_tensor = ir.tensor(
-                        initializer.const_value.numpy().transpose(perm.as_ints())
-                    )
+                    transposed_tensor = ir.tensor(initializer.const_value.numpy().transpose(perm.as_ints()))
                 new_initializer = ir.Value(
                     name=initializer.name,
                     shape=transposed_tensor.shape,
