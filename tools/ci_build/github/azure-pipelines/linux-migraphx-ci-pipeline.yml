@@ -59,10 +59,10 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/migraphx-ci-pipeline-env.Dockerfile
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.ubuntu_rocm_migraphx
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
-      Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion) --build-arg USE_MIGRAPHX=1"
+      Repository: onnxruntime-migraphx-cibuild-rocm$(RocmVersion)
 
   - task: Cache@2
     inputs:
@@ -90,9 +90,10 @@ jobs:
           --volume $(CCACHE_DIR):/cache \
           -e CCACHE_DIR=/cache \
           --workdir /onnxruntime_src \
-          onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion) \
+          onnxruntime-migraphx-cibuild-rocm$(RocmVersion) \
           /bin/bash -c "
             set -ex; \
+            source /ort/env/bin/activate; \
             env; \
             ccache -s; \
             python tools/ci_build/build.py \
@@ -158,10 +159,10 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/migraphx-ci-pipeline-env.Dockerfile
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.ubuntu_rocm_migraphx
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
-      Repository: onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion)
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion) --build-arg USE_MIGRAPHX=1"
+      Repository: onnxruntime-migraphx-cibuild-rocm$(RocmVersion)
 
   - task: CmdLine@2
     inputs:
@@ -177,9 +178,10 @@ jobs:
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --workdir /build/Release \
-          onnxruntimetrainingmigraphx-cibuild-rocm$(RocmVersion) \
+          onnxruntime-migraphx-cibuild-rocm$(RocmVersion) \
           /bin/bash -c "
             set -ex; \
+            source /ort/env/bin/activate; \
             cd /build/Release && xargs -a /build/Release/perms.txt chmod a+x; \
             bash /onnxruntime_src/tools/ci_build/github/pai/pai_test_launcher.sh"
       workingDirectory: $(Build.SourcesDirectory)

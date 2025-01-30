@@ -59,7 +59,7 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/rocm-ci-pipeline-env.Dockerfile
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.ubuntu_rocm_migraphx
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
       Repository: onnxruntime-rocm-cibuild-rocm$(RocmVersion)
@@ -94,7 +94,7 @@ jobs:
           /bin/bash -c "
             set -ex; \
             ccache -s; \
-            . /ort/env/bin/activate; \
+            source /ort/env/bin/activate; \
             env; \
             python tools/ci_build/build.py \
               --config Release \
@@ -114,7 +114,7 @@ jobs:
               --build_shared_lib \
               --parallel \
               --build_wheel \
-              --skip_onnx_tests \
+              --enable_onnx_tests \
               --skip_submodule_sync \
               --use_cache \
               --skip_tests --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest; \
@@ -160,7 +160,7 @@ jobs:
 
   - template: templates/get-docker-image-steps.yml
     parameters:
-      Dockerfile: tools/ci_build/github/linux/docker/rocm-ci-pipeline-env.Dockerfile
+      Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.ubuntu_rocm_migraphx
       Context: tools/ci_build/github/linux/docker
       DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
       Repository: onnxruntime-rocm-cibuild-rocm$(RocmVersion)
@@ -184,7 +184,7 @@ jobs:
           /bin/bash -c "
             set -ex; \
             xargs -a /build/Release/perms.txt chmod a+x; \
-            . /ort/env/bin/activate; \
+            source /ort/env/bin/activate; \
             python /onnxruntime_src/tools/ci_build/build.py \
               --config Release \
               --cmake_extra_defines \
@@ -202,7 +202,7 @@ jobs:
               --parallel \
               --build_wheel \
               --skip_submodule_sync \
-              --test --skip_onnx_tests --enable_transformers_tool_test \
+              --test --enable_onnx_tests --enable_transformers_tool_test \
               --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run onnxruntime unit tests'
