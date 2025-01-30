@@ -1334,6 +1334,7 @@ def generate_build_tree(
             "-DANDROID_PLATFORM=android-" + str(args.android_api),
             "-DANDROID_ABI=" + str(args.android_abi),
             "-DANDROID_MIN_SDK=" + str(args.android_api),
+            "-DANDROID_USE_LEGACY_TOOLCHAIN_FILE=false",
         ]
         if not args.use_vcpkg:
             cmake_args.append("-DCMAKE_TOOLCHAIN_FILE=" + android_toolchain_cmake_path)
