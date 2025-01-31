@@ -16,13 +16,11 @@ namespace openvino_ep {
 static const std::string log_tag = "[OpenVINO-EP] ";
 static std::unique_ptr<ov::Core> g_core;
 
-void OVCore::Initialize()
-{
+void OVCore::Initialize() {
   g_core = std::make_unique<ov::Core>();
 }
 
-void OVCore::Teardown()
-{
+void OVCore::Teardown() {
   g_core.reset();
 }
 
