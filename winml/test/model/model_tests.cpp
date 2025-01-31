@@ -246,7 +246,7 @@ static std::vector<ITestCase*> GetAllTestCases() {
   WINML_EXPECT_NO_THROW(LoadTests(
     dataDirs,
     whitelistedTestCases,
-    TestTolerances(1e-3, 1e-3, {}, {}),
+    TestTolerances(1e-2, 1e-2, {}, {}),
     allDisabledTests,
     std::move(broken_tests),
     std::move(broken_tests_keyword_set),

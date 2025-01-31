@@ -64,39 +64,33 @@ INCLUDE TransKernelCommon.inc
         END_PROLOGUE
 
         lea     rax,MlasTanhConstants
-        vbroadcastss ymm4,TanhConstants.LowerRange[rax]
-        vbroadcastss ymm5,TanhConstants.UpperRange[rax]
-        vbroadcastss ymm6,TanhConstants.alpha_13[rax]
-        vbroadcastss ymm7,TanhConstants.alpha_11[rax]
-        vbroadcastss ymm8,TanhConstants.alpha_9[rax]
-        vbroadcastss ymm9,TanhConstants.alpha_7[rax]
-        vbroadcastss ymm10,TanhConstants.alpha_5[rax]
-        vbroadcastss ymm11,TanhConstants.alpha_3[rax]
-        vbroadcastss ymm12,TanhConstants.alpha_1[rax]
-        vbroadcastss ymm13,TanhConstants.beta_6[rax]
-        vbroadcastss ymm14,TanhConstants.beta_2[rax]
-        vbroadcastss ymm15,TanhConstants.beta_0[rax]
+        vbroadcastss ymm5,  DWORD PTR [rax + 0]   ; nc2
+        vbroadcastss ymm6,  DWORD PTR [rax + 4]   ; nc1
+        vbroadcastss ymm4,  DWORD PTR [rax + 8]   ; nc0
+        vbroadcastss ymm7,  DWORD PTR [rax + 12]  ; dc2
+        vbroadcastss ymm8,  DWORD PTR [rax + 16]  ; dc1
+        vbroadcastss ymm9,  DWORD PTR [rax + 20]  ; dc0
+        vbroadcastss ymm10, DWORD PTR [rax + 24]  ; absmask
+        vbroadcastss ymm11, DWORD PTR [rax + 28]  ; bound
 
         sub     r8,8
         jb      ProcessRemainingCount
 
 ComputeTanhBy8Loop:
-        vmaxps  ymm0,ymm4,YMMWORD PTR [rcx]     ; clamp lower bound
-        vmovaps ymm2,ymm7
-        vminps  ymm0,ymm5,ymm0                  ; clamp upper bound
-        vmulps  ymm1,ymm0,ymm0                  ; x2
-        vbroadcastss ymm3,TanhConstants.beta_4[rax]
-        vfmadd231ps ymm2,ymm1,ymm6              ; p = x2 * alpha_13 + alpha_11
-        vfmadd213ps ymm2,ymm1,ymm8              ; p = x2 * p + alpha_9
-        vfmadd213ps ymm2,ymm1,ymm9              ; p = x2 * p + alpha_7
-        vfmadd213ps ymm2,ymm1,ymm10             ; p = x2 * p + alpha_5
-        vfmadd213ps ymm2,ymm1,ymm11             ; p = x2 * p + alpha_3
-        vfmadd213ps ymm2,ymm1,ymm12             ; p = x2 * p + alpha_1
-        vfmadd231ps ymm3,ymm1,ymm13             ; q = x2 * beta_6 + beta_4
-        vfmadd213ps ymm3,ymm1,ymm14             ; q = x2 * q + beta_2
-        vfmadd213ps ymm3,ymm1,ymm15             ; q = x2 * q + beta_0
-        vmulps  ymm2,ymm0,ymm2                  ; p = x * p
-        vdivps  ymm0,ymm2,ymm3                  ; tanh = p / q
+        vandps      ymm0,ymm10,YMMWORD PTR [rcx]
+        vmovaps     ymm3, ymm5
+        vmovaps     ymm13, ymm7
+        vxorps      ymm1, ymm0, YMMWORD PTR [rcx]
+        vmulps      ymm2, ymm0, ymm0
+        vcmpps      ymm12, ymm0, ymm11, 29
+        vfmadd132ps ymm3, ymm6, ymm2
+        vfmadd132ps ymm13, ymm8, ymm2
+        vfmadd132ps ymm3, ymm4, ymm2
+        vfmadd132ps ymm2, ymm9, ymm13
+        vfmadd132ps ymm0, ymm0, ymm2
+        vdivps      ymm0, ymm0, ymm3
+        vblendvps   ymm0, ymm0, ymm4, ymm12
+        vxorps      ymm0, ymm0, ymm1
         add     rcx,8*4                         ; advance input by 8 elements
         vmovups YMMWORD PTR [rdx],ymm0
         add     rdx,8*4                         ; advance output by 8 elements
@@ -108,24 +102,23 @@ ProcessRemainingCount:
         jz      ExitKernel
         neg     r8
         lea     r10,MlasMaskMoveTableAvx+8*4
-        vmovups ymm2,YMMWORD PTR [r10+r8*4]
-        vmaskmovps ymm0,ymm2,YMMWORD PTR [rcx]
-        vmaxps  ymm0,ymm4,ymm0                  ; clamp lower bound
-        vminps  ymm0,ymm5,ymm0                  ; clamp upper bound
-        vmulps  ymm1,ymm0,ymm0                  ; x2
-        vbroadcastss ymm3,TanhConstants.beta_4[rax]
-        vfmadd231ps ymm7,ymm1,ymm6              ; p = x2 * alpha_13 + alpha_11
-        vfmadd213ps ymm7,ymm1,ymm8              ; p = x2 * p + alpha_9
-        vfmadd213ps ymm7,ymm1,ymm9              ; p = x2 * p + alpha_7
-        vfmadd213ps ymm7,ymm1,ymm10             ; p = x2 * p + alpha_5
-        vfmadd213ps ymm7,ymm1,ymm11             ; p = x2 * p + alpha_3
-        vfmadd213ps ymm7,ymm1,ymm12             ; p = x2 * p + alpha_1
-        vfmadd231ps ymm3,ymm1,ymm13             ; q = x2 * beta_6 + beta_4
-        vfmadd213ps ymm3,ymm1,ymm14             ; q = x2 * q + beta_2
-        vfmadd213ps ymm3,ymm1,ymm15             ; q = x2 * q + beta_0
-        vmulps  ymm7,ymm0,ymm7                  ; p = x * p
-        vdivps  ymm0,ymm7,ymm3                  ; tanh = p / q
-        vmaskmovps YMMWORD PTR [rdx],ymm2,ymm0
+        vmovups     ymm15,YMMWORD PTR [r10+r8*4]
+        vmaskmovps  ymm0,ymm15,YMMWORD PTR [rcx]
+        vandps      ymm0,ymm10,ymm0
+        vmovaps     ymm3, ymm5
+        vmovaps     ymm13, ymm7
+        vxorps      ymm1, ymm0, YMMWORD PTR [rcx]
+        vmulps      ymm2, ymm0, ymm0
+        vcmpps      ymm12, ymm0, ymm11, 29
+        vfmadd132ps ymm3, ymm6, ymm2
+        vfmadd132ps ymm13, ymm8, ymm2
+        vfmadd132ps ymm3, ymm4, ymm2
+        vfmadd132ps ymm2, ymm9, ymm13
+        vfmadd132ps ymm0, ymm0, ymm2
+        vdivps      ymm0, ymm0, ymm3
+        vblendvps   ymm0, ymm0, ymm4, ymm12
+        vxorps      ymm0, ymm0, ymm1
+        vmaskmovps  YMMWORD PTR [rdx],ymm15,ymm0
 
 ExitKernel:
         vzeroupper
