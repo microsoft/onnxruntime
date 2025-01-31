@@ -104,8 +104,8 @@ struct SessionContext : ProviderInfo {
   std::vector<bool> deviceAvailableList = {true, true, true, true, true, true, true, true};
   std::filesystem::path onnx_model_path_name;
   uint32_t onnx_opset_version{0};
-  mutable bool is_wholly_supported_graph = false; //Value is set to mutable to modify from capability
-  mutable bool has_external_weights = false; //Value is set to mutable to modify from capability
+  mutable bool is_wholly_supported_graph = false;  // Value is set to mutable to modify from capability
+  mutable bool has_external_weights = false;       // Value is set to mutable to modify from capability
   const std::vector<uint32_t> OpenVINO_Version = {OPENVINO_VERSION_MAJOR, OPENVINO_VERSION_MINOR};
   const std::string openvino_sdk_version = std::to_string(OPENVINO_VERSION_MAJOR) + "." + std::to_string(OPENVINO_VERSION_MINOR);
 };

@@ -15,7 +15,6 @@
 #include "core/providers/openvino/backend_utils.h"
 #include "core/providers/openvino/ov_interface.h"
 
-
 using Exception = ov::Exception;
 
 namespace onnxruntime {
@@ -384,7 +383,7 @@ ov::element::Type GetOpenVINOElementType(ONNX_NAMESPACE::TensorProto_DataType dt
 // Function to handle tensor creation from external data
 void CreateOVTensors(const std::string& device_name,
                      SharedContext::SharedWeights::Metadata::Map& metadata_map,
-                     SharedContext::SharedWeights::WeightsFile &weights) {
+                     SharedContext::SharedWeights::WeightsFile& weights) {
   for (auto& [key, value] : metadata_map) {
     if (value.tensor) continue;
 
