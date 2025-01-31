@@ -1490,7 +1490,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Input(0, "X", "input tensor", "T")
         .Input(1, "bias", "bias tensor", "T", OpSchema::Optional)
         .Output(0, "Y", "output tensor", "T")
-        .TypeConstraint("T", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float or half tensors.")
+        .TypeConstraint("T", {"tensor(float)", "tensor(double)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain input and output types to float or half tensors.")
         .TypeAndShapeInferenceFunction(ONNX_NAMESPACE::propagateShapeAndTypeFromFirstInput)
         .SetContextDependentFunctionBodyBuilder([](const FunctionBodyBuildContext& ctx, const OpSchema& schema, FunctionProto& functionProto) {
           // fastgelu(x) =
