@@ -7,13 +7,25 @@ concurrency: # cancel running build if new push on the same branch
   cancel-in-progress: true
 
 jobs:
-  linux:
+  linux: # see azure-pipelines/templates/linux-wasm-ci.yml
     name: WASM(Linux)
     runs-on: ubuntu-latest
     container:
       image: emscripten/emsdk:3.1.74 # https://hub.docker.com/r/emscripten/emsdk
+    env:
+      # https://emscripten.org/docs/tools_reference/emcc.html
+      # https://github.com/emscripten-core/emscripten/blob/3.1.74/emcc.py
+      # https://emscripten.org/docs/tools_reference/settings_reference.html
+      # https://github.com/emscripten-core/emscripten/blob/3.1.74/tools/settings.py
+      # https://github.com/emscripten-core/emscripten/blob/3.1.74/tools/feature_matrix.py
+      # wasm-ld: error: --shared-memory is disallowed by ...o because it was not compiled with 'atomics' or 'bulk-memory' features.
+      EMCC_CFLAGS: "-sBULK_MEMORY -sPTHREADS"
+      # EM_CONFIG: /emsdk/.emscripten
     steps:
       - uses: actions/checkout@v4
+
+      - name: "Run git config"
+        run: git config --global --add safe.directory /__w/onnxruntime/onnxruntime
 
       - name: "Run apt"
         run: |
@@ -26,7 +38,7 @@ jobs:
         run: |
           # "/emsdk/node/20.18.0_64bit/bin/..."
           node_path=$(which node)
-          echo "Using Node.js: $node_path" >> "$GITHUB_STEP_SUMMARY"
+          echo "* $node_path" >> "$GITHUB_STEP_SUMMARY"
           echo "EMSDK_NODE=$node_path" >> "$GITHUB_ENV"
 
       - uses: lukka/get-cmake@latest
@@ -43,14 +55,15 @@ jobs:
         env:
           VCPKG_INSTALLED_DIR: "${{ github.workspace }}/.build"
           VCPKG_DEFAULT_TRIPLET: "wasm32-emscripten"
+          VCPKG_KEEP_ENV_VARS: "EMCC_CFLAGS" # forward these in the install
 
       - name: "Detect protoc"
-        id: protoc-detect
+        id: protoc
         run: |
           set -e -x
           export PROTOC_DIR="$(pwd)/.build/x64-linux/tools/protobuf"
           export PATH="$PROTOC_DIR:$PATH"
-          protoc --version
+          echo "* $(protoc --version)" >> "$GITHUB_STEP_SUMMARY"
           echo "protoc_path=$(which protoc)" >> "$GITHUB_OUTPUT"
         shell: bash
 
@@ -59,15 +72,13 @@ jobs:
           set -e -x
           export FLATC_DIR="$(pwd)/.build/x64-linux/tools/flatbuffers"
           export PATH="$FLATC_DIR:$PATH"
-          flatc --version
+          echo "* $(flatc --version)" >> "$GITHUB_STEP_SUMMARY"
           python3 onnxruntime/core/flatbuffers/schema/compile_schema.py --flatc "$(which flatc)"
           python3 onnxruntime/lora/adapter_format/compile_schema.py --flatc "$(which flatc)"
         shell: bash
 
       - name: "Run build.py"
         run: |
-          git config --global --add safe.directory ${{ github.workspace }}
-          git config --global --add safe.directory /__w/onnxruntime/onnxruntime
           python3 ./tools/ci_build/build.py --allow_running_as_root --compile_no_warning_as_error \
             --build_dir ./build \
             --build_wasm \
@@ -76,10 +87,10 @@ jobs:
             --skip_submodule_sync \
             --enable_wasm_simd \
             --enable_wasm_threads \
-            --path_to_protoc_exe "${{ steps.protoc-detect.outputs.protoc_path }}" \
+            --path_to_protoc_exe "${{ steps.protoc.outputs.protoc_path }}" \
             --cmake_extra_defines "CMAKE_TOOLCHAIN_FILE:FILEPATH=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" \
-            --cmake_extra_defines "VCPKG_TARGET_TRIPLET=wasm32-emscripten" \
             --cmake_extra_defines "VCPKG_INSTALLED_DIR:PATH=${{ github.workspace }}/.build"
         shell: bash
         env:
           VCPKG_INSTALLATION_ROOT: "/usr/local/share/vcpkg"
+          # EMCC_DEBUG: ${{ runner.debug }}
