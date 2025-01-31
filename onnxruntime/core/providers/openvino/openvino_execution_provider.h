@@ -144,15 +144,15 @@ struct OpenVINOExecutionProviderInfo {
 #ifdef DEVICE_NAME
 #define DEVICE DEVICE_NAME
 #endif
-      dev_type = DEVICE;
+      std::string dev_type_(DEVICE);
 
-      if (dev_type.find("HETERO") == 0 || dev_type.find("MULTI") == 0 || dev_type.find("AUTO") == 0) {
-        std::vector<std::string> devices = parseDevices(dev_type, available_devices);
+      if (dev_type_.find("HETERO") == 0 || dev_type_.find("MULTI") == 0 || dev_type_.find("AUTO") == 0) {
+        std::vector<std::string> devices = parseDevices(dev_type_, available_devices);
         precision_ = "FP16";
         if (devices[0] == "CPU") {
           precision_ = "FP32";
         }
-        device_type_ = std::move(dev_type);
+        device_type_ = std::move(dev_type_);
       }
 #endif
     } else if (ov_supported_device_types.find(dev_type) != ov_supported_device_types.end()) {
