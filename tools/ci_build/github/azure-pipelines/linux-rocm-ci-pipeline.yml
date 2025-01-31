@@ -166,47 +166,6 @@ jobs:
 
   - task: CmdLine@2
     inputs:
-      script: |
-        docker run --rm \
-          --security-opt seccomp=unconfined \
-          --shm-size=1024m \
-          --device=/dev/kfd \
-          --device=/dev/dri/renderD$DRIVER_RENDER \
-          --group-add $(video) \
-          --group-add $(render) \
-          --user $UID:$(id -g $USER) \
-          --volume $(Build.SourcesDirectory):/onnxruntime_src \
-          --volume $(Build.BinariesDirectory):/build \
-          --volume /data/models:/build/models:ro \
-          --workdir /build/Release \
-          onnxruntime-rocm-cibuild-rocm$(RocmVersion) \
-          /bin/bash -c "
-            set -ex; \
-            xargs -a /build/Release/perms.txt chmod a+x; \
-            python /onnxruntime_src/tools/ci_build/build.py \
-              --config Release \
-              --cmake_extra_defines \
-                CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
-                onnxruntime_BUILD_KERNEL_EXPLORER=ON \
-                CMAKE_HIP_ARCHITECTURES=gfx90a \
-              --mpi_home /opt/ompi \
-              --use_rocm \
-              --rocm_version=$(RocmVersion) \
-              --rocm_home /opt/rocm \
-              --nccl_home /opt/rocm \
-              --enable_nccl \
-              --build_dir /build \
-              --build_shared_lib \
-              --parallel \
-              --build_wheel \
-              --skip_submodule_sync \
-              --test --enable_onnx_tests \
-              --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest"
-      workingDirectory: $(Build.SourcesDirectory)
-    displayName: 'Run onnxruntime unit tests'
-
-  - task: CmdLine@2
-    inputs:
       script: |-
         docker run --rm \
           --security-opt seccomp=unconfined \
