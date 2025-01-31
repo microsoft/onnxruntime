@@ -16,11 +16,11 @@ pipelines:
           lastModifiedDate: 2024-10-25
       binary:
         credscan:
-          lastModifiedDate: 2025-01-30
+          lastModifiedDate: 2025-01-31
         binskim:
-          lastModifiedDate: 2025-01-30
+          lastModifiedDate: 2025-01-31
         spotbugs:
-          lastModifiedDate: 2025-01-30
+          lastModifiedDate: 2025-01-31
     usedNonDefaultBranch: true
   1299:
     retail:
