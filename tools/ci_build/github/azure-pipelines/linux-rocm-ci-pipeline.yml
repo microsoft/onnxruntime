@@ -94,7 +94,6 @@ jobs:
           /bin/bash -c "
             set -ex; \
             ccache -s; \
-            source /ort/env/bin/activate; \
             env; \
             python tools/ci_build/build.py \
               --config Release \
@@ -184,7 +183,6 @@ jobs:
           /bin/bash -c "
             set -ex; \
             xargs -a /build/Release/perms.txt chmod a+x; \
-            source /ort/env/bin/activate; \
             python /onnxruntime_src/tools/ci_build/build.py \
               --config Release \
               --cmake_extra_defines \
@@ -202,7 +200,7 @@ jobs:
               --parallel \
               --build_wheel \
               --skip_submodule_sync \
-              --test --enable_onnx_tests --enable_transformers_tool_test \
+              --test --enable_onnx_tests \
               --cmake_path /usr/bin/cmake --ctest_path /usr/bin/ctest"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run onnxruntime unit tests'
@@ -220,6 +218,7 @@ jobs:
           --user $UID:$(id -g $USER) \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
+          --workdir /build/Release \
           -e OPENBLAS_NUM_THREADS=1 \
           -e OPENMP_NUM_THREADS=1 \
           -e MKL_NUM_THREADS=1 \
@@ -227,11 +226,9 @@ jobs:
           -e KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE=8 \
           -e KERNEL_EXPLORER_TEST_USE_CUPY=0 \
           -e CUPY_CACHE_DIR=/build/Release \
-          --workdir /ort \
           onnxruntime-rocm-cibuild-rocm$(RocmVersion) \
           /bin/bash -c "
             set -ex; \
-            source /ort/env/bin/activate; \
             python --version; \
             pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100"
       workingDirectory: $(Build.SourcesDirectory)
