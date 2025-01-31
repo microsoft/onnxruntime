@@ -481,7 +481,11 @@ struct BlockwiseQuantizer {
             thread_pool, total_thrd_blks,
             [&](ptrdiff_t block_idx) {
                 uint8_t zp_bytes[BitsTraits<qbits, false>::kPackSize];
-                std::fill_n(zp_bytes, BitsTraits<qbits, false>::kPackSize, (uint8_t)(BitsTraits<qbits, false>::kMid));
+                if constexpr (qbits == 2)
+                  std::fill_n(zp_bytes, BitsTraits<qbits, false>::kPackSize, (uint8_t)2);
+                if constexpr (qbits == 4)
+                  std::fill_n(zp_bytes, BitsTraits<qbits, false>::kPackSize, (uint8_t)8);
+
 
                 const int32_t r_blk_idx = static_cast<int32_t>(block_idx / thrd_col_blks);
                 const int32_t c_blk_idx = static_cast<int32_t>(block_idx % thrd_col_blks);
@@ -524,14 +528,13 @@ struct BlockwiseQuantizer {
 
                 // !! qbits specific code as we need to pack 2 4b numbers into one byte
                 if (zero_points != nullptr) {
-                  const int32_t meta_idx = meta_col * ((row_blks + 1) / BitsTraits<qbits, false>::kPackSize) + meta_row / BitsTraits<qbits, false>::kPackSize;
                   if constexpr (qbits == 4) {
+                    const int32_t meta_idx = meta_col * ((row_blks + 1) / BitsTraits<qbits, false>::kPackSize) + meta_row / BitsTraits<qbits, false>::kPackSize;
                     zero_points[meta_idx] = (zp_bytes[0] & 0xf) | (zp_bytes[1] << 4);
                   } else if constexpr (qbits == 2) {
+                      const int32_t meta_idx = meta_col * ((row_blks + 3) / BitsTraits<qbits, false>::kPackSize) + meta_row / BitsTraits<qbits, false>::kPackSize;
                     zero_points[meta_idx] = (zp_bytes[0] & 0x3) | ((zp_bytes[1] & 0x3) << 2) |
                       ((zp_bytes[2] & 0x3) << 4) | ((zp_bytes[3] & 0x3) << 6);
-                  } else {
-                      static_assert(false && "only support qbits of 4 and 2");
                   }
                 }
 
@@ -670,7 +673,8 @@ struct BlockwiseQuantizer {
                                 dst[j * rows + (i + 1)] = static_cast<ElementT>(v1);
                             }
                         } else {
-                            const int zp_quad = zero_points[meta_col * ((row_blks + 3) / pack_size) + meta_row / pack_size];
+                            const int zp_quad = (zero_points == nullptr) ?
+                              0xAA : zero_points[meta_col * ((row_blks + 3) / pack_size) + meta_row / pack_size];
                             int zp = 0;
                             const int meta_row_mod = meta_row % 4;
                             switch (meta_row_mod) {
@@ -730,19 +734,35 @@ struct BlockwiseQuantizer {
  * @tparam signed_quant  quantized type is signed
  */
 template <typename Tin, int qbits, bool signed_quant>
-struct BlockwiseQDQQuantizer;
-
-template <typename Tin, bool signed_quant>
-struct BlockwiseQDQQuantizer<Tin, 4, signed_quant> {
+struct BlockwiseQDQQuantizer {
     static MLAS_FORCEINLINE uint8_t GetElem(uint8_t val, int32_t idx)
     {
-        return (val >> (idx << 2)) & 0xF;
+        if constexpr (qbits == 2) {
+            return (val >> (idx << 1)) & 0x3;
+        } else if constexpr (qbits == 4) {
+            return (val >> (idx << 2)) & 0xF;
+        }
     }
 
     static MLAS_FORCEINLINE uint8_t SetElem(uint8_t val, int32_t idx, uint8_t dst)
     {
-        auto shift = idx << 2;
-        return ((val & 0xF) << shift) | (dst & (~(0xF << shift)));
+        if constexpr (qbits == 2) {
+            auto shift = idx << 1;
+            return ((val & 0x3) << shift) | (dst & (~(0x3 << shift)));
+        } else if constexpr (qbits == 4) {
+            auto shift = idx << 2;
+            return ((val & 0xF) << shift) | (dst & (~(0xF << shift)));
+        }
+    }
+
+    template <bool add2>
+    static MLAS_FORCEINLINE uint8_t Pack(uint8_t v0, uint8_t v1, uint8_t v2, uint8_t v3)
+    {
+          if constexpr (add2) {
+            return ((v0 & 0x3) ^ 2) | (((v1 & 0x3) ^ 2) << 2) | (((v2 & 0x3) ^ 2) << 4) | (((v3 & 0x3) ^ 2) << 6);
+          } else {
+              return (v0 & 0x3) | ((v1 & 0x3) << 2) | ((v2 & 0x3) << 4) | ((v3 & 0x3) << 6);
+          }
     }
 
     template <bool add8>
@@ -1491,7 +1511,7 @@ MlasBlockwiseQuantizedShape(
 
 template
 void
-MlasBlockwiseQuantMetaShape<float, 4>(
+MlasBlockwiseQuantMetaShape<float, 2>(
     int block_size,
     bool columnwise,
     int rows,
@@ -1499,6 +1519,16 @@ MlasBlockwiseQuantMetaShape<float, 4>(
     int& meta_rows,
     int& meta_cols
     );
+
+template void
+MlasBlockwiseQuantMetaShape<float, 4>(
+    int block_size,
+    bool columnwise,
+    int rows,
+    int columns,
+    int& meta_rows,
+    int& meta_cols
+);
 
 template
 void
@@ -1902,6 +1932,19 @@ MlasQDQQuantizeBlockwise<float, 4>(
 );
 
 template bool
+MlasQDQQuantizeBlockwise<float, 2>(
+    const float* src,
+    float* scales,
+    uint8_t* zero_points,
+    uint8_t* dst,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
+
+template bool
 MlasQDQQuantizeBlockwise<MLAS_FP16, 4>(
     const MLAS_FP16* src,
     MLAS_FP16* scales,
@@ -1939,6 +1982,36 @@ MlasQDQTransposeBlockwiseQuantized(
         ORT_THROW("Row-wise MlasQDQTransposeBlockwiseQuantized is not implemented");
     }
 }
+
+template void
+MlasQDQTransposeBlockwiseQuantized<float, 2, true>(
+    const uint8_t* src_weights,
+    const float* src_scales,
+    const uint8_t* src_zero_points,
+    uint8_t* dst_weights,
+    float* dst_scales,
+    uint8_t* dst_zero_points,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
+
+template void
+MlasQDQTransposeBlockwiseQuantized<float, 2, false>(
+    const uint8_t* src_weights,
+    const float* src_scales,
+    const uint8_t* src_zero_points,
+    uint8_t* dst_weights,
+    float* dst_scales,
+    uint8_t* dst_zero_points,
+    bool columnwise,
+    int rows,
+    int columns,
+    int quant_block_size,
+    MLAS_THREADPOOL* thread_pool
+);
 
 template void
 MlasQDQTransposeBlockwiseQuantized<float, 4, true>(
