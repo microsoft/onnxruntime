@@ -114,7 +114,7 @@ class StaticQuantConfig(QuantConfig):
                 QOperator format quantizes the model with quantized operators directly.
                 QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
             calibration_providers: Execution providers to run the session during calibration. Default is None which uses
-                [ "CPUExecutionProvider" ]. 
+                [ "CPUExecutionProvider" ].
             extra_options:
                 key value pair dictionary for various options in different case. Current used:
                     extra.Sigmoid.nnapi = True/False  (Default is False)

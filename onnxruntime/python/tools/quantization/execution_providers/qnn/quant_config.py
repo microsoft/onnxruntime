@@ -118,7 +118,7 @@ def get_qnn_qdq_config(
                         are automatically removed if activations are asymmetrically quantized. Keeping these activations
                         is necessary if optimizations or EP transformations will later remove
                         QuantizeLinear/DequantizeLinear operators from the model.
-        calibration_providers: Execution providers to run the session during calibration. Default is None which uses 
+        calibration_providers: Execution providers to run the session during calibration. Default is None which uses
             [ "CPUExecutionProvider" ].
 
     Returns:
