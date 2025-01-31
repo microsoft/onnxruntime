@@ -81,13 +81,13 @@ RUN mkdir -p /tmp/ccache && \
     rm -rf /tmp/ccache
 
 # Set up virtual environment for Python and install dependencies
-WORKDIR /ort
 COPY scripts/requirements.txt /ort/
 RUN python3 -m venv ${VIRTUAL_ENV} && \
     source ${VIRTUAL_ENV}/bin/activate && \
     pip install --upgrade pip setuptools wheel && \
     pip install -r /ort/requirements.txt && \
     pip install ml_dtypes pytest-xdist pytest-rerunfailures scipy
+
 
 # Default command
 CMD ["/bin/bash"]

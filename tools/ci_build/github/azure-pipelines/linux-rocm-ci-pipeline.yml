@@ -225,7 +225,6 @@ jobs:
           -e KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE=8 \
           -e KERNEL_EXPLORER_TEST_USE_CUPY=0 \
           -e CUPY_CACHE_DIR=/build/Release \
-          --workdir /ort \
           onnxruntime-rocm-cibuild-rocm$(RocmVersion) \
           /bin/bash -c "
             set -ex; \
