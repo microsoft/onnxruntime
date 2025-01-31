@@ -15,45 +15,63 @@ Abstract:
 
 --*/
 
-#include <algorithm>
-#include <cassert>
-#include <utility>
-
 #include "qnbitgemm.h"
+#include "sqnbitgemm_q8_block.h"
 
 size_t
 Q2BitGemmPackQuantBDataSize(
-    size_t /*N*/,
-    size_t /*K*/,
-    size_t /*BlkLen*/,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE /*ComputeType*/
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-  return 0;
+  // TODO: This code shall change according to T-Mac.
+    MLAS_UNREFERENCED_PARAMETER(ComputeType);  // same size regardless of ComputeType
+
+    constexpr size_t BlkBitWidth = 2;
+
+    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+    const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+    return PackedQuantBDataSize;
 }
 
 void SQ2BitGemmPackQuantBData(
   size_t /*N*/,
   size_t /*K*/,
   size_t /*BlkLen*/,
-  MLAS_QNBIT_GEMM_COMPUTE_TYPE /* ComputeType*/,
+  MLAS_QNBIT_GEMM_COMPUTE_TYPE /*ComputeType*/,
   const std::byte* /*QuantBDataBegin*/,
   std::byte* /*PackedQuantBDataBegin*/,
   MLAS_THREADPOOL* /*ThreadPool*/
 ) 
 {
+  // TODO: need implementation
 }
 
 size_t
 Q2BitGemmPerGemmWorkspaceSize(
-    size_t /*M*/,
-    size_t /*N*/,
-    size_t /*K*/,
-    size_t /*BlkLen*/,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE /*ComputeType*/
+    size_t M,
+    size_t N,
+    size_t K,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
-    return 0;
+    MLAS_UNREFERENCED_PARAMETER(N);
+
+    switch (ComputeType) {
+        case SQNBIT_CompInt8: {
+            // workspace buffer is used for block quantization of A to int8
+            const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+            // QuantData + Scale
+            const size_t PerGemmWorkspaceSize = M * BlockCountK * Q8BlkSize(BlkLen);
+            return PerGemmWorkspaceSize;
+        }
+        default: {
+            return 0;
+        }
+    }
 }
 
 size_t

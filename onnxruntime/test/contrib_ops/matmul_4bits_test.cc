@@ -97,7 +97,7 @@ std::ostream& operator<<(std::ostream& os, const TestOptions& opts) {
             << ", has_bias:" << opts.has_bias;
 }
 
-template <typename T1, int qbits>
+template <typename T1, int qbits=4>
 void RunTest(const TestOptions& opts,
              std::vector<std::unique_ptr<IExecutionProvider>>&& explicit_eps = {}) {
   SCOPED_TRACE(opts);
@@ -284,8 +284,7 @@ void TestMatMulNBitsTyped() {
     base_opts.output_rel_error = 0.02f;
   }
 
-  if constexpr (qbits == 4)
-  {
+  if constexpr (qbits == 4) {
     TestOptions opts = base_opts;
     RunTest<AType, qbits>(opts);
   }
@@ -297,15 +296,13 @@ void TestMatMulNBitsTyped() {
   }
 
 #if !defined(USE_DML) && !defined(USE_WEBGPU)
-  if constexpr (qbits == 4)
-  {
+  if constexpr (qbits == 4) {
     TestOptions opts = base_opts;
     opts.has_g_idx = true;
     RunTest<AType, qbits>(opts);
   }
 
-  if constexpr (qbits == 4)
-  {
+  if constexpr (qbits == 4) {
     TestOptions opts = base_opts;
     opts.has_g_idx = true;
     opts.has_bias = true;

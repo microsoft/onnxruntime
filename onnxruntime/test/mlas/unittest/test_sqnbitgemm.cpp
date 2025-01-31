@@ -146,17 +146,18 @@ class MlasSQNBitGemmTest : public MlasTestBase {
           if constexpr (BlkBitWidth == 4) {
             b_zp = 8;
           } else if constexpr (BlkBitWidth == 2) {
-            assert(QuantBZeroPoint && "zero point input is needed for BlkBitWidth == 2");
+            b_zp = 2;
           } else {
               static_assert(false, "only implemented for 2- and 4-bit quantized B");
           }
 
           int pack_size = 8 / BlkBitWidth;
           if (QuantBZeroPoint != nullptr) {
-            const uint8_t b_zp_byte = QuantBZeroPoint[n * ((BlockCountK + 1) / pack_size) + k_blk / pack_size];
             if constexpr (BlkBitWidth == 4) {
+              const uint8_t b_zp_byte = QuantBZeroPoint[n * ((BlockCountK + 1) / pack_size) + k_blk / pack_size];
               b_zp = (k_blk & 1) ? (b_zp_byte >> 4) : (b_zp_byte & 0x0F);
             } else if constexpr (BlkBitWidth == 2) {
+              const uint8_t b_zp_byte = QuantBZeroPoint[n * ((BlockCountK + 3) / pack_size) + k_blk / pack_size];
               int shift = (k_blk & 3) * 2;
               b_zp = (b_zp_byte >> shift) & 0x03;
             }
@@ -396,6 +397,11 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
     for (MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType : {SQNBIT_CompFp32, SQNBIT_CompInt8}) {
       for (bool WithThreadpool : {false, true}) {
         for (bool Symmetric : {false, true}) {
+          if constexpr (BlkBitWidth == 2) {
+            if (SQNBIT_CompFp32 == ComputeType) {
+              continue;
+            }
+          }
           for (size_t b = 1; b < 16; b++) {
             tests_registered += RegisterSingleTest(b, b, b, ComputeType, WithThreadpool, Symmetric, false);
             tests_registered += RegisterSingleTest(b, b, b, ComputeType, WithThreadpool, Symmetric, true);
@@ -440,7 +446,7 @@ class SQNBitGemmShortExecuteTest : public MlasTestFixture<MlasSQNBitGemmTest<Blk
 static size_t SQNBitGemmRegisterAllShortExecuteTests() {
   size_t count = 0;
   //count += SQNBitGemmShortExecuteTest<2, 16>::RegisterShortExecuteTests();
-  //count += SQNBitGemmShortExecuteTest<2, 32>::RegisterShortExecuteTests();
+  count += SQNBitGemmShortExecuteTest<2, 32>::RegisterShortExecuteTests();
   //count += SQNBitGemmShortExecuteTest<2, 64>::RegisterShortExecuteTests();
   //count += SQNBitGemmShortExecuteTest<2, 128>::RegisterShortExecuteTests();
   //count += SQNBitGemmShortExecuteTest<2, 256>::RegisterShortExecuteTests();
