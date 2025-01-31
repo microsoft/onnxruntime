@@ -166,7 +166,7 @@ jobs:
 
   - task: CmdLine@2
     inputs:
-      script: |-
+      script: |
         docker run --rm \
           --security-opt seccomp=unconfined \
           --shm-size=1024m \
@@ -177,7 +177,7 @@ jobs:
           --user $UID:$(id -g $USER) \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
-          --workdir  \
+          --workdir /build/Release \
           -e OPENBLAS_NUM_THREADS=1 \
           -e OPENMP_NUM_THREADS=1 \
           -e MKL_NUM_THREADS=1 \
