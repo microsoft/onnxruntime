@@ -576,8 +576,8 @@ if (onnxruntime_RUN_ONNX_TESTS)
 endif()
 
 
-if(onnxruntime_ENABLE_ATEN)
-  message(STATUS "Aten fallback is enabled.")
+if(onnxruntime_ENABLE_DLPACK)
+  message(STATUS "dlpack is enabled.")
   FetchContent_Declare(
     dlpack
     URL ${DEP_URL_dlpack}
@@ -631,7 +631,7 @@ if (onnxruntime_USE_WEBGPU)
       URL_HASH SHA1=${DEP_SHA1_dawn}
       # All previous patches are merged into the upstream dawn project. We don't need to apply any patches right now.
       # if we need to apply patches in the future, we can uncomment the following line.
-      PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
+      # PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
     )
   endif()
 
