@@ -338,11 +338,10 @@ article section {
   background: rgba(25, 25, 25, 0.5);
 }
 .search-results-container .search-results-group {
-  padding-top: 50px !important;
-  padding: 10px;
+  padding: 50px 10px 10px 10px;
 }
 .search-results-group-heading {
-  font-family: "Open Sans";
+  font-family: "Open Sans", Arial, sans-serif;
   padding-left: 10px;
   color: white;
 }
@@ -916,7 +915,7 @@ pre > code .line-highlight {
     position:relative;
     top:1px;
     display:inline-block;
-    font-family:'Glyphicons Halflings';
+    font-family:'Glyphicons Halflings', sans-serif;
     line-height:1;
     -webkit-font-smoothing:antialiased;
     -moz-osx-font-smoothing:grayscale;
