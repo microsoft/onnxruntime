@@ -76,9 +76,7 @@ stages:
         inputs:
           versionSpec: '3.12'
           addToPath: true
-          architecture: ${{ parameters.BuildArch }}
-
-   
+          architecture: ${{ parameters.BuildArch }}   
 
       # need to set PROCESSOR_ARCHITECTURE so the x86 SDK is installed correctly
       - task: UseDotNet@2
@@ -99,6 +97,7 @@ stages:
           python tools\ci_build\build.py ${{ parameters.BuildCommand }} --use_binskim_compliant_compile_flags --parallel --build_csharp --build --update --config $(BuildConfig) --build_nuget ${{ variables.build_py_lto_flag }}
 
       - ${{ else }}:
+        - powershell: |
           python tools\ci_build\build.py ${{ parameters.BuildCommand }} --use_binskim_compliant_compile_flags --parallel --build_csharp --build --update --config $(BuildConfig) ${{ variables.build_py_lto_flag }}
 
       - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
