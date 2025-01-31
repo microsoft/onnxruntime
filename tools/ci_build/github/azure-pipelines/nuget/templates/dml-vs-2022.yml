@@ -74,12 +74,6 @@ stages:
         inputs:
           versionSpec: '20.x'
 
-      - task: onebranch.pipeline.tsaoptions@1
-        displayName: 'OneBranch TSAOptions'
-        inputs:
-          tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
-          appendSourceBranchName: false
-
       - task: UsePythonVersion@0
         inputs:
           versionSpec: '3.12'
@@ -100,18 +94,14 @@ stages:
         env:
           PROCESSOR_ARCHITECTURE: ${{ parameters.BuildArch }}
 
-      - task: PowerShell@2
-        displayName: 'Install ONNX'
-        inputs:
-          filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
-          workingDirectory: '$(Build.BinariesDirectory)'
-          arguments: -cpu_arch ${{ parameters.BuildArch }} -install_prefix $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\installed -build_config $(BuildConfig)
+
+      - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\python\requirements.txt
 
       - task: PythonScript@0
         displayName: 'Generate cmake config'
         inputs:
           scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: '$(BuildCommand) --use_binskim_compliant_compile_flags --parallel --path_to_protoc_exe $(Build.BinariesDirectory)\installed\bin\protoc.exe --build_csharp --update --config $(BuildConfig) ${{ variables.build_py_lto_flag }}'
+          arguments: '$(BuildCommand) --use_binskim_compliant_compile_flags --parallel --build_csharp --update --config $(BuildConfig) ${{ variables.build_py_lto_flag }}'
           workingDirectory: '$(Build.BinariesDirectory)'
 
       - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
