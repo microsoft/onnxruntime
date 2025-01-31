@@ -137,8 +137,8 @@ void decodeMIDR(
               *uarch = cpuinfo_uarch_arm11;
               break;
               // #endif /* ARM */
-            default:
-              std::cerr << "unknown ARM CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
+            //default:
+              //std::cerr << "unknown ARM CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
           }
       }
       break;
@@ -156,8 +156,8 @@ void decodeMIDR(
           *uarch = cpuinfo_uarch_thunderx2;
           break;
           // #endif
-        default:
-          std::cerr << "unknown Broadcom CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
+        //default:
+          //std::cerr << "unknown Broadcom CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
       }
       break;
       // #if (defined(_M_ARM64) || defined(__aarch64__)) && !defined(__ANDROID__)
@@ -172,8 +172,8 @@ void decodeMIDR(
         case 0x0AF: /* ThunderX2 99XX */
           *uarch = cpuinfo_uarch_thunderx2;
           break;
-        default:
-          std::cerr << "unknown Cavium CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
+        //default:
+          //std::cerr << "unknown Cavium CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
       }
       break;
       // #endif
@@ -187,8 +187,8 @@ void decodeMIDR(
         case 0xD40: /* Kirin 980 Big/Medium cores -> Cortex-A76 */
           *uarch = cpuinfo_uarch_cortex_a76;
           break;
-        default:
-          std::cerr << "unknown Huawei CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
+        //default:
+          //std::cerr << "unknown Huawei CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
       }
       break;
       // #if defined(_M_ARM) || defined(__arm__)
@@ -199,8 +199,8 @@ void decodeMIDR(
         case 6: /* PXA 3XX */
           *uarch = cpuinfo_uarch_xscale;
           break;
-        default:
-          std::cerr << "unknown Intel CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
+        //default:
+          //std::cerr << "unknown Intel CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
       }
       break;
       // #endif /* ARM */
@@ -215,8 +215,8 @@ void decodeMIDR(
         case 0x004:
           *uarch = cpuinfo_uarch_carmel;
           break;
-        default:
-          std::cerr << "unknown Nvidia CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
+        //default:
+          //std::cerr << "unknown Nvidia CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
       }
       break;
 #if !defined(__ANDROID__)
@@ -225,8 +225,8 @@ void decodeMIDR(
         case 0x000:
           *uarch = cpuinfo_uarch_xgene;
           break;
-        default:
-          std::cerr << "unknown Applied Micro CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
+        //default:
+          //std::cerr << "unknown Applied Micro CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
       }
       break;
 #endif
@@ -297,8 +297,8 @@ void decodeMIDR(
           *uarch = cpuinfo_uarch_saphira;
           break;
           // #endif /* ARM64 && !defined(__ANDROID__) */
-        default:
-          std::cerr << "unknown Qualcomm CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
+        //default:
+          //std::cerr << "unknown Qualcomm CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
       }
       break;
     case 'S':
@@ -343,10 +343,10 @@ void decodeMIDR(
            */
           *uarch = cpuinfo_uarch_exynos_m5;
           break;
-        default:
-          std::cerr << "unknown Samsung CPU variant 0x"
-                    << std::hex << midr_get_variant(midr) << " part 0x" << std::hex << midr_get_part(midr)
-                    << " ignored\n";
+        //default:
+          //std::cerr << "unknown Samsung CPU variant 0x"
+                    //<< std::hex << midr_get_variant(midr) << " part 0x" << std::hex << midr_get_part(midr)
+                    //<< " ignored\n";
       }
       break;
       // #if defined(_M_ARM) || defined(__arm__)
@@ -356,13 +356,13 @@ void decodeMIDR(
         case 0x584: /* PJ4B-MP / PJ4C */
           *uarch = cpuinfo_uarch_pj4;
           break;
-        default:
-          std::cerr << "unknown Marvell CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
+        //default:
+          //std::cerr << "unknown Marvell CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
       }
       break;
       // #endif /* ARM */
-    default:
-      std::cerr << "unknown CPU uarch from MIDR value: 0x" << std::hex << midr << "\n";
+    //default:
+      //std::cerr << "unknown CPU uarch from MIDR value: 0x" << std::hex << midr << "\n";
   }
 }
 
