@@ -32,7 +32,7 @@
     "nlohmann-json",
     {
       "name": "onnx",
-      "version>=": "1.16.2"
+      "version>=": "1.17.0"
     },
     "optional-lite",
     {
@@ -77,7 +77,7 @@
     },
     {
       "name": "flatbuffers",
-      "version": "23.5.26"
+      "version": "23.5.26#1"
     }
   ]
 }
