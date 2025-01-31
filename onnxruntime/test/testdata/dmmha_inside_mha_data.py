@@ -1,8 +1,10 @@
-import onnxruntime as ort
-from onnxruntime import OrtValue
 import numpy as np
 
+import onnxruntime as ort
+from onnxruntime import OrtValue
+
 np.random.seed(0)
+
 
 # Whisper decoder self attention with past_kv, present_kv, buffer sharing enabled, mask, and bias
 # Used in decoder-with-past's self-attention layers
@@ -23,10 +25,14 @@ def dmmha_inside_mha_self_attn():
         "past_k": np.zeros((batch_size, num_heads, max_sequence_length, head_size)).astype(np.float32),
         "past_v": np.zeros((batch_size, num_heads, max_sequence_length, head_size)).astype(np.float32),
         "past_seq_len": np.array([past_sequence_length]).astype(np.int32),
-        "cache_indir": np.zeros((batch_size, num_beams, max_sequence_length)).astype(np.int32)
+        "cache_indir": np.zeros((batch_size, num_beams, max_sequence_length)).astype(np.int32),
     }
-    inputs["past_k"][:batch_size, :num_heads, :past_sequence_length, :head_size] = np.random.randn(batch_size, num_heads, past_sequence_length, head_size).astype(np.float32)
-    inputs["past_v"][:batch_size, :num_heads, :past_sequence_length, :head_size] = np.random.randn(batch_size, num_heads, past_sequence_length, head_size).astype(np.float32)
+    inputs["past_k"][:batch_size, :num_heads, :past_sequence_length, :head_size] = np.random.randn(
+        batch_size, num_heads, past_sequence_length, head_size
+    ).astype(np.float32)
+    inputs["past_v"][:batch_size, :num_heads, :past_sequence_length, :head_size] = np.random.randn(
+        batch_size, num_heads, past_sequence_length, head_size
+    ).astype(np.float32)
     print_vals(inputs)
 
     sess = ort.InferenceSession("dmmha_inside_mha_self_attn.onnx", providers=[f"{device.upper()}ExecutionProvider"])
@@ -53,6 +59,7 @@ def dmmha_inside_mha_self_attn():
 
     print_vals(outputs)
 
+
 # Whisper decoder self attention with past_kv, present_kv, buffer sharing enabled, mask, and bias
 # Used in decoder-with-past's self-attention layers
 # For CUDA, K caches are transposed and reshaped from 4D to 5D for DecoderMaskedMultiHeadAttention
@@ -73,10 +80,14 @@ def dmmha_self_attn():
         "past_v": np.zeros((batch_size, num_heads, max_sequence_length, head_size)).astype(np.float32),
         "past_seq_len": np.array([past_sequence_length]).astype(np.int32),
         "beam_width": np.array([num_beams]).astype(np.int32),
-        "cache_indir": np.zeros((batch_size, num_beams, max_sequence_length)).astype(np.int32)
+        "cache_indir": np.zeros((batch_size, num_beams, max_sequence_length)).astype(np.int32),
     }
-    inputs["past_k"][:batch_size, :num_heads, :past_sequence_length, :head_size] = np.random.randn(batch_size, num_heads, past_sequence_length, head_size).astype(np.float32)
-    inputs["past_v"][:batch_size, :num_heads, :past_sequence_length, :head_size] = np.random.randn(batch_size, num_heads, past_sequence_length, head_size).astype(np.float32)
+    inputs["past_k"][:batch_size, :num_heads, :past_sequence_length, :head_size] = np.random.randn(
+        batch_size, num_heads, past_sequence_length, head_size
+    ).astype(np.float32)
+    inputs["past_v"][:batch_size, :num_heads, :past_sequence_length, :head_size] = np.random.randn(
+        batch_size, num_heads, past_sequence_length, head_size
+    ).astype(np.float32)
     print_vals(inputs)
 
     sess = ort.InferenceSession("dmmha_self_attn.onnx", providers=[f"{device.upper()}ExecutionProvider"])
@@ -103,6 +114,7 @@ def dmmha_self_attn():
 
     print_vals(outputs)
 
+
 # Whisper decoder cross attention with past_kv used directly as K and V, no mask, and bias
 # Used in decoder-with-past's cross-attention layers
 def dmmha_inside_mha_cross_attn():
@@ -116,9 +128,9 @@ def dmmha_inside_mha_cross_attn():
         "q": np.random.randn(batch_size, sequence_length, hidden_size).astype(np.float32),
         "k": np.random.randn(batch_size, num_heads, kv_sequence_length, head_size).astype(np.float32),
         "v": np.random.randn(batch_size, num_heads, kv_sequence_length, head_size).astype(np.float32),
-        "b": np.zeros((hidden_size * 3)).astype(np.float32),
+        "b": np.zeros(hidden_size * 3).astype(np.float32),
         "past_seq_len": np.array([past_sequence_length]).astype(np.int32),
-        "cache_indir": np.zeros((batch_size, num_beams, max_sequence_length)).astype(np.int32)
+        "cache_indir": np.zeros((batch_size, num_beams, max_sequence_length)).astype(np.int32),
     }
     inputs["b"][:hidden_size] = np.random.randn(hidden_size).astype(np.float32)
     print_vals(inputs)
@@ -127,6 +139,7 @@ def dmmha_inside_mha_cross_attn():
     outputs = sess.run(None, inputs)
 
     print_vals(outputs)
+
 
 # Whisper decoder cross attention with past_kv used directly as K and V, no mask, and bias
 # Used in decoder-with-past's cross-attention layers
@@ -141,10 +154,10 @@ def dmmha_cross_attn():
         "q": np.random.randn(batch_size, sequence_length, hidden_size).astype(np.float32),
         "k": np.random.randn(batch_size, num_heads, kv_sequence_length, head_size).astype(np.float32),
         "v": np.random.randn(batch_size, num_heads, kv_sequence_length, head_size).astype(np.float32),
-        "b": np.zeros((hidden_size * 3)).astype(np.float32),
+        "b": np.zeros(hidden_size * 3).astype(np.float32),
         "past_seq_len": np.array([past_sequence_length]).astype(np.int32),
         "beam_width": np.array([num_beams]).astype(np.int32),
-        "cache_indir": np.zeros((batch_size, num_beams, max_sequence_length)).astype(np.int32)
+        "cache_indir": np.zeros((batch_size, num_beams, max_sequence_length)).astype(np.int32),
     }
     inputs["b"][:hidden_size] = np.random.randn(hidden_size).astype(np.float32)
     print_vals(inputs)
@@ -154,31 +167,29 @@ def dmmha_cross_attn():
 
     print_vals(outputs)
 
+
 # Print values in format for onnxruntime/test/testdata/attention/attention_test_data.txt
 def print_vals(L):
-    if type(L) == list:
+    if isinstance(L, list):
         for idx, elm in enumerate(L):
             print(f"\nOutput {idx}:", flush=True)
-            i = 0
-            for entry in elm.flatten():
-                print(entry, end=',', flush=True)
-                i += 1
+            for i, entry in enumerate(elm.flatten()):
+                print(entry, end=",", flush=True)
                 if i % 8 == 0 and i != 0:
-                    print('\n', end='', flush=True)
-    elif type(L) == dict:
+                    print("\n", end="", flush=True)
+    elif isinstance(L, dict):
         for key, val in L.items():
             print(f"\n{key}:", flush=True)
-            i = 0
-            for entry in val.flatten():
-                print(entry, end=',', flush=True)
-                i += 1
+            for i, entry in enumerate(val.flatten()):
+                print(entry, end=",", flush=True)
                 if i % 8 == 0 and i != 0:
-                    print('\n', end='', flush=True)
+                    print("\n", end="", flush=True)
 
     print("\n=====================================================", flush=True)
 
-# dmmha_inside_mha_self_attn()
-# dmmha_inside_mha_cross_attn()
+
+dmmha_inside_mha_self_attn()
+dmmha_inside_mha_cross_attn()
 
 dmmha_self_attn()
 dmmha_cross_attn()

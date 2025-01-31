@@ -434,7 +434,7 @@ Status MultiHeadAttention<T, QK>::ComputeInternal(OpKernelContext* context) cons
   }
 #else
   constexpr bool use_memory_efficient_attention = false;
-#endif      
+#endif
 
   if (kernel_type == AttentionKernelType::AttentionKernel_Default) {
     kernel_type = AttentionKernelType::AttentionKernel_Unfused;

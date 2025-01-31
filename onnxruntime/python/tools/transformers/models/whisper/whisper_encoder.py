@@ -132,7 +132,7 @@ class WhisperEncoder(torch.nn.Module):
         provider: str,
         use_fp16_inputs: bool,
     ):
-        """Verify ONNX model outputs and PyTorch model outputs match 
+        """Verify ONNX model outputs and PyTorch model outputs match
 
         Args:
             onnx_model_path (str): path to save ONNX model
@@ -157,7 +157,7 @@ class WhisperEncoder(torch.nn.Module):
         # Run ONNX model
         sess = InferenceSession(onnx_model_path, providers=[provider])
         ort_outputs = sess.run(None, {"audio_features": inputs["audio_features"].detach().cpu().numpy()})[0]
-        
+
         # Calculate output difference
         diff = np.abs(pt_outputs - ort_outputs)
         logger.warning("Comparing encoder_hidden_states...")

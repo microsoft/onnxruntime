@@ -75,7 +75,7 @@ Status LaunchConcatKVInPlace(int batch_size,
                              int kv_num_heads,
                              int head_size,
                              int max_sequence_length,     // max sequence length of present_key or present_value.
-                             const int* seqlens_k,   // it is not used when total_seqlens_k is available.
+                             const int* seqlens_k,        // it is not used when total_seqlens_k is available.
                              const int* total_seqlens_k,  // optional, nullptr means it is not available.
                              int new_seq_len,
                              const T* new_key,

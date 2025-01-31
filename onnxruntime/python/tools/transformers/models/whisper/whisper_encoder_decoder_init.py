@@ -16,11 +16,15 @@ import torch
 from float16 import convert_float_to_float16
 from onnx import ModelProto, ValueInfoProto
 from onnx_model import OnnxModel
-from past_helper import PastKeyValuesHelper
 from transformers import WhisperConfig
 from whisper_decoder import WhisperDecoder
 from whisper_encoder import WhisperEncoder
-from whisper_inputs import convert_inputs_for_ort, get_model_dynamic_axes, get_sample_encoder_decoder_init_inputs, group_past_key_values
+from whisper_inputs import (
+    convert_inputs_for_ort,
+    get_model_dynamic_axes,
+    get_sample_encoder_decoder_init_inputs,
+    group_past_key_values,
+)
 
 from onnxruntime import InferenceSession
 
@@ -56,8 +60,16 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         # We do this because these MatMuls are only run once before their outputs are being re-used in the decoder
         present_cross_attention_key_value_caches = []
         for layer in self.decoder.decoder.layers:
-            cross_attn_key_cache = layer.encoder_attn.k_proj(encoder_hidden_states).view(-1, self.max_source_positions, self.num_heads, self.head_size).transpose(1, 2)
-            cross_attn_value_cache = layer.encoder_attn.v_proj(encoder_hidden_states).view(-1, self.max_source_positions, self.num_heads, self.head_size).transpose(1, 2)
+            cross_attn_key_cache = (
+                layer.encoder_attn.k_proj(encoder_hidden_states)
+                .view(-1, self.max_source_positions, self.num_heads, self.head_size)
+                .transpose(1, 2)
+            )
+            cross_attn_value_cache = (
+                layer.encoder_attn.v_proj(encoder_hidden_states)
+                .view(-1, self.max_source_positions, self.num_heads, self.head_size)
+                .transpose(1, 2)
+            )
             present_cross_attention_key_value_caches.append(cross_attn_key_cache)
             present_cross_attention_key_value_caches.append(cross_attn_value_cache)
 
@@ -75,14 +87,22 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         # We do this because these MatMuls are only run once before their outputs are being re-used in the decoder
         present_cross_attention_key_value_caches = []
         for block in self.decoder.model.decoder.blocks:
-            cross_attn_key_cache = block.cross_attn.key(encoder_hidden_states).view(-1, self.max_source_positions, self.num_heads, self.head_size).transpose(1, 2)
-            cross_attn_value_cache = block.cross_attn.value(encoder_hidden_states).view(-1, self.max_source_positions, self.num_heads, self.head_size).transpose(1, 2)
+            cross_attn_key_cache = (
+                block.cross_attn.key(encoder_hidden_states)
+                .view(-1, self.max_source_positions, self.num_heads, self.head_size)
+                .transpose(1, 2)
+            )
+            cross_attn_value_cache = (
+                block.cross_attn.value(encoder_hidden_states)
+                .view(-1, self.max_source_positions, self.num_heads, self.head_size)
+                .transpose(1, 2)
+            )
             present_cross_attention_key_value_caches.append(cross_attn_key_cache)
             present_cross_attention_key_value_caches.append(cross_attn_value_cache)
 
         return encoder_hidden_states, present_cross_attention_key_value_caches
 
-    def forward(self, audio_features: torch.Tensor, decoder_input_ids: Optional[torch.Tensor] = None):
+    def forward(self, audio_features: torch.Tensor, decoder_input_ids: torch.Tensor | None = None):
         if self.model_impl == "openai":
             if self.no_beam_search_op:
                 return self.oai_forward_for_no_beam_search_op(audio_features)
@@ -105,7 +125,10 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
             output_names = [
                 "encoder_hidden_states",
                 *list(
-                    chain.from_iterable((f"present_key_cross_{i}", f"present_value_cross_{i}") for i in range(self.config.num_hidden_layers))
+                    chain.from_iterable(
+                        (f"present_key_cross_{i}", f"present_value_cross_{i}")
+                        for i in range(self.config.num_hidden_layers)
+                    )
                 ),
             ]
         else:
@@ -113,7 +136,15 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
                 "logits",
                 "encoder_hidden_states",
                 *list(
-                    chain.from_iterable((f"present_key_self_{i}", f"present_value_self_{i}", f"present_key_cross_{i}", f"present_value_cross_{i}") for i in range(self.config.num_hidden_layers))
+                    chain.from_iterable(
+                        (
+                            f"present_key_self_{i}",
+                            f"present_value_self_{i}",
+                            f"present_key_cross_{i}",
+                            f"present_value_cross_{i}",
+                        )
+                        for i in range(self.config.num_hidden_layers)
+                    )
                 ),
             ]
         return output_names
@@ -137,8 +168,11 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
             return inputs
 
         if self.no_beam_search_op:
-            return (inputs["audio_features"], )
-        return (inputs["audio_features"], inputs["decoder_input_ids"], )
+            return (inputs["audio_features"],)
+        return (
+            inputs["audio_features"],
+            inputs["decoder_input_ids"],
+        )
 
     def fix_key_value_cache_dims(self, output: ValueInfoProto, is_cross: bool = False):
         # Shape should be (batch_size, num_heads, sequence_length, head_size) for self attention KV caches
@@ -170,7 +204,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         for output in model.graph.output:
             if "present" not in output.name:
                 reordered_outputs.append(output)
-            
+
             elif "self" in output.name:
                 # Self attention KV caches
                 new_output = self.fix_key_value_cache_dims(output, is_cross=False)
@@ -188,7 +222,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
 
         if not self.no_beam_search_op:
             reordered_outputs += self_attn_kv_caches + cross_attn_kv_caches
-        
+
         while len(model.graph.output) > 0:
             model.graph.output.pop()
         model.graph.output.extend(reordered_outputs)
@@ -230,7 +264,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         #    audio_features: (batch_size, num_mels, num_frames)
         # Outputs:
         #    encoder_hidden_states: (batch_size, num_frames // 2, hidden_size)
-        
+
         # Shape of decoder's tensors:
         # Inputs:
         #    decoder_input_ids: (batch_size, sequence_length)
@@ -250,7 +284,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
             temp_onnx_model_path = os.path.join(tmp_dir_name, "encoder_decoder_init.onnx")
             Path(temp_onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
             out_path = temp_onnx_model_path if use_external_data_format else onnx_model_path
-            
+
             torch.onnx.export(
                 self,
                 args=inputs,
@@ -273,7 +307,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
                 save_as_external_data=use_external_data_format,
                 all_tensors_to_one_file=True,
             )
-        
+
         self.verify_onnx(onnx_model_path, provider, use_fp16_inputs, use_int32_inputs)
 
     def verify_onnx(
@@ -283,7 +317,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         use_fp16_inputs: bool,
         use_int32_inputs: bool,
     ):
-        """Verify ONNX model outputs and PyTorch model outputs match 
+        """Verify ONNX model outputs and PyTorch model outputs match
 
         Args:
             onnx_model_path (str): path to save ONNX model
@@ -296,7 +330,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         #    audio_features: (batch_size, num_mels, num_frames)
         # Outputs:
         #    encoder_hidden_states: (batch_size, num_frames // 2, hidden_size)
-        
+
         # Shape of decoder's tensors:
         # Inputs:
         #    decoder_input_ids: (batch_size, sequence_length)
@@ -322,12 +356,14 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
 
             (self_attn_kv_caches, cross_attn_kv_caches) = group_past_key_values(out[2])
             pt_outputs.extend([self_attn_kv_cache.detach().cpu().numpy() for self_attn_kv_cache in self_attn_kv_caches])
-            pt_outputs.extend([cross_attn_kv_cache.detach().cpu().numpy() for cross_attn_kv_cache in cross_attn_kv_caches])
+            pt_outputs.extend(
+                [cross_attn_kv_cache.detach().cpu().numpy() for cross_attn_kv_cache in cross_attn_kv_caches]
+            )
 
         # Run ONNX model
         sess = InferenceSession(onnx_model_path, providers=[provider])
         ort_outputs = sess.run(None, convert_inputs_for_ort(inputs, sess))
-        
+
         # Calculate output difference
         for i, output_name in enumerate(self.output_names()):
             diff = np.abs(pt_outputs[i] - ort_outputs[i])

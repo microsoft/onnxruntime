@@ -11,11 +11,7 @@ from pathlib import Path
 import numpy as np
 import torch
 from convert_generation import add_cache_indirection_to_mha, add_output_qk_to_mha, fix_past_sequence_length
-from float16 import float_to_float16_max_diff
-from onnx import TensorProto
-from onnx_model import OnnxModel
 from optimizer import optimize_model
-from packaging import version
 from transformers import WhisperConfig, WhisperForConditionalGeneration, WhisperProcessor
 from whisper_decoder import WhisperDecoder
 from whisper_encoder import WhisperEncoder
@@ -101,12 +97,15 @@ class WhisperHelper:
         # Load PyTorch model
         if model_impl == "hf":
             # Load from Hugging Face
-            model = WhisperForConditionalGeneration.from_pretrained(model_name_or_path, cache_dir=cache_dir, attn_implementation="eager")
+            model = WhisperForConditionalGeneration.from_pretrained(
+                model_name_or_path, cache_dir=cache_dir, attn_implementation="eager"
+            )
             if state_dict_path:
                 model.load_state_dict(torch.load(state_dict_path), strict=False)
         else:
             # Load from OpenAI
             import whisper
+
             if not os.path.exists(model_name_or_path):
                 name_or_path = model_name_or_path.split("/")[-1][8:]
             else:
@@ -128,7 +127,7 @@ class WhisperHelper:
         else:
             encoder = WhisperEncoder(config, model, model_impl).eval()
             components.update({"encoder": encoder, "decoder_init": decoder})
-        
+
         if output_qk:
             batched_jump_times = WhisperJumpTimes(config, device, cache_dir).eval()
             components.update({"jump_times": batched_jump_times})
@@ -136,7 +135,7 @@ class WhisperHelper:
 
     @staticmethod
     def export_onnx(
-        model: Union[WhisperEncoder, WhisperEncoderDecoderInit, WhisperDecoder],
+        model: WhisperEncoder | WhisperEncoderDecoderInit | WhisperDecoder,
         onnx_model_path: str,
         provider: str,
         verbose: bool,
@@ -243,7 +242,7 @@ class WhisperHelper:
                 m = add_cache_indirection_to_mha(m, past_seq_len_name)
 
             if output_qk:
-                m = add_output_qk_to_mha(m, skip_node_idxs=list(range(0, 2*num_layers, 2)))
+                m = add_output_qk_to_mha(m, skip_node_idxs=list(range(0, 2 * num_layers, 2)))
 
         m.save_model_to_file(optimized_model_path, use_external_data_format, all_tensors_to_one_file=True)
 

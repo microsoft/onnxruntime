@@ -2408,7 +2408,7 @@ class SymbolicShapeInference:
         if input_shape is not None:
             shape_len = len(input_shape)
             assert shape_len == 2 or shape_len == 3
-            M, N = input_shape[shape_len - 2], input_shape[shape_len - 1]
+            M, N = input_shape[shape_len - 2], input_shape[shape_len - 1]  # noqa: N806
             output_shape = [2, f"max({M}, {N}) <= O < {M} + {N}"]
             output_dtype = onnx.TensorProto.FLOAT
             vi = self.known_vi_[node.output[0]]

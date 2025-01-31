@@ -9,7 +9,6 @@ import os
 import tempfile
 import textwrap
 from pathlib import Path
-from typing import List, Union
 
 import numpy as np
 import onnx
@@ -17,7 +16,6 @@ import torch
 import torch.nn.functional as F
 import torch.utils.cpp_extension
 from onnx_model import OnnxModel
-
 from transformers import WhisperConfig
 from whisper_inputs import convert_inputs_for_ort, get_model_dynamic_axes, get_sample_jump_times_inputs
 
@@ -31,13 +29,14 @@ logger = logging.getLogger(__name__)
 # for torch.jit.script_if_tracing to work
 ##################################################
 
+
 @torch.jit.script_if_tracing
-def index_QKs(alignment_heads: torch.Tensor, QKs: List[torch.Tensor]):
+def index_QKs(alignment_heads: torch.Tensor, QKs: list[torch.Tensor]):  # noqa: N802
     """
     Compute the following to get stacked QK tensor that has been indexed for the desired attention heads:
     weights = torch.stack([QKs[_l][:, _h] for _l, _h in alignment_heads], dim=1)
     """
-    indexed_QKs = []
+    indexed_QKs = []  # noqa: N806
     for pair in alignment_heads:
         # Each QK is of shape (batch_size, num_heads, sequence_length, num_frames // 2)
         # The `QKs[_l]` selects the right QK from the list of QKs
@@ -67,17 +66,19 @@ def index_QKs(alignment_heads: torch.Tensor, QKs: List[torch.Tensor]):
     weights = torch.squeeze(weights, dim=2)
     return weights
 
+
 def jump_timings(text_indices, time_indices):
     """
     Calculate jump times from text_indices and time_indices where
     text_indices and time_indices are both 1d vectors
     """
-    TOKENS_PER_SECOND = 50.0
+    TOKENS_PER_SECOND = 50.0  # noqa: N806
     diff = text_indices[1:] - text_indices[:-1]
     padding = torch.tensor([1], dtype=torch.int32)
     jumps = torch.cat((padding, diff)).to(torch.bool)
     jump_times = time_indices[jumps].to(torch.float) / TOKENS_PER_SECOND
     return jump_times
+
 
 def padded_jump_from_dtw(matrix_2d: torch.Tensor, max_length: torch.Tensor):
     """
@@ -87,7 +88,8 @@ def padded_jump_from_dtw(matrix_2d: torch.Tensor, max_length: torch.Tensor):
     text_indices = trace[0, :]
     time_indices = trace[1, :]
     jump_times = jump_timings(text_indices, time_indices)
-    return F.pad(jump_times, [0, int((max_length - jump_times.size(-1)).item())], mode='constant', value=-1.0)
+    return F.pad(jump_times, [0, int((max_length - jump_times.size(-1)).item())], mode="constant", value=-1.0)
+
 
 @torch.jit.script_if_tracing
 def batch_jump_times(matrix: torch.Tensor, max_decoded_length: torch.Tensor):
@@ -102,10 +104,11 @@ def batch_jump_times(matrix: torch.Tensor, max_decoded_length: torch.Tensor):
     batched_jump_times = torch.stack(list_of_jump_times)
     return batched_jump_times
 
+
 class WhisperJumpTimes(torch.nn.Module):
     """Whisper jump times component"""
 
-    def __init__(self, config: WhisperConfig, device: torch.device, cache_dir: Union[str, os.PathLike]):
+    def __init__(self, config: WhisperConfig, device: torch.device, cache_dir: str | os.PathLike):
         super().__init__()
         self.config = config
         self.device = device
@@ -124,7 +127,13 @@ class WhisperJumpTimes(torch.nn.Module):
         result = torch.select(x_unfolded.sort()[0], dim=-1, index=pad_width)
         return result
 
-    def forward(self, alignment_heads: torch.Tensor, sot_sequence_length: torch.Tensor, segment_length: torch.Tensor, QKs: List[torch.Tensor]):
+    def forward(
+        self,
+        alignment_heads: torch.Tensor,
+        sot_sequence_length: torch.Tensor,
+        segment_length: torch.Tensor,
+        QKs: list[torch.Tensor],
+    ):
         # Get stacked QKs tensor
         weights = index_QKs(alignment_heads, QKs)
         weights = weights[:, :, : segment_length // 2]
@@ -136,7 +145,7 @@ class WhisperJumpTimes(torch.nn.Module):
         weights = self.median_filter(weights)
 
         matrix = torch.mean(weights, 1)
-        matrix = -matrix[:, sot_sequence_length : -1]
+        matrix = -matrix[:, sot_sequence_length:-1]
 
         max_decoded_length = torch.tensor([matrix.size(1)], dtype=torch.int64)
         batched_jump_times = batch_jump_times(matrix, max_decoded_length)
@@ -169,7 +178,12 @@ class WhisperJumpTimes(torch.nn.Module):
         )
         if return_dict:
             return inputs
-        return (inputs["alignment_heads"], inputs["sot_sequence_length"], inputs["segment_length"], inputs["QKs"], )
+        return (
+            inputs["alignment_heads"],
+            inputs["sot_sequence_length"],
+            inputs["segment_length"],
+            inputs["QKs"],
+        )
 
     def create_torch_ops(self):
         """
@@ -318,7 +332,7 @@ class WhisperJumpTimes(torch.nn.Module):
         #    jump_times: (batch_size, max_length)
 
         # Definitions:
-        # alignment_heads: the attention head indices where the Q*K values are highly correlated with word-level timestamps 
+        # alignment_heads: the attention head indices where the Q*K values are highly correlated with word-level timestamps
         # (i.e. the alignment between audio and text tokens)
         # This is calculated as follows:
         #
@@ -327,7 +341,7 @@ class WhisperJumpTimes(torch.nn.Module):
         # import gzip
         # import numpy as np
         # import torch
-        # 
+        #
         # # base85-encoded (n_layers, n_heads) boolean arrays indicating the cross-attention heads that are
         # # highly correlated to the word-level timing, i.e. the alignment between audio and text tokens.
         # _ALIGNMENT_HEADS = {
@@ -435,7 +449,14 @@ class WhisperJumpTimes(torch.nn.Module):
         inputs = self.inputs(use_fp16_inputs=use_fp16_inputs, use_int32_inputs=use_int32_inputs, return_dict=True)
 
         # Run PyTorch model
-        pt_outputs = self.forward(inputs["alignment_heads"], inputs["sot_sequence_length"], inputs["segment_length"], inputs["QKs"]).detach().cpu().numpy()
+        pt_outputs = (
+            self.forward(
+                inputs["alignment_heads"], inputs["sot_sequence_length"], inputs["segment_length"], inputs["QKs"]
+            )
+            .detach()
+            .cpu()
+            .numpy()
+        )
 
         # Run ONNX model
         sess = InferenceSession(onnx_model_path, providers=[provider])

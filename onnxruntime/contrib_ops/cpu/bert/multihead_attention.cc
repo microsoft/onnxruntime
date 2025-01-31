@@ -236,7 +236,7 @@ Status MultiHeadAttention<T>::Compute(OpKernelContext* context) const {
     args.buffer_size_per_thread = (static_cast<size_t>(args.q_block_size) * 2 +
                                    static_cast<size_t>(args.q_block_size) * static_cast<size_t>(args.kv_block_size) +
                                    static_cast<size_t>(args.q_block_size) * static_cast<size_t>(args.v_head_size)) *
-                                   sizeof(float);
+                                  sizeof(float);
     size_t buffer_bytes = args.buffer_size_per_thread * args.thread_count;
     IAllocatorUniquePtr<void> buffer = IAllocator::MakeUniquePtr<void>(allocator, buffer_bytes);
 

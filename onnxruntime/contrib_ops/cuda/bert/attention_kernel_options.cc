@@ -23,12 +23,12 @@ void AttentionKernelOptions::Initialize(int value, bool use_build_flag, bool che
     use_efficient_attention_ = (value & static_cast<int>(AttentionBackend::EFFICIENT_ATTENTION)) > 0;
     use_trt_fused_attention_ = (value & static_cast<int>(AttentionBackend::TRT_FUSED_ATTENTION)) > 0;
     use_cudnn_flash_attention_ = (value & static_cast<int>(AttentionBackend::CUDNN_FLASH_ATTENTION)) > 0;
-    
+
     use_unfused_ = (value & static_cast<int>(AttentionBackend::MATH)) > 0;
     use_trt_flash_attention_ = (value & static_cast<int>(AttentionBackend::TRT_FLASH_ATTENTION)) > 0;
     use_trt_cross_attention_ = (value & static_cast<int>(AttentionBackend::TRT_CROSS_ATTENTION)) > 0;
     use_trt_causal_attention_ = (value & static_cast<int>(AttentionBackend::TRT_CAUSAL_ATTENTION)) > 0;
-  
+
     use_ft_causal_attention_ = (value & static_cast<int>(AttentionBackend::FT_CAUSAL_ATTENTION)) > 0;
   } else {
     use_flash_attention_ = !ParseEnvironmentVariableWithDefault<bool>(kDisableFlashAttention, false);

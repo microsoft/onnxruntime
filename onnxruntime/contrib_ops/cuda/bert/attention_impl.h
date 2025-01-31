@@ -62,7 +62,6 @@ size_t GetAttentionWorkspaceSize(
     bool use_cudnn_flash_attention,
     bool no_qkv_workspace);
 
-
 // Return true if it does not need qkv workspace, false otherwise.
 template <typename T>
 bool NoQkvWorkspace(contrib::AttentionParameters& parameters, AttentionData<T>& data);

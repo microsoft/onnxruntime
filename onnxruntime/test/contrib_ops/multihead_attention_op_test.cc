@@ -88,7 +88,7 @@ static void RunMultiHeadAttentionTest(
     std::vector<int64_t> key_dims = {batch_size, is_static_kv ? kv_sequence_length : sequence_length, hidden_size};
     std::vector<int64_t> value_dims = {batch_size, is_static_kv ? kv_sequence_length : sequence_length, v_hidden_size};
     std::vector<int64_t> bias_dims = {hidden_size + hidden_size + v_hidden_size};
-    
+
     // TODO(wy): Introduce past sequence length to avoid using kv_sequence_length.
     std::vector<int64_t> attention_bias_dims =
         {1, num_heads, sequence_length, past_key_data.size() ? sequence_length + kv_sequence_length : sequence_length};

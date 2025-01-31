@@ -9,19 +9,22 @@ import os
 import tempfile
 from itertools import chain
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import onnx
 import torch
 from float16 import convert_float_to_float16
 from google.protobuf.internal.containers import RepeatedCompositeFieldContainer
-from io_binding_helper import TypeHelper
 from onnx import ModelProto, ValueInfoProto
 from onnx_model import OnnxModel
 from past_helper import PastKeyValuesHelper
-from transformers import WhisperConfig, file_utils
-from whisper_inputs import convert_inputs_for_ort, get_model_dynamic_axes, get_sample_decoder_inputs, group_past_key_values
+from transformers import WhisperConfig
+from whisper_inputs import (
+    convert_inputs_for_ort,
+    get_model_dynamic_axes,
+    get_sample_decoder_inputs,
+    group_past_key_values,
+)
 
 from onnxruntime import InferenceSession
 
@@ -46,7 +49,12 @@ class WhisperDecoder(torch.nn.Module):
         self.num_heads = self.config.decoder_attention_heads
         self.head_size = self.config.d_model // self.num_heads
 
-    def hf_forward(self, decoder_input_ids: torch.Tensor, encoder_hidden_states: Optional[torch.Tensor] = None, past_key_values: Optional[List[Tuple[torch.Tensor]]] = None):
+    def hf_forward(
+        self,
+        decoder_input_ids: torch.Tensor,
+        encoder_hidden_states: torch.Tensor | None = None,
+        past_key_values: list[tuple[torch.Tensor]] | None = None,
+    ):
         outputs = self.decoder(
             encoder_hidden_states=encoder_hidden_states,
             input_ids=decoder_input_ids,
@@ -64,12 +72,17 @@ class WhisperDecoder(torch.nn.Module):
         #         (past_key_self_1, past_value_self_1, past_key_cross_1, past_value_cross_1),
         # After:  (past_key_self_0, past_value_self_0, past_key_self_1, past_value_self_1), ...,
         #         (past_key_cross_0, past_value_cross_0, past_key_cross_1, past_value_cross_1), ...
-        present_self, present_cross = PastKeyValuesHelper.group_by_self_and_cross(present_key_values) 
+        present_self, present_cross = PastKeyValuesHelper.group_by_self_and_cross(present_key_values)
 
         # Return present_self_* for decoder-with-past since past_cross_* and present_cross_* are identical
         return logits, present_self
 
-    def oai_forward(self, decoder_input_ids: torch.Tensor, encoder_hidden_states: Optional[torch.Tensor] = None, past_key_values: Optional[List[Tuple[torch.Tensor]]] = None):
+    def oai_forward(
+        self,
+        decoder_input_ids: torch.Tensor,
+        encoder_hidden_states: torch.Tensor | None = None,
+        past_key_values: list[tuple[torch.Tensor]] | None = None,
+    ):
         past_kv_cache = {}
         if past_key_values is not None:
             # Convert past KV caches (BxNxSxH --> BxSxNxH --> BxSxD) for OpenAI's forward pass
@@ -132,10 +145,12 @@ class WhisperDecoder(torch.nn.Module):
 
         # Convert present KV caches (BxSxD --> BxSxNxH --> BxNxSxH) after OpenAI's forward pass
         present_self = [
-            present_kv.reshape(present_kv.shape[:2] + (-1, self.head_size)).transpose(1, 2) for present_kv in present_self
+            present_kv.reshape(present_kv.shape[:2] + (-1, self.head_size)).transpose(1, 2)
+            for present_kv in present_self
         ]
         present_cross = [
-            present_kv.reshape(present_kv.shape[:2] + (-1, self.head_size)).transpose(1, 2) for present_kv in present_cross
+            present_kv.reshape(present_kv.shape[:2] + (-1, self.head_size)).transpose(1, 2)
+            for present_kv in present_cross
         ]
 
         # Remove OpenAI's hooks since they can persist after this function completes
@@ -144,13 +159,20 @@ class WhisperDecoder(torch.nn.Module):
 
         if past_key_values is None:
             # Return present_self_* and present_cross_* for decoder-init
-            present_key_values = PastKeyValuesHelper.group_by_layer(present_self + present_cross, len(present_self) // 2)
+            present_key_values = PastKeyValuesHelper.group_by_layer(
+                present_self + present_cross, len(present_self) // 2
+            )
             return logits, present_key_values
 
         # Return present_self_* for decoder-with-past since past_cross_* and present_cross_* are identical
         return logits, present_self
 
-    def forward(self, decoder_input_ids: torch.Tensor, encoder_hidden_states: Optional[torch.Tensor] = None, past_key_values: Optional[List[Tuple[torch.Tensor]]] = None):
+    def forward(
+        self,
+        decoder_input_ids: torch.Tensor,
+        encoder_hidden_states: torch.Tensor | None = None,
+        past_key_values: list[tuple[torch.Tensor]] | None = None,
+    ):
         if self.model_impl == "openai":
             return self.oai_forward(decoder_input_ids, encoder_hidden_states, past_key_values)
         return self.hf_forward(decoder_input_ids, encoder_hidden_states, past_key_values)
@@ -163,7 +185,10 @@ class WhisperDecoder(torch.nn.Module):
                 "input_ids",
                 "encoder_hidden_states",
                 *list(
-                    chain.from_iterable((f"past_key_self_{i}", f"past_value_self_{i}", f"past_key_cross_{i}", f"past_value_cross_{i}") for i in range(self.config.num_hidden_layers))
+                    chain.from_iterable(
+                        (f"past_key_self_{i}", f"past_value_self_{i}", f"past_key_cross_{i}", f"past_value_cross_{i}")
+                        for i in range(self.config.num_hidden_layers)
+                    )
                 ),
             ]
         return input_names
@@ -173,14 +198,25 @@ class WhisperDecoder(torch.nn.Module):
             output_names = [
                 "logits",
                 *list(
-                    chain.from_iterable((f"present_key_self_{i}", f"present_value_self_{i}", f"present_key_cross_{i}", f"present_value_cross_{i}") for i in range(self.config.num_hidden_layers))
+                    chain.from_iterable(
+                        (
+                            f"present_key_self_{i}",
+                            f"present_value_self_{i}",
+                            f"present_key_cross_{i}",
+                            f"present_value_cross_{i}",
+                        )
+                        for i in range(self.config.num_hidden_layers)
+                    )
                 ),
             ]
         else:
             output_names = [
                 "logits",
                 *list(
-                    chain.from_iterable((f"present_key_self_{i}", f"present_value_self_{i}") for i in range(self.config.num_hidden_layers))
+                    chain.from_iterable(
+                        (f"present_key_self_{i}", f"present_value_self_{i}")
+                        for i in range(self.config.num_hidden_layers)
+                    )
                 ),
             ]
         return output_names
@@ -208,8 +244,15 @@ class WhisperDecoder(torch.nn.Module):
             return inputs
 
         if self.first_pass:
-            return (inputs["decoder_input_ids"], inputs["encoder_hidden_states"], )
-        return (inputs["decoder_input_ids"], inputs["encoder_hidden_states"], inputs["past_key_values"], )
+            return (
+                inputs["decoder_input_ids"],
+                inputs["encoder_hidden_states"],
+            )
+        return (
+            inputs["decoder_input_ids"],
+            inputs["encoder_hidden_states"],
+            inputs["past_key_values"],
+        )
 
     def fix_key_value_cache_dims(self, io: ValueInfoProto, is_cross: bool = False, is_output: bool = False):
         # Shape should be (batch_size, num_heads, sequence_length, head_size) for self attention KV caches
@@ -262,7 +305,7 @@ class WhisperDecoder(torch.nn.Module):
     def fix_inputs_and_outputs(self, model: ModelProto):
         # ONNX exporter might mark dimensions like 'Transposepresent_value_self_1_dim_2' in shape inference.
         # We now change the dim_values to the correct one.
-        reordered_inputs = self.fix_io(model.graph.input, is_output=False)        
+        reordered_inputs = self.fix_io(model.graph.input, is_output=False)
         while len(model.graph.input) > 0:
             model.graph.input.pop()
         model.graph.input.extend(reordered_inputs)
@@ -326,7 +369,9 @@ class WhisperDecoder(torch.nn.Module):
         # For subsequent passes through the decoder (i.e. decoder-with-past)
         self.later_pass = not use_encoder_hidden_states and use_kv_cache_inputs
 
-        assert(self.first_pass or self.later_pass), "Only one of `use_encoder_hidden_states` and `use_kv_cache_inputs` can be true at once."
+        assert self.first_pass or self.later_pass, (
+            "Only one of `use_encoder_hidden_states` and `use_kv_cache_inputs` can be true at once."
+        )
 
         inputs = self.inputs(use_fp16_inputs=use_fp16_inputs, use_int32_inputs=use_int32_inputs)
         input_names = self.input_names()
@@ -416,5 +461,5 @@ class WhisperDecoder(torch.nn.Module):
                 diff = np.abs(pt_outputs[i] - ort_outputs[i])
                 logger.warning(f"Comparing {output_name}...")
                 logger.warning(f"Max diff: {np.max(diff)}")
-        except:
+        except:  # noqa: E722
             pass

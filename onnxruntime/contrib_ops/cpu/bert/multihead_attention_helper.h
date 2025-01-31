@@ -236,8 +236,7 @@ AttentionMaskType GetMaskType(const T* key_padding_mask, int batch_size, int seq
 }
 
 inline Status CheckCacheIndirection(
-  const gsl::span<const int64_t>& cache_indir_dims, int64_t batch_beam_size, int64_t& num_beams, int64_t max_sequence_length
-) {
+    const gsl::span<const int64_t>& cache_indir_dims, int64_t batch_beam_size, int64_t& num_beams, int64_t max_sequence_length) {
   if (cache_indir_dims.size() != 3) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'cache_indirection' is expected to have 3 dimensions, got ",

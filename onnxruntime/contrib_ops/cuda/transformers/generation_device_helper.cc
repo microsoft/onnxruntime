@@ -1352,7 +1352,6 @@ struct ToCudaTypeWrapper<int32_t> {
 };
 }  // namespace
 
-
 template <typename T>
 Status ExpandBuffer(Stream* ort_stream,
                     const OrtValue& input,

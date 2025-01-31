@@ -1266,9 +1266,13 @@ def find_past_seq_len_usage(subg: GraphProto):
                 continue
             gather_indices_arr = onnx.numpy_helper.to_array(ini_gather_indices)
 
-            if gather_indices_arr.size == 1 and gather_indices_arr.item() in {1, 2} and node.input[0] in output_name_to_node:
+            if (
+                gather_indices_arr.size == 1
+                and gather_indices_arr.item() in {1, 2}
+                and node.input[0] in output_name_to_node
+            ):
                 shape_node = output_name_to_node[shape_tensor_name]
-                if not(shape_node.op_type == "Shape" and shape_node.input[0]):
+                if not (shape_node.op_type == "Shape" and shape_node.input[0]):
                     continue
 
                 if (
@@ -1289,10 +1293,10 @@ def find_past_seq_len_usage(subg: GraphProto):
                 if shape_node.input[0] not in output_name_to_node:
                     continue
                 reshape_node = output_name_to_node[shape_node.input[0]]
-                if not(reshape_node.op_type == "Reshape" and reshape_node.input[0]):
+                if not (reshape_node.op_type == "Reshape" and reshape_node.input[0]):
                     continue
                 transpose_node = output_name_to_node[reshape_node.input[0]]
-                if not(transpose_node.op_type == "Transpose" and transpose_node.input[0]):
+                if not (transpose_node.op_type == "Transpose" and transpose_node.input[0]):
                     continue
 
                 if (
@@ -1317,7 +1321,7 @@ def add_cache_indirection_to_mha(model: OnnxModel, past_seq_len_name: str):
     # Add past_sequence_length and cache_indirection as inputs to all MultiHeadAttention ops and as inputs to model
     cache_indirection_name = "cache_indirection"
     mha_nodes = list(filter(lambda node: node.op_type == "MultiHeadAttention", model.model.graph.node))
-    for idx, node in enumerate(mha_nodes):
+    for node in mha_nodes:
         # MHA op takes the following potential inputs:
         # query, key, value, bias, key_padding_mask, add_qk, past_key, past_value
         while len(node.input) < 8:
@@ -1333,7 +1337,8 @@ def add_cache_indirection_to_mha(model: OnnxModel, past_seq_len_name: str):
     model.topological_sort()
     return model
 
-def add_output_qk_to_mha(model: OnnxModel, dtype: Optional[int] = 0, skip_node_idxs: Optional[List[int]] = []):
+
+def add_output_qk_to_mha(model: OnnxModel, dtype: int = 0, skip_node_idxs: list[int] = []):  # noqa: B006
     # Add output_qk as output to MultiHeadAttention ops and as outputs to model
     output_qk_basename = "output_cross_qk"
     output_qks = []
@@ -1357,7 +1362,7 @@ def add_output_qk_to_mha(model: OnnxModel, dtype: Optional[int] = 0, skip_node_i
                 if i.name == node.input[3]:
                     output_qk_dtype = i.data_type
                     break
-        
+
         # Get `target_sequence_length` attribute from 4D input for key if it's a constant
         target_sequence_length = "target_sequence_length"
         for i in model.model.graph.input:
@@ -1369,12 +1374,14 @@ def add_output_qk_to_mha(model: OnnxModel, dtype: Optional[int] = 0, skip_node_i
         # output, present_key, present_value
         while len(node.output) < 3:
             node.output.append("")
-        
+
         output_qk_name = f"{output_qk_basename}_{idx // 2}"
         node.output.append(output_qk_name)
         output_qks.append(
             onnx.helper.make_tensor_value_info(
-                output_qk_name, output_qk_dtype, shape=["batch_size", num_heads, "sequence_length", target_sequence_length]
+                output_qk_name,
+                output_qk_dtype,
+                shape=["batch_size", num_heads, "sequence_length", target_sequence_length],
             ),
         )
 
@@ -1382,10 +1389,11 @@ def add_output_qk_to_mha(model: OnnxModel, dtype: Optional[int] = 0, skip_node_i
     model.topological_sort()
     return model
 
+
 def fix_past_sequence_length(model: ModelProto):
-    # Modify total_sequence_length = past_sequence_length + curr_sequence_length subgraph to calculate 
+    # Modify total_sequence_length = past_sequence_length + curr_sequence_length subgraph to calculate
     # past_sequence_length from the new `past_sequence_length` input of size 1D and type int32 instead of
-    # from `past_key_self_0` since DecoderMaskedMultiHeadAttention (DMMHA) uses buffer sharing and 
+    # from `past_key_self_0` since DecoderMaskedMultiHeadAttention (DMMHA) uses buffer sharing and
     # `past_key_self_0.shape[2] = max_sequence_length` instead of `past_key_self_0.shape[2] = past_sequence_length`
     # when buffer sharing is enabled
     #
@@ -1415,7 +1423,7 @@ def fix_past_sequence_length(model: ModelProto):
     #                |
     #               Add
 
-    node = list(filter(lambda n: n.op_type == "LayerNormalization", model.model.graph.node))[0]
+    node = list(filter(lambda n: n.op_type == "LayerNormalization", model.model.graph.node))[0]  # noqa: RUF015
 
     base_path = model.match_parent_path(
         node,
@@ -1446,7 +1454,7 @@ def fix_past_sequence_length(model: ModelProto):
     # Remove `past_key_self_0 --> [Transpose --> Reshape] --> Shape --> Gather` connection
     # where `Transpose --> Reshape` part may or may not exist. The OpenAI implementation of
     # Whisper has an extra `Transpose --> Reshape` connection to remove.
-    constant_node = list(filter(lambda n: n.output[0] == left_path[-2].input[1], model.model.graph.node))[0]
+    constant_node = list(filter(lambda n: n.output[0] == left_path[-2].input[1], model.model.graph.node))[0]  # noqa: RUF015
     model.model.graph.node.remove(left_path[-2])
     model.model.graph.node.remove(left_path[-1])
     model.model.graph.node.remove(constant_node)
@@ -1492,6 +1500,7 @@ def fix_past_sequence_length(model: ModelProto):
     model.topological_sort()
     return model, past_seq_len_name
 
+
 def replace_mha_with_dmmha(model: OnnxModel, past_seq_len_name: str):
     # Add `beam_width` and `cache_indirection` as model inputs
     beam_width = "beam_width"
@@ -1518,7 +1527,9 @@ def replace_mha_with_dmmha(model: OnnxModel, past_seq_len_name: str):
 
         # Make Q*K outputs for cross-attention layers, which happen every alternative layer
         qk_output_name = f"output_cross_qk_{idx // 2}"
-        qk_output = onnx.helper.make_tensor_value_info(qk_output_name, TensorProto.FLOAT, shape=["batch_size", num_heads, 1, "encode_sequence_length / 2"])
+        qk_output = onnx.helper.make_tensor_value_info(
+            qk_output_name, TensorProto.FLOAT, shape=["batch_size", num_heads, 1, "encode_sequence_length / 2"]
+        )
         if idx % 2 == 1:
             model.model.graph.output.append(qk_output)
 

@@ -92,12 +92,12 @@ def register():
     _reg(tril)
 
     @torch.onnx.symbolic_helper.parse_args("v")
-    def DynamicTimeWarping(g, self):
+    def DynamicTimeWarping(g, self):  # noqa: N802
         return g.op("com.microsoft::DynamicTimeWarping", self)
 
     _reg(DynamicTimeWarping, namespace="onnxruntime")
 
-    def UnfoldTensor(g, self, dim, size, step):
+    def UnfoldTensor(g, self, dim, size, step):  # noqa: N802
         dim = int(symbolic_helper._maybe_get_const(dim, "i"))
         size = int(symbolic_helper._maybe_get_const(size, "i"))
         step = int(symbolic_helper._maybe_get_const(step, "i"))
@@ -110,6 +110,7 @@ def register():
         ).setType(self.type())
 
     _reg(UnfoldTensor, namespace="onnxruntime")
+
 
 def unregister():
     """Unregister ONNX Runtime's built-in contrib ops."""

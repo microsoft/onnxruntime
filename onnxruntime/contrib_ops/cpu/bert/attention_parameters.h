@@ -87,8 +87,8 @@ struct GroupQueryAttentionParameters : AttentionParameters {
   int seqlen_present_kv_cache;  // sequence length of present kv tensor
   int kv_hidden_size;
   int kv_num_heads;
-  int num_splits;          // number of splits for splitkv
-  int rotary_dim;          // rotary embedding dimension
+  int num_splits;  // number of splits for splitkv
+  int rotary_dim;  // rotary embedding dimension
   int local_window_size;
   bool kv_share_buffer;
   bool is_packed_qkv;

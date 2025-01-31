@@ -5,15 +5,11 @@
 # --------------------------------------------------------------------------
 
 import argparse
-import copy
 import logging
 import os
 
-import onnx
 import torch
 from benchmark_helper import Precision, create_onnxruntime_session, prepare_environment, setup_logger
-from convert_generation import replace_mha_with_dmmha
-from onnx_model import OnnxModel
 from whisper_chain import chain_model
 from whisper_encoder import WhisperEncoder
 from whisper_helper import PRETRAINED_WHISPER_MODELS, WhisperHelper

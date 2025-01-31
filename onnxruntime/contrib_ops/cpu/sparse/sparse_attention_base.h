@@ -201,7 +201,7 @@ class SparseAttentionBase {
         }
 
         DUMP_CPU_STRING("i=", i, ",batch_index=", batch_index, ",head_index=", head_index,
-                    ",past_seq_len=", past_seq_len, ",total_seq_len=", total_seq_len, ",packed_qkv=", packed_qkv);
+                        ",past_seq_len=", past_seq_len, ",total_seq_len=", total_seq_len, ",packed_qkv=", packed_qkv);
         DUMP_CPU_TENSOR("Q", q, sequence_length, head_size);
         DUMP_CPU_TENSOR("K", k, total_seq_len, head_size);
 
@@ -248,13 +248,13 @@ class SparseAttentionBase {
               has_sparse = (nonzero_blocks != row_in_sparse_layout + 1);
 
               DUMP_CPU_STRING("q_id=", q_id,
-                          ",q_abs_position=", q_abs_position,
-                          ",sparse_block_size=", parameters.sparse_block_size,
-                          ",row_in_sparse_layout=", row_in_sparse_layout,
-                          ",start_in_col_indices=", start_in_col_indices,
-                          ",end_in_col_indices=", end_in_col_indices,
-                          ",nonzero_blocks=", nonzero_blocks,
-                          ",has_sparse=", has_sparse);
+                              ",q_abs_position=", q_abs_position,
+                              ",sparse_block_size=", parameters.sparse_block_size,
+                              ",row_in_sparse_layout=", row_in_sparse_layout,
+                              ",start_in_col_indices=", start_in_col_indices,
+                              ",end_in_col_indices=", end_in_col_indices,
+                              ",nonzero_blocks=", nonzero_blocks,
+                              ",has_sparse=", has_sparse);
 
               // Expand attention mask for current row of q_id
               if (has_sparse) {
@@ -355,7 +355,7 @@ class SparseAttentionBase {
             const int total_seq_len = total_key_lengths[batch_index];
 
             DUMP_CPU_STRING("i=", i, ",batch_index=", batch_index, ",head_index=", head_index,
-                        ",past_seq_len=", past_seq_len, ",total_seq_len=", total_seq_len, ",packed_qkv=", packed_qkv);
+                            ",past_seq_len=", past_seq_len, ",total_seq_len=", total_seq_len, ",packed_qkv=", packed_qkv);
 
             const T* v;
             if (packed_qkv) {
