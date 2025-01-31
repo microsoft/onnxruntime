@@ -142,6 +142,7 @@ jobs:
       restoreSolution: '$(Build.SourcesDirectory)\packages.config'
       nugetConfigPath: '$(Build.SourcesDirectory)\NuGet.config'
       restoreDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
+ 
   - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
       - powershell: |
           python.exe $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_csharp --parallel  --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}
