@@ -14,7 +14,6 @@ parameters:
   BuildArch: 'x64' # Optional. Options: x86, x64
   sln_platform: 'x64' # Options: Win32, x64, arm, arm64
   EnvSetupScript: 'setup_env.bat'
-  AgentPool: 'onnxruntime-Win-CPU-2022'
   AgentDemands: []
   OrtPackageId: Microsoft.ML.OnnxRuntime.DirectML
   BuildConfigurations: ['RelWithDebInfo'] # Options: Debug, RelWithDebInfo
@@ -38,7 +37,7 @@ stages:
     workspace:
       clean: all
     pool:
-      name: ${{ parameters.AgentPool }}
+      name: onnxruntime-Win-CPU-2022
       demands: ${{ parameters.AgentDemands }}
     variables:
       buildDirectory: '$(Build.BinariesDirectory)'
@@ -95,10 +94,12 @@ stages:
           arguments: ${{ parameters.BuildArch }}
           modifyEnvironment: true
 
-
-      - powershell: |
+      - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
+        - powershell: |
           python tools\ci_build\build.py ${{ parameters.BuildCommand }} --use_binskim_compliant_compile_flags --parallel --build_csharp --build --update --config $(BuildConfig) --build_nuget ${{ variables.build_py_lto_flag }}
-      
+
+      - ${{ else }}:
+          python tools\ci_build\build.py ${{ parameters.BuildCommand }} --use_binskim_compliant_compile_flags --parallel --build_csharp --build --update --config $(BuildConfig) ${{ variables.build_py_lto_flag }}
 
       - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
         # Use cross-compiled protoc
