@@ -576,8 +576,8 @@ if (onnxruntime_RUN_ONNX_TESTS)
 endif()
 
 
-if(onnxruntime_ENABLE_ATEN)
-  message(STATUS "Aten fallback is enabled.")
+if(onnxruntime_ENABLE_DLPACK)
+  message(STATUS "dlpack is enabled.")
   FetchContent_Declare(
     dlpack
     URL ${DEP_URL_dlpack}
