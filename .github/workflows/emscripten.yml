@@ -1,20 +1,33 @@
 name: WebAssembly
 
-on: [push]
+on: [push, pull_request]
+
+concurrency: # cancel running build if new push on the same branch
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: true
 
 jobs:
-  linux-wasm:
+  linux:
     name: WASM(Linux)
     runs-on: ubuntu-latest
     container:
-      image: emscripten/emsdk:3.1.74
+      image: emscripten/emsdk:3.1.74 # https://hub.docker.com/r/emscripten/emsdk
     steps:
       - uses: actions/checkout@v4
 
       - name: "Run apt"
         run: |
           sudo apt update -y
-          sudo apt install -y python3 pkg-config autoconf automake autoconf-archive file
+          sudo apt install -y python3 pkg-config file \
+            autoconf automake autoconf-archive \
+            linux-libc-dev
+
+      - name: "Detect Node.js"
+        run: |
+          # "/emsdk/node/20.18.0_64bit/bin/..."
+          node_path=$(which node)
+          echo "Using Node.js: $node_path" >> "$GITHUB_STEP_SUMMARY"
+          echo "EMSDK_NODE=$node_path" >> "$GITHUB_ENV"
 
       - uses: lukka/get-cmake@latest
         with:
@@ -55,8 +68,6 @@ jobs:
         run: |
           git config --global --add safe.directory ${{ github.workspace }}
           git config --global --add safe.directory /__w/onnxruntime/onnxruntime
-          # "/emsdk/node/20.18.0_64bit/bin/..."
-          export EMSDK_NODE=$(which node)
           python3 ./tools/ci_build/build.py --allow_running_as_root --compile_no_warning_as_error \
             --build_dir ./build \
             --build_wasm \
@@ -65,6 +76,7 @@ jobs:
             --skip_submodule_sync \
             --enable_wasm_simd \
             --enable_wasm_threads \
+            --path_to_protoc_exe "${{ steps.protoc-detect.outputs.protoc_path }}" \
             --cmake_extra_defines "CMAKE_TOOLCHAIN_FILE:FILEPATH=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" \
             --cmake_extra_defines "VCPKG_TARGET_TRIPLET=wasm32-emscripten" \
             --cmake_extra_defines "VCPKG_INSTALLED_DIR:PATH=${{ github.workspace }}/.build"
