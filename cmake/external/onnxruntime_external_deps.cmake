@@ -340,7 +340,7 @@ else()
   set(CPUINFO_SUPPORTED FALSE)
 endif()
 
-if (CPUINFO_SUPPORTED)
+if (CPUINFO_SUPPORTED
   if (CMAKE_SYSTEM_NAME STREQUAL "iOS")
     set(IOS ON CACHE INTERNAL "")
     set(IOS_ARCH "${CMAKE_OSX_ARCHITECTURES}" CACHE INTERNAL "")
@@ -362,7 +362,7 @@ if (CPUINFO_SUPPORTED)
     pytorch_cpuinfo
     URL ${DEP_URL_pytorch_cpuinfo}
     URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-    PATCH_COMMAND ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/9bb12d342fd9479679d505d93a478a6f9cd50a47.patch
+    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/9bb12d342fd9479679d505d93a478a6f9cd50a47.patch
     FIND_PACKAGE_ARGS NAMES cpuinfo
   )
   set(ONNXRUNTIME_CPUINFO_PROJ pytorch_cpuinfo)
