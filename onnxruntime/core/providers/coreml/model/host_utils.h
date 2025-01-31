@@ -54,8 +54,7 @@
 
 #endif
 
-#define MINIMUM_COREML_VERSION 3            // first version we support
-#define MINIMUM_COREML_MLPROGRAM_VERSION 5  // first version where ML Program was available
+#define MINIMUM_COREML_VERSION 5  // first version we support
 
 namespace onnxruntime {
 namespace coreml {
