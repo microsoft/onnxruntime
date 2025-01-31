@@ -30,9 +30,11 @@ inline static uint32_t midr_get_part(uint32_t midr) {
   return (midr & CPUINFO_ARM_MIDR_PART_MASK) >> CPUINFO_ARM_MIDR_PART_OFFSET;
 }
 
+#if 0
 inline static uint32_t midr_get_variant(uint32_t midr) {
   return (midr & CPUINFO_ARM_MIDR_VARIANT_MASK) >> CPUINFO_ARM_MIDR_VARIANT_OFFSET;
 }
+#endif
 
 void decodeMIDR(
     uint32_t midr,
