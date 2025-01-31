@@ -604,6 +604,7 @@ def parse_arguments():
     parser.add_argument("--enable_msinternal", action="store_true", help="Enable for Microsoft internal builds only.")
     parser.add_argument("--use_vitisai", action="store_true", help="Build with Vitis-AI")
     parser.add_argument("--use_tensorrt", action="store_true", help="Build with TensorRT")
+    parser.add_argument("--build_tensorrt_standalone_cuda", action="store_true", help="TRT EP will use its CUDA features instead of relying on CUDA EP's CUDA features")
     parser.add_argument(
         "--use_tensorrt_builtin_parser", action="store_true", default=True, help="Use TensorRT builtin parser"
     )
@@ -1046,6 +1047,7 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
+        "-Donnxruntime_BUILD_TENSORRT_STANDALONE_CUDA=" + ("ON" if args.build_tensorrt_standalone_cuda else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER="
         + ("ON" if args.use_tensorrt_builtin_parser and not args.use_tensorrt_oss_parser else "OFF"),
         # interface variables are used only for building onnxruntime/onnxruntime_shared.dll but not EPs

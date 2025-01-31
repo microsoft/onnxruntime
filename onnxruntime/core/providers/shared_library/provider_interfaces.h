@@ -190,6 +190,10 @@ struct ProviderHost {
   virtual Status CudaCall_false(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) = 0;
   virtual void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) = 0;
 
+#ifdef BUILD_TENSORRT_STANDALONE_CUDA
+  virtual std::unique_ptr<IAllocator> CreateCUDAOrtAllocator(OrtAllocator* alloc) = 0;
+#endif
+
 #ifdef USE_MIGRAPHX
   virtual std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name) = 0;

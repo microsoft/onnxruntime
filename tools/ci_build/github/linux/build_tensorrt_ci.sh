@@ -15,6 +15,7 @@ BUILD_ARGS=('--config' 'Release'
 	      "--cuda_home=/usr/local/cuda-$SHORT_CUDA_VERSION"
 	      "--cudnn_home=/usr/local/cuda-$SHORT_CUDA_VERSION"
 	      "--use_tensorrt" "--tensorrt_home" "/usr"
+          "--build_tensorrt_standalone_cuda"
               "--enable_pybind"
 	      "--build_java"
               "--cmake_extra_defines"
