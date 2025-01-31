@@ -126,7 +126,7 @@
 	</PropertyGroup>
 
 	<PropertyGroup Condition="'$(IsAndroidTarget)' == 'true'">
-	  <AndroidPackageFormat>apk</AndroidPackageFormat>
+		<AndroidPackageFormat>apk</AndroidPackageFormat>
 	</PropertyGroup>
 
 </Project>
