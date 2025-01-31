@@ -121,8 +121,11 @@ InlinedHashMap<std::string, NodeAllocationStats> LoadNodeAllocationStats(const s
   std::string line;
   // Read and load a CSV file line by line
   while (std::getline(file, line)) {
-    auto splits = utils::SplitString(line, ",", false);
+    auto splits = utils::SplitString(line, ",", true);
     ORT_ENFORCE(splits.size() == 5, "Invalid line in the file ", file_path, ": ", line);
+    if (splits[0].empty()) {
+      continue;
+    }
     std::string node_name{splits[0]};
     size_t input_sizes = SafeInt<size_t>(std::stoull(std::string{splits[1]}));
     size_t initializers_sizes = SafeInt<size_t>(std::stoull(std::string{splits[2]}));
@@ -1101,7 +1104,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
       kOrtSessionOptionsResourceCudaPartitioningSettings, "");
   if (!resource_partitioning_settings.empty()) {
     auto splits = utils::SplitString(resource_partitioning_settings, ",", false);
-    if (splits.size() == 4) {
+    if (splits.size() == 2) {
       SafeInt<size_t> cuda_memory_limit = std::stoul(std::string{splits[0]});
       cuda_memory_limit *= 1024;  // to bytes
       auto node_to_stats = LoadNodeAllocationStats(graph.ModelPath(), splits[1]);
