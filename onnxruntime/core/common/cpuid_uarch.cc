@@ -215,8 +215,8 @@ void decodeMIDR(
         case 0x004:
           *uarch = cpuinfo_uarch_carmel;
           break;
-        //default:
-          //std::cerr << "unknown Nvidia CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
+          // default:
+          // std::cerr << "unknown Nvidia CPU part 0x" << std::hex << midr_get_part(midr) << " ignored\n";
       }
       break;
 #if !defined(__ANDROID__)
