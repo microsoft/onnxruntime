@@ -1,3 +1,4 @@
+
 parameters:
   DoDebugBuild: 'true' # Unused. Use BuildConfigurations instead.
   DoCompliance: 'false'
@@ -41,7 +42,6 @@ stages:
       demands: ${{ parameters.AgentDemands }}
     variables:
       buildDirectory: '$(Build.BinariesDirectory)'
-      BuildCommand: ${{ parameters.BuildCommand }}
       OnnxRuntimeBuildDirectory: '$(Build.BinariesDirectory)'
       runCodesignValidationInjection: and(${{ parameters.DoNodejsPack }},${{ parameters. DoEsrp}}) #For the others, code sign is in a separated job
       DOTNET_SKIP_FIRST_TIME_EXPERIENCE: true
@@ -52,10 +52,9 @@ stages:
         build_py_lto_flag: --enable_lto
 
     steps:
-      # Windows_CI_GPU_DML_Dev_arm64 build job still needs protobuf submodule
       - checkout: self
         clean: true
-        submodules: recursive
+        submodules: none
 
       - powershell: |
           if($env:TELEMETRYGUID)
@@ -80,12 +79,7 @@ stages:
           addToPath: true
           architecture: ${{ parameters.BuildArch }}
 
-      - task: BatchScript@1
-        displayName: 'setup env'
-        inputs:
-          filename: '$(Build.SourcesDirectory)\tools\ci_build\github\windows\${{ parameters.EnvSetupScript }}'
-          modifyEnvironment: true
-          workingFolder: '$(Build.BinariesDirectory)'
+   
 
       # need to set PROCESSOR_ARCHITECTURE so the x86 SDK is installed correctly
       - task: UseDotNet@2
@@ -94,32 +88,22 @@ stages:
         env:
           PROCESSOR_ARCHITECTURE: ${{ parameters.BuildArch }}
 
-
-      - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\python\requirements.txt
-
-      - task: PythonScript@0
-        displayName: 'Generate cmake config'
+      - task: BatchScript@1
+        displayName: 'Setup VS2022 env vars'
         inputs:
-          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: '$(BuildCommand) --use_binskim_compliant_compile_flags --parallel --build_csharp --update --config $(BuildConfig) ${{ variables.build_py_lto_flag }}'
-          workingDirectory: '$(Build.BinariesDirectory)'
+          filename: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
+          arguments: ${{ parameters.BuildArch }}
+          modifyEnvironment: true
+
+
+      - powershell: |
+          python tools\ci_build\build.py ${{ parameters.BuildCommand }} --use_binskim_compliant_compile_flags --parallel --build_csharp --build --update --config $(BuildConfig) --build_nuget ${{ variables.build_py_lto_flag }}
+      
 
       - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
         # Use cross-compiled protoc
         - script: |
            @echo ##vso[task.setvariable variable=ProtocDirectory]$(Build.BinariesDirectory)\installed\bin
-
-      - task: VSBuild@1
-        displayName: 'Build'
-        inputs:
-          solution: '$(Build.BinariesDirectory)\$(BuildConfig)\onnxruntime.sln'
-          platform: ${{ parameters.sln_platform }}
-          configuration: $(BuildConfig)
-          msbuildArchitecture: ${{ parameters.BuildArch }}
-          maximumCpuCount: true
-          logProjectEvents: true
-          workingFolder: '$(Build.BinariesDirectory)\$(BuildConfig)'
-          createLogFile: true
 
       # The Configuration variable is required to build C#
       - script: |
@@ -132,70 +116,8 @@ stages:
         inputs:
           versionSpec: 6.10.x
 
-      - task: MSBuild@1
-        displayName: 'Restore NuGet Packages'
-        inputs:
-          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
-          platform: 'Any CPU'
-          configuration: '$(BuildConfig)'
-          msbuildArguments: '-t:restore -p:OrtPackageId=${{ parameters.OrtPackageId }}'
-          workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-      - task: MSBuild@1
-        displayName: 'Build C#'
-        inputs:
-          solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
-          configuration: '$(BuildConfig)'
-          platform: 'Any CPU'
-          msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }} -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}'
-          workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-      - script: |
-         mklink /D /J models C:\local\models
-        workingDirectory: '$(Build.BinariesDirectory)'
-        displayName: 'Create models link'
-
-      - ${{ if in(parameters['sln_platform'], 'Win32', 'x64') }}:
-        - task: DotNetCoreCLI@2
-          displayName: 'Test C#'
-          inputs:
-            command: test
-            projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp.csproj'
-            configuration: '$(BuildConfig)'
-            arguments: '--configuration $(BuildConfig) -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=${{ parameters.OrtPackageId }}'
-            workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-        - ${{ if eq(parameters.RunTests, true) }}:
-          - script: |
-             mklink  /D /J $(Build.BinariesDirectory)\$(BuildConfig)\models C:\local\models
-             DIR dist\ /S /B > wheel_filename_file
-             set /p WHEEL_FILENAME=<wheel_filename_file
-             del wheel_filename_file
-             python.exe -m pip install -q --upgrade %WHEEL_FILENAME%
-             set PATH=%PATH%;$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)
-             @echo %PATH%
-             python $(Build.SourcesDirectory)\tools\ci_build\build.py $(BuildCommand) --parallel --use_binskim_compliant_compile_flags --test --config $(BuildConfig) ${{ variables.build_py_lto_flag }}
-            workingDirectory: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
-            displayName: 'Run tests'
-
-      - ${{ if eq(parameters.RunTests, true) }}:
-        - task: PublishTestResults@2
-          displayName: 'Publish unit test results'
-          inputs:
-            testResultsFiles: '**\*.results.xml'
-            searchFolder: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
-            testRunTitle: 'Unit Test Run'
-          condition: succeededOrFailed()
-
       # Nuget packaging if needed
       - ${{ if eq(parameters['DoNugetPack'], 'true') }}:
-        - task: BatchScript@1
-          displayName: 'Setup VS2022 env vars'
-          inputs:
-            filename: 'C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvarsall.bat'
-            arguments: ${{ parameters.BuildArch }}
-            modifyEnvironment: true
-
         # Esrp signing. Requires older .net SDK currently (ESRP v5.1.1)
         - task: UseDotNet@2
           inputs:
