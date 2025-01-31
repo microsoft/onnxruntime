@@ -3379,6 +3379,30 @@ TEST(GradientCheckerTest, GlobalMaxPoolGrad) {
   }
 }
 
+TEST(GradientCheckerTest, ReduceMaxGrad) {
+  // Attribute axes supports negative values from opset 11.
+  OpDef op_def_11{"ReduceMax", kOnnxDomain, 11};
+
+  RunReductionTests(op_def_11, false, true);
+
+  OpDef op_def_12{"ReduceMax", kOnnxDomain, 12};
+
+  RunReductionTests(op_def_12, false, true);
+
+  OpDef op_def_13{"ReduceMax", kOnnxDomain, 13};
+
+  RunReductionTests(op_def_13, false, true);
+
+  // axes is input from opset 18.
+  OpDef op_def_18{"ReduceMax", kOnnxDomain, 18};
+
+  RunReductionTests(op_def_18, true, true);
+
+  OpDef op_def_20{"ReduceMax", kOnnxDomain, 20};
+
+  RunReductionTests(op_def_20, true, true);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 
