@@ -177,7 +177,7 @@ jobs:
           --user $UID:$(id -g $USER) \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
-          --workdir /build/Release \
+          --workdir  \
           -e OPENBLAS_NUM_THREADS=1 \
           -e OPENMP_NUM_THREADS=1 \
           -e MKL_NUM_THREADS=1 \
@@ -188,6 +188,8 @@ jobs:
           onnxruntime-rocm-cibuild-rocm$(RocmVersion) \
           /bin/bash -c "
             set -ex; \
+            env; \
+            cd /build/Release; \
             python --version; \
             pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100"
       workingDirectory: $(Build.SourcesDirectory)
