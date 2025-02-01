@@ -633,6 +633,7 @@ class HQQWeightOnlyQuantizer:
         import torch
 
         logger.info(f"start to quantize {node.name} ...")
+        print(f"start to quantize {node.name} ...")
         input_b = node.input[1]
         b_pb, bs_graph = get_initializer(input_b, graph_stack)
         if b_pb is None:
@@ -1009,6 +1010,7 @@ class DefaultWeightOnlyQuantizer:
         not supported yet because Gather does not support int4 data.
         """
         logger.info(f"start to quantize {node.name} ...")
+        print(f"start to quantize {node.name} ...")
 
         if node.op_type == "MatMul":
             results = self.quantize_matmul(node, graph_stack)
@@ -1161,10 +1163,12 @@ class MatMul4BitsQuantizer:
             out_nodes = []
             if node.name in self.nodes_to_exclude:
                 logger.info(f"exclude to quantize {node.name} as specified by nodes_to_exclude...")
+                print(f"exclude to quantize {node.name} as specified by nodes_to_exclude...")
                 out_nodes = [node]
             elif (self.nodes_to_include and node.name in self.nodes_to_include) or (
                 node.op_type in self.algo_config.op_types_to_quantize
             ):
+                print(f"quantize {node.name} as specified by nodes_to_exclude...")
                 out_nodes = self.node_quantizer.quantize(node, graph_stack)
             else:
                 logger.info(f"skip to quantize {node.name} ...")
@@ -1238,6 +1242,7 @@ class MatMul4BitsQuantizer:
         logger.info(f"complete quantization of model with {algorithm} algorithm.")
 
     def process(self):
+        print("start process")
         if self.algo_config.algorithm in ["HQQ", "DEFAULT"]:
             # use a stack to keep track of sub-graphs
             graph_stack = [self.model.graph()]

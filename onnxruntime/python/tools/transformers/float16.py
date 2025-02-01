@@ -16,6 +16,9 @@ import itertools
 import logging
 import os
 import tempfile
+from typing import Dict
+from enum import Enum
+import ml_dtypes
 
 import numpy as np
 import onnx
@@ -24,6 +27,12 @@ from onnx.shape_inference import infer_shapes, infer_shapes_path
 from packaging import version
 
 logger = logging.getLogger(__name__)
+
+import onnxscript
+from onnxscript import optimizer, ir
+import onnxconverter_common
+from onnxconverter_common.onnx_ex import make_model_ex
+import onnxruntime as rt
 
 
 def _npfloat16_to_int(np_list):
@@ -34,7 +43,6 @@ def _npfloat16_to_int(np_list):
     :return int_list: python int list
     """
     return [int(bin(_.view("H"))[2:].zfill(16), 2) for _ in np_list]
-
 
 def convert_np_to_float16(np_array, min_positive_val=5.96e-08, max_finite_val=65504.0):
     """
@@ -70,7 +78,7 @@ def convert_np_to_float16(np_array, min_positive_val=5.96e-08, max_finite_val=65
     return np.float16(np_array)
 
 
-def convert_tensor_float_to_float16(tensor, min_positive_val=5.96e-08, max_finite_val=65504.0):
+def convert_tensor_float_to_float16(tensor, is_value_type_bfloat16=False, min_positive_val=5.96e-08, max_finite_val=65504.0):
     """Convert tensor float to float16.
 
     Args:
@@ -89,10 +97,13 @@ def convert_tensor_float_to_float16(tensor, min_positive_val=5.96e-08, max_finit
         raise ValueError(f"Expected input type is an ONNX TensorProto but got {type(tensor)}")
 
     if tensor.data_type == TensorProto.FLOAT:
-        tensor.data_type = TensorProto.FLOAT16
+        tensor.data_type = TensorProto.BFLOAT16 if is_value_type_bfloat16 else TensorProto.FLOAT16
         # convert float_data (float type) to float16 and write to int32_data
         if tensor.float_data:
-            float16_data = convert_np_to_float16(np.array(tensor.float_data), min_positive_val, max_finite_val)
+            if is_value_type_bfloat16:
+                float16_data = tensor.float_data.astype(ml_dtypes.bfloat16)
+            else:
+                float16_data = convert_np_to_float16(np.array(tensor.float_data), min_positive_val, max_finite_val)
             int_list = _npfloat16_to_int(float16_data)
             tensor.int32_data[:] = int_list
             tensor.float_data[:] = []
@@ -101,9 +112,49 @@ def convert_tensor_float_to_float16(tensor, min_positive_val=5.96e-08, max_finit
             # convert n.raw_data to float
             float32_list = np.frombuffer(tensor.raw_data, dtype="float32")
             # convert float to float16
-            float16_list = convert_np_to_float16(float32_list, min_positive_val, max_finite_val)
+            if is_value_type_bfloat16:
+                float16_list = float32_list.astype(ml_dtypes.bfloat16)
+            else:
+                float16_list = convert_np_to_float16(float32_list, min_positive_val, max_finite_val)
             # convert float16 to bytes and write back to raw_data
             tensor.raw_data = float16_list.tobytes()
+    return tensor
+
+def convert_tensor_float_to_bfloat16(tensor):
+    """Convert tensor float to bfloat16.
+
+    Args:
+        tensor (TensorProto): the tensor to convert.
+        min_positive_val (float, optional): minimal positive value. Defaults to 1e-7.
+        max_finite_val (float, optional): maximal finite value. Defaults to 1e4.
+
+    Raises:
+        ValueError: input type is not TensorProto.
+
+    Returns:
+        TensorProto: the converted tensor.
+    """
+
+    if not isinstance(tensor, TensorProto):
+        raise ValueError(f"Expected input type is an ONNX TensorProto but got {type(tensor)}")
+
+    if tensor.data_type == TensorProto.FLOAT:
+        tensor.data_type = TensorProto.BFLOAT16
+        # convert float_data (float type) to bfloat16 and write to int32_data
+        if tensor.float_data:
+            bfloat16_data = tensor.float_data.astype(ml_dtypes.bfloat16)
+            # we can use _npfloat16_to_int here because float16 and bfloat16 are both 16-bits.
+            int_list = _npfloat16_to_int(bfloat16_data)
+            tensor.int32_data[:] = int_list
+            tensor.float_data[:] = []
+        # convert raw_data (bytes type)
+        if tensor.raw_data:
+            # convert n.raw_data to float
+            float32_list = np.frombuffer(tensor.raw_data, dtype="float32")
+            # convert float to bfloat16
+            bfloat16_list = float32_list.astype(ml_dtypes.bfloat16)
+            # convert bfloat16 to bytes and write back to raw_data
+            tensor.raw_data = bfloat16_list.tobytes()
     return tensor
 
 
@@ -148,6 +199,10 @@ DEFAULT_OP_BLOCK_LIST = [
 # Note that DirectML allows float16 gamma and beta in GroupNorm. Use force_fp16_inputs parameter could overwrite this.
 ALWAYS_FLOAT_INPUTS = {"Resize": [2], "GroupNorm": [1, 2], "SkipGroupNorm": [1, 2]}
 
+class NodeValueType(Enum):
+    FP32 = 1
+    FP16 = 2
+    BF16 = 3
 
 class InitializerTracker:
     """Class for keeping track of initializer."""
@@ -156,13 +211,15 @@ class InitializerTracker:
         self.initializer = initializer
         self.fp32_nodes = []
         self.fp16_nodes = []
+        self.bf16_nodes = []
 
-    def add_node(self, node: NodeProto, is_node_blocked):
-        if is_node_blocked:
+    def add_node(self, node: NodeProto, node_value_type):
+        if node_value_type == NodeValueType.FP32:
             self.fp32_nodes.append(node)
-        else:
+        elif node_value_type == NodeValueType.FP16:
             self.fp16_nodes.append(node)
-
+        elif node_value_type == NodeValueType.BF16:
+            self.bf16_nodes.append(node)
 
 def convert_float_to_float16(
     model,
@@ -175,6 +232,7 @@ def convert_float_to_float16(
     force_fp16_initializers=False,
     force_fp16_inputs=None,
     use_bfloat16_as_blocked_nodes_dtype=False,
+    is_value_type_bfloat16=False
 ):
     """Convert tensor float type in the input ONNX model to tensor float16.
 
@@ -200,9 +258,10 @@ def convert_float_to_float16(
     Returns:
         ModelProto: converted model.
     """
-    assert min_positive_val >= 5.96e-08, (
-        "invalid min_positive_val. smallest positive float16 value: subnormal 5.96e-08, and normalized 6.104e-05"
-    )
+    final_value_type = TensorProto.BFLOAT16 if is_value_type_bfloat16 else TensorProto.FLOAT16
+    assert (
+        min_positive_val >= 5.96e-08
+    ), "invalid min_positive_val. smallest positive float16 value: subnormal 5.96e-08, and normalized 6.104e-05"
     assert max_finite_val <= float(np.finfo(np.float16).max), "invalid max_finite_val. largest float16 value: 65504"
 
     force_fp16_inputs_dict = {} if force_fp16_inputs is None else force_fp16_inputs
@@ -253,8 +312,8 @@ def convert_float_to_float16(
     mixed_float_type_node_list = []
 
     # type inference on input model
-    if func_infer_shape is not None:
-        model = func_infer_shape(model)
+    # if func_infer_shape is not None:
+    #    model = func_infer_shape(model)
     queue.append(model)
     name_mapping = {}
     graph_io_to_skip = set()
@@ -279,9 +338,9 @@ def convert_float_to_float16(
             new_value_info = model.graph.value_info.add()
             new_value_info.CopyFrom(n)
             new_value_info.name = output_name
-            new_value_info.type.tensor_type.elem_type = TensorProto.FLOAT16
+            new_value_info.type.tensor_type.elem_type = final_value_type
             # add Cast node (from tensor(float) to tensor(float16) after graph input
-            new_node = [helper.make_node("Cast", [n.name], [output_name], to=TensorProto.FLOAT16, name=node_name)]
+            new_node = [helper.make_node("Cast", [n.name], [output_name], to=final_value_type, name=node_name)]
             model.graph.node.extend(new_node)
             value_info_list.append(new_value_info)
             io_casts.add(node_name)
@@ -297,8 +356,8 @@ def convert_float_to_float16(
             new_value_info = model.graph.value_info.add()
             new_value_info.CopyFrom(n)
             new_value_info.name = input_name
-            new_value_info.type.tensor_type.elem_type = TensorProto.FLOAT16
-            new_node = [helper.make_node("Cast", [input_name], [n.name], to=1, name=node_name)]
+            new_value_info.type.tensor_type.elem_type = final_value_type
+            new_node = [helper.make_node("Cast", [input_name], [n.name], to=TensorProto.FLOAT, name=node_name)]
             model.graph.node.extend(new_node)
             value_info_list.append(new_value_info)
             io_casts.add(node_name)
@@ -332,12 +391,20 @@ def convert_float_to_float16(
                     is_node_blocked = n.op_type in op_block_list or n.name in node_block_list
                     for i, input_name in enumerate(n.input):
                         if input_name in fp32_initializers:
-                            # For Resize/GroupNorm, only the first input can be float16
-                            use_fp32_weight = is_node_blocked or (
-                                i in ALWAYS_FLOAT_INPUTS.get(n.op_type, [])
-                                and i not in force_fp16_inputs_dict.get(n.op_type, [])
-                            )
-                            fp32_initializers[input_name].add_node(n, use_fp32_weight)
+                            if is_node_blocked and use_bfloat16_as_blocked_nodes_dtype:
+                                fp32_initializers[input_name].add_node(n, NodeValueType.BF16)
+                            else:
+                                # For Resize/GroupNorm, only the first input can be float16
+                                if is_node_blocked or (
+                                    i in ALWAYS_FLOAT_INPUTS.get(n.op_type, [])
+                                    and i not in force_fp16_inputs_dict.get(n.op_type, [])
+                                ):
+                                    fp32_initializers[input_name].add_node(n, NodeValueType.FP32)
+                                else:
+                                    if is_value_type_bfloat16:
+                                        fp32_initializers[input_name].add_node(n, NodeValueType.BF16)
+                                    else:
+                                        fp32_initializers[input_name].add_node(n, NodeValueType.FP16)
 
                     if is_node_blocked:
                         node_list.append(n)
@@ -345,7 +412,7 @@ def convert_float_to_float16(
                         if n.op_type == "Cast":
                             for attr in n.attribute:
                                 if attr.name == "to" and attr.i == TensorProto.FLOAT:
-                                    attr.i = TensorProto.FLOAT16
+                                    attr.i = final_value_type
                                     break
 
                         if n.op_type in [
@@ -363,12 +430,12 @@ def convert_float_to_float16(
                                 if attr.name == "dtype":
                                     has_dtype = True
                                     if attr.i == TensorProto.FLOAT:
-                                        attr.i = TensorProto.FLOAT16
+                                        attr.i = final_value_type
 
                             # The dtype attribute is optional and default is FLOAT in the following operators
                             # so we need add dtype attribute to specify the data type float16
                             if (n.op_type in ["RandomNormal", "RandomUniform", "SequenceEmpty"]) and not has_dtype:
-                                n.attribute.extend([helper.make_attribute("dtype", TensorProto.FLOAT16)])
+                                n.attribute.extend([helper.make_attribute("dtype", final_value_type)])
 
                         # For Resize/GroupNorm, attribute data type cannot be changed
                         if n.op_type not in ALWAYS_FLOAT_INPUTS or n.op_type in force_fp16_inputs_dict:
@@ -383,9 +450,9 @@ def convert_float_to_float16(
                 next_level.append(q.g)
                 for n in q.graphs:
                     next_level.append(n)  # noqa: PERF402
-                q.t.CopyFrom(convert_tensor_float_to_float16(q.t, min_positive_val, max_finite_val))
+                q.t.CopyFrom(convert_tensor_float_to_float16(q.t, is_value_type_bfloat16, min_positive_val, max_finite_val))
                 for n in q.tensors:
-                    n = convert_tensor_float_to_float16(n, min_positive_val, max_finite_val)  # noqa: PLW2901
+                    n = convert_tensor_float_to_float16(n, is_value_type_bfloat16, min_positive_val, max_finite_val)  # noqa: PLW2901
             # if q is graph, process input, output and value_info (ValueInfoProto)
             if isinstance(q, GraphProto):
                 # Note that float initializers tracked by fp32_initializers will be processed later.
@@ -394,12 +461,12 @@ def convert_float_to_float16(
                 for n in itertools.chain(q.input, q.output, q.value_info):
                     if n.type.tensor_type.elem_type == TensorProto.FLOAT:
                         if n.name not in graph_io_to_skip:
-                            n.type.tensor_type.elem_type = TensorProto.FLOAT16
+                            n.type.tensor_type.elem_type = final_value_type
                             value_info_list.append(n)
                     if n.type.HasField("sequence_type"):
                         if n.type.sequence_type.elem_type.tensor_type.elem_type == TensorProto.FLOAT:
                             if n.name not in graph_io_to_skip:
-                                n.type.sequence_type.elem_type.tensor_type.elem_type = TensorProto.FLOAT16
+                                n.type.sequence_type.elem_type.tensor_type.elem_type = final_value_type
                                 value_info_list.append(n)
 
         queue = next_level
@@ -407,12 +474,16 @@ def convert_float_to_float16(
     for value in fp32_initializers.values():
         # By default, to avoid precision loss, do not convert an initializer to fp16 when it is used only by fp32 nodes.
         if force_fp16_initializers or value.fp16_nodes:
-            value.initializer = convert_tensor_float_to_float16(value.initializer, min_positive_val, max_finite_val)
+            value.initializer = convert_tensor_float_to_float16(value.initializer, is_value_type_bfloat16, min_positive_val, max_finite_val)
             value_info_list.append(make_value_info_from_tensor(value.initializer))
             if value.fp32_nodes and not force_fp16_initializers:
                 logger.info(
                     f"initializer is used by both fp32 and fp16 nodes. Consider add these nodes to block list:{value.fp16_nodes}"
                 )
+        if value.bf16_nodes:
+            value.initializer = convert_tensor_float_to_float16(value.initializer, is_value_type_bfloat16)
+            value_info_list.append(make_value_info_from_tensor(value.initializer))
+
 
     # Some operators have data type fixed as float for some input. Add a float16 to float cast for those inputs.
     for node in mixed_float_type_node_list:
@@ -429,7 +500,7 @@ def convert_float_to_float16(
                     new_value_info.type.tensor_type.elem_type = TensorProto.FLOAT
                     # add Cast node (from tensor(float16) to tensor(float) before current node
                     node_name = node.name + "_input_cast" + str(i)
-                    new_node = [helper.make_node("Cast", [input_name], [output_name], to=1, name=node_name)]
+                    new_node = [helper.make_node("Cast", [input_name], [output_name], to=TensorProto.FLOAT, name=node_name)]
                     model.graph.node.extend(new_node)
                     # change current node's input name
                     node.input[i] = output_name
@@ -472,11 +543,36 @@ def convert_float_to_float16(
                     new_value_info.type.tensor_type.elem_type = accuracy_type
                     # add Cast node (from tensor(float) to tensor(float16) after current node
                     node_name = node.name + "_output_cast" + str(i)
-                    new_node = [helper.make_node("Cast", [input_name], [output], to=10, name=node_name)]
+                    # new_node = [helper.make_node("Cast", [input_name], [output], to=final_value_type, name=node_name)]
+                    new_node = [helper.make_node("Cast", [input_name], [output], to=TensorProto.FLOAT16, name=node_name)]
                     model.graph.node.extend(new_node)
                     # change current node's input name
                     node.output[i] = input_name
                     break
+
+    # model = optimizer.optimize(model)
+    # ir_model = ir.serde.deserialize_model(model)
+    # optimizer.optimize(ir_model)
+    # model = ir.serde.serialize_model(ir_model)
+    '''
+
+    graph = onnxconverter_common.optimizer.optimize_onnx_graph(model.graph.node,
+                                                               inputs=model.graph.input,
+                                                               outputs=model.graph.output,
+                                                               initializers=model.graph.initializer,
+                                                               model_value_info=model.graph.value_info,
+                                                               model_name=model.graph.name,
+                                                               target_opset=14)
+    node_domain_version_pair_sets = set()
+    node_domain_version_pair_sets.add(("ai.onnx", 14))
+    node_domain_version_pair_sets.add(("com.microsoft", 1))
+    model = make_model_ex(graph,
+                          node_domain_version_pair_sets,
+                          14, doc_string=model.doc_string,
+                          producer_name="onnxruntime-genai 0.0.0",
+                          domain=model.domain)
+    '''
+
     return model
 
 
