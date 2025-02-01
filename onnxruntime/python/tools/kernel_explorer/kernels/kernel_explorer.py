@@ -26,7 +26,10 @@ if build_dir is None:
 if not os.path.exists(build_dir):
     raise ValueError(f"KERNEL_EXPLORER_BUILD_DIR ({build_dir}) points to nonexistent path")
 
-# add path for onnxruntime_pybind11_state
+# add path for _kernel_explorer.so
+sys.path.insert(0, os.path.join(build_dir))
+
+# add path for onnxruntime_pybind11_state.so
 sys.path.insert(0, os.path.join(build_dir, "onnxruntime", "capi"))
 
 # pylint: disable=wrong-import-position
