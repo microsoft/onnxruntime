@@ -8,9 +8,9 @@ import pytest
 def setup_once():
 
     print("Setup before all tests.")
-    from kernel_explorer import set_ort_severity
-    set_ort_severity(3)
+    from kernel_explorer import onnxruntime_pybind11_state
+    onnxruntime_pybind11_state.set_default_logger_severity(0)
+    onnxruntime_pybind11_state.set_default_logger_verbosity(0)
 
     yield
-
     print("Teardown after all tests.")
