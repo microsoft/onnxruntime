@@ -1548,12 +1548,6 @@ def generate_build_tree(
             "-Donnxruntime_USE_FULL_PROTOBUF=ON",
         ]
 
-    # When this flag is enabled, that means we only build ONNXRuntime shared library, expecting some compatible EP
-    # shared lib being build in a seperate process. So we skip the test for now as ONNXRuntime shared lib built under
-    # this flag is not expected to work alone
-    if args.enable_generic_interface:
-        cmake_args += ["-Donnxruntime_BUILD_UNIT_TESTS=OFF"]
-
     if args.enable_lazy_tensor:
         import torch
 
@@ -2656,6 +2650,11 @@ def main():
 
     print(args)
 
+    if args.build_shared_lib and (
+        args.use_tensorrt or args.use_openvino or args.use_vitisai or (args.use_qnn and args.use_qnn != "static_lib")
+    ):
+        args.enable_generic_interface = True
+
     if os.getenv("ORT_BUILD_WITH_CACHE") == "1":
         args.use_cache = True
 
@@ -2673,9 +2672,6 @@ def main():
     if args.enable_address_sanitizer:
         # Disable ONNX Runtime's builtin memory checker
         args.disable_memleak_checker = True
-
-    if args.enable_generic_interface:
-        args.test = False
 
     # If there was no explicit argument saying what to do, default
     # to update, build and test (for native builds).
