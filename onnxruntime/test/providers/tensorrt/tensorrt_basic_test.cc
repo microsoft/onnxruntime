@@ -261,6 +261,9 @@ void RunSession2(InferenceSession& session_object,
 void RunWithOneSessionSingleThreadInference(PathString model_name, std::string sess_log_id) {
   SessionOptions so;
   so.session_logid = sess_log_id;
+  so.config_options.AddConfigEntry("ep.context_enable", "1");
+  so.config_options.AddConfigEntry("ep.context_file_path", "EP_Context_model.onnx");
+  so.config_options.AddConfigEntry("ep.context_embed_mode", "0");
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
   InferenceSession session_object{so, GetEnvironment()};
@@ -289,7 +292,7 @@ void RunWithOneSessionSingleThreadInference(PathString model_name, std::string s
 
   OrtTensorRTProviderOptionsV2 params;
   params.trt_engine_cache_enable = 1;
-  params.trt_engine_cache_prefix = "TRTEP_Cache_Test";
+  // params.trt_engine_cache_prefix = "TRTEP_Cache_Test";
   params.trt_dump_ep_context_model = 1;
   params.trt_ep_context_file_path = "EP_Context_model.onnx";
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
@@ -502,10 +505,8 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
    *  ep.context_embed_mode = "0"
    * provider options =>
    *  trt_engine_cache_enable = 1
-   *  trt_engine_cache_enable = 1
    *  trt_ep_context_file_path = "EP_Context_model.onnx"
    *  trt_ep_context_embed_mode = 0
-   *  trt_engine_cache_enable = 1
    *
    * expected result =>
    *  Engine cache with prefix "TensorrtExecutionProvider" should be created in current directory
@@ -521,7 +522,6 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   params.trt_dump_ep_context_model = 1;
   params.trt_ep_context_file_path = "EP_Context_model.onnx";
   params.trt_ep_context_embed_mode = 0;
-  params.trt_engine_cache_enable = 1;
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
   auto status = session_object.Load(model_name);
@@ -571,10 +571,8 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
    *  ep.context_embed_mode = "0"
    * provider options =>
    *  trt_engine_cache_enable = 1
-   *  trt_engine_cache_enable = 1
    *  trt_ep_context_file_path = "context_model_folder/EPContextNode_test_ctx.onnx"
    *  trt_ep_context_embed_mode = 0
-   *  trt_engine_cache_enable = 1
    *
    * expected result =>
    *  engine cache starts with "TensorrtExecutionProvider_" in context_model_folder
@@ -781,10 +779,8 @@ TEST(TensorrtExecutionProviderTest, EPContextNodeMulti) {
    *  ep.context_embed_mode = "0"
    * provider options =>
    *  trt_engine_cache_enable = 1
-   *  trt_engine_cache_enable = 1
    *  trt_ep_context_file_path = "EP_Context_model.onnx"
    *  trt_ep_context_embed_mode = 0
-   *  trt_engine_cache_enable = 1
    *
    * expected result =>
    *  Engine cache with prefix "TensorrtExecutionProvider" should be created in current directory
@@ -800,7 +796,6 @@ TEST(TensorrtExecutionProviderTest, EPContextNodeMulti) {
   params.trt_dump_ep_context_model = 1;
   params.trt_ep_context_file_path = "EP_Context_model.onnx";
   params.trt_ep_context_embed_mode = 0;
-  params.trt_engine_cache_enable = 1;
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
   auto status = session_object.Load(model_name);
