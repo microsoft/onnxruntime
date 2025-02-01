@@ -10,6 +10,7 @@ namespace test {
 constexpr auto k_epsilon_default = 1e-5f;
 constexpr auto k_random_data_min = -10.0f;
 constexpr auto k_random_data_max = 10.0f;
+const std::string RMS_NORM_OP = "RMSNormalization";
 const std::string SIMPLIFIED_LAYER_NORM_OP = "SimplifiedLayerNormalization";
 const std::string LAYER_NORM_OP = "LayerNormalization";
 
@@ -58,7 +59,7 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
 
   test.AddInput<float>("X", n_x_m_dims, X_data);
   test.AddInput<float>("scale", m_dims, scale_data, true);
-  if (op.compare(SIMPLIFIED_LAYER_NORM_OP) != 0 && no_bias == false) {
+  if (op.compare(SIMPLIFIED_LAYER_NORM_OP) != 0 && op.compare(RMS_NORM_OP) != 0 && no_bias == false) {
     test.AddInput<float>("B", m_dims, B_data, true);
   }
 
@@ -72,10 +73,12 @@ static void TestLayerNorm(const std::vector<int64_t>& x_dims,
   std::vector<float> var_data = FillZeros<float>(stats_dims);
 
   // the Main and InvStdDev outputs are training specific
-  if (op.compare(SIMPLIFIED_LAYER_NORM_OP) != 0) {
+  if (op.compare(SIMPLIFIED_LAYER_NORM_OP) != 0 && op.compare(RMS_NORM_OP) != 0) {
     test.AddOutput<float>("mean", stats_dims, mean_data);
   }
-  test.AddOutput<float>("var", stats_dims, var_data);
+  if (op.compare(RMS_NORM_OP) != 0) {
+    test.AddOutput<float>("var", stats_dims, var_data);
+  }
 #endif
 
 #ifdef USE_CUDA
@@ -152,6 +155,27 @@ TEST(CudaKernelTest, SimplifiedLayerNorm_MidSizeTensor) {
 TEST(CudaKernelTest, SimplifiedLayerNorm_LargeSizeTensor) {
   std::vector<int64_t> X_dims{16, 512, 1024};
   TestLayerNorm(X_dims, SIMPLIFIED_LAYER_NORM_OP, k_epsilon_default);
+}
+
+TEST(CudaKernelTest, RMSNorm_SmallSizeTensor) {
+  const std::vector<int64_t> X_dims{4, 20, 128};
+  TestLayerNorm(X_dims, RMS_NORM_OP, k_epsilon_default);
+}
+
+TEST(CudaKernelTest, RMSNorm_SmallSizeTensor_IntermediateAxis) {
+  const std::vector<int64_t> X_dims{4, 20, 8, 16};
+  constexpr int64_t axis = -2;
+  TestLayerNorm(X_dims, RMS_NORM_OP, k_epsilon_default, axis);
+}
+
+TEST(CudaKernelTest, RMSNorm_MidSizeTensor) {
+  std::vector<int64_t> X_dims{8, 80, 768};
+  TestLayerNorm(X_dims, RMS_NORM_OP, k_epsilon_default);
+}
+
+TEST(CudaKernelTest, RMSNorm_LargeSizeTensor) {
+  std::vector<int64_t> X_dims{16, 512, 1024};
+  TestLayerNorm(X_dims, RMS_NORM_OP, k_epsilon_default);
 }
 
 // LayerNormalization is an ONNX operator in opset 17. It uses the same implementation so this is just a sanity check.
