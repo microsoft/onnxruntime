@@ -146,7 +146,8 @@ std::vector<std::vector<NodeIndex>> DnnlExecutionProvider::GetSupportedNodes(con
 
 std::vector<std::unique_ptr<ComputeCapability>> DnnlExecutionProvider::GetCapability(
     const GraphViewer& graph_viewer,
-    const IKernelLookup& /*kernel_lookup*/) const {
+    const IKernelLookup& /*kernel_lookup*/,
+    IResourceAccountant* /* resource_accountant */) const {
   // follow from coreml ep's Getcapability
 
   std::vector<std::unique_ptr<ComputeCapability>> result;

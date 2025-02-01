@@ -82,7 +82,8 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const OpenVINOExecutionProv
 
 std::vector<std::unique_ptr<ComputeCapability>>
 OpenVINOExecutionProvider::GetCapability(const GraphViewer& graph_viewer,
-                                         const IKernelLookup& /*kernel_lookup*/) const {
+                                         const IKernelLookup& /*kernel_lookup*/,
+                                         IResourceAccountant* /* resource_accountant */) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
 
   std::string openvino_sdk_version = std::to_string(global_context_->OpenVINO_Version.at(0)) + "." +

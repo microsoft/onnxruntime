@@ -80,9 +80,10 @@ NnapiExecutionProvider::~NnapiExecutionProvider() {}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 NnapiExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                      const IKernelLookup& /*kernel_lookup*/) const {
-  const auto& logger = *GetLogger();
+                                      const IKernelLookup& /*kernel_lookup*/,
+                                      IResourceAccountant* /* resource_accountant */) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
+  const logging::Logger& logger = *GetLogger();
 
   // TODO: Task 812756: NNAPI EP, add support for subgraph (If and Loop operators)
   if (graph_viewer.IsSubgraph()) {

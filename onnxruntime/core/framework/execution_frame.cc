@@ -23,6 +23,8 @@
 
 #include "core/framework/bfc_arena.h"
 
+#include "core/session/onnxruntime_session_options_config_keys.h"
+
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
@@ -613,6 +615,12 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
     session_state_.GetMemoryProfiler()->GetMemoryInfo().SetDynamicAllocation(ort_value_index);
 #endif
   }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  if (session_state_.GetNodeStatsRecorder() != nullptr) {
+    ort_value_to_dynamic_allocations_size_.insert_or_assign(ort_value_index, size);
+  }
+#endif
 
   return Status::OK();
 }

@@ -2440,7 +2440,8 @@ std::unique_ptr<onnxruntime::IDataTransfer> ROCMExecutionProvider::GetDataTransf
 
 std::vector<std::unique_ptr<ComputeCapability>>
 ROCMExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
-                                     const IKernelLookup& kernel_lookup) const {
+                                     const IKernelLookup& kernel_lookup,
+                                     IResourceAccountant* /* resource_accountant */) const {
   InlinedVector<NodeIndex> candidates;
   // A subset of the above vector. A subset of the tentative_nodes might be moved to CPU.
   InlinedVector<NodeIndex> tentative_nodes;

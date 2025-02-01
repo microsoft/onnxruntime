@@ -19,7 +19,8 @@ class CoreMLExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                const IKernelLookup& /*kernel_lookup*/) const override;
+                const IKernelLookup& /*kernel_lookup*/,
+                IResourceAccountant* resource_accountant) const override;
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,

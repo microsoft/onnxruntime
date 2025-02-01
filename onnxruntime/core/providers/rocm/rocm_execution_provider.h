@@ -61,7 +61,8 @@ class ROCMExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
       const onnxruntime::GraphViewer& graph,
-      const IKernelLookup& kernel_lookup) const override;
+      const IKernelLookup& kernel_lookup,
+      IResourceAccountant* /* resource_accountant */) const override;
 
   int GetDeviceId() const override { return info_.device_id; }
   const hipDeviceProp_t& GetDeviceProp() const { return device_prop_; };
