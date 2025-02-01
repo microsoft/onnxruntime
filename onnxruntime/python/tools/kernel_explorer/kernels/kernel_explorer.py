@@ -365,6 +365,3 @@ def set_dispatchable_pattern(p: str = "*"):
 
 def set_return_tuning_results(b: bool = True):
     _ke_context.return_tuning_results = b
-
-# set default logger severity once so that we can create the defautl logger.
-set_ort_severity(3)

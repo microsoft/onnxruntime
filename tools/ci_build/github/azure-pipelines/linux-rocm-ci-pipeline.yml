@@ -189,7 +189,7 @@ jobs:
             set -ex; \
             env; \
             cd /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/kernels; \
-            pytest -n 4 --reruns 1 --durations=100"
+            pytest -s -n 4 --reruns 1 --durations=100"
       workingDirectory: $(Build.SourcesDirectory)
     displayName: 'Run kernel explorer tests'
     condition: succeededOrFailed()
