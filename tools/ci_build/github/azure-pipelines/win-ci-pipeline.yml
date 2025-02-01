@@ -177,6 +177,25 @@ stages:
         WITH_CACHE: false
         MachinePool: 'onnxruntime-Win-CPU-2022'
 
+- stage: x64_release_ep_generic_interface
+  dependsOn: []
+  jobs:
+    - template: templates/jobs/win-ci-vs-2022-job.yml
+      parameters:
+        BuildConfig: 'RelWithDebInfo'
+        buildArch: x64
+        additionalBuildFlags: --enable_generic_interface
+        msbuildPlatform: x64
+        isX86: false
+        job_name_suffix: x64_release_ep_generic_interface
+        RunOnnxRuntimeTests: false  # --enable_generic_interface does not build tests
+        EnablePython: false
+        isTraining: false
+        ORT_EP_NAME: CPU
+        GenerateDocumentation: false
+        WITH_CACHE: false
+        MachinePool: 'onnxruntime-Win-CPU-2022'
+
 - stage: x86_release
   dependsOn: []
   jobs:
