@@ -2790,9 +2790,6 @@ def main():
         # torch interop.
         args.build_shared_lib = True
 
-    if args.build_nuget and cross_compiling:
-        raise BuildError("Currently nuget package creation is not supported while cross-compiling")
-
     if args.enable_pybind:
         if args.disable_rtti:
             raise BuildError("Python bindings use typeid so you can't disable RTTI")
