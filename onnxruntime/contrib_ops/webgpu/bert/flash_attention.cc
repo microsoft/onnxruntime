@@ -111,7 +111,6 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   //  Expectation is that present_key, and present_value contain past key and values since
   //  we are out of storage buffers a shader can have and both past/present cant be passed.
   // The hidden size of each q head should be a multiple of 4 because shader uses vectorized loads.
-  constexpr int vectorization_size = 4;
   shader.AddInput("q", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddInput("present_key", ShaderUsage::UseUniform);
   shader.AddInput("present_value", ShaderUsage::UseUniform);
@@ -120,249 +119,184 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
   shader.AddOutput("output", ShaderUsage::UseUniform);
 
-  // SUBGROUP_SIZE has to be the same as sg_size. For intel this will be 16.
-  // TILE_SIZE is the number of groups sharing the k_tile.
-  // TILE_SIZE has to be <= SUBGROUP_SIZE. Ideal perf of computeSoftMax is when
-  // TILE_SIZE == SUBGROUP_SIZE. This is a sperate constant from SUBGROUP_SIZE
-  // because SUBGROUP_SIZE * TILE_SIZE has to be <= 256 as per webgpu
-  // gpu limits. For Intel this TILE_SIZE will be 16.
-  // Change precision_t to be f32 below to run dotproduct/ softmax in fp32 precision.
-  shader.AdditionalImplementation() << "const SUBGROUP_SIZE: u32 = " << subgroup_size_ << ";\n"
-                                    << "const TILE_SIZE: u32 = " << tile_size_ << ";\n"
-                                    << "const VECTOR_SIZE: u32 = " << vectorization_size << ";\n"
-                                    << "const QKV_HEAD_SIZE: u32 = " << qkv_head_size_ << ";\n"
-                                    << "const QKV_HEAD_VECTORIZED_SIZE: u32 = QKV_HEAD_SIZE / VECTOR_SIZE;\n"
-                                    << "const NUM_HEADS: u32 = " << qkv_num_heads_ << ";\n"
-                                    << "alias precision_t = q_element_t;\n"
-                                    << "const MIN_VALUE : precision_t = precision_t(-65504.0h);\n";
-
-  // Best to keep SHM usage per workgroup < 128KB, from intel docs for Intel Iris Xe GPU.
-  // "The SLM is a 128KB High Bandwidth Memory (HBM) accessible from the EUs in the subslice"
-  // GPU afterwhich workgroups will be unscheduled to make space for memory.
-  shader.AdditionalImplementation() << ""
-                                    << "var<workgroup> q_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 2 * 16 = 3KB.\n"
-                                    << "var<workgroup> k_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 2 * 16 = 3KB.\n"
-                                    << "var<workgroup> v_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 2 * 16 = 3KB.\n"
-                                    << "var<workgroup> o_tile : array<array<q_value_t, QKV_HEAD_VECTORIZED_SIZE>, TILE_SIZE>; // 96 * 2 * 16 = 3KB.\n"
-                                    << "var<workgroup> qk_tile : array<array<precision_t, TILE_SIZE>, TILE_SIZE>; // 16 * 2 * 16 = 512\n"
-                                    << "var<workgroup> max_tile : array<precision_t, TILE_SIZE>; // 2 * 16 = 32\n"
-                                    << "var<workgroup> denom_tile : array<precision_t, TILE_SIZE>; // 2 * 16 = 32\n"
-                                    << "var<workgroup> o_ratio : array<precision_t, TILE_SIZE>; // 2 * 16 = 32\n";
+  shader.AdditionalImplementation() << "const qkv_head_size: u32 = " << qkv_head_size_ << ";\n"
+                                    << "const num_heads: u32 =" <<  qkv_num_heads_ << ";\n";
 
   shader.AdditionalImplementation() << R"HELPER_FN(
-fn loadq(slot: u32, q_idx_global : u32, head_idx: u32, sg_id : u32, sg_size : u32)
-{
-    // Stored as float16[batch_size,sequence_length,3072] the inputs as per onnx MHA
-    // This is the layout if TransferBSDToBNSH has not been run.
-    let offset = q_idx_global * (QKV_HEAD_VECTORIZED_SIZE) * NUM_HEADS + QKV_HEAD_VECTORIZED_SIZE * head_idx;
-    // Stored as BNSH - which is what webgpu uses after TransferBSDToBNSH has been run.
-    // let offset = head_idx * uniforms.new_sequence_length * QKV_HEAD_VECTORIZED_SIZE + q_idx_global * QKV_HEAD_VECTORIZED_SIZE;
-    for (var idx:u32 = sg_id; idx < QKV_HEAD_VECTORIZED_SIZE; idx+= sg_size)
-    {
-        var value = q[idx+offset];
-        q_tile[slot][idx] = value;
-    }
-}
-fn loadk(slot: u32, k_idx_global : u32, head_idx: u32, sg_id: u32, sg_size: u32)
-{
-    // Stored as float16[batch_size,num_heads,present_sequence_length,96]
-    let offset = head_idx * uniforms.present_sequence_length * QKV_HEAD_VECTORIZED_SIZE + k_idx_global * QKV_HEAD_VECTORIZED_SIZE;
-    for (var idx:u32 = sg_id; idx < QKV_HEAD_VECTORIZED_SIZE; idx+=sg_size)
-    {
-        var value = present_key[idx+offset];
-        k_tile[slot][idx] = value;
-    }
-}
-fn loadv(slot: u32, v_idx_global : u32, head_idx: u32, sg_id: u32, sg_size: u32)
-{
-    // Stored as float16[batch_size,num_heads,present_sequence_length,96]
-    let offset = head_idx * uniforms.present_sequence_length * QKV_HEAD_VECTORIZED_SIZE + v_idx_global * QKV_HEAD_VECTORIZED_SIZE;
-    for (var idx:u32 = sg_id; idx < QKV_HEAD_VECTORIZED_SIZE; idx+=sg_size)
-    {
-        v_tile[slot][idx] = present_value[idx+offset];
-    }
-}
-fn loadAttentionBias(q_row: u32, q_idx_global : u32, k_col: u32, k_idx_global : u32, head_idx: u32)
-{
-    // Stored as float16[batch_size,num_heads,new_seq_length,total_sequence_length]
-    if (q_idx_global >= uniforms.new_sequence_length  || k_idx_global >= uniforms.present_sequence_length || k_col >= TILE_SIZE) {
-        qk_tile[q_row][k_col] = 0.0;
-        return;
-    }
-    let offset = head_idx * uniforms.new_sequence_length * uniforms.present_sequence_length + q_idx_global * uniforms.present_sequence_length + k_idx_global;
-    qk_tile[q_row][k_col] = precision_t(attention_bias[offset]);
-}
-fn writeo(slot: u32, o_idx_global : u32, head_idx: u32, sg_id : u32, sg_size : u32)
-{
-    // Stored as float16[batch_size,sequence_length,3072]
-    let offset = o_idx_global * NUM_HEADS * QKV_HEAD_VECTORIZED_SIZE + head_idx * QKV_HEAD_VECTORIZED_SIZE;
-    for (var idx:u32 = sg_id; idx < QKV_HEAD_VECTORIZED_SIZE; idx += sg_size)
-    {
-        let value = o_tile[slot][idx];
-        output[offset+idx] = value;
-    }
-}
-fn computeDotProduct(q_idx: u32, k_idx: u32, sg_id: u32, sg_size : u32)
-{
-    var sum:vec4<precision_t> = vec4<precision_t>(0, 0, 0, 0);
-    // idx is not initialized to sg_id to ensure uniformity because the loop uses
-    // subgroupAdd and unused lanes need to be initialized with 0 for correctness.
-    for (var idx:u32 = 0; idx < QKV_HEAD_VECTORIZED_SIZE; idx+= sg_size)
-    {
-        var result = vec4<precision_t>(0);
-        let sg_idx = idx+sg_id;
-        if (sg_idx < QKV_HEAD_VECTORIZED_SIZE)
-        {
-            result = vec4<precision_t>(q_tile[q_idx][sg_idx])*vec4<precision_t>(k_tile[k_idx][sg_idx]);
-        }
-        sum += subgroupAdd(result);
-    }
-    if (sg_id == 0)
-    {
-        let single_sum : precision_t = sum.x + sum.y + sum.z + sum.w;
-        let sqrt_dk = precision_t(uniforms.alpha);
-        let value = single_sum * sqrt_dk;
-        qk_tile[q_idx][k_idx] += value;
-    }
-}
-//
-// Crux of Flash Attention is here, that allows for partial softmax computation,
-// direct update of output and merging with previous results.
-// https://courses.cs.washington.edu/courses/cse599m/23sp/notes/flashattn.pdf
-// Where b is the block size of the tile. Xi is storing QKtranspose for the ith tile.
-// mi_local is the max of Xi. Note: _ in this notation means what follows is a
-// subscript. max_j=1:b (Xi[j]) is the max of Xi[j] for j=1 to b.
-//
-// for i = 1, #tiles do
-//  Xi = Q[k,:] Kt[:, (i-1) b : i b]
-//  mi_local= max_j=1:b (Xi[j])
-//  Mi = max(M_(i-1), mi_local)
-//  d'_i = d'_(i-1) * e^(M_(i-1)-M_i) + Σ_j=1:b e^(Xi[j]-Mi)
-//  o'_i = o'_(i-1) * d'_(i-1) * e^(M_(i-1)-M_i) / d'_i + Σ_j=1:b (e^(Xi[j]-Mi) / d'_i) V[j + (i - 1)b,:]
-// end
-//
-fn computeSoftMax(q_idx: u32, sg_id:u32, enabled:bool)
-{
-    var x : precision_t = MIN_VALUE;
-    if (enabled){
-        x = qk_tile[q_idx][sg_id];
-    }
-    var max_value = subgroupMax(x);
-    max_value = max(max_tile[q_idx], max_value);
-    let sub = x - max_value;
-    var value:precision_t = 0;
-    if (enabled) {
-        value = exp(sub);
-    }
-    let sum = subgroupAdd(value);
-    // Compute lhs term of update di prime and the compute di prime.
-    let dleft = denom_tile[q_idx] * exp(max_tile[q_idx]-max_value);
-    var d = dleft + sum;
-    if (d == 0)
-    {
-        // Avoid division by zero by setting d to a really small value.
-        // Note: Removing this protection has had no negative effect on any
-        // of the prompts tried so far. This is a safety net.
-        d = precision_t(0.0000001h);
-    }
-    qk_tile[q_idx][sg_id] = value / d;
-    if (sg_id == 0)
-    {
-        max_tile[q_idx] = max_value;
-        denom_tile[q_idx] = d;
-        o_ratio[q_idx] = dleft / d;
-    }
-}
-fn computeO(q_idx: u32, sg_id:u32, enabled:bool)
-{
-    var attn = precision_t(0);
-    if (enabled)
-    {
-      attn = qk_tile[q_idx][sg_id];
-    }
-    for (var i:u32 = 0; i < QKV_HEAD_VECTORIZED_SIZE; i++)
-    {
-        let val = vec4<precision_t>(v_tile[sg_id][i]);
-        var intermediate = attn * val;
-        let sum = subgroupAdd(intermediate);
-        if (sg_id == 0)
-        {
-            let o_ratio = o_ratio[q_idx];
-            let old_o = vec4<precision_t>(o_tile[q_idx][i]);
-            let new_o = ( o_ratio * old_o) +  sum;
-            o_tile[q_idx][i] = q_value_t(new_o);
-        }
-    }
-}
+  const k_step: u32 = 16u;
+  const vec_factor: u32 = 4u;
+  const qkv_head_size_vec: u32 = qkv_head_size / vec_factor;
+  const min_value : q_element_t = q_element_t(-65504.0h);
+
+  // Default SHM usage limit is 16KB in Dawn.
+  var<workgroup> k_tile : array<array<q_value_t, qkv_head_size_vec>, k_step>; // 96 * 2 * 16 = 3KB.
+  var<workgroup> v_tile : array<array<q_value_t, qkv_head_size_vec>, k_step>; // 96 * 2 * 16 = 3KB.
+
+  // Private memory per lane.
+  var<private> q_tile : array<q_value_t, qkv_head_size_vec>;
+  var<private> o_tile : array<q_value_t, qkv_head_size_vec>;
+
+  fn loadq(q_idx_global : u32, head_idx: u32)
+  {
+      // Stored as float16[batch_size,sequence_length,3072] the inputs as per onnx MHA
+      // This is the layout if TransferBSDToBNSH has not been run.
+      let offset = q_idx_global * (qkv_head_size_vec) * num_heads + qkv_head_size_vec * head_idx;
+      // Stored as BNSH - which is what webgpu uses after TransferBSDToBNSH has been run.
+      //let offset = head_idx * uniforms.new_sequence_length * qkv_head_size_vec + q_idx_global * qkv_head_size_vec;
+      for (var idx:u32 = 0; idx < qkv_head_size_vec; idx++)
+      {
+          q_tile[idx] = q[idx+offset];
+      }
+  }
+  fn loadk(k_start : u32, head_idx: u32, local_idx: u32)
+  {
+      // Stored as float16[batch_size,num_heads,present_sequence_length,96]
+      let offset = head_idx * uniforms.present_sequence_length * qkv_head_size_vec + k_start * qkv_head_size_vec;
+      for (var idx:u32 = local_idx; idx < qkv_head_size_vec*k_step; idx+=workgroup_size_x)
+      {
+          k_tile[u32(idx/qkv_head_size_vec)][idx%qkv_head_size_vec] = present_key[offset+idx];
+      }
+  }
+  fn loadv(v_start : u32, head_idx: u32, local_idx: u32)
+  {
+      // Stored as float16[batch_size,num_heads,present_sequence_length,96]
+      let offset = head_idx * uniforms.present_sequence_length * qkv_head_size_vec + v_start * qkv_head_size_vec;
+      for (var idx:u32 = local_idx; idx < qkv_head_size_vec*k_step; idx+=workgroup_size_x)
+      {
+          v_tile[u32(idx/qkv_head_size_vec)][idx%qkv_head_size_vec] = present_value[offset+idx];
+      }
+  }
+  fn loadAttentionBias(q_idx_global : u32, k_idx_global : u32, head_idx: u32) -> vec4<q_element_t>
+  {
+      // Stored as float16[batch_size,num_heads,new_seq_length,total_sequence_length]
+      if (q_idx_global >= uniforms.new_sequence_length  || k_idx_global >= uniforms.present_sequence_length) {
+          return vec4<q_element_t>(0);
+      }
+      let offset_base = head_idx * uniforms.new_sequence_length * uniforms.present_sequence_length + q_idx_global * uniforms.present_sequence_length;
+      let offset = offset_base + k_idx_global;
+      let offset_max = offset_base + uniforms.present_sequence_length;
+      let c1 = q_element_t(attention_bias[min(offset, offset_max)]);
+      let c2 = q_element_t(attention_bias[min(offset+1, offset_max)]);
+      let c3 = q_element_t(attention_bias[min(offset+2, offset_max)]);
+      let c4 = q_element_t(attention_bias[min(offset+3, offset_max)]);
+      return vec4<q_element_t>(c1,c2,c3,c4);
+  }
+  fn writeo(o_idx_global: u32, head_idx: u32)
+  {
+      // Stored as float16[batch_size,sequence_length,3072]
+      let offset = o_idx_global * num_heads * qkv_head_size_vec + head_idx * qkv_head_size_vec;
+      for (var idx:u32 = 0; idx < qkv_head_size_vec; idx ++)
+      {
+          output[offset+idx] = o_tile[idx];
+      }
+  }
 )HELPER_FN";
 
-  // Shader is designed to be dispatched as Dispatch(num_heads, new_sequence_length / TILE_SIZE, 1)
-  // Each workgroup is responsible for a range of q values (TILE_SIZE) and visits all Ks for those q's.
-  // Each workgroup has TILE_SIZE waves, with each wave having subgroup size number of lanes (threads).
-  // Synchronization between lanes in a wave is free, with various subgroup* functions, and this shader
-  // uses that. Synchronization between waves requires calling workgroupBarrier.
+  // Shader is designed to be dispatched as Dispatch(num_heads, new_sequence_length / workgroup_size_x, 1)
+  // Each lane/thread is responsible for a single q.
   shader.MainFunctionBody() << R"MAIN_FN(
-let head_idx = workgroup_id.x;
-// It is always the case that 0 <= wave_id < TILE_SIZE
-// Each wave has sg_size lanes (subgroup threads).
-let wave_id = u32(local_idx / sg_size);
+  let head_idx = workgroup_id.x;
 
-let q_idx_start = workgroup_id.y * TILE_SIZE;
-let q_idx_global = q_idx_start + wave_id;
-let q_idx_global_using_wave_valid = q_idx_global < uniforms.new_sequence_length;
-if (q_idx_global_using_wave_valid)
-{
-  // Each invocation (wave_id) gets lane threads (subgroup threads) and is responsible for 1 query.
-  loadq(wave_id, q_idx_global, head_idx, sg_id, sg_size);
-}
-if (sg_id == 0)
-{
-  max_tile[wave_id] = MIN_VALUE;
-}
-for(var k_start = 0u; k_start < uniforms.present_sequence_length; k_start+=TILE_SIZE)
-{
-    // Insert barrier before updating shared memory the workgroup shares.
+  // Load Q
+  let q_idx_global = workgroup_id.y * workgroup_size_x + local_idx;
+  let valid_q = q_idx_global < uniforms.new_sequence_length;
+  if (valid_q)
+  {
+    loadq(q_idx_global, head_idx);
+  }
+
+  var previous_max : q_element_t = min_value;
+  var previous_denom : q_element_t = 0;
+
+  for(var k_start = 0u; k_start < uniforms.present_sequence_length; k_start+=k_step)
+  {
     workgroupBarrier();
-    let k_idx_global = k_start+wave_id;
-    let k_idx_global_using_wave_valid = k_idx_global < uniforms.present_sequence_length;
-    if (k_idx_global_using_wave_valid) {
-        // Leveraging the subgroup lanes for parallelism, load into slot wave_id
-        // K/V values from k_start+wave_id.
-        loadk(wave_id, k_idx_global, head_idx, sg_id, sg_size);
-        loadv(wave_id, k_idx_global, head_idx, sg_id, sg_size);
-    }
-    // Next, we want for every q row (wave_id) to populate bias for new sequence length
-    // (k_start+sg_id). loadAttentionBias handles range checking q_idx_global,
-    // and sg_id, (k_start+sg_id).
-    loadAttentionBias(wave_id, q_idx_global, sg_id, k_start+sg_id, head_idx);
-    // Insert barrier before workgroup starts reading the shared memory.
+    loadk(k_start, head_idx, local_idx);
+    loadv(k_start, head_idx, local_idx);
     workgroupBarrier();
 
-    //if (k_idx_global_using_wave_valid)
+    // Compute QKt
+    var qk_1:vec4<q_element_t> = loadAttentionBias(q_idx_global, k_start, head_idx);
+    var qk_2:vec4<q_element_t> = loadAttentionBias(q_idx_global, k_start+4, head_idx);
+    var qk_3:vec4<q_element_t> = loadAttentionBias(q_idx_global, k_start+8, head_idx);
+    var qk_4:vec4<q_element_t> = loadAttentionBias(q_idx_global, k_start+12, head_idx);
+    for (var i:u32 = 0u; i < qkv_head_size_vec; i++)
     {
-      // Iterate over Q rather than K because for the case of new_seq 1, there is a single query
-      // and context length of K by iterating over Q using the waves for K, this step can use all
-      // the waves in the workgroup, instead of leaving them idle.
-      for (var q_idx = 0u; q_idx < TILE_SIZE && q_idx_start + q_idx < uniforms.new_sequence_length; q_idx++)
-      {
-          // Leveraging the subgroups for parallelism, compute dot product of QK.
-          // We validate q_idx,wave_id to be less than TILE_SIZE, computeDotProduct only needs to
-          // validate sg_id as being less than QKV_HEAD_VECTORIZED_SIZE.
-          computeDotProduct(q_idx, wave_id, sg_id, sg_size);
-      }
+      var k_local = k_tile[sg_id][i];
+      var q_own = q_tile[i];
+      qk_1[0] += dot(q_own, subgroupShuffle(k_local, 0));
+      qk_1[1] += dot(q_own, subgroupShuffle(k_local, 1));
+      qk_1[2] += dot(q_own, subgroupShuffle(k_local, 2));
+      qk_1[3] += dot(q_own, subgroupShuffle(k_local, 3));
+      qk_2[0] += dot(q_own, subgroupShuffle(k_local, 4));
+      qk_2[1] += dot(q_own, subgroupShuffle(k_local, 5));
+      qk_2[2] += dot(q_own, subgroupShuffle(k_local, 6));
+      qk_2[3] += dot(q_own, subgroupShuffle(k_local, 7));
+      qk_3[0] += dot(q_own, subgroupShuffle(k_local, 8));
+      qk_3[1] += dot(q_own, subgroupShuffle(k_local, 9));
+      qk_3[2] += dot(q_own, subgroupShuffle(k_local, 10));
+      qk_3[3] += dot(q_own, subgroupShuffle(k_local, 11));
+      qk_4[0] += dot(q_own, subgroupShuffle(k_local, 12));
+      qk_4[1] += dot(q_own, subgroupShuffle(k_local, 13));
+      qk_4[2] += dot(q_own, subgroupShuffle(k_local, 14));
+      qk_4[3] += dot(q_own, subgroupShuffle(k_local, 15));
     }
-    // Insert barrier before SoftMax reads the dot product values across K.
-    workgroupBarrier();
+    qk_1 = qk_1 * q_element_t(uniforms.alpha);
+    qk_2 = qk_2 * q_element_t(uniforms.alpha);
+    qk_3 = qk_3 * q_element_t(uniforms.alpha);
+    qk_4 = qk_4 * q_element_t(uniforms.alpha);
 
-    let wave_lane_valid:bool = q_idx_global_using_wave_valid && sg_id < TILE_SIZE && sg_id + k_start < uniforms.present_sequence_length;
-    computeSoftMax(wave_id, sg_id, wave_lane_valid);
-    computeO(wave_id, sg_id, wave_lane_valid);
-}
-workgroupBarrier();
-if (q_idx_global_using_wave_valid)
-{
-  writeo(wave_id, q_idx_global, head_idx, sg_id, sg_size);
-}
+    // Compute SoftMax
+    var local_max_temp = max(qk_1, qk_2);
+    local_max_temp = max(local_max_temp, qk_3);
+    local_max_temp = max(local_max_temp, qk_4);
+    let local_max = max(max(local_max_temp.x, local_max_temp.y),max(local_max_temp.z, local_max_temp.w));
+    let new_max = max(previous_max, local_max);
+    qk_1 = exp(qk_1 - new_max);
+    qk_2 = exp(qk_2 - new_max);
+    qk_3 = exp(qk_3 - new_max);
+    qk_4 = exp(qk_4 - new_max);
+    let sum_vec = qk_1 + qk_2 + qk_3 + qk_4;
+    let sum = sum_vec.x + sum_vec.y + sum_vec.z + sum_vec.w;
+    // Compute lhs term of update di prime and the compute di prime.
+    let dleft = previous_denom * exp(previous_max-new_max);
+    var d = dleft + sum;
+    d = select(d,q_element_t(0.0000001h),d==0);
+    qk_1 = qk_1 / d;
+    qk_2 = qk_2 / d;
+    qk_3 = qk_3 / d;
+    qk_4 = qk_4 / d;
+    previous_max = new_max;
+    previous_denom = d;
+    let o_ratio = dleft / d;
+
+
+    for (var i:u32 = 0; i < qkv_head_size_vec; i++)
+    {
+        var val = vec4<q_element_t>(v_tile[sg_id][i]);
+        var sum = subgroupShuffle(val, 0) * qk_1[0];
+        sum += subgroupShuffle(val, 1) * qk_1[1];
+        sum += subgroupShuffle(val, 2) * qk_1[2];
+        sum += subgroupShuffle(val, 3) * qk_1[3];
+        sum += subgroupShuffle(val, 4) * qk_2[0];
+        sum += subgroupShuffle(val, 5) * qk_2[1];
+        sum += subgroupShuffle(val, 6) * qk_2[2];
+        sum += subgroupShuffle(val, 7) * qk_2[3];
+        sum += subgroupShuffle(val, 8) * qk_3[0];
+        sum += subgroupShuffle(val, 9) * qk_3[1];
+        sum += subgroupShuffle(val, 10) * qk_3[2];
+        sum += subgroupShuffle(val, 11) * qk_3[3];
+        sum += subgroupShuffle(val, 12) * qk_4[0];
+        sum += subgroupShuffle(val, 13) * qk_4[1];
+        sum += subgroupShuffle(val, 14) * qk_4[2];
+        sum += subgroupShuffle(val, 14) * qk_4[3];
+        o_tile[i] = o_tile[i] * o_ratio + sum;
+    }
+  }
+
+  if (valid_q) {
+    writeo(q_idx_global, head_idx);
+  }
 )MAIN_FN";
 
   return Status::OK();
@@ -373,10 +307,9 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                            const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context) {
   ORT_RETURN_IF_ERROR(CopyKVCache(context, parameters, K, past_key, present_key, V, past_value, present_value, parameters.past_sequence_length_, parameters.total_sequence_length_));
 
-  const uint32_t subgroup_size = 16;
-  const uint32_t tile_size = subgroup_size;
+  const uint32_t tile_size = 64;
   bool has_attention_bias = attention_bias != nullptr;
-  FlashAttentionProgram program{"FlashAttention", has_attention_bias, subgroup_size, tile_size, parameters.head_size_, parameters.num_heads_};
+  FlashAttentionProgram program{"FlashAttention", has_attention_bias, parameters.head_size_, parameters.num_heads_};
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 4},
                      {present_key, ProgramTensorMetadataDependency::TypeAndRank, 4},
                      {present_value, ProgramTensorMetadataDependency::TypeAndRank, 4},
@@ -385,12 +318,10 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
                                                 : parameters.scale_;
   std::string cache_hint = std::to_string(has_attention_bias) +
-                           std::to_string(subgroup_size) +
-                           std::to_string(tile_size) +
                            std::to_string(parameters.head_size_) +
                            std::to_string(parameters.num_heads_);
   program.SetDispatchGroupSize(parameters.num_heads_, (parameters.sequence_length_ + tile_size - 1) / tile_size, 1)
-      .SetWorkgroupSize(subgroup_size * subgroup_size)
+      .SetWorkgroupSize(64)
       .CacheHint(cache_hint)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},

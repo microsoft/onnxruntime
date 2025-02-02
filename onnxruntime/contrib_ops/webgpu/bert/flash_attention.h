@@ -36,14 +36,10 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
  public:
   FlashAttentionProgram(const std::string& kernel_name,
                         bool has_attention_bias,
-                        uint32_t subgroup_size,
-                        uint32_t tile_size,
                         int qkv_head_size,
                         int qkv_num_heads)
       : Program{kernel_name},
         has_attention_bias_(has_attention_bias),
-        subgroup_size_(subgroup_size),
-        tile_size_(tile_size),
         qkv_head_size_(qkv_head_size),
         qkv_num_heads_(qkv_num_heads) {
   }
@@ -56,8 +52,6 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
 
  private:
   bool has_attention_bias_;
-  uint32_t subgroup_size_;
-  uint32_t tile_size_;
   int qkv_head_size_;
   int qkv_num_heads_;
 };
