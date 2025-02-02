@@ -75,7 +75,15 @@ jobs:
           python3 onnxruntime/lora/adapter_format/compile_schema.py --flatc "$(which flatc)"
         shell: bash
 
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            /emsdk/upstream/emscripten/cache/symbol_lists
+          key: "emscripten-${{ runner.os }}-${{ github.ref_name }}"
+          fail-on-cache-miss: false
+
       - name: "Run build.py"
+        id: run-build
         run: |
           python3 ./tools/ci_build/build.py --allow_running_as_root --compile_no_warning_as_error \
             --build_dir ./build \
@@ -92,3 +100,11 @@ jobs:
         env:
           VCPKG_INSTALLATION_ROOT: "/usr/local/share/vcpkg"
           VCPKG_KEEP_ENV_VARS: "EM_CONFIG;EMCC_CFLAGS"
+
+      - uses: actions/cache/save@v4
+        # change the condition to ${{ steps.run-build.outcome == 'success' }} when test passes
+        if: always()
+        with:
+          path: |
+            /emsdk/upstream/emscripten/cache/symbol_lists
+          key: "emscripten-${{ runner.os }}-${{ github.ref_name }}"
