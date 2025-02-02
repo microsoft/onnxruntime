@@ -32,12 +32,11 @@ jobs:
             autoconf automake autoconf-archive \
             linux-libc-dev
 
-      - name: "Detect Node.js"
+      - name: "Detect Node.js" # create env.EMSDK_NODE for unit tests
         run: |
-          # "/emsdk/node/20.18.0_64bit/bin/..."
           node_path=$(which node)
-          echo "* $node_path" >> "$GITHUB_STEP_SUMMARY"
           echo "EMSDK_NODE=$node_path" >> "$GITHUB_ENV"
+          echo "* EMSDK_NODE: $node_path" >> "$GITHUB_STEP_SUMMARY"
 
       - uses: lukka/get-cmake@latest
         with:
