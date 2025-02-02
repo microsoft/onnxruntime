@@ -34,9 +34,9 @@ under [Compatibility](../reference/compatibility).
 
 For ONNX Runtime GPU package, it is required to install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn). Check [CUDA execution provider requirements](../execution-providers/CUDA-ExecutionProvider.md#requirements) for compatible version of CUDA and cuDNN.
 
-* cuDNN 8.x requires ZLib. Follow the [cuDNN 8.9 installation guide](https://docs.nvidia.com/deeplearning/cudnn/archives/cudnn-890/install-guide/index.html) to install zlib in Linux or Windows. Note that the official gpu package does not support cuDNN 9.x.
-* The path of CUDA bin directory must be added to the PATH environment variable. 
-* In Windows, the path of cuDNN bin directory must be added to the PATH environment variable.
+* Zlib is required by cuDNN 9.x for Linux only (zlib is statically linked into the cuDNN 9.x Windows dynamic libraries), or cuDNN 8.x for Linux and Windows. Follow the [cuDNN 8.9 installation guide](https://docs.nvidia.com/deeplearning/cudnn/archives/cudnn-890/install-guide/index.html) to install zlib in Linux or Windows.
+* In Windows, the path of CUDA `bin` and cuDNN `bin` directories must be added to the `PATH` environment variable.
+* In Linux, the path of CUDA `lib64` and cuDNN `lib` directories must be added to the `LD_LIBRARY_PATH` environment variable.
 
 ## Python Installs
 
