@@ -17,9 +17,7 @@ jobs:
       # https://github.com/emscripten-core/emscripten/blob/3.1.74/emcc.py
       # https://emscripten.org/docs/tools_reference/settings_reference.html
       # https://github.com/emscripten-core/emscripten/blob/3.1.74/tools/settings.py
-      # https://github.com/emscripten-core/emscripten/blob/3.1.74/tools/feature_matrix.py
-      # wasm-ld: error: --shared-memory is disallowed by ...o because it was not compiled with 'atomics' or 'bulk-memory' features.
-      EMCC_CFLAGS: "-sBULK_MEMORY -sPTHREADS"
+      EMCC_CFLAGS: "-mbulk-memory -matomics -pthread"
       # EM_CONFIG: /emsdk/.emscripten
     steps:
       - uses: actions/checkout@v4
@@ -55,7 +53,7 @@ jobs:
         env:
           VCPKG_INSTALLED_DIR: "${{ github.workspace }}/.build"
           VCPKG_DEFAULT_TRIPLET: "wasm32-emscripten"
-          VCPKG_KEEP_ENV_VARS: "EMCC_CFLAGS" # forward these in the install
+          VCPKG_KEEP_ENV_VARS: "EM_CONFIG;EMCC_CFLAGS" # forward to the vcpkg sub-processes
 
       - name: "Detect protoc"
         id: protoc
@@ -93,4 +91,4 @@ jobs:
         shell: bash
         env:
           VCPKG_INSTALLATION_ROOT: "/usr/local/share/vcpkg"
-          # EMCC_DEBUG: ${{ runner.debug }}
+          VCPKG_KEEP_ENV_VARS: "EM_CONFIG;EMCC_CFLAGS"
