@@ -127,6 +127,9 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const vec_factor: u32 = 4u;
   const qkv_head_size_vec: u32 = qkv_head_size / vec_factor;
   const min_value : q_element_t = q_element_t(-65504.0h);
+  // min_value_frac is a small min value that when accumulated
+  // qkv_head_size_vec times will leave us with a value close to min value.
+  const min_value_frac : q_element_t = q_element_t(-10.0);
 
   // Default SHM usage limit is 16KB in Dawn.
   var<workgroup> k_tile : array<array<q_value_t, qkv_head_size_vec>, k_step>; // 96 * 2 * 16 = 3KB.
@@ -135,7 +138,6 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Private memory per lane.
   var<private> q_tile : array<q_value_t, qkv_head_size_vec>;
   var<private> o_tile : array<q_value_t, qkv_head_size_vec>;
-
   fn loadq(q_idx_global : u32, head_idx: u32)
   {
       // Stored as float16[batch_size,sequence_length,3072] the inputs as per onnx MHA
@@ -154,7 +156,9 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
       let offset = head_idx * uniforms.present_sequence_length * qkv_head_size_vec + k_start * qkv_head_size_vec;
       for (var idx:u32 = local_idx; idx < qkv_head_size_vec*k_step; idx+=workgroup_size_x)
       {
-          k_tile[u32(idx/qkv_head_size_vec)][idx%qkv_head_size_vec] = present_key[offset+idx];
+          let slot = u32(idx/qkv_head_size_vec);
+          let val = select(q_value_t(min_value_frac), present_key[offset+idx], k_start + slot < uniforms.present_sequence_length);
+          k_tile[slot][idx%qkv_head_size_vec] = val;
       }
   }
   fn loadv(v_start : u32, head_idx: u32, local_idx: u32)
@@ -163,7 +167,9 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
       let offset = head_idx * uniforms.present_sequence_length * qkv_head_size_vec + v_start * qkv_head_size_vec;
       for (var idx:u32 = local_idx; idx < qkv_head_size_vec*k_step; idx+=workgroup_size_x)
       {
-          v_tile[u32(idx/qkv_head_size_vec)][idx%qkv_head_size_vec] = present_value[offset+idx];
+          let slot = u32(idx/qkv_head_size_vec);
+          let val  = select(q_value_t(min_value_frac), present_value[offset+idx], v_start + slot < uniforms.present_sequence_length);
+          v_tile[slot][idx%qkv_head_size_vec] = val;
       }
   }
   fn loadAttentionBias(q_idx_global : u32, k_idx_global : u32, head_idx: u32) -> vec4<q_element_t>
@@ -252,10 +258,10 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     local_max_temp = max(local_max_temp, qk_4);
     let local_max = max(max(local_max_temp.x, local_max_temp.y),max(local_max_temp.z, local_max_temp.w));
     let new_max = max(previous_max, local_max);
-    qk_1 = exp(qk_1 - new_max);
-    qk_2 = exp(qk_2 - new_max);
-    qk_3 = exp(qk_3 - new_max);
-    qk_4 = exp(qk_4 - new_max);
+    qk_1 = q_value_t(exp(vec4<f32>(qk_1) - f32(new_max)));
+    qk_2 = q_value_t(exp(vec4<f32>(qk_2) - f32(new_max)));
+    qk_3 = q_value_t(exp(vec4<f32>(qk_3) - f32(new_max)));
+    qk_4 = q_value_t(exp(vec4<f32>(qk_4) - f32(new_max)));
     let sum_vec = qk_1 + qk_2 + qk_3 + qk_4;
     let sum = sum_vec.x + sum_vec.y + sum_vec.z + sum_vec.w;
     // Compute lhs term of update di prime and the compute di prime.
@@ -269,7 +275,6 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     previous_max = new_max;
     previous_denom = d;
     let o_ratio = dleft / d;
-
 
     for (var i:u32 = 0; i < qkv_head_size_vec; i++)
     {
