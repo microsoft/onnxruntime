@@ -256,9 +256,8 @@ function(setup_kleidiai)
 
   # Fetch KleidiAI sources:
   include(FetchContent)
-  set(KLEIDIAI_COMMIT_SHA "d8dbb175f19054e4848c229f46995b96cc12159e")
-  set(KLEIDIAI_DOWNLOAD_URL "https://gitlab.arm.com/kleidi/kleidiai/-/archive/${KLEIDIAI_COMMIT_SHA}/kleidiai-${KLEIDIAI_COMMIT_SHA}.tar.gz")
-  set(KLEIDIAI_ARCHIVE_MD5  "cd26b942ff2e93ab4dd34a4ce4146478")
+  set(KLEIDIAI_DOWNLOAD_URL "https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.3.0.tar.gz")
+  set(KLEIDIAI_ARCHIVE_MD5  "060bd2dc64642b091f461cc8dd7426d9")
 
   if (POLICY CMP0135)
     cmake_policy(SET CMP0135 NEW)
