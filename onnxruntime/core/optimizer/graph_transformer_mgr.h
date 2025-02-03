@@ -10,7 +10,6 @@
 #include "core/optimizer/rewrite_rule.h"
 
 namespace onnxruntime {
-
 // Manages a list of graph transformers. It is initialized with a list of graph
 // transformers. Each inference session can further register additional ones.
 class GraphTransformerManager {

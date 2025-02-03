@@ -29,6 +29,7 @@
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
+#include "core/optimizer/graph_optimizer_registry.h"
 #include <mutex>
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
@@ -712,10 +713,16 @@ class InferenceSession {
       RecordRuntimeOptimizationProducedNodeOpSchemaFn record_runtime_optimization_produced_op_schema_fn,
       const logging::Logger& logger) const;
 
+  virtual common::Status RegisterPredefinedOptimizersForEP(
+      GraphOptimizerRegistry& optimizer_registry,
+      const logging::Logger& logger) const;
+
+  /*
   virtual common::Status AddPredefinedTransformersForEP(
       GraphTransformerManager& transformer_manager,
       TransformerLevel graph_optimization_level,
       const logging::Logger& logger) const;
+  */
 
   common::Status TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format);
 

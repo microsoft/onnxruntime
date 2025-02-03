@@ -261,8 +261,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
 
   SessionState session_state(graph, execution_providers, tp.get(), nullptr, dtm, edlm,
                              DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
-  GraphTransformerManager graph_transformer_mgr(10);
-  GraphPartitioner partitioner(krm, graph_transformer_mgr, execution_providers);
+  GraphPartitioner partitioner(krm, execution_providers);
   ASSERT_STATUS_OK(
       partitioner.Partition(
           graph, session_state.GetMutableFuncMgr(),
@@ -347,9 +346,8 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
 
     SessionState session_state(graph, execution_providers, nullptr, nullptr, dtm, edlm,
                                DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
-    GraphTransformerManager graph_transformer_mgr(10);
     // Partition the graph
-    GraphPartitioner partitioner(krm, graph_transformer_mgr, execution_providers);
+    GraphPartitioner partitioner(krm, execution_providers);
     ASSERT_STATUS_OK(partitioner.Partition(
         graph, session_state.GetMutableFuncMgr(),
         [&cpu_allocator](Graph& graph, bool& modified, const IExecutionProvider& execution_provider,
@@ -406,9 +404,8 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
 
     SessionState session_state(graph, execution_providers, nullptr, nullptr, dtm, edlm,
                                DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
-    GraphTransformerManager graph_transformer_mgr(10);
     // Partition the graph
-    GraphPartitioner partitioner(krm, graph_transformer_mgr, execution_providers);
+    GraphPartitioner partitioner(krm, execution_providers);
     ASSERT_STATUS_OK(partitioner.Partition(
         graph, session_state.GetMutableFuncMgr(),
         [&cpu_allocator](Graph& graph, bool& modified,

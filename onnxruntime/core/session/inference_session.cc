@@ -41,6 +41,7 @@
 #include "core/graph/model_saving_options.h"
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/graph_optimizer_registry.h"
 #include "core/optimizer/layout_transformation/layout_transformation.h"
 #include "core/optimizer/insert_cast_transformer.h"
 #include "core/optimizer/qdq_transformer/ensure_unique_dq_for_node_unit.h"
@@ -1850,10 +1851,22 @@ common::Status InferenceSession::Initialize() {
                                                                record_runtime_optimization_produced_op_schema,
                                                                *session_logger_));
 
+      // register predefined transformers for EP
+      auto graph_optimizer_registry = onnxruntime::GraphOptimizerRegistry::Get();
+      graph_optimizer_registry->AddPredefinedOptimizers(session_options_,
+                                                        *execution_providers_. Get(onnxruntime::kCpuExecutionProvider),
+                                                        *session_logger_);
+      /*
+      ORT_RETURN_IF_ERROR_SESSIONID_(RegisterPredefinedOptimizersForEP(*graph_optimizer_registry,
+                                                                       *session_logger_));
+      */
+      
+      /*
       // add predefined transformers for EP
       ORT_RETURN_IF_ERROR_SESSIONID_(AddPredefinedTransformersForEP(ep_graph_transformer_mgr_,
                                                                     session_options_.graph_optimization_level,
                                                                     *session_logger_));
+      */
 
 #ifdef USE_DML
       const IExecutionProvider* dmlExecutionProvider = execution_providers_.Get(kDmlExecutionProvider);
@@ -3285,6 +3298,24 @@ common::Status InferenceSession::AddPredefinedTransformers(
   return Status::OK();
 }
 
+// Registers all the predefined transformers for EP
+common::Status InferenceSession::RegisterPredefinedOptimizersForEP(
+    GraphOptimizerRegistry& optimizer_registry,
+    const logging::Logger& logger) const {
+  const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
+    
+  // TODO: Apply optimization level here if we later decide to do so
+  auto transformers_to_register = [&]() {
+    return optimizer_utils::GenerateTransformersForEP(session_options_, cpu_ep, logger);
+  }();
+
+  for (auto& entry : transformers_to_register) {
+    ORT_RETURN_IF_ERROR(optimizer_registry.Register(std::move(entry)));
+  }
+  return Status::OK();
+}
+
+/*
 // Registers all the predefined transformers for EP with transformer manager
 common::Status InferenceSession::AddPredefinedTransformersForEP(
     GraphTransformerManager& transformer_manager,
@@ -3306,6 +3337,7 @@ common::Status InferenceSession::AddPredefinedTransformersForEP(
   }
   return Status::OK();
 }
+*/
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

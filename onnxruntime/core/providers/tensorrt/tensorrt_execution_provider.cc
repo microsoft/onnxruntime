@@ -2451,8 +2451,7 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
 
 std::vector<std::unique_ptr<ComputeCapability>>
 TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
-                                         const IKernelLookup&, /*kernel_lookup*/
-                                         const GraphTransformerManager& graph_transformer_mgr) const {
+                                         const IKernelLookup& /*kernel_lookup*/) const {
   // Construct subgraph capability from node list
   std::vector<std::unique_ptr<ComputeCapability>> result;
   // Get ModelPath
@@ -2555,8 +2554,8 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   }
 
   bool early_termination = false;
-  supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
-  //supported_nodes_vector = parser_nodes_vector;
+  //supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
+  supported_nodes_vector = parser_nodes_vector;
   if (early_termination) {
     supported_nodes_vector.clear();
   }
@@ -2671,7 +2670,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
    */
 
   std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)> selection_func;
-  auto status = g_host->GetEPOptimizerByName("ConstantFoldingDQ", graph_transformer_mgr, selection_func);
+  auto status = g_host->GetOptimizerByName("ConstantFoldingDQ", selection_func);
   std::vector<std::unique_ptr<ComputeCapability>> selection_cc;
   if (selection_func) {
     selection_cc = selection_func(graph);

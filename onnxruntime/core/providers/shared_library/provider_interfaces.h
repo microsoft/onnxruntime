@@ -142,9 +142,8 @@ struct Node__EdgeIterator {
 struct ProviderHost {
   virtual const OrtApiBase* OrtGetApiBase() = 0;
 
-  virtual Status GetEPOptimizerByName(const std::string& name,
-                                      const GraphTransformerManager& graph_transformer_mgr,
-                                      std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>& selection_func) = 0;
+  virtual Status GetOptimizerByName(const std::string& name,
+                                    std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>& selection_func) = 0;
 
   virtual void* HeapAllocate(size_t size) = 0;
   virtual void HeapFree(void*) = 0;
@@ -250,8 +249,7 @@ struct ProviderHost {
 
   // IExecutionProvider
   virtual std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
-                                                                                            const IExecutionProvider::IKernelLookup& kernel_lookup,
-                                                                                            const onnxruntime::GraphTransformerManager& graph_transformer_mgr) = 0;
+                                                                                            const IExecutionProvider::IKernelLookup& kernel_lookup) = 0;
 
   virtual common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) = 0;
 

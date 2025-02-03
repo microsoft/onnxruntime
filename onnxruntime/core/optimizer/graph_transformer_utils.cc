@@ -188,9 +188,23 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(
 }
 
 InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForEP(
+    const SessionOptions& session_options,
+    const IExecutionProvider& cpu_execution_provider, /*required by constant folding DQ*/
+    const logging::Logger& logger) {
+  InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
+
+  // TODO: Apply optimization level here if we later decide to do so
+  const InlinedHashSet<NodeIndex> node_index_set = {};
+  transformers.emplace_back(std::make_unique<ConstantFoldingDQ>(cpu_execution_provider, false /*skip_dequantize_linear*/,
+                                                                session_options.config_options, node_index_set));
+  return transformers;
+}
+
+/*
+InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForEP(
     TransformerLevel level,
     const SessionOptions& session_options,
-    const IExecutionProvider& cpu_execution_provider, /*required by constant folding*/
+    const IExecutionProvider& cpu_execution_provider,
     const logging::Logger& logger) {
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   switch (level) {
@@ -199,7 +213,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForEP(
     }
     case TransformerLevel::Level2: {
       const InlinedHashSet<NodeIndex> node_index_set = {};
-      transformers.emplace_back(std::make_unique<ConstantFoldingDQ>(cpu_execution_provider, false /*skip_dequantize_linear*/,
+      transformers.emplace_back(std::make_unique<ConstantFoldingDQ>(cpu_execution_provider, false,
                                                                     session_options.config_options, node_index_set));
       break;
     }
@@ -211,6 +225,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForEP(
   }
   return transformers;
 }
+*/
 
 InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     TransformerLevel level,

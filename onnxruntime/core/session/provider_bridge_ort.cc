@@ -216,10 +216,9 @@ const GraphTransformerManager* graph_transformer_manager;
 struct ProviderHostImpl : ProviderHost {
   const OrtApiBase* OrtGetApiBase() override { return ::OrtGetApiBase(); }
 
-  Status GetEPOptimizerByName(const std::string& name,
-                              const GraphTransformerManager& transformer_mgr,
-                              std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>& selection_func) override {
-    static const GraphTransformerManager& graph_transformer_mgr = transformer_mgr;
+  Status GetOptimizerByName(const std::string& name,
+                            std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>& selection_func) override {
+    //static const GraphTransformerManager& graph_transformer_mgr = transformer_mgr;
     std::string optimizer_name(name);
 
     // Pre-defined graph transformers/optimizers
@@ -249,11 +248,13 @@ struct ProviderHostImpl : ProviderHost {
         dq_node_index_set.insert(index);
       }
 
-      ConstantFoldingDQ* transformer = static_cast<ConstantFoldingDQ*>(graph_transformer_mgr.GetTransformerByName(optimizer_name));
+      auto optimizer_registry = onnxruntime::GraphOptimizerRegistry::Get();
+
+      ConstantFoldingDQ* transformer = static_cast<ConstantFoldingDQ*>(optimizer_registry->GetTransformerByName(optimizer_name));
       transformer->UpdateNodeIndexSet(dq_node_index_set);
       
       // apply constant folding on DQ nodes
-      graph_transformer_mgr.ApplyTransformer(graph, optimizer_name, *logger);
+      optimizer_registry->ApplyTransformer(graph, optimizer_name, *logger);
 
       // update the overall ComputeCapability
       std::vector<onnxruntime::NodeIndex> updated_nodes;
@@ -455,9 +456,8 @@ struct ProviderHostImpl : ProviderHost {
   // IExecutionProvider (direct)
   std::vector<std::unique_ptr<ComputeCapability>> IExecutionProvider__GetCapability(
       const IExecutionProvider* p, const onnxruntime::GraphViewer& graph_viewer,
-      const IExecutionProvider::IKernelLookup& kernel_lookup,
-      const onnxruntime::GraphTransformerManager& graph_transformer_mgr) override {
-    return p->IExecutionProvider::GetCapability(graph_viewer, kernel_lookup, graph_transformer_mgr);
+      const IExecutionProvider::IKernelLookup& kernel_lookup) override {
+    return p->IExecutionProvider::GetCapability(graph_viewer, kernel_lookup);
   }
 
   common::Status IExecutionProvider__Compile(IExecutionProvider* p, const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs, std::vector<NodeComputeInfo>& node_compute_funcs) override {

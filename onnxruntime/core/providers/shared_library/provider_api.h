@@ -175,7 +175,6 @@ struct SparseTensor;
 class TensorSeq;
 class SessionState;
 class ModelMetadefIdGenerator;
-class GraphTransformerManager;
 
 class If;
 class Loop;

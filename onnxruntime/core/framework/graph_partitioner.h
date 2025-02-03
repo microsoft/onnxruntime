@@ -7,7 +7,6 @@
 #include "core/graph/graph.h"
 #include "core/framework/fuse_nodes_funcs.h"
 #include "core/framework/transform_layout_functions.h"
-#include "core/optimizer/graph_transformer_mgr.h"
 
 namespace onnxruntime {
 
@@ -25,9 +24,8 @@ class GraphPartitioner {
   };
 
   // The order of providers represents the user preference.
-  GraphPartitioner(KernelRegistryManager& kernel_registry_mgr, const GraphTransformerManager& graph_transformer_mgr, const ExecutionProviders& providers)
+  GraphPartitioner(KernelRegistryManager& kernel_registry_mgr, const ExecutionProviders& providers)
       : kernel_registry_mgr_(kernel_registry_mgr),
-        graph_transformer_mgr_(graph_transformer_mgr),
         providers_(providers) {
   }
 
@@ -66,7 +64,6 @@ class GraphPartitioner {
 
   KernelRegistryManager& kernel_registry_mgr_;
   const ExecutionProviders& providers_;
-  const GraphTransformerManager& graph_transformer_mgr_;
 };
 
 }  // namespace onnxruntime
