@@ -127,9 +127,6 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const vec_factor: u32 = 4u;
   const qkv_head_size_vec: u32 = qkv_head_size / vec_factor;
   const min_value : q_element_t = q_element_t(-65504.0h);
-  // min_value_frac is a small min value that when accumulated
-  // qkv_head_size_vec times will leave us with a value close to min value.
-  const min_value_frac : q_element_t = q_element_t(-10.0);
 
   // Default SHM usage limit is 16KB in Dawn.
   var<workgroup> k_tile : array<array<q_value_t, qkv_head_size_vec>, k_step>; // 96 * 2 * 16 = 3KB.
@@ -157,7 +154,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
       for (var idx:u32 = local_idx; idx < qkv_head_size_vec*k_step; idx+=workgroup_size_x)
       {
           let slot = u32(idx/qkv_head_size_vec);
-          let val = select(q_value_t(min_value_frac), present_key[offset+idx], k_start + slot < uniforms.present_sequence_length);
+          let val = select(q_value_t(0), present_key[offset+idx], k_start + slot < uniforms.present_sequence_length);
           k_tile[slot][idx%qkv_head_size_vec] = val;
       }
   }
@@ -168,7 +165,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
       for (var idx:u32 = local_idx; idx < qkv_head_size_vec*k_step; idx+=workgroup_size_x)
       {
           let slot = u32(idx/qkv_head_size_vec);
-          let val  = select(q_value_t(min_value_frac), present_value[offset+idx], v_start + slot < uniforms.present_sequence_length);
+          let val  = select(q_value_t(0), present_value[offset+idx], v_start + slot < uniforms.present_sequence_length);
           v_tile[slot][idx%qkv_head_size_vec] = val;
       }
   }
@@ -252,6 +249,23 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     qk_3 = qk_3 * q_element_t(uniforms.alpha);
     qk_4 = qk_4 * q_element_t(uniforms.alpha);
 
+    // Neuter out of bounds qk values
+    qk_1[1] = select(min_value, qk_1[1], k_start+1 < uniforms.present_sequence_length);
+    qk_1[2] = select(min_value, qk_1[2], k_start+2 < uniforms.present_sequence_length);
+    qk_1[3] = select(min_value, qk_1[3], k_start+3 < uniforms.present_sequence_length);
+    qk_2[0] = select(min_value, qk_2[0], k_start+4 < uniforms.present_sequence_length);
+    qk_2[1] = select(min_value, qk_2[1], k_start+5 < uniforms.present_sequence_length);
+    qk_2[2] = select(min_value, qk_2[2], k_start+6 < uniforms.present_sequence_length);
+    qk_2[3] = select(min_value, qk_2[3], k_start+7 < uniforms.present_sequence_length);
+    qk_3[0] = select(min_value, qk_3[0], k_start+8 < uniforms.present_sequence_length);
+    qk_3[1] = select(min_value, qk_3[1], k_start+9 < uniforms.present_sequence_length);
+    qk_3[2] = select(min_value, qk_3[2], k_start+10 < uniforms.present_sequence_length);
+    qk_3[3] = select(min_value, qk_3[3], k_start+11 < uniforms.present_sequence_length);
+    qk_4[0] = select(min_value, qk_4[0], k_start+12 < uniforms.present_sequence_length);
+    qk_4[1] = select(min_value, qk_4[1], k_start+13 < uniforms.present_sequence_length);
+    qk_4[2] = select(min_value, qk_4[2], k_start+14 < uniforms.present_sequence_length);
+    qk_4[3] = select(min_value, qk_4[3], k_start+15 < uniforms.present_sequence_length);
+
     // Compute SoftMax
     var local_max_temp = max(qk_1, qk_2);
     local_max_temp = max(local_max_temp, qk_3);
@@ -278,7 +292,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
     for (var i:u32 = 0; i < qkv_head_size_vec; i++)
     {
-        var val = vec4<q_element_t>(v_tile[sg_id][i]);
+        var val = select(vec4<q_element_t>(0), v_tile[sg_id][i], k_start + sg_id < uniforms.present_sequence_length);
         var sum = subgroupShuffle(val, 0) * qk_1[0];
         sum += subgroupShuffle(val, 1) * qk_1[1];
         sum += subgroupShuffle(val, 2) * qk_1[2];
@@ -294,7 +308,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
         sum += subgroupShuffle(val, 12) * qk_4[0];
         sum += subgroupShuffle(val, 13) * qk_4[1];
         sum += subgroupShuffle(val, 14) * qk_4[2];
-        sum += subgroupShuffle(val, 14) * qk_4[3];
+        sum += subgroupShuffle(val, 15) * qk_4[3];
         o_tile[i] = o_tile[i] * o_ratio + sum;
     }
   }
