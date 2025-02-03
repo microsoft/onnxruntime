@@ -29,8 +29,8 @@ namespace qnnctxgen {
 
 /*static*/ void CommandLineParser::ShowUsage() {
   printf(
-      "onnxruntime_qnn_ctx_gen [options...] model1_path,model2_path\n"
-      "Example: ./onnxruntime_qnn_ctx_gen -i \"soc_model|60 htp_graph_finalization_optimization_mode|3\" -C \"ep.context_node_name_prefix|_part1\" ./model1.onnx,./model2.onnx\n"
+      "ep_weight_sharing_ctx_gen [options...] model1_path,model2_path\n"
+      "Example: ./ep_weight_sharing_ctx_gen -i \"soc_model|60 htp_graph_finalization_optimization_mode|3\" -C \"ep.context_node_name_prefix|_part1\" ./model1.onnx,./model2.onnx\n"
       "Options:\n"
       "\t-v: Show verbose information.\n"
       "\t-C: Specify session configuration entries as key-value pairs: -C \"<key1>|<value1> <key2>|<value2>\" \n"

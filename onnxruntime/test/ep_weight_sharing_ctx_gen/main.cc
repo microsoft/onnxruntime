@@ -139,7 +139,7 @@ int real_main(int argc, char* argv[]) {
 
   ORT_TRY {
     SessionOptions so;
-    so.session_logid = "qnn_ctx_gen_session_logger";
+    so.session_logid = "ep_weight_sharing_ctx_gen_session_logger";
     // Set default session option to dump QNN context model with non-embed mode
     CheckStatus(so.config_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1"));
     CheckStatus(so.config_options.AddConfigEntry(kOrtSessionOptionEpContextEmbedMode, "0"));
