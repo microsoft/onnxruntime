@@ -319,6 +319,7 @@ class InstallCommand(InstallCommandBase):
         return ret
 
     def run(self):
+        print(f"{enable_training=} {package_name=}")
         if not enable_training:
             suffix_list = [
                 "",
@@ -337,7 +338,10 @@ class InstallCommand(InstallCommandBase):
             ]
             for suffix in suffix_list:
                 package = f"onnxruntime-{suffix}" if suffix else "onnxruntime"
-                if package != package_name and get_package_version(package) is not None:
+                version = get_package_version(package)
+                print(f"{package=} {version=}")
+                if package != package_name and version is not None:
+                    print(f"{package} was installed. It may conflict with {package_name} package.")
                     logger.warning(
                         f"{package} was installed. It may conflict with {package_name} package. Please uninstall {package} package before installing {package_name} package."
                     )
