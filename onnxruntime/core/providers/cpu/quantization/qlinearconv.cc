@@ -787,7 +787,8 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
           Xdata,
           static_cast<ActType*>(transpose_input_buffer.get()),
           static_cast<size_t>(C),
-          static_cast<size_t>(input_image_size));
+          static_cast<size_t>(input_image_size),
+          thread_pool);
       input_data = static_cast<ActType*>(transpose_input_buffer.get());
       output_data = static_cast<ActType*>(transpose_output_buffer.get());
     }
@@ -997,7 +998,8 @@ Status QLinearConv<ActType>::Compute(OpKernelContext* context) const {
           output_data,
           Ydata,
           static_cast<size_t>(output_image_size),
-          static_cast<size_t>(M));
+          static_cast<size_t>(M),
+          thread_pool);
     }
 
     Xdata += X_offset;
