@@ -482,7 +482,6 @@ def parse_arguments():
     parser.add_argument(
         "--use_vcpkg",
         action="store_true",
-        default="VCPKG_INSTALLATION_ROOT" in os.environ,
         help="Use vcpkg to search dependencies. Requires CMAKE_TOOLCHAIN_FILE for vcpkg.cmake",
     )
 
@@ -2717,21 +2716,6 @@ def main():
     args = parse_arguments()
 
     print(args)
-
-    if args.build_wasm:
-        # No custom triplet for the wasm builds yet
-        args.use_vcpkg = False
-    elif args.minimal_build is not None:
-        # Minimal build uses a custom ONNX cmake file. Don't know how to deal with it yet
-        args.use_vcpkg = False
-    elif args.ios or args.macos == "Catalyst":
-        args.use_vcpkg = False
-    elif args.use_extensions:
-        # ORT extension no longer supports combined build, except for WASM. Due to dependency version conflicts
-        args.use_vcpkg = False
-    elif args.use_webgpu and is_windows():
-        # We have a special build patch for DirectML, which is Windows only. And the patch does not work good
-        args.use_vcpkg = False
 
     if os.getenv("ORT_BUILD_WITH_CACHE") == "1":
         args.use_cache = True
