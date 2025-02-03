@@ -27,7 +27,7 @@ Status Round<T>::Compute(OpKernelContext* ctx) const {
   auto& Y = *ctx->Output(0, X.Shape());
   const auto* input = X.Data<T>();
   auto* output = Y.MutableData<T>();
-  const auto size = X.Shape().Size();
+  const auto size = narrow<Eigen::Index>(X.Shape().Size());
 
   EigenArrayMap<T> Y_arr(output, 1, size);
   ConstEigenArrayMap<T> X_arr(input, 1, size);
@@ -41,7 +41,7 @@ Status Round<MLFloat16>::Compute(OpKernelContext* ctx) const {
   auto& Y = *ctx->Output(0, X.Shape());
   const auto* input = X.Data<MLFloat16>();
   auto* output = Y.MutableData<MLFloat16>();
-  const auto size = X.Shape().Size();
+  const auto size = narrow<Eigen::Index>(X.Shape().Size());
 
   ConstEigenArrayMap<Eigen::half> X_arr(reinterpret_cast<const Eigen::half*>(input), 1, size);
   EigenArrayMap<Eigen::half> Y_arr(reinterpret_cast<Eigen::half*>(output), 1, size);
