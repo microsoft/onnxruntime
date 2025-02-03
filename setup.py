@@ -5,6 +5,7 @@
 # pylint: disable=C0103
 
 import datetime
+import importlib.metadata  # requires Python 3.8 or later
 import logging
 import platform
 import shlex
@@ -304,11 +305,45 @@ except ImportError as error:
     bdist_wheel = None
 
 
+def get_package_version(package_name):
+    try:
+        return importlib.metadata.version(package_name)  # Try getting the version
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+
 class InstallCommand(InstallCommandBase):
     def finalize_options(self):
         ret = InstallCommandBase.finalize_options(self)
         self.install_lib = self.install_platlib
         return ret
+
+    def run(self):
+        if not enable_training:
+            suffix_list = [
+                "",
+                "gpu",
+                "directml",
+                "qnn",
+                "rocm",
+                "migraphx",
+                "openvino",
+                "dnnl",
+                "tvm",
+                "vitisai",
+                "acl",
+                "armnn",
+                "cann",
+            ]
+            for suffix in suffix_list:
+                package = f"onnxruntime-{suffix}" if suffix else "onnxruntime"
+                if package != package_name and get_package_version(package) is not None:
+                    logger.warning(
+                        f"{package} was installed. It may conflict with {package_name} package. Please uninstall {package} package before installing {package_name} package."
+                    )
+
+        # Continue with the normal installation
+        InstallCommandBase.run(self)
 
 
 providers_cuda_or_rocm = "onnxruntime_providers_" + ("rocm" if is_rocm else "cuda")
