@@ -1,4 +1,4 @@
-const {getDefaultConfig, mergeConfig} = require('@react-native/metro-config')
+const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
 const path = require('path');
 /**
  * Metro configuration
@@ -11,7 +11,7 @@ const config = {
     path.resolve(__dirname, '..'), // Ensure Metro watches the lib folder
   ],
   resolver: {
-    sourceExts: ['tsx', 'ts', 'jsx', 'js','json'], // Ensure TypeScript files are recognized
+    sourceExts: ['tsx', 'ts', 'jsx', 'js', 'json'], // Ensure TypeScript files are recognized
   },
 };
 module.exports = mergeConfig(getDefaultConfig(__dirname), config);
