@@ -123,7 +123,13 @@ void MIGraphXExecutionProvider::get_flags_from_session_info(const MIGraphXExecut
 
   // Quantization
   fp16_enable_ = info.fp16_enable;
+
+#if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 4)
   fp8_enable_ = info.fp8_enable;
+#else
+  LOGS_DEFAULT(WARNING) << "MIGraphX: FP8 Quantization requires ROCm 6.4 or greater";
+  fp8_enable_ = false;
+#endif
   int8_enable_ = info.int8_enable;
 
   if (int8_enable_ and fp8_enable_) {
@@ -172,8 +178,13 @@ void MIGraphXExecutionProvider::get_flags_from_env() {
   // whether fp8 quantization is enabled
   const std::string fp8_enable_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kFP8Enable);
   if (!fp8_enable_env.empty()) {
+#if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 4)
     fp8_enable_ = (std::stoi(fp8_enable_env) == 0 ? false : true);
     LOGS_DEFAULT(WARNING) << "\nORT_MIGRAPHX_FP8_ENABLE: " << fp8_enable_;
+#else
+    LOGS_DEFAULT(WARNING) << "MIGraphX: FP8 Quantization requires ROCm 6.4 or greater";
+    fp8_enable_ = false;
+#endif
   }
 
   // whether int8 is enabled
@@ -1284,11 +1295,13 @@ void calibrate_and_quantize(migraphx::program& prog,
       migraphx::quantize_int8(prog, t, quant_opts);
       LOGS_DEFAULT(WARNING) << "Quantizing int8: Complete";
     } else if (fp8_enable) {
+#if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 4)
       LOGS_DEFAULT(WARNING) << "Quantizing input program to fp8";
       migraphx::quantize_fp8_options quant_opts;
       quant_opts.add_calibration_data(quant_params);
       migraphx::quantize_fp8(prog, t, quant_opts);
       LOGS_DEFAULT(WARNING) << "Quantizing fp8: Complete";
+#endif
     }
   }
 
