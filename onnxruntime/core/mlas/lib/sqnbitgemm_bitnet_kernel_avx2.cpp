@@ -90,6 +90,7 @@ SQ2BitGemmKernel_CompInt8_avx2(
     const float* /*Bias*/
 )
 {
+  // reference SQ4BitGemmKernel_CompInt8_avx2
     return 0;
 }
 
@@ -101,4 +102,5 @@ QuantizeARow_CompInt8(
     std::byte* /*QuantA*/
 )
 {
+  // shall be similar to QuantizeARow_CompInt8_avx2 without blksum related code.
 }

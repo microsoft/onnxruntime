@@ -167,6 +167,61 @@ Q4BitGemmPerGemmWorkspaceAlignment(
     }
 }
 
+size_t
+Q2BitGemmPackQuantBDataSize(
+    size_t /*N*/,
+    size_t /*K*/,
+    size_t /*BlkLen*/,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE /*ComputeType*/
+)
+{
+    return 0;
+}
+
+void
+SQ2BitGemmPackQuantBData(
+    size_t /*N*/,
+    size_t /*K*/,
+    size_t /*BlkLen*/,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE /* ComputeType*/,
+    const std::byte* /*QuantBDataBegin*/,
+    std::byte* /*PackedQuantBDataBegin*/,
+    MLAS_THREADPOOL* /*ThreadPool*/
+)
+{
+}
+
+size_t
+Q2BitGemmPerGemmWorkspaceSize(
+    size_t /*M*/,
+    size_t /*N*/,
+    size_t /*K*/,
+    size_t /*BlkLen*/,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE /*ComputeType*/
+)
+{
+    return 0;
+}
+
+size_t
+SQ2BitGemmKernel_CompInt8_avx2(
+    size_t /*BlkLen*/,
+    const std::byte* /*QuantA*/,
+    const std::byte* /*QuantBData*/,
+    const float* /*QuantBScale*/,
+    const std::byte* /*QuantBZeroPoint*/,
+    float* /*C*/,
+    size_t /*CountM*/,
+    size_t /*CountN*/,
+    size_t /*CountK*/,
+    size_t /*BlockCountK*/,
+    size_t /*ldc*/,
+    const float* /*Bias*/
+)
+{
+    return 0;
+}
+
 }  // namespace
 
 }  // namespace sqnbitgemm_neon
@@ -197,5 +252,12 @@ const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon = []() {
     d.HQ4BitGemmKernel_CompFp16 = sqnbitgemm_neon::HQ4BitGemmKernel_CompFp16;
 #endif  // MLAS_F16VEC_INTRINSICS_SUPPORTED && MLAS_TARGET_ARM64
 
+    d.Q2BitGemmPackQuantBDataSize = Q2BitGemmPackQuantBDataSize;
+    d.SQ2BitGemmPackQuantBData = SQ2BitGemmPackQuantBData;
+
+    d.Q2BitGemmPerGemmWorkspaceSize = Q2BitGemmPerGemmWorkspaceSize;
+
+    d.SQ2BitGemmKernel_CompInt8 = SQ2BitGemmKernel_CompInt8_avx2;
+    d.QuantizeARow_CompInt8 = QuantizeARow_CompInt8;
     return d;
 }();
