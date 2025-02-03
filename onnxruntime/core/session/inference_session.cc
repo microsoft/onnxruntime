@@ -1850,17 +1850,6 @@ common::Status InferenceSession::Initialize() {
       graph_optimizer_registry->AddPredefinedOptimizers(session_options_,
                                                         *execution_providers_. Get(onnxruntime::kCpuExecutionProvider),
                                                         *session_logger_);
-      /*
-      ORT_RETURN_IF_ERROR_SESSIONID_(RegisterPredefinedOptimizersForEP(*graph_optimizer_registry,
-                                                                       *session_logger_));
-      */
-      
-      /*
-      // add predefined transformers for EP
-      ORT_RETURN_IF_ERROR_SESSIONID_(AddPredefinedTransformersForEP(ep_graph_transformer_mgr_,
-                                                                    session_options_.graph_optimization_level,
-                                                                    *session_logger_));
-      */
 
 #ifdef USE_DML
       const IExecutionProvider* dmlExecutionProvider = execution_providers_.Get(kDmlExecutionProvider);

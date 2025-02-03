@@ -622,7 +622,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
   InlinedHashSet<NodeIndex> claimed_by_ep;
   for (const auto& ep : execution_providers) {
     std::vector<std::unique_ptr<ComputeCapability>> capabilities;
-    ORT_RETURN_IF_ERROR(GetCapabilityForEPForAotInlining(graph_viewer, kernel_registry_mgr, * ep, logger,
+    ORT_RETURN_IF_ERROR(GetCapabilityForEPForAotInlining(graph_viewer, kernel_registry_mgr, *ep, logger,
                                                          capabilities));
     for (auto& capability : capabilities) {
       const auto& nodes = capability->sub_graph->nodes;

@@ -200,33 +200,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForEP(
   return transformers;
 }
 
-/*
-InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForEP(
-    TransformerLevel level,
-    const SessionOptions& session_options,
-    const IExecutionProvider& cpu_execution_provider,
-    const logging::Logger& logger) {
-  InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
-  switch (level) {
-    case TransformerLevel::Level1: {
-      break;
-    }
-    case TransformerLevel::Level2: {
-      const InlinedHashSet<NodeIndex> node_index_set = {};
-      transformers.emplace_back(std::make_unique<ConstantFoldingDQ>(cpu_execution_provider, false,
-                                                                    session_options.config_options, node_index_set));
-      break;
-    }
-    case TransformerLevel::Level3: {
-      break;
-    }
-    default:
-      ORT_THROW("Unsupported optimization level: ", static_cast<int>(level));
-  }
-  return transformers;
-}
-*/
-
 InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     TransformerLevel level,
     const SessionOptions& session_options,

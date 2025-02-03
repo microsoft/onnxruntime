@@ -261,6 +261,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
 
   SessionState session_state(graph, execution_providers, tp.get(), nullptr, dtm, edlm,
                              DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+
   GraphPartitioner partitioner(krm, execution_providers);
   ASSERT_STATUS_OK(
       partitioner.Partition(
@@ -346,6 +347,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
 
     SessionState session_state(graph, execution_providers, nullptr, nullptr, dtm, edlm,
                                DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+    
     // Partition the graph
     GraphPartitioner partitioner(krm, execution_providers);
     ASSERT_STATUS_OK(partitioner.Partition(
@@ -404,6 +406,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
 
     SessionState session_state(graph, execution_providers, nullptr, nullptr, dtm, edlm,
                                DefaultLoggingManager().DefaultLogger(), profiler, sess_options);
+    
     // Partition the graph
     GraphPartitioner partitioner(krm, execution_providers);
     ASSERT_STATUS_OK(partitioner.Partition(
