@@ -377,7 +377,7 @@ TEST(SoftmaxOperator, DimWithZero) {
   RunTest(x_vals, expected_vals, dimensions, /*opset*/ -1, /*axis*/ 0,
           {kTensorrtExecutionProvider,
            kNnapiExecutionProvider,   // NNAPI softmax does not support empty input
-           kWebGpuExecutionProvider,  // WebGPU does not dim 0
+           kWebGpuExecutionProvider,  // WebGPU does not support dim 0
            kQnnExecutionProvider}     // QNN doesn't support dim 0
   );
 }

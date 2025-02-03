@@ -37,7 +37,8 @@ class Softmax final : public WebGpuKernel {
 
 class SoftmaxProgram final : public Program<SoftmaxProgram> {
  public:
-  SoftmaxProgram(uint32_t wg) : Program{"Softmax"}, WG{wg} {
+  SoftmaxProgram(uint32_t wg, bool is_fp32)
+      : Program{"Softmax"}, wg_{wg}, is_fp32_{is_fp32} {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -45,7 +46,8 @@ class SoftmaxProgram final : public Program<SoftmaxProgram> {
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"packedCols", ProgramUniformVariableDataType::Int32});
 
  private:
-  uint32_t WG;
+  uint32_t wg_;
+  bool is_fp32_;
 };
 
 }  // namespace webgpu

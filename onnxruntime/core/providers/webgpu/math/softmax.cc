@@ -81,13 +81,13 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddOutput("result", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   int components = input.NumComponents();
 
-  std::string threadMaxDecl = input.ElementType() == "f32" ? "var threadMax = x_value_t(-3.402823e+38f);\n" : "var threadMax = x_value_t(-65504.0h);\n";
+  std::string threadMaxDecl = is_fp32_ ? "var thread_max = x_value_t(-3.402823e+38f);\n" : "var thread_max = x_value_t(-65504.0h);\n";
 
   // Define shared memory for row max and row sum
   shader.AdditionalImplementation()
-      << "var<workgroup> rowMaxShared : x_value_t;\n"
-      << "var<workgroup> rowSumShared : x_value_t;\n"
-      << "var<workgroup> threadShared : array<x_value_t, " << WG << ">;\n";
+      << "var<workgroup> row_max_shared : x_value_t;\n"
+      << "var<workgroup> row_sum_shared : x_value_t;\n"
+      << "var<workgroup> thread_shared : array<x_value_t, " << wg_ << ">;\n";
 
   // Define helper functions to get and set values
   shader.AdditionalImplementation()
@@ -104,7 +104,7 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody()
       << "  let gindex = i32(global_idx);\n"
       << "  let lindex = i32(local_idx);\n"
-      << "  const wg = " << WG << ";\n"
+      << "  const wg = " << wg_ << ";\n"
       << "  let row = gindex / wg;\n"
       << "  let cols = uniforms.packedCols;\n"
       << "  let row_stride : i32 = uniforms.packedCols;\n"
@@ -113,51 +113,51 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << threadMaxDecl
       << "  for (var col = lindex; col < cols; col += wg) {\n"
       << "    let value = getValue(row, col, row_stride);\n"
-      << "    threadMax = max(threadMax, value);\n"
+      << "    thread_max = max(thread_max, value);\n"
       << "  }\n"
       << "  if (lindex < cols) {\n"
-      << "    threadShared[lindex] = threadMax;\n"
+      << "    thread_shared[lindex] = thread_max;\n"
       << "  }\n"
       << "  workgroupBarrier();\n"
 
       // Reduce to find the max value
-      << "  var reduceSize = min(cols, wg);\n"
-      << "  for (var currSize = reduceSize >> 1; currSize > 0; currSize = reduceSize >> 1) {\n"
-      << "    reduceSize = currSize + (reduceSize & 1);\n"
-      << "    if (lindex < currSize) {\n"
-      << "      threadShared[lindex] = max(threadShared[lindex], threadShared[lindex + reduceSize]);\n"
+      << "  var reduce_size = min(cols, wg);\n"
+      << "  for (var curr_size = reduce_size >> 1; curr_size > 0; curr_size = reduce_size >> 1) {\n"
+      << "    reduce_size = curr_size + (reduce_size & 1);\n"
+      << "    if (lindex < curr_size) {\n"
+      << "      thread_shared[lindex] = max(thread_shared[lindex], thread_shared[lindex + reduce_size]);\n"
       << "    }\n"
       << "    workgroupBarrier();\n"
       << "  }\n"
       << "  if (lindex == 0) {\n"
-      << "    rowMaxShared = x_value_t(" << MaxVector("threadShared[0]", components) << ");\n"
+      << "    row_max_shared = x_value_t(" << MaxVector("thread_shared[0]", components) << ");\n"
       << "  }\n"
       << "  workgroupBarrier();\n"
 
       // Find the row's sum of exponentials
-      << "  var threadSum = x_value_t(0.0);\n"
+      << "  var thread_sum = x_value_t(0.0);\n"
       << "  for (var col = lindex; col < cols; col += wg) {\n"
-      << "    let subExp = exp(getValue(row, col, row_stride) - rowMaxShared);\n"
-      << "    threadSum += subExp;\n"
+      << "    let sub_exp = exp(getValue(row, col, row_stride) - row_max_shared);\n"
+      << "    thread_sum += sub_exp;\n"
       << "  }\n"
-      << "  threadShared[lindex] = threadSum;\n"
+      << "  thread_shared[lindex] = thread_sum;\n"
       << "  workgroupBarrier();\n"
 
       // Reduce to find the sum of exponentials
-      << "  for (var currSize = wg >> 1; currSize > 0; currSize = currSize >> 1) {\n"
-      << "    if (lindex < currSize) {\n"
-      << "      threadShared[lindex] = threadShared[lindex] + threadShared[lindex + currSize];\n"
+      << "  for (var curr_size = wg >> 1; curr_size > 0; curr_size = curr_size >> 1) {\n"
+      << "    if (lindex < curr_size) {\n"
+      << "      thread_shared[lindex] = thread_shared[lindex] + thread_shared[lindex + curr_size];\n"
       << "    }\n"
       << "    workgroupBarrier();\n"
       << "  }\n"
       << "  if (lindex == 0) {\n"
-      << "    rowSumShared = x_value_t(" << SumVector("threadShared[0]", components) << ");\n"
+      << "    row_sum_shared = x_value_t(" << SumVector("thread_shared[0]", components) << ");\n"
       << "  }\n"
       << "  workgroupBarrier();\n"
 
       // Calculate the final value for each element in the row
       << "  for (var col = lindex; col < cols; col += wg) {\n"
-      << "    let value = exp(getValue(row, col, row_stride) - rowMaxShared) / rowSumShared;\n"
+      << "    let value = exp(getValue(row, col, row_stride) - row_max_shared) / row_sum_shared;\n"
       << "    setValue(row, col, row_stride, value);\n"
       << "  }\n";
 
@@ -200,8 +200,10 @@ Status Softmax::ComputeInternal(ComputeContext& context) const {
   const int64_t components = GetMaxComponents(cols);
   const auto packedCols = cols / components;
   uint32_t WG = rows == 1 ? 256 : 64;
+  // check input tensor element type is float
+  const bool is_fp32 = input_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
 
-  SoftmaxProgram program{WG};
+  SoftmaxProgram program{WG, is_fp32};
   if (is_transpose_required) {
     program
         .AddInputs({{&transposed_input_tensor, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components)}})
