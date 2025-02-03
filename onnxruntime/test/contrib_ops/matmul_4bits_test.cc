@@ -394,6 +394,7 @@ TEST(MatMulNBits, Float32_Accuracy4) {
   TestMatMulNBitsTyped<float, Q4Bits, 100, 288, 1234, 16, 4>();
 }
 
+// TODO: enable and add more tests for 2bit development.
 TEST(MatMulNBits, DISABLED_Float32_Accuracy4_Q2) {
   TestMatMulNBitsTyped<float, Q2Bits, 2, 1, 1, 32, 4>();
 }
