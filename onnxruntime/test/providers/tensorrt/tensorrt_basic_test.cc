@@ -292,7 +292,7 @@ void RunWithOneSessionSingleThreadInference(PathString model_name, std::string s
 
   OrtTensorRTProviderOptionsV2 params;
   params.trt_engine_cache_enable = 1;
-  // params.trt_engine_cache_prefix = "TRTEP_Cache_Test";
+  params.trt_engine_cache_prefix = "TRTEP_Cache_Test";
   params.trt_dump_ep_context_model = 1;
   params.trt_ep_context_file_path = "EP_Context_model.onnx";
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
@@ -465,7 +465,6 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   PathString model_name = ToPathString(model_name_str);
   std::string graph_name = "EPContextNode_test";
   std::string sess_log_id = "EPContextNode_test";
-  // std::string ctx_model_str = "EP_Context_model.onnx";
   std::vector<int> dims = {1, 3, 2};
   CreateBaseModel(model_name, graph_name, dims);
 
@@ -528,7 +527,6 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   ASSERT_TRUE(status.IsOK());
   status = session_object.Initialize();
   ASSERT_TRUE(status.IsOK());
-  // ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_ep_context_file_path));
   // Engine cache TensorrtExecutionProvider_*.engine should be created
   ASSERT_TRUE(HasCacheFileWithPrefix("TensorrtExecutionProvider"));
   // EP_Context_model.onnx should be created
@@ -591,14 +589,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   ASSERT_TRUE(status.IsOK());
   status = session_object3.Initialize();
   ASSERT_TRUE(status.IsOK());
-  // auto new_engine_cache_path = std::filesystem::path(params3.trt_ep_context_file_path).append(params3.trt_engine_cache_path).string();
-  // Test engine cache path:
-  // "./context_model_folder/engine_cache_folder/TRT_engine_cache...engine" should be created
-  // ASSERT_TRUE(HasCacheFileWithPrefix(params3.trt_engine_cache_prefix, new_engine_cache_path));
-  // // Test context model path:
-  // // "./context_model_folder/EPContextNode_test_ctx.onnx" should be created
-  // ASSERT_TRUE(HasCacheFileWithPrefix("EPContextNode_test_ctx.onnx", params3.trt_ep_context_file_path));
-
+  
   // Test engine cache path:
   // Engine cache ./context_model_folder/TensorrtExecutionProvider_...engine" should be created
   ASSERT_TRUE(HasCacheFileWithPrefix("TensorrtExecutionProvider_", "context_model_folder"));

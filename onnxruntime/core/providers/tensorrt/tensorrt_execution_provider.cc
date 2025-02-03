@@ -2497,7 +2497,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
       const auto& node = graph.GetNode(node_index[i]);
       const bool is_context_node = node && !node->OpType().empty() && node->OpType() == "EPContext";
       if (is_context_node) {
-        SubGraph_t supported_node_vector(std::make_pair(std::vector<long unsigned int>{i}, true));
+        SubGraph_t supported_node_vector(std::make_pair(std::vector<size_t>{i}, true));
         std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, model_hash, subgraph_idx++);
         result.push_back(ComputeCapability::Create(std::move(sub_graph)));
       }
