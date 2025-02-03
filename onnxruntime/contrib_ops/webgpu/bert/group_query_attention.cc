@@ -169,7 +169,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   Tensor qSplit;
   Tensor kSplit;
   Tensor vSplit;
-  if (parameters.is_packed_qkv_) {
+  if (parameters.is_packed_qkv_ && do_rotary_) {
     qSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.hidden_size_}));
     kSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
     vSplit = context.CreateGPUTensor(query->DataType(), TensorShape({parameters.batch_size_, parameters.sequence_length_, parameters.kv_hidden_size_}));
@@ -185,7 +185,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   if (do_rotary_) {
     qRotary = context.CreateGPUTensor(query->DataType(), query->Shape());
     kRotary = context.CreateGPUTensor(key->DataType(), key->Shape());
-    auto pos_ids_shape = parameters.is_first_prompt_ ? TensorShape({1, 1}) : TensorShape({parameters.batch_size_, parameters.sequence_length_});
+    auto pos_ids_shape = TensorShape({parameters.batch_size_, parameters.sequence_length_});
     Tensor pos_ids = context.CreateGPUTensor(DataTypeImpl::GetType<int64_t>(), pos_ids_shape);
     if (!parameters.is_first_prompt_) {
       ORT_RETURN_IF_ERROR(GeneratePositionIDs(context, parameters, seqlens_k, &pos_ids));
