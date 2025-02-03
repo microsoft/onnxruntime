@@ -5,7 +5,6 @@
 
 import copy
 import itertools
-from typing import Dict, List, Set
 
 import onnx
 import sympy
@@ -30,14 +29,14 @@ class SortedGraph:
         input_shapes: the shapes of the model inputs. Can be numeric values or symbolic values.
     """
 
-    def __init__(self, model: ModelProto, input_shapes: List[List[sympy.Expr]]):
+    def __init__(self, model: ModelProto, input_shapes: list[list[sympy.Expr]]):
         self._model: ModelProto = model
         self._graph: GraphProto = model.graph
-        self._input_shapes: List[List[sympy.Expr]] = input_shapes
+        self._input_shapes: list[list[sympy.Expr]] = input_shapes
 
         # For elementwise graph outputs, when we group nodes to different kernels, if the target shape is different
         # from other nodes' target shape, even it can be broadcasted, we still need to create a new kernel for it.
-        self._elementwise_graph_outputs: Set[str] = set()
+        self._elementwise_graph_outputs: set[str] = set()
         graph_output_names = [output.name for output in self._graph.output]
         for node in self._graph.node:
             if is_elementwise_node(node):
@@ -46,12 +45,12 @@ class SortedGraph:
                 )
 
         # Topological sort the nodes in the graph.
-        self._sorted_nodes: List[NodeProto] = topological_sort(
+        self._sorted_nodes: list[NodeProto] = topological_sort(
             [input.name for input in self._graph.input] + [initializer.name for initializer in self._graph.initializer],
             self._graph.node,
         )
 
-        self._node_arg_infos: Dict[str, TensorInfo] = {}
+        self._node_arg_infos: dict[str, TensorInfo] = {}
         for idx, input in enumerate(self._graph.input):
             self._node_arg_infos[input.name] = TensorInfo(input.type.tensor_type.elem_type, self._input_shapes[idx])
         for initializer in self._graph.initializer:
@@ -70,7 +69,7 @@ class SortedGraph:
         initializers = {}
         for initializer in self._graph.initializer:
             initializers[initializer.name] = initializer
-        self._sorted_initializers: List[TensorProto] = []
+        self._sorted_initializers: list[TensorProto] = []
         for node in self._sorted_nodes:
             for input in node.input:
                 if input in initializers:
@@ -78,8 +77,8 @@ class SortedGraph:
                     initializers.pop(input)
 
         # Split nodes to constant nodes and non-constant nodes.
-        self._const_nodes: List[NodeProto] = [node for node in self._sorted_nodes if node.op_type == "Constant"]
-        self._sorted_nodes: List[NodeProto] = [node for node in self._sorted_nodes if node.op_type != "Constant"]
+        self._const_nodes: list[NodeProto] = [node for node in self._sorted_nodes if node.op_type == "Constant"]
+        self._sorted_nodes: list[NodeProto] = [node for node in self._sorted_nodes if node.op_type != "Constant"]
 
     def __str__(self):
         """
@@ -140,11 +139,11 @@ class SortedGraph:
         return str(self) == str(other)
 
     @property
-    def const_nodes(self) -> List[NodeProto]:
+    def const_nodes(self) -> list[NodeProto]:
         return self._const_nodes
 
     @property
-    def sorted_nodes(self) -> List[NodeProto]:
+    def sorted_nodes(self) -> list[NodeProto]:
         return self._sorted_nodes
 
     @property
@@ -152,11 +151,11 @@ class SortedGraph:
         return self._graph
 
     @property
-    def node_arg_infos(self) -> Dict[str, TensorInfo]:
+    def node_arg_infos(self) -> dict[str, TensorInfo]:
         return self._node_arg_infos
 
     @property
-    def elementwise_graph_outputs(self) -> Set[str]:
+    def elementwise_graph_outputs(self) -> set[str]:
         return self._elementwise_graph_outputs
 
     def _decompose(self):

@@ -2,6 +2,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 # Licensed under the MIT License.
+from __future__ import annotations
 
 import argparse
 import contextlib
@@ -126,6 +127,17 @@ def _openvino_verify_device_type(device_read):
         invalid_hetero_build()
 
     return device_read
+
+
+def _qnn_verify_library_kind(library_kind):
+    choices = ["shared_lib", "static_lib"]
+    if library_kind not in choices:
+        print("\nYou have specified an invalid library kind for QNN EP.")
+        print(f"The invalid library kind was: {library_kind}")
+        print("Provide a library kind from the following options: ", choices)
+        print(f"Example: --use_qnn {choices[0]}")
+        sys.exit("Incorrect build configuration")
+    return library_kind
 
 
 def parse_arguments():
@@ -451,9 +463,7 @@ def parse_arguments():
     parser.add_argument(
         "--apple_deploy_target",
         type=str,
-        help="Specify the minimum version of the target platform "
-        "(e.g. macOS or iOS)"
-        "This is only supported on MacOS",
+        help="Specify the minimum version of the target platform (e.g. macOS or iOS)This is only supported on MacOS",
     )
     # A 32-bit progress doesn't have enough memory to run all the tests in onnxruntime_test_all.
     # Mimalloc is incompatible with address sanitizer.
@@ -579,7 +589,14 @@ def parse_arguments():
     parser.add_argument("--use_jsep", action="store_true", help="Build with JavaScript kernels.")
     parser.add_argument("--use_webgpu", action="store_true", help="Build with WebGPU support.")
     parser.add_argument("--use_external_dawn", action="store_true", help="Treat Dawn as an external dependency.")
-    parser.add_argument("--use_qnn", action="store_true", help="Build with QNN support.")
+    parser.add_argument(
+        "--use_qnn",
+        nargs="?",
+        const="shared_lib",  # If provide --use_qnn without an arg, defaults to a shared library.
+        type=_qnn_verify_library_kind,
+        help="Build with QNN support. Specify 'shared_lib' or 'static_lib' to build QNN EP "
+        "as a shared or static library, respectively.",
+    )
     parser.add_argument("--qnn_home", help="Path to QNN SDK dir.")
     parser.add_argument("--use_rknpu", action="store_true", help="Build with RKNPU.")
     parser.add_argument("--use_preinstalled_eigen", action="store_true", help="Use pre-installed Eigen.")
@@ -764,6 +781,12 @@ def parse_arguments():
 
     parser.add_argument("--use_triton_kernel", action="store_true", help="Use triton compiled kernels")
     parser.add_argument("--use_lock_free_queue", action="store_true", help="Use lock-free task queue for threadpool.")
+
+    parser.add_argument(
+        "--enable_generic_interface",
+        action="store_true",
+        help="build ORT shared library and compatible bridge with primary EPs(tensorRT, OpenVino, Qnn, vitisai) but not tests",
+    )
 
     if not is_windows():
         parser.add_argument(
@@ -1025,6 +1048,12 @@ def generate_build_tree(
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER="
         + ("ON" if args.use_tensorrt_builtin_parser and not args.use_tensorrt_oss_parser else "OFF"),
+        # interface variables are used only for building onnxruntime/onnxruntime_shared.dll but not EPs
+        "-Donnxruntime_USE_TENSORRT_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
+        "-Donnxruntime_USE_CUDA_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
+        "-Donnxruntime_USE_OPENVINO_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
+        "-Donnxruntime_USE_VITISAI_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
+        "-Donnxruntime_USE_QNN_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         # set vars for migraphx
         "-Donnxruntime_USE_MIGRAPHX=" + ("ON" if args.use_migraphx else "OFF"),
         "-Donnxruntime_DISABLE_CONTRIB_OPS=" + ("ON" if args.disable_contrib_ops else "OFF"),
@@ -1248,8 +1277,7 @@ def generate_build_tree(
             cmake_args += ["-Donnxruntime_MPI_HOME=" + mpi_home]
         else:
             log.warning(
-                "mpi_home is supplied but use_mpi is set to false."
-                " Build will continue without linking MPI libraries."
+                "mpi_home is supplied but use_mpi is set to false. Build will continue without linking MPI libraries."
             )
 
     if nccl_home and os.path.exists(nccl_home):
@@ -1306,7 +1334,12 @@ def generate_build_tree(
             "-DANDROID_PLATFORM=android-" + str(args.android_api),
             "-DANDROID_ABI=" + str(args.android_abi),
             "-DANDROID_MIN_SDK=" + str(args.android_api),
+            "-DANDROID_USE_LEGACY_TOOLCHAIN_FILE=false",
         ]
+        if args.disable_rtti:
+            add_default_definition(cmake_extra_defines, "CMAKE_ANDROID_RTTI", "OFF")
+        if args.disable_exceptions:
+            add_default_definition(cmake_extra_defines, "CMAKE_ANDROID_EXCEPTIONS", "OFF")
         if not args.use_vcpkg:
             cmake_args.append("-DCMAKE_TOOLCHAIN_FILE=" + android_toolchain_cmake_path)
         else:
@@ -1352,6 +1385,13 @@ def generate_build_tree(
             raise BuildError("qnn_home=" + qnn_home + " not valid." + " qnn_home paths must be specified and valid.")
         cmake_args += ["-Donnxruntime_USE_QNN=ON"]
 
+        if args.use_qnn == "static_lib":
+            cmake_args += ["-Donnxruntime_BUILD_QNN_EP_STATIC_LIB=ON"]
+        if args.android and args.use_qnn != "static_lib":
+            raise BuildError("Only support Android + QNN builds with QNN EP built as a static library.")
+        if args.use_qnn == "static_lib" and args.enable_generic_interface:
+            raise BuildError("Generic ORT interface only supported with QNN EP built as a shared library.")
+
     if args.use_coreml:
         cmake_args += ["-Donnxruntime_USE_COREML=ON"]
 
@@ -1390,7 +1430,7 @@ def generate_build_tree(
         if not all(needed_args):
             raise BuildError(
                 "iOS/MacOS framework build on MacOS canceled due to missing arguments: "
-                + ", ".join(val for val, cond in zip(arg_names, needed_args) if not cond)
+                + ", ".join(val for val, cond in zip(arg_names, needed_args, strict=False) if not cond)
             )
         # note: this value is mainly used in framework_info.json file to specify the build osx type
         platform_name = "macabi" if args.macos == "Catalyst" else args.apple_sysroot
@@ -1508,6 +1548,12 @@ def generate_build_tree(
             "-Donnxruntime_USE_FULL_PROTOBUF=ON",
         ]
 
+    # When this flag is enabled, that means we only build ONNXRuntime shared library, expecting some compatible EP
+    # shared lib being build in a seperate process. So we skip the test for now as ONNXRuntime shared lib built under
+    # this flag is not expected to work alone
+    if args.enable_generic_interface:
+        cmake_args += ["-Donnxruntime_BUILD_UNIT_TESTS=OFF"]
+
     if args.enable_lazy_tensor:
         import torch
 
@@ -1594,7 +1640,7 @@ def generate_build_tree(
                 if args.parallel == 0:
                     cflags += ["/MP"]
                 else:
-                    cflags += ["/MP%d" % njobs]
+                    cflags += [f"/MP{njobs}"]
         # Setup default values for cflags/cxxflags/ldflags.
         # The values set here are purely for security and compliance purposes. ONNX Runtime should work fine without these flags.
         if (
@@ -2320,6 +2366,8 @@ def build_python_wheel(
             args.append("--use_rocm")
             if rocm_version:
                 args.append(f"--rocm_version={rocm_version}")
+            if use_migraphx:
+                args.append("--use_migraphx")
         elif use_migraphx:
             args.append("--use_migraphx")
         elif use_openvino:
@@ -2401,9 +2449,11 @@ def build_nuget_package(
     elif use_rocm:
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.ROCm"
     elif use_qnn:
+        if use_qnn != "shared_lib":
+            raise BuildError("Currently NuGet packages with QNN require QNN EP to be built as a shared library.")
         execution_provider = "/p:ExecutionProvider=qnn"
         package_name = "/p:OrtPackageId=Microsoft.ML.OnnxRuntime.QNN"
-    elif any(map(lambda x: "OrtPackageId=" in x, msbuild_extra_options)):
+    elif any("OrtPackageId=" in x for x in msbuild_extra_options):
         pass
     else:
         # we currently only allow building with mobile targets on Windows.
@@ -2624,6 +2674,9 @@ def main():
         # Disable ONNX Runtime's builtin memory checker
         args.disable_memleak_checker = True
 
+    if args.enable_generic_interface:
+        args.test = False
+
     # If there was no explicit argument saying what to do, default
     # to update, build and test (for native builds).
     if not (args.update or args.clean or args.build or args.test or args.gen_doc):
@@ -2727,7 +2780,10 @@ def main():
     source_dir = os.path.normpath(os.path.join(script_dir, "..", ".."))
 
     # if using cuda, setup cuda paths and env vars
-    cuda_home, cudnn_home = setup_cuda_vars(args)
+    cuda_home = ""
+    cudnn_home = ""
+    if args.use_cuda:
+        cuda_home, cudnn_home = setup_cuda_vars(args)
 
     mpi_home = args.mpi_home
     nccl_home = args.nccl_home
@@ -2740,10 +2796,14 @@ def main():
     armnn_home = args.armnn_home
     armnn_libs = args.armnn_libs
 
-    qnn_home = args.qnn_home
+    qnn_home = ""
+    if args.use_qnn:
+        qnn_home = args.qnn_home
 
     # if using tensorrt, setup tensorrt paths
-    tensorrt_home = setup_tensorrt_vars(args)
+    tensorrt_home = ""
+    if args.use_tensorrt:
+        tensorrt_home = setup_tensorrt_vars(args)
 
     # if using migraphx, setup migraphx paths
     migraphx_home = setup_migraphx_vars(args)
@@ -2828,9 +2888,9 @@ def main():
                     toolset = "host=" + host_arch + ",version=" + args.msvc_toolset
                 else:
                     toolset = "host=" + host_arch
-                if args.cuda_version:
+                if args.use_cuda and args.cuda_version:
                     toolset += ",cuda=" + args.cuda_version
-                elif args.cuda_home:
+                elif args.use_cuda and args.cuda_home:
                     toolset += ",cuda=" + args.cuda_home
                 if args.windows_sdk_version:
                     target_arch += ",version=" + args.windows_sdk_version

@@ -15,11 +15,7 @@
 class Stage1And2_DeepSpeedZeroOptimizer_0_9_2:
 
     def has_overflow_serial(self, params, is_grad_list=False):
-        for p in params:
-            if p.grad is not None and self._has_inf_or_nan(p.grad.data):
-                return True
-
-        return False
+        return any(p.grad is not None and self._has_inf_or_nan(p.grad.data) for p in params)
 
 
     def get_grad_norm_direct(self, gradients, params, norm_type=2):
@@ -52,7 +48,7 @@ class Stage1And2_DeepSpeedZeroOptimizer_0_9_2:
             total_norm = 0.0
             # if dist.get_rank() == 0:
             #    logger.info(f"Total Norm beginning {total_norm}")
-            for g, p in zip(gradients, params):
+            for g, p in zip(gradients, params, strict=False):
                 # Pipeline parallelism may replicate parameters. Avoid multi-counting.
                 if hasattr(p, PIPE_REPLICATED) and p.ds_pipe_replicated:
                     continue

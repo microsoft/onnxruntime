@@ -4,10 +4,10 @@
 #pragma once
 #include <memory>
 #include <vector>
-#include "QnnTypes.h"
-#include "core/common/common.h"
 #include <gsl/gsl>
-#include "core/framework/node_unit.h"
+
+#include "core/providers/qnn/ort_api.h"
+#include "QnnTypes.h"
 
 namespace onnxruntime {
 namespace qnn {

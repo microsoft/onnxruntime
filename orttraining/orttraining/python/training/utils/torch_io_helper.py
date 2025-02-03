@@ -6,7 +6,7 @@
 import copy
 import warnings
 from collections import OrderedDict, abc
-from typing import List, Mapping, Optional, Sequence, Tuple, Union
+from collections.abc import Mapping, Sequence
 
 import torch
 
@@ -37,36 +37,36 @@ class PrimitiveType:
 
 
 # Data types supported as model inputs and outputs.
-ORTModelInputOutputType = Union[
-    None,
-    str,
-    int,
-    bool,
-    float,
-    torch.Tensor,
-    Sequence["ORTModelInputOutputType"],
-    Mapping[str, "ORTModelInputOutputType"],
-]
+ORTModelInputOutputType = (
+    str
+    | int
+    | bool
+    | float
+    | torch.Tensor
+    | Sequence["ORTModelInputOutputType"]
+    | Mapping[str, "ORTModelInputOutputType"]
+    | None
+)
 
 
 class _TensorStub:
     """Tensor stub class used to represent model's input or output"""
 
-    __slots__ = ["tensor_idx", "name", "dtype", "shape", "shape_dims"]
+    __slots__ = ["dtype", "name", "shape", "shape_dims", "tensor_idx"]
 
     def __init__(
         self,
         tensor_idx: int,
-        name: Optional[str] = None,
-        dtype: Optional[str] = None,
+        name: str | None = None,
+        dtype: str | None = None,
         shape=None,
-        shape_dims: Optional[int] = None,
+        shape_dims: int | None = None,
     ):
         self.tensor_idx = tensor_idx
-        self.name: Optional[str] = name
-        self.dtype: Optional[str] = dtype
+        self.name: str | None = name
+        self.dtype: str | None = dtype
         self.shape = shape
-        self.shape_dims: Optional[int] = shape_dims  # r.g. rank.
+        self.shape_dims: int | None = shape_dims  # r.g. rank.
 
     def __repr__(self) -> str:
         result = "_TensorStub("
@@ -108,13 +108,9 @@ class _TensorStub:
 
 
 # Data schema used to represent model's input or output.
-ORTModelInputOutputSchemaType = Union[
-    None,
-    str,
-    _TensorStub,
-    Sequence["ORTModelInputOutputSchemaType"],
-    Mapping[str, "ORTModelInputOutputSchemaType"],
-]
+ORTModelInputOutputSchemaType = (
+    str | _TensorStub | Sequence["ORTModelInputOutputSchemaType"] | Mapping[str, "ORTModelInputOutputSchemaType"] | None
+)
 
 
 def _warn_of_constant_inputs(data):
@@ -126,8 +122,8 @@ def _warn_of_constant_inputs(data):
 
 @nvtx_function_decorator
 def extract_data_and_schema(
-    data: ORTModelInputOutputType, constant_as_tensor=False, device: Optional[torch.device] = None
-) -> Tuple[List[torch.Tensor], ORTModelInputOutputSchemaType]:
+    data: ORTModelInputOutputType, constant_as_tensor=False, device: torch.device | None = None
+) -> tuple[list[torch.Tensor], ORTModelInputOutputSchemaType]:
     """Extract the data schema by replacing every torch.Tensor value with _TensorStub, and return all tensors in
     a list.
 
@@ -235,7 +231,7 @@ def extract_data_and_schema(
 
 @nvtx_function_decorator
 def unflatten_data_using_schema(
-    data: List[torch.Tensor], schema: ORTModelInputOutputSchemaType
+    data: list[torch.Tensor], schema: ORTModelInputOutputSchemaType
 ) -> ORTModelInputOutputType:
     """Follows the schema to generate an output that is expected by the user.
 
@@ -280,7 +276,7 @@ def unflatten_data_using_schema(
 
     """
 
-    def _replace_stub_with_tensor_value(data_schema: ORTModelInputOutputSchemaType, data: List[torch.Tensor]):
+    def _replace_stub_with_tensor_value(data_schema: ORTModelInputOutputSchemaType, data: list[torch.Tensor]):
         # Recursively traverse across user_output and replace all _TensorStub
         # with torch.Tensor values from outputs following output_idx
 
@@ -291,9 +287,9 @@ def unflatten_data_using_schema(
         elif PrimitiveType.is_primitive_type(data_schema):
             return data_schema
         elif isinstance(data_schema, _TensorStub):
-            assert isinstance(
-                data[data_schema.tensor_idx], torch.Tensor
-            ), f"Expecting torch.Tensor, got {type(data[data_schema.tensor_idx])}"
+            assert isinstance(data[data_schema.tensor_idx], torch.Tensor), (
+                f"Expecting torch.Tensor, got {type(data[data_schema.tensor_idx])}"
+            )
             return data[data_schema.tensor_idx]
         elif isinstance(data_schema, abc.Sequence):
             sequence_type = type(data_schema)

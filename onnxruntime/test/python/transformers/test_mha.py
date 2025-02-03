@@ -11,7 +11,6 @@ import concurrent.futures
 import itertools
 import os
 import unittest
-from typing import Dict, List, Optional
 
 import numpy
 import torch
@@ -102,9 +101,9 @@ def attention_reference(
     query: torch.Tensor,
     key: torch.Tensor,
     value: torch.Tensor,
-    scale: Optional[float] = None,
-    attn_bias: Optional[torch.Tensor] = None,
-    mask: Optional[torch.Tensor] = None,
+    scale: float | None = None,
+    attn_bias: torch.Tensor | None = None,
+    mask: torch.Tensor | None = None,
     verbose: bool = False,
 ) -> torch.Tensor:
     """Reference implementation of SDPA
@@ -171,26 +170,26 @@ def attention_reference(
 
 def mha_with_past_reference(
     config: MultiHeadAttentionConfig,
-    past_k: Optional[torch.Tensor],
-    past_v: Optional[torch.Tensor],
+    past_k: torch.Tensor | None,
+    past_v: torch.Tensor | None,
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    scale: Optional[float] = None,
-    attn_bias: Optional[torch.Tensor] = None,
-    mask: Optional[torch.Tensor] = None,
+    scale: float | None = None,
+    attn_bias: torch.Tensor | None = None,
+    mask: torch.Tensor | None = None,
 ):
     assert config.kv_sequence_length == config.sequence_length
     assert config.use_kv_cache
     if past_k is not None:
-        assert (
-            past_k.dim() == 4 and k.dim() == 4 and past_k.size(1) == k.size(1)
-        ), f"expect BNSH format: {past_k.shape=} {k.shape=}"
+        assert past_k.dim() == 4 and k.dim() == 4 and past_k.size(1) == k.size(1), (
+            f"expect BNSH format: {past_k.shape=} {k.shape=}"
+        )
 
     if past_v is not None:
-        assert (
-            past_v.dim() == 4 and v.dim() == 4 and past_v.size(1) == v.size(1)
-        ), f"expect BNSH format: {past_v.shape=} {v.shape=}"
+        assert past_v.dim() == 4 and v.dim() == 4 and past_v.size(1) == v.size(1), (
+            f"expect BNSH format: {past_v.shape=} {v.shape=}"
+        )
 
     present_k = torch.cat((past_k, k), dim=2) if past_k is not None else k
     present_v = torch.cat((past_v, v), dim=2) if past_v is not None else v
@@ -533,7 +532,6 @@ def causal_mask(seqlen_q, seqlen_k, query_padding_mask=None, key_padding_mask=No
 
 
 def merge_padding_and_causal_masks(config):
-
     q_mask, k_mask, mask = config.right_side_padding_masks()
     if config.causal:
         query_padding_mask = q_mask.reshape(config.batch_size, config.sequence_length)
@@ -649,7 +647,7 @@ def parity_check_mha(
 
 
 def parity_check_mha_multi_threading(
-    test_inputs: List[Dict],
+    test_inputs: list[dict],
     rtol: float = 1e-3,
     atol: float = 1e-3,
     attention_kernel=SdpaKernel.DEFAULT,
