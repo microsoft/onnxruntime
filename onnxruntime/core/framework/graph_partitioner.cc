@@ -137,8 +137,7 @@ struct GetCapabilityForEPParams {
 auto get_capabilities = [](const IExecutionProvider& ep,
                            const GraphViewer& graph_viewer,
                            const IExecutionProvider::IKernelLookup& kernel_lookup) {
-  std::vector<std::unique_ptr<ComputeCapability>> capabilities;
-  capabilities = ep.GetCapability(graph_viewer, kernel_lookup);
+  auto capabilities = ep.GetCapability(graph_viewer, kernel_lookup);
 
   // In theory an EP could return an empty capability. Remove those.
   capabilities.erase(std::remove_if(capabilities.begin(), capabilities.end(),

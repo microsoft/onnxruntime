@@ -204,8 +204,6 @@ common::Status LoadDynamicLibraryFromProvider(onnxruntime::PathString library_na
 }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 
-const GraphTransformerManager* graph_transformer_manager;
-
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 #pragma warning(disable : 26436)

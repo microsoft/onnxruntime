@@ -58,19 +58,6 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     concurrency::ThreadPool* intra_op_thread_pool = nullptr,
     std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors = nullptr);
 
-InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForEP(
-    const SessionOptions& session_options,
-    const IExecutionProvider& cpu_execution_provider, /*required by constant folding*/
-    const logging::Logger& logger);
-
-/*
-InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForEP(
-    TransformerLevel level,
-    const SessionOptions& session_options,
-    const IExecutionProvider& cpu_execution_provider,
-    const logging::Logger& logger);
-*/
-
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

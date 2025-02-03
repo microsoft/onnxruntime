@@ -647,7 +647,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
     :
 #if !defined(ORT_MINIMAL_BUILD)
       graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
-      ep_graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
 #endif
       environment_(session_env) {
   // Initialize assets of this session instance
@@ -661,7 +660,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
     :
 #if !defined(ORT_MINIMAL_BUILD)
       graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
-      ep_graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
 #endif
       external_intra_op_thread_pool_(external_intra_op_thread_pool),
       external_inter_op_thread_pool_(external_inter_op_thread_pool),
@@ -675,7 +673,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
                                    const PathString& model_uri)
     : model_location_(model_uri),
       graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
-      ep_graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
       environment_(session_env) {
   auto status = Model::Load(model_location_, model_proto_);
   ORT_ENFORCE(status.IsOK(), "Given model could not be parsed while creating inference session. Error message: ",
@@ -696,7 +693,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options,
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    std::istream& model_istream)
     : graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
-      ep_graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
       environment_(session_env) {
   Status st = Model::Load(model_istream, &model_proto_);
   ORT_ENFORCE(st.IsOK(), "Could not parse model successfully while constructing the inference session");
@@ -708,7 +704,6 @@ InferenceSession::InferenceSession(const SessionOptions& session_options, const 
 InferenceSession::InferenceSession(const SessionOptions& session_options, const Environment& session_env,
                                    const void* model_data, int model_data_len)
     : graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
-      ep_graph_transformer_mgr_(session_options.max_num_graph_transformation_steps),
       environment_(session_env) {
   const bool result = model_proto_.ParseFromArray(model_data, model_data_len);
   ORT_ENFORCE(result, "Could not parse model successfully while constructing the inference session");
@@ -1213,7 +1208,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   // 7. insert copy nodes (required transformer).
 
   // Run Ahead Of time function inlining
-  GraphPartitioner partitioner(kernel_registry_manager_, ep_graph_transformer_mgr_, execution_providers_);
+  GraphPartitioner partitioner(kernel_registry_manager_, execution_providers_);
   if (const bool disable_aot_function_inlining =
           session_options_.config_options.GetConfigOrDefault(
               kOrtSessionOptionsDisableAheadOfTimeFunctionInlining, "0") == "1";
@@ -1604,7 +1599,6 @@ namespace {
 Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
                                const ExecutionProviders& providers,
                                KernelRegistryManager& kernel_registry_manager,
-                               const onnxruntime::GraphTransformerManager& graph_transformer_manager,
                                SessionState& session_state,
                                const ConfigOptions& config_options,
                                const logging::Logger& logger) {
@@ -1624,7 +1618,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-  GraphPartitioner partitioner(kernel_registry_manager, graph_transformer_manager, providers);
+  GraphPartitioner partitioner(kernel_registry_manager, providers);
   ORT_RETURN_IF_ERROR(partitioner.Partition(graph,
                                             session_state.GetMutableFuncMgr(),
                                             transform_layout_fn,
@@ -2076,7 +2070,7 @@ common::Status InferenceSession::Initialize() {
                           "Loading anything other than ORT format models is not enabled in this build."));
 #endif  // !defined(ORT_MINIMAL_BUILD)
     } else {
-      ORT_RETURN_IF_ERROR_SESSIONID_(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_, graph_transformer_mgr_,
+      ORT_RETURN_IF_ERROR_SESSIONID_(PartitionOrtFormatModel(graph, execution_providers_, kernel_registry_manager_,
                                                              *session_state_, session_options_.config_options, *session_logger_));
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -3297,47 +3291,6 @@ common::Status InferenceSession::AddPredefinedTransformers(
   }
   return Status::OK();
 }
-
-// Registers all the predefined transformers for EP
-common::Status InferenceSession::RegisterPredefinedOptimizersForEP(
-    GraphOptimizerRegistry& optimizer_registry,
-    const logging::Logger& logger) const {
-  const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
-    
-  // TODO: Apply optimization level here if we later decide to do so
-  auto transformers_to_register = [&]() {
-    return optimizer_utils::GenerateTransformersForEP(session_options_, cpu_ep, logger);
-  }();
-
-  for (auto& entry : transformers_to_register) {
-    ORT_RETURN_IF_ERROR(optimizer_registry.Register(std::move(entry)));
-  }
-  return Status::OK();
-}
-
-/*
-// Registers all the predefined transformers for EP with transformer manager
-common::Status InferenceSession::AddPredefinedTransformersForEP(
-    GraphTransformerManager& transformer_manager,
-    TransformerLevel graph_optimization_level,
-    const logging::Logger& logger) const {
-  const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
-  for (int i = static_cast<int>(TransformerLevel::Level1); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
-    TransformerLevel level = static_cast<TransformerLevel>(i);
-    if (graph_optimization_level >= level) {
-      // Generate and register transformers for level
-      auto transformers_to_register = [&]() {
-        return optimizer_utils::GenerateTransformersForEP(level, session_options_, cpu_ep, logger);
-      }();
-
-      for (auto& entry : transformers_to_register) {
-        ORT_RETURN_IF_ERROR(transformer_manager.Register(std::move(entry), level));
-      }
-    }
-  }
-  return Status::OK();
-}
-*/
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
