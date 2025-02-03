@@ -7,7 +7,11 @@
 
   <!-- General app properties -->
   <PropertyGroup>
-    <TargetFrameworks>net8.0-android;net8.0-ios;net8.0-maccatalyst</TargetFrameworks>
+    <!-- Currently running into issues with net8.0-ios and net8.0-maccatalyst that is blocking
+    packaging pipelines. Disabling those targets until the issues are resolved. -->
+    <!-- <TargetFrameworks>net8.0-android;net8.0-ios;net8.0-maccatalyst</TargetFrameworks> -->
+
+    <TargetFrameworks>net8.0-android</TargetFrameworks>
     <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net8.0-windows10.0.19041.0</TargetFrameworks>
 
     <!-- Note for MacCatalyst:
