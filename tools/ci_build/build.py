@@ -1138,7 +1138,7 @@ def generate_build_tree(
         vcpkg_install_options = ["--x-feature=tests"]
         if args.use_xnnpack:
             vcpkg_install_options.append("--x-feature=xnnpack-ep")
-        
+
         # Find VCPKG's toolchain cmake file
         vcpkg_cmd_path = shutil.which("vcpkg")
         vcpkg_toolchain_path = None
@@ -1809,10 +1809,7 @@ def generate_build_tree(
         if args.use_vcpkg:
             env["VCPKG_KEEP_ENV_VARS"] = "TRT_UPLOAD_AUTH_TOKEN"
         run_subprocess(
-            [
-                *temp_cmake_args,
-                f"-DCMAKE_BUILD_TYPE={config}"
-            ],
+            [*temp_cmake_args, f"-DCMAKE_BUILD_TYPE={config}"],
             cwd=config_build_dir,
             cuda_home=cuda_home,
             env=env,
@@ -2528,8 +2525,6 @@ def build_nuget_package(
     # we have to use msbuild directly if including Xamarin targets as dotnet only supports MAUI (.net6)
     use_dotnet = sln != "OnnxRuntime.CSharp.sln"
 
-    
-
     # build csharp bindings and create nuget package for each config
     for config in configs:
         configuration = "/p:Configuration=" + config
@@ -2544,8 +2539,7 @@ def build_nuget_package(
         ort_build_dir = "/p:OnnxRuntimeBuildDirectory=" + native_dir
 
         run_subprocess(cmd_args, cwd=csharp_build_dir)
-    
-        
+
         if not use_winml:
             cmd_args = ["dotnet"] if use_dotnet else []
             cmd_args += [
@@ -2603,7 +2597,17 @@ def build_nuget_package(
         log.info(f"nuget package was created in the {config} build output directory.")
 
 
-def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt, use_dnnl, enable_training_apis, configs, msbuild_extra_options):
+def run_csharp_tests(
+    source_dir,
+    build_dir,
+    use_cuda,
+    use_openvino,
+    use_tensorrt,
+    use_dnnl,
+    enable_training_apis,
+    configs,
+    msbuild_extra_options,
+):
     # Currently only running tests on windows.
     if not is_windows():
         return
@@ -3115,7 +3119,7 @@ def main():
             args.use_dnnl,
             args.enable_training_apis,
             configs,
-            normalize_arg_list(args.msbuild_extra_options)
+            normalize_arg_list(args.msbuild_extra_options),
         )
 
     if args.gen_doc:
