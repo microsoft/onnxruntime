@@ -63,6 +63,7 @@ static void RunQDQGatherOpTest(const TestInputDef<float>& input_def,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   auto f32_model_builder = BuildOpTestCase<float, IndicesType>("Gather", {input_def}, {indices_def}, attrs);
   auto qdq_model_builder = BuildQDQGatherTestCase<QuantType, IndicesType>(input_def, indices_def, attrs,
@@ -178,6 +179,7 @@ static void RunOpTest(const std::string& op_type,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   // Runs model with a Q/DQ binary op and compares the outputs of the CPU and QNN EPs.
   RunQnnModelTest(BuildOpTestCase<InputType1, InputType2>(op_type, {input_def_1}, {input_defs_2}, attrs, op_domain),
