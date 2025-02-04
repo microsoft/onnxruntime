@@ -220,12 +220,14 @@ Module['jsepInit'] = (name, params) => {
 
     // This function is called from both JS and an EM_ASM block, it needs both a minifiable name and an explicit name.
     Module['jsepReleaseTensorId'] = Module.jsepReleaseTensorId;
+    Module['jsepUploadTensor'] = Module.jsepUploadTensor;
 
     // Functions called from JS also need to have explicit names.
     const backend = Module.jsepBackend;
     Module['jsepOnRunStart'] = sessionId => {
       return backend['onRunStart'](sessionId);
     };
+    Module['jsepOnRunEnd'] = backend['onRunEnd'].bind(backend);
     Module['jsepRegisterMLContext'] = (sessionId, mlContext) => {
       backend['registerMLContext'](sessionId, mlContext);
     };
@@ -235,8 +237,8 @@ Module['jsepInit'] = (name, params) => {
     Module['jsepCreateMLTensorDownloader'] = (tensorId, type) => {
       return backend['createMLTensorDownloader'](tensorId, type);
     }
-    Module['jsepRegisterMLTensor'] = (tensor, dataType, shape) => {
-      return backend['registerMLTensor'](tensor, dataType, shape);
+    Module['jsepRegisterMLTensor'] = (sessionId, tensor, dataType, shape) => {
+      return backend['registerMLTensor'](sessionId, tensor, dataType, shape);
     };
     Module['jsepCreateMLContext'] = (optionsOrGpuDevice) => {
       return backend['createMLContext'](optionsOrGpuDevice);
@@ -245,5 +247,9 @@ Module['jsepInit'] = (name, params) => {
       return backend['registerMLConstant'](
           externalFilePath, dataOffset, dataLength, builder, desc, Module.MountedFiles);
     };
+    Module['jsepRegisterGraphInput'] = backend['registerGraphInput'].bind(backend);
+    Module['jsepIsGraphInput'] = backend['isGraphInput'].bind(backend);
+
+    Module['jsepCreateTemporaryTensor'] = backend['createTemporaryTensor'].bind(backend);
   }
 };

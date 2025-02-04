@@ -31,6 +31,7 @@ export declare namespace JSEP {
   type ReserveTensorIdFunction = () => number;
   type ReleaseTensorIdFunction = (tensorId: number) => void;
   type EnsureTensorFunction = (
+    sessionId: number | undefined,
     tensorId: number,
     dataType: DataType,
     shape: readonly number[],
@@ -168,6 +169,13 @@ export declare namespace JSEP {
     shouldTransferToMLTensor: boolean;
 
     /**
+     * [exported from pre-jsep.js] Called when InferenceSession.run finished. This function will be called after
+     * _OrtRun[WithBinding]() is called.
+     * @param sessionId - specify the session ID.
+     */
+    jsepOnRunEnd: (sessionId: number) => void;
+
+    /**
      * [exported from pre-jsep.js] Register MLContext for a session.
      * @param sessionId - specify the session ID.
      * @param context - specify the MLContext.
@@ -187,13 +195,20 @@ export declare namespace JSEP {
     jsepReleaseTensorId: (tensorId: number) => void;
     /**
      * [exported from pre-jsep.js] Ensure that an MLTensor of a given type and shape exists for a MLTensor ID.
+     * @param sessionId - specify the session ID or current active session ID if undefined.
      * @param tensorId - specify the MLTensor ID.
      * @param onnxDataType - specify the data type.
      * @param shape - specify the dimensions (WebNN shape) of the tensor.
      * @param copyOld - specify whether to copy the old tensor if a new tensor was created.
      * @returns the MLTensor associated with the tensor ID.
      */
-    jsepEnsureTensor: (tensorId: number, dataType: DataType, shape: number[], copyOld: boolean) => Promise<MLTensor>;
+    jsepEnsureTensor: (
+      sessionId: number | undefined,
+      tensorId: number,
+      dataType: DataType,
+      shape: number[],
+      copyOld: boolean,
+    ) => Promise<MLTensor>;
     /**
      * [exported from pre-jsep.js] Upload data to an MLTensor.
      * @param tensorId - specify the MLTensor ID.
@@ -219,12 +234,18 @@ export declare namespace JSEP {
     ) => () => Promise<Tensor.DataTypeMap[Tensor.MLTensorDataTypes]>;
     /**
      * [exported from pre-jsep.js] Registers an external MLTensor to a session.
+     * @param sessionId - specify the session ID.
      * @param tensor - specify the MLTensor.
      * @param dataType - specify the data type.
      * @param dimensions - specify the dimensions.
      * @returns the MLTensor ID for the external MLTensor.
      */
-    jsepRegisterMLTensor: (tensor: MLTensor, onnxDataType: DataType, dimensions: readonly number[]) => number;
+    jsepRegisterMLTensor: (
+      sessionId: number,
+      tensor: MLTensor,
+      onnxDataType: DataType,
+      dimensions: readonly number[],
+    ) => number;
 
     /**
      * [exported from pre-jsep.js] Create an MLContext from a GPUDevice or MLContextOptions.
@@ -249,6 +270,27 @@ export declare namespace JSEP {
       builder: MLGraphBuilder,
       desc: MLOperandDescriptor,
     ): MLOperand;
+
+    /**
+     * [exported from pre-jsep.js] Register a WebNN graph input.
+     * @param inputName - specify the input name.
+     */
+    jsepRegisterGraphInput: (inputName: string) => void;
+    /**
+     * [exported from pre-jsep.js] Check if a graph input is a WebNN graph input.
+     * @param sessionId - specify the session ID.
+     * @param inputName - specify the input name.
+     * @returns whether the input is a WebNN graph input.
+     */
+    jsepIsGraphInput: (sessionId: number, inputName: string) => boolean;
+    /**
+     * [exported from pre-jsep.js] Create a temporary MLTensor for a session.
+     * @param sessionId - specify the session ID.
+     * @param dataType - specify the data type.
+     * @param shape - specify the shape.
+     * @returns the MLTensor ID for the temporary MLTensor.
+     */
+    jsepCreateTemporaryTensor: (sessionId: number, dataType: DataType, shape: readonly number[]) => Promise<number>;
   }
 }
 
