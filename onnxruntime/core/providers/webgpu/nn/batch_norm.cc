@@ -11,36 +11,36 @@
 namespace onnxruntime {
 namespace webgpu {
 
-#define WEBGPU_BATCH_NORM_VERSIONED_KERNEL(start, end, domain) \
-  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                           \
-      BatchNormalization,                                      \
-      domain,                                                  \
-      start,                                                   \
-      end,                                                     \
-      kWebGpuExecutionProvider,                                \
-      (*KernelDefBuilder::Create())                            \
-          .TypeConstraint("T", WebGpuSupportedFloatTypes()),   \
-      BatchNormalization);
+#define WEBGPU_BATCH_NORM_VERSIONED_KERNEL(start, end, domain, is_nhwc) \
+  ONNX_OPERATOR_VERSIONED_KERNEL_EX(                                    \
+      BatchNormalization,                                               \
+      domain,                                                           \
+      start,                                                            \
+      end,                                                              \
+      kWebGpuExecutionProvider,                                         \
+      (*KernelDefBuilder::Create())                                     \
+          .TypeConstraint("T", WebGpuSupportedFloatTypes()),            \
+      BatchNormalization<is_nhwc>);
 
-#define WEBGPU_BATCH_NORM_KERNEL(version, domain)            \
-  ONNX_OPERATOR_KERNEL_EX(                                   \
-      BatchNormalization,                                    \
-      domain,                                                \
-      version,                                               \
-      kWebGpuExecutionProvider,                              \
-      (*KernelDefBuilder::Create())                          \
-          .TypeConstraint("T", WebGpuSupportedFloatTypes()), \
-      BatchNormalization);
+#define WEBGPU_BATCH_NORM_KERNEL(version, domain, is_nhwc)              \
+  ONNX_OPERATOR_KERNEL_EX(                                              \
+      BatchNormalization,                                               \
+      domain,                                                           \
+      version,                                                          \
+      kWebGpuExecutionProvider,                                         \
+      (*KernelDefBuilder::Create())                                     \
+          .TypeConstraint("T", WebGpuSupportedFloatTypes()),            \
+      BatchNormalization<is_nhwc>);
 
-WEBGPU_BATCH_NORM_VERSIONED_KERNEL(7, 8, kOnnxDomain)
-WEBGPU_BATCH_NORM_VERSIONED_KERNEL(9, 13, kOnnxDomain)
-WEBGPU_BATCH_NORM_VERSIONED_KERNEL(14, 14, kOnnxDomain)
-WEBGPU_BATCH_NORM_KERNEL(15, kOnnxDomain)
+WEBGPU_BATCH_NORM_VERSIONED_KERNEL(7, 8, kOnnxDomain, false)
+WEBGPU_BATCH_NORM_VERSIONED_KERNEL(9, 13, kOnnxDomain, false)
+WEBGPU_BATCH_NORM_VERSIONED_KERNEL(14, 14, kOnnxDomain, false)
+WEBGPU_BATCH_NORM_KERNEL(15, kOnnxDomain, false)
 
-WEBGPU_BATCH_NORM_VERSIONED_KERNEL(7, 8, kMSInternalNHWCDomain)
-WEBGPU_BATCH_NORM_VERSIONED_KERNEL(9, 13, kMSInternalNHWCDomain)
-WEBGPU_BATCH_NORM_VERSIONED_KERNEL(14, 14, kMSInternalNHWCDomain)
-WEBGPU_BATCH_NORM_KERNEL(15, kMSInternalNHWCDomain)
+WEBGPU_BATCH_NORM_VERSIONED_KERNEL(7, 8, kMSInternalNHWCDomain, true)
+WEBGPU_BATCH_NORM_VERSIONED_KERNEL(9, 13, kMSInternalNHWCDomain, true)
+WEBGPU_BATCH_NORM_VERSIONED_KERNEL(14, 14, kMSInternalNHWCDomain, true)
+WEBGPU_BATCH_NORM_KERNEL(15, kMSInternalNHWCDomain, true)
 
 Status BatchNormalizationProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& input_tensor = shader.AddInput("input_tensor", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
@@ -57,14 +57,14 @@ Status BatchNormalizationProgram::GenerateShaderCode(ShaderHelper& shader) const
     if (input_tensor.Rank() == 1) {
       shader.MainFunctionBody() << "  let cOffset = 0u;\n";
     } else {
-      if (format_.compare("NHWC") == 0) {
+      if (format_ == DataLayout::NHWC) {
         shader.MainFunctionBody() << "  let cOffset = outputIndices[" << input_tensor.Rank() - 1 << "] / " << components_ << ";\n";
       } else {
         shader.MainFunctionBody() << "  let cOffset = outputIndices[1];\n";
       }
     }
   } else {
-    if (format_.compare("NCHW") == 0) {
+    if (format_ == DataLayout::NCHW) {
       shader.MainFunctionBody() << "  " << output.IndicesSet("outputIndices", "0", "0") << "\n"
                                 << "  let cOffset = " << output.IndicesToOffset("outputIndices") << ";\n";
     } else {
@@ -90,7 +90,8 @@ Status BatchNormalizationProgram::GenerateShaderCode(ShaderHelper& shader) const
   return Status::OK();
 }
 
-Status BatchNormalization::ComputeInternal(ComputeContext& context) const {
+template <bool is_nhwc>
+Status BatchNormalization<is_nhwc>::ComputeInternal(ComputeContext& context) const {
   if (training_mode_) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "BatchNormalization trainingMode is not supported yet.");
   }
@@ -118,7 +119,7 @@ Status BatchNormalization::ComputeInternal(ComputeContext& context) const {
   const auto* input_mean = context.Input<Tensor>(3);
   const auto* input_var = context.Input<Tensor>(4);
 
-  ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(input_tensor, scale, B, input_mean, input_var, spatial_ == 1, format_.compare("NHWC") == 0));
+  ORT_RETURN_IF_ERROR(BatchNormHelper::ValidateInputs(input_tensor, scale, B, input_mean, input_var, spatial_ == 1, format_ == DataLayout::NHWC));
 
   BatchNormalizationProgram program{epsilon_, spatial_, format_, static_cast<int64_t>(components)};
   program

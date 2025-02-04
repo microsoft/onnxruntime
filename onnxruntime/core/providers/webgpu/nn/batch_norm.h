@@ -11,7 +11,7 @@ namespace webgpu {
 
 class BatchNormalizationProgram final : public Program<BatchNormalizationProgram> {
  public:
-  BatchNormalizationProgram(float epsilon, int64_t spatial, std::string format, int64_t components) : Program{"BatchNormalization"},
+  BatchNormalizationProgram(float epsilon, int64_t spatial, DataLayout format, int64_t components) : Program{"BatchNormalization"},
                                                                                                       epsilon_{epsilon},
                                                                                                       spatial_{spatial},
                                                                                                       format_{format},
@@ -24,10 +24,11 @@ class BatchNormalizationProgram final : public Program<BatchNormalizationProgram
  private:
   float epsilon_;
   int64_t spatial_;
-  std::string format_;
+  DataLayout format_;
   int64_t components_;
 };
 
+template <bool is_nhwc>
 class BatchNormalization final : public WebGpuKernel {
  public:
   BatchNormalization(const OpKernelInfo& info) : WebGpuKernel(info) {
@@ -36,7 +37,7 @@ class BatchNormalization final : public WebGpuKernel {
     spatial_ = info.GetAttrOrDefault<int64_t>("spatial", 1);
     training_mode_ = info.GetAttrOrDefault<int64_t>("training_mode", 0);
     // NCHW for ai.onnx domain, NHWC for com.ms.internal.nhwc domain
-    format_ = info.GetAttrOrDefault<std::string>("format", "NHWC");
+    format_ = is_nhwc ? DataLayout::NHWC : DataLayout::NCHW;
   }
 
   Status ComputeInternal(ComputeContext& context) const override;
@@ -46,7 +47,7 @@ class BatchNormalization final : public WebGpuKernel {
   float momentum_;
   int64_t spatial_;
   int64_t training_mode_;
-  std::string format_;
+  DataLayout format_;
 };
 
 }  // namespace webgpu
