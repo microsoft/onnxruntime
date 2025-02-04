@@ -698,12 +698,6 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetOptimizedModelFilePath(c
 }
 
 template <typename T>
-inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetExternalDataFolderPath(const ORTCHAR_T* external_data_folder_path) {
-  ThrowOnError(GetApi().SetExternalDataFolderPath(this->p_, external_data_folder_path));
-  return *this;
-}
-
-template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::EnableProfiling(const ORTCHAR_T* profile_file_prefix) {
   ThrowOnError(GetApi().EnableProfiling(this->p_, profile_file_prefix));
   return *this;

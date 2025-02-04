@@ -99,12 +99,6 @@ ORT_API_STATUS_IMPL(OrtApis::SetOptimizedModelFilePath, _In_ OrtSessionOptions* 
   return nullptr;
 }
 
-// set external data folder path if the model is loaded from memory buffer
-ORT_API_STATUS_IMPL(OrtApis::SetExternalDataFolderPath, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* external_data_folder_path) {
-  options->value.external_data_folder_path = external_data_folder_path;
-  return nullptr;
-}
-
 // enable profiling for this session.
 ORT_API_STATUS_IMPL(OrtApis::EnableProfiling, _In_ OrtSessionOptions* options, _In_ const ORTCHAR_T* profile_file_prefix) {
   options->value.enable_profiling = true;

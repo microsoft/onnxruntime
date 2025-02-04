@@ -4782,16 +4782,6 @@ struct OrtApi {
    */
   ORT_API2_STATUS(SetEpDynamicOptions, _Inout_ OrtSession* sess, _In_reads_(kv_len) const char* const* keys,
                   _In_reads_(kv_len) const char* const* values, _In_ size_t kv_len);
-
-  /** \brief Set external data folder path if loading model from memory
-   *
-   * \param[in] options OrtSessionOptions
-   * \param[in] external_data_folder_path external data folder path, expect all external data files in the same folder
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   */
-  ORT_API2_STATUS(SetExternalDataFolderPath, _Inout_ OrtSessionOptions* options,
-                  _In_ const ORTCHAR_T* external_data_folder_path);
 };
 
 /*

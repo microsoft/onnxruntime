@@ -238,8 +238,10 @@ TEST(CApiTest, TestLoadModelFromArrayWithExternalInitializersViaSetExternalDataP
 
   //  Dump the optimized model with external data so that it will unpack the external data from the loaded model
   so.SetOptimizedModelFilePath(optimized_file_path_t.c_str());
-  PathString external_data_folder(test_folder.begin(), test_folder.end());
-  so.SetExternalDataFolderPath(external_data_folder.c_str());
+
+  // set the model external file folder path
+  so.AddConfigEntry(kOrtSessionOptionsModelExternalInitializersFileFolderPath, test_folder.c_str());
+
   std::string opt_bin_file_name(optimized_model_file_name);
   opt_bin_file_name.replace(optimized_model_file_name.length() - 4, 4, "bin");
   so.SetGraphOptimizationLevel(GraphOptimizationLevel::ORT_DISABLE_ALL);

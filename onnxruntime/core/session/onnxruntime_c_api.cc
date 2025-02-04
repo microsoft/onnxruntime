@@ -2812,8 +2812,6 @@ static constexpr OrtApi ort_api_1_to_21 = {
 
     &OrtApis::SetEpDynamicOptions,
     // End of Version 20 - DO NOT MODIFY ABOVE (see above text for more information)
-
-    &OrtApis::SetExternalDataFolderPath,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

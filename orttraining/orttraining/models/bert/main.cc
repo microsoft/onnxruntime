@@ -43,7 +43,6 @@ static SessionOptions session_options = {
     ExecutionOrder::PRIORITY_BASED,    // execution_order
     false,                             // enable_profiling
     ORT_TSTR(""),                      // optimized_model_filepath
-    ORT_TSTR(""),                      // external_data_folder_path
     true,                              // enable_mem_pattern
     true,                              // enable_mem_reuse
     true,                              // enable_cpu_mem_arena
