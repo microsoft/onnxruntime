@@ -1401,6 +1401,8 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
                           "output=Y:expected 1 (3f800000), got 4 (40800000), diff: 3, tol=0.002 idx=24. 13 of 49 differ. CPU test passed."});
     broken_tests->insert({"convtranspose_group_2", "Segmentation fault (core dumped). CPU test passed."});
     broken_tests->insert({"convtranspose_group_2_image_3", "Segmentation fault (core dumped). CPU test passed."});
+    // Fails with QNN 2.31 on Windows x64 for CPU
+    broken_tests->insert({"gelu_tanh_2", "y:expected -0.0131778 (bc57e7d5), got -0.0136333 (bc5f5e38), diff: 0.000455472, tol=2.31778e-05."});
   }
 
 #ifdef DISABLE_CONTRIB_OPS
