@@ -205,11 +205,14 @@ def make_opt_nested_greater_or_equal() -> ModelProto:
     m = helper.make_model(
         graph,
         opset_imports=[
-            helper.make_opsetid("", 15),
+            # helper.make_opsetid("", 17),
+            helper.make_opsetid("", 14),
         ],
     )
 
     checker.check_model(m, full_check=True)
+
+    # onnx.save_model(m, "nested_control_flow_model_opset17.onnx")
 
     return m
 
@@ -222,6 +225,35 @@ def test_nested_optional_greater_or_equal(use_trt: bool = False) -> None:
         providers.insert(0, "TensorrtExecutionProvider")
     session = ort.InferenceSession(
         m.SerializeToString(),
+        providers=providers,
+    )
+
+    x1_name, x2_name, x3_name = (i.name for i in m.graph.input)
+    session.run(
+        [m.graph.output[0].name],
+        {
+            x1_name: None,
+            x2_name: np.ones((1, 2), dtype=np.float32),
+            x3_name: np.array([-1], dtype=np.float32),
+        },
+    )
+
+    return
+
+
+def test_nested_optional_greater_or_equal_with_ep_context() -> None:
+    m = make_opt_nested_greater_or_equal()
+
+    # Create session options and add config entries
+    so = SessionOptions()
+    so.add_config_entry("ep.context_enable", "1")
+    so.add_config_entry("ep.context_file_path", "EP_Context_model.onnx")
+    so.add_config_entry("ep.context_embed_mode", "0")
+
+    providers = ["TensorrtExecutionProvider"]
+    session = ort.InferenceSession(
+        m.SerializeToString(),
+        sess_options=so,
         providers=providers,
     )
 
@@ -253,6 +285,7 @@ class TestNestedControlFlowOpsGraph(unittest.TestCase):
             test_nested_optional_greater_or_equal(use_trt=False)
         if "TensorrtExecutionProvider" in ort.get_available_providers():
             test_nested_optional_greater_or_equal(use_trt=True)
+            test_nested_optional_greater_or_equal_with_ep_context()
 
 
 if __name__ == "__main__":

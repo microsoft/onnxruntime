@@ -261,9 +261,9 @@ void RunSession2(InferenceSession& session_object,
 void RunWithOneSessionSingleThreadInference(PathString model_name, std::string sess_log_id) {
   SessionOptions so;
   so.session_logid = sess_log_id;
-  so.config_options.AddConfigEntry("ep.context_enable", "1");
-  so.config_options.AddConfigEntry("ep.context_file_path", "EP_Context_model.onnx");
-  so.config_options.AddConfigEntry("ep.context_embed_mode", "0");
+  (void)so.config_options.AddConfigEntry("ep.context_enable", "1");
+  (void)so.config_options.AddConfigEntry("ep.context_file_path", "EP_Context_model.onnx");
+  (void)so.config_options.AddConfigEntry("ep.context_embed_mode", "0");
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
   InferenceSession session_object{so, GetEnvironment()};
@@ -295,6 +295,7 @@ void RunWithOneSessionSingleThreadInference(PathString model_name, std::string s
   params.trt_engine_cache_prefix = "TRTEP_Cache_Test";
   params.trt_dump_ep_context_model = 1;
   params.trt_ep_context_file_path = "EP_Context_model.onnx";
+  params.trt_ep_context_embed_mode = 0;
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
   auto status = session_object.Load(model_name);
@@ -511,9 +512,9 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
    *  Engine cache with prefix "TensorrtExecutionProvider" should be created in current directory
    *  context model "EP_Context_model.onnx" should be created in current directory
    */
-  so.config_options.AddConfigEntry("ep.context_enable", "1");
-  so.config_options.AddConfigEntry("ep.context_file_path", "EP_Context_model.onnx");
-  so.config_options.AddConfigEntry("ep.context_embed_mode", "0");
+  (void)so.config_options.AddConfigEntry("ep.context_enable", "1");
+  (void)so.config_options.AddConfigEntry("ep.context_file_path", "EP_Context_model.onnx");
+  (void)so.config_options.AddConfigEntry("ep.context_embed_mode", "0");
   InferenceSession session_object{so, GetEnvironment()};
   // Need to set corresponding trt params since options merging logic in privider_bridge_ort is not called in unit test
   OrtTensorRTProviderOptionsV2 params;
@@ -521,14 +522,15 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   params.trt_dump_ep_context_model = 1;
   params.trt_ep_context_file_path = "EP_Context_model.onnx";
   params.trt_ep_context_embed_mode = 0;
+  params.trt_engine_cache_prefix = "TRTEP_Cache_Test";
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
   auto status = session_object.Load(model_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object.Initialize();
   ASSERT_TRUE(status.IsOK());
-  // Engine cache TensorrtExecutionProvider_*.engine should be created
-  ASSERT_TRUE(HasCacheFileWithPrefix("TensorrtExecutionProvider"));
+  // Engine cache with params.trt_engine_cache_prefix prefix should be created
+  ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_engine_cache_prefix));
   // EP_Context_model.onnx should be created
   ASSERT_TRUE(HasCacheFileWithPrefix("EP_Context_model.onnx"));
 
@@ -576,7 +578,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
    *  engine cache starts with "TensorrtExecutionProvider_" in context_model_folder
    *  context model "EP_Context_model.onnx" should be created in context_model_folder
    */
-  so.config_options.AddConfigEntry("ep.context_file_path", "context_model_folder/EPContextNode_test_ctx.onnx");
+  (void)so.config_options.AddConfigEntry("ep.context_file_path", "context_model_folder/EPContextNode_test_ctx.onnx");
   InferenceSession session_object3{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 params3;
   params3.trt_engine_cache_enable = 1;
@@ -589,7 +591,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   ASSERT_TRUE(status.IsOK());
   status = session_object3.Initialize();
   ASSERT_TRUE(status.IsOK());
-  
+
   // Test engine cache path:
   // Engine cache ./context_model_folder/TensorrtExecutionProvider_...engine" should be created
   ASSERT_TRUE(HasCacheFileWithPrefix("TensorrtExecutionProvider_", "context_model_folder"));
@@ -627,8 +629,8 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   /*
    * Test case 3.1: Dump context model with embed_model = 1
    */
-  so.config_options.AddConfigEntry("ep.context_file_path", "EP_Context_model_emb.onnx");
-  so.config_options.AddConfigEntry("ep.context_embed_mode", "1");
+  (void)so.config_options.AddConfigEntry("ep.context_file_path", "EP_Context_model_emb.onnx");
+  (void)so.config_options.AddConfigEntry("ep.context_embed_mode", "1");
   InferenceSession session_object5{so, GetEnvironment()};
   OrtTensorRTProviderOptionsV2 params5;
   params5.trt_dump_ep_context_model = 1;
@@ -667,7 +669,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   /*
    * Test case 4.1: Run context model with ONNX in memory
    */
-  so.config_options.AddConfigEntry("ep.context_file_path", "EP_Context_model_weight_stripped.onnx");
+  (void)so.config_options.AddConfigEntry("ep.context_file_path", "EP_Context_model_weight_stripped.onnx");
   auto model_bytes = ReadFileFromDisk(model_name);
   std::string ctx_model_name_str = "EP_Context_model_weight_stripped.onnx";
   ctx_model_name = ToPathString(ctx_model_name_str);
@@ -777,9 +779,9 @@ TEST(TensorrtExecutionProviderTest, EPContextNodeMulti) {
    *  Engine cache with prefix "TensorrtExecutionProvider" should be created in current directory
    *  context model "EP_Context_model.onnx" should be created in current directory
    */
-  so.config_options.AddConfigEntry("ep.context_enable", "1");
-  so.config_options.AddConfigEntry("ep.context_file_path", "EP_Context_model.onnx");
-  so.config_options.AddConfigEntry("ep.context_embed_mode", "0");
+  (void)so.config_options.AddConfigEntry("ep.context_enable", "1");
+  (void)so.config_options.AddConfigEntry("ep.context_file_path", "EP_Context_model.onnx");
+  (void)so.config_options.AddConfigEntry("ep.context_embed_mode", "0");
   InferenceSession session_object{so, GetEnvironment()};
   // Need to set corresponding trt params since options merging logic in privider_bridge_ort is not called in unit test
   OrtTensorRTProviderOptionsV2 params;
@@ -867,6 +869,7 @@ TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
 }
 
 TEST_P(TensorrtExecutionProviderCacheTest, Run) {
+  remove("EP_Context_model.onnx");  // remove the context model file if it exists
   // GetParam() returns the parameter of following format:
   // ##cache type##_##input shape type##
   std::string param = GetParam();
@@ -892,7 +895,6 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
   so.session_logid = "TensorrtExecutionProvider" + cache_type_mbs + "cacheTest";
   RunOptions run_options;
   run_options.run_tag = so.session_logid;
-  InferenceSession session_object{so, GetEnvironment()};
   auto cuda_provider = DefaultCudaExecutionProvider();
   auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
   std::vector<int64_t> dims_mul_x = {1, 3, 2};
@@ -927,6 +929,10 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
      * - read corrupted profile cache #TODO
      *
      */
+    (void)so.config_options.AddConfigEntry("ep.context_enable", "1");
+    (void)so.config_options.AddConfigEntry("ep.context_file_path", "EP_Context_model.onnx");
+    (void)so.config_options.AddConfigEntry("ep.context_embed_mode", "0");
+    InferenceSession session_object{so, GetEnvironment()};
 
     params.trt_engine_cache_enable = 1;
     params.trt_engine_cache_prefix = "TRTEP_Cache_Test";
@@ -1033,6 +1039,8 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
       }
     }
 
+    remove("EP_Context_model.onnx");  // remove the context model file generated earlier
+
     // Test explicit min/max/opt profile shapes
     // create another session object with TRT EP provider options:
     // trt_profile_min_shapes=X:1x1x1,Y:1x1x1,Z:1x1x1
@@ -1103,6 +1111,7 @@ TEST_P(TensorrtExecutionProviderCacheTest, Run) {
 
     // First session is created with TRT EP with timing cache enabled
     // Not specifying a trt_timing_cache_path will result in using the working directory
+    InferenceSession session_object{so, GetEnvironment()};
     params.trt_timing_cache_enable = 1;
     {
       // auto start = chrono::steady_clock::now();
