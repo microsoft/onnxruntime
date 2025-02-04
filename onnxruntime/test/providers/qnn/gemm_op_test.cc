@@ -29,6 +29,7 @@ static void RunGemmTestOnCPU(const std::vector<TestInputDef<DataType>>& input_de
 #else
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildOpTestCase<float>("Gemm", input_defs, {}, attrs),
                   provider_options,
@@ -246,6 +247,8 @@ static void RunQDQGemmTestOnHTP(const std::vector<TestInputDef<float>>& input_de
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
+
   auto f32_model_builder = BuildOpTestCase<float>("Gemm", input_defs, {}, attrs);
   auto qdq_model_builder = BuildQDQGemmTestCase<InputAQType, InputBQType>(input_defs, attrs, use_contrib_qdq);
   TestQDQModelAccuracy<InputAQType>(f32_model_builder,

@@ -278,7 +278,7 @@ static BackendSupport GetHTPSupport(const onnxruntime::logging::Logger& logger) 
   MockKernelLookup kernel_lookup;
   onnxruntime::GraphViewer graph_viewer(graph);
   std::unique_ptr<onnxruntime::IExecutionProvider> qnn_ep = QnnExecutionProviderWithOptions(
-      {{"backend_path", "QnnHtp.dll"}});
+      {{"backend_path", "QnnHtp.dll"}, {"offload_graph_io_quantization", "0"}});
 
   qnn_ep->SetLogger(&logger);
   auto result = qnn_ep->GetCapability(graph_viewer, kernel_lookup);
@@ -341,7 +341,7 @@ static BackendSupport GetCPUSupport(const onnxruntime::logging::Logger& logger) 
   MockKernelLookup kernel_lookup;
   onnxruntime::GraphViewer graph_viewer(graph);
   std::unique_ptr<onnxruntime::IExecutionProvider> qnn_ep = QnnExecutionProviderWithOptions(
-      {{"backend_path", "QnnCpu.dll"}});
+      {{"backend_path", "QnnCpu.dll"}, {"offload_graph_io_quantization", "0"}});
 
   qnn_ep->SetLogger(&logger);
   auto result = qnn_ep->GetCapability(graph_viewer, kernel_lookup);

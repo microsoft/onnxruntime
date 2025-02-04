@@ -351,13 +351,15 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   // Add this option because this feature requires QnnSystem lib and it's no supported for Windows x86_64 platform
   enable_spill_fill_buffer_ = ParseBoolOption("enable_htp_spill_fill_buffer", false, provider_options_map);
 
-  model_settings_.offload_graph_io_quantization = ParseBoolOption("offload_graph_io_quantization", false,
+  model_settings_.offload_graph_io_quantization = ParseBoolOption("offload_graph_io_quantization", true,
                                                                   provider_options_map);
 
   if (disable_cpu_ep_fallback_ && model_settings_.offload_graph_io_quantization) {
-    LOGS_DEFAULT(WARNING) << "Fallback to CPU EP is disabled, but user configured QNN EP to offload graph I/O "
-                          << "quantization/dequantization to another EP. Session creation will fail if the CPU EP "
-                          << "handles the graph I/O quantization/dequantization.";
+    LOGS_DEFAULT(INFO) << "Fallback to CPU EP is disabled, but user tried to configure QNN EP to offload graph I/O "
+                       << "quantization/dequantization to another EP. These are conflicting options. Fallback to CPU "
+                       << "EP will remain disabled and graph I/O quantization/dequantization will not be offloaded "
+                       << "to another EP.";
+    model_settings_.offload_graph_io_quantization = false;
   }
 
   static const std::string QNN_HTP_SHARED_MEMORY_ALLOCATOR_ENABLED = "enable_htp_shared_memory_allocator";
