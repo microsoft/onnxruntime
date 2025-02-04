@@ -9,7 +9,7 @@
 #include "test/util/include/asserts.h"
 #include "test/util/include/compare_ortvalue.h"
 #include "test/util/include/default_providers.h"
-#include "test/util/include/test_environment.h"
+#include "test/util/include/test/test_environment.h"
 
 using namespace std;
 
