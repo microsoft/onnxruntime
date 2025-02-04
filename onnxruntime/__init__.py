@@ -81,3 +81,97 @@ if version:
     __version__ = version
 
 onnxruntime_validation.check_distro_info()
+
+
+def check_and_load_cuda_libs(root_directory, cuda_libs_):
+    # Convert the target library names to lowercase for case-insensitive comparison
+    # Convert the target library names to lowercase for case-insensitive comparison
+    if cuda_libs_ is None or len(cuda_libs_) == 0:
+        logging.info("No CUDA libraries provided for loading.")
+        return
+    cuda_libs_ = {lib.lower() for lib in cuda_libs_}
+    found_libs = {}
+    for dirpath, _, filenames in os.walk(root_directory):
+        # Convert filenames in the current directory to lowercase for comparison
+        files_in_dir = {file.lower(): file for file in filenames}  # Map lowercase to original
+        # Find common libraries in the current directory
+        matched_libs = cuda_libs_.intersection(files_in_dir.keys())
+        for lib in matched_libs:
+            # Store the full path of the found DLL
+            full_path = os.path.join(dirpath, files_in_dir[lib])
+            found_libs[lib] = full_path
+            try:
+                # Load the DLL using ctypes
+                _ = ctypes.CDLL(full_path)
+                logging.info(f"Successfully loaded: {full_path}")
+            except OSError as e:
+                logging.info(f"Failed to load {full_path}: {e}")
+
+        # If all required libraries are found, stop the search
+        if set(found_libs.keys()) == cuda_libs_:
+            logging.info("All required CUDA libraries found and loaded.")
+            return
+    logging.info(
+        f"Failed to load CUDA libraries from site-packages/nvidia directory: {cuda_libs_ - found_libs.keys()}. They might be loaded later from standard search paths for shared libraries."
+    )
+    return
+
+
+# Load nvidia libraries from site-packages/nvidia if the package is onnxruntime-gpu
+if cuda_version is not None and cuda_version != "":
+    import ctypes
+    import logging
+    import os
+    import platform
+    import site
+
+    cuda_version_ = tuple(map(int, cuda_version.split(".")))
+    # Get the site-packages path where nvidia packages are installed
+    site_packages_path = site.getsitepackages()[-1]
+    nvidia_path = os.path.join(site_packages_path, "nvidia")
+    # Traverse the directory and subdirectories
+    cuda_libs = ()
+    if platform.system() == "Windows":  #
+        # Define the list of DLL patterns, nvrtc, curand and nvJitLink are not included for Windows
+        if (11, 0) <= cuda_version_ < (12, 0):
+            cuda_libs = (
+                "cublaslt64_11.dll",
+                "cublas64_11.dll",
+                "cufft64_10.dll",
+                "cudart64_11.dll",
+                "cudnn64_8.dll",
+            )
+        elif (12, 0) <= cuda_version_ < (13, 0):
+            cuda_libs = (
+                "cublaslt64_12.dll",
+                "cublas64_12.dll",
+                "cufft64_11.dll",
+                "cudart64_12.dll",
+                "cudnn64_9.dll",
+            )
+    elif platform.system() == "Linux":
+        if (11, 0) <= cuda_version_ < (12, 0):
+            # Define the patterns with optional version number and case-insensitivity
+            cuda_libs = (
+                "libcublaslt.so.11",
+                "libcublas.so.11",
+                "libcurand.so.10",
+                "libcufft.so.10",
+                "libcudart.so.11",
+                "libcudnn.so.8",
+                "libnvrtc.so.11.2",
+                # This is not a mistake, it links to more specific version like libnvrtc.so.11.8.89 etc.
+            )
+        elif (12, 0) <= cuda_version_ < (13, 0):
+            cuda_libs = (
+                "libcublaslt.so.12",
+                "libcublas.so.12",
+                "libcurand.so.10",
+                "libcufft.so.11",
+                "libcudart.so.12",
+                "libcudnn.so.9",
+                "libnvrtc.so.12",
+            )
+    else:
+        logging.info(f"Unsupported platform: {platform.system()}")
+    check_and_load_cuda_libs(nvidia_path, cuda_libs)

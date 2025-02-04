@@ -7,6 +7,7 @@
 import datetime
 import logging
 import platform
+import re
 import shlex
 import subprocess
 import sys
@@ -54,6 +55,7 @@ if parse_arg_remove_boolean(sys.argv, "--nightly_build"):
 wheel_name_suffix = parse_arg_remove_string(sys.argv, "--wheel_name_suffix=")
 
 cuda_version = None
+cuda_version_major = None
 rocm_version = None
 is_migraphx = False
 is_rocm = False
@@ -63,6 +65,11 @@ is_qnn = False
 if wheel_name_suffix == "gpu":
     # TODO: how to support multiple CUDA versions?
     cuda_version = parse_arg_remove_string(sys.argv, "--cuda_version=")
+    if cuda_version is not None:
+        if not bool(re.match(r"^\d+\.\d+(\.\d+)?$", cuda_version)):
+            logger.error("CUDA version must be in format 'x.y' or  'x.y.z'")
+            sys.exit(1)
+        cuda_version_major = cuda_version.split(".")[0]
 elif parse_arg_remove_boolean(sys.argv, "--use_rocm"):
     is_rocm = True
     rocm_version = parse_arg_remove_string(sys.argv, "--rocm_version=")
@@ -713,11 +720,22 @@ if local_version:
     version_number = version_number + local_version
     if is_rocm and enable_rocm_profiling:
         version_number = version_number + ".profiling"
-
+extras_require = {}
 if wheel_name_suffix:
     if not (enable_training and wheel_name_suffix == "gpu"):
         # for training packages, local version is used to indicate device types
         package_name = f"{package_name}-{wheel_name_suffix}"
+    if (wheel_name_suffix == "gpu" or wheel_name_suffix == "cuda") and cuda_version_major is not None:
+        extras_require = {
+            # Optional 'cuda_dlls' dependencies
+            "cuda_dlls": [
+                f"nvidia-cuda-nvrtc-cu{cuda_version_major}",
+                f"nvidia-cuda-runtime-cu{cuda_version_major}",
+                f"nvidia-cudnn-cu{cuda_version_major}",
+                f"nvidia-cufft-cu{cuda_version_major}",
+                f"nvidia-curand-cu{cuda_version_major}",
+            ]
+        }
 
 cmd_classes = {}
 if bdist_wheel is not None:
@@ -735,21 +753,20 @@ with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 
 
-if enable_training:
+def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version):
+    sys.path.append(path.join(path.dirname(__file__), "onnxruntime", "python"))
+    from onnxruntime_collect_build_info import find_cudart_versions
 
-    def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version):
-        sys.path.append(path.join(path.dirname(__file__), "onnxruntime", "python"))
-        from onnxruntime_collect_build_info import find_cudart_versions
+    version_path = path.join("onnxruntime", "capi", "build_and_package_info.py")
+    with open(version_path, "w") as f:
+        f.write(f"package_name = '{package_name}'\n")
+        f.write(f"__version__ = '{version_number}'\n")
 
-        version_path = path.join("onnxruntime", "capi", "build_and_package_info.py")
-        with open(version_path, "w") as f:
-            f.write(f"package_name = '{package_name}'\n")
-            f.write(f"__version__ = '{version_number}'\n")
+        if cuda_version:
+            f.write(f"cuda_version = '{cuda_version}'\n")
 
-            if cuda_version:
-                f.write(f"cuda_version = '{cuda_version}'\n")
-
-                # cudart_versions are integers
+            # cudart_versions are integers
+            if platform.system().lower() == "linux":
                 cudart_versions = find_cudart_versions(build_env=True)
                 if cudart_versions and len(cudart_versions) == 1:
                     f.write(f"cudart_version = {cudart_versions[0]}\n")
@@ -762,12 +779,15 @@ if enable_training:
                             else "found multiple cudart libraries"
                         ),
                     )
-            elif rocm_version:
-                f.write(f"rocm_version = '{rocm_version}'\n")
+        elif rocm_version:
+            f.write(f"rocm_version = '{rocm_version}'\n")
 
+
+if enable_training:
     save_build_and_package_info(package_name, version_number, cuda_version, rocm_version)
+else:
+    save_build_and_package_info(package_name, version_number, cuda_version, None)
 
-# Setup
 setup(
     name=package_name,
     version=version_number,
@@ -791,4 +811,5 @@ setup(
         ]
     },
     classifiers=classifiers,
+    extras_require=extras_require,
 )
