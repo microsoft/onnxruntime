@@ -28,15 +28,19 @@ class ConstantFolding : public GraphTransformer {
                   const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
                   const InlinedHashSet<std::string>& excluded_initializers = {}) noexcept;
 
-  /* Same as above but with a name provided by derived class.
-  */
+protected:
+  /**
+   * Same as the constructor above but with a name provided by derived class.
+   */
   ConstantFolding(const std::string& name,
                   const IExecutionProvider& execution_provider,
                   bool skip_dequantize_linear,
                   const ConfigOptions& config_options,
                   const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
                   const InlinedHashSet<std::string>& excluded_initializers = {}) noexcept;
-
+  /**
+   * Derived class can implement this virtual function to limit the nodes that can be constant folded.
+   */
   virtual bool AllowConstantFolding(const Node& node) const { return true; } 
 
  private:
