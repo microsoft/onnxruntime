@@ -1,0 +1,109 @@
+name: WebAssembly
+
+on: [push, pull_request]
+
+concurrency: # cancel running build if new push on the same branch
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  linux: # see azure-pipelines/templates/linux-wasm-ci.yml
+    name: WASM(Linux)
+    runs-on: ubuntu-latest
+    container:
+      image: emscripten/emsdk:3.1.74 # https://hub.docker.com/r/emscripten/emsdk
+    env:
+      # https://emscripten.org/docs/tools_reference/emcc.html
+      # https://github.com/emscripten-core/emscripten/blob/3.1.74/emcc.py
+      # https://emscripten.org/docs/tools_reference/settings_reference.html
+      # https://github.com/emscripten-core/emscripten/blob/3.1.74/tools/settings.py
+      EMCC_CFLAGS: "-mbulk-memory -matomics -pthread"
+      # EM_CONFIG: /emsdk/.emscripten
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: "Run git config"
+        run: git config --global --add safe.directory /__w/onnxruntime/onnxruntime
+
+      - name: "Run apt"
+        run: |
+          sudo apt update -y
+          sudo apt install -y python3 pkg-config file \
+            autoconf automake autoconf-archive \
+            linux-libc-dev
+
+      - name: "Detect Node.js" # create env.EMSDK_NODE for unit tests
+        run: |
+          node_path=$(which node)
+          echo "EMSDK_NODE=$node_path" >> "$GITHUB_ENV"
+          echo "* EMSDK_NODE: $node_path" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: lukka/get-cmake@latest
+        with:
+          cmakeVersion: "~3.31.0"
+
+      - name: "Run vcpkg(wasm32-emscripten)"
+        uses: lukka/run-vcpkg@v11.5
+        with:
+          vcpkgDirectory: "/usr/local/share/vcpkg" # VCPKG_INSTALLATION_ROOT
+          runVcpkgInstall: true
+          vcpkgJsonGlob: "cmake/vcpkg.json"
+          vcpkgConfigurationJsonGlob: "cmake/vcpkg-configuration.json"
+        env:
+          VCPKG_INSTALLED_DIR: "${{ github.workspace }}/.build"
+          VCPKG_DEFAULT_TRIPLET: "wasm32-emscripten"
+          VCPKG_KEEP_ENV_VARS: "EM_CONFIG;EMCC_CFLAGS" # forward to the vcpkg sub-processes
+
+      - name: "Detect protoc"
+        id: protoc
+        run: |
+          set -e -x
+          export PROTOC_DIR="$(pwd)/.build/x64-linux/tools/protobuf"
+          export PATH="$PROTOC_DIR:$PATH"
+          echo "* $(protoc --version)" >> "$GITHUB_STEP_SUMMARY"
+          echo "protoc_path=$(which protoc)" >> "$GITHUB_OUTPUT"
+        shell: bash
+
+      - name: "Run compile_schema.py"
+        run: |
+          set -e -x
+          export FLATC_DIR="$(pwd)/.build/x64-linux/tools/flatbuffers"
+          export PATH="$FLATC_DIR:$PATH"
+          echo "* $(flatc --version)" >> "$GITHUB_STEP_SUMMARY"
+          python3 onnxruntime/core/flatbuffers/schema/compile_schema.py --flatc "$(which flatc)"
+          python3 onnxruntime/lora/adapter_format/compile_schema.py --flatc "$(which flatc)"
+        shell: bash
+
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            /emsdk/upstream/emscripten/cache/symbol_lists
+          key: "emscripten-${{ runner.os }}-${{ github.ref_name }}"
+          fail-on-cache-miss: false
+
+      - name: "Run build.py"
+        id: run-build
+        run: |
+          python3 ./tools/ci_build/build.py --allow_running_as_root --compile_no_warning_as_error \
+            --build_dir ./build \
+            --build_wasm \
+            --parallel \
+            --use_vcpkg \
+            --skip_submodule_sync \
+            --enable_wasm_simd \
+            --enable_wasm_threads \
+            --path_to_protoc_exe "${{ steps.protoc.outputs.protoc_path }}" \
+            --cmake_extra_defines "CMAKE_TOOLCHAIN_FILE:FILEPATH=${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" \
+            --cmake_extra_defines "VCPKG_INSTALLED_DIR:PATH=${{ github.workspace }}/.build"
+        shell: bash
+        env:
+          VCPKG_INSTALLATION_ROOT: "/usr/local/share/vcpkg"
+          VCPKG_KEEP_ENV_VARS: "EM_CONFIG;EMCC_CFLAGS"
+
+      - uses: actions/cache/save@v4
+        # change the condition to ${{ steps.run-build.outcome == 'success' }} when test passes
+        if: always()
+        with:
+          path: |
+            /emsdk/upstream/emscripten/cache/symbol_lists
+          key: "emscripten-${{ runner.os }}-${{ github.ref_name }}"

@@ -93,7 +93,10 @@ if (NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
   set_property(TARGET re2 PROPERTY COMPILE_OPTIONS )
 endif()
 
-target_compile_options(onnx PRIVATE -Wno-unused-parameter -Wno-unused-variable)
+get_target_property(onnx_is_aliased onnx ALIASED_TARGET)
+if(NOT onnx_is_aliased)
+  target_compile_options(onnx PRIVATE -Wno-unused-parameter -Wno-unused-variable)
+endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
     bundle_static_library(onnxruntime_webassembly
