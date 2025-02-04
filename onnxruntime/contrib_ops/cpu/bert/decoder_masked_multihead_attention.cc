@@ -189,7 +189,7 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
                           key->Data<T>(),
                           value->Data<T>(),
                           mask_index, nullptr /* past */, past_key, past_value, output, present_key, present_value,
-                          batch_size, 1 /* sequence_length */, parameters.kv_sequence_length,
+                          nullptr /* attn_probs */, batch_size, 1 /* sequence_length */, parameters.kv_sequence_length,
                           head_size, v_head_size, v_hidden_size, attention_bias, context, output_qk);
   }
 
@@ -205,7 +205,7 @@ Status DecoderMaskedMultiHeadAttention<T>::Compute(OpKernelContext* context) con
                           K.GetMutable<Tensor>()->MutableData<T>(),
                           V.GetMutable<Tensor>()->MutableData<T>(),
                           mask_index, nullptr /* past */, past_key, past_value, output, present_key, present_value,
-                          batch_size, 1 /* sequence_length */, parameters.kv_sequence_length,
+                          nullptr /* attn_probs */, batch_size, 1 /* sequence_length */, parameters.kv_sequence_length,
                           head_size, v_head_size, v_hidden_size, attention_bias, context, output_qk,
                           parameters.past_sequence_length, true /* past_present_share_buffer */);
   }
