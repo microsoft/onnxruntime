@@ -61,7 +61,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
                            const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context);
 
 bool CanApplyFlashAttention(const Tensor* bias, const Tensor* present_key, const Tensor* present_value,
-                            const WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context);
+                            const WebgpuAttentionParameters& parameters);
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime
