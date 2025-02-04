@@ -377,13 +377,15 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "User specified enable_htp_weight_sharing: " << enable_htp_weight_sharing_;
   }
 
-  model_settings_.offload_graph_io_quantization = ParseBoolOption("offload_graph_io_quantization", false,
+  model_settings_.offload_graph_io_quantization = ParseBoolOption("offload_graph_io_quantization", true,
                                                                   provider_options_map);
 
   if (disable_cpu_ep_fallback_ && model_settings_.offload_graph_io_quantization) {
-    LOGS_DEFAULT(WARNING) << "Fallback to CPU EP is disabled, but user configured QNN EP to offload graph I/O "
-                          << "quantization/dequantization to another EP. Session creation will fail if the CPU EP "
-                          << "handles the graph I/O quantization/dequantization.";
+    LOGS_DEFAULT(INFO) << "Fallback to CPU EP is disabled, but user tried to configure QNN EP to offload graph I/O "
+                       << "quantization/dequantization to another EP. These are conflicting options. Fallback to CPU "
+                       << "EP will remain disabled and graph I/O quantization/dequantization will not be offloaded "
+                       << "to another EP.";
+    model_settings_.offload_graph_io_quantization = false;
   }
 
   qnn_backend_manager_ = std::make_unique<qnn::QnnBackendManager>(

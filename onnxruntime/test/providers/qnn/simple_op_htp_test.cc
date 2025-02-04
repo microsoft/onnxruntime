@@ -32,6 +32,7 @@ static void RunOpTestOnCPU(const std::string& op_type,
 #else
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildOpTestCase<InputType>(op_type, input_defs, {}, attrs, op_domain),
                   provider_options,
@@ -129,6 +130,7 @@ static void RunQDQOpTest(const std::string& op_type,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, input_defs, {}, attrs, op_domain),
                        BuildQDQOpTestCase<InputQType>(op_type, input_defs, {}, attrs, op_domain, use_contrib_qdq),
@@ -780,6 +782,7 @@ TEST_F(QnnHTPBackendTests, QuantAccuracyTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   // Note: a graph input -> Q -> DQ -> is optimized by Qnn to have a perfectly accurate output.
   // ORT's CPU EP, on the otherhand, actually quantizes and dequantizes the input, which leads to different outputs.
@@ -1206,6 +1209,7 @@ TEST_F(QnnHTPBackendTests, Add_U8_U16_Convert) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy(BuildOpTestCase<float>("Add", {input0_def, input1_def}, {}, {}, kOnnxDomain),
                        BuildQDQConvertAddTestCase(input0_def, input1_def),
@@ -1271,6 +1275,7 @@ TEST_F(QnnHTPBackendTests, DQ_Q_ConvertFusion_SameType) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   QuantParams<uint8_t> out_qparams_u8 = {1.0f, 128};
   QuantParams<uint16_t> out_qparams_u16 = {1.0f, 32768};
