@@ -891,7 +891,7 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   SessionOptionsImpl& EnableCpuMemArena();   ///< Wraps OrtApi::EnableCpuMemArena
   SessionOptionsImpl& DisableCpuMemArena();  ///< Wraps OrtApi::DisableCpuMemArena
 
-  SessionOptionsImpl& SetOptimizedModelFilePath(const ORTCHAR_T* optimized_model_file);       ///< Wraps OrtApi::SetOptimizedModelFilePath
+  SessionOptionsImpl& SetOptimizedModelFilePath(const ORTCHAR_T* optimized_model_file);  ///< Wraps OrtApi::SetOptimizedModelFilePath
 
   SessionOptionsImpl& EnableProfiling(const ORTCHAR_T* profile_file_prefix);  ///< Wraps OrtApi::EnableProfiling
   SessionOptionsImpl& DisableProfiling();                                     ///< Wraps OrtApi::DisableProfiling
