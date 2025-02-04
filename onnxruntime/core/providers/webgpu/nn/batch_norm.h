@@ -12,10 +12,10 @@ namespace webgpu {
 class BatchNormalizationProgram final : public Program<BatchNormalizationProgram> {
  public:
   BatchNormalizationProgram(float epsilon, int64_t spatial, DataLayout format, int64_t components) : Program{"BatchNormalization"},
-                                                                                                      epsilon_{epsilon},
-                                                                                                      spatial_{spatial},
-                                                                                                      format_{format},
-                                                                                                      components_{components} {}
+                                                                                                     epsilon_{epsilon},
+                                                                                                     spatial_{spatial},
+                                                                                                     format_{format},
+                                                                                                     components_{components} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
