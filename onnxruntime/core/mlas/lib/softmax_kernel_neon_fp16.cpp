@@ -22,13 +22,17 @@ Abstract:
 
 namespace softmax_neon {
 
-// exp kernel for fp16. Output and input can be the same buffer.
-void Exp_Kernel_Fp16(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N) {
+// tanh kernel for fp16. Output and input can be the same buffer.
+void Tanh_Kernel_Fp16(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N) {
 
 }
 
-// tanh kernel for fp16. Output and input can be the same buffer.
-void Tanh_Kernel_Fp16(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N) {
+void Softcap_Kernel_Fp16(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N, const MLAS_FP16 Softcap) {
+
+}
+
+// exp kernel for fp16. Output and input can be the same buffer.
+void Exp_Kernel_Fp16(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N) {
 
 }
 

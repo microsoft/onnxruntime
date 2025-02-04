@@ -35,6 +35,22 @@ struct MLAS_SOFTMAX_DISPATCH {
     Tanh_Fp16_Fn* Tanh_Fp16 = nullptr;
 
     /**
+     * @brief Compute the softcap function for each element of the input array. Use tanh activation.
+     * @param Input         Address of the input array
+     * @param Output        Address of the output array. Could be the same as the input array.
+     * @param N             Number of elements in the input array
+     * @param Softcap       The softcap value
+     */
+    typedef void(Softcap_Fp16_Fn)(
+        const MLAS_FP16* Input,
+        MLAS_FP16* Output,
+        size_t N,
+        const MLAS_FP16 Softcap
+    );
+
+    Softcap_Fp16_Fn* Softcap_Fp16 = nullptr;
+
+    /**
      * @brief Compute the exponential function for each element of the input array
      * @param Input         Address of the input array
      * @param Output        Address of the output array. Could be the same as the input array.

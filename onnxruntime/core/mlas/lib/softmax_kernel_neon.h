@@ -23,9 +23,11 @@ Abstract:
 
 namespace softmax_neon {
 
-void Exp_Kernel_Fp16(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N);
-
 void Tanh_Kernel_Fp16(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N);
+
+void Softcap_Kernel_Fp16(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N, const MLAS_FP16 Softcap);
+
+void Exp_Kernel_Fp16(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N);
 
 MLAS_FP16 ReduceMax_Kernel_Fp16(const MLAS_FP16* Input, size_t N);
 

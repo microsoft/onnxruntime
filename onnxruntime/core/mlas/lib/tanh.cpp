@@ -199,3 +199,18 @@ MlasComputeTanh<MLAS_FP16>(
     }
     dispatch->Tanh_Fp16(Input, Output, N);
 }
+
+void
+MLASCALL
+MlasComputeSoftcap(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t N,
+    MLAS_FP16 cap
+) {
+    const auto* dispatch = GetMlasPlatform().SoftmaxDispatch;
+    if (dispatch == nullptr || dispatch->Softcap_Fp16 == nullptr) {
+        MLAS_THROW_EX(std::runtime_error, "Softcap_Fp16 is not supported.");
+    }
+    dispatch->Softcap_Fp16(Input, Output, N, cap);
+}
