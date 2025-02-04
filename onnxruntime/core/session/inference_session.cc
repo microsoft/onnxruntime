@@ -921,7 +921,7 @@ common::Status InferenceSession::SaveToOrtFormat(const std::filesystem::path& fi
   ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterGraphNodeOpSchemas(model_->MainGraph()));
   ORT_RETURN_IF_ERROR(standalone::RegisterCustomOpNodeSchemas(kernel_type_str_resolver, model_->MainGraph()));
 
-  for (const auto op_schema : saved_runtime_optimization_produced_node_op_schemas_) {
+  for (const auto& op_schema : saved_runtime_optimization_produced_node_op_schemas_) {
     ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterOpSchema(*op_schema));
   }
 

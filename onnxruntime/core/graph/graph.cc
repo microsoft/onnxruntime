@@ -4175,6 +4175,14 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
       size_t tensor_bytes_size = raw_data.size();
       if (tensor_bytes_size < model_saving_options.initializer_size_threshold) {
         *output_proto = initializer;
+        // Data with size above the threshold is written into the new external initializer file
+        // Data with size below the threshold should be kept inside the new model file
+        // instead of leaving it in the old external initializer file for the old Onnx file
+        if (initializer.data_location() == TensorProto_DataLocation_EXTERNAL) {
+          TensorShape shape(initializer.dims());
+          output_proto->set_raw_data(raw_data.data(), raw_data.size());
+          output_proto->clear_data_location();
+        }
         if (process_prepacks) {
           // These pre-packs will reside in memory
           processed_weights.insert(initializer.name());
@@ -4263,6 +4271,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(
 
   // Create the external file.
   std::ofstream external_stream(modified_external_file_path, std::ofstream::out | std::ofstream::binary);
+  auto const external_empty_pos = external_stream.tellp();
   ORT_ENFORCE(external_stream.is_open(), "Failed to open for writing:", modified_external_file_path);
   int64_t external_offset = 0;
 
@@ -4273,6 +4282,12 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(
 
   if (!external_stream.flush()) {
     ORT_THROW("Failed to flush file with external initializers: ", modified_external_file_path);
+  }
+
+  // Delete if the external data file is empty
+  if (external_empty_pos == external_stream.tellp()) {
+    external_stream.close();
+    std::remove(modified_external_file_path.string().c_str());
   }
 
   return result;

@@ -1754,7 +1754,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dt><tt>T</tt> : tensor(float), tensor(double), tensor(float16), tensor(bfloat16)</dt>
 <dd>Constrain input and output types to float or half tensors.</dd>
 </dl>
 

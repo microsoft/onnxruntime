@@ -276,6 +276,7 @@ static void RunQDQSplitOpTestOnHTP(const TestInputDef<float>& input_def,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   const bool split_is_input = opset >= 13;
   auto f32_model_builder = BuildSplitTestCase<float>(input_def, split, split_is_input, axis, num_outputs);

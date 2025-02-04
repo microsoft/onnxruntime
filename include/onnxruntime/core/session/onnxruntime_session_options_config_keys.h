@@ -308,6 +308,11 @@ static const char* const kOrtSessionOptionEpContextNodeNamePrefix = "ep.context_
 // Share EP related resources across EPs
 static const char* const kOrtSessionOptionShareEpContexts = "ep.share_ep_contexts";
 
+// Use this config when dumping EP context model with an external initializers file
+// All initializers will be inside the external data file if specified, otherwise all in Onnx file
+static const char* const kOrtSessionOptionsEpContextModelExternalInitializersFileName =
+    "ep.context_model_external_initializers_file_name";
+
 // Gemm fastmath mode provides fp32 gemm acceleration with bfloat16 based matmul.
 // Option values:
 // - "0": Gemm FastMath mode is not enabled. [DEFAULT]
