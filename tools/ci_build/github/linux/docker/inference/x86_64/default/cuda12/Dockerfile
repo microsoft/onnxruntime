@@ -2,7 +2,7 @@
 # Licensed under the MIT License.
 
 # This file is used by Zip-Nuget Packaging NoContribOps Pipeline,Zip-Nuget-Java Packaging Pipeline
-FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12_dotnet:20241120.3
+FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12_dotnet:20250124.1
 ARG TRT_VERSION
 
 #Install TensorRT only if TRT_VERSION is not empty
@@ -37,7 +37,7 @@ ENV LC_ALL=en_US.UTF-8
 
 ENV CUDAHOSTCXX=/opt/rh/gcc-toolset-12/root/usr/bin/g++
 ADD scripts /tmp/scripts
-RUN sed -i 's/enabled\s*=\s*1/enabled = 1\nexclude=dotnet* aspnet* netstandard*/g' /etc/yum.repos.d/ubi.repo && \
+RUN sed -i 's/enabled\s*=\s*1/enabled = 1\nexclude=dotnet* aspnet* netstandard*/g' /etc/yum.repos.d/almalinux.repo && \
 	cd /tmp/scripts && /tmp/scripts/install_deps.sh && rm -rf /tmp/scripts
 ENV PATH=/usr/lib/jvm/msopenjdk-17/bin:$PATH
 ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-17

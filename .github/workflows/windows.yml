@@ -37,7 +37,7 @@ jobs:
       - name: Delete build folder
         run: |
           if (Test-Path D:\b) { Remove-Item -Recurse -Force D:\b }
-          &tools\ci_build\github\windows\install_third_party_deps.ps1 -cpu_arch x64 -install_prefix D:\b\Debug\installed -build_config Debug
+
 
       # The build machine doesn't have a GPU. So the value of CMAKE_CUDA_ARCHITECTURES doesn't matter.
       - name: Build code
@@ -57,13 +57,13 @@ jobs:
         with:
           vcpkgDirectory: "C:/vcpkg" # use VCPKG_INSTALLATION_ROOT of the image
           vcpkgGitCommitId: "b322364f06308bdd24823f9d8f03fe0cc86fd46f" # 2024.12.16
-          runVcpkgInstall: true # vcpkg install --x-manifest-root cmake --x-install-root .build --overlay-triplets cmake/vcpkg-triplets
+          runVcpkgInstall: true # vcpkg install --x-manifest-root cmake --x-install-root .build --overlay-triplets cmake/vcpkg-triplets/default
           vcpkgJsonGlob: "cmake/vcpkg.json"
           vcpkgConfigurationJsonGlob: "cmake/vcpkg-configuration.json"
         env:
           VCPKG_INSTALLED_DIR: "${{ github.workspace }}/.build"
           VCPKG_DEFAULT_TRIPLET: "x64-windows"
-          VCPKG_OVERLAY_TRIPLETS: "${{ github.workspace }}/cmake/vcpkg-triplets"
+          VCPKG_OVERLAY_TRIPLETS: "${{ github.workspace }}/cmake/vcpkg-triplets/default"
           # VCPKG_BINARY_SOURCES: "default" # https://learn.microsoft.com/en-us/vcpkg/reference/binarycaching
 
       - name: "Run compile_schema.py"
@@ -102,7 +102,7 @@ jobs:
             --cmake_extra_defines "VCPKG_INSTALLED_DIR:PATH=${{ github.workspace }}/.build" `
             --cmake_extra_defines "VCPKG_INSTALL_OPTIONS=--x-feature=tests"
         env:
-          VCPKG_OVERLAY_TRIPLETS: "${{ github.workspace }}/cmake/vcpkg-triplets"
+          VCPKG_OVERLAY_TRIPLETS: "${{ github.workspace }}/cmake/vcpkg-triplets/default"
         shell: pwsh
 
       - name: "Run vcpkg(arm64-windows)"
@@ -110,13 +110,13 @@ jobs:
         with:
           vcpkgDirectory: "C:/vcpkg" # use VCPKG_INSTALLATION_ROOT of the image
           doNotUpdateVcpkg: true
-          runVcpkgInstall: true # vcpkg install --x-manifest-root cmake --x-install-root .build --overlay-triplets cmake/vcpkg-triplets
+          runVcpkgInstall: true # vcpkg install --x-manifest-root cmake --x-install-root .build --overlay-triplets cmake/vcpkg-triplets/default
           vcpkgJsonGlob: "cmake/vcpkg.json"
           vcpkgConfigurationJsonGlob: "cmake/vcpkg-configuration.json"
         env:
           VCPKG_INSTALLED_DIR: "${{ github.workspace }}/.build"
           VCPKG_DEFAULT_TRIPLET: "arm64-windows"
-          VCPKG_OVERLAY_TRIPLETS: "${{ github.workspace }}/cmake/vcpkg-triplets"
+          VCPKG_OVERLAY_TRIPLETS: "${{ github.workspace }}/cmake/vcpkg-triplets/default"
           # VCPKG_BINARY_SOURCES: "default" # https://learn.microsoft.com/en-us/vcpkg/reference/binarycaching
 
       - name: "Run build.py(arm64-windows)"
@@ -134,5 +134,5 @@ jobs:
             --cmake_extra_defines "VCPKG_INSTALLED_DIR:PATH=${{ github.workspace }}/.build" `
             --cmake_extra_defines "VCPKG_INSTALL_OPTIONS=--x-feature=tests"
         env:
-          VCPKG_OVERLAY_TRIPLETS: "${{ github.workspace }}/cmake/vcpkg-triplets"
+          VCPKG_OVERLAY_TRIPLETS: "${{ github.workspace }}/cmake/vcpkg-triplets/default"
         shell: pwsh

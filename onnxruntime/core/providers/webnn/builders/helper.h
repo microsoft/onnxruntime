@@ -188,12 +188,14 @@ inline bool TensorExists(const ConstPointerContainer<std::vector<NodeArg*>>& def
 bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_name,
                             const logging::Logger& logger, bool allow_empty_input = false);
 
-// Get a list of groups of supported nodes, each group represents a subgraph supported by WebNN EP.
-std::vector<std::vector<NodeIndex>> GetSupportedNodes(const GraphViewer& graph_viewer,
-                                                      const emscripten::val& wnn_builder,
-                                                      const WebnnDeviceType device_type,
-                                                      const emscripten::val& wnn_limits,
-                                                      const logging::Logger& logger);
+// Get a set of nodes supported by WebNN EP.
+std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
+                                                  const emscripten::val& wnn_builder,
+                                                  const WebnnDeviceType device_type,
+                                                  const emscripten::val& wnn_limits,
+                                                  const logging::Logger& logger);
+// TODO(@Honry): Some ONNX ops are supported by decomposed WebNN ops,
+// we need to check the support of the decomposed ops.
 static const InlinedHashMap<std::string, std::string> op_map = {
     {"Abs", "abs"},
     {"Add", "add"},
@@ -273,6 +275,7 @@ static const InlinedHashMap<std::string, std::string> op_map = {
     {"Relu", "relu"},
     {"Reshape", "reshape"},
     {"Resize", "resample2d"},
+    {"RotaryEmbedding", "gather"},
     {"ScatterElements", "scatterElements"},
     {"ScatterND", "scatterND"},
     {"Shape", "slice"},
