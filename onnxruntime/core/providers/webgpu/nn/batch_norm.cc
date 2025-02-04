@@ -22,14 +22,14 @@ namespace webgpu {
           .TypeConstraint("T", WebGpuSupportedFloatTypes()),            \
       BatchNormalization<is_nhwc>);
 
-#define WEBGPU_BATCH_NORM_KERNEL(version, domain, is_nhwc)              \
-  ONNX_OPERATOR_KERNEL_EX(                                              \
-      BatchNormalization,                                               \
-      domain,                                                           \
-      version,                                                          \
-      kWebGpuExecutionProvider,                                         \
-      (*KernelDefBuilder::Create())                                     \
-          .TypeConstraint("T", WebGpuSupportedFloatTypes()),            \
+#define WEBGPU_BATCH_NORM_KERNEL(version, domain, is_nhwc)   \
+  ONNX_OPERATOR_KERNEL_EX(                                   \
+      BatchNormalization,                                    \
+      domain,                                                \
+      version,                                               \
+      kWebGpuExecutionProvider,                              \
+      (*KernelDefBuilder::Create())                          \
+          .TypeConstraint("T", WebGpuSupportedFloatTypes()), \
       BatchNormalization<is_nhwc>);
 
 WEBGPU_BATCH_NORM_VERSIONED_KERNEL(7, 8, kOnnxDomain, false)
