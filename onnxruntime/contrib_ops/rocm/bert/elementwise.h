@@ -66,10 +66,12 @@ class ElementwiseTunableOp : public TunableOp<ElementwiseParams<T>> {
   }
 
 ELEMENTWISE_FWD_DECL(FastGeLU, float);
+ELEMENTWISE_FWD_DECL(FastGeLU, double);
 ELEMENTWISE_FWD_DECL(FastGeLU, half);
 ELEMENTWISE_FWD_DECL(FastGeLU, BFloat16);
 
 ELEMENTWISE_FWD_DECL(GeLU, float);
+ELEMENTWISE_FWD_DECL(GeLU, double);
 ELEMENTWISE_FWD_DECL(GeLU, half);
 ELEMENTWISE_FWD_DECL(GeLU, BFloat16);
 

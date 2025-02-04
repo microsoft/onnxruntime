@@ -70,6 +70,8 @@ def REACT_NATIVE_VERSION = ['node', '--print', "JSON.parse(require('fs').readFil
 def REACT_NATIVE_MINOR_VERSION = REACT_NATIVE_VERSION.split("\\.")[1].toInteger()
 
 android {
+// This is needed by the new AndroidManifestNew.xml
+  namespace "ai.onnxruntime.reactnative"
   compileSdkVersion getExtOrIntegerDefault('compileSdkVersion')
   buildToolsVersion getExtOrDefault('buildToolsVersion')
   defaultConfig {
@@ -110,6 +112,8 @@ android {
   }
 
   packagingOptions {
+    pickFirst '**/libc++_shared.so'
+    pickFirst '**/libfbjni.so'
     doNotStrip resolveBuildType() == 'debug' ? "**/**/*.so" : ''
     excludes = [
       "META-INF",
@@ -134,6 +138,8 @@ android {
   sourceSets {
     main {
       java.srcDirs = ['src/main/java/']
+//       A tricky situation where iOS still uses the AndroidManifest.xml file, but the Android use AndroidManifestNew.xml
+      manifest.srcFile "src/main/AndroidManifestNew.xml"
       if (ortExtensionsEnabled) {
         java.exclude '**/OnnxruntimeExtensionsDisabled.java'
       } else {
@@ -218,7 +224,8 @@ repositories {
 }
 
 dependencies {
-  api "com.facebook.react:react-native:" + REACT_NATIVE_VERSION
+  //noinspection GradleDynamicVersion
+  implementation "com.facebook.react:react-android:"+ REACT_NATIVE_VERSION
   api "org.mockito:mockito-core:2.28.2"
 
   androidTestImplementation "androidx.test:runner:1.5.2"
