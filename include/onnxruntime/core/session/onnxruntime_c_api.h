@@ -3660,8 +3660,8 @@ struct OrtApi {
    *     - "1": Enabled.
    *   "offload_graph_io_quantization": Offload graph input quantization and graph output dequantization to another
    *   execution provider (typically CPU EP).
-   *     - "0": Default. Disabled. QNN EP will handle quantization and dequantization of graph I/O.
-   *     - "1": Enabled.
+   *     - "0": Disabled. QNN EP will handle quantization and dequantization of graph I/O.
+   *     - "1": Enabled. This is the default value.
    *
    * SNPE supported keys:
    *   "runtime": SNPE runtime engine, options: "CPU", "CPU_FLOAT32", "GPU", "GPU_FLOAT32_16_HYBRID", "GPU_FLOAT16",

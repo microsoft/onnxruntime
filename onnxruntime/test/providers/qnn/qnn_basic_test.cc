@@ -117,6 +117,7 @@ TEST(QnnEP, TestDisableCPUFallback_ModelNotFullySupported) {
 #else
     options["backend_path"] = "libQnnCpu.so";
 #endif
+    options["offload_graph_io_quantization"] = "0";
 
     so.AppendExecutionProvider("QNN", options);
 
@@ -148,6 +149,7 @@ TEST(QnnEP, TestDisableCPUFallback_TryingToRunOnQnnCPU) {
 #else
   options["backend_path"] = "libQnnCpu.so";
 #endif
+  options["offload_graph_io_quantization"] = "0";
 
   auto input_defs = {TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f),
                      TestInputDef<float>({1, 2, 2, 2}, false, -10.0f, 10.0f)};
@@ -196,6 +198,7 @@ TEST(QnnEP, TestDisableCPUFallback_ConflictingConfig) {
 #else
     options["backend_path"] = "libQnnCpu.so";
 #endif
+    options["offload_graph_io_quantization"] = "0";
 
     so.AppendExecutionProvider("QNN", options);
 
@@ -226,6 +229,7 @@ TEST_F(QnnHTPBackendTests, TestConvWithExternalData) {
 #else
   options["backend_path"] = "libQnnHtp.so";
 #endif
+  options["offload_graph_io_quantization"] = "0";
 
   so.AppendExecutionProvider("QNN", options);
 
@@ -301,6 +305,7 @@ static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bo
   so.SetGraphOptimizationLevel(ORT_ENABLE_ALL);
 
   onnxruntime::ProviderOptions options;
+  options["offload_graph_io_quantization"] = "0";
 
 #if defined(_WIN32)
   options["backend_path"] = use_htp ? "QnnHtp.dll" : "QnnCpu.dll";
@@ -591,6 +596,7 @@ TEST_F(QnnHTPBackendTests, MultithreadSessionRun) {
 #else
   options["backend_path"] = "libQnnHtp.so";
 #endif
+  options["offload_graph_io_quantization"] = "0";
 
   auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
   EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
@@ -640,6 +646,7 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgSessionRunOption) {
 #else
   options["backend_path"] = "libQnnHtp.so";
 #endif
+  options["offload_graph_io_quantization"] = "0";
 
   auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
   EXPECT_TRUE(session_obj.RegisterExecutionProvider(std::move(qnn_ep)).IsOK());
@@ -705,6 +712,7 @@ TEST_F(QnnHTPBackendTests, MultithreadDefaultHtpPowerCfgFromEpOption) {
 #else
   options["backend_path"] = "libQnnHtp.so";
 #endif
+  options["offload_graph_io_quantization"] = "0";
   options["htp_performance_mode"] = "burst";
 
   auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
@@ -756,6 +764,7 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgDefaultAndRunOption) {
 #else
   options["backend_path"] = "libQnnHtp.so";
 #endif
+  options["offload_graph_io_quantization"] = "0";
   options["htp_performance_mode"] = "burst";
 
   auto qnn_ep = QnnExecutionProviderWithOptions(options, &session_opts);
@@ -920,6 +929,7 @@ TEST_F(QnnHTPBackendTests, ProfilingTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
   provider_options["enable_htp_fp16_precision"] = "1";
   provider_options["profiling_level"] = "detailed";
   provider_options["profiling_file_path"] = "detailed_profile.csv";
@@ -940,6 +950,7 @@ TEST_F(QnnHTPBackendTests, CastAddHTPAccuracyTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildCastAddTestCase(),
                   provider_options,
@@ -1010,6 +1021,7 @@ TEST_F(QnnHTPBackendTests, EPRejectsDynamicShapesF32) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
   provider_options["enable_htp_fp16_precision"] = "1";  // QNN EP will use fp16 precision.
                                                         // CPU EP will use fp32, so we can relax accuracy requirements.
 

@@ -39,10 +39,10 @@ parameters:
   default: false
 - name: WebGpuPoolName
   type: string
-  default: 'onnxruntime-Win2022-webgpu-A10'
+  default: 'onnxruntime-Win2022-VS2022-webgpu-A10'
 - name: WebCpuPoolName
   type: string
-  default: 'onnxruntime-Win-CPU-2022-web'
+  default: 'onnxruntime-Win2022-VS2022-webgpu-A10'
 
 - name: ExtraBuildArgs
   displayName: 'Extra build command line arguments'

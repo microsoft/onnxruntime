@@ -154,6 +154,7 @@ static void RunQDQTopKTestOnHTP(const TestInputDef<float>& input_def,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   auto f32_model_builder = BuildTopKTestCase<float>(input_def, k_def, attrs);
   auto qdq_model_builder = BuildQDQTopKTestCase<QType>(input_def, k_def, attrs, use_contrib_qdq);

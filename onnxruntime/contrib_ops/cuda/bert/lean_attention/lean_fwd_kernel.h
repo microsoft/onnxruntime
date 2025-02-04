@@ -825,7 +825,7 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
         const int row = l * kRowsPerLoadLSE + tidx / kBlockM;
         const int col = tidx % kBlockM;
         // We skip the first row = 0, as we already populated it in shared memory.
-        ElementAccum lse = (row > 0 && row < total_splits && col < params.b * params.h * (index_t)params.seqlen_q - row_offset_lseaccum) ? gLSEaccumRead(row, col) : -INFINITY;
+        ElementAccum lse = (row > 0 && row < total_splits && col < params.b * params.h * (index_t)params.seqlen_q - row_offset_lseaccum) ? gLSEaccumRead(row, col) : -std::numeric_limits<ElementAccum>::infinity();
         if (row > 0 && row < kMaxSplits) {
           sLSE(row, col) = lse;
 
@@ -857,7 +857,7 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
       for (int l = 0; l < kNLsePerThread; ++l) {
         const int row = l * kRowsPerLoadTranspose + tidx % kRowsPerLoadTranspose;
         const int col = tidx / kRowsPerLoadTranspose;
-        lse_accum(l) = (row < kMaxSplits && col < kBlockM) ? sLSE(row, col) : -INFINITY;
+        lse_accum(l) = (row < kMaxSplits && col < kBlockM) ? sLSE(row, col) : -std::numeric_limits<ElementAccum>::infinity();
 
 #if defined(DEBUG_LEAN_ATTENTION)
         if (threadIdx.x == 0 && blockIdx.z == tracing_block) {
@@ -874,7 +874,7 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
       }
       MaxOp<float> max_op;
       lse_max = Allreduce<kRowsPerLoadTranspose>::run(lse_max, max_op);
-      lse_max = lse_max == -INFINITY ? 0.0f : lse_max;  // In case all local LSEs are -inf
+      lse_max = lse_max == -std::numeric_limits<ElementAccum>::infinity() ? 0.0f : lse_max;  // In case all local LSEs are -inf
       float lse_sum = expf(lse_accum(0) - lse_max);
 #pragma unroll
       for (int l = 1; l < kNLsePerThread; ++l) {
@@ -884,7 +884,9 @@ inline __device__ void lean_compute_attn_impl_ver3(const Params& params, const i
       lse_sum = Allreduce<kRowsPerLoadTranspose>::run(lse_sum, sum_op);
       // For the case where all local lse == -INFINITY, we want to set lse_logsum to INFINITY. Otherwise
       // lse_logsum is log(0.0) = -INFINITY and we get NaN when we do lse_accum(l) - lse_logsum.
-      ElementAccum lse_logsum = (lse_sum == 0.f || lse_sum != lse_sum) ? INFINITY : logf(lse_sum) + lse_max;
+      ElementAccum lse_logsum = (lse_sum == 0.f || lse_sum != lse_sum)
+                                    ? std::numeric_limits<ElementAccum>::infinity()
+                                    : logf(lse_sum) + lse_max;
 // if (tidx % kRowsPerLoadTranspose == 0 && tidx / kRowsPerLoadTranspose < kBlockM) { gLSE(tidx / kRowsPerLoadTranspose) = lse_logsum; }
 // Store the scales exp(lse - lse_logsum) in shared memory.
 #pragma unroll

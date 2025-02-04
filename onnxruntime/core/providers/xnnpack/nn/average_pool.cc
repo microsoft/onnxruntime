@@ -33,8 +33,8 @@ Status CreateXnnpackKernel(const PoolAttributes& pool_attrs,
   if (pool_attrs.auto_pad == AutoPadType::SAME_UPPER) {
     flags |= XNN_FLAG_TENSORFLOW_SAME_PADDING;
   }
-  float foutput_min = clip_min_max ? clip_min_max->first : -INFINITY;
-  float foutput_max = clip_min_max ? clip_min_max->second : INFINITY;
+  float foutput_min = clip_min_max ? clip_min_max->first : -std::numeric_limits<float>::infinity();
+  float foutput_max = clip_min_max ? clip_min_max->second : std::numeric_limits<float>::infinity();
   xnn_status status = xnn_status_unsupported_parameter;
   if (avgpool_type == OpComputeType::op_compute_type_fp32) {
     status = xnn_create_average_pooling2d_nhwc_f32(input_padding_top, input_padding_right,

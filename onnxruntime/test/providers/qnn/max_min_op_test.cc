@@ -26,6 +26,7 @@ static void RunCPUMinOrMaxOpTest(const std::string& op_type,
 #else
   provider_options["backend_path"] = "libQnnCpu.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildOpTestCase<float>(op_type, input_defs, {}, {}, kOnnxDomain),
                   provider_options,
@@ -47,6 +48,7 @@ static void RunQDQMinOrMaxOpTest(const std::string& op_type,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy(BuildOpTestCase<float>(op_type, input_defs, {}, {}, kOnnxDomain),     // baseline float32 model
                        BuildQDQOpTestCase<QType>(op_type, input_defs, {}, {}, kOnnxDomain),  // QDQ model
