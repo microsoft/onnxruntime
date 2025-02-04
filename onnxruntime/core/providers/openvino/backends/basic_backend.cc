@@ -114,7 +114,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
         if (!subgraph_context.has_dynamic_input_shape) {
           delete model_proto.release();
         }
-        ov_model = CreateOVModel(model, session_context_, const_outputs_map_);
+        ov_model = CreateOVModel(std::move(model), session_context_, const_outputs_map_);
       }
       exe_network_ = OVCore::CompileModel(
           ov_model, hw_target, device_config, subgraph_context_.subgraph_name);
@@ -141,7 +141,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
       }
     };
   }
-  inferRequestsQueue_ = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network_, num_infer_req, initializer));
+  inferRequestsQueue_ = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network_, num_infer_req, std::move(initializer)));
 }
 
 bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map) {

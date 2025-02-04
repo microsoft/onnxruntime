@@ -712,6 +712,8 @@ Status CreateModelWithStrippedQDQNodes(const GraphViewer& src_graph,
   // Will set inputs after deciding fate oif all internal and external initializers
   // accumulated_inputs container will store input of the original graph and initializer with ext data
   InlinedVector<const NodeArg*> accumulated_inputs;
+  accumulated_inputs.reserve(dst_graph_inputs.size());
+
   // dst_graph.SetInputs(dst_graph_inputs);
   dst_graph.SetOutputs(dst_graph_outputs);
 

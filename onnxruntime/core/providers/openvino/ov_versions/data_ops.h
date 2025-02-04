@@ -84,7 +84,7 @@ class DataOps {
           const std::string dev_id, const bool npu_qdq_optimizer_enabled)
       : graph_viewer_(graph_viewer_param),
         version_id_(ver),
-        device_id_(dev_id),
+        device_id_(std::move(dev_id)),
         npu_qdq_optimizer_enabled_(npu_qdq_optimizer_enabled) {
     populate_op_mode_supported();
     populate_types_supported();

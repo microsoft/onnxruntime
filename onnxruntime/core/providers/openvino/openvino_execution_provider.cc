@@ -257,7 +257,7 @@ common::Status OpenVINOExecutionProvider::Compile(
           }
         };
 
-    node_compute_funcs.push_back(compute_info);
+    node_compute_funcs.push_back(std::move(compute_info));
 
     if (!status.IsOK()) {
       break;

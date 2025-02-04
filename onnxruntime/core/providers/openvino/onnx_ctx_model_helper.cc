@@ -11,7 +11,7 @@
 namespace onnxruntime {
 namespace openvino_ep {
 
-EPCtxHandler::EPCtxHandler(std::string ov_sdk_version, const logging::Logger& logger) : openvino_sdk_version_(ov_sdk_version), logger_(logger) {
+EPCtxHandler::EPCtxHandler(std::string ov_sdk_version, const logging::Logger& logger) : openvino_sdk_version_(std::move(ov_sdk_version)), logger_(logger) {
   epctx_model_ = Model::Create("ovep_context_model", false, logger_);
 }
 
