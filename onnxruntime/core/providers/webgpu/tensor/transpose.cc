@@ -108,10 +108,8 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context, gsl:
     output_dims[i] = input_dims[permutations[i]];
   }
 
-  TensorShape output_shape(output_dims);
-
-  InlinedVector<int64_t> new_shape{};
-  InlinedVector<int64_t> new_perm{};
+  TensorShapeVector new_shape{};
+  TensorShapeVector new_perm{};
   SqueezeShape(input_shape.GetDims(), permutations, new_shape, new_perm);
   const bool channels_last = new_perm == InlinedVector<int64_t>({2, 3, 1});
   const bool channels_first = new_perm == InlinedVector<int64_t>({3, 1, 2});

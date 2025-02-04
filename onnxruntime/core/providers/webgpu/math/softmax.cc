@@ -38,7 +38,7 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedNumberTypes()),
     Softmax);
 
-static std::string MaxVector(std::string name, int components) {
+static std::string MaxVector(const std::string& name, int components) {
   switch (components) {
     case 1:
       return name;
@@ -53,7 +53,7 @@ static std::string MaxVector(std::string name, int components) {
   }
 }
 
-static std::string SumVector(std::string x, int components) {
+static std::string SumVector(const std::string& x, int components) {
   switch (components) {
     case 1:
       return x;
@@ -184,7 +184,7 @@ Status Softmax::ComputeInternal(ComputeContext& context) const {
     perm[axis] = input_rank - 1;
     perm[input_rank - 1] = axis;
 
-    std::vector<int64_t> transposed_input_dims;
+    TensorShapeVector transposed_input_dims;
     for (auto e : perm) {
       transposed_input_dims.push_back(input_shape[e]);
     }
