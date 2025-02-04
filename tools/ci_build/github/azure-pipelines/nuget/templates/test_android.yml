@@ -22,13 +22,13 @@ stages:
         inputs:
           versionSpec: 6.10.x
 
-    - template: ../../templates/flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download Pipeline Artifact'
-        ArtifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
-        TargetPath: '$(Build.BinariesDirectory)\nuget-artifact'
-        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
+      - template: ../../templates/flex-downloadPipelineArtifact.yml
+        parameters:
+          StepName: 'Download Pipeline Artifact'
+          ArtifactName: drop-signed-nuget-${{ parameters.ArtifactSuffix }}
+          TargetPath: '$(Build.BinariesDirectory)\nuget-artifact'
+          SpecificArtifact: ${{ parameters.SpecificArtifact }}
+          BuildId: ${{ parameters.BuildId }}
 
       - template: get-nuget-package-version-as-variable.yml
         parameters:
