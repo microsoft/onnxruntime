@@ -95,7 +95,7 @@ Status RotaryEmbedding::ComputeInternal(onnxruntime::webgpu::ComputeContext& con
       input_shape.NumDimensions() == 3
           ? std::vector<uint32_t>({batch_stride, hidden_size, head_size, 1})
           : (input_shape.NumDimensions() == 4
-                 ? std::vector<uint32_t>({batch_stride, head_size, sequence_length * head_size, 1})
+                 ? std::vector<uint32_t>({batch_stride, sequence_length * head_size, head_size, 1})
                  : std::vector<uint32_t>({}));
 
   program
