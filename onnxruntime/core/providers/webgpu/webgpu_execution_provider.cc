@@ -832,6 +832,10 @@ std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
 }
 
 Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
+  if (context_.ValidationMode() >= ValidationMode::Basic) {
+    context_.Device().PushErrorScope(wgpu::ErrorFilter::Validation);
+  }
+
   if (profiler_->Enabled()) {
     context_.StartProfiling();
   }
@@ -858,7 +862,20 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     context_.CollectProfilingData(profiler_->Events());
   }
 
-  return Status::OK();
+  Status status{};
+  if (context_.ValidationMode() >= ValidationMode::Basic) {
+    ORT_RETURN_IF_ERROR(context_.Wait(
+        context_.Device().PopErrorScope(
+            wgpu::CallbackMode::WaitAnyOnly, [](wgpu::PopErrorScopeStatus pop_status, wgpu::ErrorType error_type, char const* message, Status* status) {
+              ORT_ENFORCE(pop_status == wgpu::PopErrorScopeStatus::Success, "Instance dropped.");
+              if (error_type == wgpu::ErrorType::NoError) {
+                return;
+              }
+              *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU validation failed. ", message);
+            },
+            &status)));
+  }
+  return status;
 }
 
 bool WebGpuExecutionProvider::IsGraphCaptureEnabled() const {
