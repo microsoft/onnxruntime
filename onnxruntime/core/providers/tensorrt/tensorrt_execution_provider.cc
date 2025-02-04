@@ -2027,6 +2027,23 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
       }
     } else {
       for (const auto& output : node->OutputDefs()) {
+        // Check if output is one of the output edges / input to another node)
+        bool output_consumed_by_another_node = false;
+        for (auto edge_it = node->OutputEdgesBegin(), end = node->OutputEdgesEnd(); edge_it != end; ++edge_it) {
+          const onnxruntime::NodeArg* edge_output;
+          const auto dest_arg_index = edge_it->GetDstArgIndex();
+          const auto explicit_input_size = static_cast<int>(edge_it->GetNode().InputDefs().size());
+          if (dest_arg_index < explicit_input_size) {
+            edge_output = (edge_it->GetNode()).InputDefs()[dest_arg_index];
+          } else {
+            edge_output = (edge_it->GetNode()).ImplicitInputDefs()[dest_arg_index - explicit_input_size];
+          }
+          if (edge_output == output) {
+            output_consumed_by_another_node = true;
+            break;
+          }
+        }
+
         const auto& it = fused_inputs.find(output);
         if (it != fused_inputs.end()) {
           fused_inputs.erase(it);
@@ -2037,7 +2054,9 @@ std::unique_ptr<IndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGraph
           if (graph_output_names.find(output->Name()) != graph_output_names.end()) {
             graph_outputs_to_add[output] = output_order;
           }
-          fused_outputs[output] = output_order++;
+          if (output_consumed_by_another_node) {
+            fused_outputs[output] = output_order++;
+          }
         }
       }
     }
@@ -2463,21 +2482,29 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
 #endif
   model_path_[sizeof(model_path_) - 1] = '\0';
 
-  // If the model consists of only a single "EPContext" contrib op, it means TRT EP can fetch the precompiled engine info from the node and
-  // load the engine directly without having to go through the processes of graph proto reconstruction, calling TRT parser and engine compilation.
-  // So, simply return the ComputeCapability here.
-  if (graph.NumberOfNodes() == 1 && GraphHasCtxNode(graph)) {
-    SubGraph_t supported_node_vector = {{0}, true};
-    std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, TRTGenerateId(graph, std::to_string(trt_version_), std::to_string(cuda_version_)), 0);
-    result.push_back(ComputeCapability::Create(std::move(sub_graph)));
-    return result;
-  }
-
+  // Get supported node list from TensorRT parser
+  const int number_of_ort_nodes = graph.NumberOfNodes();
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);
   // Generate unique kernel name for TRT graph
   HashValue model_hash = TRTGenerateId(graph, std::to_string(trt_version_), std::to_string(cuda_version_));
 
-  // Get supported node list from TensorRT parser
-  const int number_of_ort_nodes = graph.NumberOfNodes();
+  // If there're "EPContext" contrib ops in the model, it means TRT EP can fetch the precompiled engine info from the cached context nodes and
+  // load the engine directly without having to go through the processes of graph proto reconstruction, calling TRT parser and engine compilation.
+  // So, simply return subgraphs consists of single ep context nodes here.
+  if (GraphHasCtxNode(graph)) {
+    int subgraph_idx = 0;
+    for (size_t i = 0; i < static_cast<size_t>(number_of_ort_nodes); i++) {
+      const auto& node = graph.GetNode(node_index[i]);
+      const bool is_context_node = node && !node->OpType().empty() && node->OpType() == "EPContext";
+      if (is_context_node) {
+        SubGraph_t supported_node_vector(std::make_pair(std::vector<size_t>{i}, true));
+        std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(supported_node_vector, graph, model_hash, subgraph_idx++);
+        result.push_back(ComputeCapability::Create(std::move(sub_graph)));
+      }
+    }
+    return result;
+  }
+
   std::vector<size_t> nodes_vector(number_of_ort_nodes);
   std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
 
@@ -2495,7 +2522,6 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   }
 
   SubGraphCollection_t parser_nodes_vector, supported_nodes_vector;
-  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder(1 /*priority-based topological sort*/);
   bool new_subgraph = true;
 
   /* Iterate all the nodes and exclude the node if:
@@ -2785,9 +2811,11 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     }
 
     Status status;
-    if (GraphHasCtxNode(graph_body_viewer)) {
+    int ctx_node_idx = FindCtxNodeInGraph(graph_body_viewer);
+    if (ctx_node_idx >= 0) {
       status = CreateNodeComputeInfoFromPrecompiledEngine(graph_body_viewer,
                                                           fused_node,
+                                                          ctx_node_idx,
                                                           input_map,
                                                           output_map,
                                                           node_compute_funcs);
@@ -2798,6 +2826,7 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
     }
   }
+
   return Status::OK();
 }
 
@@ -3320,23 +3349,23 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         // dump EP context node model
         if (dump_ep_context_model_) {
           // "ep_cache_context" node attribute should be a relative path to context model directory
-          if (ep_cache_context_attr_.empty()) {
-            auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
-            ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
-          }
+          // ep_cache_context_attr_ needs to be set to engine_cache_path for every context node
+          auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
+          ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
           std::string compute_capability_hw_compat = compute_capability_;
           if (engine_cache_enable_ && engine_hw_compatible_) {
             compute_capability_hw_compat = "80+";
           }
-          std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto{CreateCtxModel(graph_body_viewer,
-                                                                                 ep_cache_context_attr_,
-                                                                                 reinterpret_cast<char*>(serialized_engine->data()),
-                                                                                 serialized_engine->size(),
-                                                                                 ep_context_embed_mode_,
-                                                                                 compute_capability_hw_compat,
-                                                                                 model_path_,
-                                                                                 GetLogger())};
-          DumpCtxModel(model_proto.get(), ctx_model_path_);
+          auto trt_ep_context_model_ptr = CreateCtxModel(graph_body_viewer,
+                                                         fused_node.Name(),
+                                                         ep_cache_context_attr_,
+                                                         reinterpret_cast<char*>(serialized_engine->data()),
+                                                         serialized_engine->size(),
+                                                         ep_context_embed_mode_,
+                                                         compute_capability_hw_compat,
+                                                         model_path_,
+                                                         GetLogger());
+          trt_ep_context_models.emplace_back(std::move(trt_ep_context_model_ptr));
         }
       }
     }
@@ -3426,25 +3455,24 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   // However, if the embed_mode is 0 (only includes engine path), TRT EP will serialize it here.
   if (dump_ep_context_model_ && has_dynamic_shape) {
     // "ep_cache_context" node attribute should be a relative path to context model directory
-    if (ep_cache_context_attr_.empty()) {
-      auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
-      ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
-    }
+    // ep_cache_context_attr_ needs to be set to engine_cache_path for every context node
+    auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
+    ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
     std::string compute_capability_hw_compat = compute_capability_;
     if (engine_cache_enable_ && engine_hw_compatible_) {
       compute_capability_hw_compat = "80+";
     }
-    model_proto_.reset(CreateCtxModel(graph_body_viewer,
-                                      ep_cache_context_attr_,
-                                      nullptr,
-                                      0,
-                                      ep_context_embed_mode_,
-                                      compute_capability_hw_compat,
-                                      model_path_,
-                                      GetLogger()));
-    if (ep_context_embed_mode_ == 0) {
-      DumpCtxModel(model_proto_.get(), ctx_model_path_);
-    }
+    auto trt_ep_context_model_ptr = CreateCtxModel(graph_body_viewer,
+                                                   fused_node.Name(),
+                                                   ep_cache_context_attr_,
+                                                   nullptr,
+                                                   0,
+                                                   ep_context_embed_mode_,
+                                                   compute_capability_hw_compat,
+                                                   model_path_,
+                                                   GetLogger());
+
+    trt_ep_context_models.emplace_back(std::move(trt_ep_context_model_ptr));
   }
 
   // Create function state
@@ -3813,10 +3841,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         }
       }
 
-      // dump ep context model
+      // Give a warning that ep context need to be regenerated
       if (dump_ep_context_model_ && ep_context_embed_mode_) {
-        UpdateCtxNodeModelEngineContext(model_proto_.get(), reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
-        DumpCtxModel(model_proto_.get(), ctx_model_path_);
+        LOGS_DEFAULT(WARNING) << "Engine was updated during inference due to dynamic input changed change. Please regenerate EP context model.";
       }
       context_update = true;
 
@@ -4041,9 +4068,13 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
 Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const GraphViewer& graph_body_viewer,
                                                                              const Node& fused_node,
+                                                                             const int ctx_node_idx,
                                                                              std::unordered_map<std::string, size_t>& input_map,
                                                                              std::unordered_map<std::string, size_t>& output_map,
                                                                              std::vector<NodeComputeInfo>& node_compute_funcs) {
+  auto model = graph_body_viewer.CreateModel(*GetLogger());
+  auto model_proto = model->ToProto();
+
   std::unique_ptr<nvinfer1::ICudaEngine> trt_engine;
   std::unique_ptr<nvinfer1::IExecutionContext> trt_context;
   std::unordered_map<std::string, size_t> input_indexes;   // TRT engine input name -> ORT kernel context input index
@@ -4060,7 +4091,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
                                                            onnx_model_bytestream_,
                                                            onnx_model_bytestream_size_,
                                                            detailed_build_log_);
-  auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer);
+  auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer, ctx_node_idx);
   if (status != Status::OK()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
   }
@@ -4362,6 +4393,19 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
 
   node_compute_funcs.push_back(compute_info);
   return Status::OK();
+}
+
+const InlinedVector<const Node*> TensorrtExecutionProvider::GetEpContextNodes() const {
+  InlinedVector<const Node*> ep_context_nodes;
+  if (!trt_ep_context_models.empty()) {
+    for (const auto& context_model : trt_ep_context_models) {
+      const auto& graph = context_model->MainGraph();
+      for (const auto& node : graph.Nodes()) {
+        ep_context_nodes.push_back(node);
+      }
+    }
+  }
+  return ep_context_nodes;
 }
 
 void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const {

@@ -272,6 +272,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(int graph_annotation_id) const override;
   Status ReplayGraph(int graph_annotation_id) override;
+  const InlinedVector<const Node*> GetEpContextNodes() const override;
 
   static common::Status RefitEngine(std::string onnx_model_filename,
                                     std::string& onnx_model_folder_path,
@@ -330,6 +331,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::string cache_prefix_;
   bool engine_hw_compatible_ = false;
   std::string op_types_to_exclude_;
+  std::vector<std::unique_ptr<Model>> trt_ep_context_models;
 
   // The format is as for TENSORRT_VERSION: (MAJOR * 100 + MINOR) * 100 + PATCH
   int32_t trt_version_;
@@ -567,6 +569,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    */
   Status CreateNodeComputeInfoFromPrecompiledEngine(const GraphViewer& graph_body_viewer,
                                                     const Node& fused_node,
+                                                    const int ctx_node_idx,
                                                     std::unordered_map<std::string, size_t>& input_map,
                                                     std::unordered_map<std::string, size_t>& output_map,
                                                     std::vector<NodeComputeInfo>& node_compute_funcs);
