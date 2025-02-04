@@ -2,7 +2,7 @@
   "react-native": "lib/index",
   "module": "dist/module/index",
   "engines": {
-    "node": ">=16"
+    "node": ">=18"
   },
   "jest": {
     "modulePathIgnorePatterns": [
