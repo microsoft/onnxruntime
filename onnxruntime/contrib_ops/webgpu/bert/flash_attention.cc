@@ -120,7 +120,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddOutput("output", ShaderUsage::UseUniform);
 
   shader.AdditionalImplementation() << "const qkv_head_size: u32 = " << qkv_head_size_ << ";\n"
-                                    << "const num_heads: u32 =" <<  qkv_num_heads_ << ";\n";
+                                    << "const num_heads: u32 =" << qkv_num_heads_ << ";\n";
 
   shader.AdditionalImplementation() << R"HELPER_FN(
   // For max performance max_k_step should be the same as sg_size, however we might run out of registers
@@ -200,9 +200,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
           return vec4<q_element_t>(c1,c2,c3,c4);
       }
     )HELPER_FN";
-  }
-  else
-  {
+  } else {
     shader.AdditionalImplementation() << R"HELPER_FN(
       fn loadAttentionBias(q_idx_global : u32, k_idx_global : u32, head_idx: u32) -> vec4<q_element_t>
       {
