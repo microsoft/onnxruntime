@@ -159,11 +159,13 @@
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
     endif()
     
-    # relocatable-device-code=true 
+    # Since CUDA 12.8, compiling diagnostics become stricter
     if (MSVC AND CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
-      set_target_properties(${target} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--relocatable-device-code=true>")
+      set_target_properties(${target} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4505>")
+      # skip diagnosis error caused by cuda header files
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>")
     endif()
 
     if (UNIX)
