@@ -249,7 +249,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     qk_3 = qk_3 * q_element_t(uniforms.alpha);
     qk_4 = qk_4 * q_element_t(uniforms.alpha);
 
-    // Neuter out of bounds qk values
+    // Neuter qk values where K is out of bounds.
     qk_1[1] = select(min_value, qk_1[1], k_start+1 < uniforms.present_sequence_length);
     qk_1[2] = select(min_value, qk_1[2], k_start+2 < uniforms.present_sequence_length);
     qk_1[3] = select(min_value, qk_1[3], k_start+3 < uniforms.present_sequence_length);
@@ -266,7 +266,29 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     qk_4[2] = select(min_value, qk_4[2], k_start+14 < uniforms.present_sequence_length);
     qk_4[3] = select(min_value, qk_4[3], k_start+15 < uniforms.present_sequence_length);
 
-    // Compute SoftMax
+    //
+    // Compute SoftMax as per Flash Attention technique.
+    //
+    // Crux of Flash Attention is here, that allows for partial softmax computation,
+    // direct update of output and merging with previous results.
+    // https://courses.cs.washington.edu/courses/cse599m/23sp/notes/flashattn.pdf
+    // Where b is the block size of the tile. Xi is storing QKtranspose for the ith tile.
+    // mi_local is the max of Xi. Note: _ in this notation means what follows is a
+    // subscript. max_j=1:b (Xi[j]) is the max of Xi[j] for j=1 to b.
+    //
+    // for i = 1, #tiles do
+    //  Xi = Q[k,:] Kt[:, (i-1) b : i b]
+    //  mi_local= max_j=1:b (Xi[j])
+    //  Mi = max(M_(i-1), mi_local)
+    //  d'_i = d'_(i-1) * e^(M_(i-1)-M_i) + Σ_j=1:b e^(Xi[j]-Mi)
+    //  o'_i = o'_(i-1) * d'_(i-1) * e^(M_(i-1)-M_i) / d'_i + Σ_j=1:b (e^(Xi[j]-Mi) / d'_i) V[j + (i - 1)b,:]
+    // end
+    //
+    // In the code below:
+    // dleft is the first term of d'_i expression above : d'_(i-1) * e^(M_(i-1)-M_i).
+    // sum is the second term of the same expression    : Σ_j=1:b e^(Xi[j]-Mi)
+    // o_ratio is the part of the first term of o'_i expression above : d'_(i-1) * e^(M_(i-1)-M_i) / d'_i
+    //
     var local_max_temp = max(qk_1, qk_2);
     local_max_temp = max(local_max_temp, qk_3);
     local_max_temp = max(local_max_temp, qk_4);
