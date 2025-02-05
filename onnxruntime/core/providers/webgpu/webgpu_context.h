@@ -3,10 +3,6 @@
 
 #pragma once
 
-#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
-#include <GLFW/glfw3.h>
-#endif  // ENABLE_PIX_FOR_WEBGPU_EP
-
 #include <memory>
 #include <mutex>
 
