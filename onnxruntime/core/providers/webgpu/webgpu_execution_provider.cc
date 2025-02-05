@@ -832,6 +832,8 @@ std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
 }
 
 Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
+  context_.PushErrorScopeIfNoLowerThan(ValidationMode::Basic);
+
   if (profiler_->Enabled()) {
     context_.StartProfiling();
   }
@@ -858,7 +860,7 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     context_.CollectProfilingData(profiler_->Events());
   }
 
-  return Status::OK();
+  return context_.PopErrorScopeIfNoLowerThan(ValidationMode::Basic);
 }
 
 bool WebGpuExecutionProvider::IsGraphCaptureEnabled() const {
