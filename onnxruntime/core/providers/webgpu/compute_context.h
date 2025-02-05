@@ -112,6 +112,20 @@ class ComputeContext {
     return webgpu_context_.Run(*this, program);
   }
 
+  //
+  // Push error scope.
+  //
+  // This is useful only when "skip_validation" is not set.
+  //
+  void PushErrorScope();
+
+  //
+  // Pop error scope.
+  //
+  // This is useful only when "skip_validation" is not set.
+  //
+  Status PopErrorScope();
+
  protected:
   WebGpuContext& webgpu_context_;
   OpKernelContext& kernel_context_;

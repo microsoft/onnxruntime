@@ -13,5 +13,13 @@ ComputeContext::ComputeContext(OpKernelContext& kernel_context)
       kernel_context_{kernel_context} {
 }
 
+void ComputeContext::PushErrorScope() {
+  webgpu_context_.PushErrorScopeIfNoLowerThan(ValidationMode::Full);
+}
+
+Status ComputeContext::PopErrorScope() {
+  return webgpu_context_.PopErrorScopeIfNoLowerThan(ValidationMode::Full);
+}
+
 }  // namespace webgpu
 }  // namespace onnxruntime
