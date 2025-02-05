@@ -205,14 +205,11 @@ def make_opt_nested_greater_or_equal() -> ModelProto:
     m = helper.make_model(
         graph,
         opset_imports=[
-            helper.make_opsetid("", 17),
-            # helper.make_opsetid("", 15),
+            helper.make_opsetid("", 15),
         ],
     )
 
     checker.check_model(m, full_check=True)
-
-    # onnx.save_model(m, "nested_control_flow_model_opset17.onnx")
 
     return m
 
