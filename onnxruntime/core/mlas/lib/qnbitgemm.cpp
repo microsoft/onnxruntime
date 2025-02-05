@@ -292,6 +292,23 @@ MlasQNBitGemmPackQuantBData(
     }
 }
 
+bool MLASCALL
+MlasQNBitGemmScalesPacked(
+    size_t K,
+    size_t BlkBitWidth,
+    size_t BlkLen,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    bool has_zp_input
+) {
+#ifdef MLAS_TARGET_ARM64
+    if (BlkBitWidth == 4 && ComputeType == SQNBIT_CompInt8) {
+      const auto UseTiled = GetMlasPlatform().QNBitGemmDispatch->UseTiled_CompInt8;
+      return UseTiled && UseTiled(K, BlkLen, has_zp_input);
+    }
+#endif  // MLAS_TARGET_ARM64
+    return false;
+}
+
 namespace
 {
 
