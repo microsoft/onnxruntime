@@ -770,9 +770,7 @@ const createResizeProgramInfo = (
     shaderCache: {
       hint: `${attributes.cacheKey}|${opsetVersion}|${
         scales.length > 0 ? (attributes.mode === 'cubic' ? scales : scales.length) : ''
-      }|${
-        sizes.length > 0 ? sizes : ''
-      }|${roi.length > 0 ? roi : ''}|${noScale}|${
+      }|${sizes.length > 0 ? sizes : ''}|${roi.length > 0 ? roi : ''}|${noScale}|${
         attributes.mode === 'nearest' ? inputShape.length : inputShape
       }`,
       inputDependencies: ['rank'],
