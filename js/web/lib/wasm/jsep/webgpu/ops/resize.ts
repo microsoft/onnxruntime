@@ -166,7 +166,17 @@ const getOriginalCoordinateFromResizedCoordinate = (
   (() => {
     switch (coordinateTransferMode) {
       case 'asymmetric':
-        return `return ${dType}(xResized) / ${dType}(xScale);`;
+        // `xResized / xScale` is the original coordinate in the resized space.
+        return `
+          if (lengthResized == 1u) {
+            return ${dType}(0.0);
+          }
+          // Separate the whole part and the fraction to avoid floating inaccuracies.
+          let big = xResized * lengthOriginal;
+          let whole = ${dType}(big / lengthResized);
+          let fract = ${dType}(big % lengthResized) / ${dType}(lengthResized);
+          return whole + fract;
+        `;
       case 'pytorch_half_pixel':
         return `if (lengthResized > 1) {
                     return (${dType}(xResized) + 0.5) / ${dType}(xScale) - 0.5;
@@ -375,7 +385,7 @@ const calculateInputIndicesFromOutputIndices = (
             input_index = u32(original_idx);
           }
         }
-        ${input.indicesSet('input_indices', 'i', ' input_index')}
+        ${input.indicesSet('input_indices', 'i', 'input_index')}
       }
       return input_indices;
     }`;
@@ -758,9 +768,13 @@ const createResizeProgramInfo = (
   return {
     name: 'Resize',
     shaderCache: {
-      hint: `${attributes.cacheKey}|${opsetVersion}|${scales.length > 0 ? scales : ''}|${
+      hint: `${attributes.cacheKey}|${opsetVersion}|${
+        scales.length > 0 ? (attributes.mode === 'cubic' ? scales : scales.length) : ''
+      }|${
         sizes.length > 0 ? sizes : ''
-      }|${roi.length > 0 ? roi : ''}|${noScale}|${inputShape}`,
+      }|${roi.length > 0 ? roi : ''}|${noScale}|${
+        attributes.mode === 'nearest' ? inputShape.length : inputShape
+      }`,
       inputDependencies: ['rank'],
     },
     getShaderSource,
