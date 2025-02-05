@@ -111,8 +111,8 @@ class MatMulNBits final : public OpKernel {
       has_unquantized_zero_point_ = type != ONNX_NAMESPACE::TensorProto_DataType_UINT8;
     }
 
-    ORT_ENFORCE(nbits_ == 4,
-                "Only 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
+    ORT_ENFORCE(nbits_ == 2 || nbits_ == 4,
+                "Only 2 and 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
     const Tensor* tensor_zero_point = nullptr;
     has_zp_input_ = info.TryGetConstantInput(InputIndex::zero_points, &tensor_zero_point);
   }
@@ -436,17 +436,30 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_, true);
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<float>())) {
-    // dequantize b, only 4b quantization is supported for now
-    MlasDequantizeBlockwise<float, 4>(
-        tmp_b_data_ptr.get(),                           // dequantized output
-        b_data,                                         // quantized input
-        scales_data,                                    // quantization scales
-        static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
-        static_cast<int32_t>(block_size_),              // quantization block size
-        column_wise_quant_,                             // columnwise quantization or row-wise
-        static_cast<int32_t>(K_),                       // number of rows in quantized input
-        static_cast<int32_t>(N_),                       // number of columns in quantized input
-        thread_pool);
+    // dequantize b, only 2 and 4b quantization is supported for now
+    if (this->nbits_ == 2) {
+      MlasDequantizeBlockwise<float, 2>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_data,                                    // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          static_cast<int32_t>(block_size_),              // quantization block size
+          column_wise_quant_,                             // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),                       // number of rows in quantized input
+          static_cast<int32_t>(N_),                       // number of columns in quantized input
+          thread_pool);
+    } else if (this->nbits_ == 4) {
+      MlasDequantizeBlockwise<float, 4>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_data,                                    // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          static_cast<int32_t>(block_size_),              // quantization block size
+          column_wise_quant_,                             // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),                       // number of rows in quantized input
+          static_cast<int32_t>(N_),                       // number of columns in quantized input
+          thread_pool);
+    }
   } else {
     ORT_ENFORCE(column_wise_quant_, "Row-wise quantization is not supported for now");
     // !!!!!!!!!!!!!! naive implementation, need to be optimized !!!!!!!!!!!!!!

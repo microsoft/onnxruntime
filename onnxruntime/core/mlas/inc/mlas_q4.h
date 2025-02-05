@@ -277,9 +277,9 @@ MlasBlockwiseQuantizedShape(
  *
  * If the qbits or block_size values are unsupported the output sizes will be zero.
  */
+template<int qbits>
 void MLASCALL
 MlasBlockwiseQuantizedBufferSizes(
-    int qbits,
     int block_size,
     bool columnwise,
     int rows,
