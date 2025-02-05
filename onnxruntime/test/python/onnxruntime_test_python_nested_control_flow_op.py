@@ -205,8 +205,8 @@ def make_opt_nested_greater_or_equal() -> ModelProto:
     m = helper.make_model(
         graph,
         opset_imports=[
-            # helper.make_opsetid("", 17),
-            helper.make_opsetid("", 14),
+            helper.make_opsetid("", 17),
+            # helper.make_opsetid("", 15),
         ],
     )
 
@@ -245,10 +245,10 @@ def test_nested_optional_greater_or_equal_with_ep_context() -> None:
     m = make_opt_nested_greater_or_equal()
 
     # Create session options and add config entries
-    so = SessionOptions()
-    so.add_config_entry("ep.context_enable", "1")
-    so.add_config_entry("ep.context_file_path", "EP_Context_model.onnx")
-    so.add_config_entry("ep.context_embed_mode", "0")
+    so = ort.SessionOptions()
+    so.add_session_config_entry("ep.context_enable", "1")
+    so.add_session_config_entry("ep.context_file_path", "EP_Context_model.onnx")
+    so.add_session_config_entry("ep.context_embed_mode", "0")
 
     providers = ["TensorrtExecutionProvider"]
     session = ort.InferenceSession(
