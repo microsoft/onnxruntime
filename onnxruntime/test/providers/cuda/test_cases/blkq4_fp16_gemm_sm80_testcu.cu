@@ -12,13 +12,13 @@
  */
 
 // This test has build error with cuda 12.5
-#if defined(CUDA_VERSION) && CUDA_VERSION <= 12030
-
-#include "blkq4_fp16_gemm_sm80.h"
-
 #include <random>
 #include <thrust/device_vector.h>
 #include <thrust/host_vector.h>
+
+#if defined(CUDA_VERSION) && CUDA_VERSION <= 12030
+
+#include "blkq4_fp16_gemm_sm80.h"
 
 #include "core/mickey/blk_q4/f16_gemm_sm80.h"
 #include "core/mickey/gemm/device/quant_b4_gemm.h"
