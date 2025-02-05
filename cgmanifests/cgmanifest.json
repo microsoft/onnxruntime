@@ -3,15 +3,6 @@
   "Registrations": [
     {
       "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "215105818dfde3174fe799600bb0f3cae233d0bf",
-          "repositoryUrl": "https://github.com/abseil/abseil-cpp.git"
-        }
-      }
-    },
-    {
-      "component": {
         "Type": "maven",
         "maven": {
           "GroupId": "org.junit.platform",
@@ -135,16 +126,6 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "b31f58de6fa8bbda5353b3c77d9be4914399724d",
-          "repositoryUrl": "https://github.com/pytorch/pytorch.git"
-        },
-        "comments": "pytorch 1.6 used by onnxruntime training image"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
           "commitHash": "7389dbac82d362f296dc2746f10e43ffa1615660",
           "repositoryUrl": "https://github.com/scikit-learn/scikit-learn.git"
         }
@@ -187,15 +168,6 @@
           "Version": "1.69.0",
           "DownloadUrl": "https://boostorg.jfrog.io/artifactory/main/release/1.69.0/source/boost_1_69_0.tar.bz2"
         }
-      }
-    },
-    {
-      "component": {
-        "git": {
-          "commitHash": "02a2a458ac15912d7d87cc1171e811b0c5219ece",
-          "repositoryUrl": "https://github.com/grpc/grpc"
-        },
-        "type": "git"
       }
     },
     {
@@ -328,116 +300,6 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "aead4d751c2101e23336aa73f2380df83e7a13f3",
-          "repositoryUrl": "https://github.com/pypa/manylinux"
-        },
-        "comments": "For building our CI build docker image"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "c974557598645360fbabac71352b083117e3cc17",
-          "repositoryUrl": "https://gitlab.kitware.com/cmake/cmake"
-        },
-        "comments": "CMake 3.24.3. For building our CI build docker image"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "1e5d33e9b9b8631b36f061103a30208b206fd03a",
-          "repositoryUrl": "https://github.com/python/cpython"
-        },
-        "comments": "Python 3.9.1"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "6503f05dd59e26a9986bdea097b3da9b3546f45b",
-          "repositoryUrl": "https://github.com/python/cpython"
-        },
-        "comments": "Python 3.8.7"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "13c94747c74437e594b7fc242ff7da668e81887c",
-          "repositoryUrl": "https://github.com/python/cpython"
-        },
-        "comments": "Python 3.7.9"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "c0a9afe2ac1820409e6173bd1893ebee2cf50270",
-          "repositoryUrl": "https://github.com/python/cpython"
-        },
-        "comments": "Python 3.6.12"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "426b022776672fdf3d71ddd98d89af341c88080f",
-          "repositoryUrl": "https://github.com/python/cpython"
-        },
-        "comments": "Python 3.5.10"
-      }
-    },
-    {
-      "component": {
-        "type": "pip",
-        "pip": {
-          "Name": "transformers",
-          "Version": "4.38.0"
-        },
-        "comments": "Installed in the training docker image"
-      }
-    },
-    {
-      "component": {
-        "type": "pip",
-        "pip": {
-          "Name": "msgpack",
-          "Version": "1.0.0"
-        },
-        "comments": "Installed in the training docker image"
-      }
-    },
-    {
-      "component": {
-        "type": "pip",
-        "pip": {
-          "Name": "tensorboardX",
-          "Version": "1.8"
-        },
-        "comments": "Installed in the training docker image"
-      }
-    },
-    {
-      "component": {
-        "type": "pip",
-        "pip": {
-          "Name": "tensorboard",
-          "Version": "2.3.0"
-        },
-        "comments": "Installed in the training docker image"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
           "commitHash": "92cf3702fcfaadc84eb7bef59825a23e0cd84f56",
           "repositoryUrl": "https://github.com/aappleby/smhasher"
         },
@@ -492,15 +354,6 @@
           "repositoryUrl": "https://github.com/python-pillow/Pillow.git"
         },
         "comments": "python-pillow. Implementation logic for anti-aliasing copied by Resize CPU kernel."
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "e7248b26a1ed53fa030c5c459f7ea095dfd276ac",
-          "repositoryUrl": "https://gitlab.com/libeigen/eigen.git"
-        }
       }
     }
   ],
