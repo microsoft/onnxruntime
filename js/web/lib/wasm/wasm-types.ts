@@ -168,6 +168,11 @@ export declare namespace JSEP {
     shouldTransferToMLTensor: boolean;
 
     /**
+     * Enable web trace event profiling. This is used to record a performance trace that captures details of what ORT web is doing.
+     */
+    traceEvent: boolean;
+
+    /**
      * [exported from pre-jsep.js] Register MLContext for a session.
      * @param sessionId - specify the session ID.
      * @param context - specify the MLContext.
