@@ -39,7 +39,7 @@ if [ -x "$(command -v ccache)" ]; then
     #BUILD_ARGS+=("--use_cache")
 fi
 if [ -f /opt/python/cp312-cp312/bin/python3 ]; then
-    /opt/python/cp312-cp312/bin/python3 tools/ci_build/build.py "${BUILD_ARGS[@]}"
+    PATH=/opt/python/cp312-cp312/bin:$PATH python tools/ci_build/build.py "${BUILD_ARGS[@]}"
 else
     python3 tools/ci_build/build.py "${BUILD_ARGS[@]}"
 fi

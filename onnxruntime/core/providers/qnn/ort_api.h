@@ -17,13 +17,13 @@
 #include "core/platform/windows/logging/etw_sink.h"
 #endif
 
-#include "onnx/defs/data_type_utils.h"
 #include "core/common/common.h"
 #include "core/common/status.h"
 #include "core/common/safeint.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/capture.h"
 #include "core/common/path_string.h"
+#include "core/graph/onnx_protobuf.h"
 #include "core/platform/env.h"
 #include "core/framework/data_types.h"
 #include "core/framework/float16.h"

@@ -94,8 +94,6 @@ jobs:
       Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cpu
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuildpython${{ parameters.arch }}
-      ${{ if eq(parameters.arch, 'aarch64') }}:
-        UpdateDepsTxt: false
 
   - task: Bash@3
     displayName: 'Bash Script'

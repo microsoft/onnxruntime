@@ -1,4 +1,5 @@
 setuptools
+flatbuffers
 wheel
 pytest
 numpy>=1.19.0

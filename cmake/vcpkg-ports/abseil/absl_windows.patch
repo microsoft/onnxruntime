@@ -1,0 +1,163 @@
+diff --git a/absl/base/attributes.h b/absl/base/attributes.h
+index 5ea5ee3e..f4949898 100644
+--- a/absl/base/attributes.h
++++ b/absl/base/attributes.h
+@@ -559,7 +559,7 @@
+ #undef ABSL_ATTRIBUTE_UNUSED
+ #define ABSL_ATTRIBUTE_UNUSED __attribute__((__unused__))
+ #else
+-#define ABSL_ATTRIBUTE_UNUSED
++#define ABSL_ATTRIBUTE_UNUSED [[maybe_unused]]
+ #endif
+ 
+ // ABSL_ATTRIBUTE_INITIAL_EXEC
+diff --git a/absl/container/internal/raw_hash_set.h b/absl/container/internal/raw_hash_set.h
+index d4fe8f5c..27418d13 100644
+--- a/absl/container/internal/raw_hash_set.h
++++ b/absl/container/internal/raw_hash_set.h
+@@ -1924,7 +1924,7 @@ HashtablezInfoHandle SampleHashtablezInfo(size_t sizeof_slot, size_t sizeof_key,
+   // In SOO, we sample on the first insertion so if this is an empty SOO case
+   // (e.g. when reserve is called), then we still need to sample.
+   if (kSooEnabled && was_soo && c.size() == 0) {
+-    return Sample(sizeof_slot, sizeof_key, sizeof_value, SooCapacity());
++    return Sample(sizeof_slot, sizeof_key, sizeof_value, (int16_t)SooCapacity());
+   }
+   // For non-SOO cases, we sample whenever the capacity is increasing from zero
+   // to non-zero.
+@@ -3525,7 +3525,7 @@ class raw_hash_set {
+     assert(is_soo());
+     if (!ShouldSampleHashtablezInfo<CharAlloc>()) return HashtablezInfoHandle{};
+     return Sample(sizeof(slot_type), sizeof(key_type), sizeof(value_type),
+-                  SooCapacity());
++                  (int16_t)SooCapacity());
+   }
+ 
+   inline void destroy_slots() {
+diff --git a/absl/copts/GENERATED_AbseilCopts.cmake b/absl/copts/GENERATED_AbseilCopts.cmake
+index da2282fe..4c7fc26f 100644
+--- a/absl/copts/GENERATED_AbseilCopts.cmake
++++ b/absl/copts/GENERATED_AbseilCopts.cmake
+@@ -181,8 +181,6 @@ list(APPEND ABSL_MSVC_FLAGS
+     "/wd4005"
+     "/wd4068"
+     "/wd4180"
+-    "/wd4244"
+-    "/wd4267"
+     "/wd4503"
+     "/wd4800"
+     "/DNOMINMAX"
+diff --git a/absl/copts/GENERATED_copts.bzl b/absl/copts/GENERATED_copts.bzl
+index b9e0071e..dd8410ec 100644
+--- a/absl/copts/GENERATED_copts.bzl
++++ b/absl/copts/GENERATED_copts.bzl
+@@ -182,8 +182,6 @@ ABSL_MSVC_FLAGS = [
+     "/wd4005",
+     "/wd4068",
+     "/wd4180",
+-    "/wd4244",
+-    "/wd4267",
+     "/wd4503",
+     "/wd4800",
+     "/DNOMINMAX",
+diff --git a/absl/copts/copts.py b/absl/copts/copts.py
+index 2d85ac74..4875d668 100644
+--- a/absl/copts/copts.py
++++ b/absl/copts/copts.py
+@@ -118,10 +118,6 @@ MSVC_WARNING_FLAGS = [
+     "/wd4068",  # unknown pragma
+     # qualifier applied to function type has no meaning; ignored
+     "/wd4180",
+-    # conversion from 'type1' to 'type2', possible loss of data
+-    "/wd4244",
+-    # conversion from 'size_t' to 'type', possible loss of data
+-    "/wd4267",
+     # The decorated name was longer than the compiler limit
+     "/wd4503",
+     # forcing value to bool 'true' or 'false' (performance warning)
+diff --git a/absl/debugging/symbolize.cc b/absl/debugging/symbolize.cc
+index 638d3954..6b817075 100644
+--- a/absl/debugging/symbolize.cc
++++ b/absl/debugging/symbolize.cc
+@@ -14,7 +14,7 @@
+ 
+ #include "absl/debugging/symbolize.h"
+ 
+-#ifdef _WIN32
++#if defined(_WIN32) && !defined(NDEBUG)
+ #include <winapifamily.h>
+ #if !(WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP)) || \
+     WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
+diff --git a/absl/debugging/symbolize_win32.inc b/absl/debugging/symbolize_win32.inc
+index 53a099a1..34d210d6 100644
+--- a/absl/debugging/symbolize_win32.inc
++++ b/absl/debugging/symbolize_win32.inc
+@@ -35,15 +35,15 @@ ABSL_NAMESPACE_BEGIN
+ 
+ static HANDLE process = NULL;
+ 
+-void InitializeSymbolizer(const char*) {
+-  if (process != nullptr) {
+-    return;
+-  }
++namespace {
++void InitializeSymbolizerImpl() {
++
+   process = GetCurrentProcess();
+ 
+   // Symbols are not loaded until a reference is made requiring the
+   // symbols be loaded. This is the fastest, most efficient way to use
+   // the symbol handler.
++
+   SymSetOptions(SYMOPT_DEFERRED_LOADS | SYMOPT_UNDNAME);
+   if (!SymInitialize(process, nullptr, true)) {
+     // GetLastError() returns a Win32 DWORD, but we assign to
+@@ -54,6 +54,36 @@ void InitializeSymbolizer(const char*) {
+   }
+ }
+ 
++bool LookupAndInitialize(const void* pc, SYMBOL_INFO* symbol) {
++  auto hProcess = (process != NULL) ? process : GetCurrentProcess();
++  if (SymFromAddr(hProcess, reinterpret_cast<DWORD64>(pc), nullptr, symbol) != TRUE) {
++    if (GetLastError() == ERROR_INVALID_HANDLE && process == NULL) {
++      InitializeSymbolizerImpl();
++      if (SymFromAddr(process, reinterpret_cast<DWORD64>(pc), nullptr, symbol) != TRUE) {
++        return false;
++      }
++    } else {
++      return false;
++    }
++    return false;
++  }
++  return true;
++}
++}
++
++void InitializeSymbolizer(const char*) {
++  if (process != nullptr) {
++    return;
++  }
++
++  alignas(SYMBOL_INFO) char buf[sizeof(SYMBOL_INFO) + MAX_SYM_NAME];
++  SYMBOL_INFO* symbol = reinterpret_cast<SYMBOL_INFO*>(buf);
++  symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
++  symbol->MaxNameLen = MAX_SYM_NAME;
++
++  static_cast<void>(LookupAndInitialize(reinterpret_cast<const void*>(&InitializeSymbolizer), symbol));
++}
++
+ bool Symbolize(const void* pc, char* out, int out_size) {
+   if (out_size <= 0) {
+     return false;
+@@ -62,9 +92,11 @@ bool Symbolize(const void* pc, char* out, int out_size) {
+   SYMBOL_INFO* symbol = reinterpret_cast<SYMBOL_INFO*>(buf);
+   symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
+   symbol->MaxNameLen = MAX_SYM_NAME;
+-  if (!SymFromAddr(process, reinterpret_cast<DWORD64>(pc), nullptr, symbol)) {
++
++  if(!LookupAndInitialize(pc, symbol)) {
+     return false;
+   }
++
+   const size_t out_size_t = static_cast<size_t>(out_size);
+   strncpy(out, symbol->Name, out_size_t);
+   if (out[out_size_t - 1] != '\0') {

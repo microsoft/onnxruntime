@@ -130,9 +130,9 @@ jobs:
       PROCESSOR_ARCHITECTURE: ${{ parameters.buildArch }}
 
   - task: NuGetToolInstaller@0
-    displayName: Use Nuget 6.10.x
+    displayName: Use Nuget 6.x
     inputs:
-      versionSpec: 6.10.x
+      versionSpec: 6.x
 
   - task: NuGetCommand@2
     displayName: 'NuGet restore'
@@ -142,92 +142,37 @@ jobs:
       restoreSolution: '$(Build.SourcesDirectory)\packages.config'
       nugetConfigPath: '$(Build.SourcesDirectory)\NuGet.config'
       restoreDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
+ 
+  - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
+      - powershell: |
+          python.exe $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_csharp --parallel  --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+          Remove-Item "$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}" -Include "*.obj" -Recurse
+        displayName: 'Build and Test'
+  - ${{ else }}:
+      - powershell: |
+          python.exe $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_csharp --parallel  --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --update --build ${{ parameters.additionalBuildFlags }}
+          if ($lastExitCode -ne 0) {
+            exit $lastExitCode
+          }
+          Remove-Item "$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}" -Include "*.obj" -Recurse
+        displayName: 'Build'
 
-  - template: win-ci-build-steps.yml
-    parameters:
-      WithCache: ${{ parameters.WITH_CACHE }}
-      Today: $(TODAY)
-      CacheDir: $(ORT_CACHE_DIR)
-      AdditionalKey: " $(System.StageName) | ${{ parameters.BuildConfig }} "
-      BuildPyArguments: '--config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_csharp --update --parallel  --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}'
-      MsbuildArguments: '-maxcpucount'
-      BuildArch: ${{ parameters.buildArch }}
-      Platform: ${{ parameters.msbuildPlatform }}
-      BuildConfig: ${{ parameters.BuildConfig }}
-
-  - powershell: |
-      Get-Volume $("$(Build.BinariesDirectory)")[0]
-    displayName: check disk size
-
-  - powershell: |
-      Remove-Item "$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}" -Include "*.obj" -Recurse
-    displayName: 'Delete intermediate files from $(Build.BinariesDirectory)\${{ parameters.BuildConfig }}'
-
-  - powershell: |
-      Get-Volume $("$(Build.BinariesDirectory)")[0]
-    displayName: check disk size
-
-  - ${{ if eq(parameters.EnablePython, true) }}:
-      - task: PythonScript@0
-        displayName: 'Build wheel'
-        inputs:
-          scriptPath: '$(Build.SourcesDirectory)\setup.py'
-          arguments: 'bdist_wheel'
-          workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
-
-  - task: MSBuild@1
-    displayName: 'Restore NuGet Packages'
-    inputs:
-      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
-      platform: 'Any CPU'
-      configuration: '${{ parameters.BuildConfig }}'
-      msbuildArguments: '-t:restore -p:OrtPackageId=$(OrtPackageId)'
-      workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-  - script: |
-      python3 tools\ValidateNativeDelegateAttributes.py
+  - script: 
+      python tools\ValidateNativeDelegateAttributes.py
     displayName: 'Validate C# native delegates'
     workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-  - task: MSBuild@1
-    displayName: 'Build C#'
-    inputs:
-      solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.DesktopOnly.CSharp.sln'
-      configuration: '${{ parameters.BuildConfig }}'
-      platform: 'Any CPU'
-      msbuildArguments: '-p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
-      workingDirectory: '$(Build.SourcesDirectory)\csharp'
-
-  # C# test isn't launched by build.py, so models link has to be added.
-  - script: |
-     mklink /D /J models C:\local\models
-    workingDirectory: '$(Build.BinariesDirectory)'
-    displayName: 'Create models link'
-
-  - ${{ if and(eq(parameters.BuildConfig, 'RelWithDebInfo'), eq(parameters.RunOnnxRuntimeTests, true)) }}:
-      - task: DotNetCoreCLI@2
-        displayName: 'Test C#'
-        inputs:
-          command: test
-          projects: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp.csproj'
-          configuration: '${{ parameters.BuildConfig }}'
-          arguments: '--configuration ${{ parameters.BuildConfig }} -p:Platform="Any CPU" -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IncludeMobileTargets=false --blame'
-          workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
   - ${{ if eq(parameters.EnablePython, true) }}:
       - powershell: |
-         python3 -m pip uninstall -y onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml -qq
+         python -m pip uninstall -y onnxruntime onnxruntime-gpu onnxruntime-training onnxruntime-directml -qq
          Get-ChildItem -Path dist/*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname}
 
         workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
         displayName: 'Install onnxruntime wheel'
-
-  - ${{ if eq(parameters.RunOnnxRuntimeTests, true) }}:
-      - powershell: |
-         python $(Build.SourcesDirectory)\tools\ci_build\build.py --config ${{ parameters.BuildConfig }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --test --cmake_generator "Visual Studio 17 2022"  --build_shared_lib --enable_onnx_tests ${{ parameters.additionalBuildFlags }}
-
-        workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.BuildConfig }}\${{ parameters.BuildConfig }}'
-        displayName: 'Run tests'
 
   - ${{ if eq(parameters.GenerateDocumentation, true) }}:
     - task: PythonScript@0

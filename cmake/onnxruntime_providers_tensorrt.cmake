@@ -119,10 +119,11 @@
     if (TRT_GREATER_OR_EQUAL_TRT_10_GA)
       set(ONNX_USE_LITE_PROTO ON)
     endif()
-    FetchContent_Declare(
+    onnxruntime_fetchcontent_declare(
       onnx_tensorrt
       URL ${DEP_URL_onnx_tensorrt}
       URL_HASH SHA1=${DEP_SHA1_onnx_tensorrt}
+      EXCLUDE_FROM_ALL
     )
     if (NOT CUDA_INCLUDE_DIR)
       set(CUDA_INCLUDE_DIR ${CUDAToolkit_INCLUDE_DIRS}) # onnx-tensorrt repo needs this variable to build
