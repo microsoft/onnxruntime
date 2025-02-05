@@ -33,7 +33,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK version
   type: string
-  default: 2.30.0.250109
+  default: 2.31.0.250130
 
 jobs:
   - job: Build_QNN_EP

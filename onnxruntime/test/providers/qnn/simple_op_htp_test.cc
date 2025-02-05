@@ -670,11 +670,7 @@ TEST_F(QnnHTPBackendTests, UnaryOp_Ceil) {
 // CPU EP qdq model output: [-12.0, -6.99, -1.99, 3.0, 8.0, 11.99]
 // QNN EP qdq model output: [-11.0 (WRONG), -7.0, -2.0, 2.99, 8.0, 11.99]
 // Issue fixed in 2.30
-#if (QNN_API_VERSION_MAJOR == 2) && (QNN_API_VERSION_MINOR >= 23)
 TEST_F(QnnHTPBackendTests, UnaryOp_Ceil_U16) {
-#else
-TEST_F(QnnHTPBackendTests, DISABLED_UnaryOp_Ceil_U16) {
-#endif
   const std::vector<float> input_data = GetFloatDataInRange(-12.0f, 12.0f, 6);
   RunQDQOpTest<uint16_t>("Ceil",
                          {TestInputDef<float>({1, 2, 3}, false, input_data)},
@@ -1081,11 +1077,7 @@ TEST_F(QnnHTPBackendTests, GridSample_U16_AlignCorners) {
 // QNN QDQ val: 3.2922921180725098 (err 0.069758892059326172)
 // CPU QDQ val: 3.3850328922271729 (err 0.022981882095336914)
 // Issue fixed in 2.30
-#if (QNN_API_VERSION_MAJOR == 2) && (QNN_API_VERSION_MINOR >= 23)
 TEST_F(QnnHTPBackendTests, GridSample_BorderPadding) {
-#else
-TEST_F(QnnHTPBackendTests, DISABLED_GridSample_BorderPadding) {
-#endif
   RunQDQOpTest<uint8_t>("GridSample",
                         {TestInputDef<float>({1, 1, 3, 2}, false, -10.0f, 10.0f),
                          TestInputDef<float>({1, 2, 4, 2}, false, -10.0f, 10.0f)},
