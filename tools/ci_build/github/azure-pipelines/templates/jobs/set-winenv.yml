@@ -9,7 +9,7 @@ parameters:
     default: false
   - name: PrimaryCUDAVersion
     type: string
-    default: '12.2'
+    default: '12.8'
   - name: SecondaryCUDAVersion
     type: string
     default: '11.8'
