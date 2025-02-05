@@ -114,6 +114,58 @@ template <typename T>
 using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
 };  // namespace tensorrt_ptr
 
+#if NV_TENSORRT_MAJOR >= 10
+/*
+ * Application-implemented class for controlling asynchronous (stream ordered) memory allocation on the GPU.
+ *
+ */
+class PoolAllocator : public nvinfer1::IGpuAsyncAllocator {
+ public:
+  PoolAllocator() {
+    cudaMemPoolProps poolProps{};
+    poolProps.allocType = ::cudaMemAllocationTypePinned;
+    poolProps.handleTypes = ::cudaMemHandleTypeNone;
+    poolProps.location.type = ::cudaMemLocationTypeDevice;
+    poolProps.location.id = 0;
+    cudaMemPoolCreate(&mPool, &poolProps);
+    auto maxThreshold = std::numeric_limits<std::uint64_t>::max();
+    // cudaMemPoolAttrReleaseThreshold:
+    // Amount of reserved memory in bytes to hold onto before trying to release memory back to the OS.
+    // When more than the release threshold bytes of memory are held by the memory pool, the allocator
+    // will try to release memory back to the OS on the next call to stream, event or context synchronize
+    cudaMemPoolSetAttribute(mPool, cudaMemPoolAttrReleaseThreshold, &maxThreshold);
+  }
+
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4100)
+#endif
+  void* allocateAsync(uint64_t const size, uint64_t const alignment, nvinfer1::AllocatorFlags const flags,
+                      cudaStream_t stream) noexcept override {
+    void* memory{nullptr};
+    cudaMallocFromPoolAsync(&memory, size, mPool, stream);
+    return memory;
+  }
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+
+  bool deallocateAsync(void* const memory, cudaStream_t stream) noexcept override {
+    cudaFreeAsync(memory, stream);
+    return true;
+  }
+
+  ~PoolAllocator() {
+    if (mPool) {
+      cudaMemPoolDestroy(mPool);
+    }
+  }
+
+ private:
+  cudaMemPool_t mPool{nullptr};
+};
+#endif
+
 //
 // Class to allocate memory for outputs with data-dependent shapes. The sizes of those are unknown so pre-allocation is
 // not possible.
@@ -312,6 +364,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::string tactic_sources_;
   std::string global_cache_path_, cache_path_, engine_decryption_lib_path_;
   std::unique_ptr<nvinfer1::IRuntime> runtime_ = nullptr;
+  std::unique_ptr<PoolAllocator> trt_gpu_allocator_ = nullptr;
   std::mutex tensorrt_mu_;
   int device_id_;
   std::string compute_capability_;
@@ -350,6 +403,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
   mutable std::unordered_map<std::string, std::unique_ptr<SubGraphContext>> subgraph_context_map_;
+
+  mutable std::unordered_set<std::string> dds_op_set_;
+  mutable bool is_dds_op_in_graph_ = false;
 
   mutable std::unique_ptr<nvinfer1::IBuilder> builder_;
 
@@ -590,5 +646,12 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    * This function only creates the instance at the first time it's being called."
    */
   nvinfer1::IBuilder* GetBuilder(TensorrtLogger& trt_logger) const;
+
+  /**
+   * Check if DDS op is in the ComputeCapability/subgraph.
+   */
+  bool IsDDSOpInSubGraph(const GraphViewer& graph,
+                         std::vector<std::unique_ptr<ComputeCapability>>& compute_capabilities,
+                         std::unordered_set<std::string>& dds_op_set) const;
 };
 }  // namespace onnxruntime

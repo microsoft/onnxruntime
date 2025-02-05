@@ -63,13 +63,23 @@ TEST(NonMaxSuppressionOpTest, TwoClasses) {
   test.AddInput<int64_t>("max_output_boxes_per_class", {}, {6L});
   test.AddInput<float>("iou_threshold", {}, {0.5f});
   test.AddInput<float>("score_threshold", {}, {0.0f});
+
+// The selected_indices in ORT is sorted by class, whereas in TRT the selected_indices is sorted by score,
+// So it needs to sort the output to pass the output check when there is more than one class using TRT EP.
+#ifdef USE_TENSORRT
+  bool sort_output = true;
+#else
+  bool sort_output = false;  // default
+#endif
+
   test.AddOutput<int64_t>("selected_indices", {6, 3},
                           {0L, 0L, 3L,
                            0L, 0L, 0L,
                            0L, 0L, 5L,
                            0L, 1L, 3L,
                            0L, 1L, 0L,
-                           0L, 1L, 5L});
+                           0L, 1L, 5L},
+                          sort_output);
   test.Run();
 }
 
@@ -125,6 +135,15 @@ TEST(NonMaxSuppressionOpTest, TwoBatches_TwoClasses) {
                         0.1f, 0.2f, 0.6f, 0.3f, 0.9f});
   test.AddInput<int64_t>("max_output_boxes_per_class", {}, {2L});
   test.AddInput<float>("iou_threshold", {}, {0.8f});
+
+// The selected_indices in ORT is sorted by class, whereas in TRT the selected_indices is sorted by score,
+// So it needs to sort the output to pass the output check when there is more than one class using TRT EP.
+#ifdef USE_TENSORRT
+  bool sort_output = true;
+#else
+  bool sort_output = false;  // default
+#endif
+
   test.AddOutput<int64_t>("selected_indices", {8, 3},
                           {0L, 0L, 4L,
                            0L, 0L, 2L,
@@ -134,7 +153,8 @@ TEST(NonMaxSuppressionOpTest, TwoBatches_TwoClasses) {
                            1L, 0L, 4L,
                            1L, 0L, 1L,
                            1L, 1L, 4L,
-                           1L, 1L, 1L});
+                           1L, 1L, 1L},
+                          sort_output);
   test.Run();
 }
 
