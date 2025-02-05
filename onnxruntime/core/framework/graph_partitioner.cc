@@ -16,6 +16,7 @@
 #include "core/graph/function_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/graph/model_saving_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 // uncomment this line to count non-CUDA ops in ONNX domain
@@ -645,6 +646,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
 static Status CreateEpContextModel(const ExecutionProviders& execution_providers,
                                    const Graph& graph,
                                    const std::filesystem::path& ep_context_path,
+                                   const std::filesystem::path& ep_context_ext_ini_path,
                                    const logging::Logger& logger) {
   InlinedVector<const Node*> all_ep_context_nodes;
   for (const auto& ep : execution_providers) {
@@ -681,7 +683,9 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
                            context_cache_path, "' exist already.");
   }
 
-  Model ep_context_model(graph.Name(), false, graph.GetModel().MetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList{graph.GetSchemaRegistry()},
+  Model ep_context_model(graph.Name(), false, graph.GetModel().MetaData(),
+                         graph.GetModel().ModelPath(),  // use source model path so that external initializers can find the data file path
+                         IOnnxRuntimeOpSchemaRegistryList{graph.GetSchemaRegistry()},
                          graph.DomainToVersionMap(), {}, logger);
   auto& ep_graph = ep_context_model.MainGraph();
   ep_graph.SetDescription(graph.Description());
@@ -727,7 +731,20 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     }
   }
 
-  ORT_RETURN_IF_ERROR(Model::Save(ep_context_model, context_cache_path));
+  size_t ini_size_threshold = 0;
+  std::filesystem::path external_ini_path;
+  if (ep_context_ext_ini_path.empty()) {
+    // Set the threshold to the max so all initializers are forced into the Onnx file
+    ini_size_threshold = SIZE_MAX;
+    external_ini_path = "./model_ext_ini.bin";
+  } else {
+    // Set the theshold to 0 so all initializers are forced into the external file
+    ini_size_threshold = 0;
+    external_ini_path = ep_context_ext_ini_path;
+  }
+  ModelSavingOptions model_saving_options{ini_size_threshold};
+  ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(ep_context_model, context_cache_path,
+                                                          external_ini_path, model_saving_options));
 
   return Status::OK();
 }
@@ -993,9 +1010,10 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode, providers_, kernel_registry_mgr_, logger));
 
     bool ep_context_enabled = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
-    std::string ep_context_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
     if (ep_context_enabled) {
-      ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_path, logger));
+      std::string ep_context_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+      std::string external_ini_file_name = config_options.GetConfigOrDefault(kOrtSessionOptionsEpContextModelExternalInitializersFileName, "");
+      ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_path, external_ini_file_name, logger));
     }
 #else
     ORT_UNUSED_PARAMETER(config_options);

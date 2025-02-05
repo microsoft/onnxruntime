@@ -306,8 +306,8 @@ def create_whisper_encoder_attention(
         )
     else:
         next_sln_inputs = [
-            "layernorm_output_to_skiplayernorm",
             "matmul_after_attn_output",
+            "layernorm_output_to_skiplayernorm",
             "layernorm_weight",
             "layernorm_bias",
             "add_after_attn_initializer",
@@ -445,7 +445,7 @@ def create_whisper_decoder_attention(
                         "Attention_0_qkv_bias",
                         "",
                         "",
-                        "attention_add_qk_mask",
+                        "attention_add_qk",
                     ],
                     ["attn_output", "present_0_decoder"],
                     "Attention_0",
@@ -749,16 +749,6 @@ def create_whisper_decoder_attention(
             ),
         ]
     )
-    if fused:
-        nodes.append(
-            helper.make_node(
-                "Concat",
-                inputs=["attention_add_qk" for _ in range(num_heads)],
-                outputs=["attention_add_qk_mask"],
-                name="Concat_0",
-                axis=1,
-            ),
-        )
 
     # Create final nodes to conclude attention
     nodes.append(
@@ -796,8 +786,8 @@ def create_whisper_decoder_attention(
         )
     else:
         next_sln_inputs = [
-            "layernorm_output_to_skiplayernorm",
             "matmul_after_attn_output",
+            "layernorm_output_to_skiplayernorm",
             "layernorm_weight",
             "layernorm_bias",
             "add_after_attn_initializer",
@@ -1162,8 +1152,8 @@ def create_whisper_decoder_multihead_attention(
         )
     else:
         next_sln_inputs = [
-            "layernorm_output_to_skiplayernorm",
             "matmul_after_attn_output",
+            "layernorm_output_to_skiplayernorm",
             "layernorm_weight",
             "layernorm_bias",
             "add_after_attn_initializer",
@@ -1589,8 +1579,8 @@ def create_whisper_decoder_with_past_multihead_self_attention(
         )
     else:
         next_sln_inputs = [
-            "layernorm_output_to_skiplayernorm",
             "matmul_after_attn_output",
+            "layernorm_output_to_skiplayernorm",
             "layernorm_weight",
             "layernorm_bias",
             "add_after_attn_initializer",
@@ -1928,8 +1918,8 @@ def create_whisper_decoder_with_past_multihead_cross_attention(
         )
     else:
         next_sln_inputs = [
-            "layernorm_output_to_skiplayernorm",
             "matmul_after_attn_output",
+            "layernorm_output_to_skiplayernorm",
             "layernorm_weight",
             "layernorm_bias",
             "add_after_attn_initializer",
