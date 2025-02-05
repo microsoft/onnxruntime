@@ -255,28 +255,15 @@ function(setup_kleidiai)
   set(KLEIDIAI_BUILD_TESTS  OFF)
 
   # Fetch KleidiAI sources:
-  include(FetchContent)
-  set(KLEIDIAI_DOWNLOAD_URL "https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.3.0.tar.gz")
-  set(KLEIDIAI_ARCHIVE_MD5  "060bd2dc64642b091f461cc8dd7426d9")
+  if (NOT TARGET kleidiai)
+    if (POLICY CMP0135)
+      cmake_policy(SET CMP0135 NEW)
+    endif()
 
-  if (POLICY CMP0135)
-    cmake_policy(SET CMP0135 NEW)
+    FetchContent_Declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai})
   endif()
-
-  FetchContent_Declare(KleidiAI_Download
-      URL ${KLEIDIAI_DOWNLOAD_URL}
-      DOWNLOAD_EXTRACT_TIMESTAMP NEW
-      URL_HASH MD5=${KLEIDIAI_ARCHIVE_MD5})
-
-  FetchContent_MakeAvailable(KleidiAI_Download)
-  FetchContent_GetProperties(KleidiAI_Download
-      SOURCE_DIR  KLEIDIAI_SRC
-      POPULATED   KLEIDIAI_POPULATED)
-  set(KLEIDIAI_SRC ${KLEIDIAI_SRC} PARENT_SCOPE)
-
-  if (NOT KLEIDIAI_POPULATED)
-      message(FATAL_ERROR "KleidiAI source downloaded failed.")
-  endif()
+  onnxruntime_fetchcontent_makeavailable(kleidiai)
+  set(KLEIDIAI_SRC ${kleidiai_SOURCE_DIR})
 
   # KleidiAI
   include_directories(${KLEIDIAI_SRC}/)
