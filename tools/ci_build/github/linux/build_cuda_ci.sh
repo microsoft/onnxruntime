@@ -21,7 +21,7 @@ BUILD_ARGS=('--config'
             "--enable_pybind"
             "--build_java"
             "--cmake_extra_defines"
-            "CMAKE_CUDA_ARCHITECTURES=86"
+            "CMAKE_CUDA_ARCHITECTURES=80"
             "onnxruntime_BUILD_UNIT_TESTS=ON"
             "onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON")
 if [ -x "$(command -v ninja)" ]; then

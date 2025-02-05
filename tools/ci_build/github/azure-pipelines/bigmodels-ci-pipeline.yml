@@ -123,7 +123,7 @@ stages:
                 --enable_cuda_profiling \
                 --enable_pybind --build_java \
                 --use_cache \
-                --cmake_extra_defines  'CMAKE_CUDA_ARCHITECTURES=75;86' ; \
+                --cmake_extra_defines  'CMAKE_CUDA_ARCHITECTURES=75;80' ; \
                 ccache -sv; \
                 ccache -z"
         workingDirectory: $(Build.SourcesDirectory)
@@ -164,7 +164,7 @@ stages:
       hitAnother: 'False'
     workspace:
       clean: all
-    pool: onnxruntime-Linux-GPU-A10-12G
+    pool: Onnxruntime-Linux-GPU-A100-WUS3
     steps:
     - checkout: self
       clean: true
@@ -413,7 +413,7 @@ stages:
       skipComponentGovernanceDetection: true
     workspace:
       clean: all
-    pool: Onnxruntime-Linux-A10-24G
+    pool: Onnxruntime-Linux-GPU-A100-WUS3
     steps:
 
     - checkout: self
