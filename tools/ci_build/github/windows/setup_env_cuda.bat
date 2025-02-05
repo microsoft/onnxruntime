@@ -1,13 +1,13 @@
 REM Copyright (c) Microsoft Corporation. All rights reserved.
 REM Licensed under the MIT License.
 
-if exist PATH=%AGENT_TEMPDIRECTORY%\v12.2\ (
-set PATH=%AGENT_TEMPDIRECTORY%\v12.2\bin;%AGENT_TEMPDIRECTORY%\v12.2\extras\CUPTI\lib64;%PATH%
+if exist PATH=%AGENT_TEMPDIRECTORY%\v12.8\ (
+set PATH=%AGENT_TEMPDIRECTORY%\v12.8\bin;%AGENT_TEMPDIRECTORY%\v12.8\extras\CUPTI\lib64;%PATH%
 ) else (
-    set PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.2\bin;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.2\extras\CUPTI\lib64;%PATH%
+    set PATH=C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\bin;C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.8\extras\CUPTI\lib64;%PATH%
 )
 
-@REM The default version is still cuda v12.2, because set cuda v11.8 after it
+@REM The default version is still cuda v12.8, because set cuda v11.8 after it
 if exist PATH=%AGENT_TEMPDIRECTORY%\v11.8\ (
     set PATH=%PATH%;%AGENT_TEMPDIRECTORY%\v11.8\bin;%AGENT_TEMPDIRECTORY%\v11.8\extras\CUPTI\lib64
 ) else (
