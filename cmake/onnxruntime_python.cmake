@@ -131,7 +131,7 @@ if (onnxruntime_ENABLE_ATEN)
 endif()
 
 if (onnxruntime_ENABLE_DLPACK)
-  onnxruntime_add_include_to_target(onnxruntime_providers dlpack::dlpack)
+  target_link_libraries(onnxruntime_providers PRIVATE dlpack::dlpack)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
