@@ -25,7 +25,6 @@ class ProgramBase;
 struct WebGpuContextConfig {
   int context_id;
   WGPUInstance instance;
-  WGPUAdapter adapter;
   WGPUDevice device;
   const void* dawn_proc_table;
   ValidationMode validation_mode;
@@ -72,7 +71,6 @@ class WebGpuContext final {
 
   Status Wait(wgpu::Future f);
 
-  const wgpu::Adapter& Adapter() const { return adapter_; }
   const wgpu::Device& Device() const { return device_; }
 
   const wgpu::AdapterInfo& AdapterInfo() const { return adapter_info_; }
@@ -130,8 +128,8 @@ class WebGpuContext final {
     AtPasses
   };
 
-  WebGpuContext(WGPUInstance instance, WGPUAdapter adapter, WGPUDevice device, webgpu::ValidationMode validation_mode)
-      : instance_{instance}, adapter_{adapter}, device_{device}, validation_mode_{validation_mode}, query_type_{TimestampQueryType::None} {}
+  WebGpuContext(WGPUInstance instance, WGPUDevice device, webgpu::ValidationMode validation_mode)
+      : instance_{instance}, device_{device}, validation_mode_{validation_mode}, query_type_{TimestampQueryType::None} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
   std::vector<const char*> GetEnabledAdapterToggles() const;
@@ -179,7 +177,6 @@ class WebGpuContext final {
   LibraryHandles modules_;
 
   wgpu::Instance instance_;
-  wgpu::Adapter adapter_;
   wgpu::Device device_;
 
   webgpu::ValidationMode validation_mode_;

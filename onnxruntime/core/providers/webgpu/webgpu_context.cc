@@ -37,8 +37,8 @@ namespace webgpu {
 
 void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type) {
   std::call_once(init_flag_, [this, &buffer_cache_config, backend_type]() {
-    // Create wgpu::Adapter
-    if (adapter_ == nullptr) {
+    if (device_ == nullptr) {
+      // Create wgpu::Adapter
 #if !defined(__wasm__) && defined(_MSC_VER) && defined(DAWN_ENABLE_D3D12) && !defined(USE_EXTERNAL_DAWN)
       // If we are using the D3D12 backend on Windows and the build does not use external Dawn, dxil.dll and dxcompiler.dll are required.
       //
@@ -77,20 +77,19 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
       req_adapter_options.nextInChain = &adapter_toggles_desc;
 #endif
 
+      wgpu::Adapter adapter;
       ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(instance_.RequestAdapter(
                                                                      &req_adapter_options,
                                                                      wgpu::CallbackMode::WaitAnyOnly,
                                                                      [](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter, wgpu::StringView message, wgpu::Adapter* ptr) {
                                                                        ORT_ENFORCE(status == wgpu::RequestAdapterStatus::Success, "Failed to get a WebGPU adapter: ", std::string_view{message});
-                                                                       *ptr = adapter;
+                                                                       *ptr = std::move(adapter);
                                                                      },
-                                                                     &adapter_),
+                                                                     &adapter),
                                                                  UINT64_MAX));
-      ORT_ENFORCE(adapter_ != nullptr, "Failed to get a WebGPU adapter.");
-    }
+      ORT_ENFORCE(adapter != nullptr, "Failed to get a WebGPU adapter.");
 
-    // Create wgpu::Device
-    if (device_ == nullptr) {
+      // Create wgpu::Device
       wgpu::DeviceDescriptor device_desc = {};
 
 #if !defined(__wasm__)
@@ -106,12 +105,12 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
       device_toggles_desc.disabledToggles = disabled_device_toggles.data();
 #endif
 
-      std::vector<wgpu::FeatureName> required_features = GetAvailableRequiredFeatures(adapter_);
+      std::vector<wgpu::FeatureName> required_features = GetAvailableRequiredFeatures(adapter);
       if (required_features.size() > 0) {
         device_desc.requiredFeatures = required_features.data();
         device_desc.requiredFeatureCount = required_features.size();
       }
-      wgpu::RequiredLimits required_limits = GetRequiredLimits(adapter_);
+      wgpu::RequiredLimits required_limits = GetRequiredLimits(adapter);
       device_desc.requiredLimits = &required_limits;
 
       // TODO: revise temporary error handling
@@ -123,12 +122,12 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
         LOGS_DEFAULT(INFO) << "WebGPU device lost (" << int(reason) << "): " << std::string_view{message};
       });
 
-      ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(adapter_.RequestDevice(
+      ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(adapter.RequestDevice(
                                                                      &device_desc,
                                                                      wgpu::CallbackMode::WaitAnyOnly,
                                                                      [](wgpu::RequestDeviceStatus status, wgpu::Device device, wgpu::StringView message, wgpu::Device* ptr) {
                                                                        ORT_ENFORCE(status == wgpu::RequestDeviceStatus::Success, "Failed to get a WebGPU device: ", std::string_view{message});
-                                                                       *ptr = device;
+                                                                       *ptr = std::move(device);
                                                                      },
                                                                      &device_),
                                                                  UINT64_MAX));
@@ -136,7 +135,7 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
     }
 
     // cache adapter info
-    ORT_ENFORCE(Adapter().GetInfo(&adapter_info_));
+    ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_));
     // cache device limits
     wgpu::SupportedLimits device_supported_limits;
     ORT_ENFORCE(Device().GetLimits(&device_supported_limits));
@@ -671,13 +670,12 @@ wgpu::Instance WebGpuContextFactory::default_instance_;
 WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& config) {
   const int context_id = config.context_id;
   WGPUInstance instance = config.instance;
-  WGPUAdapter adapter = config.adapter;
   WGPUDevice device = config.device;
 
   if (context_id == 0) {
     // context ID is preserved for the default context. User cannot use context ID 0 as a custom context.
-    ORT_ENFORCE(instance == nullptr && adapter == nullptr && device == nullptr,
-                "WebGPU EP default context (contextId=0) must not have custom WebGPU instance, adapter or device.");
+    ORT_ENFORCE(instance == nullptr && device == nullptr,
+                "WebGPU EP default context (contextId=0) must not have custom WebGPU instance or device.");
 
     std::call_once(init_default_flag_, [
 #if !defined(__wasm__)
@@ -715,9 +713,9 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
     });
     instance = default_instance_.Get();
   } else {
-    // for context ID > 0, user must provide custom WebGPU instance, adapter and device.
-    ORT_ENFORCE(instance != nullptr && adapter != nullptr && device != nullptr,
-                "WebGPU EP custom context (contextId>0) must have custom WebGPU instance, adapter and device.");
+    // for context ID > 0, user must provide custom WebGPU instance and device.
+    ORT_ENFORCE(instance != nullptr && device != nullptr,
+                "WebGPU EP custom context (contextId>0) must have custom WebGPU instance and device.");
   }
 
   std::lock_guard<std::mutex> lock(mutex_);
@@ -725,13 +723,12 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
   auto it = contexts_.find(context_id);
   if (it == contexts_.end()) {
     GSL_SUPPRESS(r.11)
-    auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance, adapter, device, config.validation_mode));
+    auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance, device, config.validation_mode));
     it = contexts_.emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
   } else if (context_id != 0) {
     ORT_ENFORCE(it->second.context->instance_.Get() == instance &&
-                    it->second.context->adapter_.Get() == adapter &&
                     it->second.context->device_.Get() == device,
-                "WebGPU EP context ID ", context_id, " is already created with different WebGPU instance, adapter or device.");
+                "WebGPU EP context ID ", context_id, " is already created with different WebGPU instance or device.");
   }
   it->second.ref_count++;
   return *it->second.context;
