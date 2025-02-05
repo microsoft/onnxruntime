@@ -93,7 +93,7 @@ endif()
 onnxruntime_add_include_to_target(onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11 nlohmann_json::nlohmann_json)
 
 if (onnxruntime_USE_MIMALLOC)
-    target_link_libraries(onnxruntime_framework mimalloc-static)
+    onnxruntime_add_include_to_target(onnxruntime_framework mimalloc-static)
 endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
