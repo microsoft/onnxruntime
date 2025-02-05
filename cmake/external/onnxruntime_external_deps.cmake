@@ -609,7 +609,6 @@ if(onnxruntime_ENABLE_DLPACK)
     FIND_PACKAGE_ARGS NAMES dlpack
   )
   onnxruntime_fetchcontent_makeavailable(dlpack)
-  endif()
 endif()
 
 if(onnxruntime_ENABLE_TRAINING OR (onnxruntime_ENABLE_TRAINING_APIS AND onnxruntime_BUILD_UNIT_TESTS))
