@@ -158,6 +158,17 @@
       set(onnxruntime_NVCC_THREADS "1" CACHE STRING "Number of threads that NVCC can use for compilation.")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
     endif()
+    
+    # Since CUDA 12.8, compiling diagnostics become stricter
+    if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--relocatable-device-code=true>")
+      set_target_properties(${target} PROPERTIES CUDA_SEPARABLE_COMPILATION ON)
+      if (MSVC)
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4505>")
+      endif()
+      # skip diagnosis error caused by cuda header files
+      target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=221>")
+    endif()
 
     if (UNIX)
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler -Wno-reorder>"
