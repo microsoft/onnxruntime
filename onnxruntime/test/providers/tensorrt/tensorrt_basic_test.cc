@@ -804,7 +804,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNodeMulti) {
   params.trt_ep_context_embed_mode = 0;
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
-  auto status = session_object.Load(model_name);
+  status = session_object.Load(model_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object.Initialize();
   ASSERT_TRUE(status.IsOK());
