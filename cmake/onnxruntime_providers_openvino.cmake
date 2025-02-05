@@ -53,7 +53,7 @@
   target_compile_definitions(onnxruntime_providers_openvino PRIVATE FILE_NAME=\"onnxruntime_providers_openvino.dll\")
 
   if(MSVC)
-    target_compile_options(onnxruntime_providers_openvino PUBLIC /wd4099 /wd4275 /wd4100 /wd4005 /wd4244 /wd4267)
+    target_compile_options(onnxruntime_providers_openvino PRIVATE /wd4099 /wd4275 /wd4100 /wd4005)
   endif()
 
   # Needed for the provider interface, as it includes training headers when training is enabled
