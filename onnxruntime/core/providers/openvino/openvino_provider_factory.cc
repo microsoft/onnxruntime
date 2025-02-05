@@ -148,7 +148,7 @@ struct OpenVINO_Provider : Provider {
       }
       if (deprecated_device_types.find(device_type) != deprecated_device_types.end()) {
         std::string deprecated_device = device_type;
-        int delimit = device_type.find("_");
+        auto delimit = device_type.find("_");
         device_type = deprecated_device.substr(0, delimit);
         precision = deprecated_device.substr(delimit + 1);
         LOGS_DEFAULT(WARNING) << "[OpenVINO] Selected 'device_type' " + deprecated_device + " is deprecated. \n"

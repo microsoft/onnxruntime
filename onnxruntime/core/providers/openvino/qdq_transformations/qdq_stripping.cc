@@ -391,7 +391,7 @@ static bool CheckQRuleSet(const NodeUnit& node_unit,
 
 static bool HandleDoubleQDQ(onnxruntime::Graph& dst_graph, const onnxruntime::GraphViewer& src_graph,
                             const NodeUnit& node_unit, std::set<std::string>& initializers_to_keep) {
-  int node_unit_input_edge_count = node_unit.InputEdgeCount();
+  int node_unit_input_edge_count = static_cast<int>(node_unit.InputEdgeCount());
   int node_unit_output_edge_count = [&]() {
     int count = 0;
     for (auto it = node_unit.OutputEdgesBegin(); it != node_unit.OutputEdgesEnd(); ++it)

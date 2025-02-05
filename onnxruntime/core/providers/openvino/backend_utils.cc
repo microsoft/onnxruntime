@@ -110,7 +110,7 @@ GetOutputTensor(Ort::KernelContext& context,
                 std::unordered_map<std::string, int> output_names,
                 std::shared_ptr<ov::Node> node) {
   // Find position of '/' in the output_name
-  int pos = output_name.find("/");
+  auto pos = output_name.find("/");
   // Copy the substring from start to pos
   output_name = output_name.substr(0, pos);
 
