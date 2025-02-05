@@ -774,7 +774,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNodeMulti) {
 
   // prepare expected inputs and outputs
   std::vector<int64_t> expected_dims_mul_m = {3, 6};
-  std::vector<float> expected_values_mul_m = {1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 14, 15, 13, 15, 15, 17, 16, 18};
+  std::vector<int64_t> expected_values_mul_m = { 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 13, 14, 14, 16, 16, 18, 0, 1 };
 
   /*
    * Test case 1.1: Dump context model to current directory, context saved in engine cache
@@ -804,7 +804,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNodeMulti) {
   params.trt_ep_context_embed_mode = 0;
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
   EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
-  status = session_object.Load(model_name);
+  auto status = session_object.Load(model_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object.Initialize();
   ASSERT_TRUE(status.IsOK());
@@ -828,7 +828,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNodeMulti) {
   PathString ctx_model_name = ToPathString(ctx_model_path);
   execution_provider = TensorrtExecutionProviderWithOptions(&params2);
   EXPECT_TRUE(session_object2.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
-  auto status = session_object2.Load(ctx_model_name);
+  status = session_object2.Load(ctx_model_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object2.Initialize();
   ASSERT_TRUE(status.IsOK());
@@ -840,7 +840,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNodeMulti) {
   // Y: 1, 3, 3, 2, 2, 2
   // Z: 1, 3, 3, 2, 2, 2
   // A: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17
-  RunSession(session_object2, run_options, feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
+  RunSession2(session_object2, run_options, feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
 }
 
 TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
