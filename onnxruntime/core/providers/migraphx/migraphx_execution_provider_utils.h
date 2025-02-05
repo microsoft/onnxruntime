@@ -19,7 +19,7 @@ namespace fs = std::filesystem;
 
 namespace onnxruntime {
 
-bool IsGraphInput(const GraphViewer& graph, const std::string& name) {
+inline bool IsGraphInput(const GraphViewer& graph, const std::string& name) {
   const auto& graph_inputs = graph.GetInputs();
   std::vector<std::string> input_names(graph_inputs.size());
   std::transform(graph_inputs.begin(), graph_inputs.end(), input_names.begin(), [](auto in) {
@@ -28,12 +28,12 @@ bool IsGraphInput(const GraphViewer& graph, const std::string& name) {
   return (std::find(input_names.begin(), input_names.end(), name) != input_names.end());
 }
 
-bool IsGraphInitializer(const GraphViewer& graph, const std::string& name, [[maybe_unused]] bool check_outer_scope = true) {
+inline bool IsGraphInitializer(const GraphViewer& graph, const std::string& name, [[maybe_unused]] bool check_outer_scope = true) {
   const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
   return graph.GetInitializedTensor(name, initializer);
 }
 
-const Node* GetInputNode(const Node& node, int arg_index) {
+inline const Node* GetInputNode(const Node& node, int arg_index) {
   int index = 0;
   for (auto nit = node.InputNodesBegin(); nit != node.InputNodesEnd(); ++nit, ++index) {
     if (index == arg_index) {
@@ -44,7 +44,7 @@ const Node* GetInputNode(const Node& node, int arg_index) {
   return nullptr;
 }
 
-std::size_t getNodeInputNum(const Node& node) {
+inline std::size_t getNodeInputNum(const Node& node) {
   std::size_t node_num = 0;
   for (auto it = node.InputNodesBegin(); it != node.InputNodesEnd(); ++it) {
     node_num++;
@@ -53,14 +53,14 @@ std::size_t getNodeInputNum(const Node& node) {
   return node_num;
 }
 
-bool isInputNode(const Node* node, const std::string& name) {
+inline bool isInputNode(const Node* node, const std::string& name) {
   auto outputs = node->OutputDefs();
   return std::any_of(outputs.begin(), outputs.end(), [&](auto out) {
     return (out->Name() == name);
   });
 }
 
-bool canEvalShapeGeneral(const GraphViewer& graph, const Node* node, std::vector<NodeIndex>& input_nodes) {
+inline bool canEvalShapeGeneral(const GraphViewer& graph, const Node* node, std::vector<NodeIndex>& input_nodes) {
   if (node == nullptr) {
     return false;
   }
@@ -113,10 +113,10 @@ bool canEvalShapeGeneral(const GraphViewer& graph, const Node* node, std::vector
   return true;
 }
 
-bool canEvalNodeArgument(const GraphViewer& graph,
-                         const Node* node,
-                         std::vector<std::size_t> indices,
-                         std::vector<NodeIndex>& input_nodes) {
+inline bool canEvalNodeArgument(const GraphViewer& graph,
+                                const Node* node,
+                                std::vector<std::size_t> indices,
+                                std::vector<NodeIndex>& input_nodes) {
   input_nodes.clear();
   std::vector<const Node*> in_nodes;
   for (auto nit = node->InputNodesBegin(); nit != node->InputNodesEnd(); ++nit) {
@@ -152,7 +152,7 @@ bool canEvalNodeArgument(const GraphViewer& graph,
   return true;
 }
 
-float ConvertSinglePrecisionIEEE754ToFloat(uint32_t input) {
+inline float ConvertSinglePrecisionIEEE754ToFloat(uint32_t input) {
   int s = (input >> 31) & 0x01;
   int e = ((input & 0x7f800000) >> 23) - 127;
   int p = -1;
@@ -184,10 +184,10 @@ float ConvertSinglePrecisionIEEE754ToFloat(uint32_t input) {
  * Taken from the tensorRT EP to allow MIGraphX EP to reuse calibration tables for existing models
  *
  */
-bool ReadDynamicRange(const std::string file_name,
-                      const bool is_calibration_table,
-                      std::unordered_map<std::string,
-                                         float>& dynamic_range_map) {
+inline bool ReadDynamicRange(const std::string file_name,
+                             const bool is_calibration_table,
+                             std::unordered_map<std::string,
+                                                float>& dynamic_range_map) {
   std::ifstream infile(file_name, std::ios::binary | std::ios::in);
   if (!infile) {
     return false;
@@ -240,7 +240,7 @@ bool ReadDynamicRange(const std::string file_name,
  * Get cache by name
  *
  */
-std::string GetCachePath(const std::string& root, const std::string& name) {
+inline std::string GetCachePath(const std::string& root, const std::string& name) {
   if (root.empty()) {
     return name;
   } else {
