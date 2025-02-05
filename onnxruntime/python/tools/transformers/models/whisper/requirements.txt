@@ -1,6 +1,6 @@
 torch>=1.13.0
-transformers>=4.24.0,<= 4.42.4
-openai-whisper>=20231117
+transformers>=4.36.0,<= 4.42.4
+openai-whisper>=20231117,<=20240927
 ffmpeg-python
 datasets
 soundfile
