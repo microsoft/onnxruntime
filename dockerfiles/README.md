@@ -35,7 +35,7 @@
 The docker file supports both x86_64 and ARM64(aarch64). You may use docker's "--platform" parameter to explicitly specify which CPU architecture you want to build. For example:
 
 ```bash
-  docker build --platform linux/arm64/v8 -f Dockerfile.source
+  docker build --platform linux/arm64/v8 -f Dockerfile.source ..
 ```
 However, we cannot build the code for 32-bit ARM in such a way since a 32-bit compiler/linker might not have enough memory to generate the binaries.
 
