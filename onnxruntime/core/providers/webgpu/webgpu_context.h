@@ -177,7 +177,6 @@ class WebGpuContext final {
   LibraryHandles modules_;
 
   wgpu::Instance instance_;
-  wgpu::Adapter adapter_;
   wgpu::Device device_;
 
   webgpu::ValidationMode validation_mode_;

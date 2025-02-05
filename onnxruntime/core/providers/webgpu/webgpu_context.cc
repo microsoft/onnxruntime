@@ -77,6 +77,7 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
       req_adapter_options.nextInChain = &adapter_toggles_desc;
 #endif
 
+      wgpu::Adapter adapter;
       ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(instance_.RequestAdapter(
                                                                      &req_adapter_options,
                                                                      wgpu::CallbackMode::WaitAnyOnly,
@@ -84,9 +85,9 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
                                                                        ORT_ENFORCE(status == wgpu::RequestAdapterStatus::Success, "Failed to get a WebGPU adapter: ", std::string_view{message});
                                                                        *ptr = adapter;
                                                                      },
-                                                                     &adapter_),
+                                                                     &adapter),
                                                                  UINT64_MAX));
-      ORT_ENFORCE(adapter_ != nullptr, "Failed to get a WebGPU adapter.");
+      ORT_ENFORCE(adapter != nullptr, "Failed to get a WebGPU adapter.");
 
       // Create wgpu::Device
       wgpu::DeviceDescriptor device_desc = {};
@@ -104,12 +105,12 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
       device_toggles_desc.disabledToggles = disabled_device_toggles.data();
 #endif
 
-      std::vector<wgpu::FeatureName> required_features = GetAvailableRequiredFeatures(adapter_);
+      std::vector<wgpu::FeatureName> required_features = GetAvailableRequiredFeatures(adapter);
       if (required_features.size() > 0) {
         device_desc.requiredFeatures = required_features.data();
         device_desc.requiredFeatureCount = required_features.size();
       }
-      wgpu::RequiredLimits required_limits = GetRequiredLimits(adapter_);
+      wgpu::RequiredLimits required_limits = GetRequiredLimits(adapter);
       device_desc.requiredLimits = &required_limits;
 
       // TODO: revise temporary error handling
@@ -121,7 +122,7 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
         LOGS_DEFAULT(INFO) << "WebGPU device lost (" << int(reason) << "): " << std::string_view{message};
       });
 
-      ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(adapter_.RequestDevice(
+      ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(adapter.RequestDevice(
                                                                      &device_desc,
                                                                      wgpu::CallbackMode::WaitAnyOnly,
                                                                      [](wgpu::RequestDeviceStatus status, wgpu::Device device, wgpu::StringView message, wgpu::Device* ptr) {
