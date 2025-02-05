@@ -17,7 +17,7 @@ redirect_from: /docs/reference/execution-providers/EP-Context-Design
 
 ## Background
 
-OnnxRuntime Execution Providers enable users to inference Onnx model on different kinds of hardware accelerators empowered by backend SDKs (like QNN, OpenVINO, Vitis AI, etc). The Execution Providers converts the Onnx model into graph format required by the backend SDK, and compiles it into the format required by the hardware. Specific to NPU world, the converting and compiling process takes a long time to complete, especially for LLM models. The session creation time costs tens of minutes for some cases which impacts the user experience badly.
+OnnxRuntime Execution Providers enable users to inference Onnx model on different kinds of hardware accelerators empowered by backend SDKs (like QNN, OpenVINO, Vitis AI, etc). The Execution Providers convert the Onnx model into graph format required by the backend SDK, and compiles it into the format required by the hardware. Specific to NPU world, the converting and compiling process takes a long time to complete, especially for LLM models. The session creation time costs tens of minutes for some cases which impacts the user experience badly.
 To avoid the converting and compiling cost, most of the backend SDKs provide the feature to dump the pre-compiled model into binary file. The pre-compiled model can be loaded by backend SDK directly and executed on the target device. It improves the session creation time greatly by using this way. In order to achieve this, OnnxRuntime defined a contribute Op called EPContext in MS domain.
 
 ## EPContext Op Schema
@@ -32,12 +32,13 @@ Atrribures:
 |main_context         |int64    |1 (default): This node points to an EP context content that contains the graph referred to by this node.<br/>0: The node does not point to any EP context content. Expect to get the graph from node with this field is 1.<br/>Some EPs support 1 single context contains multiple graphs. The EPContext node with main_context=1 refers to the real context. And the context contains graphs that are referred by other nodes with main_context=0.|
 |ep_cache_context     |string   |Payload of the EP context if embed_mode=1, or path to the context file if embed_mode=0.<br/>The path is a relative path to the Onnx model file. It can be a file name, or subfolder/filename|
 |embed_mode           |int64    |1(default): ep_cache_context contains the payload of context content.<br/>0: ep_cache_context is the context binary file path.|
-|ep_sdk_version       |string   |Optional. SDK version that used to generate the node.                                                     |
-|onnx_model_filename  |string   |Optional. Original Onnx model file name.                                                                  |
+|ep_sdk_version       |string   |Optional. SDK version that used to generate the node.|
+|onnx_model_filename  |string   |Optional. Original Onnx model file name.|
 |hardware_architecture|string   |Optional. Hardware architecture.|
 |partition_name       |string   |Optional. OnnxRuntime partitioned graph name.|
 |source               |string   |Optional. The source used to generate the node. Should be a key identified by the EP so that OnnxRuntime can support multiple EPContext nodes run with different EPs. For example, QNN EP only accepts nodes with source=QNN or QnnExecutionProvider, OpenVINO EP only accepts nodes with source=OpenVINOExecutionProvider.|
-|notes                |string   |Optional. Additional information required by specific EP.                                                 |
+|notes                |string   |Optional. Additional information required by specific EP.|
+|max_size             |int64    |Optional. Max size in the context. Usage depend on the EP. Default to 0.|
 
 <p align="center"><img width="60%" src="../../images/EP_context_node.png" alt="EP Context node example"/></p>
 
@@ -46,13 +47,14 @@ Atrribures:
 |Session option             |Description                                                                                               |
 |---------------------------|----------------------------------------------------------------------------------------------------------|
 |ep.context_enable          |Used for context model generation only.<br/>1: Enable OnnxRuntime to dump the context cache model.<br/>0 (default): disable.|
-|ep.context_file_path       |Specify the file path for the dump model.<br/>Default to original_file_name.onnx_ctx.onnx for context model generation.<br/>For model inference, if user loads model from memory buffer and the EP context binary is outside the Onnx model, user need to set this option. OnnxRuntime EP use this path to get the folder path together with the ep_cache_context (which point to the contex binary path) to get the absoluate path for the context binary file.|
-|ep.context_embed_mode      |Used for context model generation only.<br/>1 (default): dump the EP context content into the Onnx model, inside ep_cache_context node attribute.<br/>0: dump the EP context content into a separate file, keep the file name in the Onnx model. File path tracked in ep_cache_context node attribute.|
+|ep.context_file_path       |Specify the file path for the dump model.<br/>Default to original_file_name_ctx.onnx for context model generation.<br/>For model inference, if user loads model from memory buffer and the EP context binary is outside the Onnx model, user need to set this option. OnnxRuntime EP use this path to get the folder path together with the ep_cache_context (which point to the contex binary path) to get the absoluate path for the context binary file.|
+|ep.context_embed_mode      |Used for context model generation only.<br/>1: dump the EP context content into the Onnx model, inside ep_cache_context node attribute.<br/>0 (default): dump the EP context content into a separate file, keep the file name in the Onnx model. File path tracked in ep_cache_context node attribute.|
 |ep.context_node_name_prefix|Used for context model generation only.<br/>Specify the EPContext node name (also the partition_name attribute, internal graph name) prefix to make it unique across nodes in case user glue multiple EPContext nodes in one model to avoid conflict.|
+|ep.context_model_external_initializers_file_name|This is for the case that some nodes partitioned on CPU EP, and those nodes has external initializers. When generating EP context model, the new generated model should NOT depend on old external data file used for source Onnx model.<br/>Use this config when dumping EP context model with an external initializers file. All initializers will be inside the external data file if specified, otherwise all inside generated Onnx file.<br/>It is not set by default, so all initializers will be inside the Onnx file.|
 
 ## EP Context cache model generation workflow
 
-OnnxRuntime EPs should flows these rules to create the EP context cache model to maintain a unified user interface.
+OnnxRuntime EPs should follow these rules to create the EP context cache model to maintain a unified user interface.
 1. ep.context_enable
   OnnxRuntime create the EP context cache model if ep.context_enable = 1. Otherwise, ep.context_enable = 0 (default), just do the normal workflow.
 2. ep.context_file_path
@@ -80,3 +82,15 @@ OnnxRuntime EPs which support loading from Onnx model with EPContext nodes shoul
   c. If the user loads the model from memory buffer, user needs to provide session option ep.context_file_path. EP gets the folder path from ep.context_file_path, and combines it with the relative path   got from step a) as the context binary file full path. 
 
 <p align="center"><img width="60%" src="../../images/EP_context_nodes_with_different_eps.png" alt="EP Context nodes with different EPs"/></p>
+
+## New ExecutionProvider interface GetEpContextNodes() to help generate the EP Context cache model
+
+It is hard for Execution Providers to generate the partitioned graph whithin the Execution Provider code since Execution Provider does not has a good picture of the whole partitioned graph. New ExecutionProvider interface GetEpContextNodes() is added to support this.
+
+```
+  virtual const InlinedVector<const Node*> GetEpContextNodes() const {
+    return InlinedVector<const Node*>();
+  }
+```
+
+This API returns the array of pointers for EPContext nodes. Execution Provider needs to implement this interface if it has the requirement to generate the context cache model. Otherwise leave it. It is the Execution Provider's responsibility to create the EPContext nodes with its dependencies (like the context binary file if it's not embed_mode). The OnnxRuntime GraphPartitioner use this interface to get the EPContext nodes and generate the partitioned Onnx model. [code details here](https://github.com/microsoft/onnxruntime/blob/544bdd60730270f49f6a5baafdff54065f626776/onnxruntime/core/framework/graph_partitioner.cc#L646-L750)

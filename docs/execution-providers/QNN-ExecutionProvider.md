@@ -124,13 +124,19 @@ Alternatively to setting profiling_level at compile time, profiling can be enabl
 
 |`"enable_htp_fp16_precision"`|Description [Example](https://github.com/microsoft/onnxruntime-inference-examples/tree/main/c_cxx/QNN_EP/mobilenetv2_classification)|
 |---|---|
-|'0'|disabled. Inferenced with fp32 precision if it's fp32 model.|
-|'1'|default. Enable the float32 model to be inferenced with fp16 precision.|
+|'0'|Disabled. Inferenced with fp32 precision if it's fp32 model.|
+|'1'|Default. Enable the float32 model to be inferenced with fp16 precision.|
 
 |`"offload_graph_io_quantization"`|Description|
 |---|---|
-|'0'|default. Disabled. QNN EP will handle quantization and dequantization of graph I/O.|
-|'1'|Enabled. Offload quantization and dequantization of graph I/O to CPU EP.|
+|'0'|Disabled. QNN EP will handle quantization and dequantization of graph I/O.|
+|'1'|Default. Enabled. Offload quantization and dequantization of graph I/O to CPU EP.|
+
+|`"enable_htp_shared_memory_allocator"`|Description|
+|---|---|
+|'0'|Default. Disabled.|
+|'1'|Default. Enable the QNN HTP shared memory allocator. Requires libcdsprpc.so/dll to be available. [Code example](https://github.com/microsoft/onnxruntime/blob/544bdd60730270f49f6a5baafdff54065f626776/onnxruntime/test/shared_lib/test_inference.cc#L2262-L2354)|
+
 
 ## Supported ONNX operators
 
@@ -420,20 +426,20 @@ g_ort->AddSessionConfigEntry(session_options, kOrtSessionOptionEpContextFilePath
 options.add_session_config_entry("ep.context_file_path", "./model_a_ctx.onnx")
 ```
 
-### Disable the embed mode
-The QNN context binary content is embeded in the generated Onnx model by default. User can to disable it by setting "ep.context_embed_mode" to "0". In that case, a bin file will be generated separately. The file name looks like [ctx.onnx]_QNNExecutionProvider_QNN_[hash_id]_x_x.bin. The name is provided by Ort and tracked in the generated Onnx model. It will cause problems if any changes to the bin file. This bin file needs to sit together with the generated Onnx file.
+### Enable the embed mode
+The QNN context binary content is not embeded in the generated Onnx model by default. A bin file will be generated separately. The file name looks like [ctx.onnx]_QNNExecutionProvider_QNN_[hash_id]_x_x.bin. The name is provided by Ort and tracked in the generated Onnx model. It will cause problems if any changes to the bin file. This bin file needs to sit together with the generated Onnx file. User can enable it by setting "ep.context_embed_mode" to "1". In that case the content of the context binary is embeded inside the Onnx model.
 
 ```
 // C++
-so.AddConfigEntry(kOrtSessionOptionEpContextEmbedMode, "0");
+so.AddConfigEntry(kOrtSessionOptionEpContextEmbedMode, "1");
 
 // C
-g_ort->AddSessionConfigEntry(session_options, kOrtSessionOptionEpContextEmbedMode, "0");
+g_ort->AddSessionConfigEntry(session_options, kOrtSessionOptionEpContextEmbedMode, "1");
 ```
 
 ```python
 # Python
-options.add_session_config_entry("ep.context_embed_mode", "0")
+options.add_session_config_entry("ep.context_embed_mode", "1")
 ```
 
 ## QNN EP weight sharing
