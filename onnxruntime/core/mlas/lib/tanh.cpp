@@ -200,9 +200,10 @@ MlasComputeTanh<MLAS_FP16>(
     dispatch->Tanh_Fp16(Input, Output, N);
 }
 
+template <>
 void
 MLASCALL
-MlasComputeSoftcap(
+MlasComputeSoftcap<MLAS_FP16>(
     const MLAS_FP16* Input,
     MLAS_FP16* Output,
     size_t N,

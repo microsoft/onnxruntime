@@ -111,12 +111,12 @@ const struct {
     int16_t MinimumExponent;
     int16_t MaximumExponent;
 } MlasExp16Constants = {
-    -17.328679513f16, // -25 * ln2
-    11.090354888f16, // 16 * ln2
-    -10.743781298f16,
-    10.743781298f16, // 15.5 * ln2
-    1536.f16, // 1.5 * 2^10
-    1.4423828125f16,
+    -17.328679513f16, // -25 * ln2 cc55
+    11.090354888f16, // 16 * ln2 498c
+    -10.743781298f16, // -15.5 * ln2 c95f
+    10.743781298f16, // 15.5 * ln2 495f
+    1536.f16, // 1.5 * 2^10 6600
+    1.4423828125f16, // 1/ln2, 3dc5
     -6.9287109375e-1f16, // 0xb98b
     -2.758502960205078e-4f16, // 0x8c85
     -2.384185791015625e-7f16, // 0x8004
@@ -125,7 +125,7 @@ const struct {
     4.1666666666666664e-2f16, // 1/4! 0x2955
     1.6666666e-1f16, // 1/3! 0x3155
     0.5f16, // 1/2! 0x3800
-    1.0f16,
+    1.0f16, // 1/1! 0x3c00
     int16_t(0xC800), // -14
     int16_t(0x3C00), // 15
 };
@@ -338,8 +338,8 @@ const struct {
     _Float16 beta_2;
     _Float16 beta_0;
 } MlasTanh16Constants = {
-    -5.0f16,
-    5.0f16,
+    -5.0f16, // c500
+    5.0f16, // 4500
     2.755731922398589e-06f16, // 0x002e
     0.00019841269841269839f16, // 0xa80
     0.008333333333333333f16, // 0x2044
@@ -409,9 +409,9 @@ const struct {
   }
 
   _Float16 my_tanh_no_overflow(_Float16 Value) {
-    if (Value > 0.45f16) {
-      _Float16 exp = my_exp(2.f16 * Value);
-      return 1 - 2.f16 / (1 + exp);
+    if (Value > 0.5f16) {
+      _Float16 exp = my_exp(Value);
+      return (exp - 1.0f16/exp) / (exp + 1.0f16/exp);
     } else {
       return my_tanh(Value);
     }
@@ -433,7 +433,7 @@ const struct {
 
   void test_tanh_no_overflow(_Float16 x) {
     float ref = std::tanh((float)x);
-    float out = fast_tanh(x);
+    float out = my_tanh_no_overflow(x);
     float diff = std::abs(out - ref);
     std::cout << "x " << (float)x << ", result: " << out << ", expecting: " << ref << " diff " << diff / ref << std::endl;
   }
@@ -445,6 +445,12 @@ const struct {
   }
 
   void ExecuteShort(void) override {
+    // print_hex("lower range ", MlasExp16Constants.LowerRange);
+    // print_hex("upper range ", MlasExp16Constants.UpperRange);
+    // print_hex("lower range sum exp ", MlasExp16Constants.LowerRangeSumExp);
+    // print_hex("upper range sum exp ", MlasExp16Constants.UpperRangeSumExp);
+    // print_hex("rounding bias ", MlasExp16Constants.RoundingBias);
+    // print_hex("log2 reciprocal ", MlasExp16Constants.Log2Reciprocal);
     // print_hex("h ", (_Float16)MlasExp16Constants.Log2High);
     // print_hex("l ", (_Float16)MlasExp16Constants.Log2Low);
     // print_hex("ll ", MlasExp16Constants.Log2Lowest);
@@ -455,20 +461,20 @@ const struct {
     // print_hex("poly3 ", (_Float16)MlasExp16Constants.poly_3);
     // print_hex("poly4 ", (_Float16)MlasExp16Constants.poly_4);
     // Test(.01f16);
-    // print_hex("alpha_13 ", MlasTanh16Constants.alpha_13);
-    // print_hex("alpha_11 ", MlasTanh16Constants.alpha_11);
-    // print_hex("alpha_9 ", MlasTanh16Constants.alpha_9);
-    // print_hex("alpha_7 ", MlasTanh16Constants.alpha_7);
-    // print_hex("alpha_5 ", MlasTanh16Constants.alpha_5);
-    // print_hex("alpha_3 ", MlasTanh16Constants.alpha_3);
-    // print_hex("alpha_1 ", MlasTanh16Constants.alpha_1);
-    // print_hex("beta_10 ", MlasTanh16Constants.beta_10);
-    // print_hex("beta_8 ", MlasTanh16Constants.beta_8);
-    // print_hex("beta_6 ", MlasTanh16Constants.beta_6);
-    // print_hex("beta_4 ", MlasTanh16Constants.beta_4);
-    // print_hex("beta_2 ", MlasTanh16Constants.beta_2);
-    // print_hex("beta_0 ", MlasTanh16Constants.beta_0);
-    for (_Float16 x = 0.f16; x <= 5.f16; x += 0.005f16) {
+    print_hex("lower range ", MlasTanh16Constants.LowerRange);
+    print_hex("upper range ", MlasTanh16Constants.UpperRange);
+    print_hex("alpha_9 ", MlasTanh16Constants.alpha_9);
+    print_hex("alpha_7 ", MlasTanh16Constants.alpha_7);
+    print_hex("alpha_5 ", MlasTanh16Constants.alpha_5);
+    print_hex("alpha_3 ", MlasTanh16Constants.alpha_3);
+    print_hex("alpha_1 ", MlasTanh16Constants.alpha_1);
+    print_hex("beta_10 ", MlasTanh16Constants.beta_10);
+    print_hex("beta_8 ", MlasTanh16Constants.beta_8);
+    print_hex("beta_6 ", MlasTanh16Constants.beta_6);
+    print_hex("beta_4 ", MlasTanh16Constants.beta_4);
+    print_hex("beta_2 ", MlasTanh16Constants.beta_2);
+    print_hex("beta_0 ", MlasTanh16Constants.beta_0);
+    for (_Float16 x = 0.f16; x <= 9.f16; x += 0.005f16) {
       test_tanh_no_overflow(x);
     }
   }

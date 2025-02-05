@@ -78,7 +78,7 @@ struct MLAS_SOFTMAX_DISPATCH {
 
     /**
      * @brief Compute the expotential function for each element of the input array and returnt he sum. It has smaller
-     *        dynamic range for the input than Exp_Fp16_Fn.
+     *        dynamic range for the input than Exp_Fp16_Fn thus is faster.
      * @param Input         Address of the input array
      * @param Output        Address of the output array. Could be the same as the input array or nullptr.
      * @param N             Number of elements in the input array

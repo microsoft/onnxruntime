@@ -1020,13 +1020,14 @@ MlasComputeSoftmax(
     MLAS_THREADPOOL* ThreadPool
     );
 
+template <typename T>
 void
 MLASCALL
 MlasComputeSoftcap(
-    const MLAS_FP16* Input,
-    MLAS_FP16* Output,
+    const T* Input,
+    T* Output,
     size_t N,
-    MLAS_FP16 cap
+    T cap
     );
 
 template<typename T>

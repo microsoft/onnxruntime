@@ -27,10 +27,28 @@ typedef float16x8_t MLAS_FLOAT16X8;
 typedef float16x4_t MLAS_FLOAT16X4;
 typedef uint16x8_t MLAS_UINT16X8;
 typedef uint16x4_t MLAS_UINT16X4;
+typedef int16x8_t MLAS_INT16X8;
+typedef int16x4_t MLAS_INT16X4;
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X8
-MlasReinterpretAsFloat16x8(MLAS_INT32X4 Vector) { return vreinterpretq_f16_s32(Vector); }
+MlasReinterpretAsFloat16(MLAS_INT32X4 Vector) { return vreinterpretq_f16_s32(Vector); }
+
+MLAS_FORCEINLINE
+MLAS_FLOAT16X8
+MlasReinterpretAsFloat16(MLAS_INT16X8 Vector) { return vreinterpretq_f16_s16(Vector); }
+
+MLAS_FORCEINLINE
+MLAS_FLOAT16X4
+MlasReinterpretAsFloat16(MLAS_INT16X4 Vector) { return vreinterpret_f16_s16(Vector); }
+
+MLAS_FORCEINLINE
+MLAS_INT16X8
+MlasReinterpretAsInt16(MLAS_FLOAT16X8 Vector) { return vreinterpretq_s16_f16(Vector); }
+
+MLAS_FORCEINLINE
+MLAS_INT16X4
+MlasReinterpretAsInt16(MLAS_FLOAT16X4 Vector) { return vreinterpret_s16_f16(Vector); }
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X8
@@ -142,42 +160,70 @@ MlasToLowHalfFloat16x4(MLAS_FLOAT16X8 V)
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X8
-MlasAddFloat16x8(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
+MlasAdd(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
 {
     return vaddq_f16(Vector1, Vector2);
 }
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X4
-MlasAddFloat16x4(MLAS_FLOAT16X4 Vector1, MLAS_FLOAT16X4 Vector2)
+MlasAdd(MLAS_FLOAT16X4 Vector1, MLAS_FLOAT16X4 Vector2)
 {
     return vadd_f16(Vector1, Vector2);
 }
 
 MLAS_FORCEINLINE
+MLAS_INT16X8
+MlasAdd(MLAS_INT16X8 Vector1, MLAS_INT16X8 Vector2)
+{
+    return vaddq_s16(Vector1, Vector2);
+}
+
+MLAS_FORCEINLINE
+MLAS_INT16X4
+MlasAdd(MLAS_INT16X4 Vector1, MLAS_INT16X4 Vector2)
+{
+    return vadd_s16(Vector1, Vector2);
+}
+
+MLAS_FORCEINLINE
 MLAS_FLOAT16X8
-MlasSubtractFloat16x8(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
+MlasSubtract(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
 {
     return vsubq_f16(Vector1, Vector2);
 }
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X4
-MlasSubtractFloat16x4(MLAS_FLOAT16X4 Vector1, MLAS_FLOAT16X4 Vector2)
+MlasSubtract(MLAS_FLOAT16X4 Vector1, MLAS_FLOAT16X4 Vector2)
 {
     return vsub_f16(Vector1, Vector2);
 }
 
 MLAS_FORCEINLINE
+MLAS_INT16X8
+MlasSubtract(MLAS_INT16X8 Vector1, MLAS_INT16X8 Vector2)
+{
+    return vsubq_s16(Vector1, Vector2);
+}
+
+MLAS_FORCEINLINE
+MLAS_INT16X4
+MlasSubtract(MLAS_INT16X4 Vector1, MLAS_INT16X4 Vector2)
+{
+    return vsub_s16(Vector1, Vector2);
+}
+
+MLAS_FORCEINLINE
 MLAS_FLOAT16X8
-MlasMultiplyFloat16x8(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
+MlasMultiply(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
 {
     return vmulq_f16(Vector1, Vector2);
 }
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X4
-MlasMultiplyFloat16x4(MLAS_FLOAT16X4 Vector1, MLAS_FLOAT16X4 Vector2)
+MlasMultiply(MLAS_FLOAT16X4 Vector1, MLAS_FLOAT16X4 Vector2)
 {
     return vmul_f16(Vector1, Vector2);
 }
@@ -198,31 +244,30 @@ MlasDivFloat16x4(MLAS_FLOAT16X4 Vector1, MLAS_FLOAT16X4 Vector2)
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X8
-MlasMultiplyAddFloat16x8(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2, MLAS_FLOAT16X8 Vector3)
+MlasMultiplyAdd(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2, MLAS_FLOAT16X8 Dest)
 {
-    return vfmaq_f16(Vector3, Vector1, Vector2);
+    return vfmaq_f16(Dest, Vector1, Vector2);
 }
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X4
-MlasMultiplyAddFloat16x4(MLAS_FLOAT16X4 Vector1, MLAS_FLOAT16X4 Vector2, MLAS_FLOAT16X4 Vector3)
+MlasMultiplyAdd(MLAS_FLOAT16X4 Vector1, MLAS_FLOAT16X4 Vector2, MLAS_FLOAT16X4 Dest)
 {
-    return vfma_f16(Vector3, Vector1, Vector2);
+    return vfma_f16(Dest, Vector1, Vector2);
 }
-
 
 MLAS_FORCEINLINE
 void
 MlasMultiplyAddFloat16x8(MLAS_FLOAT16X8 Vector1, _mlas_fp16_ Scalar2, MLAS_FLOAT16X8 Vector3)
 {
-    MlasMultiplyAddFloat16x8(Vector1, MlasBroadcastFloat16x8(Scalar2), Vector3);
+    MlasMultiplyAdd(Vector1, MlasBroadcastFloat16x8(Scalar2), Vector3);
 }
 
 MLAS_FORCEINLINE
 void
 MlasMultiplyAddFloat16x8(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2, _mlas_fp16_ Scalar3)
 {
-    MlasMultiplyAddFloat16x8(Vector1, Vector2, MlasBroadcastFloat16x8(Scalar3));
+    MlasMultiplyAdd(Vector1, Vector2, MlasBroadcastFloat16x8(Scalar3));
 }
 
 MLAS_FORCEINLINE
@@ -277,48 +322,96 @@ MlasBlendFloat16x8(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2, MLAS_FLOAT16X
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X8
-MlasMaximumFloat16x8(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
+MlasMaximum(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
 {
     return vmaxq_f16(Vector1, Vector2);
 }
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X4
-MlasMaximumFloat16x4(MLAS_FLOAT16X4 Vector1, MLAS_FLOAT16X4 Vector2)
+MlasMaximum(MLAS_FLOAT16X4 Vector1, MLAS_FLOAT16X4 Vector2)
 {
     return vmax_f16(Vector1, Vector2);
 }
 
 MLAS_FORCEINLINE
+MLAS_INT16X8
+MlasMaximum(MLAS_INT16X8 Vector1, MLAS_INT16X8 Vector2)
+{
+    return vmaxq_s16(Vector1, Vector2);
+}
+
+MLAS_FORCEINLINE
+MLAS_INT16X4
+MlasMaximum(MLAS_INT16X4 Vector1, MLAS_INT16X4 Vector2)
+{
+    return vmax_s16(Vector1, Vector2);
+}
+
+MLAS_FORCEINLINE
 MLAS_FLOAT16X8
-MlasMinimumFloat16x8(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
+MlasMinimum(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
 {
     return vminq_f16(Vector1, Vector2);
 }
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X4
-MlasMinimumFloat16x4(MLAS_FLOAT16X4 Vector1, MLAS_FLOAT16X4 Vector2)
+MlasMinimum(MLAS_FLOAT16X4 Vector1, MLAS_FLOAT16X4 Vector2)
 {
     return vmin_f16(Vector1, Vector2);
+}
+
+MLAS_FORCEINLINE
+MLAS_INT16X8
+MlasMinimum(MLAS_INT16X8 Vector1, MLAS_INT16X8 Vector2)
+{
+    return vminq_s16(Vector1, Vector2);
+}
+
+MLAS_FORCEINLINE
+MLAS_INT16X4
+MlasMinimum(MLAS_INT16X4 Vector1, MLAS_INT16X4 Vector2)
+{
+    return vmin_s16(Vector1, Vector2);
 }
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X8
 MlasClampFloat16x8(MLAS_FLOAT16X8 Value, _mlas_fp16_ LowerRange, _mlas_fp16_ UpperRange)
 {
-    Value = MlasMaximumFloat16x8(MlasBroadcastFloat16x8(LowerRange), Value);
-    Value = MlasMinimumFloat16x8(MlasBroadcastFloat16x8(UpperRange), Value);
+    Value = MlasMaximum(MlasBroadcastFloat16x8(LowerRange), Value);
+    Value = MlasMinimum(MlasBroadcastFloat16x8(UpperRange), Value);
+    return Value;
+}
+
+template <typename T>
+MLAS_FORCEINLINE
+T
+MlasClamp(T Value, T LowerRange, T UpperRange)
+{
+    Value = MlasMaximum(LowerRange, Value);
+    Value = MlasMinimum(UpperRange, Value);
     return Value;
 }
 
 MLAS_FORCEINLINE
 _mlas_fp16_
-MlasReduceAddFloat16x8(MLAS_FLOAT16X8 Vector)
+MlasReduceAdd(MLAS_FLOAT16X8 Vector)
 {
     Vector = vpaddq_f16(Vector, Vector);
     Vector = vpaddq_f16(Vector, Vector);
+    Vector = vpaddq_f16(Vector, Vector);
     return vgetq_lane_u16(vreinterpretq_u16_f16(Vector), 0);
+}
+
+MLAS_FORCEINLINE
+_mlas_fp16_
+MlasReduceAdd(MLAS_FLOAT16X4 Vector)
+{
+    Vector = vpadd_f16(Vector, Vector);
+    Vector = vpadd_f16(Vector, Vector);
+    return vget_lane_u16(vreinterpret_u16_f16(Vector), 0);
 }
 
 MLAS_FORCEINLINE
@@ -446,6 +539,22 @@ Transpose4x4(MLAS_FLOAT16X4& v0, MLAS_FLOAT16X4& v1, MLAS_FLOAT16X4& v2, MLAS_FL
     v1 = vreinterpret_f16_f32(vtrn1_f32(vreinterpret_f32_f16(t01.val[1]), vreinterpret_f32_f16(t23.val[1])));
     v2 = vreinterpret_f16_f32(vtrn2_f32(vreinterpret_f32_f16(t01.val[0]), vreinterpret_f32_f16(t23.val[0])));
     v3 = vreinterpret_f16_f32(vtrn2_f32(vreinterpret_f32_f16(t01.val[1]), vreinterpret_f32_f16(t23.val[1])));
+}
+
+template<unsigned ShiftCount>
+MLAS_FORCEINLINE
+MLAS_INT16X8
+MlasShiftLeft(MLAS_INT16X8 Vector)
+{
+    return vshlq_n_s16(Vector, ShiftCount);
+}
+
+template<unsigned ShiftCount>
+MLAS_FORCEINLINE
+MLAS_INT16X4
+MlasShiftLeft(MLAS_INT16X4 Vector)
+{
+    return vshl_n_s16(Vector, ShiftCount);
 }
 
 #endif  // fp16 vector intrinsic supported
