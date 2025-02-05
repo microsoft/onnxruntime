@@ -83,7 +83,7 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
                                                                      wgpu::CallbackMode::WaitAnyOnly,
                                                                      [](wgpu::RequestAdapterStatus status, wgpu::Adapter adapter, wgpu::StringView message, wgpu::Adapter* ptr) {
                                                                        ORT_ENFORCE(status == wgpu::RequestAdapterStatus::Success, "Failed to get a WebGPU adapter: ", std::string_view{message});
-                                                                       *ptr = adapter;
+                                                                       *ptr = std::move(adapter);
                                                                      },
                                                                      &adapter),
                                                                  UINT64_MAX));
@@ -127,7 +127,7 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
                                                                      wgpu::CallbackMode::WaitAnyOnly,
                                                                      [](wgpu::RequestDeviceStatus status, wgpu::Device device, wgpu::StringView message, wgpu::Device* ptr) {
                                                                        ORT_ENFORCE(status == wgpu::RequestDeviceStatus::Success, "Failed to get a WebGPU device: ", std::string_view{message});
-                                                                       *ptr = device;
+                                                                       *ptr = std::move(device);
                                                                      },
                                                                      &device_),
                                                                  UINT64_MAX));
