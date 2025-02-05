@@ -175,7 +175,7 @@ export interface TestRunnerCliArgs {
   /**
    * whether to enable model download
    */
-  downloadModel: boolean;
+  downloadModel: Test.Config['downloadModel'];
 
   /**
    * Whether to enable file cache
@@ -438,7 +438,8 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   }
 
   // Option: -m, --download-model
-  const downloadModel = args['download-model'] || args.m ? true : false;
+  const downloadModelFlag = args['download-model'] || args.m;
+  const downloadModel = downloadModelFlag === 'full' ? 'full' : downloadModelFlag ? 'model' : false;
 
   // Option: -t, --trace
   const trace = parseBooleanArg(args.trace || args.t, false);

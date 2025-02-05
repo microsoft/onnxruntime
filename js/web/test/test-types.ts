@@ -172,7 +172,7 @@ export declare namespace Test {
 
     log: ReadonlyArray<{ category: string; config: Logger.Config }>;
     profile: boolean;
-    downloadModel: boolean;
+    downloadModel: 'full' | 'model' | false;
     options: Options;
   }
 }

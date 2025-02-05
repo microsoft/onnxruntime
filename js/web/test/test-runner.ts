@@ -11,6 +11,7 @@ import { expect } from 'chai';
 import * as ort from 'onnxruntime-common';
 import { extname } from 'path';
 import { inspect } from 'util';
+import JSZip from 'jszip';
 
 import { Attribute } from '../lib/onnxjs/attribute';
 import { InferenceHandler, resolveBackend, SessionHandler } from '../lib/onnxjs/backend';
@@ -875,17 +876,41 @@ export class OpTestContext {
   }
 }
 
+const createCpuTensor = (type: ort.Tensor.Type, data: number[], dims: readonly number[]): ort.Tensor => {
+  let buffer: number[] | BigUint64Array | BigInt64Array | Uint16Array | Uint8Array = data;
+  if (type === 'uint64') {
+    buffer = BigUint64Array.from(data.map(BigInt));
+  } else if (type === 'int64') {
+    buffer = BigInt64Array.from(data.map(BigInt));
+  } else if (type === 'float16') {
+    const dataArr = Float16ArrayPolyfill.from(data);
+    buffer = new Uint16Array(dataArr.buffer, dataArr.byteOffset, dataArr.byteLength / 2);
+  } else if (type === 'uint4' || type === 'int4') {
+    buffer = new Uint8Array(calculateTensorSizeInBytes(tensorDataTypeStringToEnum(type), dims)!);
+    // encode (u)int4 data into Uint8Array
+    for (let j = 0; j < data.length; j++) {
+      /* eslint-disable no-bitwise */
+      const byteIndex = j >> 1;
+      const bitOffset = (j & 1) << 2;
+      buffer[byteIndex] |= data[j] << bitOffset;
+      /* eslint-enable no-bitwise */
+    }
+  }
+  return new ort.Tensor(type, buffer, dims);
+};
+
 /**
  * a ProtoOpTestContext uses a protobuf model for operator test. used for ORT based backend.
  */
 export class ProtoOpTestContext {
-  private readonly loadedData: Uint8Array; // model data, inputs, outputs
+  private readonly modelData: Uint8Array;
+  private readonly download: Promise<File> | undefined;
   session: ort.InferenceSession;
   readonly backendHint: string;
   readonly ioBindingMode: Test.IOBindingMode;
   constructor(
     test: Test.OperatorTest,
-    private readonly downloadModel: boolean,
+    private readonly downloadModel: Test.Config['downloadModel'],
     private readonly sessionOptions: ort.InferenceSession.SessionOptions = {},
   ) {
     const opsetImport = onnx.OperatorSetIdProto.create(test.opset);
@@ -1070,23 +1095,77 @@ export class ProtoOpTestContext {
 
     this.backendHint = test.backend!;
     this.ioBindingMode = test.ioBinding;
-    this.loadedData = onnx.ModelProto.encode(model).finish().slice();
+    this.modelData = onnx.ModelProto.encode(model).finish().slice();
 
     if (this.downloadModel) {
-      const modelFile = new File([this.loadedData], `op_test_generated_model_${test.name}.onnx`, {
-        type: 'application/octet-stream',
-      });
-      const modelTempUrl = URL.createObjectURL(modelFile);
+      const filename = `op_test_generated_model_${test.name}`;
+
+      if (this.downloadModel === 'full') {
+        const zip = new JSZip();
+        zip.file(`model.onnx`, this.modelData);
+        for (let i = 0; i < test.cases.length; i++) {
+          const subfolder = zip.folder(`test_data_set_${i}`)!;
+          for (let j = 0; j < test.cases[i].inputs.length; j++) {
+            const input = test.cases[i].inputs[j];
+            if (input.data) {
+              const data = createCpuTensor(input.type, input.data, input.dims).data;
+              if (Array.isArray(data)) {
+                throw new Error('Only typed array is supported for input data');
+              }
+              const inputProto = onnx.TensorProto.create({
+                dims: input.dims,
+                dataType: tensorDataTypeStringToEnum(input.type),
+                name: `input_${j}`,
+                rawData: new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
+              });
+              subfolder.file(`input_${j}.pb`, onnx.TensorProto.encode(inputProto).finish());
+            }
+          }
+          for (let j = 0; j < test.cases[i].outputs.length; j++) {
+            const output = test.cases[i].outputs[j];
+            if (output.data) {
+              const data = createCpuTensor(output.type, output.data, output.dims).data;
+              if (Array.isArray(data)) {
+                throw new Error('Only typed array is supported for output data');
+              }
+              const outputProto = onnx.TensorProto.create({
+                dims: output.dims,
+                dataType: tensorDataTypeStringToEnum(output.type),
+                name: `output_${j}`,
+                rawData: new Uint8Array(data.buffer, data.byteOffset, data.byteLength),
+              });
+              subfolder.file(`output_${j}.pb`, onnx.TensorProto.encode(outputProto).finish());
+            }
+          }
+        }
+        this.download = zip.generateAsync({ type: 'blob' }).then(
+          (content) =>
+            new File([content], `${filename}.zip`, {
+              type: 'application/zip',
+            }),
+        );
+      } else {
+        this.download = Promise.resolve(
+          new File([this.modelData], `${filename}.onnx`, {
+            type: 'application/octet-stream',
+          }),
+        );
+      }
+    }
+  }
+  async init(): Promise<void> {
+    if (this.download) {
+      const file = await this.download!;
+      const modelTempUrl = URL.createObjectURL(file);
       const a = document.createElement('a');
       a.href = modelTempUrl;
-      a.download = modelFile.name;
+      a.download = file.name;
       a.target = '_blank';
       a.click();
       URL.revokeObjectURL(modelTempUrl);
     }
-  }
-  async init(): Promise<void> {
-    this.session = await ort.InferenceSession.create(this.loadedData, {
+
+    this.session = await ort.InferenceSession.create(this.modelData, {
       executionProviders: [this.backendHint],
       preferredOutputLocation: this.ioBindingMode === 'gpu-location' ? ('gpu-buffer' as const) : undefined,
       ...this.sessionOptions,
@@ -1107,32 +1186,9 @@ async function runProtoOpTestcase(
   const feeds: Record<string, ort.Tensor> = {};
   const fetches: Record<string, Pick<ort.Tensor, 'dims' | 'type'>> = {};
 
-  const createTensor = (type: ort.Tensor.Type, data: number[], dims: readonly number[]): ort.Tensor => {
-    let buffer: number[] | BigUint64Array | BigInt64Array | Uint16Array | Uint8Array = data;
-    if (type === 'uint64') {
-      buffer = BigUint64Array.from(data.map(BigInt));
-    } else if (type === 'int64') {
-      buffer = BigInt64Array.from(data.map(BigInt));
-    } else if (type === 'float16') {
-      const dataArr = Float16ArrayPolyfill.from(data);
-      buffer = new Uint16Array(dataArr.buffer, dataArr.byteOffset, dataArr.byteLength / 2);
-    } else if (type === 'uint4' || type === 'int4') {
-      buffer = new Uint8Array(calculateTensorSizeInBytes(tensorDataTypeStringToEnum(type), dims)!);
-      // encode (u)int4 data into Uint8Array
-      for (let j = 0; j < data.length; j++) {
-        /* eslint-disable no-bitwise */
-        const byteIndex = j >> 1;
-        const bitOffset = (j & 1) << 2;
-        buffer[byteIndex] |= data[j] << bitOffset;
-        /* eslint-enable no-bitwise */
-      }
-    }
-    return new ort.Tensor(type, buffer, dims);
-  };
-
   testCase.inputs.forEach((input, i) => {
     if (input.data) {
-      feeds[`input_${i}`] = createTensor(input.type, input.data, input.dims);
+      feeds[`input_${i}`] = createCpuTensor(input.type, input.data, input.dims);
     }
   });
 
@@ -1140,7 +1196,7 @@ async function runProtoOpTestcase(
   const expectedOutputNames: string[] = [];
   testCase.outputs.forEach((output, i) => {
     if (output.data) {
-      outputs.push(createTensor(output.type, output.data, output.dims));
+      outputs.push(createCpuTensor(output.type, output.data, output.dims));
       expectedOutputNames.push(`output_${i}`);
       fetches[`output_${i}`] = { dims: output.dims, type: output.type };
     }
