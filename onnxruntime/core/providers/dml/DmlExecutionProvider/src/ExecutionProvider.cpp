@@ -878,7 +878,7 @@ namespace Dml
     ExecutionProviderImpl::GetCapability(
         const onnxruntime::GraphViewer& graph,
         const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
-        const onnxruntime::logging::Logger& logger, onnxruntime::IResourceAccountant*) const {
+        onnxruntime::IResourceAccountant*, const onnxruntime::logging::Logger& logger) const {
         uint32_t deviceDataTypeMask = GetSupportedDeviceDataTypeMask(); // Each bit corresponds to each DML_TENSOR_DATA_TYPE.
 
         std::vector<std::unique_ptr<onnxruntime::ComputeCapability>> result;

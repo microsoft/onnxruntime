@@ -204,8 +204,6 @@ class OpKernelContext {
 
   virtual OrtValue* GetOrCreateOutputMLValue(int index);
 
-  virtual int GetOrtValueIndexForInput(int input_index) const;
-
   virtual int GetOrtValueIndexForOutput(int output_index) const;
 
  private:

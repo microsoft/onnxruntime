@@ -2749,7 +2749,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
-  if (node_stats_recorder_.has_value() && retval.IsOK()) {
+  if (IsNodeStatsCollectionEnabled() && retval.IsOK()) {
     // Dump node stats if the run was successful
     node_stats_recorder_->DumpStats(session_state_->GetGraphViewer().ModelPath());
     node_stats_recorder_->ResetPerRunNameDeduper();

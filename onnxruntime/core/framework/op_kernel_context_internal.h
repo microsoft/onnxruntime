@@ -59,10 +59,6 @@ class OpKernelContextInternal : public OpKernelContext {
     return OpKernelContext::GetInputMLValue(index);
   }
 
-  const OrtValue* GetImplicitInputMLValue(int index) const override {
-    return OpKernelContext::GetImplicitInputMLValue(index);
-  }
-
   OrtValue* GetOutputMLValue(int index) {
     return OpKernelContext::GetOutputMLValue(index);
   }
@@ -80,10 +76,6 @@ class OpKernelContextInternal : public OpKernelContext {
   // Get the OrtValue's for all implicit inputs. Order is same as Node::ImplicitInputDefs(). No nullptr entries.
   const std::vector<const OrtValue*>& GetImplicitInputs() const {
     return implicit_input_values_;
-  }
-
-  int GetOrtValueIndexForInput(int input_index) const override {
-    return OpKernelContext::GetOrtValueIndexForInput(input_index);
   }
 
   int GetOrtValueIndexForOutput(int output_index) const override {

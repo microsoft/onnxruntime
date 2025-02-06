@@ -23,8 +23,6 @@
 
 #include "core/framework/bfc_arena.h"
 
-#include "core/session/onnxruntime_session_options_config_keys.h"
-
 using namespace onnxruntime::common;
 
 namespace onnxruntime {
