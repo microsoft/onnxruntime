@@ -76,7 +76,7 @@ BackendManager::BackendManager(SessionContext& session_context,
   ptr_stream_t model_stream;
   std::unique_ptr<onnx::ModelProto> model_proto;
   if (subgraph_context_.is_ep_ctx_graph) {
-    model_stream = ep_ctx_handle_.GetModelBlobStream(subgraph);
+    model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.so_context_file_path, subgraph);
   } else {
     model_proto = GetModelProtoFromFusedNode(fused_node, subgraph, logger);
   }
@@ -214,21 +214,29 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
   // If not embed_mode, dump the blob here and only pass on the path to the blob
   std::string model_blob_str;
   auto compiled_model = concrete_backend_->GetOVCompiledModel();
-  if (session_context_.so_context_embed_mode) {
-    // Internal blob
+  if (session_context_.so_context_embed_mode) {  // Internal blob
     std::ostringstream model_blob_stream;
     compiled_model.export_model(model_blob_stream);
     model_blob_str = std::move(model_blob_stream).str();
     if (model_blob_str.empty()) {
       ORT_THROW("Model blob stream is empty after exporting the compiled model.");
     }
-  } else {
-    // External blob
+  } else {  // External blob
+    // Build name by combining EpCtx model name (if available) and subgraph name. Model
+    // name is not available in when creating a session from memory
+    auto name = session_context_.so_context_file_path.stem().string();
+    if (!name.empty() && !graph_body_viewer.ModelPath().empty()) {
+      name = graph_body_viewer.ModelPath().stem().string();
+    }
+    if (!name.empty()) {
+      name += "_";
+    }
+    name += subgraph_context_.subgraph_name;
+
     std::filesystem::path blob_filename = session_context_.so_context_file_path;
     if (blob_filename.empty()) {
       blob_filename = session_context_.onnx_model_path_name;
     }
-    const auto name = graph_body_viewer.ModelPath().stem().string() + "_" + subgraph_context_.subgraph_name;
     blob_filename = blob_filename.parent_path() / name;
     blob_filename.replace_extension("blob");
     std::ofstream blob_file(blob_filename,

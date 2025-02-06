@@ -31,7 +31,7 @@ class EPCtxHandler {
                                const std::string& graph_name,
                                const bool embed_mode,
                                std::string&& model_blob_str) const;
-  std::unique_ptr<std::istream> GetModelBlobStream(const GraphViewer& graph_viewer) const;
+  std::unique_ptr<std::istream> GetModelBlobStream(const std::filesystem::path& so_context_file_path, const GraphViewer& graph_viewer) const;
   InlinedVector<const Node*> GetEPCtxNodes() const;
 
  private:

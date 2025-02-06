@@ -22,9 +22,9 @@ void ParseConfigOptions(ProviderInfo& pi, const ConfigOptions& config_options) {
   pi.so_context_file_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
 }
 
-void* ParseUint64(const ProviderOptions& provider_options, [[maybe_unused]] std::string option_name) {
-  if (provider_options.contains("context")) {
-    uint64_t number = std::strtoull(provider_options.at("context").data(), nullptr, 16);
+void* ParseUint64(const ProviderOptions& provider_options, std::string option_name) {
+  if (provider_options.contains(option_name)) {
+    uint64_t number = std::strtoull(provider_options.at(option_name).data(), nullptr, 16);
     return reinterpret_cast<void*>(number);
   } else {
     return nullptr;

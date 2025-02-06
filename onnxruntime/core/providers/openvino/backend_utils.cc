@@ -92,13 +92,13 @@ std::istream& operator>>(std::istream& stream, SharedContext::SharedWeights::Met
 
       size_t safe_num_dimensions = num_dimensions;
 
-      if(num_dimensions == 0 || safe_num_dimensions > MAX_SAFE_DIMENSIONS) {
-         ORT_THROW("Invalid number of dimensions provided.");
+      if (num_dimensions == 0 || safe_num_dimensions > MAX_SAFE_DIMENSIONS) {
+        ORT_THROW("Invalid number of dimensions provided.");
       }
       try {
-          value.dimensions.resize(safe_num_dimensions);
+        value.dimensions.resize(safe_num_dimensions);
       } catch (const std::bad_alloc&) {
-          ORT_THROW("Error: Memory allocation failed while resizing dimensions.");
+        ORT_THROW("Error: Memory allocation failed while resizing dimensions.");
       }
 
       for (auto& dim : value.dimensions) {

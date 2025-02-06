@@ -99,7 +99,7 @@ Status EPCtxHandler::AddOVEPCtxNodeToGraph(const GraphViewer& graph_viewer,
   return Status::OK();
 }
 
-std::unique_ptr<std::istream> EPCtxHandler::GetModelBlobStream(const GraphViewer& graph_viewer) const {
+std::unique_ptr<std::istream> EPCtxHandler::GetModelBlobStream(const std::filesystem::path& so_context_file_path, const GraphViewer& graph_viewer) const {
   auto first_index = *graph_viewer.GetNodesInTopologicalOrder().begin();
   auto node = graph_viewer.GetNode(first_index);
   ORT_ENFORCE(node != nullptr);
@@ -115,7 +115,11 @@ std::unique_ptr<std::istream> EPCtxHandler::GetModelBlobStream(const GraphViewer
   if (embed_mode) {
     result.reset((std::istream*)new std::istringstream(ep_cache_context));
   } else {
-    const auto& blob_filepath = graph_viewer.ModelPath().parent_path() / ep_cache_context;
+    auto blob_filepath = so_context_file_path;
+    if (blob_filepath.empty() && !graph_viewer.ModelPath().empty()) {
+      blob_filepath = graph_viewer.ModelPath();
+    }
+    blob_filepath = blob_filepath.parent_path() / ep_cache_context;
     ORT_ENFORCE(std::filesystem::exists(blob_filepath), "Blob file not found: ", blob_filepath.string());
     result.reset((std::istream*)new std::ifstream(blob_filepath, std::ios_base::binary | std::ios_base::in));
   }
