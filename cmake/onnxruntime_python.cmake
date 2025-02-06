@@ -131,7 +131,7 @@ if (onnxruntime_ENABLE_ATEN)
 endif()
 
 if (onnxruntime_ENABLE_DLPACK)
-  target_include_directories(onnxruntime_pybind11_state PRIVATE ${dlpack_SOURCE_DIR}/include)
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE dlpack::dlpack)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
