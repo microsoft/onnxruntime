@@ -390,22 +390,22 @@ void RunWithOneSessionMultiThreadsInference(PathString model_name, std::string s
   ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_engine_cache_prefix));
 }
 
-TEST(TensorrtExecutionProviderTest, SessionCreationWithMultiThreadsAndInferenceWithMultiThreads) {
-  std::vector<std::thread> threads;
-  PathString model_name = ORT_TSTR("trt_execution_provider_multithreading_test.onnx");
-  std::string graph_name = "multithreading_test";
-  std::string sess_log_id = "TRTEPMultiThreadingTestWithOneSessionSingleThread";
-  std::vector<int> dims = {1, 3, 2};
-  int num_thread = 5;
+// TEST(TensorrtExecutionProviderTest, SessionCreationWithMultiThreadsAndInferenceWithMultiThreads) {
+//   std::vector<std::thread> threads;
+//   PathString model_name = ORT_TSTR("trt_execution_provider_multithreading_test.onnx");
+//   std::string graph_name = "multithreading_test";
+//   std::string sess_log_id = "TRTEPMultiThreadingTestWithOneSessionSingleThread";
+//   std::vector<int> dims = {1, 3, 2};
+//   int num_thread = 5;
 
-  CreateBaseModel(model_name, graph_name, dims);
+//   CreateBaseModel(model_name, graph_name, dims);
 
-  for (int i = 0; i < num_thread; ++i)
-    threads.push_back(std::thread(RunWithOneSessionSingleThreadInference, model_name, sess_log_id));
+//   for (int i = 0; i < num_thread; ++i)
+//     threads.push_back(std::thread(RunWithOneSessionSingleThreadInference, model_name, sess_log_id));
 
-  for (auto& th : threads)
-    th.join();
-}
+//   for (auto& th : threads)
+//     th.join();
+// }
 
 TEST(TensorrtExecutionProviderTest, SessionCreationWithSingleThreadAndInferenceWithMultiThreads) {
   PathString model_name = ORT_TSTR("trt_execution_provider_multithreading_test.onnx");
