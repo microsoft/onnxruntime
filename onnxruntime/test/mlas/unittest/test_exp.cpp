@@ -326,31 +326,31 @@ const struct {
 const struct {
     _Float16 LowerRange;
     _Float16 UpperRange;
+    _Float16 alpha_13;
+    _Float16 alpha_11;
     _Float16 alpha_9;
     _Float16 alpha_7;
     _Float16 alpha_5;
     _Float16 alpha_3;
     _Float16 alpha_1;
-    _Float16 beta_10;
-    _Float16 beta_8;
     _Float16 beta_6;
     _Float16 beta_4;
     _Float16 beta_2;
     _Float16 beta_0;
 } MlasTanh16Constants = {
-    -5.0f16, // c500
-    5.0f16, // 4500
-    2.755731922398589e-06f16, // 0x002e
-    0.00019841269841269839f16, // 0xa80
-    0.008333333333333333f16, // 0x2044
-    0.16666666666666666f16, // 0x3155
-    1.f16, // 0x3c00
-    2.7557319223985894e-07f16, // 0x0005
-    2.48015873015873e-05f16, // 0x01a0
-    0.001388888888888889f16, // 0x15b0
-    0.041666666666666664f16, // 0x2955
-    0.5f16, // 0x3800
-    1.f16, // 0x3c00
+    -3.51562f16,
+    3.51562f16,
+    -2.76076847742355e-16f16,
+    2.00018790482477e-13f16,
+    -8.60467152213735e-11f16,
+    5.12229709037114e-08f16,
+    1.48572235717979e-05f16,
+    6.37261928875436e-04f16,
+    4.89352455891786e-03f16,
+    1.19825839466702e-06f16, // TODO: test errors
+    1.18534705686654e-04f16,
+    2.26843463243900e-03f16,
+    4.89352518554385e-03f16,
 };
 
   float my_tanh(float Value) {
@@ -384,16 +384,16 @@ const struct {
 
     _Float16 ValueSquared = Value * Value;
 
-    _Float16 p = MlasTanh16Constants.alpha_9;
+    _Float16 p = MlasTanh16Constants.alpha_13;
+    p = p * ValueSquared + MlasTanh16Constants.alpha_11;
+    p = p * ValueSquared + MlasTanh16Constants.alpha_9;
     p = p * ValueSquared + MlasTanh16Constants.alpha_7;
     p = p * ValueSquared + MlasTanh16Constants.alpha_5;
     p = p * ValueSquared + MlasTanh16Constants.alpha_3;
     p = p * ValueSquared + MlasTanh16Constants.alpha_1;
     p = p * Value;
 
-    _Float16 q = MlasTanh16Constants.beta_10;
-    q = q * ValueSquared + MlasTanh16Constants.beta_8;
-    q = q * ValueSquared + MlasTanh16Constants.beta_6;
+    _Float16 q = MlasTanh16Constants.beta_6;
     q = q * ValueSquared + MlasTanh16Constants.beta_4;
     q = q * ValueSquared + MlasTanh16Constants.beta_2;
     q = q * ValueSquared + MlasTanh16Constants.beta_0;
@@ -463,19 +463,19 @@ const struct {
     // Test(.01f16);
     print_hex("lower range ", MlasTanh16Constants.LowerRange);
     print_hex("upper range ", MlasTanh16Constants.UpperRange);
+    print_hex("alpha_13 ", MlasTanh16Constants.alpha_13);
+    print_hex("alpha_11 ", MlasTanh16Constants.alpha_11);
     print_hex("alpha_9 ", MlasTanh16Constants.alpha_9);
     print_hex("alpha_7 ", MlasTanh16Constants.alpha_7);
     print_hex("alpha_5 ", MlasTanh16Constants.alpha_5);
     print_hex("alpha_3 ", MlasTanh16Constants.alpha_3);
     print_hex("alpha_1 ", MlasTanh16Constants.alpha_1);
-    print_hex("beta_10 ", MlasTanh16Constants.beta_10);
-    print_hex("beta_8 ", MlasTanh16Constants.beta_8);
     print_hex("beta_6 ", MlasTanh16Constants.beta_6);
     print_hex("beta_4 ", MlasTanh16Constants.beta_4);
     print_hex("beta_2 ", MlasTanh16Constants.beta_2);
     print_hex("beta_0 ", MlasTanh16Constants.beta_0);
     for (_Float16 x = 0.f16; x <= 9.f16; x += 0.005f16) {
-      test_tanh_no_overflow(x);
+      test_tanh(x);
     }
   }
 };

@@ -230,14 +230,14 @@ MlasMultiply(MLAS_FLOAT16X4 Vector1, MLAS_FLOAT16X4 Vector2)
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X8
-MlasDivFloat16x8(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
+MlasDivide(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
 {
     return vdivq_f16(Vector1, Vector2);
 }
 
 MLAS_FORCEINLINE
 MLAS_FLOAT16X4
-MlasDivFloat16x4(MLAS_FLOAT16X4 Vector1, MLAS_FLOAT16X4 Vector2)
+MlasDivide(MLAS_FLOAT16X4 Vector1, MLAS_FLOAT16X4 Vector2)
 {
     return vdiv_f16(Vector1, Vector2);
 }
@@ -268,13 +268,6 @@ void
 MlasMultiplyAddFloat16x8(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2, _mlas_fp16_ Scalar3)
 {
     MlasMultiplyAdd(Vector1, Vector2, MlasBroadcastFloat16x8(Scalar3));
-}
-
-MLAS_FORCEINLINE
-MLAS_FLOAT16X8
-MlasDivideFloat16x8(MLAS_FLOAT16X8 Vector1, MLAS_FLOAT16X8 Vector2)
-{
-    return vdivq_f16(Vector1, Vector2);
 }
 
 MLAS_FORCEINLINE

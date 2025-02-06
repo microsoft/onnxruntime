@@ -158,14 +158,14 @@ template <>
 MLAS_FORCEINLINE MLAS_FLOAT16X8
 PoolSummary16x8<AveragePoolAggregation>(MLAS_FLOAT16X8 agg, MLAS_FLOAT16X8 context)
 {
-    return MlasDivFloat16x8(agg, context);
+    return MlasDivide(agg, context);
 }
 
 template <>
 MLAS_FORCEINLINE MLAS_FLOAT16X4
 PoolSummary16x4<AveragePoolAggregation>(MLAS_FLOAT16X4 agg, MLAS_FLOAT16X8 context)
 {
-    return MlasDivFloat16x4(agg, MlasToLowHalfFloat16x4(context));
+    return MlasDivide(agg, MlasToLowHalfFloat16x4(context));
 }
 
 

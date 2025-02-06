@@ -405,76 +405,276 @@ MLAS_FP16 SumExp_Kernel_Fp16(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N
     return MLAS_FP16::FromBits(result);
 }
 
-const struct {
-    _mlas_fp16_ LowerRange;
-    _mlas_fp16_ UpperRange;
-    _mlas_fp16_ alpha_9;
-    _mlas_fp16_ alpha_7;
-    _mlas_fp16_ alpha_5;
-    _mlas_fp16_ alpha_3;
-    _mlas_fp16_ alpha_1;
-    _mlas_fp16_ beta_10;
-    _mlas_fp16_ beta_8;
-    _mlas_fp16_ beta_6;
-    _mlas_fp16_ beta_4;
-    _mlas_fp16_ beta_2;
-    _mlas_fp16_ beta_0;
-} MlasTanh16Constants = {
-    0xc500, // -5.0f16
-    0x4500, // 5.0f16
-    0x002e, // 1/9!
-    0x0a80, // 1/7!
-    0x2044, // 1/5!
-    0x3155, // 1/3!
-    0x3c00, // 1
-    0x0005, // 1/10!
-    0x01a0, // 1/8!
-    0x15b0, // 1/6!
-    0x2955, // 1/4!
-    0x3800, // 1/2!
-    0x3c00, // 1
+template <typename T>
+struct MlasTanhConstants {
+    T LowerRange;
+    T UpperRange;
+    T alpha_7;
+    T alpha_5;
+    T alpha_3;
+    T alpha_1;
+    T beta_6;
+    T beta_4;
+    T beta_2;
+    T beta_0;
 };
 
-//  _Float16 my_tanh(_Float16 Value) {
-//     _Float16 v_tmp;
-//     v_tmp = (Value < MlasTanh16Constants.LowerRange) ? MlasTanh16Constants.LowerRange : Value;
-//     Value = (v_tmp > MlasTanh16Constants.UpperRange) ? MlasTanh16Constants.UpperRange : v_tmp;
+const MlasTanhConstants<_mlas_fp16_> TanhConstantsFp16 = {
+    0xc308, // -3.51562
+    0x4308, // 3.51562
+    0x0001,
+    0x00f9,
+    0x1138,
+    0x1d03,
+    0x0014,
+    0x07c5,
+    0x18a5,
+    0x1d03,
+};
 
-//     _Float16 ValueSquared = Value * Value;
+const MlasTanhConstants<float16x8_t> TanhConstantsFp16x8 = {
+    MlasBroadcastFloat16x8(TanhConstantsFp16.LowerRange),
+    MlasBroadcastFloat16x8(TanhConstantsFp16.UpperRange),
+    MlasBroadcastFloat16x8(TanhConstantsFp16.alpha_7),
+    MlasBroadcastFloat16x8(TanhConstantsFp16.alpha_5),
+    MlasBroadcastFloat16x8(TanhConstantsFp16.alpha_3),
+    MlasBroadcastFloat16x8(TanhConstantsFp16.alpha_1),
+    MlasBroadcastFloat16x8(TanhConstantsFp16.beta_6),
+    MlasBroadcastFloat16x8(TanhConstantsFp16.beta_4),
+    MlasBroadcastFloat16x8(TanhConstantsFp16.beta_2),
+    MlasBroadcastFloat16x8(TanhConstantsFp16.beta_0),
+};
 
-//     _Float16 p = MlasTanh16Constants.alpha_9;
-//     p = p * ValueSquared + MlasTanh16Constants.alpha_7;
-//     p = p * ValueSquared + MlasTanh16Constants.alpha_5;
-//     p = p * ValueSquared + MlasTanh16Constants.alpha_3;
-//     p = p * ValueSquared + MlasTanh16Constants.alpha_1;
-//     p = p * Value;
+const MlasTanhConstants<float16x4_t> TanhConstantsFp16x4 = {
+    MlasBroadcastFloat16x4(TanhConstantsFp16.LowerRange),
+    MlasBroadcastFloat16x4(TanhConstantsFp16.UpperRange),
+    MlasBroadcastFloat16x4(TanhConstantsFp16.alpha_7),
+    MlasBroadcastFloat16x4(TanhConstantsFp16.alpha_5),
+    MlasBroadcastFloat16x4(TanhConstantsFp16.alpha_3),
+    MlasBroadcastFloat16x4(TanhConstantsFp16.alpha_1),
+    MlasBroadcastFloat16x4(TanhConstantsFp16.beta_6),
+    MlasBroadcastFloat16x4(TanhConstantsFp16.beta_4),
+    MlasBroadcastFloat16x4(TanhConstantsFp16.beta_2),
+    MlasBroadcastFloat16x4(TanhConstantsFp16.beta_0),
+};
 
-//     _Float16 q = MlasTanh16Constants.beta_10;
-//     q = q * ValueSquared + MlasTanh16Constants.beta_8;
-//     q = q * ValueSquared + MlasTanh16Constants.beta_6;
-//     q = q * ValueSquared + MlasTanh16Constants.beta_4;
-//     q = q * ValueSquared + MlasTanh16Constants.beta_2;
-//     q = q * ValueSquared + MlasTanh16Constants.beta_0;
+template <typename T>
+MLAS_FORCEINLINE
+MlasTanhConstants<T> Get_Tanh_Constants();
 
-//     return (p / q);
-//   }
+template <>
+MLAS_FORCEINLINE
+MlasTanhConstants<float16x8_t> Get_Tanh_Constants<float16x8_t>() {
+    return TanhConstantsFp16x8;
+}
 
+template <>
+MLAS_FORCEINLINE
+MlasTanhConstants<float16x4_t> Get_Tanh_Constants<float16x4_t>() {
+    return TanhConstantsFp16x4;
+}
 
-//   _Float16 my_tanh_no_overflow(_Float16 Value) {
-//     if (Value > 0.5f16) {
-//       _Float16 exp = my_exp(Value);
-//       return (exp - 1.0f16/exp) / (exp + 1.0f16/exp);
-//     } else {
-//       return my_tanh(Value);
-//     }
-//   }
+// TODO(fajin): optimize polynomial coefficients
+template <typename T>
+MLAS_FORCEINLINE
+T Tanh_Vector_Fp16(T x) {
+    const auto constants = Get_Tanh_Constants<T>();
+    x = MlasClamp(x, constants.LowerRange, constants.UpperRange);
+
+    T x_2 = MlasMultiply(x, x);
+
+    T p = MlasMultiplyAdd(constants.alpha_7, x_2, constants.alpha_5);
+    p = MlasMultiplyAdd(p, x_2, constants.alpha_3);
+    p = MlasMultiplyAdd(p, x_2, constants.alpha_1);
+    p = MlasMultiply(p, x);
+
+    T q = MlasMultiplyAdd(constants.beta_6, x_2, constants.beta_4);
+    q = MlasMultiplyAdd(q, x_2, constants.beta_2);
+    q = MlasMultiplyAdd(q, x_2, constants.beta_0);
+
+    return MlasDivide(p / q);
+}
 
 void Tanh_Kernel_Fp16(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N) {
+    const auto* input = reinterpret_cast<const _mlas_fp16_*>(Input);
+    auto* output = reinterpret_cast<_mlas_fp16_*>(Output);
 
+    while (N >= 32) {
+        auto v0 = MlasLoadFloat16x8(input);
+        auto v1 = MlasLoadFloat16x8(input + 8);
+        auto v2 = MlasLoadFloat16x8(input + 16);
+        auto v3 = MlasLoadFloat16x8(input + 24);
+
+        auto r0 = Tanh_Vector_Fp16(v0);
+        auto r1 = Tanh_Vector_Fp16(v1);
+        auto r2 = Tanh_Vector_Fp16(v2);
+        auto r3 = Tanh_Vector_Fp16(v3);
+
+        MlasStoreFloat16x8(output, r0);
+        MlasStoreFloat16x8(output + 8, r1);
+        MlasStoreFloat16x8(output + 16, r2);
+        MlasStoreFloat16x8(output + 24, r3);
+
+        input += 32;
+        output += 32;
+        N -= 32;
+    }
+
+    if (N & 16) {
+        auto v0 = MlasLoadFloat16x8(input);
+        auto v1 = MlasLoadFloat16x8(input + 8);
+
+        auto r0 = Tanh_Vector_Fp16(v0);
+        auto r1 = Tanh_Vector_Fp16(v1);
+
+        MlasStoreFloat16x8(output, r0);
+        MlasStoreFloat16x8(output + 8, r1);
+
+        input += 16;
+        output += 16;
+        N -= 16;
+    }
+
+    if (N & 8) {
+        auto v0 = MlasLoadFloat16x8(input);
+        auto r0 = Tanh_Vector_Fp16(v0);
+        MlasStoreFloat16x8(output, r0);
+
+        input += 8;
+        output += 8;
+        N -= 8;
+    }
+
+    if (N & 4) {
+        auto v0 = MlasLoadFloat16x4(input);
+        auto r0 = Tanh_Vector_Fp16(v0);
+        MlasStoreFloat16x4(output, r0);
+
+        input += 4;
+        output += 4;
+        N -= 4;
+    }
+
+    if (N == 3) {
+        auto v0 = MlasLoadPartialFloat16x4(input, 3);
+        auto r0 = Tanh_Vector_Fp16(v0);
+        MlasStorePartialFloat16x4(output, r0, 3);
+    } else if (N == 2) {
+        auto v0 = MlasLoadPartialFloat16x4(input, 2);
+        auto r0 = Tanh_Vector_Fp16(v0);
+        MlasStorePartialFloat16x4(output, r0, 2);
+    } else if (N == 1) {
+        auto v0 = MlasLoadPartialFloat16x4(input, 1);
+        auto r0 = Tanh_Vector_Fp16(v0);
+        MlasStorePartialFloat16x4(output, r0, 1);
+    }
 }
 
 void Softcap_Kernel_Fp16(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N, const MLAS_FP16 Softcap) {
+    const auto* input = reinterpret_cast<const _mlas_fp16_*>(Input);
+    auto* output = reinterpret_cast<_mlas_fp16_*>(Output);
+    auto softcap8 = MlasBroadcastFloat16x8(Softcap.val);
+    auto softcap4 = MlasBroadcastFloat16x4(Softcap.val);
+    auto one8 = MlasBroadcastFloat16x8((_mlas_fp16_)0x3c00);
+    auto one4 = MlasBroadcastFloat16x4((_mlas_fp16_)0x3c00);
+    auto softcap_reciprocal8 = MlasDivide(one8, softcap8);
+    auto softcap_reciprocal4 = MlasDivide(one4, softcap4);
 
+    while (N >= 32) {
+        auto v0 = MlasLoadFloat16x8(input);
+        auto v1 = MlasLoadFloat16x8(input + 8);
+        auto v2 = MlasLoadFloat16x8(input + 16);
+        auto v3 = MlasLoadFloat16x8(input + 24);
+
+        v0 = MlasMultiply(v0, softcap_reciprocal8);
+        v1 = MlasMultiply(v1, softcap_reciprocal8);
+        v2 = MlasMultiply(v2, softcap_reciprocal8);
+        v3 = MlasMultiply(v3, softcap_reciprocal8);
+
+        v0 = Tanh_Vector_Fp16(v0);
+        v1 = Tanh_Vector_Fp16(v1);
+        v2 = Tanh_Vector_Fp16(v2);
+        v3 = Tanh_Vector_Fp16(v3);
+
+        v0 = MlasMultiply(v0, softcap8);
+        v1 = MlasMultiply(v1, softcap8);
+        v2 = MlasMultiply(v2, softcap8);
+        v3 = MlasMultiply(v3, softcap8);
+
+        MlasStoreFloat16x8(output, v0);
+        MlasStoreFloat16x8(output + 8, v1);
+        MlasStoreFloat16x8(output + 16, v2);
+        MlasStoreFloat16x8(output + 24, v3);
+
+        input += 32;
+        output += 32;
+        N -= 32;
+    }
+
+    if (N & 16) {
+        auto v0 = MlasLoadFloat16x8(input);
+        auto v1 = MlasLoadFloat16x8(input + 8);
+
+        v0 = MlasMultiply(v0, softcap_reciprocal8);
+        v1 = MlasMultiply(v1, softcap_reciprocal8);
+
+        v0 = Tanh_Vector_Fp16(v0);
+        v1 = Tanh_Vector_Fp16(v1);
+
+        v0 = MlasMultiply(v0, softcap8);
+        v1 = MlasMultiply(v1, softcap8);
+
+        MlasStoreFloat16x8(output, v0);
+        MlasStoreFloat16x8(output + 8, v1);
+
+        input += 16;
+        output += 16;
+        N -= 16;
+    }
+
+    if (N & 8) {
+        auto v0 = MlasLoadFloat16x8(input);
+        v0 = MlasMultiply(v0, softcap_reciprocal8);
+        v0 = Tanh_Vector_Fp16(v0);
+        v0 = MlasMultiply(v0, softcap8);
+        MlasStoreFloat16x8(output, v0);
+
+        input += 8;
+        output += 8;
+        N -= 8;
+    }
+
+    if (N & 4) {
+        auto v0 = MlasLoadFloat16x4(input);
+        v0 = MlasMultiply(v0, softcap_reciprocal4);
+        v0 = Tanh_Vector_Fp16(v0);
+        v0 = MlasMultiply(v0, softcap4);
+        MlasStoreFloat16x4(output, v0);
+
+        input += 4;
+        output += 4;
+        N -= 4;
+    }
+
+    if (N == 3) {
+        auto v0 = MlasLoadPartialFloat16x4(input, 3);
+        v0 = MlasMultiply(v0, softcap_reciprocal4);
+        v0 = Tanh_Vector_Fp16(v0);
+        v0 = MlasMultiply(v0, softcap4);
+        MlasStorePartialFloat16x4(output, v0, 3);
+    } else if (N == 2) {
+        auto v0 = MlasLoadPartialFloat16x4(input, 2);
+        v0 = MlasMultiply(v0, softcap_reciprocal4);
+        v0 = Tanh_Vector_Fp16(v0);
+        v0 = MlasMultiply(v0, softcap4);
+        MlasStorePartialFloat16x4(output, v0, 2);
+    } else if (N == 1) {
+        auto v0 = MlasLoadPartialFloat16x4(input, 1);
+        v0 = MlasMultiply(v0, softcap_reciprocal4);
+        v0 = Tanh_Vector_Fp16(v0);
+        v0 = MlasMultiply(v0, softcap4);
+        MlasStorePartialFloat16x4(output, v0, 1);
+    }
 }
 
 MLAS_FP16 ReduceMax_Kernel_Fp16(const MLAS_FP16* Input, size_t N) {

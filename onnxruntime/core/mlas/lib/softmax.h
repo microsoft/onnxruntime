@@ -22,7 +22,7 @@ Abstract:
 struct MLAS_SOFTMAX_DISPATCH {
     /**
      * @brief Compute the hyperbolic tangent function for each element of the input array
-     * @param Input         Address of the input array
+     * @param Input         Address of the input array. Valid in [-3.51562, 3.51562].
      * @param Output        Address of the output array. Could be the same as the input array.
      * @param N             Number of elements in the input array
      */
@@ -36,7 +36,7 @@ struct MLAS_SOFTMAX_DISPATCH {
 
     /**
      * @brief Compute the softcap function for each element of the input array. Use tanh activation.
-     * @param Input         Address of the input array
+     * @param Input         Address of the input array. Valid if input / softcap in [-3.51562, 3.51562].
      * @param Output        Address of the output array. Could be the same as the input array.
      * @param N             Number of elements in the input array
      * @param Softcap       The softcap value
@@ -51,8 +51,8 @@ struct MLAS_SOFTMAX_DISPATCH {
     Softcap_Fp16_Fn* Softcap_Fp16 = nullptr;
 
     /**
-     * @brief Compute the exponential function for each element of the input array
-     * @param Input         Address of the input array
+     * @brief Compute the exponential function for each element of the input array.
+     * @param Input         Address of the input array. Valid in [-17.3287, 11.0904].
      * @param Output        Address of the output array. Could be the same as the input array.
      * @param N             Number of elements in the input array
      */
@@ -79,7 +79,7 @@ struct MLAS_SOFTMAX_DISPATCH {
     /**
      * @brief Compute the expotential function for each element of the input array and returnt he sum. It has smaller
      *        dynamic range for the input than Exp_Fp16_Fn thus is faster.
-     * @param Input         Address of the input array
+     * @param Input         Address of the input array. Valid in [-10.7438, 10.7438]
      * @param Output        Address of the output array. Could be the same as the input array or nullptr.
      * @param N             Number of elements in the input array
      * @param NegativeMaximum   The negative of the maximum value in the input array
@@ -95,7 +95,7 @@ struct MLAS_SOFTMAX_DISPATCH {
 
     /**
      * @brief Compute the softmax output for each element of the input array
-     * @param Input         Address of the input array
+     * @param Input         Address of the input array. Valid in [-10.7438, 10.7438]
      * @param Output        Address of the output array. Could be the same as the input array.
      * @param N             Number of elements in the input array
      * @param scale         The scale factor to apply to the output
