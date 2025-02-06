@@ -200,7 +200,7 @@ struct IGenerationParameters {
   int cross_qk_output_id = -1;
   int no_speech_probs_output_id = -1;
 
-  // Parameters from environment variable are for testing.
+  // Parameter for testing slow topk path. It can be updated by the below environment variable.
   bool use_fast_topk = true;
 };
 

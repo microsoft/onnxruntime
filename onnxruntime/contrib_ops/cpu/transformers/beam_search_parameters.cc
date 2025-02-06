@@ -138,7 +138,7 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
     }
   }
 
-  // The following parameters for testing purpose. They can be updated by environment variables.
+  // The following parameter is read from environment variable for testing purpose.
   use_fast_topk = ParseEnvironmentVariableWithDefault<bool>(kBeamSearchUseFastTopK, true);
 }
 
