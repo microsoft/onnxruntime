@@ -799,13 +799,14 @@ Status DP4AMatMulNBits2Program::GenerateShaderCode(ShaderHelper& shader) const {
 
   shader.AdditionalImplementation() << R"ADDNL_FN(
   const tile_size = 32u;
+  const tile_size_vec = 8u;
   const subtile_size = 16u;
   const tile_size_k_vec = 16u;
 
   // Shared memory
   var<workgroup> tile_A : array<vec4<u32>, tile_size_k_vec>;                    // 256
   var<workgroup> scale_A : vec2<output_element_t>;                              // 2
-  var<workgroup> inter_results: array<array<output_element_t, subtile_size>, tile_size>;
+  var<workgroup> inter_results: array<array<vec4<output_element_t>, subtile_size>, tile_size_vec>;
 
   fn loadSHMA(a_global:u32, kidx_v:u32, col: u32)
   {
@@ -833,8 +834,8 @@ Status DP4AMatMulNBits2Program::GenerateShaderCode(ShaderHelper& shader) const {
   let b_global_base = workgroup_id.x * tile_size;
 
   let idx = local_idx % subtile_size;
-  let idy = (local_idx / subtile_size) * 4;
-
+  let idy = local_idx / subtile_size;
+  let b_base = idy * 4;
   // K's vectrorization is 16 items per index. See input_a/input_b.
   for (var kidx_v:u32 = 0; kidx_v < uniforms.K16; kidx_v+=tile_size_k_vec)
   {
@@ -850,7 +851,8 @@ Status DP4AMatMulNBits2Program::GenerateShaderCode(ShaderHelper& shader) const {
 
     var own_b = vec4<u32>(0);
     var own_scale_b = output_element_t(0);
-    var b_global = b_global_base + idy;
+    var b_global = b_global_base + b_base;
+  //  var inner_res = vec4<output_element_t>(0);
     if (b_global < uniforms.N)
     {
       var b_value = input_b[b_global*uniforms.K16+kidx_v+idx];
@@ -866,7 +868,7 @@ Status DP4AMatMulNBits2Program::GenerateShaderCode(ShaderHelper& shader) const {
       // kidx_v - each kidx_v covers 16 values of k
       own_scale_b = scales_b[b_global*(uniforms.K/32) + kidx_v/2 + idx/2];
 
-      inter_results[idy][idx] += SDP8AI(own_a, own_b, own_scale_a * own_scale_b);
+      inter_results[idy][idx].x += SDP8AI(own_a, own_b, own_scale_a * own_scale_b);
 
       b_global += 1;
       b_value = input_b[b_global*uniforms.K16+kidx_v+idx];
@@ -879,7 +881,7 @@ Status DP4AMatMulNBits2Program::GenerateShaderCode(ShaderHelper& shader) const {
       own_b[2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
       own_b[3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
       own_scale_b = scales_b[b_global*(uniforms.K/32) + kidx_v/2 + idx/2];
-      inter_results[idy + 1][idx] += SDP8AI(own_a, own_b, own_scale_a * own_scale_b);
+      inter_results[idy][idx].y += SDP8AI(own_a, own_b, own_scale_a * own_scale_b);
 
       b_global += 1;
       b_value = input_b[b_global*uniforms.K16+kidx_v+idx];
@@ -892,7 +894,7 @@ Status DP4AMatMulNBits2Program::GenerateShaderCode(ShaderHelper& shader) const {
       own_b[2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
       own_b[3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
       own_scale_b = scales_b[b_global*(uniforms.K/32) + kidx_v/2 + idx/2];
-      inter_results[idy + 2][idx] += SDP8AI(own_a, own_b, own_scale_a * own_scale_b);
+      inter_results[idy][idx].z += SDP8AI(own_a, own_b, own_scale_a * own_scale_b);
 
       b_global += 1;
       b_value = input_b[b_global*uniforms.K16+kidx_v+idx];
@@ -905,19 +907,19 @@ Status DP4AMatMulNBits2Program::GenerateShaderCode(ShaderHelper& shader) const {
       own_b[2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
       own_b[3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
       own_scale_b = scales_b[b_global*(uniforms.K/32) + kidx_v/2 + idx/2];
-      inter_results[idy + 3][idx] += SDP8AI(own_a, own_b, own_scale_a * own_scale_b);
+      inter_results[idy][idx].w += SDP8AI(own_a, own_b, own_scale_a * own_scale_b);
     }
-
+   // inter_results[idy][idx] = inner_res;
     workgroupBarrier();
   }
 
-  if (local_idx < tile_size) {
-    var output_value = output_element_t(0);
+  if (local_idx < tile_size_vec) {
+    var output_value = vec4<output_element_t>(0);
     for (var b = 0u; b < 16u; b++) {
       output_value += inter_results[local_idx][b];
     }
-    let b_global =  b_global_base + local_idx;
-    let output_idx = a_global * uniforms.N + b_global;
+    let b_global =  b_global_base + local_idx * 4;
+    let output_idx = (a_global * uniforms.N + b_global)/4;
     if (b_global < uniforms.N) {
       output[output_idx] = output_value;
     }
@@ -1020,7 +1022,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
                                 {static_cast<uint32_t>(K)},
                                 {static_cast<uint32_t>(K / 8)},
                                 {static_cast<uint32_t>(K / 16)}})
-          .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)});
+          .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components)});
       return context.RunProgram(mul_program);
     }
   }
