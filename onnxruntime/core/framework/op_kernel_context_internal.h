@@ -59,6 +59,10 @@ class OpKernelContextInternal : public OpKernelContext {
     return OpKernelContext::GetInputMLValue(index);
   }
 
+  const OrtValue* GetImplicitInputMLValue(int index) const override {
+    return OpKernelContext::GetImplicitInputMLValue(index);
+  }
+
   OrtValue* GetOutputMLValue(int index) {
     return OpKernelContext::GetOutputMLValue(index);
   }

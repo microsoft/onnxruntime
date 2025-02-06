@@ -192,7 +192,7 @@ class OpKernelContext {
   onnxruntime::NodeIndex GetNodeIndex() const;
 
   virtual const OrtValue* GetInputMLValue(int index) const;
-  const OrtValue* GetImplicitInputMLValue(int index) const;
+  virtual const OrtValue* GetImplicitInputMLValue(int index) const;
   OrtValue* GetOutputMLValue(int index);
 
 #ifdef ENABLE_ATEN

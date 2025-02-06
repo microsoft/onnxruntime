@@ -443,83 +443,21 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
 }
 
 #ifdef USE_CUDA
+
 namespace {
-void BuildTestModel(Graph& graph, const std::vector<int64_t>& input_shape,
-                    size_t approx_init_a_size,
-                    size_t approx_init_b_size) {
-  ASSERT_EQ(2, input_shape.size());
 
-  // Create two MatMul nodes each with the initializers, that are going to
-  // dictate the cost of the nodes
-  const auto init_a_dim_0 = input_shape[1];
-  const int64_t init_a_dim_1 = approx_init_a_size / input_shape[1];
-  const std::vector<int64_t> init_a_shape = {init_a_dim_0, init_a_dim_1};
+using ParitionVerifierFn = std::function<void(const Graph&)>;
 
-  // This is also an A input to mm_2
-  const std::vector<int64_t> mm_1_output_shape = {input_shape[0], init_a_shape[1]};
-
-  const int64_t init_b_dim_0 = mm_1_output_shape[1];
-  const int64_t init_b_dim_1 = approx_init_b_size / mm_1_output_shape[1];
-  const std::vector<int64_t> init_b_shape = {init_b_dim_0, init_b_dim_1};
-
-  const std::vector<int64_t> output_shape = {mm_1_output_shape[0], init_b_dim_1};
-
-  ModelTestBuilder builder(graph);
-
-  std::optional<std::vector<int64_t>> in_shape = input_shape;
-  NodeArg* model_input = builder.MakeInput<float>(in_shape, "input");
-  NodeArg* init_a = builder.MakeInitializer<float>(init_a_shape, 1.f, 10.f);
-  NodeArg* mm_1_output = builder.MakeIntermediate<float>(mm_1_output_shape);
-  NodeArg* init_b = builder.MakeIntermediate<float>(init_b_shape);
-  NodeArg* mm_2_output = builder.MakeOutput<float>(output_shape);
-
-  builder.AddNode("MatMul", {model_input, init_a}, {mm_1_output});
-  builder.AddNode("MatMul", {mm_1_output, init_b}, {mm_2_output});
-}
-}  // namespace
-
-// Produces node stats for the model. This requires running the model.
-// TEST(SessionStateTest, TestResourceAwareParitioningSaveNodeStats) {
-//
-//  const auto& log_manager = DefaultLoggingManager();
-//  log_manager.SetDefaultLoggerSeverity(onnxruntime::logging::Severity::kVERBOSE);
-//  const auto& default_logger = log_manager.DefaultLogger();
-//  std::unordered_map<std::string, int> domain_to_version;
-//  domain_to_version[kOnnxDomain] = 16;  // We can make it a parameter
-//  Model model("LargeModel", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-//              domain_to_version, {}, default_logger);
-//
-//  const std::vector<int64_t> input_shape = {1024, 1024};
-//  constexpr const size_t approx_init_a_size = 1024 * 1024;  // 1Mb
-//  constexpr const size_t approx_init_b_size = 1024 * 1024;  // 1Mb
-//
-//  auto& graph = model.MainGraph();
-//  BuildTestModel(graph, input_shape, approx_init_a_size, approx_init_b_size);
-//  ASSERT_STATUS_OK(graph.Resolve());
-//
-//  auto model_proto = model.ToProto();
-//  const auto model_string = model_proto.SerializeAsString();
-//  std::ofstream model_file("model.onnx", std::ios::binary);
-//}
-
-/// XXX: Optionally add resource aware parameters
-/// This test can only run with CUDA present currently.
-TEST(SessionStateTest, TestResourceAwarePartitioning_NoLimit) {
+void LoadWithResourceAwarePartitioning(const ORTCHAR_T* model_path,
+                                       const SessionOptions& sess_options,
+                                       const ParitionVerifierFn& verifier_fn) {
   const auto& log_manager = DefaultLoggingManager();
   log_manager.SetDefaultLoggerSeverity(onnxruntime::logging::Severity::kVERBOSE);
   const auto& default_logger = log_manager.DefaultLogger();
-  std::unordered_map<std::string, int> domain_to_version;
-  domain_to_version[kOnnxDomain] = 16;  // We can make it a parameter
-  Model model("LargeModel", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-              domain_to_version, {}, default_logger);
+  std::shared_ptr<onnxruntime::Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_path, model, nullptr, default_logger));
 
-  // Input Shape
-  const std::vector<int64_t> input_shape = {1024, 1024};
-  constexpr const size_t approx_init_a_size = 1024 * 1024;  // 1Mb
-  constexpr const size_t approx_init_b_size = 1024 * 1024;  // 1Mb
-
-  auto& graph = model.MainGraph();
-  BuildTestModel(graph, input_shape, approx_init_a_size, approx_init_b_size);
+  Graph& graph = model->MainGraph();
   ASSERT_STATUS_OK(graph.Resolve());
 
   OrtThreadPoolParams to;
@@ -537,15 +475,8 @@ TEST(SessionStateTest, TestResourceAwarePartitioning_NoLimit) {
   DataTransferManager dtm;
   ExternalDataLoaderManager edlm;
   profiling::Profiler profiler;
-  // Try to load the model without restrictions
-  // and verify nodes have been placed to CUDA
-  SessionOptions sess_options;
-  sess_options.enable_mem_pattern = false;
-  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-  sess_options.use_deterministic_compute = false;
-  sess_options.enable_mem_reuse = false;
 
-  SessionState session_state(graph, execution_providers, tp.get(), nullptr, dtm, edlm,
+  SessionState session_state(model->MainGraph(), execution_providers, tp.get(), nullptr, dtm, edlm,
                              default_logger, profiler, sess_options);
 
   GraphPartitioner partitioner(krm, execution_providers);
@@ -556,140 +487,75 @@ TEST(SessionStateTest, TestResourceAwarePartitioning_NoLimit) {
                             sess_options.config_options, default_logger,
                             GraphPartitioner::Mode::kNormal, debug_graph_fn));
 
-  // All nodes have been placed to CUDA
-  const auto& graph_nodes = graph.Nodes();
-  for (const auto& node : graph_nodes) {
-    EXPECT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
-  }
+  verifier_fn(graph);
+}
+}  // namespace
+
+TEST(SessionStateTest, TestResourceAwarePartitioning_NoLimit) {
+  constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx");
+
+  // Try to load the model without restrictions
+  // and verify nodes have been placed to CUDA
+  SessionOptions sess_options;
+  sess_options.enable_mem_pattern = false;
+  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+  sess_options.use_deterministic_compute = false;
+  sess_options.enable_mem_reuse = false;
+
+  LoadWithResourceAwarePartitioning(model_path, sess_options, [](const Graph& graph) {
+    const auto& graph_nodes = graph.Nodes();
+    for (const auto& node : graph_nodes) {
+      EXPECT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
+    }
+  });
 }
 
-// TEST(SessionStateTest, TestResourceAwarePartitioning_LargeLimit) {
-//   const auto& log_manager = DefaultLoggingManager();
-//   log_manager.SetDefaultLoggerSeverity(onnxruntime::logging::Severity::kVERBOSE);
-//   const auto& default_logger = log_manager.DefaultLogger();
-//   std::unordered_map<std::string, int> domain_to_version;
-//   domain_to_version[kOnnxDomain] = 16;  // We can make it a parameter
-//   Model model("LargeModel", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-//               domain_to_version, {}, default_logger);
-//
-//   // Input Shape
-//   const std::vector<int64_t> input_shape = {1024, 1024};
-//   constexpr const size_t approx_init_a_size = 1024 * 1024;  // 1Mb
-//   constexpr const size_t approx_init_b_size = 1024 * 1024;  // 1Mb
-//
-//   auto& graph = model.MainGraph();
-//   BuildTestModel(graph, input_shape, approx_init_a_size, approx_init_b_size);
-//   ASSERT_STATUS_OK(graph.Resolve());
-//
-//   OrtThreadPoolParams to;
-//   to.thread_pool_size = 1;
-//   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
-//
-//   ExecutionProviders execution_providers;
-//   auto tmp_cpu_execution_provider = DefaultCudaExecutionProvider();
-//   tmp_cpu_execution_provider->SetLogger(&default_logger);
-//   ASSERT_STATUS_OK(execution_providers.Add(kCudaExecutionProvider, std::move(tmp_cpu_execution_provider)));
-//
-//   KernelRegistryManager krm;
-//   ASSERT_STATUS_OK(krm.RegisterKernels(execution_providers));
-//
-//   DataTransferManager dtm;
-//   ExternalDataLoaderManager edlm;
-//   profiling::Profiler profiler;
-//   // Try to load the model without restrictions
-//   // and verify nodes have been placed to CUDA
-//   SessionOptions sess_options;
-//   sess_options.enable_mem_pattern = false;
-//   sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-//   sess_options.use_deterministic_compute = false;
-//   sess_options.enable_mem_reuse = false;
-//   ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(kOrtSessionOptionsResourceCudaPartitioningSettings,
-//                                                               "4206592"));
-//
-//   SessionState session_state(graph, execution_providers, tp.get(), nullptr, dtm, edlm,
-//                              default_logger, profiler, sess_options);
-//
-//   GraphPartitioner partitioner(krm, execution_providers);
-//   layout_transformation::TransformLayoutFunction transform_layout_fn;
-//   layout_transformation::DebugGraphFn debug_graph_fn;
-//   ASSERT_STATUS_OK(
-//       partitioner.Partition(graph, session_state.GetMutableFuncMgr(), transform_layout_fn,
-//                             sess_options.config_options, default_logger,
-//                             GraphPartitioner::Mode::kNormal, debug_graph_fn));
-//
-//   // All nodes have been placed to CUDA
-//   const auto& graph_nodes = graph.Nodes();
-//   for (const auto& node : graph_nodes) {
-//     EXPECT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
-//   }
-// }
+TEST(SessionStateTest, TestResourceAwarePartitioning_LargeLimit) {
+  constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx");
+  constexpr const char* limit_setting = "10000,tiny_gpt2_beamsearch_node_stats.txt";
 
-// TEST(SessionStateTest, TestResourceAwarePartitioning_SecondNodeCutOff) {
-//   const auto& log_manager = DefaultLoggingManager();
-//   log_manager.SetDefaultLoggerSeverity(onnxruntime::logging::Severity::kVERBOSE);
-//   const auto& default_logger = log_manager.DefaultLogger();
-//   std::unordered_map<std::string, int> domain_to_version;
-//   domain_to_version[kOnnxDomain] = 16;  // We can make it a parameter
-//   Model model("LargeModel", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(),
-//               domain_to_version, {}, default_logger);
-//
-//   // Input Shape
-//   const std::vector<int64_t> input_shape = {1024, 1024};
-//   constexpr const size_t approx_init_a_size = 1024 * 1024;  // 1Mb
-//   constexpr const size_t approx_init_b_size = 1024 * 1024;  // 1Mb
-//
-//   auto& graph = model.MainGraph();
-//   BuildTestModel(graph, input_shape, approx_init_a_size, approx_init_b_size);
-//   ASSERT_STATUS_OK(graph.Resolve());
-//
-//   OrtThreadPoolParams to;
-//   to.thread_pool_size = 1;
-//   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
-//
-//   ExecutionProviders execution_providers;
-//   auto tmp_cpu_execution_provider = DefaultCudaExecutionProvider();
-//   tmp_cpu_execution_provider->SetLogger(&default_logger);
-//   ASSERT_STATUS_OK(execution_providers.Add(kCudaExecutionProvider, std::move(tmp_cpu_execution_provider)));
-//
-//   KernelRegistryManager krm;
-//   ASSERT_STATUS_OK(krm.RegisterKernels(execution_providers));
-//
-//   DataTransferManager dtm;
-//   ExternalDataLoaderManager edlm;
-//   profiling::Profiler profiler;
-//   // Try to load the model without restrictions
-//   // and verify nodes have been placed to CUDA
-//   SessionOptions sess_options;
-//   sess_options.enable_mem_pattern = false;
-//   sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
-//   sess_options.use_deterministic_compute = false;
-//   sess_options.enable_mem_reuse = false;
-//   ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(kOrtSessionOptionsResourceCudaPartitioningSettings,
-//                                                               "16383"));
-//
-//   SessionState session_state(graph, execution_providers, tp.get(), nullptr, dtm, edlm,
-//                              default_logger, profiler, sess_options);
-//
-//   GraphPartitioner partitioner(krm, execution_providers);
-//   layout_transformation::TransformLayoutFunction transform_layout_fn;
-//   layout_transformation::DebugGraphFn debug_graph_fn;
-//   ASSERT_STATUS_OK(
-//       partitioner.Partition(graph, session_state.GetMutableFuncMgr(), transform_layout_fn,
-//                             sess_options.config_options, default_logger,
-//                             GraphPartitioner::Mode::kNormal, debug_graph_fn));
-//
-//   // Second node did not make it to CUDA
-//   const auto& graph_nodes = graph.Nodes();
-//   size_t count = 0;
-//   for (const auto& node : graph_nodes) {
-//     if (count == 0) {
-//       EXPECT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
-//     } else {
-//       EXPECT_TRUE(node.GetExecutionProviderType().empty());
-//     }
-//     count++;
-//   }
-// }
+  // Large limit, all nodes are still assigned
+  SessionOptions sess_options;
+  sess_options.enable_mem_pattern = false;
+  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+  sess_options.use_deterministic_compute = false;
+  sess_options.enable_mem_reuse = false;
+  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsResourceCudaPartitioningSettings, limit_setting));
+
+  LoadWithResourceAwarePartitioning(model_path, sess_options, [](const Graph& graph) {
+    const auto& graph_nodes = graph.Nodes();
+    for (const auto& node : graph_nodes) {
+      EXPECT_EQ(node.GetExecutionProviderType(), kCudaExecutionProvider);
+    }
+  });
+}
+
+TEST(SessionStateTest, TestResourceAwarePartitioning_CPUOffloaded) {
+  constexpr const ORTCHAR_T* model_path = ORT_TSTR("testdata/transformers/tiny_gpt2_beamsearch.onnx");
+  constexpr const char* limit_setting = "5000,tiny_gpt2_beamsearch_node_stats.txt";
+
+  // Large limit, all nodes are still assigned
+  SessionOptions sess_options;
+  sess_options.enable_mem_pattern = false;
+  sess_options.execution_mode = ExecutionMode::ORT_SEQUENTIAL;
+  sess_options.use_deterministic_compute = false;
+  sess_options.enable_mem_reuse = false;
+  ASSERT_STATUS_OK(sess_options.config_options.AddConfigEntry(
+      kOrtSessionOptionsResourceCudaPartitioningSettings, limit_setting));
+
+  LoadWithResourceAwarePartitioning(model_path, sess_options, [](const Graph& graph) {
+    const auto& graph_nodes = graph.Nodes();
+    bool cpu_node_found = false;
+    for (const auto& node : graph_nodes) {
+      if (node.GetExecutionProviderType() != kCudaExecutionProvider) {
+        cpu_node_found = true;
+        break;
+      }
+    }
+    EXPECT_TRUE(cpu_node_found);
+  });
+}
 
 #endif  // USE_CUDA
 

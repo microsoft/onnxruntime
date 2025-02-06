@@ -7,15 +7,19 @@
 #include <iosfwd>
 #include <optional>
 #include <string>
+#include <unordered_set>
 #include <variant>
 
 #include "core/common/common.h"
+#include "core/common/inlined_containers_fwd.h"
 
 namespace onnxruntime {
 
+struct ConfigOptions;
+
 // Common holder for potentially different resource accounting
 // for different EPs
-using ResourceCount = std::variant<size_t, std::monostate>;
+using ResourceCount = std::variant<size_t>;
 
 /// <summary>
 /// This class is used for graph partitioning by EPs
@@ -53,6 +57,9 @@ class IResourceAccountant {
   std::optional<ResourceCount> threshold_;
 };
 
+// A map of Ep Type to a resource accountant for this EP
+using ResourceAccountantMap = InlinedHashMap<std::string, std::unique_ptr<IResourceAccountant>>;
+
 // This struct keeps accounting of the memory allocation stats
 // for a kernel during runtime if enabled.
 struct NodeAllocationStats {
@@ -86,13 +93,22 @@ class NodeStatsRecorder {
 
   const std::filesystem::path& GetNodeStatsFileName() const noexcept;
 
+  bool ShouldAccountFor(const std::string& input_output_name) const;
+
+  void ResetPerRunNameDeduper();
+
   void ReportNodeStats(const std::string& node_name, const NodeAllocationStats& stats);
 
-  void DumpStats(std::ostream& os) const;
+  void DumpStats(const std::filesystem::path& model_path) const;
+
+  static Status CreateAccountants(
+      const ConfigOptions& config_options,
+      const std::filesystem::path& model_path,
+      std::optional<ResourceAccountantMap>& acc_map);
 
  private:
-  // We would like to hide certain things that may not compile
-  // with some device compilers
+  void DumpStats(std::ostream& os) const;
+
   struct Impl;
   std::unique_ptr<Impl> impl_;
 };

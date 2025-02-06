@@ -2749,18 +2749,10 @@ Status InferenceSession::Run(const RunOptions& run_options,
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
-  if (GetNodeStatsRecorder() != nullptr && retval.IsOK()) {
+  if (node_stats_recorder_.has_value() && retval.IsOK()) {
     // Dump node stats if the run was successful
-    const auto* node_stats_recorder = GetNodeStatsRecorder();
-    auto node_stats_file = session_state_->GetGraphViewer().ModelPath();
-    if (node_stats_file.has_filename()) {
-      node_stats_file = node_stats_file.parent_path();
-    }
-    node_stats_file /= node_stats_recorder->GetNodeStatsFileName();
-    std::ofstream ofs(node_stats_file, std::ofstream::out);
-    ORT_ENFORCE(ofs.is_open(), "Failed to open file: ", node_stats_file);
-    node_stats_recorder->DumpStats(ofs);
-    ofs.close();
+    node_stats_recorder_->DumpStats(session_state_->GetGraphViewer().ModelPath());
+    node_stats_recorder_->ResetPerRunNameDeduper();
   }
 #endif
 
