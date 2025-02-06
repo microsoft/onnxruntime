@@ -128,7 +128,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const max_k_step: u32 = 16u;
   const vec_factor: u32 = 4u;
   const qkv_head_size_vec: u32 = qkv_head_size / vec_factor;
-  const min_value : q_element_t = q_element_t(-65504.0h);
+  const min_value : q_element_t = q_element_t(-65504.0);
 
   // Default SHM usage limit is 16KB in Dawn.
   var<workgroup> k_tile : array<array<q_value_t, qkv_head_size_vec>, max_k_step>; // 96 * 2 * 16 = 3KB.
@@ -352,7 +352,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     // Compute lhs term of update di prime and the compute di prime.
     let dleft = previous_denom * exp(previous_max-new_max);
     var d = dleft + sum;
-    d = select(d,q_element_t(0.0000001h),d==0);
+    d = select(d,q_element_t(0.0000001),d==0);
     qk_1 = qk_1 / d;
     qk_2 = qk_2 / d;
     if (sg_size > 8) {
