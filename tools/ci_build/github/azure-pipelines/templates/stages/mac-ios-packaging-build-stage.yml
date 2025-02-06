@@ -38,7 +38,7 @@ stages:
 
       # Publish the BrowserStack artifacts first so that if the next step fails, the artifacts will still be published
       # so that users can attempt to locally debug
-      - output: BrowserStackArtifact
+      - output: pipelineArtifact
         targetPath: $(Build.ArtifactStagingDirectory)
         artifactName: browserstack_test_artifacts_${{ lower(parameters.packageVariant) }}
     steps:
