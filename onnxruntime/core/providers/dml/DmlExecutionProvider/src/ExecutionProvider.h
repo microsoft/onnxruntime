@@ -93,7 +93,8 @@ namespace Dml
         GetCapability(
             const onnxruntime::GraphViewer& graph,
             const onnxruntime::IExecutionProvider::IKernelLookup& kernel_lookup,
-            const onnxruntime::logging::Logger& logger, onnxruntime::IResourceAccountant* resource_accountant) const;
+            onnxruntime::IResourceAccountant* resource_accountant,
+            const onnxruntime::logging::Logger& logger) const;
 
         uint32_t GetSupportedDeviceDataTypeMask() const;
 
