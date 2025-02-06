@@ -790,6 +790,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
+// tile_N size = 32, workgroup size = 128, scale_A components = 4, output components = 4
 Status DP4AMatMulNBits2Program::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   shader.AddInput("scales_a", ShaderUsage::UseUniform);
@@ -932,6 +933,108 @@ Status DP4AMatMulNBits2Program::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
+// tile_N size = 16, workgroup size = 256, scale_A components = 2, output components = 1
+Status DP4AMatMulNBits3Program::GenerateShaderCode(ShaderHelper& shader) const {
+  shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  shader.AddInput("scales_a", ShaderUsage::UseUniform);
+  shader.AddInput("input_b", ShaderUsage::UseUniform);
+  shader.AddInput("scales_b", ShaderUsage::UseUniform);
+  shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+
+  shader.AdditionalImplementation() << R"ADDNL_FN(
+  const tile_size = 16u;
+  const subtile_size = 16u;
+  const tile_size_k_vec = 16u;
+
+  // Shared memory
+  var<workgroup> tile_A : array<vec4<u32>, tile_size_k_vec>;                    // 256
+  var<workgroup> scale_A : vec2<output_element_t>;                              // 2
+  var<workgroup> tile_B : array<array<vec4<u32>, tile_size_k_vec>, tile_size>;                     // 16 x 16
+  var<workgroup> scale_B : array<array<output_element_t, tile_size_k_vec>, tile_size>;             // 16 x 16
+
+  fn loadSHMA(a_global:u32, kidx_v:u32, col: u32)
+  {
+    tile_A[col] = input_a[a_global*uniforms.K16+kidx_v+col];
+    if (col == 0)
+    {
+      // kidx_v - covers 16 values of k
+      scale_A = scales_a[a_global*(uniforms.K/256) + kidx_v/16];
+    }
+  }
+
+  fn loadSHMB(b_global_base:u32, kidx_v:u32, row: u32, col: u32)
+  {
+      let b_global = b_global_base + row;
+      if (b_global >= uniforms.N)
+      {
+        return;
+      }
+
+      let b_value = input_b[b_global*uniforms.K16+kidx_v+col];
+      var b_value_lower = vec4<i32>(unpack4xU8(b_value[0] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      var b_value_upper = vec4<i32>(unpack4xU8((b_value[0] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      tile_B[row][col][0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+      tile_B[row][col][1] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+      b_value_lower = vec4<i32>(unpack4xU8(b_value[1] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      b_value_upper = vec4<i32>(unpack4xU8((b_value[1] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      tile_B[row][col][2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+      tile_B[row][col][3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+
+      scale_B[row][col] = scales_b[b_global*(uniforms.K/32) + kidx_v/2 + col/2];
+  }
+
+  // Scaled dot product of 4 packed unsigned integers.
+  fn SDP8AI(a1:vec4<u32>, b1:vec4<u32>, scale:output_element_t) -> output_element_t
+  {
+      var local_sum = dot4I8Packed(a1[0], b1[0]);
+      local_sum += dot4I8Packed(a1[1], b1[1]);
+      local_sum += dot4I8Packed(a1[2], b1[2]);
+      local_sum += dot4I8Packed(a1[3], b1[3]);
+      return output_element_t(local_sum) * scale;
+  }
+)ADDNL_FN";
+
+  shader.MainFunctionBody() << R"MAIN_FN(
+  let a_global = workgroup_id.y;
+  let b_global_base = workgroup_id.x * tile_size;
+
+  let idx = local_idx % subtile_size;
+  let idy = local_idx / subtile_size;
+
+  var result = output_element_t(0);
+  // K's vectrorization is 16 items per index. See input_a/input_b.
+  for (var kidx_v:u32 = 0; kidx_v < uniforms.K16; kidx_v+=tile_size_k_vec)
+  {
+    // Load Phase: Populate shared memory for the workgroup.
+    if (local_idx < tile_size_k_vec)
+    {
+      loadSHMA(a_global, kidx_v, idx);
+    }
+    loadSHMB(b_global_base, kidx_v, idy, idx);
+    workgroupBarrier();
+
+    var own_a: vec4<u32> = tile_A[idx];
+    for (var k = 0u; k < 16u; k++) {
+      let local_a = subgroupShuffle(own_a, k);
+      var own_b = tile_B[idy][k];
+      var own_scale_b = scale_B[idy][k];
+      result += SDP8AI(local_a, own_b, scale_A[k / 8] * own_scale_b);
+    }
+    workgroupBarrier();
+  }
+
+  if (idx == 0) {
+    let b_global =  b_global_base + idy;
+    let output_idx = a_global * uniforms.N + b_global;
+    if (b_global < uniforms.N) {
+      output[output_idx] = result;
+    }
+  }
+)MAIN_FN";
+
+  return Status::OK();
+}
+
 Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const Tensor* a = context.Input(0);
   const Tensor* b = context.Input(1);
@@ -1011,13 +1114,13 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
           .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, gsl::narrow<int>(kVec4Components)});
       return context.RunProgram(mul_program);
     } else {
-      constexpr uint32_t kTileSize = 32;
-      DP4AMatMulNBits2Program mul_program;
-      mul_program.SetWorkgroupSize(128);
+      constexpr uint32_t kTileSize = 16;
+      DP4AMatMulNBits3Program mul_program;
+      mul_program.SetWorkgroupSize(256);
       mul_program.SetDispatchGroupSize(
           (N + kTileSize - 1) / kTileSize, M, 1);
       mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components)},
-                             {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(4)},
+                             {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(2)},
                              {b, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec2Components * kU32Components)},
                              {scales, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)}})
           .AddUniformVariables({{static_cast<uint32_t>(M)},
@@ -1025,7 +1128,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
                                 {static_cast<uint32_t>(K)},
                                 {static_cast<uint32_t>(K / 8)},
                                 {static_cast<uint32_t>(K / 16)}})
-          .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components)});
+          .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)});
       return context.RunProgram(mul_program);
     }
   }

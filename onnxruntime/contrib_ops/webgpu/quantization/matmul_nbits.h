@@ -65,6 +65,18 @@ class DP4AMatMulNBits2Program final : public Program<DP4AMatMulNBits2Program> {
       {"K16", ProgramUniformVariableDataType::Uint32});
 };
 
+class DP4AMatMulNBits3Program final : public Program<DP4AMatMulNBits3Program> {
+ public:
+  DP4AMatMulNBits3Program() : Program{"DP4AMatMulNBits3Program"} {}
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"M", ProgramUniformVariableDataType::Uint32},
+      {"N", ProgramUniformVariableDataType::Uint32},
+      {"K", ProgramUniformVariableDataType::Uint32},
+      {"K8", ProgramUniformVariableDataType::Uint32},
+      {"K16", ProgramUniformVariableDataType::Uint32});
+};
+
 class MatMulNBits final : public WebGpuKernel {
  public:
   MatMulNBits(const OpKernelInfo& info) : WebGpuKernel(info) {
