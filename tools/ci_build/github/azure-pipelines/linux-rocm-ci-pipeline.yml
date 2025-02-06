@@ -197,7 +197,7 @@ jobs:
               --enable_nccl \
               --build_dir /build \
               --build_shared_lib \
-              --parallel \
+              --parallel --use_vcpkg \
               --build_wheel \
               --skip_submodule_sync \
               --test --enable_onnx_tests --enable_transformers_tool_test \
