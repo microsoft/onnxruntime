@@ -290,7 +290,6 @@ MLAS_FP16 SumExp_Kernel_Fp16(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N
     const bool store_output = Output != nullptr;
     float16x8_t accumulator8 = MlasZeroFloat16x8();
     float16x4_t accumulator4 = MlasZeroFloat16x4();
-    _mlas_fp16_ buffer[4] = {0};
 
     while (N >= 32) {
         auto v0 = MlasLoadFloat16x8(input);
