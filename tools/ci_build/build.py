@@ -2783,7 +2783,7 @@ def main():
         args.use_vcpkg = False
     elif not args.use_vcpkg:
         sys.exit(1)
-        
+
     if os.getenv("ORT_BUILD_WITH_CACHE") == "1":
         args.use_cache = True
 
