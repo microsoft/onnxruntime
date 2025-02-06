@@ -36,7 +36,8 @@ common::Status GraphOptimizerRegistry::Register(std::unique_ptr<GraphTransformer
 common::Status GraphOptimizerRegistry::AddPredefinedOptimizerNames(std::vector<std::string>& optimizer_names) {
   for (auto name : optimizer_names) {
     if (name_to_transformer_map_.find(name) != name_to_transformer_map_.end()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "This transformer name is already added " + name);
+      LOGS(*logger_, WARNING) << "This transformer name is already added " << name;
+      return Status::OK();
     }
     name_to_transformer_map_[name] = nullptr;  // The transformer will be instantizted only when EP requests it
   }
