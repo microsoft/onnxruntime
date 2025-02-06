@@ -2773,7 +2773,17 @@ def main():
     args = parse_arguments()
 
     print(args)
-
+    if args.build_wasm:
+        # No custom triplet for the wasm builds yet
+        args.use_vcpkg = False
+    elif args.minimal_build is not None:
+        # Minimal build uses a custom ONNX cmake file. Don't know how to deal with it yet
+        args.use_vcpkg = False
+    elif args.ios or args.macos == "Catalyst":
+        args.use_vcpkg = False
+    elif not args.use_vcpkg:
+        sys.exit(1)
+        
     if os.getenv("ORT_BUILD_WITH_CACHE") == "1":
         args.use_cache = True
 
