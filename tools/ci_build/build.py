@@ -983,6 +983,91 @@ def number_of_nvcc_threads(args):
 
     return nvcc_threads
 
+# See https://learn.microsoft.com/en-us/vcpkg/commands/install
+def generate_vcpkg_install_options(source_dir, args):
+    vcpkg_install_options = ["--x-feature=tests"]
+    if args.use_acl: 
+        vcpkg_install_options.append("--x-feature=acl-ep")
+    if args.use_armnn: 
+        vcpkg_install_options.append("--x-feature=armnn-ep")
+    if args.use_azure: 
+        vcpkg_install_options.append("--x-feature=azure-ep")
+    if args.use_cann: 
+        vcpkg_install_options.append("--x-feature=cann-ep")
+    if args.use_coreml: 
+        vcpkg_install_options.append("--x-feature=coreml-ep")
+    if args.use_cuda: 
+        vcpkg_install_options.append("--x-feature=cuda-ep")
+    if args.use_dml: 
+        vcpkg_install_options.append("--x-feature=dml-ep")
+    if args.use_dnnl: 
+        vcpkg_install_options.append("--x-feature=dnnl-ep")
+    if args.use_jsep: 
+        vcpkg_install_options.append("--x-feature=js-ep")
+    if args.use_migraphx: 
+        vcpkg_install_options.append("--x-feature=migraphx-ep")
+    if args.use_nnapi: 
+        vcpkg_install_options.append("--x-feature=nnapi-ep")
+    if args.use_openvino: 
+        vcpkg_install_options.append("--x-feature=openvino-ep")
+    if args.use_qnn: 
+        vcpkg_install_options.append("--x-feature=qnn-ep")
+    if args.use_rknpu: 
+        vcpkg_install_options.append("--x-feature=rknpu-ep")
+    if args.use_rocm: 
+        vcpkg_install_options.append("--x-feature=rocm-ep")
+    if args.use_tensorrt: 
+        vcpkg_install_options.append("--x-feature=tensorrt-ep")
+    if args.use_vitisai: 
+        vcpkg_install_options.append("--x-feature=vitisai-ep")
+    if args.use_vsinpu: 
+        vcpkg_install_options.append("--x-feature=vsinpu-ep")
+    if args.use_webgpu: 
+        vcpkg_install_options.append("--x-feature=webgpu-ep")
+    if args.use_webnn: 
+        vcpkg_install_options.append("--x-feature=webnn-ep")
+    if args.use_xnnpack: 
+        vcpkg_install_options.append("--x-feature=xnnpack-ep")
+
+    overlay_triplets_dir = None
+
+    folder_name_parts = []
+    if args.enable_address_sanitizer:
+        folder_name_parts.append("asan")
+    if args.use_binskim_compliant_compile_flags and not args.android:
+        folder_name_parts.append("binskim")
+    if args.disable_rtti:
+        folder_name_parts.append("nortti")
+    if args.disable_exceptions and not is_windows():
+        folder_name_parts.append("noexception")
+    if len(folder_name_parts) == 0:
+        folder_name = "default"
+    else:
+        folder_name = "_".join(folder_name_parts)
+    overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg-triplets", folder_name)
+
+    vcpkg_install_options.append(f"--overlay-triplets={overlay_triplets_dir}")
+    if "AGENT_TEMPDIRECTORY" in os.environ:
+        temp_dir = os.environ["AGENT_TEMPDIRECTORY"]
+        vcpkg_install_options.append(f"--x-buildtrees-root={temp_dir}")
+    terrapin_cmd_path = shutil.which("TerrapinRetrievalTool")
+    if terrapin_cmd_path is None:
+        terrapin_cmd_path = "C:\\local\\Terrapin\\TerrapinRetrievalTool.exe"
+        if not os.path.exists(terrapin_cmd_path):
+            terrapin_cmd_path = None
+    if terrapin_cmd_path is not None:
+        vcpkg_install_options.append(
+            "--x-asset-sources=x-script,"
+            + terrapin_cmd_path
+            + " -b https://vcpkg.storage.devpackages.microsoft.io/artifacts/ -a true -u Environment -p {url} -s {sha512} -d {dst}\\;x-block-origin"
+        )
+    else:
+        SYSTEM_COLLECTIONURI = os.getenv("SYSTEM_COLLECTIONURI")  # noqa: N806
+        if SYSTEM_COLLECTIONURI == "https://dev.azure.com/onnxruntime/" or SYSTEM_COLLECTIONURI == "https://dev.azure.com/aiinfra/" or SYSTEM_COLLECTIONURI == "https://aiinfra.visualstudio.com/":
+            vcpkg_install_options.append(
+                "--x-asset-sources=x-azurl,https://vcpkg.storage.devpackages.microsoft.io/artifacts/\\;x-block-origin"
+            )
+    return vcpkg_install_options
 
 def generate_build_tree(
     cmake_path,
@@ -1135,10 +1220,7 @@ def generate_build_tree(
     if args.use_vcpkg:
         # TODO: set VCPKG_PLATFORM_TOOLSET_VERSION
         # Setup CMake flags for vcpkg
-        vcpkg_install_options = ["--x-feature=tests"]
-        if args.use_xnnpack:
-            vcpkg_install_options.append("--x-feature=xnnpack-ep")
-
+        
         # Find VCPKG's toolchain cmake file
         vcpkg_cmd_path = shutil.which("vcpkg")
         vcpkg_toolchain_path = None
@@ -1160,42 +1242,8 @@ def generate_build_tree(
                 run_subprocess(["git", "clone", "https://github.com/microsoft/vcpkg.git", "--recursive"], cwd=build_dir)
         vcpkg_toolchain_path = Path(vcpkg_installation_root) / "scripts" / "buildsystems" / "vcpkg.cmake"
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", str(vcpkg_toolchain_path))
-        overlay_triplets_dir = None
-
-        folder_name_parts = []
-        if args.enable_address_sanitizer:
-            folder_name_parts.append("asan")
-        if args.use_binskim_compliant_compile_flags and not args.android:
-            folder_name_parts.append("binskim")
-        if args.disable_rtti:
-            folder_name_parts.append("nortti")
-        if args.disable_exceptions and not is_windows():
-            folder_name_parts.append("noexception")
-        if len(folder_name_parts) == 0:
-            folder_name = "default"
-        else:
-            folder_name = "_".join(folder_name_parts)
-        overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg-triplets", folder_name)
-
-        vcpkg_install_options.append(f"--overlay-triplets={overlay_triplets_dir}")
-        if "AGENT_TEMPDIRECTORY" in os.environ:
-            temp_dir = os.environ["AGENT_TEMPDIRECTORY"]
-            vcpkg_install_options.append(f"--x-buildtrees-root={temp_dir}")
-        terrapin_cmd_path = shutil.which("TerrapinRetrievalTool")
-        if terrapin_cmd_path is None:
-            terrapin_cmd_path = "C:\\local\\Terrapin\\TerrapinRetrievalTool.exe"
-            if not os.path.exists(terrapin_cmd_path):
-                terrapin_cmd_path = None
-        if terrapin_cmd_path is not None:
-            vcpkg_install_options.append(
-                "--x-asset-sources=x-script,"
-                + terrapin_cmd_path
-                + " -b https://vcpkg.storage.devpackages.microsoft.io/artifacts/ -a true -u Environment -p {url} -s {sha512} -d {dst}\\;x-block-origin"
-            )
-        else:
-            vcpkg_install_options.append(
-                "--x-asset-sources=x-azurl,https://vcpkg.storage.devpackages.microsoft.io/artifacts/\\;x-block-origin"
-            )
+       
+        vcpkg_install_options = generate_vcpkg_install_options(source_dir, args)
         # VCPKG_INSTALL_OPTIONS is a CMake list. It must be joined by semicolons
         # Therefore, if any of the option string contains a semicolon, it must be escaped
         add_default_definition(cmake_extra_defines, "VCPKG_INSTALL_OPTIONS", ";".join(vcpkg_install_options))
