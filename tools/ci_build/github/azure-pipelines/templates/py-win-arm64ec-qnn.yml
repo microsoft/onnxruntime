@@ -83,7 +83,7 @@ jobs:
             --use_qnn
             --qnn_home $(QnnSDKRootDir)
             --enable_pybind
-            --parallel --update --arm64ec
+            --parallel --use_vcpkg --update --arm64ec
             $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }}
           workingDirectory: '$(Build.BinariesDirectory)'
 
