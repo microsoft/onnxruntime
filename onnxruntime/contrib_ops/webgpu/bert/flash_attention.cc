@@ -73,7 +73,7 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   // number of input buffers in the shader, which we run out of (<=8) without this optimization.
   const int components = parameters.head_size_ % 4 == 0 ? 4 : (parameters.head_size_ % 2 == 0 ? 2 : 1);
   bool has_past = (past_sequence_length != 0);
-  CopyKVCacheProgram program{"CopyKVCache", components, has_past};
+  CopyKVCacheProgram program{"CopyKVCache", has_past};
   if (has_past) {
     program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, components},
                        {V, ProgramTensorMetadataDependency::TypeAndRank, components},

@@ -17,8 +17,8 @@ using namespace onnxruntime::webgpu;
 
 class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
  public:
-  CopyKVCacheProgram(const std::string& kernel_name, int components, bool has_past)
-      : Program{kernel_name}, components_(components), has_past_(has_past) {
+  CopyKVCacheProgram(const std::string& kernel_name, bool has_past)
+      : Program{kernel_name}, has_past_(has_past) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -28,7 +28,6 @@ class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
                                           {"vectorized_head_size", ProgramUniformVariableDataType::Uint32});
 
  private:
-  int components_;
   bool has_past_;
 };
 
