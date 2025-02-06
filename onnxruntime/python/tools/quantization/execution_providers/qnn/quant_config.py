@@ -53,6 +53,7 @@ def get_qnn_qdq_config(
     weight_symmetric: bool | None = None,
     keep_removable_activations: bool = False,
     stride: int | None = None,
+    calibration_providers: list[str] | None = None,
 ) -> StaticQuantConfig:
     """
     Returns a static quantization configuration suitable for running QDQ models on QNN EP.
@@ -117,6 +118,8 @@ def get_qnn_qdq_config(
                         are automatically removed if activations are asymmetrically quantized. Keeping these activations
                         is necessary if optimizations or EP transformations will later remove
                         QuantizeLinear/DequantizeLinear operators from the model.
+        calibration_providers: Execution providers to run the session during calibration. Default is None which uses
+            [ "CPUExecutionProvider" ].
 
     Returns:
         A StaticQuantConfig object
@@ -192,6 +195,7 @@ def get_qnn_qdq_config(
         op_types_to_quantize=list(op_types.difference(OP_TYPES_TO_EXCLUDE)),
         per_channel=per_channel,
         use_external_data_format=(model_has_external_data or model.ByteSize() >= MODEL_SIZE_THRESHOLD),
+        calibration_providers=calibration_providers,
         extra_options=extra_options,
     )
 
