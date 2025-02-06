@@ -983,50 +983,51 @@ def number_of_nvcc_threads(args):
 
     return nvcc_threads
 
+
 # See https://learn.microsoft.com/en-us/vcpkg/commands/install
 def generate_vcpkg_install_options(source_dir, args):
     vcpkg_install_options = ["--x-feature=tests"]
-    if args.use_acl: 
+    if args.use_acl:
         vcpkg_install_options.append("--x-feature=acl-ep")
-    if args.use_armnn: 
+    if args.use_armnn:
         vcpkg_install_options.append("--x-feature=armnn-ep")
-    if args.use_azure: 
+    if args.use_azure:
         vcpkg_install_options.append("--x-feature=azure-ep")
-    if args.use_cann: 
+    if args.use_cann:
         vcpkg_install_options.append("--x-feature=cann-ep")
-    if args.use_coreml: 
+    if args.use_coreml:
         vcpkg_install_options.append("--x-feature=coreml-ep")
-    if args.use_cuda: 
+    if args.use_cuda:
         vcpkg_install_options.append("--x-feature=cuda-ep")
-    if args.use_dml: 
+    if args.use_dml:
         vcpkg_install_options.append("--x-feature=dml-ep")
-    if args.use_dnnl: 
+    if args.use_dnnl:
         vcpkg_install_options.append("--x-feature=dnnl-ep")
-    if args.use_jsep: 
+    if args.use_jsep:
         vcpkg_install_options.append("--x-feature=js-ep")
-    if args.use_migraphx: 
+    if args.use_migraphx:
         vcpkg_install_options.append("--x-feature=migraphx-ep")
-    if args.use_nnapi: 
+    if args.use_nnapi:
         vcpkg_install_options.append("--x-feature=nnapi-ep")
-    if args.use_openvino: 
+    if args.use_openvino:
         vcpkg_install_options.append("--x-feature=openvino-ep")
-    if args.use_qnn: 
+    if args.use_qnn:
         vcpkg_install_options.append("--x-feature=qnn-ep")
-    if args.use_rknpu: 
+    if args.use_rknpu:
         vcpkg_install_options.append("--x-feature=rknpu-ep")
-    if args.use_rocm: 
+    if args.use_rocm:
         vcpkg_install_options.append("--x-feature=rocm-ep")
-    if args.use_tensorrt: 
+    if args.use_tensorrt:
         vcpkg_install_options.append("--x-feature=tensorrt-ep")
-    if args.use_vitisai: 
+    if args.use_vitisai:
         vcpkg_install_options.append("--x-feature=vitisai-ep")
-    if args.use_vsinpu: 
+    if args.use_vsinpu:
         vcpkg_install_options.append("--x-feature=vsinpu-ep")
-    if args.use_webgpu: 
+    if args.use_webgpu:
         vcpkg_install_options.append("--x-feature=webgpu-ep")
-    if args.use_webnn: 
+    if args.use_webnn:
         vcpkg_install_options.append("--x-feature=webnn-ep")
-    if args.use_xnnpack: 
+    if args.use_xnnpack:
         vcpkg_install_options.append("--x-feature=xnnpack-ep")
 
     overlay_triplets_dir = None
@@ -1063,11 +1064,16 @@ def generate_vcpkg_install_options(source_dir, args):
         )
     else:
         SYSTEM_COLLECTIONURI = os.getenv("SYSTEM_COLLECTIONURI")  # noqa: N806
-        if SYSTEM_COLLECTIONURI == "https://dev.azure.com/onnxruntime/" or SYSTEM_COLLECTIONURI == "https://dev.azure.com/aiinfra/" or SYSTEM_COLLECTIONURI == "https://aiinfra.visualstudio.com/":
+        if (
+            SYSTEM_COLLECTIONURI == "https://dev.azure.com/onnxruntime/"
+            or SYSTEM_COLLECTIONURI == "https://dev.azure.com/aiinfra/"
+            or SYSTEM_COLLECTIONURI == "https://aiinfra.visualstudio.com/"
+        ):
             vcpkg_install_options.append(
                 "--x-asset-sources=x-azurl,https://vcpkg.storage.devpackages.microsoft.io/artifacts/\\;x-block-origin"
             )
     return vcpkg_install_options
+
 
 def generate_build_tree(
     cmake_path,
@@ -1220,7 +1226,7 @@ def generate_build_tree(
     if args.use_vcpkg:
         # TODO: set VCPKG_PLATFORM_TOOLSET_VERSION
         # Setup CMake flags for vcpkg
-        
+
         # Find VCPKG's toolchain cmake file
         vcpkg_cmd_path = shutil.which("vcpkg")
         vcpkg_toolchain_path = None
@@ -1242,7 +1248,7 @@ def generate_build_tree(
                 run_subprocess(["git", "clone", "https://github.com/microsoft/vcpkg.git", "--recursive"], cwd=build_dir)
         vcpkg_toolchain_path = Path(vcpkg_installation_root) / "scripts" / "buildsystems" / "vcpkg.cmake"
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", str(vcpkg_toolchain_path))
-       
+
         vcpkg_install_options = generate_vcpkg_install_options(source_dir, args)
         # VCPKG_INSTALL_OPTIONS is a CMake list. It must be joined by semicolons
         # Therefore, if any of the option string contains a semicolon, it must be escaped

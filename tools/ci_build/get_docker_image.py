@@ -70,7 +70,6 @@ def main():
         log.info(f"Copy deps.txt to : {dst_deps_file}")
         shutil.copyfile(Path(REPO_DIR) / "cmake" / "deps.txt", str(dst_deps_file))
 
-
     if use_container_registry:
         run(
             args.docker_path,
@@ -91,8 +90,11 @@ def main():
         )
         SYSTEM_COLLECTIONURI = os.getenv("SYSTEM_COLLECTIONURI")  # noqa: N806
         BUILD_SOURCEBRANCH = os.getenv("BUILD_SOURCEBRANCH")  # noqa: N806
-        if BUILD_SOURCEBRANCH == "refs/heads/main" and (SYSTEM_COLLECTIONURI == "https://dev.azure.com/onnxruntime/" or SYSTEM_COLLECTIONURI == "https://dev.azure.com/aiinfra/" or 
-        SYSTEM_COLLECTIONURI == "https://aiinfra.visualstudio.com/"):
+        if BUILD_SOURCEBRANCH == "refs/heads/main" and (
+            SYSTEM_COLLECTIONURI == "https://dev.azure.com/onnxruntime/"
+            or SYSTEM_COLLECTIONURI == "https://dev.azure.com/aiinfra/"
+            or SYSTEM_COLLECTIONURI == "https://aiinfra.visualstudio.com/"
+        ):
             run(
                 args.docker_path,
                 "push",
