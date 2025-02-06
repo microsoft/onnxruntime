@@ -1178,7 +1178,8 @@ struct ProviderHostImpl : ProviderHost {
                                           const logging::Logger& logger) override {
     return std::make_unique<Model>(model_proto, model_path, local_registries, logger);
   }
-  std::unique_ptr<Model> Model__construct(const std::string& graph_name, bool is_onnx_domain_only,
+  std::unique_ptr<Model> Model__construct(const std::string& graph_name,
+                                          bool is_onnx_domain_only,
                                           const logging::Logger& logger) override {
     return std::make_unique<Model>(graph_name, is_onnx_domain_only, logger);
   }
