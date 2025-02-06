@@ -35,6 +35,9 @@ stages:
       - output: pipelineArtifact
         targetPath: $(Build.ArtifactStagingDirectory)
         artifactName: ios_packaging_artifacts_${{ lower(parameters.packageVariant) }}
+      - output: BrowserStackArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)
+        artifactName: browserstack_test_artifacts_${{ lower(parameters.packageVariant) }}
     steps:
     - script: |
         if [[ -z "$(ortPodVersion)" ]]; then
