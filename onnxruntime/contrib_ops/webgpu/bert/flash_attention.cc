@@ -235,14 +235,12 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     workgroupBarrier();
 
     // Compute QKt
-    var qk_1:vec4<q_element_t> = loadAttentionBias(q_idx_global, k_start, head_idx);
-    var qk_2:vec4<q_element_t> = loadAttentionBias(q_idx_global, k_start+4, head_idx);
+    var qk_1:vec4<q_element_t>;
+    var qk_2:vec4<q_element_t>;
     var qk_3:vec4<q_element_t>;
     var qk_4:vec4<q_element_t>;
     if (sg_size > 8)
     {
-      qk_3 = loadAttentionBias(q_idx_global, k_start+8, head_idx);
-      qk_4 = loadAttentionBias(q_idx_global, k_start+12, head_idx);
       for (var i:u32 = 0u; i < qkv_head_size_vec; i++)
       {
         var k_local = k_tile[capped_sg_id][i];
@@ -282,12 +280,12 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
       }
     }
 
-    qk_1 = qk_1 * q_element_t(uniforms.alpha);
-    qk_2 = qk_2 * q_element_t(uniforms.alpha);
+    qk_1 = qk_1 * q_element_t(uniforms.alpha) + loadAttentionBias(q_idx_global, k_start, head_idx);
+    qk_2 = qk_2 * q_element_t(uniforms.alpha) + loadAttentionBias(q_idx_global, k_start+4, head_idx);
     if (sg_size > 8)
     {
-      qk_3 = qk_3 * q_element_t(uniforms.alpha);
-      qk_4 = qk_4 * q_element_t(uniforms.alpha);
+      qk_3 = qk_3 * q_element_t(uniforms.alpha) + loadAttentionBias(q_idx_global, k_start+8, head_idx);
+      qk_4 = qk_4 * q_element_t(uniforms.alpha) + loadAttentionBias(q_idx_global, k_start+12, head_idx);
     }
 
     // Neuter qk values where K is out of bounds.
