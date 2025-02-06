@@ -9,13 +9,9 @@ stages:
 - stage: IosPackaging_Build_${{ parameters.packageVariant }}
   dependsOn:
   - IosPackaging_SetCommonVariables
-
   jobs:
-  - job: j
+  - job:
     displayName: "Build iOS package for variant: ${{ parameters.packageVariant}}"
-
-    pool:
-      vmImage: "macOS-13"
 
     variables:
       # Note: Keep the Xcode version and iOS simulator version compatible.
@@ -23,9 +19,7 @@ stages:
       # https://developer.apple.com/support/xcode/
       xcodeVersion: "14.3.1"
       iosSimulatorRuntimeVersion: "16.4"
-
       ortPodVersion: $[stageDependencies.IosPackaging_SetCommonVariables.j.outputs['SetCommonVariables.ORT_POD_VERSION']]
-
       ${{ if eq(parameters.packageVariant, 'Full') }}:
         buildSettingsFile: "tools/ci_build/github/apple/default_full_apple_framework_build_settings.json"
         cPodName: onnxruntime-c
@@ -35,9 +29,12 @@ stages:
         buildSettingsFile: "tools/ci_build/github/apple/default_training_ios_framework_build_settings.json"
         cPodName: onnxruntime-training-c
         objcPodName: onnxruntime-training-objc
-
     timeoutInMinutes: 240
-
+    templateContext:
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)
+        artifactName: ios_packaging_artifacts_${{ lower(parameters.packageVariant) }}
     steps:
     - script: |
         if [[ -z "$(ortPodVersion)" ]]; then
@@ -200,10 +197,6 @@ stages:
         ls -R "$(Build.ArtifactStagingDirectory)"
       displayName: "List staged artifacts"
 
-    - publish: "$(Build.ArtifactStagingDirectory)"
-      artifact: "ios_packaging_artifacts_${{ lower(parameters.packageVariant) }}"
-      displayName: "Publish artifacts"
-
     - template: ../component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
+      parameters:
+        condition: 'succeeded'
