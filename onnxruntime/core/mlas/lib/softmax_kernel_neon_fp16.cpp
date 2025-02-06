@@ -492,7 +492,7 @@ T Tanh_Vector_Fp16(T x) {
     q = MlasMultiplyAdd(q, x_2, constants.beta_2);
     q = MlasMultiplyAdd(q, x_2, constants.beta_0);
 
-    return MlasDivide(p / q);
+    return MlasDivide(p, q);
 }
 
 void Tanh_Kernel_Fp16(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N) {
