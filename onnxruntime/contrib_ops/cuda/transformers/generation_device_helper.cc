@@ -525,7 +525,10 @@ Status ProcessLogits(const OrtValue& logits,                                 // 
   }
 
   gsl::span<float> scores_to_process = beam_state->next_scores;
-  if (num_beams <= 32) {
+  if (parameters->use_fast_topk && num_beams <= 32) {
+#ifdef DEBUG_GENERATION
+    dumper->Print("Use fast topk");
+#endif
     constexpr size_t max_parts_of_vocab = 128;
     size_t candidate_count = SafeInt<size_t>(batch_beam_size) * 2 * num_beams;
     float* topk_tmp_buffer = beam_state->topk_buffer.data();
@@ -726,7 +729,7 @@ void CudaBeamSearchScorer::Process(transformers::ISequences& sequences,
                                    gsl::span<const int32_t>& next_tokens,
                                    gsl::span<const int32_t>& next_indices) {
   cuda::LaunchBeamSearchScorer_Process(*state_cpu_,
-                                       state_gpu_.get(),
+                                       *state_gpu_,
                                        sequences.GetCurrentDeviceSequences(),
                                        sequences.GetSequenceLength(),
                                        beam_hyps_,

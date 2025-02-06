@@ -199,7 +199,13 @@ struct IGenerationParameters {
   int extra_decoding_ids_input_id = -1;
   int cross_qk_output_id = -1;
   int no_speech_probs_output_id = -1;
+
+  // Parameters from environment variable are for testing.
+  bool use_fast_topk = true;
 };
+
+// Environment variable to enable/disable fast topk kernel on GPU. Default is 1 (enabled).
+constexpr const char* kBeamSearchUseFastTopK = "ORT_BEAM_SEARCH_USE_FAST_TOPK";
 
 }  // namespace transformers
 }  // namespace contrib
