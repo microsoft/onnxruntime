@@ -1513,9 +1513,11 @@ if (onnxruntime_USE_CUDA)
   find_package(CUDAToolkit REQUIRED)
 
   # test config
-  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_80,code=[lto_80,sm_80]") # A series
+  set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_80,code=[lto_75,sm_75]") # A series
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --relocatable-device-code=true")
-  add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4505>")
+  if (msvc)
+    add_compile_options("$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4505>")
+  endif()
   set(CMAKE_CUDA_SEPARABLE_COMPILATION ON)
   
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
