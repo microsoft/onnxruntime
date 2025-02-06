@@ -1035,6 +1035,174 @@ Status DP4AMatMulNBits3Program::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
+// tile_N size = 64, workgroup size = 64, scale_A components = 1, output components = 4
+Status DP4AMatMulNBits4Program::GenerateShaderCode(ShaderHelper& shader) const {
+  shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  shader.AddInput("scales_a", ShaderUsage::UseUniform);
+  shader.AddInput("input_b", ShaderUsage::UseUniform);
+  shader.AddInput("scales_b", ShaderUsage::UseUniform);
+  shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+
+  shader.AdditionalImplementation() << R"ADDNL_FN(
+  const tile_size = 64u;
+  const subtile_size = 16u;
+  const tile_size_k_vec = 2u;
+
+  // Shared memory
+  var<workgroup> tile_A : array<vec4<u32>, tile_size_k_vec>;                    // 32
+  var<workgroup> scale_A : output_element_t;                              // 1
+  var<workgroup> tile_B : array<array<vec4<u32>, tile_size>, tile_size_k_vec>;                     // 64 x 32
+  var<workgroup> scale_B : array<output_element_t, tile_size>;                                     // 64 x 1
+
+  fn loadSHMA(a_global:u32, kidx_v:u32, col: u32)
+  {
+    tile_A[col] = input_a[a_global*uniforms.K16+kidx_v+col];
+    if (col == 0)
+    {
+      // kidx_v - covers 16 values of k
+      scale_A = scales_a[a_global*(uniforms.K/128) + kidx_v/8];
+    }
+  }
+
+  fn loadSHMB(b_global_base:u32, kidx_v:u32, row: u32, col: u32)
+  {
+      let b_global = b_global_base + row;
+      if (b_global >= uniforms.N)
+      {
+        return;
+      }
+
+      let b_value = input_b[b_global*uniforms.K16+kidx_v+col];
+      var b_value_lower = vec4<i32>(unpack4xU8(b_value[0] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      var b_value_upper = vec4<i32>(unpack4xU8((b_value[0] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      tile_B[col][row][0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+      tile_B[col][row][1] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+      b_value_lower = vec4<i32>(unpack4xU8(b_value[1] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      b_value_upper = vec4<i32>(unpack4xU8((b_value[1] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      tile_B[col][row][2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+      tile_B[col][row][3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+      if (col == 0)
+      {
+        // kidx_v - each kidx_v covers 16 values of k
+        scale_B[row] = scales_b[b_global*(uniforms.K/32) + kidx_v/2];
+      }
+  }
+
+  // Scaled dot product of 8 packed unsigned integers.
+  fn SDP8AI(a1:vec4<u32>, b1:vec4<u32>, a2:vec4<u32>, b2:vec4<u32>, scale:output_element_t) -> output_element_t
+  {
+      var local_sum = dot4I8Packed(a1[0], b1[0]);
+      local_sum += dot4I8Packed(a1[1], b1[1]);
+      local_sum += dot4I8Packed(a1[2], b1[2]);
+      local_sum += dot4I8Packed(a1[3], b1[3]);
+      local_sum += dot4I8Packed(a2[0], b2[0]);
+      local_sum += dot4I8Packed(a2[1], b2[1]);
+      local_sum += dot4I8Packed(a2[2], b2[2]);
+      local_sum += dot4I8Packed(a2[3], b2[3]);
+      return output_element_t(local_sum) * scale;
+  }
+)ADDNL_FN";
+
+  shader.MainFunctionBody() << R"MAIN_FN(
+  let a_global = workgroup_id.y;
+  let b_global_base = workgroup_id.x * tile_size;
+
+  let load_col = local_idx % tile_size_k_vec;
+  let load_row = local_idx / tile_size_k_vec;
+
+  let idx = local_idx % subtile_size;
+  let base_B = (local_idx / subtile_size) * 16;
+
+  var lane_output1: vec4<output_element_t>;
+  var lane_output2: vec4<output_element_t>;
+  var lane_output3: vec4<output_element_t>;
+  var lane_output4: vec4<output_element_t>;
+  // K's vectrorization is 16 items per index. See input_a/input_b.
+  for (var kidx_v:u32 = 0; kidx_v < uniforms.K16; kidx_v+=tile_size_k_vec)
+  {
+    // Load Phase: Populate shared memory for the workgroup.
+    if (local_idx < tile_size_k_vec)
+    {
+      loadSHMA(a_global, kidx_v, load_col);
+    }
+    loadSHMB(b_global_base, kidx_v, load_row, load_col);
+    loadSHMB(b_global_base, kidx_v, load_row + 32, load_col);
+    workgroupBarrier();
+
+    var own_a0 = tile_A[0];
+    var own_a1 = tile_A[1];
+    var own_scale_a: output_element_t = scale_A;
+    if (sg_size == 16)
+    {
+      var own_b0: vec4<u32> = tile_B[0][base_B + sg_id];
+      var own_b1: vec4<u32> = tile_B[1][base_B + sg_id];
+      var own_scale_b: output_element_t  = scale_B[base_B + sg_id];
+      // Step 2: Access registers across the subgroup using subgroupShuffle and perform the matmul.
+      lane_output1[0] += SDP8AI(own_a0, subgroupShuffle(own_b0, 0), own_a1, subgroupShuffle(own_b1, 0), subgroupShuffle(own_scale_b, 0) * own_scale_a);
+      lane_output1[1] += SDP8AI(own_a0, subgroupShuffle(own_b0, 1), own_a1, subgroupShuffle(own_b1, 1), subgroupShuffle(own_scale_b, 1) * own_scale_a);
+      lane_output1[2] += SDP8AI(own_a0, subgroupShuffle(own_b0, 2), own_a1, subgroupShuffle(own_b1, 2), subgroupShuffle(own_scale_b, 2) * own_scale_a);
+      lane_output1[3] += SDP8AI(own_a0, subgroupShuffle(own_b0, 3), own_a1, subgroupShuffle(own_b1, 3), subgroupShuffle(own_scale_b, 3) * own_scale_a);
+
+      lane_output2[0] += SDP8AI(own_a0, subgroupShuffle(own_b0, 4), own_a1, subgroupShuffle(own_b1, 4), subgroupShuffle(own_scale_b, 4) * own_scale_a);
+      lane_output2[1] += SDP8AI(own_a0, subgroupShuffle(own_b0, 5), own_a1, subgroupShuffle(own_b1, 5), subgroupShuffle(own_scale_b, 5) * own_scale_a);
+      lane_output2[2] += SDP8AI(own_a0, subgroupShuffle(own_b0, 6), own_a1, subgroupShuffle(own_b1, 6), subgroupShuffle(own_scale_b, 6) * own_scale_a);
+      lane_output2[3] += SDP8AI(own_a0, subgroupShuffle(own_b0, 7), own_a1, subgroupShuffle(own_b1, 7), subgroupShuffle(own_scale_b, 7) * own_scale_a);
+
+      lane_output3[0] += SDP8AI(own_a0, subgroupShuffle(own_b0, 8), own_a1, subgroupShuffle(own_b1, 8), subgroupShuffle(own_scale_b, 8) * own_scale_a);
+      lane_output3[1] += SDP8AI(own_a0, subgroupShuffle(own_b0, 9), own_a1, subgroupShuffle(own_b1, 9), subgroupShuffle(own_scale_b, 9) * own_scale_a);
+      lane_output3[2] += SDP8AI(own_a0, subgroupShuffle(own_b0, 10), own_a1, subgroupShuffle(own_b1, 10), subgroupShuffle(own_scale_b, 10) * own_scale_a);
+      lane_output3[3] += SDP8AI(own_a0, subgroupShuffle(own_b0, 11), own_a1, subgroupShuffle(own_b1, 11), subgroupShuffle(own_scale_b, 11) * own_scale_a);
+
+      lane_output4[0] += SDP8AI(own_a0, subgroupShuffle(own_b0, 12), own_a1, subgroupShuffle(own_b1, 12), subgroupShuffle(own_scale_b, 12) * own_scale_a);
+      lane_output4[1] += SDP8AI(own_a0, subgroupShuffle(own_b0, 13), own_a1, subgroupShuffle(own_b1, 13), subgroupShuffle(own_scale_b, 13) * own_scale_a);
+      lane_output4[2] += SDP8AI(own_a0, subgroupShuffle(own_b0, 14), own_a1, subgroupShuffle(own_b1, 14), subgroupShuffle(own_scale_b, 14) * own_scale_a);
+      lane_output4[3] += SDP8AI(own_a0, subgroupShuffle(own_b0, 15), own_a1, subgroupShuffle(own_b1, 15), subgroupShuffle(own_scale_b, 15) * own_scale_a);
+    }
+    else
+    {
+      // Code for other subgroup sizes, simply doesnt use subgroups at all.
+      // Relies on reads from single location tile_B[][base_B + col] by all
+      // being optimized by the hardware.
+      lane_output1[0] += SDP8AI(own_a0, tile_B[0][base_B + 0], own_a1, tile_B[1][base_B + 0],  own_scale_a * scale_B[base_B + 0]);
+      lane_output1[1] += SDP8AI(own_a0, tile_B[0][base_B + 1], own_a1, tile_B[1][base_B + 1],  own_scale_a * scale_B[base_B + 1]);
+      lane_output1[2] += SDP8AI(own_a0, tile_B[0][base_B + 2], own_a1, tile_B[1][base_B + 2],  own_scale_a * scale_B[base_B + 2]);
+      lane_output1[3] += SDP8AI(own_a0, tile_B[0][base_B + 3], own_a1, tile_B[1][base_B + 3],  own_scale_a * scale_B[base_B + 3]);
+
+      lane_output2[0] += SDP8AI(own_a0, tile_B[0][base_B + 4], own_a1, tile_B[1][base_B + 4],  own_scale_a * scale_B[base_B + 4]);
+      lane_output2[1] += SDP8AI(own_a0, tile_B[0][base_B + 5], own_a1, tile_B[1][base_B + 5],  own_scale_a * scale_B[base_B + 5]);
+      lane_output2[2] += SDP8AI(own_a0, tile_B[0][base_B + 6], own_a1, tile_B[1][base_B + 6],  own_scale_a * scale_B[base_B + 6]);
+      lane_output2[3] += SDP8AI(own_a0, tile_B[0][base_B + 7], own_a1, tile_B[1][base_B + 7],  own_scale_a * scale_B[base_B + 7]);
+
+      lane_output3[0] += SDP8AI(own_a0, tile_B[0][base_B + 8], own_a1, tile_B[1][base_B + 8],  own_scale_a * scale_B[base_B + 8]);
+      lane_output3[1] += SDP8AI(own_a0, tile_B[0][base_B + 9], own_a1, tile_B[1][base_B + 9],  own_scale_a * scale_B[base_B + 9]);
+      lane_output3[2] += SDP8AI(own_a0, tile_B[0][base_B + 10], own_a1, tile_B[1][base_B + 10],  own_scale_a * scale_B[base_B + 10]);
+      lane_output3[3] += SDP8AI(own_a0, tile_B[0][base_B + 11], own_a1, tile_B[1][base_B + 11],  own_scale_a * scale_B[base_B + 11]);
+
+      lane_output4[0] += SDP8AI(own_a0, tile_B[0][base_B + 12], own_a1, tile_B[1][base_B + 12],  own_scale_a * scale_B[base_B + 12]);
+      lane_output4[1] += SDP8AI(own_a0, tile_B[0][base_B + 13], own_a1, tile_B[1][base_B + 13],  own_scale_a * scale_B[base_B + 13]);
+      lane_output4[2] += SDP8AI(own_a0, tile_B[0][base_B + 14], own_a1, tile_B[1][base_B + 14],  own_scale_a * scale_B[base_B + 14]);
+      lane_output4[3] += SDP8AI(own_a0, tile_B[0][base_B + 15], own_a1, tile_B[1][base_B + 15],  own_scale_a * scale_B[base_B + 15]);
+    }
+    workgroupBarrier();
+  }
+
+  if (local_idx % 16 == 0) {
+    let b_global = b_global_base + base_B;
+    let output_idx = ((a_global) * uniforms.N + b_global)/4;
+    // This creates a shader requirement that uniforms.N % 16 == 0
+    if (a_global < uniforms.M && b_global < uniforms.N)
+    {
+      output[output_idx] = lane_output1;
+      output[output_idx+1] = lane_output2;
+      output[output_idx+2] = lane_output3;
+      output[output_idx+3] = lane_output4;
+    }
+  }
+)MAIN_FN";
+
+  return Status::OK();
+}
+
 Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) const {
   const Tensor* a = context.Input(0);
   const Tensor* b = context.Input(1);
@@ -1114,13 +1282,13 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
           .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, gsl::narrow<int>(kVec4Components)});
       return context.RunProgram(mul_program);
     } else {
-      constexpr uint32_t kTileSize = 16;
-      DP4AMatMulNBits3Program mul_program;
-      mul_program.SetWorkgroupSize(256);
+      constexpr uint32_t kTileSize = 64;
+      DP4AMatMulNBits4Program mul_program;
+      mul_program.SetWorkgroupSize(64);
       mul_program.SetDispatchGroupSize(
           (N + kTileSize - 1) / kTileSize, M, 1);
       mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components)},
-                             {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(2)},
+                             {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)},
                              {b, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec2Components * kU32Components)},
                              {scales, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)}})
           .AddUniformVariables({{static_cast<uint32_t>(M)},
@@ -1128,7 +1296,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
                                 {static_cast<uint32_t>(K)},
                                 {static_cast<uint32_t>(K / 8)},
                                 {static_cast<uint32_t>(K / 16)}})
-          .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)});
+          .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(4)});
       return context.RunProgram(mul_program);
     }
   }
