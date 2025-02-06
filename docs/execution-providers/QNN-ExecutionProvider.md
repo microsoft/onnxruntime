@@ -427,7 +427,7 @@ options.add_session_config_entry("ep.context_file_path", "./model_a_ctx.onnx")
 ```
 
 ### Enable the embed mode
-The QNN context binary content is not embeded in the generated Onnx model by default. A bin file will be generated separately. The file name looks like [ctx.onnx]_QNNExecutionProvider_QNN_[hash_id]_x_x.bin. The name is provided by Ort and tracked in the generated Onnx model. It will cause problems if any changes to the bin file. This bin file needs to sit together with the generated Onnx file. User can enable it by setting "ep.context_embed_mode" to "1". In that case the content of the context binary is embeded inside the Onnx model.
+The QNN context binary content is not embedded in the generated Onnx model by default. A bin file will be generated separately. The file name looks like [ctx.onnx]_QNNExecutionProvider_QNN_[hash_id]_x_x.bin. The name is provided by Ort and tracked in the generated Onnx model. It will cause problems if any changes are made to the bin file. This bin file needs to sit together with the generated Onnx file. User can enable it by setting "ep.context_embed_mode" to "1". In that case the content of the context binary is embedded inside the Onnx model.
 
 ```
 // C++
