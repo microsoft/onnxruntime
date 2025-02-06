@@ -408,6 +408,25 @@ MlasReduceAdd(MLAS_FLOAT16X4 Vector)
 }
 
 MLAS_FORCEINLINE
+_mlas_fp16_
+MlasReduceMaximum(MLAS_FLOAT16X8 Vector)
+{
+    Vector = vpmaxq_f16(Vector, Vector);
+    Vector = vpmaxq_f16(Vector, Vector);
+    Vector = vpmaxq_f16(Vector, Vector);
+    return vgetq_lane_u16(vreinterpretq_u16_f16(Vector), 0);
+}
+
+MLAS_FORCEINLINE
+_mlas_fp16_
+MlasReduceMaximum(MLAS_FLOAT16X4 Vector)
+{
+    Vector = vpmax_f16(Vector, Vector);
+    Vector = vpmax_f16(Vector, Vector);
+    return vget_lane_u16(vreinterpret_u16_f16(Vector), 0);
+}
+
+MLAS_FORCEINLINE
 MLAS_UINT16X8
 MlasCmpLessEqualFloat16x8(MLAS_FLOAT16X8 left, MLAS_FLOAT16X8 right)
 {
