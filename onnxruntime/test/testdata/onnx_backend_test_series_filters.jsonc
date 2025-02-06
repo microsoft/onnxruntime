@@ -144,6 +144,7 @@
         "^test_resnet50",
         "^test_shufflenet",
         "^test_squeezenet",
+        "^test_averagepool_3d_dilations_large_count_include_pad_is_1_ceil_mode_is_True_cpu",
         "^test_constant_pad_axes*",
         "^test_constant_pad*",
         "^test_edge_pad*",
