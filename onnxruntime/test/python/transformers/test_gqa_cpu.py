@@ -714,6 +714,7 @@ def gqa_prompt_func(
             "total_sequence_length": torch.tensor([config.q_sequence_length], dtype=torch.int32).detach().cpu().numpy(),
         }
         sess_options = SessionOptions()
+        sess_options.enable_profiling = True
         ort_session = InferenceSession(onnx_model_str, sess_options, providers=["CPUExecutionProvider"])
         io_binding = ort_session.io_binding()
         if new_k is not None:
@@ -747,6 +748,11 @@ def gqa_prompt_func(
         ort_output, present_k, present_v = io_binding.copy_outputs_to_cpu()
         ort_output = numpy.array(ort_output)
         output = torch.tensor(ort_output)
+
+        if sess_options.enable_profiling:
+            profile_file = ort_session.end_profiling()
+            print(f"Profiling data saved to: {profile_file}")
+
         return output, present_k, present_v
     else:
         ort_inputs = {
