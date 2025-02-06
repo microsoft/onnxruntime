@@ -600,6 +600,7 @@ endif()
 
 if(onnxruntime_ENABLE_DLPACK)
   message(STATUS "dlpack is enabled.")
+
   onnxruntime_fetchcontent_declare(
     dlpack
     URL ${DEP_URL_dlpack}
@@ -607,9 +608,7 @@ if(onnxruntime_ENABLE_DLPACK)
     EXCLUDE_FROM_ALL
     FIND_PACKAGE_ARGS NAMES dlpack
   )
-  # We can't use onnxruntime_fetchcontent_makeavailable since some part of the the dlpack code is Linux only.
-  # For example, dlpackcpp.h uses posix_memalign.
-  FetchContent_Populate(dlpack)
+  onnxruntime_fetchcontent_makeavailable(dlpack)
 endif()
 
 if(onnxruntime_ENABLE_TRAINING OR (onnxruntime_ENABLE_TRAINING_APIS AND onnxruntime_BUILD_UNIT_TESTS))

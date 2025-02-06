@@ -196,8 +196,7 @@ endif()
 if (onnxruntime_ENABLE_DLPACK)
   target_compile_definitions(onnxruntime_providers PRIVATE ENABLE_DLPACK)
   # DLPack is a header-only dependency
-  set(DLPACK_INCLUDE_DIR ${dlpack_SOURCE_DIR}/include)
-  target_include_directories(onnxruntime_providers PRIVATE ${DLPACK_INCLUDE_DIR})
+  onnxruntime_add_include_to_target(onnxruntime_providers dlpack::dlpack)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)

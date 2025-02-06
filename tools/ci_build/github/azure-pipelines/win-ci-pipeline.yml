@@ -106,7 +106,7 @@ stages:
       parameters:
         BuildConfig: 'RelWithDebInfo'
         buildArch: x64
-        additionalBuildFlags: --build_wheel --use_dnnl
+        additionalBuildFlags: --build_wheel --use_dnnl --use_vcpkg
         msbuildPlatform: x64
         isX86: false
         job_name_suffix: x64_release

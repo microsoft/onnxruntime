@@ -12,7 +12,7 @@ RUN echo "$APT_PREF" > /etc/apt/preferences.d/rocm-pin-600
 ENV DEBIAN_FRONTEND noninteractive
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates curl libnuma-dev gnupg && \
+    apt-get install -y --no-install-recommends ca-certificates ninja-build git zip curl libnuma-dev gnupg && \
     curl -sL https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -   &&\
     printf "deb [arch=amd64] https://repo.radeon.com/rocm/apt/$ROCM_VERSION/ jammy main" | tee /etc/apt/sources.list.d/rocm.list   && \
     printf "deb [arch=amd64] https://repo.radeon.com/amdgpu/$AMDGPU_VERSION/ubuntu jammy main" | tee /etc/apt/sources.list.d/amdgpu.list   && \
@@ -45,10 +45,10 @@ ENV LANG C.UTF-8
 WORKDIR /stage
 
 # Cmake
-ENV CMAKE_VERSION=3.30.1
+ENV CMAKE_VERSION=3.31.5
 RUN cd /usr/local && \
     wget -q https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz && \
-    tar -zxf /usr/local/cmake-3.30.1-Linux-x86_64.tar.gz --strip=1 -C /usr
+    tar -zxf /usr/local/cmake-3.31.5-Linux-x86_64.tar.gz --strip=1 -C /usr
 
 # ccache
 RUN mkdir -p /tmp/ccache && \

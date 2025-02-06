@@ -97,7 +97,7 @@ stages:
           --android_abi=x86_64 \
           --android_api=30 \
           --skip_submodule_sync \
-          --parallel \
+          --parallel --use_vcpkg \
           --cmake_generator=Ninja \
           --build_java
       displayName: CPU EP, Build and Test
@@ -158,7 +158,7 @@ stages:
         --android_abi=x86_64 \
         --android_api=29 \
         --skip_submodule_sync \
-        --parallel \
+        --parallel --use_vcpkg \
         --use_nnapi \
         --build_shared_lib \
         --cmake_generator=Ninja \
@@ -218,7 +218,7 @@ stages:
           --android_abi=x86_64 \
           --android_api=29 \
           --skip_submodule_sync \
-          --parallel \
+          --parallel --use_vcpkg \
           --use_nnapi \
           --build_shared_lib \
           --cmake_generator=Ninja \
