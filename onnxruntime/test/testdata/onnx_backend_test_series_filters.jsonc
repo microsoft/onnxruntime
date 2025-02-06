@@ -522,6 +522,7 @@
         "^test_affine_grid_3d_align_corners_expanded",
         "^test_affine_grid_3d",
         "^test_affine_grid_3d_expanded",
+        "^test_dynamicquantizelinear_expanded_cpu",
         "^test_operator_permute2",
         "^test_operator_repeat",
         "^test_operator_repeat_dim_overflow",
