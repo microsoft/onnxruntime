@@ -1,18 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <limits>
-
 #include "core/optimizer/qdq_transformer/constant_folding_dq_node.h"
-#include "core/optimizer/initializer.h"
-#include "core/optimizer/utils.h"
+#include "core/optimizer/graph_optimizer_registry.h"
 #include "core/graph/graph_utils.h"
-#include "core/optimizer/optimizer_execution_frame.h"
-#include "core/optimizer/utils.h"
-#include "core/framework/op_kernel.h"
-#include "core/framework/tensorprotoutils.h"
-
-using namespace onnxruntime::common;
 
 namespace onnxruntime {
 

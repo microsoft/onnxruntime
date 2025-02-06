@@ -12,15 +12,13 @@
 namespace onnxruntime {
 
 /**
-@class ConstantFolding
+@class ConstantFoldingDQ
 
-Transformer that traverses the graph top-down and performs constant folding, i.e.,
-it statically computes parts of the graph that rely only on constant initializers.
+It's the derived class from ConstantFolding.
 */
 class ConstantFoldingDQ : public ConstantFolding {
  public:
   /*! Constant folding will not be applied to nodes that have one of initializers from excluded_initializers as input.
-      For pre-training, the trainable weights are those initializers to be excluded.
       \param execution_provider Execution provider instance to execute constant folding.
   */
   ConstantFoldingDQ(const IExecutionProvider& execution_provider,
