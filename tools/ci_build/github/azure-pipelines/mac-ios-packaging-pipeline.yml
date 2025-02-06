@@ -56,7 +56,6 @@ extends:
     # Update the pool with your team's 1ES hosted pool.
     pool:
       vmImage: "macOS-13"
-      os: macOS  # OS of the image. This value cannot be a variable. Allowed values: windows, linux, macOS
     stages:
     - stage: IosPackaging_SetCommonVariables
       dependsOn: []
@@ -65,11 +64,9 @@ extends:
         skipComponentGovernanceDetection: true
 
       jobs:
-      - job: j
+      - job: SetCommonVariables
         displayName: "Set common variables"
-
         timeoutInMinutes: 5
-
         steps:
         - bash: |
             set -e
