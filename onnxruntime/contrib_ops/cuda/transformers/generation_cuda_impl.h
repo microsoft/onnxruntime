@@ -57,14 +57,14 @@ struct HypothesisScore {
     printf("HypothesisScore (hypothesis_length=%d, score=%f) \n", hypothesis_length, score);
     printf("  hypothesis:");
     if (hypothesis_length > 0 && hypothesis != NULL) {
-        for (int i = 0; i < hypothesis_length; ++i) {
-            printf("%d ", hypothesis[i]);
-        }
+      for (int i = 0; i < hypothesis_length; ++i) {
+        printf("%d ", hypothesis[i]);
+      }
     } else {
-        printf("(empty)");
+      printf("(empty)");
     }
     printf("\n");
-}
+  }
 #endif
 };
 
@@ -99,8 +99,8 @@ struct BeamHypotheses {
 
     printf("  beams:\n");
     for (int i = 0; i < beams_used_; ++i) {
-        printf("    Beam %d:\n", i + 1);
-        beams_[i].Print();
+      printf("    Beam %d:\n", i + 1);
+      beams_[i].Print();
     }
   }
 #endif
@@ -114,7 +114,7 @@ struct BeamScorerState {
   int pad_token_id_;
   int eos_token_id_;
   bool early_stopping_;
-  int not_done_count_;  // When zero, every batch entry is done (starts at batch_size_)
+  int not_done_count_;          // When zero, every batch entry is done (starts at batch_size_)
   int hypothesis_buffer_used_;  // Offset of available buffer, or length of used buffer.
 
 #ifdef DEBUG_GENERATION
