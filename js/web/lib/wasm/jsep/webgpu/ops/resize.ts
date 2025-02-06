@@ -157,6 +157,16 @@ const validateInputs = (
   }
 };
 
+const getSafeIntegerDivision = (a: string, b: string, c: string, dType: string): string => `
+  // The whole part and the fractional part are calculated separately due to inaccuracy of floating
+  // point division. As an example, f32(21) / f32(7) may evaluate to 2.99... instead of 3, causing an
+  // offset-by-one error later in floor().
+  let big = (${a}) * (${b});
+  let whole = ${dType}(big / (${c}));
+  let fract = ${dType}(big % (${c})) / ${dType}(${c});
+  return whole + fract;
+`;
+
 const getOriginalCoordinateFromResizedCoordinate = (
   coordinateTransferMode: CoordinateTransformMode,
   dType: string,
@@ -166,16 +176,12 @@ const getOriginalCoordinateFromResizedCoordinate = (
   (() => {
     switch (coordinateTransferMode) {
       case 'asymmetric':
-        // `xResized / xScale` is the original coordinate in the resized space.
         return `
-          if (lengthResized == 1u) {
-            return ${dType}(0.0);
+          if (xScale < 1.0 || floor(xScale) != xScale) {
+            return ${dType}(xResized) / ${dType}(xScale);
+          } else {
+            ${getSafeIntegerDivision('xResized', 'lengthOriginal', 'lengthResized', dType)}
           }
-          // Separate the whole part and the fraction to avoid floating inaccuracies.
-          let big = xResized * lengthOriginal;
-          let whole = ${dType}(big / lengthResized);
-          let fract = ${dType}(big % lengthResized) / ${dType}(lengthResized);
-          return whole + fract;
         `;
       case 'pytorch_half_pixel':
         return `if (lengthResized > 1) {
@@ -189,13 +195,7 @@ const getOriginalCoordinateFromResizedCoordinate = (
         return `if (lengthResized == 1) {
                     return 0.0;
                   } else {
-                    // The whole part and the fractional part are calculated separately due to inaccuracy of floating
-                    // point division. As an example, f32(21) / f32(7) may evaluate to 2.99... instead of 3, causing an
-                    // offset-by-one error later in floor().
-                    let whole = ${dType}(xResized * (lengthOriginal - 1) / (lengthResized - 1));
-                    let fract =
-                        ${dType}(xResized * (lengthOriginal - 1) % (lengthResized - 1)) / ${dType}(lengthResized - 1);
-                    return whole + fract;
+                    ${getSafeIntegerDivision('xResized', 'lengthOriginal - 1', 'lengthResized - 1', dType)}
                   }`;
       case 'tf_crop_and_resize':
         return `if (lengthResized > 1) {
