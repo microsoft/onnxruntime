@@ -74,6 +74,7 @@ std::string ParseDeviceType(const ProviderOptions& provider_options, std::string
           "Select from 'CPU', 'GPU', 'NPU', 'GPU.x' where x = 0,1,2 and so on or from"
           " HETERO/MULTI/AUTO options available. \n");
     }
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Choosing Device: " << selected_device;
     return selected_device;
   } else {
     std::string default_device;
