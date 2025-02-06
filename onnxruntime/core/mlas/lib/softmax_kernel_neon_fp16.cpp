@@ -749,10 +749,172 @@ MLAS_FP16 ReduceMax_Kernel_Fp16(const MLAS_FP16* Input, size_t N) {
 }
 
 void Softmax_Kernel_Fp16(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N, const MLAS_FP16 scale) {
+    const auto* input = reinterpret_cast<const _mlas_fp16_*>(Input);
+    auto* output = reinterpret_cast<_mlas_fp16_*>(Output);
+    auto scale8 = MlasBroadcastFloat16x8(scale.val);
+    auto scale4 = MlasBroadcastFloat16x4(scale.val);
 
+    while (N >= 32) {
+        auto v0 = MlasLoadFloat16x8(input);
+        auto v1 = MlasLoadFloat16x8(input + 8);
+        auto v2 = MlasLoadFloat16x8(input + 16);
+        auto v3 = MlasLoadFloat16x8(input + 24);
+
+        v0 = MlasMultiply(v0, scale8);
+        v1 = MlasMultiply(v1, scale8);
+        v2 = MlasMultiply(v2, scale8);
+        v3 = MlasMultiply(v3, scale8);
+
+        MlasStoreFloat16x8(output, v0);
+        MlasStoreFloat16x8(output + 8, v1);
+        MlasStoreFloat16x8(output + 16, v2);
+        MlasStoreFloat16x8(output + 24, v3);
+
+        input += 32;
+        output += 32;
+        N -= 32;
+    }
+
+    if (N & 16) {
+        auto v0 = MlasLoadFloat16x8(input);
+        auto v1 = MlasLoadFloat16x8(input + 8);
+
+        v0 = MlasMultiply(v0, scale8);
+        v1 = MlasMultiply(v1, scale8);
+
+        MlasStoreFloat16x8(output, v0);
+        MlasStoreFloat16x8(output + 8, v1);
+
+        input += 16;
+        output += 16;
+        N -= 16;
+    }
+
+    if (N & 8) {
+        auto v0 = MlasLoadFloat16x8(input);
+        v0 = MlasMultiply(v0, scale8);
+        MlasStoreFloat16x8(output, v0);
+
+        input += 8;
+        output += 8;
+        N -= 8;
+    }
+
+    if (N & 4) {
+        auto v0 = MlasLoadFloat16x4(input);
+        v0 = MlasMultiply(v0, scale4);
+        MlasStoreFloat16x4(output, v0);
+
+        input += 4;
+        output += 4;
+        N -= 4;
+    }
+
+    if (N == 3) {
+        auto v0 = MlasLoadPartialFloat16x4(input, 3);
+        v0 = MlasMultiply(v0, scale4);
+        MlasStorePartialFloat16x4(output, v0, 3);
+    } else if (N == 2) {
+        auto v0 = MlasLoadPartialFloat16x4(input, 2);
+        v0 = MlasMultiply(v0, scale4);
+        MlasStorePartialFloat16x4(output, v0, 2);
+    } else if (N == 1) {
+        auto v0 = MlasLoadPartialFloat16x4(input, 1);
+        v0 = MlasMultiply(v0, scale4);
+        MlasStorePartialFloat16x4(output, v0, 1);
+    }
 }
 
 void LogSoftmax_Kernel_Fp16(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N, const MLAS_FP16 NegativeMaximum, const MLAS_FP16 LogSum) {
+    const auto* input = reinterpret_cast<const _mlas_fp16_*>(Input);
+    auto* output = reinterpret_cast<_mlas_fp16_*>(Output);
+    auto negative_maximum8 = MlasBroadcastFloat16x8(NegativeMaximum.val);
+    auto negative_maximum4 = MlasBroadcastFloat16x4(NegativeMaximum.val);
+    auto log_sum8 = MlasBroadcastFloat16x8(LogSum.val);
+    auto log_sum4 = MlasBroadcastFloat16x4(LogSum.val);
+
+    while (N >= 32) {
+        auto v0 = MlasLoadFloat16x8(input);
+        auto v1 = MlasLoadFloat16x8(input + 8);
+        auto v2 = MlasLoadFloat16x8(input + 16);
+        auto v3 = MlasLoadFloat16x8(input + 24);
+
+        v0 = MlasAdd(v0, negative_maximum8);
+        v1 = MlasAdd(v1, negative_maximum8);
+        v2 = MlasAdd(v2, negative_maximum8);
+        v3 = MlasAdd(v3, negative_maximum8);
+
+        v0 = MlasSubtract(v0, log_sum8);
+        v1 = MlasSubtract(v1, log_sum8);
+        v2 = MlasSubtract(v2, log_sum8);
+        v3 = MlasSubtract(v3, log_sum8);
+
+        MlasStoreFloat16x8(output, v0);
+        MlasStoreFloat16x8(output + 8, v1);
+        MlasStoreFloat16x8(output + 16, v2);
+        MlasStoreFloat16x8(output + 24, v3);
+
+        input += 32;
+        output += 32;
+        N -= 32;
+    }
+
+    if (N & 16) {
+        auto v0 = MlasLoadFloat16x8(input);
+        auto v1 = MlasLoadFloat16x8(input + 8);
+
+        v0 = MlasAdd(v0, negative_maximum8);
+        v1 = MlasAdd(v1, negative_maximum8);
+
+        v0 = MlasSubtract(v0, log_sum8);
+        v1 = MlasSubtract(v1, log_sum8);
+
+        MlasStoreFloat16x8(output, v0);
+        MlasStoreFloat16x8(output + 8, v1);
+
+        input += 16;
+        output += 16;
+        N -= 16;
+    }
+
+    if (N & 8) {
+        auto v0 = MlasLoadFloat16x8(input);
+        v0 = MlasAdd(v0, negative_maximum8);
+        v0 = MlasSubtract(v0, log_sum8);
+        MlasStoreFloat16x8(output, v0);
+
+        input += 8;
+        output += 8;
+        N -= 8;
+    }
+
+    if (N & 4) {
+        auto v0 = MlasLoadFloat16x4(input);
+        v0 = MlasAdd(v0, negative_maximum4);
+        v0 = MlasSubtract(v0, log_sum4);
+        MlasStoreFloat16x4(output, v0);
+
+        input += 4;
+        output += 4;
+        N -= 4;
+    }
+
+    if (N == 3) {
+        auto v0 = MlasLoadPartialFloat16x4(input, 3);
+        v0 = MlasAdd(v0, negative_maximum4);
+        v0 = MlasSubtract(v0, log_sum4);
+        MlasStorePartialFloat16x4(output, v0, 3);
+    } else if (N == 2) {
+        auto v0 = MlasLoadPartialFloat16x4(input, 2);
+        v0 = MlasAdd(v0, negative_maximum4);
+        v0 = MlasSubtract(v0, log_sum4);
+        MlasStorePartialFloat16x4(output, v0, 2);
+    } else if (N == 1) {
+        auto v0 = MlasLoadPartialFloat16x4(input, 1);
+        v0 = MlasAdd(v0, negative_maximum4);
+        v0 = MlasSubtract(v0, log_sum4);
+        MlasStorePartialFloat16x4(output, v0, 1);
+    }
 }
 
 }  // namespace rope_neon

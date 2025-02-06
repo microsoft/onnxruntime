@@ -94,8 +94,8 @@ struct MLAS_SOFTMAX_DISPATCH {
     SumExp_Fp16_Fn* SumExp_Fp16 = nullptr;
 
     /**
-     * @brief Compute the softmax output for each element of the input array
-     * @param Input         Address of the input array. Valid in [-10.7438, 10.7438]
+     * @brief Compute the softmax output for each element of the input array. input * scale.
+     * @param Input         Address of the input array. Values of exp(x)
      * @param Output        Address of the output array. Could be the same as the input array.
      * @param N             Number of elements in the input array
      * @param scale         The scale factor to apply to the output
@@ -110,7 +110,7 @@ struct MLAS_SOFTMAX_DISPATCH {
     Softmax_Fp16_Fn* Softmax_Fp16 = nullptr;
 
     /**
-     * @brief Compute the log softmax output for each element of the input array
+     * @brief Compute the log softmax output for each element of the input array. input - max - logSum
      * @param Input         Address of the input array
      * @param Output        Address of the output array. Could be the same as the input array.
      * @param N             Number of elements in the input array
