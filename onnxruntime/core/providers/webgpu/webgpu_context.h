@@ -33,7 +33,6 @@ struct WebGpuContextConfig {
   WGPUDevice device;
   const void* dawn_proc_table;
   ValidationMode validation_mode;
-  bool enable_pix_capture;
 };
 
 struct WebGpuBufferCacheConfig {
