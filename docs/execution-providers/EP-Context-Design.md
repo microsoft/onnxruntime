@@ -85,7 +85,7 @@ OnnxRuntime EPs which support loading from Onnx model with EPContext nodes shoul
 
 ## New ExecutionProvider interface GetEpContextNodes() to help generate the EP Context cache model
 
-It is hard for Execution Providers to generate the partitioned graph whithin the Execution Provider code since Execution Provider does not has a good picture of the whole partitioned graph. New ExecutionProvider interface GetEpContextNodes() is added to support this.
+It is hard for Execution Providers to generate the partitioned graph within the Execution Provider code since an Execution Provider does not have a good picture of the whole partitioned graph. New ExecutionProvider interface GetEpContextNodes() is added to support this.
 
 ```
   virtual const InlinedVector<const Node*> GetEpContextNodes() const {
