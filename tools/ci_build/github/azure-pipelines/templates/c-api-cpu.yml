@@ -488,7 +488,7 @@ stages:
         PlatformsSupported: 'win-x64,win-x86,linux-x64,linux-arm64,osx-x64'
         VerifyNugetSigning: false
 
-    - task: 1ES.PublishPipelineArtifact@0
+    - task: 1ES.PublishPipelineArtifact@1
       displayName: 'Publish Pipeline NuGet Artifact'
       inputs:
         path: '$(Build.ArtifactStagingDirectory)'
@@ -768,7 +768,7 @@ stages:
 #        Contents: 'onnxruntime-node-*.tgz'
 #        TargetFolder: '$(Build.ArtifactStagingDirectory)'
 #
-#    - task: 1ES.PublishPipelineArtifact@0
+#    - task: 1ES.PublishPipelineArtifact@1
 #      displayName: 'Publish NPM packages files'
 #      inputs:
 #        path: '$(Build.ArtifactStagingDirectory)'

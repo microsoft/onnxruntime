@@ -305,7 +305,7 @@ extends:
 ##            PlatformsSupported: 'win-x64,win-x86,win-arm64'
 ##            VerifyNugetSigning: ${{ parameters.DoEsrp }}
 #
-#        - task: 1ES.PublishPipelineArtifact@0
+#        - task: 1ES.PublishPipelineArtifact@1
 #          displayName: 'Publish Pipeline NuGet Artifact'
 #          inputs:
 #            artifactName: 'drop-signed-nuget-dml'
