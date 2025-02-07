@@ -34,115 +34,35 @@
 
 using namespace onnxruntime;
 using namespace onnxruntime::common;
-using google::protobuf::RepeatedPtrField;
 
 static constexpr int protobuf_block_size_in_bytes = 4 * 1024 * 1024;
 
 const std::string TestModelInfo::unknown_version = "unknown version";
 
 namespace {
+using PATH_STRING_TYPE = std::basic_string<PATH_CHAR_TYPE>;
 
-template <typename T>
-inline Ort::Value CreateTensorWithDataAsOrtValue(const Ort::MemoryInfo& info,
-                                                 OrtAllocator*,
-                                                 const std::vector<int64_t>& dims,
-                                                 std::vector<T>& input) {
-  return Ort::Value::CreateTensor<T>(static_cast<const OrtMemoryInfo*>(info), input.data(), input.size() * sizeof(T),
-                                     dims.data(), dims.size());
-}
-
-template <>
-inline Ort::Value CreateTensorWithDataAsOrtValue(const Ort::MemoryInfo&,
-                                                 OrtAllocator* allocator,
-                                                 const std::vector<int64_t>& dims,
-                                                 std::vector<std::string>& input) {
-  auto tensor_value = Ort::Value::CreateTensor(allocator, dims.data(), dims.size(),
-                                               ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
-
-  std::vector<const char*> p_str;
-  for (const auto& s : input) {
-    p_str.push_back(s.c_str());
-  }
-
-  tensor_value.FillStringTensor(p_str.data(), p_str.size());
-  return tensor_value;
-}
-
-template <typename key_type, typename value_type>
-Ort::Value PbMapToOrtValue(const google::protobuf::Map<key_type, value_type>& map) {
-  auto info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-  Ort::AllocatorWithDefaultOptions allocator;
-  const size_t ele_count = map.size();
-  std::vector<int64_t> dims(1, static_cast<int64_t>(ele_count));
-  std::vector<key_type> keys(ele_count);
-  std::vector<value_type> values(ele_count);
-  size_t i = 0;
-  for (auto& kvp : map) {
-    keys[i] = kvp.first;
-    values[i] = kvp.second;
-    ++i;
-  }
-
-  //// See helper above
-  auto ort_keys = CreateTensorWithDataAsOrtValue(info, allocator, dims, keys);
-  auto ort_values = CreateTensorWithDataAsOrtValue(info, allocator, dims, values);
-  return Ort::Value::CreateMap(ort_keys, ort_values);
-}
-
-template <typename T>
-Ort::Value VectorProtoToOrtValue(const RepeatedPtrField<T>& input) {
-  auto info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-  Ort::AllocatorWithDefaultOptions allocator;
-  std::vector<Ort::Value> seq;
-  seq.reserve(input.size());
-  for (const T& v : input) {
-    // create key tensor
-    const auto& map = v.v();
-    size_t ele_count = map.size();
-    using key_type = typename std::remove_reference<decltype(v.v())>::type::key_type;
-    using value_type = typename std::remove_reference<decltype(v.v())>::type::mapped_type;
-    std::vector<int64_t> dims(1, static_cast<int64_t>(ele_count));
-    std::vector<key_type> keys(ele_count);
-    std::vector<value_type> values(ele_count);
-    size_t i = 0;
-    for (auto& kvp : map) {
-      keys[i] = kvp.first;
-      values[i] = kvp.second;
-      ++i;
-    }
-
-    auto ort_keys = CreateTensorWithDataAsOrtValue(info, allocator, dims, keys);
-    auto ort_values = CreateTensorWithDataAsOrtValue(info, allocator, dims, values);
-    auto ort_map = Ort::Value::CreateMap(ort_keys, ort_values);
-    seq.push_back(std::move(ort_map));
-  }
-  return Ort::Value::CreateSequence(seq);
-}
-
-template <typename CHAR_T>
-static int ExtractFileNo(const std::basic_string<CHAR_T>& name) {
+static int ExtractFileNo(const std::filesystem::path& pathstr) {
+  PATH_STRING_TYPE name = pathstr;
   size_t p1 = name.rfind('.');
   size_t p2 = name.rfind('_', p1);
   ++p2;
-  std::basic_string<CHAR_T> number_str = name.substr(p2, p1 - p2);
-  const CHAR_T* start = number_str.c_str();
-  const CHAR_T* end = number_str.c_str();
-  long ret = OrtStrtol(start, const_cast<CHAR_T**>(&end));
+  PATH_STRING_TYPE number_str = name.substr(p2, p1 - p2);
+  const PATH_CHAR_TYPE* start = number_str.c_str();
+  const PATH_CHAR_TYPE* end = start;
+  long ret = OrtStrtol(start, const_cast<PATH_CHAR_TYPE**>(&end));
   if (end == start) {
     ORT_THROW("parse file name failed");
   }
   return static_cast<int>(ret);
 }
-using PATH_STRING_TYPE = std::basic_string<PATH_CHAR_TYPE>;
 
-static void SortFileNames(std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_pb_files) {
+static void SortFileNames(std::vector<std::filesystem::path>& input_pb_files) {
   if (input_pb_files.size() <= 1) return;
   std::sort(input_pb_files.begin(), input_pb_files.end(),
-            [](const std::basic_string<PATH_CHAR_TYPE>& left, const std::basic_string<PATH_CHAR_TYPE>& right) -> bool {
-              std::basic_string<PATH_CHAR_TYPE> leftname = GetLastComponent(left);
-              std::basic_string<PATH_CHAR_TYPE> rightname = GetLastComponent(right);
-              int left1 = ExtractFileNo(leftname);
-              int right1 = ExtractFileNo(rightname);
+            [](const std::filesystem::path& left, std::filesystem::path& right) -> bool {
+              int left1 = ExtractFileNo(left.filename());
+              int right1 = ExtractFileNo(right.filename());
               return left1 < right1;
             });
 
@@ -374,7 +294,7 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
     ORT_THROW("index out of bound");
   }
 
-  std::vector<PATH_STRING_TYPE> test_data_pb_files;
+  std::vector<std::filesystem::path> test_data_pb_files;
 
   std::filesystem::path dir_fs_path = test_data_dirs_[id];
   if (!std::filesystem::exists(dir_fs_path)) return;
@@ -390,7 +310,7 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
         is_input ? ORT_TSTR("input_") : ORT_TSTR("output_");
     auto filename_str = path.filename().native();
     if (filename_str.compare(0, file_prefix.length(), file_prefix) == 0) {
-      test_data_pb_files.push_back(path.native());
+      test_data_pb_files.push_back(path);
     }
   }
 
