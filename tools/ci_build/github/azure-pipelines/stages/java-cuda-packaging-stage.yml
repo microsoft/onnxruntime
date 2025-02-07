@@ -136,7 +136,9 @@ stages:
       Jar_Packaging_GPU
     workspace:
       clean: all
-    pool: 'Onnxruntime-Linux-GPU'
+    pool:
+      name: 'Onnxruntime-Linux-GPU'
+      os: linux
     variables:
     - name: runCodesignValidationInjection
       value: false

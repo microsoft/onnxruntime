@@ -138,7 +138,9 @@ stages:
     condition: succeeded()
     workspace:
       clean: all
-    pool: 'Onnxruntime-Linux-GPU'
+    pool:
+      name: 'Onnxruntime-Linux-GPU'
+      os: linux
     variables:
     - template: ../templates/common-variables.yml
     - name: CUDA_VERSION_MAJOR

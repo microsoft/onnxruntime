@@ -58,7 +58,10 @@ jobs:
   timeoutInMinutes: 120
   workspace:
     clean: all
-  pool: ${{parameters.pool_name}}
+  pool:
+    name: ${{parameters.pool_name}}
+    os: Linux
+
 
   variables:
     artifacts_directory: $(Build.BinariesDirectory)/.artifacts
