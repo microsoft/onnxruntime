@@ -643,6 +643,29 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
   return Status::OK();
 }
 
+// Validate the ep_context_path to make sure it is file path and check whether the file exist already
+static Status EpContextFilePathCheck(const std::string& ep_context_path,
+                                     const std::filesystem::path& model_path) {
+  std::filesystem::path context_cache_path;
+  if (!ep_context_path.empty()) {
+    context_cache_path = ep_context_path;
+    if (!context_cache_path.has_filename()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "context_file_path should not point to a folder.");
+    }
+  } else if (!model_path.empty()) {
+    context_cache_path = model_path.native() + ORT_TSTR("_ctx.onnx");
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty.");
+  }
+
+  if (std::filesystem::exists(context_cache_path)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to generate EP context model since the file '",
+                           context_cache_path, "' exist already.");
+  }
+
+  return Status::OK();
+}
+
 static Status CreateEpContextModel(const ExecutionProviders& execution_providers,
                                    const Graph& graph,
                                    const std::filesystem::path& ep_context_path,
@@ -676,11 +699,6 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     context_cache_path = model_path.native() + ORT_TSTR("_ctx.onnx");
   } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty");
-  }
-
-  if (std::filesystem::exists(context_cache_path)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to generate EP context model since the file '",
-                           context_cache_path, "' exist already.");
   }
 
   Model ep_context_model(graph.Name(), false, graph.GetModel().MetaData(),
@@ -953,29 +971,6 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
       << ") functions of ("
       << local_functions_num
       << ") pruned.";
-
-  return Status::OK();
-}
-
-// Validate the ep_context_path to make sure it is file path and check whether the file exist already
-static Status EpContextFilePathCheck(const std::string& ep_context_path,
-                                     const std::filesystem::path& model_path) {
-  std::filesystem::path context_cache_path;
-  if (!ep_context_path.empty()) {
-    context_cache_path = ep_context_path;
-    if (!context_cache_path.has_filename()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "context_file_path should not point to a folder.");
-    }
-  } else if (!model_path.empty()) {
-    context_cache_path = model_path.native() + ORT_TSTR("_ctx.onnx");
-  } else {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty.");
-  }
-
-  if (std::filesystem::exists(context_cache_path)) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to generate EP context model since the file '",
-                           context_cache_path, "' exist already.");
-  }
 
   return Status::OK();
 }
