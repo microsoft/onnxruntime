@@ -12,7 +12,6 @@
 #include "core/framework/kernel_lookup.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/kernel_registry.h"
-#include "core/optimizer/graph_optimizer_registry.h"
 #include "core/graph/function.h"
 #include "core/graph/function_utils.h"
 #include "core/graph/graph_viewer.h"
@@ -259,7 +258,6 @@ static Status GetCapabilityForEPForAotInlining(const GraphViewer& graph_viewer,
                                    kernel_registries_for_ep,
                                    kernel_registry_mgr.GetKernelTypeStrResolver(),
                                    logger};
-  auto graph_optimizer_registry = onnxruntime::GraphOptimizerRegistry::Get();
 
   // TODO: Provide EP with a capability to look inside the functions.
   capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup);
