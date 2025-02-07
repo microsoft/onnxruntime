@@ -101,6 +101,8 @@ function(setup_mlas_source_for_windows)
       )
 
       setup_kleidiai()
+      onnxruntime_fetchcontent_makeavailable(kleidiai)
+      set(KLEIDIAI_SRC ${kleidiai_SOURCE_DIR})
 
       set(mlas_platform_preprocess_srcs
         ${MLAS_SRC_DIR}/arm64/ConvSymS8KernelDot.asm
