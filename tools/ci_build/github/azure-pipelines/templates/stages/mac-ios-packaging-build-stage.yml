@@ -61,15 +61,8 @@ stages:
 
         # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
         set +x
-
-        set_var() {
-          local VAR_NAME=${1:?}
-          local VAR_VALUE=${2:?}
-          echo "##vso[task.setvariable variable=${VAR_NAME};isoutput=true;isreadonly=true]${VAR_VALUE}"
-          echo "${VAR_NAME}: ${VAR_VALUE}"
-        }
-
-        set_var "ortPodVersion" "${VERSION}"
+        echo "##vso[task.setvariable variable=ortPodVersion};]${VERSION}"
+        echo "ortPodVersion : ${ortPodVersion}"
       displayName: "Set common variables"
       name: SetCommonVariables
 
