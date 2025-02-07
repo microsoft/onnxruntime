@@ -356,7 +356,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryGenerationNoOverWrite) {
   }
 
   ASSERT_EQ(std::remove(ep_context_onnx_file.c_str()), 0);
-  ASSERT_EQ(std::remove(ep_context_binary_file.c_str()), 0);  
+  ASSERT_EQ(std::remove(ep_context_binary_file.c_str()), 0);
 }
 
 // Create a model with Case + Add (quantized)
