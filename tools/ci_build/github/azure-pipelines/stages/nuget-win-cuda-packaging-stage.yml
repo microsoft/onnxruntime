@@ -160,7 +160,7 @@ stages:
             arguments: $(Build.SourcesDirectory)\onnxruntime $(Build.ArtifactStagingDirectory)\onnxruntime-win-x64-gpu-$(OnnxRuntimeVersion).zip $(Build.SourcesDirectory)\onnxruntime-inference-examples\c_cxx\squeezenet
             workingFolder: '$(Build.ArtifactStagingDirectory)'
 
-        - task: PublishPipelineArtifact@0
+        - task: 1ES.PublishPipelineArtifact@0
           displayName: 'Publish Pipeline Combined GPU Package Artifact'
           inputs:
             artifactName: 'onnxruntime-win-x64-gpu'

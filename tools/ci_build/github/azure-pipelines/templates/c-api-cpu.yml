@@ -152,7 +152,7 @@ stages:
           --mac_catalyst_enabled
       displayName: "Test Apple framework"
 
-    - task: PublishBuildArtifacts@1
+    - task: 1ES.PublishBuildArtifacts@1
       inputs:
         pathtoPublish: '$(Build.BinariesDirectory)/artifacts'
         artifactName: 'onnxruntime-ios-full-xcframework'
@@ -282,10 +282,10 @@ stages:
         SourceFolder: '$(Build.BinariesDirectory)\java-artifact\onnxruntime-java-win-x64'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-    - task: PublishPipelineArtifact@1
+    - task: 1ES.PublishPipelineArtifact@1
       displayName: 'Publish Pipeline Artifact'
       inputs:
-        targetPath: '$(Build.ArtifactStagingDirectory)'
+        path: '$(Build.ArtifactStagingDirectory)'
         artifact: 'onnxruntime-java'
 
     - template: component-governance-component-detection-steps.yml
@@ -488,11 +488,12 @@ stages:
         PlatformsSupported: 'win-x64,win-x86,linux-x64,linux-arm64,osx-x64'
         VerifyNugetSigning: false
 
-    - task: PublishPipelineArtifact@0
+    - task: 1ES.PublishPipelineArtifact@0
       displayName: 'Publish Pipeline NuGet Artifact'
       inputs:
-        artifactName: 'drop-signed-nuget-CPU'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
+        path: '$(Build.ArtifactStagingDirectory)'
+        artifact: 'drop-signed-nuget-CPU'
+
 
 
     - task: MSBuild@1
@@ -767,11 +768,11 @@ stages:
         Contents: 'onnxruntime-node-*.tgz'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-    - task: PublishPipelineArtifact@0
+    - task: 1ES.PublishPipelineArtifact@0
       displayName: 'Publish NPM packages files'
       inputs:
-        artifactName: 'NPM_packages'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
+        path: '$(Build.ArtifactStagingDirectory)'
+        artifact: 'NPM_packages'
 
     - template: component-governance-component-detection-steps.yml
       parameters :

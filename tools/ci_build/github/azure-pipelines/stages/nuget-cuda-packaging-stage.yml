@@ -218,7 +218,7 @@ stages:
           parameters:
             condition: 'succeeded'
 
-        - task: PublishPipelineArtifact@0
+        - task: 1ES.PublishPipelineArtifact@0
           displayName: 'Publish Pipeline NuGet Artifact'
           inputs:
             artifactName: 'drop-signed-nuget-GPU'

@@ -144,7 +144,7 @@ stages:
           displayName: 'Create NuGet Package'
           failOnStderr: true
 
-        - task: PublishPipelineArtifact@0
+        - task: 1ES.PublishPipelineArtifact@0
           displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'
           inputs:
             artifactName: ${{ parameters.ArtifactName }}
@@ -182,7 +182,7 @@ stages:
           workingDirectory: '$(Build.SourcesDirectory)\js\node'
           displayName: 'Create NPM Package'
 
-        - task: PublishPipelineArtifact@0
+        - task: 1ES.PublishPipelineArtifact@0
           displayName: 'Publish Pipeline Artifact: ${{ parameters.ArtifactName }}'
           inputs:
             artifactName: ${{ parameters.ArtifactName }}
@@ -208,7 +208,7 @@ stages:
             DisplayName: 'ESRP - Sign Node.js binding binaries'
             DoEsrp: ${{ parameters.DoEsrp }}
             Pattern: '*.node'
-        - task: PublishPipelineArtifact@1
+        - task: 1ES.PublishPipelineArtifact@1
           inputs:
             targetPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.sln_platform }}'
             artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.sln_platform }}-dml'
