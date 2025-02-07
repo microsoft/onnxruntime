@@ -510,7 +510,7 @@ else()
   message("Setting pybind11_dep")
   set(pybind11_dep pybind11::pybind11)
 endif()
-  
+
 endif()
 onnxruntime_fetchcontent_declare(
   onnx
@@ -559,7 +559,7 @@ if (onnxruntime_USE_XNNPACK)
      find_library(xnnpack_LIBRARY NAMES XNNPACK)
      find_library(microkernels_prod_LIBRARY NAMES microkernels-prod)
      find_package(unofficial-pthreadpool CONFIG REQUIRED)
-     
+
      target_include_directories(xnnpack INTERFACE "${XNNPACK_HDR}")
      set(XNNPACK_INCLUDE_DIR ${XNNPACK_DIR}/include)
      set(onnxruntime_EXTERNAL_LIBRARIES_XNNPACK ${xnnpack_LIBRARY} ${microkernels_prod_LIBRARY} unofficial::pthreadpool unofficial::pthreadpool_interface)
@@ -647,7 +647,7 @@ if (onnxruntime_USE_WEBGPU)
       # All previous patches are merged into the upstream dawn project. We don't need to apply any patches right now.
       # if we need to apply patches in the future, we can uncomment the following line.
 
-      # PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
+      PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
       EXCLUDE_FROM_ALL
     )
   endif()

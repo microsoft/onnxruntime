@@ -1,0 +1,53 @@
+diff --git a/src/emdawnwebgpu/CMakeLists.txt b/src/emdawnwebgpu/CMakeLists.txt
+index 6e8ae37593..633af91eef 100644
+--- a/src/emdawnwebgpu/CMakeLists.txt
++++ b/src/emdawnwebgpu/CMakeLists.txt
+@@ -77,9 +77,17 @@ if (${DAWN_ENABLE_EMSCRIPTEN})
+                 "${arg_UNPARSED_ARGUMENTS}")
+         endif()
+ 
++        # since Emscripten 4.0.3, file gen_struct_info.py is moved to outside of directory maint.
++        if (EXISTS "${DAWN_EMSCRIPTEN_TOOLCHAIN}/tools/gen_struct_info.py")
++            set(EM_GEN_STRUCT_INFO_SCRIPT "${DAWN_EMSCRIPTEN_TOOLCHAIN}/tools/gen_struct_info.py")
++        elseif (EXISTS "${DAWN_EMSCRIPTEN_TOOLCHAIN}/tools/maint/gen_struct_info.py")
++            set(EM_GEN_STRUCT_INFO_SCRIPT "${DAWN_EMSCRIPTEN_TOOLCHAIN}/tools/maint/gen_struct_info.py")
++        else()
++            message(FATAL_ERROR "Dawn: Failed to locate file gen_struct_info.py from Emscripten.")
++        endif()
+         set(ARGS
+             ${Python3_EXECUTABLE}
+-            "${DAWN_EMSCRIPTEN_TOOLCHAIN}/tools/maint/gen_struct_info.py"
++            "${EM_GEN_STRUCT_INFO_SCRIPT}"
+             -q
+             "${EM_BUILD_GEN_DIR}/struct_info_webgpu.json"
+             "-I=${EM_BUILD_GEN_DIR}/include"
+diff --git a/src/emdawnwebgpu/README.md b/src/emdawnwebgpu/README.md
+index efd6491cd6..8ebc5d28b6 100644
+--- a/src/emdawnwebgpu/README.md
++++ b/src/emdawnwebgpu/README.md
+@@ -56,7 +56,7 @@ Set up the build directory using emcmake
+ mkdir out/cmake-wasm
+ cd out/cmake-wasm
+ 
+-# Make sure the path is to the source checkout of Emscripten, not emsdk's release.
++# If using Emscripten v4.0.2 or lower, make sure the path is to the source checkout of Emscripten, not emsdk's release.
+ emcmake cmake -GNinja -DDAWN_EMSCRIPTEN_TOOLCHAIN="path/to/emscripten" ../..
+ 
+ ninja
+diff --git a/third_party/emdawnwebgpu/webgpu.cpp b/third_party/emdawnwebgpu/webgpu.cpp
+index ca52b1237b..db40493c27 100644
+--- a/third_party/emdawnwebgpu/webgpu.cpp
++++ b/third_party/emdawnwebgpu/webgpu.cpp
+@@ -1168,7 +1168,11 @@ WGPUBuffer emwgpuCreateBuffer(const EventSource* source,
+ }
+ 
+ WGPUDevice emwgpuCreateDevice(const EventSource* source, WGPUQueue queue) {
+-  return new WGPUDeviceImpl(source, queue);
++  // This function is only called from JS via `importJsDevice()`, which
++  // needs to increment the external ref count to fix the behavior.
++  WGPUDeviceImpl* device = new WGPUDeviceImpl(source, queue);
++  device->AddExternalRef();
++  return device;
+ }
+ 
+ WGPUQueue emwgpuCreateQueue(const EventSource* source) {
