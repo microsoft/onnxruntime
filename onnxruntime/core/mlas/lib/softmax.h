@@ -94,17 +94,17 @@ struct MLAS_SOFTMAX_DISPATCH {
     SumExp_Fp16_Fn* SumExp_Fp16 = nullptr;
 
     /**
-     * @brief Compute the softmax output for each element of the input array. input * scale.
+     * @brief Compute the softmax output for each element of the input array. input / sum.
      * @param Input         Address of the input array. Values of exp(x)
      * @param Output        Address of the output array. Could be the same as the input array.
      * @param N             Number of elements in the input array
-     * @param scale         The scale factor to apply to the output
+     * @param Sum           Sum of exp(input)
      */
     typedef void(Softmax_Fp16_Fn)(
         const MLAS_FP16* Input,
         MLAS_FP16* Output,
         size_t N,
-        const MLAS_FP16 scale
+        const MLAS_FP16 Sum
     );
 
     Softmax_Fp16_Fn* Softmax_Fp16 = nullptr;

@@ -995,7 +995,7 @@ Return Value:
         if (LogSoftmax) {
             dispatch->LogSoftmax_Fp16(Input, Output, D, NegativeMaximum, MLAS_FP16(std::log(accumulation_fp32)));
         } else {
-            dispatch->Softmax_Fp16(Output, Output, D, MLAS_FP16(1.0f / accumulation_fp32));
+            dispatch->Softmax_Fp16(Output, Output, D, MLAS_FP16(accumulation_fp32));
         }
 
         Input += D;

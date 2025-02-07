@@ -747,11 +747,13 @@ MLAS_FP16 ReduceMax_Kernel_Fp16(const MLAS_FP16* Input, size_t N) {
     return MLAS_FP16::FromBits(result);
 }
 
-void Softmax_Kernel_Fp16(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N, const MLAS_FP16 scale) {
+void Softmax_Kernel_Fp16(const MLAS_FP16* Input, MLAS_FP16* Output, size_t N, const MLAS_FP16 Sum) {
     const auto* input = reinterpret_cast<const _mlas_fp16_*>(Input);
     auto* output = reinterpret_cast<_mlas_fp16_*>(Output);
-    auto scale8 = MlasBroadcastFloat16x8(scale.val);
-    auto scale4 = MlasBroadcastFloat16x4(scale.val);
+    auto sum8 = MlasBroadcastFloat16x8(Sum.val);
+    auto sum4 = MlasBroadcastFloat16x4(Sum.val);
+    auto scale8 = MlasDivide(MlasBroadcastFloat16x8((_mlas_fp16_)0x3c00), sum8);
+    auto scale4 = MlasDivide(MlasBroadcastFloat16x4((_mlas_fp16_)0x3c00), sum4);
 
     while (N >= 32) {
         auto v0 = MlasLoadFloat16x8(input);
