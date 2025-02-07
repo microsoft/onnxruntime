@@ -70,6 +70,11 @@ resources:
     type: github
     endpoint: ort-examples
     name: microsoft/onnxruntime-inference-examples
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
 
 variables:
 - template: templates/common-variables.yml
