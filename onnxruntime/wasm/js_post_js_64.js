@@ -2,6 +2,6 @@
 
 // Licensed under the MIT License.
 
-'use strict';
+"use strict";
 
 Module["PTR_SIZE"] = 8;
