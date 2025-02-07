@@ -978,7 +978,6 @@ static Status EpContextFilePathCheck(const std::string& ep_context_path,
   }
 
   return Status::OK();
-
 }
 
 #endif
