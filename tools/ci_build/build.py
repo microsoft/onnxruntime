@@ -1105,10 +1105,7 @@ def generate_build_tree(
     cmake_extra_args,
 ):
     log.info("Generating CMake build tree")
-    if args.build_wasm:
-        # No custom triplet for the wasm builds yet
-        args.use_vcpkg = False
-    elif args.minimal_build is not None:
+    if args.minimal_build is not None:
         # Minimal build uses a custom ONNX cmake file. Don't know how to deal with it yet
         args.use_vcpkg = False
     elif args.ios or args.macos == "Catalyst":
@@ -1272,7 +1269,10 @@ def generate_build_tree(
         # Choose the cmake triplet
         triplet = None
         if args.build_wasm:
-            triplet = "wasm32-emscripten"
+            if args.enable_wasm_memory64:                
+              triplet = "wasm64-emscripten"
+            else:
+              triplet = "wasm32-emscripten"
         elif args.android:
             if args.android_abi == "armeabi-v7a":
                 triplet = "arm-neon-android"
