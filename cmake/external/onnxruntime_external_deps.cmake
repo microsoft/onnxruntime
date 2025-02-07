@@ -303,7 +303,7 @@ if(NOT TARGET Boost::mp11)
      URL ${DEP_URL_mp11}
      FIND_PACKAGE_ARGS NAMES Boost
     )
-    onnxruntime_fetchcontent_makeavailable(mp11)    
+    onnxruntime_fetchcontent_makeavailable(mp11)
     if(NOT TARGET Boost::mp11)
       add_library(Boost::mp11 ALIAS Boost::headers)
     endif()
