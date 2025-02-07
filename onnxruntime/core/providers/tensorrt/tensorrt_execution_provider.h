@@ -600,7 +600,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   void SelectQualifiedDQNode(const GraphViewer& graph,
                              std::unordered_set<NodeIndex>& selection_node_set,
                              std::unordered_map<NodeIndex, NodeIndex>& consumer_to_dq) const;
-  
+
   /**
    * This function returns an optimization ComputeCapability that is limited to:
    *  1. the DQ nodes in this individual TRT ComputeCapability

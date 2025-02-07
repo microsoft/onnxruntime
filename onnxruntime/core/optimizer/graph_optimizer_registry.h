@@ -22,9 +22,9 @@ class GraphOptimizerRegistry {
    * Get GraphOptimizerRegistry instance as a singleton.
    */
   static std::shared_ptr<GraphOptimizerRegistry> Get() {
-    if (!graph_optimizer_registry) { // First Check (without locking)
+    if (!graph_optimizer_registry) {  // First Check (without locking)
       std::lock_guard<std::mutex> lock(registry_mutex);
-      if (!graph_optimizer_registry) { // Second Check (with locking)
+      if (!graph_optimizer_registry) {  // Second Check (with locking)
         graph_optimizer_registry = std::make_shared<GraphOptimizerRegistry>();
       }
     }
@@ -33,7 +33,7 @@ class GraphOptimizerRegistry {
 
   /**
    * Register all the predefined optimizer names, only name not the optimizer instance.
-   * 
+   *
    * The optimizer will later be instantizted only when EP requests it by calling GetOptimizerByName in provider bridge.
    */
   common::Status GraphOptimizerRegistry::AddPredefinedOptimizerNames(std::vector<std::string>& optimizer_names);
@@ -46,7 +46,7 @@ class GraphOptimizerRegistry {
                                          const logging::Logger& logger);
 
   /**
-   * Create and register optimizer. 
+   * Create and register optimizer.
    */
   common::Status GraphOptimizerRegistry::CreateOptimizer(std::string& name, std::unordered_map<std::string, std::string>& key_value_configs);
 
@@ -56,7 +56,7 @@ class GraphOptimizerRegistry {
   GraphTransformer* GraphOptimizerRegistry::GetTransformerByName(std::string& name) const;
 
   /**
-   * Run the optimizer. 
+   * Run the optimizer.
    */
   common::Status ApplyTransformer(Graph& graph, std::string& name,
                                   const logging::Logger& logger) const;

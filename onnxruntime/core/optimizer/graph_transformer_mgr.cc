@@ -50,7 +50,7 @@ common::Status GraphTransformerManager::ApplyTransformer(Graph& graph, std::stri
   if (!transformer) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "This transformer is not registered " + name);
   }
-  
+
   bool modified = false;
   for (unsigned step = 0; step < steps_; ++step) {
     if (step > 0 && transformer->ShouldOnlyApplyOnce()) {

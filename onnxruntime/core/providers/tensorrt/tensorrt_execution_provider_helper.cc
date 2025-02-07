@@ -261,8 +261,8 @@ void TensorrtExecutionProvider::SetAllGraphInputs(Graph& graph) const {
 
 /**
  *  This is the helper function for ConstantFoldingDQ graph transformer.
- *  
- *  It selects the qualified/required DQ node to be optimized as well as provides a mapping table 
+ *
+ *  It selects the qualified/required DQ node to be optimized as well as provides a mapping table
  *  to help TRT EP later include the DQ node which is filtered out by TRT parser.
  */
 void TensorrtExecutionProvider::SelectQualifiedDQNode(const GraphViewer& graph,
@@ -286,7 +286,7 @@ void TensorrtExecutionProvider::SelectQualifiedDQNode(const GraphViewer& graph,
     // 3. The fist input of DQ is constant initializer.
     // 4. The data type of initializer is INT32, UINT16 or INT16
     // 4. X should be Gemm, Conv or LayerNormalization ?
-    if (node->OpType() == "DequantizeLinear" && 
+    if (node->OpType() == "DequantizeLinear" &&
         node->GetOutputEdgesCount() == 1 &&
         (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32 || data_type == ONNX_NAMESPACE::TensorProto_DataType_INT16 || data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT16) &&
         constant_initializer) {
@@ -303,7 +303,7 @@ void TensorrtExecutionProvider::SelectQualifiedDQNode(const GraphViewer& graph,
  * This function returns an optimization ComputeCapability that is limited to:
  *  1. the DQ nodes in this individual TRT ComputeCapability
  *  2. the DQ nodes that are qualified and selected by TRT EP
- * 
+ *
  * It also needs to make sure the DQ nodes is a subset of the complete list of DQ nodes to optimize in original selection ComputeCapability.
  * Finally, copy the optimization function from the original selection ComputeCapability.
  */

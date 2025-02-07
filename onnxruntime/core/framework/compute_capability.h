@@ -7,7 +7,6 @@
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/graph.h"
 
-
 namespace onnxruntime {
 // A structure encodes a subgraph and the method to run it.
 struct ComputeCapability {
@@ -24,7 +23,7 @@ struct ComputeCapability {
 
   ComputeCapability(std::unique_ptr<IndexedSubGraph> t_sub_graph)
       : sub_graph(std::move(t_sub_graph)) {}
-     
+
   // Optional function to optimize this ComputeCapability.
   // This will be called by ORT once the ComputeCapability is assigned to the EP
   // Optimization: std::function<Status(const Graph& graph, const ComputeCapability& this_optimization, ComputeCapability& cc_to_update)>

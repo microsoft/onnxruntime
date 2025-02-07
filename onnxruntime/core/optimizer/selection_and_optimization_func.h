@@ -15,6 +15,4 @@ std::vector<std::unique_ptr<ComputeCapability>> ConstantFoldingDQ_selection(cons
 // ConstantFoldingDQ optimization function
 Status ConstantFoldingDQ_optimization(Graph& graph, const ComputeCapability& optimization_cc, ComputeCapability& cc_to_update);
 
-
-
 }  // namespace onnxruntime

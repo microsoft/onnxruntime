@@ -57,10 +57,10 @@ Status ConstantFoldingDQ_optimization(Graph& graph, const ComputeCapability& opt
   }
 
   auto optimizer_registry = onnxruntime::GraphOptimizerRegistry::Get();
-  
+
   // ConstantFoldingDQ optimizer doesn't need the key/value strings.
   std::unordered_map<std::string, std::string> key_value_configs = optimization_cc.optimization_configs;
-  
+
   // Don't use CreateOptimizer as ConstantFoldingDQ needs dq_node_index_set for instantiation.
   // optimizer_registry->CreateOptimizer(optimizer_name, key_value_configs);
 
@@ -72,7 +72,6 @@ Status ConstantFoldingDQ_optimization(Graph& graph, const ComputeCapability& opt
                                                            dq_node_index_set);
     optimizer_registry->Register(std::move(transformer));
   }
-  
 
   // apply constant folding on DQ nodes
   optimizer_registry->ApplyTransformer(graph, optimizer_name, *logger);
@@ -115,7 +114,5 @@ Status ConstantFoldingDQ_optimization(Graph& graph, const ComputeCapability& opt
 
   return Status::OK();
 }
-
-
 
 }  // namespace onnxruntime

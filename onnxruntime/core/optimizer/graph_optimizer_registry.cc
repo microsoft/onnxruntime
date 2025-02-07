@@ -22,7 +22,7 @@ common::Status GraphOptimizerRegistry::AddPredefinedOptimizerNames(std::vector<s
       return Status::OK();
     }
     name_to_transformer_map_[name] = nullptr;  // The transformer will be instantizted only when EP requests it
-    
+
     if (name == kCONSTANT_FOLDING_DQ) {
       transformer_name_to_selection_func_[name] = ConstantFoldingDQ_selection;
     }
@@ -90,7 +90,7 @@ common::Status GraphOptimizerRegistry::AddPredefinedOptimizers(
 }
 
 common::Status GraphOptimizerRegistry::ApplyTransformer(Graph& graph, std::string& name,
-                                                         const logging::Logger& logger) const {
+                                                        const logging::Logger& logger) const {
   auto transformer = GetTransformerByName(name);
   if (!transformer) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "This transformer is not registered " + name);

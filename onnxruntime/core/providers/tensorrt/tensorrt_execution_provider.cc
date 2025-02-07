@@ -2554,7 +2554,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   }
 
   bool early_termination = false;
-  //supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
+  // supported_nodes_vector = GetSupportedList(parser_nodes_vector, 0, max_partition_iterations_, graph, &early_termination);
   supported_nodes_vector = parser_nodes_vector;
   if (early_termination) {
     supported_nodes_vector.clear();
@@ -2656,15 +2656,15 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     }
   }
 
-  /** 
+  /**
    * Enable EP related L2+ graph optimizations with steps:
-   * 
+   *
    *   1. Call provider bridge API to lookup pre-defined optimizer by name and get selection function
    *      - Run selection function to get selection ComputeCapability
    *      - ComputeCapability.optimize_func would be set by the optimizer to the function that does the optimization
-   * 
-   * 
-   * 
+   *
+   *
+   *
    * Current available optimizations:
    *   - (ConstantFoldingDQ) constant folding on DQ nodes -> Dequantize INT32, UINT16, INT16 constant to FP32.
    */
@@ -2676,10 +2676,10 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
     selection_cc = selection_func(graph);
   }
 
-  std::unordered_set<NodeIndex> trt_selection_node_set;    // The qualified dq nodes selected by TRT EP
-  std::unordered_map<NodeIndex, NodeIndex> consumer_to_dq; // consumer node -> dq node
+  std::unordered_set<NodeIndex> trt_selection_node_set;     // The qualified dq nodes selected by TRT EP
+  std::unordered_map<NodeIndex, NodeIndex> consumer_to_dq;  // consumer node -> dq node
   // Note: The NodeIndex here is the node index in the graph, not the index in node vector in supported_nodes_vector.
-  
+
   SelectQualifiedDQNode(graph, trt_selection_node_set, consumer_to_dq);
 
   // Include nodes that are filtered out by TRT parser.
@@ -2692,7 +2692,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
         }
 
         auto dq_node_index = consumer_to_dq[node_index[index]];
-        
+
         // Check if DQ node is included in one of the subgraphs
         auto in_the_subgraph_collection = [&](NodeIndex node_idx) -> bool {
           for (auto& node_vector : supported_nodes_vector) {
@@ -2718,7 +2718,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
           supported_node_vector.first.push_back(static_cast<NodeIndex>(idx));
           auto node = graph.GetNode(dq_node_index);
           LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << node->Name() << " is included which is filtered out by TRT parser.";
-        } 
+        }
       }
     }
   };
@@ -2730,13 +2730,13 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
       // TODO: Use consumer_to_dq table to include DQ node that is filtered out by TRT parser.
       std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph, model_hash, subgraph_index);
       auto compute_capability = ComputeCapability::Create(std::move(sub_graph));
-      
+
       // add optimization ComputeCapability to node_to_optimize
       for (auto& cc : selection_cc) {
         std::unique_ptr<ComputeCapability> optimization_cc = CreateOptimizationComputeCapability(cc.get(), trt_selection_node_set, compute_capability.get());
         compute_capability->add_nodes_to_optimize(std::move(optimization_cc));
       }
-      
+
       result.push_back(std::move(compute_capability));
       number_of_trt_nodes += static_cast<int>(group.first.size());
       subgraph_index++;

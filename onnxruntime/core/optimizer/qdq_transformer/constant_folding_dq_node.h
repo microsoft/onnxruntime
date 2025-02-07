@@ -23,7 +23,7 @@ class ConstantFoldingDQ : public ConstantFolding {
   */
   ConstantFoldingDQ(const IExecutionProvider& execution_provider,
                     bool skip_dequantize_linear,
-                    const ConfigOptions& config_options, 
+                    const ConfigOptions& config_options,
                     const InlinedHashSet<NodeIndex>& node_index_set,
                     const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
                     const InlinedHashSet<std::string>& excluded_initializers = {}) noexcept;
