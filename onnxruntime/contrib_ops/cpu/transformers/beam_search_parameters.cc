@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cpu/transformers/beam_search_parameters.h"
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -136,7 +137,11 @@ void BeamSearchParameters::ParseFromInputs(OpKernelContext* context) {
       temperature = 1.0f;
     }
   }
+
+  // The following parameter is read from environment variable for testing purpose.
+  use_fast_topk = ParseEnvironmentVariableWithDefault<bool>(kBeamSearchUseFastTopK, true);
 }
+
 void BeamSearchParameters::SetSubgraphParameters(int vocabulary_size, int heads, int hidden_size_per_head, int layers) {
   // Override vocab_size using the inferred shape from the decoder subgraph ONLY IF
   // the vocab_size hasn't been explicitly specified by the user (as an attribute of BeamSearch)
