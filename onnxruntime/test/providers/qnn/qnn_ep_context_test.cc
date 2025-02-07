@@ -340,7 +340,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryGenerationNoOverWrite) {
   so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
   so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, ep_context_onnx_file.c_str());
   so.AppendExecutionProvider("QNN", provider_options);
-    
+
   Ort::Session session1(*ort_env, model_data_span.data(), model_data_span.size(), so);
 
   auto modify_time_1 = std::filesystem::last_write_time(ep_context_binary_file);
