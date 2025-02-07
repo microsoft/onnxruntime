@@ -21,3 +21,76 @@ index 6e8ae37593..633af91eef 100644
              -q
              "${EM_BUILD_GEN_DIR}/struct_info_webgpu.json"
              "-I=${EM_BUILD_GEN_DIR}/include"
+diff --git a/src/emdawnwebgpu/README.md b/src/emdawnwebgpu/README.md
+index efd6491cd6..8ebc5d28b6 100644
+--- a/src/emdawnwebgpu/README.md
++++ b/src/emdawnwebgpu/README.md
+@@ -56,7 +56,7 @@ Set up the build directory using emcmake
+ mkdir out/cmake-wasm
+ cd out/cmake-wasm
+ 
+-# Make sure the path is to the source checkout of Emscripten, not emsdk's release.
++# If using Emscripten v4.0.2 or lower, make sure the path is to the source checkout of Emscripten, not emsdk's release.
+ emcmake cmake -GNinja -DDAWN_EMSCRIPTEN_TOOLCHAIN="path/to/emscripten" ../..
+ 
+ ninja
+diff --git a/third_party/emdawnwebgpu/webgpu.cpp b/third_party/emdawnwebgpu/webgpu.cpp
+index ca52b1237b..b11462fb87 100644
+--- a/third_party/emdawnwebgpu/webgpu.cpp
++++ b/third_party/emdawnwebgpu/webgpu.cpp
+@@ -131,7 +131,6 @@ class RefCounted : NonMovable {
+   bool Release() {
+     if (mRefCount.fetch_sub(1u, std::memory_order_release) == 1u) {
+       std::atomic_thread_fence(std::memory_order_acquire);
+-      emwgpuDelete(this);
+       return true;
+     }
+     return false;
+@@ -234,6 +233,7 @@ class Ref {
+   static void Release(T value) {
+     if (value != nullptr && value->RefCounted::Release()) {
+       delete value;
++      emwgpuDelete(value);
+     }
+   }
+ 
+@@ -642,6 +642,7 @@ struct WGPUBufferImpl final : public EventSource,
+                               public RefCountedWithExternalCount {
+  public:
+   WGPUBufferImpl(const EventSource* source, bool mappedAtCreation);
++  ~WGPUBufferImpl();
+ 
+   void Destroy();
+   const void* GetConstMappedRange(size_t offset, size_t size);
+@@ -1168,7 +1169,11 @@ WGPUBuffer emwgpuCreateBuffer(const EventSource* source,
+ }
+ 
+ WGPUDevice emwgpuCreateDevice(const EventSource* source, WGPUQueue queue) {
+-  return new WGPUDeviceImpl(source, queue);
++  // This function is only called from JS via `importJsDevice()`, which
++  // needs to increment the external ref count to fix the behavior.
++  WGPUDeviceImpl* device = new WGPUDeviceImpl(source, queue);
++  device->AddExternalRef();
++  return device;
+ }
+ 
+ WGPUQueue emwgpuCreateQueue(const EventSource* source) {
+@@ -1284,6 +1289,10 @@ WGPUBufferImpl::WGPUBufferImpl(const EventSource* source, bool mappedAtCreation)
+   }
+ }
+ 
++WGPUBufferImpl::~WGPUBufferImpl() {
++  Destroy();
++}
++
+ void WGPUBufferImpl::Destroy() {
+   emwgpuBufferDestroy(this);
+   AbortPendingMap("Buffer was destroyed before mapping was resolved.");
+@@ -1504,6 +1513,7 @@ WGPUFuture WGPUShaderModuleImpl::GetCompilationInfo(
+   void wgpu##Name##Release(WGPU##Name o) {       \
+     if (o->Release()) {                          \
+       delete o;                                  \
++      emwgpuDelete(o);                           \
+     }                                            \
+   }
+ WGPU_OBJECTS(DEFINE_WGPU_DEFAULT_ADDREF_RELEASE)
