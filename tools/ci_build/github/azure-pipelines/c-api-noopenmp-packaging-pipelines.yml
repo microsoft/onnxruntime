@@ -110,28 +110,28 @@ extends:
 
     - template: stages/download-java-tools-stage.yml
 
-#    - template: templates/c-api-cpu.yml
-#      parameters:
-#        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-#        DoCompliance: ${{ parameters.DoCompliance }}
-#        DoEsrp: ${{ parameters.DoEsrp }}
-#        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-#        ${{ if eq(parameters.NugetPackageSuffix, 'NONE') }}:
-#          OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
-#        ${{ else }}:
-#          OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime${{ parameters.NugetPackageSuffix }}'
-#        AdditionalBuildFlags: ''
-#        AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos ${{parameters.AdditionalBuildFlag}}'
-#        BuildVariant: 'default'
-#        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-#        BuildId: ${{ parameters.BuildId }}
-#        QnnSDKVersion: ${{ parameters.QnnSdk }}
-
-    - template: stages/java-cuda-packaging-stage.yml
+    - template: templates/c-api-cpu.yml
       parameters:
-        CudaVersion: 11.8
+        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+        DoCompliance: ${{ parameters.DoCompliance }}
+        DoEsrp: ${{ parameters.DoEsrp }}
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        ${{ if eq(parameters.NugetPackageSuffix, 'NONE') }}:
+          OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime'
+        ${{ else }}:
+          OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime${{ parameters.NugetPackageSuffix }}'
+        AdditionalBuildFlags: ''
+        AdditionalWinBuildFlags: '--enable_onnx_tests --enable_wcos ${{parameters.AdditionalBuildFlag}}'
+        BuildVariant: 'default'
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
+        QnnSDKVersion: ${{ parameters.QnnSdk }}
+
+#    - template: stages/java-cuda-packaging-stage.yml
+#      parameters:
+#        CudaVersion: 11.8
+#        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+#        BuildId: ${{ parameters.BuildId }}
 
 #    - template: stages/nuget-combine-cuda-stage.yml
 #      parameters:
