@@ -7,7 +7,9 @@
 
     <!-- General app properties -->
     <PropertyGroup>
-        <TargetFrameworks>net8.0-android;net8.0-ios;net8.0-maccatalyst</TargetFrameworks>
+        <!-- TODO: Add net8.0-android target back in once IndexOutOfRangeException for MAUI net8.0-android issue is
+        resolved. -->
+        <TargetFrameworks>net8.0-ios;net8.0-maccatalyst</TargetFrameworks>
         <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('windows'))">$(TargetFrameworks);net8.0-windows10.0.19041.0</TargetFrameworks>
 
         <!-- Note for MacCatalyst:
