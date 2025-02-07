@@ -448,10 +448,10 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
 
       if (conv_type == OnnxConvType::kConv) {
         ORT_RETURN_IF_ERROR(utils::TransposeFromNchwToHwcn(std::move(shape_2d_int64), elem_byte_size, original_tensor_bytes,
-                                                    unpacked_tensor, /*is_3d*/ false));
+                                                           unpacked_tensor, /*is_3d*/ false));
       } else if (conv_type == OnnxConvType::kConvTranspose) {
         ORT_RETURN_IF_ERROR(utils::TransposeFromCnhwToHwcn(std::move(shape_2d_int64), elem_byte_size, original_tensor_bytes,
-                                                    unpacked_tensor, /*is_3d*/ false));
+                                                           unpacked_tensor, /*is_3d*/ false));
       } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unexpected convolution op type: ", node_unit.OpType().c_str());
       }
