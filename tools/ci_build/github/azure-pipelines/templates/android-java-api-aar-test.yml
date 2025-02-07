@@ -17,7 +17,7 @@ parameters:
 - name: QnnSDKVersion
   displayName: QNN SDK Version
   type: string
-  default: '2.30.0.250109'
+  default: '2.31.0.250130'
 
 jobs:
 - job: Final_AAR_Testing_Android

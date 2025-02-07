@@ -7,6 +7,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/inference_session.h"
+#include "core/graph/model_saving_options.h"
 
 #include "test/providers/qnn/qnn_test_utils.h"
 
@@ -49,19 +50,19 @@ static const std::string& GetNodeAttr(const Node& node, const std::string& attr_
 static GetTestModelFn BuildGraphWithQAndNonQ(bool single_ep_node = true) {
   return [single_ep_node](ModelTestBuilder& builder) {
     // Creat non-quantized FusedMatMul node1
-    NodeArg* input1 = MakeTestInput(builder, TestInputDef<float>({2, 2}, false, {0, 1, 0, 1}));
-    NodeArg* add1_ini_input2 = MakeTestInput(builder, TestInputDef<float>({2, 2}, true, {0, 0, 0, 0}));
+    std::vector<float> data(200 * 200, 1.0f);
+    NodeArg* input1 = MakeTestInput(builder, TestInputDef<float>({200, 200}, false, data));
+    NodeArg* add1_ini_input2 = MakeTestInput(builder, TestInputDef<float>({200, 200}, true, data));
 
     auto* add1_output = builder.MakeIntermediate();
     builder.AddNode("FusedMatMul", {input1, add1_ini_input2}, {add1_output}, kMSDomain);
 
     // Create quantized Add node2
-    std::vector<float> data = {0.0f, 0.0f, 1.0f, 0.0f};
     gsl::span<float> data_range = gsl::make_span(data);
     QuantParams<uint8_t> q_parameter = GetDataQuantParams<uint8_t>(data_range);
     auto* add2_input1_qdq = AddQDQNodePair<uint8_t>(builder, add1_output, q_parameter.scale, q_parameter.zero_point);
 
-    NodeArg* add2_input2 = MakeTestInput(builder, TestInputDef<float>({2, 2}, true, data));
+    NodeArg* add2_input2 = MakeTestInput(builder, TestInputDef<float>({200, 200}, true, data));
     auto* add2_input2_qdq = AddQDQNodePair<uint8_t>(builder, add2_input2, q_parameter.scale, q_parameter.zero_point);
 
     auto* add2_output = builder.MakeIntermediate();
@@ -73,7 +74,7 @@ static GetTestModelFn BuildGraphWithQAndNonQ(bool single_ep_node = true) {
       AddQDQNodePairWithOutputAsGraphOutput<uint8_t>(builder, add2_output, q_parameter.scale, q_parameter.zero_point);
     } else {
       auto* add3_input1_qdq = AddQDQNodePair<uint8_t>(builder, add2_output, q_parameter.scale, q_parameter.zero_point);
-      NodeArg* add3_ini_input2 = MakeTestInput(builder, TestInputDef<float>({2, 2}, true, {0, 0, 0, 0}));
+      NodeArg* add3_ini_input2 = MakeTestInput(builder, TestInputDef<float>({200, 200}, true, data));
 
       auto* add3_output = builder.MakeIntermediate();
       builder.AddNode("FusedMatMul", {add3_input1_qdq, add3_ini_input2}, {add3_output}, kMSDomain);
@@ -81,7 +82,7 @@ static GetTestModelFn BuildGraphWithQAndNonQ(bool single_ep_node = true) {
       // Create quantized Add node4
       auto* add4_input1_qdq = AddQDQNodePair<uint8_t>(builder, add3_output, q_parameter.scale, q_parameter.zero_point);
 
-      NodeArg* add4_input2 = MakeTestInput(builder, TestInputDef<float>({2, 2}, true, data));
+      NodeArg* add4_input2 = MakeTestInput(builder, TestInputDef<float>({200, 200}, true, data));
       auto* add4_input2_qdq = AddQDQNodePair<uint8_t>(builder, add4_input2, q_parameter.scale, q_parameter.zero_point);
 
       auto* add4_output = builder.MakeIntermediate();
@@ -100,6 +101,7 @@ void QnnContextBinaryMultiPartitionTestBody(bool single_ep_node = true) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
 
@@ -179,6 +181,77 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryMultiPartitionSupport2) {
   QnnContextBinaryMultiPartitionTestBody(single_ep_node);
 }
 
+void EpCtxCpuNodeWithExternalIniFileTestBody(bool expect_external_ini_file) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
+
+  auto& logging_manager = DefaultLoggingManager();
+  logging_manager.SetDefaultLoggerSeverity(logging::Severity::kERROR);
+
+  onnxruntime::Model model("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           logging_manager.DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+  BuildGraphWithQAndNonQ(true)(helper);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+  ModelSavingOptions model_saving_options{10};
+  // dump the model in testdata folder in case it hides the bug that not able to find model not in current dir
+  const std::string model_with_ext = "./testdata/model_external.onnx";
+  const std::string model_ext_file = "model_external.bin";
+  ASSERT_STATUS_OK(Model::SaveWithExternalInitializers(model, model_with_ext,
+                                                       model_ext_file, model_saving_options));
+
+  EXPECT_TRUE(std::filesystem::exists(model_with_ext.c_str()));
+  std::string model_ext_file_full_path = "./testdata/" + model_ext_file;
+  EXPECT_TRUE(std::filesystem::exists(model_ext_file_full_path.c_str()));
+
+  Ort::SessionOptions so;
+  so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+  so.AppendExecutionProvider("QNN", provider_options);
+  const std::string ep_context_model_file = "./qnn_ctx_part_external_ini_ctx.onnx";
+  so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, ep_context_model_file.c_str());
+  const std::string external_ini_file = "./qnn_ctx_part_external_ini.bin";
+  if (expect_external_ini_file) {
+    // Set the external ini file name will force all initializers to the external file
+    so.AddConfigEntry(kOrtSessionOptionsEpContextModelExternalInitializersFileName, external_ini_file.c_str());
+  }  // otherwise all initializers are in Onnx file, no external data file generated
+
+  Ort::Session session(*ort_env, ToPathString(model_with_ext).c_str(), so);
+
+  EXPECT_TRUE(std::filesystem::exists(ep_context_model_file.c_str()));
+  if (expect_external_ini_file) {
+    EXPECT_TRUE(std::filesystem::exists(external_ini_file.c_str()));
+    ASSERT_EQ(std::remove(external_ini_file.c_str()), 0);
+  } else {
+    EXPECT_FALSE(std::filesystem::exists(external_ini_file.c_str()));
+  }
+
+  // clean up
+  ASSERT_EQ(std::remove(model_with_ext.c_str()), 0);
+  ASSERT_EQ(std::remove(model_ext_file_full_path.c_str()), 0);
+  ASSERT_EQ(std::remove(ep_context_model_file.c_str()), 0);
+}
+
+// Set the external initializer size threshold to 1024 so FusedMatMul (which fallback on CPU)
+// will dump initializer data to external file
+TEST_F(QnnHTPBackendTests, QnnContextBinaryCpuNodeWithExternalWeights) {
+  EpCtxCpuNodeWithExternalIniFileTestBody(true);
+}
+
+// Use the default external initializer size threshold (1024000) so FusedMatMul (which fallback on CPU)
+// will NOT dump initializer data to external file
+TEST_F(QnnHTPBackendTests, QnnContextBinaryCpuNodeWithoutExternalWeights) {
+  EpCtxCpuNodeWithExternalIniFileTestBody(false);
+}
+
 // Create a model with Case + Add (quantized)
 // cast_input -> Cast -> Q -> DQ \
 //                                Add -> Q -> DQ -> output
@@ -242,6 +315,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryGeneration2InputTypes) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
 
@@ -292,6 +366,7 @@ TEST_F(QnnHTPBackendTests, QnnContextGeneration2InputsOrderIssue) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   // Add kMSDomain to cover contrib op like Gelu
   const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
@@ -328,6 +403,7 @@ TEST_F(QnnHTPBackendTests, QnnContextGenerationNodeNamePrefix) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
   std::string node_name_prefix = "node_name_prefix_test";
 
   // Add kMSDomain to cover contrib op like Gelu
@@ -370,6 +446,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCacheEmbedModeTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
   const std::string context_binary_file = "./qnn_context_binary_test.onnx";
   std::remove(context_binary_file.c_str());
 
@@ -418,6 +495,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCacheNonEmbedModeTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
   const std::string context_binary_file = "./testdata/qnn_context_cache_non_embed.onnx";
   std::string qnn_ctx_bin = "./testdata/qnn_context_cache_non_embed.onnx_QNNExecutionProvider_QNN_8283143575221199085_1_0.bin";
 
@@ -499,6 +577,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_InvalidGraph) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
   const std::string context_binary_file = "./qnn_context_cache_non_embed.onnx";
   std::filesystem::path context_bin = "qnn_context_cache_non_embed.onnx_QNNExecutionProvider_QNN_8283143575221199085_1_0.bin";
   std::remove(context_binary_file.c_str());
@@ -596,6 +675,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryRelativePathTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options)));
   ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
@@ -626,6 +706,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryAbsolutePathTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options)));
   ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
@@ -651,6 +732,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryFileNotExistTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options)));
   ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
@@ -676,6 +758,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryFileEmptyStringTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options)));
   ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
@@ -693,6 +776,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinary2InputsTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
   const std::string context_binary_file = "./qnn_context_binary_2inputs_test.onnx";
   std::remove(context_binary_file.c_str());
 
@@ -744,6 +828,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_SingleNodeNameNotMatchGraphName
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
   const std::string context_binary_file = "./qnn_context_cache_non_embed.onnx";
   std::filesystem::path context_bin = "qnn_context_cache_non_embed.onnx_QNNExecutionProvider_QNN_8283143575221199085_1_0.bin";
   std::remove(context_binary_file.c_str());
@@ -821,6 +906,7 @@ TEST_F(QnnHTPBackendTests, QnnMultiContextEmbeded) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   Ort::SessionOptions so;
   so.AppendExecutionProvider("QNN", provider_options);
@@ -836,6 +922,7 @@ TEST_F(QnnHTPBackendTests, QnnMultiContextExternal) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   Ort::SessionOptions so;
   so.AppendExecutionProvider("QNN", provider_options);
@@ -965,6 +1052,7 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions1) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   // Create QDQ models
   std::vector<std::string> onnx_model_paths{"./weight_share1.onnx", "./weight_share2.onnx"};
@@ -1062,6 +1150,7 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions2) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   // Create QDQ models
   std::vector<std::string> onnx_model_paths{"./weight_share21.onnx", "./weight_share22.onnx"};

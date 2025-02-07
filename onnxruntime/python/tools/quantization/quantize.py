@@ -99,6 +99,7 @@ class StaticQuantConfig(QuantConfig):
         per_channel=False,
         reduce_range=False,
         use_external_data_format=False,
+        calibration_providers=None,
         extra_options=None,
     ):
         """
@@ -112,6 +113,8 @@ class StaticQuantConfig(QuantConfig):
             quant_format: QuantFormat{QOperator, QDQ}.
                 QOperator format quantizes the model with quantized operators directly.
                 QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
+            calibration_providers: Execution providers to run the session during calibration. Default is None which uses
+                [ "CPUExecutionProvider" ].
             extra_options:
                 key value pair dictionary for various options in different case. Current used:
                     extra.Sigmoid.nnapi = True/False  (Default is False)
@@ -219,6 +222,7 @@ class StaticQuantConfig(QuantConfig):
         self.calibration_data_reader = calibration_data_reader
         self.calibrate_method = calibrate_method
         self.quant_format = quant_format
+        self.calibration_providers = calibration_providers
         self.extra_options = extra_options or {}
 
 
@@ -473,6 +477,7 @@ def quantize_static(
     nodes_to_exclude=None,
     use_external_data_format=False,
     calibrate_method=CalibrationMethod.MinMax,
+    calibration_providers=None,
     extra_options=None,
 ):
     """
@@ -520,6 +525,8 @@ def quantize_static(
             List of nodes names to exclude. The nodes in this list will be excluded from quantization
             when it is not None.
         use_external_data_format: option used for large size (>2GB) model. Set to False by default.
+        calibration_providers: Execution providers to run the session during calibration. Default is None which uses
+            [ "CPUExecutionProvider" ]
         extra_options:
             key value pair dictionary for various options in different case. Current used:
                 extra.Sigmoid.nnapi = True/False  (Default is False)
@@ -697,6 +704,7 @@ def quantize_static(
             augmented_model_path=Path(quant_tmp_dir).joinpath("augmented_model.onnx").as_posix(),
             calibrate_method=calibrate_method,
             use_external_data_format=use_external_data_format,
+            providers=calibration_providers,
             extra_options=calib_extra_options,
         )
 
@@ -890,6 +898,7 @@ def quantize(
             per_channel=quant_config.per_channel,
             reduce_range=quant_config.reduce_range,
             use_external_data_format=quant_config.use_external_data_format,
+            calibration_providers=quant_config.calibration_providers,
             extra_options=quant_config.extra_options,
         )
 

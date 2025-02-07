@@ -35,10 +35,11 @@ include(external/abseil-cpp.cmake)
 
 set(RE2_BUILD_TESTING OFF CACHE BOOL "" FORCE)
 
-FetchContent_Declare(
+onnxruntime_fetchcontent_declare(
     re2
     URL ${DEP_URL_re2}
     URL_HASH SHA1=${DEP_SHA1_re2}
+    EXCLUDE_FROM_ALL
     FIND_PACKAGE_ARGS NAMES re2
 )
 onnxruntime_fetchcontent_makeavailable(re2)
@@ -62,10 +63,11 @@ if (onnxruntime_BUILD_UNIT_TESTS)
     set(GTEST_HAS_ABSL ON CACHE BOOL "" FORCE)
   endif()
   # gtest and gmock
-  FetchContent_Declare(
+  onnxruntime_fetchcontent_declare(
     googletest
     URL ${DEP_URL_googletest}
     URL_HASH SHA1=${DEP_SHA1_googletest}
+    EXCLUDE_FROM_ALL
     FIND_PACKAGE_ARGS 1.14.0...<2.0.0 NAMES GTest
   )
   FetchContent_MakeAvailable(googletest)
@@ -77,10 +79,11 @@ if (onnxruntime_BUILD_BENCHMARKS)
   # We will not need to install benchmark since we link it statically.
   set(BENCHMARK_ENABLE_INSTALL OFF CACHE BOOL "Disable benchmark install to avoid overwriting vendor install.")
 
-  FetchContent_Declare(
+  onnxruntime_fetchcontent_declare(
     google_benchmark
     URL ${DEP_URL_google_benchmark}
     URL_HASH SHA1=${DEP_SHA1_google_benchmark}
+    EXCLUDE_FROM_ALL
     FIND_PACKAGE_ARGS NAMES benchmark
   )
   onnxruntime_fetchcontent_makeavailable(google_benchmark)
@@ -88,20 +91,22 @@ endif()
 
 
 if(onnxruntime_USE_MIMALLOC)
-  FetchContent_Declare(
+  onnxruntime_fetchcontent_declare(
     mimalloc
     URL ${DEP_URL_mimalloc}
     URL_HASH SHA1=${DEP_SHA1_mimalloc}
+    EXCLUDE_FROM_ALL
     FIND_PACKAGE_ARGS NAMES mimalloc
   )
   FetchContent_MakeAvailable(mimalloc)
 endif()
 
 #Protobuf depends on utf8_range
-FetchContent_Declare(
+onnxruntime_fetchcontent_declare(
     utf8_range
     URL ${DEP_URL_utf8_range}
     URL_HASH SHA1=${DEP_SHA1_utf8_range}
+    EXCLUDE_FROM_ALL
     FIND_PACKAGE_ARGS NAMES utf8_range
 )
 
@@ -122,7 +127,7 @@ if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
     # Using CMAKE_CROSSCOMPILING is not recommended for Apple target devices.
     # https://cmake.org/cmake/help/v3.26/variable/CMAKE_CROSSCOMPILING.html
     # To keep it simple, just download and use the universal protoc binary for all Apple host builds.
-    FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_mac_universal} URL_HASH SHA1=${DEP_SHA1_protoc_mac_universal})
+    onnxruntime_fetchcontent_declare(protoc_binary URL ${DEP_URL_protoc_mac_universal} URL_HASH SHA1=${DEP_SHA1_protoc_mac_universal} EXCLUDE_FROM_ALL)
     FetchContent_Populate(protoc_binary)
     if(protoc_binary_SOURCE_DIR)
       message(STATUS "Use prebuilt protoc")
@@ -133,10 +138,10 @@ if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
     message(STATUS "CMAKE_HOST_SYSTEM_NAME: ${CMAKE_HOST_SYSTEM_NAME}")
     if(CMAKE_HOST_SYSTEM_NAME STREQUAL "Windows")
       if(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "AMD64")
-        FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_win64} URL_HASH SHA1=${DEP_SHA1_protoc_win64})
+        onnxruntime_fetchcontent_declare(protoc_binary URL ${DEP_URL_protoc_win64} URL_HASH SHA1=${DEP_SHA1_protoc_win64} EXCLUDE_FROM_ALL)
         FetchContent_Populate(protoc_binary)
       elseif(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86")
-        FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_win32} URL_HASH SHA1=${DEP_SHA1_protoc_win32})
+        onnxruntime_fetchcontent_declare(protoc_binary URL ${DEP_URL_protoc_win32} URL_HASH SHA1=${DEP_SHA1_protoc_win32} EXCLUDE_FROM_ALL)
         FetchContent_Populate(protoc_binary)
       endif()
 
@@ -147,13 +152,13 @@ if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
       endif()
     elseif(CMAKE_HOST_SYSTEM_NAME STREQUAL "Linux")
       if(CMAKE_HOST_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64)$")
-        FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_linux_x64} URL_HASH SHA1=${DEP_SHA1_protoc_linux_x64})
+        onnxruntime_fetchcontent_declare(protoc_binary URL ${DEP_URL_protoc_linux_x64} URL_HASH SHA1=${DEP_SHA1_protoc_linux_x64} EXCLUDE_FROM_ALL)
         FetchContent_Populate(protoc_binary)
       elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^(i.86|x86?)$")
-        FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_linux_x86} URL_HASH SHA1=${DEP_SHA1_protoc_linux_x86})
+        onnxruntime_fetchcontent_declare(protoc_binary URL ${DEP_URL_protoc_linux_x86} URL_HASH SHA1=${DEP_SHA1_protoc_linux_x86} EXCLUDE_FROM_ALL)
         FetchContent_Populate(protoc_binary)
       elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "^aarch64.*")
-        FetchContent_Declare(protoc_binary URL ${DEP_URL_protoc_linux_aarch64} URL_HASH SHA1=${DEP_SHA1_protoc_linux_aarch64})
+        onnxruntime_fetchcontent_declare(protoc_binary URL ${DEP_URL_protoc_linux_aarch64} URL_HASH SHA1=${DEP_SHA1_protoc_linux_aarch64} EXCLUDE_FROM_ALL)
         FetchContent_Populate(protoc_binary)
       endif()
 
@@ -191,11 +196,12 @@ else()
 endif()
 
 #Protobuf depends on absl and utf8_range
-FetchContent_Declare(
+onnxruntime_fetchcontent_declare(
   Protobuf
   URL ${DEP_URL_protobuf}
   URL_HASH SHA1=${DEP_SHA1_protobuf}
   PATCH_COMMAND ${ONNXRUNTIME_PROTOBUF_PATCH_COMMAND}
+  EXCLUDE_FROM_ALL
   FIND_PACKAGE_ARGS NAMES Protobuf protobuf
 )
 
@@ -220,7 +226,7 @@ include(protobuf_function)
 
 onnxruntime_fetchcontent_makeavailable(Protobuf)
 if(Protobuf_FOUND)
-  message(STATUS "Protobuf version: ${Protobuf_VERSION}")
+  message(STATUS "Using protobuf from find_package(or vcpkg). Protobuf version: ${Protobuf_VERSION}")
 else()
   if(protobuf_SOURCE_DIR)
     if(onnxruntime_USE_WEBGPU)
@@ -271,18 +277,20 @@ endif()
 set(ENABLE_DATE_TESTING  OFF CACHE BOOL "" FORCE)
 set(USE_SYSTEM_TZ_DB  ON CACHE BOOL "" FORCE)
 
-FetchContent_Declare(
+onnxruntime_fetchcontent_declare(
   date
   URL ${DEP_URL_date}
   URL_HASH SHA1=${DEP_SHA1_date}
+  EXCLUDE_FROM_ALL
   FIND_PACKAGE_ARGS 3...<4 NAMES date
 )
 onnxruntime_fetchcontent_makeavailable(date)
 
-FetchContent_Declare(
+onnxruntime_fetchcontent_declare(
   mp11
   URL ${DEP_URL_mp11}
   URL_HASH SHA1=${DEP_SHA1_mp11}
+  EXCLUDE_FROM_ALL
   FIND_PACKAGE_ARGS NAMES Boost
 )
 onnxruntime_fetchcontent_makeavailable(mp11)
@@ -297,10 +305,11 @@ endif()
 set(JSON_BuildTests OFF CACHE INTERNAL "")
 set(JSON_Install OFF CACHE INTERNAL "")
 
-FetchContent_Declare(
+onnxruntime_fetchcontent_declare(
     nlohmann_json
     URL ${DEP_URL_json}
     URL_HASH SHA1=${DEP_SHA1_json}
+    EXCLUDE_FROM_ALL
     FIND_PACKAGE_ARGS 3.10 NAMES nlohmann_json
 )
 onnxruntime_fetchcontent_makeavailable(nlohmann_json)
@@ -357,20 +366,22 @@ if (CPUINFO_SUPPORTED)
   set(CPUINFO_BUILD_UNIT_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_MOCK_TESTS OFF CACHE INTERNAL "")
   set(CPUINFO_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
-  if(onnxruntime_target_platform STREQUAL "ARM64EC")
-      message(STATUS "Applying a patch for Windows ARM64EC in cpuinfo")
-      FetchContent_Declare(
+  if (onnxruntime_target_platform STREQUAL "ARM64EC" OR onnxruntime_target_platform STREQUAL "ARM64")
+      message(STATUS "Applying a patch for Windows ARM64/ARM64EC in cpuinfo")
+      onnxruntime_fetchcontent_declare(
         pytorch_cpuinfo
         URL ${DEP_URL_pytorch_cpuinfo}
         URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+        EXCLUDE_FROM_ALL
         PATCH_COMMAND ${Patch_EXECUTABLE} -p1 < ${PROJECT_SOURCE_DIR}/patches/cpuinfo/9bb12d342fd9479679d505d93a478a6f9cd50a47.patch
         FIND_PACKAGE_ARGS NAMES cpuinfo
       )
   else()
-      FetchContent_Declare(
+      onnxruntime_fetchcontent_declare(
         pytorch_cpuinfo
         URL ${DEP_URL_pytorch_cpuinfo}
         URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
+        EXCLUDE_FROM_ALL
         FIND_PACKAGE_ARGS NAMES cpuinfo
       )
   endif()
@@ -382,42 +393,21 @@ if (CPUINFO_SUPPORTED)
   endif()
 endif()
 
-# xnnpack depends on clog
-# Android build should use the system's log library instead of clog
-if ((CPUINFO_SUPPORTED OR onnxruntime_USE_XNNPACK) AND NOT ANDROID)
-  set(CLOG_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-  FetchContent_Declare(
-    pytorch_clog
-    URL ${DEP_URL_pytorch_cpuinfo}
-    URL_HASH SHA1=${DEP_SHA1_pytorch_cpuinfo}
-    SOURCE_SUBDIR deps/clog
-    FIND_PACKAGE_ARGS NAMES cpuinfo
-  )
-  set(ONNXRUNTIME_CLOG_PROJ pytorch_clog)
-  onnxruntime_fetchcontent_makeavailable(${ONNXRUNTIME_CLOG_PROJ})
-  set(ONNXRUNTIME_CLOG_TARGET_NAME clog)
-  # if cpuinfo is from find_package, use it with imported name
-  if(TARGET cpuinfo::clog)
-    set(ONNXRUNTIME_CLOG_TARGET_NAME cpuinfo::clog)
-  elseif(onnxruntime_USE_VCPKG)
-    # however, later cpuinfo versions may not contain clog. use cpuinfo
-    set(ONNXRUNTIME_CLOG_TARGET_NAME cpuinfo::cpuinfo)
-  endif()
-endif()
-
 if(onnxruntime_USE_CUDA)
-  FetchContent_Declare(
+  onnxruntime_fetchcontent_declare(
     GSL
     URL ${DEP_URL_microsoft_gsl}
     URL_HASH SHA1=${DEP_SHA1_microsoft_gsl}
     PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/gsl/1064.patch
+    EXCLUDE_FROM_ALL
     FIND_PACKAGE_ARGS 4.0 NAMES Microsoft.GSL
   )
 else()
-  FetchContent_Declare(
+  onnxruntime_fetchcontent_declare(
     GSL
     URL ${DEP_URL_microsoft_gsl}
     URL_HASH SHA1=${DEP_SHA1_microsoft_gsl}
+    EXCLUDE_FROM_ALL
     FIND_PACKAGE_ARGS 4.0 NAMES Microsoft.GSL
   )
 endif()
@@ -428,10 +418,11 @@ onnxruntime_fetchcontent_makeavailable(GSL)
 find_path(safeint_SOURCE_DIR NAMES "SafeInt.hpp")
 if(NOT safeint_SOURCE_DIR)
   unset(safeint_SOURCE_DIR)
-  FetchContent_Declare(
+  onnxruntime_fetchcontent_declare(
       safeint
       URL ${DEP_URL_safeint}
       URL_HASH SHA1=${DEP_SHA1_safeint}
+      EXCLUDE_FROM_ALL
   )
 
   # use fetch content rather than makeavailable because safeint only includes unconditional test targets
@@ -457,11 +448,12 @@ else()
 endif()
 
 #flatbuffers 1.11.0 does not have flatbuffers::IsOutRange, therefore we require 1.12.0+
-FetchContent_Declare(
+onnxruntime_fetchcontent_declare(
     flatbuffers
     URL ${DEP_URL_flatbuffers}
     URL_HASH SHA1=${DEP_SHA1_flatbuffers}
     PATCH_COMMAND ${ONNXRUNTIME_FLATBUFFERS_PATCH_COMMAND}
+    EXCLUDE_FROM_ALL
     FIND_PACKAGE_ARGS 23.5.9 NAMES Flatbuffers flatbuffers
 )
 
@@ -505,11 +497,27 @@ else()
   set(ONNXRUNTIME_ONNX_PATCH_COMMAND "")
 endif()
 
-FetchContent_Declare(
+if(onnxruntime_ENABLE_PYTHON)
+  if(onnxruntime_USE_VCPKG)
+    find_package(pybind11 CONFIG REQUIRED)
+  else()
+    include(pybind11)
+  endif()
+if(TARGET pybind11::module)
+  message("Setting pybind11_lib")
+  set(pybind11_lib pybind11::module)
+else()
+  message("Setting pybind11_dep")
+  set(pybind11_dep pybind11::pybind11)
+endif()
+  
+endif()
+onnxruntime_fetchcontent_declare(
   onnx
   URL ${DEP_URL_onnx}
   URL_HASH SHA1=${DEP_SHA1_onnx}
   PATCH_COMMAND ${ONNXRUNTIME_ONNX_PATCH_COMMAND}
+  EXCLUDE_FROM_ALL
   FIND_PACKAGE_ARGS NAMES ONNX onnx
 )
 if (NOT onnxruntime_MINIMAL_BUILD)
@@ -529,7 +537,7 @@ endif()
 
 include(external/eigen.cmake)
 
-if(onnxruntime_USE_VCPKG)
+if(onnxruntime_USE_VCPKG AND WIN32)
   find_package(wil CONFIG REQUIRED)
   set(WIL_TARGET "WIL::WIL")
 else()
@@ -542,7 +550,22 @@ if (onnxruntime_USE_XNNPACK)
     message(FATAL_ERROR "XNNPACK EP requires the internal NHWC contrib ops to be available "
                          "but onnxruntime_DISABLE_CONTRIB_OPS is ON")
   endif()
-  include(xnnpack)
+  if(onnxruntime_USE_VCPKG)
+     FIND_PATH(XNNPACK_HDR xnnpack.h PATH_SUFFIXES include)
+     IF(NOT XNNPACK_HDR)
+       MESSAGE(FATAL_ERROR "Cannot find xnnpack")
+     ENDIF()
+     ADD_LIBRARY(xnnpack STATIC IMPORTED)
+     find_library(xnnpack_LIBRARY NAMES XNNPACK)
+     find_library(microkernels_prod_LIBRARY NAMES microkernels-prod)
+     find_package(unofficial-pthreadpool CONFIG REQUIRED)
+     
+     target_include_directories(xnnpack INTERFACE "${XNNPACK_HDR}")
+     set(XNNPACK_INCLUDE_DIR ${XNNPACK_DIR}/include)
+     set(onnxruntime_EXTERNAL_LIBRARIES_XNNPACK ${xnnpack_LIBRARY} ${microkernels_prod_LIBRARY} unofficial::pthreadpool unofficial::pthreadpool_interface)
+  else()
+    include(xnnpack)
+  endif()
 endif()
 
 if (onnxruntime_USE_MIMALLOC)
@@ -575,27 +598,27 @@ if (onnxruntime_RUN_ONNX_TESTS)
   add_definitions(-DORT_RUN_EXTERNAL_ONNX_TESTS)
 endif()
 
+if(onnxruntime_ENABLE_DLPACK)
+  message(STATUS "dlpack is enabled.")
 
-if(onnxruntime_ENABLE_ATEN)
-  message(STATUS "Aten fallback is enabled.")
-  FetchContent_Declare(
+  onnxruntime_fetchcontent_declare(
     dlpack
     URL ${DEP_URL_dlpack}
     URL_HASH SHA1=${DEP_SHA1_dlpack}
+    EXCLUDE_FROM_ALL
     FIND_PACKAGE_ARGS NAMES dlpack
   )
-  # We can't use onnxruntime_fetchcontent_makeavailable since some part of the the dlpack code is Linux only.
-  # For example, dlpackcpp.h uses posix_memalign.
-  FetchContent_Populate(dlpack)
+  onnxruntime_fetchcontent_makeavailable(dlpack)
 endif()
 
 if(onnxruntime_ENABLE_TRAINING OR (onnxruntime_ENABLE_TRAINING_APIS AND onnxruntime_BUILD_UNIT_TESTS))
   # Once code under orttraining/orttraining/models dir is removed "onnxruntime_ENABLE_TRAINING" should be removed from
   # this conditional
-  FetchContent_Declare(
+  onnxruntime_fetchcontent_declare(
     cxxopts
     URL ${DEP_URL_cxxopts}
     URL_HASH SHA1=${DEP_SHA1_cxxopts}
+    EXCLUDE_FROM_ALL
     FIND_PACKAGE_ARGS NAMES cxxopts
   )
   set(CXXOPTS_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
@@ -603,16 +626,6 @@ if(onnxruntime_ENABLE_TRAINING OR (onnxruntime_ENABLE_TRAINING_APIS AND onnxrunt
   onnxruntime_fetchcontent_makeavailable(cxxopts)
 endif()
 
-if (onnxruntime_USE_COREML)
-  FetchContent_Declare(
-    coremltools
-    URL ${DEP_URL_coremltools}
-    URL_HASH SHA1=${DEP_SHA1_coremltools}
-    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/coremltools/crossplatformbuild.patch
-  )
-  # we don't build directly so use Populate. selected files are built from onnxruntime_providers_coreml.cmake
-  FetchContent_Populate(coremltools)
-endif()
 
 if (onnxruntime_USE_WEBGPU)
   if (onnxruntime_CUSTOM_DAWN_SRC_PATH)
@@ -620,18 +633,21 @@ if (onnxruntime_USE_WEBGPU)
     #
     # specified as:
     # build.py --use_webgpu --cmake_extra_defines "onnxruntime_CUSTOM_DAWN_SRC_PATH=<PATH_TO_DAWN_SRC_ROOT>"
-    FetchContent_Declare(
+    onnxruntime_fetchcontent_declare(
       dawn
       SOURCE_DIR ${onnxruntime_CUSTOM_DAWN_SRC_PATH}
+      EXCLUDE_FROM_ALL
     )
   else()
-    FetchContent_Declare(
+    onnxruntime_fetchcontent_declare(
       dawn
       URL ${DEP_URL_dawn}
       URL_HASH SHA1=${DEP_SHA1_dawn}
       # All previous patches are merged into the upstream dawn project. We don't need to apply any patches right now.
       # if we need to apply patches in the future, we can uncomment the following line.
-      PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
+
+      # PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
+      EXCLUDE_FROM_ALL
     )
   endif()
 
@@ -725,6 +741,30 @@ if (onnxruntime_USE_WEBGPU)
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::dawn_proc)
     endif()
   endif()
+endif()
+
+if(onnxruntime_USE_COREML)
+  # Setup coremltools fp16 and json dependencies for creating an mlpackage.
+  #
+  # fp16 depends on psimd
+  onnxruntime_fetchcontent_declare(psimd URL ${DEP_URL_psimd} URL_HASH SHA1=${DEP_SHA1_psimd} EXCLUDE_FROM_ALL)
+  onnxruntime_fetchcontent_makeavailable(psimd)
+  set(PSIMD_SOURCE_DIR ${psimd_SOURCE_DIR})
+  onnxruntime_fetchcontent_declare(fp16 URL ${DEP_URL_fp16} URL_HASH SHA1=${DEP_SHA1_fp16} EXCLUDE_FROM_ALL)
+  set(FP16_BUILD_TESTS OFF CACHE INTERNAL "")
+  set(FP16_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
+  onnxruntime_fetchcontent_makeavailable(fp16)
+
+  onnxruntime_fetchcontent_declare(
+    coremltools
+    URL ${DEP_URL_coremltools}
+    URL_HASH SHA1=${DEP_SHA1_coremltools}
+    PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/coremltools/crossplatformbuild.patch
+    EXCLUDE_FROM_ALL
+  )
+  # we don't build directly so use Populate. selected files are built from onnxruntime_providers_coreml.cmake
+  FetchContent_Populate(coremltools)
+
 endif()
 
 set(onnxruntime_LINK_DIRS)

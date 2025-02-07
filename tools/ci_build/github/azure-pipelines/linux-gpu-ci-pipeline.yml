@@ -49,9 +49,9 @@ parameters:
 variables:
   - name: docker_base_image
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250109.1
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250124.1
     ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250109.1
+      value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1
 
   - name: Repository
     ${{ if eq(parameters.CudaVersion, '11.8') }}:
@@ -209,7 +209,7 @@ stages:
               cd /onnxruntime_src/java && /onnxruntime_src/java/gradlew cmakeCheck -DcmakeBuildDir=/build/Release -DUSE_CUDA=1; \
               cd /tmp; \
               python3 /onnxruntime_src/tools/ci_build/build.py \
-                --build_dir /build --config Release --test --skip_submodule_sync --build_shared_lib --parallel --use_binskim_compliant_compile_flags --build_wheel --enable_onnx_tests \
+                --build_dir /build --config Release --test --skip_submodule_sync --build_shared_lib --parallel --use_vcpkg --use_binskim_compliant_compile_flags --build_wheel --enable_onnx_tests \
                 --enable_transformers_tool_test --use_cuda --cuda_version=${{parameters.CudaVersion}} --cuda_home=/usr/local/cuda --cudnn_home=/usr/local/cuda \
                 --enable_pybind --build_java --ctest_path "" ; \
               '

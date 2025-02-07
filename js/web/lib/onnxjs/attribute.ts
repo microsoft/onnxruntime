@@ -3,12 +3,10 @@
 
 import Long from 'long';
 
-import { onnxruntime } from './ort-schema/flatbuffers/ort-generated';
+import * as ortFbs from './ort-schema/flatbuffers/ort-generated';
 import { onnx } from './ort-schema/protobuf/onnx';
 import { Tensor } from './tensor';
 import { decodeUtf8String, LongUtil } from './util';
-
-import ortFbs = onnxruntime.experimental.fbs;
 
 export declare namespace Attribute {
   export interface DataTypeMap {
@@ -136,12 +134,12 @@ export class Attribute {
 
     // cast LONG to number
     if (attrType === onnx.AttributeProto.AttributeType.INT && LongUtil.isLong(value)) {
-      return LongUtil.longToNumber(value as Long | flatbuffers.Long);
+      return LongUtil.longToNumber(value as bigint | Long);
     }
 
     // cast LONG[] to number[]
     if (attrType === onnx.AttributeProto.AttributeType.INTS) {
-      const arr = value as Array<number | Long | flatbuffers.Long>;
+      const arr = value as Array<number | Long | bigint>;
       const numberValue: number[] = new Array<number>(arr.length);
 
       for (let i = 0; i < arr.length; i++) {
