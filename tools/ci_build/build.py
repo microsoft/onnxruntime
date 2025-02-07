@@ -1077,8 +1077,7 @@ def generate_vcpkg_install_options(source_dir, args):
             )
     if SYSTEM_COLLECTIONURI == "https://dev.azure.com/onnxruntime/":
         vcpkg_install_options.append(" --binarysource=x-az-universal,onnxruntime,onnxruntime,onnxruntime,rw")
-    elif SYSTEM_COLLECTIONURI == "https://dev.azure.com/aiinfra/"
-            or SYSTEM_COLLECTIONURI == "https://aiinfra.visualstudio.com/":
+    elif SYSTEM_COLLECTIONURI == "https://dev.azure.com/aiinfra/" or SYSTEM_COLLECTIONURI == "https://aiinfra.visualstudio.com/":
         vcpkg_install_options.append(" --binarysource=x-az-universal,aiinfra,Lotus,Lotus,rw")
     # Config binary cache
     return vcpkg_install_options
