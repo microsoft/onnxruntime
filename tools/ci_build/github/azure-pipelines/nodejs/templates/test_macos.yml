@@ -9,9 +9,11 @@ stages:
   - job: Nodejs_Test_MacOS_${{ parameters.StageSuffix }}
     workspace:
       clean: all
-    timeoutInMinutes:  120
+    timeoutInMinutes: 120
     pool:
-      vmImage: 'macOS-13'
+      name: 'Azure Pipelines'
+      image: 'macOS-13'
+      os: 'macOS'
 
     variables:
     - name: OnnxRuntimeBuildDirectory
