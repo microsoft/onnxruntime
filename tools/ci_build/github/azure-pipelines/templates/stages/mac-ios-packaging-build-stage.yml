@@ -5,6 +5,13 @@ parameters:
   - Full
   - Training
 
+- name: buildType
+  type: string
+  values:
+  - release
+  - normal
+  default: normal
+
 stages:
 - stage: IosPackaging_Build_${{ parameters.packageVariant }}
   jobs:
