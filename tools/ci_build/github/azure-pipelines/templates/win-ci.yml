@@ -213,11 +213,10 @@ stages:
             displayName: 'Copy java pad and folder for java test'
             workingDirectory: '$(Build.BinariesDirectory)'
 
-        - task: PublishPipelineArtifact@1
+        - task: 1ES.PublishPipelineArtifact@1
           inputs:
             targetPath: '$(Agent.TempDirectory)/RelWithDebInfo'
             artifactName: 'Windows_Packaging_${{ parameters.stage_name_suffix }}_build_artifacts'
-            publishLocation: 'pipeline'
 
       - script: |
           dir *.dll
