@@ -986,6 +986,7 @@ def number_of_nvcc_threads(args):
 
 # See https://learn.microsoft.com/en-us/vcpkg/commands/install
 def generate_vcpkg_install_options(source_dir, args):
+    # NOTE: each option string should not contain any whitespace.
     vcpkg_install_options = ["--x-feature=tests"]
     if args.use_acl:
         vcpkg_install_options.append("--x-feature=acl-ep")
@@ -1076,9 +1077,9 @@ def generate_vcpkg_install_options(source_dir, args):
                 "--x-asset-sources=x-azurl,https://vcpkg.storage.devpackages.microsoft.io/artifacts/\\;x-block-origin"
             )
     if SYSTEM_COLLECTIONURI == "https://dev.azure.com/onnxruntime/":
-        vcpkg_install_options.append(" --binarysource=x-az-universal,onnxruntime,onnxruntime,onnxruntime,rw")
+        vcpkg_install_options.append("--binarysource=x-az-universal,onnxruntime,onnxruntime,onnxruntime,rw")
     elif SYSTEM_COLLECTIONURI == "https://dev.azure.com/aiinfra/" or SYSTEM_COLLECTIONURI == "https://aiinfra.visualstudio.com/":
-        vcpkg_install_options.append(" --binarysource=x-az-universal,aiinfra,Lotus,Lotus,rw")
+        vcpkg_install_options.append("--binarysource=x-az-universal,aiinfra,Lotus,Lotus,rw")
     # Config binary cache
     return vcpkg_install_options
 
