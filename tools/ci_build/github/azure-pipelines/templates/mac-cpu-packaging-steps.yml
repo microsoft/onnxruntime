@@ -83,7 +83,8 @@ steps:
   displayName: 'Copy libcustom_op_library.dylib to ArtifactStagingDirectory'
   condition: and(succeeded(), eq('${{ parameters.MacosArch }}', 'x86_64'))
 
-- publish: '$(Build.ArtifactStagingDirectory)'
+- task: 1ES.PublishPipelineArtifact@1
+  path: '$(Build.ArtifactStagingDirectory)'
   artifact: 'onnxruntime-osx-${{ parameters.MacosArch }}'
 
 - ${{ if eq(parameters.BuildJava, true) }}:

@@ -57,15 +57,14 @@ stages:
 - template: linux-cpu-packaging-pipeline.yml
   parameters:
     AdditionalBuildFlags: ${{ parameters.AdditionalBuildFlags }}
-#------ Commented out jobs -----
 
-#- template: mac-cpu-packaging-pipeline.yml
-#  parameters:
-#    AllowReleasedOpsetOnly: 1
-#    BuildForAllArchs: true
-#    SpecificArtifact: ${{ parameters.SpecificArtifact }}
-#    BuildId: ${{ parameters.BuildId }}
-#    DoEsrp: ${{ parameters.DoEsrp }}
+- template: mac-cpu-packaging-pipeline.yml
+  parameters:
+    AllowReleasedOpsetOnly: 1
+    BuildForAllArchs: true
+    SpecificArtifact: ${{ parameters.SpecificArtifact }}
+    BuildId: ${{ parameters.BuildId }}
+    DoEsrp: ${{ parameters.DoEsrp }}
 
 #------ Commented out jobs -----
 #- stage: Android_Java_API_AAR_Packaging_Full
