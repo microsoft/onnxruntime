@@ -291,11 +291,11 @@ extends:
             copy $(Build.BinariesDirectory)\nuget-artifact-dml\Microsoft.ML.OnnxRuntime.DirectML*nupkg $(Build.ArtifactStagingDirectory)
           displayName: 'Bundle DML NuGet and other binaries'
 
-        - template: templates/esrp_nuget.yml
-          parameters:
-            DisplayName: 'ESRP - sign NuGet package'
-            FolderPath: '$(Build.ArtifactStagingDirectory)'
-            DoEsrp: ${{ parameters.DoEsrp }}
+#        - template: templates/esrp_nuget.yml
+#          parameters:
+#            DisplayName: 'ESRP - sign NuGet package'
+#            FolderPath: '$(Build.ArtifactStagingDirectory)'
+#            DoEsrp: ${{ parameters.DoEsrp }}
 
         - template: templates/validate-package.yml
           parameters:
