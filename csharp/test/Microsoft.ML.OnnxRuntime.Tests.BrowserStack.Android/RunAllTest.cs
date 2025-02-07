@@ -89,7 +89,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests.BrowserStack.Android
                 await Task.Delay(500);
             }
 
-            var (numPassed, numFailed) = GetPassFailCount();
+            (int numPassed, int numFailed) = GetPassFailCount();
 
             if (numFailed == 0)
             {
