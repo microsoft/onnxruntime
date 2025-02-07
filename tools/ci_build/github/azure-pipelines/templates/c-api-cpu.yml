@@ -154,7 +154,7 @@ stages:
 
     - task: 1ES.PublishBuildArtifacts@1
       inputs:
-        pathtoPublish: '$(Build.BinariesDirectory)/artifacts'
+        PathtoPublish: '$(Build.BinariesDirectory)/artifacts'
         artifactName: 'onnxruntime-ios-full-xcframework'
 
     - template: component-governance-component-detection-steps.yml

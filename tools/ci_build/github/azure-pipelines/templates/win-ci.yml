@@ -180,7 +180,7 @@ stages:
         - task: 1ES.PublishBuildArtifacts@1
           displayName: 'Publish Java temp binaries'
           inputs:
-            pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
+            PathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
             artifactName: 'drop-onnxruntime-java-win-${{ parameters.packageName }}${{parameters.artifact_name_suffix}}'
         # All GPU builds will be tested in the next stage with GPU machine
       - ${{ if contains(parameters.ort_build_pool_name, 'CPU') }}:
