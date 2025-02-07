@@ -121,6 +121,20 @@ class WebGpuContext final {
   void CollectProfilingData(profiling::Events& events);
   void EndProfiling(TimePoint, profiling::Events& events, profiling::Events& cached_events);
 
+  //
+  // Push error scope.
+  //
+  // This is useful only when "skip_validation" is not set.
+  //
+  void PushErrorScope();
+
+  //
+  // Pop error scope.
+  //
+  // This is useful only when "skip_validation" is not set.
+  //
+  Status PopErrorScope();
+
   Status Run(ComputeContext& context, const ProgramBase& program);
 
  private:
