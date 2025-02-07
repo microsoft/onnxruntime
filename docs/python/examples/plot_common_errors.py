@@ -15,6 +15,7 @@ It starts by loading the model trained in example
 trained on *Iris* datasets. The model takes
 a vector of dimension 2 and returns a class among three.
 """
+
 import numpy
 
 import onnxruntime as rt

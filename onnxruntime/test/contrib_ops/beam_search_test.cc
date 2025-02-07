@@ -423,9 +423,6 @@ TEST(BeamSearchTest, DummyT5WithOuterScopeInitializers) {
 }
 
 TEST(BeamSearchTest, DummyT5WithSequenceInputIds) {
-#if defined(USE_CUDA) && defined(USE_DML)
-  SKIP_CUDA_TEST_WITH_DML;
-#endif
   // dummy_t5_with_sequence_input_ids.onnx model generated using following command:
   // python onnxruntime/test/testdata/dummy_t5_generator.py --output-path dummy_t5_with_sequence_input_ids.onnx --sequence-as-input
   ModelTester tester(CurrentTestName(), ORT_TSTR("testdata/dummy_t5_with_sequence_input_ids.onnx"));

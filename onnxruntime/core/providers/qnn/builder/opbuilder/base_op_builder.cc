@@ -2,12 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
+#include <utility>
 #include "core/providers/qnn/builder/qnn_utils.h"
-
-#include <core/providers/common.h>
-
-#include "core/providers/shared/utils/utils.h"
-#include "core/common/safeint.h"
 
 namespace onnxruntime {
 namespace qnn {

@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 from logging import getLogger
-from typing import Tuple, Union
 
 import numpy as np
 from fusion_base import Fusion
@@ -97,7 +96,7 @@ class FusionMultiHeadAttentionSam2(Fusion):
 
     def get_num_heads_and_hidden_size(
         self, reshape_q: NodeProto, layernorm_node: NodeProto, is_encoder: bool = False
-    ) -> Tuple[int, int]:
+    ) -> tuple[int, int]:
         """Detect num_heads and hidden_size.
 
         Args:
@@ -142,7 +141,7 @@ class FusionMultiHeadAttentionSam2(Fusion):
         num_heads: int,
         hidden_size: int,
         output: str,
-    ) -> Union[NodeProto, None]:
+    ) -> NodeProto | None:
         """Create an Attention node.
 
         Args:

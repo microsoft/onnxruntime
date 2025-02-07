@@ -7,15 +7,12 @@
 #include <gsl/gsl>
 #include "QnnOpDef.h"
 
-#include "core/framework/utils.h"
-#include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
-#include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_node_group.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/qnn_allocator.h"
 #include "core/providers/qnn/shared_context.h"
-#include "core/providers/shared/utils/utils.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -101,7 +98,7 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
   // valid throughout the lifetime of the ModelBuilder
   std::vector<std::unique_ptr<NodeUnit>> node_unit_holder;
   std::unordered_map<const Node*, const NodeUnit*> node_unit_map;
-  std::tie(node_unit_holder, node_unit_map) = QDQ::GetAllNodeUnits(graph_viewer, logger);
+  std::tie(node_unit_holder, node_unit_map) = GetQDQNodeUnits(graph_viewer, logger);
 
   // This name must be same with the EPContext node name
   const auto& graph_name = fused_node.Name();

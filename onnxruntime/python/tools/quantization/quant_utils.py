@@ -197,9 +197,9 @@ def _check_type(*args, zero_point_index=-1):
 
 
 def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
-    assert (
-        qType in ONNX_TYPE_TO_NP_TYPE
-    ), f"Unexpected data type {qType} requested. Only INT8, UINT8, INT16, and UINT16 are supported."
+    assert qType in ONNX_TYPE_TO_NP_TYPE, (
+        f"Unexpected data type {qType} requested. Only INT8, UINT8, INT16, and UINT16 are supported."
+    )
     if qType in (
         onnx_proto.TensorProto.FLOAT8E4M3FN,
         onnx_proto.TensorProto.FLOAT8E4M3FNUZ,
@@ -907,11 +907,7 @@ def smooth_distribution(p, eps=0.0001):
         # raise ValueError('The discrete probability distribution is malformed. All entries are 0.')
         return None
     eps1 = eps * float(n_zeros) / float(n_nonzeros)
-    assert eps1 < 1.0, "n_zeros=%d, n_nonzeros=%d, eps1=%f" % (
-        n_zeros,
-        n_nonzeros,
-        eps1,
-    )
+    assert eps1 < 1.0, f"n_zeros={n_zeros}, n_nonzeros={n_nonzeros}, eps1={eps1}"
 
     hist = p.astype(numpy.float32)
     hist += eps * is_zeros + (-eps1) * is_nonzeros
@@ -922,10 +918,7 @@ def smooth_distribution(p, eps=0.0001):
 
 def model_has_external_data(model_path: Path):
     model = onnx.load(model_path.as_posix(), load_external_data=False)
-    for intializer in model.graph.initializer:
-        if external_data_helper.uses_external_data(intializer):
-            return True
-    return False
+    return any(external_data_helper.uses_external_data(intializer) for intializer in model.graph.initializer)
 
 
 def optimize_model(model_path: Path, opt_model_path: Path):

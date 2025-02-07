@@ -1,7 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
 
-include(pybind11)
+
 
 # ---[ Python + Numpy
 set(onnxruntime_pybind_srcs_pattern
@@ -96,7 +96,7 @@ if (MSVC AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
     target_compile_options(onnxruntime_pybind11_state PRIVATE "/wd4244")
 endif()
 
-onnxruntime_add_include_to_target(onnxruntime_pybind11_state Python::Module Python::NumPy)
+onnxruntime_add_include_to_target(onnxruntime_pybind11_state Python::Module)
 target_include_directories(onnxruntime_pybind11_state PRIVATE ${ONNXRUNTIME_ROOT} ${pybind11_INCLUDE_DIRS})
 if(onnxruntime_USE_CUDA)
     target_include_directories(onnxruntime_pybind11_state PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} ${CUDNN_INCLUDE_DIR})
@@ -128,7 +128,10 @@ endif()
 
 if (onnxruntime_ENABLE_ATEN)
   target_compile_definitions(onnxruntime_pybind11_state PRIVATE ENABLE_ATEN)
-  target_include_directories(onnxruntime_pybind11_state PRIVATE ${dlpack_SOURCE_DIR}/include)
+endif()
+
+if (onnxruntime_ENABLE_DLPACK)
+  target_link_libraries(onnxruntime_pybind11_state PRIVATE dlpack::dlpack)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
@@ -169,9 +172,7 @@ if (onnxruntime_ENABLE_LAZY_TENSOR)
   endif()
 endif()
 
-target_link_libraries(onnxruntime_pybind11_state PRIVATE
-    onnxruntime_session
-    ${onnxruntime_libs}
+set(onnxruntime_pybind11_state_static_providers
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_VSINPU}
     ${PROVIDERS_XNNPACK}
@@ -183,7 +184,16 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_WEBGPU}
     ${PROVIDERS_AZURE}
-    ${PROVIDERS_QNN}
+)
+
+if(onnxruntime_BUILD_QNN_EP_STATIC_LIB)
+  list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_qnn)
+endif()
+
+target_link_libraries(onnxruntime_pybind11_state PRIVATE
+    onnxruntime_session
+    ${onnxruntime_libs}
+    ${onnxruntime_pybind11_state_static_providers}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -195,8 +205,8 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_common
     onnxruntime_flatbuffers
     ${pybind11_lib}
+    Python::NumPy
 )
-
 set(onnxruntime_pybind11_state_dependencies
     ${onnxruntime_EXTERNAL_DEPENDENCIES}
     ${pybind11_dep}
@@ -1000,6 +1010,16 @@ if (onnxruntime_USE_COREML)
 endif()
 
 if (onnxruntime_USE_QNN)
+  if(NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_qnn>
+        $<TARGET_FILE:onnxruntime_providers_shared>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+    )
+  endif()
+
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy

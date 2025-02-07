@@ -12,7 +12,7 @@
 #include "core/session/environment.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/inference_session.h"
-#ifdef ENABLE_TRAINING
+#if defined(ENABLE_DLPACK)
 #include "core/dlpack/dlpack_converter.h"
 #endif
 
@@ -410,7 +410,7 @@ bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
                    const std::string& name,
                    /*out*/ ONNX_NAMESPACE::TypeProto& type_proto);
 
-#ifdef ENABLE_TRAINING
+#if defined(ENABLE_DLPACK)
 
 // Allocate a new Capsule object, which takes the ownership of OrtValue.
 // Caller is responsible for releasing.

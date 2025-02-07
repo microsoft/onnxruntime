@@ -10,14 +10,10 @@
 #include <optional>
 #include <string>
 
-#include "core/graph/graph_utils.h"
-#include "core/framework/node_unit.h"
-#include "core/framework/tensorprotoutils.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_node_group/utils.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
-#include "core/providers/shared/utils/utils.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -32,7 +28,7 @@ const NodeUnit* GetReshapeNodeUnit(
     return nullptr;
   }
 
-  for (auto edge = gemm_node.InputEdgesBegin(); edge != gemm_node.InputEdgesEnd(); edge++) {
+  for (auto edge = gemm_node.InputEdgesBegin(); edge != gemm_node.InputEdgesEnd(); ++edge) {
     if (edge->GetDstArgIndex() == 0) {
       const Node& reshape_node = edge->GetNode();
       if (reshape_node.OpType() == "Reshape" && !graph_viewer.NodeProducesGraphOutput(reshape_node) &&
@@ -60,8 +56,8 @@ bool CheckShape(const Node& reshape_node) {
     return false;
   }
 
-  auto input_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*input_shape_proto);
-  auto output_shape = onnxruntime::utils::GetTensorShapeFromTensorShapeProto(*output_shape_proto);
+  auto input_shape = utils::GetTensorProtoShape(*input_shape_proto);
+  auto output_shape = utils::GetTensorProtoShape(*output_shape_proto);
   auto input_rank = input_shape.NumDimensions();
   auto output_rank = output_shape.NumDimensions();
   return input_shape.Size() != -1 && output_shape.Size() != -1 && output_rank == 2 &&

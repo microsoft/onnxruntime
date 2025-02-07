@@ -77,7 +77,8 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
                                                                                                 true,
                                                                                                 cpu_ep);
   qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_no_int16_name,
-                                                         {{"Resize", {}}},
+                                                         {{"DepthToSpace", {}},
+                                                          {"Resize", {}}},
                                                          std::move(selector_no_16bit),
                                                          std::move(drop_action_no_int16));
 
@@ -91,7 +92,7 @@ void DropQDQNodesRules(SelectorActionRegistry& qdq_selector_action_registry) {
                                                          std::move(drop_action_no_int16_and_positive_scale));
 
   std::unique_ptr<NodeSelector> selector = std::make_unique<QDQ::DropQDQNodesSelector>(true, false, true, providers);
-  // DepthToSpace and SpaceToDepth not included because there are no integer implementations.
+  // SpaceToDepth not included because there are no integer implementations.
   // https://github.com/microsoft/onnxruntime/issues/21287
   qdq_selector_action_registry.RegisterSelectorAndAction(drop_action_name,
                                                          {{"Expand", {}},
