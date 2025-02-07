@@ -55,7 +55,13 @@ extends:
   parameters:
     # Update the pool with your team's 1ES hosted pool.
     pool:
-      vmImage: "macOS-13"
+      name: "Azure Pipelines"
+      image: "macOS-13"
+      os: macOS
+    sdl:
+      sourceAnalysisPool:
+        name: onnxruntime-Win-CPU-2022
+        os: windows
     stages:
     - stage: IosPackaging_SetCommonVariables
       dependsOn: []
