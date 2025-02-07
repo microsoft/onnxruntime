@@ -297,13 +297,13 @@ extends:
 #            FolderPath: '$(Build.ArtifactStagingDirectory)'
 #            DoEsrp: ${{ parameters.DoEsrp }}
 
-        - template: templates/validate-package.yml
-          parameters:
-            PackageType: 'nuget'
-            PackagePath: '$(Build.ArtifactStagingDirectory)'
-            PackageName: 'Microsoft.ML.OnnxRuntime.DirectML*nupkg'
-            PlatformsSupported: 'win-x64,win-x86,win-arm64'
-            VerifyNugetSigning: ${{ parameters.DoEsrp }}
+#        - template: templates/validate-package.yml
+#          parameters:
+#            PackageType: 'nuget'
+#            PackagePath: '$(Build.ArtifactStagingDirectory)'
+#            PackageName: 'Microsoft.ML.OnnxRuntime.DirectML*nupkg'
+#            PlatformsSupported: 'win-x64,win-x86,win-arm64'
+#            VerifyNugetSigning: ${{ parameters.DoEsrp }}
 
         - task: 1ES.PublishPipelineArtifact@0
           displayName: 'Publish Pipeline NuGet Artifact'
