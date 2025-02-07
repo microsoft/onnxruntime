@@ -35,6 +35,11 @@ stages:
         cPodName: onnxruntime-training-c
         objcPodName: onnxruntime-training-objc
     timeoutInMinutes: 240
+    templateContext:
+      outputs:
+      - output: pipelineArtifact
+        targetPath: $(Build.ArtifactStagingDirectory)
+        artifactName: ios_packaging_artifacts_${{ lower(parameters.packageVariant) }}
 
     steps:
     - bash: |
@@ -185,7 +190,7 @@ stages:
     - task: 1ES.PublishPipelineArtifact@1
       inputs:
         path: $(Build.ArtifactStagingDirectory)
-        artifact: ios_packaging_artifacts_${{ lower(parameters.packageVariant) }}
+        artifact: browserstack_test_artifacts_${{ lower(parameters.packageVariant) }}
       displayName: "Publish BrowserStack artifacts"
 
     - script: |
