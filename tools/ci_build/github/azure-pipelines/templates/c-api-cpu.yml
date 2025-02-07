@@ -66,12 +66,12 @@ stages:
     BuildId: ${{ parameters.BuildId }}
     DoEsrp: ${{ parameters.DoEsrp }}
 
-- stage: Android_Java_API_AAR_Packaging_Full
-  dependsOn: Setup # Setup stage defined in set_packaging_variables_stage.yml creates the ReleaseVersionSuffix variable
-  variables:
-    ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
-  jobs:
 #------ Commented out jobs -----
+#- stage: Android_Java_API_AAR_Packaging_Full
+#  dependsOn: Setup # Setup stage defined in set_packaging_variables_stage.yml creates the ReleaseVersionSuffix variable
+#  variables:
+#    ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
+#  jobs:
 #  - template: android-java-api-aar.yml
 #    parameters:
 #      buildConfig: 'Release'
