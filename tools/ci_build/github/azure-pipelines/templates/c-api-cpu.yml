@@ -154,10 +154,10 @@ stages:
           --mac_catalyst_enabled
       displayName: "Test Apple framework"
 
-    - task: 1ES.PublishBuildArtifacts@1
+    - task: 1ES.PublishPipelineArtifact@1
       inputs:
-        PathtoPublish: '$(Build.BinariesDirectory)/artifacts'
-        artifactName: 'onnxruntime-ios-full-xcframework'
+        path: '$(Build.BinariesDirectory)/artifacts'
+        artifact: 'onnxruntime-ios-full-xcframework'
 
     - template: component-governance-component-detection-steps.yml
       parameters:
