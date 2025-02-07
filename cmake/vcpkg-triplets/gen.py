@@ -298,3 +298,74 @@ for os_name in ["linux", "osx", "android"]:
                             crt_linkage,
                             target_abi,
                         )
+
+# Gen WASM triplets
+for enable_asan in [True, False]:
+  for target_abi in ["wasm32", "wasm64"]:
+    folder_name_parts = []
+    if enable_asan:
+        folder_name_parts.append("asan")
+    if len(folder_name_parts) == 0:
+        folder_name = "default"
+    else:
+        folder_name = "_".join(folder_name_parts)
+    os_name = "emscripten"
+    folder_name = "default"
+    file_name_parts = [target_abi, os_name]
+    file_name = "-".join(file_name_parts) + ".cmake"
+    dest_path = os.path.join(folder_name, file_name)
+    print(f"Creating file {dest_path}")
+    os.makedirs(folder_name, exist_ok=True)
+    with open(dest_path, "w", encoding="utf-8") as f:
+        add_copyright_header(f)
+        f.write(r"""set(VCPKG_ENV_PASSTHROUGH_UNTRACKED EMSCRIPTEN_ROOT EMSDK PATH)
+
+if(NOT DEFINED ENV{EMSCRIPTEN_ROOT})
+   find_path(EMSCRIPTEN_ROOT "emcc")
+else()
+   set(EMSCRIPTEN_ROOT "$ENV{EMSCRIPTEN_ROOT}")
+endif()
+
+if(NOT EMSCRIPTEN_ROOT)
+   if(NOT DEFINED ENV{EMSDK})
+      message(FATAL_ERROR "The emcc compiler not found in PATH")
+   endif()
+   set(EMSCRIPTEN_ROOT "$ENV{EMSDK}/upstream/emscripten")
+endif()
+
+if(NOT EXISTS "${EMSCRIPTEN_ROOT}/cmake/Modules/Platform/Emscripten.cmake")
+   message(FATAL_ERROR "Emscripten.cmake toolchain file not found")
+endif()
+
+set(VCPKG_CRT_LINKAGE dynamic)
+set(VCPKG_LIBRARY_LINKAGE static)
+set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
+set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE "${EMSCRIPTEN_ROOT}/cmake/Modules/Platform/Emscripten.cmake")
+""")
+        f.write(f"set(VCPKG_TARGET_ARCHITECTURE {target_abi})\n")
+        cflags_release = ["-DNDEBUG", "-O3"]
+        ldflags = []
+        cflags = ["-ffunction-sections", "-fdata-sections", "-msimd128", "-pthread", "-Wno-pthreads-mem-growth"]
+        if enable_asan:
+            cflags += ["-fsanitize=address"]
+            ldflags += ["-fsanitize=address"]
+        if target_abi == 'wasm64':
+            cflags.append("-sMEMORY64")
+            ldflags.append("-sMEMORY64")
+        if len(cflags) >= 1:
+            f.write('set(VCPKG_C_FLAGS "{}")\n'.format(" ".join(cflags)))
+        if len(cxxflags) >= 1:
+            f.write('set(VCPKG_CXX_FLAGS "{}")\n'.format(" ".join(cxxflags)))
+        if len(cflags_release) >= 1:
+            f.write(
+                'set(VCPKG_C_FLAGS_RELEASE "{}")\n'.format(" ".join(cflags_release))
+            )
+            f.write(
+                'set(VCPKG_CXX_FLAGS_RELEASE "{}")\n'.format(" ".join(cflags_release))
+            )
+            f.write(
+                'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{}")\n'.format(" ".join(cflags_release))
+            )
+            f.write(
+                'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{}")\n'.format(" ".join(cflags_release))
+            )
