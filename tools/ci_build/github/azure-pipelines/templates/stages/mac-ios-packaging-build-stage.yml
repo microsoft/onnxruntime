@@ -41,11 +41,6 @@ stages:
         targetPath: $(Build.ArtifactStagingDirectory)
         artifactName: ios_packaging_artifacts_${{ lower(parameters.packageVariant) }}
 
-      # Publish the BrowserStack artifacts first so that if the next step fails, the artifacts will still be published
-      # so that users can attempt to locally debug
-      - output: pipelineArtifact
-        targetPath: $(Build.ArtifactStagingDirectory)
-        artifactName: browserstack_test_artifacts_${{ lower(parameters.packageVariant) }}
     steps:
     - bash: |
         set -e
@@ -196,6 +191,14 @@ stages:
           -exportPath $(Build.ArtifactStagingDirectory)/test_ipa
       workingDirectory: '$(Build.BinariesDirectory)/app_center_test/apple_package_test/'
       displayName: "Create .ipa file"
+
+    # Publish the BrowserStack artifacts first so that if the next step fails, the artifacts will still be published
+    # so that users can attempt to locally debug
+    - task: 1ES.PublishPipelineArtifact@1
+      inputs:
+        path: $(Build.ArtifactStagingDirectory)
+        artifact: ios_packaging_artifacts_${{ lower(parameters.packageVariant) }}
+      displayName: "Publish BrowserStack artifacts"
 
     - script: |
         set -e -x
