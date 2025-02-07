@@ -129,7 +129,7 @@ stages:
             rm -rf $(Agent.TempDirectory)/macpackage
           displayName: 'Verify code signing'
 
-      - task: PublishPipelineArtifact@1
+      - task: 1ES.PublishPipelineArtifact@1
         inputs:
           targetPath: '$(Build.ArtifactStagingDirectory)'
           artifact: 'onnxruntime-osx'
