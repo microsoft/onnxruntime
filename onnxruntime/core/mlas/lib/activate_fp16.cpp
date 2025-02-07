@@ -51,12 +51,12 @@ struct MLAS_HALF_ACTIVATION_FUNCTION<MlasReluActivation>
 
     MLAS_FLOAT16X8 Activate(MLAS_FLOAT16X8 Value)
     {
-        return MlasMaximum(ZeroVec, Value);
+        return MlasMaximumFloat16(ZeroVec, Value);
     }
 
     MLAS_FLOAT16X4 Activate(MLAS_FLOAT16X4 Value)
     {
-        return MlasMaximum(MlasToLowHalfFloat16x4(ZeroVec), Value);
+        return MlasMaximumFloat16(MlasToLowHalfFloat16x4(ZeroVec), Value);
     }
 };
 
@@ -75,7 +75,7 @@ struct MLAS_HALF_ACTIVATION_FUNCTION<MlasLeakyReluActivation>
 
     MLAS_FLOAT16X8 Activate(MLAS_FLOAT16X8 Value)
     {
-        MLAS_FLOAT16X8 ValueTimesAlpha = MlasMultiply(Value, AlphaBroadcast);
+        MLAS_FLOAT16X8 ValueTimesAlpha = MlasMultiplyFloat16(Value, AlphaBroadcast);
         return MlasBitwiseSelectFloat16x8(MlasCmpLessEqualFloat16x8(Value, ZeroVec),
                                           ValueTimesAlpha, Value);
     }
@@ -83,7 +83,7 @@ struct MLAS_HALF_ACTIVATION_FUNCTION<MlasLeakyReluActivation>
     MLAS_FLOAT16X4 Activate(MLAS_FLOAT16X4 Value)
     {
         MLAS_FLOAT16X4 ValueTimesAlpha =
-            MlasMultiply(Value, MlasToLowHalfFloat16x4(AlphaBroadcast));
+            MlasMultiplyFloat16(Value, MlasToLowHalfFloat16x4(AlphaBroadcast));
         return MlasBitwiseSelectFloat16x4(
             MlasCmpLessEqualFloat16x4(Value, MlasToLowHalfFloat16x4(ZeroVec)), ValueTimesAlpha,
             Value);
@@ -539,16 +539,16 @@ struct MLAS_HALF_ACTIVATION_FUNCTION<MlasClipActivation> {
 
     MLAS_FLOAT16X8 Activate(MLAS_FLOAT16X8 Value)
     {
-        Value = MlasMaximum(MinimumBroadcast, Value);
-        Value = MlasMinimum(MaximumBroadcast, Value);
+        Value = MlasMaximumFloat16(MinimumBroadcast, Value);
+        Value = MlasMinimumFloat16(MaximumBroadcast, Value);
 
         return Value;
     }
 
     MLAS_FLOAT16X4 Activate(MLAS_FLOAT16X4 Value)
     {
-        Value = MlasMaximum(MlasToLowHalfFloat16x4(MinimumBroadcast), Value);
-        Value = MlasMinimum(MlasToLowHalfFloat16x4(MaximumBroadcast), Value);
+        Value = MlasMaximumFloat16(MlasToLowHalfFloat16x4(MinimumBroadcast), Value);
+        Value = MlasMinimumFloat16(MlasToLowHalfFloat16x4(MaximumBroadcast), Value);
         return Value;
     }
 };
@@ -573,19 +573,19 @@ struct MLAS_HALF_ACTIVATION_FUNCTION<MlasHardSigmoidActivation>
 
     MLAS_FLOAT16X8 Activate(MLAS_FLOAT16X8 Value)
     {
-        Value = MlasMultiplyAdd(Value, AlphaBroadcast, BetaBroadcast);
-        Value = MlasMinimum(MaximumBroadcast, Value);
-        Value = MlasMaximum(MinimumBroadcast, Value);
+        Value = MlasMultiplyAddFloat16(Value, AlphaBroadcast, BetaBroadcast);
+        Value = MlasMinimumFloat16(MaximumBroadcast, Value);
+        Value = MlasMaximumFloat16(MinimumBroadcast, Value);
 
         return Value;
     }
 
     MLAS_FLOAT16X4 Activate(MLAS_FLOAT16X4 Value)
     {
-        Value = MlasMultiplyAdd(Value, MlasToLowHalfFloat16x4(AlphaBroadcast),
+        Value = MlasMultiplyAddFloat16(Value, MlasToLowHalfFloat16x4(AlphaBroadcast),
                                          MlasToLowHalfFloat16x4(BetaBroadcast));
-        Value = MlasMinimum(MlasToLowHalfFloat16x4(MaximumBroadcast), Value);
-        Value = MlasMaximum(MlasToLowHalfFloat16x4(MinimumBroadcast), Value);
+        Value = MlasMinimumFloat16(MlasToLowHalfFloat16x4(MaximumBroadcast), Value);
+        Value = MlasMaximumFloat16(MlasToLowHalfFloat16x4(MinimumBroadcast), Value);
 
         return Value;
     }
@@ -692,7 +692,7 @@ MlasActivationKernel(
             MLAS_FLOAT16X8 AVec = MlasLoadFloat16x8(addsrc);
             MLAS_FLOAT16X8 Vector = MlasLoadFloat16x8(buffer);
             addsrc += 8;
-            Vector = MlasAdd(Vector, AVec);
+            Vector = MlasAddFloat16(Vector, AVec);
             Vector = ActivationFunction.Activate(Vector);
             MlasStoreFloat16x8(buffer, Vector);
             buffer += 8;
@@ -703,7 +703,7 @@ MlasActivationKernel(
             MLAS_FLOAT16X4 AVec = MlasLoadFloat16x4(addsrc);
             MLAS_FLOAT16X4 Vector = MlasLoadFloat16x4(buffer);
             addsrc += 4;
-            Vector = MlasAdd(Vector, AVec);
+            Vector = MlasAddFloat16(Vector, AVec);
             Vector = ActivationFunction.Activate(Vector);
             MlasStoreFloat16x4(buffer, Vector);
             buffer += 4;
@@ -715,7 +715,7 @@ MlasActivationKernel(
             MLAS_FLOAT16X4 buf;
             std::memcpy(&addbuf, addsrc, n * sizeof(_mlas_fp16_));
             std::memcpy(&buf, buffer, n * sizeof(_mlas_fp16_));
-            buf = MlasAdd(buf, addbuf);
+            buf = MlasAddFloat16(buf, addbuf);
             buf = ActivationFunction.Activate(buf);
             MlasStorePartialFloat16x4(buffer, buf, n);
         }

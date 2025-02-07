@@ -47,7 +47,7 @@ class MlasComputeExpTest : public MlasTestBase {
     MLAS_FP16* Input = BufferInputFp16.GetBuffer(N);
     MLAS_FP16* Output = BufferOutputFp16.GetBuffer(N);
 
-    std::default_random_engine generator(N);
+    std::default_random_engine generator(static_cast<unsigned>(N));
     std::uniform_real_distribution<float> distribution(MinimumValue, MaximumValue);
 
     for (size_t n = 0; n < N; n++) {
@@ -73,13 +73,13 @@ class MlasComputeExpTest : public MlasTestBase {
     MLAS_FP16* Input = BufferInputFp16.GetBuffer(N);
     MLAS_FP16* Output = BufferOutputFp16.GetBuffer(N);
 
-    std::default_random_engine generator(N);
+    std::default_random_engine generator(static_cast<unsigned>(N));
     std::uniform_real_distribution<float> distribution(MinimumValue, MaximumValue);
 
-    float max_val = std::numeric_limits<float>::min();
+    float max_val = std::numeric_limits<float>::lowest();
     for (size_t n = 0; n < N; n++) {
       Input[n] = MLAS_FP16(distribution(generator));
-      max_val = std::max(max_val, Input[n].ToFloat());
+      max_val = std::fmax(max_val, Input[n].ToFloat());
     }
 
     const auto* dispatch = GetMlasPlatform().SoftmaxDispatch;
@@ -177,7 +177,7 @@ class MlasSoftmaxTest : public MlasTestBase {
 
     for (size_t nd = 0; nd < N; nd++) {
       Input[nd] = MLAS_FP16(distribution(generator));
-      ref = std::max(ref, Input[nd].ToFloat());
+      ref = std::fmax(ref, Input[nd].ToFloat());
     }
 
     const auto* dispatch = GetMlasPlatform().SoftmaxDispatch;

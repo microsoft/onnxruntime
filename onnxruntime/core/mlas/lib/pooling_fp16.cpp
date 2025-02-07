@@ -84,7 +84,7 @@ MLAS_FORCEINLINE
 MLAS_FLOAT16X8
 PoolAggregate16x8<MaxPoolAggregation>(MLAS_FLOAT16X8 agg, MLAS_FLOAT16X8 element)
 {
-    return MlasMaximum(agg, element);
+    return MlasMaximumFloat16(agg, element);
 }
 
 template<>
@@ -92,7 +92,7 @@ MLAS_FORCEINLINE
 MLAS_FLOAT16X4
 PoolAggregate16x4<MaxPoolAggregation>(MLAS_FLOAT16X4 agg, MLAS_FLOAT16X4 element)
 {
-    return MlasMaximum(agg, element);
+    return MlasMaximumFloat16(agg, element);
 }
 
 template<>
@@ -144,28 +144,28 @@ template <>
 MLAS_FORCEINLINE MLAS_FLOAT16X8
 PoolAggregate16x8<AveragePoolAggregation>(MLAS_FLOAT16X8 agg, MLAS_FLOAT16X8 element)
 {
-    return MlasAdd(agg, element);
+    return MlasAddFloat16(agg, element);
 }
 
 template <>
 MLAS_FORCEINLINE MLAS_FLOAT16X4
 PoolAggregate16x4<AveragePoolAggregation>(MLAS_FLOAT16X4 agg, MLAS_FLOAT16X4 element)
 {
-    return MlasAdd(agg, element);
+    return MlasAddFloat16(agg, element);
 }
 
 template <>
 MLAS_FORCEINLINE MLAS_FLOAT16X8
 PoolSummary16x8<AveragePoolAggregation>(MLAS_FLOAT16X8 agg, MLAS_FLOAT16X8 context)
 {
-    return MlasDivide(agg, context);
+    return MlasDivideFloat16(agg, context);
 }
 
 template <>
 MLAS_FORCEINLINE MLAS_FLOAT16X4
 PoolSummary16x4<AveragePoolAggregation>(MLAS_FLOAT16X4 agg, MLAS_FLOAT16X8 context)
 {
-    return MlasDivide(agg, MlasToLowHalfFloat16x4(context));
+    return MlasDivideFloat16(agg, MlasToLowHalfFloat16x4(context));
 }
 
 
