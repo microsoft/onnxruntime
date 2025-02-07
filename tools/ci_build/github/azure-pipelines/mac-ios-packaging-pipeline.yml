@@ -63,47 +63,6 @@ extends:
         name: onnxruntime-Win-CPU-2022
         os: windows
     stages:
-    - stage: IosPackaging_SetCommonVariables
-      dependsOn: []
-
-      variables:
-        skipComponentGovernanceDetection: true
-
-      jobs:
-      - job: SetCommonVariables
-        displayName: "Set common variables"
-        timeoutInMinutes: 5
-        steps:
-        - bash: |
-            set -e
-    
-            BUILD_TYPE="${{ parameters.buildType }}"
-            BASE_VERSION="$(cat ./VERSION_NUMBER)"
-            SHORT_COMMIT_HASH="$(git rev-parse --short HEAD)"
-            DEV_VERSION="${BASE_VERSION}-dev+$(Build.BuildNumber).${SHORT_COMMIT_HASH}"
-    
-            case "${BUILD_TYPE}" in
-              ("release")
-                VERSION="${BASE_VERSION}" ;;
-              ("normal")
-                VERSION="${DEV_VERSION}" ;;
-              (*)
-                echo "Invalid build type: ${BUILD_TYPE}"; exit 1 ;;
-            esac
-    
-            # Do not output ##vso[] commands with `set -x` or they may be parsed again and include a trailing quote.
-            set +x
-    
-            set_var() {
-              local VAR_NAME=${1:?}
-              local VAR_VALUE=${2:?}
-              echo "##vso[task.setvariable variable=${VAR_NAME};isoutput=true;isreadonly=true]${VAR_VALUE}"
-              echo "${VAR_NAME}: ${VAR_VALUE}"
-            }
-    
-            set_var "ORT_POD_VERSION" "${VERSION}"
-          displayName: "Set common variables"
-          name: SetCommonVariables
 
     - template: templates/stages/mac-ios-packaging-build-stage.yml
       parameters:
