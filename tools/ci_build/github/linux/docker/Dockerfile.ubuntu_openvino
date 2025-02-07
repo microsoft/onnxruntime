@@ -41,6 +41,6 @@ RUN mkdir -p /opt/cmake/bin && \
 ARG BUILD_UID=1000
 ARG BUILD_USER=onnxruntimedev
 WORKDIR /home/$BUILD_USER
-RUN adduser --gecos 'onnxruntime Build User' --disabled-password $BUILD_USER --uid $BUILD_UID
+RUN adduser --uid $BUILD_UID $BUILD_USER
 RUN adduser $BUILD_USER video
 USER $BUILD_USER
