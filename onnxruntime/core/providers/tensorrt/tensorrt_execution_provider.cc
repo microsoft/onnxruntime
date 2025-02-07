@@ -2670,10 +2670,15 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
    */
 
   std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)> selection_func;
-  auto status = g_host->GetOptimizerByName("ConstantFoldingDQ", selection_func);
   std::vector<std::unique_ptr<ComputeCapability>> selection_cc;
-  if (selection_func) {
-    selection_cc = selection_func(graph);
+  std::string optimizer_name = "ConstantFoldingDQ";
+  auto status = g_host->GetOptimizerByName(optimizer_name, selection_func);
+  if (status == Status::OK()) {
+    if (selection_func) {
+      selection_cc = selection_func(graph);
+    }
+  } else {
+    LOGS_DEFAULT(WARNING) << "[TensorRT EP] Can't get optimizer " << optimizer_name;
   }
 
   std::unordered_set<NodeIndex> trt_selection_node_set;     // The qualified dq nodes selected by TRT EP

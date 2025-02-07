@@ -222,8 +222,9 @@ struct ProviderHostImpl : ProviderHost {
 
     if (func.has_value()) {
       selection_func = func.value();
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to get optimizer " + optimizer_name);
     }
-
     return Status::OK();
   };
 
