@@ -8,6 +8,7 @@ stages:
   - job: Set_Variables
     pool:
       name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      os: 'linux'
     steps:
     - checkout: none
     - bash: |
