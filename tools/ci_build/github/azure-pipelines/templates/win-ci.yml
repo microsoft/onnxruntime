@@ -177,7 +177,7 @@ stages:
             ${{ else }}:
               buildOnly: false
 
-        - task: PublishBuildArtifacts@1
+        - task: 1ES.PublishBuildArtifacts@1
           displayName: 'Publish Java temp binaries'
           inputs:
             pathtoPublish: '$(Build.BinariesDirectory)\onnxruntime-java-win-${{ parameters.msbuildPlatform }}'
