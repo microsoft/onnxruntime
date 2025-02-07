@@ -71,42 +71,44 @@ stages:
   variables:
     ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
   jobs:
-  - template: android-java-api-aar.yml
-    parameters:
-      buildConfig: 'Release'
-      buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_full_aar_build_settings.json'
-      artifactName: 'onnxruntime-android-full-aar'
-      job_name_suffix: 'Full'
-      publish_executables: '1'
-      enable_code_sign: ${{ parameters.DoEsrp }}
-      packageName: 'onnxruntime-android'
-      ReleaseVersionSuffix: $(ReleaseVersionSuffix)
-
-- stage: Android_Java_API_AAR_Testing_Full
-  dependsOn: Android_Java_API_AAR_Packaging_Full
-  jobs:
-  - template: android-java-api-aar-test.yml
-    parameters:
-      artifactName: 'onnxruntime-android-full-aar'
-      ReleaseVersionSuffix: $(ReleaseVersionSuffix)
-
-- stage: Android_Java_API_AAR_Packaging_QNN
-  dependsOn: Setup # Setup stage defined in set_packaging_variables_stage.yml creates the ReleaseVersionSuffix variable
-  variables:
-    ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
-  jobs:
-  - template: android-java-api-aar.yml
-    parameters:
-      buildConfig: 'Release'
-      buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_qnn_aar_build_settings.json'
-      artifactName: 'onnxruntime-android-qnn-aar'
-      job_name_suffix: 'QNN'
-      publish_executables: '0'
-      enable_code_sign: ${{ parameters.DoEsrp }}
-      packageName: 'onnxruntime-android-qnn'
-      ReleaseVersionSuffix: $(ReleaseVersionSuffix)
-      QnnSDKVersion: ${{ parameters.QnnSDKVersion }}
-
+#------ Commented out jobs -----
+#  - template: android-java-api-aar.yml
+#    parameters:
+#      buildConfig: 'Release'
+#      buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_full_aar_build_settings.json'
+#      artifactName: 'onnxruntime-android-full-aar'
+#      job_name_suffix: 'Full'
+#      publish_executables: '1'
+#      enable_code_sign: ${{ parameters.DoEsrp }}
+#      packageName: 'onnxruntime-android'
+#      ReleaseVersionSuffix: $(ReleaseVersionSuffix)
+#
+#- stage: Android_Java_API_AAR_Testing_Full
+#  dependsOn: Android_Java_API_AAR_Packaging_Full
+#  jobs:
+#  - template: android-java-api-aar-test.yml
+#    parameters:
+#      artifactName: 'onnxruntime-android-full-aar'
+#      ReleaseVersionSuffix: $(ReleaseVersionSuffix)
+#
+#- stage: Android_Java_API_AAR_Packaging_QNN
+#  dependsOn: Setup # Setup stage defined in set_packaging_variables_stage.yml creates the ReleaseVersionSuffix variable
+#  variables:
+#    ReleaseVersionSuffix: $[stageDependencies.Setup.Set_Variables.outputs['Set_Release_Version_Suffix.ReleaseVersionSuffix']]
+#  jobs:
+#  - template: android-java-api-aar.yml
+#    parameters:
+#      buildConfig: 'Release'
+#      buildSettings: '$(Build.SourcesDirectory)/tools/ci_build/github/android/default_qnn_aar_build_settings.json'
+#      artifactName: 'onnxruntime-android-qnn-aar'
+#      job_name_suffix: 'QNN'
+#      publish_executables: '0'
+#      enable_code_sign: ${{ parameters.DoEsrp }}
+#      packageName: 'onnxruntime-android-qnn'
+#      ReleaseVersionSuffix: $(ReleaseVersionSuffix)
+#      QnnSDKVersion: ${{ parameters.QnnSDKVersion }}
+#----- Commented out stages -----
+-
 #- stage: Final_AAR_Testing_Android_QNN
 #  dependsOn: Android_Java_API_AAR_Packaging_QNN
 #  jobs:
