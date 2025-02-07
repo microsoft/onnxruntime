@@ -7,7 +7,7 @@ parameters:
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
-  default: 2.28.2.241116
+  default: 2.31.0.250130
 
 - name: ENV_SETUP_SCRIPT
   type: string
@@ -59,23 +59,10 @@ jobs:
         displayName: 'OneBranch TSAOptions'
         inputs:
           tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
-          appendSourceBranchName: false
+          appendSourceBranchName: fals
 
-      - template: download-deps.yml
+      - script: python -m pip install -r $(Build.SourcesDirectory)\tools\ci_build\github\linux\python\requirements.txt
 
-      - task: PythonScript@0
-        displayName: 'Update deps.txt'
-        inputs:
-          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
-          arguments: --new_dir $(Build.BinariesDirectory)/deps
-          workingDirectory: $(Build.BinariesDirectory)
-
-      - task: PowerShell@2
-        displayName: 'Install ONNX'
-        inputs:
-          filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/windows/install_third_party_deps.ps1'
-          workingDirectory: '$(Build.BinariesDirectory)'
-          arguments: -cpu_arch x64 -install_prefix $(Build.BinariesDirectory)\RelWithDebInfo\installed -build_config RelWithDebInfo
 
       - template: set-nightly-build-option-variable-step.yml
 
@@ -92,10 +79,11 @@ jobs:
             --build_dir $(Build.BinariesDirectory)
             --skip_submodule_sync
             --cmake_generator "$(VSGenerator)"
+            --build_shared_lib
             --use_qnn
             --qnn_home $(QnnSDKRootDir)
             --enable_pybind
-            --parallel --update --arm64ec
+            --parallel --use_vcpkg --update --arm64ec
             $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }}
           workingDirectory: '$(Build.BinariesDirectory)'
 

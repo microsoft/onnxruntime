@@ -6,24 +6,23 @@
 Builds an Ubuntu-based Docker image with TensorRT.
 """
 
+from __future__ import annotations
+
 import argparse
 import os
 import pty
 import shlex
 import subprocess
 import sys
-from typing import List, Optional
 
 TRT_DOCKER_FILES = {
-    "8.6.cuda_11_8_cudnn_8": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_8_tensorrt8_6",
-    "8.6.cuda_12_3_cudnn_9": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda12_3_tensorrt8_6",
-    "10.5.cuda_11_8_cudnn_8": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_tensorrt10",
-    "10.5.cuda_12_5_cudnn_9": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda12_tensorrt10",
+    "10.8_cuda11.8_cudnn8": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda11_tensorrt10",
+    "10.8_cuda12.6_cudnn9": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_cuda12_tensorrt10",
     "BIN": "tools/ci_build/github/linux/docker/Dockerfile.ubuntu_tensorrt_bin",
 }
 
 
-def run_cmd(cmd: List[str]) -> Optional[int]:
+def run_cmd(cmd: list[str]) -> int | None:
     """
     Runs a shell command and returns the process's return code.
 
@@ -38,7 +37,7 @@ def run_cmd(cmd: List[str]) -> Optional[int]:
     return pty.spawn(cmd)
 
 
-def get_common_docker_build_args(args: argparse.Namespace) -> List[str]:
+def get_common_docker_build_args(args: argparse.Namespace) -> list[str]:
     """
     Returns a list of common 'docker build' command-line arguments/options.
 

@@ -6,7 +6,7 @@
 
 import os
 import time
-from typing import Any, Dict, Optional
+from typing import Any
 
 import torch
 from transformers import BartConfig, BartForConditionalGeneration, file_utils
@@ -87,8 +87,8 @@ def _create_encoder_export(args, config: BartConfig):
     """
 
     def _prepare_encoder_decoder_kwargs_for_generation(
-        self, input_ids: torch.Tensor, model_kwargs, model_input_name: Optional[str] = None
-    ) -> Dict[str, Any]:
+        self, input_ids: torch.Tensor, model_kwargs, model_input_name: str | None = None
+    ) -> dict[str, Any]:
         # retrieve encoder hidden states
         # 1. get encoder
         encoder = self.get_encoder()

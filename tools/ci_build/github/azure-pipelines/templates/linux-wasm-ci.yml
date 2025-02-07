@@ -26,6 +26,10 @@ parameters:
   type: boolean
   default: false
 
+- name: BuildWebGPU
+  type: boolean
+  default: false
+
 # In fact, it's only used on Linux for compiler cache.
 - name: BuildStaticLib
   type: boolean
@@ -49,9 +53,6 @@ jobs:
   workspace:
     clean: all
   steps:
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()
   - checkout: self
   - task: DownloadPipelineArtifact@2
     inputs:
@@ -76,14 +77,6 @@ jobs:
       versionSpec: '3.12'
       addToPath: true
       architecture: $(buildArch)
-  - template: download-deps.yml
-
-  - task: PythonScript@0
-    displayName: 'Update deps.txt'
-    inputs:
-      scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
-      arguments: --new_dir $(Build.BinariesDirectory)/deps
-      workingDirectory: $(Build.BinariesDirectory)
 
   - ${{if eq(parameters.WithCache, true)}}:
       - script: |
@@ -123,6 +116,24 @@ jobs:
         CacheDir: $(ORT_CACHE_DIR)/wasm_inferencing_jsep
         Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_jsep --use_jsep --use_webnn --target onnxruntime_webassembly --skip_tests'
         DisplayName: 'Build (simd + threads + JSEP)'
+        WithCache: ${{ parameters.WithCache }}
+
+  - ${{ if eq(parameters.BuildWebGPU, true) }}:
+    # This step only verifies whether the build is successful.
+    # currently, we uses EMSDK 3.1.59, which is not compatible with Dawn's changes in its Emscripten fork. Closure compiler will not work for WebGPU build.
+    # Only enables in DEBUG build.
+    #
+    # TODO: when upgrading to a newer Emscripten version, we should fix this step.
+    - template: build-linux-wasm-step.yml
+      parameters:
+        Today: $(Today)
+        ${{ if eq(parameters.BuildStaticLib, true)}}:
+          AdditionalKey: wasm_inferencing_webgpu_exp | ${{ parameters.BuildConfig }} | static
+        ${{ else }}:
+          AdditionalKey: wasm_inferencing_webgpu_exp | ${{ parameters.BuildConfig }}
+        CacheDir: $(ORT_CACHE_DIR)/wasm_inferencing_webgpu
+        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_webgpu --use_webgpu --target onnxruntime_webassembly --skip_tests'
+        DisplayName: 'Build (simd + threads + WebGPU experimental)'
         WithCache: ${{ parameters.WithCache }}
 
   - ${{ if eq(parameters.SkipPublish, false) }}:

@@ -62,16 +62,16 @@ jobs:
           -e NIGHTLY_BUILD \
           -e BUILD_BUILDNUMBER \
           onnxruntimecpubuild \
-            /opt/python/cp310-cp310/bin/python3.10 /onnxruntime_src/tools/ci_build/build.py \
+            bash -c 'PATH=/opt/python/cp310-cp310/bin:$PATH python /onnxruntime_src/tools/ci_build/build.py \
               --build_dir /build \
               --config Debug Release \
               --skip_submodule_sync \
               --build_shared_lib \
-              --parallel \
+              --parallel --use_vcpkg \
               --enable_pybind \
               --enable_onnx_tests \
               --build_java \
-              --use_dnnl
+              --use_dnnl'
       workingDirectory: $(Build.SourcesDirectory)
 
   - task: PublishTestResults@2
@@ -82,6 +82,3 @@ jobs:
       testRunTitle: 'Unit Test Run'
     condition: succeededOrFailed()
 
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()

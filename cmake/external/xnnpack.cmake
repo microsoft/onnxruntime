@@ -1,8 +1,7 @@
 set(XNNPACK_USE_SYSTEM_LIBS ON CACHE INTERNAL "")
 set(XNNPACK_BUILD_TESTS OFF CACHE INTERNAL "")
 set(XNNPACK_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
-set(FP16_BUILD_TESTS OFF CACHE INTERNAL "")
-set(FP16_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
+
 set(PTHREADPOOL_BUILD_TESTS OFF CACHE INTERNAL "")
 set(PTHREADPOOL_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
 set(KLEIDIAI_BUILD_TESTS OFF CACHE INTERNAL "")
@@ -17,50 +16,12 @@ if(CMAKE_ANDROID_ARCH_ABI STREQUAL armeabi-v7a)
   set(XNNPACK_ENABLE_ARM_BF16 OFF)
 endif()
 
-# fp16 depends on psimd
-FetchContent_Declare(psimd URL ${DEP_URL_psimd} URL_HASH SHA1=${DEP_SHA1_psimd})
-onnxruntime_fetchcontent_makeavailable(psimd)
-set(PSIMD_SOURCE_DIR ${psimd_SOURCE_DIR})
-
-block(PROPAGATE fp16_PATCH_COMMAND)
-  # only apply fp16 patch for Apple x86_64 targets
-
-  if(APPLE)
-    if(NOT "${CMAKE_OSX_ARCHITECTURES}" STREQUAL "")
-      if ("x86_64" IN_LIST CMAKE_OSX_ARCHITECTURES)
-        set(fp16_PATCH_REQUIRED 1)
-      endif()
-    else()
-      # CMAKE_OSX_ARCHITECTURES unspecified, check host
-      if(CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64")
-        set(fp16_PATCH_REQUIRED 1)
-      endif()
-    endif()
-  endif()
-
-  if(fp16_PATCH_REQUIRED)
-    message(STATUS "Applying fp16 patch.")
-    set(fp16_PATCH_FILE ${PROJECT_SOURCE_DIR}/patches/fp16/remove_math_h_dependency_from_fp16_h.patch)
-    set(fp16_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${fp16_PATCH_FILE})
-  else()
-    set(fp16_PATCH_COMMAND "")
-  endif()
-endblock()
-
-FetchContent_Declare(
-    fp16
-    URL ${DEP_URL_fp16}
-    URL_HASH SHA1=${DEP_SHA1_fp16}
-    PATCH_COMMAND ${fp16_PATCH_COMMAND}
-    )
-onnxruntime_fetchcontent_makeavailable(fp16)
-
 # pthreadpool depends on fxdiv
-FetchContent_Declare(fxdiv URL ${DEP_URL_fxdiv} URL_HASH SHA1=${DEP_SHA1_fxdiv})
+onnxruntime_fetchcontent_declare(fxdiv URL ${DEP_URL_fxdiv} URL_HASH SHA1=${DEP_SHA1_fxdiv} EXCLUDE_FROM_ALL FIND_PACKAGE_ARGS NAMES fxdiv)
 onnxruntime_fetchcontent_makeavailable(fxdiv)
 set(FXDIV_SOURCE_DIR ${fxdiv_SOURCE_DIR})
 
-FetchContent_Declare(pthreadpool URL ${DEP_URL_pthreadpool} URL_HASH SHA1=${DEP_SHA1_pthreadpool})
+onnxruntime_fetchcontent_declare(pthreadpool URL ${DEP_URL_pthreadpool} URL_HASH SHA1=${DEP_SHA1_pthreadpool} EXCLUDE_FROM_ALL FIND_PACKAGE_ARGS NAMES unofficial-pthreadpool)
 onnxruntime_fetchcontent_makeavailable(pthreadpool)
 
 # ---  Determine target processor
@@ -114,14 +75,16 @@ if(ORT_TARGET_PROCESSOR MATCHES "^arm64.*" AND NOT CMAKE_C_COMPILER_ID STREQUAL 
   # kleidiAI use CMAKE_SYSTEM_PROCESSOR to determine whether includes aarch64/arm64 ukernels
   # https://gitlab.arm.com/kleidi/kleidiai/-/blob/main/CMakeLists.txt#L134
   set(CMAKE_SYSTEM_PROCESSOR arm64)
-  FetchContent_Declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai})
+  onnxruntime_fetchcontent_declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai} EXCLUDE_FROM_ALL)
   onnxruntime_fetchcontent_makeavailable(kleidiai)
   set(KLEIDIAI_SOURCE_DIR ${kleidiai_SOURCE_DIR})
 endif()
 
 
-FetchContent_Declare(googlexnnpack URL ${DEP_URL_googlexnnpack} URL_HASH SHA1=${DEP_SHA1_googlexnnpack}
+onnxruntime_fetchcontent_declare(googlexnnpack URL ${DEP_URL_googlexnnpack} URL_HASH SHA1=${DEP_SHA1_googlexnnpack}
                      PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/xnnpack/AddEmscriptenAndIosSupport.patch
+		     EXCLUDE_FROM_ALL
+		     FIND_PACKAGE_ARGS NAMES xnnpack
                     )
 onnxruntime_fetchcontent_makeavailable(googlexnnpack)
 set(XNNPACK_DIR ${googlexnnpack_SOURCE_DIR})

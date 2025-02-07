@@ -94,8 +94,8 @@ def main():
         ]
 
         if c.use_mixed_precision:
-            cmds.append("--use_mixed_precision"),
-            cmds.append("--allreduce_in_fp16"),
+            (cmds.append("--use_mixed_precision"),)
+            (cmds.append("--allreduce_in_fp16"),)
 
         subprocess.run(cmds).check_returncode()  # noqa: PLW1510
         if c.expected_perf > 0.0:

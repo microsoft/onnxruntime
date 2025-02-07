@@ -5,7 +5,6 @@
 
 import os
 import unittest
-from typing import List
 
 import numpy as np
 import onnx
@@ -22,7 +21,7 @@ else:
     from onnxruntime.transformers.optimizer import optimize_model
 
 
-def float_tensor(name: str, shape: List[int], random=False):
+def float_tensor(name: str, shape: list[int], random=False):
     low = 0.0
     high = 1.0
     total_elements = 1
@@ -115,7 +114,7 @@ class TestSimplifiedLayerNormFusion(unittest.TestCase):
         ]
         return inputs, outputs, start_node
 
-    def create_fused_model(self, start_node_type: str, initializers: List[TensorProto]):
+    def create_fused_model(self, start_node_type: str, initializers: list[TensorProto]):
         inputs, outputs, start_node = self.create_inputs_and_outputs(start_node_type)
 
         sln_node = helper.make_node(
@@ -139,7 +138,7 @@ class TestSimplifiedLayerNormFusion(unittest.TestCase):
         return model
 
     # Notation follows https://onnx.ai/onnx/operators/onnx__LayerNormalization.html#summary
-    def create_test_model(self, start_node_type: str, first_parent_idx: int, initializers: List[TensorProto]):
+    def create_test_model(self, start_node_type: str, first_parent_idx: int, initializers: list[TensorProto]):
         end_node = helper.make_node(
             "Mul",
             inputs=["scale", "Normalized"] if first_parent_idx == 1 else ["Normalized", "scale"],
@@ -197,7 +196,7 @@ class TestSimplifiedLayerNormFusion(unittest.TestCase):
         model = helper.make_model(graph, opset_imports=[opset_import])
         return model
 
-    def check_models(self, start_node_type: str, first_parent_idx: int, initializers: List[TensorProto]):
+    def check_models(self, start_node_type: str, first_parent_idx: int, initializers: list[TensorProto]):
         expected_model_filename = "expected_model.onnx"
         expected_model = self.create_fused_model(start_node_type, initializers)
         onnx.save(expected_model, expected_model_filename)

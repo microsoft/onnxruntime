@@ -38,6 +38,7 @@
 #include "core/framework/utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
+#include "core/graph/model_saving_options.h"
 #include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/layout_transformation/layout_transformation.h"
@@ -920,7 +921,7 @@ common::Status InferenceSession::SaveToOrtFormat(const std::filesystem::path& fi
   ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterGraphNodeOpSchemas(model_->MainGraph()));
   ORT_RETURN_IF_ERROR(standalone::RegisterCustomOpNodeSchemas(kernel_type_str_resolver, model_->MainGraph()));
 
-  for (const auto op_schema : saved_runtime_optimization_produced_node_op_schemas_) {
+  for (const auto& op_schema : saved_runtime_optimization_produced_node_op_schemas_) {
     ORT_RETURN_IF_ERROR(kernel_type_str_resolver.RegisterOpSchema(*op_schema));
   }
 
@@ -1089,7 +1090,14 @@ common::Status InferenceSession::Load(const void* model_data, int model_data_len
 
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
-    return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
+
+    std::string external_data_folder_path = session_options_.config_options.GetConfigOrDefault(
+        kOrtSessionOptionsModelExternalInitializersFileFolderPath, "");
+    if (!external_data_folder_path.empty() && model_location_.empty()) {
+      model_location_ = ToPathString(external_data_folder_path + "/virtual_model.onnx");
+    }
+
+    return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
                                     ModelOptions(true, strict_shape_type_inference));
   };
@@ -1119,8 +1127,15 @@ common::Status InferenceSession::LoadOnnxModel(ModelProto model_proto) {
 #endif
     const bool strict_shape_type_inference = session_options_.config_options.GetConfigOrDefault(
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
+
+    std::string external_data_folder_path = session_options_.config_options.GetConfigOrDefault(
+        kOrtSessionOptionsModelExternalInitializersFileFolderPath, "");
+    if (!external_data_folder_path.empty() && model_location_.empty()) {
+      model_location_ = ToPathString(external_data_folder_path + "/virtual_model.onnx");
+    }
+
     // This call will move model_proto to the constructed model instance
-    return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
+    return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr, *session_logger_,
                                     ModelOptions(true, strict_shape_type_inference));
   };
@@ -1156,7 +1171,14 @@ common::Status InferenceSession::Load(std::istream& model_istream, bool allow_re
                                                  kOrtSessionOptionsConfigStrictShapeTypeInference, "0") == "1";
     ModelOptions model_opts(allow_released_opsets_only,
                             strict_shape_type_inference);
-    return onnxruntime::Model::Load(std::move(model_proto), PathString(), model,
+
+    std::string external_data_folder_path = session_options_.config_options.GetConfigOrDefault(
+        kOrtSessionOptionsModelExternalInitializersFileFolderPath, "");
+    if (!external_data_folder_path.empty() && model_location_.empty()) {
+      model_location_ = ToPathString(external_data_folder_path + "/virtual_model.onnx");
+    }
+
+    return onnxruntime::Model::Load(std::move(model_proto), model_location_, model,
                                     HasLocalSchema() ? &custom_schema_registries_ : nullptr,
                                     *session_logger_, model_opts);
   };
@@ -2099,13 +2121,12 @@ common::Status InferenceSession::Initialize() {
           const size_t optimized_model_external_initializers_min_size_in_bytes =
               ParseStringWithClassicLocale<size_t>(session_options_.config_options.GetConfigOrDefault(
                   kOrtSessionOptionsOptimizedModelExternalInitializersMinSizeInBytes, "1024"));
-          Graph::OffsetAlignmentInfo align_info;
-          align_info.align_offset = true;
+          ModelSavingOptions model_saving_options{optimized_model_external_initializers_min_size_in_bytes};
+          model_saving_options.align_offset = true;
           ORT_RETURN_IF_ERROR_SESSIONID_(Model::SaveWithExternalInitializers(*model_,
                                                                              session_options_.optimized_model_filepath,
                                                                              optimized_model_external_initializers_file_name,
-                                                                             optimized_model_external_initializers_min_size_in_bytes,
-                                                                             align_info));
+                                                                             model_saving_options));
         }
       }
     }

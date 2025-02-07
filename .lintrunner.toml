@@ -2,31 +2,23 @@
 # You can install the dependencies and initialize with
 #
 # ```sh
-# pip install lintrunner lintrunner-adapters
+# pip install -r requirements-lintrunner.txt
 # lintrunner init
 # ```
 #
 # This will install lintrunner on your system and download all the necessary
 # dependencies to run linters locally.
-# If you want to see what lintrunner init will install, run
-# `lintrunner init --dry-run`.
 #
-# To lint local changes:
+# To format local changes:
 #
 # ```bash
-# lintrunner
+# lintrunner -a
 # ```
 #
-# To lint all files:
+# To format all files:
 #
 # ```bash
-# lintrunner --all-files
-# ```
-#
-# To format files:
-#
-# ```bash
-# lintrunner f --all-files
+# lintrunner -a --all-files
 # ```
 #
 # To read more about lintrunner, see [wiki](https://github.com/pytorch/pytorch/wiki/lintrunner).
@@ -69,7 +61,7 @@ is_formatter = true
 
 
 [[linter]]
-code = 'BLACK-ISORT'
+code = 'RUFF-FORMAT'
 include_patterns = [
     '**/*.py',
 ]
@@ -84,7 +76,7 @@ command = [
     '-m',
     'lintrunner_adapters',
     'run',
-    'black_isort_linter',
+    'ruff_format_linter',
     '--',
     '@{{PATHSFILE}}'
 ]

@@ -4,12 +4,24 @@
 #include <memory>
 #include <cmath>
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
+
+#if !defined(__wasm__)
 #include "dawn/dawn_proc.h"
 #if !defined(USE_EXTERNAL_DAWN)
 #include "dawn/native/DawnNative.h"
 #endif
+#endif
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 #include "core/common/common.h"
+#include "core/common/path_string.h"
+#include "core/platform/env.h"
 
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/webgpu_context.h"
@@ -23,40 +35,47 @@
 namespace onnxruntime {
 namespace webgpu {
 
-void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info, const void* dawn_proc_table) {
-  std::call_once(init_flag_, [this, &webgpu_ep_info, dawn_proc_table]() {
-    // Initialization.Step.1 - Create wgpu::Instance
-    if (instance_ == nullptr) {
-      const DawnProcTable* dawn_procs = reinterpret_cast<const DawnProcTable*>(dawn_proc_table);
-#if !defined(USE_EXTERNAL_DAWN)
-      if (dawn_procs == nullptr) {
-        dawn_procs = &dawn::native::GetProcs();
-      }
-#else
-      ORT_ENFORCE(dawn_procs != nullptr, "DawnProcTable must be provided.");
-#endif
-      dawnProcSetProcs(dawn_procs);
-
-      wgpu::InstanceDescriptor instance_desc{};
-      instance_desc.features.timedWaitAnyEnable = true;
-      instance_ = wgpu::CreateInstance(&instance_desc);
-
-      ORT_ENFORCE(instance_ != nullptr, "Failed to create wgpu::Instance.");
-    }
-
-    // Initialization.Step.2 - Create wgpu::Adapter
+void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type) {
+  std::call_once(init_flag_, [this, &buffer_cache_config, backend_type]() {
+    // Create wgpu::Adapter
     if (adapter_ == nullptr) {
-      wgpu::RequestAdapterOptions req_adapter_options = {};
-      wgpu::DawnTogglesDescriptor adapter_toggles_desc = {};
-      req_adapter_options.nextInChain = &adapter_toggles_desc;
-#ifdef _WIN32
-      req_adapter_options.backendType = wgpu::BackendType::D3D12;
+#if !defined(__wasm__) && defined(_MSC_VER) && defined(DAWN_ENABLE_D3D12) && !defined(USE_EXTERNAL_DAWN)
+      // If we are using the D3D12 backend on Windows and the build does not use external Dawn, dxil.dll and dxcompiler.dll are required.
+      //
+      // Dawn will try to load them later, but if they are in the different directory to the executable, it may fail to find them.
+      // To avoid this issue, we try to load them from the same directory as current module (usually onnxruntime.dll).
+      auto runtime_path = Env::Default().GetRuntimePath();
+      if (!runtime_path.empty()) {
+        Status status;
+        void* module_handle = nullptr;
+
+        PathString dxil_path = runtime_path + ToPathString(L"dxil.dll");
+        status = Env::Default().LoadDynamicLibrary(dxil_path, false, &module_handle);
+        if (status.IsOK() && module_handle != nullptr) {
+          modules_.Add(dxil_path, module_handle);
+        }
+
+        PathString dxcompiler_path = runtime_path + ToPathString(L"dxcompiler.dll");
+        status = Env::Default().LoadDynamicLibrary(dxcompiler_path, false, &module_handle);
+        if (status.IsOK() && module_handle != nullptr) {
+          modules_.Add(dxcompiler_path, module_handle);
+        }
+      }
 #endif
+
+      wgpu::RequestAdapterOptions req_adapter_options = {};
+      req_adapter_options.backendType = static_cast<wgpu::BackendType>(backend_type);
       req_adapter_options.powerPreference = wgpu::PowerPreference::HighPerformance;
 
+#if !defined(__wasm__)
       auto enabled_adapter_toggles = GetEnabledAdapterToggles();
+
+      wgpu::DawnTogglesDescriptor adapter_toggles_desc = {};
       adapter_toggles_desc.enabledToggleCount = enabled_adapter_toggles.size();
       adapter_toggles_desc.enabledToggles = enabled_adapter_toggles.data();
+
+      req_adapter_options.nextInChain = &adapter_toggles_desc;
+#endif
 
       ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(instance_.RequestAdapter(
                                                                      &req_adapter_options,
@@ -70,9 +89,11 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
       ORT_ENFORCE(adapter_ != nullptr, "Failed to get a WebGPU adapter.");
     }
 
-    // Initialization.Step.3 - Create wgpu::Device
+    // Create wgpu::Device
     if (device_ == nullptr) {
       wgpu::DeviceDescriptor device_desc = {};
+
+#if !defined(__wasm__)
       wgpu::DawnTogglesDescriptor device_toggles_desc = {};
       device_desc.nextInChain = &device_toggles_desc;
 
@@ -83,6 +104,7 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
       auto disabled_device_toggles = GetDisabledDeviceToggles();
       device_toggles_desc.disabledToggleCount = disabled_device_toggles.size();
       device_toggles_desc.disabledToggles = disabled_device_toggles.data();
+#endif
 
       std::vector<wgpu::FeatureName> required_features = GetAvailableRequiredFeatures(adapter_);
       if (required_features.size() > 0) {
@@ -93,13 +115,12 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
       device_desc.requiredLimits = &required_limits;
 
       // TODO: revise temporary error handling
-      device_desc.SetUncapturedErrorCallback([](const wgpu::Device& /*device*/, wgpu::ErrorType type, const char* message) {
-        LOGS_DEFAULT(ERROR) << "WebGPU device error(" << int(type) << "): " << message;
+      device_desc.SetUncapturedErrorCallback([](const wgpu::Device& /*device*/, wgpu::ErrorType type, wgpu::StringView message) {
+        LOGS_DEFAULT(ERROR) << "WebGPU device error(" << int(type) << "): " << std::string_view{message};
       });
       // TODO: revise temporary device lost handling
-      device_desc.SetDeviceLostCallback(wgpu::CallbackMode::AllowSpontaneous, [](const wgpu::Device& /*device*/, wgpu::DeviceLostReason reason, const char* message) {
-        // cannot use ORT logger because it may be already destroyed
-        std::cerr << "WebGPU device lost (" << int(reason) << "): " << message;
+      device_desc.SetDeviceLostCallback(wgpu::CallbackMode::AllowSpontaneous, [](const wgpu::Device& /*device*/, wgpu::DeviceLostReason reason, wgpu::StringView message) {
+        LOGS_DEFAULT(INFO) << "WebGPU device lost (" << int(reason) << "): " << std::string_view{message};
       });
 
       ORT_ENFORCE(wgpu::WaitStatus::Success == instance_.WaitAny(adapter_.RequestDevice(
@@ -122,15 +143,21 @@ void WebGpuContext::Initialize(const WebGpuExecutionProviderInfo& webgpu_ep_info
     device_limits_ = device_supported_limits.limits;
 
     // create buffer manager
-    buffer_mgr_ = BufferManagerFactory::Create(*this, webgpu_ep_info.storage_buffer_cache_mode, webgpu_ep_info.uniform_buffer_cache_mode, webgpu_ep_info.query_resolve_buffer_cache_mode);
+    buffer_mgr_ = BufferManagerFactory::Create(*this,
+                                               buffer_cache_config.storage.mode,
+                                               buffer_cache_config.uniform.mode,
+                                               buffer_cache_config.query_resolve.mode);
 
     // create program manager
     program_mgr_ = std::make_unique<ProgramManager>(Device(), DeviceLimits());
 
     // set query type
+#if !defined(__wasm__)
     if (device_.HasFeature(wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses)) {
       query_type_ = TimestampQueryType::InsidePasses;
-    } else if (device_.HasFeature(wgpu::FeatureName::TimestampQuery)) {
+    } else
+#endif
+        if (device_.HasFeature(wgpu::FeatureName::TimestampQuery)) {
       query_type_ = TimestampQueryType::AtPasses;
     } else {
       query_type_ = TimestampQueryType::None;
@@ -231,6 +258,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
 
   if (is_profiling_) {
     PendingKernelInfo pending_kernel_info(context.KernelContext().GetNodeName(),
+                                          context.KernelContext().GetOpType(),
                                           program.Name(),
                                           key,
                                           inputs,
@@ -447,7 +475,9 @@ std::vector<const char*> WebGpuContext::GetDisabledDeviceToggles() const {
 std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const wgpu::Adapter& adapter) const {
   std::vector<wgpu::FeatureName> required_features;
   constexpr wgpu::FeatureName features[]{
+#if !defined(__wasm__)
       wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses,
+#endif
       wgpu::FeatureName::TimestampQuery,
       wgpu::FeatureName::ShaderF16,
       wgpu::FeatureName::Subgroups,
@@ -522,10 +552,10 @@ void WebGpuContext::CollectProfilingData(profiling::Events& events) {
 
       ORT_ENFORCE(Wait(query_read_buffer.MapAsync(wgpu::MapMode::Read,
                                                   0,
-                                                  query_read_buffer.GetSize(),
+                                                  static_cast<size_t>(query_read_buffer.GetSize()),
                                                   wgpu::CallbackMode::WaitAnyOnly,
-                                                  [](wgpu::MapAsyncStatus status, const char* message) {
-                                                    ORT_ENFORCE(status == wgpu::MapAsyncStatus::Success, "Failed to download data from buffer: ", message);
+                                                  [](wgpu::MapAsyncStatus status, wgpu::StringView message) {
+                                                    ORT_ENFORCE(status == wgpu::MapAsyncStatus::Success, "Failed to download data from buffer: ", std::string_view{message});
                                                   })) == Status::OK());
       auto mapped_data = static_cast<const uint64_t*>(query_read_buffer.GetConstMappedRange());
 
@@ -633,18 +663,57 @@ void WebGpuContext::Flush() {
   num_pending_dispatches_ = 0;
 }
 
-std::unordered_map<int32_t, std::unique_ptr<WebGpuContext>> WebGpuContextFactory::contexts_;
+std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo> WebGpuContextFactory::contexts_;
 std::mutex WebGpuContextFactory::mutex_;
+std::once_flag WebGpuContextFactory::init_default_flag_;
+wgpu::Instance WebGpuContextFactory::default_instance_;
 
-WebGpuContext& WebGpuContextFactory::CreateContext(int context_id,
-                                                   WGPUInstance instance,
-                                                   WGPUAdapter adapter,
-                                                   WGPUDevice device,
-                                                   ValidationMode validation_mode) {
+WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& config) {
+  const int context_id = config.context_id;
+  WGPUInstance instance = config.instance;
+  WGPUAdapter adapter = config.adapter;
+  WGPUDevice device = config.device;
+
   if (context_id == 0) {
     // context ID is preserved for the default context. User cannot use context ID 0 as a custom context.
     ORT_ENFORCE(instance == nullptr && adapter == nullptr && device == nullptr,
                 "WebGPU EP default context (contextId=0) must not have custom WebGPU instance, adapter or device.");
+
+    std::call_once(init_default_flag_, [
+#if !defined(__wasm__)
+                                           dawn_proc_table = config.dawn_proc_table
+#endif
+    ]() {
+    // Step.1 - setup dawn proc table (only for non-WASM build)
+
+#if !defined(__wasm__)
+      const DawnProcTable* dawn_procs = reinterpret_cast<const DawnProcTable*>(dawn_proc_table);
+#if defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
+      ORT_ENFORCE(dawn_procs == nullptr, "setting DawnProcTable is not allowed when dynamically linked to webgpu_dawn.");
+#else
+#if !defined(USE_EXTERNAL_DAWN)
+      if (dawn_procs == nullptr) {
+        dawn_procs = &dawn::native::GetProcs();
+      }
+#else
+      ORT_ENFORCE(dawn_procs != nullptr, "DawnProcTable must be provided.");
+#endif
+      dawnProcSetProcs(dawn_procs);
+#endif
+#endif
+
+      // Step.2 - Create wgpu::Instance
+#if !defined(__wasm__)
+      wgpu::InstanceDescriptor instance_desc{};
+      instance_desc.features.timedWaitAnyEnable = true;
+      default_instance_ = wgpu::CreateInstance(&instance_desc);
+#else
+      default_instance_ = wgpu::CreateInstance(nullptr);
+#endif
+
+      ORT_ENFORCE(default_instance_ != nullptr, "Failed to create wgpu::Instance.");
+    });
+    instance = default_instance_.Get();
   } else {
     // for context ID > 0, user must provide custom WebGPU instance, adapter and device.
     ORT_ENFORCE(instance != nullptr && adapter != nullptr && device != nullptr,
@@ -656,13 +725,16 @@ WebGpuContext& WebGpuContextFactory::CreateContext(int context_id,
   auto it = contexts_.find(context_id);
   if (it == contexts_.end()) {
     GSL_SUPPRESS(r.11)
-    auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance, adapter, device, validation_mode));
-    it = contexts_.emplace(context_id, std::move(context)).first;
+    auto context = std::unique_ptr<WebGpuContext>(new WebGpuContext(instance, adapter, device, config.validation_mode));
+    it = contexts_.emplace(context_id, WebGpuContextFactory::WebGpuContextInfo{std::move(context), 0}).first;
   } else if (context_id != 0) {
-    ORT_ENFORCE(it->second->instance_.Get() == instance && it->second->adapter_.Get() == adapter && it->second->device_.Get() == device,
+    ORT_ENFORCE(it->second.context->instance_.Get() == instance &&
+                    it->second.context->adapter_.Get() == adapter &&
+                    it->second.context->device_.Get() == device,
                 "WebGPU EP context ID ", context_id, " is already created with different WebGPU instance, adapter or device.");
   }
-  return *it->second;
+  it->second.ref_count++;
+  return *it->second.context;
 }
 
 WebGpuContext& WebGpuContextFactory::GetContext(int context_id) {
@@ -671,12 +743,24 @@ WebGpuContext& WebGpuContextFactory::GetContext(int context_id) {
   auto it = contexts_.find(context_id);
   ORT_ENFORCE(it != contexts_.end(), "WebGPU EP context ID ", context_id, " is not found.");
 
-  return *it->second;
+  return *it->second.context;
+}
+
+void WebGpuContextFactory::ReleaseContext(int context_id) {
+  std::lock_guard<std::mutex> lock(mutex_);
+
+  auto it = contexts_.find(context_id);
+  ORT_ENFORCE(it != contexts_.end(), "WebGPU EP context ID ", context_id, " is not found.");
+
+  if (--it->second.ref_count == 0) {
+    contexts_.erase(it);
+  }
 }
 
 void WebGpuContextFactory::Cleanup() {
   std::lock_guard<std::mutex> lock(mutex_);
   contexts_.clear();
+  default_instance_ = nullptr;
 }
 
 void CleanupWebGpuContexts() {

@@ -471,6 +471,14 @@ class PosixEnv : public Env {
     return S_ISDIR(sb.st_mode);
   }
 
+  bool FileExists(const std::string& path) const override {
+    struct stat sb;
+    if (stat(path.c_str(), &sb)) {
+      return false;
+    }
+    return S_ISREG(sb.st_mode);
+  }
+
   common::Status CreateFolder(const std::string& path) const override {
     size_t pos = 0;
     do {

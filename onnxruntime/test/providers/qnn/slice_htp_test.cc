@@ -84,6 +84,7 @@ static void RunSliceQDQTest(const TestInputDef<float>& data_def,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   const std::vector<TestInputDef<float>> f32_inputs = {data_def};
   const std::vector<TestInputDef<int64_t>> int64_inputs = {starts_def, ends_def, axes_def, steps_def};

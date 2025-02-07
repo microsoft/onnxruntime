@@ -15,6 +15,7 @@ namespace onnxruntime {
 
 class Node;
 class Path;
+class Graph;
 
 namespace QDQ {
 
@@ -76,5 +77,9 @@ bool MatchQNode(const Node& node);
 // Check DQ node op type, version, and domain.
 bool MatchDQNode(const Node& node);
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+
+// Check if an clip node is made redundant by Q node.
+bool IsClipMadeRedundantByQ(const Graph& graph, const Node& clip_node, const Node& q_node);
+
 }  // namespace QDQ
 }  // namespace onnxruntime

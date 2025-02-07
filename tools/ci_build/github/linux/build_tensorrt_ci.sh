@@ -21,6 +21,19 @@ BUILD_ARGS=('--config' 'Release'
 	      "CMAKE_CUDA_ARCHITECTURES=75"
 	      "onnxruntime_BUILD_UNIT_TESTS=ON"
 	      "onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON")
+
+# Parse external args
+for arg in "$@"; do
+  case $arg in
+    --cuda_minimal=ON)
+      # Replace onnxruntime_BUILD_UNIT_TESTS=ON with OFF
+      BUILD_ARGS=("${BUILD_ARGS[@]/onnxruntime_BUILD_UNIT_TESTS=ON/onnxruntime_BUILD_UNIT_TESTS=OFF}")
+      BUILD_ARGS+=("--enable_cuda_minimal_build")
+      BUILD_ARGS+=("--skip_tests")
+      ;;
+  esac
+done
+
 if [ -x "$(command -v ninja)" ]; then
     BUILD_ARGS+=('--cmake_generator' 'Ninja')
 fi
@@ -36,7 +49,7 @@ if [ -x "$(command -v ccache)" ]; then
     BUILD_ARGS+=("--use_cache")
 fi
 if [ -f /opt/python/cp312-cp312/bin/python3 ]; then
-    /opt/python/cp312-cp312/bin/python3 tools/ci_build/build.py "${BUILD_ARGS[@]}"
+    PATH=/opt/python/cp312-cp312/bin:$PATH /opt/python/cp312-cp312/bin/python3 tools/ci_build/build.py "${BUILD_ARGS[@]}"
 else
     python3 tools/ci_build/build.py "${BUILD_ARGS[@]}"
 fi

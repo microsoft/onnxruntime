@@ -27,7 +27,7 @@ typename std::enable_if<!has_mlas_transpose<T>::value, void>::type SimpleTranspo
   for (int64_t l = 0; l < num_loops; ++l) {
     T* output_for_first_writer = output_data;
 
-    for (auto wwpl = 0; wwpl < writes_per_writer_per_loop; ++wwpl) {
+    for (int64_t wwpl = 0; wwpl < writes_per_writer_per_loop; ++wwpl) {
       T* output_for_current_writer = output_for_first_writer;
 
       end = input_data + num_writers;
@@ -130,7 +130,7 @@ typename std::enable_if<!has_mlas_transpose<T>::value, void>::type SimpleTranspo
   for (int64_t l = 0; l < num_loops; ++l) {
     const T* input_for_first_reader = input_data;
 
-    for (auto rrpl = 0; rrpl < reads_per_reader_per_loop; ++rrpl) {
+    for (int64_t rrpl = 0; rrpl < reads_per_reader_per_loop; ++rrpl) {
       const T* input_for_current_reader = input_for_first_reader;
 
       end = output_data + num_readers;
@@ -210,7 +210,7 @@ void TransposeSingleAxisInwards(gsl::span<const size_t> permutations, const Tens
       for (int64_t l = 0; l < num_loops; ++l) {
         const uint8_t* input_for_first_reader = input_data;
 
-        for (auto rrpl = 0; rrpl < reads_per_reader_per_loop; ++rrpl) {
+        for (int64_t rrpl = 0; rrpl < reads_per_reader_per_loop; ++rrpl) {
           const uint8_t* input_for_current_reader = input_for_first_reader;
 
           for (int64_t r = 0; r < num_readers; ++r) {

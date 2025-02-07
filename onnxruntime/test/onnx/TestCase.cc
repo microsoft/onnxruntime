@@ -961,6 +961,7 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
       {"reduce_prod_empty_set", "unknown version", {}},
       {"reduce_sum_empty_set", "unknown version", {}},
       {"reduce_sum_square_empty_set_expanded", "unknown version", {}},
+      {"averagepool_3d_dilations_large_count_include_pad_is_1_ceil_mode_is_True", "TODO(titaiwang): enable this in the next ONNX release."},
 #ifdef ENABLE_TRAINING_CORE
       {"adagrad", "not a registered function/op", {}},                  // Op not registered.
       {"adagrad_multiple", "not a registered function/op", {}},         // Op not registered.
@@ -1396,6 +1397,19 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"resize_upsample_sizes_nearest", "result differs"});
     broken_tests->insert({"resize_upsample_sizes_nearest_axes_2_3", "result differs"});
     broken_tests->insert({"resize_upsample_sizes_nearest_axes_3_2", "result differs"});
+    broken_tests->insert({"resize_upsample_sizes_nearest_not_larger",
+                          "output=Y:expected 1 (3f800000), got 4 (40800000), diff: 3, tol=0.002 idx=24. 13 of 49 differ. CPU test passed."});
+    broken_tests->insert({"convtranspose_group_2", "Segmentation fault (core dumped). CPU test passed."});
+    broken_tests->insert({"convtranspose_group_2_image_3", "Segmentation fault (core dumped). CPU test passed."});
+    // Fails with QNN 2.31 on Windows x64 for CPU
+    broken_tests->insert({"gelu_tanh_2", "y:expected -0.0131778 (bc57e7d5), got -0.0136333 (bc5f5e38), diff: 0.000455472, tol=2.31778e-05."});
+    broken_tests->insert({"convtranspose_pad", "Access violation 0xc000005 from call graphAddNode."});
+    broken_tests->insert({"convtranspose_pads", "Access violation 0xc000005 from call graphAddNode."});
+    broken_tests->insert({"convtranspose_output_shape", "Access violation 0xc000005 from call graphAddNode."});
+    broken_tests->insert({"convtranspose_kernel_shape", "Access violation 0xc000005 from call graphAddNode."});
+    broken_tests->insert({"convtranspose_1d", "Access violation 0xc000005 from call graphAddNode."});
+    broken_tests->insert({"convtranspose", "Access violation 0xc000005 from call graphAddNode."});
+    broken_tests->insert({"averagepool_2d_ceil", "result differs. expected 13.5 (41580000), got 0 (0)"});
   }
 
 #ifdef DISABLE_CONTRIB_OPS
