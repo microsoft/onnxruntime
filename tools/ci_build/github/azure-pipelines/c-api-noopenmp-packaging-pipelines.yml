@@ -92,9 +92,9 @@ extends:
   # For productions pipelines, use "Official".
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
-    pool:
-      name: onnxruntime-Win-CPU-2022
-      os: windows
+#    pool:
+#      name: onnxruntime-Win-CPU-2022
+#      os: windows
 
     sdl:
       sourceAnalysisPool:
