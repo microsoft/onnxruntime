@@ -1274,9 +1274,9 @@ def generate_build_tree(
             emscripten_root_path = os.path.join(emsdk_dir, "upstream", "emscripten")
             with open(emscripten_cmake_toolchain_file, "r", encoding="utf-8") as f:
                 old_toolchain_lines = f.readlines()
+            emscripten_root_path_cmake_path = emscripten_root_path.replace("\\","/")
             # This file won't be used by vcpkg-tools when invoking 0.vcpkg_dep_info.cmake or vcpkg/scripts/ports.cmake
-            with open(new_toolchain_file, "w", encoding="utf-8") as f:
-                emscripten_root_path_cmake_path = emscripten_root_path.replace("\\","/")
+            with open(new_toolchain_file, "w", encoding="utf-8") as f:                
                 f.write(f"set(EMSCRIPTEN_ROOT_PATH \"{emscripten_root_path_cmake_path}\")\n")
                 for line in old_toolchain_lines:
                     f.write(line)
@@ -1287,6 +1287,7 @@ def generate_build_tree(
             # This file is for vcpkg-tools        
             empty_toolchain_file = Path(build_dir) / "emsdk_vcpkg_toolchain.cmake"                
             with open(empty_toolchain_file, "w", encoding="utf-8") as f:
+               f.write(f"set(EMSCRIPTEN_ROOT_PATH \"{emscripten_root_path_cmake_path}\")\n")
                f.write("if(NOT VCPKG_MANIFEST_INSTALL)\n")
                flags_to_pass = ["CXX_FLAGS", "CXX_FLAGS_DEBUG", "CXX_FLAGS_RELEASE", "C_FLAGS", "C_FLAGS_DEBUG", "C_FLAGS_RELEASE","LINKER_FLAGS", "LINKER_FLAGS_DEBUG", "LINKER_FLAGS_RELEASE"]
                for flag in flags_to_pass:
