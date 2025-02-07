@@ -77,22 +77,21 @@ stages:
                     -e NIGHTLY_BUILD \
                     -e BUILD_BUILDNUMBER \
                     onnxruntimecpubuildcentos8x64 \
-                    /bin/bash -c '
-                      set -ex; \
+                    /bin/bash -c 'set -ex; \
                       python3 /onnxruntime_src/tools/ci_build/build.py \
-                        --build_dir /build --cmake_generator 'Ninja' \
+                        --build_dir /build --cmake_generator Ninja \
                         --config Debug \
                         --skip_submodule_sync \
                         --build_shared_lib \
-                        --parallel --use_binskim_compliant_compile_flags \
+                        --parallel --use_vcpkg \
                         --enable_onnx_tests --enable_address_sanitizer \
                         --update --build;
                       python3 /onnxruntime_src/tools/ci_build/build.py \
-                        --build_dir /build --cmake_generator 'Ninja' \
+                        --build_dir /build --cmake_generator Ninja \
                         --config Debug \
                         --skip_submodule_sync \
                         --build_shared_lib \
-                        --parallel --use_binskim_compliant_compile_flags \
+                        --parallel --use_vcpkg \
                         --enable_onnx_tests --enable_address_sanitizer \
                         --test;
                       '
@@ -144,15 +143,7 @@ stages:
           Dockerfile: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
           Context: tools/ci_build/github/linux/docker/
           DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-          Repository: onnxruntimecpubuild
-
-      - task: PythonScript@0
-        displayName: 'Update deps.txt'
-        inputs:
-          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
-          arguments: --new_dir $(Build.BinariesDirectory)/deps
-          workingDirectory: $(Build.BinariesDirectory)
-          pythonInterpreter: /usr/bin/python3
+          Repository: onnxruntimecpubuild     
 
       - script: |
           set -e -x
@@ -175,14 +166,6 @@ stages:
           ninja
           rm -rf $(Build.BinariesDirectory)/arm32build $(Build.BinariesDirectory)/gccbin
         displayName: Cross-compile for Linux ARM32 and ARM64
-
-      - task: PythonScript@0
-        displayName: 'Update deps.txt'
-        inputs:
-          scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
-          arguments: --new_dir /build/deps
-          workingDirectory: $(Build.BinariesDirectory)
-          pythonInterpreter: /usr/bin/python3
 
       - template: templates/linux-build-step-with-cache.yml
         parameters:
@@ -208,15 +191,15 @@ stages:
                     -e BUILD_BUILDNUMBER \
                     -e CCACHE_DIR=/cache \
                     onnxruntimecpubuild \
-                    /bin/bash -c "
+                    /bin/bash -c '
                       set -ex; \
                       ccache -s; \
-                      /opt/python/cp310-cp310/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
-                        --build_dir /build --cmake_generator 'Ninja' \
+                      PATH=/opt/python/cp310-cp310/bin:$PATH python /onnxruntime_src/tools/ci_build/build.py \
+                        --build_dir /build --cmake_generator Ninja \
                         --config Release \
                         --skip_submodule_sync \
                         --build_shared_lib \
-                        --parallel --use_binskim_compliant_compile_flags \
+                        --parallel --use_vcpkg --use_binskim_compliant_compile_flags \
                         --build_wheel \
                         --build_csharp \
                         --enable_onnx_tests \
@@ -224,7 +207,7 @@ stages:
                         --use_cache \
                         --update --build --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON; \
                       ccache -sv; \
-                      ccache -z"
+                      ccache -z'
                 workingDirectory: $(Build.SourcesDirectory)
 
       - script: |

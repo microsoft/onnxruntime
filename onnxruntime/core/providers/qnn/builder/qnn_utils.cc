@@ -5,14 +5,13 @@
 
 #include <algorithm>
 #include <functional>
+#include <limits>
 #include <map>
 #include <numeric>
 #include <string>
 #include <vector>
 
-#include "core/common/common.h"
-#include "core/common/safeint.h"
-#include "core/framework/data_types.h"
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 
 namespace onnxruntime {
@@ -64,6 +63,42 @@ size_t GetElementSizeByType(ONNXTensorElementDataType elem_type) {
   auto pos = elem_type_to_size.find(elem_type);
   ORT_ENFORCE(pos != elem_type_to_size.end(), "Unknown element type", elem_type);
   return pos->second;
+}
+
+size_t GetElementSizeByType(ONNX_NAMESPACE::TensorProto_DataType onnx_type) {
+  switch (onnx_type) {
+    case ONNX_NAMESPACE::TensorProto_DataType_INT4:
+      return sizeof(Int4x2);
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT4:
+      return sizeof(UInt4x2);
+    case ONNX_NAMESPACE::TensorProto_DataType_INT8:
+      return sizeof(int8_t);
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
+      return sizeof(uint8_t);
+    case ONNX_NAMESPACE::TensorProto_DataType_INT16:
+      return sizeof(int16_t);
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT16:
+      return sizeof(uint16_t);
+    case ONNX_NAMESPACE::TensorProto_DataType_INT32:
+      return sizeof(int32_t);
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT32:
+      return sizeof(uint32_t);
+    case ONNX_NAMESPACE::TensorProto_DataType_INT64:
+      return sizeof(int64_t);
+    case ONNX_NAMESPACE::TensorProto_DataType_UINT64:
+      return sizeof(uint64_t);
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16:
+      return 2;
+    case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
+      return sizeof(float);
+    case ONNX_NAMESPACE::TensorProto_DataType_DOUBLE:
+      return sizeof(double);
+    case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+      return sizeof(bool);
+    default:
+      return 0;
+  }
+  // Unreachable
 }
 
 size_t GetQnnTensorDataSizeInBytes(gsl::span<const uint32_t> shape, Qnn_DataType_t element_type) {
@@ -507,39 +542,22 @@ bool OnnxDataTypeToQnnDataType(const int32_t onnx_data_type, Qnn_DataType_t& qnn
 }
 
 std::pair<float, float> CheckMinMax(float rmin, float rmax) {
-  // Ensure a minimum range of 0.0001 (required by QNN)
-  rmax = std::max(rmax, rmin + 0.0001f);
-
   // Both QNN and ORT require the range to include 0.0f
   rmin = std::min(rmin, 0.0f);
   rmax = std::max(rmax, 0.0f);
 
+  // Ensure a minimum range of 0.0001 (required by QNN)
+  rmax = std::max(rmax, rmin + 0.0001f);
+
   return std::make_pair(rmin, rmax);
 }
 
-template <typename T>
-Status GetQminQmax(const Qnn_DataType_t qnn_data_type,
-                   T& qmin,
-                   T& qmax) {
-  if (qnn_data_type == QNN_DATATYPE_SFIXED_POINT_8) {
-    qmin = static_cast<T>(std::numeric_limits<int8_t>::min());
-    qmax = static_cast<T>(std::numeric_limits<int8_t>::max());
-  } else if (qnn_data_type == QNN_DATATYPE_UFIXED_POINT_8) {
-    qmin = static_cast<T>(std::numeric_limits<uint8_t>::min());
-    qmax = static_cast<T>(std::numeric_limits<uint8_t>::max());
-  } else if (qnn_data_type == QNN_DATATYPE_SFIXED_POINT_16) {
-    qmin = static_cast<T>(std::numeric_limits<int16_t>::min());
-    qmax = static_cast<T>(std::numeric_limits<int16_t>::max());
-  } else if (qnn_data_type == QNN_DATATYPE_UFIXED_POINT_16) {
-    qmin = static_cast<T>(std::numeric_limits<uint16_t>::min());
-    qmax = static_cast<T>(std::numeric_limits<uint16_t>::max());
-  } else if (qnn_data_type == QNN_DATATYPE_SFIXED_POINT_32) {
-    qmin = static_cast<T>(std::numeric_limits<int32_t>::min());
-    qmax = static_cast<T>(std::numeric_limits<int32_t>::max());
-  } else {
-    ORT_RETURN_IF(true, "Qnn Data Type: %d not supported yet.", qnn_data_type);
+inline float RoundHalfToEven(float input) {
+  if (!std::isfinite(input)) {
+    return input;
   }
-  return Status::OK();
+  // std::remainder returns x - n, where n is the integral value nearest to x. When |x - n| = 0.5, n is chosen to be even
+  return input - std::remainderf(input, 1.f);
 }
 
 Status GetQuantParams(float rmin,
@@ -555,20 +573,22 @@ Status GetQuantParams(float rmin,
     rmin = -abs_max;
   }
 
-  float qmin = 0.0f;
-  float qmax = 255.0f;
-  ORT_RETURN_IF_ERROR(GetQminQmax(qnn_data_type, qmin, qmax));
+  double rmin_dbl = static_cast<double>(rmin);
+  double rmax_dbl = static_cast<double>(rmax);
+  double qmin = 0.0;
+  double qmax = 0.0;
+  ORT_RETURN_IF_ERROR(GetQminQmax(qnn_data_type, qmin, qmax, symmetric));
 
-  scale = (rmax - rmin) / (qmax - qmin);
-  float initial_zero_point = 0.0f;
+  double scale_dbl = (rmax_dbl - rmin_dbl) / (qmax - qmin);
+  double initial_zero_point = 0.0;
   if (symmetric) {
-    initial_zero_point = std::round(rmin + rmax) / 2;
+    initial_zero_point = std::round(rmin_dbl + rmax_dbl) / 2;
   } else {
-    initial_zero_point = qmin - (rmin / scale);
+    initial_zero_point = qmin - (rmin_dbl / scale_dbl);
   }
-  zero_point = static_cast<int32_t>(RoundHalfToEven(Saturate(qmax, qmin, initial_zero_point)));
-  // To match QNN quantization definition
-  zero_point = 0 - zero_point;
+  zero_point = static_cast<int32_t>(RoundHalfToEven(static_cast<float>(Saturate(qmax, qmin, initial_zero_point))));
+  zero_point = -zero_point;  // Negate to match QNN quantization definition.
+  scale = static_cast<float>(scale_dbl);
   return Status::OK();
 }
 
@@ -587,6 +607,126 @@ Status Quantize(const double double_value,
   int qmax = 255;
   ORT_RETURN_IF_ERROR(GetQminQmax(qnn_data_type, qmin, qmax));
   quant_value = Saturate(qmax, qmin, static_cast<int>(std::round((double_value / scale) - zero_point)));
+  return Status::OK();
+}
+
+size_t ShapeSizeCalc(gsl::span<const uint32_t> shape, size_t start, size_t end) {
+  size_t size = 1;
+  for (size_t i = start; i < end; i++) {
+    size *= shape[i];
+  }
+  return size;
+}
+
+Status GetDataQuantParams(gsl::span<const float> data, gsl::span<const uint32_t> shape,
+                          /*out*/ gsl::span<float> scales, /*out*/ gsl::span<int32_t> offsets,
+                          Qnn_DataType_t data_type, bool symmetric, std::optional<int64_t> axis) {
+  const size_t num_dims = shape.size();
+  const size_t num_elems = ShapeSizeCalc(shape, 0, num_dims);
+  ORT_RETURN_IF_NOT(num_elems == data.size(), "Shape mismatch with data to quantize");
+
+  size_t block_count = 1;
+  size_t broadcast_dim = 1;
+  size_t block_size = num_elems;
+
+  if (axis.has_value()) {
+    size_t axis_no_neg = *axis < 0 ? static_cast<size_t>(*axis) + num_dims : static_cast<size_t>(*axis);
+    block_count = ShapeSizeCalc(shape, 0, axis_no_neg);
+    broadcast_dim = shape[axis_no_neg];
+    block_size = ShapeSizeCalc(shape, axis_no_neg + 1, num_dims);
+  }
+
+  ORT_RETURN_IF_NOT(scales.size() == broadcast_dim, "Unexpected size of scales output buffer");
+  ORT_RETURN_IF_NOT(offsets.size() == broadcast_dim, "Unexpected size of offsets output buffer");
+
+  size_t i = 0;
+  for (size_t n = 0; n < block_count; n++) {
+    for (size_t bd = 0; bd < broadcast_dim; bd++) {
+      float rmin = std::numeric_limits<float>::max();
+      float rmax = std::numeric_limits<float>::lowest();
+      for (size_t j = 0; j < block_size; j++) {
+        rmin = std::min(rmin, data[i]);
+        rmax = std::max(rmax, data[i]);
+        i++;
+      }
+
+      scales[bd] = 1.0f;
+      offsets[bd] = 0;
+      ORT_RETURN_IF_ERROR(GetQuantParams(rmin, rmax, data_type, scales[bd], offsets[bd], symmetric));
+    }
+  }
+
+  assert(i == data.size());
+  return Status::OK();
+}
+
+Status QuantizeData(gsl::span<const float> data, gsl::span<const uint32_t> shape,
+                    gsl::span<const float> scales, gsl::span<const int32_t> offsets,
+                    /*out*/ gsl::span<uint8_t> quant_bytes, Qnn_DataType_t data_type,
+                    std::optional<int64_t> axis) {
+  const size_t num_dims = shape.size();
+  const size_t num_elems = ShapeSizeCalc(shape, 0, num_dims);
+  ORT_RETURN_IF_NOT(num_elems == data.size(), "Shape mismatch with data to quantize");
+  size_t expected_num_quant_bytes = GetElementSizeByType(data_type) * data.size();
+  ORT_RETURN_IF_NOT(quant_bytes.size() == expected_num_quant_bytes,
+                    "Cannot quantize data because output buffer is not the correct size");
+
+  size_t block_count = 1;
+  size_t broadcast_dim = 1;
+  size_t block_size = num_elems;
+
+  if (axis.has_value()) {
+    size_t axis_no_neg = *axis < 0 ? static_cast<size_t>(*axis) + num_dims : static_cast<size_t>(*axis);
+    block_count = ShapeSizeCalc(shape, 0, axis_no_neg);
+    broadcast_dim = shape[axis_no_neg];
+    block_size = ShapeSizeCalc(shape, axis_no_neg + 1, num_dims);
+  }
+
+  ORT_RETURN_IF_NOT(scales.size() == broadcast_dim, "Unexpected size of scales output buffer");
+  ORT_RETURN_IF_NOT(offsets.size() == broadcast_dim, "Unexpected size of offsets output buffer");
+
+  size_t i = 0;
+  for (size_t n = 0; n < block_count; n++) {
+    for (size_t bd = 0; bd < broadcast_dim; bd++) {
+      switch (data_type) {
+        case QNN_DATATYPE_SFIXED_POINT_8: {
+          auto input_span = gsl::make_span<const float>(&data[i], block_size);
+          auto output_span = gsl::make_span<uint8_t>(&quant_bytes[i * sizeof(int8_t)], sizeof(int8_t) * block_size);
+          ORT_RETURN_IF_ERROR(QuantizeData<int8_t>(input_span, scales[bd], offsets[bd], output_span));
+          break;
+        }
+        case QNN_DATATYPE_UFIXED_POINT_8: {
+          auto input_span = gsl::make_span<const float>(&data[i], block_size);
+          auto output_span = gsl::make_span<uint8_t>(&quant_bytes[i * sizeof(uint8_t)], sizeof(uint8_t) * block_size);
+          ORT_RETURN_IF_ERROR(QuantizeData<uint8_t>(input_span, scales[bd], offsets[bd], output_span));
+          break;
+        }
+        case QNN_DATATYPE_SFIXED_POINT_16: {
+          auto input_span = gsl::make_span<const float>(&data[i], block_size);
+          auto output_span = gsl::make_span<uint8_t>(&quant_bytes[i * sizeof(int16_t)], sizeof(int16_t) * block_size);
+          ORT_RETURN_IF_ERROR(QuantizeData<int16_t>(input_span, scales[bd], offsets[bd], output_span));
+          break;
+        }
+        case QNN_DATATYPE_UFIXED_POINT_16: {
+          auto input_span = gsl::make_span<const float>(&data[i], block_size);
+          auto output_span = gsl::make_span<uint8_t>(&quant_bytes[i * sizeof(uint16_t)], sizeof(uint16_t) * block_size);
+          ORT_RETURN_IF_ERROR(QuantizeData<uint16_t>(input_span, scales[bd], offsets[bd], output_span));
+          break;
+        }
+        case QNN_DATATYPE_SFIXED_POINT_32: {
+          auto input_span = gsl::make_span<const float>(&data[i], block_size);
+          auto output_span = gsl::make_span<uint8_t>(&quant_bytes[i * sizeof(int32_t)], sizeof(int32_t) * block_size);
+          ORT_RETURN_IF_ERROR(QuantizeData<int32_t>(input_span, scales[bd], offsets[bd], output_span));
+          break;
+        }
+        default:
+          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported quantization data type for QuantizeData");
+      }
+      i += block_size;
+    }
+  }
+  assert(i == data.size());
+
   return Status::OK();
 }
 

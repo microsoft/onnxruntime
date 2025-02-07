@@ -60,6 +60,9 @@ class EtwRegistrationManager {
   // Singleton instance access
   static EtwRegistrationManager& Instance();
 
+  // Returns true if ETW is supported at all.
+  static bool SupportsETW();
+
   // Check if ETW logging is enabled
   bool IsEnabled() const;
 
@@ -110,5 +113,33 @@ class EtwRegistrationManager {
 
 }  // namespace logging
 }  // namespace onnxruntime
+#else
+// ETW is not supported on this platform but should still define a dummy EtwRegistrationManager
+// so that it can be used in the EP provider bridge.
+#include "core/common/logging/severity.h"
 
+namespace onnxruntime {
+namespace logging {
+class EtwRegistrationManager {
+ public:
+  using EtwInternalCallback = std::function<void(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level,
+                                                 ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,
+                                                 PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext)>;
+
+  static EtwRegistrationManager& Instance();
+  static bool SupportsETW();
+  bool IsEnabled() const { return false; }
+  UCHAR Level() const { return 0; }
+  Severity MapLevelToSeverity() { return Severity::kFATAL; }
+  uint64_t Keyword() const { return 0; }
+  HRESULT Status() const { return 0; }
+  void RegisterInternalCallback(const EtwInternalCallback& callback) {}
+  void UnregisterInternalCallback(const EtwInternalCallback& callback) {}
+
+ private:
+  EtwRegistrationManager() = default;
+  ~EtwRegistrationManager() = default;
+};
+}  // namespace logging
+}  // namespace onnxruntime
 #endif  // ETW_TRACE_LOGGING_SUPPORTED
