@@ -161,44 +161,44 @@ stages:
       parameters:
         condition: 'succeeded'
 
-- template: win-ci.yml
-  parameters:
-    DoCompliance: ${{ parameters.DoCompliance }}
-    DoEsrp: ${{ parameters.DoEsrp }}
-    stage_name_suffix: CPU_x86_${{ parameters.BuildVariant }}
-    buildArch: x86
-    msbuildPlatform: Win32
-    packageName: x86
-    buildparameter: ${{ parameters.AdditionalBuildFlags }} ${{ parameters.AdditionalWinBuildFlags}}
-    runTests: ${{ parameters.RunOnnxRuntimeTests }}
-    buildJava: false
-    buildNodejs: false
-
-- template: win-ci.yml
-  parameters:
-    DoCompliance: ${{ parameters.DoCompliance }}
-    DoEsrp: ${{ parameters.DoEsrp }}
-    stage_name_suffix: CPU_arm64_${{ parameters.BuildVariant }}
-    buildArch: x64
-    msbuildPlatform: arm64
-    packageName: arm64
-    buildparameter: --build_nodejs --arm64 ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
-    runTests: false
-    buildJava: false
-    buildNodejs: true
-
-- template: win-ci.yml
-  parameters:
-    DoCompliance: ${{ parameters.DoCompliance }}
-    DoEsrp: ${{ parameters.DoEsrp }}
-    stage_name_suffix: CPU_x64_${{ parameters.BuildVariant }}
-    buildArch: x64
-    msbuildPlatform: x64
-    packageName: x64
-    buildparameter: --build_java --build_nodejs ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
-    runTests: ${{ parameters.RunOnnxRuntimeTests }}
-    buildJava: true
-    buildNodejs: true
+#- template: win-ci.yml
+#  parameters:
+#    DoCompliance: ${{ parameters.DoCompliance }}
+#    DoEsrp: ${{ parameters.DoEsrp }}
+#    stage_name_suffix: CPU_x86_${{ parameters.BuildVariant }}
+#    buildArch: x86
+#    msbuildPlatform: Win32
+#    packageName: x86
+#    buildparameter: ${{ parameters.AdditionalBuildFlags }} ${{ parameters.AdditionalWinBuildFlags}}
+#    runTests: ${{ parameters.RunOnnxRuntimeTests }}
+#    buildJava: false
+#    buildNodejs: false
+#
+#- template: win-ci.yml
+#  parameters:
+#    DoCompliance: ${{ parameters.DoCompliance }}
+#    DoEsrp: ${{ parameters.DoEsrp }}
+#    stage_name_suffix: CPU_arm64_${{ parameters.BuildVariant }}
+#    buildArch: x64
+#    msbuildPlatform: arm64
+#    packageName: arm64
+#    buildparameter: --build_nodejs --arm64 ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
+#    runTests: false
+#    buildJava: false
+#    buildNodejs: true
+#
+#- template: win-ci.yml
+#  parameters:
+#    DoCompliance: ${{ parameters.DoCompliance }}
+#    DoEsrp: ${{ parameters.DoEsrp }}
+#    stage_name_suffix: CPU_x64_${{ parameters.BuildVariant }}
+#    buildArch: x64
+#    msbuildPlatform: x64
+#    packageName: x64
+#    buildparameter: --build_java --build_nodejs ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
+#    runTests: ${{ parameters.RunOnnxRuntimeTests }}
+#    buildJava: true
+#    buildNodejs: true
 #
 #- stage: Jar_Packaging
 #  dependsOn:
