@@ -23,9 +23,4 @@ bool ConstantFoldingDQ::AllowConstantFolding(const Node& node) const {
   return false;
 }
 
-Status ConstantFoldingDQ::UpdateNodeIndexSet(InlinedHashSet<NodeIndex>& node_index_set) {
-  node_index_set_ = node_index_set;
-  return Status::OK();
-}
-
 }  // namespace onnxruntime

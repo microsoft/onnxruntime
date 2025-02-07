@@ -29,7 +29,6 @@ class ConstantFoldingDQ : public ConstantFolding {
                     const InlinedHashSet<std::string>& excluded_initializers = {}) noexcept;
 
   bool AllowConstantFolding(const Node& node) const;
-  Status UpdateNodeIndexSet(InlinedHashSet<onnxruntime::NodeIndex>& node_index_set);
 
  private:
   InlinedHashSet<NodeIndex> node_index_set_;
