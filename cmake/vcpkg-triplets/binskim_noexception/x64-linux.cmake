@@ -8,7 +8,7 @@ set(VCPKG_CXX_FLAGS "-g -ffunction-sections -fdata-sections -fno-exceptions -fno
 set(VCPKG_C_FLAGS_RELEASE "-DNDEBUG -O3 -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection")
 set(VCPKG_CXX_FLAGS_RELEASE "-DNDEBUG -O3 -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection")
 set(VCPKG_C_FLAGS_RELWITHDEBINFO "-DNDEBUG -O3 -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection")
-set(VCPKG_C_FLAGS_RELWITHDEBINFO "-DNDEBUG -O3 -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection")
+set(VCPKG_CXX_FLAGS_RELWITHDEBINFO "-DNDEBUG -O3 -Wp,-D_FORTIFY_SOURCE=2 -Wp,-D_GLIBCXX_ASSERTIONS -fstack-protector-strong -fstack-clash-protection -fcf-protection")
 set(VCPKG_CMAKE_SYSTEM_NAME Linux)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DBENCHMARK_ENABLE_WERROR=OFF)

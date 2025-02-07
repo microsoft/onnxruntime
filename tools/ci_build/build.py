@@ -987,7 +987,7 @@ def number_of_nvcc_threads(args):
 # See https://learn.microsoft.com/en-us/vcpkg/commands/install
 def generate_vcpkg_install_options(source_dir, args):
     # NOTE: each option string should not contain any whitespace.
-    vcpkg_install_options = ["--x-feature=tests"]
+    vcpkg_install_options = ["--x-feature=tests","--debug"]
     if args.use_acl:
         vcpkg_install_options.append("--x-feature=acl-ep")
     if args.use_armnn:
@@ -1236,6 +1236,13 @@ def generate_build_tree(
             "-DRISCV_QEMU_PATH:PATH=" + args.riscv_qemu_path,
             "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, "cmake", "riscv64.toolchain.cmake"),
         ]
+    emscripten_cmake_toolchain_file = None
+    if args.build_wasm:
+        emsdk_dir = os.path.join(cmake_dir, "external", "emsdk")
+        emscripten_cmake_toolchain_file = os.path.join(
+            emsdk_dir, "upstream", "emscripten", "cmake", "Modules", "Platform", "Emscripten.cmake"
+        )
+
     if args.use_vcpkg:
         # TODO: set VCPKG_PLATFORM_TOOLSET_VERSION
         # Setup CMake flags for vcpkg
@@ -1260,6 +1267,31 @@ def generate_build_tree(
             if not os.path.exists(vcpkg_installation_root):
                 run_subprocess(["git", "clone", "https://github.com/microsoft/vcpkg.git", "--recursive"], cwd=build_dir)
         vcpkg_toolchain_path = Path(vcpkg_installation_root) / "scripts" / "buildsystems" / "vcpkg.cmake"
+
+        if args.build_wasm:
+            new_toolchain_file = Path(build_dir) / "toolchain.cmake"
+            old_toolchain_lines = []
+            with open(emscripten_cmake_toolchain_file, "r", encoding="utf-8") as f:
+                old_toolchain_lines = f.readlines()
+            # This file won't be used by vcpkg-tools when invoking 0.vcpkg_dep_info.cmake or vcpkg/scripts/ports.cmake
+            with open(new_toolchain_file, "w", encoding="utf-8") as f:
+                for line in old_toolchain_lines:
+                    f.write(line)
+                f.write(f"include({vcpkg_toolchain_path})")
+                vcpkg_toolchain_path = new_toolchain_file.absolute()
+
+            # This file is for vcpkg-tools        
+            empty_toolchain_file = Path(build_dir) / "empty.cmake"                
+            with open(empty_toolchain_file, "w", encoding="utf-8") as f:
+               f.write("if(NOT VCPKG_MANIFEST_INSTALL)\n")
+               flags_to_pass = ["CXX_FLAGS", "CXX_FLAGS_DEBUG", "CXX_FLAGS_RELEASE", "C_FLAGS", "C_FLAGS_DEBUG", "C_FLAGS_RELEASE","LINKER_FLAGS", "LINKER_FLAGS_DEBUG", "LINKER_FLAGS_RELEASE"]
+               for flag in flags_to_pass:
+                 f.write("SET(CMAKE_" + flag  + " \"${VCPKG_"+flag+"}\")\n")
+               for line in old_toolchain_lines:
+                    f.write(line)
+               f.write("endif()")
+            add_default_definition(cmake_extra_defines,"VCPKG_CHAINLOAD_TOOLCHAIN_FILE", str(empty_toolchain_file.absolute()))
+                
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", str(vcpkg_toolchain_path))
 
         vcpkg_install_options = generate_vcpkg_install_options(source_dir, args)
@@ -1597,13 +1629,7 @@ def generate_build_tree(
             ]
 
     if args.build_wasm:
-        emsdk_dir = os.path.join(cmake_dir, "external", "emsdk")
-        emscripten_cmake_toolchain_file = os.path.join(
-            emsdk_dir, "upstream", "emscripten", "cmake", "Modules", "Platform", "Emscripten.cmake"
-        )
-        if args.use_vcpkg:
-            cmake_args.append("-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=" + emscripten_cmake_toolchain_file)
-        else:
+        if not args.use_vcpkg:
             cmake_args.append("-DCMAKE_TOOLCHAIN_FILE=" + emscripten_cmake_toolchain_file)
         if args.disable_wasm_exception_catching:
             # WebAssembly unittest requires exception catching to work. If this feature is disabled, we do not build
@@ -1877,6 +1903,9 @@ def generate_build_tree(
         env = {}
         if args.use_vcpkg:
             env["VCPKG_KEEP_ENV_VARS"] = "TRT_UPLOAD_AUTH_TOKEN"
+            if args.build_wasm:
+              env["EMSDK"] = emsdk_dir
+  
         run_subprocess(
             [*temp_cmake_args, f"-DCMAKE_BUILD_TYPE={config}"],
             cwd=config_build_dir,

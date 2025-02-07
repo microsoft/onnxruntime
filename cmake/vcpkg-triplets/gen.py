@@ -235,7 +235,7 @@ def generate_triplet_for_posix_platform(
                 'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{}")\n'.format(" ".join(cflags_release))
             )
             f.write(
-                'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{}")\n'.format(" ".join(cflags_release))
+                'set(VCPKG_CXX_FLAGS_RELWITHDEBINFO "{}")\n'.format(" ".join(cflags_release))
             )
         if os_name == "linux":
             f.write("set(VCPKG_CMAKE_SYSTEM_NAME Linux)\n")
@@ -333,17 +333,12 @@ if(NOT EMSCRIPTEN_ROOT)
    set(EMSCRIPTEN_ROOT "$ENV{EMSDK}/upstream/emscripten")
 endif()
 
-if(NOT EXISTS "${EMSCRIPTEN_ROOT}/cmake/Modules/Platform/Emscripten.cmake")
-   message(FATAL_ERROR "Emscripten.cmake toolchain file not found")
-endif()
-
 set(VCPKG_CRT_LINKAGE dynamic)
 set(VCPKG_LIBRARY_LINKAGE static)
 set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
-set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE "${EMSCRIPTEN_ROOT}/cmake/Modules/Platform/Emscripten.cmake")
 """)
         f.write(f"set(VCPKG_TARGET_ARCHITECTURE {target_abi})\n")
-        cflags_release = ["-DNDEBUG", "-O3"]
+        cflags_release = ["-DNDEBUG", "-O3", "-pthread"]
         ldflags = []
         cflags = ["-ffunction-sections", "-fdata-sections", "-msimd128", "-pthread", "-Wno-pthreads-mem-growth"]
         if enable_asan:
@@ -352,11 +347,13 @@ set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE "${EMSCRIPTEN_ROOT}/cmake/Modules/Platform/Em
         if target_abi == 'wasm64':
             cflags.append("-sMEMORY64")
             ldflags.append("-sMEMORY64")
+        cxxflags = cflags.copy()
         if len(cflags) >= 1:
             f.write('set(VCPKG_C_FLAGS "{}")\n'.format(" ".join(cflags)))
         if len(cxxflags) >= 1:
             f.write('set(VCPKG_CXX_FLAGS "{}")\n'.format(" ".join(cxxflags)))
         if len(cflags_release) >= 1:
+            cflags_release += cflags
             f.write(
                 'set(VCPKG_C_FLAGS_RELEASE "{}")\n'.format(" ".join(cflags_release))
             )
@@ -367,5 +364,5 @@ set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE "${EMSCRIPTEN_ROOT}/cmake/Modules/Platform/Em
                 'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{}")\n'.format(" ".join(cflags_release))
             )
             f.write(
-                'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{}")\n'.format(" ".join(cflags_release))
+                'set(VCPKG_CXX_FLAGS_RELWITHDEBINFO "{}")\n'.format(" ".join(cflags_release))
             )
