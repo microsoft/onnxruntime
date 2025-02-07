@@ -84,8 +84,9 @@ steps:
   condition: and(succeeded(), eq('${{ parameters.MacosArch }}', 'x86_64'))
 
 - task: 1ES.PublishPipelineArtifact@1
-  path: '$(Build.ArtifactStagingDirectory)'
-  artifact: 'onnxruntime-osx-${{ parameters.MacosArch }}'
+  inputs:
+    path: '$(Build.ArtifactStagingDirectory)'
+    artifact: 'onnxruntime-osx-${{ parameters.MacosArch }}'
 
 - ${{ if eq(parameters.BuildJava, true) }}:
     - template: java-api-artifacts-package-and-publish-steps-posix.yml
