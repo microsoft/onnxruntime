@@ -91,6 +91,12 @@
       "dependencies": [
         "fp16"
       ]
+    },
+    "dml-ep": {
+      "description": "Build with CoreML EP",
+      "dependencies": [
+        "directx-headers"
+      ]
     }
   },
   "overrides": [
