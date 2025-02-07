@@ -158,114 +158,7 @@ static void SortFileNames(std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_
   }
 }
 
-Ort::Value TensorToOrtValue(const ONNX_NAMESPACE::TensorProto& t, onnxruntime::test::HeapBuffer& b) {
-  size_t len = 0;
-  auto status = onnxruntime::test::GetSizeInBytesFromTensorProto<0>(t, &len);
-  if (!status.IsOK()) {
-    ORT_THROW(status.ToString());
-  }
-  void* p = len == 0 ? nullptr : b.AllocMemory(len);
-  Ort::Value temp_value{nullptr};
-  onnxruntime::test::OrtCallback d;
-  auto cpu_memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
-  status = onnxruntime::test::TensorProtoToMLValue(t, onnxruntime::test::MemBuffer(p, len, *static_cast<OrtMemoryInfo*>(cpu_memory_info)),
-                                                   temp_value, d);
-  if (!status.IsOK()) {
-    ORT_THROW(status.ToString());
-  }
-  if (d.f) {
-    b.AddDeleter(d);
-  }
-  return temp_value;
-}
-
-void LoopDataFile(int test_data_pb_fd, bool is_input, const TestModelInfo& modelinfo,
-                  std::unordered_map<std::string, Ort::Value>& name_data_map, onnxruntime::test::HeapBuffer& b,
-                  std::ostringstream& oss) {
-  google::protobuf::io::FileInputStream f(test_data_pb_fd, protobuf_block_size_in_bytes);
-  f.SetCloseOnDelete(true);
-  google::protobuf::io::CodedInputStream coded_input(&f);
-  bool clean_eof = false;
-  [[maybe_unused]] int item_id = 1;
-  for (proto::TraditionalMLData data;
-       ParseDelimitedFromCodedStream(&data, &coded_input, &clean_eof);
-       ++item_id, data.Clear()) {
-    ORT_TRY {
-      Ort::Value gvalue{nullptr};
-      switch (data.values_case()) {
-        case proto::TraditionalMLData::kVectorMapStringToFloat:
-          gvalue = VectorProtoToOrtValue(data.vector_map_string_to_float().v());
-          break;
-        case proto::TraditionalMLData::kVectorMapInt64ToFloat:
-          gvalue = VectorProtoToOrtValue(data.vector_map_int64_to_float().v());
-          break;
-        case proto::TraditionalMLData::kMapStringToString:
-          gvalue = PbMapToOrtValue(data.map_string_to_string().v());
-          break;
-        case proto::TraditionalMLData::kMapStringToInt64:
-          gvalue = PbMapToOrtValue(data.map_string_to_int64().v());
-          break;
-        case proto::TraditionalMLData::kMapStringToFloat:
-          gvalue = PbMapToOrtValue(data.map_string_to_float().v());
-          break;
-        case proto::TraditionalMLData::kMapStringToDouble:
-          gvalue = PbMapToOrtValue(data.map_string_to_double().v());
-          break;
-        case proto::TraditionalMLData::kMapInt64ToString:
-          gvalue = PbMapToOrtValue(data.map_int64_to_string().v());
-          break;
-        case proto::TraditionalMLData::kMapInt64ToInt64:
-          gvalue = PbMapToOrtValue(data.map_int64_to_int64().v());
-          break;
-        case proto::TraditionalMLData::kMapInt64ToFloat:
-          gvalue = PbMapToOrtValue(data.map_int64_to_float().v());
-          break;
-        case proto::TraditionalMLData::kMapInt64ToDouble:
-          gvalue = PbMapToOrtValue(data.map_int64_to_double().v());
-          break;
-        case proto::TraditionalMLData::kTensor: {
-          gvalue = TensorToOrtValue(data.tensor(), b);
-        } break;
-        default:
-          ORT_NOT_IMPLEMENTED("unknown data type inside TraditionalMLData");
-      }
-      if (!data.debug_info().empty()) {
-        oss << ":" << data.debug_info();
-      }
-      std::string value_name = data.name();
-      if (value_name.empty()) {
-        const size_t c = name_data_map.size();
-        value_name = is_input ? modelinfo.GetInputName(c) : modelinfo.GetOutputName(c);
-      }
-
-      auto p = name_data_map.emplace(value_name, std::move(gvalue));
-      if (!p.second) {
-        ORT_THROW("duplicated test data name");
-        break;
-      }
-    }
-    ORT_CATCH(onnxruntime::NotImplementedException & ex) {
-      ORT_HANDLE_EXCEPTION([&]() {
-        std::ostringstream oss2;
-        oss2 << "load the " << item_id << "-th item failed," << ex.what();
-        ORT_NOT_IMPLEMENTED(oss2.str());
-      });
-    }
-    ORT_CATCH(const std::exception& ex) {
-      ORT_HANDLE_EXCEPTION([&]() {
-        std::ostringstream oss2;
-        oss2 << "load the " << item_id << "-th item failed," << ex.what();
-        ORT_THROW(oss2.str());
-      });
-    }
-  }
-  if (!clean_eof) {
-    ORT_THROW("parse input file failed, has extra unparsed data");
-  }
-}
-
 }  // namespace
-
 #if !defined(ORT_MINIMAL_BUILD)
 std::unique_ptr<TestModelInfo> TestModelInfo::LoadOnnxModel(const std::filesystem::path& model_url) {
   return std::make_unique<OnnxModelInfo>(model_url);
@@ -479,34 +372,6 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
                                 bool is_input) const {
   if (id >= test_data_dirs_.size()) {
     ORT_THROW("index out of bound");
-  }
-
-  std::filesystem::path test_data_pb =
-      test_data_dirs_[id] / (is_input ? ORT_TSTR("inputs.pb") : ORT_TSTR("outputs.pb"));
-  int test_data_pb_fd;
-  auto st = Env::Default().FileOpenRd(test_data_pb.string(), test_data_pb_fd);
-  if (st.IsOK()) {  // has an all-in-one input file
-    std::ostringstream oss;
-    {
-      std::lock_guard<std::mutex> l(m_);
-      oss << debuginfo_strings_[id];
-    }
-    ORT_TRY {
-      LoopDataFile(test_data_pb_fd, is_input, *model_info_, name_data_map, b, oss);
-    }
-    ORT_CATCH(const std::exception& ex) {
-      ORT_HANDLE_EXCEPTION([&]() {
-        std::ostringstream oss2;
-        oss2 << "parse data file \"" << ToUTF8String(test_data_pb) << "\" failed:" << ex.what();
-        ORT_THROW(oss.str());
-      });
-    }
-
-    {
-      std::lock_guard<std::mutex> l(m_);
-      debuginfo_strings_[id] = oss.str();
-    }
-    return;
   }
 
   std::vector<PATH_STRING_TYPE> test_data_pb_files;
