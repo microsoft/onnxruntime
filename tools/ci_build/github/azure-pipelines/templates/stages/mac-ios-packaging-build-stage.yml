@@ -25,7 +25,6 @@ stages:
       # https://developer.apple.com/support/xcode/
       xcodeVersion: "14.3.1"
       iosSimulatorRuntimeVersion: "16.4"
-      ortPodVersion: $[stageDependencies.IosPackaging_SetCommonVariables.j.outputs['SetCommonVariables.ORT_POD_VERSION']]
       ${{ if eq(parameters.packageVariant, 'Full') }}:
         buildSettingsFile: "tools/ci_build/github/apple/default_full_apple_framework_build_settings.json"
         cPodName: onnxruntime-c
@@ -75,7 +74,7 @@ stages:
           echo "${VAR_NAME}: ${VAR_VALUE}"
         }
 
-        set_var "ORT_POD_VERSION" "${VERSION}"
+        set_var "ortPodVersion" "${VERSION}"
       displayName: "Set common variables"
       name: SetCommonVariables
 
