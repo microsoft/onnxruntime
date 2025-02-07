@@ -2670,8 +2670,7 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
    */
 
   std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)> selection_func;
-  std::unordered_map<std::string, std::string> key_value_configs = {};
-  auto status = g_host->GetOptimizerByName("ConstantFoldingDQ", key_value_configs, selection_func);
+  auto status = g_host->GetOptimizerByName("ConstantFoldingDQ", selection_func);
   std::vector<std::unique_ptr<ComputeCapability>> selection_cc;
   if (selection_func) {
     selection_cc = selection_func(graph);

@@ -15,6 +15,34 @@ GraphOptimizerRegistry::GraphOptimizerRegistry() {
   logger_ = &logging::LoggingManager::DefaultLogger();
 }
 
+common::Status GraphOptimizerRegistry::AddPredefinedOptimizerNames(std::vector<std::string>& optimizer_names) {
+  for (auto name : optimizer_names) {
+    if (name_to_transformer_map_.find(name) != name_to_transformer_map_.end()) {
+      LOGS(*logger_, WARNING) << "This transformer name is already added " << name;
+      return Status::OK();
+    }
+    name_to_transformer_map_[name] = nullptr;  // The transformer will be instantizted only when EP requests it
+    
+    if (name == kCONSTANT_FOLDING_DQ) {
+      transformer_name_to_selection_func_[name] = ConstantFoldingDQ_selection;
+    }
+  }
+  return Status::OK();
+}
+
+common::Status GraphOptimizerRegistry::CreateOptimizer(std::string& name, std::unordered_map<std::string, std::string>& key_value_configs) {
+  if (name == kCONSTANT_FOLDING_DQ) {
+    const InlinedHashSet<NodeIndex> node_index_set = {};
+    auto transformer = std::make_unique<ConstantFoldingDQ>(*cpu_ep_, false /*skip_dequantize_linear*/,
+                                                           session_options_->config_options, node_index_set);
+    Get()->Register(std::move(transformer));
+    return Status::OK();
+  }
+
+  LOGS(*logger_, WARNING) << "Can't create optimizer for " << name << ". It's not in the predefined optimizer list.";
+  return Status::OK();
+}
+
 common::Status GraphOptimizerRegistry::Register(std::unique_ptr<GraphTransformer> transformer) {
   const auto& name = transformer->Name();
   if (name_to_transformer_map_.find(name) != name_to_transformer_map_.end() &&
@@ -26,52 +54,15 @@ common::Status GraphOptimizerRegistry::Register(std::unique_ptr<GraphTransformer
   name_to_transformer_map_[name] = transformer.get();
   transformer_list_.push_back(std::move(transformer));
 
-  if (name == kCONSTANT_FOLDING_DQ) {
-    transformer_name_to_selection_func_[name] = ConstantFoldingDQ_selection;
-  }
-
   return Status::OK();
 }
 
-common::Status GraphOptimizerRegistry::AddPredefinedOptimizerNames(std::vector<std::string>& optimizer_names) {
-  for (auto name : optimizer_names) {
-    if (name_to_transformer_map_.find(name) != name_to_transformer_map_.end()) {
-      LOGS(*logger_, WARNING) << "This transformer name is already added " << name;
-      return Status::OK();
-    }
-    name_to_transformer_map_[name] = nullptr;  // The transformer will be instantizted only when EP requests it
-  }
-  return Status::OK();
-}
-
-std::unique_ptr<GraphTransformer> GraphOptimizerRegistry::CreateOptimizer(std::string& name, std::unordered_map<std::string, std::string>& key_value_configs) {
-  std::unique_ptr<GraphTransformer> transformer;
-  if (name == kCONSTANT_FOLDING_DQ) {
-    const InlinedHashSet<NodeIndex> node_index_set = {};
-    return std::make_unique<ConstantFoldingDQ>(*cpu_ep_, false /*skip_dequantize_linear*/,
-                                               session_options_->config_options, node_index_set);
-  }
-  LOGS(*logger_, WARNING) << "Can't create optimizer " << name;
-  return transformer;
-}
-
-std::optional<std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>> GraphOptimizerRegistry::GetSelectionFunc(std::string& name,
-                                                                                                                                           std::unordered_map<std::string, std::string>& key_value_configs) const {
-  if (name_to_transformer_map_.find(name) == name_to_transformer_map_.end()) {
-    LOGS(*logger_, WARNING) << "Can't find optimizer " << name;
-    return std::nullopt;
-  }
-
-  // Create and register if the transformer instance is not created.
-  if (!name_to_transformer_map_.at(name)) {
-    auto new_transformer = Get()->CreateOptimizer(name, key_value_configs);
-    Get()->Register(std::move(new_transformer));
-  }
-
+std::optional<std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>> GraphOptimizerRegistry::GetSelectionFunc(std::string& name) const {
   auto lookup = transformer_name_to_selection_func_.find(name);
   if (lookup != transformer_name_to_selection_func_.end()) {
     return transformer_name_to_selection_func_.at(name);
   }
+  LOGS(*logger_, WARNING) << "Can't find selection function of " << name;
   return std::nullopt;
 }
 

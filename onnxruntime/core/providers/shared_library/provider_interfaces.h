@@ -143,7 +143,6 @@ struct ProviderHost {
   virtual const OrtApiBase* OrtGetApiBase() = 0;
 
   virtual Status GetOptimizerByName(const std::string& name,
-                                    std::unordered_map<std::string, std::string>& key_value_configs,
                                     std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>& selection_func) = 0;
 
   virtual void* HeapAllocate(size_t size) = 0;

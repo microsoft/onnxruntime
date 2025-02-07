@@ -46,9 +46,9 @@ class GraphOptimizerRegistry {
                                          const logging::Logger& logger);
 
   /**
-   * Create optimizer instance. 
+   * Create and register optimizer. 
    */
-  std::unique_ptr<GraphTransformer> CreateOptimizer(std::string& name, std::unordered_map<std::string, std::string>& key_value_configs);
+  common::Status GraphOptimizerRegistry::CreateOptimizer(std::string& name, std::unordered_map<std::string, std::string>& key_value_configs);
 
   /**
    * Get optimizer by name.
@@ -67,12 +67,9 @@ class GraphOptimizerRegistry {
   common::Status Register(std::unique_ptr<GraphTransformer> transformer);
 
   /**
-   * Get optimizer selection function requested by EP. If the optimizer name can't be found, return nullopt.
-   * 
-   * Please note that this function also creates and registers the optimizer if its instance is not existed.
+   * Get optimizer selection function. If the optimizer name can't be found, return nullopt.
    */
-  std::optional<std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>> GraphOptimizerRegistry::GetSelectionFunc(std::string& name,
-                                                                                                                                             std::unordered_map<std::string, std::string>& key_value_configs) const;
+  std::optional<std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>> GraphOptimizerRegistry::GetSelectionFunc(std::string& name) const;
 
   /**
    * Add CPU EP reference from InferenceSession as it's needed for some optimizers, ex: ConstantFoldingDQ.
@@ -80,9 +77,19 @@ class GraphOptimizerRegistry {
   common::Status AddCpuEpReference(onnxruntime::IExecutionProvider* cpu_ep);
 
   /**
-   * Add Session Options reference from InferenceSession as it's needed for some optimizers, ex: ConstantFoldingDQ.
+   * Get CPU EP reference.
+   */
+  onnxruntime::IExecutionProvider* GetCpuEpReference() const { return cpu_ep_; }
+
+  /**
+   * Add session options reference from InferenceSession as it's needed for some optimizers, ex: ConstantFoldingDQ.
    */
   common::Status AddSessionOptionsReference(onnxruntime::SessionOptions* session_options);
+
+  /**
+   * Get Session Options reference.
+   */
+  onnxruntime::SessionOptions* GetSessionOptionsReference() const { return session_options_; }
 
  private:
   InlinedVector<std::unique_ptr<GraphTransformer>> transformer_list_;

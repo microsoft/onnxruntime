@@ -214,12 +214,11 @@ struct ProviderHostImpl : ProviderHost {
   const OrtApiBase* OrtGetApiBase() override { return ::OrtGetApiBase(); }
 
   Status GetOptimizerByName(const std::string& name,
-                            std::unordered_map<std::string, std::string>& key_value_configs,
                             std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>& selection_func) override {
     std::string optimizer_name(name);
 
     auto optimizer_registry = onnxruntime::GraphOptimizerRegistry::Get();
-    auto func = optimizer_registry->GetSelectionFunc(optimizer_name, key_value_configs);
+    auto func = optimizer_registry->GetSelectionFunc(optimizer_name);
 
     if (func.has_value()) {
       selection_func = func.value();
