@@ -92,9 +92,6 @@ extends:
   # For productions pipelines, use "Official".
   template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
-#    pool:
-#      name: onnxruntime-Win-CPU-2022
-#      os: windows
 
     sdl:
       sourceAnalysisPool:
@@ -294,25 +291,25 @@ extends:
             copy $(Build.BinariesDirectory)\nuget-artifact-dml\Microsoft.ML.OnnxRuntime.DirectML*nupkg $(Build.ArtifactStagingDirectory)
           displayName: 'Bundle DML NuGet and other binaries'
 
-#        - template: templates/esrp_nuget.yml
-#          parameters:
-#            DisplayName: 'ESRP - sign NuGet package'
-#            FolderPath: '$(Build.ArtifactStagingDirectory)'
-#            DoEsrp: ${{ parameters.DoEsrp }}
+        - template: templates/esrp_nuget.yml
+          parameters:
+            DisplayName: 'ESRP - sign NuGet package'
+            FolderPath: '$(Build.ArtifactStagingDirectory)'
+            DoEsrp: ${{ parameters.DoEsrp }}
 
-#        - template: templates/validate-package.yml
-#          parameters:
-#            PackageType: 'nuget'
-#            PackagePath: '$(Build.ArtifactStagingDirectory)'
-#            PackageName: 'Microsoft.ML.OnnxRuntime.DirectML*nupkg'
-#            PlatformsSupported: 'win-x64,win-x86,win-arm64'
-#            VerifyNugetSigning: ${{ parameters.DoEsrp }}
+        - template: templates/validate-package.yml
+          parameters:
+            PackageType: 'nuget'
+            PackagePath: '$(Build.ArtifactStagingDirectory)'
+            PackageName: 'Microsoft.ML.OnnxRuntime.DirectML*nupkg'
+            PlatformsSupported: 'win-x64,win-x86,win-arm64'
+            VerifyNugetSigning: ${{ parameters.DoEsrp }}
 
         - task: 1ES.PublishPipelineArtifact@1
           displayName: 'Publish Pipeline NuGet Artifact'
           inputs:
             artifactName: 'drop-signed-nuget-dml'
             targetPath: '$(Build.ArtifactStagingDirectory)'
-#        - template: templates/component-governance-component-detection-steps.yml
-#          parameters:
-#            condition: 'succeeded'
+        - template: templates/component-governance-component-detection-steps.yml
+          parameters:
+            condition: 'succeeded'
