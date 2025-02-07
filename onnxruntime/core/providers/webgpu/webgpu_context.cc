@@ -616,26 +616,20 @@ void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events, 
   }
 }
 
-void WebGpuContext::PushErrorScopeIfNoLowerThan(webgpu::ValidationMode validation_mode) {
-  if (ValidationMode() >= validation_mode) {
-    device_.PushErrorScope(wgpu::ErrorFilter::Validation);
-  }
-}
+void WebGpuContext::PushErrorScope() { device_.PushErrorScope(wgpu::ErrorFilter::Validation); }
 
-Status WebGpuContext::PopErrorScopeIfNoLowerThan(webgpu::ValidationMode validation_mode) {
+Status WebGpuContext::PopErrorScope() {
   Status status{};
-  if (ValidationMode() >= validation_mode) {
-    ORT_RETURN_IF_ERROR(Wait(device_.PopErrorScope(
-        wgpu::CallbackMode::WaitAnyOnly,
-        [](wgpu::PopErrorScopeStatus pop_status, wgpu::ErrorType error_type, char const* message, Status* status) {
-          ORT_ENFORCE(pop_status == wgpu::PopErrorScopeStatus::Success, "Instance dropped.");
-          if (error_type == wgpu::ErrorType::NoError) {
-            return;
-          }
-          *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU validation failed. ", message);
-        },
-        &status)));
-  }
+  ORT_RETURN_IF_ERROR(Wait(device_.PopErrorScope(
+      wgpu::CallbackMode::WaitAnyOnly,
+      [](wgpu::PopErrorScopeStatus pop_status, wgpu::ErrorType error_type, char const* message, Status* status) {
+        ORT_ENFORCE(pop_status == wgpu::PopErrorScopeStatus::Success, "Instance dropped.");
+        if (error_type == wgpu::ErrorType::NoError) {
+          return;
+        }
+        *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU validation failed. ", message);
+      },
+      &status)));
   return status;
 }
 

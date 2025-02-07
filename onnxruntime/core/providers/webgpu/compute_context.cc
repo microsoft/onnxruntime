@@ -14,11 +14,16 @@ ComputeContext::ComputeContext(OpKernelContext& kernel_context)
 }
 
 void ComputeContext::PushErrorScope() {
-  webgpu_context_.PushErrorScopeIfNoLowerThan(ValidationMode::Full);
+  if (webgpu_context_.ValidationMode() >= ValidationMode::Full) {
+    webgpu_context_.PushErrorScope();
+  }
 }
 
 Status ComputeContext::PopErrorScope() {
-  return webgpu_context_.PopErrorScopeIfNoLowerThan(ValidationMode::Full);
+  if (webgpu_context_.ValidationMode() >= ValidationMode::Full) {
+    return webgpu_context_.PopErrorScope();
+  }
+  return Status::OK();
 }
 
 }  // namespace webgpu

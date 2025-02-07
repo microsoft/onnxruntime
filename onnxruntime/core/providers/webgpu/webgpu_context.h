@@ -122,18 +122,18 @@ class WebGpuContext final {
   void EndProfiling(TimePoint, profiling::Events& events, profiling::Events& cached_events);
 
   //
-  // Push error scope if the context's validation mode is no lower than the given mode.
+  // Push error scope.
   //
   // This is useful only when "skip_validation" is not set.
   //
-  void PushErrorScopeIfNoLowerThan(webgpu::ValidationMode validation_mode);
+  void PushErrorScope();
 
   //
-  // Pop error scope if the context's validation mode is no lower than the given mode.
+  // Pop error scope.
   //
   // This is useful only when "skip_validation" is not set.
   //
-  Status PopErrorScopeIfNoLowerThan(webgpu::ValidationMode validation_mode);
+  Status PopErrorScope();
 
   Status Run(ComputeContext& context, const ProgramBase& program);
 
