@@ -221,7 +221,6 @@ class MlasSoftmaxTest : public MlasTestBase {
           << "LogSoftmax:" << LogSoftmax << ", SmoothSoftmax: " << SmoothSoftmax << ", input " << in
           << ", got: " << out << ", expecting: " << ref << ", diff: " << diff << ", r-diff: " << diff / std::fabs(ref);
     }
-
   }
 #endif  // defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
 

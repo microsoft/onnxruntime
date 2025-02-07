@@ -6,7 +6,7 @@
 #include "core/mlas/lib/softmax.h"
 
 class MlasComputeTanhTest : public MlasTestBase {
-private:
+ private:
   MatrixGuardBuffer<MLAS_FP16> BufferInputFp16;
   MatrixGuardBuffer<MLAS_FP16> BufferOutputFp16;
 
@@ -39,7 +39,7 @@ private:
   }
 #endif  // defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
 
-public:
+ public:
   static const char* GetTestSuiteName() {
     static const std::string suite_name("Tanh");
     return suite_name.c_str();
@@ -55,7 +55,7 @@ public:
 };
 
 class MlasComputeSoftcapTest : public MlasTestBase {
-private:
+ private:
   MatrixGuardBuffer<MLAS_FP16> BufferInputFp16;
   MatrixGuardBuffer<MLAS_FP16> BufferOutputFp16;
 
@@ -78,7 +78,7 @@ private:
 
     for (size_t n = 0; n < N; n++) {
       float in = Input[n].ToFloat();
-      float ref = std::tanh(in/cap) * cap;
+      float ref = std::tanh(in / cap) * cap;
       float out = Output[n].ToFloat();
       float diff = std::fabs(out - ref);
       ASSERT_TRUE(diff <= AbsoluteTolerance || diff <= std::fabs(ref) * RelativeTolerance)
@@ -87,7 +87,7 @@ private:
   }
 #endif  // defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
 
-public:
+ public:
   static const char* GetTestSuiteName() {
     static const std::string suite_name("Softcap");
     return suite_name.c_str();
@@ -101,7 +101,6 @@ public:
     }
   }
 };
-
 
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_execute) {
   size_t count = 0;
