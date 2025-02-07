@@ -127,26 +127,26 @@ extends:
         BuildId: ${{ parameters.BuildId }}
         QnnSDKVersion: ${{ parameters.QnnSdk }}
 
-#    - template: stages/java-cuda-packaging-stage.yml
-#      parameters:
-#        CudaVersion: 11.8
-#        SpecificArtifact: ${{ parameters.SpecificArtifact }}
-#        BuildId: ${{ parameters.BuildId }}
+    - template: stages/java-cuda-packaging-stage.yml
+      parameters:
+        CudaVersion: 11.8
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-#    - template: stages/nuget-combine-cuda-stage.yml
-#      parameters:
-#          DoCompliance: ${{ parameters.DoCompliance }}
-#          CudaVersion: 11.8
-#          RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-#          UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
-#          win_trt_home: ${{ variables.win_trt_home }}
-#          win_cuda_home: ${{ variables.win_cuda_home }}
-#          DoEsrp: ${{ parameters.DoEsrp }}
-#          IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-#          buildJava: true
-#          buildNodejs: true
-#          SpecificArtifact: ${{ parameters.SpecificArtifact }}
-#          BuildId: ${{ parameters.BuildId }}
+    - template: stages/nuget-combine-cuda-stage.yml
+      parameters:
+          DoCompliance: ${{ parameters.DoCompliance }}
+          CudaVersion: 11.8
+          RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+          UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
+          win_trt_home: ${{ variables.win_trt_home }}
+          win_cuda_home: ${{ variables.win_cuda_home }}
+          DoEsrp: ${{ parameters.DoEsrp }}
+          IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+          buildJava: true
+          buildNodejs: true
+          SpecificArtifact: ${{ parameters.SpecificArtifact }}
+          BuildId: ${{ parameters.BuildId }}
 
     - template: nuget/templates/dml-vs-2022.yml
       parameters:
