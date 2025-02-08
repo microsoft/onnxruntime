@@ -790,7 +790,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-// tile_N size = 32, workgroup size = 128, scale_A components = 4, b components = 2, output components = 4
+// tile_N size = 16, workgroup size = 64, scale_A components = 4, b components = 2, output components = 4
 Status DP4AMatMulNBits2Program::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   shader.AddInput("scales_a", ShaderUsage::UseUniform);
@@ -799,9 +799,9 @@ Status DP4AMatMulNBits2Program::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
   shader.AdditionalImplementation() << R"ADDNL_FN(
-  const tile_size = 32u;
-  const tile_size_vec = 8u;
-  const subtile_size = 16u;
+  const tile_size = 16u; // tile_size = tile_size_vec * output components
+  const tile_size_vec = 4u;
+  const subtile_size = 16u; // tile_size_vec * subtile_size = workgroup size
   const tile_size_k_vec = 16u;
 
   // Shared memory
@@ -1394,13 +1394,13 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
           .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, gsl::narrow<int>(kVec4Components)});
       return context.RunProgram(mul_program);
     } else {
-      constexpr uint32_t kTileSize = 64;
-      DP4AMatMulNBits4Program mul_program;
+      constexpr uint32_t kTileSize = 16;
+      DP4AMatMulNBits2Program mul_program;
       mul_program.SetWorkgroupSize(64);
       mul_program.SetDispatchGroupSize(
           (N + kTileSize - 1) / kTileSize, M, 1);
       mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components)},
-                             {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)},
+                             {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(4)},
                              {b, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec2Components * kU32Components)},
                              {scales, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)}})
           .AddUniformVariables({{static_cast<uint32_t>(M)},
@@ -1408,7 +1408,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
                                 {static_cast<uint32_t>(K)},
                                 {static_cast<uint32_t>(K / 8)},
                                 {static_cast<uint32_t>(K / 16)}})
-          .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)});
+          .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(4)});
       return context.RunProgram(mul_program);
     }
   }
