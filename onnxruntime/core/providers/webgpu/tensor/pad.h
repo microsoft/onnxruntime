@@ -10,24 +10,25 @@
 namespace onnxruntime {
 namespace webgpu {
 
-template <typename T>
-class PadProgram final : public Program<PadProgram<T> > {
+class PadProgram final : public Program<PadProgram> {
  public:
-  PadProgram(const Mode mode, bool dim_value_zero) : Program<PadProgram<T> >{"Pad"}, mode_{mode}, dim_value_zero_{dim_value_zero} {}
+  PadProgram(const Mode mode, bool dim_value_zero, bool is_float16) : Program<PadProgram>{"Pad"},
+                                                                      mode_{mode},
+                                                                      dim_value_zero_{dim_value_zero},
+                                                                      is_float16_{is_float16} {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"lower_pads", ProgramUniformVariableDataType::Int32},
                                           {"output_size", ProgramUniformVariableDataType::Uint32},
-                                          {"constant_value",
-                                           std::is_same_v<T, float> ? ProgramUniformVariableDataType::Float32 : (std::is_same_v<T, int32_t> ? ProgramUniformVariableDataType::Int32 : (std::is_same_v<T, uint32_t> ? ProgramUniformVariableDataType::Uint32 : ProgramUniformVariableDataType::Float16))});
+                                          {"constant_value", ProgramUniformVariableDataType::Uint32});
 
  private:
   Mode mode_;
   bool dim_value_zero_;
+  bool is_float16_;
 };
 
-template <typename T>
 class Pad final : public PadBase, public WebGpuKernel {
  public:
   Pad(const OpKernelInfo& info) : PadBase(info), WebGpuKernel(info) {}

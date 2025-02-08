@@ -3,23 +3,24 @@
 
 #include "core/providers/webgpu/tensor/pad.h"
 #include "core/providers/webgpu/shader_helper.h"
-#include "core/providers/webgpu/webgpu_common.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
 
 namespace onnxruntime {
 namespace webgpu {
 
-template <typename T>
-Status PadProgram<T>::GenerateShaderCode(ShaderHelper& shader) const {
+Status PadProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (!dim_value_zero_) {
     shader.AddInput("data", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride);
   }
-  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseValueTypeAlias);
 
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size");
+  std::string constant_value_str = std::string("let constant_value = ") +
+                                   (is_float16_ ? "bitcast<vec2<f16>>(uniforms.constant_value)[0];\n" : "bitcast<output_value_t>(uniforms.constant_value);\n");
   if (dim_value_zero_) {
     // Only Constant mode needs fill output if the one dim value or mores dims' values of input are zero.
-    shader.MainFunctionBody() << "output[global_idx] = uniforms.constant_value;\n";
+    shader.MainFunctionBody() << constant_value_str
+                              << "output[global_idx] = constant_value;\n";
     return Status::OK();
   }
 
@@ -28,74 +29,58 @@ Status PadProgram<T>::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  var use_pad_value = false;\n"
                             << "  var in_coord = i32(0);\n";
 
-  std::string shapeDimStr = output.Rank() == 1 ? "" : "[dim]";
-  std::string strideDimStr = output.Rank() < 3 ? "" : "[dim]";
-  std::string begin_axis_statement, end_axis_statement;
-  std::string in_axis_statement = "in_coord = i32(output_indices" + shapeDimStr + ") - uniforms.lower_pads" +
-                                  shapeDimStr + ";\n";
+  const int rank = output.Rank();
+  std::string output_indices_str = rank == 1 ? "i32(output_indices)" : "i32(output_indices[dim])";
+  std::string lower_pads_str = rank == 1 ? "uniforms.lower_pads" : "uniforms.lower_pads[dim]";
+  std::string data_shape_str = rank == 1 ? "i32(uniforms.data_shape)" : "i32(uniforms.data_shape[dim])";
+  std::string data_stride_str = rank == 1 ? "" : (rank == 2 ? " * uniforms.data_stride" : " * uniforms.data_stride[dim]");
+  std::string begin_axis_statement = "in_coord = ";
+  std::string end_axis_statement = "in_coord = ";
+  std::string in_axis_statement = "in_coord = " + output_indices_str + " - " + lower_pads_str + ";\n";
   switch (mode_) {
     case Mode::Constant:
       begin_axis_statement = "use_pad_value = true;\n";
       end_axis_statement = "use_pad_value = true;\n";
       break;
     case Mode::Edge:
-      begin_axis_statement = "in_coord = 0;\n";
-      end_axis_statement = "in_coord = i32(uniforms.data_shape" + shapeDimStr + ") - 1;\n";
+      begin_axis_statement += "0;\n";
+      end_axis_statement += data_shape_str + " - 1;\n";
       break;
     case Mode::Reflect:
-      begin_axis_statement = "in_coord = uniforms.lower_pads" + shapeDimStr + " - i32(output_indices" +
-                             shapeDimStr + ");\n";
-      end_axis_statement = "in_coord = i32(uniforms.data_shape" + shapeDimStr + ") - 2 - (i32(output_indices" +
-                           shapeDimStr + ") - (uniforms.lower_pads" + shapeDimStr + " + i32(uniforms.data_shape" +
-                           shapeDimStr + ")));\n";
+      begin_axis_statement += lower_pads_str + " - " + output_indices_str + ";\n";
+      end_axis_statement += data_shape_str + " - 2 - (" + output_indices_str +
+                            " - (" + lower_pads_str + " + " + data_shape_str + "));\n";
       break;
     case Mode::Wrap:
-      begin_axis_statement = "in_coord = i32(uniforms.data_shape" + shapeDimStr + " + output_indices" +
-                             shapeDimStr + ") - uniforms.lower_pads" + shapeDimStr + ";\n";
-      end_axis_statement = "in_coord = i32(output_indices" + shapeDimStr + ") - uniforms.lower_pads" +
-                           shapeDimStr + " - i32(uniforms.data_shape" + shapeDimStr + ");\n";
+      begin_axis_statement += data_shape_str + " + " + output_indices_str + " - " + lower_pads_str + ";\n";
+      end_axis_statement += output_indices_str + " - " + lower_pads_str + " - " + data_shape_str + ";\n";
       break;
     default:
-      break;
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported mode type: ", static_cast<int>(mode_));
   }
 
-  std::string input_index_statement = output.Rank() < 2 ? "" : "    if (dim + 1 < " + std::to_string(output.Rank()) + ") {\n" + "      input_index += uniforms.data_stride" + strideDimStr + " * u32(in_coord);\n" + "    }\n";
-  shader.MainFunctionBody() << "  for (var dim = 0; dim < " << output.Rank() << " && !use_pad_value; dim++) {\n"
-                            << "    if (i32(output_indices" << shapeDimStr << ") < uniforms.lower_pads" << shapeDimStr << ") {\n"
+  shader.MainFunctionBody() << "  for (var dim = 0; dim < " << rank << " && !use_pad_value; dim++) {\n"
+                            << "    if (" << output_indices_str << " < " << lower_pads_str << ") {\n"
                             << "      " << begin_axis_statement << "    }\n"
-                            << "    else if (i32(output_indices" << shapeDimStr << ") >= uniforms.lower_pads"
-                            << shapeDimStr << " + i32(uniforms.data_shape" << shapeDimStr << ")) {\n"
+                            << "    else if (" << output_indices_str << " >= " << lower_pads_str << " + " << data_shape_str << ") {\n"
                             << "      " << end_axis_statement << "    }\n"
                             << "    else {\n"
                             << "      " << in_axis_statement << "    }\n"
-                            << input_index_statement
+                            << "    input_index += select(u32(in_coord)" << data_stride_str << ", u32(in_coord), dim == " << rank - 1 << ");\n"
                             << "  }\n"
-                            << "  input_index += u32(in_coord);\n"
-                            << "  output[global_idx] = select(data[input_index], uniforms.constant_value, use_pad_value);\n";
+                            << "  " << constant_value_str
+                            << "  " << output.SetByOffset("global_idx", "select(data[input_index], constant_value, use_pad_value)");
 
   return Status::OK();
 }
 
-template <typename T>
-typename ToWebGpuType<T>::MappedType ToWebGpuValue(const T& value) {
-  return value;
-}
-
-template <>
-typename ToWebGpuType<MLFloat16>::MappedType ToWebGpuValue<MLFloat16>(const MLFloat16& value) {
-  return *reinterpret_cast<const typename ToWebGpuType<MLFloat16>::MappedType*>(&value.val);
-}
-
-template <typename T>
-Status Pad<T>::ComputeInternal(ComputeContext& context) const {
-  typedef typename ToWebGpuType<T>::MappedType WebGpuT;
+Status Pad::ComputeInternal(ComputeContext& context) const {
   const Tensor* input_tensor = context.Input<Tensor>(0);
   auto const& input_shape = input_tensor->Shape();
   int32_t dimension_count = static_cast<int32_t>(input_shape.NumDimensions());
 
   const PadsVector* p_pads = &pads_;
   const PadsVector* p_slices = &slices_;
-  WebGpuT value = ToWebGpuType<T>::FromFloat(value_);
 
   PadsVector pads;
   PadsVector slices;
@@ -117,15 +102,6 @@ Status Pad<T>::ComputeInternal(ComputeContext& context) const {
     // Separate out any negative pads into the slices array
     PadBase::SeparateNegativeToSlices(pads, slices);
 
-    T raw_value{};
-    const Tensor* value_tensor = context.Input<Tensor>(2);
-    if (nullptr != value_tensor) {
-      ORT_ENFORCE(utils::IsPrimitiveDataType<T>(value_tensor->DataType()) &&
-                      value_tensor->Shape().Size() == 1,
-                  "Value tensor should be a 1D tensor of size 1 with the same type as that of the input tensor");
-      raw_value = value_tensor->Data<T>()[0];
-      value = ToWebGpuValue<T>(raw_value);
-    }
     p_pads = &pads;
     p_slices = &slices;
   }
@@ -156,107 +132,122 @@ Status Pad<T>::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-  PadProgram<T> program{mode_, dim_value_zero};
+  uint32_t value_uint32 = 0;
+  bool is_float16 = false;
+  if (!is_dynamic_) {
+    value_uint32 = *reinterpret_cast<const uint32_t*>(&value_);
+  } else {
+    const auto data_type = input_tensor->GetElementType();
+    const Tensor* value_tensor = context.Input<Tensor>(2);
+    ORT_ENFORCE(value_tensor->DataType() == input_tensor->DataType() && value_tensor->Shape().Size() == 1,
+                "Value tensor should be a 1D tensor of size 1 with the same type as that of the input tensor");
+    switch (data_type) {
+      case ONNX_NAMESPACE::TensorProto_DataType_INT32: {
+        int32_t value = value_tensor->Data<int32_t>()[0];
+        value_uint32 = *reinterpret_cast<uint32_t*>(&value);
+      } break;
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT: {
+        float value = value_tensor->Data<float>()[0];
+        value_uint32 = *reinterpret_cast<uint32_t*>(&value);
+      } break;
+      case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
+        uint16_t value = value_tensor->Data<MLFloat16>()[0].val;
+        std::memcpy(&value_uint32, &value, sizeof(value));
+        is_float16 = true;
+      } break;
+      case ONNX_NAMESPACE::TensorProto_DataType_UINT32: {
+        value_uint32 = value_tensor->Data<uint32_t>()[0];
+      } break;
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported input type: ", static_cast<int>(data_type));
+    }
+  }
+
+  PadProgram program{mode_, dim_value_zero, is_float16};
   if (!dim_value_zero) {
     program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank});
   }
   program.AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .CacheHint(std::to_string(static_cast<int>(mode_)), dim_value_zero)
-      .AddUniformVariables({{gsl::span<const int32_t>(lower_pads.data(), lower_pads.size())}, {output_size}, {value}});
+      .CacheHint(std::to_string(static_cast<int>(mode_)), dim_value_zero);
+
+  program.AddUniformVariables({{gsl::span<const int32_t>(lower_pads.data(), lower_pads.size())}, {output_size}, {value_uint32}});
 
   return context.RunProgram(program);
 }
 
-#define REGISTER_KERNEL_TYPED(T)                                  \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
-      Pad,                                                        \
-      kOnnxDomain,                                                \
-      2, 10,                                                      \
-      T,                                                          \
-      kWebGpuExecutionProvider,                                   \
-      (*KernelDefBuilder::Create())                               \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Pad<T>);                                                    \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
-      Pad,                                                        \
-      kOnnxDomain,                                                \
-      11, 12,                                                     \
-      T,                                                          \
-      kWebGpuExecutionProvider,                                   \
-      (*KernelDefBuilder::Create())                               \
-          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
-          .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Pad<T>);                                                    \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
-      Pad,                                                        \
-      kOnnxDomain,                                                \
-      13, 17,                                                     \
-      T,                                                          \
-      kWebGpuExecutionProvider,                                   \
-      (*KernelDefBuilder::Create())                               \
-          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
-          .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Pad<T>);                                                    \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
-      Pad,                                                        \
-      kOnnxDomain,                                                \
-      18, 18,                                                     \
-      T,                                                          \
-      kWebGpuExecutionProvider,                                   \
-      (*KernelDefBuilder::Create())                               \
-          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
-          .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
-          .InputMemoryType(OrtMemTypeCPUInput, 3)                 \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Pad<T>);                                                    \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
-      Pad,                                                        \
-      kOnnxDomain,                                                \
-      19, 20,                                                     \
-      T,                                                          \
-      kWebGpuExecutionProvider,                                   \
-      (*KernelDefBuilder::Create())                               \
-          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
-          .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
-          .InputMemoryType(OrtMemTypeCPUInput, 3)                 \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Pad<T>);                                                    \
-  ONNX_OPERATOR_VERSIONED_TYPED_KERNEL_EX(                        \
-      Pad,                                                        \
-      kOnnxDomain,                                                \
-      21, 22,                                                     \
-      T,                                                          \
-      kWebGpuExecutionProvider,                                   \
-      (*KernelDefBuilder::Create())                               \
-          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
-          .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
-          .InputMemoryType(OrtMemTypeCPUInput, 3)                 \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Pad<T>);                                                    \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                  \
-      Pad,                                                        \
-      kOnnxDomain,                                                \
-      23,                                                         \
-      T,                                                          \
-      kWebGpuExecutionProvider,                                   \
-      (*KernelDefBuilder::Create())                               \
-          .InputMemoryType(OrtMemTypeCPUInput, 1)                 \
-          .InputMemoryType(OrtMemTypeCPUInput, 2)                 \
-          .InputMemoryType(OrtMemTypeCPUInput, 3)                 \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>()), \
-      Pad<T>);
-
-#define SPECIALIZED_COMPUTE(T) \
-  REGISTER_KERNEL_TYPED(T)     \
-  template Status Pad<T>::ComputeInternal(ComputeContext& context) const;
-
-SPECIALIZED_COMPUTE(float)
-SPECIALIZED_COMPUTE(MLFloat16)
-SPECIALIZED_COMPUTE(uint32_t)
-SPECIALIZED_COMPUTE(int32_t)
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Pad,
+    kOnnxDomain,
+    2, 10,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T", WebGpuSupportedNumberTypes()),
+    Pad);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Pad,
+    kOnnxDomain,
+    11, 12,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .InputMemoryType(OrtMemTypeCPUInput, 2)
+        .TypeConstraint("T", WebGpuSupportedNumberTypes()),
+    Pad);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Pad,
+    kOnnxDomain,
+    13, 17,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .InputMemoryType(OrtMemTypeCPUInput, 2)
+        .TypeConstraint("T", WebGpuSupportedNumberTypes()),
+    Pad);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Pad,
+    kOnnxDomain,
+    18, 18,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .InputMemoryType(OrtMemTypeCPUInput, 2)
+        .InputMemoryType(OrtMemTypeCPUInput, 3)
+        .TypeConstraint("T", WebGpuSupportedNumberTypes()),
+    Pad);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Pad,
+    kOnnxDomain,
+    19, 20,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .InputMemoryType(OrtMemTypeCPUInput, 2)
+        .InputMemoryType(OrtMemTypeCPUInput, 3)
+        .TypeConstraint("T", WebGpuSupportedNumberTypes()),
+    Pad);
+ONNX_OPERATOR_VERSIONED_KERNEL_EX(
+    Pad,
+    kOnnxDomain,
+    21, 22,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .InputMemoryType(OrtMemTypeCPUInput, 2)
+        .InputMemoryType(OrtMemTypeCPUInput, 3)
+        .TypeConstraint("T", WebGpuSupportedNumberTypes()),
+    Pad);
+ONNX_OPERATOR_KERNEL_EX(
+    Pad,
+    kOnnxDomain,
+    23,
+    kWebGpuExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .InputMemoryType(OrtMemTypeCPUInput, 1)
+        .InputMemoryType(OrtMemTypeCPUInput, 2)
+        .InputMemoryType(OrtMemTypeCPUInput, 3)
+        .TypeConstraint("T", WebGpuSupportedNumberTypes()),
+    Pad);
 
 }  // namespace webgpu
 }  // namespace onnxruntime
