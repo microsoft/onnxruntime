@@ -233,7 +233,7 @@ void OVInferRequest::SetTensor(const std::string& name, OVTensorPtr& blob) {
 }
 
 uint32_t OVInferRequest::GetNumInputs() {
-  return ovInfReq.get_compiled_model().inputs().size();
+  return static_cast<uint32_t>(ovInfReq.get_compiled_model().inputs().size());
 }
 
 void OVInferRequest::StartAsync() {
