@@ -790,7 +790,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-// tile_N size = 16, workgroup size = 64, scale_A components = 4, b components = 2, output components = 4
+// tile_N size = 16, workgroup size = 64, scale_A components = 4, b components = 4, output components = 4
 Status DP4AMatMulNBits2Program::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   shader.AddInput("scales_a", ShaderUsage::UseUniform);
@@ -819,13 +819,17 @@ Status DP4AMatMulNBits2Program::GenerateShaderCode(ShaderHelper& shader) const {
     }
   }
 
-  // Scaled dot product of 4 packed unsigned integers.
-  fn SDP8AI(a1:vec4<u32>, b1:vec4<u32>, scale:output_element_t) -> output_element_t
+  // Scaled dot product of 8 packed unsigned integers.
+  fn SDP8AI(a1:vec4<u32>, b1:vec4<u32>, a2:vec4<u32>, b2:vec4<u32>, scale:output_element_t) -> output_element_t
   {
       var local_sum = dot4I8Packed(a1[0], b1[0]);
       local_sum += dot4I8Packed(a1[1], b1[1]);
       local_sum += dot4I8Packed(a1[2], b1[2]);
       local_sum += dot4I8Packed(a1[3], b1[3]);
+      local_sum += dot4I8Packed(a2[0], b2[0]);
+      local_sum += dot4I8Packed(a2[1], b2[1]);
+      local_sum += dot4I8Packed(a2[2], b2[2]);
+      local_sum += dot4I8Packed(a2[3], b2[3]);
       return output_element_t(local_sum) * scale;
   }
 )ADDNL_FN";
@@ -838,27 +842,27 @@ Status DP4AMatMulNBits2Program::GenerateShaderCode(ShaderHelper& shader) const {
   let idy = local_idx / subtile_size;
   let b_base = idy * 4;
   // K's vectrorization is 16 items per index. See input_a/input_b.
-  for (var kidx_v:u32 = 0; kidx_v < uniforms.K16; kidx_v+=32)
+  for (var kidx_v:u32 = 0; kidx_v < uniforms.K32; kidx_v+=16)
   {
     // Load Phase: Populate shared memory for the workgroup.
     if (local_idx < 32)
     {
-      loadSHMA(a_global, kidx_v, local_idx);
+      loadSHMA(a_global, kidx_v * 2, local_idx);
     }
     workgroupBarrier();
 
-    for (var i = 0u; i < 2u; i++) {
-    let k_offset = i * tile_size_k_vec;
-    var own_a: vec4<u32> = tile_A[k_offset + idx];
-    var own_scale_a: output_element_t = scale_A[2 * i + idx / 8];
+    var own_a: vec4<u32> = tile_A[idx*2];
+    var own_a1: vec4<u32> = tile_A[idx*2 + 1];
+    var own_scale_a: output_element_t = scale_A[idx / 4];
 
     var own_b = vec4<u32>(0);
+    var own_b1 = vec4<u32>(0);
     var own_scale_b = output_element_t(0);
-    var b_global = b_global_base + b_base;
+    let b_global = b_global_base + b_base;
   //  var inner_res = vec4<output_element_t>(0);
     if (b_global < uniforms.N)
-    {
-      var b_value = input_b[b_global*uniforms.K16+kidx_v+k_offset+idx];
+    { var b_offset = b_global*uniforms.K32+kidx_v+idx;
+      var b_value = input_b[b_offset];
       var b_value_lower = vec4<i32>(unpack4xU8(b_value[0] & 0x0F0F0F0Fu)) - vec4<i32>(8);
       var b_value_upper = vec4<i32>(unpack4xU8((b_value[0] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
       own_b[0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
@@ -867,14 +871,22 @@ Status DP4AMatMulNBits2Program::GenerateShaderCode(ShaderHelper& shader) const {
       b_value_upper = vec4<i32>(unpack4xU8((b_value[1] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
       own_b[2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
       own_b[3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+      b_value_lower = vec4<i32>(unpack4xU8(b_value[2] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      b_value_upper = vec4<i32>(unpack4xU8((b_value[2] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      own_b1[0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+      own_b1[1] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+      b_value_lower = vec4<i32>(unpack4xU8(b_value[3] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      b_value_upper = vec4<i32>(unpack4xU8((b_value[3] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      own_b1[2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+      own_b1[3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
 
       // kidx_v - each kidx_v covers 16 values of k
-      own_scale_b = scales_b[b_global*(uniforms.K/32) + (kidx_v+k_offset)/2 + idx/2];
+      own_scale_b = scales_b[b_offset];
 
-      inter_results[idy][idx].x += SDP8AI(own_a, own_b, own_scale_a * own_scale_b);
+      inter_results[idy][idx].x += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
 
-      b_global += 1;
-      b_value = input_b[b_global*uniforms.K16+kidx_v+k_offset+idx];
+      b_offset = (b_global + 1)*uniforms.K32+kidx_v+idx;
+      b_value = input_b[b_offset];
       b_value_lower = vec4<i32>(unpack4xU8(b_value[0] & 0x0F0F0F0Fu)) - vec4<i32>(8);
       b_value_upper = vec4<i32>(unpack4xU8((b_value[0] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
       own_b[0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
@@ -883,11 +895,19 @@ Status DP4AMatMulNBits2Program::GenerateShaderCode(ShaderHelper& shader) const {
       b_value_upper = vec4<i32>(unpack4xU8((b_value[1] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
       own_b[2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
       own_b[3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
-      own_scale_b = scales_b[b_global*(uniforms.K/32) + (kidx_v+k_offset)/2 + idx/2];
-      inter_results[idy][idx].y += SDP8AI(own_a, own_b, own_scale_a * own_scale_b);
+      b_value_lower = vec4<i32>(unpack4xU8(b_value[2] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      b_value_upper = vec4<i32>(unpack4xU8((b_value[2] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      own_b1[0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+      own_b1[1] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+      b_value_lower = vec4<i32>(unpack4xU8(b_value[3] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      b_value_upper = vec4<i32>(unpack4xU8((b_value[3] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      own_b1[2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+      own_b1[3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+      own_scale_b = scales_b[b_offset];
+      inter_results[idy][idx].y += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
 
-      b_global += 1;
-      b_value = input_b[b_global*uniforms.K16+kidx_v+k_offset+idx];
+      b_offset = (b_global + 2)*uniforms.K32+kidx_v+idx;
+      b_value = input_b[b_offset];
       b_value_lower = vec4<i32>(unpack4xU8(b_value[0] & 0x0F0F0F0Fu)) - vec4<i32>(8);
       b_value_upper = vec4<i32>(unpack4xU8((b_value[0] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
       own_b[0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
@@ -896,11 +916,19 @@ Status DP4AMatMulNBits2Program::GenerateShaderCode(ShaderHelper& shader) const {
       b_value_upper = vec4<i32>(unpack4xU8((b_value[1] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
       own_b[2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
       own_b[3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
-      own_scale_b = scales_b[b_global*(uniforms.K/32) + (kidx_v+k_offset)/2 + idx/2];
-      inter_results[idy][idx].z += SDP8AI(own_a, own_b, own_scale_a * own_scale_b);
+      b_value_lower = vec4<i32>(unpack4xU8(b_value[2] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      b_value_upper = vec4<i32>(unpack4xU8((b_value[2] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      own_b1[0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+      own_b1[1] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+      b_value_lower = vec4<i32>(unpack4xU8(b_value[3] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      b_value_upper = vec4<i32>(unpack4xU8((b_value[3] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      own_b1[2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+      own_b1[3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+      own_scale_b = scales_b[b_offset];
+      inter_results[idy][idx].z += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
 
-      b_global += 1;
-      b_value = input_b[b_global*uniforms.K16+kidx_v+k_offset+idx];
+      b_offset = (b_global + 3)*uniforms.K32+kidx_v+idx;
+      b_value = input_b[b_offset];
       b_value_lower = vec4<i32>(unpack4xU8(b_value[0] & 0x0F0F0F0Fu)) - vec4<i32>(8);
       b_value_upper = vec4<i32>(unpack4xU8((b_value[0] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
       own_b[0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
@@ -909,12 +937,19 @@ Status DP4AMatMulNBits2Program::GenerateShaderCode(ShaderHelper& shader) const {
       b_value_upper = vec4<i32>(unpack4xU8((b_value[1] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
       own_b[2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
       own_b[3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
-      own_scale_b = scales_b[b_global*(uniforms.K/32) + (kidx_v+k_offset)/2 + idx/2];
-      inter_results[idy][idx].w += SDP8AI(own_a, own_b, own_scale_a * own_scale_b);
+      b_value_lower = vec4<i32>(unpack4xU8(b_value[2] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      b_value_upper = vec4<i32>(unpack4xU8((b_value[2] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      own_b1[0] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+      own_b1[1] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+      b_value_lower = vec4<i32>(unpack4xU8(b_value[3] & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      b_value_upper = vec4<i32>(unpack4xU8((b_value[3] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+      own_b1[2] = pack4xI8(vec4<i32>(b_value_lower[0], b_value_upper[0], b_value_lower[1], b_value_upper[1]));
+      own_b1[3] = pack4xI8(vec4<i32>(b_value_lower[2], b_value_upper[2], b_value_lower[3], b_value_upper[3]));
+      own_scale_b = scales_b[b_offset];
+      inter_results[idy][idx].w += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
     }
    // inter_results[idy][idx] = inner_res;
     workgroupBarrier();
-    }
   }
 
   if (local_idx < tile_size_vec) {
@@ -1401,13 +1436,13 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
           (N + kTileSize - 1) / kTileSize, M, 1);
       mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components)},
                              {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(4)},
-                             {b, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec2Components * kU32Components)},
+                             {b, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components * kU32Components)},
                              {scales, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)}})
           .AddUniformVariables({{static_cast<uint32_t>(M)},
                                 {static_cast<uint32_t>(N)},
                                 {static_cast<uint32_t>(K)},
-                                {static_cast<uint32_t>(K / 8)},
-                                {static_cast<uint32_t>(K / 16)}})
+                                {static_cast<uint32_t>(K / 16)},
+                                {static_cast<uint32_t>(K / 32)}})
           .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(4)});
       return context.RunProgram(mul_program);
     }

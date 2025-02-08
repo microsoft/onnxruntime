@@ -61,8 +61,8 @@ class DP4AMatMulNBits2Program final : public Program<DP4AMatMulNBits2Program> {
       {"M", ProgramUniformVariableDataType::Uint32},
       {"N", ProgramUniformVariableDataType::Uint32},
       {"K", ProgramUniformVariableDataType::Uint32},
-      {"K8", ProgramUniformVariableDataType::Uint32},
-      {"K16", ProgramUniformVariableDataType::Uint32});
+      {"K16", ProgramUniformVariableDataType::Uint32},
+      {"K32", ProgramUniformVariableDataType::Uint32});
 };
 
 class DP4AMatMulNBits3Program final : public Program<DP4AMatMulNBits3Program> {
