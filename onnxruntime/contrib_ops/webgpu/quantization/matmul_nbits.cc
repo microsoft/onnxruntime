@@ -801,13 +801,12 @@ Status DP4AMatMulNBits2Program::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AdditionalImplementation() << R"ADDNL_FN(
   const tile_size = 16u; // tile_size = tile_size_vec * output components
   const tile_size_vec = 4u;
-  const subtile_size = 16u; // tile_size_vec * subtile_size = workgroup size
-  const tile_size_k_vec = 16u;
+  const tile_size_k_vec = 16u; // tile_size_vec * tile_size_k_vec = workgroup size
 
   // Shared memory
   var<workgroup> tile_A : array<vec4<u32>, 32>;                    // 256
   var<workgroup> scale_A : vec4<output_element_t>;                              // 4
-  var<workgroup> inter_results: array<array<vec4<output_element_t>, subtile_size>, tile_size_vec>;
+  var<workgroup> inter_results: array<array<vec4<output_element_t>, tile_size_k_vec>, tile_size_vec>;
 
   fn loadSHMA(a_global:u32, kidx_v:u32, col: u32)
   {
@@ -838,8 +837,8 @@ Status DP4AMatMulNBits2Program::GenerateShaderCode(ShaderHelper& shader) const {
   let a_global = workgroup_id.y;
   let b_global_base = workgroup_id.x * tile_size;
 
-  let idx = local_idx % subtile_size;
-  let idy = local_idx / subtile_size;
+  let idx = local_idx % tile_size_k_vec;
+  let idy = local_idx / tile_size_k_vec;
   let b_base = idy * 4;
   // K's vectrorization is 16 items per index. See input_a/input_b.
   for (var kidx_v:u32 = 0; kidx_v < uniforms.K32; kidx_v+=16)
@@ -954,7 +953,7 @@ Status DP4AMatMulNBits2Program::GenerateShaderCode(ShaderHelper& shader) const {
 
   if (local_idx < tile_size_vec) {
     var output_value = vec4<output_element_t>(0);
-    for (var b = 0u; b < 16u; b++) {
+    for (var b = 0u; b < tile_size_k_vec; b++) {
       output_value += inter_results[local_idx][b];
     }
     let b_global =  b_global_base + local_idx * 4;
