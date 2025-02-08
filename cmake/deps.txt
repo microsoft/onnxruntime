@@ -60,4 +60,4 @@ directx_headers;https://github.com/microsoft/DirectX-Headers/archive/refs/tags/v
 cudnn_frontend;https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.7.0.zip;d0753d8d5b39947ca0729d7773cb84653a129eb1
 dawn;https://github.com/google/dawn/archive/12a3b24c456cebd9fd11f23ac0164f78129b00c6.zip;ad428f6dc16f1336d584f7bad5714e1097dafc43
 kleidiai;https://gitlab.arm.com/kleidi/kleidiai/-/archive/v0.2.0/kleidiai-v0.2.0.zip;B1E3173992FD91F20DB904AB77D6E901778C2681
-vaip;https://github.com/amd/vaip.git;main
+vaip;https://github.com/amd/vaip/archive/refs/tags/v1.0.0-rc0.zip;e084b71c0277e2e3263179a4682300d427ff83e7

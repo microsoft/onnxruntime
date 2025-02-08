@@ -2,10 +2,8 @@
 # Licensed under the MIT License.
   FetchContent_Declare(
     vaip
-    GIT_REPOSITORY ${DEP_URL_vaip}
-    GIT_TAG ${DEP_SHA1_vaip}
-    GIT_SUBMODULES_RECURSE FALSE
-    GIT_SHALLOW TRUE
+    URL ${DEP_URL_vaip}
+    URL_HASH SHA1=${DEP_SHA1_vaip}
     OVERRIDE_FIND_PACKAGE
   )
   find_package(vaip)
