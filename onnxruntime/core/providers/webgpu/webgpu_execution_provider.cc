@@ -861,13 +861,13 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     context_.CollectProfilingData(profiler_->Events());
   }
 
-  if (context_.ValidationMode() >= ValidationMode::Basic) {
-    return context_.PopErrorScope();
-  }
-
   context_.OnRunEnd();
 
-  return Status::OK();
+  if (context_.ValidationMode() >= ValidationMode::Basic) {
+    return context_.PopErrorScope();
+  } else {
+    return Status::OK();
+  }
 }
 
 bool WebGpuExecutionProvider::IsGraphCaptureEnabled() const {
