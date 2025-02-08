@@ -32,8 +32,8 @@
 #include "cutlass/layout/matrix.h"
 #include "cutlass/trace.h"
 
-#include "cutlass_extensions/gemm/kernel/gemm_moe_problem_visitor.h"
-#include "cutlass_extensions/tile_interleaved_layout.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/gemm/kernel/gemm_moe_problem_visitor.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/tile_interleaved_layout.h"
 
 #include "tensorrt_llm/kernels/internal_cutlass_kernels/src/moe_gemm/moe_tma_warp_specialized_traits.h"
 

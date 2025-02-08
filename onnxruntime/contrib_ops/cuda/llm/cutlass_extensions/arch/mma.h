@@ -33,7 +33,7 @@
 */
 
 #pragma once
-#include "cutlass_extensions/weight_only_quant_op.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/weight_only_quant_op.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 

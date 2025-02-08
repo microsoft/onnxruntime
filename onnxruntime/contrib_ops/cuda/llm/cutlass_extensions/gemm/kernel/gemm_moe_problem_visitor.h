@@ -26,8 +26,8 @@
 #include "cutlass/gemm/kernel/gemm_grouped_problem_visitor.h"
 #include "cutlass/matrix_coord.h"
 
-#include "cutlass_extensions/gemm/kernel/gemm_moe_problem_visitor.h"
-#include "cutlass_extensions/gemm/kernel/moe_problem_visitor.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/gemm/kernel/gemm_moe_problem_visitor.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/gemm/kernel/moe_problem_visitor.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 

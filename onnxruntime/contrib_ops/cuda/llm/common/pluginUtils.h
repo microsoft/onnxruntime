@@ -65,14 +65,15 @@ inline DimType64 computeNDimension(bool transB, nvinfer1::Dims const& dims)
     return N;
 }
 
-// inline std::int32_t logErrorReturn0(char const* variable)
-// {
-//     TLLM_LOG_ERROR("Value of %s is out of range for int32_t", variable);
-//     return 0;
-// }
+/*
+inline std::int32_t logErrorReturn0(char const* variable)
+{
+    TLLM_LOG_ERROR("Value of %s is out of range for int32_t", variable);
+    return 0;
+}
 
-// #define TLLM_INT32_CAST(value)                                                                                         \
-//     ((value > 0x7FFFFFFFLL || value < -0x80000000LL) ? onnxruntime::llm::plugins::utils::logErrorReturn0(#value)           \
-//                                                      : static_cast<int32_t>(value))
-
+#define TLLM_INT32_CAST(value)                                                                                         \
+    ((value > 0x7FFFFFFFLL || value < -0x80000000LL) ? onnxruntime::llm::plugins::utils::logErrorReturn0(#value)           \
+                                                     : static_cast<int32_t>(value))
+*/
 } // namespace onnxruntime::llm::plugins::utils

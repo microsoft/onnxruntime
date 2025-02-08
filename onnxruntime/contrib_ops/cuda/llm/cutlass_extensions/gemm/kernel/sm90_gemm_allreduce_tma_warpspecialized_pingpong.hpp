@@ -48,8 +48,8 @@
 #include "gemm_universal_allreduce.hpp"
 
 #include "cute/tensor.hpp"
-// #include "cutlass_extensions/arch/grid_dependency_control.h"
-#include "cutlass_extensions/gemm/kernel/gemm_universal_allreduce.hpp"
+// #include "contrib_ops/cuda/llm/cutlass_extensions/arch/grid_dependency_control.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/gemm/kernel/gemm_universal_allreduce.hpp"
 
 ///////////////////////////////////////////////////////////////////////////////
 

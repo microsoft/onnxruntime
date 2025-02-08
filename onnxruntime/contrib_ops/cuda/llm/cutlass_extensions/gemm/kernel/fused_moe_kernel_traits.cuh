@@ -18,9 +18,9 @@
 #pragma once
 
 #include <cutlass/epilogue/thread/activation.h>
-#include <cutlass_extensions/epilogue_helpers.h>
-#include <cutlass_extensions/gemm/kernel/moe_cute_util.cuh>
-#include <cutlass_extensions/gemm/kernel/moe_problem_visitor.h>
+#include "contrib_ops/cuda/llm/cutlass_extensions/epilogue_helpers.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/gemm/kernel/moe_cute_util.cuh"
+#include "contrib_ops/cuda/llm/cutlass_extensions/gemm/kernel/moe_problem_visitor.h"
 
 namespace fused_moe
 {

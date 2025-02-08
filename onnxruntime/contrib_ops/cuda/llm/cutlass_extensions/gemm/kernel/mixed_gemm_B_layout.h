@@ -32,8 +32,8 @@
 #include "cutlass/arch/mma.h"
 #include "cutlass/platform/platform.h"
 
-#include "cutlass_extensions/arch/mma.h"
-#include "cutlass_extensions/tile_interleaved_layout.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/arch/mma.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/tile_interleaved_layout.h"
 
 namespace cutlass
 {

@@ -24,8 +24,8 @@
 #include "cutlass/half.h"
 #include "cutlass/layout/matrix.h"
 
-#include "cutlass_extensions/arch/mma.h"
-#include "cutlass_extensions/gemm/kernel/mixed_gemm_B_layout.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/arch/mma.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/gemm/kernel/mixed_gemm_B_layout.h"
 
 namespace cutlass
 {

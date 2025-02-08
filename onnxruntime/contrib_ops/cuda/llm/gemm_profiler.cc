@@ -15,8 +15,15 @@
  * limitations under the License.
  */
 
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#endif
+
 #include "contrib_ops/cuda/llm/gemm_profiler.h"
 #include "contrib_ops/cuda/llm/common/cublasMMWrapper.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/gemm_configs.h"
 // #include "tensorrt_llm/kernels/cutlass_kernels/fp8_rowwise_gemm/fp8_rowwise_gemm.h"
 // #include "tensorrt_llm/kernels/cutlass_kernels/fpA_intB_gemm/fpA_intB_gemm.h"
 // #include "tensorrt_llm/kernels/cutlass_kernels/fused_gated_gemm/fused_gated_gemm.h"
@@ -48,6 +55,7 @@ GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::GemmPluginPro
     }
 }
 
+/*
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::serialize(
     char*& buffer, GemmIdType const& gemmId) const
@@ -100,6 +108,7 @@ size_t GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::getSer
         mMNKProfileMap->getMProfileMap(gemmId)->size()
         * sizeof(std::pair<int, std::optional<Config>>); // size of the tactics map
 }
+*/
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 int GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::getMaxProfileM() const
@@ -109,7 +118,7 @@ int GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::getMaxPro
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::initTmpData(
-    int m, int n, int k, char* workspace, size_t size, cudaStream_t stream)
+    int /*m*/, int /*n*/, int /*k*/, char* /*workspace*/, size_t /*size*/, cudaStream_t /*stream*/)
 {
     /* Do nothing */
 }
@@ -403,3 +412,7 @@ template class GemmPluginProfiler<cublasLtMatmulHeuristicResult_t,
 //     std::shared_ptr<onnxruntime::llm::kernels::cutlass_kernels::GemmAllReduceImplInterface>, GemmIdCore, GemmIdCoreHash>;
 
 }  // namespace onnxruntime::llm
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif

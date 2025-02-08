@@ -18,9 +18,9 @@
 #pragma once
 #include <cutlass/gemm/kernel/gemm_grouped_problem_visitor.h>
 #include <cutlass/trace.h>
-#include <cutlass_extensions/gemm/kernel/fused_moe_kernel_routine.cuh>
-#include <cutlass_extensions/gemm/kernel/fused_moe_kernel_traits.cuh>
-#include <cutlass_extensions/gemm/kernel/moe_problem_visitor.h>
+#include "contrib_ops/cuda/llm/cutlass_extensions/gemm/kernel/fused_moe_kernel_routine.cuh"
+#include "contrib_ops/cuda/llm/cutlass_extensions/gemm/kernel/fused_moe_kernel_traits.cuh"
+#include "contrib_ops/cuda/llm/cutlass_extensions/gemm/kernel/moe_problem_visitor.h"
 
 namespace fused_moe
 {

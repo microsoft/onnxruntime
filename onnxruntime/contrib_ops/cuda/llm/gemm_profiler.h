@@ -36,7 +36,8 @@ namespace onnxruntime::llm
 
 struct GemmDims
 {
-    using DimType64 = utils::DimType64;
+    //using DimType64 = utils::DimType64;
+    using DimType64 = int64_t;
 
     DimType64 minM;
     DimType64 maxM;
@@ -217,11 +218,14 @@ public:
 
     GemmPluginProfiler();
 
+    virtual ~GemmPluginProfiler();
+    /*
     void serialize(char*& buffer, GemmIdType const& gemmId) const;
 
     void deserialize(char const*& data, GemmDims& dims, GemmIdType const& gemmId);
     size_t getSerializationSize(GemmIdType const& gemmId) const;
-
+    */
+   
     void profileTactics(RunnerPtr const& runner, nvinfer1::DataType const& type, GemmDims const& dims,
         GemmIdType const& gemmId, bool hasCudaKernel = false);
 

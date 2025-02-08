@@ -49,7 +49,7 @@
 #include "cutlass/semaphore.h"
 #include "cutlass/trace.h"
 
-#include "cutlass_extensions/epilogue/threadblock/epilogue_per_row_per_col_scale.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/epilogue/threadblock/epilogue_per_row_per_col_scale.h"
 
 namespace tk = tensorrt_llm::common;
 

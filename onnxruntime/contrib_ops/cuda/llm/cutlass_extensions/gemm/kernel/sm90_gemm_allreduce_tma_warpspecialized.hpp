@@ -49,7 +49,7 @@
 
 #include "cute/tensor.hpp"
 
-// #include "cutlass_extensions/arch/grid_dependency_control.h"
+// #include "contrib_ops/cuda/llm/cutlass_extensions/arch/grid_dependency_control.h"
 
 ///////////////////////////////////////////////////////////////////////////////
 

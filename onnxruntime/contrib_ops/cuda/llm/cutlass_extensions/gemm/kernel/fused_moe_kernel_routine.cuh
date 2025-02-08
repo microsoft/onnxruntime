@@ -16,7 +16,7 @@
  */
 
 #pragma once
-#include <cutlass_extensions/gemm/kernel/fused_moe_kernel_traits.cuh>
+#include "contrib_ops/cuda/llm/cutlass_extensions/gemm/kernel/fused_moe_kernel_traits.cuh"
 
 namespace fused_moe
 {
