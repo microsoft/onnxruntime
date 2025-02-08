@@ -24,6 +24,7 @@ class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"old_sequence_length", ProgramUniformVariableDataType::Uint32},
+                                          {"cache_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"vectorized_head_size", ProgramUniformVariableDataType::Uint32});
 
