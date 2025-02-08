@@ -28,7 +28,7 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   //  Attention bias is in BN(total_sequence_length)
   shader.AddInput("key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddInput("value", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  if (has_past_) {
+  if (should_copy_past_) {
     shader.AddInput("past_key", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
     shader.AddInput("past_value", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   }
@@ -38,19 +38,19 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody() << "let headIdx = workgroup_id.z;\n"
                             << "let kIdx = workgroup_id.x;\n"
                             << "let presentKeyOffset = headIdx * num_workgroups.x * uniforms.vectorized_head_size + (kIdx)*uniforms.vectorized_head_size;\n";
-  if (has_past_) {
-    shader.MainFunctionBody() << "if (kIdx < uniforms.past_sequence_length) {\n"
-                              << "  let pastKeyOffset = headIdx * uniforms.past_sequence_length * uniforms.vectorized_head_size + (kIdx)*uniforms.vectorized_head_size;\n"
+  if (should_copy_past_) {
+    shader.MainFunctionBody() << "if (kIdx < uniforms.old_sequence_length) {\n"
+                              << "  let pastKeyOffset = headIdx * uniforms.old_sequence_length * uniforms.vectorized_head_size + (kIdx)*uniforms.vectorized_head_size;\n"
                               << "  for (var w: u32 = 0u; w < uniforms.vectorized_head_size; w ++) {\n"
                               << "    present_key[presentKeyOffset+w] = past_key[pastKeyOffset+w];\n"
                               << "    present_value[presentKeyOffset+w] = past_value[pastKeyOffset+w];\n"
                               << "  }\n"
                               << "}\n"
-                              << "else if (kIdx >= uniforms.past_sequence_length) {\n";
+                              << "else if (kIdx >= uniforms.old_sequence_length) {\n";
   } else {
-    shader.MainFunctionBody() << "if (kIdx >= uniforms.past_sequence_length) {\n";
+    shader.MainFunctionBody() << "if (kIdx >= uniforms.old_sequence_length) {\n";
   }
-  shader.MainFunctionBody() << "  let nkIdx = kIdx - uniforms.past_sequence_length;\n"
+  shader.MainFunctionBody() << "  let nkIdx = kIdx - uniforms.old_sequence_length;\n"
                             << "  // Assumes kv have BSNH layout. num_workgroups.z is the num_head as per the dispatch requirement.\n"
                             << "  let nOffset = nkIdx * uniforms.vectorized_head_size * num_workgroups.z + headIdx*uniforms.vectorized_head_size;\n"
                             << "  // Assumes kv have BNSH layout.\n"
@@ -67,14 +67,14 @@ Status CopyKVCacheProgram::GenerateShaderCode(ShaderHelper& shader) const {
 Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& parameters,
                    const Tensor* K, const Tensor* past_key, Tensor* present_key,
                    const Tensor* V, const Tensor* past_value, Tensor* present_value,
-                   int past_sequence_length, int total_sequence_length) {
+                   int old_sequence_length, int total_sequence_length) {
   // CopyKVCache takes past key/value and current key/value and copies them to present key and value.
   // This makes it so that FlashAttention only needs to look at present key and value, and saves
   // number of input buffers in the shader, which we run out of (<=8) without this optimization.
   const int components = parameters.head_size_ % 4 == 0 ? 4 : (parameters.head_size_ % 2 == 0 ? 2 : 1);
-  bool has_past = (past_sequence_length != 0);
-  CopyKVCacheProgram program{"CopyKVCache", has_past};
-  if (has_past) {
+  bool should_copy_past = (old_sequence_length != 0);
+  CopyKVCacheProgram program{"CopyKVCache", should_copy_past};
+  if (should_copy_past) {
     program.AddInputs({{K, ProgramTensorMetadataDependency::TypeAndRank, components},
                        {V, ProgramTensorMetadataDependency::TypeAndRank, components},
                        {past_key, ProgramTensorMetadataDependency::TypeAndRank, components},
@@ -89,8 +89,8 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
 
   program.SetDispatchGroupSize(total_sequence_length, 1, parameters.num_heads_)
       .SetWorkgroupSize(1)
-      .CacheHint(std::to_string(components) + std::to_string(has_past))
-      .AddUniformVariables({{static_cast<uint32_t>(past_sequence_length)},
+      .CacheHint(std::to_string(components) + std::to_string(should_copy_past))
+      .AddUniformVariables({{static_cast<uint32_t>(old_sequence_length)},
                             {static_cast<uint32_t>(parameters.kv_sequence_length_)},
                             {static_cast<uint32_t>(parameters.head_size_ / components)}});
 
@@ -420,8 +420,10 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   FlashAttentionProgram program{"FlashAttention", has_attention_bias, parameters.head_size_, parameters.num_heads_};
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 4},
                      {present_key, ProgramTensorMetadataDependency::TypeAndRank, 4},
-                     {present_value, ProgramTensorMetadataDependency::TypeAndRank, 4},
-                     {attention_bias, ProgramTensorMetadataDependency::TypeAndRank}});
+                     {present_value, ProgramTensorMetadataDependency::TypeAndRank, 4}});
+  if (has_attention_bias) {
+    program.AddInput({attention_bias, ProgramTensorMetadataDependency::TypeAndRank});
+  }
   program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, 4}});
   const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
                                                 : parameters.scale_;
@@ -443,6 +445,7 @@ bool CanApplyFlashAttention(const Tensor* bias, const Tensor* present_key, const
   return parameters.batch_size_ == 1 &&
          bias == nullptr &&
          parameters.sequence_length_ > 1 &&
+         parameters.qkv_format_ == Q_K_V_BSNH &&
          context.Device().HasFeature(wgpu::FeatureName::Subgroups) &&
          present_key != nullptr && present_value != nullptr && present_key->SizeInBytes() > 0 &&
          present_value->SizeInBytes() > 0 && parameters.head_size_ % 4 == 0;

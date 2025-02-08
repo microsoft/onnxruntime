@@ -17,18 +17,18 @@ using namespace onnxruntime::webgpu;
 
 class CopyKVCacheProgram final : public Program<CopyKVCacheProgram> {
  public:
-  CopyKVCacheProgram(const std::string& kernel_name, bool has_past)
-      : Program{kernel_name}, has_past_(has_past) {
+  CopyKVCacheProgram(const std::string& kernel_name, bool should_copy_past)
+      : Program{kernel_name}, should_copy_past_(should_copy_past) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"past_sequence_length", ProgramUniformVariableDataType::Uint32},
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"old_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"kv_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"vectorized_head_size", ProgramUniformVariableDataType::Uint32});
 
  private:
-  bool has_past_;
+  bool should_copy_past_;
 };
 
 class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
