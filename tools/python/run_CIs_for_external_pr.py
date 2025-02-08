@@ -25,6 +25,7 @@ def get_pipeline_names():
         "Windows GPU Doc Gen CI Pipeline",
         "Windows GPU TensorRT CI Pipeline",
         "ONNX Runtime Web CI Pipeline",
+        "Win_TRT_Minimal_CUDA_Test_CI",
         # linux
         "Linux CPU CI Pipeline",
         "Linux CPU Minimal Build E2E CI Pipeline",
