@@ -41,7 +41,7 @@ parameters:
 
 variables:
   - name: docker_base_image
-    value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20241120.3
+    value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250124.1
   - name: linux_trt_version
     value: 10.3.0.26-1.cuda11.8
   - name: Repository
@@ -59,9 +59,6 @@ stages:
       clean: all
     pool: onnxruntime-Ubuntu2204-AMD-CPU
     steps:
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
 
     - checkout: self
       clean: true
@@ -80,21 +77,6 @@ stages:
         "
         Repository: $(Repository)
 
-    - task: Cache@2
-      inputs:
-        key: '"ccache" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
-        path: $(CCACHE_DIR)
-        restoreKeys: |
-          "ccache" | "$(Build.SourceBranch)"
-          "ccache"
-        cacheHitVar: CACHE_RESTORED
-      displayName: Cach Task
-
-    - script: |
-        sudo mkdir -p $(Pipeline.Workspace)/ccache
-      condition: ne(variables.CACHE_RESTORED, 'true')
-      displayName: Create Cache Dir
-
     - task: CmdLine@2
       inputs:
         script: |
@@ -105,30 +87,24 @@ stages:
             --volume $(Build.BinariesDirectory):/build \
             --volume /data/models:/build/models:ro \
             --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-            --volume $(Pipeline.Workspace)/ccache:/cache \
             -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
-            -e CCACHE_DIR=/cache \
             $(Repository) \
-            /bin/bash -c "
+            /bin/bash -c '
               set -ex; \
-              env; \
-              ccache -s; \
-              /opt/python/cp310-cp310/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              PATH=/opt/python/cp310-cp310/bin:$PATH  /opt/python/cp310-cp310/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                 --build_dir /build --cmake_generator Ninja \
                 --config Release --update --build \
                 --skip_submodule_sync \
                 --build_shared_lib \
-                --parallel \
+                --parallel --use_vcpkg \
                 --build_wheel \
                 --enable_onnx_tests --use_cuda --cuda_version=11.8 --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8 \
                 --enable_cuda_profiling \
                 --enable_pybind --build_java \
-                --use_cache \
-                --cmake_extra_defines  'CMAKE_CUDA_ARCHITECTURES=75;86' ; \
-                ccache -sv; \
-                ccache -z"
+                --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75;86" '
+
         workingDirectory: $(Build.SourcesDirectory)
 
     - task: CmdLine@2
@@ -190,7 +166,6 @@ stages:
         "
         Repository: onnxruntimeubuntupackagestest_cuda11
         UseImageCacheContainerRegistry: false
-        UpdateDepsTxt: false
 
     - task: Cache@2
       inputs:
@@ -308,9 +283,6 @@ stages:
       demands:
       - WorkFolder -equals /mnt/storage/
     steps:
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
 
     - checkout: self
       clean: true
@@ -336,7 +308,6 @@ stages:
         "
         Repository: onnxruntimeubi8packagestest_torch
         UseImageCacheContainerRegistry: false
-        UpdateDepsTxt: false
 
     - task: DownloadPackage@1
       displayName: 'Download Meta Llama2 model'
@@ -421,9 +392,6 @@ stages:
       clean: all
     pool: Onnxruntime-Linux-A10-24G
     steps:
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
 
     - checkout: self
       clean: true
@@ -452,7 +420,6 @@ stages:
         ScriptName: tools/ci_build/get_docker_image.py
         DockerBuildArgs: '--build-arg BUILD_UID=$( id -u )'
         Repository: onnxruntimepackagestest_ompffmpeg
-        UpdateDepsTxt: false
 
     - task: DownloadPackage@1
       # The model data in artifact is downloaded from openai/whisper-large-v3 in huggingface model hub

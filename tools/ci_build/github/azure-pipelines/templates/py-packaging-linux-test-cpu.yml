@@ -94,8 +94,6 @@ jobs:
       Context: tools/ci_build/github/linux/docker/inference/${{ parameters.arch }}/python/cpu
       DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
       Repository: onnxruntimecpubuildpython${{ parameters.arch }}
-      ${{ if eq(parameters.arch, 'aarch64') }}:
-        UpdateDepsTxt: false
 
   - task: Bash@3
     displayName: 'Bash Script'
@@ -104,6 +102,3 @@ jobs:
       filePath: tools/ci_build/github/linux/run_python_dockertest.sh
       arguments: -d CPU -c ${{parameters.cmake_build_type}} -i onnxruntimecpubuildpython${{ parameters.arch }}
 
-  - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-    displayName: 'Clean Agent Directories'
-    condition: always()

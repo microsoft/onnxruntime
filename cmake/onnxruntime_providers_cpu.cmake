@@ -103,7 +103,7 @@ if (onnxruntime_ENABLE_TRAINING_OPS AND NOT onnxruntime_ENABLE_TRAINING)
   list(REMOVE_ITEM onnxruntime_providers_src ${onnxruntime_cpu_full_training_only_srcs})
 endif()
 
-if (onnxruntime_ENABLE_ATEN)
+if (onnxruntime_ENABLE_DLPACK)
   file(GLOB_RECURSE onnxruntime_providers_dlpack_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_converter.cc"
     "${ONNXRUNTIME_ROOT}/core/dlpack/dlpack_converter.h"
@@ -191,9 +191,12 @@ endif()
 
 if (onnxruntime_ENABLE_ATEN)
   target_compile_definitions(onnxruntime_providers PRIVATE ENABLE_ATEN)
+endif()
+
+if (onnxruntime_ENABLE_DLPACK)
+  target_compile_definitions(onnxruntime_providers PRIVATE ENABLE_DLPACK)
   # DLPack is a header-only dependency
-  set(DLPACK_INCLUDE_DIR ${dlpack_SOURCE_DIR}/include)
-  target_include_directories(onnxruntime_providers PRIVATE ${DLPACK_INCLUDE_DIR})
+  onnxruntime_add_include_to_target(onnxruntime_providers dlpack::dlpack)
 endif()
 
 if (onnxruntime_ENABLE_TRAINING)
@@ -239,7 +242,9 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   set_property(TARGET onnxruntime_providers_shared APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${ONNXRUNTIME_ROOT}/core/providers/shared/exported_symbols.lst")
   elseif(UNIX)
     if(NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
-      set_property(TARGET onnxruntime_providers_shared APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/shared/version_script.lds -Xlinker --gc-sections")
+      target_link_options(onnxruntime_providers_shared PRIVATE
+                          "LINKER:--version-script=${ONNXRUNTIME_ROOT}/core/providers/shared/version_script.lds"
+                          "LINKER:--gc-sections")
     endif()
   elseif(WIN32)
   set_property(TARGET onnxruntime_providers_shared APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/shared/symbols.def")

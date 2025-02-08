@@ -21,7 +21,7 @@ BUILD_ARGS=('--config'
             "--enable_pybind"
             "--build_java"
             "--cmake_extra_defines"
-            "CMAKE_CUDA_ARCHITECTURES=75"
+            "CMAKE_CUDA_ARCHITECTURES=86"
             "onnxruntime_BUILD_UNIT_TESTS=ON"
             "onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON")
 if [ -x "$(command -v ninja)" ]; then
@@ -39,7 +39,7 @@ if [ -x "$(command -v ccache)" ]; then
     #BUILD_ARGS+=("--use_cache")
 fi
 if [ -f /opt/python/cp312-cp312/bin/python3 ]; then
-    /opt/python/cp312-cp312/bin/python3 tools/ci_build/build.py "${BUILD_ARGS[@]}"
+    PATH=/opt/python/cp312-cp312/bin:$PATH python tools/ci_build/build.py "${BUILD_ARGS[@]}"
 else
     python3 tools/ci_build/build.py "${BUILD_ARGS[@]}"
 fi

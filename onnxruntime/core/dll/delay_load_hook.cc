@@ -24,8 +24,16 @@
 // - both USE_WEBGPU and BUILD_DAWN_MONOLITHIC_LIBRARY are defined
 // - USE_DML is defined
 //
-#define ORT_DELAY_LOAD_WEBGPU_DAWN_DLL (defined(USE_WEBGPU) && defined(BUILD_DAWN_MONOLITHIC_LIBRARY))
-#define ORT_DELAY_LOAD_DIRECTML_DLL defined(USE_DML)
+#if defined(USE_WEBGPU) && defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
+#define ORT_DELAY_LOAD_WEBGPU_DAWN_DLL 1
+#else
+#define ORT_DELAY_LOAD_WEBGPU_DAWN_DLL 0
+#endif
+#if defined(USE_DML)
+#define ORT_DELAY_LOAD_DIRECTML_DLL 1
+#else
+#define ORT_DELAY_LOAD_DIRECTML_DLL 0
+#endif
 #if defined(_MSC_VER) && (ORT_DELAY_LOAD_WEBGPU_DAWN_DLL || ORT_DELAY_LOAD_DIRECTML_DLL)
 
 #include <Windows.h>
@@ -59,7 +67,7 @@ FARPROC WINAPI delay_load_hook(unsigned dliNotify, PDelayLoadInfo pdli) {
         // Try to load the DLL from the same directory as onnxruntime.dll
 
         // First, get the path to onnxruntime.dll
-        auto path = Env::Default().GetRuntimePath();
+        auto path = onnxruntime::Env::Default().GetRuntimePath();
         if (path.empty()) {
           // Failed to get the path to onnxruntime.dll. In this case, we will just return NULL and let the system
           // search for the DLL in the default search order.

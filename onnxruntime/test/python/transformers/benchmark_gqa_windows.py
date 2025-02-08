@@ -1,7 +1,6 @@
 import argparse
 import os
 import time
-from typing import Optional
 
 import torch
 from test_sparse_attention import GroupQueryAttentionConfig, OrtGroupQueryAttention
@@ -36,7 +35,7 @@ def benchmark(
     max_seq_len: int,
     sequence_length: int = 1,
     past_sequence_length: int = 0,
-    local_window_size: Optional[int] = None,
+    local_window_size: int | None = None,
     use_smooth_softmax: bool = False,
     model_name: str = "Llama3-8B",
 ):

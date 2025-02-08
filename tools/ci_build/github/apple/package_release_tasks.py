@@ -52,8 +52,7 @@ def _resolve_single_path_from_pattern(path_pattern: str) -> Path:
 
 def _parse_args():
     parser = argparse.ArgumentParser(
-        description="Helper script to perform release tasks. "
-        "Mostly useful for the CocoaPods package release pipeline.",
+        description="Helper script to perform release tasks. Mostly useful for the CocoaPods package release pipeline.",
     )
 
     parser.add_argument(

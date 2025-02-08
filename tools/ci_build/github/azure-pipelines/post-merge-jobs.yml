@@ -25,7 +25,7 @@ stages:
       BuildStaticLib: true
       ExtraBuildArgs: ''
       UseWebPoolName: true
-      WebCpuPoolName: 'Onnxruntime-Win-CPU-2022'
+      WebCpuPoolName: 'onnxruntime-Win2022-VS2022-webgpu-A10'
 
 # The follow section has 15 different build jobs that can be divided into 3 groups:
 # 1. Default CPU build with normal win32 linking, without ORT extension
@@ -59,7 +59,7 @@ stages:
     buildArch: x64
     msbuildPlatform: arm64
     packageName: arm64
-    buildparameter: --build_nodejs --arm64  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    buildparameter: --build_nodejs --arm64  --enable_onnx_tests
     runTests: false
     buildJava: false
     buildNodejs: true
@@ -73,7 +73,7 @@ stages:
     buildArch: x64
     msbuildPlatform: ARM64EC
     packageName: arm64ec
-    buildparameter: --arm64ec  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    buildparameter: --arm64ec  --enable_onnx_tests
     runTests: false
     buildJava: false
     buildNodejs: false
@@ -117,7 +117,7 @@ stages:
     buildArch: x64
     msbuildPlatform: arm64
     packageName: arm64
-    buildparameter: --build_nodejs --enable_wcos --arm64  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    buildparameter: --build_nodejs --enable_wcos --arm64  --enable_onnx_tests
     runTests: false
     buildJava: false
     buildNodejs: true
@@ -132,7 +132,7 @@ stages:
     buildArch: x64
     msbuildPlatform: ARM64EC
     packageName: arm64ec
-    buildparameter: --enable_wcos --arm64ec  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    buildparameter: --enable_wcos --arm64ec  --enable_onnx_tests
     runTests: false
     buildJava: false
     buildNodejs: false
@@ -177,7 +177,7 @@ stages:
     buildArch: x64
     msbuildPlatform: arm64
     packageName: arm64
-    buildparameter: --build_nodejs --arm64 --use_extensions  --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    buildparameter: --build_nodejs --arm64 --use_extensions  --enable_onnx_tests
     runTests: false
     buildJava: false
     buildNodejs: true
@@ -192,7 +192,7 @@ stages:
 #    buildArch: x64
 #    msbuildPlatform: ARM64EC
 #    packageName: arm64ec
-#    buildparameter: --arm64ec --use_extensions --enable_onnx_tests --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+#    buildparameter: --arm64ec --use_extensions --enable_onnx_tests
 #    runTests: false
 #    buildJava: false
 #    buildNodejs: false

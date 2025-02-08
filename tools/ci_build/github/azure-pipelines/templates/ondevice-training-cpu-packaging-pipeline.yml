@@ -70,7 +70,7 @@ stages:
     buildArch: x64
     msbuildPlatform: arm64
     packageName: arm64
-    buildparameter: --arm64 ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}} --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    buildparameter: --arm64 ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
     runTests: false
     buildJava: false
     buildNodejs: false
@@ -102,10 +102,12 @@ stages:
       packageName: onnxruntime-training-android
       enable_code_sign: true
 
+- stage: Final_AAR_Testing_Android_Training_Full
+  dependsOn: Android_Java_API_AAR_Packaging_Training_Full
+  jobs:
   - template: android-java-api-aar-test.yml
     parameters:
       artifactName: 'onnxruntime-training-android-full-aar'
-      job_name_suffix: 'Training_Full'
       packageName: onnxruntime-training-android
 
 - stage: NuGet_Packaging_Training_CPU
@@ -115,7 +117,7 @@ stages:
   - Windows_Packaging_Training_CPU_x86_${{ parameters.BuildVariant }}
   - Windows_Packaging_Training_CPU_x64_${{ parameters.BuildVariant }}
   - Windows_Packaging_Training_CPU_arm64_${{ parameters.BuildVariant }}
-  - Android_Java_API_AAR_Packaging_Training_Full
+  - Final_AAR_Testing_Android_Training_Full
   condition: succeeded()
   jobs:
   - job: NuGet_Packaging_Training_CPU
@@ -299,9 +301,6 @@ stages:
       parameters :
         condition : 'succeeded'
 
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()
 
 - template: ../nuget/templates/test_win.yml
   parameters:

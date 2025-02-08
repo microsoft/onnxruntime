@@ -75,7 +75,7 @@ class SAM2ImageEncoder(nn.Module):
 
         feats = [
             feat.permute(1, 2, 0).reshape(1, -1, *feat_size)
-            for feat, feat_size in zip(vision_feats[::-1], feat_sizes[::-1])
+            for feat, feat_size in zip(vision_feats[::-1], feat_sizes[::-1], strict=False)
         ][::-1]
 
         if nvtx_helper is not None:

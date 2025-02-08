@@ -57,7 +57,6 @@ jobs:
           Context: tools/ci_build/github/linux/docker/inference/aarch64/default/cpu
           DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
           Repository: onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging
-          UpdateDepsTxt: false
 
     - task: CmdLine@2
       inputs:
@@ -65,17 +64,12 @@ jobs:
           set -e -x
           mkdir -p $HOME/.onnx
           docker run --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
-          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging /bin/bash -c "python3.12 \
+          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging /bin/bash -c "python3 \
           /onnxruntime_src/tools/ci_build/build.py --enable_lto --build_java --build_nodejs --build_dir /build --config Release \
-          --skip_submodule_sync --parallel --use_binskim_compliant_compile_flags --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/installed"
-        workingDirectory: $(Build.SourcesDirectory)
-      displayName: 'Build'
-
-    - script: |
-       set -e -x
-       mkdir $(Build.ArtifactStagingDirectory)/testdata
-       cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
-       ls -al $(Build.ArtifactStagingDirectory)
+          --skip_submodule_sync --parallel --use_vcpkg --use_binskim_compliant_compile_flags --use_vcpkg --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/installed"
+          mkdir $(Build.ArtifactStagingDirectory)/testdata
+          cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
+          ls -al $(Build.ArtifactStagingDirectory)
       displayName: 'Create Artifacts'
 
     - ${{ if eq(parameters.PackageJava, 'true') }}:
@@ -106,6 +100,3 @@ jobs:
       - template: component-governance-component-detection-steps.yml
         parameters:
           condition: 'succeeded'
-    - task: mspremier.PostBuildCleanup.PostBuildCleanup-task.PostBuildCleanup@3
-      displayName: 'Clean Agent Directories'
-      condition: always()

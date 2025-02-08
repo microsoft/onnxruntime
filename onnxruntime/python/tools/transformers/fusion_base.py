@@ -3,11 +3,12 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 from collections import defaultdict
+from collections.abc import Sequence
 from logging import getLogger
-from typing import Any, Dict, List, Optional, Sequence, Union
+from typing import Any
 
 import numpy as np
-from onnx import NodeProto, helper
+from onnx import NodeProto, TensorProto, helper
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
@@ -22,18 +23,18 @@ class Fusion:
         self,
         model: OnnxModel,
         fused_op_type: str,
-        search_op_types: Union[str, List[str]],
+        search_op_types: str | list[str],
         description: str = "",
     ):
-        self.search_op_types: List[str] = [search_op_types] if isinstance(search_op_types, str) else search_op_types
+        self.search_op_types: list[str] = [search_op_types] if isinstance(search_op_types, str) else search_op_types
         self.fused_op_type: str = fused_op_type
         self.description: str = f"{fused_op_type}({description})" if description else fused_op_type
         self.model: OnnxModel = model
-        self.nodes_to_remove: List = []
-        self.nodes_to_add: List = []
+        self.nodes_to_remove: list = []
+        self.nodes_to_add: list = []
         self.prune_graph: bool = False
         self.node_name_to_graph_name: dict = {}
-        self.this_graph_name: Optional[str] = None
+        self.this_graph_name: str | None = None
         # It is optional that subclass updates fused_count since we will also check nodes_to_add to get counter.
         self.fused_count: defaultdict = defaultdict(int)
 
@@ -46,8 +47,8 @@ class Fusion:
     def fuse(
         self,
         node: NodeProto,
-        input_name_to_nodes: Dict[str, List[NodeProto]],
-        output_name_to_node: Dict[str, NodeProto],
+        input_name_to_nodes: dict[str, list[NodeProto]],
+        output_name_to_node: dict[str, NodeProto],
     ):
         """Interface for fusion that starts from a node"""
         raise NotImplementedError
@@ -114,7 +115,10 @@ class Fusion:
         self.model.add_initializer(tensor, self.this_graph_name)
         return tensor
 
-    def add_nodes_to_remove(self, nodes: List[NodeProto]):
+    def remove_initializer(self, tensor: TensorProto):
+        self.model.remove_initializer(tensor)
+
+    def add_nodes_to_remove(self, nodes: list[NodeProto]):
         # Some nodes are shared between paths (e.g. rotary embedding nodes in the Q and K paths).
         # When path A is fused, its shared nodes are added to `self.nodes_to_remove`. But when path B
         # is fused, its shared nodes are also added to `self.nodes_to_remove`. When the nodes are
@@ -131,7 +135,7 @@ class Fusion:
             if node not in self.nodes_to_remove:
                 self.nodes_to_remove.append(node)
 
-    def add_nodes_to_remove_with_nodes_to_keep(self, nodes: List[NodeProto], nodes_to_keep: List[NodeProto]):
+    def add_nodes_to_remove_with_nodes_to_keep(self, nodes: list[NodeProto], nodes_to_keep: list[NodeProto]):
         for node in nodes:
             if node not in self.nodes_to_remove and node not in nodes_to_keep:
                 self.nodes_to_remove.append(node)
