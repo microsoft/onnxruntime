@@ -44,7 +44,7 @@ steps:
           displayName: Set trtCudaVersion
     - ${{ if and(eq(parameters.CudaVersion, '12.2'), eq(parameters.TrtVersion, '10.8.0.43')) }}:
         - powershell: |
-            Write-Host "##vso[task.setvariable variable=trtCudaVersion;]12.6"
+            Write-Host "##vso[task.setvariable variable=trtCudaVersion;]12.8"
           displayName: Set trtCudaVersion
 
     - script: |
