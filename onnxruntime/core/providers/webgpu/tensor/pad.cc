@@ -132,6 +132,7 @@ Status Pad::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
+  // Read constant value and bitcast to uint32.
   uint32_t value_uint32 = 0;
   bool is_float16 = false;
   if (!is_dynamic_) {
@@ -169,9 +170,8 @@ Status Pad::ComputeInternal(ComputeContext& context) const {
   }
   program.AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .CacheHint(std::to_string(static_cast<int>(mode_)), dim_value_zero);
-
-  program.AddUniformVariables({{gsl::span<const int32_t>(lower_pads.data(), lower_pads.size())}, {output_size}, {value_uint32}});
+      .CacheHint(std::to_string(static_cast<int>(mode_)), dim_value_zero)
+      .AddUniformVariables({{gsl::span<const int32_t>(lower_pads.data(), lower_pads.size())}, {output_size}, {value_uint32}});
 
   return context.RunProgram(program);
 }
