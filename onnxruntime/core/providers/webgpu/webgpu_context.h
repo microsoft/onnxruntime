@@ -14,6 +14,10 @@
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/program_manager.h"
 
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+#include "core/providers/webgpu/webgpu_pix_frame_generator.h"
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
+
 namespace onnxruntime {
 class Tensor;
 
@@ -67,7 +71,7 @@ class WebGpuContextFactory {
 // Class WebGpuContext includes all necessary resources for the context.
 class WebGpuContext final {
  public:
-  void Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type);
+  void Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type, bool enable_pix_capture);
 
   Status Wait(wgpu::Future f);
 
@@ -119,7 +123,22 @@ class WebGpuContext final {
   void CollectProfilingData(profiling::Events& events);
   void EndProfiling(TimePoint, profiling::Events& events, profiling::Events& cached_events);
 
+  //
+  // Push error scope.
+  //
+  // This is useful only when "skip_validation" is not set.
+  //
+  void PushErrorScope();
+
+  //
+  // Pop error scope.
+  //
+  // This is useful only when "skip_validation" is not set.
+  //
+  Status PopErrorScope();
+
   Status Run(ComputeContext& context, const ProgramBase& program);
+  void OnRunEnd();
 
  private:
   enum class TimestampQueryType {
@@ -205,6 +224,10 @@ class WebGpuContext final {
 
   uint64_t gpu_timestamp_offset_ = 0;
   bool is_profiling_ = false;
+
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+  std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 };
 
 }  // namespace webgpu

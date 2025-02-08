@@ -35,8 +35,8 @@
 namespace onnxruntime {
 namespace webgpu {
 
-void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type) {
-  std::call_once(init_flag_, [this, &buffer_cache_config, backend_type]() {
+void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type, bool enable_pix_capture) {
+  std::call_once(init_flag_, [this, &buffer_cache_config, backend_type, enable_pix_capture]() {
     if (device_ == nullptr) {
       // Create wgpu::Adapter
 #if !defined(__wasm__) && defined(_MSC_VER) && defined(DAWN_ENABLE_D3D12) && !defined(USE_EXTERNAL_DAWN)
@@ -160,6 +160,16 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
       query_type_ = TimestampQueryType::AtPasses;
     } else {
       query_type_ = TimestampQueryType::None;
+    }
+    if (enable_pix_capture) {
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+      // set pix frame generator
+      pix_frame_generator_ = std::make_unique<WebGpuPIXFrameGenerator>(instance_,
+                                                                       Adapter(),
+                                                                       Device());
+#else
+    ORT_THROW("Support PIX capture requires extra build flags (--enable_pix_capture)");
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
     }
   });
 }
@@ -623,6 +633,23 @@ void WebGpuContext::EndProfiling(TimePoint /* tp */, profiling::Events& events, 
   }
 }
 
+void WebGpuContext::PushErrorScope() { device_.PushErrorScope(wgpu::ErrorFilter::Validation); }
+
+Status WebGpuContext::PopErrorScope() {
+  Status status{};
+  ORT_RETURN_IF_ERROR(Wait(device_.PopErrorScope(
+      wgpu::CallbackMode::WaitAnyOnly,
+      [](wgpu::PopErrorScopeStatus pop_status, wgpu::ErrorType error_type, char const* message, Status* status) {
+        ORT_ENFORCE(pop_status == wgpu::PopErrorScopeStatus::Success, "Instance dropped.");
+        if (error_type == wgpu::ErrorType::NoError) {
+          return;
+        }
+        *status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "WebGPU validation failed. ", message);
+      },
+      &status)));
+  return status;
+}
+
 void WebGpuContext::Flush() {
   if (!current_command_encoder_) {
     return;
@@ -660,6 +687,14 @@ void WebGpuContext::Flush() {
   BufferManager().RefreshPendingBuffers();
   current_command_encoder_ = nullptr;
   num_pending_dispatches_ = 0;
+}
+
+void WebGpuContext::OnRunEnd() {
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+  if (pix_frame_generator_) {
+    pix_frame_generator_->GeneratePIXFrame();
+  }
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 }
 
 std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo> WebGpuContextFactory::contexts_;
