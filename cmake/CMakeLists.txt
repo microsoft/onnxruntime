@@ -139,6 +139,7 @@ option(onnxruntime_USE_WEBGPU "Build with WebGPU support. Enable WebGPU via C/C+
 option(onnxruntime_USE_EXTERNAL_DAWN "Build with treating Dawn as external dependency. Will not link Dawn at build time." OFF)
 option(onnxruntime_CUSTOM_DAWN_SRC_PATH "Path to custom Dawn src dir.")
 option(onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY "Build Dawn as a monolithic library" OFF)
+option(onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP "Adding frame present for PIX to capture a frame" OFF)
 # The following 2 options are only for Windows
 option(onnxruntime_ENABLE_DAWN_BACKEND_VULKAN "Enable Vulkan backend for Dawn (on Windows)" OFF)
 option(onnxruntime_ENABLE_DAWN_BACKEND_D3D12 "Enable D3D12 backend for Dawn (on Windows)" ON)
@@ -1037,6 +1038,14 @@ if (onnxruntime_USE_WEBGPU)
   endif()
   if (onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
     list(APPEND ORT_PROVIDER_FLAGS -DDAWN_ENABLE_D3D12=1)
+  endif()
+  if (onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP)
+    if (NOT onnxruntime_ENABLE_DAWN_BACKEND_D3D12 OR NOT WIN32)
+      message(
+        FATAL_ERROR
+        "Option onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP can only be set on windows with onnxruntime_ENABLE_DAWN_BACKEND_D3D12 is enabled.")
+    endif()
+    add_compile_definitions(ENABLE_PIX_FOR_WEBGPU_EP)
   endif()
 endif()
 if (onnxruntime_USE_CANN)
