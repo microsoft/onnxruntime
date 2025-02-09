@@ -86,31 +86,21 @@ Status ConstantFoldingDQ_optimization(Graph& graph, const ComputeCapability& opt
   }
   cc_to_update.sub_graph->nodes = updated_nodes;
 
-  auto original_meta_def = cc_to_update.sub_graph->GetMetaDef();
-  std::unique_ptr<IndexedSubGraph::MetaDef> updated_meta_def = std::make_unique<IndexedSubGraph::MetaDef>();
-  updated_meta_def->name = original_meta_def->name;
-  updated_meta_def->domain = original_meta_def->domain;
-  updated_meta_def->since_version = original_meta_def->since_version;
-  updated_meta_def->status = original_meta_def->status;
-  updated_meta_def->inputs = original_meta_def->inputs;
-  updated_meta_def->outputs = original_meta_def->outputs;
-  updated_meta_def->attributes = original_meta_def->attributes;
-  updated_meta_def->doc_string = original_meta_def->doc_string;
-#if !defined(ORT_MINIMAL_BUILD)
-  updated_meta_def->type_and_shape_inference_function = original_meta_def->type_and_shape_inference_function;
-#endif
-  for (auto constant_initializer : original_meta_def->constant_initializers) {
+  auto meta_def = cc_to_update.sub_graph->GetMutableMetaDef();
+  std::vector<std::string> updated_constant_initializers;
+
+  for (auto constant_initializer : meta_def->constant_initializers) {
     if (original_initializers_to_remove.find(constant_initializer) != original_initializers_to_remove.end()) {
       continue;
     }
-    updated_meta_def->constant_initializers.push_back(constant_initializer);
+    updated_constant_initializers.push_back(constant_initializer);
   }
 
   for (auto constant_initializer : new_initializers_to_add) {
-    updated_meta_def->constant_initializers.push_back(constant_initializer);
+    updated_constant_initializers.push_back(constant_initializer);
   }
 
-  cc_to_update.sub_graph->SetMetaDef(std::move(updated_meta_def));
+  meta_def->constant_initializers = updated_constant_initializers;
 
   return Status::OK();
 }
