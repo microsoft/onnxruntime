@@ -74,7 +74,7 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   // number of input buffers in the shader, which we run out of (<=8) without this optimization.
   const int components = parameters.head_size_ % 4 == 0 ? 4 : (parameters.head_size_ % 2 == 0 ? 2 : 1);
   int old_sequence_length = parameters.total_sequence_length_ - parameters.sequence_length_;
-  bool should_copy_past = (old_sequence_length != 0 && past_key != present_key && past_value != present_value);
+  bool should_copy_past = (old_sequence_length != 0 && !parameters.past_present_share_buffer_);
   CopyKVCacheProgram program{"CopyKVCache", should_copy_past};
   int copy_length;
   if (should_copy_past) {
@@ -92,11 +92,12 @@ Status CopyKVCache(onnxruntime::webgpu::ComputeContext& context, const WebgpuAtt
   program.AddOutputs({{present_key, ProgramTensorMetadataDependency::Rank, components},
                       {present_value, ProgramTensorMetadataDependency::Rank, components}});
 
+  int cache_sequence_length = parameters.is_gqa_ ? parameters.past_sequence_length_ : parameters.total_sequence_length_;
   program.SetDispatchGroupSize(copy_length, 1, parameters.num_heads_)
       .SetWorkgroupSize(1)
       .CacheHint(std::to_string(components) + std::to_string(should_copy_past))
       .AddUniformVariables({{static_cast<uint32_t>(old_sequence_length)},
-                            {static_cast<uint32_t>(parameters.is_gqa_ ? parameters.past_sequence_length_ : parameters.total_sequence_length_)},
+                            {static_cast<uint32_t>(cache_sequence_length)},
                             {static_cast<uint32_t>(parameters.kv_sequence_length_)},
                             {static_cast<uint32_t>(parameters.head_size_ / components)}});
 
@@ -157,8 +158,8 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
   fn loadk(k_start : u32, head_idx: u32, local_idx: u32, k_step: u32)
   {
-      // Stored as float16[batch_size,num_heads,present_sequence_length,96]
-      let offset = head_idx * uniforms.present_sequence_length * qkv_head_size_vec + k_start * qkv_head_size_vec;
+      // Stored as float16[batch_size,num_heads,cache_sequence_length,96]
+      let offset = head_idx * uniforms.cache_sequence_length * qkv_head_size_vec + k_start * qkv_head_size_vec;
       for (var idx:u32 = local_idx; idx < qkv_head_size_vec*k_step; idx+=workgroup_size_x)
       {
           let slot = u32(idx/qkv_head_size_vec);
@@ -168,8 +169,8 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
   fn loadv(v_start : u32, head_idx: u32, local_idx: u32, k_step: u32)
   {
-      // Stored as float16[batch_size,num_heads,present_sequence_length,96]
-      let offset = head_idx * uniforms.present_sequence_length * qkv_head_size_vec + v_start * qkv_head_size_vec;
+      // Stored as float16[batch_size,num_heads,cache_sequence_length,96]
+      let offset = head_idx * uniforms.cache_sequence_length * qkv_head_size_vec + v_start * qkv_head_size_vec;
       for (var idx:u32 = local_idx; idx < qkv_head_size_vec*k_step; idx+=workgroup_size_x)
       {
           let slot = u32(idx/qkv_head_size_vec);
