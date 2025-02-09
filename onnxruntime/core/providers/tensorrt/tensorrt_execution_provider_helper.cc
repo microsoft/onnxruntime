@@ -293,7 +293,7 @@ void TensorrtExecutionProvider::SelectQualifiedDQNode(const GraphViewer& graph,
       const Node& consumer_node = *node->OutputNodesBegin();
       selection_node_set.insert(index);
       consumer_to_dq[consumer_node.Index()] = index;
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << consumer_node.Name() << " < -" << node->Name();
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << consumer_node.Name() << " <- " << node->Name();
     }
   }
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Total " << selection_node_set.size() << " DequantizeLinear node(s) are selected.";
@@ -329,5 +329,62 @@ std::unique_ptr<ComputeCapability> TensorrtExecutionProvider::CreateOptimization
   auto compute_capability = ComputeCapability::Create(std::move(sub_graph));
   compute_capability->copy_optimization_func(selection_cc);
   return compute_capability;
+}
+
+/**
+ * This function helps add back the DQ nodes that are filtered out by TRT parser.
+ * The reason is the DQ nodes can be optimized and dequantized by applying ConstantFoldingDQ optimizer by ORT L2+ optimization.
+ */
+void TensorrtExecutionProvider::UpdateSupportedNodeVectorForDQ(const GraphViewer& graph,
+                                                               SubGraph_t& supported_node_vector,
+                                                               SubGraphCollection_t& supported_nodes_vector,
+                                                               std::unordered_map<NodeIndex, NodeIndex> consumer_to_dq) const {
+  if (consumer_to_dq.empty()) {
+    return;
+  }
+
+  if (!supported_node_vector.second) {
+    return;
+  }
+
+  const std::vector<NodeIndex>& node_index = graph.GetNodesInTopologicalOrder(1);
+  auto supported_nodes = supported_node_vector.first;
+  for (auto index : supported_nodes) {
+    if (consumer_to_dq.find(node_index[index]) == consumer_to_dq.end()) {
+      continue;
+    }
+
+    auto dq_node_index = consumer_to_dq[node_index[index]];
+
+    // Check if DQ node is included in one of the subgraphs
+    auto in_the_subgraph_collection = [&](NodeIndex node_idx) -> bool {
+      for (auto& node_vector : supported_nodes_vector) {
+        if (!node_vector.second) {
+          continue;
+        }
+        for (auto i : node_vector.first) {
+          if (node_index[i] == node_idx) {
+            return true;
+          }
+        }
+      }
+      return false;
+    };
+
+    // If the DQ node is already in the subgraph, do nothing.
+    if (in_the_subgraph_collection(dq_node_index)) {
+      continue;
+    }
+
+    // Find the iterator pointing to the target element
+    auto it = std::find(node_index.begin(), node_index.end(), dq_node_index);
+    if (it != node_index.end()) {
+      // Calculate the index
+      int idx = std::distance(node_index.begin(), it);
+      supported_node_vector.first.push_back(static_cast<NodeIndex>(idx));
+      auto node = graph.GetNode(dq_node_index);
+      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << node->Name() << " is included which is filtered out by TRT parser.";
+    }
+  }
 }
 }  // namespace onnxruntime
