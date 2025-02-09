@@ -437,11 +437,13 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   std::string cache_hint = std::to_string(has_attention_bias) +
                            std::to_string(parameters.head_size_) +
                            std::to_string(parameters.num_heads_);
+  int cache_sequence_length = parameters.is_gqa_ ? parameters.past_sequence_length_ : parameters.total_sequence_length_;
   program.SetDispatchGroupSize(parameters.num_heads_, (parameters.sequence_length_ + tile_size - 1) / tile_size, 1)
       .SetWorkgroupSize(tile_size)
       .CacheHint(cache_hint)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.sequence_length_)},
                             {static_cast<uint32_t>(parameters.total_sequence_length_)},
+                            {static_cast<uint32_t>(cache_sequence_length)},
                             {alpha}});
 
   return context.RunProgram(program);
