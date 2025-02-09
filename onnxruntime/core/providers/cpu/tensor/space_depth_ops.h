@@ -79,6 +79,7 @@ class SpaceToDepth final : public OpKernel, SpaceDepthBase {
 class DepthToSpace final : public OpKernel, SpaceDepthBase {
  public:
   explicit DepthToSpace(const OpKernelInfo& info) : OpKernel(info), SpaceDepthBase(info) {
+    is_bhwc_ = (info.GetAttrOrDefault<int64_t>("channels_last", static_cast<int64_t>(0)) != 0);
     std::string mode;
     // if  mode doesn't exist, then it is the default "DCR" mode
     // (or) it is an opset < 11 model for which the only mode is "DCR" mode
@@ -95,6 +96,7 @@ class DepthToSpace final : public OpKernel, SpaceDepthBase {
 
  private:
   bool is_dcr_ = true;
+  bool is_bhwc_ = false;
 };
 
 }  // namespace onnxruntime

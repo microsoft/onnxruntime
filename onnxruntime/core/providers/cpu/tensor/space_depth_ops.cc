@@ -56,6 +56,18 @@ ONNX_CPU_OPERATOR_KERNEL(
                               DataTypeImpl::GetTensorType<uint8_t>()}),
     DepthToSpace);
 
+namespace contrib {
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    DepthToSpace,
+    kMSDomain,
+    1,
+    uint8_t,
+    kCpuExecutionProvider,
+    KernelDefBuilder()
+        .TypeConstraint("T", DataTypeImpl::GetTensorType<uint8_t>()),
+    DepthToSpace);
+}
+
 // intermediate tensor shapes are:
 // (batch, blocksize, blocksize, input_depth / (blocksize * blocksize), input_height, input_width) for DepthToSpace
 // (batch, input_depth, input_height / blocksize, blocksize, input_width / blocksize, blocksize) for SpaceToDepth
@@ -156,6 +168,43 @@ Status DepthToSpace::Compute(OpKernelContext* context) const {
   int64_t output_depth = -1;
   int64_t output_height = -1;
   int64_t output_width = -1;
+
+  if (is_bhwc_) {
+    ORT_RETURN_IF_ERROR(InputValidationsAndOutputDimsCalc<true>(input,
+                                                          batch,
+                                                          input_depth, input_height, input_width,
+                                                          output_depth, output_height, output_width,
+                                                          false));
+
+    Tensor& output = *context->Output(0, {batch, output_height, output_width, output_depth});
+
+    // handle DCR and CRD format
+    auto dim3 = is_dcr_ ? blocksize_ : input_depth / blocksize_ / blocksize_;
+    auto dim5 = is_dcr_ ? input_depth / blocksize_ / blocksize_ : blocksize_;
+
+    auto permutation = is_dcr_ ? std::array<Eigen::DenseIndex, IntermediateTensorRank>{{0, 1, 3, 2, 4, 5}}
+                               : std::array<Eigen::DenseIndex, IntermediateTensorRank>{{0, 3, 1, 4, 2, 5}};
+
+    if (input.IsDataType<uint8_t>()) {
+      SpaceDepthOpCpuImpl<uint8_t>(input, output, permutation,
+                                  onnxruntime::narrow<std::ptrdiff_t>(batch),
+                                  onnxruntime::narrow<std::ptrdiff_t>(input_height),
+                                  onnxruntime::narrow<std::ptrdiff_t>(input_width),
+                                  onnxruntime::narrow<std::ptrdiff_t>(dim3),
+                                  onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
+                                  onnxruntime::narrow<std::ptrdiff_t>(dim5),
+                                  onnxruntime::narrow<std::ptrdiff_t>(input_height),
+                                  onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
+                                  onnxruntime::narrow<std::ptrdiff_t>(input_width),
+                                  onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
+                                  onnxruntime::narrow<std::ptrdiff_t>(input_depth / blocksize_ / blocksize_));
+    } else {
+      // user will not see this as the kernel doesn't claim support for types other than float and double
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported input type in DepthToSpace (channels_last = 1) op: ", input.DataType());
+    }
+
+    return Status::OK();
+  }
 
   ORT_RETURN_IF_ERROR(InputValidationsAndOutputDimsCalc(input,
                                                         batch,

@@ -118,6 +118,22 @@ NhwcTransformer::NhwcTransformer(AllocatorPtr cpu_allocator,
   }
 
   {
+    // uint8 DepthToSpace -> uint8 nhwc DepthToSpace
+    OpKernelRegistryId depthtospace_uint8{
+        "DepthToSpace", kMSDomain, 1, {{"T", {DataTypeImpl::GetTensorType<uint8_t>()}}}};
+    const KernelCreateInfo* kernel_create_info{};
+    const auto status = cpu_kernel_registry->TryFindKernel(
+        kCpuExecutionProvider, depthtospace_uint8.op_type_, depthtospace_uint8.domain_,
+        depthtospace_uint8.version_, depthtospace_uint8.type_constraints_, logger, &kernel_create_info);
+    if (status.IsOK() && kernel_create_info != nullptr) {
+      kernel_create_info = nullptr;
+      conv_table_.emplace(
+          OpIdInfo("DepthToSpace", kOnnxDomain, api::DataType::UINT8),
+          OpTransformInfo{depthtospace_uint8.op_type_, depthtospace_uint8.domain_, depthtospace_uint8.version_, true});
+    }
+  }
+
+  {
     // fp16 MaxPool -> fp16 nhwc MaxPool
     OpKernelRegistryId nhwc_maxpool_fp16{
         "MaxPool", kMSInternalNHWCDomain, 12, {{"T", {DataTypeImpl::GetTensorType<MLFloat16>()}}}};

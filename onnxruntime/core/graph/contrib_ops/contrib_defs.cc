@@ -3697,6 +3697,75 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
         }
       });
 
+  static const char* DepthToSpace_ver1_doc = R"DOC(
+TODO
+)DOC";
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(DepthToSpace)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .SetDoc(DepthToSpace_ver1_doc)
+      .Attr("blocksize", "Blocks of [blocksize, blocksize] are moved.", AttributeProto::INT)
+      .Attr("channels_last", "", AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr(
+          "mode",
+          "DCR (default) for depth-column-row order re-arrangement. Use CRD for column-row-depth order.",
+          AttributeProto::STRING,
+          std::string("DCR"))
+      .Input(
+          0,
+          "input",
+          "Input tensor of [N,H,W,C], where N is the batch axis, C is the channel or depth"
+          ", H is the height and W is the width.",
+          "T",
+          OpSchema::Single,
+          true,
+          1,
+          OpSchema::Differentiable)
+      .Output(
+          0,
+          "output",
+          "Output tensor of [N, H * blocksize, W * blocksize, C/(blocksize * blocksize)].",
+          "T",
+          OpSchema::Single,
+          true,
+          1,
+          OpSchema::Differentiable)
+      .TypeConstraint("T", {"tensor(uint8)"}, "")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        auto blocksize = getAttribute(ctx, "blocksize", 0);
+        if (blocksize <= 0) {
+          fail_shape_inference("Blocksize must be positive");
+        }
+        if (hasInputShape(ctx, 0)) {
+          auto& input_shape = getInputShape(ctx, 0);
+          if (input_shape.dim_size() == 4) {
+            // TODO: Clarify what behavior should be if C is not a multiple of
+            // blocksize*blocksize.
+            if (getAttribute(ctx, "channels_last", 0) == 0) {
+              updateOutputShape(
+                  ctx,
+                  0,
+                  {input_shape.dim(0),
+                    input_shape.dim(1) / (blocksize * blocksize),
+                    input_shape.dim(2) * blocksize,
+                    input_shape.dim(3) * blocksize});
+            } else { // channels_last
+              updateOutputShape(
+                  ctx,
+                  0,
+                  {input_shape.dim(0),
+                    input_shape.dim(1) * blocksize,
+                    input_shape.dim(2) * blocksize,
+                    input_shape.dim(3) / (blocksize * blocksize)});
+            }
+          } else {
+            fail_shape_inference("Input tensor must be 4-dimensional");
+          }
+        }
+      });
+
 #ifdef ENABLE_ATEN
   ONNX_CONTRIB_OPERATOR_SCHEMA(ATen)
       .SetDomain(kPytorchAtenDomain)
