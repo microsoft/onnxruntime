@@ -63,31 +63,41 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
         deviceId = obj.Get("deviceId").As<Napi::Number>();
       }
 #ifdef USE_COREML
-      if (obj.Has("coreMlFlags")) {
+      if (name == "coreml" && obj.Has("coreMlFlags")) {
         coreMlFlags = obj.Get("coreMlFlags").As<Napi::Number>();
       }
 #endif
 #ifdef USE_WEBGPU
-      for (const auto& nameIter : obj.GetPropertyNames()) {
-        Napi::Value nameVar = nameIter.second;
-        std::string name = nameVar.As<Napi::String>().Utf8Value();
-        if (name != "name") {
-          Napi::Value valueVar = obj.Get(nameVar);
-          ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsString(), epList.Env(), "Invalid argument: sessionOptions.executionProviders must be a string or an object with property 'name'.");
-          std::string value = valueVar.As<Napi::String>().Utf8Value();
-          webgpu_options[name] = value;
+      if (name == "webgpu") {
+        for (const auto& nameIter : obj.GetPropertyNames()) {
+          Napi::Value nameVar = nameIter.second;
+          std::string name = nameVar.As<Napi::String>().Utf8Value();
+          if (name != "name") {
+            Napi::Value valueVar = obj.Get(nameVar);
+            ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsString(), epList.Env(), "Invalid argument: sessionOptions.executionProviders must be a string or an object with property 'name'.");
+            std::string value = valueVar.As<Napi::String>().Utf8Value();
+            webgpu_options[name] = value;
+          }
         }
       }
 #endif
 #ifdef USE_QNN
-      for (const auto& nameIter : obj.GetPropertyNames()) {
-        Napi::Value nameVar = nameIter.second;
-        std::string name = nameVar.As<Napi::String>().Utf8Value();
-        if (name != "name") {
-          Napi::Value valueVar = obj.Get(nameVar);
-          ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsString(), epList.Env(), "Invalid argument: sessionOptions.executionProviders must be a string or an object with property 'name'.");
-          std::string value = valueVar.As<Napi::String>().Utf8Value();
-          qnn_options[name] = value;
+      if (name == "qnn") {
+        Napi::Value backend_path = obj.Get("backendPath");
+        if (!backend_path.IsUndefined()) {
+          if (backend_path.IsString()) {
+            qnn_options["backend_path"] = backend_path.As<Napi::String>().Utf8Value();
+          } else {
+            ORT_NAPI_THROW_TYPEERROR(epList.Env(), "Invalid argument: backendPath must be a string.");
+          }
+        }
+        Napi::Value enable_htp_fp16_precision = obj.Get("enableFp16Precision");
+        if (!enable_htp_fp16_precision.IsUndefined()) {
+          if (enable_htp_fp16_precision.IsBoolean()) {
+            qnn_options["enable_htp_fp16_precision"] = enable_htp_fp16_precision.As<Napi::Boolean>().Value() ? "1" : "0";
+          } else {
+            ORT_NAPI_THROW_TYPEERROR(epList.Env(), "Invalid argument: enableFp16Precision must be a boolean.");
+          }
         }
       }
 #endif
@@ -126,7 +136,7 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
 #endif
 #ifdef USE_QNN
     } else if (name == "qnn") {
-      // Ensure that the backend_path and enable_htp_fp16_precision options are set to default values if not provided.
+      // Ensure that the backend_path option are set to default values if not provided.
       if (qnn_options.find("backend_path") == qnn_options.end()) {
         qnn_options["backend_path"] = "QnnHtp.dll";
       }
