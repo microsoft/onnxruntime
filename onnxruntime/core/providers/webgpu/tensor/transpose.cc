@@ -47,7 +47,10 @@ ONNX_OPERATOR_KERNEL_EX(
         .TypeConstraint("T", WebGpuSupportedNumberTypes()),
     Transpose);
 
-auto SqueezeShape(const gsl::span<const int64_t>& shape, const gsl::span<const size_t>& adjusted_perm, InlinedVector<int64_t>& new_shape, InlinedVector<int64_t>& new_perm) {
+auto SqueezeShape(const gsl::span<const int64_t>& shape,
+                  const gsl::span<const size_t>& adjusted_perm,
+                  TensorShapeVector& new_shape,
+                  TensorShapeVector& new_perm) {
   for (size_t i = 0; i < shape.size(); ++i) {
     if (shape[i] != 1) {
       new_shape.push_back(shape[i]);
@@ -97,7 +100,9 @@ Status TransposeProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
-Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context, gsl::span<const size_t> permutations, const Tensor& input, Tensor& output) {
+Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
+                              gsl::span<const size_t> permutations,
+                              const Tensor& input, Tensor& output) {
   const auto& input_shape = input.Shape();
   const auto& input_dims = input_shape.GetDims();
   int32_t rank = gsl::narrow_cast<int32_t>(input_shape.NumDimensions());
@@ -111,8 +116,8 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context, gsl:
   TensorShapeVector new_shape{};
   TensorShapeVector new_perm{};
   SqueezeShape(input_shape.GetDims(), permutations, new_shape, new_perm);
-  const bool channels_last = new_perm == InlinedVector<int64_t>({2, 3, 1});
-  const bool channels_first = new_perm == InlinedVector<int64_t>({3, 1, 2});
+  const bool channels_last = new_perm == TensorShapeVector({2, 3, 1});
+  const bool channels_first = new_perm == TensorShapeVector({3, 1, 2});
   const bool use_shared = (new_shape.size() == 2 && new_perm[0] > new_perm[1]) || channels_last || channels_first;
   auto new_input_shape = input_shape;
   TensorShape new_output_shape(output_dims);

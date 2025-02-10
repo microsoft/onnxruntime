@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/inlined_containers.h"
+#include "core/providers/common.h"
 #include "core/providers/webgpu/math/softmax.h"
 #include "core/providers/webgpu/tensor/transpose.h"
 #include "core/providers/cpu/tensor/utils.h"
@@ -81,7 +82,9 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddOutput("result", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   int components = input.NumComponents();
 
-  const std::string threadMaxDecl = is_fp32_ ? "var thread_max = x_value_t(-3.402823e+38f);\n" : "var thread_max = x_value_t(-65504.0h);\n";
+  const std::string thread_max_decl = is_fp32_ ?
+                                      "var thread_max = x_value_t(-3.402823e+38f);\n":
+                                      "var thread_max = x_value_t(-65504.0h);\n";
 
   // Define shared memory for row max and row sum
   shader.AdditionalImplementation()
@@ -110,7 +113,7 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << "  let row_stride : i32 = uniforms.packedCols;\n"
 
       // Find the row's max value
-      << threadMaxDecl
+      << thread_max_decl
       << "  for (var col = lindex; col < cols; col += wg) {\n"
       << "    let value = getValue(row, col, row_stride);\n"
       << "    thread_max = max(thread_max, value);\n"
@@ -171,7 +174,7 @@ Status Softmax::ComputeInternal(ComputeContext& context) const {
   auto* output_tensor = context.Output(0, input_shape);
 
   // normalize axis
-  int64_t axis = axis_ < 0 ? axis_ + input_rank : axis_;
+  int64_t axis = HandleNegativeAxis(axis_, input_rank);
   bool is_transpose_required = axis < input_rank - 1;
 
   TensorShape transposed_input_shape;
