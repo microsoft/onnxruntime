@@ -33,7 +33,17 @@ sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 
 
 import util.android as android  # noqa: E402
-from util import get_logger, is_linux, is_macOS, is_windows, generate_vcpkg_triplets, generate_windows_triplets, generate_posix_triplets, generate_android_triplets，generate_vcpkg_triplets_for_emscripten, run  # noqa: E402
+from util import (  # noqa: E402
+    generate_android_triplets,
+    generate_posix_triplets,
+    generate_vcpkg_triplets_for_emscripten,
+    generate_windows_triplets,
+    get_logger,
+    is_linux,
+    is_macOS,
+    is_windows,
+    run,
+)
 
 log = get_logger("build")
 
@@ -988,7 +998,7 @@ def number_of_nvcc_threads(args):
 # See https://learn.microsoft.com/en-us/vcpkg/commands/install
 def generate_vcpkg_install_options(build_dir, args):
     # NOTE: each option string should not contain any whitespace.
-    vcpkg_install_options = ["--x-feature=tests","--debug"]
+    vcpkg_install_options = ["--x-feature=tests", "--debug"]
     if args.use_acl:
         vcpkg_install_options.append("--x-feature=acl-ep")
     if args.use_armnn:
@@ -1241,7 +1251,7 @@ def generate_build_tree(
     if args.use_vcpkg:
         # TODO: set VCPKG_PLATFORM_TOOLSET_VERSION
         # Setup CMake flags for vcpkg
-        
+
         # Find VCPKG's toolchain cmake file
         vcpkg_cmd_path = shutil.which("vcpkg")
         vcpkg_toolchain_path = None
@@ -1267,30 +1277,42 @@ def generate_build_tree(
             new_toolchain_file = Path(build_dir) / "toolchain.cmake"
             old_toolchain_lines = []
             emscripten_root_path = os.path.join(emsdk_dir, "upstream", "emscripten")
-            with open(emscripten_cmake_toolchain_file, "r", encoding="utf-8") as f:
+            with open(emscripten_cmake_toolchain_file, encoding="utf-8") as f:
                 old_toolchain_lines = f.readlines()
-            emscripten_root_path_cmake_path = emscripten_root_path.replace("\\","/")
+            emscripten_root_path_cmake_path = emscripten_root_path.replace("\\", "/")
             # This file won't be used by vcpkg-tools when invoking 0.vcpkg_dep_info.cmake or vcpkg/scripts/ports.cmake
-            with open(new_toolchain_file, "w", encoding="utf-8") as f:                
-                f.write(f"set(EMSCRIPTEN_ROOT_PATH \"{emscripten_root_path_cmake_path}\")\n")
+            with open(new_toolchain_file, "w", encoding="utf-8") as f:
+                f.write(f'set(EMSCRIPTEN_ROOT_PATH "{emscripten_root_path_cmake_path}")\n')
                 for line in old_toolchain_lines:
                     f.write(line)
-                vcpkg_toolchain_path_cmake_path = str(vcpkg_toolchain_path).replace("\\","/")
+                vcpkg_toolchain_path_cmake_path = str(vcpkg_toolchain_path).replace("\\", "/")
                 f.write(f"include({vcpkg_toolchain_path_cmake_path})")
                 vcpkg_toolchain_path = new_toolchain_file.absolute()
 
-            # This file is for vcpkg-tools        
-            empty_toolchain_file = Path(build_dir) / "emsdk_vcpkg_toolchain.cmake"                
+            # This file is for vcpkg-tools
+            empty_toolchain_file = Path(build_dir) / "emsdk_vcpkg_toolchain.cmake"
             with open(empty_toolchain_file, "w", encoding="utf-8") as f:
-               f.write(f"set(EMSCRIPTEN_ROOT_PATH \"{emscripten_root_path_cmake_path}\")\n")
-               f.write("if(NOT VCPKG_MANIFEST_INSTALL)\n")
-               flags_to_pass = ["CXX_FLAGS", "CXX_FLAGS_DEBUG", "CXX_FLAGS_RELEASE", "C_FLAGS", "C_FLAGS_DEBUG", "C_FLAGS_RELEASE","LINKER_FLAGS", "LINKER_FLAGS_DEBUG", "LINKER_FLAGS_RELEASE"]
-               for flag in flags_to_pass:
-                 f.write("SET(CMAKE_" + flag  + " \"${VCPKG_"+flag+"}\")\n")
-               for line in old_toolchain_lines:
+                f.write(f'set(EMSCRIPTEN_ROOT_PATH "{emscripten_root_path_cmake_path}")\n')
+                f.write("if(NOT VCPKG_MANIFEST_INSTALL)\n")
+                flags_to_pass = [
+                    "CXX_FLAGS",
+                    "CXX_FLAGS_DEBUG",
+                    "CXX_FLAGS_RELEASE",
+                    "C_FLAGS",
+                    "C_FLAGS_DEBUG",
+                    "C_FLAGS_RELEASE",
+                    "LINKER_FLAGS",
+                    "LINKER_FLAGS_DEBUG",
+                    "LINKER_FLAGS_RELEASE",
+                ]
+                for flag in flags_to_pass:
+                    f.write("SET(CMAKE_" + flag + ' "${VCPKG_' + flag + '}")\n')
+                for line in old_toolchain_lines:
                     f.write(line)
-               f.write("endif()")
-            add_default_definition(cmake_extra_defines,"VCPKG_CHAINLOAD_TOOLCHAIN_FILE", str(empty_toolchain_file.absolute()))
+                f.write("endif()")
+            add_default_definition(
+                cmake_extra_defines, "VCPKG_CHAINLOAD_TOOLCHAIN_FILE", str(empty_toolchain_file.absolute())
+            )
             generate_vcpkg_triplets_for_emscripten(build_dir, emscripten_root_path)
         elif args.android:
             generate_android_triplets(build_dir, args.android_cpp_shared)
@@ -1307,10 +1329,10 @@ def generate_build_tree(
         # Choose the cmake triplet
         triplet = None
         if args.build_wasm:
-            if args.enable_wasm_memory64:                
-              triplet = "wasm64-emscripten"
+            if args.enable_wasm_memory64:
+                triplet = "wasm64-emscripten"
             else:
-              triplet = "wasm32-emscripten"
+                triplet = "wasm32-emscripten"
         elif args.android:
             if args.android_abi == "armeabi-v7a":
                 triplet = "arm-neon-android"
@@ -1500,7 +1522,7 @@ def generate_build_tree(
         if args.disable_exceptions:
             add_default_definition(cmake_extra_defines, "CMAKE_ANDROID_EXCEPTIONS", "OFF")
         if not args.use_vcpkg:
-            cmake_args.append("-DCMAKE_TOOLCHAIN_FILE=" + android_toolchain_cmake_path)        
+            cmake_args.append("-DCMAKE_TOOLCHAIN_FILE=" + android_toolchain_cmake_path)
         if args.android_cpp_shared:
             cmake_args += ["-DANDROID_STL=c++_shared"]
 
@@ -1802,7 +1824,7 @@ def generate_build_tree(
         if (
             (args.use_binskim_compliant_compile_flags or args.enable_address_sanitizer)
             and not args.ios
-            and not args.android            
+            and not args.android
         ):
             if is_windows() and not args.build_wasm:
                 cflags += ["/guard:cf", "/DWIN32", "/D_WINDOWS"]
@@ -1912,8 +1934,8 @@ def generate_build_tree(
         if args.use_vcpkg:
             env["VCPKG_KEEP_ENV_VARS"] = "TRT_UPLOAD_AUTH_TOKEN"
             if args.build_wasm:
-              env["EMSDK"] = emsdk_dir
-  
+                env["EMSDK"] = emsdk_dir
+
         run_subprocess(
             [*temp_cmake_args, f"-DCMAKE_BUILD_TYPE={config}"],
             cwd=config_build_dir,

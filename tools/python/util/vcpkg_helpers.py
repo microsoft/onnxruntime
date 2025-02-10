@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+
 def add_port_configs(f, has_exception: bool) -> None:
     """
     Add port-specific configurations to the triplet file.
@@ -32,6 +33,7 @@ endif()
 """
         )
 
+
 def add_copyright_header(f) -> None:
     """
     Add copyright header to the triplet file.
@@ -45,7 +47,10 @@ def add_copyright_header(f) -> None:
 """
     )
 
-def generate_triplet_for_android(build_dir: str, target_abi: str, enable_rtti: bool, enable_exception: bool, enable_asan: bool, use_cpp_shared: bool) -> None:
+
+def generate_triplet_for_android(
+    build_dir: str, target_abi: str, enable_rtti: bool, enable_exception: bool, enable_asan: bool, use_cpp_shared: bool
+) -> None:
     """
     Generate triplet file for Android platform.
 
@@ -64,24 +69,26 @@ def generate_triplet_for_android(build_dir: str, target_abi: str, enable_rtti: b
         folder_name_parts.append("nortti")
     if not enable_exception:
         folder_name_parts.append("noexception")
-    
+
     folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
-    
+
     file_name = f"{target_abi}-android.cmake"
-    
+
     dest_path = Path(build_dir) / folder_name / file_name
     print(f"Creating file {dest_path}")
-    
+
     os.makedirs(dest_path.parent, exist_ok=True)
-    
+
     with open(dest_path, "w", encoding="utf-8") as f:
         add_copyright_header(f)
-        
+
         # Set target architecture for Android
         if target_abi == "arm-neon":
             f.write("set(VCPKG_TARGET_ARCHITECTURE arm)\n")
             f.write("set(VCPKG_MAKE_BUILD_TRIPLET --host=armv7a-linux-androideabi)\n")
-            f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DANDROID_ABI=armeabi-v7a -DANDROID_ARM_NEON=ON -DCMAKE_ANDROID_ARM_NEON=ON)\n")
+            f.write(
+                "list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DANDROID_ABI=armeabi-v7a -DANDROID_ARM_NEON=ON -DCMAKE_ANDROID_ARM_NEON=ON)\n"
+            )
         elif target_abi == "arm64":
             f.write("set(VCPKG_TARGET_ARCHITECTURE arm64)\n")
             f.write("set(VCPKG_MAKE_BUILD_TRIPLET --host=aarch64-linux-android)\n")
@@ -94,8 +101,10 @@ def generate_triplet_for_android(build_dir: str, target_abi: str, enable_rtti: b
             f.write("set(VCPKG_TARGET_ARCHITECTURE x86)\n")
             f.write("set(VCPKG_MAKE_BUILD_TRIPLET --host=i686-linux-android)\n")
             f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DANDROID_ABI=x86)\n")
-        
-        f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DANDROID_USE_LEGACY_TOOLCHAIN_FILE=false -DANDROID_PLATFORM=android-24 -DANDROID_MIN_SDK=24)\n")
+
+        f.write(
+            "list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DANDROID_USE_LEGACY_TOOLCHAIN_FILE=false -DANDROID_PLATFORM=android-24 -DANDROID_MIN_SDK=24)\n"
+        )
 
         # Set CRT linkage
         # VCPKG_CRT_LINKAGE specifies the desired CRT linkage (for MSVC).
@@ -113,20 +122,20 @@ def generate_triplet_for_android(build_dir: str, target_abi: str, enable_rtti: b
             f.write("set(CMAKE_ANDROID_EXCEPTIONS OFF)")
         if use_cpp_shared:
             f.write("set(ANDROID_STL c++_shared)")
-        
+
         ldflags = []
-        
+
         cflags = ["-g", "-ffunction-sections", "-fdata-sections"]
         cflags_release = ["-DNDEBUG", "-O3"]
-               
-        elif enable_asan:
+
+        if enable_asan:
             cflags += ["-fsanitize=address"]
             ldflags += ["-fsanitize=address"]
-        
+
         ldflags.append("-g")
 
         cxxflags = cflags.copy()
-        
+
         if not enable_rtti:
             cxxflags.append("-fno-rtti")
 
@@ -134,28 +143,31 @@ def generate_triplet_for_android(build_dir: str, target_abi: str, enable_rtti: b
             cxxflags += ["-fno-exceptions", "-fno-unwind-tables", "-fno-asynchronous-unwind-tables"]
 
         if cflags:
-            f.write(f'set(VCPKG_C_FLAGS "{ " ".join(cflags) }")\n')
-        
+            f.write(f'set(VCPKG_C_FLAGS "{" ".join(cflags)}")\n')
+
         if cxxflags:
-            f.write(f'set(VCPKG_CXX_FLAGS "{ " ".join(cxxflags) }")\n')
-        
+            f.write(f'set(VCPKG_CXX_FLAGS "{" ".join(cxxflags)}")\n')
+
         if cflags_release:
-            f.write(f'set(VCPKG_C_FLAGS_RELEASE "{ " ".join(cflags_release) }")\n')
-            f.write(f'set(VCPKG_CXX_FLAGS_RELEASE "{ " ".join(cflags_release) }")\n')
-            f.write(f'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{ " ".join(cflags_release) }")\n')
-            f.write(f'set(VCPKG_CXX_FLAGS_RELWITHDEBINFO "{ " ".join(cflags_release) }")\n')
+            f.write(f'set(VCPKG_C_FLAGS_RELEASE "{" ".join(cflags_release)}")\n')
+            f.write(f'set(VCPKG_CXX_FLAGS_RELEASE "{" ".join(cflags_release)}")\n')
+            f.write(f'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{" ".join(cflags_release)}")\n')
+            f.write(f'set(VCPKG_CXX_FLAGS_RELWITHDEBINFO "{" ".join(cflags_release)}")\n')
 
         # Set target platform
         # VCPKG_CMAKE_SYSTEM_NAME specifies the target platform.
         # Valid options include any CMake system name, such as WindowsStore, MinGW, Darwin, iOS, Linux, Emscripten.
         f.write("set(VCPKG_CMAKE_SYSTEM_NAME Android)\n")
         f.write("set(CMAKE_POSITION_INDEPENDENT_CODE ON)\n")
-        f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DBENCHMARK_ENABLE_WERROR=OFF)\n")
+        f.write(
+            "list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DBENCHMARK_ENABLE_WERROR=OFF)\n"
+        )
 
         if ldflags:
-            f.write(f'set(VCPKG_LINKER_FLAGS "{ " ".join(ldflags) }")\n')
+            f.write(f'set(VCPKG_LINKER_FLAGS "{" ".join(ldflags)}")\n')
         f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DCMAKE_CXX_STANDARD=17)\n")
         add_port_configs(f, enable_exception)
+
 
 def generate_android_triplets(build_dir: str, use_cpp_shared: bool) -> None:
     """
@@ -164,25 +176,23 @@ def generate_android_triplets(build_dir: str, use_cpp_shared: bool) -> None:
     Args:
         build_dir (str): The directory to save the generated triplet files.
     """
-    crt_linkages = ["static", "dynamic"]
-    os_name = "android":
     target_abis = ["x64", "arm64", "arm-neon", "x86"]
-    crt_linkages = ["static"]    
     for enable_rtti in [True, False]:
-            for enable_exception in [True, False]:
-                    for enable_asan in [True, False]:
-                        for crt_linkage in crt_linkages:
-                            for target_abi in target_abis:
-                                generate_triplet_for_android(
-                                    build_dir,
-                                    target_abi,
-                                    enable_rtti,
-                                    enable_exception,
-                                    use_cpp_shared
-                                )
+        for enable_exception in [True, False]:
+            for target_abi in target_abis:
+                generate_triplet_for_android(build_dir, target_abi, enable_rtti, enable_exception, use_cpp_shared)
 
 
-def generate_triplet_for_posix_platform(build_dir: str, os_name: str, enable_rtti: bool, enable_exception: bool, enable_binskim: bool, enable_asan: bool, crt_linkage: str, target_abi: str) -> None:
+def generate_triplet_for_posix_platform(
+    build_dir: str,
+    os_name: str,
+    enable_rtti: bool,
+    enable_exception: bool,
+    enable_binskim: bool,
+    enable_asan: bool,
+    crt_linkage: str,
+    target_abi: str,
+) -> None:
     """
     Generate triplet file for POSIX platforms (Linux, macOS).
 
@@ -205,21 +215,21 @@ def generate_triplet_for_posix_platform(build_dir: str, os_name: str, enable_rtt
         folder_name_parts.append("nortti")
     if not enable_exception:
         folder_name_parts.append("noexception")
-    
+
     folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
-    
+
     file_name = f"{target_abi}-{os_name}.cmake"
-    
+
     dest_path = Path(build_dir) / folder_name / file_name
     print(f"Creating file {dest_path}")
-    
+
     os.makedirs(dest_path.parent, exist_ok=True)
-    
+
     with open(dest_path, "w", encoding="utf-8") as f:
         add_copyright_header(f)
-        
-        # Set target architecture based on `os_name` and `target_abi`. 
-        # 
+
+        # Set target architecture based on `os_name` and `target_abi`.
+        #
         # In most cases VCPKG itself can help automatically detect the target architecture, but sometimes it is not as what we want. The following code process the special cases.
         if target_abi == "universal2":
             # Assume the host machine is Intel based
@@ -238,7 +248,7 @@ def generate_triplet_for_posix_platform(build_dir: str, os_name: str, enable_rtt
         f.write("set(VCPKG_LIBRARY_LINKAGE static)\n")
 
         ldflags = []
-        
+
         if enable_binskim and os_name == "linux":
             # BinSkim rule 3005: Enable stack clash protection
             # This check ensures that stack clash protection is enabled. Each program running on a computer uses a special memory region called the stack.
@@ -249,26 +259,26 @@ def generate_triplet_for_posix_platform(build_dir: str, os_name: str, enable_rtt
             # This check ensures that some relocation data is marked as read-only after the executable is loaded, and moved below the '.data' section in memory.
             # This prevents them from being overwritten, which can redirect control flow. Use the compiler flags '-Wl,-z,now' to enable this.
             ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now", "-Wl,-z,noexecstack"]
-        
+
         cflags = ["-g", "-ffunction-sections", "-fdata-sections"]
         cflags_release = ["-DNDEBUG", "-O3"]
-        
+
         if enable_binskim:
             cflags_release += ["-Wp,-D_FORTIFY_SOURCE=2", "-Wp,-D_GLIBCXX_ASSERTIONS", "-fstack-protector-strong"]
             if target_abi == "x64":
                 cflags_release += ["-fstack-clash-protection", "-fcf-protection"]
-        
+
         elif enable_asan:
             cflags += ["-fsanitize=address"]
             ldflags += ["-fsanitize=address"]
-        
+
         ldflags.append("-g")
 
         if not enable_rtti:
             cflags.append("-DEMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0")
 
         cxxflags = cflags.copy()
-        
+
         if not enable_rtti:
             cxxflags.append("-fno-rtti")
 
@@ -277,10 +287,10 @@ def generate_triplet_for_posix_platform(build_dir: str, os_name: str, enable_rtt
 
         if cflags:
             f.write(f'set(VCPKG_C_FLAGS "{" ".join(cflags)}")\n')
-        
+
         if cxxflags:
             f.write(f'set(VCPKG_CXX_FLAGS "{" ".join(cxxflags)}")\n')
-        
+
         if cflags_release:
             f.write(f'set(VCPKG_C_FLAGS_RELEASE "{" ".join(cflags_release)}")\n')
             f.write(f'set(VCPKG_CXX_FLAGS_RELEASE "{" ".join(cflags_release)}")\n')
@@ -303,7 +313,9 @@ def generate_triplet_for_posix_platform(build_dir: str, os_name: str, enable_rtt
                 osx_abi = target_abi
             f.write(f'set(VCPKG_OSX_ARCHITECTURES "{osx_abi}")\n')
         f.write("set(CMAKE_POSITION_INDEPENDENT_CODE ON)\n")
-        f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DBENCHMARK_ENABLE_WERROR=OFF)\n")
+        f.write(
+            "list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DBENCHMARK_ENABLE_WERROR=OFF)\n"
+        )
 
         if ldflags:
             f.write(f'set(VCPKG_LINKER_FLAGS "{" ".join(ldflags)}")\n')
@@ -312,6 +324,7 @@ def generate_triplet_for_posix_platform(build_dir: str, os_name: str, enable_rtt
         else:
             f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DCMAKE_CXX_STANDARD=17)\n")
         add_port_configs(f, enable_exception)
+
 
 def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str) -> None:
     """
@@ -347,18 +360,25 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
     set(VCPKG_CMAKE_SYSTEM_NAME Emscripten)
     """)
                     f.write(f"set(VCPKG_TARGET_ARCHITECTURE {target_abi})\n")
-                    emscripten_root_path_cmake_path = emscripten_root.replace("\\","/")
-                    f.write(f"set(EMSCRIPTEN_ROOT_PATH \"{emscripten_root_path_cmake_path}\")\n")
+                    emscripten_root_path_cmake_path = emscripten_root.replace("\\", "/")
+                    f.write(f'set(EMSCRIPTEN_ROOT_PATH "{emscripten_root_path_cmake_path}")\n')
                     vcpkg_toolchain_file = (Path(build_dir) / "emsdk_vcpkg_toolchain.cmake").absolute()
-                    vcpkg_toolchain_file_cmake_path = str(vcpkg_toolchain_file).replace("\\","/")
-                    f.write(f"set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE \"{vcpkg_toolchain_file_cmake_path}\")\n")
+                    vcpkg_toolchain_file_cmake_path = str(vcpkg_toolchain_file).replace("\\", "/")
+                    f.write(f'set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE "{vcpkg_toolchain_file_cmake_path}")\n')
                     cflags_release = ["-DNDEBUG", "-O3", "-pthread"]
                     ldflags = []
-                    cflags = ["-ffunction-sections", "-fdata-sections", "-msimd128", "-pthread", "-Wno-pthreads-mem-growth",  "-sDISABLE_EXCEPTION_CATCHING=0"]
+                    cflags = [
+                        "-ffunction-sections",
+                        "-fdata-sections",
+                        "-msimd128",
+                        "-pthread",
+                        "-Wno-pthreads-mem-growth",
+                        "-sDISABLE_EXCEPTION_CATCHING=0",
+                    ]
                     if enable_asan:
                         cflags += ["-fsanitize=address"]
                         ldflags += ["-fsanitize=address"]
-                    if target_abi == 'wasm64':
+                    if target_abi == "wasm64":
                         cflags.append("-sMEMORY64")
                         ldflags.append("-sMEMORY64")
                     if len(ldflags) >= 1:
@@ -375,6 +395,7 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
                         f.write(f'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{" ".join(cflags_release)}")\n')
                         f.write(f'set(VCPKG_CXX_FLAGS_RELWITHDEBINFO "{" ".join(cflags_release)}")\n')
 
+
 def generate_windows_triplets(build_dir: str) -> None:
     """
     Generate triplet files for Windows platforms.
@@ -386,7 +407,7 @@ def generate_windows_triplets(build_dir: str) -> None:
     # ARM64 is for ARM64 processes that contains traditional ARM64 code.
     # ARM64EC is a different ABI that utilizes a subset of the ARM64 register set to provide interoperability with x64 code.
     # Both ARM64 and ARM64EC for are AArch64 CPUs.
-    # We have dropped the support for ARM32.    
+    # We have dropped the support for ARM32.
     target_abis = ["x86", "x64", "arm64", "arm64ec"]
     crt_linkages = ["static", "dynamic"]
     for enable_rtti in [True, False]:
@@ -418,7 +439,12 @@ def generate_windows_triplets(build_dir: str) -> None:
                             f.write(f"set(VCPKG_CRT_LINKAGE {crt_linkage})\n")
                             f.write("set(VCPKG_LIBRARY_LINKAGE static)\n")
                             cflags = ["/MP", "/DWIN32", "/D_WINDOWS"]
-                            cflags += ["/DWINAPI_FAMILY=100", "/DWINVER=0x0A00", "/D_WIN32_WINNT=0x0A00", "/DNTDDI_VERSION=0x0A000000"]
+                            cflags += [
+                                "/DWINAPI_FAMILY=100",
+                                "/DWINVER=0x0A00",
+                                "/D_WIN32_WINNT=0x0A00",
+                                "/DNTDDI_VERSION=0x0A000000",
+                            ]
                             cxxflags = cflags.copy()
                             ldflags = []
                             if enable_binskim:
@@ -433,10 +459,13 @@ def generate_windows_triplets(build_dir: str) -> None:
                                 f.write(f'set(VCPKG_C_FLAGS "{" ".join(cflags)}")\n')
                             if cxxflags:
                                 f.write(f'set(VCPKG_CXX_FLAGS "{" ".join(cxxflags)}")\n')
-                            f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DCMAKE_CXX_STANDARD=17)\n")
+                            f.write(
+                                "list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DCMAKE_CXX_STANDARD=17)\n"
+                            )
                             if ldflags:
                                 f.write(f'set(VCPKG_LINKER_FLAGS "{" ".join(ldflags)}")\n')
                             add_port_configs(f, True)
+
 
 def generate_posix_triplets(build_dir: str) -> None:
     """

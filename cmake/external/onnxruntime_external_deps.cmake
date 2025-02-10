@@ -291,15 +291,17 @@ if(NOT TARGET Boost::mp11)
      find_package(Boost REQUIRED)
      message(STATUS "Aliasing Boost::headers to Boost::mp11")
      add_library(Boost::mp11 ALIAS Boost::headers)
+  else()
+    onnxruntime_fetchcontent_declare(
+     mp11
+     URL ${DEP_URL_mp11}
+     FIND_PACKAGE_ARGS NAMES Boost
+    )
+    onnxruntime_fetchcontent_makeavailable(mp11)    
+    if(NOT TARGET Boost::mp11)
+      add_library(Boost::mp11 ALIAS Boost::headers)
+    endif()
   endif()
-else()
- onnxruntime_fetchcontent_declare(
-   mp11
-   URL ${DEP_URL_mp11}
-@@ -294,12 +302,6 @@ onnxruntime_fetchcontent_declare(
-   FIND_PACKAGE_ARGS NAMES Boost
- )
- onnxruntime_fetchcontent_makeavailable(mp11)
 endif()
 
 set(JSON_BuildTests OFF CACHE INTERNAL "")
