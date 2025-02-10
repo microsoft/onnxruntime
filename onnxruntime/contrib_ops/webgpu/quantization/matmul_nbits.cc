@@ -1006,7 +1006,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   // macOS - Avoid using dp4a on Metal, as it does not appear to have native dp4a support.
   // https://github.com/gpuweb/gpuweb/issues/2677#issuecomment-1713292226
   const bool use_dp4a = has_subgroup && context.AdapterInfo().backendType != wgpu::BackendType::Metal;
-  if (block_size == 32 &&
+  if (accuracy_level_ == 4 && block_size == 32 &&
       batch_count == 1 && components_a == 4 && K % 64 == 0 && N % 16 == 0 &&
       !has_zero_points && use_dp4a) {
     constexpr uint32_t kVec4Components = 4;
