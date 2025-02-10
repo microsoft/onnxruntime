@@ -177,7 +177,8 @@ def generate_android_triplets(build_dir: str, use_cpp_shared: bool) -> None:
         build_dir (str): The directory to save the generated triplet files.
     """
     target_abis = ["x64", "arm64", "arm-neon", "x86"]
-    for enable_rtti in [True, False]:
+    for enable_asan in [True, False]:
+      for enable_rtti in [True, False]:
         for enable_exception in [True, False]:
             for target_abi in target_abis:                
                 generate_triplet_for_android(build_dir, target_abi, enable_rtti, enable_exception, enable_asan, use_cpp_shared)
