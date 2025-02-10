@@ -401,9 +401,11 @@ static bool getMIGraphXType(ONNXTensorElementDataType type,
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2:
       mgx_type = migraphx_shape_fp8e5m2_type;
       break;
+#if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 4)
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ:
       mgx_type = migraphx_shape_fp8e5m2fnuz_type;
       break;
+#endif
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4:
       mgx_type = migraphx_shape_int8_type;
       break;
