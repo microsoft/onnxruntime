@@ -39,7 +39,8 @@ jobs:
   pool:
     name: ${{parameters.PoolName}}
     os: linux
-    hostArchitecture: ${{parameters.OnnxruntimeNodejsBindingArch}}
+    ${{ if eq(parameters.OnnxruntimeArch, 'aarch64') }}:
+      hostArchitecture: Arm64
   steps:
   - checkout: self
     clean: true
