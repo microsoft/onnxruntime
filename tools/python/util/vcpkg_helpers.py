@@ -354,13 +354,15 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
                     f.write(f"set(VCPKG_CHAINLOAD_TOOLCHAIN_FILE \"{vcpkg_toolchain_file_cmake_path}\")\n")
                     cflags_release = ["-DNDEBUG", "-O3", "-pthread"]
                     ldflags = []
-                    cflags = ["-ffunction-sections", "-fdata-sections", "-msimd128", "-pthread", "-Wno-pthreads-mem-growth"]
+                    cflags = ["-ffunction-sections", "-fdata-sections", "-msimd128", "-pthread", "-Wno-pthreads-mem-growth",  "-sDISABLE_EXCEPTION_CATCHING=0"]
                     if enable_asan:
                         cflags += ["-fsanitize=address"]
                         ldflags += ["-fsanitize=address"]
                     if target_abi == 'wasm64':
                         cflags.append("-sMEMORY64")
                         ldflags.append("-sMEMORY64")
+                    if len(ldflags) >= 1:
+                        f.write('set(VCPKG_LINKER_FLAGS "{}")\n'.format(" ".join(ldflags)))
                     cxxflags = cflags.copy()
                     if cflags:
                         f.write(f'set(VCPKG_C_FLAGS "{" ".join(cflags)}")\n')

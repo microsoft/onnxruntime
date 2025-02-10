@@ -286,20 +286,20 @@ onnxruntime_fetchcontent_declare(
 )
 onnxruntime_fetchcontent_makeavailable(date)
 
-onnxruntime_fetchcontent_declare(
-  mp11
-  URL ${DEP_URL_mp11}
-  URL_HASH SHA1=${DEP_SHA1_mp11}
-  EXCLUDE_FROM_ALL
-  FIND_PACKAGE_ARGS NAMES Boost
-)
-onnxruntime_fetchcontent_makeavailable(mp11)
 if(NOT TARGET Boost::mp11)
   if(onnxruntime_USE_VCPKG)
-    find_package(Boost REQUIRED)
+     find_package(Boost REQUIRED)
+     message(STATUS "Aliasing Boost::headers to Boost::mp11")
+     add_library(Boost::mp11 ALIAS Boost::headers)
   endif()
-  message(STATUS "Aliasing Boost::headers to Boost::mp11")
-  add_library(Boost::mp11 ALIAS Boost::headers)
+else()
+ onnxruntime_fetchcontent_declare(
+   mp11
+   URL ${DEP_URL_mp11}
+@@ -294,12 +302,6 @@ onnxruntime_fetchcontent_declare(
+   FIND_PACKAGE_ARGS NAMES Boost
+ )
+ onnxruntime_fetchcontent_makeavailable(mp11)
 endif()
 
 set(JSON_BuildTests OFF CACHE INTERNAL "")
