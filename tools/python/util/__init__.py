@@ -4,7 +4,7 @@
 from .get_azcopy import get_azcopy  # noqa: F401
 from .logger import get_logger
 from .platform_helpers import is_linux, is_macOS, is_windows  # noqa: F401
-from .vcpkg_helpers import generate_vcpkg_triplets, generate_vcpkg_triplets_for_emscripten  # noqa: F401
+from .vcpkg_helpers import generate_vcpkg_triplets, generate_windows_triplets, generate_posix_triplets, generate_android_triplets，generate_vcpkg_triplets_for_emscripten  # noqa: F401
 from .run import run  # noqa: F401
 
 try:

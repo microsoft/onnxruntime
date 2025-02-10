@@ -33,7 +33,7 @@ sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 
 
 import util.android as android  # noqa: E402
-from util import get_logger, is_linux, is_macOS, is_windows, generate_vcpkg_triplets, generate_vcpkg_triplets_for_emscripten, run  # noqa: E402
+from util import get_logger, is_linux, is_macOS, is_windows, generate_vcpkg_triplets, generate_windows_triplets, generate_posix_triplets, generate_android_triplets，generate_vcpkg_triplets_for_emscripten, run  # noqa: E402
 
 log = get_logger("build")
 
@@ -1290,8 +1290,12 @@ def generate_build_tree(
                f.write("endif()")
             add_default_definition(cmake_extra_defines,"VCPKG_CHAINLOAD_TOOLCHAIN_FILE", str(empty_toolchain_file.absolute()))
             generate_vcpkg_triplets_for_emscripten(build_dir, emscripten_root_path)
+        elif args.android:
+            generate_android_triplets(build_dir, args.android_cpp_shared)
+        elif is_windows():
+            generate_windows_triplets(build_dir)
         else:
-            generate_vcpkg_triplets(build_dir)
+            generate_posix_triplets(build_dir)
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", str(vcpkg_toolchain_path))
 
         vcpkg_install_options = generate_vcpkg_install_options(build_dir, args)
@@ -1494,9 +1498,7 @@ def generate_build_tree(
         if args.disable_exceptions:
             add_default_definition(cmake_extra_defines, "CMAKE_ANDROID_EXCEPTIONS", "OFF")
         if not args.use_vcpkg:
-            cmake_args.append("-DCMAKE_TOOLCHAIN_FILE=" + android_toolchain_cmake_path)
-        else:
-            cmake_args.append("-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=" + android_toolchain_cmake_path)
+            cmake_args.append("-DCMAKE_TOOLCHAIN_FILE=" + android_toolchain_cmake_path)        
         if args.android_cpp_shared:
             cmake_args += ["-DANDROID_STL=c++_shared"]
 
