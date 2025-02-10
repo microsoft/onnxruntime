@@ -420,8 +420,10 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   FlashAttentionProgram program{"FlashAttention", has_attention_bias, parameters.head_size_, parameters.num_heads_};
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 4},
                      {present_key, ProgramTensorMetadataDependency::TypeAndRank, 4},
-                     {present_value, ProgramTensorMetadataDependency::TypeAndRank, 4},
-                     {attention_bias, ProgramTensorMetadataDependency::TypeAndRank}});
+                     {present_value, ProgramTensorMetadataDependency::TypeAndRank, 4}});
+  if (has_attention_bias) {
+    program.AddInput({attention_bias, ProgramTensorMetadataDependency::TypeAndRank});
+  }
   program.AddOutputs({{output, ProgramTensorMetadataDependency::TypeAndRank, 4}});
   const float alpha = parameters.scale_ == 0.0f ? 1.f / sqrt(static_cast<float>(parameters.head_size_))
                                                 : parameters.scale_;
@@ -443,6 +445,7 @@ bool CanApplyFlashAttention(const Tensor* bias, const Tensor* present_key, const
   return parameters.batch_size_ == 1 &&
          bias == nullptr &&
          parameters.sequence_length_ > 1 &&
+         parameters.qkv_format_ == Q_K_V_BSNH &&
          context.Device().HasFeature(wgpu::FeatureName::Subgroups) &&
          present_key != nullptr && present_value != nullptr && present_key->SizeInBytes() > 0 &&
          present_value->SizeInBytes() > 0 && parameters.head_size_ % 4 == 0;
