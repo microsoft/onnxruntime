@@ -18,7 +18,6 @@ constexpr const char* kDawnBackendType = "WebGPU:dawnBackendType";
 
 constexpr const char* kDeviceId = "WebGPU:deviceId";
 constexpr const char* kWebGpuInstance = "WebGPU:webgpuInstance";
-constexpr const char* kWebGpuAdapter = "WebGPU:webgpuAdapter";
 constexpr const char* kWebGpuDevice = "WebGPU:webgpuDevice";
 
 constexpr const char* kStorageBufferCacheMode = "WebGPU:storageBufferCacheMode";

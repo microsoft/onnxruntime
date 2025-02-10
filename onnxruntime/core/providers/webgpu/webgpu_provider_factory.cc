@@ -106,14 +106,6 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
                 std::from_chars(webgpu_instance_str.data(), webgpu_instance_str.data() + webgpu_instance_str.size(), webgpu_instance).ec);
   }
 
-  size_t webgpu_adapter = 0;
-  std::string webgpu_adapter_str;
-  if (config_options.TryGetConfigEntry(kWebGpuAdapter, webgpu_adapter_str)) {
-    static_assert(sizeof(WGPUAdapter) == sizeof(size_t), "WGPUAdapter size mismatch");
-    ORT_ENFORCE(std::errc{} ==
-                std::from_chars(webgpu_adapter_str.data(), webgpu_adapter_str.data() + webgpu_adapter_str.size(), webgpu_adapter).ec);
-  }
-
   size_t webgpu_device = 0;
   std::string webgpu_device_str;
   if (config_options.TryGetConfigEntry(kWebGpuDevice, webgpu_device_str)) {
@@ -154,7 +146,6 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
   webgpu::WebGpuContextConfig context_config{
       context_id,
       reinterpret_cast<WGPUInstance>(webgpu_instance),
-      reinterpret_cast<WGPUAdapter>(webgpu_adapter),
       reinterpret_cast<WGPUDevice>(webgpu_device),
       reinterpret_cast<const void*>(dawn_proc_table),
       validation_mode,
@@ -238,7 +229,7 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
   // STEP.4 - start initialization.
   //
 
-  // Load the Dawn library and create the WebGPU instance and adapter.
+  // Load the Dawn library and create the WebGPU instance.
   auto& context = webgpu::WebGpuContextFactory::CreateContext(context_config);
 
   // Create WebGPU device and initialize the context.
