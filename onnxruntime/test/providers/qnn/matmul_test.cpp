@@ -125,6 +125,7 @@ static void RunQDQPerChannelMatMulOpOpTest(const TestInputDef<float>& input_def,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   if (enable_fp16_precision) {
     provider_options["enable_htp_fp16_precision"] = "1";
@@ -178,6 +179,7 @@ static void RunQDQMatMulOpOpTest(const TestInputDef<float>& input1_def,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy(BuildMatMulOpTestCase(input1_def, input2_def),
                        BuildMatMulOpQDQTestCase<Input0QType, Input1QType, OutputQType>(input1_def, input2_def,
