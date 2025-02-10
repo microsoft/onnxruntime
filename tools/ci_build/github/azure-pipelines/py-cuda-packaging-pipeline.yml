@@ -37,7 +37,7 @@ extends:
         alertWarningLevel: High
         failOnAlert: false
         verbosity: Normal
-        timeout: 4800
+        timeout: 3600
       tsa:
         enabled: true
       codeSignValidation:
