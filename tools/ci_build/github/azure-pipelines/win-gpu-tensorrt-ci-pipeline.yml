@@ -52,7 +52,7 @@ jobs:
     EnvSetupScript: setup_env_trt.bat
     skipComponentGovernanceDetection: true
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
-  timeoutInMinutes: 150
+  timeoutInMinutes: 180
   workspace:
     clean: all
   steps:
