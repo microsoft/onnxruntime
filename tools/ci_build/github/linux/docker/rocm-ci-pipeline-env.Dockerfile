@@ -88,3 +88,8 @@ RUN pip install packaging \
                 numpy==1.26.4
 
 RUN apt install -y git
+ARG BUILD_UID=1001
+ARG BUILD_USER=onnxruntimedev
+RUN adduser --uid $BUILD_UID $BUILD_USER
+WORKDIR /home/$BUILD_USER
+USER $BUILD_USER
