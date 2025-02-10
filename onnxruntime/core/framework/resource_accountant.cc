@@ -21,12 +21,16 @@ class SizeTAccountant : public IResourceAccountant {
   SizeTAccountant() = default;
   ~SizeTAccountant() = default;
 
-  explicit SizeTAccountant(size_t threshold, InlinedHashMap<std::string, NodeAllocationStats>&& node_stats)
+  SizeTAccountant(size_t threshold, InlinedHashMap<std::string, NodeAllocationStats>&& node_stats)
       : IResourceAccountant(threshold), node_stats_(std::move(node_stats)) {}
+
+  explicit SizeTAccountant(InlinedHashMap<std::string, NodeAllocationStats>&& node_stats)
+      : IResourceAccountant(), node_stats_(std::move(node_stats)) {}
 
   ResourceCount GetConsumedAmount() const noexcept override {
     return consumed_amount_;
   }
+
   void AddConsumedAmount(const ResourceCount& amount) noexcept override {
     if (std::holds_alternative<size_t>(amount)) {
       consumed_amount_ += std::get<size_t>(amount);
@@ -151,10 +155,11 @@ Status NodeStatsRecorder::CreateAccountants(
       kOrtSessionOptionsResourceCudaPartitioningSettings, "");
 
   if (!resource_partitioning_settings.empty()) {
-    auto splits = utils::SplitString(resource_partitioning_settings, ",", false);
+    auto splits = utils::SplitString(resource_partitioning_settings, ",", true);
     if (splits.size() == 2) {
-      SafeInt<size_t> cuda_memory_limit = std::stoul(std::string{splits[0]});
-      cuda_memory_limit *= 1024;  // to bytes
+      if (splits[1].empty()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid resource partitioning settings");
+      }
 
       InlinedHashMap<std::string, NodeAllocationStats> loaded_stats;
       ORT_RETURN_IF_ERROR(LoadNodeAllocationStats(model_path, splits[1], loaded_stats));
@@ -162,9 +167,17 @@ Status NodeStatsRecorder::CreateAccountants(
       std::optional<ResourceAccountantMap> result;
       auto& map = result.emplace();
 
-      map.insert_or_assign(kCudaExecutionProvider,
-                           std::make_unique<SizeTAccountant>(cuda_memory_limit,
-                                                             std::move(loaded_stats)));
+      if (!splits[0].empty()) {
+        SafeInt<size_t> cuda_memory_limit = std::stoul(std::string{splits[0]});
+        cuda_memory_limit *= 1024;  // to bytes
+        map.insert_or_assign(kCudaExecutionProvider,
+                             std::make_unique<SizeTAccountant>(cuda_memory_limit,
+                                                               std::move(loaded_stats)));
+      } else {
+        map.insert_or_assign(kCudaExecutionProvider,
+                             std::make_unique<SizeTAccountant>(std::move(loaded_stats)));
+      }
+
       acc_map = std::move(result);
     }
   }
