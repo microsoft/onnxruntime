@@ -201,12 +201,12 @@ Status Softmax::ComputeInternal(ComputeContext& context) const {
   const int64_t cols = is_transpose_required ? transposed_input_shape[input_rank - 1] : input_shape[input_rank - 1];
   const int64_t rows = input_shape.Size() / cols;
   const int64_t components = GetMaxComponents(cols);
-  const auto packedCols = cols / components;
-  uint32_t WG = rows == 1 ? 256 : 64;
+  const auto packed_cols = cols / components;
+  uint32_t workgroup_size = rows == 1 ? 256 : 64;
   // check input tensor element type is float
   const bool is_fp32 = input_tensor->GetElementType() == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT;
 
-  SoftmaxProgram program{WG, is_fp32};
+  SoftmaxProgram program{workgroup_size, is_fp32};
   if (is_transpose_required) {
     program
         .AddInputs({{&transposed_input_tensor, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components)}})
@@ -218,10 +218,10 @@ Status Softmax::ComputeInternal(ComputeContext& context) const {
   }
 
   program
-      .CacheHint(std::to_string(components), std::to_string(WG))
-      .SetWorkgroupSize(WG)
+      .CacheHint(std::to_string(components), std::to_string(workgroup_size))
+      .SetWorkgroupSize(workgroup_size)
       .SetDispatchGroupSize(rows)
-      .AddUniformVariables({{static_cast<int32_t>(packedCols)}});
+      .AddUniformVariables({{static_cast<int32_t>(packed_cols)}});
 
   ORT_RETURN_IF_ERROR(context.RunProgram(program));
 
