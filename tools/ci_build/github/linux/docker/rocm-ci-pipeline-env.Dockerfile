@@ -1,7 +1,7 @@
 # Refer to https://github.com/RadeonOpenCompute/ROCm-docker/blob/master/dev/Dockerfile-ubuntu-22.04-complete
 FROM ubuntu:22.04
 
-ARG ROCM_VERSION=6.1.3
+ARG ROCM_VERSION=6.3.2
 ARG AMDGPU_VERSION=${ROCM_VERSION}
 ARG APT_PREF='Package: *\nPin: release o=repo.radeon.com\nPin-Priority: 600'
 
@@ -88,13 +88,3 @@ RUN pip install packaging \
                 numpy==1.26.4
 
 RUN apt install -y git
-
-# Install Cupy to decrease CPU utilization
-# Note that the version of Cupy requires numpy < 1.27
-RUN git clone https://github.com/ROCm/cupy && cd cupy && \
-    git checkout 432a8683351d681e00903640489cb2f4055d2e09 && \
-    export CUPY_INSTALL_USE_HIP=1 && \
-    export ROCM_HOME=/opt/rocm && \
-    export HCC_AMDGPU_TARGET=gfx906,gfx908,gfx90a && \
-    git submodule update --init && \
-    pip install -e . --no-cache-dir -vvvv

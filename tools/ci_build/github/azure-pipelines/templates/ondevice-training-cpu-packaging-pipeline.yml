@@ -70,7 +70,7 @@ stages:
     buildArch: x64
     msbuildPlatform: arm64
     packageName: arm64
-    buildparameter: --arm64 ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}} --path_to_protoc_exe $(Build.BinariesDirectory)\RelWithDebInfo\installed\bin\protoc.exe
+    buildparameter: --arm64 ${{ parameters.AdditionalBuildFlags }}  ${{ parameters.AdditionalWinBuildFlags}}
     runTests: false
     buildJava: false
     buildNodejs: false
