@@ -179,8 +179,8 @@ def generate_android_triplets(build_dir: str, use_cpp_shared: bool) -> None:
     target_abis = ["x64", "arm64", "arm-neon", "x86"]
     for enable_rtti in [True, False]:
         for enable_exception in [True, False]:
-            for target_abi in target_abis:
-                generate_triplet_for_android(build_dir, target_abi, enable_rtti, enable_exception, use_cpp_shared)
+            for target_abi in target_abis:                
+                generate_triplet_for_android(build_dir, target_abi, enable_rtti, enable_exception, enable_asan, use_cpp_shared)
 
 
 def generate_triplet_for_posix_platform(
@@ -469,17 +469,14 @@ def generate_windows_triplets(build_dir: str) -> None:
 
 def generate_posix_triplets(build_dir: str) -> None:
     """
-    Generate triplet files for POSIX platforms (Linux, macOS, Android).
+    Generate triplet files for POSIX platforms (Linux, macOS).
 
     Args:
         build_dir (str): The directory to save the generated triplet files.
     """
     crt_linkages = ["static", "dynamic"]
-    for os_name in ["linux", "osx", "android"]:
-        if os_name == "android":
-            target_abis = ["x64", "arm64", "arm-neon", "x86"]
-            crt_linkages = ["static"]
-        elif os_name == "linux":
+    for os_name in ["linux", "osx"]:
+        if os_name == "linux":
             target_abis = ["x64", "arm64"]
             crt_linkages = ["dynamic"]
         else:
@@ -487,7 +484,7 @@ def generate_posix_triplets(build_dir: str) -> None:
             crt_linkages = ["dynamic"]
         for enable_rtti in [True, False]:
             for enable_exception in [True, False]:
-                for enable_binskim in [False] if os_name == "android" else [True, False]:
+                for enable_binskim in [True, False]:
                     for enable_asan in [True, False]:
                         if enable_asan and enable_binskim:
                             continue
