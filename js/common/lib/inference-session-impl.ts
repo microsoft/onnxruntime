@@ -6,7 +6,7 @@ import { InferenceSessionHandler } from './backend.js';
 import { InferenceSession as InferenceSessionInterface } from './inference-session.js';
 import { OnnxValue } from './onnx-value.js';
 import { Tensor } from './tensor.js';
-import { TRACE_FUNC_BEGIN, TRACE_FUNC_END } from './trace.js';
+import { TRACE_FUNC_BEGIN, TRACE_FUNC_END, TRACE_EVENT_BEGIN, TRACE_EVENT_END } from './trace.js';
 
 type SessionOptions = InferenceSessionInterface.SessionOptions;
 type RunOptions = InferenceSessionInterface.RunOptions;
@@ -22,6 +22,7 @@ export class InferenceSession implements InferenceSessionInterface {
   run(feeds: FeedsType, fetches: FetchesType, options?: RunOptions): Promise<ReturnType>;
   async run(feeds: FeedsType, arg1?: FetchesType | RunOptions, arg2?: RunOptions): Promise<ReturnType> {
     TRACE_FUNC_BEGIN();
+    TRACE_EVENT_BEGIN('InferenceSession.run');
     const fetches: { [name: string]: OnnxValue | null } = {};
     let options: RunOptions = {};
     // check inputs
@@ -120,6 +121,7 @@ export class InferenceSession implements InferenceSessionInterface {
         }
       }
     }
+    TRACE_EVENT_END('InferenceSession.run');
     TRACE_FUNC_END();
     return returnValue;
   }
@@ -144,6 +146,7 @@ export class InferenceSession implements InferenceSessionInterface {
     arg3?: SessionOptions,
   ): Promise<InferenceSessionInterface> {
     TRACE_FUNC_BEGIN();
+    TRACE_EVENT_BEGIN('InferenceSession.create');
     // either load from a file or buffer
     let filePathOrUint8Array: string | Uint8Array;
     let options: SessionOptions = {};
@@ -207,6 +210,7 @@ export class InferenceSession implements InferenceSessionInterface {
     // resolve backend, update session options with validated EPs, and create session handler
     const [backend, optionsWithValidatedEPs] = await resolveBackendAndExecutionProviders(options);
     const handler = await backend.createInferenceSessionHandler(filePathOrUint8Array, optionsWithValidatedEPs);
+    TRACE_EVENT_END('InferenceSession.create');
     TRACE_FUNC_END();
     return new InferenceSession(handler);
   }

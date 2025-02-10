@@ -51,3 +51,23 @@ export const TRACE_FUNC_END = (extraMsg?: string) => {
   }
   TRACE_FUNC('END', extraMsg);
 };
+
+/**
+ * @ignore
+ */
+export const TRACE_EVENT_BEGIN = (extraMsg?: string) => {
+  if (typeof env.trace === 'undefined' ? !env.wasm.trace : !env.trace) {
+    return;
+  }
+  console.time(`ORT::${extraMsg}`);
+};
+
+/**
+ * @ignore
+ */
+export const TRACE_EVENT_END = (extraMsg?: string) => {
+  if (typeof env.trace === 'undefined' ? !env.wasm.trace : !env.trace) {
+    return;
+  }
+  console.timeEnd(`ORT::${extraMsg}`);
+};
