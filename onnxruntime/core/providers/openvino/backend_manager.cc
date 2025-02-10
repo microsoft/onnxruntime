@@ -225,13 +225,11 @@ Status BackendManager::ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphVie
     // Build name by combining EpCtx model name (if available) and subgraph name. Model
     // name is not available in when creating a session from memory
     auto name = session_context_.so_context_file_path.stem().string();
-    if (!name.empty() && !graph_body_viewer.ModelPath().empty()) {
+    if (name.empty() && !graph_body_viewer.ModelPath().empty()) {
       name = graph_body_viewer.ModelPath().stem().string();
     }
-    if (!name.empty()) {
-      name += "_";
-    }
-    name += subgraph_context_.subgraph_name;
+    ORT_ENFORCE(!name.empty());
+    name += "_" + subgraph_context_.subgraph_name;
 
     std::filesystem::path blob_filename = session_context_.so_context_file_path;
     if (blob_filename.empty()) {
