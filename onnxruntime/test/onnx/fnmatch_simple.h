@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <cstring>
 #include "core/session/onnxruntime_c_api.h"
+#include "core/common/common.h"
 #include "onnxruntime_config.h"
 #ifdef HAVE_GLOB_H
 #include <glob.h>
@@ -35,7 +36,7 @@ inline std::vector<std::filesystem::path> SimpleGlob(const std::filesystem::path
   if (glob_ret == GLOB_NOMATCH || glob_ret == 0) {
     return ret;
   }
-  throw std::runtime_error("glob error");
+  ORT_THROW("glob error");
 }
 
 }  // namespace onnxruntime
