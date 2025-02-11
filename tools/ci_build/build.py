@@ -1523,6 +1523,9 @@ def generate_build_tree(
             add_default_definition(cmake_extra_defines, "CMAKE_ANDROID_EXCEPTIONS", "OFF")
         if not args.use_vcpkg:
             cmake_args.append("-DCMAKE_TOOLCHAIN_FILE=" + android_toolchain_cmake_path)
+        else:
+            cmake_args.append("-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=" + android_toolchain_cmake_path)
+
         if args.android_cpp_shared:
             cmake_args += ["-DANDROID_STL=c++_shared"]
 
