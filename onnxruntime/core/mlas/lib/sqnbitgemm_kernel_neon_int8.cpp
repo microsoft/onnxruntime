@@ -138,7 +138,7 @@ UseTiled_CompInt8(size_t K, size_t BlkLen, bool has_zp)
 
 void
 QuantizeA_CompInt8(
-    size_t BlkLen,
+    size_t,
     const float* A,
     size_t CountM,
     size_t CountK,

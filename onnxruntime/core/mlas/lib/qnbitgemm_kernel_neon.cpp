@@ -146,7 +146,7 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
     const std::byte* QuantBDataBegin,
     const float* QuantBScaleBegin,
     bool has_zp_input,
-    const std::byte* QuantBZPBegin,
+    const std::byte*,
     PackedQuantBDataStruct<float>& packed_quant_b,
     MLAS_THREADPOOL* ThreadPool
 )

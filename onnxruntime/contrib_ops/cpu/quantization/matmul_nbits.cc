@@ -191,7 +191,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       return Status::OK();
     }
     auto qptr = tensor.DataRaw();
-    auto scale_ptr = scales? scales->DataRaw() : nullptr;
+    auto scale_ptr = scales ? scales->DataRaw() : nullptr;
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
     MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(), scale_ptr, has_zp_input_, nullptr, nullptr);
     is_packed = true;
@@ -208,8 +208,7 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
       is_packed = false;
     }
 #elif defined(MLAS_TARGET_ARM64)
-    if (input_idx == InputIndex::scales && packed_b_ != nullptr
-        && MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, compute_type_, has_zp_input_)) {
+    if (input_idx == InputIndex::scales && packed_b_ != nullptr && MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, compute_type_, has_zp_input_)) {
       scales_are_packed_ = true;
       is_packed = true;
     }
@@ -248,7 +247,7 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
     return Status::OK();
   }
   if (input_idx == InputIndex::B) {
-    packed_b_size_ = MlasQNBitGemmPackQuantBDataSize(N_, K_, nbits_, block_size_, compute_type_);
+    packed_b_size_ = MlasQNBitGemmPackQuantBDataSize(N_, K_, nbits_, block_size_, has_zp_input_, compute_type_);
     if (packed_b_size_ == 0) {
       return Status::OK();
     }
@@ -299,7 +298,7 @@ Status MatMulNBits<T1>::ComputeBPacked(const Tensor* a,
                                        concurrency::ThreadPool* thread_pool,
                                        const MatMulComputeHelper& helper) const {
   const auto* a_data = a->Data<T1>();
-  const auto* scales_data = scales == nullptr? nullptr : scales->Data<T1>();
+  const auto* scales_data = scales == nullptr ? nullptr : scales->Data<T1>();
   const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
   const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T1>();
   auto* y_data = y->MutableData<T1>();
@@ -663,7 +662,7 @@ template <typename T1>
 Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
   const Tensor* a = ctx->Input<Tensor>(InputIndex::A);
-  const Tensor* scales = scales_are_packed_? nullptr : ctx->Input<Tensor>(InputIndex::scales);
+  const Tensor* scales = scales_are_packed_ ? nullptr : ctx->Input<Tensor>(InputIndex::scales);
   const Tensor* zero_points = ctx->Input<Tensor>(InputIndex::zero_points);
   const Tensor* reorder_idx = ctx->Input<Tensor>(InputIndex::g_idx);
   const Tensor* bias = ctx->Input<Tensor>(InputIndex::bias);
