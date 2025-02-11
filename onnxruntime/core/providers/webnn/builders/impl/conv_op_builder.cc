@@ -378,29 +378,13 @@ bool ConvOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
     return false;
   }
 
-  // WebNN CPU backend (TFLite) only supports default dilations and group.
-  // https://source.chromium.org/chromium/chromium/src/+/main:services/webnn/tflite/graph_builder_tflite.cc;l=1040
-  if (device_type == WebnnDeviceType::CPU && op_type == "ConvTranspose") {
-    NodeAttrHelper helper(node);
-    const auto dilations = helper.Get("dilations", std::vector<int64_t>{1, 1});
-    const auto group = helper.Get("group", 1);
-    if (dilations[0] != 1 || (dilations.size() > 1 && dilations[1] != 1)) {
-      LOGS(logger, VERBOSE) << op_type << " for WebNN CPU backend only supports default dilation 1.";
-      return false;
-    }
-    if (group != 1) {
-      LOGS(logger, VERBOSE) << op_type << " for WebNN CPU backend only supports default group 1.";
-      return false;
-    }
-  }
-
   return true;
 }
 
 bool ConvOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
                                            const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input0_type;  // input data type
   int32_t input1_type;  // weight data type
   int32_t input2_type;  // bias or x_zero_point data type

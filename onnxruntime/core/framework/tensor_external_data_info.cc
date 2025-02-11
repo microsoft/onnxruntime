@@ -4,6 +4,7 @@
 #include "tensor_external_data_info.h"
 #include "core/common/common.h"
 #include "core/common/narrow.h"
+#include "core/common/parse_string.h"
 #include "core/common/safeint.h"
 #include "core/common/string_utils.h"
 #include "core/platform/path_lib.h"
@@ -18,21 +19,8 @@ using ::ONNX_NAMESPACE::StringStringEntryProto;
 
 namespace onnxruntime {
 Status ExternalDataInfo::Create(const RepeatedPtrField<StringStringEntryProto>& input,
-                                std::unique_ptr<ExternalDataInfo>& out) {
-  auto str_to_int = [](const std::string& s, OFFSET_TYPE& result) -> Status {
-    char* end;
-#ifdef _WIN32
-    result = _strtoi64(s.c_str(), &end, 10);
-#else
-    result = OrtStrToPtrDiff(s.c_str(), &end);
-#endif
-    if (end != s.c_str() + s.length()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "parsing ", s, " failed");
-    }
-    return Status::OK();
-  };
-
-  out = std::make_unique<ExternalDataInfo>();
+                                std::unique_ptr<ExternalDataInfo>& external_data_info_result) {
+  auto external_data_info = std::make_unique<ExternalDataInfo>();
   PrepackedInfos prepacked_infos;
 
   const int input_size = input.size();
@@ -43,17 +31,15 @@ Status ExternalDataInfo::Create(const RepeatedPtrField<StringStringEntryProto>& 
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model format error! Need a key for the external data info");
     if (!stringmap.has_value())
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model format error! Need a value for the external data info");
+
     if (stringmap.key() == "location" && !stringmap.value().empty()) {
-      out->rel_path_ = ToWideString(stringmap.value());
+      external_data_info->rel_path_ = ToWideString(stringmap.value());
     } else if (stringmap.key() == "offset" && !stringmap.value().empty()) {
-      ORT_RETURN_IF_ERROR(str_to_int(stringmap.value(), out->offset_));
+      ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(stringmap.value(), external_data_info->offset_));
     } else if (stringmap.key() == "length" && !stringmap.value().empty()) {
-      char* end;
-      out->length_ = narrow<size_t>(OrtStrToPtrDiff(stringmap.value().c_str(), &end));
-      if (end != stringmap.value().c_str() + stringmap.value().length())
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "parsing ", stringmap.value(), " failed");
+      ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(stringmap.value(), external_data_info->length_));
     } else if (stringmap.key() == "checksum" && !stringmap.value().empty()) {
-      out->checksum_ = stringmap.value();
+      external_data_info->checksum_ = stringmap.value();
     } else if (stringmap.key().find("prepacked", 0) == 0) {
       // Starts with 'prepacked', each has its own key.
       // Each prepacked entry may have multiple blobs with the same key
@@ -72,10 +58,11 @@ Status ExternalDataInfo::Create(const RepeatedPtrField<StringStringEntryProto>& 
             const auto& blob = split_fields[f];
             auto blob_fields = utils::SplitString(blob, ";", false);
             if (blob_fields.size() == 3) {
-              OFFSET_TYPE offset, len;
-              ORT_RETURN_IF_ERROR(str_to_int(std::string(blob_fields[0]), offset));
-              ORT_RETURN_IF_ERROR(str_to_int(std::string(blob_fields[1]), len));
-              blob_infos.push_back(std::make_tuple(offset, narrow<size_t>(len), std::string(blob_fields[2])));
+              OFFSET_TYPE offset;
+              size_t len;
+              ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(blob_fields[0], offset));
+              ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(blob_fields[1], len));
+              blob_infos.push_back(std::make_tuple(offset, len, std::string(blob_fields[2])));
             }
           }
           if (blob_infos.empty()) {
@@ -88,14 +75,15 @@ Status ExternalDataInfo::Create(const RepeatedPtrField<StringStringEntryProto>& 
     }
   }
 
-  if (out->rel_path_.empty()) {
+  if (external_data_info->rel_path_.empty()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "model format error! Missing 'location'");
   }
 
   if (!prepacked_infos.empty()) {
-    out->prepacked_infos_ = std::move(prepacked_infos);
+    external_data_info->prepacked_infos_ = std::move(prepacked_infos);
   }
 
+  external_data_info_result = std::move(external_data_info);
   return Status::OK();
 }
 void ExternalDataInfo::SetExternalLocationToProto(const std::filesystem::path& external_file_path,
