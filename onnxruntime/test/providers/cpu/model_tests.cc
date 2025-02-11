@@ -102,7 +102,7 @@ TEST_P(ModelTest, Run) {
     }
   }
 
-  std::unique_ptr<OnnxModelInfo> model_info = std::make_unique<OnnxModelInfo>(model_path.c_str());
+  std::unique_ptr<TestModelInfo> model_info = std::make_unique<TestModelInfo>(model_path.c_str());
 
   if (model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
       model_info->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {

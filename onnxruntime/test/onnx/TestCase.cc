@@ -26,6 +26,7 @@
 #include "core/common/common.h"
 #include "core/platform/env.h"
 #include <mutex>
+#include "fnmatch.h"
 #include "core/platform/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/allocator.h"
@@ -81,12 +82,12 @@ static void SortFileNames(std::vector<std::filesystem::path>& input_pb_files) {
 }  // namespace
 #if !defined(ORT_MINIMAL_BUILD)
 std::unique_ptr<TestModelInfo> TestModelInfo::LoadOnnxModel(const std::filesystem::path& model_url) {
-  return std::make_unique<OnnxModelInfo>(model_url);
+  return std::make_unique<TestModelInfo>(model_url);
 }
 #endif
 
 std::unique_ptr<TestModelInfo> TestModelInfo::LoadOrtModel(const std::filesystem::path& model_url) {
-  return std::make_unique<OnnxModelInfo>(model_url, true);
+  return std::make_unique<TestModelInfo>(model_url, true);
 }
 
 /**
@@ -294,25 +295,8 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
     ORT_THROW("index out of bound");
   }
 
-  std::vector<std::filesystem::path> test_data_pb_files;
+  std::vector<std::filesystem::path> test_data_pb_files = SimpleGlob(test_data_dirs_[id], is_input ? ORT_TSTR("input_*.pb") : ORT_TSTR("output_*.pb"));
 
-  std::filesystem::path dir_fs_path = test_data_dirs_[id];
-  if (!std::filesystem::exists(dir_fs_path)) return;
-
-  for (auto const& dir_entry : std::filesystem::directory_iterator(dir_fs_path)) {
-    if (!dir_entry.is_regular_file()) continue;
-    const std::filesystem::path& path = dir_entry.path();
-    if (!path.filename().has_extension()) {
-      continue;
-    }
-    if (path.filename().extension().compare(ORT_TSTR(".pb")) != 0) continue;
-    const std::basic_string<PATH_CHAR_TYPE> file_prefix =
-        is_input ? ORT_TSTR("input_") : ORT_TSTR("output_");
-    auto filename_str = path.filename().native();
-    if (filename_str.compare(0, file_prefix.length(), file_prefix) == 0) {
-      test_data_pb_files.push_back(path);
-    }
-  }
 
   SortFileNames(test_data_pb_files);
 
@@ -519,6 +503,64 @@ OnnxTestCase::OnnxTestCase(const std::string& test_case_name, _In_ std::unique_p
   }
 }
 
+bool IsValidTest(std::basic_string<PATH_CHAR_TYPE> test_case_name, const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases, const std::unordered_set<std::basic_string<ORTCHAR_T>>& disabled_tests) {
+  if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0) test_case_name = test_case_name.substr(5);
+
+  if (!whitelisted_test_cases.empty() && std::find(whitelisted_test_cases.begin(), whitelisted_test_cases.end(),
+                                                   test_case_name) == whitelisted_test_cases.end()) {
+    return false;
+  }
+  return disabled_tests.find(test_case_name) == disabled_tests.end();
+}
+
+void LoadSingleModel(std::unique_ptr<TestModelInfo> model_info, const TestTolerances& tolerances, std::unique_ptr<std::set<BrokenTest>>& broken_tests,
+                     std::unique_ptr<std::set<std::string>>& broken_tests_keyword_set,
+                     const std::function<void(std::unique_ptr<ITestCase>)>& process_function) {
+  auto test_case_dir = model_info->GetDir();
+  auto test_case_name = test_case_dir.filename().native();
+  if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0) test_case_name = test_case_name.substr(5);
+  auto test_case_name_in_log = test_case_name + ORT_TSTR(" in ") + test_case_dir.native();
+
+#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_QNN) && !defined(USE_VSINPU)
+  // to skip some models like *-int8 or *-qdq
+  if ((reinterpret_cast<TestModelInfo*>(model_info.get()))->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
+      (reinterpret_cast<TestModelInfo*>(model_info.get()))->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
+    fprintf(stderr, "Skip test case:: %s %s\n", ToUTF8String(test_case_name_in_log).c_str(), " as it has training domain");
+    return;
+  }
+#endif
+
+  if (broken_tests) {
+    BrokenTest t = {ToUTF8String(test_case_name), ""};
+    auto iter = broken_tests->find(t);
+    auto opset_version = model_info->GetNominalOpsetVersion();
+    if (iter != broken_tests->end() &&
+        (opset_version == TestModelInfo::unknown_version || iter->broken_opset_versions_.empty() ||
+         iter->broken_opset_versions_.find(opset_version) != iter->broken_opset_versions_.end())) {
+      fprintf(stderr, "Skip test case:: %s %s\n", ToUTF8String(test_case_name_in_log).c_str(), " due to broken_tests");
+      return;
+    }
+  }
+
+  if (broken_tests_keyword_set) {
+    for (auto iter2 = broken_tests_keyword_set->begin(); iter2 != broken_tests_keyword_set->end(); ++iter2) {
+      std::string keyword = *iter2;
+      if (ToUTF8String(test_case_name).find(keyword) != std::string::npos) {
+        fprintf(stderr, "Skip test case:: %s %s\n", ToUTF8String(test_case_name_in_log).c_str(), " as it is in broken test keywords");
+        return;
+      }
+    }
+  }
+
+  const auto tolerance_key = ToUTF8String(test_case_dir.filename());
+
+  std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToUTF8String(test_case_name), std::move(model_info),
+                                                    tolerances.absolute(tolerance_key),
+                                                    tolerances.relative(tolerance_key));
+  fprintf(stdout, "Load Test Case: %s\n", ToUTF8String(test_case_name_in_log).c_str());
+  process_function(std::move(l));
+}
+
 void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths,
                const std::vector<std::basic_string<PATH_CHAR_TYPE>>& whitelisted_test_cases,
                const TestTolerances& tolerances,
@@ -526,114 +568,35 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
                std::unique_ptr<std::set<BrokenTest>> broken_tests,
                std::unique_ptr<std::set<std::string>> broken_tests_keyword_set,
                const std::function<void(std::unique_ptr<ITestCase>)>& process_function) {
-  std::vector<std::basic_string<PATH_CHAR_TYPE>> paths(input_paths);
-  while (!paths.empty()) {
-    std::filesystem::path node_data_root_path = paths.back();
-    paths.pop_back();
-    if (!std::filesystem::exists(node_data_root_path)) continue;
-    std::filesystem::path my_dir_name = node_data_root_path.filename();
-    for (auto const& dir_entry : std::filesystem::directory_iterator(node_data_root_path)) {
-      if (dir_entry.is_directory()) {
-        paths.push_back(dir_entry.path());
-        continue;
-      }
-      if (!dir_entry.is_regular_file()) continue;
+  std::vector<std::filesystem::path> onnx_models;
+  std::vector<std::filesystem::path> ort_models;
+  for (const std::basic_string<PATH_CHAR_TYPE>& path_str : input_paths) {
+    for (auto& dir_entry : std::filesystem::recursive_directory_iterator(path_str)) {
+      if (!dir_entry.is_regular_file() || dir_entry.is_directory()) continue;
+      std::filesystem::path node_data_root_path = dir_entry.path();
       std::filesystem::path filename_str = dir_entry.path().filename();
       if (filename_str.empty() || filename_str.native()[0] == ORT_TSTR('.')) {
         // Ignore hidden files.
         continue;
       }
-      bool is_onnx_format = filename_str.has_extension() && (filename_str.extension().compare(ORT_TSTR(".onnx")) == 0);
-      bool is_ort_format = filename_str.has_extension() && (filename_str.extension().compare(ORT_TSTR(".ort")) == 0);
-      bool is_valid_model = false;
-
-#if !defined(ORT_MINIMAL_BUILD)
-      is_valid_model = is_onnx_format;
-#endif
-
-      is_valid_model = is_valid_model || is_ort_format;
-      if (!is_valid_model)
-        continue;
-
-      std::basic_string<PATH_CHAR_TYPE> test_case_name = my_dir_name.native();
-      if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0) test_case_name = test_case_name.substr(5);
-
-      if (!whitelisted_test_cases.empty() && std::find(whitelisted_test_cases.begin(), whitelisted_test_cases.end(),
-                                                       test_case_name) == whitelisted_test_cases.end()) {
-        continue;
+      auto folder_path = node_data_root_path.parent_path().native();
+      if (FnmatchSimple(ORT_TSTR("*.onnx"), filename_str.native()) && IsValidTest(folder_path, whitelisted_test_cases, disabled_tests)) {
+        onnx_models.push_back(node_data_root_path);
+      } else if (FnmatchSimple(ORT_TSTR("*.ort"), filename_str.native()) && IsValidTest(folder_path, whitelisted_test_cases, disabled_tests)) {
+        ort_models.push_back(node_data_root_path);
       }
-      if (disabled_tests.find(test_case_name) != disabled_tests.end()) continue;
-
-      std::unique_ptr<TestModelInfo> model_info;
-
-      if (is_onnx_format) {
-#if !defined(ORT_MINIMAL_BUILD)
-        model_info = TestModelInfo::LoadOnnxModel(dir_entry.path());
-#else
-        ORT_THROW("onnx model is not supported in this build");
-#endif
-      } else if (is_ort_format) {
-        model_info = TestModelInfo::LoadOrtModel(dir_entry.path());
-      } else {
-        ORT_NOT_IMPLEMENTED(ToUTF8String(filename_str), " is not supported");
-      }
-
-      auto test_case_dir = model_info->GetDir();
-      auto test_case_name_in_log = test_case_name + ORT_TSTR(" in ") + test_case_dir.native();
-
-#if !defined(ORT_MINIMAL_BUILD) && !defined(USE_QNN) && !defined(USE_VSINPU)
-      // to skip some models like *-int8 or *-qdq
-      if ((reinterpret_cast<OnnxModelInfo*>(model_info.get()))->HasDomain(ONNX_NAMESPACE::AI_ONNX_TRAINING_DOMAIN) ||
-          (reinterpret_cast<OnnxModelInfo*>(model_info.get()))->HasDomain(ONNX_NAMESPACE::AI_ONNX_PREVIEW_TRAINING_DOMAIN)) {
-        fprintf(stderr, "Skip test case:: %s %s\n", ToUTF8String(test_case_name_in_log).c_str(), " as it has training domain");
-        continue;
-      }
-#endif
-
-      bool has_test_data = false;
-      LoopDir(test_case_dir, [&](const PATH_CHAR_TYPE* filename, OrtFileType f_type) -> bool {
-        if (filename[0] == '.') return true;
-        if (f_type == OrtFileType::TYPE_DIR) {
-          has_test_data = true;
-          return false;
-        }
-        return true;
-      });
-      if (!has_test_data) {
-        fprintf(stderr, "Skip test case:: %s %s\n", ToUTF8String(test_case_name_in_log).c_str(), " due to no test data");
-        continue;
-      }
-
-      if (broken_tests) {
-        BrokenTest t = {ToUTF8String(test_case_name), ""};
-        auto iter = broken_tests->find(t);
-        auto opset_version = model_info->GetNominalOpsetVersion();
-        if (iter != broken_tests->end() &&
-            (opset_version == TestModelInfo::unknown_version || iter->broken_opset_versions_.empty() ||
-             iter->broken_opset_versions_.find(opset_version) != iter->broken_opset_versions_.end())) {
-          fprintf(stderr, "Skip test case:: %s %s\n", ToUTF8String(test_case_name_in_log).c_str(), " due to broken_tests");
-          continue;
-        }
-      }
-
-      if (broken_tests_keyword_set) {
-        for (auto iter2 = broken_tests_keyword_set->begin(); iter2 != broken_tests_keyword_set->end(); ++iter2) {
-          std::string keyword = *iter2;
-          if (ToUTF8String(test_case_name).find(keyword) != std::string::npos) {
-            fprintf(stderr, "Skip test case:: %s %s\n", ToUTF8String(test_case_name_in_log).c_str(), " as it is in broken test keywords");
-            continue;
-          }
-        }
-      }
-
-      const auto tolerance_key = ToUTF8String(my_dir_name);
-
-      std::unique_ptr<ITestCase> l = CreateOnnxTestCase(ToUTF8String(test_case_name), std::move(model_info),
-                                                        tolerances.absolute(tolerance_key),
-                                                        tolerances.relative(tolerance_key));
-      fprintf(stdout, "Load Test Case: %s\n", ToUTF8String(test_case_name_in_log).c_str());
-      process_function(std::move(l));
     }
+  }
+
+#if !defined(ORT_MINIMAL_BUILD)
+  // The for-loop below needs to load every ONNX model into memory then destory the in-memory objects, which is very inefficient since 1. in total we need to load every model twice 2. at here we do the job sequentially. 
+  // Originally the design was to make the TestModelInfo lightweight so that all the model information can be retrieved from filesystem meta data without actually loading the models.
+  for (const std::filesystem::path& model_path : onnx_models) {
+    LoadSingleModel(TestModelInfo::LoadOnnxModel(model_path), tolerances, broken_tests, broken_tests_keyword_set, process_function);
+  }
+#endif
+  for (const std::filesystem::path& model_path : ort_models) {
+    LoadSingleModel(TestModelInfo::LoadOrtModel(model_path), tolerances, broken_tests, broken_tests_keyword_set, process_function);
   }
 }
 

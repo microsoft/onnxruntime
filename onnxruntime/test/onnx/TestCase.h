@@ -10,14 +10,13 @@
 #include <core/common/common.h>
 #include <core/common/status.h>
 #include <core/platform/path_lib.h>
+#include "onnx_model_info.h"
 
 namespace Ort {
 struct Value;
 }
 
-namespace ONNX_NAMESPACE {
-class ValueInfoProto;
-}
+
 
 namespace onnxruntime {
 namespace test {
@@ -49,31 +48,7 @@ class ITestCase {
   virtual void GetPostProcessing(bool* value) const = 0;
 };
 
-class TestModelInfo {
- public:
-  virtual const std::filesystem::path& GetModelUrl() const = 0;
-  virtual std::filesystem::path GetDir() const {
-    const auto& p = GetModelUrl();
-    return p.has_parent_path() ? p.parent_path() : std::filesystem::current_path();
-  }
-  virtual const std::string& GetNodeName() const = 0;
-  virtual const ONNX_NAMESPACE::ValueInfoProto* GetInputInfoFromModel(size_t i) const = 0;
-  virtual const ONNX_NAMESPACE::ValueInfoProto* GetOutputInfoFromModel(size_t i) const = 0;
-  virtual int GetInputCount() const = 0;
-  virtual int GetOutputCount() const = 0;
-  virtual const std::string& GetInputName(size_t i) const = 0;
-  virtual const std::string& GetOutputName(size_t i) const = 0;
-  virtual std::string GetNominalOpsetVersion() const { return ""; }
-  virtual ~TestModelInfo() = default;
 
-#if !defined(ORT_MINIMAL_BUILD)
-  static std::unique_ptr<TestModelInfo> LoadOnnxModel(const std::filesystem::path& model_url);
-#endif
-
-  static std::unique_ptr<TestModelInfo> LoadOrtModel(const std::filesystem::path& model_url);
-
-  static const std::string unknown_version;
-};
 
 std::unique_ptr<ITestCase> CreateOnnxTestCase(const std::string& test_case_name,
                                               std::unique_ptr<TestModelInfo> model,
