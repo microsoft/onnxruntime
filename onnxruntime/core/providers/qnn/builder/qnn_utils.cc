@@ -754,9 +754,10 @@ std::string GetVerboseQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interfac
 
 TensorShape GetTensorProtoShape(const ONNX_NAMESPACE::TensorShapeProto& tensor_shape_proto) {
   const auto& onnx_dims = tensor_shape_proto.dim();
-  std::vector<int64_t> tensor_shape_vec(static_cast<size_t>(onnx_dims.size()));
+  const size_t num_dims = static_cast<size_t>(onnx_dims.size());
+  std::vector<int64_t> tensor_shape_vec(num_dims);
 
-  for (int i = 0; i < onnx_dims.size(); i++) {
+  for (int i = 0; i < static_cast<int>(num_dims); i++) {
     const auto& onnx_dim = tensor_shape_proto.dim(i);
     tensor_shape_vec[i] = onnx_dim.has_dim_value() ? onnx_dim.dim_value() : -1;  // -1 is for symbolic dim in ORT
   }
