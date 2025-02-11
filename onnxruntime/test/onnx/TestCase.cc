@@ -26,7 +26,7 @@
 #include "core/common/common.h"
 #include "core/platform/env.h"
 #include <mutex>
-#include "fnmatch.h"
+#include "fnmatch_simple.h"
 #include "core/platform/path_lib.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/allocator.h"
