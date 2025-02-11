@@ -234,6 +234,7 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
             auto data_type = input_def->TypeAsProto()->tensor_type().elem_type();
             if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
                 data_type == ONNX_NAMESPACE::TensorProto_DataType_INT16 ||
+                data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT8 ||
                 data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT16) {
               can_constant_fold_dq_node = true;
             }
