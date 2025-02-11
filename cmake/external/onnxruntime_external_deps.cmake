@@ -600,6 +600,7 @@ endif()
 
 if(onnxruntime_ENABLE_DLPACK)
   message(STATUS "dlpack is enabled.")
+
   onnxruntime_fetchcontent_declare(
     dlpack
     URL ${DEP_URL_dlpack}
@@ -607,9 +608,7 @@ if(onnxruntime_ENABLE_DLPACK)
     EXCLUDE_FROM_ALL
     FIND_PACKAGE_ARGS NAMES dlpack
   )
-  # We can't use onnxruntime_fetchcontent_makeavailable since some part of the the dlpack code is Linux only.
-  # For example, dlpackcpp.h uses posix_memalign.
-  FetchContent_Populate(dlpack)
+  onnxruntime_fetchcontent_makeavailable(dlpack)
 endif()
 
 if(onnxruntime_ENABLE_TRAINING OR (onnxruntime_ENABLE_TRAINING_APIS AND onnxruntime_BUILD_UNIT_TESTS))
@@ -686,6 +685,24 @@ if (onnxruntime_USE_WEBGPU)
       set(DAWN_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
     endif()
 
+    if (onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP)
+      set(DAWN_ENABLE_DESKTOP_GL ON CACHE BOOL "" FORCE)
+      set(DAWN_ENABLE_OPENGLES ON CACHE BOOL "" FORCE)
+      set(DAWN_SUPPORTS_GLFW_FOR_WINDOWING ON CACHE BOOL "" FORCE)
+      set(DAWN_USE_GLFW ON CACHE BOOL "" FORCE)
+      set(DAWN_USE_WINDOWS_UI ON CACHE BOOL "" FORCE)
+      set(TINT_BUILD_GLSL_WRITER ON CACHE BOOL "" FORCE)
+      set(TINT_BUILD_GLSL_VALIDATOR ON CACHE BOOL "" FORCE)
+    else()
+      set(DAWN_ENABLE_DESKTOP_GL OFF CACHE BOOL "" FORCE)
+      set(DAWN_ENABLE_OPENGLES OFF CACHE BOOL "" FORCE)
+      set(DAWN_SUPPORTS_GLFW_FOR_WINDOWING OFF CACHE BOOL "" FORCE)
+      set(DAWN_USE_GLFW OFF CACHE BOOL "" FORCE)
+      set(DAWN_USE_WINDOWS_UI OFF CACHE BOOL "" FORCE)
+      set(TINT_BUILD_GLSL_WRITER OFF CACHE BOOL "" FORCE)
+      set(TINT_BUILD_GLSL_VALIDATOR OFF CACHE BOOL "" FORCE)
+    endif()
+
     # disable things we don't use
     set(DAWN_DXC_ENABLE_ASSERTS_IN_NDEBUG OFF)
     set(DAWN_ENABLE_DESKTOP_GL OFF CACHE BOOL "" FORCE)
@@ -741,6 +758,10 @@ if (onnxruntime_USE_WEBGPU)
       endif()
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::dawn_proc)
     endif()
+  endif()
+
+  if (onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES glfw webgpu_glfw)
   endif()
 endif()
 
