@@ -29,6 +29,17 @@ RUN apt-get update && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Upgrade to meet security requirements
+RUN apt-get update -y && apt-get upgrade -y && apt-get autoremove -y && \
+    apt-get install  -y locales cifs-utils wget half libnuma-dev lsb-release && \
+    apt-get clean -y
+
+# Cmake
+ENV CMAKE_VERSION=3.31.5
+RUN cd /usr/local && \
+    wget -q https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz && \
+    tar -zxf /usr/local/cmake-3.31.5-Linux-x86_64.tar.gz --strip=1 -C /usr
+
 # Install Ninja
 COPY scripts/install-ninja.sh /build_scripts/
 RUN /bin/bash /build_scripts/install-ninja.sh
@@ -41,10 +52,6 @@ RUN /bin/bash /build_scripts/install-vcpkg.sh
 
 RUN groupadd -g 109 render
 
-# Upgrade to meet security requirements
-RUN apt-get update -y && apt-get upgrade -y && apt-get autoremove -y && \
-    apt-get install  -y locales cifs-utils wget half libnuma-dev lsb-release && \
-    apt-get clean -y
 
 ENV MIGRAPHX_DISABLE_FAST_GELU=1
 RUN locale-gen en_US.UTF-8
@@ -54,11 +61,6 @@ ENV LANG C.UTF-8
 
 WORKDIR /stage
 
-# Cmake
-ENV CMAKE_VERSION=3.31.5
-RUN cd /usr/local && \
-    wget -q https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz && \
-    tar -zxf /usr/local/cmake-3.31.5-Linux-x86_64.tar.gz --strip=1 -C /usr
 
 # ccache
 RUN mkdir -p /tmp/ccache && \
