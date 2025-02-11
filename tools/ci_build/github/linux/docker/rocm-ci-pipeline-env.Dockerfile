@@ -49,6 +49,16 @@ RUN cd /usr/local && \
     wget -q https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz && \
     tar -zxf /usr/local/cmake-3.31.5-Linux-x86_64.tar.gz --strip=1 -C /usr
 
+# Install Ninja
+COPY scripts/install-ninja.sh /build_scripts/
+RUN /bin/bash /build_scripts/install-ninja.sh
+
+# Install VCPKG
+ENV VCPKG_INSTALLATION_ROOT=/usr/local/share/vcpkg
+ENV VCPKG_FORCE_SYSTEM_BINARIES=ON
+COPY scripts/install-vcpkg.sh /build_scripts/
+RUN /bin/bash /build_scripts/install-vcpkg.sh
+
 # ccache
 RUN mkdir -p /tmp/ccache && \
     cd /tmp/ccache && \
