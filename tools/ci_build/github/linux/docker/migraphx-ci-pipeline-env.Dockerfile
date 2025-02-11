@@ -91,8 +91,8 @@ RUN ln -sf /usr/lib/x86_64-linux-gnu/libstdc++.so.6 ${CONDA_ENVIRONMENT_PATH}/bi
 RUN apt update && apt install -y migraphx
 
 RUN pip install numpy packaging ml_dtypes==0.5.0
-ARG BUILD_UID=1001
+ARG BUILD_UID=1000
 ARG BUILD_USER=onnxruntimedev
-RUN adduser --uid $BUILD_UID $BUILD_USER
-WORKDIR /home/$BUILD_USER
+RUN adduser --gecos 'onnxruntime Build User' --disabled-password $BUILD_USER --uid $BUILD_UID
 USER $BUILD_USER
+WORKDIR /home/$BUILD_USER
