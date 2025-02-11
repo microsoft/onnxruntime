@@ -1496,6 +1496,17 @@ MlasHGemmSupported(
     );
 
 /**
+ * @brief Check whether mlas supports GQA kernels with the type and transpose settings.
+ */
+template <typename T>
+bool
+MLASCALL
+MlasGQASupported(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB
+    );
+
+/**
  * @brief  Batched half precision matrix/matrix multiply operation (HGEMM)
  *
  * @param TransA     Supplies the transpose operation for matrix A.
