@@ -158,7 +158,11 @@ static void RunTest(const embedlayernorm::OpData& data,
       execution_providers.push_back(DefaultDmlExecutionProvider());
       tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
     } else {
+#if defined(USE_OPENVINO)
+      tester.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+#else
       tester.Run();
+#endif
     }
   }
 }
