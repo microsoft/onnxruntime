@@ -20,7 +20,7 @@ RUN apt-get update && \
     sudo \
     libelf1 \
     kmod \
-    file \
+    file zip unzip \
     python3 \
     python3-pip \
     rocm-dev \
