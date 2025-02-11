@@ -174,6 +174,7 @@ Status GatherElements::ComputeInternal(OpKernelContext* context) const {
   TensorShapeVector input_shape_vec = input_shape.AsShapeVector();
   TensorShapeVector indices_shape_vec = indices_shape.AsShapeVector();
   TensorShapeVector* p_indices_strides_vec = nullptr;
+  TensorShapeVector indices_strides_vec;
 #ifdef ENABLE_STRIDED_TENSORS
   if (!indices_tensor->IsContiguous()) {
     indices_strides_vec = ToShapeVector(indices_tensor->Strides());
