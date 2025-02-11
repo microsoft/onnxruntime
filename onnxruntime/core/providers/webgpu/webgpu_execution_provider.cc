@@ -751,8 +751,7 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       context_{context},
       preferred_data_layout_{config.data_layout},
       force_cpu_node_names_{std::move(config.force_cpu_node_names)},
-      enable_graph_capture_{config.enable_graph_capture} {
-}
+      enable_graph_capture_{config.enable_graph_capture} {}
 
 std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
   AllocatorCreationInfo gpuBufferAllocatorCreationInfo([&](int) {
@@ -866,11 +865,13 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
     context_.CollectProfilingData(profiler_->Events());
   }
 
+  context_.OnRunEnd();
+
   if (context_.ValidationMode() >= ValidationMode::Basic) {
     return context_.PopErrorScope();
+  } else {
+    return Status::OK();
   }
-
-  return Status::OK();
 }
 
 bool WebGpuExecutionProvider::IsGraphCaptureEnabled() const {
