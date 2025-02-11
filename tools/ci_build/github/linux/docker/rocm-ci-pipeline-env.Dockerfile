@@ -20,7 +20,7 @@ RUN apt-get update && \
     sudo \
     libelf1 \
     kmod \
-    file \
+    file zip unzip \
     python3 \
     python3-pip \
     rocm-dev \
@@ -44,10 +44,20 @@ ENV LANG C.UTF-8
 WORKDIR /stage
 
 # Cmake
-ENV CMAKE_VERSION=3.30.1
+ENV CMAKE_VERSION=3.31.5
 RUN cd /usr/local && \
     wget -q https://github.com/Kitware/CMake/releases/download/v${CMAKE_VERSION}/cmake-${CMAKE_VERSION}-Linux-x86_64.tar.gz && \
-    tar -zxf /usr/local/cmake-3.30.1-Linux-x86_64.tar.gz --strip=1 -C /usr
+    tar -zxf /usr/local/cmake-3.31.5-Linux-x86_64.tar.gz --strip=1 -C /usr
+
+# Install Ninja
+COPY scripts/install-ninja.sh /build_scripts/
+RUN /bin/bash /build_scripts/install-ninja.sh
+
+# Install VCPKG
+ENV VCPKG_INSTALLATION_ROOT=/usr/local/share/vcpkg
+ENV VCPKG_FORCE_SYSTEM_BINARIES=ON
+COPY scripts/install-vcpkg.sh /build_scripts/
+RUN /bin/bash /build_scripts/install-vcpkg.sh
 
 # ccache
 RUN mkdir -p /tmp/ccache && \
@@ -88,3 +98,8 @@ RUN pip install packaging \
                 numpy==1.26.4
 
 RUN apt install -y git
+ARG BUILD_UID=1000
+ARG BUILD_USER=onnxruntimedev
+RUN adduser --gecos 'onnxruntime Build User' --disabled-password $BUILD_USER --uid $BUILD_UID
+USER $BUILD_USER
+WORKDIR /home/$BUILD_USER
