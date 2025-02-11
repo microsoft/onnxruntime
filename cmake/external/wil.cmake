@@ -7,8 +7,8 @@ onnxruntime_fetchcontent_declare(
   microsoft_wil
   URL ${DEP_URL_microsoft_wil}
   URL_HASH SHA1=${DEP_SHA1_microsoft_wil}
-  FIND_PACKAGE_ARGS NAMES wil
   EXCLUDE_FROM_ALL
+  FIND_PACKAGE_ARGS NAMES wil
 )
 
 if(WIN32)
