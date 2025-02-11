@@ -301,6 +301,8 @@ static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
 // Define the default strides to step through slices of the input matrices.
 //
 
+#define MLAS_HGEMM_STRIDEN                          32
+#define MLAS_HGEMM_STRIDEK                          512
 #define MLAS_SGEMM_STRIDEN                          128
 #define MLAS_SGEMM_STRIDEK                          128
 #define MLAS_SGEMM_PACKED_STRIDEN                   128
@@ -317,6 +319,7 @@ static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
 // the effort at this time.
 //
 
+#define MLAS_HGEMM_STRIDEN_THREAD_ALIGN             16
 #define MLAS_SGEMM_STRIDEN_THREAD_ALIGN             16
 #define MLAS_DGEMM_STRIDEN_THREAD_ALIGN             8
 #define MLAS_QGEMM_STRIDEN_THREAD_ALIGN             16
@@ -944,6 +947,7 @@ extern "C" {
 #define MLAS_SGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
 #define MLAS_DGEMM_THREAD_COMPLEXITY                (size_t(64) * size_t(1024))
 #define MLAS_QGEMM_THREAD_COMPLEXITY                65536
+#define MLAS_HGEMM_THREAD_COMPLEXITY                65536
 
 #if defined(__aarch64__) && defined(__linux__)
 #define MLAS_SBGEMM_THREAD_COMPLEXITY (size_t(64) * size_t(1024))
@@ -1055,6 +1059,15 @@ extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni;
 struct MLAS_ROPE_DISPATCH;
 extern const MLAS_ROPE_DISPATCH MlasRopeDispatchNeon;
 
+//
+// half gemm dispatch structure
+//
+struct MLAS_HGEMM_DISPATCH;
+extern const MLAS_HGEMM_DISPATCH MlasHGemmDispatchNeon;
+
+// softmax dispatch structure
+struct MLAS_SOFTMAX_DISPATCH;
+extern const MLAS_SOFTMAX_DISPATCH MlasSoftmaxDispatchNeon;
 
 //
 // Quantized depthwise convolution kernels.
@@ -1217,6 +1230,8 @@ struct MLAS_PLATFORM {
     MLAS_CAST_F32_TO_F16_KERNEL* CastF32ToF16Kernel;
 
     const MLAS_ROPE_DISPATCH* RopeDispatch{nullptr};
+    const MLAS_HGEMM_DISPATCH* HGemmDispatch{nullptr};
+    const MLAS_SOFTMAX_DISPATCH* SoftmaxDispatch{nullptr};
 };
 
 inline

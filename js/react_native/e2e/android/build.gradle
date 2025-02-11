@@ -2,7 +2,7 @@
 
 buildscript {
     ext {
-        buildToolsVersion = "29.0.2"
+        buildToolsVersion = "33.0.0"
         minSdkVersion = 24
         compileSdkVersion = 34
         targetSdkVersion = 34
@@ -13,8 +13,10 @@ buildscript {
         mavenCentral()
     }
     dependencies {
-        classpath('com.android.tools.build:gradle:7.2.1')
+        classpath('com.android.tools.build:gradle:7.4.2')
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlinVersion")
+        classpath("com.facebook.react:react-native-gradle-plugin")
+
         // NOTE: Do not place your application dependencies here; they belong
         // in the individual module build.gradle files
     }
