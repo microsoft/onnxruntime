@@ -2876,7 +2876,8 @@ TEST(MathOpTest, LessOrEqual_int16_Scalar1) {
   test.AddInput<int16_t>("B", {1}, {1});
   test.AddOutput<bool>("C", {4}, {true, true, false, true});
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});}
+           {kTensorrtExecutionProvider, kNnapiExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
+}
 
 TEST(MathOpTest, LessOrEqual_int64_Scalar1) {
   OpTester test("LessOrEqual", 12);
