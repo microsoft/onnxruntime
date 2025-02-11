@@ -269,7 +269,7 @@ class MlasNeonHGemmTransposedPackedBTest : public MlasTestBase {
     const auto* B = B_.GetFilledBuffer(K * ((N + 7) & ~7), InitializeBuffer);
     auto* C = C_.GetBuffer(M * N, true);
     auto* ref = ref_.GetBuffer(M * N, true);
-    hgemm_neon::HGemm_TransposedPackedB_Kernel(A, B, C, M, N, K, K, N, alpha.val, beta.val);
+    hgemm_neon::HGemm_PackedB_Kernel(A, B, C, M, N, K, K, N, alpha.val, beta.val);
     HGemm<M, K, N>(A, B, ref, alpha, beta);
     Check<M, K, N>(C, ref);
   }

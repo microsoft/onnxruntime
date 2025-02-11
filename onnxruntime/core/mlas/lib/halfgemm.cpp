@@ -335,7 +335,12 @@ MlasHGemmSupported(
         return dispatch &&
         dispatch->HGemmKernel_TransposedB &&
         dispatch->HPackBKernel_TransposedB &&
-        dispatch->HGemmKernel_TransposedPackedB;
+        dispatch->HGemmKernel_PackedB;
+    } else if (TransA == CblasNoTrans && TransB == CblasNoTrans) {
+        return dispatch &&
+        dispatch->HGemmKernel_B &&
+        dispatch->HPackBKernel_B &&
+        dispatch->HGemmKernel_PackedB;;
     }
 
     return false;
@@ -383,7 +388,7 @@ HGemmOperation(
                 C += countN;
             }
         } else {
-            if (!dispatch || !dispatch->HPackBKernel_TransposedB || !dispatch->HGemmKernel_TransposedPackedB) {
+            if (!dispatch || !dispatch->HPackBKernel_TransposedB || !dispatch->HGemmKernel_PackedB) {
                 MLAS_THROW_EX(std::runtime_error, "hgemm does not have A x Transposed(B) kernels");
             }
             // 16N is the smallest pack unit.
@@ -402,7 +407,7 @@ HGemmOperation(
                     for (size_t m = 0, countM; m < RangeCountM; m += countM) {
                         countM = std::min(StrideM, RangeCountM - m);
                         // First K iteration, beta is applied to the whole C. In rest K iterations, use add mode.
-                        dispatch->HGemmKernel_TransposedPackedB(
+                        dispatch->HGemmKernel_PackedB(
                             aa, PackedB, cc, countM, countN, countK, lda, ldc, alpha, k == 0 ? beta : beta_add.val);
                         aa += countM * lda;
                         cc += countM * ldc;
@@ -414,8 +419,59 @@ HGemmOperation(
                 C += countN;
             }
         }
+    } else if (TransA == CblasNoTrans && TransB == CblasNoTrans) {
+        const auto* A = DataParams->A + RangeStartM * lda;
+        const auto* B = DataParams->B + RangeStartN;
+        auto* C = DataParams->C + RangeStartM * ldc + RangeStartN;
+
+        if (RangeCountM <= StrideM) {
+            if (!dispatch || !dispatch->HGemmKernel_B) {
+                MLAS_THROW_EX(std::runtime_error, "hgemm does not have A x B kernels");
+            }
+            // When M is small, B is visited once. The overhead of Pack(B) exceeds the benefits
+            // from A x Pack(B). Therefore directly calculate A x B.
+            // Iterate full K.
+            constexpr size_t StrideN = 64;
+            for (size_t n = 0, countN; n < RangeCountN; n += countN) {
+                countN = std::min(StrideN, RangeCountN - n);
+                dispatch->HGemmKernel_B(A, B, C, RangeCountM, countN, K, lda, ldb, ldc, alpha, beta);
+                B += countN;
+                C += countN;
+            }
+        } else {
+            if (!dispatch || !dispatch->HPackBKernel_B || !dispatch->HGemmKernel_PackedB) {
+                MLAS_THROW_EX(std::runtime_error, "hgemm does not have A x B kernels");
+            }
+            // 16N is the smallest pack unit.
+            const size_t StrideK = std::min(K, size_t(MLAS_HGEMM_STRIDEK));
+            const size_t StrideN = buffer_size/StrideK & (~15); // >= MLAS_HGEMM_STRIDEN
+            for (size_t n = 0, countN; n < RangeCountN; n += countN) {
+                countN = std::min(StrideN, RangeCountN - n);
+                const MLAS_FP16* a = A;
+                const MLAS_FP16* b = B;
+                MLAS_FP16* c = C;
+                for (size_t k = 0, countK; k < K; k += countK) {
+                    countK = std::min(StrideK, K - k);
+                    dispatch->HPackBKernel_B(b, PackedB, countN, countK, ldb);
+                    const MLAS_FP16* aa = a;
+                    MLAS_FP16* cc = c;
+                    for (size_t m = 0, countM; m < RangeCountM; m += countM) {
+                        countM = std::min(StrideM, RangeCountM - m);
+                        // First K iteration, beta is applied to the whole C. In rest K iterations, use add mode.
+                        dispatch->HGemmKernel_PackedB(
+                            aa, PackedB, cc, countM, countN, countK, lda, ldc, alpha, k == 0 ? beta : beta_add.val);
+                        aa += countM * lda;
+                        cc += countM * ldc;
+                    }
+                    a += countK;
+                    b += countK * ldb;
+                }
+                B += countN;
+                C += countN;
+            }
+        }
     } else {
-        MLAS_THROW_EX(std::runtime_error, "hgemm currently only support A x Transpoe(B)");
+        MLAS_THROW_EX(std::runtime_error, "hgemm currently only support A x Transpoe(B) or A x B");
     }
 }
 
