@@ -12,7 +12,7 @@ RUN echo "$APT_PREF" > /etc/apt/preferences.d/rocm-pin-600
 ENV DEBIAN_FRONTEND noninteractive
 
 RUN apt-get update && \
-    apt-get install -y --no-install-recommends ca-certificates ninja-build git unzip zip curl libnuma-dev gnupg && \
+    apt-get install -y --no-install-recommends ca-certificates git unzip zip curl libnuma-dev gnupg && \
     curl -sL https://repo.radeon.com/rocm/rocm.gpg.key | apt-key add -   &&\
     printf "deb [arch=amd64] https://repo.radeon.com/rocm/apt/$ROCM_VERSION/ jammy main" | tee /etc/apt/sources.list.d/rocm.list   && \
     printf "deb [arch=amd64] https://repo.radeon.com/amdgpu/$AMDGPU_VERSION/ubuntu jammy main" | tee /etc/apt/sources.list.d/amdgpu.list   && \
@@ -28,6 +28,16 @@ RUN apt-get update && \
     build-essential && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
+
+# Install Ninja
+COPY scripts/install-ninja.sh /build_scripts/
+RUN /bin/bash /build_scripts/install-ninja.sh
+
+# Install VCPKG
+ENV VCPKG_INSTALLATION_ROOT=/usr/local/share/vcpkg
+ENV VCPKG_FORCE_SYSTEM_BINARIES=ON
+COPY scripts/install-vcpkg.sh /build_scripts/
+RUN /bin/bash /build_scripts/install-vcpkg.sh
 
 RUN groupadd -g 109 render
 
@@ -81,8 +91,8 @@ RUN ln -sf /usr/lib/x86_64-linux-gnu/libstdc++.so.6 ${CONDA_ENVIRONMENT_PATH}/bi
 RUN apt update && apt install -y migraphx
 
 RUN pip install numpy packaging ml_dtypes==0.5.0
-ARG BUILD_UID=1001
+ARG BUILD_UID=1000
 ARG BUILD_USER=onnxruntimedev
-RUN adduser --uid $BUILD_UID $BUILD_USER
-WORKDIR /home/$BUILD_USER
+RUN adduser --gecos 'onnxruntime Build User' --disabled-password $BUILD_USER --uid $BUILD_UID
 USER $BUILD_USER
+WORKDIR /home/$BUILD_USER
