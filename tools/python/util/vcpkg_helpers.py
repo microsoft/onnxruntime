@@ -1,7 +1,13 @@
 import os
 from pathlib import Path
 
+#The official vcpkg repository has about 80 different triplets. But ONNX Runtime has many more build variants. For example, in general, for each platform, we need to support builds with C++ exceptions, builds without C++ exceptions, builds with C++ RTTI, builds without C++ RTTI, linking to static C++ runtime, linking to dynamic (shared) C++ runtime, builds with address sanitizer, builds without address sanitizer, etc. Therefore, this script file was created to dynamically generate the triplet files on-the-fly.
 
+#Originally, we tried to check in all the generated files into our repository so that people could build onnxruntime without using build.py or any other Python scripts in the "/tools" directory. However, we encountered an issue when adding support for WASM builds. VCPKG has a limitation that when doing cross-compiling, the triplet file must specify the full path of the chain-loaded toolchain file. The file needs to be located either via environment variables (like ANDROID_NDK_HOME) or via an absolute path. Since environment variables are hard to track, we chose the latter approach. So the generated triplet files may contain absolute file paths that are only valid on the current build machine.
+
+#The compiler flags(CFLAGS/CXXFLAGS/LDFLAGS) settings in this file must be consistent with the cmake code in "cmake/adjust_global_compile_flags.cmake" so that all the statically linked code were compiled by the same set of compile flags. 
+
+# This is a way to add customizations to the official VCPKG ports.
 def add_port_configs(f, has_exception: bool) -> None:
     """
     Add port-specific configurations to the triplet file.
@@ -206,7 +212,7 @@ def generate_triplet_for_posix_platform(
         enable_binskim (bool): Flag indicating if BinSkim is enabled.
         enable_asan (bool): Flag indicating if AddressSanitizer is enabled.
         crt_linkage (str): The CRT linkage type ("static" or "dynamic").
-        target_abi (str): The target ABI, which maps to the VCPKG_TARGET_ARCHITECTURE variable. Valid options include x86, x64, arm, arm64, arm64ec, s390x, ppc64le, riscv32, riscv64, loongarch32, loongarch64, mips64, and wasm32.
+        target_abi (str): The target ABI, which maps to the VCPKG_TARGET_ARCHITECTURE variable. Valid options include x86, x64, arm, arm64, arm64ec, s390x, ppc64le, riscv32, riscv64, loongarch32, loongarch64, mips64.
     """
     folder_name_parts = []
     if enable_asan:
@@ -280,7 +286,8 @@ def generate_triplet_for_posix_platform(
             cflags.append("-DEMSCRIPTEN_HAS_UNBOUND_TYPE_NAMES=0")
 
         cxxflags = cflags.copy()
-
+        if os_name == "osx":
+            cxxflags += ["-fvisibility=hidden", "-fvisibility-inlines-hidden"]
         if not enable_rtti:
             cxxflags.append("-fno-rtti")
 
@@ -441,12 +448,13 @@ def generate_windows_triplets(build_dir: str) -> None:
                             f.write(f"set(VCPKG_CRT_LINKAGE {crt_linkage})\n")
                             f.write("set(VCPKG_LIBRARY_LINKAGE static)\n")
                             cflags = ["/MP", "/DWIN32", "/D_WINDOWS"]
-                            cflags += [
+                            if enable_binskim:
+                              cflags += [
                                 "/DWINAPI_FAMILY=100",
                                 "/DWINVER=0x0A00",
                                 "/D_WIN32_WINNT=0x0A00",
                                 "/DNTDDI_VERSION=0x0A000000",
-                            ]
+                              ]
                             cxxflags = cflags.copy()
                             ldflags = []
                             if enable_binskim:
@@ -479,7 +487,7 @@ def generate_posix_triplets(build_dir: str) -> None:
     crt_linkages = ["static", "dynamic"]
     for os_name in ["linux", "osx"]:
         if os_name == "linux":
-            target_abis = ["x64", "arm64"]
+            target_abis = ["x86", "x64", "arm", "arm64", "s390x", "ppc64le", "riscv64", "loongarch64", "mips64"]
             crt_linkages = ["dynamic"]
         else:
             target_abis = ["x64", "arm64", "universal2"]
