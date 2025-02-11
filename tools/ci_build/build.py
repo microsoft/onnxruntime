@@ -1315,7 +1315,7 @@ def generate_build_tree(
             )
             generate_vcpkg_triplets_for_emscripten(build_dir, emscripten_root_path)
         elif args.android:
-            generate_android_triplets(build_dir, args.android_cpp_shared)
+            generate_android_triplets(build_dir, args.android_cpp_shared, args.android_api)
         elif is_windows():
             generate_windows_triplets(build_dir)
         else:

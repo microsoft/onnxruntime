@@ -49,7 +49,7 @@ def add_copyright_header(f) -> None:
 
 
 def generate_triplet_for_android(
-    build_dir: str, target_abi: str, enable_rtti: bool, enable_exception: bool, enable_asan: bool, use_cpp_shared: bool
+    build_dir: str, target_abi: str, enable_rtti: bool, enable_exception: bool, enable_asan: bool, use_cpp_shared: bool, android_api_level: int
 ) -> None:
     """
     Generate triplet file for Android platform.
@@ -61,6 +61,7 @@ def generate_triplet_for_android(
         enable_exception (bool): Flag indicating if exceptions are enabled.
         enable_asan (bool): Flag indicating if AddressSanitizer is enabled.
         use_cpp_shared(bool): The type of C++ Runtime to use. If it is false, use "c++_static" which is the default for most CMake projects. Otherwise set the runtime to c++_shared.
+        android_api_level(int): android_api_level
     """
     folder_name_parts = []
     if enable_asan:
@@ -103,7 +104,7 @@ def generate_triplet_for_android(
             f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DANDROID_ABI=x86)\n")
 
         f.write(
-            "list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DANDROID_USE_LEGACY_TOOLCHAIN_FILE=false -DANDROID_PLATFORM=android-24 -DANDROID_MIN_SDK=24)\n"
+            f"list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DANDROID_USE_LEGACY_TOOLCHAIN_FILE=false -DANDROID_PLATFORM=android-{android_api_level} -DANDROID_MIN_SDK={android_api_level})\n"
         )
 
         # Set CRT linkage
@@ -169,7 +170,7 @@ def generate_triplet_for_android(
         add_port_configs(f, enable_exception)
 
 
-def generate_android_triplets(build_dir: str, use_cpp_shared: bool) -> None:
+def generate_android_triplets(build_dir: str, use_cpp_shared: bool, android_api_level: int) -> None:
     """
     Generate triplet files for POSIX platforms (Linux, macOS, Android).
 
@@ -181,7 +182,7 @@ def generate_android_triplets(build_dir: str, use_cpp_shared: bool) -> None:
       for enable_rtti in [True, False]:
         for enable_exception in [True, False]:
             for target_abi in target_abis:                
-                generate_triplet_for_android(build_dir, target_abi, enable_rtti, enable_exception, enable_asan, use_cpp_shared)
+                generate_triplet_for_android(build_dir, target_abi, enable_rtti, enable_exception, enable_asan, use_cpp_shared, android_api_level)
 
 
 def generate_triplet_for_posix_platform(
@@ -461,7 +462,7 @@ def generate_windows_triplets(build_dir: str) -> None:
                             if cxxflags:
                                 f.write(f'set(VCPKG_CXX_FLAGS "{" ".join(cxxflags)}")\n')
                             f.write(
-                                "list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DCMAKE_CXX_STANDARD=17)\n"
+                                "list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DCMAKE_CXX_STANDARD=20)\n"
                             )
                             if ldflags:
                                 f.write(f'set(VCPKG_LINKER_FLAGS "{" ".join(ldflags)}")\n')
