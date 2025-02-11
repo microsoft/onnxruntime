@@ -571,20 +571,24 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
   std::vector<std::filesystem::path> onnx_models;
   std::vector<std::filesystem::path> ort_models;
   for (const std::basic_string<PATH_CHAR_TYPE>& path_str : input_paths) {
-    for (auto& dir_entry : std::filesystem::recursive_directory_iterator(path_str)) {
-      if (!dir_entry.is_regular_file() || dir_entry.is_directory()) continue;
-      std::filesystem::path node_data_root_path = dir_entry.path();
-      std::filesystem::path filename_str = dir_entry.path().filename();
-      if (filename_str.empty() || filename_str.native()[0] == ORT_TSTR('.')) {
-        // Ignore hidden files.
-        continue;
+    try {
+      for (auto& dir_entry : std::filesystem::recursive_directory_iterator(path_str)) {
+        if (!dir_entry.is_regular_file() || dir_entry.is_directory()) continue;
+        std::filesystem::path node_data_root_path = dir_entry.path();
+        std::filesystem::path filename_str = dir_entry.path().filename();
+        if (filename_str.empty() || filename_str.native()[0] == ORT_TSTR('.')) {
+          // Ignore hidden files.
+          continue;
+        }
+        auto folder_path = node_data_root_path.parent_path().native();
+        if (FnmatchSimple(ORT_TSTR("*.onnx"), filename_str.native()) && IsValidTest(folder_path, whitelisted_test_cases, disabled_tests)) {
+          onnx_models.push_back(node_data_root_path);
+        } else if (FnmatchSimple(ORT_TSTR("*.ort"), filename_str.native()) && IsValidTest(folder_path, whitelisted_test_cases, disabled_tests)) {
+          ort_models.push_back(node_data_root_path);
+        }
       }
-      auto folder_path = node_data_root_path.parent_path().native();
-      if (FnmatchSimple(ORT_TSTR("*.onnx"), filename_str.native()) && IsValidTest(folder_path, whitelisted_test_cases, disabled_tests)) {
-        onnx_models.push_back(node_data_root_path);
-      } else if (FnmatchSimple(ORT_TSTR("*.ort"), filename_str.native()) && IsValidTest(folder_path, whitelisted_test_cases, disabled_tests)) {
-        ort_models.push_back(node_data_root_path);
-      }
+    } catch (const std::filesystem::filesystem_error&) {
+      // silently ignore the directories that do not exist
     }
   }
 
