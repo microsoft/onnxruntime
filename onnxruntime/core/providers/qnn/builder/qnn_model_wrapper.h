@@ -93,7 +93,7 @@ class QnnModelWrapper {
                      std::vector<std::string>&& param_tensor_names,
                      bool do_op_validation = false);
 
-  bool ComposeQnnGraph(bool build_debug_json_graph = false);
+  bool ComposeQnnGraph(bool build_json_qnn_graph = false);
 
   Qnn_GraphHandle_t GetQnnGraph() const { return graph_; }
 
@@ -132,7 +132,7 @@ class QnnModelWrapper {
   }
 
   const nlohmann::json& GetQnnJSONGraph() {
-    return debug_json_graph_.Finalize();
+    return json_qnn_graph_.Finalize();
   }
 
   Qnn_TensorType_t GetTensorType(const std::string& tensor_name) const {
@@ -327,7 +327,7 @@ class QnnModelWrapper {
   const std::unordered_set<std::string>& initializer_lookup_;
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   ModelSettings model_settings_ = {};
-  utils::QnnJSONGraph debug_json_graph_;
+  utils::QnnJSONGraph json_qnn_graph_;
 };  // QnnModelWrapper
 
 }  // namespace qnn

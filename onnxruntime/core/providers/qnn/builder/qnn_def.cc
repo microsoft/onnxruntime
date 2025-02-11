@@ -3,6 +3,7 @@
 
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
+#include <functional>
 #include <memory>
 #include <ostream>
 #include <cstring>

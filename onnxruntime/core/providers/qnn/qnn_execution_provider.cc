@@ -369,15 +369,15 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
   }
 
-  enable_qnn_graph_dump_ = ParseBoolOption("dump_json_qnn_graph", false, provider_options_map);
+  dump_json_qnn_graph_ = ParseBoolOption("dump_json_qnn_graph", false, provider_options_map);
 
   static const std::string QNN_GRAPH_DUMP_DIR = "json_qnn_graph_dir";
   auto json_graphs_dir_pos = provider_options_map.find(QNN_GRAPH_DUMP_DIR);
 
   if (json_graphs_dir_pos != provider_options_map.end()) {
-    qnn_graph_dump_dir_ = json_graphs_dir_pos->second;
-    if (enable_qnn_graph_dump_) {
-      LOGS_DEFAULT(INFO) << "JSON graphs directory: " << qnn_graph_dump_dir_;
+    json_qnn_graph_dir_ = json_graphs_dir_pos->second;
+    if (dump_json_qnn_graph_) {
+      LOGS_DEFAULT(INFO) << "JSON graphs directory: " << json_qnn_graph_dir_;
     } else {
       LOGS_DEFAULT(WARNING) << "Provided a directory for dumping QNN JSON graphs, "
                             << "but did not enable dumping of QNN JSON graphs.";
@@ -891,9 +891,9 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
 
     std::string json_graph_filepath;
 
-    if (enable_qnn_graph_dump_) {
+    if (dump_json_qnn_graph_) {
       namespace fs = std::filesystem;
-      fs::path path = fs::path(qnn_graph_dump_dir_) / fs::path(fused_node.Name() + ".json");
+      fs::path path = fs::path(json_qnn_graph_dir_) / fs::path(fused_node.Name() + ".json");
       json_graph_filepath = path.string();
     }
 

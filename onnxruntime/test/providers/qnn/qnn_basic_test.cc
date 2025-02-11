@@ -1047,6 +1047,7 @@ TEST_F(QnnHTPBackendTests, DumpJsonQNNGraph) {
 #else
   options["backend_path"] = "libQnnHtp.so";
 #endif
+  options["offload_graph_io_quantization"] = "0";
 
   const std::filesystem::path dump_dir = "test_qnn_graphs_";
   options["json_qnn_graph_dir"] = dump_dir.string();
@@ -1068,7 +1069,8 @@ TEST_F(QnnHTPBackendTests, DumpJsonQNNGraph) {
   }
   EXPECT_TRUE(has_a_json_file);
 
-  // Cleaup generated files. Comment the following line to inspect generated JOSN files.
+  // Cleaup generated files.
+  // Comment the following line to inspect generated JSON files.
   std::filesystem::remove_all(dump_dir);
 }
 
