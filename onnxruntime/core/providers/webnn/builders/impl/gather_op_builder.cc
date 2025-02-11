@@ -73,7 +73,7 @@ bool GatherOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* init
                                              const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input = *node.InputDefs()[0];
   const auto& indices = *node.InputDefs()[1];
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t input_type;
   int32_t indices_type;
   if (!GetType(input, input_type, logger) ||
