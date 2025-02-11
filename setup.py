@@ -784,6 +784,7 @@ setup(
     download_url="https://github.com/microsoft/onnxruntime/tags",
     data_files=data_files,
     install_requires=install_requires,
+    python_requires=">=3.10",
     keywords="onnx machine learning",
     entry_points={
         "console_scripts": [
