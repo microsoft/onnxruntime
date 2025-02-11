@@ -33,7 +33,7 @@ include(CheckFunctionExists)
 include(GNUInstallDirs) # onnxruntime_providers_* require CMAKE_INSTALL_* variables
 
 # TODO: update this once all system adapt c++20
-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
 set(CMAKE_CXX_STANDARD 20)
 else()
 set(CMAKE_CXX_STANDARD 17)
@@ -796,6 +796,7 @@ else()
   endif()
   if (HAS_DEPRECATED_ANON_ENUM_ENUM_CONVERSION)
     list(APPEND ORT_WARNING_FLAGS -Wno-deprecated-anon-enum-enum-conversion)
+    list(APPEND ORT_WARNING_FLAGS -Wno-deprecated-enum-enum-conversion)
   endif()
   if (HAS_UNDEFINED_VAR_TEMPLATE)
     list(APPEND ORT_WARNING_FLAGS -Wno-undefined-var-template)
