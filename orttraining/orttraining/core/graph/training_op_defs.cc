@@ -1965,6 +1965,70 @@ Example 4:
       })
       .SetDoc(R"DOC(SoftmaxCrossEntropyGrad)DOC");
 
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BinaryCrossEntropy)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("reduction",
+            reduction_doc,
+            AttributeProto::STRING,
+            std::string("mean"))
+      .Input(0, "logits", "Unscaled log probabilities, N-D input of shape (-1, 1).", "T")
+      .Input(1, "label", "The onehot label is N-D input with the same shape as logits.", "T")
+      .Output(0, "Y", "loss.", "T")
+      .Output(1, "logit", "logits", "T", OpSchema::Optional)
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain to float, float16 and double tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 0, 0);
+        std::string reduction = getAttribute(ctx, "reduction", "mean");
+        if (reduction.compare("none") == 0) {
+          if (hasInputShape(ctx, 1)) {
+            // If no reduction is performed the shape of the loss looks
+            // like the shape of the labels, without the onehot dimension.
+
+            TensorShapeProto loss_shape;
+            const TensorShapeProto& label_shape = ctx.getInputType(1)->tensor_type().shape();
+
+            for (int i = 0; i != label_shape.dim_size() - 1; ++i) {
+              *loss_shape.add_dim() = label_shape.dim(i);
+            }
+            *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape() =
+                loss_shape;
+          }
+
+        } else {
+          updateOutputShape(ctx, 0, {});
+        }
+        if (ctx.getNumOutputs() == 2) {
+          propagateElemTypeFromInputToOutput(ctx, 0, 1);
+          propagateShapeFromInputToOutput(ctx, 0, 1);
+        }
+      })
+      .SetDoc(R"DOC(BinaryCrossEntropy)DOC");
+
+  ONNX_CONTRIB_OPERATOR_SCHEMA(BinaryCrossEntropyGrad)
+      .SetDomain(kMSDomain)
+      .SinceVersion(1)
+      .Attr("reduction",
+            reduction_doc,
+            AttributeProto::STRING,
+            std::string("mean"))
+      .Input(0, "dY", "gradient of Y", "T")
+      .Input(1, "logit", "logits, N input of shape (-1, 1).", "T")
+      .Input(2, "label", "The onehot label is N-D input with the same shape as logits.", "T")
+      .Output(0, "d_logits", "gradient of logits", "T")
+      .TypeConstraint(
+          "T",
+          {"tensor(float16)", "tensor(float)", "tensor(double)", "tensor(bfloat16)"},
+          "Constrain to float, float16 and double tensors.")
+      .TypeAndShapeInferenceFunction([](InferenceContext& ctx) {
+        propagateElemTypeFromInputToOutput(ctx, 1, 0);
+        propagateShapeFromInputToOutput(ctx, 1, 0);
+      })
+      .SetDoc(R"DOC(BinaryCrossEntropyGrad)DOC");
+
   ONNX_CONTRIB_OPERATOR_SCHEMA(NcclAllReduce)
       .SetDomain(kMSDomain)
       .SinceVersion(1)
