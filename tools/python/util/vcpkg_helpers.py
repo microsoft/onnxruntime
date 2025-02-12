@@ -356,6 +356,8 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
                     folder_name_parts.append("asan")
                 if not enable_rtti:
                     folder_name_parts.append("nortti")
+                if not enable_exception:
+                    folder_name_parts.append("noexception")
                 folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
                 file_name = f"{target_abi}-{os_name}.cmake"
                 dest_path = Path(build_dir) / folder_name / file_name
@@ -420,6 +422,7 @@ def generate_windows_triplets(build_dir: str) -> None:
     target_abis = ["x86", "x64", "arm64", "arm64ec"]
     crt_linkages = ["static", "dynamic"]
     for enable_rtti in [True, False]:
+      for enable_exception in [True, False]:
         for enable_binskim in [True, False]:
             for enable_asan in [True, False]:
                 for crt_linkage in crt_linkages:
@@ -463,6 +466,8 @@ def generate_windows_triplets(build_dir: str) -> None:
                             elif enable_asan:
                                 cflags.append("/fsanitize=address")
                             cxxflags.append("/Zc:__cplusplus")
+                            if enable_exception:
+                                cxxflags.append("/EHsc")                         
                             if not enable_rtti:
                                 cxxflags += ["/GR-", "/we4541"]
                             if cflags:

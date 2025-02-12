@@ -1051,7 +1051,7 @@ def generate_vcpkg_install_options(build_dir, args):
         folder_name_parts.append("binskim")
     if args.disable_rtti:
         folder_name_parts.append("nortti")
-    if args.disable_exceptions and not is_windows():
+    if args.disable_exceptions:
         folder_name_parts.append("noexception")
     if len(folder_name_parts) == 0:
         folder_name = "default"
@@ -1856,6 +1856,8 @@ def generate_build_tree(
                 if args.enable_address_sanitizer:
                     cflags += ["/fsanitize=address"]
                 cxxflags = cflags.copy()
+                if not args.disable_exceptions:
+                    cxxflags.append("/EHsc")
                 if args.use_cuda:
                     # On Windows, nvcc passes /EHsc to the host compiler by default.
                     cuda_compile_flags_str = ""
