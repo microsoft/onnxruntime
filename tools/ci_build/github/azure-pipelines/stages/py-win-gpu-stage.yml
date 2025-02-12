@@ -33,7 +33,7 @@ parameters:
    - Release
    - RelWithDebInfo
    - MinSizeRel
-   
+
 - name: use_tensorrt
   type: boolean
   default: false
@@ -126,6 +126,7 @@ stages:
                 --enable_pybind
                 --enable_onnx_tests
                 --parallel 8 --use_binskim_compliant_compile_flags --update --build --msvc_toolset 14.40
+                --cuda_version ${{ parameters.CudaVersion }}
                 $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }} ${{ variables.trt_build_flag }}
               workingDirectory: '$(Build.BinariesDirectory)'
 
@@ -195,7 +196,6 @@ stages:
             TMPDIR: "$(Agent.TempDirectory)"
 
         - powershell: |
-  
             python -m pip uninstall -y onnxruntime onnxruntime-gpu -qq
             Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*cp${{ replace(parameters.PYTHON_VERSION,'.','') }}*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
             mkdir -p $(Agent.TempDirectory)\ort_test_data
