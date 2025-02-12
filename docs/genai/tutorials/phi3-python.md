@@ -83,7 +83,6 @@ Are you on a Windows machine with GPU?
 2. Install the generate() API
 
    ```
-   pip install numpy
    pip install --pre onnxruntime-genai-directml
    ```
 
@@ -125,8 +124,7 @@ Are you on a Windows machine with GPU?
 2. Install the generate() API
 
    ```
-   pip install numpy
-   pip install --pre onnxruntime-genai-cuda --index-url=https://aiinfra.pkgs.visualstudio.com/PublicPackages/_packaging/onnxruntime-genai/pypi/simple/
+   pip install --pre onnxruntime-genai-cuda
    ```
 
 3. Run the model
@@ -159,7 +157,6 @@ Are you on a Windows machine with GPU?
 2. Install the generate() API for CPU
    
    ```
-   pip install numpy
    pip install --pre onnxruntime-genai
    ```
 
