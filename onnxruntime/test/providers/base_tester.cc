@@ -406,7 +406,8 @@ void BaseTester::ExecuteModel(Model& model, SessionType& session,
         }
       }
     }
-  }
+    LOGS_DEFAULT(INFO) << provider_type << " : kernel's output verfication passed";
+  }  // end if (verify_output_)
 }
 
 bool SetEpsForAllNodes(Graph& graph,
