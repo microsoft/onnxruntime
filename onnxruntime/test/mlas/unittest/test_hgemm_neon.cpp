@@ -466,7 +466,7 @@ class MlasNeonHGemmTest : public MlasTestBase {
   std::uniform_real_distribution<float> distrib_;
   MatrixGuardBuffer<MLAS_FP16> A_, B_, ref_, C_;
 
-  template <size_t M, size_t K, size_t N>
+  template <size_t M, size_t K, size_t N, bool transA, bool transB>
   MLAS_FORCEINLINE void HGemm(const MLAS_FP16* A, const MLAS_FP16* B, MLAS_FP16* C, MLAS_FP16 alpha, MLAS_FP16 beta) {
     float alphaf = alpha.ToFloat();
     float betaf = beta.ToFloat();
@@ -474,7 +474,7 @@ class MlasNeonHGemmTest : public MlasTestBase {
       for (size_t j = 0; j < N; ++j) {
         float accu = 0.0f;
         for (size_t k = 0; k < K; ++k) {
-          accu += (A[i * K + k].ToFloat()) * (B[j * K + k].ToFloat());
+          accu += (A[transA ? k * M + i : i * K + k].ToFloat()) * (B[transB ? j * K + k : k * N + j].ToFloat());
         }
         C[i * N + j] = MLAS_FP16(accu * alphaf + C[i * N + j].ToFloat() * betaf);
       }
@@ -499,7 +499,7 @@ class MlasNeonHGemmTest : public MlasTestBase {
     }
   }
 
-  template <size_t M, size_t K, size_t N>
+  template <size_t M, size_t K, size_t N, bool transA, bool transB>
   void TestHGemm(MLAS_FP16 alpha, MLAS_FP16 beta) {
     auto InitializeBuffer = [this](MLAS_FP16* buffer, size_t count) {
       for (size_t i = 0; i < count; i++) {
@@ -511,8 +511,9 @@ class MlasNeonHGemmTest : public MlasTestBase {
     const auto* B = B_.GetFilledBuffer(K * N, InitializeBuffer);
     auto* C = C_.GetBuffer(M * N, true);
     auto* ref = ref_.GetBuffer(M * N, true);
-    MlasGemm(CblasNoTrans, CblasTrans, M, N, K, A, K, B, K, C, N, alpha.val, beta.val, nullptr);
-    HGemm<M, K, N>(A, B, ref, alpha, beta);
+    MlasGemm(transA ? CblasTrans : CblasNoTrans, transB ? CblasTrans : CblasNoTrans,
+             M, N, K, A, transA ? M : K, B, transB ? K : N, C, N, alpha.val, beta.val, nullptr);
+    HGemm<M, K, N, transA, transB>(A, B, ref, alpha, beta);
     Check<M, K, N>(C, ref);
   }
 
@@ -526,16 +527,26 @@ class MlasNeonHGemmTest : public MlasTestBase {
   }
 
   void ExecuteShort(void) override {
-    TestHGemm<2, 1, 1>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
-    TestHGemm<1, 128, 512>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
-    TestHGemm<2, 128, 513>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
-    TestHGemm<1, 128, 511>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
-    TestHGemm<2, 129, 512>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
-    TestHGemm<1, 127, 512>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
-    TestHGemm<1, 513, 1023>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
-    TestHGemm<2, 511, 1025>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
-    TestHGemm<127, 513, 1023>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
-    TestHGemm<129, 511, 1025>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    TestHGemm<2, 1, 1, false, true>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<1, 128, 512, false, true>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    TestHGemm<2, 128, 513, false, true>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
+    TestHGemm<1, 128, 511, false, true>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<2, 129, 512, false, true>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    TestHGemm<1, 127, 512, false, true>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
+    TestHGemm<1, 513, 1023, false, true>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    TestHGemm<2, 511, 1025, false, true>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
+    TestHGemm<127, 513, 1023, false, true>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<129, 511, 1025, false, true>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    TestHGemm<2, 1, 1, false, false>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<1, 128, 512, false, false>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    TestHGemm<2, 128, 513, false, false>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
+    TestHGemm<1, 128, 511, false, false>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<2, 129, 512, false, false>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    TestHGemm<1, 127, 512, false, false>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
+    TestHGemm<1, 513, 1023, false, false>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    TestHGemm<2, 511, 1025, false, false>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
+    TestHGemm<127, 513, 1023, false, false>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<129, 511, 1025, false, false>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
   }
 };
 
