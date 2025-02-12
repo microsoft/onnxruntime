@@ -14,7 +14,7 @@ ARG CUDA_VERSION
 ARG CUDNN_VERSION
 # Adjust as needed 
 # Check your CUDA arch: https://developer.nvidia.com/cuda-gpus
-ARG CMAKE_CUDA_ARCHITECTURES="75;80;90"
+ARG CMAKE_CUDA_ARCHITECTURES="75-real;80-real;90-virtual"
 
 ENV DEBIAN_FRONTEND=noninteractive
 
