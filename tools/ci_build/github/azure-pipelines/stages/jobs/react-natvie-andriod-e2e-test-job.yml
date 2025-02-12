@@ -28,9 +28,9 @@ jobs:
       architecture: "x64"
 
   - task: JavaToolInstaller@0
-    displayName: Use jdk 17
+    displayName: Use jdk 21
     inputs:
-      versionSpec: '17'
+      versionSpec: '21'
       jdkArchitectureOption: 'x64'
       jdkSourceOption: 'PreInstalled'
 
