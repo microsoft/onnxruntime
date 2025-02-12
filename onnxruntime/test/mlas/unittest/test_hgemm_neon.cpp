@@ -270,6 +270,87 @@ class MlasNeonHGemmTransposedBTest : public MlasTestBase {
   }
 };
 
+class MlasNeonHGemmBTest : public MlasTestBase {
+ private:
+  std::random_device rd_;
+  unsigned int seed_;
+  std::mt19937 gen_;  // mersenne_twister_engine seeded with rd()
+  std::uniform_real_distribution<float> distrib_;
+  MatrixGuardBuffer<MLAS_FP16> A_, B_, ref_, C_;
+
+  template <size_t M, size_t K, size_t N>
+  MLAS_FORCEINLINE void HGemm(const MLAS_FP16* A, const MLAS_FP16* B, MLAS_FP16* C, MLAS_FP16 alpha, MLAS_FP16 beta) {
+    float alphaf = alpha.ToFloat();
+    float betaf = beta.ToFloat();
+    for (size_t m = 0; m < M; ++m) {
+      for (size_t n = 0; n < N; ++n) {
+        float accu = 0.0f;
+        for (size_t k = 0; k < K; ++k) {
+          accu += (A[m * K + k].ToFloat()) * (B[n + k * N].ToFloat());
+        }
+        C[m * N + n] = MLAS_FP16(accu * alphaf + C[m * N + n].ToFloat() * betaf);
+      }
+    }
+  }
+
+  MLAS_FORCEINLINE
+  bool FloatEqual(MLAS_FP16 v0, MLAS_FP16 v1, float rtol, float atol) {
+    float f0 = v0.ToFloat(), f1 = v1.ToFloat();
+    return std::abs(f0 - f1) <= std::abs(f1 * rtol) + atol;
+  }
+
+  template <size_t M, size_t K, size_t N>
+  MLAS_FORCEINLINE void Check(const MLAS_FP16* C, const MLAS_FP16* ref) {
+    size_t n = M * N;
+    for (size_t i = 0; i < n; ++i) {
+      ASSERT_TRUE(FloatEqual(C[i], ref[i], 0.02f, 0.055f))
+          << " seed " << seed_ << " i " << i
+          << " M " << M << " N " << N << " K " << K
+          << " v0 " << C[i] << " v1 " << ref[i];
+    }
+  }
+
+  template <size_t M, size_t K, size_t N>
+  void TestHGemm(MLAS_FP16 alpha, MLAS_FP16 beta) {
+    auto InitializeBuffer = [this](MLAS_FP16* buffer, size_t count) {
+      for (size_t i = 0; i < count; i++) {
+        buffer[i] = MLAS_FP16(distrib_(gen_));
+      }
+    };
+
+    const auto* A = A_.GetFilledBuffer(M * K, InitializeBuffer);
+    const auto* B = B_.GetFilledBuffer(K * N, InitializeBuffer);
+    auto* C = C_.GetBuffer(M * N, true);
+    auto* ref = ref_.GetBuffer(M * N, true);
+    hgemm_neon::HGemm_B_Kernel(A, B, C, M, N, K, K, N, N, alpha.val, beta.val);
+    HGemm<M, K, N>(A, B, ref, alpha, beta);
+    Check<M, K, N>(C, ref);
+  }
+
+ public:
+  MlasNeonHGemmBTest()
+      : seed_(rd_()), gen_(seed_), distrib_(-1.f, 1.f) {
+  }
+
+  static const char* GetTestSuiteName() {
+    return "NeonHGemmB";
+  }
+
+  void ExecuteShort(void) override {
+    TestHGemm<2, 1, 1>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<1, 1, 1>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    TestHGemm<2, 1, 1>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
+    TestHGemm<1, 15, 17>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<2, 17, 15>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    TestHGemm<1, 17, 15>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
+    TestHGemm<1, 33, 31>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<2, 31, 32>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    TestHGemm<1, 32, 33>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
+    TestHGemm<1, 78, 263>(MLAS_FP16(0.5f), MLAS_FP16(0.0f));
+    TestHGemm<2, 267, 79>(MLAS_FP16(1.5f), MLAS_FP16(1.0f));
+  }
+};
+
 class MlasNeonHGemmPackedBTest : public MlasTestBase {
  private:
   std::random_device rd_;
@@ -355,7 +436,7 @@ class MlasNeonHGemmPackedBTest : public MlasTestBase {
 
  public:
   MlasNeonHGemmPackedBTest()
-      : seed_(1928372), gen_(seed_), distrib_(-1.f, 1.f) {
+      : seed_(1928372), gen_(), distrib_(-1.f, 1.f) {
   }
 
   static const char* GetTestSuiteName() {
@@ -463,6 +544,7 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
   if (is_short_execute) {
     count += MlasDirectShortExecuteTests<MlasNeonHGemmPackBTest>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasNeonHGemmTransposedBTest>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasNeonHGemmBTest>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasNeonHGemmPackedBTest>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasNeonHGemmTest>::RegisterShortExecute();
   }

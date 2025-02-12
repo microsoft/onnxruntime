@@ -1288,30 +1288,23 @@ void ma_lane_accu(
     float16x8_t& accu1,
     size_t countK
 ) {
-    float16x8_t b0 = MlasLoadFloat16x8(b), b1, b2, b3;
+    float16x8_t b0 = MlasLoadFloat16x8(b);
     accu0 = vfmaq_lane_f16(accu0, b0, a0, 0);
     if constexpr (CountM == 2) {
         accu1 = vfmaq_lane_f16(accu1, b0, a1, 0);
     }
     if (countK > 1) {
-        b1 = MlasLoadFloat16x8(b + ldb);
+        float16x8_t b1 = MlasLoadFloat16x8(b + ldb);
         accu0 = vfmaq_lane_f16(accu0, b1, a0, 1);
         if constexpr (CountM == 2) {
-            accu1 = vfmaq_lane_f16(accu1, b0, a1, 1);
+            accu1 = vfmaq_lane_f16(accu1, b1, a1, 1);
         }
     }
     if (countK > 2) {
-        b2 = MlasLoadFloat16x8(b + 2 * ldb);
+        float16x8_t b2 = MlasLoadFloat16x8(b + 2 * ldb);
         accu0 = vfmaq_lane_f16(accu0, b2, a0, 2);
         if constexpr (CountM == 2) {
-            accu1 = vfmaq_lane_f16(accu1, b0, a1, 2);
-        }
-    }
-    if (countK > 3) {
-        b3 = MlasLoadFloat16x8(b + 3 * ldb);
-        accu0 = vfmaq_lane_f16(accu0, b3, a0, 3);
-        if constexpr (CountM == 2) {
-            accu1 = vfmaq_lane_f16(accu1, b0, a1, 3);
+            accu1 = vfmaq_lane_f16(accu1, b2, a1, 2);
         }
     }
 }
@@ -1327,30 +1320,23 @@ void ma_lane_accu(
     float16x4_t& accu1,
     size_t countK
 ) {
-    float16x4_t b0 = MlasLoadFloat16x4(b), b1, b2, b3;
+    float16x4_t b0 = MlasLoadFloat16x4(b);
     accu0 = vfma_lane_f16(accu0, b0, a0, 0);
     if constexpr (CountM == 2) {
         accu1 = vfma_lane_f16(accu1, b0, a1, 0);
     }
     if (countK > 1) {
-        b1 = MlasLoadFloat16x4(b + ldb);
+        float16x4_t b1 = MlasLoadFloat16x4(b + ldb);
         accu0 = vfma_lane_f16(accu0, b1, a0, 1);
         if constexpr (CountM == 2) {
-            accu1 = vfma_lane_f16(accu1, b0, a1, 1);
+            accu1 = vfma_lane_f16(accu1, b1, a1, 1);
         }
     }
     if (countK > 2) {
-        b2 = MlasLoadFloat16x4(b + 2 * ldb);
+        float16x4_t b2 = MlasLoadFloat16x4(b + 2 * ldb);
         accu0 = vfma_lane_f16(accu0, b2, a0, 2);
         if constexpr (CountM == 2) {
-            accu1 = vfma_lane_f16(accu1, b0, a1, 2);
-        }
-    }
-    if (countK > 3) {
-        b3 = MlasLoadFloat16x4(b + 3 * ldb);
-        accu0 = vfma_lane_f16(accu0, b3, a0, 3);
-        if constexpr (CountM == 2) {
-            accu1 = vfma_lane_f16(accu1, b0, a1, 3);
+            accu1 = vfma_lane_f16(accu1, b2, a1, 2);
         }
     }
 }
@@ -1367,30 +1353,23 @@ void ma_lane_partial_accu(
     size_t countK,
     size_t countN
 ) {
-    float16x4_t b0 = MlasLoadPartialFloat16x4(b, countN), b1, b2, b3;
+    float16x4_t b0 = MlasLoadPartialFloat16x4(b, countN);
     accu0 = vfma_lane_f16(accu0, b0, a0, 0);
     if constexpr (CountM == 2) {
         accu1 = vfma_lane_f16(accu1, b0, a1, 0);
     }
     if (countK > 1) {
-        b1 = MlasLoadPartialFloat16x4(b + ldb, countN);
+        float16x4_t b1 = MlasLoadPartialFloat16x4(b + ldb, countN);
         accu0 = vfma_lane_f16(accu0, b1, a0, 1);
         if constexpr (CountM == 2) {
-            accu1 = vfma_lane_f16(accu1, b0, a1, 1);
+            accu1 = vfma_lane_f16(accu1, b1, a1, 1);
         }
     }
     if (countK > 2) {
-        b2 = MlasLoadPartialFloat16x4(b + 2 * ldb, countN);
+        float16x4_t b2 = MlasLoadPartialFloat16x4(b + 2 * ldb, countN);
         accu0 = vfma_lane_f16(accu0, b2, a0, 2);
         if constexpr (CountM == 2) {
-            accu1 = vfma_lane_f16(accu1, b0, a1, 2);
-        }
-    }
-    if (countK > 3) {
-        b3 = MlasLoadPartialFloat16x4(b + 3 * ldb, countN);
-        accu0 = vfma_lane_f16(accu0, b3, a0, 3);
-        if constexpr (CountM == 2) {
-            accu1 = vfma_lane_f16(accu1, b0, a1, 3);
+            accu1 = vfma_lane_f16(accu1, b2, a1, 2);
         }
     }
 }
