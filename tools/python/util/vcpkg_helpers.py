@@ -411,7 +411,7 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
                         f.write(f'set(VCPKG_CXX_FLAGS_RELEASE "{" ".join(cflags_release)}")\n')
                         f.write(f'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{" ".join(cflags_release)}")\n')
                         f.write(f'set(VCPKG_CXX_FLAGS_RELWITHDEBINFO "{" ".join(cflags_release)}")\n')
-                    add_port_configs(f, enable_exception, True)
+                    add_port_configs(f, True, True)
 
 
 def generate_windows_triplets(build_dir: str) -> None:
