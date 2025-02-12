@@ -8,7 +8,7 @@ from pathlib import Path
 #The compiler flags(CFLAGS/CXXFLAGS/LDFLAGS) settings in this file must be consistent with the cmake code in "cmake/adjust_global_compile_flags.cmake" so that all the statically linked code were compiled by the same set of compile flags. 
 
 # This is a way to add customizations to the official VCPKG ports.
-def add_port_configs(f, has_exception: bool) -> None:
+def add_port_configs(f, has_exception: bool, is_emscripten:bool) -> None:
     """
     Add port-specific configurations to the triplet file.
 
@@ -29,6 +29,14 @@ if(PORT MATCHES "benchmark")
 endif()
 """
     )
+    if is_emscripten:
+        f.write(
+            r"""if(PORT MATCHES "gtest")
+    list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS
+        "-Dgtest_disable_pthreads=ON"
+    )
+endif()
+""")
     if not has_exception:
         f.write(
             r"""if(PORT MATCHES "onnx")
@@ -356,8 +364,6 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
                     folder_name_parts.append("asan")
                 if not enable_rtti:
                     folder_name_parts.append("nortti")
-                if not enable_exception:
-                    folder_name_parts.append("noexception")
                 folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
                 file_name = f"{target_abi}-{os_name}.cmake"
                 dest_path = Path(build_dir) / folder_name / file_name
