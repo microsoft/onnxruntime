@@ -10,6 +10,14 @@
 
 namespace onnxruntime {
 
+/**
+ * Map 2D, 3D, 5D and 6D tensor to 4D tensor as some hardware platform only supports 4D tensor operations.
+ * 
+ * This transformer mainly has two graph transformations that apply to specific patterns: (Note: Not a very generic solution)
+ *   1. Replace 2D Gemms with Transpose/Reshape and 1x1 Conv.
+ *   2. Replace Reshape and ReduceSum with two Slices, two ReduceSums and one Concat.
+ * 
+ */
 class MapToFourDimensions : public GraphTransformer {
  public:
   MapToFourDimensions() noexcept;
