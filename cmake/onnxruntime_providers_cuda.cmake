@@ -198,6 +198,10 @@
       target_link_libraries(${target} PRIVATE ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface CUDA::cudart)
     else()
       include(cudnn_frontend) # also defines CUDNN::*
+      if(TARGET cudnn_frontend)
+        message(STATUS "Applying compile options to cudnn_frontend to suppress unused-function warning.")
+        target_compile_options(cudnn_frontend INTERFACE -Wno-error=unused-function)
+      endif()
       if (onnxruntime_USE_CUDA_NHWC_OPS)
         if(CUDNN_MAJOR_VERSION GREATER 8)
           add_compile_definitions(ENABLE_CUDA_NHWC_OPS)
