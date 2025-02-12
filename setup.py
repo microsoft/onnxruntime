@@ -773,9 +773,11 @@ extras_require = {}
 if package_name == "onnxruntime-gpu" and is_cuda_version_12:
     extras_require = {
         "cuda": [
-            "nvidia-cuda-runtime-cu12 ~= 12.0",
-            "nvidia-cudnn-cu12 ~= 9.0",
-            "nvidia-cufft-cu12 ~= 11.0",
+            "nvidia-cuda-nvrtc-cu12~=12.0",
+            "nvidia-cuda-runtime-cu12~=12.0",
+            "nvidia-cudnn-cu12~=9.0",
+            "nvidia-cufft-cu12~=11.0",
+            "nvidia-curand-cu12~=10.0",
         ]
     }
 
