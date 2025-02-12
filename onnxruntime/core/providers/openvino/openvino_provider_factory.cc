@@ -148,7 +148,7 @@ std::string ParsePrecision(const ProviderOptions& provider_options, std::string&
                             << "Update the 'device_type' to specified types 'CPU', 'GPU', 'GPU.0', "
                             << "'GPU.1', 'NPU' or from"
                             << " HETERO/MULTI/AUTO options and set 'precision' separately. \n";
-      int delimit = device_type.find("_");
+      auto delimit = device_type.find("_");
       device_type = device_type.substr(0, delimit);
       return device_type.substr(delimit + 1);
     }

@@ -303,6 +303,7 @@ static const char* const kOrtSessionOptionEpContextEnable = "ep.context_enable";
 
 // Specify the file path for the Onnx model which has EP context.
 // Default to original_file_name_ctx.onnx if not specified
+// Folder is not a valid option
 static const char* const kOrtSessionOptionEpContextFilePath = "ep.context_file_path";
 
 // Flag to specify whether to dump the EP context into the Onnx model.
