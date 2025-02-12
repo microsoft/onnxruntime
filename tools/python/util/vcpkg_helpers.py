@@ -181,7 +181,7 @@ def generate_triplet_for_android(
         if ldflags:
             f.write(f'set(VCPKG_LINKER_FLAGS "{" ".join(ldflags)}")\n')
         f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DCMAKE_CXX_STANDARD=17)\n")
-        add_port_configs(f, enable_exception)
+        add_port_configs(f, enable_exception, False)
 
 
 def generate_android_triplets(build_dir: str, use_cpp_shared: bool, android_api_level: int) -> None:
@@ -340,7 +340,7 @@ def generate_triplet_for_posix_platform(
             f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DCMAKE_CXX_STANDARD=20)\n")
         else:
             f.write("list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS -DCMAKE_CXX_STANDARD=17)\n")
-        add_port_configs(f, enable_exception)
+        add_port_configs(f, enable_exception, False)
 
 
 def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str) -> None:
@@ -411,6 +411,7 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
                         f.write(f'set(VCPKG_CXX_FLAGS_RELEASE "{" ".join(cflags_release)}")\n')
                         f.write(f'set(VCPKG_C_FLAGS_RELWITHDEBINFO "{" ".join(cflags_release)}")\n')
                         f.write(f'set(VCPKG_CXX_FLAGS_RELWITHDEBINFO "{" ".join(cflags_release)}")\n')
+                    add_port_configs(f, enable_exception, True)
 
 
 def generate_windows_triplets(build_dir: str) -> None:
@@ -485,7 +486,7 @@ def generate_windows_triplets(build_dir: str) -> None:
                             )
                             if ldflags:
                                 f.write(f'set(VCPKG_LINKER_FLAGS "{" ".join(ldflags)}")\n')
-                            add_port_configs(f, True)
+                            add_port_configs(f, enable_exception, False)
 
 
 def generate_posix_triplets(build_dir: str) -> None:
