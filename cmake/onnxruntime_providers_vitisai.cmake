@@ -52,7 +52,10 @@
   endif(MSVC)
 
   if(MSVC)
-    target_link_options(onnxruntime_providers_vitisai PRIVATE "/NODEFAULTLIB:libucrt.lib" "/DEFAULTLIB:ucrt.lib")
+    target_link_options(onnxruntime_providers_vitisai PRIVATE
+      "$<$<CONFIG:Debug>:/NODEFAULTLIB:libucrtd.lib /DEFAULTLIB:ucrtd.lib>"
+      "$<$<CONFIG:Release>:/NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib>"
+      )
   endif(MSVC)
 
   set_target_properties(onnxruntime_providers_vitisai PROPERTIES FOLDER "ONNXRuntime")
