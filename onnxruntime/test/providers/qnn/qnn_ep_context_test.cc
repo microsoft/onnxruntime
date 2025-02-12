@@ -252,6 +252,113 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCpuNodeWithoutExternalWeights) {
   EpCtxCpuNodeWithExternalIniFileTestBody(false);
 }
 
+// Set ep.context_file_path to folder path which is not a valid option, check the error message
+TEST_F(QnnHTPBackendTests, QnnContextBinaryGenerationFolderPathNotExpected) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
+
+  auto& logging_manager = DefaultLoggingManager();
+  logging_manager.SetDefaultLoggerSeverity(logging::Severity::kERROR);
+
+  onnxruntime::Model model("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           logging_manager.DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+  bool single_ep_node = true;
+  BuildGraphWithQAndNonQ(single_ep_node)(helper);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+  // Serialize the model to a string.
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  const auto model_data_span = AsByteSpan(model_data.data(), model_data.size());
+
+  const std::string ep_context_onnx_file = "./ep_context_folder_not_expected/";
+  std::remove(ep_context_onnx_file.c_str());
+  Ort::SessionOptions so;
+  so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+  so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, ep_context_onnx_file.c_str());
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  try {
+    Ort::Session session(*ort_env, model_data_span.data(), model_data_span.size(), so);
+    FAIL();  // Should not get here!
+  } catch (const Ort::Exception& excpt) {
+    ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+    ASSERT_THAT(excpt.what(), testing::HasSubstr("context_file_path should not point to a folder."));
+  }
+}
+
+// Create session 1 to generate context binary file
+// Create session 2 to do same thing, make sure session 2 failed because file exist already
+// Make sure no new file over write from session 2
+TEST_F(QnnHTPBackendTests, QnnContextBinaryGenerationNoOverWrite) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
+
+  auto& logging_manager = DefaultLoggingManager();
+  logging_manager.SetDefaultLoggerSeverity(logging::Severity::kERROR);
+
+  onnxruntime::Model model("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           logging_manager.DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+  bool single_ep_node = true;
+  BuildGraphWithQAndNonQ(single_ep_node)(helper);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+  // Serialize the model to a string.
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  const auto model_data_span = AsByteSpan(model_data.data(), model_data.size());
+
+  const std::string ep_context_onnx_file = "./ep_context_no_over_write.onnx";
+  const std::string ep_context_binary_file = "./ep_context_no_over_write.onnx_QNNExecutionProvider_QNN_10880527342279992768_1_0.bin";
+
+  std::remove(ep_context_onnx_file.c_str());
+  Ort::SessionOptions so;
+  so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+  so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, ep_context_onnx_file.c_str());
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  Ort::Session session1(*ort_env, model_data_span.data(), model_data_span.size(), so);
+
+  auto modify_time_1 = std::filesystem::last_write_time(ep_context_binary_file);
+
+  try {
+    Ort::Session session2(*ort_env, model_data_span.data(), model_data_span.size(), so);
+    FAIL();  // Should not get here!
+  } catch (const Ort::Exception& excpt) {
+    ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_FAIL);
+    ASSERT_THAT(excpt.what(), testing::HasSubstr("exist already."));
+    auto modify_time_2 = std::filesystem::last_write_time(ep_context_binary_file);
+    ASSERT_EQ(modify_time_1, modify_time_2);
+  }
+
+  ASSERT_EQ(std::remove(ep_context_onnx_file.c_str()), 0);
+  ASSERT_EQ(std::remove(ep_context_binary_file.c_str()), 0);
+}
+
 // Create a model with Cast + Add (quantized)
 // cast_input -> Cast -> Q -> DQ ----+
 //                                   |
