@@ -99,13 +99,13 @@ class MlasNeonHGemmPackBTest : public MlasTestBase {
     for (; j + 15 < N; j += 16) {
       for (size_t i = 0; i < 16 * K; ++i) {
         ASSERT_EQ(packed[j * K + i].val, ref[j * K + i].val)
-          << " seed " << seed_ << " K " << i / 16 << " N " << j + i % 16;
+            << " seed " << seed_ << " K " << i / 16 << " N " << j + i % 16;
       }
     }
     if (j + 7 < N) {
       for (size_t i = 0; i < 8 * K; ++i) {
         ASSERT_EQ(packed[j * K + i].val, ref[j * K + i].val)
-          << " seed " << seed_ << " K " << i / 8 << " N " << j + i % 8;
+            << " seed " << seed_ << " K " << i / 8 << " N " << j + i % 8;
       }
       j += 8;
     }
@@ -113,7 +113,7 @@ class MlasNeonHGemmPackBTest : public MlasTestBase {
       for (size_t i = 0; i < K; ++i) {
         for (size_t k = 0; k < N - j; ++k) {
           ASSERT_EQ(packed[j * K + i * 8 + k].val, ref[j * K + i * 8 + k].val)
-            << " seed " << seed_ << " K " << i << " N " << j + k;
+              << " seed " << seed_ << " K " << i << " N " << j + k;
         }
       }
     }
