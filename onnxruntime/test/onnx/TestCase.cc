@@ -571,7 +571,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
   std::vector<std::filesystem::path> onnx_models;
   std::vector<std::filesystem::path> ort_models;
   for (const std::basic_string<PATH_CHAR_TYPE>& path_str : input_paths) {
-    try {
+    ORT_TRY {
       for (auto& dir_entry : std::filesystem::recursive_directory_iterator(path_str)) {
         if (!dir_entry.is_regular_file() || dir_entry.is_directory()) continue;
         std::filesystem::path node_data_root_path = dir_entry.path();
@@ -587,7 +587,8 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
           ort_models.push_back(node_data_root_path);
         }
       }
-    } catch (const std::filesystem::filesystem_error&) {
+    }
+    ORT_CATCH(const std::filesystem::filesystem_error&) {
       // silently ignore the directories that do not exist
     }
   }
