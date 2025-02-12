@@ -1071,7 +1071,6 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode, providers_, kernel_registry_mgr_,
                                                  ep_acc_map, logger));
 
-
     bool ep_context_enabled = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
     if (ep_context_enabled) {
       std::string ep_context_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
