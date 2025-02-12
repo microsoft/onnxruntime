@@ -535,24 +535,79 @@ Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const
   shader.AddOutput("output", ShaderUsage::UseUniform);
   shader.AddOutput("scales", ShaderUsage::UseUniform);
 
+  shader.AdditionalImplementation() << R"ADDNL_FN(
+    var<workgroup> max_values : array<input_a_value_t, 32>;
+    fn reduceMaxValues(local_idx:u32, range:u32, sg_id:u32, sg_size:u32)
+    {
+      var max_value = select(0, max_values[local_idx], local_idx < range);
+      max_value = subgroupMax(max_value);
+      workgroupBarrier();
+      max_values[local_idx] = 0;
+      if (sg_id == 0)
+      {
+        max_values[u32(local_idx / sg_size)] = max_value;
+      }
+      workgroupBarrier();
+    }
+    fn max4(a:input_a_value_t, b:input_a_value_t, c:input_a_value_t, d:input_a_value_t) -> input_a_value_t
+    {
+      return max(max(max(a, b), c), d);
+    }
+  )ADDNL_FN";
+
   shader.MainFunctionBody() << R"MAIN_FN(
-  var local_a : array<vec4<input_a_element_t>, 32>;
-  var max_value:vec4<input_a_element_t> = vec4<input_a_element_t>(0);
-  for (var idx:u32=0;idx<32;idx+=1)
-  {
-    local_a[idx] = input_a[workgroup_id.x*32 + idx];
-    max_value = max(max_value, abs(local_a[idx]));
-  }
-  var scale = max(max_value.x, max_value.y);
-  scale = max(scale, max_value.z);
-  scale = max(scale, max_value.w);
-  for (var idx:u32=0;idx<32;idx+=1)
-  {
-    output[workgroup_id.x*32+idx] = pack4x8snorm(vec4<f32>(local_a[idx]/scale));
-  }
-  // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
-  scales[workgroup_id.x] = scale/127;
-)MAIN_FN";
+    var local_a = input_a[global_idx];
+    var max_value = subgroupMax(abs(local_a));
+    if (sg_id == 0)
+    {
+      max_values[u32(local_idx / sg_size)] = max_value;
+    }
+    workgroupBarrier();
+    if (sg_size == 4)
+    {
+      // We have 32 values in max_values, we need to find the max of those.
+      reduceMaxValues(local_idx, 32, sg_id, sg_size);
+      reduceMaxValues(local_idx, 8, sg_id, sg_size);
+      max_value = max4(max_values[0], max_values[1], max_values[2], max_values[3]);
+    }
+    else if (sg_size == 8)
+    {
+      // We have 16 values in max_values, we need to find the max of those.
+      reduceMaxValues(local_idx, 16, sg_id, sg_size);
+      max_value = max(max_values[0], max_values[1]);
+    }
+    else if (sg_size == 16)
+    {
+      // We have 8 values in max_values, we need to find the max of those.
+      max_value = subgroupMax(max_values[sg_id]);
+    }
+    else if (sg_size == 32)
+    {
+      // We have 4 values in max_values, we need to find the max of those.
+      max_value = max4(max_values[0], max_values[1], max_values[2], max_values[3]);
+    }
+    else if (sg_size == 64)
+    {
+      // We have 2 values in max_values, we need to find the max of those.
+      max_value = max(max_values[0], max_values[1]);
+    }
+    else if (sg_size == 128)
+    {
+      // We have 1 value in max_values, we need to find the max of those.
+      max_value = max_values[0];
+    }
+    local_a = local_a / max_value;
+    let output_value = vec4<f32>(f32(local_a), f32(subgroupShuffleDown(local_a, 1)), f32(subgroupShuffleDown(local_a, 2)), f32(subgroupShuffleDown(local_a, 3)));
+    if (local_idx%4 == 0)
+    {
+      output[global_idx/4] = pack4x8snorm(output_value);
+    }
+    if (local_idx == 0)
+    {
+      // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
+      scales[workgroup_idx] = max_value/127;
+    }
+  )MAIN_FN";
   return Status::OK();
 }
 
@@ -729,7 +784,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
     else
     {
-      // Code for other subgroup sizes, simply doesnt use subgroups at all.
+      // Code for other subgroup sizes, simply doesn't use subgroups at all.
       // Relies on reads from single location tile_B[][base_B + col] by all
       // being optimized by the hardware.
       lane_output1[0] += SDP8AI(own_a0, tile_B[0][base_B + 0], own_a1, tile_B[1][base_B + 0],  own_scale_a * scale_B[base_B + 0]);
@@ -819,13 +874,13 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
 
     constexpr uint32_t kBlockSizeA = 128;
     DP4AMatMulQuantizeProgram quantize_program;
-    quantize_program.SetWorkgroupSize(1);
+    quantize_program.SetWorkgroupSize(kBlockSizeA);
     quantize_program.SetDispatchGroupSize(M * K / kBlockSizeA, 1, 1);
     TensorShape a_quant_shape{1, M, K / kU32Components};
     Tensor a_quant = context.CreateGPUTensor(DataTypeImpl::GetType<uint32_t>(), a_quant_shape);
     TensorShapeVector a_scales_dims({1, 1, M, K / kBlockSizeA});
     Tensor a_scale = context.CreateGPUTensor(a->DataType(), a_scales_dims);
-    quantize_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kVec4Components)}})
+    quantize_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)}})
         .AddOutputs({{&a_quant, ProgramTensorMetadataDependency::Rank, a_quant.Shape(), gsl::narrow<int>(1)},
                      {&a_scale, ProgramTensorMetadataDependency::Rank, a_scale.Shape(), gsl::narrow<int>(1)}});
     ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
