@@ -348,6 +348,17 @@ class MlasNeonHGemmBTest : public MlasTestBase {
     TestHGemm<1, 32, 33>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
     TestHGemm<1, 78, 263>(MLAS_FP16(0.5f), MLAS_FP16(0.0f));
     TestHGemm<2, 267, 79>(MLAS_FP16(1.5f), MLAS_FP16(1.0f));
+    TestHGemm<2, 1, 1>(MLAS_FP16(1.0f), MLAS_FP16(1.0f));
+    TestHGemm<1, 1, 1>(MLAS_FP16(1.f), MLAS_FP16(0.0f));
+    TestHGemm<2, 1, 1>(MLAS_FP16(1.f), MLAS_FP16(0.f));
+    TestHGemm<1, 15, 17>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<2, 17, 15>(MLAS_FP16(1.f), MLAS_FP16(1.0f));
+    TestHGemm<1, 17, 15>(MLAS_FP16(1.f), MLAS_FP16(1.f));
+    TestHGemm<1, 33, 31>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
+    TestHGemm<2, 31, 32>(MLAS_FP16(1.f), MLAS_FP16(1.0f));
+    TestHGemm<1, 32, 33>(MLAS_FP16(1.f), MLAS_FP16(0.f));
+    TestHGemm<1, 78, 263>(MLAS_FP16(1.f), MLAS_FP16(0.0f));
+    TestHGemm<2, 267, 79>(MLAS_FP16(1.f), MLAS_FP16(1.0f));
   }
 };
 

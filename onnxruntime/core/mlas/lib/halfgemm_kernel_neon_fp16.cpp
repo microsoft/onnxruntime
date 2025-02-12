@@ -1374,9 +1374,9 @@ void ma_lane_partial_accu(
     }
 }
 
-// beta_behavior: beta == 0.0f16 -> 0, beta == 1.0f16 -> 1, otherwise -> 2
-template <int beta_behavior, int CountM>
-void HGemm_B_Kernel_Impl(
+// handle C = alpha * A * B + beta * C where alpha != 1 or beta != 0 or 1
+template <int CountM>
+void HGemm_B_Kernel_Complicated(
     const _mlas_fp16_* A_data,
     const _mlas_fp16_* B_data,
     _mlas_fp16_* C_data,
@@ -1389,6 +1389,8 @@ void HGemm_B_Kernel_Impl(
     _mlas_fp16_ beta
 ) {
     const size_t ldb8 = ldb * 8;
+    const float16x8_t zero_v8 = MlasZeroFloat16x8();
+    const float16x4_t zero_v4 = MlasZeroFloat16x4();
     for (; CountN >= 32; CountN -= 32, B_data += 32, C_data += 32) {
         const auto* a = A_data;
         const auto* b = B_data;
@@ -1405,7 +1407,7 @@ void HGemm_B_Kernel_Impl(
             accu13 = MlasZeroFloat16x8();
         }
         for (; k >= 8; k -= 8, a += 8, b += ldb8) {
-            float16x8_t a0 = MlasLoadFloat16x8(a), a1;
+            float16x8_t a0 = MlasLoadFloat16x8(a), a1 = zero_v8;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadFloat16x8(a + lda);
             }
@@ -1416,7 +1418,7 @@ void HGemm_B_Kernel_Impl(
         }
 
         if (k & 4) {
-            float16x4_t a0 = MlasLoadFloat16x4(a), a1;
+            float16x4_t a0 = MlasLoadFloat16x4(a), a1 = zero_v4;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadFloat16x4(a + lda);
             }
@@ -1429,7 +1431,7 @@ void HGemm_B_Kernel_Impl(
         }
 
         if (k > 0) {
-            float16x4_t a0 = MlasLoadPartialFloat16x4(a, k), a1;
+            float16x4_t a0 = MlasLoadPartialFloat16x4(a, k), a1 = zero_v4;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadPartialFloat16x4(a + lda, k);
             }
@@ -1439,59 +1441,25 @@ void HGemm_B_Kernel_Impl(
             ma_lane_accu<CountM>(b + 24, ldb, a0, accu03, a1, accu13, k);
         }
 
-        if constexpr (beta_behavior == 1) {
-            float16x8_t alpha_v = MlasBroadcastFloat16x8(alpha);
-            float16x8_t c00 = MlasLoadFloat16x8(C_data);
-            float16x8_t c01 = MlasLoadFloat16x8(C_data + 8);
-            float16x8_t c02 = MlasLoadFloat16x8(C_data + 16);
-            float16x8_t c03 = MlasLoadFloat16x8(C_data + 24);
-            MlasStoreFloat16x8(C_data, vfmaq_f16(c00, accu00, alpha_v));
-            MlasStoreFloat16x8(C_data + 8, vfmaq_f16(c01, accu01, alpha_v));
-            MlasStoreFloat16x8(C_data + 16, vfmaq_f16(c02, accu02, alpha_v));
-            MlasStoreFloat16x8(C_data + 24, vfmaq_f16(c03, accu03, alpha_v));
-            if constexpr (CountM == 2) {
-                float16x8_t c10 = MlasLoadFloat16x8(C_data + ldc);
-                float16x8_t c11 = MlasLoadFloat16x8(C_data + ldc + 8);
-                float16x8_t c12 = MlasLoadFloat16x8(C_data + ldc + 16);
-                float16x8_t c13 = MlasLoadFloat16x8(C_data + ldc + 24);
-                MlasStoreFloat16x8(C_data + ldc, vfmaq_f16(c10, accu10, alpha_v));
-                MlasStoreFloat16x8(C_data + ldc + 8, vfmaq_f16(c11, accu11, alpha_v));
-                MlasStoreFloat16x8(C_data + ldc + 16, vfmaq_f16(c12, accu12, alpha_v));
-                MlasStoreFloat16x8(C_data + ldc + 24, vfmaq_f16(c13, accu13, alpha_v));
-            }
-        } else if constexpr (beta_behavior == 2) {
-            float16x8_t alpha_v = MlasBroadcastFloat16x8(alpha);
-            float16x8_t beta_v = MlasBroadcastFloat16x8(beta);
-            float16x8_t c00 = MlasLoadFloat16x8(C_data);
-            float16x8_t c01 = MlasLoadFloat16x8(C_data + 8);
-            float16x8_t c02 = MlasLoadFloat16x8(C_data + 16);
-            float16x8_t c03 = MlasLoadFloat16x8(C_data + 24);
-            MlasStoreFloat16x8(C_data, vfmaq_f16(vmulq_f16(c00, beta_v), accu00, alpha_v));
-            MlasStoreFloat16x8(C_data + 8, vfmaq_f16(vmulq_f16(c01, beta_v), accu01, alpha_v));
-            MlasStoreFloat16x8(C_data + 16, vfmaq_f16(vmulq_f16(c02, beta_v), accu02, alpha_v));
-            MlasStoreFloat16x8(C_data + 24, vfmaq_f16(vmulq_f16(c03, beta_v), accu03, alpha_v));
-            if constexpr (CountM == 2) {
-                float16x8_t c10 = MlasLoadFloat16x8(C_data + ldc);
-                float16x8_t c11 = MlasLoadFloat16x8(C_data + ldc + 8);
-                float16x8_t c12 = MlasLoadFloat16x8(C_data + ldc + 16);
-                float16x8_t c13 = MlasLoadFloat16x8(C_data + ldc + 24);
-                MlasStoreFloat16x8(C_data + ldc, vfmaq_f16(vmulq_f16(c10, beta_v), accu10, alpha_v));
-                MlasStoreFloat16x8(C_data + ldc + 8, vfmaq_f16(vmulq_f16(c11, beta_v), accu11, alpha_v));
-                MlasStoreFloat16x8(C_data + ldc + 16, vfmaq_f16(vmulq_f16(c12, beta_v), accu12, alpha_v));
-                MlasStoreFloat16x8(C_data + ldc + 24, vfmaq_f16(vmulq_f16(c13, beta_v), accu13, alpha_v));
-            }
-        } else {
-            float16x8_t alpha_v = MlasBroadcastFloat16x8(alpha);
-            MlasStoreFloat16x8(C_data, vmulq_f16(accu00, alpha_v));
-            MlasStoreFloat16x8(C_data + 8, vmulq_f16(accu01, alpha_v));
-            MlasStoreFloat16x8(C_data + 16, vmulq_f16(accu02, alpha_v));
-            MlasStoreFloat16x8(C_data + 24, vmulq_f16(accu03, alpha_v));
-            if constexpr (CountM == 2) {
-                MlasStoreFloat16x8(C_data + ldc, vmulq_f16(accu10, alpha_v));
-                MlasStoreFloat16x8(C_data + ldc + 8, vmulq_f16(accu11, alpha_v));
-                MlasStoreFloat16x8(C_data + ldc + 16, vmulq_f16(accu12, alpha_v));
-                MlasStoreFloat16x8(C_data + ldc + 24, vmulq_f16(accu13, alpha_v));
-            }
+        float16x8_t alpha_v = MlasBroadcastFloat16x8(alpha);
+        float16x8_t beta_v = MlasBroadcastFloat16x8(beta);
+        float16x8_t c00 = MlasLoadFloat16x8(C_data);
+        float16x8_t c01 = MlasLoadFloat16x8(C_data + 8);
+        float16x8_t c02 = MlasLoadFloat16x8(C_data + 16);
+        float16x8_t c03 = MlasLoadFloat16x8(C_data + 24);
+        MlasStoreFloat16x8(C_data, vfmaq_f16(vmulq_f16(c00, beta_v), accu00, alpha_v));
+        MlasStoreFloat16x8(C_data + 8, vfmaq_f16(vmulq_f16(c01, beta_v), accu01, alpha_v));
+        MlasStoreFloat16x8(C_data + 16, vfmaq_f16(vmulq_f16(c02, beta_v), accu02, alpha_v));
+        MlasStoreFloat16x8(C_data + 24, vfmaq_f16(vmulq_f16(c03, beta_v), accu03, alpha_v));
+        if constexpr (CountM == 2) {
+            float16x8_t c10 = MlasLoadFloat16x8(C_data + ldc);
+            float16x8_t c11 = MlasLoadFloat16x8(C_data + ldc + 8);
+            float16x8_t c12 = MlasLoadFloat16x8(C_data + ldc + 16);
+            float16x8_t c13 = MlasLoadFloat16x8(C_data + ldc + 24);
+            MlasStoreFloat16x8(C_data + ldc, vfmaq_f16(vmulq_f16(c10, beta_v), accu10, alpha_v));
+            MlasStoreFloat16x8(C_data + ldc + 8, vfmaq_f16(vmulq_f16(c11, beta_v), accu11, alpha_v));
+            MlasStoreFloat16x8(C_data + ldc + 16, vfmaq_f16(vmulq_f16(c12, beta_v), accu12, alpha_v));
+            MlasStoreFloat16x8(C_data + ldc + 24, vfmaq_f16(vmulq_f16(c13, beta_v), accu13, alpha_v));
         }
     }
 
@@ -1507,7 +1475,7 @@ void HGemm_B_Kernel_Impl(
             accu11 = MlasZeroFloat16x8();
         }
         for (; k >= 8; k -= 8, a += 8, b += ldb8) {
-            float16x8_t a0 = MlasLoadFloat16x8(a), a1;
+            float16x8_t a0 = MlasLoadFloat16x8(a), a1 = zero_v8;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadFloat16x8(a + lda);
             }
@@ -1516,7 +1484,7 @@ void HGemm_B_Kernel_Impl(
         }
 
         if (k & 4) {
-            float16x4_t a0 = MlasLoadFloat16x4(a), a1;
+            float16x4_t a0 = MlasLoadFloat16x4(a), a1 = zero_v4;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadFloat16x4(a + lda);
             }
@@ -1526,7 +1494,7 @@ void HGemm_B_Kernel_Impl(
         }
 
         if (k > 0) {
-            float16x4_t a0 = MlasLoadPartialFloat16x4(a, k), a1;
+            float16x4_t a0 = MlasLoadPartialFloat16x4(a, k), a1 = zero_v4;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadPartialFloat16x4(a + lda, k);
             }
@@ -1534,39 +1502,17 @@ void HGemm_B_Kernel_Impl(
             ma_lane_accu<CountM>(b + 8, ldb, a0, accu01, a1, accu11, k);
         }
 
-        if constexpr (beta_behavior == 1) {
-            float16x8_t alpha_v = MlasBroadcastFloat16x8(alpha);
-            float16x8_t c00 = MlasLoadFloat16x8(C_data);
-            float16x8_t c01 = MlasLoadFloat16x8(C_data + 8);
-            MlasStoreFloat16x8(C_data, vfmaq_f16(c00, accu00, alpha_v));
-            MlasStoreFloat16x8(C_data + 8, vfmaq_f16(c01, accu01, alpha_v));
-            if constexpr (CountM == 2) {
-                float16x8_t c10 = MlasLoadFloat16x8(C_data + ldc);
-                float16x8_t c11 = MlasLoadFloat16x8(C_data + ldc + 8);
-                MlasStoreFloat16x8(C_data + ldc, vfmaq_f16(c10, accu10, alpha_v));
-                MlasStoreFloat16x8(C_data + ldc + 8, vfmaq_f16(c11, accu11, alpha_v));
-            }
-        } else if constexpr (beta_behavior == 2) {
-            float16x8_t alpha_v = MlasBroadcastFloat16x8(alpha);
-            float16x8_t beta_v = MlasBroadcastFloat16x8(beta);
-            float16x8_t c00 = MlasLoadFloat16x8(C_data);
-            float16x8_t c01 = MlasLoadFloat16x8(C_data + 8);
-            MlasStoreFloat16x8(C_data, vfmaq_f16(vmulq_f16(c00, beta_v), accu00, alpha_v));
-            MlasStoreFloat16x8(C_data + 8, vfmaq_f16(vmulq_f16(c01, beta_v), accu01, alpha_v));
-            if constexpr (CountM == 2) {
-                float16x8_t c10 = MlasLoadFloat16x8(C_data + ldc);
-                float16x8_t c11 = MlasLoadFloat16x8(C_data + ldc + 8);
-                MlasStoreFloat16x8(C_data + ldc, vfmaq_f16(vmulq_f16(c10, beta_v), accu10, alpha_v));
-                MlasStoreFloat16x8(C_data + ldc + 8, vfmaq_f16(vmulq_f16(c11, beta_v), accu11, alpha_v));
-            }
-        } else {
-            float16x8_t alpha_v = MlasBroadcastFloat16x8(alpha);
-            MlasStoreFloat16x8(C_data, vmulq_f16(accu00, alpha_v));
-            MlasStoreFloat16x8(C_data + 8, vmulq_f16(accu01, alpha_v));
-            if constexpr (CountM == 2) {
-                MlasStoreFloat16x8(C_data + ldc, vmulq_f16(accu10, alpha_v));
-                MlasStoreFloat16x8(C_data + ldc + 8, vmulq_f16(accu11, alpha_v));
-            }
+        float16x8_t alpha_v = MlasBroadcastFloat16x8(alpha);
+        float16x8_t beta_v = MlasBroadcastFloat16x8(beta);
+        float16x8_t c00 = MlasLoadFloat16x8(C_data);
+        float16x8_t c01 = MlasLoadFloat16x8(C_data + 8);
+        MlasStoreFloat16x8(C_data, vfmaq_f16(vmulq_f16(c00, beta_v), accu00, alpha_v));
+        MlasStoreFloat16x8(C_data + 8, vfmaq_f16(vmulq_f16(c01, beta_v), accu01, alpha_v));
+        if constexpr (CountM == 2) {
+            float16x8_t c10 = MlasLoadFloat16x8(C_data + ldc);
+            float16x8_t c11 = MlasLoadFloat16x8(C_data + ldc + 8);
+            MlasStoreFloat16x8(C_data + ldc, vfmaq_f16(vmulq_f16(c10, beta_v), accu10, alpha_v));
+            MlasStoreFloat16x8(C_data + ldc + 8, vfmaq_f16(vmulq_f16(c11, beta_v), accu11, alpha_v));
         }
 
         CountN -= 16, B_data += 16, C_data += 16;
@@ -1582,7 +1528,7 @@ void HGemm_B_Kernel_Impl(
             accu10 = MlasZeroFloat16x8();
         }
         for (; k >= 8; k -= 8, a += 8, b += ldb8) {
-            float16x8_t a0 = MlasLoadFloat16x8(a), a1;
+            float16x8_t a0 = MlasLoadFloat16x8(a), a1 = zero_v8;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadFloat16x8(a + lda);
             }
@@ -1590,7 +1536,7 @@ void HGemm_B_Kernel_Impl(
         }
 
         if (k & 4) {
-            float16x4_t a0 = MlasLoadFloat16x4(a), a1;
+            float16x4_t a0 = MlasLoadFloat16x4(a), a1 = zero_v4;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadFloat16x4(a + lda);
             }
@@ -1599,36 +1545,20 @@ void HGemm_B_Kernel_Impl(
         }
 
         if (k > 0) {
-            float16x4_t a0 = MlasLoadPartialFloat16x4(a, k), a1;
+            float16x4_t a0 = MlasLoadPartialFloat16x4(a, k), a1 = zero_v4;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadPartialFloat16x4(a + lda, k);
             }
             ma_lane_accu<CountM>(b, ldb, a0, accu00, a1, accu10, k);
         }
 
-        if constexpr (beta_behavior == 1) {
-            float16x8_t alpha_v = MlasBroadcastFloat16x8(alpha);
-            float16x8_t c00 = MlasLoadFloat16x8(C_data);
-            MlasStoreFloat16x8(C_data, vfmaq_f16(c00, accu00, alpha_v));
-            if constexpr (CountM == 2) {
-                float16x8_t c10 = MlasLoadFloat16x8(C_data + ldc);
-                MlasStoreFloat16x8(C_data + ldc, vfmaq_f16(c10, accu10, alpha_v));
-            }
-        } else if constexpr (beta_behavior == 2) {
-            float16x8_t alpha_v = MlasBroadcastFloat16x8(alpha);
-            float16x8_t beta_v = MlasBroadcastFloat16x8(beta);
-            float16x8_t c00 = MlasLoadFloat16x8(C_data);
-            MlasStoreFloat16x8(C_data, vfmaq_f16(vmulq_f16(c00, beta_v), accu00, alpha_v));
-            if constexpr (CountM == 2) {
-                float16x8_t c10 = MlasLoadFloat16x8(C_data + ldc);
-                MlasStoreFloat16x8(C_data + ldc, vfmaq_f16(vmulq_f16(c10, beta_v), accu10, alpha_v));
-            }
-        } else {
-            float16x8_t alpha_v = MlasBroadcastFloat16x8(alpha);
-            MlasStoreFloat16x8(C_data, vmulq_f16(accu00, alpha_v));
-            if constexpr (CountM == 2) {
-                MlasStoreFloat16x8(C_data + ldc, vmulq_f16(accu10, alpha_v));
-            }
+        float16x8_t alpha_v = MlasBroadcastFloat16x8(alpha);
+        float16x8_t beta_v = MlasBroadcastFloat16x8(beta);
+        float16x8_t c00 = MlasLoadFloat16x8(C_data);
+        MlasStoreFloat16x8(C_data, vfmaq_f16(vmulq_f16(c00, beta_v), accu00, alpha_v));
+        if constexpr (CountM == 2) {
+            float16x8_t c10 = MlasLoadFloat16x8(C_data + ldc);
+            MlasStoreFloat16x8(C_data + ldc, vfmaq_f16(vmulq_f16(c10, beta_v), accu10, alpha_v));
         }
 
         CountN -= 8, B_data += 8, C_data += 8;
@@ -1644,7 +1574,7 @@ void HGemm_B_Kernel_Impl(
             accu10 = MlasZeroFloat16x4();
         }
         for (; k >= 8; k -= 8, a += 8, b += ldb8) {
-            float16x8_t a0 = MlasLoadFloat16x8(a), a1;
+            float16x8_t a0 = MlasLoadFloat16x8(a), a1 = zero_v8;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadFloat16x8(a + lda);
             }
@@ -1652,7 +1582,7 @@ void HGemm_B_Kernel_Impl(
         }
 
         if (k & 4) {
-            float16x4_t a0 = MlasLoadFloat16x4(a), a1;
+            float16x4_t a0 = MlasLoadFloat16x4(a), a1 = zero_v4;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadFloat16x4(a + lda);
             }
@@ -1661,36 +1591,20 @@ void HGemm_B_Kernel_Impl(
         }
 
         if (k > 0) {
-            float16x4_t a0 = MlasLoadPartialFloat16x4(a, k), a1;
+            float16x4_t a0 = MlasLoadPartialFloat16x4(a, k), a1 = zero_v4;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadPartialFloat16x4(a + lda, k);
             }
             ma_lane_accu<CountM>(b, ldb, a0, accu00, a1, accu10, k);
         }
 
-        if constexpr (beta_behavior == 1) {
-            float16x4_t alpha_v = MlasBroadcastFloat16x4(alpha);
-            float16x4_t c00 = MlasLoadFloat16x4(C_data);
-            MlasStoreFloat16x4(C_data, vfma_f16(c00, accu00, alpha_v));
-            if constexpr (CountM == 2) {
-                float16x4_t c10 = MlasLoadFloat16x4(C_data + ldc);
-                MlasStoreFloat16x4(C_data + ldc, vfma_f16(c10, accu10, alpha_v));
-            }
-        } else if constexpr (beta_behavior == 2) {
-            float16x4_t alpha_v = MlasBroadcastFloat16x4(alpha);
-            float16x4_t beta_v = MlasBroadcastFloat16x4(beta);
-            float16x4_t c00 = MlasLoadFloat16x4(C_data);
-            MlasStoreFloat16x4(C_data, vfma_f16(vmul_f16(c00, beta_v), accu00, alpha_v));
-            if constexpr (CountM == 2) {
-                float16x4_t c10 = MlasLoadFloat16x4(C_data + ldc);
-                MlasStoreFloat16x4(C_data + ldc, vfma_f16(vmul_f16(c10, beta_v), accu10, alpha_v));
-            }
-        } else {
-            float16x4_t alpha_v = MlasBroadcastFloat16x4(alpha);
-            MlasStoreFloat16x4(C_data, vmul_f16(accu00, alpha_v));
-            if constexpr (CountM == 2) {
-                MlasStoreFloat16x4(C_data + ldc, vmul_f16(accu10, alpha_v));
-            }
+        float16x4_t alpha_v = MlasBroadcastFloat16x4(alpha);
+        float16x4_t beta_v = MlasBroadcastFloat16x4(beta);
+        float16x4_t c00 = MlasLoadFloat16x4(C_data);
+        MlasStoreFloat16x4(C_data, vfma_f16(vmul_f16(c00, beta_v), accu00, alpha_v));
+        if constexpr (CountM == 2) {
+            float16x4_t c10 = MlasLoadFloat16x4(C_data + ldc);
+            MlasStoreFloat16x4(C_data + ldc, vfma_f16(vmul_f16(c10, beta_v), accu10, alpha_v));
         }
 
         CountN -= 4, B_data += 4, C_data += 4;
@@ -1706,7 +1620,7 @@ void HGemm_B_Kernel_Impl(
             accu10 = MlasZeroFloat16x4();
         }
         for (; k >= 8; k -= 8, a += 8, b += ldb8) {
-            float16x8_t a0 = MlasLoadFloat16x8(a), a1;
+            float16x8_t a0 = MlasLoadFloat16x8(a), a1 = zero_v8;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadFloat16x8(a + lda);
             }
@@ -1714,7 +1628,7 @@ void HGemm_B_Kernel_Impl(
         }
 
         if (k & 4) {
-            float16x4_t a0 = MlasLoadFloat16x4(a), a1;
+            float16x4_t a0 = MlasLoadFloat16x4(a), a1 = zero_v4;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadFloat16x4(a + lda);
             }
@@ -1723,39 +1637,399 @@ void HGemm_B_Kernel_Impl(
         }
 
         if (k > 0) {
-            float16x4_t a0 = MlasLoadPartialFloat16x4(a, k), a1;
+            float16x4_t a0 = MlasLoadPartialFloat16x4(a, k), a1 = zero_v4;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadPartialFloat16x4(a + lda, k);
             }
             ma_lane_partial_accu<CountM>(b, ldb, a0, accu00, a1, accu10, k, CountN);
         }
 
-        if constexpr (beta_behavior == 1) {
-            float16x4_t alpha_v = MlasBroadcastFloat16x4(alpha);
-            float16x4_t c00 = MlasLoadPartialFloat16x4(C_data, CountN);
-            MlasStorePartialFloat16x4(C_data, vfma_f16(c00, accu00, alpha_v), CountN);
-            if constexpr (CountM == 2) {
-                float16x4_t c10 = MlasLoadPartialFloat16x4(C_data + ldc, CountN);
-                MlasStorePartialFloat16x4(C_data + ldc, vfma_f16(c10, accu10, alpha_v), CountN);
-            }
-        } else if constexpr (beta_behavior == 2) {
-            float16x4_t alpha_v = MlasBroadcastFloat16x4(alpha);
-            float16x4_t beta_v = MlasBroadcastFloat16x4(beta);
-            float16x4_t c00 = MlasLoadPartialFloat16x4(C_data, CountN);
-            MlasStorePartialFloat16x4(C_data, vfma_f16(vmul_f16(c00, beta_v), accu00, alpha_v), CountN);
-            if constexpr (CountM == 2) {
-                float16x4_t c10 = MlasLoadPartialFloat16x4(C_data + ldc, CountN);
-                MlasStorePartialFloat16x4(C_data + ldc, vfma_f16(vmul_f16(c10, beta_v), accu10, alpha_v), CountN);
-            }
-        } else {
-            float16x4_t alpha_v = MlasBroadcastFloat16x4(alpha);
-            MlasStorePartialFloat16x4(C_data, vmul_f16(accu00, alpha_v), CountN);
-            if constexpr (CountM == 2) {
-                MlasStorePartialFloat16x4(C_data + ldc, vmul_f16(accu10, alpha_v), CountN);
-            }
+        float16x4_t alpha_v = MlasBroadcastFloat16x4(alpha);
+        float16x4_t beta_v = MlasBroadcastFloat16x4(beta);
+        float16x4_t c00 = MlasLoadPartialFloat16x4(C_data, CountN);
+        MlasStorePartialFloat16x4(C_data, vfma_f16(vmul_f16(c00, beta_v), accu00, alpha_v), CountN);
+        if constexpr (CountM == 2) {
+            float16x4_t c10 = MlasLoadPartialFloat16x4(C_data + ldc, CountN);
+            MlasStorePartialFloat16x4(C_data + ldc, vfma_f16(vmul_f16(c10, beta_v), accu10, alpha_v), CountN);
         }
     }
 }
+
+// Handle C = A * B + C or C = A * B
+template <int CountM, bool zero_mode>
+void HGemm_B_Kernel_Simple(
+    const _mlas_fp16_* A_data,
+    const _mlas_fp16_* B_data,
+    _mlas_fp16_* C_data,
+    size_t CountN,
+    size_t CountK,
+    size_t lda,
+    size_t ldb,
+    size_t ldc
+) {
+    const size_t ldb8 = ldb * 8;
+    const float16x8_t zero_v8 = MlasZeroFloat16x8();
+    const float16x4_t zero_v4 = MlasZeroFloat16x4();
+    if constexpr (zero_mode) {
+        // process first K
+        if (CountK >= 8) {
+            float16x8_t a0 = MlasLoadFloat16x8(A_data), a1 = zero_v8;
+            if constexpr (CountM == 2) {
+                a1 = MlasLoadFloat16x8(A_data + lda);
+            }
+            size_t n = CountN;
+            const auto* b = B_data;
+            auto* c = C_data;
+            for (; n >= 16; n -= 16, b += 16, c += 16) {
+                float16x8_t accu00 = zero_v8, accu01 = zero_v8;
+                float16x8_t accu10 = zero_v8, accu11 = zero_v8;
+
+                ma_lane_accu<CountM>(b, ldb, a0, accu00, a1, accu10);
+                ma_lane_accu<CountM>(b + 8, ldb, a0, accu01, a1, accu11);
+                MlasStoreFloat16x8(c, accu00);
+                MlasStoreFloat16x8(c + 8, accu01);
+                if constexpr (CountM == 2) {
+                    MlasStoreFloat16x8(c + ldc, accu10);
+                    MlasStoreFloat16x8(c + ldc + 8, accu11);
+                }
+            }
+            if (n & 8) {
+                float16x8_t accu00 = zero_v8;
+                float16x8_t accu10 = zero_v8;
+
+                ma_lane_accu<CountM>(b, ldb, a0, accu00, a1, accu10);
+                MlasStoreFloat16x8(c, accu00);
+                if constexpr (CountM == 2) {
+                    MlasStoreFloat16x8(c + ldc, accu10);
+                }
+                n -= 8, b += 8, c += 8;
+            }
+            if (n & 4) {
+                float16x4_t accu00 = zero_v4;
+                float16x4_t accu10 = zero_v4;
+
+                ma_lane_accu<CountM>(b, ldb, a0, accu00, a1, accu10);
+                MlasStoreFloat16x4(c, accu00);
+                if constexpr (CountM == 2) {
+                    MlasStoreFloat16x4(c + ldc, accu10);
+                }
+                n -= 4, b += 4, c += 4;
+            }
+            if (n > 0) {
+                float16x4_t accu00 = zero_v4;
+                float16x4_t accu10 = zero_v4;
+
+                ma_lane_partial_accu<CountM>(b, ldb, a0, accu00, a1, accu10, n);
+                MlasStorePartialFloat16x4(c, accu00, n);
+                if constexpr (CountM == 2) {
+                    MlasStorePartialFloat16x4(c + ldc, accu10, n);
+                }
+            }
+            CountK -= 8, B_data += ldb8, A_data += 8;
+        } else if (CountK >= 4) {
+            float16x4_t a0 = MlasLoadFloat16x4(A_data), a1 = zero_v4;
+            if constexpr (CountM == 2) {
+                a1 = MlasLoadFloat16x4(A_data + lda);
+            }
+            size_t n = CountN;
+            const auto* b = B_data;
+            auto* c = C_data;
+            for (; n >= 16; n -= 16, b += 16, c += 16) {
+                float16x8_t accu00 = zero_v8, accu01 = zero_v8;
+                float16x8_t accu10 = zero_v8, accu11 = zero_v8;
+                ma_lane_accu<CountM>(b, ldb, a0, accu00, a1, accu10);
+                ma_lane_accu<CountM>(b + 8, ldb, a0, accu01, a1, accu11);
+                MlasStoreFloat16x8(c, accu00);
+                MlasStoreFloat16x8(c + 8, accu01);
+                if constexpr (CountM == 2) {
+                    MlasStoreFloat16x8(c + ldc, accu10);
+                    MlasStoreFloat16x8(c + ldc + 8, accu11);
+                }
+            }
+            if (n & 8) {
+                float16x8_t accu00 = zero_v8;
+                float16x8_t accu10 = zero_v8;
+                ma_lane_accu<CountM>(b, ldb, a0, accu00, a1, accu10);
+                MlasStoreFloat16x8(c, accu00);
+                if constexpr (CountM == 2) {
+                    MlasStoreFloat16x8(c + ldc, accu10);
+                }
+                n -= 8, b += 8, c += 8;
+            }
+            if (n & 4) {
+                float16x4_t accu00 = zero_v4;
+                float16x4_t accu10 = zero_v4;
+                ma_lane_accu<CountM>(b, ldb, a0, accu00, a1, accu10);
+                MlasStoreFloat16x4(c, accu00);
+                if constexpr (CountM == 2) {
+                    MlasStoreFloat16x4(c + ldc, accu10);
+                }
+                n -= 4, b += 4, c += 4;
+            }
+            if (n > 0) {
+                float16x4_t accu00 = zero_v4;
+                float16x4_t accu10 = zero_v4;
+                ma_lane_partial_accu<CountM>(b, ldb, a0, accu00, a1, accu10, n);
+                MlasStorePartialFloat16x4(c, accu00, n);
+                if constexpr (CountM == 2) {
+                    MlasStorePartialFloat16x4(c + ldc, accu10, n);
+                }
+            }
+
+            CountK -= 4, B_data += ldb * 4, A_data += 4;
+        } else if (CountK > 0) {
+            float16x4_t a0 = MlasLoadPartialFloat16x4(A_data, CountK), a1 = zero_v4;
+            if constexpr (CountM == 2) {
+                a1 = MlasLoadPartialFloat16x4(A_data + lda, CountK);
+            }
+            size_t n = CountN;
+            const auto* b = B_data;
+            auto* c = C_data;
+            for (; n >= 16; n -= 16, b += 16, c += 16) {
+                float16x8_t accu00 = zero_v8, accu01 = zero_v8;
+                float16x8_t accu10 = zero_v8, accu11 = zero_v8;
+                ma_lane_accu<CountM>(b, ldb, a0, accu00, a1, accu10, CountK);
+                ma_lane_accu<CountM>(b + 8, ldb, a0, accu01, a1, accu11, CountK);
+                MlasStoreFloat16x8(c, accu00);
+                MlasStoreFloat16x8(c + 8, accu01);
+                if constexpr (CountM == 2) {
+                    MlasStoreFloat16x8(c + ldc, accu10);
+                    MlasStoreFloat16x8(c + ldc + 8, accu11);
+                }
+            }
+            if (n & 8) {
+                float16x8_t accu00 = zero_v8;
+                float16x8_t accu10 = zero_v8;
+                ma_lane_accu<CountM>(b, ldb, a0, accu00, a1, accu10, CountK);
+                MlasStoreFloat16x8(c, accu00);
+                if constexpr (CountM == 2) {
+                    MlasStoreFloat16x8(c + ldc, accu10);
+                }
+                n -= 8, b += 8, c += 8;
+            }
+            if (n & 4) {
+                float16x4_t accu00 = zero_v4;
+                float16x4_t accu10 = zero_v4;
+                ma_lane_accu<CountM>(b, ldb, a0, accu00, a1, accu10, CountK);
+                MlasStoreFloat16x4(c, accu00);
+                if constexpr (CountM == 2) {
+                    MlasStoreFloat16x4(c + ldc, accu10);
+                }
+                n -= 4, b += 4, c += 4;
+            }
+            if (n > 0) {
+                float16x4_t accu00 = zero_v4;
+                float16x4_t accu10 = zero_v4;
+                ma_lane_partial_accu<CountM>(b, ldb, a0, accu00, a1, accu10, CountK, n);
+                MlasStorePartialFloat16x4(c, accu00, n);
+                if constexpr (CountM == 2) {
+                    MlasStorePartialFloat16x4(c + ldc, accu10, n);
+                }
+            }
+
+            CountK -= CountK, B_data += ldb * CountK, A_data += CountK;
+        }
+    }
+
+    for (; CountK >= 8; CountK -= 8, B_data += ldb8, A_data += 8) {
+        float16x8_t a0 = MlasLoadFloat16x8(A_data), a1 = zero_v8;
+        if constexpr (CountM == 2) {
+            a1 = MlasLoadFloat16x8(A_data + lda);
+        }
+        size_t n = CountN;
+        const auto* b = B_data;
+        auto* c = C_data;
+        for (; n >= 16; n -= 16, b += 16, c += 16) {
+            float16x8_t accu00 = MlasLoadFloat16x8(c);
+            float16x8_t accu01 = MlasLoadFloat16x8(c + 8);
+            float16x8_t accu10 = zero_v8, accu11 = zero_v8;
+            if constexpr (CountM == 2) {
+                accu10 = MlasLoadFloat16x8(c + ldb);
+                accu11 = MlasLoadFloat16x8(c + ldb + 8);
+            }
+            ma_lane_accu<CountM>(b, ldb, a0, accu00, a1, accu10);
+            ma_lane_accu<CountM>(b + 8, ldb, a0, accu01, a1, accu11);
+            MlasStoreFloat16x8(c, accu00);
+            MlasStoreFloat16x8(c + 8, accu01);
+            if constexpr (CountM == 2) {
+                MlasStoreFloat16x8(c + ldc, accu10);
+                MlasStoreFloat16x8(c + ldc + 8, accu11);
+            }
+        }
+        if (n & 8) {
+            float16x8_t accu00 = MlasLoadFloat16x8(c);
+            float16x8_t accu10 = zero_v8;
+            if constexpr (CountM == 2) {
+                accu10 = MlasLoadFloat16x8(c + ldc);
+            }
+            ma_lane_accu<CountM>(b, ldb, a0, accu00, a1, accu10);
+            MlasStoreFloat16x8(c, accu00);
+            if constexpr (CountM == 2) {
+                MlasStoreFloat16x8(c + ldc, accu10);
+            }
+            n -= 8, b += 8, c += 8;
+        }
+        if (n & 4) {
+            float16x4_t accu00 = MlasLoadFloat16x4(c);
+            float16x4_t accu10 = zero_v4;
+            if constexpr (CountM == 2) {
+                accu10 = MlasLoadFloat16x4(c + ldc);
+            }
+            ma_lane_accu<CountM>(b, ldb, a0, accu00, a1, accu10);
+            MlasStoreFloat16x4(c, accu00);
+            if constexpr (CountM == 2) {
+                MlasStoreFloat16x4(c + ldc, accu10);
+            }
+            n -= 4, b += 4, c += 4;
+        }
+        if (n > 0) {
+            float16x4_t accu00 = MlasLoadPartialFloat16x4(c, n);
+            float16x4_t accu10 = zero_v4;
+            if constexpr (CountM == 2) {
+                accu10 = MlasLoadPartialFloat16x4(c + ldc, n);
+            }
+            ma_lane_partial_accu<CountM>(b, ldb, a0, accu00, a1, accu10, n);
+            MlasStorePartialFloat16x4(c, accu00, n);
+            if constexpr (CountM == 2) {
+                MlasStorePartialFloat16x4(c + ldc, accu10, n);
+            }
+        }
+    }
+
+    if (CountK & 4) {
+        float16x4_t a0 = MlasLoadFloat16x4(A_data), a1 = zero_v4;
+        if constexpr (CountM == 2) {
+            a1 = MlasLoadFloat16x4(A_data + lda);
+        }
+        size_t n = CountN;
+        const auto* b = B_data;
+        auto* c = C_data;
+        for (; n >= 16; n -= 16, b += 16, c += 16) {
+            float16x8_t accu00 = MlasLoadFloat16x8(c);
+            float16x8_t accu01 = MlasLoadFloat16x8(c + 8);
+            float16x8_t accu10 = zero_v8, accu11 = zero_v8;
+            if constexpr (CountM == 2) {
+                accu10 = MlasLoadFloat16x8(c + ldb);
+                accu11 = MlasLoadFloat16x8(c + ldb + 8);
+            }
+            ma_lane_accu<CountM>(b, ldb, a0, accu00, a1, accu10);
+            ma_lane_accu<CountM>(b + 8, ldb, a0, accu01, a1, accu11);
+            MlasStoreFloat16x8(c, accu00);
+            MlasStoreFloat16x8(c + 8, accu01);
+            if constexpr (CountM == 2) {
+                MlasStoreFloat16x8(c + ldc, accu10);
+                MlasStoreFloat16x8(c + ldc + 8, accu11);
+            }
+        }
+        if (n & 8) {
+            float16x8_t accu00 = MlasLoadFloat16x8(c);
+            float16x8_t accu10 = zero_v8;
+            if constexpr (CountM == 2) {
+                accu10 = MlasLoadFloat16x8(c + ldc);
+            }
+            ma_lane_accu<CountM>(b, ldb, a0, accu00, a1, accu10);
+            MlasStoreFloat16x8(c, accu00);
+            if constexpr (CountM == 2) {
+                MlasStoreFloat16x8(c + ldc, accu10);
+            }
+            n -= 8, b += 8, c += 8;
+        }
+        if (n & 4) {
+            float16x4_t accu00 = MlasLoadFloat16x4(c);
+            float16x4_t accu10 = zero_v4;
+            if constexpr (CountM == 2) {
+                accu10 = MlasLoadFloat16x4(c + ldc);
+            }
+            ma_lane_accu<CountM>(b, ldb, a0, accu00, a1, accu10);
+            MlasStoreFloat16x4(c, accu00);
+            if constexpr (CountM == 2) {
+                MlasStoreFloat16x4(c + ldc, accu10);
+            }
+            n -= 4, b += 4, c += 4;
+        }
+        if (n > 0) {
+            float16x4_t accu00 = MlasLoadPartialFloat16x4(c, n);
+            float16x4_t accu10 = zero_v4;
+            if constexpr (CountM == 2) {
+                accu10 = MlasLoadPartialFloat16x4(c + ldc, n);
+            }
+            ma_lane_partial_accu<CountM>(b, ldb, a0, accu00, a1, accu10, n);
+            MlasStorePartialFloat16x4(c, accu00, n);
+            if constexpr (CountM == 2) {
+                MlasStorePartialFloat16x4(c + ldc, accu10, n);
+            }
+        }
+
+        CountK -= 4, B_data += ldb * 4, A_data += 4;
+    }
+
+    if (CountK > 0) {
+        float16x4_t a0 = MlasLoadPartialFloat16x4(A_data, CountK), a1 = zero_v4;
+        if constexpr (CountM == 2) {
+            a1 = MlasLoadPartialFloat16x4(A_data + lda, CountK);
+        }
+        size_t n = CountN;
+        const auto* b = B_data;
+        auto* c = C_data;
+        for (; n >= 16; n -= 16, b += 16, c += 16) {
+            float16x8_t accu00 = MlasLoadFloat16x8(c);
+            float16x8_t accu01 = MlasLoadFloat16x8(c + 8);
+            float16x8_t accu10 = zero_v8, accu11 = zero_v8;
+            if constexpr (CountM == 2) {
+                accu10 = MlasLoadFloat16x8(c + ldb);
+                accu11 = MlasLoadFloat16x8(c + ldb + 8);
+            }
+            ma_lane_accu<CountM>(b, ldb, a0, accu00, a1, accu10, CountK);
+            ma_lane_accu<CountM>(b + 8, ldb, a0, accu01, a1, accu11, CountK);
+            MlasStoreFloat16x8(c, accu00);
+            MlasStoreFloat16x8(c + 8, accu01);
+            if constexpr (CountM == 2) {
+                MlasStoreFloat16x8(c + ldc, accu10);
+                MlasStoreFloat16x8(c + ldc + 8, accu11);
+            }
+        }
+        if (n & 8) {
+            float16x8_t accu00 = MlasLoadFloat16x8(c);
+            float16x8_t accu10 = zero_v8;
+            if constexpr (CountM == 2) {
+                accu10 = MlasLoadFloat16x8(c + ldc);
+            }
+            ma_lane_accu<CountM>(b, ldb, a0, accu00, a1, accu10, CountK);
+            MlasStoreFloat16x8(c, accu00);
+            if constexpr (CountM == 2) {
+                MlasStoreFloat16x8(c + ldc, accu10);
+            }
+            n -= 8, b += 8, c += 8;
+        }
+        if (n & 4) {
+            float16x4_t accu00 = MlasLoadFloat16x4(c);
+            float16x4_t accu10 = zero_v4;
+            if constexpr (CountM == 2) {
+                accu10 = MlasLoadFloat16x4(c + ldc);
+            }
+            ma_lane_accu<CountM>(b, ldb, a0, accu00, a1, accu10, CountK);
+            MlasStoreFloat16x4(c, accu00);
+            if constexpr (CountM == 2) {
+                MlasStoreFloat16x4(c + ldc, accu10);
+            }
+            n -= 4, b += 4, c += 4;
+        }
+        if (n > 0) {
+            float16x4_t accu00 = MlasLoadPartialFloat16x4(c, n);
+            float16x4_t accu10 = zero_v4;
+            if constexpr (CountM == 2) {
+                accu10 = MlasLoadPartialFloat16x4(c + ldc, n);
+            }
+            ma_lane_partial_accu<CountM>(b, ldb, a0, accu00, a1, accu10, CountK, n);
+            MlasStorePartialFloat16x4(c, accu00, n);
+            if constexpr (CountM == 2) {
+                MlasStorePartialFloat16x4(c + ldc, accu10, n);
+            }
+        }
+
+        CountK -= CountK, B_data += ldb * CountK, A_data += CountK;
+    }
+ }
 
 void HGemm_B_Kernel(
     const MLAS_FP16* A,
@@ -1779,20 +2053,20 @@ void HGemm_B_Kernel(
     const auto f16_0 = MLAS_FP16(0.0f);
     const auto f16_1 = MLAS_FP16(1.0f);
     if (CountM == 1) {
-        if (beta == f16_0.val) {
-            HGemm_B_Kernel_Impl<0, 1>(A_data, B_data, C_data, CountN, CountK, lda, ldb, ldc, alpha, beta);
-        } else if (beta == f16_1.val) {
-            HGemm_B_Kernel_Impl<1, 1>(A_data, B_data, C_data, CountN, CountK, lda, ldb, ldc, alpha, beta);
+        if (alpha == f16_1.val && beta == f16_0.val) {
+            HGemm_B_Kernel_Simple<1, true>(A_data, B_data, C_data, CountN, CountK, lda, ldb, ldc);
+        } else if (alpha == f16_1.val && beta == f16_1.val) {
+            HGemm_B_Kernel_Simple<1, false>(A_data, B_data, C_data, CountN, CountK, lda, ldb, ldc);
         } else {
-            HGemm_B_Kernel_Impl<2, 1>(A_data, B_data, C_data, CountN, CountK, lda, ldb, ldc, alpha, beta);
+            HGemm_B_Kernel_Complicated<1>(A_data, B_data, C_data, CountN, CountK, lda, ldb, ldc, alpha, beta);
         }
     } else {
-        if (beta == f16_0.val) {
-            HGemm_B_Kernel_Impl<0, 2>(A_data, B_data, C_data, CountN, CountK, lda, ldb, ldc, alpha, beta);
-        } else if (beta == f16_1.val) {
-            HGemm_B_Kernel_Impl<1, 2>(A_data, B_data, C_data, CountN, CountK, lda, ldb, ldc, alpha, beta);
+        if (alpha == f16_1.val && beta == f16_0.val) {
+            HGemm_B_Kernel_Simple<2, true>(A_data, B_data, C_data, CountN, CountK, lda, ldb, ldc);
+        } else if (alpha == f16_1.val && beta == f16_1.val) {
+            HGemm_B_Kernel_Simple<2, false>(A_data, B_data, C_data, CountN, CountK, lda, ldb, ldc);
         } else {
-            HGemm_B_Kernel_Impl<2, 2>(A_data, B_data, C_data, CountN, CountK, lda, ldb, ldc, alpha, beta);
+            HGemm_B_Kernel_Complicated<2>(A_data, B_data, C_data, CountN, CountK, lda, ldb, ldc, alpha, beta);
         }
     }
 }

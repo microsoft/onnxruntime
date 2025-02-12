@@ -428,20 +428,19 @@ HGemmOperation(
             if (!dispatch || !dispatch->HGemmKernel_B) {
                 MLAS_THROW_EX(std::runtime_error, "hgemm does not have A x B kernels");
             }
+
             // When M is small, B is visited once. The overhead of Pack(B) exceeds the benefits
             // from A x Pack(B). Therefore directly calculate A x B.
-            // Iterate full K. max 8 accumulators.
-            constexpr size_t StrideN = 64;
-            for (size_t n = 0, countN; n < RangeCountN; n += countN) {
-                countN = std::min(StrideN, RangeCountN - n);
-                dispatch->HGemmKernel_B(A, B, C, RangeCountM, countN, K, lda, ldb, ldc, alpha, beta);
-                B += countN;
-                C += countN;
-            }
+            // When beta is 0 or 1, iterate full N and cache accumulators in C.
+            // When beta is not 0 or 1, iterate full K, accumulat in register, max 8 accumulators.
+            dispatch->HGemmKernel_B(A, B, C, RangeCountM, RangeCountN, K, lda, ldb, ldc, alpha, beta);
         } else {
             if (!dispatch || !dispatch->HPackBKernel_B || !dispatch->HGemmKernel_PackedB) {
                 MLAS_THROW_EX(std::runtime_error, "hgemm does not have A x B kernels");
             }
+            // TODO(fajin): optimize blocking for large K small N
+            //  - pack along N
+            //  - loop K in outer loop
             // 16N is the smallest pack unit.
             const size_t StrideK = std::min(K, size_t(MLAS_HGEMM_STRIDEK));
             const size_t StrideN = buffer_size/StrideK & (~15); // >= MLAS_HGEMM_STRIDEN
