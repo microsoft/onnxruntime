@@ -1240,9 +1240,9 @@ bool get_input_output_names(const GraphViewer& graph,
 bool load_precompiled_model(migraphx::program& prog, bool load_enable, std::string path) {
   try {
     if (load_enable) {
-      LOGS_DEFAULT(WARNING) << "Attempting to load model at:" << path;
+      LOGS_DEFAULT(INFO) << "Attempting to load model at:" << path;
       prog = migraphx::load(path.c_str());
-      LOGS_DEFAULT(WARNING) << "load model : Success";
+      LOGS_DEFAULT(INFO) << "load model : Success";
       return true;
     } else {
       return false;
