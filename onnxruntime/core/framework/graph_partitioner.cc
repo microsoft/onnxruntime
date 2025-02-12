@@ -351,7 +351,7 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
           // that the fused node would use no more memory when the nodes we are fusing.
           // and potentially less than that, and therefore, no threshold check is needed here.
           // All threshold checks are done within the EP.
-          capability.ComputeAndAccountForNode(fused_node->Name());
+          capability.ComputeAndAccountForNode(*fused_node);
         }
 
         result = fused_node;
@@ -885,7 +885,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
       Node& fused_node = graph.BeginFuseSubGraph(indexed_sub_graph, node_name);
       fused_node.SetExecutionProviderType(type);
       if (indexed_sub_graph.IsAccountingEnabled()) {
-        indexed_sub_graph.ComputeAndAccountForNode(fused_node.Name());
+        indexed_sub_graph.ComputeAndAccountForNode(fused_node);
       }
 
       // create filtered graph viewer for this set of nodes
@@ -932,7 +932,7 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
     // now that we're done compiling we can remove the original nodes from the Graph and wire in the new one
     graph.FinalizeFuseSubGraph(indexed_sub_graph, node);
     if (acc_enabled) {
-      compilation_entry.capability.get().sub_graph->ComputeAndAccountForNode(node.Name());
+      compilation_entry.capability.get().sub_graph->ComputeAndAccountForNode(node);
     }
   }
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

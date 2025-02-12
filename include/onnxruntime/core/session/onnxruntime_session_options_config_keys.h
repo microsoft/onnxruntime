@@ -286,8 +286,11 @@ static const char* const kOrtSessionOptionsSavePrePackedConstantInitializers =
 static const char* const kOrtSessionOptionsCollectNodeMemoryStatsToFile = "session.collect_node_memory_stats_to_file";
 
 /// This is a composite CSV setting formatted as "memory limit in kb,file name for collected stats"
-/// "limit > 0": enables Capacity Aware Partitioning for Cuda EP. The EP will place nodes on device
-/// "file name" : this file is expected to be found at the same folder with the model. The file contains
+/// "limit > 0": enables Capacity Aware Partitioning for Cuda EP. `limit` is optional and when absent
+/// the provider may attempt to figure out the memory available automatically.
+/// The setting with no limit is expected to look like: ",file name for collected stats"
+///  The EP will place nodes on device "file name" :
+/// this file is expected to be found at the same folder with the model. The file contains
 /// pre-recorded stats collected when running with kOrtSessionOptionsCollectNodeMemoryStatsToFile enforce (see above)
 static const char* const kOrtSessionOptionsResourceCudaPartitioningSettings =
     "session.resource_cuda_partitioning_settings";

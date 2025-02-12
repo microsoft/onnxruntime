@@ -16,6 +16,11 @@
 namespace onnxruntime {
 
 struct ConfigOptions;
+#ifndef SHARED_PROVIDER
+class Node;
+#else
+struct Node;
+#endif
 
 // Common holder for potentially different resource accounting
 // for different EPs
@@ -40,7 +45,7 @@ class IResourceAccountant {
   virtual ResourceCount GetConsumedAmount() const = 0;
   virtual void AddConsumedAmount(const ResourceCount& amount) = 0;
   virtual void RemoveConsumedAmount(const ResourceCount& amount) = 0;
-  virtual ResourceCount ComputeResourceCount(const std::string& node_name) const = 0;
+  virtual ResourceCount ComputeResourceCount(const Node& node) const = 0;
 
   std::optional<ResourceCount> GetThreshold() const {
     return threshold_;
@@ -51,6 +56,8 @@ class IResourceAccountant {
   }
 
   bool IsStopIssued() const noexcept { return stop_assignment_; }
+
+  static std::string MakeUniqueNodeName(const Node& node);
 
  private:
   bool stop_assignment_ = false;
@@ -101,7 +108,7 @@ class NodeStatsRecorder {
 
   void DumpStats(const std::filesystem::path& model_path) const;
 
-  static Status CreateAccountants(
+  [[nodiscard]] static Status CreateAccountants(
       const ConfigOptions& config_options,
       const std::filesystem::path& model_path,
       std::optional<ResourceAccountantMap>& acc_map);

@@ -844,7 +844,6 @@ struct ProviderHostImpl : ProviderHost {
   void IndexedSubGraph__AppendNodeCost(IndexedSubGraph* p, const ResourceCount& resource_count) override {
     p->AppendNodeCost(resource_count);
   }
-  void IndexedSubGraph__AppendNodeEmptyCost(IndexedSubGraph* p) override { p->AppendNodeEmptyCost(); }
 
   // KernelDef (wrapped)
   void KernelDef__operator_delete(KernelDef* p) override { delete p; }

@@ -595,9 +595,6 @@ struct IndexedSubGraph final {
   void AppendNodeCost(const ResourceCount& resource_count) {
     g_host->IndexedSubGraph__AppendNodeCost(this, resource_count);
   }
-  void AppendNodeEmptyCost() {
-    g_host->IndexedSubGraph__AppendNodeEmptyCost(this);
-  }
 
   IndexedSubGraph() = delete;
   IndexedSubGraph(const IndexedSubGraph&) = delete;

@@ -2771,7 +2771,7 @@ CUDAExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
       result.push_back(ComputeCapability::Create(std::move(sub_graph)));
     } else {
       auto* node = graph.GetNode(node_index);
-      auto resource_count = std::get<0>(resource_accountant->ComputeResourceCount(node->Name()));
+      auto resource_count = std::get<0>(resource_accountant->ComputeResourceCount(*node));
       const auto would_be_consumed = resource_count + consumed_memory;
       LOGS(logger, INFO) << "CUDA_EP Node: " << node_index << " Memory usage : " << resource_count
                          << " would be consumed " << static_cast<size_t>(would_be_consumed)

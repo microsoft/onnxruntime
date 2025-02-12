@@ -4,11 +4,15 @@
 #include "core/framework/resource_accountant.h"
 
 #include "core/common/inlined_containers.h"
+#include "core/common/narrow.h"
+#include "core/common/parse_string.h"
 #include "core/common/safeint.h"
 #include "core/common/string_utils.h"
 
 #include "core/framework/config_options.h"
+#include "core/framework/murmurhash3.h"
 #include "core/graph/constants.h"
+#include "core/graph/graph.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 
 #include <fstream>
@@ -42,7 +46,8 @@ class SizeTAccountant : public IResourceAccountant {
     }
   }
 
-  ResourceCount ComputeResourceCount(const std::string& node_name) const override {
+  ResourceCount ComputeResourceCount(const Node& node) const override {
+    const auto node_name = MakeUniqueNodeName(node);
     auto hit = node_stats_.find(node_name);
     if (hit != node_stats_.end()) {
       const auto& stats = hit->second;
@@ -88,11 +93,13 @@ void NodeStatsRecorder::ReportNodeStats(const std::string& node_name, const Node
   auto result = impl_->node_stats.emplace(node_name, stats);
   if (!result.second) {
     // Node already exists, update the stats
+    // This may happen when the user collects stats from multiple Runs()
     result.first->second.UpdateIfGreater(stats);
   }
 }
 
 void NodeStatsRecorder::DumpStats(std::ostream& os) const {
+  os << "#name,input_sizes,initializers_sizes,total_dynamic_sizes,total_temp_allocations\n";
   for (const auto& [name, stats] : impl_->node_stats) {
     os << name << "," << stats.input_sizes << "," << stats.initializers_sizes << ","
        << stats.total_dynamic_sizes << ","
@@ -128,6 +135,8 @@ static Status LoadNodeAllocationStats(
   std::string line;
   // Read and load a CSV file line by line
   while (std::getline(file, line)) {
+    if (line.empty() || line[0] == '#') continue;
+
     auto splits = utils::SplitString(line, ",", true);
     ORT_ENFORCE(splits.size() == 5, "Invalid line in the file ", file_path, ": ", line);
     if (splits[0].empty()) {
@@ -138,8 +147,8 @@ static Status LoadNodeAllocationStats(
     size_t initializers_sizes = SafeInt<size_t>(std::stoull(std::string{splits[2]}));
     size_t total_dynamic_sizes = SafeInt<size_t>(std::stoull(std::string{splits[3]}));
     size_t total_temp_allocations = SafeInt<size_t>(std::stoull(std::string{splits[4]}));
-    node_stats.insert_or_assign(node_name, {input_sizes, initializers_sizes,
-                                            total_dynamic_sizes, total_temp_allocations});
+    node_stats.insert_or_assign(std::move(node_name), {input_sizes, initializers_sizes,
+                                                       total_dynamic_sizes, total_temp_allocations});
   }
 
   result.swap(node_stats);
@@ -168,8 +177,9 @@ Status NodeStatsRecorder::CreateAccountants(
       auto& map = result.emplace();
 
       if (!splits[0].empty()) {
-        SafeInt<size_t> cuda_memory_limit = std::stoul(std::string{splits[0]});
-        cuda_memory_limit *= 1024;  // to bytes
+        size_t cuda_memory_limit = 0;
+        ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(std::string{splits[0]}, cuda_memory_limit));
+        cuda_memory_limit = SafeInt<size_t>(cuda_memory_limit) * 1024;  // to bytes
         map.insert_or_assign(kCudaExecutionProvider,
                              std::make_unique<SizeTAccountant>(cuda_memory_limit,
                                                                std::move(loaded_stats)));
@@ -179,10 +189,35 @@ Status NodeStatsRecorder::CreateAccountants(
       }
 
       acc_map = std::move(result);
+    } else {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid format for: ",
+                             kOrtSessionOptionsResourceCudaPartitioningSettings,
+                             " : expecting comma separated fields");
     }
   }
 
   return Status::OK();
+}
+
+std::string IResourceAccountant::MakeUniqueNodeName(const Node& node) {
+  std::string result;
+
+  uint32_t hash[4] = {0, 0, 0, 0};
+  auto hash_str = [&hash](const std::string& str) {
+    MurmurHash3::x86_128(str.data(), narrow<int32_t>(str.size()), hash[0], &hash);
+  };
+
+  const auto& node_name = (node.Name().empty()) ? node.OpType() : node.Name();
+
+  for (const auto& def : node.InputDefs()) {
+    hash_str(def->Name());
+  }
+
+  HashValue node_hash = hash[0] | (uint64_t(hash[1]) << 32);
+  result.reserve(node_name.size() + 1 + 16);
+  result.append(node_name).append("_").append(std::to_string(node_hash));
+
+  return result;
 }
 
 }  // namespace onnxruntime

@@ -883,13 +883,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return ConstGraphNodes(nodes_, std::move(filter_func));
   }
 
-  /** Compute node memory requirements, which is mostly initializers
-      and large attributes that are copied on device (special cases for some nodes)
-
-      Returns no value if the node was not found.
-  */
-  size_t ComputeNodeMemoryUsage(NodeIndex) const;
-
   /** Gets the maximum NodeIndex value used in the Graph.
   WARNING: This actually returns the max index value used + 1.
   */

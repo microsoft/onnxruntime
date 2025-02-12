@@ -545,7 +545,7 @@ onnxruntime::Status ExecuteKernel(StreamExecutionContext& ctx,
         }
 
         // Record node allocation stats
-        const auto& name = (node.Name().empty()) ? node.OpType() : node.Name();
+        const std::string name = IResourceAccountant::MakeUniqueNodeName(node);
         node_stats_recorder->ReportNodeStats(name, node_stats);
       }
 #endif
