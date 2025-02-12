@@ -123,6 +123,10 @@ def start_emulator(
         raise RuntimeError(
             f"An emulator with avd_name{avd_name} is already running. Please close it before starting a new one."
         )
+    run(
+        sdk_tool_paths.emulator,
+        "-list-avds",
+    )
     with contextlib.ExitStack() as emulator_stack, contextlib.ExitStack() as waiter_stack:
         emulator_args = [
             sdk_tool_paths.emulator,
