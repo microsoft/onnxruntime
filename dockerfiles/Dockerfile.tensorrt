@@ -12,7 +12,7 @@ ARG ONNXRUNTIME_REPO=https://github.com/Microsoft/onnxruntime
 ARG ONNXRUNTIME_BRANCH=main
 # Adjust as needed 
 # Check your CUDA arch: https://developer.nvidia.com/cuda-gpus
-ARG CMAKE_CUDA_ARCHITECTURES=75-real;80-real;90-virtual
+ARG CMAKE_CUDA_ARCHITECTURES=75-real;80-real;86-virtual;89-virtual;90-virtual
 
 RUN apt-get update &&\
     apt-get install -y sudo git bash unattended-upgrades
