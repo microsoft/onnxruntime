@@ -735,21 +735,20 @@ with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 
 
-if enable_training:
+def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version):
+    sys.path.append(path.join(path.dirname(__file__), "onnxruntime", "python"))
+    from onnxruntime_collect_build_info import find_cudart_versions
 
-    def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version):
-        sys.path.append(path.join(path.dirname(__file__), "onnxruntime", "python"))
-        from onnxruntime_collect_build_info import find_cudart_versions
+    version_path = path.join("onnxruntime", "capi", "build_and_package_info.py")
+    with open(version_path, "w") as f:
+        f.write(f"package_name = '{package_name}'\n")
+        f.write(f"__version__ = '{version_number}'\n")
 
-        version_path = path.join("onnxruntime", "capi", "build_and_package_info.py")
-        with open(version_path, "w") as f:
-            f.write(f"package_name = '{package_name}'\n")
-            f.write(f"__version__ = '{version_number}'\n")
+        if cuda_version:
+            f.write(f"cuda_version = '{cuda_version}'\n")
 
-            if cuda_version:
-                f.write(f"cuda_version = '{cuda_version}'\n")
-
-                # cudart_versions are integers
+            # cudart_versions are integers
+            if platform.system().lower() == "linux":
                 cudart_versions = find_cudart_versions(build_env=True)
                 if cudart_versions and len(cudart_versions) == 1:
                     f.write(f"cudart_version = {cudart_versions[0]}\n")
@@ -762,12 +761,12 @@ if enable_training:
                             else "found multiple cudart libraries"
                         ),
                     )
-            elif rocm_version:
-                f.write(f"rocm_version = '{rocm_version}'\n")
+        elif rocm_version:
+            f.write(f"rocm_version = '{rocm_version}'\n")
 
-    save_build_and_package_info(package_name, version_number, cuda_version, rocm_version)
 
-# Setup
+save_build_and_package_info(package_name, version_number, cuda_version, rocm_version)
+
 setup(
     name=package_name,
     version=version_number,
