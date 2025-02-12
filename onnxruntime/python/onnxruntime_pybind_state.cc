@@ -857,11 +857,11 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
           0,
           0,
           nullptr,
-          1,
+          0,
           "./compiled_model.mxr",
-          1,
+          0,
           "./compiled_model.mxr",
-          1,
+          false,
           SIZE_MAX,
           0};
       for (auto option : it->second) {
