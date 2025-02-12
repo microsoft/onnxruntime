@@ -6,9 +6,11 @@
 
 #include "core/common/logging/logging.h"
 #include "core/common/span_utils.h"
+#include "core/framework/float16.h"
 #include "core/framework/utils.h"
 #include "core/graph/graph.h"
 #include "core/providers/xnnpack/xnnpack_execution_provider.h"
+#include "core/providers/xnnpack/xnnpack_init.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -88,6 +90,91 @@ TEST(XnnpackEP, TestNhwcConvReluClipFusion) {
   auto ep = DefaultXnnpackExecutionProvider();
   RunAndVerifyOutputsWithEP(ort_model_path, "TestNhwcConvReluClipFusion", std::move(ep), feeds, params);
 }
+
+#ifdef XNNPACK_FP16_SUPPORTED
+// This test can be removed if Mlas implemented FP16 Clip fusion.
+// Now TestNhwcConvReluClipFusion_FP16 skips output verification
+TEST(XnnpackEP, TestNhwcConvReluFusion_FP16) {
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_conv_relu_model_fp16.onnx";
+
+  RandomValueGenerator generator;
+  TensorShape input_shape_x{1, 16, 16, 192};
+  std::vector<MLFloat16> input_x = generator.Uniform<MLFloat16>(input_shape_x.GetDims(), -128, 128);
+
+  OrtValue ml_value_x;
+  CreateMLValue<MLFloat16>(input_shape_x.GetDims(), input_x.data(), OrtMemoryInfo(), &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("model_input", ml_value_x));
+
+  std::function<void(const Graph&)> verify = [](const Graph& graph) -> void {
+    ASSERT_EQ(graph.NumberOfNodes(), 2) << "Transpose nodes should have been removed, and "
+                                           "Conv+Relu should have been fused, leaving 2 nodes.";
+    auto node_iter = graph.Nodes().begin();
+    auto check_node = [](const Node& node, const std::string& fusion_type) {
+      const auto& attr = node.GetAttributes();
+      auto activation = attr.find("activation");
+      ASSERT_NE(activation, attr.cend()) << "Fused node should have activation attribute";
+      ASSERT_EQ(activation->second.s(), fusion_type);
+    };
+
+    ++node_iter;
+    check_node(*node_iter, "Relu");
+  };
+
+  EPVerificationParams params;
+  params.ep_node_assignment = ExpectedEPNodeAssignment::Some;
+  params.fp32_abs_err = 0.5f;
+  params.graph_verifier = &verify;
+
+  auto ep = DefaultXnnpackExecutionProvider();
+  RunAndVerifyOutputsWithEP(ort_model_path, "TestNhwcConvReluFusion_FP16", std::move(ep), feeds, params);
+};
+
+// Now, this Test is mainly check whether Xnnpack Clip fusion works.
+TEST(XnnpackEP, TestNhwcConvReluClipFusion_FP16) {
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_conv_clip_relu_fp16.onnx";
+
+  RandomValueGenerator generator;
+  TensorShape input_shape_x{1, 16, 16, 192};
+  std::vector<MLFloat16> input_x = generator.Uniform<MLFloat16>(input_shape_x.GetDims(), -128, 128);
+
+  OrtValue ml_value_x;
+  CreateMLValue<MLFloat16>(input_shape_x.GetDims(), input_x.data(), OrtMemoryInfo(), &ml_value_x);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("model_input", ml_value_x));
+
+  std::function<void(const Graph&)> verify = [](const Graph& graph) -> void {
+    ASSERT_EQ(graph.NumberOfNodes(), 3) << "Transpose nodes should have been removed, and "
+                                           "Conv+Relu and Conv+Clip should have been fused, leaving 3 nodes.";
+    auto node_iter = graph.Nodes().begin();
+    auto check_node = [](const Node& node, const std::string& fusion_type) {
+      const auto& attr = node.GetAttributes();
+      auto activation = attr.find("activation");
+      ASSERT_NE(activation, attr.cend()) << "Fused node should have activation attribute";
+      ASSERT_EQ(activation->second.s(), fusion_type);
+    };
+
+    // check 2nd and 3rd nodes.
+    // the first node is the Conv that does not get fused (created after first call to GetCapability)
+    // the 2nd and 3rd nodes are the fused nodes (created after second call to GetCapability)
+    ++node_iter;
+    check_node(*node_iter, "Clip");
+    ++node_iter;
+    check_node(*node_iter, "Relu");
+  };
+
+  EPVerificationParams params;
+  params.ep_node_assignment = ExpectedEPNodeAssignment::Some;
+  params.fp32_abs_err = 0.5f;
+  params.graph_verifier = &verify;
+
+  auto ep = DefaultXnnpackExecutionProvider();
+  // So far, CPU EP doesn't support Fp16 Conv fusion, so verify_outputs is skipped.
+  RunAndVerifyOutputsWithEP(ort_model_path, "TestNhwcConvReluClipFusion_FP16", std::move(ep), feeds, params, {}, false);
+}
+#endif
 
 // test we can share the cpu ep allocator with the xnnpack EP
 TEST(XnnpackEP, TestAllocatorSharing) {
