@@ -568,7 +568,7 @@ Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const
       // We have 32 values in max_values, we need to find the max of those.
       reduceMaxValues(local_idx, 32, sg_id, sg_size);
       reduceMaxValues(local_idx, 8, sg_id, sg_size);
-      max_value = max4(max_values[0], max_values[1], max_values[2], max_values[3]);
+      max_value = max(max_values[0], max_values[1]);
     }
     else if (sg_size == 8)
     {
