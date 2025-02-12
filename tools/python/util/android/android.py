@@ -127,11 +127,14 @@ def start_emulator(
         sdk_tool_paths.emulator,
         "-list-avds",
     )
+    home_dir = Path.home()
     with contextlib.ExitStack() as emulator_stack, contextlib.ExitStack() as waiter_stack:
         emulator_args = [
             sdk_tool_paths.emulator,
             "-avd",
             avd_name,
+            "-datadir",
+            str(home_dir/".android"/"avd"/f"{avd_name}.avd"),
             "-memory",
             "4096",
             "-timezone",
