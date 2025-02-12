@@ -15,7 +15,7 @@ parameters:
 
 jobs:
 - job: ReactNative_CI_Android
-  pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+  pool: 'onnxruntime-Ubuntu2404-AMD-CPU'
   variables:
     runCodesignValidationInjection: false
   timeoutInMinutes: 90
