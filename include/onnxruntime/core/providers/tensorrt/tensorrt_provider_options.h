@@ -85,7 +85,7 @@ struct OrtTensorRTProviderOptionsV2 {
                                                     // can be updated using: UpdateTensorRTProviderOptionsWithValue
   size_t trt_onnx_bytestream_size{0};               // size of the byte stream provided as "trt_onnx_bytestream"
                                                     // can be updated using: UpdateTensorRTProviderOptionsWithValue
-
-  const char* trt_engine_cache_prefix{nullptr};  // specify engine cache prefix
-  int trt_engine_hw_compatible{0};               // Enable hardware compatibility. Default 0 = false, nonzero = true
+  const char* trt_engine_cache_prefix{nullptr};     // specify engine cache prefix
+  int trt_engine_hw_compatible{0};                  // Enable hardware compatibility. Default 0 = false, nonzero = true
+  const char* trt_op_types_to_exclude{nullptr};     // Exclude specific ops from running on TRT.
 };
