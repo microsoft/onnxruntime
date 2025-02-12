@@ -112,6 +112,6 @@ The ONNX Runtime models can run up to 10X faster than the PyTorch variants. The 
 
 ## Get started today
 
-To experience optimized [Phi-3](https://aka.ms/Phi-3Build2024) for yourself, you can now easily run these models using ONNX Runtime generate() [API instructions](https://aka.ms/run-phi3-med-onnx). To learn more, join us at ONNX Runtime, DML, and Phi-3 sessions at [Build](https://build.microsoft.com/en-US/sessions?search=ONNX&sortBy=relevance)!
+To experience optimized [Phi-3](https://aka.ms/Phi-3Build2024) for yourself, you can now easily run these models using ONNX Runtime generate() [API instructions](https://aka.ms/run-phi3-med-onnx). To learn more, join us at ONNX Runtime, DML, and Phi-3 sessions at [Build](https://build.microsoft.com)!
 
 
