@@ -46,17 +46,14 @@ class LazyReleaseCacheManager : public IBufferCacheManager {
   }
 
   void ReleaseBuffer(WGPUBuffer buffer) override {
-    pending_buffers_.emplace_back(buffer);
+    pending_buffers_.emplace_back(wgpu::Buffer::Acquire(buffer));
   }
 
   void OnRefresh() override {
-    for (auto& buffer : pending_buffers_) {
-      wgpuBufferRelease(buffer);
-    }
     pending_buffers_.clear();
   }
 
-  std::vector<WGPUBuffer> pending_buffers_;
+  std::vector<wgpu::Buffer> pending_buffers_;
 };
 
 class SimpleCacheManager : public IBufferCacheManager {
@@ -67,7 +64,7 @@ class SimpleCacheManager : public IBufferCacheManager {
   WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size) override {
     auto it = buffers_.find(buffer_size);
     if (it != buffers_.end() && !it->second.empty()) {
-      auto buffer = it->second.back();
+      auto buffer = it->second.back().MoveToCHandle();
       it->second.pop_back();
       return buffer;
     }
@@ -80,18 +77,18 @@ class SimpleCacheManager : public IBufferCacheManager {
   }
 
   void ReleaseBuffer(WGPUBuffer buffer) override {
-    pending_buffers_.emplace_back(buffer);
+    pending_buffers_.emplace_back(wgpu::Buffer::Acquire(buffer));
   }
 
   void OnRefresh() override {
     for (auto& buffer : pending_buffers_) {
-      buffers_[static_cast<size_t>(wgpuBufferGetSize(buffer))].push_back(buffer);
+      buffers_[static_cast<size_t>(buffer.GetSize())].emplace_back(std::move(buffer));
     }
     pending_buffers_.clear();
   }
 
-  std::map<size_t, std::vector<WGPUBuffer>> buffers_;
-  std::vector<WGPUBuffer> pending_buffers_;
+  std::map<size_t, std::vector<wgpu::Buffer>> buffers_;
+  std::vector<wgpu::Buffer> pending_buffers_;
 };
 
 // TODO: maybe use different bucket size for storage and uniform buffers?
@@ -148,7 +145,7 @@ class BucketCacheManager : public IBufferCacheManager {
   WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size) override {
     auto it = buckets_.find(buffer_size);
     if (it != buckets_.end() && !it->second.empty()) {
-      auto buffer = it->second.back();
+      auto buffer = it->second.back().MoveToCHandle();
       it->second.pop_back();
       return buffer;
     }
@@ -160,20 +157,18 @@ class BucketCacheManager : public IBufferCacheManager {
   }
 
   void ReleaseBuffer(WGPUBuffer buffer) override {
-    pending_buffers_.emplace_back(buffer);
+    pending_buffers_.emplace_back(wgpu::Buffer::Acquire(buffer));
   }
 
   void OnRefresh() override {
     // TODO: consider graph capture. currently not supported
 
     for (auto& buffer : pending_buffers_) {
-      auto buffer_size = static_cast<size_t>(wgpuBufferGetSize(buffer));
+      auto buffer_size = static_cast<size_t>(buffer.GetSize());
 
       auto it = buckets_.find(buffer_size);
       if (it != buckets_.end() && it->second.size() < buckets_limit_[buffer_size]) {
-        it->second.push_back(buffer);
-      } else {
-        wgpuBufferRelease(buffer);
+        it->second.emplace_back(std::move(buffer));
       }
     }
 
@@ -186,7 +181,7 @@ class BucketCacheManager : public IBufferCacheManager {
     buckets_.reserve(buckets_limit_.size());
     for (const auto& pair : buckets_limit_) {
       buckets_keys_.push_back(pair.first);
-      buckets_.emplace(pair.first, std::vector<WGPUBuffer>());
+      buckets_.emplace(pair.first, std::vector<wgpu::Buffer>());
     }
     std::sort(buckets_keys_.begin(), buckets_keys_.end());
 
@@ -200,8 +195,8 @@ class BucketCacheManager : public IBufferCacheManager {
 #endif
   }
   std::unordered_map<size_t, size_t> buckets_limit_;
-  std::unordered_map<size_t, std::vector<WGPUBuffer>> buckets_;
-  std::vector<WGPUBuffer> pending_buffers_;
+  std::unordered_map<size_t, std::vector<wgpu::Buffer>> buckets_;
+  std::vector<wgpu::Buffer> pending_buffers_;
   std::vector<size_t> buckets_keys_;
 };
 
