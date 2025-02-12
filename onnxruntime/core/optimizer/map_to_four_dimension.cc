@@ -22,28 +22,48 @@ MapToFourDimensions::MapToFourDimensions() noexcept
 }
 
 /**
- * Replace Gemm/MatMul with Transpose and 1x1 Conv
+ * Replace Gemm/MatMul with Transpose and 1x1 Conv.
  * 
- *    
+ *                           (A)
+ *                            |
+ *                            v
+ *                        (Transpose) 
+ *    A  B or W               |
+ *    |  |                    |
+ *    v  v                    v 
+ *  (MatMul)     =>        (Conv) <--- (Unsqueeze) <--- (Transpose) <--- W
+ *                            |
+ *                            |
+ *                            v
+ *                        (Transpose)
  * 
- *                       (Transpose) 
+ *                            or
+ * 
+ *                           (A)
+ *                            |
+ *                            v
+ *                        (Transpose) 
  *                            |
  *                            |
- *  (MatMul)     =>         (Conv) --- (Unsqueeze) --- (Transpose) --- Weight
+ *                            v 
+ *                         (Conv) <--- (B) <--- (Unsqueeze) <--- (Transpose) <--- (C)
  *                            |
  *                            |
- *                       (Transpose)
+ *                            v
+ *                        (Transpose)
  */
 Status AddConv(Graph& graph, Node& matmul) {
   const auto* input_0 = matmul.InputDefs()[0];
+  const auto* input_1 = matmul.InputDefs()[1];
+  bool constant_tensor_to_matmul = graph.IsInitializedTensor(input_1->Name());
 
-  // if 2D MatMul
   if (input_0->Shape()->dim_size() == 4) {
     /**
      * One Conv is added and three Transposes + one Unsqueeze are added for the Conv.
      * 
-     * One Transpose for MatMul's input, another Transpose for MatMul's output and the last Transpose + Unsqueeze for MatMul's weight. 
-     * (Note: This weight -> Transpose -> Unsqueeze will be constant folded in another transforming run when applying ConstantFold transformer)
+     * Two Scenarios:
+     *   1. One Transpose for MatMul's input, another Transpose for MatMul's output and the last Transpose + Unsqueeze for MatMul's weight. 
+     *   (Note: This weight -> Transpose -> Unsqueeze will be constant folded in another transforming run when applying ConstantFold transformer)
      */ 
     
     std::string conv_node_name = graph.GenerateNodeName(matmul.Name() + "_conv");
@@ -65,8 +85,15 @@ Status AddConv(Graph& graph, Node& matmul) {
     std::vector<onnxruntime::NodeArg*> transpose_node_0_output_defs = {transpose_node_0_output_arg};
     std::vector<onnxruntime::NodeArg*> transpose_node_1_input_defs = {conv_node_output_arg};
     std::vector<onnxruntime::NodeArg*> transpose_node_1_output_defs = {matmul.MutableOutputDefs()[0]};
-    std::vector<onnxruntime::NodeArg*> transpose_node_2_input_defs = {matmul.MutableInputDefs()[1]};
+    std::vector<onnxruntime::NodeArg*> transpose_node_2_input_defs;
     std::vector<onnxruntime::NodeArg*> transpose_node_2_output_defs = {transpose_node_2_output_arg};
+    if (constant_tensor_to_matmul) {
+      transpose_node_2_input_defs = {matmul.MutableInputDefs()[1]};
+    } else {
+      transpose_node_2_input_defs = {};
+    }
+
+    
 
     // Create Conv
     auto& conv_node = graph.AddNode(conv_node_name, "Conv", "Mapping from MatMul",
@@ -93,14 +120,13 @@ Status AddConv(Graph& graph, Node& matmul) {
     const int input_data_cnt = 2;
     int64_t squeeze_input_data_1[input_data_cnt] = {2, 3};
     const size_t input_len = input_data_cnt * sizeof(int64_t);
-    const int64_t input_shape[] = {1};
+    const int64_t input_shape[] = {2};
     const size_t shape_len = sizeof(input_shape) / sizeof(input_shape[0]);
 
     OrtValue* unsqueeze_input_1 = nullptr;
     ort_api->CreateTensorWithDataAsOrtValue(mem_info, squeeze_input_data_1, input_len, input_shape, shape_len, ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64, &unsqueeze_input_1);
     const Tensor& unsqueeze_input_tensor_1 = unsqueeze_input_1->Get<Tensor>();
     ONNX_NAMESPACE::TensorProto unsqueeze_tensorproto_1 = utils::TensorToTensorProto(unsqueeze_input_tensor_1, unsqueeze_node_name + "_axes");
-
 
     ONNX_NAMESPACE::TypeProto t;
     t.mutable_tensor_type()->set_elem_type(unsqueeze_tensorproto_1.data_type());
