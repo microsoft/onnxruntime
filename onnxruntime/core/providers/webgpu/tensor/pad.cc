@@ -30,10 +30,10 @@ Status PadProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  var in_coord = i32(0);\n";
 
   const int rank = output.Rank();
-  std::string output_indices_str = rank == 1 ? "i32(output_indices)" : "i32(output_indices[dim])";
-  std::string lower_pads_str = rank == 1 ? "uniforms.lower_pads" : "uniforms.lower_pads[dim]";
-  std::string data_shape_str = rank == 1 ? "i32(uniforms.data_shape)" : "i32(uniforms.data_shape[dim])";
-  std::string data_stride_str = rank == 1 ? "" : (rank == 2 ? " * uniforms.data_stride" : " * uniforms.data_stride[dim]");
+  std::string output_indices_str = "i32(" + GetElementAt("output_indices", "dim", rank) + ")";
+  std::string lower_pads_str = GetElementAt("uniforms.lower_pads", "dim", rank);
+  std::string data_shape_str = "i32(" + GetElementAt("uniforms.data_shape", "dim", rank) + ")";
+  std::string data_stride_str = rank == 1 ? "" : " * " + GetElementAt("uniforms.data_stride", "dim", rank - 1);
   std::string begin_axis_statement = "in_coord = ";
   std::string end_axis_statement = "in_coord = ";
   std::string in_axis_statement = "in_coord = " + output_indices_str + " - " + lower_pads_str + ";\n";
@@ -77,7 +77,7 @@ Status PadProgram::GenerateShaderCode(ShaderHelper& shader) const {
 Status Pad::ComputeInternal(ComputeContext& context) const {
   const Tensor* input_tensor = context.Input<Tensor>(0);
   auto const& input_shape = input_tensor->Shape();
-  int32_t dimension_count = static_cast<int32_t>(input_shape.NumDimensions());
+  size_t dimension_count = input_shape.NumDimensions();
 
   const PadsVector* p_pads = &pads_;
   const PadsVector* p_slices = &slices_;
@@ -107,13 +107,13 @@ Status Pad::ComputeInternal(ComputeContext& context) const {
   }
 
   auto output_dims(input_shape.AsShapeVector());
-  ORT_ENFORCE(static_cast<size_t>(dimension_count) * 2 == p_pads->size(), "'pads' attribute has wrong number of values");
+  ORT_ENFORCE(dimension_count * 2 == p_pads->size(), "'pads' attribute has wrong number of values");
 
   // Calculate output dimensions, and handle any negative padding
   std::vector<int32_t> lower_pads(dimension_count);
-  for (auto i = 0; i < dimension_count; i++) {
+  for (size_t i = 0; i < dimension_count; i++) {
     int64_t lower_pad = (*p_pads)[i] + (*p_slices)[i];
-    int64_t upper_pad = (*p_pads)[static_cast<int64_t>(i) + dimension_count] + (*p_slices)[static_cast<int64_t>(i) + dimension_count];
+    int64_t upper_pad = (*p_pads)[i + dimension_count] + (*p_slices)[i + dimension_count];
     lower_pads[i] = static_cast<int32_t>(lower_pad);
     output_dims[i] += lower_pad + upper_pad;
   }
