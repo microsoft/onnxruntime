@@ -14,6 +14,10 @@
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/program_manager.h"
 
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+#include "core/providers/webgpu/webgpu_pix_frame_generator.h"
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
+
 namespace onnxruntime {
 class Tensor;
 
@@ -25,7 +29,6 @@ class ProgramBase;
 struct WebGpuContextConfig {
   int context_id;
   WGPUInstance instance;
-  WGPUAdapter adapter;
   WGPUDevice device;
   const void* dawn_proc_table;
   ValidationMode validation_mode;
@@ -68,11 +71,10 @@ class WebGpuContextFactory {
 // Class WebGpuContext includes all necessary resources for the context.
 class WebGpuContext final {
  public:
-  void Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type);
+  void Initialize(const WebGpuBufferCacheConfig& buffer_cache_config, int backend_type, bool enable_pix_capture);
 
   Status Wait(wgpu::Future f);
 
-  const wgpu::Adapter& Adapter() const { return adapter_; }
   const wgpu::Device& Device() const { return device_; }
 
   const wgpu::AdapterInfo& AdapterInfo() const { return adapter_info_; }
@@ -121,7 +123,22 @@ class WebGpuContext final {
   void CollectProfilingData(profiling::Events& events);
   void EndProfiling(TimePoint, profiling::Events& events, profiling::Events& cached_events);
 
+  //
+  // Push error scope.
+  //
+  // This is useful only when "skip_validation" is not set.
+  //
+  void PushErrorScope();
+
+  //
+  // Pop error scope.
+  //
+  // This is useful only when "skip_validation" is not set.
+  //
+  Status PopErrorScope();
+
   Status Run(ComputeContext& context, const ProgramBase& program);
+  void OnRunEnd();
 
  private:
   enum class TimestampQueryType {
@@ -130,8 +147,8 @@ class WebGpuContext final {
     AtPasses
   };
 
-  WebGpuContext(WGPUInstance instance, WGPUAdapter adapter, WGPUDevice device, webgpu::ValidationMode validation_mode)
-      : instance_{instance}, adapter_{adapter}, device_{device}, validation_mode_{validation_mode}, query_type_{TimestampQueryType::None} {}
+  WebGpuContext(WGPUInstance instance, WGPUDevice device, webgpu::ValidationMode validation_mode)
+      : instance_{instance}, device_{device}, validation_mode_{validation_mode}, query_type_{TimestampQueryType::None} {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(WebGpuContext);
 
   std::vector<const char*> GetEnabledAdapterToggles() const;
@@ -179,7 +196,6 @@ class WebGpuContext final {
   LibraryHandles modules_;
 
   wgpu::Instance instance_;
-  wgpu::Adapter adapter_;
   wgpu::Device device_;
 
   webgpu::ValidationMode validation_mode_;
@@ -208,6 +224,10 @@ class WebGpuContext final {
 
   uint64_t gpu_timestamp_offset_ = 0;
   bool is_profiling_ = false;
+
+#if defined(ENABLE_PIX_FOR_WEBGPU_EP)
+  std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;
+#endif  // ENABLE_PIX_FOR_WEBGPU_EP
 };
 
 }  // namespace webgpu

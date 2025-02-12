@@ -101,6 +101,7 @@ void QnnContextBinaryMultiPartitionTestBody(bool single_ep_node = true) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
 
@@ -251,6 +252,113 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCpuNodeWithoutExternalWeights) {
   EpCtxCpuNodeWithExternalIniFileTestBody(false);
 }
 
+// Set ep.context_file_path to folder path which is not a valid option, check the error message
+TEST_F(QnnHTPBackendTests, QnnContextBinaryGenerationFolderPathNotExpected) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
+
+  auto& logging_manager = DefaultLoggingManager();
+  logging_manager.SetDefaultLoggerSeverity(logging::Severity::kERROR);
+
+  onnxruntime::Model model("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           logging_manager.DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+  bool single_ep_node = true;
+  BuildGraphWithQAndNonQ(single_ep_node)(helper);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+  // Serialize the model to a string.
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  const auto model_data_span = AsByteSpan(model_data.data(), model_data.size());
+
+  const std::string ep_context_onnx_file = "./ep_context_folder_not_expected/";
+  std::remove(ep_context_onnx_file.c_str());
+  Ort::SessionOptions so;
+  so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+  so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, ep_context_onnx_file.c_str());
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  try {
+    Ort::Session session(*ort_env, model_data_span.data(), model_data_span.size(), so);
+    FAIL();  // Should not get here!
+  } catch (const Ort::Exception& excpt) {
+    ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+    ASSERT_THAT(excpt.what(), testing::HasSubstr("context_file_path should not point to a folder."));
+  }
+}
+
+// Create session 1 to generate context binary file
+// Create session 2 to do same thing, make sure session 2 failed because file exist already
+// Make sure no new file over write from session 2
+TEST_F(QnnHTPBackendTests, QnnContextBinaryGenerationNoOverWrite) {
+  ProviderOptions provider_options;
+#if defined(_WIN32)
+  provider_options["backend_path"] = "QnnHtp.dll";
+#else
+  provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
+
+  auto& logging_manager = DefaultLoggingManager();
+  logging_manager.SetDefaultLoggerSeverity(logging::Severity::kERROR);
+
+  onnxruntime::Model model("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           logging_manager.DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+  bool single_ep_node = true;
+  BuildGraphWithQAndNonQ(single_ep_node)(helper);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+  // Serialize the model to a string.
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  const auto model_data_span = AsByteSpan(model_data.data(), model_data.size());
+
+  const std::string ep_context_onnx_file = "./ep_context_no_over_write.onnx";
+  const std::string ep_context_binary_file = "./ep_context_no_over_write.onnx_QNNExecutionProvider_QNN_10880527342279992768_1_0.bin";
+
+  std::remove(ep_context_onnx_file.c_str());
+  Ort::SessionOptions so;
+  so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+  so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, ep_context_onnx_file.c_str());
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  Ort::Session session1(*ort_env, model_data_span.data(), model_data_span.size(), so);
+
+  auto modify_time_1 = std::filesystem::last_write_time(ep_context_binary_file);
+
+  try {
+    Ort::Session session2(*ort_env, model_data_span.data(), model_data_span.size(), so);
+    FAIL();  // Should not get here!
+  } catch (const Ort::Exception& excpt) {
+    ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_FAIL);
+    ASSERT_THAT(excpt.what(), testing::HasSubstr("exist already."));
+    auto modify_time_2 = std::filesystem::last_write_time(ep_context_binary_file);
+    ASSERT_EQ(modify_time_1, modify_time_2);
+  }
+
+  ASSERT_EQ(std::remove(ep_context_onnx_file.c_str()), 0);
+  ASSERT_EQ(std::remove(ep_context_binary_file.c_str()), 0);
+}
+
 // Create a model with Case + Add (quantized)
 // cast_input -> Cast -> Q -> DQ \
 //                                Add -> Q -> DQ -> output
@@ -314,6 +422,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryGeneration2InputTypes) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
 
@@ -364,6 +473,7 @@ TEST_F(QnnHTPBackendTests, QnnContextGeneration2InputsOrderIssue) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   // Add kMSDomain to cover contrib op like Gelu
   const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
@@ -400,6 +510,7 @@ TEST_F(QnnHTPBackendTests, QnnContextGenerationNodeNamePrefix) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
   std::string node_name_prefix = "node_name_prefix_test";
 
   // Add kMSDomain to cover contrib op like Gelu
@@ -442,6 +553,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCacheEmbedModeTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
   const std::string context_binary_file = "./qnn_context_binary_test.onnx";
   std::remove(context_binary_file.c_str());
 
@@ -490,6 +602,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCacheNonEmbedModeTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
   const std::string context_binary_file = "./testdata/qnn_context_cache_non_embed.onnx";
   std::string qnn_ctx_bin = "./testdata/qnn_context_cache_non_embed.onnx_QNNExecutionProvider_QNN_8283143575221199085_1_0.bin";
 
@@ -571,6 +684,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_InvalidGraph) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
   const std::string context_binary_file = "./qnn_context_cache_non_embed.onnx";
   std::filesystem::path context_bin = "qnn_context_cache_non_embed.onnx_QNNExecutionProvider_QNN_8283143575221199085_1_0.bin";
   std::remove(context_binary_file.c_str());
@@ -668,6 +782,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryRelativePathTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options)));
   ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
@@ -698,6 +813,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryAbsolutePathTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options)));
   ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
@@ -723,6 +839,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryFileNotExistTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options)));
   ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
@@ -748,6 +865,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryFileEmptyStringTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(QnnExecutionProviderWithOptions(provider_options)));
   ASSERT_STATUS_OK(session_object.Load(model_data.data(), static_cast<int>(model_data.size())));
@@ -765,6 +883,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinary2InputsTest) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
   const std::string context_binary_file = "./qnn_context_binary_2inputs_test.onnx";
   std::remove(context_binary_file.c_str());
 
@@ -816,6 +935,7 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCache_SingleNodeNameNotMatchGraphName
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
   const std::string context_binary_file = "./qnn_context_cache_non_embed.onnx";
   std::filesystem::path context_bin = "qnn_context_cache_non_embed.onnx_QNNExecutionProvider_QNN_8283143575221199085_1_0.bin";
   std::remove(context_binary_file.c_str());
@@ -893,6 +1013,7 @@ TEST_F(QnnHTPBackendTests, QnnMultiContextEmbeded) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   Ort::SessionOptions so;
   so.AppendExecutionProvider("QNN", provider_options);
@@ -908,6 +1029,7 @@ TEST_F(QnnHTPBackendTests, QnnMultiContextExternal) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   Ort::SessionOptions so;
   so.AppendExecutionProvider("QNN", provider_options);
@@ -1037,6 +1159,7 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions1) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   // Create QDQ models
   std::vector<std::string> onnx_model_paths{"./weight_share1.onnx", "./weight_share2.onnx"};
@@ -1134,6 +1257,7 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions2) {
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   // Create QDQ models
   std::vector<std::string> onnx_model_paths{"./weight_share21.onnx", "./weight_share22.onnx"};

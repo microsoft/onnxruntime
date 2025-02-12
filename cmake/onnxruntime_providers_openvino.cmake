@@ -13,8 +13,8 @@
 
   # Header paths
   find_package(OpenVINO REQUIRED COMPONENTS Runtime ONNX)
-  if(OpenVINO_VERSION VERSION_LESS 2024.4)
-    message(FATAL_ERROR "OpenVINO 2024.4 and newer are supported. Please, use latest OpenVINO release")
+  if(OpenVINO_VERSION VERSION_LESS 2024.5)
+    message(FATAL_ERROR "OpenVINO 2024.5 and newer are supported. Please, use latest OpenVINO release")
   endif()
 
   if(OpenVINO_VERSION VERSION_GREATER_EQUAL 2024.4)
@@ -30,7 +30,7 @@
   endif()
 
   list(APPEND OPENVINO_LIB_LIST openvino::frontend::onnx openvino::runtime ${PYTHON_LIBRARIES})
-  if ((DEFINED ENV{OPENCL_LIBS}) AND (DEFINED ENV{OPENCL_INCS}))
+  if ((DEFINED ENV{OPENCL_LIBS}) AND (DEFINED ENV{OPENCL_INCS}) AND onnxruntime_USE_OPENVINO_GPU)
     add_definitions(-DIO_BUFFER_ENABLED=1)
     list(APPEND OPENVINO_LIB_LIST $ENV{OPENCL_LIBS})
   endif()
@@ -53,7 +53,7 @@
   target_compile_definitions(onnxruntime_providers_openvino PRIVATE FILE_NAME=\"onnxruntime_providers_openvino.dll\")
 
   if(MSVC)
-    target_compile_options(onnxruntime_providers_openvino PUBLIC /wd4099 /wd4275 /wd4100 /wd4005 /wd4244 /wd4267)
+    target_compile_options(onnxruntime_providers_openvino PRIVATE /wd4099 /wd4275 /wd4100 /wd4005)
   endif()
 
   # Needed for the provider interface, as it includes training headers when training is enabled
