@@ -46,7 +46,7 @@ def get_sdk_tool_paths(sdk_root: str):
 
 def create_virtual_device(sdk_tool_paths: SdkToolPaths, system_image_package_name: str, avd_name: str):
     run(sdk_tool_paths.sdkmanager, "--install", system_image_package_name, input=b"y")
-
+    home_dir = Path.home()
     run(
         sdk_tool_paths.avdmanager,
         "create",
@@ -56,6 +56,8 @@ def create_virtual_device(sdk_tool_paths: SdkToolPaths, system_image_package_nam
         "--package",
         system_image_package_name,
         "--force",
+        "-p",
+        str(home_dir/".android"/"avd"),
         input=b"no",
     )
 
