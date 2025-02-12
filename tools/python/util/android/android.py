@@ -57,7 +57,7 @@ def create_virtual_device(sdk_tool_paths: SdkToolPaths, system_image_package_nam
         system_image_package_name,
         "--force",
         "-p",
-        str(home_dir/".android"/"avd"),
+        str(home_dir/".android"/"avd"/f"{avd_name}.avd"),
         input=b"no",
     )
 
