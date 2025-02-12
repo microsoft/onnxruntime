@@ -34,8 +34,6 @@
 		<key>NSAllowsLocalNetworking</key>
 				<true/>
 			</dict>
-		</dict>
-	</dict>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string></string>
 	<key>UILaunchStoryboardName</key>
