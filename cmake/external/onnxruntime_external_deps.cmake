@@ -510,7 +510,7 @@ else()
   message("Setting pybind11_dep")
   set(pybind11_dep pybind11::pybind11)
 endif()
-  
+
 endif()
 onnxruntime_fetchcontent_declare(
   onnx
@@ -559,7 +559,7 @@ if (onnxruntime_USE_XNNPACK)
      find_library(xnnpack_LIBRARY NAMES XNNPACK)
      find_library(microkernels_prod_LIBRARY NAMES microkernels-prod)
      find_package(unofficial-pthreadpool CONFIG REQUIRED)
-     
+
      target_include_directories(xnnpack INTERFACE "${XNNPACK_HDR}")
      set(XNNPACK_INCLUDE_DIR ${XNNPACK_DIR}/include)
      set(onnxruntime_EXTERNAL_LIBRARIES_XNNPACK ${xnnpack_LIBRARY} ${microkernels_prod_LIBRARY} unofficial::pthreadpool unofficial::pthreadpool_interface)
@@ -600,6 +600,7 @@ endif()
 
 if(onnxruntime_ENABLE_DLPACK)
   message(STATUS "dlpack is enabled.")
+
   onnxruntime_fetchcontent_declare(
     dlpack
     URL ${DEP_URL_dlpack}
@@ -607,9 +608,7 @@ if(onnxruntime_ENABLE_DLPACK)
     EXCLUDE_FROM_ALL
     FIND_PACKAGE_ARGS NAMES dlpack
   )
-  # We can't use onnxruntime_fetchcontent_makeavailable since some part of the the dlpack code is Linux only.
-  # For example, dlpackcpp.h uses posix_memalign.
-  FetchContent_Populate(dlpack)
+  onnxruntime_fetchcontent_makeavailable(dlpack)
 endif()
 
 if(onnxruntime_ENABLE_TRAINING OR (onnxruntime_ENABLE_TRAINING_APIS AND onnxruntime_BUILD_UNIT_TESTS))
@@ -644,10 +643,12 @@ if (onnxruntime_USE_WEBGPU)
       dawn
       URL ${DEP_URL_dawn}
       URL_HASH SHA1=${DEP_SHA1_dawn}
-      # All previous patches are merged into the upstream dawn project. We don't need to apply any patches right now.
-      # if we need to apply patches in the future, we can uncomment the following line.
-
-      # PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
+      # # All previous patches are merged into the upstream dawn project. We don't need to apply any patches right now.
+      # # if we need to apply patches in the future, we can uncomment the following line.
+      #
+      # The dawn.patch contains the following changes:
+      # - https://dawn-review.googlesource.com/c/dawn/+/225514
+      PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
       EXCLUDE_FROM_ALL
     )
   endif()
@@ -658,20 +659,6 @@ if (onnxruntime_USE_WEBGPU)
 
   if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(DAWN_EMSCRIPTEN_TOOLCHAIN "${REPO_ROOT}/cmake/external/emsdk/upstream/emscripten" CACHE STRING "" FORCE)
-
-    # Add the missing files from the emsdk installation
-    #
-    # For a "standard" emscripten build, the folder "${DAWN_EMSCRIPTEN_TOOLCHAIN}/tools/maint/" is not used. This is the
-    # reason why EMSDK installation does not include it.
-    # However, currently the WebGPU support in Emscripten is still being developed and the Dawn project is maintaining
-    # a fork of the Emscripten toolchain. As an extra build step, Dawn needs to generate some files using the file
-    # "${DAWN_EMSCRIPTEN_TOOLCHAIN}/tools/maint/gen_struct_info.py" from emscripten, which is missing in the emscripten
-    # installed by emsdk.
-    #
-    # We keep a copy of the missing file(s) in ${PROJECT_SOURCE_DIR}/patches/emscripten/, and now we extract them to the
-    # emscripten toolchain folder.
-    execute_process(COMMAND ${CMAKE_COMMAND} -E tar x "${PROJECT_SOURCE_DIR}/patches/emscripten/patch_3.1.74.tgz"
-                    WORKING_DIRECTORY ${DAWN_EMSCRIPTEN_TOOLCHAIN})
   else()
     if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
       set(DAWN_BUILD_MONOLITHIC_LIBRARY ON CACHE BOOL "" FORCE)
@@ -684,6 +671,24 @@ if (onnxruntime_USE_WEBGPU)
       # use dawn::dawn_native and dawn::dawn_proc instead of the monolithic dawn::webgpu_dawn to minimize binary size
       set(DAWN_BUILD_MONOLITHIC_LIBRARY OFF CACHE BOOL "" FORCE)
       set(DAWN_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+    endif()
+
+    if (onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP)
+      set(DAWN_ENABLE_DESKTOP_GL ON CACHE BOOL "" FORCE)
+      set(DAWN_ENABLE_OPENGLES ON CACHE BOOL "" FORCE)
+      set(DAWN_SUPPORTS_GLFW_FOR_WINDOWING ON CACHE BOOL "" FORCE)
+      set(DAWN_USE_GLFW ON CACHE BOOL "" FORCE)
+      set(DAWN_USE_WINDOWS_UI ON CACHE BOOL "" FORCE)
+      set(TINT_BUILD_GLSL_WRITER ON CACHE BOOL "" FORCE)
+      set(TINT_BUILD_GLSL_VALIDATOR ON CACHE BOOL "" FORCE)
+    else()
+      set(DAWN_ENABLE_DESKTOP_GL OFF CACHE BOOL "" FORCE)
+      set(DAWN_ENABLE_OPENGLES OFF CACHE BOOL "" FORCE)
+      set(DAWN_SUPPORTS_GLFW_FOR_WINDOWING OFF CACHE BOOL "" FORCE)
+      set(DAWN_USE_GLFW OFF CACHE BOOL "" FORCE)
+      set(DAWN_USE_WINDOWS_UI OFF CACHE BOOL "" FORCE)
+      set(TINT_BUILD_GLSL_WRITER OFF CACHE BOOL "" FORCE)
+      set(TINT_BUILD_GLSL_VALIDATOR OFF CACHE BOOL "" FORCE)
     endif()
 
     # disable things we don't use
@@ -741,6 +746,10 @@ if (onnxruntime_USE_WEBGPU)
       endif()
       list(APPEND onnxruntime_EXTERNAL_LIBRARIES dawn::dawn_proc)
     endif()
+  endif()
+
+  if (onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES glfw webgpu_glfw)
   endif()
 endif()
 
