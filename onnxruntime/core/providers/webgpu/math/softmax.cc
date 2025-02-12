@@ -82,9 +82,9 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddOutput("result", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   int components = input.NumComponents();
 
-  const std::string thread_max_decl = is_fp32_ ?
-                                      "var thread_max = x_value_t(-3.402823e+38f);\n":
-                                      "var thread_max = x_value_t(-65504.0h);\n";
+  const std::string thread_max_decl = is_fp32_
+                                          ? "var thread_max = x_value_t(-3.402823e+38f);\n"
+                                          : "var thread_max = x_value_t(-65504.0h);\n";
 
   // Define shared memory for row max and row sum
   shader.AdditionalImplementation()
