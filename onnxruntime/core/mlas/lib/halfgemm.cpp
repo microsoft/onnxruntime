@@ -430,7 +430,7 @@ HGemmOperation(
             }
             // When M is small, B is visited once. The overhead of Pack(B) exceeds the benefits
             // from A x Pack(B). Therefore directly calculate A x B.
-            // Iterate full K.
+            // Iterate full K. max 8 accumulators.
             constexpr size_t StrideN = 64;
             for (size_t n = 0, countN; n < RangeCountN; n += countN) {
                 countN = std::min(StrideN, RangeCountN - n);

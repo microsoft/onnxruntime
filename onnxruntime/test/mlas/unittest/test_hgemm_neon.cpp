@@ -32,7 +32,7 @@ class MlasNeonHGemmPackBTest : public MlasTestBase {
   MatrixGuardBuffer<MLAS_FP16> input_, ref_, packed_;
 
   template <size_t N, size_t K>
-  MLAS_FORCEINLINE void PackB(const MLAS_FP16* src, MLAS_FP16* dst) {
+  MLAS_FORCEINLINE void PackB_TransposedB(const MLAS_FP16* src, MLAS_FP16* dst) {
     size_t i = 0;
     for (; i + 16 <= N; i += 16) {
       for (size_t j = 0; j < K; ++j) {
@@ -63,15 +63,64 @@ class MlasNeonHGemmPackBTest : public MlasTestBase {
   }
 
   template <size_t N, size_t K>
-  MLAS_FORCEINLINE void Check(const MLAS_FP16* packed, const MLAS_FP16* ref) {
-    size_t n = ((N + 7) & ~7) * K;
-    for (size_t i = 0; i < n; ++i) {
-      ASSERT_EQ(packed[i].val, ref[i].val) << " seed " << seed_ << " i " << i;
+  MLAS_FORCEINLINE void PackB_B(const MLAS_FP16* src, MLAS_FP16* dst) {
+    size_t i = 0;
+    for (; i + 16 <= N; i += 16) {
+      for (size_t j = 0; j < K; ++j) {
+        for (size_t k = 0; k < 16; ++k) {
+          *dst = src[(i + k) + j * N];
+          ++dst;
+        }
+      }
+    }
+    if (i + 8 <= N) {
+      for (size_t j = 0; j < K; ++j) {
+        for (size_t k = 0; k < 8; ++k) {
+          *dst = src[(i + k) + j * N];
+          ++dst;
+        }
+      }
+      i += 8;
+    }
+    if (i < N) {
+      for (size_t j = 0; j < K; ++j) {
+        for (size_t k = 0; k < N - i; ++k) {
+          *dst = src[(i + k) + j * N];
+          ++dst;
+        }
+        dst += 8 - (N - i);
+      }
     }
   }
 
   template <size_t N, size_t K>
-  void TestPackB() {
+  MLAS_FORCEINLINE void Check(const MLAS_FP16* packed, const MLAS_FP16* ref) {
+    size_t j = 0;
+    for (; j + 15 < N; j += 16) {
+      for (size_t i = 0; i < 16 * K; ++i) {
+        ASSERT_EQ(packed[j * K + i].val, ref[j * K + i].val)
+          << " seed " << seed_ << " K " << i / 16 << " N " << j + i % 16;
+      }
+    }
+    if (j + 7 < N) {
+      for (size_t i = 0; i < 8 * K; ++i) {
+        ASSERT_EQ(packed[j * K + i].val, ref[j * K + i].val)
+          << " seed " << seed_ << " K " << i / 8 << " N " << j + i % 8;
+      }
+      j += 8;
+    }
+    if (j < N) {
+      for (size_t i = 0; i < K; ++i) {
+        for (size_t k = 0; k < N - j; ++k) {
+          ASSERT_EQ(packed[j * K + i * 8 + k].val, ref[j * K + i * 8 + k].val)
+            << " seed " << seed_ << " K " << i << " N " << j + k;
+        }
+      }
+    }
+  }
+
+  template <size_t N, size_t K>
+  void TestPackB_TransposedB() {
     auto InitializeBuffer = [this](MLAS_FP16* buffer, size_t count) {
       for (size_t i = 0; i < count; i++) {
         buffer[i] = MLAS_FP16(distrib_(gen_));
@@ -82,7 +131,23 @@ class MlasNeonHGemmPackBTest : public MlasTestBase {
     auto* packed = packed_.GetBuffer(K * ((N + 7) & ~7), true);
     auto* ref = ref_.GetBuffer(K * ((N + 7) & ~7), true);
     hgemm_neon::HPackB_TransposedB_Kernel(input, packed, N, K, K);
-    PackB<N, K>(input, ref);
+    PackB_TransposedB<N, K>(input, ref);
+    Check<N, K>(packed, ref);
+  }
+
+  template <size_t N, size_t K>
+  void TestPackB_B() {
+    auto InitializeBuffer = [this](MLAS_FP16* buffer, size_t count) {
+      for (size_t i = 0; i < count; i++) {
+        buffer[i] = MLAS_FP16(distrib_(gen_));
+      }
+    };
+
+    const auto* input = input_.GetFilledBuffer(N * K, InitializeBuffer);
+    auto* packed = packed_.GetBuffer(K * ((N + 7) & ~7), true);
+    auto* ref = ref_.GetBuffer(K * ((N + 7) & ~7), true);
+    hgemm_neon::HPackB_B_Kernel(input, packed, N, K, N);
+    PackB_B<N, K>(input, ref);
     Check<N, K>(packed, ref);
   }
 
@@ -96,17 +161,31 @@ class MlasNeonHGemmPackBTest : public MlasTestBase {
   }
 
   void ExecuteShort(void) override {
-    TestPackB<1, 1>();
-    TestPackB<1, 15>();
-    TestPackB<1, 31>();
-    TestPackB<8, 1>();
-    TestPackB<8, 16>();
-    TestPackB<9, 31>();
-    TestPackB<9, 33>();
-    TestPackB<15, 33>();
-    TestPackB<17, 67>();
-    TestPackB<17, 96>();
-    TestPackB<265, 263>();
+    TestPackB_TransposedB<1, 1>();
+    TestPackB_TransposedB<1, 15>();
+    TestPackB_TransposedB<1, 31>();
+    TestPackB_TransposedB<8, 1>();
+    TestPackB_TransposedB<8, 16>();
+    TestPackB_TransposedB<9, 31>();
+    TestPackB_TransposedB<9, 33>();
+    TestPackB_TransposedB<15, 33>();
+    TestPackB_TransposedB<17, 67>();
+    TestPackB_TransposedB<17, 96>();
+    TestPackB_TransposedB<265, 263>();
+    TestPackB_B<1, 1>();
+    TestPackB_B<1, 15>();
+    TestPackB_B<1, 31>();
+    TestPackB_B<8, 1>();
+    TestPackB_B<8, 16>();
+    TestPackB_B<9, 31>();
+    TestPackB_B<9, 33>();
+    TestPackB_B<15, 31>();
+    TestPackB_B<15, 33>();
+    TestPackB_B<17, 31>();
+    TestPackB_B<17, 33>();
+    TestPackB_B<17, 67>();
+    TestPackB_B<17, 96>();
+    TestPackB_B<265, 263>();
   }
 };
 
@@ -191,7 +270,7 @@ class MlasNeonHGemmTransposedBTest : public MlasTestBase {
   }
 };
 
-class MlasNeonHGemmTransposedPackedBTest : public MlasTestBase {
+class MlasNeonHGemmPackedBTest : public MlasTestBase {
  private:
   std::random_device rd_;
   unsigned int seed_;
@@ -275,12 +354,12 @@ class MlasNeonHGemmTransposedPackedBTest : public MlasTestBase {
   }
 
  public:
-  MlasNeonHGemmTransposedPackedBTest()
+  MlasNeonHGemmPackedBTest()
       : seed_(1928372), gen_(seed_), distrib_(-1.f, 1.f) {
   }
 
   static const char* GetTestSuiteName() {
-    return "NeonHGemmTransposedPackedB";
+    return "NeonHGemmPackedB";
   }
 
   void ExecuteShort(void) override {
@@ -384,7 +463,7 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
   if (is_short_execute) {
     count += MlasDirectShortExecuteTests<MlasNeonHGemmPackBTest>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasNeonHGemmTransposedBTest>::RegisterShortExecute();
-    count += MlasDirectShortExecuteTests<MlasNeonHGemmTransposedPackedBTest>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasNeonHGemmPackedBTest>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasNeonHGemmTest>::RegisterShortExecute();
   }
   return count;
