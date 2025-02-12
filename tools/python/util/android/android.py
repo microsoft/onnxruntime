@@ -59,7 +59,12 @@ def create_virtual_device(sdk_tool_paths: SdkToolPaths, system_image_package_nam
         input=b"no",
     )
 
-
+    run(
+        sdk_tool_paths.avdmanager,
+        "list",
+        "avd"
+    )
+    
 _process_creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if is_windows() else 0
 
 
