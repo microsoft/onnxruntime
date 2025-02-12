@@ -77,7 +77,7 @@ def get_package_name_and_version_info():
         from .build_and_package_info import __version__ as version
         from .build_and_package_info import package_name
 
-        try:
+        try:  # noqa: SIM105
             from .build_and_package_info import cuda_version
         except ImportError:
             pass
