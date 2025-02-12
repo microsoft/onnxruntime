@@ -112,6 +112,7 @@ stages:
   dependsOn: []
   condition: notIn(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
   variables:
+    ANDROID_AVD_HOME: $(Agent.TempDirectory)
     Codeql.ProjectConfigPath: .github/workflows
     Codeql.Enabled: true
     Codeql.Language: cpp
@@ -182,6 +183,8 @@ stages:
   displayName: NNAPI MAIN BUILD&TEST
   dependsOn: []
   condition: in(variables['Build.Reason'], 'IndividualCI', 'BatchedCI')
+  variables:
+    ANDROID_AVD_HOME: $(Agent.TempDirectory)
   jobs:
   - job: NNAPI_EP_MASTER
     pool: onnxruntime-Ubuntu2204-AMD-CPU
