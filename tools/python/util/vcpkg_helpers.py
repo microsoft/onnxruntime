@@ -1,14 +1,15 @@
 import os
 from pathlib import Path
 
-#The official vcpkg repository has about 80 different triplets. But ONNX Runtime has many more build variants. For example, in general, for each platform, we need to support builds with C++ exceptions, builds without C++ exceptions, builds with C++ RTTI, builds without C++ RTTI, linking to static C++ runtime, linking to dynamic (shared) C++ runtime, builds with address sanitizer, builds without address sanitizer, etc. Therefore, this script file was created to dynamically generate the triplet files on-the-fly.
+# The official vcpkg repository has about 80 different triplets. But ONNX Runtime has many more build variants. For example, in general, for each platform, we need to support builds with C++ exceptions, builds without C++ exceptions, builds with C++ RTTI, builds without C++ RTTI, linking to static C++ runtime, linking to dynamic (shared) C++ runtime, builds with address sanitizer, builds without address sanitizer, etc. Therefore, this script file was created to dynamically generate the triplet files on-the-fly.
 
-#Originally, we tried to check in all the generated files into our repository so that people could build onnxruntime without using build.py or any other Python scripts in the "/tools" directory. However, we encountered an issue when adding support for WASM builds. VCPKG has a limitation that when doing cross-compiling, the triplet file must specify the full path of the chain-loaded toolchain file. The file needs to be located either via environment variables (like ANDROID_NDK_HOME) or via an absolute path. Since environment variables are hard to track, we chose the latter approach. So the generated triplet files may contain absolute file paths that are only valid on the current build machine.
+# Originally, we tried to check in all the generated files into our repository so that people could build onnxruntime without using build.py or any other Python scripts in the "/tools" directory. However, we encountered an issue when adding support for WASM builds. VCPKG has a limitation that when doing cross-compiling, the triplet file must specify the full path of the chain-loaded toolchain file. The file needs to be located either via environment variables (like ANDROID_NDK_HOME) or via an absolute path. Since environment variables are hard to track, we chose the latter approach. So the generated triplet files may contain absolute file paths that are only valid on the current build machine.
 
-#The compiler flags(CFLAGS/CXXFLAGS/LDFLAGS) settings in this file must be consistent with the cmake code in "cmake/adjust_global_compile_flags.cmake" so that all the statically linked code were compiled by the same set of compile flags. 
+# The compiler flags(CFLAGS/CXXFLAGS/LDFLAGS) settings in this file must be consistent with the cmake code in "cmake/adjust_global_compile_flags.cmake" so that all the statically linked code were compiled by the same set of compile flags.
+
 
 # This is a way to add customizations to the official VCPKG ports.
-def add_port_configs(f, has_exception: bool, is_emscripten:bool) -> None:
+def add_port_configs(f, has_exception: bool, is_emscripten: bool) -> None:
     """
     Add port-specific configurations to the triplet file.
 
@@ -36,7 +37,8 @@ endif()
         "-Dgtest_disable_pthreads=ON"
     )
 endif()
-""")
+"""
+        )
     if not has_exception:
         f.write(
             r"""if(PORT MATCHES "onnx")
@@ -63,7 +65,13 @@ def add_copyright_header(f) -> None:
 
 
 def generate_triplet_for_android(
-    build_dir: str, target_abi: str, enable_rtti: bool, enable_exception: bool, enable_asan: bool, use_cpp_shared: bool, android_api_level: int
+    build_dir: str,
+    target_abi: str,
+    enable_rtti: bool,
+    enable_exception: bool,
+    enable_asan: bool,
+    use_cpp_shared: bool,
+    android_api_level: int,
 ) -> None:
     """
     Generate triplet file for Android platform.
@@ -193,10 +201,18 @@ def generate_android_triplets(build_dir: str, use_cpp_shared: bool, android_api_
     """
     target_abis = ["x64", "arm64", "arm-neon", "x86"]
     for enable_asan in [True, False]:
-      for enable_rtti in [True, False]:
-        for enable_exception in [True, False]:
-            for target_abi in target_abis:                
-                generate_triplet_for_android(build_dir, target_abi, enable_rtti, enable_exception, enable_asan, use_cpp_shared, android_api_level)
+        for enable_rtti in [True, False]:
+            for enable_exception in [True, False]:
+                for target_abi in target_abis:
+                    generate_triplet_for_android(
+                        build_dir,
+                        target_abi,
+                        enable_rtti,
+                        enable_exception,
+                        enable_asan,
+                        use_cpp_shared,
+                        android_api_level,
+                    )
 
 
 def generate_triplet_for_posix_platform(
@@ -429,64 +445,64 @@ def generate_windows_triplets(build_dir: str) -> None:
     target_abis = ["x86", "x64", "arm64", "arm64ec"]
     crt_linkages = ["static", "dynamic"]
     for enable_rtti in [True, False]:
-      for enable_exception in [True, False]:
-        for enable_binskim in [True, False]:
-            for enable_asan in [True, False]:
-                for crt_linkage in crt_linkages:
-                    # Address Sanitizer libs do not have a Qspectre version. So they two cannot be both enabled.
-                    if enable_asan and enable_binskim:
-                        continue
-                    for target_abi in target_abis:
-                        folder_name_parts = []
-                        if enable_asan:
-                            folder_name_parts.append("asan")
-                        if enable_binskim:
-                            folder_name_parts.append("binskim")
-                        if not enable_rtti:
-                            folder_name_parts.append("nortti")
-                        folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
-                        file_name_parts = [target_abi, "windows", "static"]
-                        if crt_linkage == "dynamic":
-                            file_name_parts.append("md")
-                        file_name = "-".join(file_name_parts) + ".cmake"
-                        dest_path = Path(build_dir) / folder_name / file_name
-                        print(f"Creating file {dest_path}")
-                        os.makedirs(dest_path.parent, exist_ok=True)
-                        with open(dest_path, "w", encoding="utf-8") as f:
-                            add_copyright_header(f)
-                            f.write(f"set(VCPKG_TARGET_ARCHITECTURE {target_abi})\n")
-                            f.write(f"set(VCPKG_CRT_LINKAGE {crt_linkage})\n")
-                            f.write("set(VCPKG_LIBRARY_LINKAGE static)\n")
-                            cflags = ["/MP", "/DWIN32", "/D_WINDOWS"]
+        for enable_exception in [True, False]:
+            for enable_binskim in [True, False]:
+                for enable_asan in [True, False]:
+                    for crt_linkage in crt_linkages:
+                        # Address Sanitizer libs do not have a Qspectre version. So they two cannot be both enabled.
+                        if enable_asan and enable_binskim:
+                            continue
+                        for target_abi in target_abis:
+                            folder_name_parts = []
+                            if enable_asan:
+                                folder_name_parts.append("asan")
                             if enable_binskim:
-                              cflags += [
-                                "/DWINAPI_FAMILY=100",
-                                "/DWINVER=0x0A00",
-                                "/D_WIN32_WINNT=0x0A00",
-                                "/DNTDDI_VERSION=0x0A000000",
-                              ]
-                            cxxflags = cflags.copy()
-                            ldflags = []
-                            if enable_binskim:
-                                cflags += ["/guard:cf", "/Qspectre", "/W3"]
-                                ldflags = ["/profile", "/DYNAMICBASE"]
-                            elif enable_asan:
-                                cflags.append("/fsanitize=address")
-                            cxxflags.append("/Zc:__cplusplus")
-                            if enable_exception:
-                                cxxflags.append("/EHsc")                         
+                                folder_name_parts.append("binskim")
                             if not enable_rtti:
-                                cxxflags += ["/GR-", "/we4541"]
-                            if cflags:
-                                f.write(f'set(VCPKG_C_FLAGS "{" ".join(cflags)}")\n')
-                            if cxxflags:
-                                f.write(f'set(VCPKG_CXX_FLAGS "{" ".join(cxxflags)}")\n')
-                            f.write(
-                                "list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DCMAKE_CXX_STANDARD=17)\n"
-                            )
-                            if ldflags:
-                                f.write(f'set(VCPKG_LINKER_FLAGS "{" ".join(ldflags)}")\n')
-                            add_port_configs(f, enable_exception, False)
+                                folder_name_parts.append("nortti")
+                            folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
+                            file_name_parts = [target_abi, "windows", "static"]
+                            if crt_linkage == "dynamic":
+                                file_name_parts.append("md")
+                            file_name = "-".join(file_name_parts) + ".cmake"
+                            dest_path = Path(build_dir) / folder_name / file_name
+                            print(f"Creating file {dest_path}")
+                            os.makedirs(dest_path.parent, exist_ok=True)
+                            with open(dest_path, "w", encoding="utf-8") as f:
+                                add_copyright_header(f)
+                                f.write(f"set(VCPKG_TARGET_ARCHITECTURE {target_abi})\n")
+                                f.write(f"set(VCPKG_CRT_LINKAGE {crt_linkage})\n")
+                                f.write("set(VCPKG_LIBRARY_LINKAGE static)\n")
+                                cflags = ["/MP", "/DWIN32", "/D_WINDOWS"]
+                                if enable_binskim:
+                                    cflags += [
+                                        "/DWINAPI_FAMILY=100",
+                                        "/DWINVER=0x0A00",
+                                        "/D_WIN32_WINNT=0x0A00",
+                                        "/DNTDDI_VERSION=0x0A000000",
+                                    ]
+                                cxxflags = cflags.copy()
+                                ldflags = []
+                                if enable_binskim:
+                                    cflags += ["/guard:cf", "/Qspectre", "/W3"]
+                                    ldflags = ["/profile", "/DYNAMICBASE"]
+                                elif enable_asan:
+                                    cflags.append("/fsanitize=address")
+                                cxxflags.append("/Zc:__cplusplus")
+                                if enable_exception:
+                                    cxxflags.append("/EHsc")
+                                if not enable_rtti:
+                                    cxxflags += ["/GR-", "/we4541"]
+                                if cflags:
+                                    f.write(f'set(VCPKG_C_FLAGS "{" ".join(cflags)}")\n')
+                                if cxxflags:
+                                    f.write(f'set(VCPKG_CXX_FLAGS "{" ".join(cxxflags)}")\n')
+                                f.write(
+                                    "list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DCMAKE_CXX_STANDARD=17)\n"
+                                )
+                                if ldflags:
+                                    f.write(f'set(VCPKG_LINKER_FLAGS "{" ".join(ldflags)}")\n')
+                                add_port_configs(f, enable_exception, False)
 
 
 def generate_posix_triplets(build_dir: str) -> None:
