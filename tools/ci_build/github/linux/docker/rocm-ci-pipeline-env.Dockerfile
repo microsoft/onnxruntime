@@ -83,11 +83,6 @@ ENV PATH ${CONDA_ENVIRONMENT_PATH}/bin:${PATH}
 # Enable rocm-ci environment
 SHELL ["conda", "run", "-n", "rocm-ci", "/bin/bash", "-c"]
 
-# Some DLLs in the conda environment have conflict with the one installed in Ubuntu system.
-# For example, the GCC version in the conda environment is 12.x, while the one in the Ubuntu 22.04 is 11.x.
-# ln -sf to make sure we always use libstdc++.so.6 and libgcc_s.so.1 in the system.
-RUN ln -sf /usr/lib/x86_64-linux-gnu/libstdc++.so.6 ${CONDA_ENVIRONMENT_PATH}/bin/../lib/libstdc++.so.6
-RUN ln -sf /usr/lib/x86_64-linux-gnu/libgcc_s.so.1 ${CONDA_ENVIRONMENT_PATH}/bin/../lib/libgcc_s.so.1
 
 RUN pip install packaging \
                 ml_dtypes==0.5.0 \
