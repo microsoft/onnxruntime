@@ -1375,6 +1375,11 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
     if (!no_input_shape) {
       if (!load_precompiled_model(prog, load_compiled_model_, std::string{load_compiled_path_})) {
         LOGS_DEFAULT(INFO) << "No input shapes detected quantizing model";
+#ifndef ENABLE_TRAINING_CORE
+#ifdef HAVE_MIGRAPHX_API_ONNX_OPTIONS_SET_EXTERNAL_DATA_PATH
+        options.set_external_data_path(model_path_.parent_path().string());
+#endif
+#endif
         prog = migraphx::parse_onnx_buffer(onnx_string_buffer, options);
         migraphx::program_parameters quant_params;
 
@@ -1485,8 +1490,8 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
         if (!load_precompiled_model(prog, load_compiled_model_, std::string{load_compiled_path_})) {
           LOGS_DEFAULT(VERBOSE) << "Input shape mismatch detected. Recompiling" << std::endl;
 #ifndef ENABLE_TRAINING_CORE
-#if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 2)
-          cmp_options.set_external_data_path(model_path_.has_parent_path() ? model_path_.parent_path().string() : std::filesystem::current_path().string());
+#ifdef HAVE_MIGRAPHX_API_ONNX_OPTIONS_SET_EXTERNAL_DATA_PATH
+          cmp_options.set_external_data_path(model_path_.parent_path().string());
 #endif
 #endif
           prog = migraphx::parse_onnx_buffer(onnx_string, cmp_options);
