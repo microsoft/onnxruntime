@@ -279,19 +279,19 @@ void MIGraphXExecutionProvider::get_flags_from_env() {
 }
 
 void MIGraphXExecutionProvider::print_migraphx_ep_flags() {
-  LOGS_DEFAULT(WARNING) << "\n device_id: " << info_.device_id
-                        << "\n migraphx_fp16_enable: " << fp16_enable_
-                        << "\n migraphx_fp8_enable: " << fp8_enable_
-                        << "\n migraphx_int8_enable: " << int8_enable_
+  LOGS_DEFAULT(WARNING) << "\n " << migraphx_provider_option::kDeviceId << ": " << info_.device_id
+                        << "\n " << migraphx_provider_option::kFp16Enable << ": " << fp16_enable_
+                        << "\n " << migraphx_provider_option::kFp8Enable << ": " << fp8_enable_
+                        << "\n " << migraphx_provider_option::kInt8Enable << ": " << int8_enable_
                         << "\n dump_model_ops: " << dump_model_ops_
-                        << "\n exhaustive_tune: " << exhaustive_tune_
-                        << "\n migraphx_int8_calibration_cache_name: " << int8_calibration_cache_name_
+                        << "\n " << migraphx_provider_option::kExhaustiveTune << ": " << exhaustive_tune_
+                        << "\n " << migraphx_provider_option::kInt8CalibTable << ": " << int8_calibration_cache_name_
                         << "\n int8_calibration_cache_available: " << int8_calibration_cache_available_
-                        << "\n use_native_migraphx_calibration_table: " << int8_use_native_migraphx_calibration_table_
-                        << "\n migraphx_save_compiled_model: " << save_compiled_model_
-                        << "\n migraphx_save_compiled_model_path: " << save_compiled_path_
-                        << "\n migraphx_load_compiled_model: " << load_compiled_model_
-                        << "\n migraphx_load_compiled_model_path: " << load_compiled_path_;
+                        << "\n " << migraphx_provider_option::kInt8UseNativeCalibTable << ": " << int8_use_native_migraphx_calibration_table_
+                        << "\n " << migraphx_provider_option::kSaveCompiledModel << ": " << save_compiled_model_
+                        << "\n " << migraphx_provider_option::kSaveModelPath << ": " << save_compiled_path_
+                        << "\n " << migraphx_provider_option::kLoadCompiledModel << ": " << load_compiled_model_
+                        << "\n " << migraphx_provider_option::kLoadModelPath << ": " << load_compiled_path_;
 }
 
 AllocatorPtr MIGraphXExecutionProvider::CreateMIGraphXAllocator(OrtDevice::DeviceId device_id,
