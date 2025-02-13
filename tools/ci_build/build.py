@@ -998,7 +998,7 @@ def number_of_nvcc_threads(args):
 # See https://learn.microsoft.com/en-us/vcpkg/commands/install
 def generate_vcpkg_install_options(build_dir, args):
     # NOTE: each option string should not contain any whitespace.
-    vcpkg_install_options = ["--x-feature=tests", "--debug"]
+    vcpkg_install_options = ["--x-feature=tests"]
     if args.use_acl:
         vcpkg_install_options.append("--x-feature=acl-ep")
     if args.use_armnn:
@@ -1404,10 +1404,6 @@ def generate_build_tree(
                 cmake_args.append("-DCMAKE_CUDA_COMPILER_LAUNCHER=ccache")
             if args.use_rocm:
                 cmake_args.append("-DCMAKE_HIP_COMPILER_LAUNCHER=ccache")
-    # By default cmake does not check TLS/SSL certificates. Here we turn it on.
-    # But, in some cases you may also need to supply a CA file.
-    add_default_definition(cmake_extra_defines, "CMAKE_TLS_VERIFY", "ON")
-    add_default_definition(cmake_extra_defines, "FETCHCONTENT_QUIET", "OFF")
     if args.external_graph_transformer_path:
         cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
     if args.use_winml:
