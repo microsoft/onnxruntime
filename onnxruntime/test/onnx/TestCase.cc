@@ -4,7 +4,7 @@
 // needs to be included first to get around onnxruntime\cmake\external\onnx\onnx/common/constants.h(14): error C2513: 'bool': no variable declared before '='
 
 #include "TestCase.h"
-
+#include "fnmatch_simple.h"
 #include <cctype>
 #include <filesystem>
 #include <fstream>

@@ -227,6 +227,15 @@ if (MSVC)
     message(FATAL_ERROR "Unknown CMAKE_SYSTEM_PROCESSOR: ${CMAKE_SYSTEM_PROCESSOR}")
   endif()
 
+  #Always enable exception handling, even for Windows ARM
+  if (NOT onnxruntime_DISABLE_EXCEPTIONS)
+    string(APPEND CMAKE_CXX_FLAGS " /EHsc")
+    string(APPEND CMAKE_C_FLAGS " /EHsc")
+
+    string(APPEND CMAKE_CXX_FLAGS " /wd26812")
+    string(APPEND CMAKE_C_FLAGS " /wd26812")
+  endif()
+
   if (onnxruntime_USE_AVX)
     string(APPEND CMAKE_CXX_FLAGS " /arch:AVX")
     string(APPEND CMAKE_C_FLAGS " /arch:AVX")

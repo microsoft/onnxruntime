@@ -746,45 +746,42 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
     all_disabled_tests.insert(ORT_TSTR("fp16_inception_v1"));
     all_disabled_tests.insert(ORT_TSTR("fp16_tiny_yolov2"));
 
-    while (!paths.empty()) {
-      std::filesystem::path node_data_root_path = paths.back();
-      paths.pop_back();
-      if (!std::filesystem::exists(node_data_root_path) || !std::filesystem::is_directory(node_data_root_path)) {
-        continue;
-      }
-      for (auto const& dir_entry : std::filesystem::directory_iterator(node_data_root_path)) {
-        if (dir_entry.is_directory()) {
-          paths.push_back(dir_entry.path());
-          continue;
-        }
-        const std::filesystem::path& path = dir_entry.path();
-        if (!path.has_filename() || path.filename().native().compare(0, 1, ORT_TSTR(".")) == 0) {
-          // Ignore hidden files.
-          continue;
-        }
-        if (path.filename().extension().compare(ORT_TSTR(".onnx")) != 0) {
-          // Ignore the files that are not ONNX models
-          continue;
-        }
-        std::basic_string<PATH_CHAR_TYPE> test_case_name = path.parent_path().filename().native();
-        if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0)
-          test_case_name = test_case_name.substr(5);
-        if (all_disabled_tests.find(test_case_name) != all_disabled_tests.end())
-          continue;
+    for (const std::basic_string<PATH_CHAR_TYPE>& path_str : paths) {
+      ORT_TRY {
+        for (auto& dir_entry : std::filesystem::recursive_directory_iterator(path_str)) {
+          if (!dir_entry.is_regular_file() || dir_entry.is_directory()) continue;
+          std::filesystem::path node_data_root_path = dir_entry.path();
+          std::filesystem::path filename_str = dir_entry.path().filename();
+          if (filename_str.empty() || filename_str.native()[0] == ORT_TSTR('.')) {
+            // Ignore hidden files.
+            continue;
+          }
+          auto folder_path = node_data_root_path.parent_path().native();
+          if (FnmatchSimple(ORT_TSTR("*.onnx"), filename_str.native())) {
+            std::basic_string<PATH_CHAR_TYPE> test_case_name = node_data_root_path.parent_path().filename().native();
+            if (test_case_name.compare(0, 5, ORT_TSTR("test_")) == 0)
+              test_case_name = test_case_name.substr(5);
+            if (all_disabled_tests.find(test_case_name) != all_disabled_tests.end())
+              continue;
 
 #ifdef DISABLE_ML_OPS
-        auto starts_with = [](const std::basic_string<PATH_CHAR_TYPE>& find_in,
-                              const std::basic_string<PATH_CHAR_TYPE>& find_what) {
-          return find_in.compare(0, find_what.size(), find_what) == 0;
-        };
-        if (starts_with(test_case_name, ORT_TSTR("XGBoost_")) || starts_with(test_case_name, ORT_TSTR("coreml_")) ||
-            starts_with(test_case_name, ORT_TSTR("scikit_")) || starts_with(test_case_name, ORT_TSTR("libsvm_"))) {
-          continue;
-        }
+            auto starts_with = [](const std::basic_string<PATH_CHAR_TYPE>& find_in,
+                                  const std::basic_string<PATH_CHAR_TYPE>& find_what) {
+              return find_in.compare(0, find_what.size(), find_what) == 0;
+            };
+            if (starts_with(test_case_name, ORT_TSTR("XGBoost_")) || starts_with(test_case_name, ORT_TSTR("coreml_")) ||
+                starts_with(test_case_name, ORT_TSTR("scikit_")) || starts_with(test_case_name, ORT_TSTR("libsvm_"))) {
+              continue;
+            }
 #endif
-        std::basic_ostringstream<PATH_CHAR_TYPE> oss;
-        oss << provider_name << ORT_TSTR("_") << path.native();
-        v.emplace_back(oss.str());
+            std::basic_ostringstream<PATH_CHAR_TYPE> oss;
+            oss << provider_name << ORT_TSTR("_") << node_data_root_path.native();
+            v.emplace_back(oss.str());
+          }
+        }
+      }
+      ORT_CATCH(const std::filesystem::filesystem_error&) {
+        // silently ignore the directories that do not exist
       }
     }
   }
