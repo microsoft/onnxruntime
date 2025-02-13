@@ -746,9 +746,9 @@ static constexpr ORT_STRING_VIEW provider_name_dml = ORT_TSTR("dml");
     all_disabled_tests.insert(ORT_TSTR("fp16_inception_v1"));
     all_disabled_tests.insert(ORT_TSTR("fp16_tiny_yolov2"));
 
-    for (const std::basic_string<PATH_CHAR_TYPE>& path_str : paths) {
+    for (const std::filesystem::path& root_dir : paths) {
       ORT_TRY {
-        for (auto& dir_entry : std::filesystem::recursive_directory_iterator(path_str)) {
+        for (auto& dir_entry : std::filesystem::recursive_directory_iterator(root_dir)) {
           if (!dir_entry.is_regular_file() || dir_entry.is_directory()) continue;
           std::filesystem::path node_data_root_path = dir_entry.path();
           std::filesystem::path filename_str = dir_entry.path().filename();
