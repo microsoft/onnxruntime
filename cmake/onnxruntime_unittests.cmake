@@ -808,7 +808,7 @@ if(NOT IOS)
     onnxruntime_add_include_to_target(onnx_test_runner_common onnxruntime_common onnxruntime_framework
             onnxruntime_test_utils onnx onnx_proto re2::re2 flatbuffers::flatbuffers Boost::mp11 safeint_interface)
 
-    add_dependencies(onnx_test_runner_common onnx_test_data_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
+    add_dependencies(onnx_test_runner_common ${onnxruntime_EXTERNAL_DEPENDENCIES})
     target_include_directories(onnx_test_runner_common PRIVATE ${eigen_INCLUDE_DIRS}
             ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
 
@@ -906,7 +906,6 @@ AddTest(
   SOURCES ${all_tests} ${onnxruntime_unittest_main_src}
   LIBS
     ${onnx_test_runner_common_lib} ${onnxruntime_test_providers_libs} ${onnxruntime_test_common_libs}
-    onnx_test_data_proto
   DEPENDS ${all_dependencies}
   TEST_ARGS ${test_all_args}
 )
@@ -1007,23 +1006,6 @@ endif()
 
 set(test_data_target onnxruntime_test_all)
 
-onnxruntime_add_static_library(onnx_test_data_proto ${TEST_SRC_DIR}/proto/tml.proto)
-add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
-#onnx_proto target should mark this definition as public, instead of private
-target_compile_definitions(onnx_test_data_proto PRIVATE "-DONNX_API=")
-onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto)
-if (MSVC)
-    # Cutlass code has an issue with the following:
-    # warning C4100: 'magic': unreferenced formal parameter
-    target_compile_options(onnx_test_data_proto PRIVATE "/wd4100")
-endif()
-target_include_directories(onnx_test_data_proto PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
-set_target_properties(onnx_test_data_proto PROPERTIES FOLDER "ONNXRuntimeTest")
-if(NOT DEFINED onnx_SOURCE_DIR)
-  find_path(onnx_SOURCE_DIR NAMES "onnx/onnx-ml.proto3" "onnx/onnx-ml.proto" REQUIRED)
-endif()
-onnxruntime_protobuf_generate(APPEND_PATH IMPORT_DIRS ${onnx_SOURCE_DIR} TARGET onnx_test_data_proto)
-
 #
 # onnxruntime_ir_graph test data
 #
@@ -1101,7 +1083,6 @@ endif()
 set(onnx_test_libs
   onnxruntime_test_utils
   ${ONNXRUNTIME_TEST_LIBS}
-  onnx_test_data_proto
   ${onnxruntime_EXTERNAL_LIBRARIES})
 
 if (NOT IOS)
@@ -1201,7 +1182,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_compile_options(onnx_test_runner_common PRIVATE -D_CRT_SECURE_NO_WARNINGS)
   endif()
 
-  if (NOT onnxruntime_REDUCED_OPS_BUILD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  if (NOT onnxruntime_REDUCED_OPS_BUILD AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnx_SOURCE_DIR)
     add_test(NAME onnx_test_pytorch_converted
       COMMAND onnx_test_runner ${onnx_SOURCE_DIR}/onnx/backend/test/data/pytorch-converted)
     add_test(NAME onnx_test_pytorch_operator
@@ -1258,7 +1239,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       #onnxruntime_common is kind of ok because it is thin, tiny and totally stateless.
       set(onnxruntime_perf_test_libs
             onnx_test_runner_common onnxruntime_test_utils onnxruntime_common
-            onnxruntime onnxruntime_flatbuffers onnx_test_data_proto
+            onnxruntime onnxruntime_flatbuffers
             ${onnxruntime_EXTERNAL_LIBRARIES}
             ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
       if(NOT WIN32)
@@ -1308,7 +1289,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     if(WIN32)
       target_link_libraries(onnxruntime_qnn_ctx_gen PRIVATE debug dbghelp advapi32)
     endif()
-    target_link_libraries(onnxruntime_qnn_ctx_gen PRIVATE onnx_test_runner_common onnxruntime_test_utils onnxruntime_common onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers onnx_test_data_proto ${onnxruntime_test_providers_libs} ${onnxruntime_EXTERNAL_LIBRARIES} ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
+    target_link_libraries(onnxruntime_qnn_ctx_gen PRIVATE onnx_test_runner_common onnxruntime_test_utils onnxruntime_common onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers ${onnxruntime_test_providers_libs} ${onnxruntime_EXTERNAL_LIBRARIES} ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
 
     set_target_properties(onnxruntime_qnn_ctx_gen PROPERTIES FOLDER "ONNXRuntimeTest")
   endif()
