@@ -524,13 +524,13 @@ def generate_posix_triplets(build_dir: str) -> None:
                         if enable_asan and enable_binskim:
                             continue
                         for target_abi in target_abis:
-                                generate_triplet_for_posix_platform(
-                                    build_dir,
-                                    os_name,
-                                    enable_rtti,
-                                    enable_exception,
-                                    enable_binskim,
-                                    enable_asan,
-                                    "dynamic",
-                                    target_abi,
-                                )
+                            generate_triplet_for_posix_platform(
+                                build_dir,
+                                os_name,
+                                enable_rtti,
+                                enable_exception,
+                                enable_binskim,
+                                enable_asan,
+                                "dynamic",
+                                target_abi,
+                            )

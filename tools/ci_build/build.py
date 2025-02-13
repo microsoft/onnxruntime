@@ -1280,7 +1280,7 @@ def generate_build_tree(
             # The following one is for building onnxruntime itself
             new_toolchain_file = Path(build_dir) / "toolchain.cmake"
             old_toolchain_lines = []
-            # First, we read the official toolchain cmake file provided by emscripten into memory 
+            # First, we read the official toolchain cmake file provided by emscripten into memory
             emscripten_root_path = os.path.join(emsdk_dir, "upstream", "emscripten")
             with open(emscripten_cmake_toolchain_file, encoding="utf-8") as f:
                 old_toolchain_lines = f.readlines()
@@ -1288,7 +1288,7 @@ def generate_build_tree(
             # This file won't be used by vcpkg-tools when invoking 0.vcpkg_dep_info.cmake or vcpkg/scripts/ports.cmake
             with open(new_toolchain_file, "w", encoding="utf-8") as f:
                 f.write(f'set(EMSCRIPTEN_ROOT_PATH "{emscripten_root_path_cmake_path}")\n')
-                
+
                 # Copy emscripten's toolchain cmake file to ours.
                 for line in old_toolchain_lines:
                     f.write(line)
@@ -1318,11 +1318,11 @@ def generate_build_tree(
                 # Overriding the cmake flags
                 for flag in flags_to_pass:
                     f.write("SET(CMAKE_" + flag + ' "${VCPKG_' + flag + '}")\n')
-                # Copy emscripten's toolchain cmake file to ours. 
+                # Copy emscripten's toolchain cmake file to ours.
                 for line in old_toolchain_lines:
                     f.write(line)
                 f.write("endif()")
-            # We must define the VCPKG_CHAINLOAD_TOOLCHAIN_FILE cmake variable, otherwise vcpkg won't let us go. 
+            # We must define the VCPKG_CHAINLOAD_TOOLCHAIN_FILE cmake variable, otherwise vcpkg won't let us go.
             add_default_definition(
                 cmake_extra_defines, "VCPKG_CHAINLOAD_TOOLCHAIN_FILE", str(empty_toolchain_file.absolute())
             )
@@ -1344,7 +1344,7 @@ def generate_build_tree(
         if args.build_wasm:
             # The support for wasm64 is still in development.
             if args.enable_wasm_memory64:
-                # The triplet wasm64-emscripten doesn't exist in vcpkg's official repo. 
+                # The triplet wasm64-emscripten doesn't exist in vcpkg's official repo.
                 triplet = "wasm64-emscripten"
             else:
                 triplet = "wasm32-emscripten"
