@@ -133,9 +133,10 @@ if cuda_version and cuda_version.startswith("12."):
                         ("cudnn", "bin", "cudnn64_9.dll"),
                     ]
                 else:  # Linux
+                    # cublas64 depends on cublasLt64, so cublasLt64 should be loaded first. The order is important.
                     dll_paths = [
-                        ("cublas", "lib", "libcublas.so.12"),
                         ("cublas", "lib", "libcublasLt.so.12"),
+                        ("cublas", "lib", "libcublas.so.12"),
                         ("cuda_nvrtc", "lib", "libnvrtc.so.12"),
                         ("curand", "lib", "libcurand.so.10"),
                         ("cufft", "lib", "libcufft.so.11"),
