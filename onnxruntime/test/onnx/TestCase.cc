@@ -297,7 +297,6 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
 
   std::vector<std::filesystem::path> test_data_pb_files = SimpleGlob(test_data_dirs_[id], is_input ? ORT_TSTR("input_*.pb") : ORT_TSTR("output_*.pb"));
 
-
   SortFileNames(test_data_pb_files);
 
   for (size_t i = 0; i < test_data_pb_files.size(); ++i) {
@@ -594,7 +593,7 @@ void LoadTests(const std::vector<std::basic_string<PATH_CHAR_TYPE>>& input_paths
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  // The for-loop below needs to load every ONNX model into memory then destory the in-memory objects, which is very inefficient since 1. in total we need to load every model twice 2. at here we do the job sequentially. 
+  // The for-loop below needs to load every ONNX model into memory then destory the in-memory objects, which is very inefficient since 1. in total we need to load every model twice 2. at here we do the job sequentially.
   // Originally the design was to make the TestModelInfo lightweight so that all the model information can be retrieved from filesystem meta data without actually loading the models.
   for (const std::filesystem::path& model_path : onnx_models) {
     LoadSingleModel(TestModelInfo::LoadOnnxModel(model_path), tolerances, broken_tests, broken_tests_keyword_set, process_function);

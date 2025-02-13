@@ -27,7 +27,6 @@ class ONNXModelsTest : public ::testing::Test {
   std::unique_ptr<logging::Logger> logger_;
 };
 
-
 TEST_F(ONNXModelsTest, non_existing_model) {
   // NOTE: this requires the current directory to be where onnxruntime_ir_UT.exe is located
   std::shared_ptr<Model> model;
@@ -59,7 +58,6 @@ class ONNXModelsTest1 : public ::testing::TestWithParam<const ORTCHAR_T*> {
     return oss.str();
   }
 };
-
 
 // test a model that conforms to ONNX IR v4 where there are initializers that are not graph inputs.
 // a NodeArg should be created for all initializers in this case.
