@@ -16,8 +16,6 @@ namespace Ort {
 struct Value;
 }
 
-
-
 namespace onnxruntime {
 namespace test {
 class HeapBuffer;
@@ -47,8 +45,6 @@ class ITestCase {
   virtual void GetRelativePerSampleTolerance(double* value) const = 0;
   virtual void GetPostProcessing(bool* value) const = 0;
 };
-
-
 
 std::unique_ptr<ITestCase> CreateOnnxTestCase(const std::string& test_case_name,
                                               std::unique_ptr<TestModelInfo> model,
