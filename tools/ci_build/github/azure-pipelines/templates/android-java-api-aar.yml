@@ -58,7 +58,10 @@ jobs:
   timeoutInMinutes: 120
   workspace:
     clean: all
-  pool: ${{parameters.pool_name}}
+  pool:
+    name: ${{parameters.pool_name}}
+    os: Linux
+
 
   variables:
     artifacts_directory: $(Build.BinariesDirectory)/.artifacts
@@ -136,7 +139,7 @@ jobs:
       parameters:
         JarFileDirectory: '$(artifacts_directory)'
 
-  - task: PublishBuildArtifacts@1
+  - task: 1ES.PublishPipelineArtifact@1
     inputs:
-      pathtoPublish: '$(artifacts_directory)'
-      artifactName: '${{parameters.artifactName}}'
+      path: '$(artifacts_directory)'
+      artifact: '${{parameters.artifactName}}'

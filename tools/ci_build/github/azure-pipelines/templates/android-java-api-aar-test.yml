@@ -21,7 +21,9 @@ parameters:
 
 jobs:
 - job: Final_AAR_Testing_Android
-  pool: 'onnxruntime-Ubuntu2204-AMD-CPU'
+  pool:
+    name: 'onnxruntime-Ubuntu2204-AMD-CPU'
+    os: linux
   workspace:
     clean: all
   variables:
@@ -47,11 +49,11 @@ jobs:
   - template: use-android-ndk.yml
 
   - script: |
-        set -e -x
-        mkdir -p android_test/android/app/libs
-        cd android_test/android
-        cp -av $(Build.SourcesDirectory)/java/src/test/android/* ./
-        cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion)${{parameters.ReleaseVersionSuffix}}.aar app/libs/${{parameters.packageName}}.aar
+      set -e -x
+      mkdir -p android_test/android/app/libs
+      cd android_test/android
+      cp -av $(Build.SourcesDirectory)/java/src/test/android/* ./
+      cp $(Build.BinariesDirectory)/final-android-aar/${{parameters.packageName}}-$(OnnxRuntimeVersion)${{parameters.ReleaseVersionSuffix}}.aar app/libs/${{parameters.packageName}}.aar
     displayName: Copy Android test files and AAR to android_test directory
     workingDirectory: $(Build.BinariesDirectory)
 
@@ -83,9 +85,9 @@ jobs:
       displayName: Trim QNN SDK version to major.minor.patch
 
     - script: |
-          set -e -x
-          # build apks for qnn package as they are not built in the emulator test step
-          $(Build.SourcesDirectory)/java/gradlew  --no-daemon clean assembleDebug assembleAndroidTest -DqnnVersion=$(QnnMavenPackageVersion) --stacktrace
+        set -e -x
+        # build apks for qnn package as they are not built in the emulator test step
+        $(Build.SourcesDirectory)/java/gradlew  --no-daemon clean assembleDebug assembleAndroidTest -DqnnVersion=$(QnnMavenPackageVersion) --stacktrace
       displayName: Build QNN APK
       workingDirectory: $(Build.BinariesDirectory)/android_test/android
 
@@ -109,6 +111,6 @@ jobs:
       BROWSERSTACK_TOKEN: $(browserstack_access_key)
 
   - template: component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'
+    parameters:
+      condition: 'succeeded'
 

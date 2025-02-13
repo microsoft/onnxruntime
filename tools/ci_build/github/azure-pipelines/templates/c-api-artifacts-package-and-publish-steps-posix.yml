@@ -34,7 +34,7 @@ steps:
         archiveFile: '$(Build.ArtifactStagingDirectory)/${{parameters.artifactName}}.tgz'
         replaceExistingArchive: true
 
-    - task: PublishPipelineArtifact@1
+    - task: 1ES.PublishPipelineArtifact@1
       inputs:
         targetPath: '$(Build.ArtifactStagingDirectory)'
         artifactName: '${{parameters.artifactNameNoVersionString}}'
