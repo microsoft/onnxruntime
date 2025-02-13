@@ -954,9 +954,9 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
 int main(int argc, char* argv[]) {
 #endif
+  Ort::Env env{nullptr};
   int retval = -1;
   ORT_TRY {
-    Ort::Env env{nullptr};
     retval = real_main(argc, argv, env);
   }
   ORT_CATCH(const std::exception& ex) {
