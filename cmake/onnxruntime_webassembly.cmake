@@ -93,7 +93,7 @@ if (NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
   set_property(TARGET re2 PROPERTY COMPILE_OPTIONS )
 endif()
 
-if (onnx_SOURCE_DIR)
+if (NOT onnxruntime_USE_VCPKG)
   target_compile_options(onnx PRIVATE -Wno-unused-parameter -Wno-unused-variable)
 endif()
 
