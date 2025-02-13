@@ -670,13 +670,15 @@ void Node::ToProto(NodeProto& proto, bool update_subgraphs) const {
 
   // Set attributes.
   proto.clear_attribute();
-  for (const auto& attribute : attributes_) {
-    const gsl::not_null<AttributeProto*> attr{proto.add_attribute()};
-    *attr = attribute.second;  // copy
-    if (update_subgraphs && attr->has_g()) {
-      attr->clear_g();
-      *attr->mutable_g() = attr_to_subgraph_map_.find(attribute.first)->second->ToGraphProto();
-    }
+  if (op_type_ != "ScatterND") { // workaround as TRT doesn't support 'reduction' attribute for ScatterND
+      for (const auto& attribute : attributes_) {
+        const gsl::not_null<AttributeProto*> attr{proto.add_attribute()};
+        *attr = attribute.second;  // copy
+        if (update_subgraphs && attr->has_g()) {
+          attr->clear_g();
+          *attr->mutable_g() = attr_to_subgraph_map_.find(attribute.first)->second->ToGraphProto();
+        }
+      }
   }
 
   // Set inputs' definitions.
