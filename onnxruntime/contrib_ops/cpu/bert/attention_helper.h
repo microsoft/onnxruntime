@@ -27,19 +27,7 @@ inline void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* t
 }
 
 template <typename T>
-void ComputeAttentionSoftcapInplace(T* scores, int sequence_length, T softcap);
-
-template <>
-void ComputeAttentionSoftcapInplace<float>(float* scores, int sequence_length, float softcap) {
-  for (int i = 0; i < sequence_length; i++) {
-    scores[i] = scores[i] / softcap;
-    scores[i] = std::tanh(scores[i]);
-    scores[i] = scores[i] * softcap;
-  }
-}
-
-template <>
-void ComputeAttentionSoftcapInplace<MLFloat16>(MLFloat16* scores, int sequence_length, MLFloat16 softcap) {
+void ComputeAttentionSoftcapInplace(T* scores, int sequence_length, T softcap) {
   MlasComputeSoftcap(scores, scores, sequence_length, softcap);
 }
 

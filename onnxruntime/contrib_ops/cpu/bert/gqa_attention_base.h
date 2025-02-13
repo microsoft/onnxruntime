@@ -244,12 +244,15 @@ class GQAAttentionBase {
           size_t seq_causal_length = past_seqlen + seq + 1;
           if (local_window_size_ > 0 && seq_causal_length > static_cast<size_t>(local_window_size_) + 1) {
             for (size_t total_seq_id = 0; total_seq_id < seq_causal_length - local_window_size_ - 1; total_seq_id++) {
-              output_softmax[total_seq_id] =
-                constexpr std::is_same<U, float>::value ? 0.f : MLFloat16::FromBits(static_cast<uint16_t>(0));
+                if constexpr (std::is_same<U, float>::value) {
+                  output_softmax[total_seq_id] = 0.f;
+                } else {
+                  output_softmax[total_seq_id] = MLFloat16::FromBits(static_cast<uint16_t>(0));
+                }
             }
             if (softcap_ > 0.f) {
               ComputeAttentionSoftcapInplace(output_softmax + seq_causal_length - local_window_size_ - 1,
-                                            local_window_size_ + 1, staic_cast<U>(softcap_));
+                                            local_window_size_ + 1, static_cast<U>(softcap_));
             }
             if (use_smooth_softmax_) {
               ComputeSmoothSoftmaxInplace(output_softmax + seq_causal_length - local_window_size_ - 1, 1,
@@ -272,8 +275,11 @@ class GQAAttentionBase {
 
           // set causal [seq_causal_length, total_seqlen) to 0.f
           for (size_t total_seq_id = seq_causal_length; total_seq_id < total_seqlen; total_seq_id++) {
-            output_softmax[total_seq_id] =
-              constexpr std::is_same<U, float>::value ? 0.f : MLFloat16::FromBits(static_cast<uint16_t>(0));
+              if constexpr (std::is_same<U, float>::value) {
+                output_softmax[total_seq_id] = 0.f;
+              } else {
+                output_softmax[total_seq_id] = MLFloat16::FromBits(static_cast<uint16_t>(0));
+              }
           }
 
           output_softmax += present_buffer_sequence_length;
