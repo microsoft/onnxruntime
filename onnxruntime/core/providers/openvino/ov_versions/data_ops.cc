@@ -366,6 +366,7 @@ void DataOps::populate_op_mode_supported() {
   no_dimension_supported_.push_back({"If", V_2022_3, {"CPU", "GPU"}});
   no_dimension_supported_.push_back({"Less", V_2022_1, {"CPU"}});
   no_dimension_supported_.push_back({"Loop", V_2021_4, {"All"}});
+  no_dimension_supported_.push_back({"Max", V_2024_4, {"All"}});
   no_dimension_supported_.push_back({"Min", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Mul", V_2020_4, {"All"}});
   no_dimension_supported_.push_back({"Neg", V_2023_0, {"CPU", "GPU"}});
