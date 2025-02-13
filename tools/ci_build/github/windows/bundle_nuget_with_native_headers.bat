@@ -7,6 +7,6 @@ FOR /R %%i IN (*.nupkg) do (
    set filename=%%~ni
    IF NOT "!filename:~25,7!"=="Managed" (
        mkdir build\native\include
-       7z a  %%~ni.nupkg build 
+       7z a -mx=9 %%~ni.nupkg build 
    )
 ) 
