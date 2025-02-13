@@ -537,6 +537,7 @@ class MlasNeonHGemmTest : public MlasTestBase {
     return "NeonHGemm";
   }
 
+  // TODO(fajin): test beta
   void ExecuteShort(void) override {
     TestHGemm<2, 1, 1, false, true>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
     TestHGemm<1, 128, 512, false, true>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));

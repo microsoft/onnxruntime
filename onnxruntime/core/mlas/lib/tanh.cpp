@@ -209,7 +209,7 @@ MlasComputeSoftcap<float>(
     size_t N,
     float cap
 ) {
-    for (int i = 0; i < N; i++) {
+    for (size_t i = 0; i < N; i++) {
         Output[i] = Input[i] / cap;
         Output[i] = std::tanh(Output[i]);
         Output[i] = Output[i] * cap;

@@ -1144,5 +1144,7 @@ MlasGQASupported<float>(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB
 ) {
+    MLAS_UNREFERENCED_PARAMETER(TransA);
+    MLAS_UNREFERENCED_PARAMETER(TransB);
     return true;
 }

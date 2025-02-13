@@ -340,7 +340,7 @@ MlasHGemmSupported(
         return dispatch &&
         dispatch->HGemmKernel_B &&
         dispatch->HPackBKernel_B &&
-        dispatch->HGemmKernel_PackedB;;
+        dispatch->HGemmKernel_PackedB;
     }
 
     return false;
@@ -392,6 +392,7 @@ HGemmOperation(
                 MLAS_THROW_EX(std::runtime_error, "hgemm does not have A x Transposed(B) kernels");
             }
             // 16N is the smallest pack unit.
+            // TODO(fajin): optimize alpha == 1
             const size_t StrideK = std::min(K, size_t(MLAS_HGEMM_STRIDEK));
             const size_t StrideN = buffer_size/StrideK & (~15); // >= MLAS_HGEMM_STRIDEN
             for (size_t n = 0, countN; n < RangeCountN; n += countN) {
@@ -433,6 +434,7 @@ HGemmOperation(
             // from A x Pack(B). Therefore directly calculate A x B.
             // When beta is 0 or 1, iterate full N and cache accumulators in C.
             // When beta is not 0 or 1, iterate full K, accumulat in register, max 8 accumulators.
+            // TODO(fajin): merge beta cases with alpha == 1
             dispatch->HGemmKernel_B(A, B, C, RangeCountM, RangeCountN, K, lda, ldb, ldc, alpha, beta);
         } else {
             if (!dispatch || !dispatch->HPackBKernel_B || !dispatch->HGemmKernel_PackedB) {
@@ -441,6 +443,7 @@ HGemmOperation(
             // TODO(fajin): optimize blocking for large K small N
             //  - pack along N
             //  - loop K in outer loop
+            //  - optimize alpha == 1 case
             // 16N is the smallest pack unit.
             const size_t StrideK = std::min(K, size_t(MLAS_HGEMM_STRIDEK));
             const size_t StrideN = buffer_size/StrideK & (~15); // >= MLAS_HGEMM_STRIDEN
