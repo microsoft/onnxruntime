@@ -82,6 +82,7 @@ static void RunReduceTest(const std::string& op_type,
                           float fp32_abs_err = 1e-5f,
                           bool enable_fp16 = false) {
   ProviderOptions provider_options;
+  provider_options["offload_graph_io_quantization"] = "0";
   if (enable_fp16) {
 #if defined(_WIN32)
     provider_options["backend_path"] = "QnnHtp.dll";
@@ -336,7 +337,8 @@ TEST_F(QnnCPUBackendTests, ReduceL2Opset13) {
 // HTP backend with FP16 precision, and that the inference results match the CPU EP results.
 //
 // Failed QNN Opvalidation because of 5D input. It runs OK if bypass the op validation
-TEST_F(QnnHTPBackendTests, DISABLED_ReduceSumOpset11_5D_FP16) {
+// Issue fixed in 2.30
+TEST_F(QnnHTPBackendTests, ReduceSumOpset11_5D_FP16) {
   float fp32_abs_err = 3e-2f;
   bool enable_fp16 = true;
   RunReduceTest<float>("ReduceSum",
@@ -422,6 +424,7 @@ static void RunReduceOpQDQTest(const std::string& op_type,
 #else
   provider_options["backend_path"] = "libQnnHtp.so";
 #endif
+  provider_options["offload_graph_io_quantization"] = "0";
 
   constexpr bool noop_with_empty_axes = false;
   const bool axes_as_input = ReduceOpHasAxesInput(op_type, opset);  // Later opsets have "axes" as an input.

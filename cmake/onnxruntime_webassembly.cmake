@@ -111,6 +111,7 @@ if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
       ${PROVIDERS_JS}
       ${PROVIDERS_XNNPACK}
       ${PROVIDERS_WEBNN}
+      ${PROVIDERS_WEBGPU}
       onnxruntime_session
       onnxruntime_util
       re2::re2
@@ -188,6 +189,7 @@ else()
     ${PROVIDERS_JS}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_WEBNN}
+    ${PROVIDERS_WEBGPU}
     onnxruntime_session
     onnxruntime_util
     re2::re2
@@ -391,6 +393,10 @@ jsepDownload:_pp_")
     endif()
   endif()
 
+  if (onnxruntime_USE_WEBGPU)
+    target_compile_definitions(onnxruntime_webassembly PRIVATE USE_WEBGPU=1)
+  endif()
+
   if (onnxruntime_EMSCRIPTEN_SETTINGS)
     foreach(setting IN LISTS onnxruntime_EMSCRIPTEN_SETTINGS)
       target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s ${setting}")
@@ -466,4 +472,59 @@ jsepDownload:_pp_")
   endif()
 
   set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME ${target_name} SUFFIX ".mjs")
+
+  #
+  # The following POST_BUILD script is a workaround for enabling:
+  # - using onnxruntime-web with Multi-threading enabled when import from CDN
+  # - using onnxruntime-web when consumed in some frameworks like Vite
+  #
+  # In the use case mentioned above, the file name of the script may be changed. So we need to replace the line:
+  # `new Worker(new URL("ort-wasm-*.mjs", import.meta.url),`
+  # with
+  # `new Worker(new URL(import.meta.url),`
+  #
+  # This behavior is introduced in https://github.com/emscripten-core/emscripten/pull/22165. Since it's unlikely to be
+  # reverted, and there is no config to disable this behavior, we have to use a post-build script to workaround it.
+  #
+
+  # Generate a script to do the post-build work
+  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/wasm_post_build.js "
+    const fs = require('fs');
+    const path = require('path');
+
+    // node wasm_post_build.js <mjsFilePath>
+    const mjsFilePath = process.argv[2];
+    let contents = fs.readFileSync(mjsFilePath).toString();
+
+    const regex = 'new Worker\\\\(new URL\\\\(\".+?\", ?import\\\\.meta\\\\.url\\\\),';
+    const matches = [...contents.matchAll(new RegExp(regex, 'g'))];
+    if (matches.length !== 1) {
+      throw new Error(
+        `Unexpected number of matches for \"${regex}\" in \"${filepath}\": ${matches.length}.`,
+      );
+    }
+
+    // Replace the only occurrence.
+    contents = contents.replace(
+      new RegExp(regex),
+      `new Worker(new URL(import.meta.url),`,
+    );
+
+    fs.writeFileSync(mjsFilePath, contents);
+  "
+  )
+
+  find_program(NODE_EXECUTABLE node required)
+  if (NOT NODE_EXECUTABLE)
+    message(FATAL_ERROR "Node is required to run the post-build script")
+  endif()
+
+  add_custom_command(
+    TARGET onnxruntime_webassembly
+    POST_BUILD
+    # Backup file at $<TARGET_FILE_NAME:onnxruntime_webassembly>.bak
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE_NAME:onnxruntime_webassembly>" "$<TARGET_FILE_NAME:onnxruntime_webassembly>.bak"
+    COMMAND ${CMAKE_COMMAND} -E echo "Performing post-process for $<TARGET_FILE_NAME:onnxruntime_webassembly>"
+    COMMAND ${NODE_EXECUTABLE} "${CMAKE_CURRENT_BINARY_DIR}/wasm_post_build.js" "$<TARGET_FILE_NAME:onnxruntime_webassembly>"
+  )
 endif()

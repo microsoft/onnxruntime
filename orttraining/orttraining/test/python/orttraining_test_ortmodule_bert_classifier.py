@@ -12,10 +12,10 @@ import torch
 import wget
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, RandomSampler, SequentialSampler, TensorDataset
-from transformers import BertConfig  # noqa: F401
 from transformers import (
     AdamW,
     AutoConfig,
+    BertConfig,  # noqa: F401
     BertForSequenceClassification,
     BertTokenizer,
     get_linear_schedule_with_warmup,
@@ -429,7 +429,9 @@ def main():
 
     # Create the learning rate scheduler.
     scheduler = get_linear_schedule_with_warmup(
-        optimizer, num_warmup_steps=0, num_training_steps=total_steps  # Default value in run_glue.py
+        optimizer,
+        num_warmup_steps=0,
+        num_training_steps=total_steps,  # Default value in run_glue.py
     )
     # Seed
     random.seed(args.seed)

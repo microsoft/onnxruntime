@@ -18,11 +18,6 @@ class CastOpBuilder : public BaseOpBuilder {
  private:
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
-
-  // Operator support related.
- private:
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                              const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
 // Add operator related.
@@ -83,25 +78,6 @@ Status CastOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));
   return Status::OK();
-}
-
-// Operator support related.
-bool CastOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
-                                           const emscripten::val& wnn_limits, const logging::Logger& logger) const {
-  const auto& input_defs = node.InputDefs();
-  const auto& op_type = node.OpType();
-  int32_t input_type;
-
-  if (!GetType(*input_defs[0], input_type, logger))
-    return false;
-
-  if (!IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "input", logger))
-    return false;
-
-  NodeAttrHelper helper(node);
-  // Check cast to type.
-  const auto to_type = helper.Get("to", ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED);
-  return IsDataTypeSupportedByOp(op_type, to_type, wnn_limits, "output", "to", logger);
 }
 
 void CreateCastOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

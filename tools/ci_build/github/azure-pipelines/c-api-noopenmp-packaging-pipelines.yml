@@ -62,7 +62,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.28.0.241029
+  default: 2.31.0.250130
 
 resources:
   repositories:
@@ -70,11 +70,6 @@ resources:
     type: github
     endpoint: ort-examples
     name: microsoft/onnxruntime-inference-examples
-  - repository: manylinux
-    type: Github
-    endpoint: Microsoft
-    name: pypa/manylinux
-    ref: 5eda9aded5462201e6310105728d33016e637ea7
 
 variables:
 - template: templates/common-variables.yml
@@ -138,11 +133,10 @@ stages:
 
 - template: nuget/templates/dml-vs-2022.yml
   parameters:
-    AgentPool: 'onnxruntime-Win2022-GPU-dml-A10'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-nuget-dml'
     StageName: 'Windows_CI_GPU_DML_Dev'
-    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --build_nodejs --cmake_generator "Visual Studio 17 2022"
+    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml  --build_nodejs --cmake_generator "Visual Studio 17 2022" --use_vcpkg
     BuildArch: 'x64'
     msbuildArchitecture: 'amd64'
     EnvSetupScript: 'setup_env.bat'
@@ -160,11 +154,10 @@ stages:
 
 - template: nuget/templates/dml-vs-2022.yml
   parameters:
-    AgentPool: 'onnxruntime-Win2022-GPU-dml-A10'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-win-dml-x86-zip'
     StageName: 'Windows_CI_GPU_DML_Dev_x86'
-    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --cmake_generator "Visual Studio 17 2022"
+    BuildCommand: --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml  --cmake_generator "Visual Studio 17 2022" --use_vcpkg
     BuildArch: 'x86'
     EnvSetupScript: 'setup_env_x86.bat'
     sln_platform: 'Win32'
@@ -183,11 +176,10 @@ stages:
 
 - template: nuget/templates/dml-vs-2022.yml
   parameters:
-    AgentPool: 'onnxruntime-Win2022-GPU-dml-A10'
     IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
     ArtifactName: 'drop-win-dml-arm64-zip'
     StageName: 'Windows_CI_GPU_DML_Dev_arm64'
-    BuildCommand: --build_dir $(Build.BinariesDirectory) --arm64 --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_winml --build_nodejs --cmake_generator "Visual Studio 17 2022"
+    BuildCommand: --build_dir $(Build.BinariesDirectory) --arm64 --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --build_nodejs --cmake_generator "Visual Studio 17 2022" --use_vcpkg
     BuildArch: 'x64'
     EnvSetupScript: 'setup_env.bat'
     sln_platform: 'arm64'
