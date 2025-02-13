@@ -482,7 +482,7 @@ def generate_windows_triplets(build_dir: str) -> None:
                             if cxxflags:
                                 f.write(f'set(VCPKG_CXX_FLAGS "{" ".join(cxxflags)}")\n')
                             f.write(
-                                "list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DCMAKE_CXX_STANDARD=20)\n"
+                                "list(APPEND VCPKG_CMAKE_CONFIGURE_OPTIONS --compile-no-warning-as-error -DCMAKE_CXX_STANDARD=17)\n"
                             )
                             if ldflags:
                                 f.write(f'set(VCPKG_LINKER_FLAGS "{" ".join(ldflags)}")\n')

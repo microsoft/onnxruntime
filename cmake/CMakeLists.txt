@@ -33,7 +33,7 @@ include(CheckFunctionExists)
 include(GNUInstallDirs) # onnxruntime_providers_* require CMAKE_INSTALL_* variables
 
 # TODO: update this once all system adapt c++20
-if(CMAKE_SYSTEM_NAME STREQUAL "Darwin" OR CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+if(CMAKE_SYSTEM_NAME STREQUAL "Darwin")
 set(CMAKE_CXX_STANDARD 20)
 else()
 set(CMAKE_CXX_STANDARD 17)
