@@ -80,7 +80,7 @@ package_name, version, cuda_version = onnxruntime_validation.get_package_name_an
 
 if cuda_version and cuda_version.startswith("12."):
 
-    def _try_load_dlls_from_nvidia_packages():
+    def _try_load_dlls():
         import ctypes
         import os
         import platform
@@ -89,8 +89,35 @@ if cuda_version and cuda_version.startswith("12."):
         if platform.system() not in ["Windows", "Linux"]:
             return
 
-        if os.getenv("ORT_PRELOAD_NVIDIA_DLLS", default="1") != "1":
+        if os.getenv("ORT_PRELOAD_DLLS", default="1") != "1":
             return
+
+        if platform.system() == "Windows":
+            import sys
+            import sysconfig
+
+            py_dll_path = os.path.join(sys.exec_prefix, "Library", "bin")
+            if os.path.exists(py_dll_path):
+                os.add_dll_directory(py_dll_path)
+
+            usebase_path = os.path.join(sysconfig.get_config_var("userbase"), "Library", "bin")
+            if os.path.exists(usebase_path):
+                os.add_dll_directory(usebase_path)
+
+            # When a virtual environment inherits the base environment.
+            if sys.exec_prefix != sys.base_exec_prefix:
+                base_py_dll_path = os.path.join(sys.base_exec_prefix, "Library", "bin")
+                if os.path.exists(base_py_dll_path):
+                    os.add_dll_directory(base_py_dll_path)
+
+            try:
+                ctypes.CDLL("vcruntime140.dll")
+                ctypes.CDLL("msvcp140.dll")
+                if platform.machine() != "ARM64":
+                    ctypes.CDLL("vcruntime140_1.dll")
+            except OSError:
+                print("Microsoft Visual C++ Redistributable is not installed, this may lead to the DLL load failure.")
+                print("It can be downloaded at https://aka.ms/vs/16/release/vc_redist.x64.exe.")
 
         # Get the site-packages path where nvidia packages are installed
         for site_packages_path in site.getsitepackages():
@@ -125,8 +152,8 @@ if cuda_version and cuda_version.startswith("12."):
                             print(f"Failed to load {full_dll_path}: {e}")
                 break
 
-    _try_load_dlls_from_nvidia_packages()
-    del _try_load_dlls_from_nvidia_packages
+    _try_load_dlls()
+    del _try_load_dlls
 
 if version:
     __version__ = version
