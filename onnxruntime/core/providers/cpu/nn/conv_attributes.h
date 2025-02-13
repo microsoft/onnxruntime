@@ -131,8 +131,31 @@ struct ConvAttributes {
     return Status::OK();
   }
 
-  Status ValidateInputShape(const Tensor* input, const Tensor* weight) const {
-    return ValidateInputShape(input->Shape(), weight->Shape());
+  Status ValidateInputShape(const TensorShape& input_shape,
+                            const TensorShape& weight_shape,
+                            const TensorShape& bias_shape,
+                            bool input_channels_last = false,
+                            bool weight_channels_last = false) const {
+    Status status = ValidateInputShape(input_shape, weight_shape, input_channels_last, weight_channels_last);
+    if (status.IsOK()) {
+      if (bias_shape.Size() > 1) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Input bias must be a 1D tensor");
+      }
+      if (bias_shape.Size() == 1 && bias_shape[0] != weight_shape[0]) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Input bias must be a 1D tensor of size W.shape[0], "
+                               "bias.shape[0] = ",
+                               bias_shape[0],
+                               ", weight.shape[0] =", weight_shape[0]);
+      }
+    }
+    return status;
+  }
+
+  Status ValidateInputShape(const Tensor* input, const Tensor* weight, const Tensor* bias = nullptr) const {
+    if (bias == nullptr)
+      return ValidateInputShape(input->Shape(), weight->Shape());
+    return ValidateInputShape(input->Shape(), weight->Shape(), bias->Shape());
   }
 
   Status InferPadsAndOutputShape(const TensorShape& input_shape,
