@@ -8,8 +8,7 @@ vcpkg_from_github(
     PATCHES
         fix-cmakelists.patch
         fix-dependency-protobuf.patch
-        fix-cxx_standard.patch
-	binskim.patch
+        binskim.patch
 )
 
 string(COMPARE EQUAL "${VCPKG_CRT_LINKAGE}" "static" USE_STATIC_RUNTIME)
