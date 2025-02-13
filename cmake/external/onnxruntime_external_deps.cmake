@@ -537,11 +537,13 @@ endif()
 
 include(external/eigen.cmake)
 
-if(onnxruntime_USE_VCPKG AND WIN32)
-  find_package(wil CONFIG REQUIRED)
-  set(WIL_TARGET "WIL::WIL")
-else()
-  include(wil) # FetchContent
+if(WIN32)
+  if(onnxruntime_USE_VCPKG)
+    find_package(wil CONFIG REQUIRED)
+    set(WIL_TARGET "WIL::WIL")
+  else()
+    include(wil) # FetchContent
+  endif()
 endif()
 
 # XNNPACK EP
