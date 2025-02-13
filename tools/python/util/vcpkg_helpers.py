@@ -512,22 +512,18 @@ def generate_posix_triplets(build_dir: str) -> None:
     Args:
         build_dir (str): The directory to save the generated triplet files.
     """
-    crt_linkages = ["static", "dynamic"]
     for os_name in ["linux", "osx"]:
         if os_name == "linux":
             target_abis = ["x86", "x64", "arm", "arm64", "s390x", "ppc64le", "riscv64", "loongarch64", "mips64"]
-            crt_linkages = ["dynamic"]
         else:
             target_abis = ["x64", "arm64", "universal2"]
-            crt_linkages = ["dynamic"]
         for enable_rtti in [True, False]:
             for enable_exception in [True, False]:
                 for enable_binskim in [True, False]:
                     for enable_asan in [True, False]:
                         if enable_asan and enable_binskim:
                             continue
-                        for crt_linkage in crt_linkages:
-                            for target_abi in target_abis:
+                        for target_abi in target_abis:
                                 generate_triplet_for_posix_platform(
                                     build_dir,
                                     os_name,
@@ -535,6 +531,6 @@ def generate_posix_triplets(build_dir: str) -> None:
                                     enable_exception,
                                     enable_binskim,
                                     enable_asan,
-                                    crt_linkage,
+                                    "dynamic",
                                     target_abi,
                                 )

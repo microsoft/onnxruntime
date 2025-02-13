@@ -1242,6 +1242,7 @@ def generate_build_tree(
             "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, "cmake", "riscv64.toolchain.cmake"),
         ]
     emscripten_cmake_toolchain_file = None
+    emsdk_dir = None
     if args.build_wasm:
         emsdk_dir = os.path.join(cmake_dir, "external", "emsdk")
         emscripten_cmake_toolchain_file = os.path.join(
@@ -1274,8 +1275,12 @@ def generate_build_tree(
         vcpkg_toolchain_path = Path(vcpkg_installation_root) / "scripts" / "buildsystems" / "vcpkg.cmake"
 
         if args.build_wasm:
+            # While vcpkg has a toolchain cmake file for most build platforms(win/linux/mac/android/...), it doesn't have one to wasm. Therefore we need to do some tricks here.
+            # Here we will generate two toolchain cmake files. One for building the ports, one for building onnxruntime itself.
+            # The following one is for building onnxruntime itself
             new_toolchain_file = Path(build_dir) / "toolchain.cmake"
             old_toolchain_lines = []
+            # First, we read the official toolchain cmake file provided by emscripten into memory 
             emscripten_root_path = os.path.join(emsdk_dir, "upstream", "emscripten")
             with open(emscripten_cmake_toolchain_file, encoding="utf-8") as f:
                 old_toolchain_lines = f.readlines()
@@ -1283,16 +1288,21 @@ def generate_build_tree(
             # This file won't be used by vcpkg-tools when invoking 0.vcpkg_dep_info.cmake or vcpkg/scripts/ports.cmake
             with open(new_toolchain_file, "w", encoding="utf-8") as f:
                 f.write(f'set(EMSCRIPTEN_ROOT_PATH "{emscripten_root_path_cmake_path}")\n')
+                
+                # Copy emscripten's toolchain cmake file to ours.
                 for line in old_toolchain_lines:
                     f.write(line)
                 vcpkg_toolchain_path_cmake_path = str(vcpkg_toolchain_path).replace("\\", "/")
+                # Add an extra line at the bottom of the file to include vcpkg's toolchain file.
                 f.write(f"include({vcpkg_toolchain_path_cmake_path})")
+                # Then tell cmake to use this toolchain file.
                 vcpkg_toolchain_path = new_toolchain_file.absolute()
 
-            # This file is for vcpkg-tools
+            # This file is for building the vcpkg ports.
             empty_toolchain_file = Path(build_dir) / "emsdk_vcpkg_toolchain.cmake"
             with open(empty_toolchain_file, "w", encoding="utf-8") as f:
                 f.write(f'set(EMSCRIPTEN_ROOT_PATH "{emscripten_root_path_cmake_path}")\n')
+                # The variable VCPKG_MANIFEST_INSTALL is OFF while building the ports
                 f.write("if(NOT VCPKG_MANIFEST_INSTALL)\n")
                 flags_to_pass = [
                     "CXX_FLAGS",
@@ -1305,11 +1315,14 @@ def generate_build_tree(
                     "LINKER_FLAGS_DEBUG",
                     "LINKER_FLAGS_RELEASE",
                 ]
+                # Overriding the cmake flags
                 for flag in flags_to_pass:
                     f.write("SET(CMAKE_" + flag + ' "${VCPKG_' + flag + '}")\n')
+                # Copy emscripten's toolchain cmake file to ours. 
                 for line in old_toolchain_lines:
                     f.write(line)
                 f.write("endif()")
+            # We must define the VCPKG_CHAINLOAD_TOOLCHAIN_FILE cmake variable, otherwise vcpkg won't let us go. 
             add_default_definition(
                 cmake_extra_defines, "VCPKG_CHAINLOAD_TOOLCHAIN_FILE", str(empty_toolchain_file.absolute())
             )
@@ -1329,7 +1342,9 @@ def generate_build_tree(
         # Choose the cmake triplet
         triplet = None
         if args.build_wasm:
+            # The support for wasm64 is still in development.
             if args.enable_wasm_memory64:
+                # The triplet wasm64-emscripten doesn't exist in vcpkg's official repo. 
                 triplet = "wasm64-emscripten"
             else:
                 triplet = "wasm32-emscripten"
