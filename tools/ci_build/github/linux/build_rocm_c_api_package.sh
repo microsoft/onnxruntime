@@ -20,7 +20,7 @@ done
 
 EXIT_CODE=1
 
-docker run --rm \
+docker run -e SYSTEM_COLLECTIONURI --rm \
   --security-opt seccomp=unconfined \
   --shm-size=1024m \
   --user $UID:$(id -g $USER) \

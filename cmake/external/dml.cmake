@@ -100,6 +100,9 @@ else()
   endif()
 endif()
 
+if(onnxruntime_USE_VCPKG){
+  find_package(directx-headers CONFIG REQUIRED)
+else()
 onnxruntime_fetchcontent_declare(
     directx_headers
     URL ${DEP_URL_directx_headers}
@@ -109,5 +112,5 @@ onnxruntime_fetchcontent_declare(
 
 FetchContent_Populate(directx_headers)
 set(directx_headers_INCLUDE_DIRS  "${directx_headers_SOURCE_DIR}/include")
-
 include_directories(BEFORE ${directx_headers_INCLUDE_DIRS})
+endif()

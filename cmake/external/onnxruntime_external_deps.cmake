@@ -119,7 +119,7 @@ onnxruntime_fetchcontent_makeavailable(utf8_range)
 include_directories(${utf8_range_SOURCE_DIR})
 
 # Download a protoc binary from Internet if needed
-if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE)
+if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT onnxruntime_USE_VCPKG)
   # This part of code is only for users' convenience. The code couldn't handle all cases. Users always can manually
   # download protoc from Protobuf's Github release page and pass the local path to the ONNX_CUSTOM_PROTOC_EXECUTABLE
   # variable.
@@ -286,20 +286,22 @@ onnxruntime_fetchcontent_declare(
 )
 onnxruntime_fetchcontent_makeavailable(date)
 
-onnxruntime_fetchcontent_declare(
-  mp11
-  URL ${DEP_URL_mp11}
-  URL_HASH SHA1=${DEP_SHA1_mp11}
-  EXCLUDE_FROM_ALL
-  FIND_PACKAGE_ARGS NAMES Boost
-)
-onnxruntime_fetchcontent_makeavailable(mp11)
 if(NOT TARGET Boost::mp11)
   if(onnxruntime_USE_VCPKG)
-    find_package(Boost REQUIRED)
+     find_package(Boost REQUIRED)
+     message(STATUS "Aliasing Boost::headers to Boost::mp11")
+     add_library(Boost::mp11 ALIAS Boost::headers)
+  else()
+    onnxruntime_fetchcontent_declare(
+     mp11
+     URL ${DEP_URL_mp11}
+     FIND_PACKAGE_ARGS NAMES Boost
+    )
+    onnxruntime_fetchcontent_makeavailable(mp11)    
+    if(NOT TARGET Boost::mp11)
+      add_library(Boost::mp11 ALIAS Boost::headers)
+    endif()
   endif()
-  message(STATUS "Aliasing Boost::headers to Boost::mp11")
-  add_library(Boost::mp11 ALIAS Boost::headers)
 endif()
 
 set(JSON_BuildTests OFF CACHE INTERNAL "")

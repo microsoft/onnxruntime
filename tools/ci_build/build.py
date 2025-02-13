@@ -33,7 +33,17 @@ sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 
 
 import util.android as android  # noqa: E402
-from util import get_logger, is_linux, is_macOS, is_windows, run  # noqa: E402
+from util import (  # noqa: E402
+    generate_android_triplets,
+    generate_posix_triplets,
+    generate_vcpkg_triplets_for_emscripten,
+    generate_windows_triplets,
+    get_logger,
+    is_linux,
+    is_macOS,
+    is_windows,
+    run,
+)
 
 log = get_logger("build")
 
@@ -985,6 +995,102 @@ def number_of_nvcc_threads(args):
     return nvcc_threads
 
 
+# See https://learn.microsoft.com/en-us/vcpkg/commands/install
+def generate_vcpkg_install_options(build_dir, args):
+    # NOTE: each option string should not contain any whitespace.
+    vcpkg_install_options = ["--x-feature=tests", "--debug"]
+    if args.use_acl:
+        vcpkg_install_options.append("--x-feature=acl-ep")
+    if args.use_armnn:
+        vcpkg_install_options.append("--x-feature=armnn-ep")
+    if args.use_azure:
+        vcpkg_install_options.append("--x-feature=azure-ep")
+    if args.use_cann:
+        vcpkg_install_options.append("--x-feature=cann-ep")
+    if args.use_coreml:
+        vcpkg_install_options.append("--x-feature=coreml-ep")
+    if args.use_cuda:
+        vcpkg_install_options.append("--x-feature=cuda-ep")
+    if args.use_dml:
+        vcpkg_install_options.append("--x-feature=dml-ep")
+    if args.use_dnnl:
+        vcpkg_install_options.append("--x-feature=dnnl-ep")
+    if args.use_jsep:
+        vcpkg_install_options.append("--x-feature=js-ep")
+    if args.use_migraphx:
+        vcpkg_install_options.append("--x-feature=migraphx-ep")
+    if args.use_nnapi:
+        vcpkg_install_options.append("--x-feature=nnapi-ep")
+    if args.use_openvino:
+        vcpkg_install_options.append("--x-feature=openvino-ep")
+    if args.use_qnn:
+        vcpkg_install_options.append("--x-feature=qnn-ep")
+    if args.use_rknpu:
+        vcpkg_install_options.append("--x-feature=rknpu-ep")
+    if args.use_rocm:
+        vcpkg_install_options.append("--x-feature=rocm-ep")
+    if args.use_tensorrt:
+        vcpkg_install_options.append("--x-feature=tensorrt-ep")
+    if args.use_vitisai:
+        vcpkg_install_options.append("--x-feature=vitisai-ep")
+    if args.use_vsinpu:
+        vcpkg_install_options.append("--x-feature=vsinpu-ep")
+    if args.use_webgpu:
+        vcpkg_install_options.append("--x-feature=webgpu-ep")
+    if args.use_webnn:
+        vcpkg_install_options.append("--x-feature=webnn-ep")
+    if args.use_xnnpack:
+        vcpkg_install_options.append("--x-feature=xnnpack-ep")
+
+    overlay_triplets_dir = None
+
+    folder_name_parts = []
+    if args.enable_address_sanitizer:
+        folder_name_parts.append("asan")
+    if args.use_binskim_compliant_compile_flags and not args.android:
+        folder_name_parts.append("binskim")
+    if args.disable_rtti:
+        folder_name_parts.append("nortti")
+    if args.disable_exceptions:
+        folder_name_parts.append("noexception")
+    if len(folder_name_parts) == 0:
+        folder_name = "default"
+    else:
+        folder_name = "_".join(folder_name_parts)
+    overlay_triplets_dir = (Path(build_dir) / folder_name).absolute()
+
+    vcpkg_install_options.append(f"--overlay-triplets={overlay_triplets_dir}")
+    if "AGENT_TEMPDIRECTORY" in os.environ:
+        temp_dir = os.environ["AGENT_TEMPDIRECTORY"]
+        vcpkg_install_options.append(f"--x-buildtrees-root={temp_dir}")
+
+    SYSTEM_COLLECTIONURI = os.getenv("SYSTEM_COLLECTIONURI")  # noqa: N806
+
+    # Config asset cache
+    terrapin_cmd_path = shutil.which("TerrapinRetrievalTool")
+    if terrapin_cmd_path is None:
+        terrapin_cmd_path = "C:\\local\\Terrapin\\TerrapinRetrievalTool.exe"
+        if not os.path.exists(terrapin_cmd_path):
+            terrapin_cmd_path = None
+    if terrapin_cmd_path is not None:
+        vcpkg_install_options.append(
+            "--x-asset-sources=x-script,"
+            + terrapin_cmd_path
+            + " -b https://vcpkg.storage.devpackages.microsoft.io/artifacts/ -a true -u Environment -p {url} -s {sha512} -d {dst}\\;x-block-origin"
+        )
+    else:
+        if (
+            SYSTEM_COLLECTIONURI == "https://dev.azure.com/onnxruntime/"
+            or SYSTEM_COLLECTIONURI == "https://dev.azure.com/aiinfra/"
+            or SYSTEM_COLLECTIONURI == "https://aiinfra.visualstudio.com/"
+        ):
+            vcpkg_install_options.append(
+                "--x-asset-sources=x-azurl,https://vcpkg.storage.devpackages.microsoft.io/artifacts/\\;x-block-origin"
+            )
+
+    return vcpkg_install_options
+
+
 def generate_build_tree(
     cmake_path,
     source_dir,
@@ -1010,6 +1116,7 @@ def generate_build_tree(
     cmake_extra_args,
 ):
     log.info("Generating CMake build tree")
+
     cmake_dir = os.path.join(source_dir, "cmake")
     cmake_args = [cmake_path, cmake_dir]
     if not use_dev_mode(args):
@@ -1134,12 +1241,16 @@ def generate_build_tree(
             "-DRISCV_QEMU_PATH:PATH=" + args.riscv_qemu_path,
             "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, "cmake", "riscv64.toolchain.cmake"),
         ]
+    emscripten_cmake_toolchain_file = None
+    if args.build_wasm:
+        emsdk_dir = os.path.join(cmake_dir, "external", "emsdk")
+        emscripten_cmake_toolchain_file = os.path.join(
+            emsdk_dir, "upstream", "emscripten", "cmake", "Modules", "Platform", "Emscripten.cmake"
+        )
+
     if args.use_vcpkg:
         # TODO: set VCPKG_PLATFORM_TOOLSET_VERSION
         # Setup CMake flags for vcpkg
-        vcpkg_install_options = ["--x-feature=tests"]
-        if args.use_xnnpack:
-            vcpkg_install_options.append("--x-feature=xnnpack-ep")
 
         # Find VCPKG's toolchain cmake file
         vcpkg_cmd_path = shutil.which("vcpkg")
@@ -1161,50 +1272,67 @@ def generate_build_tree(
             if not os.path.exists(vcpkg_installation_root):
                 run_subprocess(["git", "clone", "https://github.com/microsoft/vcpkg.git", "--recursive"], cwd=build_dir)
         vcpkg_toolchain_path = Path(vcpkg_installation_root) / "scripts" / "buildsystems" / "vcpkg.cmake"
+
+        if args.build_wasm:
+            new_toolchain_file = Path(build_dir) / "toolchain.cmake"
+            old_toolchain_lines = []
+            emscripten_root_path = os.path.join(emsdk_dir, "upstream", "emscripten")
+            with open(emscripten_cmake_toolchain_file, encoding="utf-8") as f:
+                old_toolchain_lines = f.readlines()
+            emscripten_root_path_cmake_path = emscripten_root_path.replace("\\", "/")
+            # This file won't be used by vcpkg-tools when invoking 0.vcpkg_dep_info.cmake or vcpkg/scripts/ports.cmake
+            with open(new_toolchain_file, "w", encoding="utf-8") as f:
+                f.write(f'set(EMSCRIPTEN_ROOT_PATH "{emscripten_root_path_cmake_path}")\n')
+                for line in old_toolchain_lines:
+                    f.write(line)
+                vcpkg_toolchain_path_cmake_path = str(vcpkg_toolchain_path).replace("\\", "/")
+                f.write(f"include({vcpkg_toolchain_path_cmake_path})")
+                vcpkg_toolchain_path = new_toolchain_file.absolute()
+
+            # This file is for vcpkg-tools
+            empty_toolchain_file = Path(build_dir) / "emsdk_vcpkg_toolchain.cmake"
+            with open(empty_toolchain_file, "w", encoding="utf-8") as f:
+                f.write(f'set(EMSCRIPTEN_ROOT_PATH "{emscripten_root_path_cmake_path}")\n')
+                f.write("if(NOT VCPKG_MANIFEST_INSTALL)\n")
+                flags_to_pass = [
+                    "CXX_FLAGS",
+                    "CXX_FLAGS_DEBUG",
+                    "CXX_FLAGS_RELEASE",
+                    "C_FLAGS",
+                    "C_FLAGS_DEBUG",
+                    "C_FLAGS_RELEASE",
+                    "LINKER_FLAGS",
+                    "LINKER_FLAGS_DEBUG",
+                    "LINKER_FLAGS_RELEASE",
+                ]
+                for flag in flags_to_pass:
+                    f.write("SET(CMAKE_" + flag + ' "${VCPKG_' + flag + '}")\n')
+                for line in old_toolchain_lines:
+                    f.write(line)
+                f.write("endif()")
+            add_default_definition(
+                cmake_extra_defines, "VCPKG_CHAINLOAD_TOOLCHAIN_FILE", str(empty_toolchain_file.absolute())
+            )
+            generate_vcpkg_triplets_for_emscripten(build_dir, emscripten_root_path)
+        elif args.android:
+            generate_android_triplets(build_dir, args.android_cpp_shared, args.android_api)
+        elif is_windows():
+            generate_windows_triplets(build_dir)
+        else:
+            generate_posix_triplets(build_dir)
         add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", str(vcpkg_toolchain_path))
-        overlay_triplets_dir = None
 
-        folder_name_parts = []
-        if args.enable_address_sanitizer:
-            folder_name_parts.append("asan")
-        if args.use_binskim_compliant_compile_flags and not args.android:
-            folder_name_parts.append("binskim")
-        if args.disable_rtti:
-            folder_name_parts.append("nortti")
-        if args.disable_exceptions and not is_windows():
-            folder_name_parts.append("noexception")
-        if len(folder_name_parts) == 0:
-            folder_name = "default"
-        else:
-            folder_name = "_".join(folder_name_parts)
-        overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg-triplets", folder_name)
-
-        vcpkg_install_options.append(f"--overlay-triplets={overlay_triplets_dir}")
-        if "AGENT_TEMPDIRECTORY" in os.environ:
-            temp_dir = os.environ["AGENT_TEMPDIRECTORY"]
-            vcpkg_install_options.append(f"--x-buildtrees-root={temp_dir}")
-        terrapin_cmd_path = shutil.which("TerrapinRetrievalTool")
-        if terrapin_cmd_path is None:
-            terrapin_cmd_path = "C:\\local\\Terrapin\\TerrapinRetrievalTool.exe"
-            if not os.path.exists(terrapin_cmd_path):
-                terrapin_cmd_path = None
-        if terrapin_cmd_path is not None:
-            vcpkg_install_options.append(
-                "--x-asset-sources=x-script,"
-                + terrapin_cmd_path
-                + " -b https://vcpkg.storage.devpackages.microsoft.io/artifacts/ -a true -u Environment -p {url} -s {sha512} -d {dst}\\;x-block-origin"
-            )
-        else:
-            vcpkg_install_options.append(
-                "--x-asset-sources=x-azurl,https://vcpkg.storage.devpackages.microsoft.io/artifacts/\\;x-block-origin"
-            )
+        vcpkg_install_options = generate_vcpkg_install_options(build_dir, args)
         # VCPKG_INSTALL_OPTIONS is a CMake list. It must be joined by semicolons
         # Therefore, if any of the option string contains a semicolon, it must be escaped
         add_default_definition(cmake_extra_defines, "VCPKG_INSTALL_OPTIONS", ";".join(vcpkg_install_options))
         # Choose the cmake triplet
         triplet = None
         if args.build_wasm:
-            triplet = "wasm32-emscripten"
+            if args.enable_wasm_memory64:
+                triplet = "wasm64-emscripten"
+            else:
+                triplet = "wasm32-emscripten"
         elif args.android:
             if args.android_abi == "armeabi-v7a":
                 triplet = "arm-neon-android"
@@ -1397,6 +1525,7 @@ def generate_build_tree(
             cmake_args.append("-DCMAKE_TOOLCHAIN_FILE=" + android_toolchain_cmake_path)
         else:
             cmake_args.append("-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=" + android_toolchain_cmake_path)
+
         if args.android_cpp_shared:
             cmake_args += ["-DANDROID_STL=c++_shared"]
 
@@ -1534,13 +1663,7 @@ def generate_build_tree(
             ]
 
     if args.build_wasm:
-        emsdk_dir = os.path.join(cmake_dir, "external", "emsdk")
-        emscripten_cmake_toolchain_file = os.path.join(
-            emsdk_dir, "upstream", "emscripten", "cmake", "Modules", "Platform", "Emscripten.cmake"
-        )
-        if args.use_vcpkg:
-            cmake_args.append("-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=" + emscripten_cmake_toolchain_file)
-        else:
+        if not args.use_vcpkg:
             cmake_args.append("-DCMAKE_TOOLCHAIN_FILE=" + emscripten_cmake_toolchain_file)
         if args.disable_wasm_exception_catching:
             # WebAssembly unittest requires exception catching to work. If this feature is disabled, we do not build
@@ -1705,9 +1828,8 @@ def generate_build_tree(
             (args.use_binskim_compliant_compile_flags or args.enable_address_sanitizer)
             and not args.ios
             and not args.android
-            and not args.build_wasm
         ):
-            if is_windows():
+            if is_windows() and not args.build_wasm:
                 cflags += ["/guard:cf", "/DWIN32", "/D_WINDOWS"]
                 if not args.use_gdk:
                     # Target Windows 10
@@ -1734,6 +1856,8 @@ def generate_build_tree(
                 if args.enable_address_sanitizer:
                     cflags += ["/fsanitize=address"]
                 cxxflags = cflags.copy()
+                if not args.disable_exceptions:
+                    cxxflags.append("/EHsc")
                 if args.use_cuda:
                     # On Windows, nvcc passes /EHsc to the host compiler by default.
                     cuda_compile_flags_str = ""
@@ -1744,8 +1868,8 @@ def generate_build_tree(
                             cuda_compile_flags_str = cuda_compile_flags_str + " " + compile_flag
                     if len(cuda_compile_flags_str) != 0:
                         cudaflags.append(f'-Xcompiler="{cuda_compile_flags_str}"')
-            elif is_linux() or is_macOS():
-                if is_linux():
+            elif is_linux() or is_macOS() or args.build_wasm:
+                if is_linux() and not args.build_wasm:
                     ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now", "-Wl,-z,noexecstack"]
                 else:
                     ldflags = []
@@ -1758,7 +1882,7 @@ def generate_build_tree(
                         "-O3",
                         "-pipe",
                     ]
-                    if is_linux():
+                    if is_linux() and not args.build_wasm:
                         ldflags += ["-Wl,--strip-all"]
                 elif config == "RelWithDebInfo":
                     cflags = [
@@ -1768,10 +1892,10 @@ def generate_build_tree(
                         "-fstack-protector-strong",
                         "-O3",
                         "-pipe",
-                        "-ggdb3",
+                        "-g",
                     ]
                 elif config == "Debug":
-                    cflags = ["-ggdb3", "-O0"]
+                    cflags = ["-g", "-O0"]
                     if args.enable_address_sanitizer:
                         cflags += ["-fsanitize=address"]
                         ldflags += ["-fsanitize=address"]
@@ -1783,9 +1907,9 @@ def generate_build_tree(
                         "-fstack-protector-strong",
                         "-Os",
                         "-pipe",
-                        "-ggdb3",
+                        "-g",
                     ]
-                if is_linux() and platform.machine() == "x86_64":
+                if is_linux() and platform.machine() == "x86_64" and not args.build_wasm:
                     # The following flags needs GCC 8 and newer
                     cflags += ["-fstack-clash-protection"]
                     if not args.rv64:
@@ -1814,6 +1938,9 @@ def generate_build_tree(
         env = {}
         if args.use_vcpkg:
             env["VCPKG_KEEP_ENV_VARS"] = "TRT_UPLOAD_AUTH_TOKEN"
+            if args.build_wasm:
+                env["EMSDK"] = emsdk_dir
+
         run_subprocess(
             [*temp_cmake_args, f"-DCMAKE_BUILD_TYPE={config}"],
             cwd=config_build_dir,
