@@ -85,7 +85,9 @@ class SharedContext {
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(SharedContext);
 
+  // Used for passing through QNN models (deserialized from context binary) across sessions
   std::vector<std::unique_ptr<qnn::QnnModel>> shared_qnn_models_;
+  // Used for compiling multiple models into same QNN context binary
   std::shared_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
   // Producer sessions can be in parallel
   // Consumer sessions have to be after producer sessions initialized

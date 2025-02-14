@@ -1043,7 +1043,8 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                   logger));
 
     if (share_ep_contexts_ && nullptr == SharedContext::GetInstance().GetSharedQnnBackendManager()) {
-      ORT_RETURN_IF_NOT(SharedContext::GetInstance().SetSharedQnnBackendManager(qnn_backend_manager_), "Failed to set QnnBackendManager.");
+      ORT_RETURN_IF_NOT(SharedContext::GetInstance().SetSharedQnnBackendManager(qnn_backend_manager_),
+                        "Failed to set shared QnnBackendManager.");
     }
   }
   return Status::OK();
