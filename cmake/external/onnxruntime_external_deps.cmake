@@ -91,6 +91,12 @@ endif()
 
 
 if(onnxruntime_USE_MIMALLOC)
+  add_definitions(-DUSE_MIMALLOC)
+
+  set(MI_OVERRIDE OFF CACHE BOOL "" FORCE)
+  set(MI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(MI_DEBUG_FULL OFF CACHE BOOL "" FORCE)
+  set(MI_BUILD_SHARED OFF CACHE BOOL "" FORCE)
   onnxruntime_fetchcontent_declare(
     mimalloc
     URL ${DEP_URL_mimalloc}
@@ -568,16 +574,6 @@ if (onnxruntime_USE_XNNPACK)
   else()
     include(xnnpack)
   endif()
-endif()
-
-if (onnxruntime_USE_MIMALLOC)
-  add_definitions(-DUSE_MIMALLOC)
-
-  set(MI_OVERRIDE OFF CACHE BOOL "" FORCE)
-  set(MI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-  set(MI_DEBUG_FULL OFF CACHE BOOL "" FORCE)
-  set(MI_BUILD_SHARED OFF CACHE BOOL "" FORCE)
-  onnxruntime_fetchcontent_makeavailable(mimalloc)
 endif()
 
 set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} ${WIL_TARGET} nlohmann_json::nlohmann_json
