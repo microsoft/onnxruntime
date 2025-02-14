@@ -258,4 +258,29 @@ void TensorrtExecutionProvider::SetAllGraphInputs(Graph& graph) const {
 
   graph.SetInputs(graph_inputs_including_initializers);
 }
+
+// Check if DDS op is in the ComputeCapability/subgraph.
+void TensorrtExecutionProvider::CheckDDSOpInSubGraph(const GraphViewer& graph,
+                                                     std::vector<std::unique_ptr<ComputeCapability>>& compute_capabilities,
+                                                     const std::unordered_set<std::string>& dds_op_set,
+                                                     int32_t trt_version) const {
+  auto is_dds_op = [&](const auto& node) {
+    if (dds_op_set.find(node->OpType()) != dds_op_set.end()) return true;
+    return false;
+  };
+
+  for (auto& compute_capability : compute_capabilities) {
+    auto& indexed_sub_graph = compute_capability->SubGraph();
+    for (auto i : indexed_sub_graph->Nodes()) {
+      if (is_dds_op(graph.GetNode(i))) {
+        if (trt_version >= 100000 && trt_version < 110000) {
+          LOGS_DEFAULT(VERBOSE) << "Some DDS nodes will be run by TRT.";
+          LOGS_DEFAULT(VERBOSE) << "There may be potential performance issues in TRT 10 when running models that contain DDS operations such as NonMaxSuppression, NonZero, and RoiAlign (e.g., Faster-RCNN).";
+          LOGS_DEFAULT(VERBOSE) << "If you encounter significant performance degradation, we suggest specify those DDS ops to be excluded from running by TRT, i.e. trt_op_types_to_exclude=\"NonMaxSuppression,NonZero,RoiAlign\". Those DDS nodes will be run by CUDA EP or CPU.";
+        }
+        return;
+      }
+    }
+  }
+}
 }  // namespace onnxruntime

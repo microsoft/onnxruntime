@@ -57,6 +57,7 @@ static const std::string kDumpEpContextModel = "ORT_DUMP_EP_CONTEXT_MODEL";
 static const std::string kEpContextEmbedMode = "ORT_EP_CONTEXT_EMBED_MODE";
 static const std::string kEpContextComputeCapabilityEnable = "ORT_EP_CONTEXT_COMPUTE_CAPABILITY_ENABLE";
 static const std::string kEngineCachePrefix = "ORT_TENSORRT_CACHE_PREFIX";
+static const std::string kOpTypesToExclude = "ORT_TENSORRT_OP_TYPES_TO_EXCLUDE";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 }  // namespace tensorrt_env_vars
@@ -351,6 +352,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
   mutable std::unordered_map<std::string, std::unique_ptr<SubGraphContext>> subgraph_context_map_;
 
+  const std::unordered_set<std::string> dds_op_set_ = {"NonMaxSuppression", "NonZero", "RoiAlign"};
+
   mutable std::unique_ptr<nvinfer1::IBuilder> builder_;
 
   // Following maps that hold TRT objects will be accessible by different threads if ORT is using multithreading.
@@ -590,5 +593,13 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    * This function only creates the instance at the first time it's being called."
    */
   nvinfer1::IBuilder* GetBuilder(TensorrtLogger& trt_logger) const;
+
+  /**
+   * Check if DDS op is in the ComputeCapability/subgraph.
+   */
+  void CheckDDSOpInSubGraph(const GraphViewer& graph,
+                            std::vector<std::unique_ptr<ComputeCapability>>& compute_capabilities,
+                            const std::unordered_set<std::string>& dds_op_set,
+                            int32_t trt_version) const;
 };
 }  // namespace onnxruntime
