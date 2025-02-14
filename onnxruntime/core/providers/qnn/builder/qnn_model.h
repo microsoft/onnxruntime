@@ -35,7 +35,8 @@ class QnnModel {
                       const onnxruntime::Node& fused_node,
                       const qnn::ModelSettings& model_settings,
                       const logging::Logger& logger,
-                      const QnnGraph_Config_t** graph_configs = nullptr);
+                      const QnnGraph_Config_t** graph_configs = nullptr,
+                      const std::string& json_qnn_graph_path = "");
 
   Status FinalizeGraphs(const logging::Logger& logger);
 
