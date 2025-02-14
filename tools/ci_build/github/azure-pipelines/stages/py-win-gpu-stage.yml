@@ -33,7 +33,7 @@ parameters:
    - Release
    - RelWithDebInfo
    - MinSizeRel
-
+   
 - name: use_tensorrt
   type: boolean
   default: false
@@ -195,6 +195,7 @@ stages:
             TMPDIR: "$(Agent.TempDirectory)"
 
         - powershell: |
+  
             python -m pip uninstall -y onnxruntime onnxruntime-gpu -qq
             Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*cp${{ replace(parameters.PYTHON_VERSION,'.','') }}*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
             mkdir -p $(Agent.TempDirectory)\ort_test_data
