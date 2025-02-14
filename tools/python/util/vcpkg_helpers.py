@@ -460,6 +460,8 @@ def generate_windows_triplets(build_dir: str) -> None:
                                 folder_name_parts.append("binskim")
                             if not enable_rtti:
                                 folder_name_parts.append("nortti")
+                            if not enable_exception:
+                                folder_name_parts.append("noexception")
                             folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
                             file_name_parts = [target_abi, "windows", "static"]
                             if crt_linkage == "dynamic":
