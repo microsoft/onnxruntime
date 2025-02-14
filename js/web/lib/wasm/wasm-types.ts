@@ -316,6 +316,7 @@ export declare namespace WebGpu {
     webgpuUnregisterBuffer(buffer: GPUBuffer): void;
     webgpuGetBuffer(bufferHandle: number): GPUBuffer;
     webgpuCreateDownloader(gpuBuffer: GPUBuffer, size: number, sessionHandle: number): () => Promise<ArrayBuffer>;
+    webgpuStat(label?: string): void;
   }
 }
 

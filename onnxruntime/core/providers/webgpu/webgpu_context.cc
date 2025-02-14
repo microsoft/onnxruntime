@@ -32,6 +32,8 @@
 #include "core/providers/webgpu/program_manager.h"
 #include "core/providers/webgpu/string_macros.h"
 
+extern std::vector<std::pair<char, std::chrono::time_point<std::chrono::high_resolution_clock>>> g_f_events;
+
 namespace onnxruntime {
 namespace webgpu {
 
@@ -180,7 +182,12 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
 }
 
 Status WebGpuContext::Wait(wgpu::Future f) {
+  // auto now = std::chrono::high_resolution_clock::now();
+  // g_f_events.push_back({'w', now});
+
   auto status = instance_.WaitAny(f, UINT64_MAX);
+  // now = std::chrono::high_resolution_clock::now();
+  // g_f_events.push_back({'x', now});
   if (status == wgpu::WaitStatus::Success) {
     return Status::OK();
   }
@@ -188,6 +195,9 @@ Status WebGpuContext::Wait(wgpu::Future f) {
 }
 
 Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
+  // auto now = std::chrono::high_resolution_clock::now();
+  // g_f_events.push_back({'a', now});
+
   const auto& inputs = program.Inputs();
   const auto& outputs = program.Outputs();
 
@@ -449,6 +459,9 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
     Flush();
     num_pending_dispatches_ = 0;
   }
+
+  // now = std::chrono::high_resolution_clock::now();
+  // g_f_events.push_back({'b', now});
 
   return Status::OK();
 }

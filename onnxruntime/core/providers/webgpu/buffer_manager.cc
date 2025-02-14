@@ -4,6 +4,8 @@
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
 
+extern std::vector<std::pair<char, std::chrono::time_point<std::chrono::high_resolution_clock>>> g_f_events;
+
 namespace onnxruntime {
 namespace webgpu {
 
@@ -355,6 +357,9 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) {
   context_.EndComputePass();
   command_encoder.CopyBufferToBuffer(src, 0, staging_buffer, 0, buffer_size);
   context_.Flush();
+
+  //auto now = std::chrono::high_resolution_clock::now();
+  //g_f_events.push_back({'d', now});
 
   // TODO: revise wait in whole project
 

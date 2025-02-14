@@ -209,6 +209,16 @@ export class WebGpuBackend {
   private queryTimeBase?: bigint;
   queryType: TimestampQuery;
 
+  buffers = new Set();
+  buffersTotalSize = new Map();
+
+  buffersCreated = 0;
+  buffersDestroyed = 0;
+  buffersUploads = 0;
+  buffersExternalUploads = 0;
+  buffersDownloads = 0;
+  buffersExternalDownloads = 0;
+
   env: Env;
   sessionStatus: SessionState = 'default';
   /**
@@ -255,6 +265,67 @@ export class WebGpuBackend {
     requireFeatureIfAvailable('subgroups' as GPUFeatureName);
 
     this.device = await adapter.requestDevice(deviceDescriptor);
+
+    // @ts-expect-error Element implicitly has an 'any' type because type 'typeof globalThis' has no index signature.ts(7017)
+    if (globalThis.WEBGPU_STAT) {
+      const buffers = this.buffers;
+      const buffersTotalSize = this.buffersTotalSize;
+
+      const buffersUploadsIncrement = () => {
+        this.buffersUploads++;
+      };
+      const buffersDownloadsIncrement = () => {
+        this.buffersDownloads++;
+      };
+      const buffersCreatedIncrement = () => {
+        this.buffersCreated++;
+      };
+      const buffersDestroyedIncrement = () => {
+        this.buffersDestroyed++;
+      };
+
+      this.device = new Proxy(this.device, {
+        // when call device.createBuffer(), the returned buffer should be added into buffers
+        get: (target, prop, _receiver) => {
+          if (prop === 'createBuffer') {
+            return (desc: GPUBufferDescriptor) => {
+              const buffer = target.createBuffer(desc);
+              const originalDestroy = buffer.destroy.bind(buffer);
+              buffer.destroy = () => {
+                const previousTotal = buffersTotalSize.get(buffer.usage);
+                buffersTotalSize.set(buffer.usage, previousTotal - buffer.size);
+                buffers.delete(buffer);
+                buffersDestroyedIncrement();
+                originalDestroy();
+              };
+
+              // eslint-disable-next-line no-bitwise
+              if (buffer.usage === (GPUBufferUsage.MAP_WRITE | GPUBufferUsage.COPY_SRC)) {
+                buffersUploadsIncrement();
+              }
+              // eslint-disable-next-line no-bitwise
+              if (buffer.usage === (GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ)) {
+                buffersDownloadsIncrement();
+              }
+
+              buffers.add(buffer);
+              const previousTotal = buffersTotalSize.get(buffer.usage) ?? 0;
+              buffersTotalSize.set(buffer.usage, previousTotal + buffer.size);
+              buffersCreatedIncrement();
+              return buffer;
+            };
+          }
+          const propertyValue = Reflect.get(target, prop);
+          if (typeof propertyValue === 'function') {
+            return propertyValue.bind(target);
+          } else {
+            return propertyValue;
+          }
+        },
+        set: (target, prop, value, _receiver) => Reflect.set(target, prop, value),
+      });
+    }
+
     this.adapterInfo = new AdapterInfoImpl(adapter.info || (await adapter.requestAdapterInfo()));
     this.gpuDataManager = createGpuDataManager(this);
     this.programManager = new ProgramManager(this);
@@ -818,6 +889,7 @@ export class WebGpuBackend {
   ): () => Promise<Tensor.DataType> {
     return async () => {
       const data = await downloadGpuData(this, gpuBuffer, size);
+      this.buffersExternalDownloads++;
       return createView(data.buffer, type);
     };
   }

@@ -91,6 +91,15 @@ Module["jsepInit"] = (name, params) => {
 
     Module.jsepUploadExternalBuffer = (dataId, buffer) => {
       backend["upload"](dataId, buffer);
+      backend["buffersExternalUploads"]++;
+    };
+
+    Module["webgpuStat"] = (label) => {
+      if (globalThis["WEBGPU_STAT"]) {
+        console.log(
+          `[${label}] BufferCount: ${backend["buffers"].size}, Created: ${backend["buffersCreated"]}, Destroyed: ${backend["buffersDestroyed"]}, Uploads: ${backend["buffersUploads"]}, Downloads: ${backend["buffersDownloads"]}, ExtUploads: ${backend["buffersExternalUploads"]}, ExtDownloads: ${backend["buffersExternalDownloads"]}`
+        );
+      }
     };
   } else if (name === "webnn") {
     // Functions called from EM_ASM need to be assigned in a way that can be minified.

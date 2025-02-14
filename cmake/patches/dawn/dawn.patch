@@ -47,6 +47,72 @@ index efd6491cd6..8ebc5d28b6 100644
  emcmake cmake -GNinja -DDAWN_EMSCRIPTEN_TOOLCHAIN="path/to/emscripten" ../..
  
  ninja
+diff --git a/third_party/emdawnwebgpu/library_webgpu.js b/third_party/emdawnwebgpu/library_webgpu.js
+index f8ef77d5c4..c38c41771e 100644
+--- a/third_party/emdawnwebgpu/library_webgpu.js
++++ b/third_party/emdawnwebgpu/library_webgpu.js
+@@ -820,6 +820,61 @@ var LibraryWebGPU = {
+     {{{ runtimeKeepalivePush() }}}
+     WebGPU.Internals.futureInsert(futureId, adapter.requestDevice(desc).then((device) => {
+       {{{ runtimeKeepalivePop() }}}
++
++      if (globalThis["WEBGPU_STAT"]) {
++        // a set that caches all active buffers
++        const buffers = WebGPU.Internals.buffers ??= new Set();
++        // key is buffer usage, value is total size of buffers with that usage
++        const buffersTotalSize = WebGPU.Internals.buffersTotalSize ??= new Map();
++
++        WebGPU.Internals.buffersCreated ??= 0;
++        WebGPU.Internals.buffersDestroyed ??= 0;
++        WebGPU.Internals.buffersUploads ??= 0;
++        WebGPU.Internals.buffersExternalUploads ??= 0;
++        WebGPU.Internals.buffersDownloads ??= 0;
++        WebGPU.Internals.buffersExternalDownloads ??= 0;
++
++        // create a proxy so that we can monitor buffer usages
++        device = new Proxy(device, {
++          // when call device.createBuffer(), the returned buffer should be added into buffers
++          get: (target, prop, _receiver) => {
++            if (prop === 'createBuffer') {
++              return (desc) => {
++                const buffer = target.createBuffer(desc);
++                const originalDestroy = buffer.destroy.bind(buffer);
++                buffer.destroy = () => {
++                  const previousTotal = buffersTotalSize.get(buffer.usage);
++                  buffersTotalSize.set(buffer.usage, previousTotal - buffer.size);
++                  buffers.delete(buffer);
++                  WebGPU.Internals.buffersDestroyed++;
++                  originalDestroy();
++                };
++
++                if (buffer.usage === (GPUBufferUsage.MAP_WRITE | GPUBufferUsage.COPY_SRC)) {
++                  WebGPU.Internals.buffersUploads++;
++                }
++                if (buffer.usage === (GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ)) {
++                  WebGPU.Internals.buffersDownloads++;
++                }
++
++                buffers.add(buffer);
++                const previousTotal = buffersTotalSize.get(buffer.usage) ?? 0;
++                buffersTotalSize.set(buffer.usage, previousTotal + buffer.size);
++                WebGPU.Internals.buffersCreated++;
++                return buffer;
++              };
++            }
++            const propertyValue = Reflect.get(target, prop);
++            if (typeof propertyValue === 'function') {
++              return propertyValue.bind(target);
++            } else {
++              return propertyValue;
++            }
++          },
++          set: (target, prop, value, _receiver) => Reflect.set(target, prop, value),
++        });
++      }
++
+       WebGPU.Internals.jsObjectInsert(queuePtr, device.queue);
+       WebGPU.Internals.jsObjectInsert(devicePtr, device);
+ 
 diff --git a/third_party/emdawnwebgpu/webgpu.cpp b/third_party/emdawnwebgpu/webgpu.cpp
 index f1c5a7d50e..16f2495712 100644
 --- a/third_party/emdawnwebgpu/webgpu.cpp

@@ -25,7 +25,7 @@ if ["%~1"]==["d"] (
 )
 if ["%~1"]==["r"] (
     set CONFIG=Release
-    set CONFIG_EXTRA_FLAG=
+    set CONFIG_EXTRA_FLAG=--enable_wasm_api_exception_catching --disable_rtti --enable_wasm_profiling
     @rem --enable_wasm_api_exception_catching --disable_rtti
     goto :arg2
 )

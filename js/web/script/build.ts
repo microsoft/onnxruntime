@@ -613,6 +613,12 @@ async function main() {
       outputName: 'ort',
       define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true' },
     });
+    // ort.bundle.mjs
+    await buildOrt({
+      outputName: 'ort.bundle',
+      format: 'esm',
+      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true', 'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'true' },
+    });
     // ort.bundle.min.mjs
     await buildOrt({
       isProduction: true,

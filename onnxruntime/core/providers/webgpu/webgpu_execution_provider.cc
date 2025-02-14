@@ -26,6 +26,8 @@
 #include "core/providers/webgpu/external_data_loader.h"
 #include "core/providers/webgpu/webgpu_profiler.h"
 
+std::vector<std::pair<char, std::chrono::time_point<std::chrono::high_resolution_clock>>> g_f_events;
+
 namespace onnxruntime {
 
 namespace webgpu {
@@ -842,6 +844,13 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetEx
 #endif
 
 WebGpuExecutionProvider::~WebGpuExecutionProvider() {
+  if (!g_f_events.empty()) {
+    auto base = std::chrono::duration_cast<std::chrono::microseconds>(g_f_events[0].second.time_since_epoch()).count();
+    for (auto& e : g_f_events) {
+      std::cout << e.first << " " << std::chrono::duration_cast<std::chrono::microseconds>(e.second.time_since_epoch()).count() - base << std::endl;
+    }
+  }
+
   WebGpuContextFactory::ReleaseContext(context_id_);
 }
 
@@ -859,6 +868,9 @@ Status WebGpuExecutionProvider::OnSessionInitializationEnd() {
 }
 
 Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
+  //auto now = std::chrono::high_resolution_clock::now();
+  //g_f_events.push_back({'s', now});
+
   if (context_.ValidationMode() >= ValidationMode::Basic) {
     context_.PushErrorScope();
   }
@@ -890,6 +902,9 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
   }
 
   context_.OnRunEnd();
+
+  //auto now = std::chrono::high_resolution_clock::now();
+  //g_f_events.push_back({'e', now});
 
   if (context_.ValidationMode() >= ValidationMode::Basic) {
     return context_.PopErrorScope();

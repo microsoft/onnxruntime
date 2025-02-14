@@ -74,7 +74,7 @@
       },
       "import": {
         "onnxruntime-web-use-extern-wasm": "./dist/ort.min.mjs",
-        "default": "./dist/ort.bundle.min.mjs"
+        "default": "./dist/ort.bundle.mjs"
       },
       "require": "./dist/ort.min.js"
     },

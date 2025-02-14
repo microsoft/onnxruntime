@@ -200,6 +200,8 @@ Module["webgpuInit"] = (setDefaultDevice) => {
 
         await gpuReadBuffer.mapAsync(GPUMapMode.READ);
 
+        WebGPU.Internals.buffersExternalDownloads++;
+
         const arrayBuffer = gpuReadBuffer.getMappedRange();
         return arrayBuffer.slice(0, originalSize);
       } finally {
@@ -256,6 +258,23 @@ Module["webgpuInit"] = (setDefaultDevice) => {
       size
     );
     webgpuCurrentDevice.queue.submit([commandEncoder.finish()]);
+    WebGPU.Internals.buffersExternalUploads++;
     gpuBufferForUploading.destroy();
+  };
+
+  Module["webgpuStat"] = (label) => {
+    if (globalThis["WEBGPU_STAT"]) {
+      console.log(
+        `[${label}] BufferCount: ${
+          WebGPU.Internals.buffers?.size ?? 0
+        }, Created: ${WebGPU.Internals.buffersCreated ?? 0}, Destroyed: ${
+          WebGPU.Internals.buffersDestroyed ?? 0
+        } Uploads: ${WebGPU.Internals.buffersUploads ?? 0}, Downloads: ${
+          WebGPU.Internals.buffersDownloads ?? 0
+        }, ExtUploads: ${
+          WebGPU.Internals.buffersExternalUploads ?? 0
+        }, ExtDownloads: ${WebGPU.Internals.buffersExternalDownloads ?? 0}`
+      );
+    }
   };
 };
