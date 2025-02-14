@@ -1038,6 +1038,42 @@ TEST_F(QnnHTPBackendTests, EPRejectsDynamicShapesF32) {
                   &ep_graph_checker);
 }
 
+TEST_F(QnnHTPBackendTests, DumpJsonQNNGraph) {
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
+  Ort::SessionOptions so;
+  onnxruntime::ProviderOptions options;
+#if defined(_WIN32)
+  options["backend_path"] = "QnnHtp.dll";
+#else
+  options["backend_path"] = "libQnnHtp.so";
+#endif
+  options["offload_graph_io_quantization"] = "0";
+
+  const std::filesystem::path dump_dir = "test_qnn_graphs_";
+  options["json_qnn_graph_dir"] = dump_dir.string();
+  options["dump_json_qnn_graph"] = "1";
+
+  // Remove pre-existing json files. Note that fs::remove_all() can handle non-existing paths.
+  std::filesystem::remove_all(dump_dir);
+  ASSERT_TRUE(std::filesystem::create_directory(dump_dir));
+
+  so.AppendExecutionProvider("QNN", options);
+  Ort::Session session(*ort_env, ort_model_path, so);
+
+  // Check that QNN JSON file(s) exist.
+  bool has_a_json_file = false;
+  for (auto const& dir_entry : std::filesystem::directory_iterator{dump_dir}) {
+    EXPECT_TRUE(dir_entry.is_regular_file());
+    EXPECT_EQ(dir_entry.path().extension().string(), ".json");
+    has_a_json_file = true;
+  }
+  EXPECT_TRUE(has_a_json_file);
+
+  // Cleaup generated files.
+  // Comment the following line to inspect generated JSON files.
+  std::filesystem::remove_all(dump_dir);
+}
+
 // Test option for offloading quantization of graph inputs and dequantization of graph outputs to the CPU EP.
 TEST_F(QnnHTPBackendTests, EPOffloadsGraphIOQuantDequant) {
   // Returns a function that checks that the Q/DQ ops at the graph IO boundary are offloaded to CPU
