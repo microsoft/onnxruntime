@@ -91,7 +91,7 @@ def _try_load_dlls():
 
     is_windows = platform.system() == "Windows"
     if is_windows:
-        # conda envrionment might have MSVC DLLs.
+        # conda environment might have MSVC DLLs.
         py_dll_path = os.path.join(sys.exec_prefix, "Library", "bin")
         if os.path.isdir(py_dll_path):
             os.add_dll_directory(py_dll_path)
