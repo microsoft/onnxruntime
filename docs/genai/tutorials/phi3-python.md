@@ -95,7 +95,7 @@ Are you on a Windows machine with GPU?
 
    ```cmd
    curl https://raw.githubusercontent.com/microsoft/onnxruntime-genai/main/examples/python/phi3-qa.py -o phi3-qa.py
-   python phi3-qa.py -m directml\directml-int4-awq-block-128
+   python phi3-qa.py -m directml\directml-int4-awq-block-128 -e dml
    ```
 
    Once the script has loaded the model, it will ask you for input in a loop, streaming the output as it is produced the model. For example:
@@ -135,7 +135,7 @@ Are you on a Windows machine with GPU?
 
    ```bash
    curl https://raw.githubusercontent.com/microsoft/onnxruntime-genai/main/examples/python/phi3-qa.py -o phi3-qa.py
-   python phi3-qa.py -m cuda/cuda-int4-rtn-block-32 
+   python phi3-qa.py -m cuda/cuda-int4-rtn-block-32  -e cuda
    ```
 
       Once the script has loaded the model, it will ask you for input in a loop, streaming the output as it is produced the model. For example:
@@ -169,7 +169,7 @@ Are you on a Windows machine with GPU?
 
    ```bash
    curl https://raw.githubusercontent.com/microsoft/onnxruntime-genai/main/examples/python/phi3-qa.py -o phi3-qa.py
-   python phi3-qa.py -m cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4
+   python phi3-qa.py -m cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4 -e cpu
    ```
 
    Once the script has loaded the model, it will ask you for input in a loop, streaming the output as it is produced the model. For example:
@@ -188,95 +188,95 @@ Are you on a Windows machine with GPU?
 
 ```bash
 huggingface-cli download microsoft/Phi-3-mini-4k-instruct-onnx --include cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4/* --local-dir .
-python phi3-qa.py -m cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4
+python phi3-qa.py -m cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4 -e cpu
 ```
 
 ### Phi-3 mini 4k context CUDA
 
 ```bash
 huggingface-cli download microsoft/Phi-3-mini-4k-instruct-onnx --include cuda/cuda-int4-rtn-block-32/* --local-dir .
-python phi3-qa.py -m cuda/cuda-int4-rtn-block-32
+python phi3-qa.py -m cuda/cuda-int4-rtn-block-32 -e cuda
 ```
 
 ### Phi-3 mini 4k context DirectML
 
 ```bash
 huggingface-cli download microsoft/Phi-3-mini-4k-instruct-onnx --include directml/* --local-dir .
-python phi3-qa.py -m directml\directml-int4-awq-block-128
+python phi3-qa.py -m directml\directml-int4-awq-block-128 -e dml
 ```
 
 ### Phi-3 mini 128k context CPU
 
 ```bash
 huggingface-cli download microsoft/Phi-3-mini-128k-instruct-onnx --include cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4/* --local-dir .
-python phi3-qa.py -m cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4
+python phi3-qa.py -m cpu_and_mobile/cpu-int4-rtn-block-32-acc-level-4 -e cpu
 ```
 
 ### Phi-3 mini 128k context CUDA
 
 ```bash
 huggingface-cli download microsoft/Phi-3-mini-128k-instruct-onnx --include cuda/cuda-int4-rtn-block-32/* --local-dir .
-python phi3-qa.py -m cuda/cuda-int4-rtn-block-32
+python phi3-qa.py -m cuda/cuda-int4-rtn-block-32 -e cuda
 ```
 
 ### Phi-3 mini 128k context DirectML
 
 ```bash
 huggingface-cli download microsoft/Phi-3-mini-128k-instruct-onnx --include directml/* --local-dir .
-python phi3-qa.py -m directml\directml-int4-awq-block-128
+python phi3-qa.py -m directml\directml-int4-awq-block-128 -e dml
 ```
 
 ### Phi-3 medium 4k context CPU
 
 ```bash
 git clone https://huggingface.co/microsoft/Phi-3-medium-4k-instruct-onnx-cpu
-python phi3-qa.py -m Phi-3-medium-4k-instruct-onnx-cpu/cpu-int4-rtn-block-32-acc-level-4
+python phi3-qa.py -m Phi-3-medium-4k-instruct-onnx-cpu/cpu-int4-rtn-block-32-acc-level-4 -e cpu
 ```
 
 ### Phi-3 medium 4k context CUDA
 
 ```bash
 git clone https://huggingface.co/microsoft/Phi-3-medium-4k-instruct-onnx-cuda
-python phi3-qa.py -m Phi-3-medium-4k-instruct-onnx-cuda/cuda-int4-rtn-block-32
+python phi3-qa.py -m Phi-3-medium-4k-instruct-onnx-cuda/cuda-int4-rtn-block-32 -e cuda
 ```
 
 ### Phi-3 medium 4k context DirectML
 
 ```bash
 git clone https://huggingface.co/microsoft/Phi-3-medium-4k-instruct-onnx-directml
-python phi3-qa.py -m Phi-3-medium-4k-instruct-onnx-directml/directml-int4-awq-block-128
+python phi3-qa.py -m Phi-3-medium-4k-instruct-onnx-directml/directml-int4-awq-block-128 -e dml
 ```
 
 ### Phi-3 medium 128k context CPU
 
 ```bash
 git clone https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-cpu
-python phi3-qa.py -m Phi-3-medium-128k-instruct-onnx-cpu/cpu-int4-rtn-block-32-acc-level-4
+python phi3-qa.py -m Phi-3-medium-128k-instruct-onnx-cpu/cpu-int4-rtn-block-32-acc-level-4 -e cpu
 ```
 
 ### Phi-3 medium 128k context CUDA
 
 ```bash
 git clone https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-cuda
-python phi3-qa.py -m Phi-3-medium-128k-instruct-onnx-cuda/cuda-int4-rtn-block-32
+python phi3-qa.py -m Phi-3-medium-128k-instruct-onnx-cuda/cuda-int4-rtn-block-32 -e cuda
 ```
 
 ### Phi-3 medium 128k context DirectML
 
 ```bash
 git clone https://huggingface.co/microsoft/Phi-3-medium-128k-instruct-onnx-directml
-python phi3-qa.py -m Phi-3-medium-128k-instruct-onnx-directml/directml-int4-awq-block-128
+python phi3-qa.py -m Phi-3-medium-128k-instruct-onnx-directml/directml-int4-awq-block-128 -e dml
 ```
 
 ### Phi-3.5 mini 128k context CUDA
 ```bash
 huggingface-cli download microsoft/Phi-3.5-mini-instruct-onnx --include cuda/cuda-int4-awq-block-128/* --local-dir .
-python phi3-qa.py -m cuda/cuda-int4-awq-block-128
+python phi3-qa.py -m cuda/cuda-int4-awq-block-128 -e cuda
 ```
 
 ### Phi-3.5 mini 128k context CPU
 
 ```bash
 huggingface-cli download microsoft/Phi-3.5-mini-instruct-onnx --include cpu_and_mobile/cpu-int4-awq-block-128-acc-level-4/* --local-dir .
-python phi3-qa.py -m cpu_and_mobile/cpu-int4-awq-block-128-acc-level-4
+python phi3-qa.py -m cpu_and_mobile/cpu-int4-awq-block-128-acc-level-4 -e cpu
 ```
