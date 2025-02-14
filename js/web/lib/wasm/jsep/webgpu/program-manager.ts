@@ -41,8 +41,6 @@ export class ProgramManager {
   ): void {
     TRACE_FUNC_BEGIN(buildArtifact.programInfo.name);
     const device = this.backend.device;
-    const computePassEncoder = this.backend.getComputePassEncoder();
-    this.backend.writeTimestamp(this.backend.pendingDispatchNumber * 2);
     const entries = [];
     for (const input of inputs) {
       entries.push({ binding: entries.length, resource: { buffer: input.buffer } });
@@ -68,12 +66,16 @@ export class ProgramManager {
       };
       const sessionCommandList = this.backend.capturedCommandList.get(this.backend.currentSessionId!);
       sessionCommandList!.push(commandInfo);
+    } else {
+      const computePassEncoder = this.backend.getComputePassEncoder();
+      this.backend.writeTimestamp(this.backend.pendingDispatchNumber * 2);
+      computePassEncoder.setPipeline(buildArtifact.computePipeline);
+      computePassEncoder.setBindGroup(0, bindGroup);
+      computePassEncoder.dispatchWorkgroups(...dispatchGroup);
+
+      this.backend.writeTimestamp(this.backend.pendingDispatchNumber * 2 + 1);
     }
 
-    computePassEncoder.setPipeline(buildArtifact.computePipeline);
-    computePassEncoder.setBindGroup(0, bindGroup);
-    computePassEncoder.dispatchWorkgroups(...dispatchGroup);
-    this.backend.writeTimestamp(this.backend.pendingDispatchNumber * 2 + 1);
     this.backend.pendingDispatchNumber++;
 
     if (
@@ -85,6 +87,7 @@ export class ProgramManager {
     if (this.backend.pendingDispatchNumber >= this.backend.maxDispatchNumber) {
       this.backend.flush();
     }
+
     TRACE_FUNC_END(buildArtifact.programInfo.name);
   }
   dispose(): void {
