@@ -89,6 +89,10 @@ def _try_load_dlls():
     if platform.system() not in ["Windows", "Linux"]:
         return
 
+    dll_types = os.getenv("ORT_PRELOAD_DLLS", default="cuda,cudnn").lower()
+    if dll_types == "none":
+        return
+
     is_windows = platform.system() == "Windows"
     if is_windows:
         # conda environment might have MSVC DLLs.
@@ -108,8 +112,7 @@ def _try_load_dlls():
     if not (cuda_version and cuda_version.startswith("12.")):
         return
 
-    dll_types = os.getenv("ORT_PRELOAD_DLLS", default="cuda,cudnn")
-    dll_types = dll_types.lower().split(",")
+    dll_types = dll_types.split(",")
     if not ("cuda" in dll_types or "cudnn" in dll_types):
         return
 
