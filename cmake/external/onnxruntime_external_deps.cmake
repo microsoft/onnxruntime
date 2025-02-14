@@ -91,6 +91,12 @@ endif()
 
 
 if(onnxruntime_USE_MIMALLOC)
+  add_definitions(-DUSE_MIMALLOC)
+
+  set(MI_OVERRIDE OFF CACHE BOOL "" FORCE)
+  set(MI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+  set(MI_DEBUG_FULL OFF CACHE BOOL "" FORCE)
+  set(MI_BUILD_SHARED OFF CACHE BOOL "" FORCE)
   onnxruntime_fetchcontent_declare(
     mimalloc
     URL ${DEP_URL_mimalloc}
@@ -537,11 +543,13 @@ endif()
 
 include(external/eigen.cmake)
 
-if(onnxruntime_USE_VCPKG AND WIN32)
-  find_package(wil CONFIG REQUIRED)
-  set(WIL_TARGET "WIL::WIL")
-else()
-  include(wil) # FetchContent
+if(WIN32)
+  if(onnxruntime_USE_VCPKG)
+    find_package(wil CONFIG REQUIRED)
+    set(WIL_TARGET "WIL::WIL")
+  else()
+    include(wil) # FetchContent
+  endif()
 endif()
 
 # XNNPACK EP
@@ -566,16 +574,6 @@ if (onnxruntime_USE_XNNPACK)
   else()
     include(xnnpack)
   endif()
-endif()
-
-if (onnxruntime_USE_MIMALLOC)
-  add_definitions(-DUSE_MIMALLOC)
-
-  set(MI_OVERRIDE OFF CACHE BOOL "" FORCE)
-  set(MI_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-  set(MI_DEBUG_FULL OFF CACHE BOOL "" FORCE)
-  set(MI_BUILD_SHARED OFF CACHE BOOL "" FORCE)
-  onnxruntime_fetchcontent_makeavailable(mimalloc)
 endif()
 
 set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES_XNNPACK} ${WIL_TARGET} nlohmann_json::nlohmann_json
