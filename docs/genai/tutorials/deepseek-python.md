@@ -4,7 +4,7 @@ description: Learn how to chat with DeepSeek-R1-Distill ONNX models on your devi
 has_children: false
 parent: Tutorials
 grand_parent: Generate API (Preview)
-nav_order:
+nav_order: 4
 ---
 
 # Reasoning in Python with DeepSeek-R1-Distill models
