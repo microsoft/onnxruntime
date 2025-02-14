@@ -9,6 +9,7 @@
 #include <map>
 #include <numeric>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "core/providers/qnn/ort_api.h"
