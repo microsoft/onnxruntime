@@ -206,6 +206,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
       shader.MainFunctionBody() << "        word_offset += " << 8 / a.NumComponents() << ";\n";
       shader.MainFunctionBody() << "      }\n";
       shader.MainFunctionBody() << "    }\n";
+      shader.MainFunctionBody() << "    workgroupBarrier();\n";
 
       shader.MainFunctionBody() << "  }\n";
       shader.MainFunctionBody() << "  if (local_idx < " << WorkgroupSizeY() * tile_m_ << ") {\n"
