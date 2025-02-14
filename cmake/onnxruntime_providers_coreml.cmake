@@ -169,10 +169,11 @@ elseif(TARGET nlohmann_json::nlohmann_json)
 endif()
 
 if(fp16_SOURCE_DIR)
-  target_include_directories(onnxruntime_providers_coreml PRIVATE ${fp16_SOURCE_DIR}/include)
+  set(FP16_INCLUDE_DIRS ${fp16_SOURCE_DIR}/include)
 else()
-  message(FATAL_ERROR "Cannot find fp16's source code")
+  find_path(FP16_INCLUDE_DIRS "fp16.h")
 endif()
+target_include_directories(onnxruntime_providers_coreml PRIVATE ${FP16_INCLUDE_DIRS})
 
 onnxruntime_add_include_to_target(onnxruntime_providers_coreml coreml_proto)
 target_link_libraries(onnxruntime_providers_coreml PRIVATE coreml_proto)
@@ -184,26 +185,16 @@ endif()
 
 
 
-  # need to tweak the include paths to match what the coreml source code expects
-  target_include_directories(onnxruntime_providers_coreml PRIVATE
+# need to tweak the include paths to match what the coreml source code expects
+target_include_directories(onnxruntime_providers_coreml PRIVATE
                             ${coremltools_SOURCE_DIR}
                             ${coremltools_SOURCE_DIR}/mlmodel/src/
                             ${coremltools_SOURCE_DIR}/modelpackage/src/
-  )
-
-# need to tweak the include paths to match what the coreml source code expects
-target_include_directories(onnxruntime_providers_coreml PRIVATE
-                          ${fp16_SOURCE_DIR}/include
-                          ${nlohmann_json_SOURCE_DIR}/single_include/nlohmann
-                          ${coremltools_SOURCE_DIR}
-                          ${coremltools_SOURCE_DIR}/mlmodel/src/
-                          ${coremltools_SOURCE_DIR}/modelpackage/src/
 )
 
-
-  if (LINUX)
-    target_link_libraries(onnxruntime_providers_coreml PRIVATE uuid)
-  endif()
+if (LINUX)
+  target_link_libraries(onnxruntime_providers_coreml PRIVATE uuid)
+endif()
 
 
 

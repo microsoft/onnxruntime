@@ -1,16 +1,8 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index d15d97ed..a483255f 100644
+index d15d97ed..fe4bd27f 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -496,6 +496,7 @@ if (MSVC)
-   endif()
- else()
-   # On non-Windows, hide all symbols we don't need
-+  set(EXTRA_FLAGS "-Wno-unused-parameter")
-   set(ONNX_API_DEFINE "-DONNX_API=__attribute__\(\(__visibility__\(\"default\"\)\)\)")
-   set_target_properties(onnx_proto PROPERTIES CXX_VISIBILITY_PRESET hidden)
-   set_target_properties(onnx_proto PROPERTIES VISIBILITY_INLINES_HIDDEN 1)
-@@ -631,20 +632,9 @@ endif()
+@@ -631,20 +631,9 @@ endif()
  if(MSVC)
    target_compile_options(onnx_proto
                           PRIVATE /MP

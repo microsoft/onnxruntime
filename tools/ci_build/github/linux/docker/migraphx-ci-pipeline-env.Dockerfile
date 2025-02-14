@@ -25,7 +25,7 @@ RUN apt-get update && \
     python3-pip   \
     rocm-dev   \
     rocm-libs   \
-    build-essential && \
+    build-essential pkg-config && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
