@@ -80,6 +80,7 @@ def get_package_name_and_version_info():
         try:  # noqa: SIM105
             from .build_and_package_info import cuda_version
         except ImportError:
+            # cuda_version is optional. For example, cpu only package does not have the attribute.
             pass
     except Exception as e:
         warnings.warn("WARNING: failed to collect package name and version info")
