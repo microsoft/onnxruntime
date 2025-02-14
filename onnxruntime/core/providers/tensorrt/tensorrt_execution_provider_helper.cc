@@ -276,7 +276,7 @@ void TensorrtExecutionProvider::CheckDDSOpInSubGraph(const GraphViewer& graph,
         if (trt_version >= 100000 && trt_version < 110000) {
           LOGS_DEFAULT(VERBOSE) << "Some DDS nodes will be run by TRT.";
           LOGS_DEFAULT(VERBOSE) << "There may be potential performance issues in TRT 10 when running models that contain DDS operations such as NonMaxSuppression, NonZero, and RoiAlign (e.g., Faster-RCNN).";
-          LOGS_DEFAULT(VERBOSE) << "If you encounter significant performance degradation, we suggest specify those DDS ops to be excluded from running by TRT, i.e. trt_op_types_to_exclude=\"NonMaxSuppression,NonZero,RoiAlign\". Those DDS nodes will be run by CUDA EP or CPU.";
+          LOGS_DEFAULT(VERBOSE) << "If you encounter significant performance degradation, we suggest specifying those DDS ops to be excluded from running by TRT, i.e. trt_op_types_to_exclude=\"NonMaxSuppression,NonZero,RoiAlign\". Those DDS nodes will be run by CUDA EP or CPU.";
         }
         return;
       }
