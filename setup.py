@@ -54,6 +54,7 @@ if parse_arg_remove_boolean(sys.argv, "--nightly_build"):
 wheel_name_suffix = parse_arg_remove_string(sys.argv, "--wheel_name_suffix=")
 
 cuda_version = None
+is_cuda_version_12 = False
 rocm_version = None
 is_migraphx = False
 is_rocm = False
@@ -63,6 +64,8 @@ is_qnn = False
 if wheel_name_suffix == "gpu":
     # TODO: how to support multiple CUDA versions?
     cuda_version = parse_arg_remove_string(sys.argv, "--cuda_version=")
+    if cuda_version:
+        is_cuda_version_12 = cuda_version.startswith("12.")
 elif parse_arg_remove_boolean(sys.argv, "--use_rocm"):
     is_rocm = True
     rocm_version = parse_arg_remove_string(sys.argv, "--rocm_version=")
@@ -721,7 +724,6 @@ if not path.exists(requirements_path):
 with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 
-
 if enable_training:
 
     def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version):
@@ -754,6 +756,20 @@ if enable_training:
 
     save_build_and_package_info(package_name, version_number, cuda_version, rocm_version)
 
+extras_require = {}
+if package_name == "onnxruntime-gpu" and is_cuda_version_12:
+    extras_require = {
+        "cuda": [
+            "nvidia-cuda-nvrtc-cu12~=12.0",
+            "nvidia-cuda-runtime-cu12~=12.0",
+            "nvidia-cufft-cu12~=11.0",
+            "nvidia-curand-cu12~=10.0",
+        ],
+        "cudnn": [
+            "nvidia-cudnn-cu12~=9.0",
+        ],
+    }
+
 # Setup
 setup(
     name=package_name,
@@ -771,6 +787,7 @@ setup(
     download_url="https://github.com/microsoft/onnxruntime/tags",
     data_files=data_files,
     install_requires=install_requires,
+    extras_require=extras_require,
     python_requires=">=3.10",
     keywords="onnx machine learning",
     entry_points={
