@@ -47,7 +47,6 @@ stages:
         additionalBuildFlags: >-
           --build_nodejs
           --use_webgpu
-          --use_vcpkg
           --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY=ON
         msbuildPlatform: x64
         isX86: false
@@ -92,7 +91,7 @@ stages:
             Today: $(TODAY)
             CacheDir: $(ORT_CACHE_DIR)
             AdditionalKey: " $(System.StageName) | RelWithDebInfo "
-            BuildPyArguments: '--use_vcpkg --config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --update --parallel --cmake_generator "Visual Studio 17 2022" --use_webgpu --use_external_dawn --skip_tests --target onnxruntime_webgpu_external_dawn_test'
+            BuildPyArguments: '--use_vcpkg --config RelWithDebInfo --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --update --parallel --cmake_generator "Visual Studio 17 2022" --use_external_dawn --skip_tests --target onnxruntime_webgpu_external_dawn_test'
             MsbuildArguments: '-maxcpucount'
             BuildArch: x64
             Platform: x64
