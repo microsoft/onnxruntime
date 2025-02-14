@@ -78,84 +78,99 @@ except ImportError:
 
 package_name, version, cuda_version = onnxruntime_validation.get_package_name_and_version_info()
 
-if cuda_version and cuda_version.startswith("12."):
 
-    def _try_load_dlls():
-        import ctypes
-        import os
-        import platform
-        import site
-        import sys
+def _try_load_dlls():
+    import ctypes
+    import os
+    import platform
+    import site
+    import sys
 
-        if platform.system() not in ["Windows", "Linux"]:
-            return
+    if platform.system() not in ["Windows", "Linux"]:
+        return
 
-        is_windows = platform.system() == "Windows"
-        dll_types = os.getenv("ORT_PRELOAD_DLLS", default="vc,cudnn" if is_windows else "cuda,cudnn")
-        dll_types = dll_types.lower().split(",")
+    is_windows = platform.system() == "Windows"
+    if is_windows:
+        # conda envrionment might have MSVC DLLs.
+        py_dll_path = os.path.join(sys.exec_prefix, "Library", "bin")
+        if os.path.isdir(py_dll_path):
+            os.add_dll_directory(py_dll_path)
 
-        if is_windows and "vc" in dll_types:
-            system_dir = os.path.join(os.getenv("SYSTEMROOT", "C:\\Windows"), "System32")
-            if os.path.isdir(system_dir):
-                os.add_dll_directory(system_dir)
+        try:
+            ctypes.CDLL("vcruntime140.dll")
+            ctypes.CDLL("msvcp140.dll")
+            if platform.machine() != "ARM64":
+                ctypes.CDLL("vcruntime140_1.dll")
+        except OSError:
+            print("Microsoft Visual C++ Redistributable is not installed, this may lead to the DLL load failure.")
+            print("It can be downloaded at https://aka.ms/vs/17/release/vc_redist.x64.exe.")
 
-            py_dll_path = os.path.join(sys.exec_prefix, "Library", "bin")
-            if os.path.isdir(py_dll_path):
-                os.add_dll_directory(py_dll_path)
+    if not (cuda_version and cuda_version.startswith("12.")):
+        return
 
+    dll_types = os.getenv("ORT_PRELOAD_DLLS", default="cuda,cudnn")
+    dll_types = dll_types.lower().split(",")
+    if not ("cuda" in dll_types or "cudnn" in dll_types):
+        return
+
+    # Paths are relative to nvidia root in site packages.
+    if is_windows:
+        cuda_dll_paths = [
+            ("cublas", "bin", "cublasLt64_12.dll"),
+            ("cublas", "bin", "cublas64_12.dll"),
+            ("cufft", "bin", "cufft64_11.dll"),
+            ("cuda_runtime", "bin", "cudart64_12.dll"),
+        ]
+        cudnn_dll_paths = [
+            ("cudnn", "bin", "cudnn64_9.dll"),
+        ]
+    else:  # Linux
+        # cublas64 depends on cublasLt64, so cublasLt64 should be loaded first.
+        cuda_dll_paths = [
+            ("cublas", "lib", "libcublasLt.so.12"),
+            ("cublas", "lib", "libcublas.so.12"),
+            ("cuda_nvrtc", "lib", "libnvrtc.so.12"),
+            ("curand", "lib", "libcurand.so.10"),
+            ("cufft", "lib", "libcufft.so.11"),
+            ("cuda_runtime", "lib", "libcudart.so.12"),
+        ]
+        cudnn_dll_paths = [
+            ("cudnn", "lib", "libcudnn.so.9"),
+        ]
+
+    # Try load DLLs from nvidia site packages.
+    dll_paths = (cuda_dll_paths if "cuda" in dll_types else []) + (cudnn_dll_paths if "cudnn" in dll_types else [])
+    loaded_dlls = []
+    for site_packages_path in reversed(site.getsitepackages()):
+        nvidia_path = os.path.join(site_packages_path, "nvidia")
+        if os.path.isdir(nvidia_path):
+            for relative_path in dll_paths:
+                dll_path = os.path.join(nvidia_path, *relative_path)
+                if os.path.isfile(dll_path):
+                    try:
+                        _ = ctypes.CDLL(dll_path)
+                        loaded_dlls.append(relative_path[-1])
+                    except Exception as e:
+                        print(f"Failed to load {dll_path}: {e}")
+            break
+
+    # Try load DLLs with default path settings.
+    has_failure = False
+    for relative_path in dll_paths:
+        dll_filename = relative_path[-1]
+        if dll_filename not in loaded_dlls:
             try:
-                ctypes.CDLL("vcruntime140.dll")
-                ctypes.CDLL("msvcp140.dll")
-                if platform.machine() != "ARM64":
-                    ctypes.CDLL("vcruntime140_1.dll")
-            except OSError:
-                print("Microsoft Visual C++ Redistributable is not installed, this may lead to the DLL load failure.")
-                print("It can be downloaded at https://aka.ms/vs/17/release/vc_redist.x64.exe.")
+                _ = ctypes.CDLL(dll_filename)
+            except Exception as e:
+                has_failure = True
+                print(f"Failed to load {dll_filename}: {e}")
 
-        if "cuda" in dll_types or "cudnn" in dll_types:
-            for site_packages_path in site.getsitepackages():
-                nvidia_path = os.path.join(site_packages_path, "nvidia")
-                if os.path.exists(nvidia_path):
-                    dll_paths = []
-                    if is_windows:
-                        if "cuda" in dll_types:
-                            dll_paths = [
-                                ("cublas", "bin", "cublasLt64_12.dll"),
-                                ("cublas", "bin", "cublas64_12.dll"),
-                                ("cufft", "bin", "cufft64_11.dll"),
-                                ("cuda_runtime", "bin", "cudart64_12.dll"),
-                            ]
-                        if "cudnn" in dll_types:
-                            dll_paths += [
-                                ("cudnn", "bin", "cudnn64_9.dll"),
-                            ]
-                    else:  # Linux
-                        if "cuda" in dll_types:
-                            # cublas64 depends on cublasLt64, so cublasLt64 should be loaded first.
-                            dll_paths = [
-                                ("cublas", "lib", "libcublasLt.so.12"),
-                                ("cublas", "lib", "libcublas.so.12"),
-                                ("cuda_nvrtc", "lib", "libnvrtc.so.12"),
-                                ("curand", "lib", "libcurand.so.10"),
-                                ("cufft", "lib", "libcufft.so.11"),
-                                ("cuda_runtime", "lib", "libcudart.so.12"),
-                            ]
-                        if "cudnn" in dll_types:
-                            dll_paths += [
-                                ("cudnn", "lib", "libcudnn.so.8"),
-                            ]
+    if has_failure:
+        print("Please follow https://onnxruntime.ai/docs/install/#cuda-and-cudnn to install CUDA and CuDNN.")
 
-                    for relative_path in dll_paths:
-                        full_dll_path = os.path.join(nvidia_path, *relative_path)
-                        if os.path.exists(full_dll_path):
-                            try:
-                                _ = ctypes.CDLL(full_dll_path)
-                            except Exception as e:
-                                print(f"Failed to load {full_dll_path}: {e}")
-                    break
 
-    _try_load_dlls()
-    del _try_load_dlls
+_try_load_dlls()
+del _try_load_dlls
 
 if version:
     __version__ = version
