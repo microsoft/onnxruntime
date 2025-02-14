@@ -81,7 +81,7 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --security-opt seccomp=unconfined \
           --shm-size=1024m \
           --user $UID:$(id -g $USER) \
@@ -167,7 +167,7 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --security-opt seccomp=unconfined \
           --shm-size=1024m \
           --device=/dev/kfd \
@@ -208,7 +208,7 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |-
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --security-opt seccomp=unconfined \
           --shm-size=1024m \
           --device=/dev/kfd \

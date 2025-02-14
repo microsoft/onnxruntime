@@ -93,7 +93,9 @@ if (NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
   set_property(TARGET re2 PROPERTY COMPILE_OPTIONS )
 endif()
 
-target_compile_options(onnx PRIVATE -Wno-unused-parameter -Wno-unused-variable)
+if (NOT onnxruntime_USE_VCPKG)
+  target_compile_options(onnx PRIVATE -Wno-unused-parameter -Wno-unused-variable)
+endif()
 
 if (onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB)
     bundle_static_library(onnxruntime_webassembly
@@ -404,14 +406,21 @@ jsepDownload:_pp_")
   endif()
 
   if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    target_link_options(onnxruntime_webassembly PRIVATE
-      # NOTE: use "SHELL:-s ASSERTIONS=2" to enable more strict assertions, which may help debugging segfaults.
-      #       However, it may be very slow.
-      # "SHELL:-s ASSERTIONS=2"
-      "SHELL:-s ASSERTIONS=1"
-      "SHELL:-s SAFE_HEAP=1"
-      "SHELL:-s STACK_OVERFLOW_CHECK=2"
-    )
+    if (CMAKE_CXX_FLAGS MATCHES "sanitize=address")
+        # The integer value below might often need be adjusted.
+        target_link_options(onnxruntime_webassembly PRIVATE "-sINITIAL_MEMORY=786432000")
+        target_link_options(onnxruntime_webassembly PRIVATE "-sASSERTIONS=2")
+    else()
+        # Enable SAFE_HEAP in debug build
+        target_link_options(onnxruntime_webassembly PRIVATE
+          # NOTE: use "SHELL:-s ASSERTIONS=2" to enable more strict assertions, which may help debugging segfaults.
+          #       However, it may be very slow.
+          # "SHELL:-s ASSERTIONS=2"
+          "SHELL:-s ASSERTIONS=1"
+          "SHELL:-s SAFE_HEAP=1"
+          "SHELL:-s STACK_OVERFLOW_CHECK=2"
+        )
+    endif()
   else()
     target_link_options(onnxruntime_webassembly PRIVATE
       "SHELL:-s ASSERTIONS=0"
