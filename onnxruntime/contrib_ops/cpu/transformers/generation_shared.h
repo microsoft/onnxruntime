@@ -8,7 +8,7 @@
 #include <gsl/gsl>
 #include "core/framework/allocator.h"
 #include "core/framework/ort_value.h"
-#include "contrib_ops/cpu/utils/debug_macros.h"
+#include "contrib_ops/cpu/utils/console_dumper.h"
 
 namespace onnxruntime {
 
@@ -199,7 +199,13 @@ struct IGenerationParameters {
   int extra_decoding_ids_input_id = -1;
   int cross_qk_output_id = -1;
   int no_speech_probs_output_id = -1;
+
+  // Parameter for testing slow topk path. It can be updated by the below environment variable.
+  bool use_fast_topk = true;
 };
+
+// Environment variable to enable/disable fast topk kernel on GPU. Default is 1 (enabled).
+constexpr const char* kBeamSearchUseFastTopK = "ORT_BEAM_SEARCH_USE_FAST_TOPK";
 
 }  // namespace transformers
 }  // namespace contrib

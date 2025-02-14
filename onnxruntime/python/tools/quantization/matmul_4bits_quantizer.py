@@ -1186,7 +1186,7 @@ class MatMul4BitsQuantizer:
         }
         for node in self.model.model.graph.node:
             if node.op_type in ["MatMul"]:
-                if not all([self.model.get_initializer(i) is None for i in node.input]):
+                if not all(self.model.get_initializer(i) is None for i in node.input):
                     q4_node_config[node.name] = template_config_q4
         return q4_node_config
 
@@ -1212,6 +1212,13 @@ class MatMul4BitsQuantizer:
             from neural_compressor.adaptor.ox_utils.weight_only import rtn_quantize
 
             kwargs["ratios"] = self.algo_config.ratios
+
+            """
+            neural-compressor uses fp32 to represent the node that skip quantization, it does not mean this node is fp32 type though.
+            https://github.com/intel/neural-compressor/blob/a617115b1490bbe6163c0024fb55bd260c8914df/neural_compressor/adaptor/ox_utils/weight_only.py#L343
+            """
+            for n in self.nodes_to_exclude:
+                weight_only_node_config[n] = "fp32"
 
             self.model = rtn_quantize(
                 model=self.model_path if self.model_path is not None else self.model.model,

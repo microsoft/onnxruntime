@@ -7,13 +7,11 @@
 Benchmark performance of GroupQueryAttention.
 """
 
-from typing import Optional
-
 import torch
 from test_sparse_attention import GroupQueryAttentionConfig, OrtGroupQueryAttention
 
 
-def get_plot_algos(sm: int, local_window_size: Optional[int]):
+def get_plot_algos(sm: int, local_window_size: int | None):
     # GQA with local windows only works in sm=8x
     if sm >= 80 and local_window_size:
         return {
@@ -37,7 +35,7 @@ def plot_prompt_performance(
     kv_num_heads: int,
     head_size: int,
     max_seq_len: int,
-    local_window_size: Optional[int] = None,
+    local_window_size: int | None = None,
     use_smooth_softmax: bool = False,
 ):
     import triton
@@ -70,7 +68,7 @@ def plot_prompt_performance(
         num_heads: int,
         kv_num_heads: int,
         head_size: int,
-        local_window_size: Optional[int] = None,
+        local_window_size: int | None = None,
         use_smooth_softmax: bool = False,
         device="cuda",
     ):
@@ -107,7 +105,7 @@ def plot_token_performance(
     kv_num_heads: int,
     head_size: int,
     max_seq_len: int,
-    local_window_size: Optional[int] = None,
+    local_window_size: int | None = None,
     use_smooth_softmax: bool = False,
 ):
     import triton
@@ -140,7 +138,7 @@ def plot_token_performance(
         num_heads: int,
         kv_num_heads: int,
         head_size: int,
-        local_window_size: Optional[int] = None,
+        local_window_size: int | None = None,
         use_smooth_softmax: bool = False,
         device="cuda",
     ):

@@ -619,16 +619,13 @@ if(onnxruntime_USE_ARMNN)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_armnn)
 endif()
 
-set(ONNXRUNTIME_TEST_LIBS
-    onnxruntime_session
-    ${ONNXRUNTIME_INTEROP_TEST_LIBS}
-    ${onnxruntime_libs}
-    # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime
+set(ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS
+    # CUDA, ROCM, TENSORRT, MIGRAPHX, DNNL, and OpenVINO are dynamically loaded at runtime.
+    # QNN EP can be built as either a dynamic and static libs.
     ${PROVIDERS_NNAPI}
     ${PROVIDERS_VSINPU}
     ${PROVIDERS_JS}
     ${PROVIDERS_WEBGPU}
-    ${PROVIDERS_QNN}
     ${PROVIDERS_SNPE}
     ${PROVIDERS_RKNPU}
     ${PROVIDERS_DML}
@@ -637,6 +634,17 @@ set(ONNXRUNTIME_TEST_LIBS
     ${PROVIDERS_COREML}
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_AZURE}
+)
+
+if (onnxruntime_BUILD_QNN_EP_STATIC_LIB)
+  list(APPEND ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS onnxruntime_providers_qnn)
+endif()
+
+set(ONNXRUNTIME_TEST_LIBS
+    onnxruntime_session
+    ${ONNXRUNTIME_INTEROP_TEST_LIBS}
+    ${onnxruntime_libs}
+    ${ONNXRUNTIME_TEST_STATIC_PROVIDER_LIBS}
     onnxruntime_optimizer
     onnxruntime_providers
     onnxruntime_util
@@ -700,7 +708,9 @@ if(onnxruntime_USE_QNN AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_RED
   list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/qnn/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_qnn)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_qnn)
-  list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_qnn)
+  if(NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
+    list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_shared)
+  endif()
 endif()
 
 if(onnxruntime_USE_SNPE)
@@ -1002,6 +1012,11 @@ add_dependencies(onnx_test_data_proto onnx_proto ${onnxruntime_EXTERNAL_DEPENDEN
 #onnx_proto target should mark this definition as public, instead of private
 target_compile_definitions(onnx_test_data_proto PRIVATE "-DONNX_API=")
 onnxruntime_add_include_to_target(onnx_test_data_proto onnx_proto)
+if (MSVC)
+    # Cutlass code has an issue with the following:
+    # warning C4100: 'magic': unreferenced formal parameter
+    target_compile_options(onnx_test_data_proto PRIVATE "/wd4100")
+endif()
 target_include_directories(onnx_test_data_proto PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
 set_target_properties(onnx_test_data_proto PROPERTIES FOLDER "ONNXRuntimeTest")
 if(NOT DEFINED onnx_SOURCE_DIR)
@@ -1163,9 +1178,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
 
     SET(MLAS_BENCH_DIR ${TEST_SRC_DIR}/mlas/bench)
     file(GLOB_RECURSE MLAS_BENCH_SOURCE_FILES "${MLAS_BENCH_DIR}/*.cpp" "${MLAS_BENCH_DIR}/*.h")
-    onnxruntime_add_executable(onnxruntime_mlas_benchmark ${MLAS_BENCH_SOURCE_FILES})
+    onnxruntime_add_executable(onnxruntime_mlas_benchmark ${MLAS_BENCH_SOURCE_FILES} ${ONNXRUNTIME_ROOT}/core/framework/error_code.cc)
     target_include_directories(onnxruntime_mlas_benchmark PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc)
-    target_link_libraries(onnxruntime_mlas_benchmark PRIVATE benchmark::benchmark onnxruntime_util onnxruntime_framework ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
+    target_link_libraries(onnxruntime_mlas_benchmark PRIVATE benchmark::benchmark onnxruntime_util ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ${CMAKE_DL_LIBS})
     target_compile_definitions(onnxruntime_mlas_benchmark PRIVATE BENCHMARK_STATIC_DEFINE)
     if(WIN32)
       target_link_libraries(onnxruntime_mlas_benchmark PRIVATE debug Dbghelp)

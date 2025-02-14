@@ -8,7 +8,6 @@ import shutil
 import warnings
 from io import TextIOWrapper
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
 
 import onnx
 import torch
@@ -29,7 +28,7 @@ class _InspectActivation(torch.autograd.Function):
     def forward(
         ctx,
         activation_name: str,
-        module_idx: Optional[int],
+        module_idx: int | None,
         run_ctx: RuntimeStates,
         input_tensor: torch.Tensor,
         module_post_forward,
@@ -89,9 +88,9 @@ class _InspectActivation(torch.autograd.Function):
     @staticmethod
     def infer_shape(
         node: onnx.NodeProto,
-        tensor_input_shapes: List[Optional[List[Union[int, str]]]],
-        tensor_input_dtypes: List[torch.onnx.TensorProtoDataType],
-    ) -> Tuple[List[Optional[List[Union[int, str]]]], List[torch.onnx.TensorProtoDataType]]:
+        tensor_input_shapes: list[list[int | str] | None],
+        tensor_input_dtypes: list[torch.onnx.TensorProtoDataType],
+    ) -> tuple[list[list[int | str] | None], list[torch.onnx.TensorProtoDataType]]:
         return tensor_input_shapes, tensor_input_dtypes
 
     @staticmethod
@@ -124,8 +123,8 @@ class StatisticsSubscriber(SubscriberBase):
     def __init__(
         self,
         output_dir: str,
-        start_step: Union[None, int] = None,
-        end_step: Union[None, int] = None,
+        start_step: None | int = None,
+        end_step: None | int = None,
         override_output_dir: bool = False,
         run_on_cpu: bool = False,
         bucket_size: int = 1024 * 1024 * 1024 // 2,

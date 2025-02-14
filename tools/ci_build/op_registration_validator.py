@@ -5,6 +5,8 @@
 Validate ORT kernel registrations.
 """
 
+from __future__ import annotations
+
 import argparse
 import dataclasses
 import itertools
@@ -37,8 +39,8 @@ class RegistrationInfo:
     domain: str
     operator: str
     start_version: int
-    end_version: typing.Optional[int]
-    lines: typing.List[str]
+    end_version: int | None
+    lines: list[str]
 
     def domain_and_op_str(self):
         return f"{self.domain}:{self.operator}"
@@ -50,16 +52,16 @@ def _log_registration_error(r: RegistrationInfo, message: str):
 
 class RegistrationValidator(op_registration_utils.RegistrationProcessor):
     def __init__(self):
-        self.all_registrations: typing.List[RegistrationInfo] = []
+        self.all_registrations: list[RegistrationInfo] = []
 
     def process_registration(
         self,
-        lines: typing.List[str],
+        lines: list[str],
         domain: str,
         operator: str,
         start_version: int,
-        end_version: typing.Optional[int] = None,
-        type: typing.Optional[str] = None,
+        end_version: int | None = None,
+        type: str | None = None,
     ):
         self.all_registrations.append(
             RegistrationInfo(
@@ -114,7 +116,7 @@ class RegistrationValidator(op_registration_utils.RegistrationProcessor):
 
         return num_invalid_registrations
 
-    def _validate_registration(self, r: RegistrationInfo, next_r: typing.Optional[RegistrationInfo]) -> bool:
+    def _validate_registration(self, r: RegistrationInfo, next_r: RegistrationInfo | None) -> bool:
         """
         Validates a registration, `r`, with the next one in sorted order for a single domain and op, `next_r`, and
         returns whether it is valid.

@@ -213,19 +213,6 @@ try:
                     "libcufft.so.10",
                     "libcufft.so.11",
                     "libcurand.so.10",
-                    "libcudnn_adv_infer.so.8",
-                    "libcudnn_adv_train.so.8",
-                    "libcudnn_cnn_infer.so.8",
-                    "libcudnn_cnn_train.so.8",
-                    "libcudnn_ops_infer.so.8",
-                    "libcudnn_ops_train.so.8",
-                    "libcudnn_adv.so.9",
-                    "libcudnn_cnn.so.9",
-                    "libcudnn_engines_precompiled.so.9",
-                    "libcudnn_engines_runtime_compiled.so.9",
-                    "libcudnn_graph.so.9",
-                    "libcudnn_heuristic.so.9",
-                    "libcudnn_ops.so.9",
                     "libnvJitLink.so.12",
                     "libnvrtc.so.11.2",  # A symlink to libnvrtc.so.11.8.89
                     "libnvrtc.so.12",
@@ -315,17 +302,20 @@ providers_cuda_or_rocm = "onnxruntime_providers_" + ("rocm" if is_rocm else "cud
 providers_tensorrt_or_migraphx = "onnxruntime_providers_" + ("migraphx" if is_migraphx else "tensorrt")
 providers_openvino = "onnxruntime_providers_openvino"
 providers_cann = "onnxruntime_providers_cann"
+providers_qnn = "onnxruntime_providers_qnn"
 
 if platform.system() == "Linux":
     providers_cuda_or_rocm = "lib" + providers_cuda_or_rocm + ".so"
     providers_tensorrt_or_migraphx = "lib" + providers_tensorrt_or_migraphx + ".so"
     providers_openvino = "lib" + providers_openvino + ".so"
     providers_cann = "lib" + providers_cann + ".so"
+    providers_qnn = "lib" + providers_qnn + ".so"
 elif platform.system() == "Windows":
     providers_cuda_or_rocm = providers_cuda_or_rocm + ".dll"
     providers_tensorrt_or_migraphx = providers_tensorrt_or_migraphx + ".dll"
     providers_openvino = providers_openvino + ".dll"
     providers_cann = providers_cann + ".dll"
+    providers_qnn = providers_qnn + ".dll"
 
 # Additional binaries
 dl_libs = []
@@ -345,8 +335,9 @@ if platform.system() == "Linux" or platform.system() == "AIX":
     dl_libs.append(providers_cuda_or_rocm)
     dl_libs.append(providers_tensorrt_or_migraphx)
     dl_libs.append(providers_cann)
+    dl_libs.append(providers_qnn)
     dl_libs.append("libonnxruntime.so*")
-    # DNNL, TensorRT & OpenVINO EPs are built as shared libs
+    # DNNL, TensorRT, OpenVINO, and QNN EPs are built as shared libs
     libs.extend(["libonnxruntime_providers_shared.so"])
     libs.extend(["libonnxruntime_providers_dnnl.so"])
     libs.extend(["libonnxruntime_providers_openvino.so"])
@@ -354,6 +345,7 @@ if platform.system() == "Linux" or platform.system() == "AIX":
     libs.append(providers_cuda_or_rocm)
     libs.append(providers_tensorrt_or_migraphx)
     libs.append(providers_cann)
+    libs.append(providers_qnn)
     # QNN
     qnn_deps = [
         "libQnnCpu.so",
@@ -392,13 +384,14 @@ else:
         providers_cann,
         "onnxruntime.dll",
     ]
-    # DNNL, TensorRT & OpenVINO EPs are built as shared libs
+    # DNNL, TensorRT, OpenVINO, and QNN EPs are built as shared libs
     libs.extend(["onnxruntime_providers_shared.dll"])
     libs.extend(["onnxruntime_providers_dnnl.dll"])
     libs.extend(["onnxruntime_providers_tensorrt.dll"])
     libs.extend(["onnxruntime_providers_openvino.dll"])
     libs.extend(["onnxruntime_providers_cuda.dll"])
     libs.extend(["onnxruntime_providers_vitisai.dll"])
+    libs.extend(["onnxruntime_providers_qnn.dll"])
     # DirectML Libs
     libs.extend(["DirectML.dll"])
     # QNN V68/V73 dependencies
@@ -481,10 +474,10 @@ with open(README, encoding="utf-8") as fdesc:
 if path.isdir(path.join("onnxruntime", "external")):
     # Gather all files under onnxruntime/external directory.
     extra.extend(
-        list(
+        [
             str(Path(*Path(x).parts[1:]))
             for x in list(iglob(path.join(path.join("onnxruntime", "external"), "**/*.*"), recursive=True))
-        )
+        ]
     )
 
 packages = [
@@ -778,6 +771,7 @@ setup(
     download_url="https://github.com/microsoft/onnxruntime/tags",
     data_files=data_files,
     install_requires=install_requires,
+    python_requires=">=3.10",
     keywords="onnx machine learning",
     entry_points={
         "console_scripts": [

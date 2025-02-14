@@ -1,12 +1,16 @@
 {
   "$schema": "https://raw.githubusercontent.com/microsoft/vcpkg-tool/main/docs/vcpkg.schema.json",
   "name": "onnxruntime",
-  "version-date": "2024-09-10",
+  "version-date": "2025-01-31",
   "description": "ONNX Runtime: cross-platform, high performance ML inferencing and training accelerator",
   "homepage": "https://onnxruntime.ai/",
   "license": "MIT",
   "dependencies": [
     "abseil",
+    {
+      "name": "benchmark",
+      "platform": "!android"
+    },
     {
       "name": "boost-config",
       "version>=": "1.82.0"
@@ -15,7 +19,10 @@
       "name": "boost-mp11",
       "version>=": "1.82.0"
     },
-    "cpuinfo",
+    {
+      "name": "cpuinfo",
+      "platform": "!osx"
+    },
     "cxxopts",
     "date",
     "dlpack",
@@ -24,21 +31,18 @@
       "host": true,
       "version>=": "23.5.26"
     },
+    "fp16",
     {
       "name": "flatbuffers",
       "version>=": "23.5.26"
     },
+    {
+      "name": "mimalloc",
+      "platform": "windows"
+    },
     "ms-gsl",
     "nlohmann-json",
-    {
-      "name": "nsync",
-      "platform": "!windows",
-      "version>=": "1.26.0"
-    },
-    {
-      "name": "onnx",
-      "version>=": "1.16.2"
-    },
+    "onnx",
     "optional-lite",
     {
       "name": "protobuf",
@@ -49,6 +53,7 @@
       "host": true,
       "version>=": "3.21.12"
     },
+    "pybind11",
     "re2",
     "safeint",
     "utf8-range",
@@ -60,7 +65,10 @@
       "name": "vcpkg-cmake-config",
       "host": true
     },
-    "wil",
+    {
+      "name": "wil",
+      "platform": "windows"
+    },
     {
       "name": "zlib",
       "platform": "windows"
@@ -70,8 +78,13 @@
     "tests": {
       "description": "Build ONNXRuntime unit tests",
       "dependencies": [
-        "benchmark",
         "gtest"
+      ]
+    },
+    "xnnpack-ep": {
+      "description": "Build with XNNPack EP",
+      "dependencies": [
+        "xnnpack"
       ]
     }
   },
