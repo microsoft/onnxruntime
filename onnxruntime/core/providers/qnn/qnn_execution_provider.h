@@ -94,6 +94,8 @@ class QNNExecutionProvider : public IExecutionProvider {
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;
 #endif
   qnn::ModelSettings model_settings_ = {};
+  bool dump_json_qnn_graph_ = false;
+  std::string json_qnn_graph_dir_ = "";
 
   // Whether this is set depends on a session option enabling it and if the RPCMEM dynamic library is available.
   // This is potentially shared with HtpSharedMemoryAllocator which may be returned by CreatePreferredAllocators().

@@ -4,6 +4,7 @@
 #include "qnn_model.h"
 
 #include <iostream>
+#include <fstream>
 #include <gsl/gsl>
 #include "QnnOpDef.h"
 
@@ -94,7 +95,8 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
                               const onnxruntime::Node& fused_node,
                               const qnn::ModelSettings& model_settings,
                               const logging::Logger& logger,
-                              const QnnGraph_Config_t** graph_configs) {
+                              const QnnGraph_Config_t** graph_configs,
+                              const std::string& json_qnn_graph_path) {
   LOGS(logger, VERBOSE) << "ComposeGraph Graph name: " << graph_viewer.Name();
 
   // Holder for the NodeUnits in the graph, this will guarantee the NodeUnits is
@@ -137,7 +139,20 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
     }
   }
 
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.ComposeQnnGraph(), "Failed to compose Qnn graph.");
+  const bool build_json_graph = !json_qnn_graph_path.empty();
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.ComposeQnnGraph(build_json_graph), "Failed to compose Qnn graph.");
+
+  if (build_json_graph) {
+    const nlohmann::json& json_graph = qnn_model_wrapper.GetQnnJSONGraph();
+    std::ofstream ofs(json_qnn_graph_path);
+
+    if (ofs.is_open()) {
+      ofs << json_graph.dump();
+      ofs.close();
+    } else {
+      LOGS(logger, WARNING) << "Could not open JSON graph file: " << json_qnn_graph_path;
+    }
+  }
 
   rt = GetGraphInfoFromModel(qnn_model_wrapper, logger);
   if (!rt) {

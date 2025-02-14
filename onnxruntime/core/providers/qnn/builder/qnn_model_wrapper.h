@@ -8,10 +8,12 @@
 #include <vector>
 
 #include "QnnInterface.h"
-#include "qnn_def.h"
+#include "nlohmann/json.hpp"
 
 #include "core/providers/qnn/ort_api.h"
+#include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_quant_params_wrapper.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -91,7 +93,7 @@ class QnnModelWrapper {
                      std::vector<std::string>&& param_tensor_names,
                      bool do_op_validation = false);
 
-  bool ComposeQnnGraph();
+  bool ComposeQnnGraph(bool build_json_qnn_graph = false);
 
   Qnn_GraphHandle_t GetQnnGraph() const { return graph_; }
 
@@ -127,6 +129,10 @@ class QnnModelWrapper {
 
   bool IsGraphInput(const std::string& tensor_name) const {
     return input_index_map_.find(tensor_name) != input_index_map_.end();
+  }
+
+  const nlohmann::json& GetQnnJSONGraph() {
+    return json_qnn_graph_.Finalize();
   }
 
   Qnn_TensorType_t GetTensorType(const std::string& tensor_name) const {
@@ -321,6 +327,7 @@ class QnnModelWrapper {
   const std::unordered_set<std::string>& initializer_lookup_;
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   ModelSettings model_settings_ = {};
+  utils::QnnJSONGraph json_qnn_graph_;
 };  // QnnModelWrapper
 
 }  // namespace qnn
