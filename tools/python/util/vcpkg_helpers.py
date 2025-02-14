@@ -178,7 +178,6 @@ def generate_triplet_for_android(
 
         # Set target platform
         # VCPKG_CMAKE_SYSTEM_NAME specifies the target platform.
-        # Valid options include any CMake system name, such as WindowsStore, MinGW, Darwin, iOS, Linux, Emscripten.
         f.write("set(VCPKG_CMAKE_SYSTEM_NAME Android)\n")
         f.write("set(CMAKE_POSITION_INDEPENDENT_CODE ON)\n")
         f.write(
@@ -331,7 +330,6 @@ def generate_triplet_for_posix_platform(
 
         # Set target platform
         # VCPKG_CMAKE_SYSTEM_NAME specifies the target platform.
-        # Valid options include any CMake system name, such as WindowsStore, MinGW, Darwin, iOS, Linux, Emscripten.
         if os_name == "linux":
             f.write("set(VCPKG_CMAKE_SYSTEM_NAME Linux)\n")
         else:
