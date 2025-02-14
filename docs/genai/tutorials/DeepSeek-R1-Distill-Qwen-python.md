@@ -2,7 +2,7 @@
 ```bash
 # Installing onnxruntime-genai, olive, and dependencies for CPU
 python -m venv .venv && source .venv/bin/activate
-pip install requests numpy --pre onnxruntime-genai olive-ai"
+pip install requests numpy --pre onnxruntime-genai olive-ai
 ```
 
 ```bash
