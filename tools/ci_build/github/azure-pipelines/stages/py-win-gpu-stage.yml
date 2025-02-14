@@ -141,7 +141,7 @@ stages:
             displayName: 'Build wheel'
             inputs:
               scriptPath: '$(Build.SourcesDirectory)\setup.py'
-              arguments: 'bdist_wheel ${{ parameters.BUILD_PY_PARAMETERS }} $(NightlyBuildOption) --wheel_name_suffix=${{ parameters.EP_NAME }} --cuda_version=${{ parameters.cuda_version }}'
+              arguments: 'bdist_wheel ${{ parameters.BUILD_PY_PARAMETERS }} $(NightlyBuildOption) --wheel_name_suffix=${{ parameters.EP_NAME }} --cuda_version=${{ parameters.CudaVersion }}'
               workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
 
           - task: CopyFiles@2
