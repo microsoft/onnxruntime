@@ -98,7 +98,6 @@ def generate_triplet_for_android(
     file_name = f"{target_abi}-android.cmake"
 
     dest_path = Path(build_dir) / folder_name / file_name
-    print(f"Creating file {dest_path}")
 
     os.makedirs(dest_path.parent, exist_ok=True)
 
