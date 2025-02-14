@@ -65,7 +65,7 @@ jobs:
   - task: CmdLine@2
     inputs:
       script: |
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --privileged \
           --ipc=host \
           --network=host \
