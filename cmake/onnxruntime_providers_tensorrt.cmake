@@ -156,6 +156,7 @@
   endif()
 
   include_directories(${TENSORRT_INCLUDE_DIR})
+  include_directories(${TENSORRT_PYTHON_INCLUDE_DIR})
   # ${TENSORRT_LIBRARY} is empty if we link nvonnxparser_static.
   # nvonnxparser_static is linked against tensorrt libraries in onnx-tensorrt
   # See https://github.com/onnx/onnx-tensorrt/blob/8af13d1b106f58df1e98945a5e7c851ddb5f0791/CMakeLists.txt#L121

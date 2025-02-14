@@ -85,7 +85,7 @@ function(AddTest)
   endif()
   if (onnxruntime_USE_TENSORRT)
     # used for instantiating placeholder TRT builder to mitigate TRT library load/unload overhead
-    target_include_directories(${_UT_TARGET} PRIVATE ${TENSORRT_INCLUDE_DIR})
+    target_include_directories(${_UT_TARGET} PRIVATE ${TENSORRT_INCLUDE_DIR} ${TENSORRT_PYTHON_INCLUDE_DIR})
   endif()
 
   if(MSVC)
