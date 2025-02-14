@@ -3,7 +3,7 @@
 
 #include "core/mlas/inc/mlas.h"
 
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(COREML_ENABLE_MLPROGRAM) || defined(USE_XNNPACK)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(USE_COREML) || defined(USE_XNNPACK)
 
 #include "core/providers/cpu/nn/pool.h"
 #include "gtest/gtest.h"
