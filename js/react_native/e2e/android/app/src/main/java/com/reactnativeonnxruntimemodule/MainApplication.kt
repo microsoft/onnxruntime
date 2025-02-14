@@ -1,6 +1,7 @@
 package com.reactnativeonnxruntimemodule
 
 import android.app.Application
+import android.content.Context
 import com.facebook.react.PackageList
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
@@ -13,10 +14,13 @@ import com.facebook.react.flipper.ReactNativeFlipper
 import com.facebook.soloader.SoLoader
 
 class MainApplication : Application(), ReactApplication {
-  companion object {
-      private var appContext: Context
-      fun getAppContext(): Context = appContext
-  }
+    companion object {
+        private lateinit var appContext: Context
+
+        fun getAppContext(): Context {
+            return appContext
+        }
+    }
   override val reactNativeHost: ReactNativeHost =
       object : DefaultReactNativeHost(this) {
         override fun getPackages(): List<ReactPackage> =

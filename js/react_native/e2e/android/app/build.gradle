@@ -1,4 +1,5 @@
 apply plugin: "com.android.application"
+apply plugin: "org.jetbrains.kotlin.android"
 apply plugin: "com.facebook.react"
 
 /**
@@ -73,7 +74,7 @@ android {
 
 		buildToolsVersion rootProject.ext.buildToolsVersion
     compileSdkVersion rootProject.ext.compileSdkVersion
-		namespace "com.example.reactnativeonnxruntimemodule"
+		namespace "com.reactnativeonnxruntimemodule"
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
         targetCompatibility JavaVersion.VERSION_17
@@ -83,7 +84,7 @@ android {
 	    pickFirst '**/libfbjni.so'
 		}
     defaultConfig {
-        applicationId "com.example.reactnativeonnxruntimemodule"
+        applicationId "com.reactnativeonnxruntimemodule"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 package com.reactnativeonnxruntimemodule;
+import com.reactnativeonnxruntimemodule.MainApplication;
 
 import static java.util.stream.Collectors.joining;
 
@@ -114,7 +115,7 @@ public class MNISTDataHandler extends ReactContextBaseJavaModule {
     final int imageHeight = 28;
     final int imageWidth = 28;
 
-    InputStream is = MainApplication.getAppContext().getContentResolver().openInputStream(Uri.parse(uri));
+    InputStream is = MainApplication.Companion.getAppContext().getContentResolver().openInputStream(Uri.parse(uri));
     BufferedInputStream bis = new BufferedInputStream(is);
     byte[] imageArray = new byte[bis.available()];
     bis.read(imageArray);
