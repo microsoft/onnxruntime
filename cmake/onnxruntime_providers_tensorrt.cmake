@@ -39,6 +39,10 @@
     HINTS ${TENSORRT_ROOT}
     PATH_SUFFIXES include)
 
+  # TensorRT Python Headers, needed by oss parser 
+  find_path(TENSORRT_PYTHON_INCLUDE_DIR plugin.h
+    HINTS ${TENSORRT_ROOT}
+    PATH_SUFFIXES python/include/impl)
 
   file(READ ${TENSORRT_INCLUDE_DIR}/NvInferVersion.h NVINFER_VER_CONTENT)
   string(REGEX MATCH "define NV_TENSORRT_MAJOR * +([0-9]+)" NV_TENSORRT_MAJOR "${NVINFER_VER_CONTENT}")
