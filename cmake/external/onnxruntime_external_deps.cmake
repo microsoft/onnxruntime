@@ -632,35 +632,10 @@ endif()
 
 
 if (onnxruntime_USE_WEBGPU)
-  if (onnxruntime_CUSTOM_DAWN_SRC_PATH)
-    # use the custom dawn source path if provided
-    #
-    # specified as:
-    # build.py --use_webgpu --cmake_extra_defines "onnxruntime_CUSTOM_DAWN_SRC_PATH=<PATH_TO_DAWN_SRC_ROOT>"
-    onnxruntime_fetchcontent_declare(
-      dawn
-      SOURCE_DIR ${onnxruntime_CUSTOM_DAWN_SRC_PATH}
-      EXCLUDE_FROM_ALL
-    )
-  else()
-    onnxruntime_fetchcontent_declare(
-      dawn
-      URL ${DEP_URL_dawn}
-      URL_HASH SHA1=${DEP_SHA1_dawn}
-      # # All previous patches are merged into the upstream dawn project. We don't need to apply any patches right now.
-      # # if we need to apply patches in the future, we can uncomment the following line.
-      #
-      # The dawn.patch contains the following changes:
-      # - https://dawn-review.googlesource.com/c/dawn/+/225514
-      PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
-      EXCLUDE_FROM_ALL
-    )
-  endif()
-
   set(DAWN_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
   set(DAWN_ENABLE_NULL OFF CACHE BOOL "" FORCE)
   set(DAWN_FETCH_DEPENDENCIES ON CACHE BOOL "" FORCE)
-
+  set(DAWN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
   if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     set(DAWN_EMSCRIPTEN_TOOLCHAIN "${REPO_ROOT}/cmake/external/emsdk/upstream/emscripten" CACHE STRING "" FORCE)
   else()
@@ -738,6 +713,30 @@ if (onnxruntime_USE_WEBGPU)
       set(DAWN_ENABLE_D3D11 OFF CACHE BOOL "" FORCE)
     endif()
   endif()
+  if (onnxruntime_CUSTOM_DAWN_SRC_PATH)
+    # use the custom dawn source path if provided
+    #
+    # specified as:
+    # build.py --use_webgpu --cmake_extra_defines "onnxruntime_CUSTOM_DAWN_SRC_PATH=<PATH_TO_DAWN_SRC_ROOT>"
+    onnxruntime_fetchcontent_declare(
+      dawn
+      SOURCE_DIR ${onnxruntime_CUSTOM_DAWN_SRC_PATH}
+      EXCLUDE_FROM_ALL
+    )
+  else()
+    onnxruntime_fetchcontent_declare(
+      dawn
+      URL ${DEP_URL_dawn}
+      URL_HASH SHA1=${DEP_SHA1_dawn}
+      # # All previous patches are merged into the upstream dawn project. We don't need to apply any patches right now.
+      # # if we need to apply patches in the future, we can uncomment the following line.
+      #
+      # The dawn.patch contains the following changes:
+      # - https://dawn-review.googlesource.com/c/dawn/+/225514
+      PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
+      EXCLUDE_FROM_ALL
+    )
+  endif()
 
   onnxruntime_fetchcontent_makeavailable(dawn)
 
@@ -753,7 +752,7 @@ if (onnxruntime_USE_WEBGPU)
   endif()
 
   if (onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP)
-    list(APPEND onnxruntime_EXTERNAL_LIBRARIES glfw webgpu_glfw)
+    list(APPEND onnxruntime_EXTERNAL_LIBRARIES webgpu_glfw glfw)
   endif()
 endif()
 

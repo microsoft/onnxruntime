@@ -483,13 +483,13 @@ def generate_windows_triplets(build_dir: str) -> None:
                                         "/D_WIN32_WINNT=0x0A00",
                                         "/DNTDDI_VERSION=0x0A000000",
                                     ]
-                                cxxflags = cflags.copy()
                                 ldflags = []
                                 if enable_binskim:
                                     cflags += ["/guard:cf", "/Qspectre", "/W3"]
                                     ldflags = ["/profile", "/DYNAMICBASE"]
                                 elif enable_asan:
                                     cflags.append("/fsanitize=address")
+                                cxxflags = cflags.copy()
                                 cxxflags.append("/Zc:__cplusplus")
                                 if enable_exception:
                                     cxxflags.append("/EHsc")
