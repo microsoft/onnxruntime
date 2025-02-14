@@ -540,7 +540,7 @@ Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const
   var max_value:vec4<input_a_element_t> = vec4<input_a_element_t>(0);
   for (var idx:u32=0;idx<32;idx+=1)
   {
-    local_a[idx] = input_a[workgroup_id.x*32 + idx];
+    local_a[idx] = input_a[workgroup_idx*32 + idx];
     max_value = max(max_value, abs(local_a[idx]));
   }
   var scale = max(max_value.x, max_value.y);
@@ -548,10 +548,10 @@ Status DP4AMatMulQuantizeProgram::GenerateShaderCode(ShaderHelper& shader) const
   scale = max(scale, max_value.w);
   for (var idx:u32=0;idx<32;idx+=1)
   {
-    output[workgroup_id.x*32+idx] = pack4x8snorm(vec4<f32>(local_a[idx]/scale));
+    output[workgroup_idx*32+idx] = pack4x8snorm(vec4<f32>(local_a[idx]/scale));
   }
   // 127 is the max value of signed int8 [-127,127] used by pack4x8snorm for 1.0f.
-  scales[workgroup_id.x] = scale/127;
+  scales[workgroup_idx] = scale/127;
 )MAIN_FN";
   return Status::OK();
 }
