@@ -122,6 +122,7 @@ int real_main(int argc, char* argv[]) {
     // Set default session option to dump QNN context model with non-embed mode
     so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
     so.AddConfigEntry(kOrtSessionOptionEpContextEmbedMode, "0");
+    so.AddConfigEntry(kOrtSessionOptionShareEpContexts, "1");
 
     ProviderOptions provider_options;
 #if defined(_WIN32)

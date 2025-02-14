@@ -369,17 +369,23 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
   }
 
-  qnn_backend_manager_ = qnn::QnnBackendManager::Create(
-      qnn::QnnBackendManagerConfig{backend_path,
-                                   profiling_level_etw,
-                                   profiling_level,
-                                   profiling_file_path,
-                                   context_priority,
-                                   qnn_saver_path,
-                                   device_id_,
-                                   htp_arch,
-                                   soc_model,
-                                   enable_htp_weight_sharing});
+  // For context binary generation with weight sharing enabled, use the QnnBackendManager from the shared context if it exits
+  // So that all graphs from later sessions will be compiled into the same QNN context
+  if (context_cache_enabled_ && share_ep_contexts_ && SharedContext::GetInstance().GetSharedQnnBackendManager()) {
+    qnn_backend_manager_ = SharedContext::GetInstance().GetSharedQnnBackendManager();
+  } else {
+    qnn_backend_manager_ = qnn::QnnBackendManager::Create(
+        qnn::QnnBackendManagerConfig{backend_path,
+                                     profiling_level_etw,
+                                     profiling_level,
+                                     profiling_file_path,
+                                     context_priority,
+                                     qnn_saver_path,
+                                     device_id_,
+                                     htp_arch,
+                                     soc_model,
+                                     enable_htp_weight_sharing});
+  }
 
 #if defined(_WIN32)
   if (onnxruntime::logging::EtwRegistrationManager::SupportsETW()) {
@@ -1012,6 +1018,10 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                   qnn_context_embed_mode_,
                                                   max_spill_fill_buffer_size,
                                                   logger));
+
+    if (share_ep_contexts_ && nullptr == SharedContext::GetInstance().GetSharedQnnBackendManager()) {
+      ORT_RETURN_IF_NOT(SharedContext::GetInstance().SetSharedQnnBackendManager(qnn_backend_manager_), "Failed to set QnnBackendManager.");
+    }
   }
   return Status::OK();
 }
