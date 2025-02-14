@@ -434,7 +434,7 @@ jsepDownload:_pp_")
       "SHELL:-s ASSERTIONS=0"
       "SHELL:-s SAFE_HEAP=0"
       "SHELL:-s STACK_OVERFLOW_CHECK=0"
-      --closure 1
+      # --closure 1
     )
   endif()
 

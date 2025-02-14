@@ -34,8 +34,85 @@ index efd6491cd6..8ebc5d28b6 100644
  emcmake cmake -GNinja -DDAWN_EMSCRIPTEN_TOOLCHAIN="path/to/emscripten" ../..
  
  ninja
+diff --git a/third_party/emdawnwebgpu/library_webgpu.js b/third_party/emdawnwebgpu/library_webgpu.js
+index 5862ce4045..5c59dbd223 100644
+--- a/third_party/emdawnwebgpu/library_webgpu.js
++++ b/third_party/emdawnwebgpu/library_webgpu.js
+@@ -584,6 +584,10 @@ var LibraryWebGPU = {
+ 
+   emwgpuDelete__sig: 'vp',
+   emwgpuDelete: (ptr) => {
++    // const b = WebGPU.Internals.jsObjects[ptr];
++    // if (b instanceof GPUBuffer) {
++    //   console.log("deleting buffer", ptr);
++    // }
+     delete WebGPU.Internals.jsObjects[ptr];
+   },
+ 
+@@ -811,6 +815,61 @@ var LibraryWebGPU = {
+     {{{ runtimeKeepalivePush() }}}
+     WebGPU.Internals.futureInsert(futureId, adapter.requestDevice(desc).then((device) => {
+       {{{ runtimeKeepalivePop() }}}
++
++      // a set that caches all active buffers
++      const buffers = WebGPU.Internals.buffers ??= new Set();
++      // key is buffer usage, value is total size of buffers with that usage
++      const buffersTotalSize = WebGPU.Internals.buffersTotalSize ??= new Map();
++
++      WebGPU.Internals.buffersCreated ??= 0;
++      WebGPU.Internals.buffersDestroyed ??= 0;
++      WebGPU.Internals.buffersUploads ??= 0;
++      WebGPU.Internals.buffersExternalUploads ??= 0;
++      WebGPU.Internals.buffersDownloads ??= 0;
++      WebGPU.Internals.buffersExternalDownloads ??= 0;
++
++      if ('WEBGPU_STAT' in globalThis) {
++        // create a proxy so that we can monitor buffer usages
++        device = new Proxy(device, {
++          // when call device.createBuffer(), the returned buffer should be added into buffers
++          get: (target, prop, _receiver) => {
++            if (prop === 'createBuffer') {
++              return (desc) => {
++                const buffer = target.createBuffer(desc);
++                const originalDestroy = buffer.destroy.bind(buffer);
++                buffer.destroy = () => {
++                  const previousTotal = buffersTotalSize.get(buffer.usage);
++                  buffersTotalSize.set(buffer.usage, previousTotal - buffer.size);
++                  buffers.delete(buffer);
++                  WebGPU.Internals.buffersDestroyed++;
++                  originalDestroy();
++                };
++
++                if (buffer.usage === (GPUBufferUsage.MAP_WRITE | GPUBufferUsage.COPY_SRC)) {
++                  WebGPU.Internals.buffersUploads++;
++                }
++                if (buffer.usage === (GPUBufferUsage.COPY_DST | GPUBufferUsage.MAP_READ)) {
++                  WebGPU.Internals.buffersDownloads++;
++                }
++
++                buffers.add(buffer);
++                const previousTotal = buffersTotalSize.get(buffer.usage) ?? 0;
++                buffersTotalSize.set(buffer.usage, previousTotal + buffer.size);
++                WebGPU.Internals.buffersCreated++;
++                return buffer;
++              };
++            }
++            const propertyValue = Reflect.get(target, prop);
++            if (typeof propertyValue === 'function') {
++              return propertyValue.bind(target);
++            } else {
++              return propertyValue;
++            }
++          },
++          set: (target, prop, value, _receiver) => Reflect.set(target, prop, value),
++        });
++      }
++
+       WebGPU.Internals.jsObjectInsert(queuePtr, device.queue);
+       WebGPU.Internals.jsObjectInsert(devicePtr, device);
+ 
 diff --git a/third_party/emdawnwebgpu/webgpu.cpp b/third_party/emdawnwebgpu/webgpu.cpp
-index ca52b1237b..b11462fb87 100644
+index ca52b1237b..a30ca583c3 100644
 --- a/third_party/emdawnwebgpu/webgpu.cpp
 +++ b/third_party/emdawnwebgpu/webgpu.cpp
 @@ -131,7 +131,6 @@ class RefCounted : NonMovable {
@@ -62,7 +139,14 @@ index ca52b1237b..b11462fb87 100644
  
    void Destroy();
    const void* GetConstMappedRange(size_t offset, size_t size);
-@@ -1168,7 +1169,11 @@ WGPUBuffer emwgpuCreateBuffer(const EventSource* source,
+@@ -1164,11 +1165,17 @@ WGPUAdapter emwgpuCreateAdapter(const EventSource* source) {
+ 
+ WGPUBuffer emwgpuCreateBuffer(const EventSource* source,
+                               bool mappedAtCreation = false) {
+-  return new WGPUBufferImpl(source, mappedAtCreation);
++  auto x = new WGPUBufferImpl(source, mappedAtCreation);
++  // printf(" #C++: emwgpuCreateBuffer %p\n", x);
++  return x;
  }
  
  WGPUDevice emwgpuCreateDevice(const EventSource* source, WGPUQueue queue) {
@@ -75,7 +159,7 @@ index ca52b1237b..b11462fb87 100644
  }
  
  WGPUQueue emwgpuCreateQueue(const EventSource* source) {
-@@ -1284,6 +1289,10 @@ WGPUBufferImpl::WGPUBufferImpl(const EventSource* source, bool mappedAtCreation)
+@@ -1284,6 +1291,10 @@ WGPUBufferImpl::WGPUBufferImpl(const EventSource* source, bool mappedAtCreation)
    }
  }
  
@@ -86,7 +170,7 @@ index ca52b1237b..b11462fb87 100644
  void WGPUBufferImpl::Destroy() {
    emwgpuBufferDestroy(this);
    AbortPendingMap("Buffer was destroyed before mapping was resolved.");
-@@ -1504,6 +1513,7 @@ WGPUFuture WGPUShaderModuleImpl::GetCompilationInfo(
+@@ -1504,6 +1515,7 @@ WGPUFuture WGPUShaderModuleImpl::GetCompilationInfo(
    void wgpu##Name##Release(WGPU##Name o) {       \
      if (o->Release()) {                          \
        delete o;                                  \
@@ -94,3 +178,19 @@ index ca52b1237b..b11462fb87 100644
      }                                            \
    }
  WGPU_OBJECTS(DEFINE_WGPU_DEFAULT_ADDREF_RELEASE)
+@@ -1587,6 +1599,7 @@ WGPUFuture wgpuAdapterRequestDevice(
+ // ----------------------------------------------------------------------------
+ 
+ void wgpuBufferDestroy(WGPUBuffer buffer) {
++  // printf(" #C++: wgpuBufferDestroy %p\n", buffer);
+   buffer->Destroy();
+ }
+ 
+@@ -1639,6 +1652,7 @@ void wgpuBufferUnmap(WGPUBuffer buffer) {
+ WGPUBuffer wgpuDeviceCreateBuffer(WGPUDevice device,
+                                   const WGPUBufferDescriptor* descriptor) {
+   WGPUBuffer buffer = new WGPUBufferImpl(device, descriptor->mappedAtCreation);
++  // printf(" #C++: wgpuDeviceCreateBuffer %p\n", buffer);
+   emwgpuDeviceCreateBuffer(device, descriptor, buffer);
+   return buffer;
+ }

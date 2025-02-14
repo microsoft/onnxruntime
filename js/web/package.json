@@ -72,7 +72,7 @@
         "import": "./dist/ort.node.min.mjs",
         "require": "./dist/ort.node.min.js"
       },
-      "import": "./dist/ort.bundle.min.mjs",
+      "import": "./dist/ort.bundle.mjs",
       "require": "./dist/ort.min.js",
       "types": "./types.d.ts"
     },

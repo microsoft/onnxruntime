@@ -260,6 +260,8 @@ export const createSession = async (
   let modelDataOffset: number, modelDataLength: number;
   const wasm = getInstance();
 
+  wasm.webgpuStat?.('createSession_start');
+
   if (Array.isArray(modelData)) {
     // if model data is an array, it must be a 2-elements tuple containing the pointer and size of the model data
     [modelDataOffset, modelDataLength] = modelData;
@@ -327,6 +329,7 @@ export const createSession = async (
     }
 
     wasm.jsepOnCreateSession?.();
+    wasm.webgpuStat?.('createSession_end');
 
     // clear current MLContext after session creation
     if (wasm.currentContext) {
@@ -436,6 +439,7 @@ export const createSession = async (
 
 export const releaseSession = (sessionId: number): void => {
   const wasm = getInstance();
+  wasm.webgpuStat?.('releaseSession_start');
   const session = activeSessions.get(sessionId);
   if (!session) {
     throw new Error(`cannot release session. invalid session id: ${sessionId}`);
@@ -462,6 +466,8 @@ export const releaseSession = (sessionId: number): void => {
     checkLastError("Can't release session.");
   }
   activeSessions.delete(sessionId);
+
+  wasm.webgpuStat?.('releaseSession_end');
 };
 
 export const prepareInputOutputTensor = async (
@@ -633,6 +639,8 @@ export const run = async (
   const outputValuesOffset = wasm.stackAlloc(outputCount * ptrSize);
   const outputNamesOffset = wasm.stackAlloc(outputCount * ptrSize);
 
+  wasm.webgpuStat?.('run_start');
+
   try {
     [runOptionsHandle, runOptionsAllocs] = setRunOptions(options);
 
@@ -722,6 +730,7 @@ export const run = async (
     }
 
     wasm.jsepOnRunStart?.(sessionHandle);
+    //wasm.webgpuStat?.('run_beforeAPI');
 
     let errorCode: number;
     if (!BUILD_DEFS.DISABLE_JSEP && ioBindingState) {
@@ -744,6 +753,8 @@ export const run = async (
         runOptionsHandle,
       );
     }
+
+    //wasm.webgpuStat?.('run_afterAPI');
 
     if (errorCode !== 0) {
       checkLastError('failed to call OrtRun().');
@@ -926,6 +937,8 @@ export const run = async (
         false,
       ]);
     }
+    wasm.webgpuStat?.('run_end');
+
     return output;
   } finally {
     wasm.stackRestore(beforeRunStack);
