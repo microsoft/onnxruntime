@@ -19,28 +19,8 @@
 // https://github.com/microsoft/onnxruntime/blob/b9493adbe88c4681fcae71774ec3685d1390bd46/onnxruntime/core/mlas/lib/sqnbitgemm.cpp
 #include <chrono>
 #include "core/common/profiler.h"
-class ProfilerWrapper {
- public:
-  ProfilerWrapper() {
-    profiler_ = std::make_unique<onnxruntime::profiling::Profiler>();
-    profiler_->StartProfiling<char>("profile.json");
-  }
 
-  ~ProfilerWrapper() {
-    if (profiler_) {
-      profiler_->EndProfiling();
-    }
-  }
-
-  onnxruntime::profiling::Profiler* operator->() {
-    return profiler_.get();
-  }
-
- private:
-  std::unique_ptr<onnxruntime::profiling::Profiler> profiler_;
-};
-
-static ProfilerWrapper profiler_;
+static onnxruntime::profiling::Profiler* profiler_ = nullptr;
 
 using onnxruntime::concurrency::ThreadPool;
 
@@ -69,6 +49,13 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
 
 template <typename T>
 Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
+
+  const std::string node_name = this->Node().Name();
+
+  // Initialize the profiler_ with a unique log file based on the node name
+  profiler_ = new onnxruntime::profiling::Profiler();
+  profiler_->StartProfiling<char>(node_name + "_log.txt");
+
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
   const Tensor* value = context->Input<Tensor>(2);
@@ -239,6 +226,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
     std::string eventName = this->Node().Name() + "_" + "ApplyAttention";
     profiler_->EndTimeAndRecordEvent(onnxruntime::profiling::KERNEL_EVENT, eventName, time_point);
   }
+  profiler_->EndProfiling();
+  delete profiler_;
   return ret;
 }
 }  // namespace contrib
