@@ -94,21 +94,16 @@ if cuda_version and cuda_version.startswith("12."):
 
         if platform.system() == "Windows":
             import sys
-            import sysconfig
 
+            # MSVC DLLs are installed to system32 directory by default.
+            system_dir = os.path.join(os.getenv("SystemRoot", "C:\\Windows"), "System32")
+            if os.path.isdir(system_dir):
+                os.add_dll_directory(system_dir)
+
+            # MSVC DLLs might also be found in conda directory.
             py_dll_path = os.path.join(sys.exec_prefix, "Library", "bin")
-            if os.path.exists(py_dll_path):
+            if os.path.isdir(py_dll_path):
                 os.add_dll_directory(py_dll_path)
-
-            usebase_path = os.path.join(sysconfig.get_config_var("userbase"), "Library", "bin")
-            if os.path.exists(usebase_path):
-                os.add_dll_directory(usebase_path)
-
-            # When a virtual environment inherits the base environment.
-            if sys.exec_prefix != sys.base_exec_prefix:
-                base_py_dll_path = os.path.join(sys.base_exec_prefix, "Library", "bin")
-                if os.path.exists(base_py_dll_path):
-                    os.add_dll_directory(base_py_dll_path)
 
             try:
                 ctypes.CDLL("vcruntime140.dll")
@@ -117,7 +112,7 @@ if cuda_version and cuda_version.startswith("12."):
                     ctypes.CDLL("vcruntime140_1.dll")
             except OSError:
                 print("Microsoft Visual C++ Redistributable is not installed, this may lead to the DLL load failure.")
-                print("It can be downloaded at https://aka.ms/vs/16/release/vc_redist.x64.exe.")
+                print("It can be downloaded at https://aka.ms/vs/17/release/vc_redist.x64.exe.")
 
         # Get the site-packages path where nvidia packages are installed
         for site_packages_path in site.getsitepackages():
