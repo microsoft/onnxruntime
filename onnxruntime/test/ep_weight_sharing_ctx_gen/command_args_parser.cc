@@ -32,6 +32,8 @@ namespace qnnctxgen {
       "ep_weight_sharing_ctx_gen [options...] model1_path,model2_path\n"
       "Example: ./ep_weight_sharing_ctx_gen -i \"soc_model|60 htp_graph_finalization_optimization_mode|3\" -C \"ep.context_node_name_prefix|_part1\" ./model1.onnx,./model2.onnx\n"
       "Options:\n"
+      "\t-e [qnn|tensorrt|openvino|vitisai]: Specifies the compile based provider 'qnn','tensorrt','openvino', 'vitisai'. "
+      "Default:'qnn'.\n"
       "\t-v: Show verbose information.\n"
       "\t-C: Specify session configuration entries as key-value pairs: -C \"<key1>|<value1> <key2>|<value2>\" \n"
       "\t    Refer to onnxruntime_session_options_config_keys.h for valid keys and values. \n"
@@ -49,7 +51,7 @@ namespace qnnctxgen {
       "\t    Otherwise, it will be fp32 precision. Works for float32 model for HTP backend. Defaults to '1' (with FP16 precision.). \n"
       "\t    [enable_htp_weight_sharing]: Allows common weights across graphs to be shared and stored in a single context binary. Defaults to '1' (enabled).\n"
       "\t    [offload_graph_io_quantization]: Offload graph input quantization and graph output dequantization to another EP (typically CPU EP). \n"
-      "\t    Defaults to '0' (QNN EP handles the graph I/O quantization and dequantization). \n"
+      "\t    Defaults to '1' (QNN EP handles the graph I/O quantization and dequantization). \n"
       "\t    [enable_htp_spill_fill_buffer]: Enable HTP spill file buffer, used while generating QNN context binary."
       "\t    [Example] -i \"vtcm_mb|8 htp_arch|73\" \n"
       "\n"
@@ -109,8 +111,22 @@ static bool ParseSessionConfigs(const std::string& configs_string,
 
 /*static*/ bool CommandLineParser::ParseArguments(TestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("o:u:i:C:vh"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("e:o:u:i:C:vh"))) != -1) {
     switch (ch) {
+      case 'e':
+        if (!CompareCString(optarg, ORT_TSTR("qnn"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kQnnExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("openvino"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kOpenVINOExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("tensorrt"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kTensorrtExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("vitisai"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kVitisAIExecutionProvider;
+        } else {
+          fprintf(stderr, "The execution provider is not included in this tool.\n");
+          return false;
+        }
+        break;
       case 'v':
         test_config.run_config.f_verbose = true;
         break;
@@ -162,7 +178,7 @@ static bool ParseSessionConfigs(const std::string& configs_string,
  'offload_graph_io_quantization', 'enable_htp_spill_fill_buffer'])");
           }
 
-          test_config.run_config.qnn_options[key] = value;
+          test_config.run_config.provider_options[key] = value;
         }
         break;
       }

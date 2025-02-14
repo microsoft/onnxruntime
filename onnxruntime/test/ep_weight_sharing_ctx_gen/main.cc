@@ -119,21 +119,15 @@ int real_main(int argc, char* argv[]) {
   ORT_TRY {
     Ort::SessionOptions so;
     so.SetLogId("ep_weight_sharing_ctx_gen_session_logger");
-    // Set default session option to dump QNN context model with non-embed mode
+    // Set default session option to dump EPContext model with non-embed mode
     so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
     so.AddConfigEntry(kOrtSessionOptionEpContextEmbedMode, "0");
+    // enable ep.share_ep_contexts
     so.AddConfigEntry(kOrtSessionOptionShareEpContexts, "1");
 
     ProviderOptions provider_options;
-#if defined(_WIN32)
-    provider_options["backend_path"] = "QnnHtp.dll";
-#else
-    provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-    // set default QNN EP option to enable weight sharing
-    provider_options["enable_htp_weight_sharing"] = "1";
 
-    for (auto it : test_config.run_config.qnn_options) {
+    for (auto it : test_config.run_config.provider_options) {
       provider_options[it.first] = it.second;
     }
 
@@ -160,7 +154,26 @@ int real_main(int argc, char* argv[]) {
     // Generate context cache model files with QNN context binary files
     // The context binary file generated later includes all graphs from previous models
     {
-      so.AppendExecutionProvider("QNN", provider_options);
+      std::string provider_name_ = test_config.machine_config.provider_type_name;
+      if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
+#ifdef USE_QNN
+#if defined(_WIN32)
+        provider_options["backend_path"] = "QnnHtp.dll";
+#else
+        provider_options["backend_path"] = "libQnnHtp.so";
+#endif
+        // set default QNN EP option to enable weight sharing if not set by user
+        const std::string enable_htp_weight_sharing = "enable_htp_weight_sharing";
+        if (provider_options.find(enable_htp_weight_sharing) == provider_options.end()) {
+          provider_options[enable_htp_weight_sharing] = "1";
+        }
+        so.AppendExecutionProvider("QNN", provider_options);
+#else
+        ORT_THROW("QNN is not supported in this build\n");
+#endif
+      } else if (!provider_name_.empty()) {
+        ORT_THROW("This execution provider is not included in this tool.\n");
+      }
 
       for (auto model_path : test_config.model_file_paths) {
         std::cout << "Generate context cache model for: " << ToUTF8String(model_path) << std::endl;
@@ -187,7 +200,7 @@ int real_main(int argc, char* argv[]) {
 
     // Update generated context cache Onnx model to make the main EPContext node point to
     // the last QNN context binary file
-    // Remove not used QNN context binary file, only keep the last one which contains all graphs
+    // Remove not used QNN context binary file, only keep the last one only which contains all graphs
     UpdateEpContextModel(ep_ctx_files, last_qnn_ctx_binary_file_name, max_size);
   }
   ORT_CATCH(const Ort::Exception& e) {
