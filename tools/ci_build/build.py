@@ -2367,23 +2367,24 @@ def run_nodejs_tests(nodejs_binding_dir):
 
 
 def parse_cuda_version_from_json(cuda_home):
-    version_file_path = os.path.join(cuda_home, 'version.json')
+    version_file_path = os.path.join(cuda_home, "version.json")
     if not os.path.exists(version_file_path):
         print(f"version.json not found in {cuda_home}.")
     else:
         try:
             with open(version_file_path) as version_file:
                 version_data = json.load(version_file)
-                cudart_info = version_data.get('cuda')
-                if cudart_info and 'version' in cudart_info:
-                    parts = cudart_info['version'].split('.')
-                    return '.'.join(parts[:2])
+                cudart_info = version_data.get("cuda")
+                if cudart_info and "version" in cudart_info:
+                    parts = cudart_info["version"].split(".")
+                    return ".".join(parts[:2])
         except FileNotFoundError:
             print(f"version.json not found in {cuda_home}.")
         except json.JSONDecodeError:
             print(f"Error decoding JSON from version.json in {cuda_home}.")
 
     return ""
+
 
 def build_python_wheel(
     source_dir,
