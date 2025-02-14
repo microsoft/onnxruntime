@@ -1,94 +1,94 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 45aa9e8a..25a47bc8 100644
+index 25a47bc8..45aa9e8a 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -492,7 +492,6 @@ if(MSVC)
+@@ -492,6 +492,7 @@ if(MSVC)
    endif()
  else()
    # On non-Windows, hide all symbols we don't need
--  set(EXTRA_FLAGS "-Wno-unused-parameter")
++  set(EXTRA_FLAGS "-Wno-unused-parameter")
    set(ONNX_API_DEFINE "-DONNX_API=__attribute__\(\(__visibility__\(\"default\"\)\)\)")
    set_target_properties(onnx_proto PROPERTIES CXX_VISIBILITY_PRESET hidden)
    set_target_properties(onnx_proto PROPERTIES VISIBILITY_INLINES_HIDDEN 1)
-@@ -630,11 +629,21 @@ if(MSVC)
+@@ -629,21 +630,11 @@ if(MSVC)
                           PRIVATE /MP
                                   /wd4146 # unary minus operator applied to unsigned type,
                                           # result still unsigned
-+                                 /wd4244 #'argument': conversion from 'google::
-+                                         #protobuf::uint64' to 'int', possible
-+                                         # loss of data
-+                                 /wd4267 # Conversion from 'size_t' to 'int',
-+                                         # possible loss of data
+-                                 /wd4244 #'argument': conversion from 'google::
+-                                         #protobuf::uint64' to 'int', possible
+-                                         # loss of data
+-                                 /wd4267 # Conversion from 'size_t' to 'int',
+-                                         # possible loss of data
                                   ${EXTRA_FLAGS})
    target_compile_options(onnx
                           PRIVATE /MP
                                   /wd4146 # unary minus operator applied to unsigned type,
                                           # result still unsigned
-+                                 /wd4244 # 'argument': conversion from 'google::
-+                                         # protobuf::uint64' to 'int', possible
-+                                         # loss of data
-+                                 /wd4267 # Conversion from 'size_t' to 'int',
-+                                         # possible loss of data
+-                                 /wd4244 # 'argument': conversion from 'google::
+-                                         # protobuf::uint64' to 'int', possible
+-                                         # loss of data
+-                                 /wd4267 # Conversion from 'size_t' to 'int',
+-                                         # possible loss of data
                                   ${EXTRA_FLAGS})
    add_msvc_runtime_flag(onnx_proto)
    add_msvc_runtime_flag(onnx)
 diff --git a/onnx/common/file_utils.h b/onnx/common/file_utils.h
-index defa1ec8..7a0b9459 100644
+index 7a0b9459..defa1ec8 100644
 --- a/onnx/common/file_utils.h
 +++ b/onnx/common/file_utils.h
-@@ -6,6 +6,7 @@
+@@ -6,7 +6,6 @@
  
  #pragma once
  
-+#include <filesystem>
+-#include <filesystem>
  #include <fstream>
  #include <string>
  
-@@ -18,7 +19,12 @@ namespace ONNX_NAMESPACE {
+@@ -19,12 +18,7 @@ namespace ONNX_NAMESPACE {
  
  template <typename T>
  void LoadProtoFromPath(const std::string& proto_path, T& proto) {
--  std::fstream proto_stream(proto_path, std::ios::in | std::ios::binary);
-+#ifdef _WIN32
-+  std::filesystem::path proto_u8_path(utf8str_to_wstring(proto_path, true));
-+#else
-+  std::filesystem::path proto_u8_path(proto_path);
-+#endif
-+  std::fstream proto_stream(proto_u8_path, std::ios::in | std::ios::binary);
+-#ifdef _WIN32
+-  std::filesystem::path proto_u8_path(utf8str_to_wstring(proto_path, true));
+-#else
+-  std::filesystem::path proto_u8_path(proto_path);
+-#endif
+-  std::fstream proto_stream(proto_u8_path, std::ios::in | std::ios::binary);
++  std::fstream proto_stream(proto_path, std::ios::in | std::ios::binary);
    if (!proto_stream.good()) {
      fail_check("Unable to open proto file: ", proto_path, ". Please check if it is a valid proto. ");
    }
 diff --git a/onnx/onnx_pb.h b/onnx/onnx_pb.h
-index 9cdc944e..0aab3e26 100644
+index 0aab3e26..9cdc944e 100644
 --- a/onnx/onnx_pb.h
 +++ b/onnx/onnx_pb.h
-@@ -47,29 +47,10 @@
+@@ -47,10 +47,29 @@
  #define ONNX_API ONNX_IMPORT
  #endif
  
--#if defined(__GNUC__)
--#pragma GCC diagnostic push
--
--// In file included from onnx/onnx-ml.pb.h:30:
--// In file included from google/protobuf/extension_set.h:53:
--// google/protobuf/parse_context.h:328:47: error: implicit conversion loses integer precision: 'long' to 'int'
--// [-Werror,-Wshorten-64-to-32]
--#if defined(__has_warning)
--#if __has_warning("-Wshorten-64-to-32")
--#pragma GCC diagnostic ignored "-Wshorten-64-to-32"
--#endif
--#endif // defined(__has_warning)
--
--#endif // defined(__GNUC__)
--
++#if defined(__GNUC__)
++#pragma GCC diagnostic push
++
++// In file included from onnx/onnx-ml.pb.h:30:
++// In file included from google/protobuf/extension_set.h:53:
++// google/protobuf/parse_context.h:328:47: error: implicit conversion loses integer precision: 'long' to 'int'
++// [-Werror,-Wshorten-64-to-32]
++#if defined(__has_warning)
++#if __has_warning("-Wshorten-64-to-32")
++#pragma GCC diagnostic ignored "-Wshorten-64-to-32"
++#endif
++#endif // defined(__has_warning)
++
++#endif // defined(__GNUC__)
++
  #ifdef ONNX_ML
  #include "onnx/onnx-ml.pb.h"
  #else
  #include "onnx/onnx.pb.h"
  #endif
  
--#if defined(__GNUC__)
--#pragma GCC diagnostic pop
--#endif
--
++#if defined(__GNUC__)
++#pragma GCC diagnostic pop
++#endif
++
  #endif // ! ONNX_ONNX_PB_H
