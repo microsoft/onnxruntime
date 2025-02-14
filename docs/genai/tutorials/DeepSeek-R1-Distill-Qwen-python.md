@@ -1,3 +1,14 @@
+---
+title: DeepSeek-R1-Distill tutorial
+description: Learn how to chat with DeepSeek-R1-Distill ONNX models on your device. 
+has_children: false
+parent: Tutorials
+grand_parent: Generate API (Preview)
+nav_order:
+---
+
+# Reasoning in Python with DeepSeek-R1-Distill models
+
 ## 1. Pre-Requisites: Make a virtual environment and install ONNX Runtime GenAI
 ```bash
 # Installing onnxruntime-genai, olive, and dependencies for CPU
