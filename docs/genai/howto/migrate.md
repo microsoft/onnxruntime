@@ -115,14 +115,46 @@ Note: chat mode and system prompt caching are only supported for batch size 1. F
 1. Create and tokenize the system prompt and call `generator->AppendTokenSequences()`. This call can be done before the user is asked for their prompt.
 
    ```csharp
+   var systemPrompt = "..."
    auto sequences = OgaSequences::Create();
-   tokenizer->Encode(system_prompt.c_str(), *sequences);
+   tokenizer->Encode(systemPrompt, *sequences);
    generator->AppendTokenSequences(*sequences);
    ```
 
+### Add chat mode to your C# application
+
+1. Add a chat loop to your application 
+   ```csharp
+   using var tokenizerStream = tokenizer.CreateStream();
+   using var generator = new Generator(model, generatorParams);
+   Console.WriteLine("Prompt:");
+   prompt = Console.ReadLine();
+
+   // Example Phi-3 template
+   var sequences = tokenizer.Encode($"<|user|>{prompt}<|end|><|assistant|>");
+
+   do
+   {
+      generator.AppendTokenSequences(sequences);
+      var watch = System.Diagnostics.Stopwatch.StartNew();
+      while (!generator.IsDone())
+      {
+         generator.GenerateNextToken();
+         Console.Write(tokenizerStream.Decode(generator.GetSequence(0)[^1]));
+      }
+      Console.WriteLine();
+      watch.Stop();
+      var runTimeInSeconds = watch.Elapsed.TotalSeconds;
+      var outputSequence = generator.GetSequence(0);
+      var totalTokens = outputSequence.Length;
+      Console.WriteLine($"Streaming Tokens: {totalTokens} Time: {runTimeInSeconds:0.00} Tokens per second: {totalTokens / runTimeInSeconds:0.00}");
+      Console.WriteLine("Next prompt:");
+      var nextPrompt = Console.ReadLine();
+      sequences = tokenizer.Encode($"<|user|>{prompt}<|end|><|assistant|>");
+   } while (prompt != null);
+
+    ```
+
 ## Java
 
-### Migrate Java question and answer (single turn) code to 0.6.0
-
-1. Replace calls to `GeneratorParams::setInput(sequences)` with `Generator::AppendTokenSequences`
-2. Remove calls to `Generator::ComputeLogits`
+_Coming soon_
