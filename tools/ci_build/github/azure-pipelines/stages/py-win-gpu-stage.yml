@@ -33,7 +33,7 @@ parameters:
    - Release
    - RelWithDebInfo
    - MinSizeRel
-   
+
 - name: use_tensorrt
   type: boolean
   default: false
@@ -141,7 +141,7 @@ stages:
             displayName: 'Build wheel'
             inputs:
               scriptPath: '$(Build.SourcesDirectory)\setup.py'
-              arguments: 'bdist_wheel ${{ parameters.BUILD_PY_PARAMETERS }} $(NightlyBuildOption) --wheel_name_suffix=${{ parameters.EP_NAME }}'
+              arguments: 'bdist_wheel ${{ parameters.BUILD_PY_PARAMETERS }} $(NightlyBuildOption) --wheel_name_suffix=${{ parameters.EP_NAME }} --cuda_version=${{ parameters.CudaVersion }}'
               workingDirectory: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
 
           - task: CopyFiles@2
@@ -195,7 +195,7 @@ stages:
             TMPDIR: "$(Agent.TempDirectory)"
 
         - powershell: |
-  
+
             python -m pip uninstall -y onnxruntime onnxruntime-gpu -qq
             Get-ChildItem -Path $(Build.ArtifactStagingDirectory)/*cp${{ replace(parameters.PYTHON_VERSION,'.','') }}*.whl | foreach {pip --disable-pip-version-check install --upgrade $_.fullname tabulate}
             mkdir -p $(Agent.TempDirectory)\ort_test_data
