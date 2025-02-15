@@ -724,21 +724,22 @@ if not path.exists(requirements_path):
 with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 
-if enable_training:
 
-    def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version):
-        sys.path.append(path.join(path.dirname(__file__), "onnxruntime", "python"))
-        from onnxruntime_collect_build_info import find_cudart_versions
+def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version):
+    sys.path.append(path.join(path.dirname(__file__), "onnxruntime", "python"))
+    from onnxruntime_collect_build_info import find_cudart_versions
 
-        version_path = path.join("onnxruntime", "capi", "build_and_package_info.py")
-        with open(version_path, "w") as f:
-            f.write(f"package_name = '{package_name}'\n")
-            f.write(f"__version__ = '{version_number}'\n")
+    version_path = path.join("onnxruntime", "capi", "build_and_package_info.py")
+    with open(version_path, "w") as f:
+        f.write(f"package_name = '{package_name}'\n")
+        f.write(f"__version__ = '{version_number}'\n")
 
-            if cuda_version:
-                f.write(f"cuda_version = '{cuda_version}'\n")
+        if cuda_version:
+            f.write(f"cuda_version = '{cuda_version}'\n")
 
-                # cudart_versions are integers
+            # The cudart version used in building training packages in Linux.
+            # It is possible to parse version.json at cuda_home in build.py, then pass in the parameter directly.
+            if enable_training and platform.system().lower() == "linux":
                 cudart_versions = find_cudart_versions(build_env=True)
                 if cudart_versions and len(cudart_versions) == 1:
                     f.write(f"cudart_version = {cudart_versions[0]}\n")
@@ -751,10 +752,11 @@ if enable_training:
                             else "found multiple cudart libraries"
                         ),
                     )
-            elif rocm_version:
-                f.write(f"rocm_version = '{rocm_version}'\n")
+        elif rocm_version:
+            f.write(f"rocm_version = '{rocm_version}'\n")
 
-    save_build_and_package_info(package_name, version_number, cuda_version, rocm_version)
+
+save_build_and_package_info(package_name, version_number, cuda_version, rocm_version)
 
 extras_require = {}
 if package_name == "onnxruntime-gpu" and is_cuda_version_12:
@@ -770,7 +772,6 @@ if package_name == "onnxruntime-gpu" and is_cuda_version_12:
         ],
     }
 
-# Setup
 setup(
     name=package_name,
     version=version_number,
