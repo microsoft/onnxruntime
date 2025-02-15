@@ -95,8 +95,8 @@ RopeKernel_Avx2_Impl<true>(
         __m256i in_mask_vec = _mm256_set_epi32(7, 6, 3, 2, 5, 4, 1, 0);
         float32x8_t real = _mm256_permutevar8x32_ps(real_s, in_mask_vec);
         float32x8_t imag = _mm256_permutevar8x32_ps(imag_s, in_mask_vec);
-        float32x8_t sin_val = _mm256_loadu_ps(sin + i);
-        float32x8_t cos_val = _mm256_loadu_ps(cos + i);
+        float32x8_t sin_val = _mm256_loadu_ps(sin + i / 2);
+        float32x8_t cos_val = _mm256_loadu_ps(cos + i / 2);
         //Compute Real and Imaginary output values
         float32x8_t real_out = _mm256_fmsub_ps(real, cos_val, _mm256_mul_ps(imag, sin_val));
         float32x8_t imag_out = _mm256_fmadd_ps(real, sin_val, _mm256_mul_ps(imag, cos_val));
@@ -122,8 +122,8 @@ RopeKernel_Avx2_Impl<true>(
         __m256i in_mask_vec = _mm256_set_epi32(7, 6, 3, 2, 5, 4, 1, 0);
         float32x8_t real = _mm256_permutevar8x32_ps(real_s, in_mask_vec);
         float32x8_t imag = _mm256_permutevar8x32_ps(imag_s, in_mask_vec);
-        float32x8_t sin_val = _mm256_loadu_ps(sin + i);
-        float32x8_t cos_val = _mm256_loadu_ps(cos + i);
+        float32x8_t sin_val = _mm256_loadu_ps(sin + i / 2);
+        float32x8_t cos_val = _mm256_loadu_ps(cos + i / 2);
         //Compute Real and Imaginary output values
         float32x8_t real_out = _mm256_fmsub_ps(real, cos_val, _mm256_mul_ps(imag, sin_val));
         float32x8_t imag_out = _mm256_fmadd_ps(real, sin_val, _mm256_mul_ps(imag, cos_val));
