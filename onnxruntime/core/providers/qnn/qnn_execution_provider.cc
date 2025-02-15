@@ -388,6 +388,9 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   // So that all graphs from later sessions will be compiled into the same QNN context
   if (context_cache_enabled_ && share_ep_contexts_ && SharedContext::GetInstance().GetSharedQnnBackendManager()) {
     qnn_backend_manager_ = SharedContext::GetInstance().GetSharedQnnBackendManager();
+    qnn_backend_manager_shared = true;
+    // Only allow the share across 2 sessions in case out of control
+    SharedContext::GetInstance().ResetSharedQnnBackendManager();
   } else {
     qnn_backend_manager_ = qnn::QnnBackendManager::Create(
         qnn::QnnBackendManagerConfig{backend_path,
@@ -1042,7 +1045,8 @@ Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused
                                                   max_spill_fill_buffer_size,
                                                   logger));
 
-    if (share_ep_contexts_ && nullptr == SharedContext::GetInstance().GetSharedQnnBackendManager()) {
+    if (share_ep_contexts_ && !qnn_backend_manager_shared &&
+        nullptr == SharedContext::GetInstance().GetSharedQnnBackendManager()) {
       ORT_RETURN_IF_NOT(SharedContext::GetInstance().SetSharedQnnBackendManager(qnn_backend_manager_),
                         "Failed to set shared QnnBackendManager.");
     }

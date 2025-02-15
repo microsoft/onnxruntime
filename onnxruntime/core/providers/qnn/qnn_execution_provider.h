@@ -77,6 +77,8 @@ class QNNExecutionProvider : public IExecutionProvider {
   std::shared_ptr<qnn::QnnBackendManager> qnn_backend_manager_;
   std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>> qnn_models_;
   bool context_cache_enabled_ = false;
+  // flag to know whether the shared QnnBackendManager is consumed. Stop passing it through if it is consumed.
+  bool qnn_backend_manager_shared = false;
   std::string context_cache_path_cfg_ = "";
   std::string context_node_name_prefix_ = "";
   bool disable_cpu_ep_fallback_ = false;  // True if CPU EP fallback has been disabled for this session.

@@ -79,6 +79,11 @@ class SharedContext {
     return qnn_backend_manager_;
   }
 
+  void ResetSharedQnnBackendManager() {
+    const std::lock_guard<std::mutex> lock(mtx_);
+    qnn_backend_manager_.reset();
+  }
+
  private:
   SharedContext() = default;
   ~SharedContext() = default;
