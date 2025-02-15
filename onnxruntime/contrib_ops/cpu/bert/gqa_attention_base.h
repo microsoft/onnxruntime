@@ -88,20 +88,16 @@ class GQAAttentionBase {
     bool past_present_share_buffer = past_key_data == present_key_data && past_value_data == present_value_data;
 
     const T* k = packed_qkv ? Q + num_heads_ * sequence_length * head_size : K;
-    {
-      ComputeAttentionProbs<T>(static_cast<float*>(attention_probs), Q, k, seqlens_k->Data<int32_t>(), batch_size,
-                               sequence_length, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size, past_key_data,
-                               present_key_data, past_present_share_buffer, packed_qkv, is_prompt, tp, allocator);
-    }
+    ComputeAttentionProbs<T>(static_cast<float*>(attention_probs), Q, k, seqlens_k->Data<int32_t>(), batch_size,
+                             sequence_length, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size, past_key_data,
+                            present_key_data, past_present_share_buffer, packed_qkv, is_prompt, tp, allocator);
     // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
     const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
-    {
-      ComputeVxAttentionScore(output->MutableData<T>(), static_cast<float*>(attention_probs), v,
-                              seqlens_k->Data<int32_t>(),
-                              batch_size, sequence_length, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size,
-                              hidden_size, past_value_data, present_value_data, past_present_share_buffer, packed_qkv,
-                              is_prompt, tp, allocator);
-    }
+    ComputeVxAttentionScore(output->MutableData<T>(), static_cast<float*>(attention_probs), v,
+                            seqlens_k->Data<int32_t>(),
+                            batch_size, sequence_length, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size,
+                            hidden_size, past_value_data, present_value_data, past_present_share_buffer, packed_qkv,
+                            is_prompt, tp, allocator);
     return Status::OK();
   }
 
@@ -126,7 +122,6 @@ class GQAAttentionBase {
                              const bool is_prompt,                         // whether it is prompt
                              ThreadPool* tp,                               // thread pool
                              AllocatorPtr allocator) const {               // allocator for temporary buffer
-
     const ptrdiff_t packed_batch_stride =
         packed_qkv ? SafeInt<ptrdiff_t>(num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size
                    : SafeInt<ptrdiff_t>(0);

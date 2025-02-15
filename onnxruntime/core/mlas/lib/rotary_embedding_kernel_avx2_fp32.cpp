@@ -89,7 +89,7 @@ RopeKernel_Avx2_Impl<true>(
     for (; i + 15 < dim; i += 16) {
         float32x8_t x0 = _mm256_loadu_ps(input + i);
         float32x8_t x1 = _mm256_loadu_ps(input + i + 8);
-        //Load imaginary and real values to seperate non-interleaved vectors
+        //Load imaginary and real values to separate non-interleaved vectors
         float32x8_t real_s = _mm256_shuffle_ps(x0, x1, 0b10001000);
         float32x8_t imag_s = _mm256_shuffle_ps(x0, x1, 0b11011101);
         __m256i in_mask_vec = _mm256_set_epi32(7, 6, 3, 2, 5, 4, 1, 0);
@@ -116,7 +116,7 @@ RopeKernel_Avx2_Impl<true>(
         const __m256i mask1 = _mm256_loadu_si256((const __m256i*)(mask_buffer + 8 - (rem>8?(rem-8):0)));
         float32x8_t x0 = _mm256_maskload_ps(input + i, mask0);   //Load the first set of data using mask
         float32x8_t x1 = _mm256_maskload_ps(input + i + 8, mask1); //Load the reminder of data using a second mask
-        //Load imaginary and real values to seperate non-interleaved vectors
+        //Load imaginary and real values to separate non-interleaved vectors
         float32x8_t real_s = _mm256_shuffle_ps(x0, x1, 0b10001000);
         float32x8_t imag_s = _mm256_shuffle_ps(x0, x1, 0b11011101);
         __m256i in_mask_vec = _mm256_set_epi32(7, 6, 3, 2, 5, 4, 1, 0);

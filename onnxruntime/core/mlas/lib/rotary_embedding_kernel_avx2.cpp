@@ -22,9 +22,6 @@ Abstract:
 //
 const MLAS_ROPE_DISPATCH MlasRopeDispatchAvx2 = []() {
     MLAS_ROPE_DISPATCH d;
-
-#if defined(MLAS_TARGET_AMD64)
-        d.SRope = rope_avx2::RopeKernel_Avx2;
-#endif
+    d.SRope = rope_avx2::RopeKernel_Avx2;
     return d;
 }();
