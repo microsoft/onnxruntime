@@ -349,7 +349,8 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::string ep_cache_context_attr_;
   std::string engine_cache_relative_path_to_context_model_dir;
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_ = ONNX_NAMESPACE::ModelProto::Create();
-
+  bool is_single_node_epcontext_graph = false;
+  
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
   mutable std::unordered_map<std::string, std::unique_ptr<SubGraphContext>> subgraph_context_map_;
 
@@ -569,7 +570,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    */
   Status CreateNodeComputeInfoFromPrecompiledEngine(const GraphViewer& graph_body_viewer,
                                                     const Node& fused_node,
-                                                    const int ctx_node_idx,
                                                     std::unordered_map<std::string, size_t>& input_map,
                                                     std::unordered_map<std::string, size_t>& output_map,
                                                     std::vector<NodeComputeInfo>& node_compute_funcs);

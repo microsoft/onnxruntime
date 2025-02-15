@@ -41,7 +41,11 @@ std::string GetCtxModelPath(const std::string& ep_context_file_path,
                             const std::string& original_model_path);
 bool IsAbsolutePath(const std::string& path_string);
 bool IsRelativePathToParentPath(const std::string& path_string);
-
+void DumpCtxModel(ONNX_NAMESPACE::ModelProto* model_proto,
+                  const std::string& ctx_model_path);
+void UpdateCtxNodeModelEngineContext(ONNX_NAMESPACE::ModelProto* model_proto,
+                                     char* engine_data,
+                                     size_t size);
 class TensorRTCacheModelHandler {
  public:
   TensorRTCacheModelHandler(std::unique_ptr<nvinfer1::ICudaEngine>* trt_engine,
@@ -65,9 +69,9 @@ class TensorRTCacheModelHandler {
   }
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(TensorRTCacheModelHandler);
 
-  bool ValidateEPCtxNode(const GraphViewer& graph_viewer, const int ctx_node_idx);
+  bool ValidateEPCtxNode(const GraphViewer& graph_viewer);
 
-  Status GetEpContextFromGraph(const GraphViewer& graph_viewer, const int ctx_node_idx);
+  Status GetEpContextFromGraph(const GraphViewer& graph_viewer);
 
  private:
   std::unique_ptr<nvinfer1::ICudaEngine>* trt_engine_;

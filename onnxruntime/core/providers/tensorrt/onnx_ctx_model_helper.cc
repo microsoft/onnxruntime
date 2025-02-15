@@ -20,25 +20,13 @@ extern TensorrtLogger& GetTensorrtLogger(bool verbose_log);
  *  Note: Please see more details about "EPContext" contrib op in contrib_defs.cc
  */
 bool GraphHasCtxNode(const GraphViewer& graph_viewer) {
-  for (int i = 0; i < graph_viewer.MaxNodeIndex(); ++i) {
-    auto node = graph_viewer.GetNode(i);
+  for (auto node_index: graph_viewer.GetNodesInTopologicalOrder()) {
+    auto node = graph_viewer.GetNode(node_index);
     if (node != nullptr && node->OpType() == EPCONTEXT_OP) {
       return true;
     }
   }
   return false;
-}
-
-int FindCtxNodeInGraph(const GraphViewer& graph_viewer) {
-  // Assumes there's only 1 context node in this subgraph (graph_viewer)
-  // Returns index of node
-  for (int i = 0; i < graph_viewer.MaxNodeIndex(); ++i) {
-    auto node = graph_viewer.GetNode(i);
-    if (node != nullptr && node->OpType() == EPCONTEXT_OP) {
-      return i;
-    }
-  }
-  return -1;
 }
 
 const std::filesystem::path& GetModelPath(const GraphViewer& graph_viewer) {
@@ -50,6 +38,27 @@ const std::filesystem::path& GetModelPath(const GraphViewer& graph_viewer) {
 
   const Graph& main_graph = *cur_graph;
   return main_graph.ModelPath();
+}
+
+/*
+ * Update ep_cache_context attribute of the EP context node with the given engine binary data
+ */
+void UpdateCtxNodeModelEngineContext(ONNX_NAMESPACE::ModelProto* model_proto,
+                                     char* engine_data,
+                                     size_t size) {
+  ONNX_NAMESPACE::GraphProto* graph_proto = model_proto->mutable_graph();
+  ONNX_NAMESPACE::NodeProto* node_proto = graph_proto->mutable_node(0);
+
+  for (int i = 0; i < node_proto->attribute_size(); ++i) {
+    ONNX_NAMESPACE::AttributeProto* attribute_proto = node_proto->mutable_attribute(i);
+    if (attribute_proto->name() == EP_CACHE_CONTEXT) {
+      std::string engine_data_str = "";
+      if (size > 0) {
+        engine_data_str.assign(engine_data, size);
+      }
+      attribute_proto->set_s(engine_data_str);
+    }
+  }
 }
 
 /*
@@ -188,6 +197,13 @@ std::string GetCtxModelPath(const std::string& ep_context_file_path,
   return ctx_model_path;
 }
 
+void DumpCtxModel(ONNX_NAMESPACE::ModelProto* model_proto,
+                  const std::string& ctx_model_path) {
+  std::fstream dump(ctx_model_path, std::ios::out | std::ios::trunc | std::ios::binary);
+  model_proto->SerializeToOstream(dump);
+  LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Dumped " + ctx_model_path;
+}
+
 bool IsAbsolutePath(const std::string& path_string) {
 #ifdef _WIN32
   onnxruntime::PathString ort_path_string = onnxruntime::ToPathString(path_string);
@@ -241,11 +257,12 @@ bool IsWeightStrippedEngineCache(std::filesystem::path& engine_cache_path) {
   return engine_cache_path.stem().extension().string() == ".stripped";
 }
 
-Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph_viewer, const int ctx_node_idx) {
-  if (!ValidateEPCtxNode(graph_viewer, ctx_node_idx)) {
+Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph_viewer) {
+  if (!ValidateEPCtxNode(graph_viewer)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "It's not a valid EP Context node");
   }
-  auto node = graph_viewer.GetNode(ctx_node_idx);
+  // graph_viewer.GetNodesInTopologicalOrder().size() == 1 validated in ValidateEPCtxNode
+  auto node = graph_viewer.GetNode(graph_viewer.GetNodesInTopologicalOrder()[0]);
   auto& attrs = node->GetAttributes();
 
   const int64_t embed_mode = attrs.at(EMBED_MODE).i();
@@ -355,10 +372,11 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
 /*
  * The sanity check for EP context contrib op.
  */
-bool TensorRTCacheModelHandler::ValidateEPCtxNode(const GraphViewer& graph_viewer, const int ctx_node_idx) {
-  assert(graph_viewer.NumberOfNodes() == 1);
-  assert(graph_viewer.GetNode(ctx_node_idx)->OpType() == EPCONTEXT_OP);
-  auto node = graph_viewer.GetNode(ctx_node_idx);
+bool TensorRTCacheModelHandler::ValidateEPCtxNode(const GraphViewer& graph_viewer) {
+  const auto& subgraph_node_list = graph_viewer.GetNodesInTopologicalOrder();
+  assert(subgraph_node_list.size() == 1); // There should only be 1 node in filtered graph
+  const auto node = graph_viewer.GetNode(subgraph_node_list[0]);
+  assert(node->OpType() == EPCONTEXT_OP);
   auto& attrs = node->GetAttributes();
 
   // Show the warning if compute capability is not matched

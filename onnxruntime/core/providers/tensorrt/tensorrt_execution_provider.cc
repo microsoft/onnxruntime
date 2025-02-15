@@ -1732,43 +1732,43 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] CUDA version is " << cuda_version_;
 
   LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] TensorRT provider options: "
-                        << "device_id: " << device_id_
-                        << ", trt_max_partition_iterations: " << max_partition_iterations_
-                        << ", trt_min_subgraph_size: " << min_subgraph_size_
-                        << ", trt_max_workspace_size: " << max_workspace_size_
-                        << ", trt_fp16_enable: " << fp16_enable_
-                        << ", trt_int8_enable: " << int8_enable_
-                        << ", trt_int8_calibration_cache_name: " << int8_calibration_cache_name_
-                        << ", int8_calibration_cache_available: " << int8_calibration_cache_available_
-                        << ", trt_int8_use_native_tensorrt_calibration_table: " << int8_use_native_tensorrt_calibration_table_
-                        << ", trt_dla_enable: " << dla_enable_
-                        << ", trt_dla_core: " << dla_core_
-                        << ", trt_dump_subgraphs: " << dump_subgraphs_
-                        << ", trt_engine_cache_enable: " << engine_cache_enable_
-                        << ", trt_weight_stripped_engine_enable: " << weight_stripped_engine_enable_
-                        << ", trt_onnx_model_folder_path: " << onnx_model_folder_path_
-                        << ", trt_cache_path: " << cache_path_
-                        << ", trt_global_cache_path: " << global_cache_path_
-                        << ", trt_engine_decryption_enable: " << engine_decryption_enable_
-                        << ", trt_engine_decryption_lib_path: " << engine_decryption_lib_path_
-                        << ", trt_force_sequential_engine_build: " << force_sequential_engine_build_
-                        << ", trt_context_memory_sharing_enable: " << context_memory_sharing_enable_
-                        << ", trt_layer_norm_fp32_fallback: " << layer_norm_fp32_fallback_
-                        << ", trt_build_heuristics_enable: " << build_heuristics_enable_
-                        << ", trt_sparsity_enable: " << sparsity_enable_
-                        << ", trt_builder_optimization_level: " << builder_optimization_level_
-                        << ", trt_auxiliary_streams: " << auxiliary_streams_
-                        << ", trt_tactic_sources: " << tactic_sources_
-                        << ", trt_profile_min_shapes: " << profile_min_shapes
-                        << ", trt_profile_max_shapes: " << profile_max_shapes
-                        << ", trt_profile_opt_shapes: " << profile_opt_shapes
-                        << ", trt_cuda_graph_enable: " << cuda_graph_enable_
-                        << ", trt_dump_ep_context_model: " << dump_ep_context_model_
-                        << ", trt_ep_context_file_path: " << ep_context_file_path_
-                        << ", trt_ep_context_embed_mode: " << ep_context_embed_mode_
-                        << ", trt_cache_prefix: " << cache_prefix_
-                        << ", trt_engine_hw_compatible: " << engine_hw_compatible_
-                        << ", trt_onnx_model_bytestream_size_: " << onnx_model_bytestream_size_;
+            << "device_id: " << device_id_
+            << ", trt_max_partition_iterations: " << max_partition_iterations_
+            << ", trt_min_subgraph_size: " << min_subgraph_size_
+            << ", trt_max_workspace_size: " << max_workspace_size_
+            << ", trt_fp16_enable: " << fp16_enable_
+            << ", trt_int8_enable: " << int8_enable_
+            << ", trt_int8_calibration_cache_name: " << int8_calibration_cache_name_
+            << ", int8_calibration_cache_available: " << int8_calibration_cache_available_
+            << ", trt_int8_use_native_tensorrt_calibration_table: " << int8_use_native_tensorrt_calibration_table_
+            << ", trt_dla_enable: " << dla_enable_
+            << ", trt_dla_core: " << dla_core_
+            << ", trt_dump_subgraphs: " << dump_subgraphs_
+            << ", trt_engine_cache_enable: " << engine_cache_enable_
+            << ", trt_weight_stripped_engine_enable: " << weight_stripped_engine_enable_
+            << ", trt_onnx_model_folder_path: " << onnx_model_folder_path_
+            << ", trt_cache_path: " << cache_path_
+            << ", trt_global_cache_path: " << global_cache_path_
+            << ", trt_engine_decryption_enable: " << engine_decryption_enable_
+            << ", trt_engine_decryption_lib_path: " << engine_decryption_lib_path_
+            << ", trt_force_sequential_engine_build: " << force_sequential_engine_build_
+            << ", trt_context_memory_sharing_enable: " << context_memory_sharing_enable_
+            << ", trt_layer_norm_fp32_fallback: " << layer_norm_fp32_fallback_
+            << ", trt_build_heuristics_enable: " << build_heuristics_enable_
+            << ", trt_sparsity_enable: " << sparsity_enable_
+            << ", trt_builder_optimization_level: " << builder_optimization_level_
+            << ", trt_auxiliary_streams: " << auxiliary_streams_
+            << ", trt_tactic_sources: " << tactic_sources_
+            << ", trt_profile_min_shapes: " << profile_min_shapes
+            << ", trt_profile_max_shapes: " << profile_max_shapes
+            << ", trt_profile_opt_shapes: " << profile_opt_shapes
+            << ", trt_cuda_graph_enable: " << cuda_graph_enable_
+            << ", trt_dump_ep_context_model: " << dump_ep_context_model_
+            << ", trt_ep_context_file_path: " << ep_context_file_path_
+            << ", trt_ep_context_embed_mode: " << ep_context_embed_mode_
+            << ", trt_cache_prefix: " << cache_prefix_
+            << ", trt_engine_hw_compatible: " << engine_hw_compatible_
+            << ", trt_onnx_model_bytestream_size_: " << onnx_model_bytestream_size_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -2811,11 +2811,9 @@ common::Status TensorrtExecutionProvider::Compile(const std::vector<FusedNodeAnd
     }
 
     Status status;
-    int ctx_node_idx = FindCtxNodeInGraph(graph_body_viewer);
-    if (ctx_node_idx >= 0) {
+    if (GraphHasCtxNode(graph_body_viewer)) {
       status = CreateNodeComputeInfoFromPrecompiledEngine(graph_body_viewer,
                                                           fused_node,
-                                                          ctx_node_idx,
                                                           input_map,
                                                           output_map,
                                                           node_compute_funcs);
@@ -2910,6 +2908,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   bool has_explicit_profile = false;
   bool apply_explicit_profile = false;
   int num_profiles = 0;
+  is_single_node_epcontext_graph = graph_body_viewer.NumberOfNodes() == 1 && GraphHasCtxNode(graph_body_viewer);
   std::vector<nvinfer1::IOptimizationProfile*> trt_profiles;
 
   // Following c++ map data structure is used to help serialize/deserialize profiles where it saves dynamic shape dimension(s) and min/max/opt values for dynamic shape input tensor.
@@ -3200,10 +3199,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   }
 
   // Generate file name for dumping ep context model
-  if (dump_ep_context_model_ && ctx_model_path_.empty()) {
-    ctx_model_path_ = GetCtxModelPath(ep_context_file_path_, model_path_);
-  }
-
+  
   if (!has_dynamic_shape) {
     std::string timing_cache_path = "";
     bool engine_update = false;
@@ -3313,7 +3309,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
           // Serialize engine profile if it has explicit profiles
           if (has_explicit_profile) {
             SerializeProfileV2(profile_cache_path, input_explicit_shape_ranges);
-            LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Serialized " + profile_cache_path;
           }
 
           if (engine_decryption_enable_) {
@@ -3473,6 +3468,20 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
                                                    GetLogger());
 
     trt_ep_context_models.emplace_back(std::move(trt_ep_context_model_ptr));
+    // if (ep_context_embed_mode_ == 0 && is_single_node_epcontext_graph) {
+
+    //   // Serialize modelproto to string
+    //   auto& graph_build = trt_ep_context_model_ptr->MainGraph();
+    //   auto new_graph_viewer = graph_build.CreateGraphViewer();
+    //   auto& metadata = graph_body_viewer.GetGraph().GetModel().MetaData();
+    //   auto model = new_graph_viewer->CreateModel(*logger, metadata);
+    //   auto model_proto = model->ToProto();
+    //   new_graph_viewer->ToProto(*model_proto->mutable_graph(), true, true);
+    //   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+
+    //   std::cout << "Dumping EP context model to " << ctx_model_path_ << std::endl;
+    //   DumpCtxModel(model_proto_.get(), ctx_model_path_);
+    // }
   }
 
   // Create function state
@@ -3843,7 +3852,13 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
       // Give a warning that ep context need to be regenerated
       if (dump_ep_context_model_ && ep_context_embed_mode_) {
-        LOGS_DEFAULT(WARNING) << "Engine was updated during inference due to dynamic input changed change. Please regenerate EP context model.";
+        std::cout << "Updating model during inference due to dynamic input changed change." << std::endl;
+        if (is_single_node_epcontext_graph) {
+          UpdateCtxNodeModelEngineContext(model_proto_.get(), reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
+          DumpCtxModel(model_proto_.get(), ctx_model_path_);
+        } else {
+          LOGS_DEFAULT(WARNING) << "Engine was updated during inference due to dynamic input changed change. Please regenerate EP context model.";
+        }
       }
       context_update = true;
 
@@ -4068,7 +4083,6 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
 Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const GraphViewer& graph_body_viewer,
                                                                              const Node& fused_node,
-                                                                             const int ctx_node_idx,
                                                                              std::unordered_map<std::string, size_t>& input_map,
                                                                              std::unordered_map<std::string, size_t>& output_map,
                                                                              std::vector<NodeComputeInfo>& node_compute_funcs) {
@@ -4091,7 +4105,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
                                                            onnx_model_bytestream_,
                                                            onnx_model_bytestream_size_,
                                                            detailed_build_log_);
-  auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer, ctx_node_idx);
+  auto status = trt_cache_model_handler.GetEpContextFromGraph(graph_body_viewer);
   if (status != Status::OK()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
   }
