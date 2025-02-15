@@ -22,7 +22,6 @@
   "devDependencies": {
     "@react-native/typescript-config": "0.73.1",
     "@types/react": "^18.2.6",
-    "@types/jest": "^29.2.1",
     "pod-install": "^0.1.36",
     "prettier": "^2.8.8",
     "react": "^18.2.0",
@@ -62,9 +61,7 @@
   "description": "ONNX Runtime bridge for react native",
   "repository": "https://github.com/Microsoft/onnxruntime.git",
   "dependencies": {
-    "@expo/config-plugins": "^7.2.4",
-    "buffer": "^6.0.3",
-    "onnxruntime-common": "file:../common"
+    "buffer": "^6.0.3"
   },
   "scripts": {
     "typescript": "tsc --noEmit",
