@@ -34,6 +34,7 @@ class TransposeBase {
   */
   static Status DoTranspose(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
                             const TensorShape* input_shape_override = nullptr,
+                            const TensorShape* output_shape_override = nullptr,
                             concurrency::ThreadPool* tp = nullptr);
 
  protected:

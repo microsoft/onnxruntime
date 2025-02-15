@@ -27,7 +27,7 @@ inline Status Transpose_BSNH_to_BNSH(const Tensor* qkv,
   std::vector<size_t> permutations({0, 2, 1, 3});
   gsl::span<const size_t> permutations_span{permutations};
   size_t from = 2, to = 1;
-  SingleAxisTranspose(permutations, *qkv, *qkv_transposed.GetMutable<Tensor>(), from, to, nullptr, tp);
+  SingleAxisTranspose(permutations, *qkv, *qkv_transposed.GetMutable<Tensor>(), from, to, nullptr, nullptr, tp);
   return Status::OK();
 }
 

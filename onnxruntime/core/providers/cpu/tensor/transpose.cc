@@ -349,7 +349,8 @@ bool IsTransposeReshape(const gsl::span<const size_t>& perm, gsl::span<const int
 }
 
 static Status TransposeImpl(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
-                            const TensorShape* input_shape_override, concurrency::ThreadPool* tp) {
+                            const TensorShape* input_shape_override, const TensorShape* output_shape_override,
+                            concurrency::ThreadPool* tp) {
   TensorShape shape = input_shape_override ? *input_shape_override : input.Shape();
 
   if (IsTransposeReshape(permutations, shape.GetDims())) {
@@ -363,7 +364,7 @@ static Status TransposeImpl(const gsl::span<const size_t>& permutations, const T
   bool moving_single_axis = IsTransposeMovingSingleAxis(permutations, from, to);
 
   if (moving_single_axis && !input.IsDataTypeString()) {
-    SingleAxisTranspose(permutations, input, output, from, to, input_shape_override, tp);
+    SingleAxisTranspose(permutations, input, output, from, to, input_shape_override, output_shape_override, tp);
     return Status::OK();
   }
 
@@ -400,7 +401,7 @@ static Status DoTransposeInt4(const gsl::span<const size_t>& permutations, const
   Tensor output_unpacked(DataTypeImpl::GetType<Int8Type>(), output.Shape(), cpu_allocator);
 
   ORT_RETURN_IF_ERROR((UnpackInt4Tensor<Int4Type>(input, input_unpacked, cpu_allocator)));
-  ORT_RETURN_IF_ERROR(TransposeImpl(permutations, input_unpacked, output_unpacked, input_shape_override, tp));
+  ORT_RETURN_IF_ERROR(TransposeImpl(permutations, input_unpacked, output_unpacked, input_shape_override, nullptr /* FIXME */, tp));
   ORT_RETURN_IF_NOT(Int4Type::Pack(output.MutableDataAsSpan<Int4Type>(), output_unpacked.DataAsSpan<Int8Type>()),
                     "Failed to pack 8-bit Tensor into 4-bit Tensor");
 
@@ -409,7 +410,8 @@ static Status DoTransposeInt4(const gsl::span<const size_t>& permutations, const
 
 //`input_shape_override` overrides the shape of `input` for compute purposes.
 Status TransposeBase::DoTranspose(const gsl::span<const size_t>& permutations, const Tensor& input, Tensor& output,
-                                  const TensorShape* input_shape_override, concurrency::ThreadPool* tp) {
+                                  const TensorShape* input_shape_override, const TensorShape* output_shape_override,
+                                  concurrency::ThreadPool* tp) {
   auto input_type = input.DataType();
   auto output_type = output.DataType();
 
@@ -425,7 +427,7 @@ Status TransposeBase::DoTranspose(const gsl::span<const size_t>& permutations, c
     return DoTransposeInt4<UInt4x2>(permutations, input, output, input_shape_override, tp);
   }
 
-  return TransposeImpl(permutations, input, output, input_shape_override, tp);
+  return TransposeImpl(permutations, input, output, input_shape_override, output_shape_override, tp);
 }
 
 Status Transpose::Compute(OpKernelContext* ctx) const {
@@ -450,7 +452,7 @@ Status Transpose::Compute(OpKernelContext* ctx) const {
     return Status::OK();
   }
 
-  return DoTranspose(*p_perm, X, Y, nullptr, ctx->GetOperatorThreadPool());
+  return DoTranspose(*p_perm, X, Y, nullptr, nullptr, ctx->GetOperatorThreadPool());
 }
 
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(

@@ -7,6 +7,7 @@
 #endif
 
 #include "core/providers/cpu/tensor/space_depth_ops.h"
+#include "core/providers/cpu/tensor/transpose.h"
 #include "core/common/eigen_common_wrapper.h"
 #include <array>
 
@@ -182,10 +183,31 @@ Status DepthToSpace::Compute(OpKernelContext* context) const {
     auto dim3 = is_dcr_ ? blocksize_ : input_depth / blocksize_ / blocksize_;
     auto dim5 = is_dcr_ ? input_depth / blocksize_ / blocksize_ : blocksize_;
 
-    auto permutation = is_dcr_ ? std::array<Eigen::DenseIndex, IntermediateTensorRank>{{0, 1, 3, 2, 4, 5}}
-                               : std::array<Eigen::DenseIndex, IntermediateTensorRank>{{0, 3, 1, 4, 2, 5}};
+    int64_t virtual_input_depth = input_depth / blocksize_ / blocksize_;
+
+    TensorShape virtual_input_shape;
+    if (is_dcr_) {
+      virtual_input_shape = TensorShape{batch, input_height, input_width,
+                                        blocksize_, blocksize_, virtual_input_depth};
+    } else {
+      virtual_input_shape = TensorShape{batch, input_height, input_width,
+                                        virtual_input_depth, blocksize_, blocksize_};
+    }
+
+    TensorShape virtual_output_shape = TensorShape{batch,
+                                                   input_height, blocksize_,
+                                                   input_width, blocksize_,
+                                                   virtual_input_depth};
+
+    std::vector<size_t> permutation = is_dcr_ ? std::vector<size_t>{0, 1, 3, 2, 4, 5}
+                                              : std::vector<size_t>{0, 3, 1, 4, 2, 5};
 
     if (input.IsDataType<uint8_t>()) {
+
+      return Transpose::DoTranspose(
+        permutation, input, output, &virtual_input_shape, &virtual_output_shape, context->GetOperatorThreadPool());
+
+      #if 0
       SpaceDepthOpCpuImpl<uint8_t>(input, output, permutation,
                                   onnxruntime::narrow<std::ptrdiff_t>(batch),
                                   onnxruntime::narrow<std::ptrdiff_t>(input_height),
@@ -198,6 +220,8 @@ Status DepthToSpace::Compute(OpKernelContext* context) const {
                                   onnxruntime::narrow<std::ptrdiff_t>(input_width),
                                   onnxruntime::narrow<std::ptrdiff_t>(blocksize_),
                                   onnxruntime::narrow<std::ptrdiff_t>(input_depth / blocksize_ / blocksize_));
+      #endif
+
     } else {
       // user will not see this as the kernel doesn't claim support for types other than float and double
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported input type in DepthToSpace (channels_last = 1) op: ", input.DataType());
