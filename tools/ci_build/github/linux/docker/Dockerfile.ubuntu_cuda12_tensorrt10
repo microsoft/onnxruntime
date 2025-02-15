@@ -50,7 +50,8 @@ RUN TRT_VERSION="10.8.0.43-1+cuda12.8" &&\
     libnvonnxparsers-dev=${TRT_VERSION} \
     libnvonnxparsers10=${TRT_VERSION} \
     tensorrt-dev=${TRT_VERSION} \
-    libnvinfer-bin=${TRT_VERSION}
+    libnvinfer-bin=${TRT_VERSION} \
+    python3-libnvinfer-dev=${TRT_VERSION}
 
 # Compile trtexec if not installed
 RUN if [ ! -d /usr/src/tensorrt/bin ] || [ ! -f /usr/src/tensorrt/bin/trtexec ]; then \
