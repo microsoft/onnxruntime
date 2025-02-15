@@ -177,6 +177,7 @@ option(onnxruntime_FUZZ_TEST "Enable Fuzz testing" OFF)
 # training options
 option(onnxruntime_ENABLE_NVTX_PROFILE "Enable NVTX profile." OFF)
 option(onnxruntime_ENABLE_MEMORY_PROFILE "Enable memory profile." OFF)
+option(onnxruntime_ENABLE_KERNEL_PROFILE "Enable kernel profile." OFF)
 option(onnxruntime_ENABLE_TRAINING "Enable full training functionality. Includes ORTModule and ORT Training APIs" OFF)
 option(onnxruntime_ENABLE_TRAINING_APIS "Enable ort training apis." OFF)
 option(onnxruntime_ENABLE_TRAINING_OPS "Include training operators but no training session support." OFF)
@@ -518,6 +519,10 @@ endif()
 
 if (onnxruntime_ENABLE_MEMORY_PROFILE)
   add_definitions(-DORT_MEMORY_PROFILE=1)
+endif()
+
+if (onnxruntime_ENABLE_KERNEL_PROFILE)
+  add_definitions(-DENABLE_KERNEL_PROFILE=1)
 endif()
 
 set(ONNX_ML 1)

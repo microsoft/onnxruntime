@@ -158,5 +158,46 @@ class Profiler {
   std::vector<std::unique_ptr<EpProfiler>> ep_profilers_;
 };
 
+// uncomment the macro below, or use -DENABLE_KERNEL_PROFILE to work with kernel internal profiling
+//#define ENABLE_KERNEL_PROFILE 1
+#ifdef ENABLE_KERNEL_PROFILE
+class KernelProfiler {
+ public:
+  static KernelProfiler& Instance() {
+    static KernelProfiler instance;
+    return instance;
+  }
+
+  std::chrono::high_resolution_clock::time_point Start() {
+    return profiler_->Start();
+  }
+
+  void EndTimeAndRecordEvent(onnxruntime::profiling::EventCategory category, const std::string& eventName, std::chrono::high_resolution_clock::time_point time_point) {
+    profiler_->EndTimeAndRecordEvent(category, eventName, time_point);
+  }
+
+ private:
+  KernelProfiler() {
+    profiler_ = new onnxruntime::profiling::Profiler();
+    profiler_->StartProfiling(std::string("KernelProfiler.json"));
+  }
+
+  ~KernelProfiler() {
+    profiler_->EndProfiling();
+    delete profiler_;
+  }
+
+  onnxruntime::profiling::Profiler* profiler_;
+};
+
+#define KERNEL_PROFILER_START(ENAME) \
+  auto time_point##ENAME = onnxruntime::profiling::KernelProfiler::Instance().Start();
+
+#define KERNEL_PROFILER_END_TIME_AND_RECORD_EVENT(ETYPE, ENAME) \
+  onnxruntime::profiling::KernelProfiler::Instance().EndTimeAndRecordEvent(ETYPE, ENAME, time_point##ENAME);
+#else
+#define KERNEL_PROFILER_START(ENAME)
+#define KERNEL_PROFILER_END_TIME_AND_RECORD_EVENT(ETYPE, ENAME)
+#endif
 }  // namespace profiling
 }  // namespace onnxruntime

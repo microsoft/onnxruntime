@@ -156,6 +156,5 @@ std::string Profiler::EndProfiling() {
   enabled_ = false;  // will not collect profile after writing.
   return profile_stream_file_;
 }
-
 }  // namespace profiling
 }  // namespace onnxruntime

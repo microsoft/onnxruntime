@@ -1196,7 +1196,7 @@ def parity_check_gqa_prompt(
 
     # Flash function
     if packed:
-        node_name = "packed_"
+        node_name = f"packed_{node_name}"
         packed_qkv = torch.concatenate([q, new_k, new_v], dim=2)
         out, present_k, present_v = gqa_prompt_func(
             packed_qkv,

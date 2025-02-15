@@ -8,9 +8,9 @@
 
 #include "core/common/common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
+#include "core/common/profiler.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
-
 namespace onnxruntime {
 namespace contrib {
 
@@ -59,6 +59,14 @@ class GQAAttentionBase {
                         GroupQueryAttentionParameters& parameters,  // attention parameters
                         AllocatorPtr allocator,                     // allocator for temporary tensors
                         OpKernelContext* context) const {
+#ifdef ENABLE_KERNEL_PROFILE
+    const std::string event_name_compute_attention_probs = context->GetNodeName() + "_" + "ComputeAttentionProbs";
+    const std::string event_name_compute_vx_attention_score = context->GetNodeName() + "_" + "ComputeVxAttentionScore";
+#else
+#define event_name_compute_attention_probs
+#define event_name_compute_vx_attention_score
+#endif
+
     const bool is_prompt = parameters.is_first_prompt;
     const int batch_size = parameters.batch_size;
     const int sequence_length = parameters.sequence_length;
@@ -89,34 +97,22 @@ class GQAAttentionBase {
 
     const T* k = packed_qkv ? Q + num_heads_ * sequence_length * head_size : K;
     {
-      std::chrono::high_resolution_clock::time_point time_point;
-      if (profiler_->IsEnabled()) {
-        time_point = profiler_->Start();
-      }
+      KERNEL_PROFILER_START(event_name_compute_attention_probs)
       ComputeAttentionProbs<T>(static_cast<float*>(attention_probs), Q, k, seqlens_k->Data<int32_t>(), batch_size,
                                sequence_length, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size, past_key_data,
                                present_key_data, past_present_share_buffer, packed_qkv, is_prompt, tp, allocator);
-      if (profiler_->IsEnabled()) {
-        std::string eventName = context->GetNodeName() + "_" + "ComputeAttentionProbs";
-        profiler_->EndTimeAndRecordEvent(onnxruntime::profiling::KERNEL_EVENT, eventName, time_point);
-      }
+      KERNEL_PROFILER_END_TIME_AND_RECORD_EVENT(onnxruntime::profiling::KERNEL_EVENT, event_name_compute_attention_probs)
     }
     // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
     const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
     {
-      std::chrono::high_resolution_clock::time_point time_point;
-      if (profiler_->IsEnabled()) {
-        time_point = profiler_->Start();
-      }
+      KERNEL_PROFILER_START(event_name_compute_vx_attention_score)
       ComputeVxAttentionScore(output->MutableData<T>(), static_cast<float*>(attention_probs), v,
                               seqlens_k->Data<int32_t>(),
                               batch_size, sequence_length, seqlen_past_kv_cache, seqlen_present_kv_cache, head_size,
                               hidden_size, past_value_data, present_value_data, past_present_share_buffer, packed_qkv,
                               is_prompt, tp, allocator);
-      if (profiler_->IsEnabled()) {
-        std::string eventName = context->GetNodeName() + "_" + "ComputeVxAttentionScore";
-        profiler_->EndTimeAndRecordEvent(onnxruntime::profiling::KERNEL_EVENT, eventName, time_point);
-      }
+      KERNEL_PROFILER_END_TIME_AND_RECORD_EVENT(onnxruntime::profiling::KERNEL_EVENT, event_name_compute_vx_attention_score)
     }
     return Status::OK();
   }

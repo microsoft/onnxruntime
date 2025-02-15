@@ -10,17 +10,14 @@
 
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/common/profiler.h"
 #include "core/common/safeint.h"
 #include "core/platform/threadpool.h"
 
 #include <unsupported/Eigen/SpecialFunctions>
 #include <vector>
 
-// https://github.com/microsoft/onnxruntime/blob/b9493adbe88c4681fcae71774ec3685d1390bd46/onnxruntime/core/mlas/lib/sqnbitgemm.cpp
 #include <chrono>
-#include "core/common/profiler.h"
-
-static onnxruntime::profiling::Profiler* profiler_ = nullptr;
 
 using onnxruntime::concurrency::ThreadPool;
 
@@ -49,12 +46,14 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
 
 template <typename T>
 Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
+#ifdef ENABLE_KERNEL_PROFILE
+  const std::string event_name_rotary = this->Node().Name() + "_" + "rotary";
+  const std::string event_name_apply_attention = this->Node().Name() + "_" + "other";
+#else
+#define event_name_rotary
+#define event_name_apply_attention
+#endif
 
-  const std::string node_name = this->Node().Name();
-
-  // Initialize the profiler_ with a unique log file based on the node name
-  profiler_ = new onnxruntime::profiling::Profiler();
-  profiler_->StartProfiling<char>(node_name + "_log.txt");
 
   const Tensor* query = context->Input<Tensor>(0);
   const Tensor* key = context->Input<Tensor>(1);
@@ -125,11 +124,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   T* q_rotary = Q.GetMutable<Tensor>()->MutableData<T>();
   T* k_rotary = packed_qkv ? nullptr : K.GetMutable<Tensor>()->MutableData<T>();
   if (do_rotary_) {
-    std::chrono::high_resolution_clock::time_point time_point;
-    if (profiler_->IsEnabled()) {
-      time_point = profiler_->Start();
-    }
-
+    KERNEL_PROFILER_START(event_name_rotary)
     // Initialize rotary parameters
     rotary_embedding_helper::RotaryParameters rotary_params = {};
     rotary_params.batch_size = batch_size;
@@ -207,27 +202,16 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                                                v_input,
                                                                v_rotary));
     }
-    if (profiler_->IsEnabled()) {
-      std::string eventName = this->Node().Name() + "_" + "rotary";
-      profiler_->EndTimeAndRecordEvent(onnxruntime::profiling::KERNEL_EVENT, eventName, time_point);
-    }
+    KERNEL_PROFILER_END_TIME_AND_RECORD_EVENT(onnxruntime::profiling::KERNEL_EVENT, event_name_rotary)
   }
 
+  KERNEL_PROFILER_START(event_name_apply_attention)
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
-  std::chrono::high_resolution_clock::time_point time_point;
-  if (profiler_->IsEnabled()) {
-    time_point = profiler_->Start();
-  }
   // Compute the attention score and apply the score to V
   auto ret = ApplyAttention(q_rotary, packed_qkv ? nullptr : k_rotary, packed_qkv ? nullptr : V.Get<Tensor>().Data<T>(),
                         past_key, past_value, output, present_k, present_v,
                         seqlens_k, parameters, allocator, context);
-  if (profiler_->IsEnabled()) {
-    std::string eventName = this->Node().Name() + "_" + "ApplyAttention";
-    profiler_->EndTimeAndRecordEvent(onnxruntime::profiling::KERNEL_EVENT, eventName, time_point);
-  }
-  profiler_->EndProfiling();
-  delete profiler_;
+  KERNEL_PROFILER_END_TIME_AND_RECORD_EVENT(onnxruntime::profiling::KERNEL_EVENT, event_name_apply_attention)
   return ret;
 }
 }  // namespace contrib
