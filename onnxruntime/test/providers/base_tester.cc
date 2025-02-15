@@ -317,7 +317,7 @@ void BaseTester::ExecuteModel(Model& model, SessionType& session,
     ASSERT_EQ(expect_result, ExpectResult::kExpectFailure) << "Initialize failed but expected success: "
                                                            << status.ErrorMessage();
 
-    // No need to check expected failure string is empty string is given.
+    // No need to check expected failure string if empty string is given.
     if (expected_failure_string.empty()) {
       return;
     }
@@ -342,7 +342,7 @@ void BaseTester::ExecuteModel(Model& model, SessionType& session,
       ASSERT_EQ(expect_result, ExpectResult::kExpectFailure) << "Run failed but expected success: "
                                                              << status.ErrorMessage();
 
-      // No need to check expected failure string is empty string is given.
+      // No need to check expected failure string if empty string is given.
       if (expected_failure_string.empty()) {
         return;
       }
