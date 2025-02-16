@@ -379,6 +379,7 @@ def generate_vcpkg_triplets_for_emscripten(build_dir: str, emscripten_root: str)
                 folder_name = "default" if len(folder_name_parts) == 0 else "_".join(folder_name_parts)
                 file_name = f"{target_abi}-{os_name}.cmake"
                 dest_path = Path(build_dir) / folder_name / file_name
+                print(f"Creating file {dest_path}")
                 os.makedirs(dest_path.parent, exist_ok=True)
                 with open(dest_path, "w", encoding="utf-8") as f:
                     add_copyright_header(f)
@@ -463,6 +464,7 @@ def generate_windows_triplets(build_dir: str) -> None:
                                 file_name_parts.append("md")
                             file_name = "-".join(file_name_parts) + ".cmake"
                             dest_path = Path(build_dir) / folder_name / file_name
+                            print(f"Creating file {dest_path}")
                             os.makedirs(dest_path.parent, exist_ok=True)
                             with open(dest_path, "w", encoding="utf-8") as f:
                                 add_copyright_header(f)

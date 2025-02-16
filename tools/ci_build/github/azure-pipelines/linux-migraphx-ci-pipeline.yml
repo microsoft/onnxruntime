@@ -111,7 +111,7 @@ jobs:
               --update \
               --build_dir /build \
               --build \
-              --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
+              --parallel --use_vcpkg \
               --build_wheel \
               --skip_submodule_sync \
               --use_cache \
