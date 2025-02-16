@@ -98,7 +98,7 @@ jobs:
             --use_qnn
             --qnn_home $(QnnSDKRootDir)
             --enable_pybind
-            --parallel --use_vcpkg --update
+            --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --update
             $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }}
           workingDirectory: '$(Build.BinariesDirectory)'
 

@@ -98,7 +98,7 @@ stages:
           --android_abi=x86_64 \
           --android_api=30 \
           --skip_submodule_sync \
-          --parallel --use_vcpkg \
+          --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
           --cmake_generator=Ninja \
           --build_java
       displayName: CPU EP, Build and Test
@@ -160,7 +160,7 @@ stages:
         --android_abi=x86_64 \
         --android_api=29 \
         --skip_submodule_sync \
-        --parallel --use_vcpkg \
+        --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
         --use_nnapi \
         --build_shared_lib \
         --cmake_generator=Ninja \
@@ -222,7 +222,7 @@ stages:
           --android_abi=x86_64 \
           --android_api=29 \
           --skip_submodule_sync \
-          --parallel --use_vcpkg \
+          --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
           --use_nnapi \
           --build_shared_lib \
           --cmake_generator=Ninja \
