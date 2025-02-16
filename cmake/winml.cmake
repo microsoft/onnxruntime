@@ -601,7 +601,6 @@ target_include_directories(winml_lib_api_experimental PRIVATE ${ONNXRUNTIME_INCL
 target_include_directories(winml_lib_api_experimental PRIVATE ${ONNXRUNTIME_INCLUDE_DIR}/core/graph)
 target_include_directories(winml_lib_api_experimental PRIVATE ${ONNXRUNTIME_ROOT})
 target_include_directories(winml_lib_api_experimental PRIVATE ${ONNXRUNTIME_ROOT}/core/graph)
-target_include_directories(winml_lib_api_experimental PRIVATE ${eigen_INCLUDE_DIRS})
 onnxruntime_add_include_to_target(winml_lib_api_experimental PRIVATE ${PROTOBUF_LIB} safeint_interface flatbuffers::flatbuffers Boost::mp11 onnx onnx_proto ${GSL_TARGET} Eigen3::Eigen)
 
 # Properties
