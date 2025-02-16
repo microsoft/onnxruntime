@@ -1069,8 +1069,6 @@ def generate_vcpkg_install_options(build_dir, args):
         temp_dir = os.environ["AGENT_TEMPDIRECTORY"]
         vcpkg_install_options.append(f"--x-buildtrees-root={temp_dir}")
 
-    SYSTEM_COLLECTIONURI = os.getenv("SYSTEM_COLLECTIONURI")  # noqa: N806
-
     # Config asset cache
     if args.use_vcpkg_ms_internal_asset_cache:
         terrapin_cmd_path = shutil.which("TerrapinRetrievalTool")
@@ -1086,7 +1084,7 @@ def generate_vcpkg_install_options(build_dir, args):
             )
         else:
             vcpkg_install_options.append(
-                    "--x-asset-sources=x-azurl,https://vcpkg.storage.devpackages.microsoft.io/artifacts/\\;x-block-origin"
+                "--x-asset-sources=x-azurl,https://vcpkg.storage.devpackages.microsoft.io/artifacts/\\;x-block-origin"
             )
 
     return vcpkg_install_options
