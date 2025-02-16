@@ -542,8 +542,11 @@ if(TARGET ONNX::onnx_proto AND NOT TARGET onnx_proto)
   message(STATUS "Aliasing ONNX::onnx_proto to onnx_proto")
   add_library(onnx_proto ALIAS ONNX::onnx_proto)
 endif()
-
-include(external/eigen.cmake)
+if(onnxruntime_USE_VCPKG)
+  find_package(Eigen3 CONFIG REQUIRED)
+else()
+  include(external/eigen.cmake)
+endif()
 
 if(WIN32)
   if(onnxruntime_USE_VCPKG)

@@ -1,3 +1,4 @@
+if(NOT TARGET Eigen3::Eigen)
     if(CMAKE_SYSTEM_NAME MATCHES "AIX")
         onnxruntime_fetchcontent_declare(
             eigen
@@ -17,5 +18,6 @@
     endif()
 
     FetchContent_Populate(eigen)
-    set(eigen_INCLUDE_DIRS  "${eigen_SOURCE_DIR}")
-
+    add_library(Eigen3::Eigen INTERFACE)
+    target_include_directories(Eigen3::Eigen INTERFACE ${eigen_SOURCE_DIR})
+endif()
