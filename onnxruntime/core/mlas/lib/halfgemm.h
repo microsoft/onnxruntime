@@ -579,7 +579,7 @@ struct MLAS_HGEMM_DISPATCH {
     /**
      * @brief Pack the B matrix segment. B is column-major. Elements from CountK rows x N columns are packed
      *        continuously in row-major.
-     *        First pack CountK rows x 16 columns, then pack CountK rows x 8 columns.
+     *        First pack CountK rows x 32 columns, then pack CountK rows x 16 columns, then 8.
      *        If there are < 8 columns left, pad the columns with 0.
      * @param      B                   the first element of the B matrix segment. Column major.
      * @param[out] PackedB             the first element of the packed B matrix segment.
@@ -600,7 +600,7 @@ struct MLAS_HGEMM_DISPATCH {
     /**
      * @brief Pack the B matrix segment. B is row-major. Elements from CountK rows x N columns are packed
      *        continuously in row-major.
-     *        First pack CountK rows x 16 columns, then pack CountK rows x 8 columns.
+     *        First pack CountK rows x 32 columns, then pack CountK rows x 16 columns, then 8.
      *        If there are < 8 columns left, pad the columns with 0.
      * @param      B                   the first element of the B matrix segment. Row major.
      * @param[out] PackedB             the first element of the packed B matrix segment.

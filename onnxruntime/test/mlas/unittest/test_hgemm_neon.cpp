@@ -34,13 +34,22 @@ class MlasNeonHGemmPackBTest : public MlasTestBase {
   template <size_t N, size_t K>
   MLAS_FORCEINLINE void PackB_TransposedB(const MLAS_FP16* src, MLAS_FP16* dst) {
     size_t i = 0;
-    for (; i + 16 <= N; i += 16) {
+    for (; i + 32 <= N; i += 32) {
+      for (size_t j = 0; j < K; ++j) {
+        for (size_t k = 0; k < 32; ++k) {
+          *dst = src[(i + k) * K + j];
+          ++dst;
+        }
+      }
+    }
+    if (i + 16 <= N) {
       for (size_t j = 0; j < K; ++j) {
         for (size_t k = 0; k < 16; ++k) {
           *dst = src[(i + k) * K + j];
           ++dst;
         }
       }
+      i += 16;
     }
     if (i + 8 <= N) {
       for (size_t j = 0; j < K; ++j) {
@@ -65,6 +74,14 @@ class MlasNeonHGemmPackBTest : public MlasTestBase {
   template <size_t N, size_t K>
   MLAS_FORCEINLINE void PackB_B(const MLAS_FP16* src, MLAS_FP16* dst) {
     size_t i = 0;
+    for (; i + 32 <= N; i += 32) {
+      for (size_t j = 0; j < K; ++j) {
+        for (size_t k = 0; k < 32; ++k) {
+          *dst = src[(i + k) + j * N];
+          ++dst;
+        }
+      }
+    }
     for (; i + 16 <= N; i += 16) {
       for (size_t j = 0; j < K; ++j) {
         for (size_t k = 0; k < 16; ++k) {
@@ -96,6 +113,12 @@ class MlasNeonHGemmPackBTest : public MlasTestBase {
   template <size_t N, size_t K>
   MLAS_FORCEINLINE void Check(const MLAS_FP16* packed, const MLAS_FP16* ref) {
     size_t j = 0;
+    for (; j + 31 < N; j += 32) {
+      for (size_t i = 0; i < 32 * K; ++i) {
+        ASSERT_EQ(packed[j * K + i].val, ref[j * K + i].val)
+            << " seed " << seed_ << " K " << i / 32 << " N " << j + i % 32;
+      }
+    }
     for (; j + 15 < N; j += 16) {
       for (size_t i = 0; i < 16 * K; ++i) {
         ASSERT_EQ(packed[j * K + i].val, ref[j * K + i].val)
@@ -168,10 +191,10 @@ class MlasNeonHGemmPackBTest : public MlasTestBase {
     TestPackB_TransposedB<8, 16>();
     TestPackB_TransposedB<9, 31>();
     TestPackB_TransposedB<9, 33>();
-    TestPackB_TransposedB<15, 33>();
-    TestPackB_TransposedB<17, 67>();
-    TestPackB_TransposedB<17, 96>();
-    TestPackB_TransposedB<265, 263>();
+    TestPackB_TransposedB<31, 33>();
+    TestPackB_TransposedB<33, 67>();
+    TestPackB_TransposedB<63, 96>();
+    TestPackB_TransposedB<271, 263>();
     TestPackB_B<1, 1>();
     TestPackB_B<1, 15>();
     TestPackB_B<1, 31>();
@@ -179,13 +202,13 @@ class MlasNeonHGemmPackBTest : public MlasTestBase {
     TestPackB_B<8, 16>();
     TestPackB_B<9, 31>();
     TestPackB_B<9, 33>();
-    TestPackB_B<15, 31>();
-    TestPackB_B<15, 33>();
-    TestPackB_B<17, 31>();
-    TestPackB_B<17, 33>();
-    TestPackB_B<17, 67>();
-    TestPackB_B<17, 96>();
-    TestPackB_B<265, 263>();
+    TestPackB_B<31, 31>();
+    TestPackB_B<63, 33>();
+    TestPackB_B<33, 31>();
+    TestPackB_B<33, 33>();
+    TestPackB_B<65, 67>();
+    TestPackB_B<65, 96>();
+    TestPackB_B<271, 263>();
   }
 };
 
@@ -375,6 +398,17 @@ class MlasNeonHGemmPackedBTest : public MlasTestBase {
     float alphaf = alpha.ToFloat();
     float betaf = beta.ToFloat();
     size_t n = 0;
+    for (; n + 32 <= N; n += 32) {
+      for (size_t i = 0; i < 32; ++i) {
+        for (size_t m = 0; m < M; ++m) {
+          float accu = 0.0f;
+          for (size_t k = 0; k < K; ++k) {
+            accu += (A[m * K + k].ToFloat()) * (B[n * K + k * 32 + i].ToFloat());
+          }
+          C[m * N + n + i] = MLAS_FP16(accu * alphaf + C[m * N + n + i].ToFloat() * betaf);
+        }
+      }
+    }
     for (; n + 16 <= N; n += 16) {
       for (size_t i = 0; i < 16; ++i) {
         for (size_t m = 0; m < M; ++m) {
@@ -559,6 +593,7 @@ class MlasNeonHGemmTest : public MlasTestBase {
     TestHGemm<2, 511, 1025, false, false>(MLAS_FP16(1.5f), MLAS_FP16(0.5f));
     TestHGemm<127, 513, 1023, false, false>(MLAS_FP16(1.0f), MLAS_FP16(0.0f));
     TestHGemm<129, 511, 1025, false, false>(MLAS_FP16(0.5f), MLAS_FP16(1.0f));
+    TestHGemm<129, 513, 1025, false, false>(MLAS_FP16(0.5f), MLAS_FP16(0.5f));
   }
 };
 
