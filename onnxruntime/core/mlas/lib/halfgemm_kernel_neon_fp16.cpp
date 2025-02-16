@@ -36,6 +36,8 @@ void HPackB_TransposedB_Kernel(
         size_t k = CountK;
         constexpr size_t step = 8 * 32; // pack 8 * 16
         for (; k >= 8; k -= 8, b += 8, PackedB_data += step) {
+            size_t baseb = 0;
+            size_t basep = 0;
             float16x8_t v0 = MlasLoadFloat16x8(b);
             float16x8_t v1 = MlasLoadFloat16x8(b + ldb);
             float16x8_t v2 = MlasLoadFloat16x8(b + 2 * ldb);
@@ -44,72 +46,39 @@ void HPackB_TransposedB_Kernel(
             float16x8_t v5 = MlasLoadFloat16x8(b + 5 * ldb);
             float16x8_t v6 = MlasLoadFloat16x8(b + 6 * ldb);
             float16x8_t v7 = MlasLoadFloat16x8(b + 7 * ldb);
+            for (size_t i = 0; i < 3; ++i, baseb += 8 * ldb, basep += 8) {
+                Transpose8x8(v0, v1, v2, v3, v4, v5, v6, v7);
+                MlasStoreFloat16x8(PackedB_data + basep, v0);
+                MlasStoreFloat16x8(PackedB_data + basep + 32, v1);
+                MlasStoreFloat16x8(PackedB_data + basep + 64, v2);
+                MlasStoreFloat16x8(PackedB_data + basep + 96, v3);
+                MlasStoreFloat16x8(PackedB_data + basep + 128, v4);
+                MlasStoreFloat16x8(PackedB_data + basep + 160, v5);
+                MlasStoreFloat16x8(PackedB_data + basep + 192, v6);
+                MlasStoreFloat16x8(PackedB_data + basep + 224, v7);
+                v0 = MlasLoadFloat16x8(b + baseb + 8 * ldb);
+                v1 = MlasLoadFloat16x8(b + baseb + 9 * ldb);
+                v2 = MlasLoadFloat16x8(b + baseb + 10 * ldb);
+                v3 = MlasLoadFloat16x8(b + baseb + 11 * ldb);
+                v4 = MlasLoadFloat16x8(b + baseb + 12 * ldb);
+                v5 = MlasLoadFloat16x8(b + baseb + 13 * ldb);
+                v6 = MlasLoadFloat16x8(b + baseb + 14 * ldb);
+                v7 = MlasLoadFloat16x8(b + baseb + 15 * ldb);
+            }
             Transpose8x8(v0, v1, v2, v3, v4, v5, v6, v7);
-            MlasStoreFloat16x8(PackedB_data, v0);
-            MlasStoreFloat16x8(PackedB_data + 32, v1);
-            MlasStoreFloat16x8(PackedB_data + 64, v2);
-            MlasStoreFloat16x8(PackedB_data + 96, v3);
-            MlasStoreFloat16x8(PackedB_data + 128, v4);
-            MlasStoreFloat16x8(PackedB_data + 160, v5);
-            MlasStoreFloat16x8(PackedB_data + 192, v6);
-            MlasStoreFloat16x8(PackedB_data + 224, v7);
-
-            float16x8_t v8 = MlasLoadFloat16x8(b + 8 * ldb);
-            float16x8_t v9 = MlasLoadFloat16x8(b + 9 * ldb);
-            float16x8_t vA = MlasLoadFloat16x8(b + 10 * ldb);
-            float16x8_t vB = MlasLoadFloat16x8(b + 11 * ldb);
-            float16x8_t vC = MlasLoadFloat16x8(b + 12 * ldb);
-            float16x8_t vD = MlasLoadFloat16x8(b + 13 * ldb);
-            float16x8_t vE = MlasLoadFloat16x8(b + 14 * ldb);
-            float16x8_t vF = MlasLoadFloat16x8(b + 15 * ldb);
-            Transpose8x8(v8, v9, vA, vB, vC, vD, vE, vF);
-            MlasStoreFloat16x8(PackedB_data + 8, v8);
-            MlasStoreFloat16x8(PackedB_data + 40, v9);
-            MlasStoreFloat16x8(PackedB_data + 72, vA);
-            MlasStoreFloat16x8(PackedB_data + 104, vB);
-            MlasStoreFloat16x8(PackedB_data + 136, vC);
-            MlasStoreFloat16x8(PackedB_data + 168, vD);
-            MlasStoreFloat16x8(PackedB_data + 200, vE);
-            MlasStoreFloat16x8(PackedB_data + 232, vF);
-
-            v0 = MlasLoadFloat16x8(b + 16 * ldb);
-            v1 = MlasLoadFloat16x8(b + 17 * ldb);
-            v2 = MlasLoadFloat16x8(b + 18 * ldb);
-            v3 = MlasLoadFloat16x8(b + 19 * ldb);
-            v4 = MlasLoadFloat16x8(b + 20 * ldb);
-            v5 = MlasLoadFloat16x8(b + 21 * ldb);
-            v6 = MlasLoadFloat16x8(b + 22 * ldb);
-            v7 = MlasLoadFloat16x8(b + 23 * ldb);
-            Transpose8x8(v0, v1, v2, v3, v4, v5, v6, v7);
-            MlasStoreFloat16x8(PackedB_data + 16, v0);
-            MlasStoreFloat16x8(PackedB_data + 48, v1);
-            MlasStoreFloat16x8(PackedB_data + 80, v2);
-            MlasStoreFloat16x8(PackedB_data + 112, v3);
-            MlasStoreFloat16x8(PackedB_data + 144, v4);
-            MlasStoreFloat16x8(PackedB_data + 176, v5);
-            MlasStoreFloat16x8(PackedB_data + 208, v6);
-            MlasStoreFloat16x8(PackedB_data + 240, v7);
-
-            v8 = MlasLoadFloat16x8(b + 24 * ldb);
-            v9 = MlasLoadFloat16x8(b + 25 * ldb);
-            vA = MlasLoadFloat16x8(b + 26 * ldb);
-            vB = MlasLoadFloat16x8(b + 27 * ldb);
-            vC = MlasLoadFloat16x8(b + 28 * ldb);
-            vD = MlasLoadFloat16x8(b + 29 * ldb);
-            vE = MlasLoadFloat16x8(b + 30 * ldb);
-            vF = MlasLoadFloat16x8(b + 31 * ldb);
-            Transpose8x8(v8, v9, vA, vB, vC, vD, vE, vF);
-            MlasStoreFloat16x8(PackedB_data + 24, v8);
-            MlasStoreFloat16x8(PackedB_data + 56, v9);
-            MlasStoreFloat16x8(PackedB_data + 88, vA);
-            MlasStoreFloat16x8(PackedB_data + 120, vB);
-            MlasStoreFloat16x8(PackedB_data + 152, vC);
-            MlasStoreFloat16x8(PackedB_data + 184, vD);
-            MlasStoreFloat16x8(PackedB_data + 216, vE);
-            MlasStoreFloat16x8(PackedB_data + 248, vF);
+            MlasStoreFloat16x8(PackedB_data + basep, v0);
+            MlasStoreFloat16x8(PackedB_data + basep + 32, v1);
+            MlasStoreFloat16x8(PackedB_data + basep + 64, v2);
+            MlasStoreFloat16x8(PackedB_data + basep + 96, v3);
+            MlasStoreFloat16x8(PackedB_data + basep + 128, v4);
+            MlasStoreFloat16x8(PackedB_data + basep + 160, v5);
+            MlasStoreFloat16x8(PackedB_data + basep + 192, v6);
+            MlasStoreFloat16x8(PackedB_data + basep + 224, v7);
         }
 
         if (k & 4) {
+            size_t baseb = 0;
+            size_t basep = 0;
             float16x4_t v0 = MlasLoadFloat16x4(b);
             float16x4_t v1 = MlasLoadFloat16x4(b + ldb);
             float16x4_t v2 = MlasLoadFloat16x4(b + 2 * ldb);
@@ -118,78 +87,42 @@ void HPackB_TransposedB_Kernel(
             float16x4_t v5 = MlasLoadFloat16x4(b + 5 * ldb);
             float16x4_t v6 = MlasLoadFloat16x4(b + 6 * ldb);
             float16x4_t v7 = MlasLoadFloat16x4(b + 7 * ldb);
+            for (size_t i = 0; i < 3; ++i, baseb += 8 * ldb, basep += 8) {
+                Transpose4x4(v0, v1, v2, v3);
+                Transpose4x4(v4, v5, v6, v7);
+                MlasStoreFloat16x4(PackedB_data + basep, v0);
+                MlasStoreFloat16x4(PackedB_data + basep + 4, v4);
+                MlasStoreFloat16x4(PackedB_data + basep + 32, v1);
+                MlasStoreFloat16x4(PackedB_data + basep + 36, v5);
+                MlasStoreFloat16x4(PackedB_data + basep + 64, v2);
+                MlasStoreFloat16x4(PackedB_data + basep + 68, v6);
+                MlasStoreFloat16x4(PackedB_data + basep + 96, v3);
+                MlasStoreFloat16x4(PackedB_data + basep + 100, v7);
+                v0 = MlasLoadFloat16x4(b + baseb + 8 * ldb);
+                v1 = MlasLoadFloat16x4(b + baseb + 9 * ldb);
+                v2 = MlasLoadFloat16x4(b + baseb + 10 * ldb);
+                v3 = MlasLoadFloat16x4(b + baseb + 11 * ldb);
+                v4 = MlasLoadFloat16x4(b + baseb + 12 * ldb);
+                v5 = MlasLoadFloat16x4(b + baseb + 13 * ldb);
+                v6 = MlasLoadFloat16x4(b + baseb + 14 * ldb);
+                v7 = MlasLoadFloat16x4(b + baseb + 15 * ldb);
+            }
             Transpose4x4(v0, v1, v2, v3);
             Transpose4x4(v4, v5, v6, v7);
-            MlasStoreFloat16x4(PackedB_data, v0);
-            MlasStoreFloat16x4(PackedB_data + 4, v4);
-            MlasStoreFloat16x4(PackedB_data + 32, v1);
-            MlasStoreFloat16x4(PackedB_data + 36, v5);
-            MlasStoreFloat16x4(PackedB_data + 64, v2);
-            MlasStoreFloat16x4(PackedB_data + 68, v6);
-            MlasStoreFloat16x4(PackedB_data + 96, v3);
-            MlasStoreFloat16x4(PackedB_data + 100, v7);
-
-            float16x4_t v8 = MlasLoadFloat16x4(b + 8 * ldb);
-            float16x4_t v9 = MlasLoadFloat16x4(b + 9 * ldb);
-            float16x4_t vA = MlasLoadFloat16x4(b + 10 * ldb);
-            float16x4_t vB = MlasLoadFloat16x4(b + 11 * ldb);
-            float16x4_t vC = MlasLoadFloat16x4(b + 12 * ldb);
-            float16x4_t vD = MlasLoadFloat16x4(b + 13 * ldb);
-            float16x4_t vE = MlasLoadFloat16x4(b + 14 * ldb);
-            float16x4_t vF = MlasLoadFloat16x4(b + 15 * ldb);
-            Transpose4x4(v8, v9, vA, vB);
-            Transpose4x4(vC, vD, vE, vF);
-            MlasStoreFloat16x4(PackedB_data + 8, v8);
-            MlasStoreFloat16x4(PackedB_data + 12, vC);
-            MlasStoreFloat16x4(PackedB_data + 40, v9);
-            MlasStoreFloat16x4(PackedB_data + 44, vD);
-            MlasStoreFloat16x4(PackedB_data + 72, vA);
-            MlasStoreFloat16x4(PackedB_data + 76, vE);
-            MlasStoreFloat16x4(PackedB_data + 104, vB);
-            MlasStoreFloat16x4(PackedB_data + 108, vF);
-
-            v0 = MlasLoadFloat16x4(b + 16 * ldb);
-            v1 = MlasLoadFloat16x4(b + 17 * ldb);
-            v2 = MlasLoadFloat16x4(b + 18 * ldb);
-            v3 = MlasLoadFloat16x4(b + 19 * ldb);
-            v4 = MlasLoadFloat16x4(b + 20 * ldb);
-            v5 = MlasLoadFloat16x4(b + 21 * ldb);
-            v6 = MlasLoadFloat16x4(b + 22 * ldb);
-            v7 = MlasLoadFloat16x4(b + 23 * ldb);
-            Transpose4x4(v0, v1, v2, v3);
-            Transpose4x4(v4, v5, v6, v7);
-            MlasStoreFloat16x4(PackedB_data + 16, v0);
-            MlasStoreFloat16x4(PackedB_data + 20, v4);
-            MlasStoreFloat16x4(PackedB_data + 48, v1);
-            MlasStoreFloat16x4(PackedB_data + 52, v5);
-            MlasStoreFloat16x4(PackedB_data + 80, v2);
-            MlasStoreFloat16x4(PackedB_data + 84, v6);
-            MlasStoreFloat16x4(PackedB_data + 112, v3);
-            MlasStoreFloat16x4(PackedB_data + 116, v7);
-
-            v8 = MlasLoadFloat16x4(b + 24 * ldb);
-            v9 = MlasLoadFloat16x4(b + 25 * ldb);
-            vA = MlasLoadFloat16x4(b + 26 * ldb);
-            vB = MlasLoadFloat16x4(b + 27 * ldb);
-            vC = MlasLoadFloat16x4(b + 28 * ldb);
-            vD = MlasLoadFloat16x4(b + 29 * ldb);
-            vE = MlasLoadFloat16x4(b + 30 * ldb);
-            vF = MlasLoadFloat16x4(b + 31 * ldb);
-            Transpose4x4(v8, v9, vA, vB);
-            Transpose4x4(vC, vD, vE, vF);
-            MlasStoreFloat16x4(PackedB_data + 24, v8);
-            MlasStoreFloat16x4(PackedB_data + 28, vC);
-            MlasStoreFloat16x4(PackedB_data + 56, v9);
-            MlasStoreFloat16x4(PackedB_data + 60, vD);
-            MlasStoreFloat16x4(PackedB_data + 88, vA);
-            MlasStoreFloat16x4(PackedB_data + 92, vE);
-            MlasStoreFloat16x4(PackedB_data + 120, vB);
-            MlasStoreFloat16x4(PackedB_data + 124, vF);
-
+            MlasStoreFloat16x4(PackedB_data + basep, v0);
+            MlasStoreFloat16x4(PackedB_data + basep + 4, v4);
+            MlasStoreFloat16x4(PackedB_data + basep + 32, v1);
+            MlasStoreFloat16x4(PackedB_data + basep + 36, v5);
+            MlasStoreFloat16x4(PackedB_data + basep + 64, v2);
+            MlasStoreFloat16x4(PackedB_data + basep + 68, v6);
+            MlasStoreFloat16x4(PackedB_data + basep + 96, v3);
+            MlasStoreFloat16x4(PackedB_data + basep + 100, v7);
             k -= 4, b += 4, PackedB_data += 4 * 32;
         }
 
         if (k > 0) {
+            size_t baseb = 0;
+            size_t basep = 0;
             float16x4_t v0 = MlasLoadPartialFloat16x4(b, k);
             float16x4_t v1 = MlasLoadPartialFloat16x4(b + ldb, k);
             float16x4_t v2 = MlasLoadPartialFloat16x4(b + 2 * ldb, k);
@@ -198,82 +131,41 @@ void HPackB_TransposedB_Kernel(
             float16x4_t v5 = MlasLoadPartialFloat16x4(b + 5 * ldb, k);
             float16x4_t v6 = MlasLoadPartialFloat16x4(b + 6 * ldb, k);
             float16x4_t v7 = MlasLoadPartialFloat16x4(b + 7 * ldb, k);
+            for (size_t i = 0; i < 3; ++i, baseb += 8 * ldb, basep += 8) {
+                Transpose4x4(v0, v1, v2, v3);
+                Transpose4x4(v4, v5, v6, v7);
+                MlasStoreFloat16x4(PackedB_data + basep, v0);
+                MlasStoreFloat16x4(PackedB_data + basep + 4, v4);
+                if (k > 1) {
+                    MlasStoreFloat16x4(PackedB_data + basep + 32, v1);
+                    MlasStoreFloat16x4(PackedB_data + basep + 36, v5);
+                }
+                if (k > 2) {
+                    MlasStoreFloat16x4(PackedB_data + basep + 64, v2);
+                    MlasStoreFloat16x4(PackedB_data + basep + 68, v6);
+                }
+                v0 = MlasLoadPartialFloat16x4(b + baseb + 8 * ldb, k);
+                v1 = MlasLoadPartialFloat16x4(b + baseb + 9 * ldb, k);
+                v2 = MlasLoadPartialFloat16x4(b + baseb + 10 * ldb, k);
+                v3 = MlasLoadPartialFloat16x4(b + baseb + 11 * ldb, k);
+                v4 = MlasLoadPartialFloat16x4(b + baseb + 12 * ldb, k);
+                v5 = MlasLoadPartialFloat16x4(b + baseb + 13 * ldb, k);
+                v6 = MlasLoadPartialFloat16x4(b + baseb + 14 * ldb, k);
+                v7 = MlasLoadPartialFloat16x4(b + baseb + 15 * ldb, k);
+
+            }
             Transpose4x4(v0, v1, v2, v3);
             Transpose4x4(v4, v5, v6, v7);
-            MlasStoreFloat16x4(PackedB_data, v0);
-            MlasStoreFloat16x4(PackedB_data + 4, v4);
+            MlasStoreFloat16x4(PackedB_data + basep, v0);
+            MlasStoreFloat16x4(PackedB_data + basep + 4, v4);
             if (k > 1) {
-                MlasStoreFloat16x4(PackedB_data + 32, v1);
-                MlasStoreFloat16x4(PackedB_data + 36, v5);
+                MlasStoreFloat16x4(PackedB_data + basep + 32, v1);
+                MlasStoreFloat16x4(PackedB_data + basep + 36, v5);
             }
             if (k > 2) {
-                MlasStoreFloat16x4(PackedB_data + 64, v2);
-                MlasStoreFloat16x4(PackedB_data + 68, v6);
+                MlasStoreFloat16x4(PackedB_data + basep + 64, v2);
+                MlasStoreFloat16x4(PackedB_data + basep + 68, v6);
             }
-
-            float16x4_t v8 = MlasLoadPartialFloat16x4(b + 8 * ldb, k);
-            float16x4_t v9 = MlasLoadPartialFloat16x4(b + 9 * ldb, k);
-            float16x4_t vA = MlasLoadPartialFloat16x4(b + 10 * ldb, k);
-            float16x4_t vB = MlasLoadPartialFloat16x4(b + 11 * ldb, k);
-            float16x4_t vC = MlasLoadPartialFloat16x4(b + 12 * ldb, k);
-            float16x4_t vD = MlasLoadPartialFloat16x4(b + 13 * ldb, k);
-            float16x4_t vE = MlasLoadPartialFloat16x4(b + 14 * ldb, k);
-            float16x4_t vF = MlasLoadPartialFloat16x4(b + 15 * ldb, k);
-            Transpose4x4(v8, v9, vA, vB);
-            Transpose4x4(vC, vD, vE, vF);
-            MlasStoreFloat16x4(PackedB_data + 8, v8);
-            MlasStoreFloat16x4(PackedB_data + 12, vC);
-            if (k > 1) {
-                MlasStoreFloat16x4(PackedB_data + 40, v9);
-                MlasStoreFloat16x4(PackedB_data + 44, vD);
-            }
-            if (k > 2) {
-                MlasStoreFloat16x4(PackedB_data + 72, vA);
-                MlasStoreFloat16x4(PackedB_data + 76, vE);
-            }
-
-            v0 = MlasLoadPartialFloat16x4(b + 16 * ldb, k);
-            v1 = MlasLoadPartialFloat16x4(b + 17 * ldb, k);
-            v2 = MlasLoadPartialFloat16x4(b + 18 * ldb, k);
-            v3 = MlasLoadPartialFloat16x4(b + 19 * ldb, k);
-            v4 = MlasLoadPartialFloat16x4(b + 20 * ldb, k);
-            v5 = MlasLoadPartialFloat16x4(b + 21 * ldb, k);
-            v6 = MlasLoadPartialFloat16x4(b + 22 * ldb, k);
-            v7 = MlasLoadPartialFloat16x4(b + 23 * ldb, k);
-            Transpose4x4(v0, v1, v2, v3);
-            Transpose4x4(v4, v5, v6, v7);
-            MlasStoreFloat16x4(PackedB_data + 16, v0);
-            MlasStoreFloat16x4(PackedB_data + 20, v4);
-            if (k > 1) {
-                MlasStoreFloat16x4(PackedB_data + 48, v1);
-                MlasStoreFloat16x4(PackedB_data + 52, v5);
-            }
-            if (k > 2) {
-                MlasStoreFloat16x4(PackedB_data + 80, v2);
-                MlasStoreFloat16x4(PackedB_data + 84, v6);
-            }
-
-            v8 = MlasLoadPartialFloat16x4(b + 24 * ldb, k);
-            v9 = MlasLoadPartialFloat16x4(b + 25 * ldb, k);
-            vA = MlasLoadPartialFloat16x4(b + 26 * ldb, k);
-            vB = MlasLoadPartialFloat16x4(b + 27 * ldb, k);
-            vC = MlasLoadPartialFloat16x4(b + 28 * ldb, k);
-            vD = MlasLoadPartialFloat16x4(b + 29 * ldb, k);
-            vE = MlasLoadPartialFloat16x4(b + 30 * ldb, k);
-            vF = MlasLoadPartialFloat16x4(b + 31 * ldb, k);
-            Transpose4x4(v8, v9, vA, vB);
-            Transpose4x4(vC, vD, vE, vF);
-            MlasStoreFloat16x4(PackedB_data + 24, v8);
-            MlasStoreFloat16x4(PackedB_data + 28, vC);
-            if (k > 1) {
-                MlasStoreFloat16x4(PackedB_data + 56, v9);
-                MlasStoreFloat16x4(PackedB_data + 60, vD);
-            }
-            if (k > 2) {
-                MlasStoreFloat16x4(PackedB_data + 88, vA);
-                MlasStoreFloat16x4(PackedB_data + 92, vE);
-            }
-
             PackedB_data += k * 32;
         }
     }
@@ -561,144 +453,65 @@ void HPackB_B_Kernel(
 ) {
     const _mlas_fp16_* B_data = reinterpret_cast<const _mlas_fp16_*>(B);
     _mlas_fp16_* PackedB_data = reinterpret_cast<_mlas_fp16_*>(PackedB);
-    const size_t ldb4 = ldb * 4;
 
     for (; CountN >= 32; CountN -= 32, B_data += 32) {
         const _mlas_fp16_* b = B_data;
         size_t k = CountK;
-        constexpr size_t step = 4 * 32;
-        for (; k >= 4; k -= 4, b += ldb4, PackedB_data += step) {
-            vst4q_u16(PackedB_data, vld4q_u16(b));
-            vst4q_u16(PackedB_data + 32, vld4q_u16(b + ldb));
-            vst4q_u16(PackedB_data + 64, vld4q_u16(b + 2 * ldb));
-            vst4q_u16(PackedB_data + 96, vld4q_u16(b + 3 * ldb));
+        uint16x8x4_t v0 = vld4q_u16(b);
+        for (; k >= 2; --k, b += ldb, PackedB_data += 32) {
+            vst4q_u16(PackedB_data, v0);
+            v0 = vld4q_u16(b + ldb);
         }
-
-        if (k & 2) {
-            vst4q_u16(PackedB_data, vld4q_u16(b));
-            vst4q_u16(PackedB_data + 32, vld4q_u16(b + ldb));
-            b += 2 * ldb, PackedB_data += 2 * 32;
-        }
-
-        if (k & 1) {
-            vst4q_u16(PackedB_data, vld4q_u16(b));
-            PackedB_data += 32;
-        }
+        vst4q_u16(PackedB_data, v0);
+        PackedB_data += 32;
     }
 
     if (CountN & 16) {
         const _mlas_fp16_* b = B_data;
         size_t k = CountK;
-        constexpr size_t step = 4 * 16;
-        for (; k >= 4; k -= 4, b += ldb4, PackedB_data += step) {
-            vst2q_u16(PackedB_data, vld2q_u16(b));
-            vst2q_u16(PackedB_data + 16, vld2q_u16(b + ldb));
-            vst2q_u16(PackedB_data + 32, vld2q_u16(b + 2 * ldb));
-            vst2q_u16(PackedB_data + 48, vld2q_u16(b + 3 * ldb));
+        uint16x8x2_t v0 = vld2q_u16(b);
+        for (; k >= 2; --k, b += ldb, PackedB_data += 16) {
+            vst2q_u16(PackedB_data, v0);
+            v0 = vld2q_u16(b + ldb);
         }
-
-        if (k & 2) {
-            vst2q_u16(PackedB_data, vld2q_u16(b));
-            vst2q_u16(PackedB_data + 16, vld2q_u16(b + ldb));
-            b += 2 * ldb, PackedB_data += 2 * 16;
-        }
-
-        if (k & 1) {
-            vst2q_u16(PackedB_data, vld2q_u16(b));
-            PackedB_data += 16;
-        }
-
+        vst2q_u16(PackedB_data, v0);
+        PackedB_data += 16;
         CountN -= 16, B_data += 16;
     }
 
     if (CountN & 8) {
         const _mlas_fp16_* b = B_data;
         size_t k = CountK;
-        constexpr size_t step = 4 * 8;
-        for (; k >= 4; k -= 4, b += ldb4, PackedB_data += step) {
-            vst1q_u16(PackedB_data, vld1q_u16(b));
-            vst1q_u16(PackedB_data + 8, vld1q_u16(b + ldb));
-            vst1q_u16(PackedB_data + 16, vld1q_u16(b + 2 * ldb));
-            vst1q_u16(PackedB_data + 24, vld1q_u16(b + 3 * ldb));
+        uint16x8_t v0 = vld1q_u16(b);
+        for (; k >= 2; --k, b += ldb, PackedB_data += 8) {
+            vst1q_u16(PackedB_data, v0);
+            v0 = vld1q_u16(b + ldb);
         }
-
-        if (k & 2) {
-            vst1q_u16(PackedB_data, vld1q_u16(b));
-            vst1q_u16(PackedB_data + 8, vld1q_u16(b + ldb));
-            b += 2 * ldb, PackedB_data += 2 * 8;
-        }
-
-        if (k & 1) {
-            vst1q_u16(PackedB_data, vld1q_u16(b));
-            PackedB_data += 8;
-        }
+        vst1q_u16(PackedB_data, v0);
+        PackedB_data += 8;
 
         B_data += 8;
         CountN -= 8;
     }
 
     if (CountN > 4) {
-        for (; CountK >= 4; B_data += ldb * 4, PackedB_data += 32, CountK -= 4) {
-            float16x4_t v0 = MlasLoadFloat16x4(B_data);
-            float16x4_t v1 = MlasLoadPartialFloat16x4(B_data + 4, CountN - 4);
-            float16x4_t v2 = MlasLoadFloat16x4(B_data + ldb);
-            float16x4_t v3 = MlasLoadPartialFloat16x4(B_data + ldb + 4, CountN - 4);
-            float16x4_t v4 = MlasLoadFloat16x4(B_data + 2 * ldb);
-            float16x4_t v5 = MlasLoadPartialFloat16x4(B_data + 2 * ldb + 4, CountN - 4);
-            float16x4_t v6 = MlasLoadFloat16x4(B_data + 3 * ldb);
-            float16x4_t v7 = MlasLoadPartialFloat16x4(B_data + 3 * ldb + 4, CountN - 4);
+        float16x4_t v0 = MlasLoadFloat16x4(B_data);
+        float16x4_t v1 = MlasLoadPartialFloat16x4(B_data + 4, CountN - 4);
+        for (; CountK >= 2; B_data += ldb, PackedB_data += 8, --CountK) {
             MlasStoreFloat16x4(PackedB_data, v0);
             MlasStoreFloat16x4(PackedB_data + 4, v1);
-            MlasStoreFloat16x4(PackedB_data + 8, v2);
-            MlasStoreFloat16x4(PackedB_data + 12, v3);
-            MlasStoreFloat16x4(PackedB_data + 16, v4);
-            MlasStoreFloat16x4(PackedB_data + 20, v5);
-            MlasStoreFloat16x4(PackedB_data + 24, v6);
-            MlasStoreFloat16x4(PackedB_data + 28, v7);
+            v0 = MlasLoadFloat16x4(B_data + ldb);
+            v1 = MlasLoadPartialFloat16x4(B_data + ldb + 4, CountN - 4);
         }
-
-        if (CountK & 2) {
-            float16x4_t v0 = MlasLoadFloat16x4(B_data);
-            float16x4_t v1 = MlasLoadPartialFloat16x4(B_data + 4, CountN - 4);
-            float16x4_t v2 = MlasLoadFloat16x4(B_data + ldb);
-            float16x4_t v3 = MlasLoadPartialFloat16x4(B_data + ldb + 4, CountN - 4);
-            MlasStoreFloat16x4(PackedB_data, v0);
-            MlasStoreFloat16x4(PackedB_data + 4, v1);
-            MlasStoreFloat16x4(PackedB_data + 8, v2);
-            MlasStoreFloat16x4(PackedB_data + 12, v3);
-            B_data += 2 * ldb, PackedB_data += 16;
-        }
-
-        if (CountK & 1) {
-            float16x4_t v0 = MlasLoadFloat16x4(B_data);
-            float16x4_t v1 = MlasLoadPartialFloat16x4(B_data + 4, CountN - 4);
-            MlasStoreFloat16x4(PackedB_data, v0);
-            MlasStoreFloat16x4(PackedB_data + 4, v1);
-        }
+        MlasStoreFloat16x4(PackedB_data, v0);
+        MlasStoreFloat16x4(PackedB_data + 4, v1);
     } else if (CountN > 0) {
-        for (; CountK >= 4; B_data += 4 * ldb, PackedB_data += 32, CountK -= 4) {
-            float16x4_t v0 = MlasLoadPartialFloat16x4(B_data, CountN);
-            float16x4_t v1 = MlasLoadPartialFloat16x4(B_data + ldb, CountN);
-            float16x4_t v2 = MlasLoadPartialFloat16x4(B_data + 2 * ldb, CountN);
-            float16x4_t v3 = MlasLoadPartialFloat16x4(B_data + 3 * ldb, CountN);
+        float16x4_t v0 = MlasLoadPartialFloat16x4(B_data, CountN);
+        for (; CountK >= 2; B_data += ldb, PackedB_data += 8, --CountK) {
             MlasStoreFloat16x4(PackedB_data, v0);
-            MlasStoreFloat16x4(PackedB_data + 8, v1);
-            MlasStoreFloat16x4(PackedB_data + 16, v2);
-            MlasStoreFloat16x4(PackedB_data + 24, v3);
+            v0 = MlasLoadPartialFloat16x4(B_data + ldb, CountN);
         }
-
-        if (CountK & 2) {
-            float16x4_t v0 = MlasLoadPartialFloat16x4(B_data, CountN);
-            float16x4_t v1 = MlasLoadPartialFloat16x4(B_data + ldb, CountN);
-            MlasStoreFloat16x4(PackedB_data, v0);
-            MlasStoreFloat16x4(PackedB_data + 8, v1);
-            B_data += 2 * ldb, PackedB_data += 16;
-        }
-
-        if (CountK & 1) {
-            float16x4_t v0 = MlasLoadPartialFloat16x4(B_data, CountN);
-            MlasStoreFloat16x4(PackedB_data, v0);
-        }
+        MlasStoreFloat16x4(PackedB_data, v0);
     }
 }
 
@@ -2793,9 +2606,6 @@ void HGemm_PackedB_Kernel_Impl(
     }
 }
 
-// TODO:
-//  - surface spec.
-//  - process 32 columns
 void HGemm_PackedB_Kernel(
     const MLAS_FP16* A,
     const MLAS_FP16* PackedB,
