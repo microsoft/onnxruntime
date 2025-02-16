@@ -40,7 +40,7 @@ done
 
 
 
-BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel" "--use_binskim_compliant_compile_flags" "--build_wheel")
+BUILD_ARGS=("--build_dir" "/build" "--config" "$BUILD_CONFIG" "--update" "--build" "--skip_submodule_sync" "--parallel" "--use_binskim_compliant_compile_flags" "--build_wheel" "--use_vcpkg")
 
 if [ "$BUILD_CONFIG" != "Debug" ]; then
     BUILD_ARGS+=("--enable_lto")
@@ -75,7 +75,7 @@ fi
 
 if [ "$BUILD_DEVICE" == "NPU" ]; then
     #Enable QNN EP
-    BUILD_ARGS+=("--use_qnn" "--qnn_home=/qnn_sdk")
+    BUILD_ARGS+=("--build_shared_lib" "--use_qnn" "--qnn_home=/qnn_sdk")
 fi
 
 export ONNX_ML=1

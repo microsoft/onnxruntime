@@ -41,7 +41,7 @@ parameters:
 
 variables:
   - name: docker_base_image
-    value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250109.1
+    value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250124.1
   - name: linux_trt_version
     value: 10.3.0.26-1.cuda11.8
   - name: Repository
@@ -77,55 +77,34 @@ stages:
         "
         Repository: $(Repository)
 
-    - task: Cache@2
-      inputs:
-        key: '"ccache" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
-        path: $(CCACHE_DIR)
-        restoreKeys: |
-          "ccache" | "$(Build.SourceBranch)"
-          "ccache"
-        cacheHitVar: CACHE_RESTORED
-      displayName: Cach Task
-
-    - script: |
-        sudo mkdir -p $(Pipeline.Workspace)/ccache
-      condition: ne(variables.CACHE_RESTORED, 'true')
-      displayName: Create Cache Dir
-
     - task: CmdLine@2
       inputs:
         script: |
           mkdir -p $HOME/.onnx
-          docker run -e --rm \
+          docker run -e SYSTEM_COLLECTIONURI -e --rm \
             --volume /data/onnx:/data/onnx:ro \
             --volume $(Build.SourcesDirectory):/onnxruntime_src \
             --volume $(Build.BinariesDirectory):/build \
             --volume /data/models:/build/models:ro \
             --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-            --volume $(Pipeline.Workspace)/ccache:/cache \
             -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
-            -e CCACHE_DIR=/cache \
             $(Repository) \
-            /bin/bash -c "
+            /bin/bash -c '
               set -ex; \
-              env; \
-              ccache -s; \
-              /opt/python/cp310-cp310/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              PATH=/opt/python/cp310-cp310/bin:$PATH  /opt/python/cp310-cp310/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                 --build_dir /build --cmake_generator Ninja \
                 --config Release --update --build \
                 --skip_submodule_sync \
                 --build_shared_lib \
-                --parallel \
+                --parallel --use_vcpkg \
                 --build_wheel \
                 --enable_onnx_tests --use_cuda --cuda_version=11.8 --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8 \
                 --enable_cuda_profiling \
                 --enable_pybind --build_java \
-                --use_cache \
-                --cmake_extra_defines  'CMAKE_CUDA_ARCHITECTURES=75;86' ; \
-                ccache -sv; \
-                ccache -z"
+                --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75;86" '
+
         workingDirectory: $(Build.SourcesDirectory)
 
     - task: CmdLine@2
@@ -187,7 +166,6 @@ stages:
         "
         Repository: onnxruntimeubuntupackagestest_cuda11
         UseImageCacheContainerRegistry: false
-        UpdateDepsTxt: false
 
     - task: Cache@2
       inputs:
@@ -200,7 +178,7 @@ stages:
 
     - script: |
         mkdir -p $(GenerateImage_DIR)
-        docker run --rm --gpus all -v $PWD:/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $PWD:/workspace \
           -v $(Build.BinariesDirectory)/Release:/Release \
           -v $(STABLE_DIFFUSION_MODEL_CACHE):/model_cache:rw \
           -v $(GenerateImage_DIR):/images:rw \
@@ -241,7 +219,7 @@ stages:
       displayName: Cache clip model
 
     - script: |
-        docker run --rm --gpus all -v $PWD:/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $PWD:/workspace \
           -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
           onnxruntimeubuntupackagestest_cuda11 \
           bash -c '
@@ -268,7 +246,7 @@ stages:
 
     # The step will execute if the gereneate image doesn't hit another test image
     - script: |
-        docker run --rm --gpus all -v $PWD:/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $PWD:/workspace \
           -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
           onnxruntimeubuntupackagestest_cuda11 \
           bash -c '
@@ -330,7 +308,6 @@ stages:
         "
         Repository: onnxruntimeubi8packagestest_torch
         UseImageCacheContainerRegistry: false
-        UpdateDepsTxt: false
 
     - task: DownloadPackage@1
       displayName: 'Download Meta Llama2 model'
@@ -342,7 +319,7 @@ stages:
         downloadPath: $(Agent.TempDirectory)/meta_llama2_7b_hf
 
     - script: |
-        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            -v $(Agent.TempDirectory)/meta_llama2_7b_hf:/meta-llama2 \
            onnxruntimeubi8packagestest_torch \
@@ -363,7 +340,7 @@ stages:
       workingDirectory: $(Build.SourcesDirectory)
 
     - script: |
-        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            -v $(Agent.TempDirectory)/meta_llama2_7b_hf:/meta-llama2 \
            onnxruntimeubi8packagestest_torch \
@@ -384,7 +361,7 @@ stages:
       workingDirectory: $(Build.SourcesDirectory)
 
     - script: |
-        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            -v $(Agent.TempDirectory)/meta_llama2_7b_hf:/meta-llama2 \
            onnxruntimeubi8packagestest_torch \
@@ -443,7 +420,6 @@ stages:
         ScriptName: tools/ci_build/get_docker_image.py
         DockerBuildArgs: '--build-arg BUILD_UID=$( id -u )'
         Repository: onnxruntimepackagestest_ompffmpeg
-        UpdateDepsTxt: false
 
     - task: DownloadPackage@1
       # The model data in artifact is downloaded from openai/whisper-large-v3 in huggingface model hub
@@ -457,7 +433,7 @@ stages:
         downloadPath: $(Agent.TempDirectory)/whisper_large_v3
 
     - script: |
-        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            -v $(Agent.TempDirectory)/whisper_large_v3:/whisper_large_v3 \
            onnxruntimepackagestest_ompffmpeg \
@@ -478,7 +454,7 @@ stages:
       workingDirectory: $(Build.SourcesDirectory)
 
     - script: |
-        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            -v $(Agent.TempDirectory)/whisper_large_v3:/whisper_large_v3 \
            onnxruntimepackagestest_ompffmpeg \

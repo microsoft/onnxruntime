@@ -45,7 +45,7 @@ jobs:
     name: ${{ parameters.PoolName }}
   variables:
     buildArch: x64
-    CommonBuildArgs: '--parallel --config ${{ parameters.BuildConfig }} --skip_submodule_sync --build_wasm --enable_wasm_simd --enable_wasm_threads --use_extensions --cmake_extra_defines onnxruntime_WEBASSEMBLY_DEFAULT_EXTENSION_FLAGS=ON ${{ parameters.ExtraBuildArgs }}'
+    CommonBuildArgs: '--parallel --use_vcpkg --config ${{ parameters.BuildConfig }} --skip_submodule_sync --build_wasm --enable_wasm_simd --enable_wasm_threads ${{ parameters.ExtraBuildArgs }}'
     runCodesignValidationInjection: false
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
     ORT_CACHE_DIR: $(Agent.TempDirectory)/ort_ccache
@@ -77,28 +77,20 @@ jobs:
       versionSpec: '3.12'
       addToPath: true
       architecture: $(buildArch)
-  - template: download-deps.yml
-
-  - task: PythonScript@0
-    displayName: 'Update deps.txt'
-    inputs:
-      scriptPath: $(Build.SourcesDirectory)/tools/ci_build/replace_urls_in_deps.py
-      arguments: --new_dir $(Build.BinariesDirectory)/deps
-      workingDirectory: $(Build.BinariesDirectory)
 
   - ${{if eq(parameters.WithCache, true)}}:
       - script: |
           set -ex
           cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
-          ./emsdk install 3.1.59 ccache-git-emscripten-64bit
-          ./emsdk activate 3.1.59 ccache-git-emscripten-64bit
+          ./emsdk install 4.0.3 ccache-git-emscripten-64bit
+          ./emsdk activate 4.0.3 ccache-git-emscripten-64bit
         displayName: 'emsdk install and activate ccache for emscripten'
   - ${{if eq(parameters.WithCache, false)}}:
       - script: |
           set -ex
           cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
-          ./emsdk install 3.1.59
-          ./emsdk activate 3.1.59
+          ./emsdk install 4.0.3
+          ./emsdk activate 4.0.3
         displayName: 'emsdk install and activate ccache for emscripten'
 
   - template: build-linux-wasm-step.yml

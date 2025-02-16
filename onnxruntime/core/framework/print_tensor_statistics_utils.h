@@ -89,8 +89,8 @@ void PrintCommonStats(const T* data, size_t count, TensorStatisticsData& tensor_
   // Statistics for float and double only for now.
   if constexpr (std::is_same<T, float>::value) {
     tensor_statistics.is_float = true;
-    tensor_statistics.float_min = static_cast<double>(min);
-    tensor_statistics.float_max = static_cast<double>(max);
+    tensor_statistics.float_min = static_cast<float>(min);
+    tensor_statistics.float_max = static_cast<float>(max);
   }
 }
 
