@@ -599,6 +599,7 @@ target_include_directories(winml_lib_api_experimental PRIVATE ${CMAKE_CURRENT_BI
 
 target_include_directories(winml_lib_api_experimental PRIVATE ${ONNXRUNTIME_INCLUDE_DIR})
 target_include_directories(winml_lib_api_experimental PRIVATE ${ONNXRUNTIME_INCLUDE_DIR}/core/graph)
+target_include_directories(winml_lib_api_experimental PRIVATE ${REPO_ROOT}/winml)
 target_include_directories(winml_lib_api_experimental PRIVATE ${ONNXRUNTIME_ROOT})
 target_include_directories(winml_lib_api_experimental PRIVATE ${ONNXRUNTIME_ROOT}/core/graph)
 onnxruntime_add_include_to_target(winml_lib_api_experimental PRIVATE ${PROTOBUF_LIB} safeint_interface flatbuffers::flatbuffers Boost::mp11 onnx onnx_proto ${GSL_TARGET} Eigen3::Eigen)
