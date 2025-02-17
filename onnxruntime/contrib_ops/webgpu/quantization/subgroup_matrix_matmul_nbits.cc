@@ -81,8 +81,8 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
     )ADDNL_FN";
 
     shader.MainFunctionBody() << R"MAIN_FN(
-        let a_global_base = workgroup_idy * tile_rows;
-        let b_global_base = workgroup_idx * tile_cols;
+        let a_global_base = workgroup_id.y * tile_rows;
+        let b_global_base = workgroup_id.x * tile_cols;
 
         let subtile_id =  u32(local_idx / sg_size);
         let subtile_idx = u32(subtile_id / 2);
