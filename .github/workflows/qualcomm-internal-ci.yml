@@ -20,10 +20,15 @@ jobs:
         run: |
           if (Test-Path D:\b) { Remove-Item -Recurse -Force D:\b }
 
+      - name: Visual 2022 Setup
+        run: "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat" amd64
+
+      - name: Qualcomm Internal Build Script
+        run: .\build.bat --config RelWithDebInfo --build_shared_lib --parallel --compile_no_warning_as_error --cmake_generator "Visual Studio 17 2022"
 
       # The build machine doesn't have a GPU. So the value of CMAKE_CUDA_ARCHITECTURES doesn't matter.
-      - name: Build code
-        run: python tools\ci_build\build.py --windows_sdk_version 10.0.22621.0 --enable_training --build_java --config Debug --build_dir D:\b --skip_submodule_sync --build_csharp --update --build --parallel --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_pybind --use_cuda --cuda_home=${{ github.workspace }}\cuda_sdk\v12.2 --enable_cuda_profiling  --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75
+      # - name: Build code
+      #   run: python tools\ci_build\build.py --windows_sdk_version 10.0.22621.0 --enable_training --build_java --config Debug --build_dir D:\b --skip_submodule_sync --build_csharp --update --build --parallel --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_pybind --use_cuda --cuda_home=${{ github.workspace }}\cuda_sdk\v12.2 --enable_cuda_profiling  --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75
 
 # concurrency:
 #   group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
