@@ -226,6 +226,7 @@ RopeKernel_Fp16_Impl<true>(
 
 }  // namespace
 
+// TODO(fajin): intra-loop parallelism
 void
 RopeKernel_Fp16(
     const MLAS_FP16* input,
