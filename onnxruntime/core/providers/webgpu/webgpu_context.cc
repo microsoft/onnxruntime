@@ -486,6 +486,7 @@ std::vector<wgpu::FeatureName> WebGpuContext::GetAvailableRequiredFeatures(const
   constexpr wgpu::FeatureName features[]{
 #if !defined(__wasm__)
       wgpu::FeatureName::ChromiumExperimentalTimestampQueryInsidePasses,
+      wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix,
 #endif
       wgpu::FeatureName::TimestampQuery,
       wgpu::FeatureName::ShaderF16,
