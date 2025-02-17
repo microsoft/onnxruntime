@@ -143,9 +143,7 @@ dependencies {
     androidTestImplementation "androidx.test:runner:1.5.2"
     androidTestImplementation "androidx.test:rules:1.5.0"
 
-    implementation (project(':onnxruntime-react-native')) {
-      exclude group: 'com.facebook.react', module: 'react-android'
-    }
+    implementation (project(':onnxruntime-react-native'))
     // specify ORT dependency here so it can be found in libs flatDir repository
     implementation "com.microsoft.onnxruntime:onnxruntime-android:latest.integration@aar"
 }
