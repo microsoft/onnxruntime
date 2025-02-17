@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Copyright (c) 2023 NVIDIA Corporation.
-// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
+// SPDX-FileCopyrightText: Copyright 2024-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include "ort_test_session.h"
@@ -479,6 +479,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     bool enable_fast_math = false;
     ParseSessionConfigs(ov_string, provider_options, {"enable_fast_math"});
     for (const auto& provider_option : provider_options) {
+      const std::string& key = provider_option.first;
+      const std::string& value = provider_option.second;
       if (key == "enable_fast_math") {
         std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
         if (ov_supported_values.find(value) != ov_supported_values.end()) {
