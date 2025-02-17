@@ -2323,7 +2323,9 @@ TEST(CApiTest, basic_cuda_graph) {
   ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_TensorRT_V2(
                   static_cast<OrtSessionOptions*>(session_options),
                   rel_trt_options.get()) == nullptr);
-#elif defined(USE_CUDA)
+#endif
+
+#if defined(USE_CUDA)
   // Enable cuda graph in cuda provider option.
   OrtCUDAProviderOptionsV2* cuda_options = nullptr;
   ASSERT_TRUE(api.CreateCUDAProviderOptions(&cuda_options) == nullptr);
@@ -2336,7 +2338,9 @@ TEST(CApiTest, basic_cuda_graph) {
   ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_CUDA_V2(
                   static_cast<OrtSessionOptions*>(session_options),
                   rel_cuda_options.get()) == nullptr);
-#elif defined(USE_ROCM)
+#endif
+
+#if defined(USE_ROCM)
   // Enable hip graph in rocm provider option.
   OrtROCMProviderOptions* rocm_options = nullptr;
   ASSERT_TRUE(api.CreateROCMProviderOptions(&rocm_options) == nullptr);
@@ -2349,7 +2353,9 @@ TEST(CApiTest, basic_cuda_graph) {
   ASSERT_TRUE(api.SessionOptionsAppendExecutionProvider_ROCM(
                   static_cast<OrtSessionOptions*>(session_options),
                   rel_rocm_options.get()) == nullptr);
-#elif defined(USE_DML)
+#endif
+
+#if defined(USE_DML)
   // Enable dynamic DML graph in DML provider option.
   session_options.AddConfigEntry("ep.dml.enable_graph_capture", "1");
   const OrtDmlApi* ort_dml_api;
