@@ -400,6 +400,7 @@ def parse_arguments():
         "--msvc_toolset",
         help="MSVC toolset to use. e.g. 14.11. It doesn't work if the version number is in the range of [14.36, 14.39]",
     )
+    parser.add_argument("--msvc_toolset_version", help="MSVC toolset version to use. e.g. 141")
     parser.add_argument("--windows_sdk_version", help="Windows SDK version to use. e.g. 10.0.19041.0")
     parser.add_argument("--android", action="store_true", help="Build for Android")
     parser.add_argument(
@@ -3125,10 +3126,14 @@ def main():
                     host_arch = "ARM64"
                 else:
                     raise BuildError("unknown python arch")
-                if args.msvc_toolset:
-                    toolset = "host=" + host_arch + ",version=" + args.msvc_toolset
+                if args.msvc_toolset_version:
+                    toolset = "v" + args.msvc_toolset_version + ","
                 else:
-                    toolset = "host=" + host_arch
+                    toolset = ""
+                if args.msvc_toolset:
+                    toolset += "host=" + host_arch + ",version=" + args.msvc_toolset
+                else:
+                    toolset += "host=" + host_arch
                 if args.use_cuda and args.cuda_version:
                     toolset += ",cuda=" + args.cuda_version
                 elif args.use_cuda and args.cuda_home:
