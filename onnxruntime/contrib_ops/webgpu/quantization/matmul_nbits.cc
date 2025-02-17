@@ -817,7 +817,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
 
   const bool has_zero_points = zero_points != nullptr;
   // macOS - Experimental dawn support for subgroup matrix matmul on Metal.
-  if (CanApplySubgroupMatrixMatMulNBits(context, block_size, batch_count, K, N, has_zero_points)) {
+  if (M >= kMinMForTileOptimization &&
+    CanApplySubgroupMatrixMatMulNBits(context, block_size, batch_count, N, K, has_zero_points)) {
     return ApplySubgroupMatrixMatMulNBits(a, b, scales, M, N, K, context, y);
   }
 
