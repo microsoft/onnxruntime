@@ -221,16 +221,18 @@ class MlasNeonHGemmTransposedBTest : public MlasTestBase {
   MatrixGuardBuffer<MLAS_FP16> A_, B_, ref_, C_;
 
   template <size_t M, size_t K, size_t N>
-  MLAS_FORCEINLINE void HGemm(const MLAS_FP16* A, const MLAS_FP16* B, MLAS_FP16* C, MLAS_FP16 alpha, MLAS_FP16 beta) {
+  MLAS_FORCEINLINE void HGemm(
+      const MLAS_FP16* A, const MLAS_FP16* B, MLAS_FP16* C, MLAS_FP16 alpha, MLAS_FP16 beta,
+      size_t lda, size_t ldb, size_t ldc) {
     float alphaf = alpha.ToFloat();
     float betaf = beta.ToFloat();
     for (size_t m = 0; m < M; ++m) {
       for (size_t n = 0; n < N; ++n) {
         float accu = 0.0f;
         for (size_t k = 0; k < K; ++k) {
-          accu += (A[m * K + k].ToFloat()) * (B[n * K + k].ToFloat());
+          accu += (A[m * lda + k].ToFloat()) * (B[n * ldb + k].ToFloat());
         }
-        C[m * N + n] = MLAS_FP16(accu * alphaf + C[m * N + n].ToFloat() * betaf);
+        C[m * ldc + n] = MLAS_FP16(accu * alphaf + C[m * ldc + n].ToFloat() * betaf);
       }
     }
   }
@@ -241,14 +243,26 @@ class MlasNeonHGemmTransposedBTest : public MlasTestBase {
     return std::abs(f0 - f1) <= std::abs(f1 * rtol) + atol;
   }
 
-  template <size_t M, size_t K, size_t N>
-  MLAS_FORCEINLINE void Check(const MLAS_FP16* C, const MLAS_FP16* ref) {
-    size_t n = M * N;
-    for (size_t i = 0; i < n; ++i) {
-      ASSERT_TRUE(FloatEqual(C[i], ref[i], 0.02f, 0.055f))
-          << " seed " << seed_ << " i " << i
-          << " M " << M << " N " << N << " K " << K
-          << " v0 " << C[i] << " v1 " << ref[i];
+  template <size_t M, size_t N>
+  MLAS_FORCEINLINE void Check(const MLAS_FP16* C, const MLAS_FP16* ref, size_t ldc) {
+    for (size_t i = 0; i < M; ++i) {
+      for (size_t j = 0; j < N; ++j) {
+        size_t k = i * ldc + j;
+        ASSERT_TRUE(FloatEqual(C[k], ref[k], 0.02f, 0.055f))
+            << " seed " << seed_ << " i " << i << " j " << j
+            << " M " << M << " N " << N << " ldc " << ldc
+            << " value " << C[k] << " ref " << ref[k];
+      }
+    }
+  }
+
+  template <size_t M, size_t N>
+  MLAS_FORCEINLINE void Copy(const MLAS_FP16* C, MLAS_FP16* ref, size_t ldc) {
+    for (size_t i = 0; i < M; ++i) {
+      for (size_t j = 0; j < N; ++j) {
+        size_t k = i * ldc + j;
+        ref[k] = C[k];
+      }
     }
   }
 
@@ -260,13 +274,17 @@ class MlasNeonHGemmTransposedBTest : public MlasTestBase {
       }
     };
 
-    const auto* A = A_.GetFilledBuffer(M * K, InitializeBuffer);
-    const auto* B = B_.GetFilledBuffer(K * N, InitializeBuffer);
-    auto* C = C_.GetBuffer(M * N, true);
-    auto* ref = ref_.GetBuffer(M * N, true);
-    hgemm_neon::HGemm_TransposedB_Kernel(A, B, C, M, N, K, K, K, N, alpha.val, beta.val);
-    HGemm<M, K, N>(A, B, ref, alpha, beta);
-    Check<M, K, N>(C, ref);
+    const size_t lda = ((K + 7) & ~7);
+    const size_t ldb = ((K + 7) & ~7) + 8;
+    const size_t ldc = ((N + 7) & ~7);
+    const auto* A = A_.GetFilledBuffer(M * lda, InitializeBuffer);
+    const auto* B = B_.GetFilledBuffer(ldb * N, InitializeBuffer);
+    auto* C = C_.GetFilledBuffer(M * ldc, InitializeBuffer);
+    auto* ref = ref_.GetBuffer(M * ldc, true);
+    Copy<M, N>(C, ref, ldc);
+    hgemm_neon::HGemm_TransposedB_Kernel(A, B, C, M, N, K, lda, ldb, ldc, alpha.val, beta.val);
+    HGemm<M, K, N>(A, B, ref, alpha, beta, lda, ldb, ldc);
+    Check<M, N>(C, ref, ldc);
   }
 
  public:
@@ -302,16 +320,18 @@ class MlasNeonHGemmBTest : public MlasTestBase {
   MatrixGuardBuffer<MLAS_FP16> A_, B_, ref_, C_;
 
   template <size_t M, size_t K, size_t N>
-  MLAS_FORCEINLINE void HGemm(const MLAS_FP16* A, const MLAS_FP16* B, MLAS_FP16* C, MLAS_FP16 alpha, MLAS_FP16 beta) {
+  MLAS_FORCEINLINE void HGemm(
+      const MLAS_FP16* A, const MLAS_FP16* B, MLAS_FP16* C, MLAS_FP16 alpha, MLAS_FP16 beta,
+      size_t lda, size_t ldb, size_t ldc) {
     float alphaf = alpha.ToFloat();
     float betaf = beta.ToFloat();
     for (size_t m = 0; m < M; ++m) {
       for (size_t n = 0; n < N; ++n) {
         float accu = 0.0f;
         for (size_t k = 0; k < K; ++k) {
-          accu += (A[m * K + k].ToFloat()) * (B[n + k * N].ToFloat());
+          accu += (A[m * lda + k].ToFloat()) * (B[n + k * ldb].ToFloat());
         }
-        C[m * N + n] = MLAS_FP16(accu * alphaf + C[m * N + n].ToFloat() * betaf);
+        C[m * ldc + n] = MLAS_FP16(accu * alphaf + C[m * ldc + n].ToFloat() * betaf);
       }
     }
   }
@@ -322,14 +342,26 @@ class MlasNeonHGemmBTest : public MlasTestBase {
     return std::abs(f0 - f1) <= std::abs(f1 * rtol) + atol;
   }
 
-  template <size_t M, size_t K, size_t N>
-  MLAS_FORCEINLINE void Check(const MLAS_FP16* C, const MLAS_FP16* ref) {
-    size_t n = M * N;
-    for (size_t i = 0; i < n; ++i) {
-      ASSERT_TRUE(FloatEqual(C[i], ref[i], 0.02f, 0.055f))
-          << " seed " << seed_ << " i " << i
-          << " M " << M << " N " << N << " K " << K
-          << " v0 " << C[i] << " v1 " << ref[i];
+  template <size_t M, size_t N>
+  MLAS_FORCEINLINE void Check(const MLAS_FP16* C, const MLAS_FP16* ref, size_t ldc) {
+    for (size_t i = 0; i < M; ++i) {
+      for (size_t j = 0; j < N; ++j) {
+        size_t idx = i * ldc + j;
+        ASSERT_TRUE(FloatEqual(C[idx], ref[idx], 0.02f, 0.055f))
+            << " seed " << seed_ << " i " << i << " j " << j
+            << " M " << M << " N " << N << " ldc " << ldc
+            << " value " << C[idx] << " ref " << ref[idx];
+      }
+    }
+  }
+
+  template <size_t M, size_t N>
+  MLAS_FORCEINLINE void Copy(const MLAS_FP16* C, MLAS_FP16* ref, size_t ldc) {
+    for (size_t i = 0; i < M; ++i) {
+      for (size_t j = 0; j < N; ++j) {
+        size_t idx = i * ldc + j;
+        ref[idx] = C[idx];
+      }
     }
   }
 
@@ -341,13 +373,17 @@ class MlasNeonHGemmBTest : public MlasTestBase {
       }
     };
 
-    const auto* A = A_.GetFilledBuffer(M * K, InitializeBuffer);
-    const auto* B = B_.GetFilledBuffer(K * N, InitializeBuffer);
-    auto* C = C_.GetBuffer(M * N, true);
-    auto* ref = ref_.GetBuffer(M * N, true);
-    hgemm_neon::HGemm_B_Kernel(A, B, C, M, N, K, K, N, N, alpha.val, beta.val);
-    HGemm<M, K, N>(A, B, ref, alpha, beta);
-    Check<M, K, N>(C, ref);
+    const size_t lda = ((K + 7) & ~7);
+    const size_t ldb = ((N + 7) & ~7) + 8;
+    const size_t ldc = ((N + 7) & ~7);
+    const auto* A = A_.GetFilledBuffer(M * lda, InitializeBuffer);
+    const auto* B = B_.GetFilledBuffer(K * ldb, InitializeBuffer);
+    auto* C = C_.GetFilledBuffer(M * ldc, InitializeBuffer);
+    auto* ref = ref_.GetBuffer(M * ldc, true);
+    Copy<M, N>(C, ref, ldc);
+    hgemm_neon::HGemm_B_Kernel(A, B, C, M, N, K, lda, ldb, ldc, alpha.val, beta.val);
+    HGemm<M, K, N>(A, B, ref, alpha, beta, lda, ldb, ldc);
+    Check<M, N>(C, ref, ldc);
   }
 
  public:
@@ -382,6 +418,10 @@ class MlasNeonHGemmBTest : public MlasTestBase {
     TestHGemm<1, 32, 33>(MLAS_FP16(1.f), MLAS_FP16(0.f));
     TestHGemm<1, 78, 263>(MLAS_FP16(1.f), MLAS_FP16(0.0f));
     TestHGemm<2, 267, 79>(MLAS_FP16(1.f), MLAS_FP16(1.0f));
+    TestHGemm<2, 65, 65>(MLAS_FP16(1.f), MLAS_FP16(0.0f));
+    TestHGemm<2, 63, 63>(MLAS_FP16(1.f), MLAS_FP16(0.0f));
+    TestHGemm<2, 65, 63>(MLAS_FP16(1.f), MLAS_FP16(0.0f));
+    TestHGemm<2, 63, 65>(MLAS_FP16(1.f), MLAS_FP16(0.0f));
   }
 };
 
@@ -394,7 +434,9 @@ class MlasNeonHGemmPackedBTest : public MlasTestBase {
   MatrixGuardBuffer<MLAS_FP16> A_, B_, ref_, C_;
 
   template <size_t M, size_t K, size_t N>
-  MLAS_FORCEINLINE void HGemm(const MLAS_FP16* A, const MLAS_FP16* B, MLAS_FP16* C, MLAS_FP16 alpha, MLAS_FP16 beta) {
+  MLAS_FORCEINLINE void HGemm(
+    const MLAS_FP16* A, const MLAS_FP16* B, MLAS_FP16* C, MLAS_FP16 alpha, MLAS_FP16 beta,
+    size_t lda, size_t ldc) {
     float alphaf = alpha.ToFloat();
     float betaf = beta.ToFloat();
     size_t n = 0;
@@ -403,9 +445,9 @@ class MlasNeonHGemmPackedBTest : public MlasTestBase {
         for (size_t m = 0; m < M; ++m) {
           float accu = 0.0f;
           for (size_t k = 0; k < K; ++k) {
-            accu += (A[m * K + k].ToFloat()) * (B[n * K + k * 32 + i].ToFloat());
+            accu += (A[m * lda + k].ToFloat()) * (B[n * K + k * 32 + i].ToFloat());
           }
-          C[m * N + n + i] = MLAS_FP16(accu * alphaf + C[m * N + n + i].ToFloat() * betaf);
+          C[m * ldc + n + i] = MLAS_FP16(accu * alphaf + C[m * ldc + n + i].ToFloat() * betaf);
         }
       }
     }
@@ -414,9 +456,9 @@ class MlasNeonHGemmPackedBTest : public MlasTestBase {
         for (size_t m = 0; m < M; ++m) {
           float accu = 0.0f;
           for (size_t k = 0; k < K; ++k) {
-            accu += (A[m * K + k].ToFloat()) * (B[n * K + k * 16 + i].ToFloat());
+            accu += (A[m * lda + k].ToFloat()) * (B[n * K + k * 16 + i].ToFloat());
           }
-          C[m * N + n + i] = MLAS_FP16(accu * alphaf + C[m * N + n + i].ToFloat() * betaf);
+          C[m * ldc + n + i] = MLAS_FP16(accu * alphaf + C[m * ldc + n + i].ToFloat() * betaf);
         }
       }
     }
@@ -425,9 +467,9 @@ class MlasNeonHGemmPackedBTest : public MlasTestBase {
         for (size_t m = 0; m < M; ++m) {
           float accu = 0.0f;
           for (size_t k = 0; k < K; ++k) {
-            accu += (A[m * K + k].ToFloat()) * (B[n * K + k * 8 + i].ToFloat());
+            accu += (A[m * lda + k].ToFloat()) * (B[n * K + k * 8 + i].ToFloat());
           }
-          C[m * N + n + i] = MLAS_FP16(accu * alphaf + C[m * N + n + i].ToFloat() * betaf);
+          C[m * ldc + n + i] = MLAS_FP16(accu * alphaf + C[m * ldc + n + i].ToFloat() * betaf);
         }
       }
       n += 8;
@@ -437,9 +479,9 @@ class MlasNeonHGemmPackedBTest : public MlasTestBase {
         for (size_t m = 0; m < M; ++m) {
           float accu = 0.0f;
           for (size_t k = 0; k < K; ++k) {
-            accu += (A[m * K + k].ToFloat()) * (B[n * K + k * 8 + i].ToFloat());
+            accu += (A[m * lda + k].ToFloat()) * (B[n * K + k * 8 + i].ToFloat());
           }
-          C[m * N + n + i] = MLAS_FP16(accu * alphaf + C[m * N + n + i].ToFloat() * betaf);
+          C[m * ldc + n + i] = MLAS_FP16(accu * alphaf + C[m * ldc + n + i].ToFloat() * betaf);
         }
       }
     }
@@ -452,13 +494,25 @@ class MlasNeonHGemmPackedBTest : public MlasTestBase {
   }
 
   template <size_t M, size_t K, size_t N>
-  MLAS_FORCEINLINE void Check(const MLAS_FP16* C, const MLAS_FP16* ref) {
-    size_t n = M * N;
-    for (size_t i = 0; i < n; ++i) {
-      ASSERT_TRUE(FloatEqual(C[i], ref[i], 0.02f, 0.055f))
-          << " seed " << seed_ << " i " << i
-          << " M " << M << " K " << K << " N " << N
-          << " v0 " << C[i] << " v1 " << ref[i];
+  MLAS_FORCEINLINE void Check(const MLAS_FP16* C, const MLAS_FP16* ref, const size_t ldc) {
+    for (size_t i = 0; i < M; ++i) {
+      for (size_t j = 0; j < N; ++j) {
+        size_t k = i * ldc + j;
+        ASSERT_TRUE(FloatEqual(C[k], ref[k], 0.02f, 0.055f))
+            << " seed " << seed_ << " i " << i << " j " << j
+            << " M " << M << " K " << K << " N " << N
+            << " value " << C[k] << " ref " << ref[k];
+      }
+    }
+  }
+
+  template <size_t M, size_t K, size_t N>
+  MLAS_FORCEINLINE void Copy(const MLAS_FP16* C, MLAS_FP16* ref, const size_t ldc) {
+    for (size_t i = 0; i < M; ++i) {
+      for (size_t j = 0; j < N; ++j) {
+        size_t k = i * ldc + j;
+        ref[k] = C[k];
+      }
     }
   }
 
@@ -470,13 +524,16 @@ class MlasNeonHGemmPackedBTest : public MlasTestBase {
       }
     };
 
-    const auto* A = A_.GetFilledBuffer(M * K, InitializeBuffer);
+    const size_t lda = ((K + 7) & ~7) + 8;
+    const size_t ldc = ((N + 7) & ~7);
+    const auto* A = A_.GetFilledBuffer(M * lda, InitializeBuffer);
     const auto* B = B_.GetFilledBuffer(K * ((N + 7) & ~7), InitializeBuffer);
-    auto* C = C_.GetBuffer(M * N, true);
-    auto* ref = ref_.GetBuffer(M * N, true);
-    hgemm_neon::HGemm_PackedB_Kernel(A, B, C, M, N, K, K, N, alpha.val, beta.val);
-    HGemm<M, K, N>(A, B, ref, alpha, beta);
-    Check<M, K, N>(C, ref);
+    auto* C = C_.GetFilledBuffer(M * ldc, InitializeBuffer);
+    auto* ref = ref_.GetBuffer(M * ldc, true);
+    Copy<M, K, N>(C, ref, ldc);
+    hgemm_neon::HGemm_PackedB_Kernel(A, B, C, M, N, K, lda, ldc, alpha.val, beta.val);
+    HGemm<M, K, N>(A, B, ref, alpha, beta, lda, ldc);
+    Check<M, K, N>(C, ref, ldc);
   }
 
  public:
@@ -512,16 +569,17 @@ class MlasNeonHGemmTest : public MlasTestBase {
   MatrixGuardBuffer<MLAS_FP16> A_, B_, ref_, C_;
 
   template <size_t M, size_t K, size_t N, bool transA, bool transB>
-  MLAS_FORCEINLINE void HGemm(const MLAS_FP16* A, const MLAS_FP16* B, MLAS_FP16* C, MLAS_FP16 alpha, MLAS_FP16 beta) {
+  MLAS_FORCEINLINE void HGemm(const MLAS_FP16* A, const MLAS_FP16* B, MLAS_FP16* C, MLAS_FP16 alpha, MLAS_FP16 beta,
+                              size_t lda, size_t ldb, size_t ldc) {
     float alphaf = alpha.ToFloat();
     float betaf = beta.ToFloat();
     for (size_t i = 0; i < M; ++i) {
       for (size_t j = 0; j < N; ++j) {
         float accu = 0.0f;
         for (size_t k = 0; k < K; ++k) {
-          accu += (A[transA ? k * M + i : i * K + k].ToFloat()) * (B[transB ? j * K + k : k * N + j].ToFloat());
+          accu += (A[transA ? k * lda + i : i * lda + k].ToFloat()) * (B[transB ? j * ldb + k : k * ldb + j].ToFloat());
         }
-        C[i * N + j] = MLAS_FP16(accu * alphaf + C[i * N + j].ToFloat() * betaf);
+        C[i * ldc + j] = MLAS_FP16(accu * alphaf + C[i * ldc + j].ToFloat() * betaf);
       }
     }
   }
@@ -533,13 +591,22 @@ class MlasNeonHGemmTest : public MlasTestBase {
   }
 
   template <size_t M, size_t K, size_t N>
-  MLAS_FORCEINLINE void Check(const MLAS_FP16* C, const MLAS_FP16* ref) {
+  MLAS_FORCEINLINE void Check(const MLAS_FP16* C, const MLAS_FP16* ref, const size_t ldc) {
     for (size_t i = 0; i < M; ++i) {
       for (size_t j = 0; j < N; ++j) {
-        ASSERT_TRUE(FloatEqual(C[i * N + j], ref[i * N + j], 0.02f, 0.055f))
+        ASSERT_TRUE(FloatEqual(C[i * ldc + j], ref[i * ldc + j], 0.02f, 0.055f))
             << " seed " << seed_ << " i " << i << " j " << j
             << " M " << M << " K " << K << " N " << N
-            << " v0 " << C[i * N + j] << " v1 " << ref[i * N + j];
+            << " value " << C[i * ldc + j] << " ref " << ref[i * ldc + j];
+      }
+    }
+  }
+
+  template <size_t M, size_t K, size_t N>
+  MLAS_FORCEINLINE void Copy(const MLAS_FP16* C, MLAS_FP16* ref, const size_t ldc) {
+    for (size_t i = 0; i < M; ++i) {
+      for (size_t j = 0; j < N; ++j) {
+        ref[i * ldc + j] = C[i * ldc + j];
       }
     }
   }
@@ -552,14 +619,18 @@ class MlasNeonHGemmTest : public MlasTestBase {
       }
     };
 
-    const auto* A = A_.GetFilledBuffer(M * K, InitializeBuffer);
-    const auto* B = B_.GetFilledBuffer(K * N, InitializeBuffer);
-    auto* C = C_.GetBuffer(M * N, true);
-    auto* ref = ref_.GetBuffer(M * N, true);
+    const size_t lda = transA ? (M + 15) & (~15) : (K + 15) & (~15);
+    const size_t ldb = transB ? (K + 7) & (~7) : (N + 15) & (~15);
+    const size_t ldc = (N + 7) & (~7);
+    const auto* A = A_.GetFilledBuffer(transA ? lda * K : M * lda, InitializeBuffer);
+    const auto* B = B_.GetFilledBuffer(transB ? ldb * N : K * ldb, InitializeBuffer);
+    auto* C = C_.GetFilledBuffer(M * ldc, InitializeBuffer);
+    auto* ref = ref_.GetBuffer(M * ldc, true);
+    Copy<M, K, N>(C, ref, ldc);
     MlasGemm(transA ? CblasTrans : CblasNoTrans, transB ? CblasTrans : CblasNoTrans,
-             M, N, K, A, transA ? M : K, B, transB ? K : N, C, N, alpha.val, beta.val, nullptr);
-    HGemm<M, K, N, transA, transB>(A, B, ref, alpha, beta);
-    Check<M, K, N>(C, ref);
+             M, N, K, A, lda, B, ldb, C, ldc, alpha.val, beta.val, nullptr);
+    HGemm<M, K, N, transA, transB>(A, B, ref, alpha, beta, lda, ldb, ldc);
+    Check<M, K, N>(C, ref, ldc);
   }
 
  public:

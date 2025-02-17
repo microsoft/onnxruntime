@@ -30,7 +30,10 @@ void HPackB_TransposedB_Kernel(
 ) {
     const _mlas_fp16_* B_data = reinterpret_cast<const _mlas_fp16_*>(B);
     _mlas_fp16_* PackedB_data = reinterpret_cast<_mlas_fp16_*>(PackedB);
-
+    const bool Kr0 = (CountK % 4) > 0;
+    const bool Kr1 = (CountK % 4) > 1;
+    const bool Kr2 = (CountK % 4) > 2;
+    const bool Kr3 = CountK & 4;
     for (; CountN >= 32; CountN -= 32, B_data += 32 * ldb) {
         const _mlas_fp16_* b = B_data;
         size_t k = CountK;
@@ -76,7 +79,7 @@ void HPackB_TransposedB_Kernel(
             MlasStoreFloat16x8(PackedB_data + basep + 224, v7);
         }
 
-        if (k & 4) {
+        if (Kr3) {
             size_t baseb = 0;
             size_t basep = 0;
             float16x4_t v0 = MlasLoadFloat16x4(b);
@@ -120,7 +123,7 @@ void HPackB_TransposedB_Kernel(
             k -= 4, b += 4, PackedB_data += 4 * 32;
         }
 
-        if (k > 0) {
+        if (Kr0) {
             size_t baseb = 0;
             size_t basep = 0;
             float16x4_t v0 = MlasLoadPartialFloat16x4(b, k);
@@ -136,11 +139,11 @@ void HPackB_TransposedB_Kernel(
                 Transpose4x4(v4, v5, v6, v7);
                 MlasStoreFloat16x4(PackedB_data + basep, v0);
                 MlasStoreFloat16x4(PackedB_data + basep + 4, v4);
-                if (k > 1) {
+                if (Kr1) {
                     MlasStoreFloat16x4(PackedB_data + basep + 32, v1);
                     MlasStoreFloat16x4(PackedB_data + basep + 36, v5);
                 }
-                if (k > 2) {
+                if (Kr2) {
                     MlasStoreFloat16x4(PackedB_data + basep + 64, v2);
                     MlasStoreFloat16x4(PackedB_data + basep + 68, v6);
                 }
@@ -158,11 +161,11 @@ void HPackB_TransposedB_Kernel(
             Transpose4x4(v4, v5, v6, v7);
             MlasStoreFloat16x4(PackedB_data + basep, v0);
             MlasStoreFloat16x4(PackedB_data + basep + 4, v4);
-            if (k > 1) {
+            if (Kr1) {
                 MlasStoreFloat16x4(PackedB_data + basep + 32, v1);
                 MlasStoreFloat16x4(PackedB_data + basep + 36, v5);
             }
-            if (k > 2) {
+            if (Kr2) {
                 MlasStoreFloat16x4(PackedB_data + basep + 64, v2);
                 MlasStoreFloat16x4(PackedB_data + basep + 68, v6);
             }
@@ -212,7 +215,7 @@ void HPackB_TransposedB_Kernel(
             MlasStoreFloat16x8(PackedB_data + 120, vF);
         }
 
-        if (k & 4) {
+        if (Kr3) {
             float16x4_t v0 = MlasLoadFloat16x4(b);
             float16x4_t v1 = MlasLoadFloat16x4(b + ldb);
             float16x4_t v2 = MlasLoadFloat16x4(b + 2 * ldb);
@@ -253,7 +256,7 @@ void HPackB_TransposedB_Kernel(
             k -= 4, b += 4, PackedB_data += 4 * 16;
         }
 
-        if (k > 0) {
+        if (Kr0) {
             float16x4_t v0 = MlasLoadPartialFloat16x4(b, k);
             float16x4_t v1 = MlasLoadPartialFloat16x4(b + ldb, k);
             float16x4_t v2 = MlasLoadPartialFloat16x4(b + 2 * ldb, k);
@@ -278,13 +281,13 @@ void HPackB_TransposedB_Kernel(
             MlasStoreFloat16x4(PackedB_data + 4, v4);
             MlasStoreFloat16x4(PackedB_data + 8, v8);
             MlasStoreFloat16x4(PackedB_data + 12, vC);
-            if (k > 1) {
+            if (Kr1) {
                 MlasStoreFloat16x4(PackedB_data + 16, v1);
                 MlasStoreFloat16x4(PackedB_data + 20, v5);
                 MlasStoreFloat16x4(PackedB_data + 24, v9);
                 MlasStoreFloat16x4(PackedB_data + 28, vD);
             }
-            if (k > 2) {
+            if (Kr2) {
                 MlasStoreFloat16x4(PackedB_data + 32, v2);
                 MlasStoreFloat16x4(PackedB_data + 36, v6);
                 MlasStoreFloat16x4(PackedB_data + 40, vA);
@@ -322,7 +325,7 @@ void HPackB_TransposedB_Kernel(
             MlasStoreFloat16x8(PackedB_data + 56, v7);
         }
 
-        if (k & 4) {
+        if (Kr3) {
             float16x4_t v0 = MlasLoadFloat16x4(b);
             float16x4_t v1 = MlasLoadFloat16x4(b + ldb);
             float16x4_t v2 = MlasLoadFloat16x4(b + 2 * ldb);
@@ -344,7 +347,7 @@ void HPackB_TransposedB_Kernel(
             k -= 4, b += 4, PackedB_data += 4 * 8;
         }
 
-        if (k > 0) {
+        if (Kr0) {
             float16x4_t v0 = MlasLoadPartialFloat16x4(b, k);
             float16x4_t v1 = MlasLoadPartialFloat16x4(b + ldb, k);
             float16x4_t v2 = MlasLoadPartialFloat16x4(b + 2 * ldb, k);
@@ -357,11 +360,11 @@ void HPackB_TransposedB_Kernel(
             Transpose4x4(v4, v5, v6, v7);
             MlasStoreFloat16x4(PackedB_data, v0);
             MlasStoreFloat16x4(PackedB_data + 4, v4);
-            if (k > 1) {
+            if (Kr1) {
                 MlasStoreFloat16x4(PackedB_data + 8, v1);
                 MlasStoreFloat16x4(PackedB_data + 12, v5);
             }
-            if (k > 2) {
+            if (Kr2) {
                 MlasStoreFloat16x4(PackedB_data + 16, v2);
                 MlasStoreFloat16x4(PackedB_data + 20, v6);
             }
@@ -397,7 +400,7 @@ void HPackB_TransposedB_Kernel(
             MlasStoreFloat16x8(PackedB_data + 56, v[7]);
         }
 
-        if (k & 4) {
+        if (Kr3) {
             float16x4_t v[8];
             size_t i = 0;
             for (; i < CountN; ++i) {
@@ -419,7 +422,7 @@ void HPackB_TransposedB_Kernel(
             k -= 4, b += 4, PackedB_data += 4 * 8;
         }
 
-        if (k > 0) {
+        if (Kr0) {
             float16x4_t v[8];
             size_t i = 0;
             for (; i < CountN; ++i) {
@@ -432,11 +435,11 @@ void HPackB_TransposedB_Kernel(
             Transpose4x4(v[4], v[5], v[6], v[7]);
             MlasStoreFloat16x4(PackedB_data, v[0]);
             MlasStoreFloat16x4(PackedB_data + 4, v[4]);
-            if (k > 1) {
+            if (Kr1) {
                 MlasStoreFloat16x4(PackedB_data + 8, v[1]);
                 MlasStoreFloat16x4(PackedB_data + 12, v[5]);
             }
-            if (k > 2) {
+            if (Kr2) {
                 MlasStoreFloat16x4(PackedB_data + 16, v[2]);
                 MlasStoreFloat16x4(PackedB_data + 20, v[6]);
             }
@@ -591,6 +594,11 @@ void HGemm_TransposedB_Kernel_Impl(
     _mlas_fp16_ alpha,
     _mlas_fp16_ beta
 ) {
+    const bool largeK = CountK >= 8;
+    const bool Kr0 = (CountK & 3);
+    const bool Kr1 = (CountK & 3) > 1;
+    const bool Kr2 = (CountK & 3) > 2;
+    const bool Kr3 = (CountK & 4);
     for (; CountN >= 8; CountN -= 8, B_data += 8 * ldb, C_data += 8) {
         const auto* a = A_data;
         const auto* b = B_data;
@@ -614,7 +622,7 @@ void HGemm_TransposedB_Kernel_Impl(
             accu16 = MlasZeroFloat16x8();
             accu17 = MlasZeroFloat16x8();
         }
-        for (; k >= 8; k -= 8, a += 8, b += 8) {
+        if (largeK) {
             float16x8_t b0 = MlasLoadFloat16x8(b);
             float16x8_t b1 = MlasLoadFloat16x8(b + ldb);
             float16x8_t b2 = MlasLoadFloat16x8(b + 2 * ldb);
@@ -624,6 +632,36 @@ void HGemm_TransposedB_Kernel_Impl(
             float16x8_t b6 = MlasLoadFloat16x8(b + 6 * ldb);
             float16x8_t b7 = MlasLoadFloat16x8(b + 7 * ldb);
             float16x8_t a0 = MlasLoadFloat16x8(a);
+            for (; k >= 16; k -= 8, a += 8, b += 8) {
+                accu00 = vfmaq_f16(accu00, b0, a0);
+                accu01 = vfmaq_f16(accu01, b1, a0);
+                accu02 = vfmaq_f16(accu02, b2, a0);
+                accu03 = vfmaq_f16(accu03, b3, a0);
+                accu04 = vfmaq_f16(accu04, b4, a0);
+                accu05 = vfmaq_f16(accu05, b5, a0);
+                accu06 = vfmaq_f16(accu06, b6, a0);
+                accu07 = vfmaq_f16(accu07, b7, a0);
+                if constexpr (CountM == 2) {
+                    float16x8_t a1 = MlasLoadFloat16x8(a + lda);
+                    accu10 = vfmaq_f16(accu10, b0, a1);
+                    accu11 = vfmaq_f16(accu11, b1, a1);
+                    accu12 = vfmaq_f16(accu12, b2, a1);
+                    accu13 = vfmaq_f16(accu13, b3, a1);
+                    accu14 = vfmaq_f16(accu14, b4, a1);
+                    accu15 = vfmaq_f16(accu15, b5, a1);
+                    accu16 = vfmaq_f16(accu16, b6, a1);
+                    accu17 = vfmaq_f16(accu17, b7, a1);
+                }
+                b0 = MlasLoadFloat16x8(b + 8);
+                b1 = MlasLoadFloat16x8(b + 8 + ldb);
+                b2 = MlasLoadFloat16x8(b + 8 + 2 * ldb);
+                b3 = MlasLoadFloat16x8(b + 8 + 3 * ldb);
+                b4 = MlasLoadFloat16x8(b + 8 + 4 * ldb);
+                b5 = MlasLoadFloat16x8(b + 8 + 5 * ldb);
+                b6 = MlasLoadFloat16x8(b + 8 + 6 * ldb);
+                b7 = MlasLoadFloat16x8(b + 8 + 7 * ldb);
+                a0 = MlasLoadFloat16x8(a + 8);
+            }
             accu00 = vfmaq_f16(accu00, b0, a0);
             accu01 = vfmaq_f16(accu01, b1, a0);
             accu02 = vfmaq_f16(accu02, b2, a0);
@@ -643,7 +681,7 @@ void HGemm_TransposedB_Kernel_Impl(
                 accu16 = vfmaq_f16(accu16, b6, a1);
                 accu17 = vfmaq_f16(accu17, b7, a1);
             }
-
+            k -= 8, a += 8, b += 8;
         }
         Transpose8x8(accu00, accu01, accu02, accu03, accu04, accu05, accu06, accu07);
         accu00 = addq_f16x8(accu00, accu01, accu02, accu03, accu04, accu05, accu06, accu07);
@@ -652,7 +690,7 @@ void HGemm_TransposedB_Kernel_Impl(
             accu10 = addq_f16x8(accu10, accu11, accu12, accu13, accu14, accu15, accu16, accu17);
         }
 
-        if (k & 4) {
+        if (Kr3) {
             float16x4_t b0 = MlasLoadFloat16x4(b);
             float16x4_t b1 = MlasLoadFloat16x4(b + ldb);
             float16x4_t b2 = MlasLoadFloat16x4(b + 2 * ldb);
@@ -676,7 +714,7 @@ void HGemm_TransposedB_Kernel_Impl(
             k -= 4, a += 4, b += 4;
         }
 
-        if (k > 0) {
+        if (Kr0) {
             float16x4_t b0 = MlasLoadPartialFloat16x4(b, k);
             float16x4_t b1 = MlasLoadPartialFloat16x4(b + ldb, k);
             float16x4_t b2 = MlasLoadPartialFloat16x4(b + 2 * ldb, k);
@@ -694,14 +732,14 @@ void HGemm_TransposedB_Kernel_Impl(
                 a1 = MlasLoadPartialFloat16x4(a + lda, k);
                 accu10 = vfmaq_lane_f16(accu10, v0, a1, 0);
             }
-            if (k > 1) {
+            if (Kr1) {
                 float16x8_t v1 = vcombine_f16(b1, b5);
                 accu00 = vfmaq_lane_f16(accu00, v1, a0, 1);
                 if constexpr (CountM == 2) {
                     accu10 = vfmaq_lane_f16(accu10, v1, a1, 1);
                 }
             }
-            if (k > 2) {
+            if (Kr2) {
                 float16x8_t v2 = vcombine_f16(b2, b6);
                 accu00 = vfmaq_lane_f16(accu00, v2, a0, 2);
                 if constexpr (CountM == 2) {
@@ -757,12 +795,30 @@ void HGemm_TransposedB_Kernel_Impl(
             accu12 = MlasZeroFloat16x8();
             accu13 = MlasZeroFloat16x8();
         }
-        for (; k >= 8; k -= 8, a += 8, b += 8) {
+        if (largeK) {
             float16x8_t b0 = MlasLoadFloat16x8(b);
             float16x8_t b1 = MlasLoadFloat16x8(b + ldb);
             float16x8_t b2 = MlasLoadFloat16x8(b + 2 * ldb);
             float16x8_t b3 = MlasLoadFloat16x8(b + 3 * ldb);
             float16x8_t a0 = MlasLoadFloat16x8(a);
+            for (; k >= 16; k -= 8, a += 8, b += 8) {
+                accu00 = vfmaq_f16(accu00, b0, a0);
+                accu01 = vfmaq_f16(accu01, b1, a0);
+                accu02 = vfmaq_f16(accu02, b2, a0);
+                accu03 = vfmaq_f16(accu03, b3, a0);
+                if constexpr (CountM == 2) {
+                    float16x8_t a1 = MlasLoadFloat16x8(a + lda);
+                    accu10 = vfmaq_f16(accu10, b0, a1);
+                    accu11 = vfmaq_f16(accu11, b1, a1);
+                    accu12 = vfmaq_f16(accu12, b2, a1);
+                    accu13 = vfmaq_f16(accu13, b3, a1);
+                }
+                b0 = MlasLoadFloat16x8(b + 8);
+                b1 = MlasLoadFloat16x8(b + 8 + ldb);
+                b2 = MlasLoadFloat16x8(b + 8 + 2 * ldb);
+                b3 = MlasLoadFloat16x8(b + 8 + 3 * ldb);
+                a0 = MlasLoadFloat16x8(a + 8);
+            }
             accu00 = vfmaq_f16(accu00, b0, a0);
             accu01 = vfmaq_f16(accu01, b1, a0);
             accu02 = vfmaq_f16(accu02, b2, a0);
@@ -774,6 +830,7 @@ void HGemm_TransposedB_Kernel_Impl(
                 accu12 = vfmaq_f16(accu12, b2, a1);
                 accu13 = vfmaq_f16(accu13, b3, a1);
             }
+            k -= 8, a += 8, b += 8;
         }
         Transpose4x8(accu00, accu01, accu02, accu03);
         accu00 = addq_f16x4(accu00, accu01, accu02, accu03);
@@ -784,7 +841,7 @@ void HGemm_TransposedB_Kernel_Impl(
             accu1 = vadd_f16(vget_low_f16(accu10), vget_high_f16(accu10));
         }
 
-        if (k & 4) {
+        if (Kr3) {
             float16x4_t b0 = MlasLoadFloat16x4(b);
             float16x4_t b1 = MlasLoadFloat16x4(b + ldb);
             float16x4_t b2 = MlasLoadFloat16x4(b + 2 * ldb);
@@ -799,7 +856,7 @@ void HGemm_TransposedB_Kernel_Impl(
             k -= 4, a += 4, b += 4;
         }
 
-        if (k > 0) {
+        if (Kr0) {
             float16x4_t b0 = MlasLoadPartialFloat16x4(b, k);
             float16x4_t b1 = MlasLoadPartialFloat16x4(b + ldb, k);
             float16x4_t b2 = MlasLoadPartialFloat16x4(b + 2 * ldb, k);
@@ -811,13 +868,13 @@ void HGemm_TransposedB_Kernel_Impl(
                 a1 = MlasLoadPartialFloat16x4(a + lda, k);
                 accu1 = vfma_lane_f16(accu1, b0, a1, 0);
             }
-            if (k > 1) {
+            if (Kr1) {
                 accu0 = vfma_lane_f16(accu0, b1, a0, 1);
                 if constexpr (CountM == 2) {
                     accu1 = vfma_lane_f16(accu1, b1, a1, 1);
                 }
             }
-            if (k > 2) {
+            if (Kr2) {
                 accu0 = vfma_lane_f16(accu0, b2, a0, 2);
                 if constexpr (CountM == 2) {
                     accu1 = vfma_lane_f16(accu1, b2, a1, 2);
@@ -893,7 +950,7 @@ void HGemm_TransposedB_Kernel_Impl(
             accu_1 = vadd_f16(vget_low_f16(accu10), vget_high_f16(accu10));
         }
 
-        if (k & 4) {
+        if (Kr3) {
             float16x4_t bs[4];
             for (i = 0; i < CountN; ++i) {
                 bs[i] = MlasLoadFloat16x4(b + i * ldb);
@@ -911,7 +968,7 @@ void HGemm_TransposedB_Kernel_Impl(
             k -= 4, a += 4, b += 4;
         }
 
-        if (k > 0) {
+        if (Kr0) {
             float16x4_t bs[4];
             for (i = 0; i < CountN; ++i) {
                 bs[i] = MlasLoadPartialFloat16x4(b + i * ldb, k);
@@ -926,13 +983,13 @@ void HGemm_TransposedB_Kernel_Impl(
                 a1 = MlasLoadPartialFloat16x4(a + lda, k);
                 accu_1 = vfma_lane_f16(accu_1, bs[0], a1, 0);
             }
-            if (k > 1) {
+            if (Kr1) {
                 accu_0 = vfma_lane_f16(accu_0, bs[1], a0, 1);
                 if constexpr (CountM == 2) {
                     accu_1 = vfma_lane_f16(accu_1, bs[1], a1, 1);
                 }
             }
-            if (k > 2) {
+            if (Kr2) {
                 accu_0 = vfma_lane_f16(accu_0, bs[2], a0, 2);
                 if constexpr (CountM == 2) {
                     accu_1 = vfma_lane_f16(accu_1, bs[2], a1, 2);
@@ -1033,6 +1090,10 @@ void HGemm_B_Kernel_Complicated(
     float16x8_t beta_v8 = MlasBroadcastFloat16x8(beta);
     float16x4_t alpha_v4 = MlasBroadcastFloat16x4(alpha);
     float16x4_t beta_v4 = MlasBroadcastFloat16x4(beta);
+    const bool largeK = CountK >= 4;
+    const bool Kr0 = CountK & 3;
+    const bool Kr1 = (CountK & 3 ) > 1;
+    const bool Kr2 = (CountK & 3 ) > 2;
     for (; CountN >= 32; CountN -= 32, B_data += 32, C_data += 32) {
         const auto* a = A_data;
         const auto* b = B_data;
@@ -1048,7 +1109,7 @@ void HGemm_B_Kernel_Complicated(
             accu12 = MlasZeroFloat16x8();
             accu13 = MlasZeroFloat16x8();
         }
-        for (; k >= 4; k -= 4, a += 4, b += ldb4) {
+        if (largeK) {
             float16x4_t a0 = MlasLoadFloat16x4(a), a1;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadFloat16x4(a + lda);
@@ -1057,21 +1118,53 @@ void HGemm_B_Kernel_Complicated(
             float16x8_t b10 = MlasLoadFloat16x8(b + ldb);
             float16x8_t b20 = MlasLoadFloat16x8(b + 2 * ldb);
             float16x8_t b30 = MlasLoadFloat16x8(b + 3 * ldb);
-            accu00 = maq_lane_f16_accu(accu00, b00, b10, b20, b30, a0);
             float16x8_t b01 = MlasLoadFloat16x8(b + 8);
             float16x8_t b11 = MlasLoadFloat16x8(b + ldb + 8);
             float16x8_t b21 = MlasLoadFloat16x8(b + 2 * ldb + 8);
             float16x8_t b31 = MlasLoadFloat16x8(b + 3 * ldb + 8);
-            accu01 = maq_lane_f16_accu(accu01, b01, b11, b21, b31, a0);
             float16x8_t b02 = MlasLoadFloat16x8(b + 16);
             float16x8_t b12 = MlasLoadFloat16x8(b + ldb + 16);
             float16x8_t b22 = MlasLoadFloat16x8(b + 2 * ldb + 16);
             float16x8_t b32 = MlasLoadFloat16x8(b + 3 * ldb + 16);
-            accu02 = maq_lane_f16_accu(accu02, b02, b12, b22, b32, a0);
             float16x8_t b03 = MlasLoadFloat16x8(b + 24);
             float16x8_t b13 = MlasLoadFloat16x8(b + ldb + 24);
             float16x8_t b23 = MlasLoadFloat16x8(b + 2 * ldb + 24);
             float16x8_t b33 = MlasLoadFloat16x8(b + 3 * ldb + 24);
+            for (; k >= 8; k -= 4, a += 4, b += ldb4) {
+                accu00 = maq_lane_f16_accu(accu00, b00, b10, b20, b30, a0);
+                accu01 = maq_lane_f16_accu(accu01, b01, b11, b21, b31, a0);
+                accu02 = maq_lane_f16_accu(accu02, b02, b12, b22, b32, a0);
+                accu03 = maq_lane_f16_accu(accu03, b03, b13, b23, b33, a0);
+                if constexpr (CountM == 2) {
+                    accu10 = maq_lane_f16_accu(accu10, b00, b10, b20, b30, a1);
+                    accu11 = maq_lane_f16_accu(accu11, b01, b11, b21, b31, a1);
+                    accu12 = maq_lane_f16_accu(accu12, b02, b12, b22, b32, a1);
+                    accu13 = maq_lane_f16_accu(accu13, b03, b13, b23, b33, a1);
+                }
+                a0 = MlasLoadFloat16x4(a + 4);
+                if constexpr (CountM == 2) {
+                    a1 = MlasLoadFloat16x4(a + 4 + lda);
+                }
+                b00 = MlasLoadFloat16x8(b + ldb4);
+                b10 = MlasLoadFloat16x8(b + 5 * ldb);
+                b20 = MlasLoadFloat16x8(b + 6 * ldb);
+                b30 = MlasLoadFloat16x8(b + 7 * ldb);
+                b01 = MlasLoadFloat16x8(b + ldb4 + 8);
+                b11 = MlasLoadFloat16x8(b + 5 * ldb + 8);
+                b21 = MlasLoadFloat16x8(b + 6 * ldb + 8);
+                b31 = MlasLoadFloat16x8(b + 7 * ldb + 8);
+                b02 = MlasLoadFloat16x8(b + ldb4 + 16);
+                b12 = MlasLoadFloat16x8(b + 5 * ldb + 16);
+                b22 = MlasLoadFloat16x8(b + 6 * ldb + 16);
+                b32 = MlasLoadFloat16x8(b + 7 * ldb + 16);
+                b03 = MlasLoadFloat16x8(b + ldb4 + 24);
+                b13 = MlasLoadFloat16x8(b + 5 * ldb + 24);
+                b23 = MlasLoadFloat16x8(b + 6 * ldb + 24);
+                b33 = MlasLoadFloat16x8(b + 7 * ldb + 24);
+            }
+            accu00 = maq_lane_f16_accu(accu00, b00, b10, b20, b30, a0);
+            accu01 = maq_lane_f16_accu(accu01, b01, b11, b21, b31, a0);
+            accu02 = maq_lane_f16_accu(accu02, b02, b12, b22, b32, a0);
             accu03 = maq_lane_f16_accu(accu03, b03, b13, b23, b33, a0);
             if constexpr (CountM == 2) {
                 accu10 = maq_lane_f16_accu(accu10, b00, b10, b20, b30, a1);
@@ -1079,9 +1172,10 @@ void HGemm_B_Kernel_Complicated(
                 accu12 = maq_lane_f16_accu(accu12, b02, b12, b22, b32, a1);
                 accu13 = maq_lane_f16_accu(accu13, b03, b13, b23, b33, a1);
             }
+            k -= 4, a += 4, b += ldb4;
         }
 
-        if (k > 0) {
+        if (Kr0) {
             float16x4_t a0 = MlasLoadPartialFloat16x4(a, k), a1;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadPartialFloat16x4(a + lda, k);
@@ -1100,7 +1194,7 @@ void HGemm_B_Kernel_Complicated(
                 accu12 = vfmaq_lane_f16(accu12, b02, a1, 0);
                 accu13 = vfmaq_lane_f16(accu13, b03, a1, 0);
             }
-            if (k > 1) {
+            if (Kr1) {
                 float16x8_t b10 = MlasLoadFloat16x8(b + ldb);
                 float16x8_t b11 = MlasLoadFloat16x8(b + ldb + 8);
                 float16x8_t b12 = MlasLoadFloat16x8(b + ldb + 16);
@@ -1116,7 +1210,7 @@ void HGemm_B_Kernel_Complicated(
                     accu13 = vfmaq_lane_f16(accu13, b13, a1, 1);
                 }
             }
-            if (k > 2) {
+            if (Kr2) {
                 float16x8_t b20 = MlasLoadFloat16x8(b + 2 * ldb);
                 float16x8_t b21 = MlasLoadFloat16x8(b + 2 * ldb + 8);
                 float16x8_t b22 = MlasLoadFloat16x8(b + 2 * ldb + 16);
@@ -1165,7 +1259,7 @@ void HGemm_B_Kernel_Complicated(
             accu10 = MlasZeroFloat16x8();
             accu11 = MlasZeroFloat16x8();
         }
-        for (; k >= 4; k -= 4, a += 4, b += ldb4) {
+        if (largeK) {
             float16x4_t a0 = MlasLoadFloat16x4(a), a1;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadFloat16x4(a + lda);
@@ -1174,19 +1268,41 @@ void HGemm_B_Kernel_Complicated(
             float16x8_t b10 = MlasLoadFloat16x8(b + ldb);
             float16x8_t b20 = MlasLoadFloat16x8(b + 2 * ldb);
             float16x8_t b30 = MlasLoadFloat16x8(b + 3 * ldb);
-            accu00 = maq_lane_f16_accu(accu00, b00, b10, b20, b30, a0);
             float16x8_t b01 = MlasLoadFloat16x8(b + 8);
             float16x8_t b11 = MlasLoadFloat16x8(b + ldb + 8);
             float16x8_t b21 = MlasLoadFloat16x8(b + 2 * ldb + 8);
             float16x8_t b31 = MlasLoadFloat16x8(b + 3 * ldb + 8);
+            for (; k >= 8; k -= 4, a += 4, b += ldb4) {
+                accu00 = maq_lane_f16_accu(accu00, b00, b10, b20, b30, a0);
+                accu01 = maq_lane_f16_accu(accu01, b01, b11, b21, b31, a0);
+                if constexpr (CountM == 2) {
+                    accu10 = maq_lane_f16_accu(accu10, b00, b10, b20, b30, a1);
+                    accu11 = maq_lane_f16_accu(accu11, b01, b11, b21, b31, a1);
+                }
+                a0 = MlasLoadFloat16x4(a + 4);
+                if constexpr (CountM == 2) {
+                    a1 = MlasLoadFloat16x4(a + 4 + lda);
+                }
+                b00 = MlasLoadFloat16x8(b + ldb4);
+                b10 = MlasLoadFloat16x8(b + 5 * ldb);
+                b20 = MlasLoadFloat16x8(b + 6 * ldb);
+                b30 = MlasLoadFloat16x8(b + 7 * ldb);
+                b01 = MlasLoadFloat16x8(b + ldb4 + 8);
+                b11 = MlasLoadFloat16x8(b + 5 * ldb + 8);
+                b21 = MlasLoadFloat16x8(b + 6 * ldb + 8);
+                b31 = MlasLoadFloat16x8(b + 7 * ldb + 8);
+
+            }
+            accu00 = maq_lane_f16_accu(accu00, b00, b10, b20, b30, a0);
             accu01 = maq_lane_f16_accu(accu01, b01, b11, b21, b31, a0);
             if constexpr (CountM == 2) {
                 accu10 = maq_lane_f16_accu(accu10, b00, b10, b20, b30, a1);
                 accu11 = maq_lane_f16_accu(accu11, b01, b11, b21, b31, a1);
             }
+            k -= 4, a += 4, b += ldb4;
         }
 
-        if (k > 0) {
+        if (Kr0) {
             float16x4_t a0 = MlasLoadPartialFloat16x4(a, k), a1;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadPartialFloat16x4(a + lda, k);
@@ -1199,7 +1315,7 @@ void HGemm_B_Kernel_Complicated(
                 accu10 = vfmaq_lane_f16(accu10, b00, a1, 0);
                 accu11 = vfmaq_lane_f16(accu11, b01, a1, 0);
             }
-            if (k > 1) {
+            if (Kr1) {
                 float16x8_t b10 = MlasLoadFloat16x8(b + ldb);
                 float16x8_t b11 = MlasLoadFloat16x8(b + ldb + 8);
                 accu00 = vfmaq_lane_f16(accu00, b10, a0, 1);
@@ -1209,7 +1325,7 @@ void HGemm_B_Kernel_Complicated(
                     accu11 = vfmaq_lane_f16(accu11, b11, a1, 1);
                 }
             }
-            if (k > 2) {
+            if (Kr2) {
                 float16x8_t b20 = MlasLoadFloat16x8(b + 2 * ldb);
                 float16x8_t b21 = MlasLoadFloat16x8(b + 2 * ldb + 8);
                 accu00 = vfmaq_lane_f16(accu00, b20, a0, 2);
@@ -1244,7 +1360,7 @@ void HGemm_B_Kernel_Complicated(
         if constexpr (CountM == 2) {
             accu10 = MlasZeroFloat16x8();
         }
-        for (; k >= 4; k -= 4, a += 4, b += ldb4) {
+        if (largeK) {
             float16x4_t a0 = MlasLoadFloat16x4(a), a1;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadFloat16x4(a + lda);
@@ -1253,13 +1369,28 @@ void HGemm_B_Kernel_Complicated(
             float16x8_t b10 = MlasLoadFloat16x8(b + ldb);
             float16x8_t b20 = MlasLoadFloat16x8(b + 2 * ldb);
             float16x8_t b30 = MlasLoadFloat16x8(b + 3 * ldb);
+            for (; k >= 8; k -= 4, a += 4, b += ldb4) {
+                accu00 = maq_lane_f16_accu(accu00, b00, b10, b20, b30, a0);
+                if constexpr (CountM == 2) {
+                    accu10 = maq_lane_f16_accu(accu10, b00, b10, b20, b30, a1);
+                }
+                a0 = MlasLoadFloat16x4(a + 4);
+                if constexpr (CountM == 2) {
+                    a1 = MlasLoadFloat16x4(a + 4 + lda);
+                }
+                b00 = MlasLoadFloat16x8(b + ldb4);
+                b10 = MlasLoadFloat16x8(b + 5 * ldb);
+                b20 = MlasLoadFloat16x8(b + 6 * ldb);
+                b30 = MlasLoadFloat16x8(b + 7 * ldb);
+            }
             accu00 = maq_lane_f16_accu(accu00, b00, b10, b20, b30, a0);
             if constexpr (CountM == 2) {
                 accu10 = maq_lane_f16_accu(accu10, b00, b10, b20, b30, a1);
             }
+            k -= 4, a += 4, b += ldb4;
         }
 
-        if (k > 0) {
+        if (Kr0) {
             float16x4_t a0 = MlasLoadPartialFloat16x4(a, k), a1;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadPartialFloat16x4(a + lda, k);
@@ -1269,14 +1400,14 @@ void HGemm_B_Kernel_Complicated(
             if constexpr (CountM == 2) {
                 accu10 = vfmaq_lane_f16(accu10, b00, a1, 0);
             }
-            if (k > 1) {
+            if (Kr1) {
                 float16x8_t b10 = MlasLoadFloat16x8(b + ldb);
                 accu00 = vfmaq_lane_f16(accu00, b10, a0, 1);
                 if constexpr (CountM == 2) {
                     accu10 = vfmaq_lane_f16(accu10, b10, a1, 1);
                 }
             }
-            if (k > 2) {
+            if (Kr2) {
                 float16x8_t b20 = MlasLoadFloat16x8(b + 2 * ldb);
                 accu00 = vfmaq_lane_f16(accu00, b20, a0, 2);
                 if constexpr (CountM == 2) {
@@ -1304,7 +1435,7 @@ void HGemm_B_Kernel_Complicated(
         if constexpr (CountM == 2) {
             accu10 = MlasZeroFloat16x4();
         }
-        for (; k >= 4; k -= 4, a += 4, b += ldb4) {
+        if (largeK) {
             float16x4_t a0 = MlasLoadFloat16x4(a), a1;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadFloat16x4(a + lda);
@@ -1313,13 +1444,28 @@ void HGemm_B_Kernel_Complicated(
             float16x4_t b10 = MlasLoadFloat16x4(b + ldb);
             float16x4_t b20 = MlasLoadFloat16x4(b + 2 * ldb);
             float16x4_t b30 = MlasLoadFloat16x4(b + 3 * ldb);
+            for (; k >= 8; k -= 4, a += 4, b += ldb4) {
+                accu00 = ma_lane_f16_accu(accu00, b00, b10, b20, b30, a0);
+                if constexpr (CountM == 2) {
+                    accu10 = ma_lane_f16_accu(accu10, b00, b10, b20, b30, a1);
+                }
+                a0 = MlasLoadFloat16x4(a + 4);
+                if constexpr (CountM == 2) {
+                    a1 = MlasLoadFloat16x4(a + 4 + lda);
+                }
+                b00 = MlasLoadFloat16x4(b + ldb4);
+                b10 = MlasLoadFloat16x4(b + 5 * ldb);
+                b20 = MlasLoadFloat16x4(b + 6 * ldb);
+                b30 = MlasLoadFloat16x4(b + 7 * ldb);
+            }
             accu00 = ma_lane_f16_accu(accu00, b00, b10, b20, b30, a0);
             if constexpr (CountM == 2) {
                 accu10 = ma_lane_f16_accu(accu10, b00, b10, b20, b30, a1);
             }
+            k -= 4, a += 4, b += ldb4;
         }
 
-        if (k > 0) {
+        if (Kr0) {
             float16x4_t a0 = MlasLoadPartialFloat16x4(a, k), a1;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadPartialFloat16x4(a + lda, k);
@@ -1329,14 +1475,14 @@ void HGemm_B_Kernel_Complicated(
             if constexpr (CountM == 2) {
                 accu10 = vfma_lane_f16(accu10, b00, a1, 0);
             }
-            if (k > 1) {
+            if (Kr1) {
                 float16x4_t b10 = MlasLoadFloat16x4(b + ldb);
                 accu00 = vfma_lane_f16(accu00, b10, a0, 1);
                 if constexpr (CountM == 2) {
                     accu10 = vfma_lane_f16(accu10, b10, a1, 1);
                 }
             }
-            if (k > 2) {
+            if (Kr2) {
                 float16x4_t b20 = MlasLoadFloat16x4(b + 2 * ldb);
                 accu00 = vfma_lane_f16(accu00, b20, a0, 2);
                 if constexpr (CountM == 2) {
@@ -1364,7 +1510,7 @@ void HGemm_B_Kernel_Complicated(
         if constexpr (CountM == 2) {
             accu10 = MlasZeroFloat16x4();
         }
-        for (; k >= 4; k -= 4, a += 4, b += ldb4) {
+        if (largeK) {
             float16x4_t a0 = MlasLoadFloat16x4(a), a1;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadFloat16x4(a + lda);
@@ -1373,13 +1519,28 @@ void HGemm_B_Kernel_Complicated(
             float16x4_t b10 = MlasLoadPartialFloat16x4(b + ldb, CountN);
             float16x4_t b20 = MlasLoadPartialFloat16x4(b + 2 * ldb, CountN);
             float16x4_t b30 = MlasLoadPartialFloat16x4(b + 3 * ldb, CountN);
+            for (; k >= 8; k -= 4, a += 4, b += ldb4) {
+                accu00 = ma_lane_f16_accu(accu00, b00, b10, b20, b30, a0);
+                if constexpr (CountM == 2) {
+                    accu10 = ma_lane_f16_accu(accu10, b00, b10, b20, b30, a1);
+                }
+                a0 = MlasLoadFloat16x4(a + 4);
+                if constexpr (CountM == 2) {
+                    a1 = MlasLoadFloat16x4(a + 4 + lda);
+                }
+                b00 = MlasLoadPartialFloat16x4(b + ldb4, CountN);
+                b10 = MlasLoadPartialFloat16x4(b + 5 * ldb, CountN);
+                b20 = MlasLoadPartialFloat16x4(b + 6 * ldb, CountN);
+                b30 = MlasLoadPartialFloat16x4(b + 7 * ldb, CountN);
+            }
             accu00 = ma_lane_f16_accu(accu00, b00, b10, b20, b30, a0);
             if constexpr (CountM == 2) {
                 accu10 = ma_lane_f16_accu(accu10, b00, b10, b20, b30, a1);
             }
+            k -= 4, a += 4, b += ldb4;
         }
 
-        if (k > 0) {
+        if (Kr0) {
             float16x4_t a0 = MlasLoadPartialFloat16x4(a, k), a1;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadPartialFloat16x4(a + lda, k);
@@ -1389,14 +1550,14 @@ void HGemm_B_Kernel_Complicated(
             if constexpr (CountM == 2) {
                 accu10 = vfma_lane_f16(accu10, b00, a1, 0);
             }
-            if (k > 1) {
+            if (Kr1) {
                 float16x4_t b10 = MlasLoadPartialFloat16x4(b + ldb, CountN);
                 accu00 = vfma_lane_f16(accu00, b10, a0, 1);
                 if constexpr (CountM == 2) {
                     accu10 = vfma_lane_f16(accu10, b10, a1, 1);
                 }
             }
-            if (k > 2) {
+            if (Kr2) {
                 float16x4_t b20 = MlasLoadPartialFloat16x4(b + 2 * ldb, CountN);
                 accu00 = vfma_lane_f16(accu00, b20, a0, 2);
                 if constexpr (CountM == 2) {
@@ -1427,6 +1588,10 @@ void HGemm_B_Kernel_Simple(
     size_t ldc
 ) {
     const size_t ldb4 = ldb * 4;
+    const bool largeN = CountN >= 32;
+    const bool Nr0 = (CountN % 4) > 0;
+    const bool Kr1 = (CountK % 4) > 1;
+    const bool Kr2 = (CountK % 4) > 2;
     if constexpr (zero_mode) {
         // process first K
         if (CountK >= 4) {
@@ -1437,11 +1602,7 @@ void HGemm_B_Kernel_Simple(
             size_t n = CountN;
             const auto* b = B_data;
             auto* c = C_data;
-            for (; n >= 32; n -= 32, b += 32, c += 32) {
-                float16x8_t accu00 = MlasZeroFloat16x8();
-                float16x8_t accu01 = MlasZeroFloat16x8();
-                float16x8_t accu02 = MlasZeroFloat16x8();
-                float16x8_t accu03 = MlasZeroFloat16x8();
+            if (largeN) {
                 float16x8_t b00 = MlasLoadFloat16x8(b);
                 float16x8_t b10 = MlasLoadFloat16x8(b + ldb);
                 float16x8_t b20 = MlasLoadFloat16x8(b + 2 * ldb);
@@ -1458,6 +1619,54 @@ void HGemm_B_Kernel_Simple(
                 float16x8_t b13 = MlasLoadFloat16x8(b + ldb + 24);
                 float16x8_t b23 = MlasLoadFloat16x8(b + 2 * ldb + 24);
                 float16x8_t b33 = MlasLoadFloat16x8(b + 3 * ldb + 24);
+                for (; n >= 64; n -= 32, b += 32, c += 32) {
+                    float16x8_t accu00 = MlasZeroFloat16x8();
+                    float16x8_t accu01 = MlasZeroFloat16x8();
+                    float16x8_t accu02 = MlasZeroFloat16x8();
+                    float16x8_t accu03 = MlasZeroFloat16x8();
+                    accu00 = maq_lane_f16_accu(accu00, b00, b10, b20, b30, a0);
+                    accu01 = maq_lane_f16_accu(accu01, b01, b11, b21, b31, a0);
+                    accu02 = maq_lane_f16_accu(accu02, b02, b12, b22, b32, a0);
+                    accu03 = maq_lane_f16_accu(accu03, b03, b13, b23, b33, a0);
+                    MlasStoreFloat16x8(c, accu00);
+                    MlasStoreFloat16x8(c + 8, accu01);
+                    MlasStoreFloat16x8(c + 16, accu02);
+                    MlasStoreFloat16x8(c + 24, accu03);
+                    if constexpr (CountM == 2) {
+                        float16x8_t accu10 = MlasZeroFloat16x8();
+                        float16x8_t accu11 = MlasZeroFloat16x8();
+                        float16x8_t accu12 = MlasZeroFloat16x8();
+                        float16x8_t accu13 = MlasZeroFloat16x8();
+                        accu10 = maq_lane_f16_accu(accu10, b00, b10, b20, b30, a1);
+                        accu11 = maq_lane_f16_accu(accu11, b01, b11, b21, b31, a1);
+                        accu12 = maq_lane_f16_accu(accu12, b02, b12, b22, b32, a1);
+                        accu13 = maq_lane_f16_accu(accu13, b03, b13, b23, b33, a1);
+                        MlasStoreFloat16x8(c + ldc, accu10);
+                        MlasStoreFloat16x8(c + ldc + 8, accu11);
+                        MlasStoreFloat16x8(c + ldc + 16, accu12);
+                        MlasStoreFloat16x8(c + ldc + 24, accu13);
+                    }
+                    b00 = MlasLoadFloat16x8(b + 32);
+                    b10 = MlasLoadFloat16x8(b + ldb + 32);
+                    b20 = MlasLoadFloat16x8(b + 2 * ldb + 32);
+                    b30 = MlasLoadFloat16x8(b + 3 * ldb + 32);
+                    b01 = MlasLoadFloat16x8(b + 40);
+                    b11 = MlasLoadFloat16x8(b + ldb + 40);
+                    b21 = MlasLoadFloat16x8(b + 2 * ldb + 40);
+                    b31 = MlasLoadFloat16x8(b + 3 * ldb + 40);
+                    b02 = MlasLoadFloat16x8(b + 48);
+                    b12 = MlasLoadFloat16x8(b + ldb + 48);
+                    b22 = MlasLoadFloat16x8(b + 2 * ldb + 48);
+                    b32 = MlasLoadFloat16x8(b + 3 * ldb + 48);
+                    b03 = MlasLoadFloat16x8(b + 56);
+                    b13 = MlasLoadFloat16x8(b + ldb + 56);
+                    b23 = MlasLoadFloat16x8(b + 2 * ldb + 56);
+                    b33 = MlasLoadFloat16x8(b + 3 * ldb + 56);
+                }
+                float16x8_t accu00 = MlasZeroFloat16x8();
+                float16x8_t accu01 = MlasZeroFloat16x8();
+                float16x8_t accu02 = MlasZeroFloat16x8();
+                float16x8_t accu03 = MlasZeroFloat16x8();
                 accu00 = maq_lane_f16_accu(accu00, b00, b10, b20, b30, a0);
                 accu01 = maq_lane_f16_accu(accu01, b01, b11, b21, b31, a0);
                 accu02 = maq_lane_f16_accu(accu02, b02, b12, b22, b32, a0);
@@ -1480,6 +1689,7 @@ void HGemm_B_Kernel_Simple(
                     MlasStoreFloat16x8(c + ldc + 16, accu12);
                     MlasStoreFloat16x8(c + ldc + 24, accu13);
                 }
+                n -= 32, b += 32, c += 32;
             }
             if (n & 16) {
                 float16x8_t accu00 = MlasZeroFloat16x8();
@@ -1536,7 +1746,7 @@ void HGemm_B_Kernel_Simple(
                 }
                 n -= 4, b += 4, c += 4;
             }
-            if (n > 0) {
+            if (Nr0) {
                 float16x4_t accu00 = MlasZeroFloat16x4();
                 float16x4_t b0 = MlasLoadPartialFloat16x4(b, n);
                 float16x4_t b1 = MlasLoadPartialFloat16x4(b + ldb, n);
@@ -1559,7 +1769,104 @@ void HGemm_B_Kernel_Simple(
             size_t n = CountN;
             const auto* b = B_data;
             auto* c = C_data;
-            for (; n >= 32; n -= 32, b += 32, c += 32) {
+            if (largeN) {
+                float16x8_t b00 = MlasLoadFloat16x8(b);
+                float16x8_t b01 = MlasLoadFloat16x8(b + 8);
+                float16x8_t b02 = MlasLoadFloat16x8(b + 16);
+                float16x8_t b03 = MlasLoadFloat16x8(b + 24);
+                float16x8_t b10 = MlasZeroFloat16x8();
+                float16x8_t b11 = MlasZeroFloat16x8();
+                float16x8_t b12 = MlasZeroFloat16x8();
+                float16x8_t b13 = MlasZeroFloat16x8();
+                float16x8_t b20 = MlasZeroFloat16x8();
+                float16x8_t b21 = MlasZeroFloat16x8();
+                float16x8_t b22 = MlasZeroFloat16x8();
+                float16x8_t b23 = MlasZeroFloat16x8();
+                if (Kr1) {
+                    b10 = MlasLoadFloat16x8(b + ldb);
+                    b11 = MlasLoadFloat16x8(b + ldb + 8);
+                    b12 = MlasLoadFloat16x8(b + ldb + 16);
+                    b13 = MlasLoadFloat16x8(b + ldb + 24);
+                }
+                if (Kr2) {
+                    b20 = MlasLoadFloat16x8(b + 2 * ldb);
+                    b21 = MlasLoadFloat16x8(b + 2 * ldb + 8);
+                    b22 = MlasLoadFloat16x8(b + 2 * ldb + 16);
+                    b23 = MlasLoadFloat16x8(b + 2 * ldb + 24);
+                }
+                for (; n >= 64; n -= 32, b += 32, c += 32) {
+                    float16x8_t accu00 = MlasZeroFloat16x8();
+                    float16x8_t accu01 = MlasZeroFloat16x8();
+                    float16x8_t accu02 = MlasZeroFloat16x8();
+                    float16x8_t accu03 = MlasZeroFloat16x8();
+                    float16x8_t accu10, accu11, accu12, accu13;
+                    if constexpr (CountM == 2) {
+                        accu10 = MlasZeroFloat16x8();
+                        accu11 = MlasZeroFloat16x8();
+                        accu12 = MlasZeroFloat16x8();
+                        accu13 = MlasZeroFloat16x8();
+                    }
+                    accu00 = vfmaq_lane_f16(accu00, b00, a0, 0);
+                    accu01 = vfmaq_lane_f16(accu01, b01, a0, 0);
+                    accu02 = vfmaq_lane_f16(accu02, b02, a0, 0);
+                    accu03 = vfmaq_lane_f16(accu03, b03, a0, 0);
+                    if constexpr (CountM == 2) {
+                        accu10 = vfmaq_lane_f16(accu10, b00, a1, 0);
+                        accu11 = vfmaq_lane_f16(accu11, b01, a1, 0);
+                        accu12 = vfmaq_lane_f16(accu12, b02, a1, 0);
+                        accu13 = vfmaq_lane_f16(accu13, b03, a1, 0);
+                    }
+                    if (Kr1) {
+                        accu00 = vfmaq_lane_f16(accu00, b10, a0, 1);
+                        accu01 = vfmaq_lane_f16(accu01, b11, a0, 1);
+                        accu02 = vfmaq_lane_f16(accu02, b12, a0, 1);
+                        accu03 = vfmaq_lane_f16(accu03, b13, a0, 1);
+                        if constexpr (CountM == 2) {
+                            accu10 = vfmaq_lane_f16(accu10, b10, a1, 1);
+                            accu11 = vfmaq_lane_f16(accu11, b11, a1, 1);
+                            accu12 = vfmaq_lane_f16(accu12, b12, a1, 1);
+                            accu13 = vfmaq_lane_f16(accu13, b13, a1, 1);
+                        }
+                    }
+                    if (Kr2) {
+                        accu00 = vfmaq_lane_f16(accu00, b20, a0, 2);
+                        accu01 = vfmaq_lane_f16(accu01, b21, a0, 2);
+                        accu02 = vfmaq_lane_f16(accu02, b22, a0, 2);
+                        accu03 = vfmaq_lane_f16(accu03, b23, a0, 2);
+                        if constexpr (CountM == 2) {
+                            accu10 = vfmaq_lane_f16(accu10, b20, a1, 2);
+                            accu11 = vfmaq_lane_f16(accu11, b21, a1, 2);
+                            accu12 = vfmaq_lane_f16(accu12, b22, a1, 2);
+                            accu13 = vfmaq_lane_f16(accu13, b23, a1, 2);
+                        }
+                    }
+                    MlasStoreFloat16x8(c, accu00);
+                    MlasStoreFloat16x8(c + 8, accu01);
+                    MlasStoreFloat16x8(c + 16, accu02);
+                    MlasStoreFloat16x8(c + 24, accu03);
+                    if constexpr (CountM == 2) {
+                        MlasStoreFloat16x8(c + ldc, accu10);
+                        MlasStoreFloat16x8(c + ldc + 8, accu11);
+                        MlasStoreFloat16x8(c + ldc + 16, accu12);
+                        MlasStoreFloat16x8(c + ldc + 24, accu13);
+                    }
+                    b00 = MlasLoadFloat16x8(b + 32);
+                    b01 = MlasLoadFloat16x8(b + 40);
+                    b02 = MlasLoadFloat16x8(b + 48);
+                    b03 = MlasLoadFloat16x8(b + 56);
+                    if (Kr1) {
+                        b10 = MlasLoadFloat16x8(b + ldb + 32);
+                        b11 = MlasLoadFloat16x8(b + ldb + 40);
+                        b12 = MlasLoadFloat16x8(b + ldb + 48);
+                        b13 = MlasLoadFloat16x8(b + ldb + 56);
+                    }
+                    if (Kr2) {
+                        b20 = MlasLoadFloat16x8(b + 2 * ldb + 32);
+                        b21 = MlasLoadFloat16x8(b + 2 * ldb + 40);
+                        b22 = MlasLoadFloat16x8(b + 2 * ldb + 48);
+                        b23 = MlasLoadFloat16x8(b + 2 * ldb + 56);
+                    }
+                }
                 float16x8_t accu00 = MlasZeroFloat16x8();
                 float16x8_t accu01 = MlasZeroFloat16x8();
                 float16x8_t accu02 = MlasZeroFloat16x8();
@@ -1571,10 +1878,6 @@ void HGemm_B_Kernel_Simple(
                     accu12 = MlasZeroFloat16x8();
                     accu13 = MlasZeroFloat16x8();
                 }
-                float16x8_t b00 = MlasLoadFloat16x8(b);
-                float16x8_t b01 = MlasLoadFloat16x8(b + 8);
-                float16x8_t b02 = MlasLoadFloat16x8(b + 16);
-                float16x8_t b03 = MlasLoadFloat16x8(b + 24);
                 accu00 = vfmaq_lane_f16(accu00, b00, a0, 0);
                 accu01 = vfmaq_lane_f16(accu01, b01, a0, 0);
                 accu02 = vfmaq_lane_f16(accu02, b02, a0, 0);
@@ -1585,11 +1888,7 @@ void HGemm_B_Kernel_Simple(
                     accu12 = vfmaq_lane_f16(accu12, b02, a1, 0);
                     accu13 = vfmaq_lane_f16(accu13, b03, a1, 0);
                 }
-                if (CountK > 1) {
-                    float16x8_t b10 = MlasLoadFloat16x8(b + ldb);
-                    float16x8_t b11 = MlasLoadFloat16x8(b + ldb + 8);
-                    float16x8_t b12 = MlasLoadFloat16x8(b + ldb + 16);
-                    float16x8_t b13 = MlasLoadFloat16x8(b + ldb + 24);
+                if (Kr1) {
                     accu00 = vfmaq_lane_f16(accu00, b10, a0, 1);
                     accu01 = vfmaq_lane_f16(accu01, b11, a0, 1);
                     accu02 = vfmaq_lane_f16(accu02, b12, a0, 1);
@@ -1601,11 +1900,7 @@ void HGemm_B_Kernel_Simple(
                         accu13 = vfmaq_lane_f16(accu13, b13, a1, 1);
                     }
                 }
-                if (CountK > 2) {
-                    float16x8_t b20 = MlasLoadFloat16x8(b + 2 * ldb);
-                    float16x8_t b21 = MlasLoadFloat16x8(b + 2 * ldb + 8);
-                    float16x8_t b22 = MlasLoadFloat16x8(b + 2 * ldb + 16);
-                    float16x8_t b23 = MlasLoadFloat16x8(b + 2 * ldb + 24);
+                if (Kr2) {
                     accu00 = vfmaq_lane_f16(accu00, b20, a0, 2);
                     accu01 = vfmaq_lane_f16(accu01, b21, a0, 2);
                     accu02 = vfmaq_lane_f16(accu02, b22, a0, 2);
@@ -1627,6 +1922,7 @@ void HGemm_B_Kernel_Simple(
                     MlasStoreFloat16x8(c + ldc + 16, accu12);
                     MlasStoreFloat16x8(c + ldc + 24, accu13);
                 }
+                n -= 32, b += 32, c += 32;
             }
             if (n & 16) {
                 float16x8_t accu00 = MlasZeroFloat16x8();
@@ -1644,7 +1940,7 @@ void HGemm_B_Kernel_Simple(
                     accu10 = vfmaq_lane_f16(accu10, b00, a1, 0);
                     accu11 = vfmaq_lane_f16(accu11, b01, a1, 0);
                 }
-                if (CountK > 1) {
+                if (Kr1) {
                     float16x8_t b10 = MlasLoadFloat16x8(b + ldb);
                     float16x8_t b11 = MlasLoadFloat16x8(b + ldb + 8);
                     accu00 = vfmaq_lane_f16(accu00, b10, a0, 1);
@@ -1654,7 +1950,7 @@ void HGemm_B_Kernel_Simple(
                         accu11 = vfmaq_lane_f16(accu11, b11, a1, 1);
                     }
                 }
-                if (CountK > 2) {
+                if (Kr2) {
                     float16x8_t b20 = MlasLoadFloat16x8(b + 2 * ldb);
                     float16x8_t b21 = MlasLoadFloat16x8(b + 2 * ldb + 8);
                     accu00 = vfmaq_lane_f16(accu00, b20, a0, 2);
@@ -1682,14 +1978,14 @@ void HGemm_B_Kernel_Simple(
                 if constexpr (CountM == 2) {
                     accu10 = vfmaq_lane_f16(accu10, b0, a1, 0);
                 }
-                if (CountK > 1) {
+                if (Kr1) {
                     float16x8_t b1 = MlasLoadFloat16x8(b + ldb);
                     accu00 = vfmaq_lane_f16(accu00, b1, a0, 1);
                     if constexpr (CountM == 2) {
                         accu10 = vfmaq_lane_f16(accu10, b1, a1, 1);
                     }
                 }
-                if (CountK > 2) {
+                if (Kr2) {
                     float16x8_t b2 = MlasLoadFloat16x8(b + 2 * ldb);
                     accu00 = vfmaq_lane_f16(accu00, b2, a0, 2);
                     if constexpr (CountM == 2) {
@@ -1712,14 +2008,14 @@ void HGemm_B_Kernel_Simple(
                 if constexpr (CountM == 2) {
                     accu10 = vfma_lane_f16(accu10, b0, a1, 0);
                 }
-                if (CountK > 1) {
+                if (Kr1) {
                     float16x4_t b1 = MlasLoadFloat16x4(b + ldb);
                     accu00 = vfma_lane_f16(accu00, b1, a0, 1);
                     if constexpr (CountM == 2) {
                         accu10 = vfma_lane_f16(accu10, b1, a1, 1);
                     }
                 }
-                if (CountK > 2) {
+                if (Kr2) {
                     float16x4_t b2 = MlasLoadFloat16x4(b + 2 * ldb);
                     accu00 = vfma_lane_f16(accu00, b2, a0, 2);
                     if constexpr (CountM == 2) {
@@ -1732,7 +2028,7 @@ void HGemm_B_Kernel_Simple(
                 }
                 n -= 4, b += 4, c += 4;
             }
-            if (n > 0) {
+            if (Nr0) {
                 float16x4_t accu00 = MlasZeroFloat16x4(), accu10;
                 if constexpr (CountM == 2) {
                     accu10 = MlasZeroFloat16x4();
@@ -1742,14 +2038,14 @@ void HGemm_B_Kernel_Simple(
                 if constexpr (CountM == 2) {
                     accu10 = vfma_lane_f16(accu10, b0, a1, 0);
                 }
-                if (CountK > 1) {
+                if (Kr1) {
                     float16x4_t b1 = MlasLoadPartialFloat16x4(b + ldb, n);
                     accu00 = vfma_lane_f16(accu00, b1, a0, 1);
                     if constexpr (CountM == 2) {
                         accu10 = vfma_lane_f16(accu10, b1, a1, 1);
                     }
                 }
-                if (CountK > 2) {
+                if (Kr2) {
                     float16x4_t b2 = MlasLoadPartialFloat16x4(b + 2 * ldb, n);
                     accu00 = vfma_lane_f16(accu00, b2, a0, 2);
                     if constexpr (CountM == 2) {
@@ -1774,11 +2070,7 @@ void HGemm_B_Kernel_Simple(
         size_t n = CountN;
         const auto* b = B_data;
         auto* c = C_data;
-        for (; n >= 32; n -= 32, b += 32, c += 32) {
-            float16x8_t accu00 = MlasLoadFloat16x8(c);
-            float16x8_t accu01 = MlasLoadFloat16x8(c + 8);
-            float16x8_t accu02 = MlasLoadFloat16x8(c + 16);
-            float16x8_t accu03 = MlasLoadFloat16x8(c + 24);
+        if (largeN) {
             float16x8_t b00 = MlasLoadFloat16x8(b);
             float16x8_t b10 = MlasLoadFloat16x8(b + ldb);
             float16x8_t b20 = MlasLoadFloat16x8(b + 2 * ldb);
@@ -1795,6 +2087,54 @@ void HGemm_B_Kernel_Simple(
             float16x8_t b13 = MlasLoadFloat16x8(b + ldb + 24);
             float16x8_t b23 = MlasLoadFloat16x8(b + 2 * ldb + 24);
             float16x8_t b33 = MlasLoadFloat16x8(b + 3 * ldb + 24);
+            for (; n >= 64; n -= 32, b += 32, c += 32) {
+                float16x8_t accu00 = MlasLoadFloat16x8(c);
+                float16x8_t accu01 = MlasLoadFloat16x8(c + 8);
+                float16x8_t accu02 = MlasLoadFloat16x8(c + 16);
+                float16x8_t accu03 = MlasLoadFloat16x8(c + 24);
+                accu00 = maq_lane_f16_accu(accu00, b00, b10, b20, b30, a0);
+                accu01 = maq_lane_f16_accu(accu01, b01, b11, b21, b31, a0);
+                accu02 = maq_lane_f16_accu(accu02, b02, b12, b22, b32, a0);
+                accu03 = maq_lane_f16_accu(accu03, b03, b13, b23, b33, a0);
+                MlasStoreFloat16x8(c, accu00);
+                MlasStoreFloat16x8(c + 8, accu01);
+                MlasStoreFloat16x8(c + 16, accu02);
+                MlasStoreFloat16x8(c + 24, accu03);
+                if constexpr (CountM == 2) {
+                    float16x8_t accu10 = MlasLoadFloat16x8(c + ldc);
+                    float16x8_t accu11 = MlasLoadFloat16x8(c + ldc + 8);
+                    float16x8_t accu12 = MlasLoadFloat16x8(c + ldc + 16);
+                    float16x8_t accu13 = MlasLoadFloat16x8(c + ldc + 24);
+                    accu10 = maq_lane_f16_accu(accu10, b00, b10, b20, b30, a1);
+                    accu11 = maq_lane_f16_accu(accu11, b01, b11, b21, b31, a1);
+                    accu12 = maq_lane_f16_accu(accu12, b02, b12, b22, b32, a1);
+                    accu13 = maq_lane_f16_accu(accu13, b03, b13, b23, b33, a1);
+                    MlasStoreFloat16x8(c + ldc, accu10);
+                    MlasStoreFloat16x8(c + ldc + 8, accu11);
+                    MlasStoreFloat16x8(c + ldc + 16, accu12);
+                    MlasStoreFloat16x8(c + ldc + 24, accu13);
+                }
+                b00 = MlasLoadFloat16x8(b + 32);
+                b10 = MlasLoadFloat16x8(b + ldb + 32);
+                b20 = MlasLoadFloat16x8(b + 2 * ldb + 32);
+                b30 = MlasLoadFloat16x8(b + 3 * ldb + 32);
+                b01 = MlasLoadFloat16x8(b + 40);
+                b11 = MlasLoadFloat16x8(b + ldb + 40);
+                b21 = MlasLoadFloat16x8(b + 2 * ldb + 40);
+                b31 = MlasLoadFloat16x8(b + 3 * ldb + 40);
+                b02 = MlasLoadFloat16x8(b + 48);
+                b12 = MlasLoadFloat16x8(b + ldb + 48);
+                b22 = MlasLoadFloat16x8(b + 2 * ldb + 48);
+                b32 = MlasLoadFloat16x8(b + 3 * ldb + 48);
+                b03 = MlasLoadFloat16x8(b + 56);
+                b13 = MlasLoadFloat16x8(b + ldb + 56);
+                b23 = MlasLoadFloat16x8(b + 2 * ldb + 56);
+                b33 = MlasLoadFloat16x8(b + 3 * ldb + 56);
+            }
+            float16x8_t accu00 = MlasLoadFloat16x8(c);
+            float16x8_t accu01 = MlasLoadFloat16x8(c + 8);
+            float16x8_t accu02 = MlasLoadFloat16x8(c + 16);
+            float16x8_t accu03 = MlasLoadFloat16x8(c + 24);
             accu00 = maq_lane_f16_accu(accu00, b00, b10, b20, b30, a0);
             accu01 = maq_lane_f16_accu(accu01, b01, b11, b21, b31, a0);
             accu02 = maq_lane_f16_accu(accu02, b02, b12, b22, b32, a0);
@@ -1804,10 +2144,10 @@ void HGemm_B_Kernel_Simple(
             MlasStoreFloat16x8(c + 16, accu02);
             MlasStoreFloat16x8(c + 24, accu03);
             if constexpr (CountM == 2) {
-                float16x8_t accu10 = MlasLoadFloat16x8(c + ldb);
-                float16x8_t accu11 = MlasLoadFloat16x8(c + ldb + 8);
-                float16x8_t accu12 = MlasLoadFloat16x8(c + ldb + 16);
-                float16x8_t accu13 = MlasLoadFloat16x8(c + ldb + 24);
+                float16x8_t accu10 = MlasLoadFloat16x8(c + ldc);
+                float16x8_t accu11 = MlasLoadFloat16x8(c + ldc + 8);
+                float16x8_t accu12 = MlasLoadFloat16x8(c + ldc + 16);
+                float16x8_t accu13 = MlasLoadFloat16x8(c + ldc + 24);
                 accu10 = maq_lane_f16_accu(accu10, b00, b10, b20, b30, a1);
                 accu11 = maq_lane_f16_accu(accu11, b01, b11, b21, b31, a1);
                 accu12 = maq_lane_f16_accu(accu12, b02, b12, b22, b32, a1);
@@ -1817,6 +2157,7 @@ void HGemm_B_Kernel_Simple(
                 MlasStoreFloat16x8(c + ldc + 16, accu12);
                 MlasStoreFloat16x8(c + ldc + 24, accu13);
             }
+            n -= 32, b += 32, c += 32;
         }
         if (n & 16) {
             float16x8_t accu00 = MlasLoadFloat16x8(c);
@@ -1834,8 +2175,8 @@ void HGemm_B_Kernel_Simple(
             MlasStoreFloat16x8(c, accu00);
             MlasStoreFloat16x8(c + 8, accu01);
             if constexpr (CountM == 2) {
-                float16x8_t accu10 = MlasLoadFloat16x8(c + ldb);
-                float16x8_t accu11 = MlasLoadFloat16x8(c + ldb + 8);
+                float16x8_t accu10 = MlasLoadFloat16x8(c + ldc);
+                float16x8_t accu11 = MlasLoadFloat16x8(c + ldc + 8);
                 accu10 = maq_lane_f16_accu(accu10, b00, b10, b20, b30, a1);
                 accu11 = maq_lane_f16_accu(accu11, b01, b11, b21, b31, a1);
                 MlasStoreFloat16x8(c + ldc, accu10);
@@ -1873,7 +2214,7 @@ void HGemm_B_Kernel_Simple(
             }
             n -= 4, b += 4, c += 4;
         }
-        if (n > 0) {
+        if (Nr0) {
             float16x4_t accu00 = MlasLoadPartialFloat16x4(c, n);
             float16x4_t b0 = MlasLoadPartialFloat16x4(b, n);
             float16x4_t b1 = MlasLoadPartialFloat16x4(b + ldb, n);
@@ -1897,22 +2238,115 @@ void HGemm_B_Kernel_Simple(
         size_t n = CountN;
         const auto* b = B_data;
         auto* c = C_data;
-        for (; n >= 32; n -= 32, b += 32, c += 32) {
+        if (largeN) {
+            float16x8_t b00 = MlasLoadFloat16x8(b);
+            float16x8_t b01 = MlasLoadFloat16x8(b + 8);
+            float16x8_t b02 = MlasLoadFloat16x8(b + 16);
+            float16x8_t b03 = MlasLoadFloat16x8(b + 24);
+            float16x8_t b10 = MlasZeroFloat16x8();
+            float16x8_t b11 = MlasZeroFloat16x8();
+            float16x8_t b12 = MlasZeroFloat16x8();
+            float16x8_t b13 = MlasZeroFloat16x8();
+            float16x8_t b20 = MlasZeroFloat16x8();
+            float16x8_t b21 = MlasZeroFloat16x8();
+            float16x8_t b22 = MlasZeroFloat16x8();
+            float16x8_t b23 = MlasZeroFloat16x8();
+            if (Kr1) {
+                b10 = MlasLoadFloat16x8(b + ldb);
+                b11 = MlasLoadFloat16x8(b + ldb + 8);
+                b12 = MlasLoadFloat16x8(b + ldb + 16);
+                b13 = MlasLoadFloat16x8(b + ldb + 24);
+            }
+            if (Kr2) {
+                b20 = MlasLoadFloat16x8(b + 2 * ldb);
+                b21 = MlasLoadFloat16x8(b + 2 * ldb + 8);
+                b22 = MlasLoadFloat16x8(b + 2 * ldb + 16);
+                b23 = MlasLoadFloat16x8(b + 2 * ldb + 24);
+            }
+            for (; n >= 64; n -= 32, b += 32, c += 32) {
+                float16x8_t accu00 = MlasLoadFloat16x8(c);
+                float16x8_t accu01 = MlasLoadFloat16x8(c + 8);
+                float16x8_t accu02 = MlasLoadFloat16x8(c + 16);
+                float16x8_t accu03 = MlasLoadFloat16x8(c + 24);
+                float16x8_t accu10, accu11, accu12, accu13;
+                if constexpr (CountM == 2) {
+                    accu10 = MlasLoadFloat16x8(c + ldc);
+                    accu11 = MlasLoadFloat16x8(c + ldc + 8);
+                    accu12 = MlasLoadFloat16x8(c + ldc + 16);
+                    accu13 = MlasLoadFloat16x8(c + ldc + 24);
+                }
+                accu00 = vfmaq_lane_f16(accu00, b00, a0, 0);
+                accu01 = vfmaq_lane_f16(accu01, b01, a0, 0);
+                accu02 = vfmaq_lane_f16(accu02, b02, a0, 0);
+                accu03 = vfmaq_lane_f16(accu03, b03, a0, 0);
+                if constexpr (CountM == 2) {
+                    accu10 = vfmaq_lane_f16(accu10, b00, a1, 0);
+                    accu11 = vfmaq_lane_f16(accu11, b01, a1, 0);
+                    accu12 = vfmaq_lane_f16(accu12, b02, a1, 0);
+                    accu13 = vfmaq_lane_f16(accu13, b03, a1, 0);
+                }
+                if (Kr1) {
+                    accu00 = vfmaq_lane_f16(accu00, b10, a0, 1);
+                    accu01 = vfmaq_lane_f16(accu01, b11, a0, 1);
+                    accu02 = vfmaq_lane_f16(accu02, b12, a0, 1);
+                    accu03 = vfmaq_lane_f16(accu03, b13, a0, 1);
+                    if constexpr (CountM == 2) {
+                        accu10 = vfmaq_lane_f16(accu10, b10, a1, 1);
+                        accu11 = vfmaq_lane_f16(accu11, b11, a1, 1);
+                        accu12 = vfmaq_lane_f16(accu12, b12, a1, 1);
+                        accu13 = vfmaq_lane_f16(accu13, b13, a1, 1);
+                    }
+                }
+                if (Kr2) {
+                    accu00 = vfmaq_lane_f16(accu00, b20, a0, 2);
+                    accu01 = vfmaq_lane_f16(accu01, b21, a0, 2);
+                    accu02 = vfmaq_lane_f16(accu02, b22, a0, 2);
+                    accu03 = vfmaq_lane_f16(accu03, b23, a0, 2);
+                    if constexpr (CountM == 2) {
+                        accu10 = vfmaq_lane_f16(accu10, b20, a1, 2);
+                        accu11 = vfmaq_lane_f16(accu11, b21, a1, 2);
+                        accu12 = vfmaq_lane_f16(accu12, b22, a1, 2);
+                        accu13 = vfmaq_lane_f16(accu13, b23, a1, 2);
+                    }
+                }
+                MlasStoreFloat16x8(c, accu00);
+                MlasStoreFloat16x8(c + 8, accu01);
+                MlasStoreFloat16x8(c + 16, accu02);
+                MlasStoreFloat16x8(c + 24, accu03);
+                if constexpr (CountM == 2) {
+                    MlasStoreFloat16x8(c + ldc, accu10);
+                    MlasStoreFloat16x8(c + ldc + 8, accu11);
+                    MlasStoreFloat16x8(c + ldc + 16, accu12);
+                    MlasStoreFloat16x8(c + ldc + 24, accu13);
+                }
+                b00 = MlasLoadFloat16x8(b + 32);
+                b01 = MlasLoadFloat16x8(b + 40);
+                b02 = MlasLoadFloat16x8(b + 48);
+                b03 = MlasLoadFloat16x8(b + 56);
+                if (Kr1) {
+                    b10 = MlasLoadFloat16x8(b + ldb + 32);
+                    b11 = MlasLoadFloat16x8(b + ldb + 40);
+                    b12 = MlasLoadFloat16x8(b + ldb + 48);
+                    b13 = MlasLoadFloat16x8(b + ldb + 56);
+                }
+                if (Kr2) {
+                    b20 = MlasLoadFloat16x8(b + 2 * ldb + 32);
+                    b21 = MlasLoadFloat16x8(b + 2 * ldb + 40);
+                    b22 = MlasLoadFloat16x8(b + 2 * ldb + 48);
+                    b23 = MlasLoadFloat16x8(b + 2 * ldb + 56);
+                }
+            }
             float16x8_t accu00 = MlasLoadFloat16x8(c);
             float16x8_t accu01 = MlasLoadFloat16x8(c + 8);
             float16x8_t accu02 = MlasLoadFloat16x8(c + 16);
             float16x8_t accu03 = MlasLoadFloat16x8(c + 24);
             float16x8_t accu10, accu11, accu12, accu13;
             if constexpr (CountM == 2) {
-                accu10 = MlasLoadFloat16x8(c + ldb);
-                accu11 = MlasLoadFloat16x8(c + ldb + 8);
-                accu12 = MlasLoadFloat16x8(c + ldb + 16);
-                accu13 = MlasLoadFloat16x8(c + ldb + 24);
+                accu10 = MlasLoadFloat16x8(c + ldc);
+                accu11 = MlasLoadFloat16x8(c + ldc + 8);
+                accu12 = MlasLoadFloat16x8(c + ldc + 16);
+                accu13 = MlasLoadFloat16x8(c + ldc + 24);
             }
-            float16x8_t b00 = MlasLoadFloat16x8(b);
-            float16x8_t b01 = MlasLoadFloat16x8(b + 8);
-            float16x8_t b02 = MlasLoadFloat16x8(b + 16);
-            float16x8_t b03 = MlasLoadFloat16x8(b + 24);
             accu00 = vfmaq_lane_f16(accu00, b00, a0, 0);
             accu01 = vfmaq_lane_f16(accu01, b01, a0, 0);
             accu02 = vfmaq_lane_f16(accu02, b02, a0, 0);
@@ -1923,11 +2357,7 @@ void HGemm_B_Kernel_Simple(
                 accu12 = vfmaq_lane_f16(accu12, b02, a1, 0);
                 accu13 = vfmaq_lane_f16(accu13, b03, a1, 0);
             }
-            if (CountK > 1) {
-                float16x8_t b10 = MlasLoadFloat16x8(b + ldb);
-                float16x8_t b11 = MlasLoadFloat16x8(b + ldb + 8);
-                float16x8_t b12 = MlasLoadFloat16x8(b + ldb + 16);
-                float16x8_t b13 = MlasLoadFloat16x8(b + ldb + 24);
+            if (Kr1) {
                 accu00 = vfmaq_lane_f16(accu00, b10, a0, 1);
                 accu01 = vfmaq_lane_f16(accu01, b11, a0, 1);
                 accu02 = vfmaq_lane_f16(accu02, b12, a0, 1);
@@ -1939,11 +2369,7 @@ void HGemm_B_Kernel_Simple(
                     accu13 = vfmaq_lane_f16(accu13, b13, a1, 1);
                 }
             }
-            if (CountK > 2) {
-                float16x8_t b20 = MlasLoadFloat16x8(b + 2 * ldb);
-                float16x8_t b21 = MlasLoadFloat16x8(b + 2 * ldb + 8);
-                float16x8_t b22 = MlasLoadFloat16x8(b + 2 * ldb + 16);
-                float16x8_t b23 = MlasLoadFloat16x8(b + 2 * ldb + 24);
+            if (Kr2) {
                 accu00 = vfmaq_lane_f16(accu00, b20, a0, 2);
                 accu01 = vfmaq_lane_f16(accu01, b21, a0, 2);
                 accu02 = vfmaq_lane_f16(accu02, b22, a0, 2);
@@ -1965,6 +2391,7 @@ void HGemm_B_Kernel_Simple(
                 MlasStoreFloat16x8(c + ldc + 16, accu12);
                 MlasStoreFloat16x8(c + ldc + 24, accu13);
             }
+            n -= 32, b += 32, c += 32;
         }
         if (n & 16) {
             float16x8_t accu00 = MlasLoadFloat16x8(c);
@@ -1982,7 +2409,7 @@ void HGemm_B_Kernel_Simple(
                 accu10 = vfmaq_lane_f16(accu10, b00, a1, 0);
                 accu11 = vfmaq_lane_f16(accu11, b01, a1, 0);
             }
-            if (CountK > 1) {
+            if (Kr1) {
                 float16x8_t b10 = MlasLoadFloat16x8(b + ldb);
                 float16x8_t b11 = MlasLoadFloat16x8(b + ldb + 8);
                 accu00 = vfmaq_lane_f16(accu00, b10, a0, 1);
@@ -1992,7 +2419,7 @@ void HGemm_B_Kernel_Simple(
                     accu11 = vfmaq_lane_f16(accu11, b11, a1, 1);
                 }
             }
-            if (CountK > 2) {
+            if (Kr2) {
                 float16x8_t b20 = MlasLoadFloat16x8(b + 2 * ldb);
                 float16x8_t b21 = MlasLoadFloat16x8(b + 2 * ldb + 8);
                 accu00 = vfmaq_lane_f16(accu00, b20, a0, 2);
@@ -2021,14 +2448,14 @@ void HGemm_B_Kernel_Simple(
             if constexpr (CountM == 2) {
                 accu10 = vfmaq_lane_f16(accu10, b0, a1, 0);
             }
-            if (CountK > 1) {
+            if (Kr1) {
                 float16x8_t b1 = MlasLoadFloat16x8(b + ldb);
                 accu00 = vfmaq_lane_f16(accu00, b1, a0, 1);
                 if constexpr (CountM == 2) {
                     accu10 = vfmaq_lane_f16(accu10, b1, a1, 1);
                 }
             }
-            if (CountK > 2) {
+            if (Kr2) {
                 float16x8_t b2 = MlasLoadFloat16x8(b + 2 * ldb);
                 accu00 = vfmaq_lane_f16(accu00, b2, a0, 2);
                 if constexpr (CountM == 2) {
@@ -2052,14 +2479,14 @@ void HGemm_B_Kernel_Simple(
             if constexpr (CountM == 2) {
                 accu10 = vfma_lane_f16(accu10, b0, a1, 0);
             }
-            if (CountK > 1) {
+            if (Kr1) {
                 float16x4_t b1 = MlasLoadFloat16x4(b + ldb);
                 accu00 = vfma_lane_f16(accu00, b1, a0, 1);
                 if constexpr (CountM == 2) {
                     accu10 = vfma_lane_f16(accu10, b1, a1, 1);
                 }
             }
-            if (CountK > 2) {
+            if (Kr2) {
                 float16x4_t b2 = MlasLoadFloat16x4(b + 2 * ldb);
                 accu00 = vfma_lane_f16(accu00, b2, a0, 2);
                 if constexpr (CountM == 2) {
@@ -2072,7 +2499,7 @@ void HGemm_B_Kernel_Simple(
             }
             n -= 4, b += 4, c += 4;
         }
-        if (n > 0) {
+        if (Nr0) {
             float16x4_t accu00 = MlasLoadPartialFloat16x4(c, n);
             float16x4_t accu10;
             if constexpr (CountM == 2) {
@@ -2083,14 +2510,14 @@ void HGemm_B_Kernel_Simple(
             if constexpr (CountM == 2) {
                 accu10 = vfma_lane_f16(accu10, b0, a1, 0);
             }
-            if (CountK > 1) {
+            if (Kr1) {
                 float16x4_t b1 = MlasLoadPartialFloat16x4(b + ldb, n);
                 accu00 = vfma_lane_f16(accu00, b1, a0, 1);
                 if constexpr (CountM == 2) {
                     accu10 = vfma_lane_f16(accu10, b1, a1, 1);
                 }
             }
-            if (CountK > 2) {
+            if (Kr2) {
                 float16x4_t b2 = MlasLoadPartialFloat16x4(b + 2 * ldb, n);
                 accu00 = vfma_lane_f16(accu00, b2, a0, 2);
                 if constexpr (CountM == 2) {
@@ -2160,10 +2587,14 @@ void HGemm_PackedB_Kernel_Impl(
     _mlas_fp16_ alpha,
     _mlas_fp16_ beta
 ) {
-    float16x8_t alpha_v8 = MlasBroadcastFloat16x8(alpha);
-    float16x8_t beta_v8 = MlasBroadcastFloat16x8(beta);
-    float16x4_t alpha_v4 = MlasBroadcastFloat16x4(alpha);
-    float16x4_t beta_v4 = MlasBroadcastFloat16x4(beta);
+    const float16x8_t alpha_v8 = MlasBroadcastFloat16x8(alpha);
+    const float16x8_t beta_v8 = MlasBroadcastFloat16x8(beta);
+    const float16x4_t alpha_v4 = MlasBroadcastFloat16x4(alpha);
+    const float16x4_t beta_v4 = MlasBroadcastFloat16x4(beta);
+    const bool Kr0 = CountK & 3;
+    const bool Kr1 = (CountK & 3) > 1;
+    const bool Kr2 = (CountK & 3) > 2;
+    const bool largeK = CountK >= 4;
     for (; CountN >= 32; CountN -= 32, C += 32) {
         const auto* a = A;
         size_t k = CountK;
@@ -2178,8 +2609,11 @@ void HGemm_PackedB_Kernel_Impl(
             accu12 = MlasZeroFloat16x8();
             accu13 = MlasZeroFloat16x8();
         }
-        for (; k >= 4; k -= 4, a += 4, PackedB += 4 * 32) {
-            float16x4_t a0 = MlasLoadFloat16x4(a);
+        if (largeK) {
+            float16x4_t a0 = MlasLoadFloat16x4(a), a1;
+            if constexpr (CountM == 2) {
+                a1 = MlasLoadFloat16x4(a + lda);
+            }
             float16x8_t b00 = MlasLoadFloat16x8(PackedB);
             float16x8_t b10 = MlasLoadFloat16x8(PackedB + 32);
             float16x8_t b20 = MlasLoadFloat16x8(PackedB + 64);
@@ -2196,20 +2630,52 @@ void HGemm_PackedB_Kernel_Impl(
             float16x8_t b13 = MlasLoadFloat16x8(PackedB + 56);
             float16x8_t b23 = MlasLoadFloat16x8(PackedB + 88);
             float16x8_t b33 = MlasLoadFloat16x8(PackedB + 120);
+            for (; k >= 8; k -= 4, a += 4, PackedB += 4 * 32) {
+                accu00 = maq_lane_f16_accu(accu00, b00, b10, b20, b30, a0);
+                accu01 = maq_lane_f16_accu(accu01, b01, b11, b21, b31, a0);
+                accu02 = maq_lane_f16_accu(accu02, b02, b12, b22, b32, a0);
+                accu03 = maq_lane_f16_accu(accu03, b03, b13, b23, b33, a0);
+                if constexpr (CountM == 2) {
+                    accu10 = maq_lane_f16_accu(accu10, b00, b10, b20, b30, a1);
+                    accu11 = maq_lane_f16_accu(accu11, b01, b11, b21, b31, a1);
+                    accu12 = maq_lane_f16_accu(accu12, b02, b12, b22, b32, a1);
+                    accu13 = maq_lane_f16_accu(accu13, b03, b13, b23, b33, a1);
+                }
+                a0 = MlasLoadFloat16x4(a + 4);
+                if constexpr (CountM == 2) {
+                    a1 = MlasLoadFloat16x4(a + lda + 4);
+                }
+                b00 = MlasLoadFloat16x8(PackedB + 128);
+                b10 = MlasLoadFloat16x8(PackedB + 160);
+                b20 = MlasLoadFloat16x8(PackedB + 192);
+                b30 = MlasLoadFloat16x8(PackedB + 224);
+                b01 = MlasLoadFloat16x8(PackedB + 136);
+                b11 = MlasLoadFloat16x8(PackedB + 168);
+                b21 = MlasLoadFloat16x8(PackedB + 200);
+                b31 = MlasLoadFloat16x8(PackedB + 232);
+                b02 = MlasLoadFloat16x8(PackedB + 144);
+                b12 = MlasLoadFloat16x8(PackedB + 176);
+                b22 = MlasLoadFloat16x8(PackedB + 208);
+                b32 = MlasLoadFloat16x8(PackedB + 240);
+                b03 = MlasLoadFloat16x8(PackedB + 152);
+                b13 = MlasLoadFloat16x8(PackedB + 184);
+                b23 = MlasLoadFloat16x8(PackedB + 216);
+                b33 = MlasLoadFloat16x8(PackedB + 248);
+            }
             accu00 = maq_lane_f16_accu(accu00, b00, b10, b20, b30, a0);
             accu01 = maq_lane_f16_accu(accu01, b01, b11, b21, b31, a0);
             accu02 = maq_lane_f16_accu(accu02, b02, b12, b22, b32, a0);
             accu03 = maq_lane_f16_accu(accu03, b03, b13, b23, b33, a0);
             if constexpr (CountM == 2) {
-                float16x4_t a1 = MlasLoadFloat16x4(a + lda);
                 accu10 = maq_lane_f16_accu(accu10, b00, b10, b20, b30, a1);
                 accu11 = maq_lane_f16_accu(accu11, b01, b11, b21, b31, a1);
                 accu12 = maq_lane_f16_accu(accu12, b02, b12, b22, b32, a1);
                 accu13 = maq_lane_f16_accu(accu13, b03, b13, b23, b33, a1);
             }
+            k -= 4, a += 4, PackedB += 4 * 32;
         }
 
-        if (k > 0) {
+        if (Kr0) {
             float16x4_t a0 = MlasLoadPartialFloat16x4(a, k), a1;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadPartialFloat16x4(a + lda, k);
@@ -2228,7 +2694,7 @@ void HGemm_PackedB_Kernel_Impl(
                 accu12 = vfmaq_lane_f16(accu12, b02, a1, 0);
                 accu13 = vfmaq_lane_f16(accu13, b03, a1, 0);
             }
-            if (k > 1) {
+            if (Kr1) {
                 float16x8_t b10 = MlasLoadFloat16x8(PackedB + 32);
                 float16x8_t b11 = MlasLoadFloat16x8(PackedB + 40);
                 float16x8_t b12 = MlasLoadFloat16x8(PackedB + 48);
@@ -2244,7 +2710,7 @@ void HGemm_PackedB_Kernel_Impl(
                     accu13 = vfmaq_lane_f16(accu13, b13, a1, 1);
                 }
             }
-            if (k > 2) {
+            if (Kr2) {
                 float16x8_t b20 = MlasLoadFloat16x8(PackedB + 64);
                 float16x8_t b21 = MlasLoadFloat16x8(PackedB + 72);
                 float16x8_t b22 = MlasLoadFloat16x8(PackedB + 80);
@@ -2326,8 +2792,11 @@ void HGemm_PackedB_Kernel_Impl(
             accu10 = MlasZeroFloat16x8();
             accu11 = MlasZeroFloat16x8();
         }
-        for (; k >= 4; k -= 4, a += 4, PackedB += 4 * 16) {
-            float16x4_t a0 = MlasLoadFloat16x4(a);
+        if (largeK) {
+            float16x4_t a0 = MlasLoadFloat16x4(a), a1;
+            if constexpr (CountM == 2) {
+                a1 = MlasLoadFloat16x4(a + lda);
+            }
             float16x8_t b00 = MlasLoadFloat16x8(PackedB);
             float16x8_t b01 = MlasLoadFloat16x8(PackedB + 8);
             float16x8_t b10 = MlasLoadFloat16x8(PackedB + 16);
@@ -2336,16 +2805,36 @@ void HGemm_PackedB_Kernel_Impl(
             float16x8_t b21 = MlasLoadFloat16x8(PackedB + 40);
             float16x8_t b30 = MlasLoadFloat16x8(PackedB + 48);
             float16x8_t b31 = MlasLoadFloat16x8(PackedB + 56);
+            for (; k >= 8; k -= 4, a += 4, PackedB += 4 * 16) {
+                accu00 = maq_lane_f16_accu(accu00, b00, b10, b20, b30, a0);
+                accu01 = maq_lane_f16_accu(accu01, b01, b11, b21, b31, a0);
+                if constexpr (CountM == 2) {
+                    accu10 = maq_lane_f16_accu(accu10, b00, b10, b20, b30, a1);
+                    accu11 = maq_lane_f16_accu(accu11, b01, b11, b21, b31, a1);
+                }
+                a0 = MlasLoadFloat16x4(a + 4);
+                if constexpr (CountM == 2) {
+                    a1 = MlasLoadFloat16x4(a + lda + 4);
+                }
+                b00 = MlasLoadFloat16x8(PackedB + 64);
+                b01 = MlasLoadFloat16x8(PackedB + 72);
+                b10 = MlasLoadFloat16x8(PackedB + 80);
+                b11 = MlasLoadFloat16x8(PackedB + 88);
+                b20 = MlasLoadFloat16x8(PackedB + 96);
+                b21 = MlasLoadFloat16x8(PackedB + 104);
+                b30 = MlasLoadFloat16x8(PackedB + 112);
+                b31 = MlasLoadFloat16x8(PackedB + 120);
+            }
             accu00 = maq_lane_f16_accu(accu00, b00, b10, b20, b30, a0);
             accu01 = maq_lane_f16_accu(accu01, b01, b11, b21, b31, a0);
             if constexpr (CountM == 2) {
-                float16x4_t a1 = MlasLoadFloat16x4(a + lda);
                 accu10 = maq_lane_f16_accu(accu10, b00, b10, b20, b30, a1);
                 accu11 = maq_lane_f16_accu(accu11, b01, b11, b21, b31, a1);
             }
+            k -= 4, a += 4, PackedB += 4 * 16;
         }
 
-        if (k > 0) {
+        if (Kr0) {
             float16x8_t b00 = MlasLoadFloat16x8(PackedB);
             float16x8_t b01 = MlasLoadFloat16x8(PackedB + 8);
             float16x4_t a0 = MlasLoadPartialFloat16x4(a, k), a1;
@@ -2356,7 +2845,7 @@ void HGemm_PackedB_Kernel_Impl(
                 accu10 = vfmaq_lane_f16(accu10, b00, a1, 0);
                 accu11 = vfmaq_lane_f16(accu11, b01, a1, 0);
             }
-            if (k > 1) {
+            if (Kr1) {
                 float16x8_t b10 = MlasLoadFloat16x8(PackedB + 16);
                 float16x8_t b11 = MlasLoadFloat16x8(PackedB + 24);
                 accu00 = vfmaq_lane_f16(accu00, b10, a0, 1);
@@ -2366,7 +2855,7 @@ void HGemm_PackedB_Kernel_Impl(
                     accu11 = vfmaq_lane_f16(accu11, b11, a1, 1);
                 }
             }
-            if (k > 2) {
+            if (Kr2) {
                 float16x8_t b20 = MlasLoadFloat16x8(PackedB + 32);
                 float16x8_t b21 = MlasLoadFloat16x8(PackedB + 40);
                 accu00 = vfmaq_lane_f16(accu00, b20, a0, 2);
@@ -2430,20 +2919,37 @@ void HGemm_PackedB_Kernel_Impl(
         size_t k = CountK;
         float16x8_t accu00 = MlasZeroFloat16x8();
         float16x8_t accu10 = MlasZeroFloat16x8();
-        for (; k >= 4; k -= 4, a += 4, PackedB += 4 * 8) {
-            float16x4_t a0 = MlasLoadFloat16x4(a);
+        if (largeK) {
+            float16x4_t a0 = MlasLoadFloat16x4(a), a1;
+            if constexpr (CountM == 2) {
+                a1 = MlasLoadFloat16x4(a + lda);
+            }
             float16x8_t b0 = MlasLoadFloat16x8(PackedB);
             float16x8_t b1 = MlasLoadFloat16x8(PackedB + 8);
             float16x8_t b2 = MlasLoadFloat16x8(PackedB + 16);
             float16x8_t b3 = MlasLoadFloat16x8(PackedB + 24);
+            for (; k >= 8; k -= 4, a += 4, PackedB += 4 * 8) {
+                accu00 = maq_lane_f16_accu(accu00, b0, b1, b2, b3, a0);
+                if constexpr (CountM == 2) {
+                    accu10 = maq_lane_f16_accu(accu10, b0, b1, b2, b3, a1);
+                }
+                a0 = MlasLoadFloat16x4(a + 4);
+                if constexpr (CountM == 2) {
+                    a1 = MlasLoadFloat16x4(a + lda + 4);
+                }
+                b0 = MlasLoadFloat16x8(PackedB + 32);
+                b1 = MlasLoadFloat16x8(PackedB + 40);
+                b2 = MlasLoadFloat16x8(PackedB + 48);
+                b3 = MlasLoadFloat16x8(PackedB + 56);
+            }
             accu00 = maq_lane_f16_accu(accu00, b0, b1, b2, b3, a0);
             if constexpr (CountM == 2) {
-                float16x4_t a1 = MlasLoadFloat16x4(a + lda);
                 accu10 = maq_lane_f16_accu(accu10, b0, b1, b2, b3, a1);
             }
+            k -= 4, a += 4, PackedB += 4 * 8;
         }
 
-        if (k > 0) {
+        if (Kr0) {
             float16x4_t a0 = MlasLoadPartialFloat16x4(a, k), a1;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadPartialFloat16x4(a + lda, k);
@@ -2453,14 +2959,14 @@ void HGemm_PackedB_Kernel_Impl(
             if constexpr (CountM == 2) {
                 accu10 = vfmaq_lane_f16(accu10, b0, a1, 0);
             }
-            if (k > 1) {
+            if (Kr1) {
                 float16x8_t b1 = MlasLoadFloat16x8(PackedB + 8);
                 accu00 = vfmaq_lane_f16(accu00, b1, a0, 1);
                 if constexpr (CountM == 2) {
                     accu10 = vfmaq_lane_f16(accu10, b1, a1, 1);
                 }
             }
-            if (k > 2) {
+            if (Kr2) {
                 float16x8_t b2 = MlasLoadFloat16x8(PackedB + 16);
                 accu00 = vfmaq_lane_f16(accu00, b2, a0, 2);
                 if constexpr (CountM == 2) {
@@ -2507,20 +3013,37 @@ void HGemm_PackedB_Kernel_Impl(
         if constexpr (CountM == 2) {
             accu1 = MlasZeroFloat16x8();
         }
-        for (; k >= 4; k -= 4, a += 4, PackedB += 4 * 8) {
-            float16x4_t a0 = MlasLoadFloat16x4(a);
+        if (largeK) {
+            float16x4_t a0 = MlasLoadFloat16x4(a), a1;
+            if constexpr (CountM == 2) {
+                a1 = MlasLoadFloat16x4(a + lda);
+            }
             float16x8_t b0 = MlasLoadFloat16x8(PackedB);
             float16x8_t b1 = MlasLoadFloat16x8(PackedB + 8);
             float16x8_t b2 = MlasLoadFloat16x8(PackedB + 16);
             float16x8_t b3 = MlasLoadFloat16x8(PackedB + 24);
+            for (; k >= 8; k -= 4, a += 4, PackedB += 4 * 8) {
+                accu0 = maq_lane_f16_accu(accu0, b0, b1, b2, b3, a0);
+                if constexpr (CountM == 2) {
+                    accu1 = maq_lane_f16_accu(accu1, b0, b1, b2, b3, a1);
+                }
+                a0 = MlasLoadFloat16x4(a + 4);
+                if constexpr (CountM == 2) {
+                    a1 = MlasLoadFloat16x4(a + lda + 4);
+                }
+                b0 = MlasLoadFloat16x8(PackedB + 32);
+                b1 = MlasLoadFloat16x8(PackedB + 40);
+                b2 = MlasLoadFloat16x8(PackedB + 48);
+                b3 = MlasLoadFloat16x8(PackedB + 56);
+            }
             accu0 = maq_lane_f16_accu(accu0, b0, b1, b2, b3, a0);
             if constexpr (CountM == 2) {
-                float16x4_t a1 = MlasLoadFloat16x4(a + lda);
                 accu1 = maq_lane_f16_accu(accu1, b0, b1, b2, b3, a1);
             }
+            k -= 4, a += 4, PackedB += 4 * 8;
         }
 
-        if (k > 0) {
+        if (Kr0) {
             float16x4_t a0 = MlasLoadPartialFloat16x4(a, k), a1;
             if constexpr (CountM == 2) {
                 a1 = MlasLoadPartialFloat16x4(a + lda, k);
@@ -2530,14 +3053,14 @@ void HGemm_PackedB_Kernel_Impl(
             if constexpr (CountM == 2) {
                 accu1 = vfmaq_lane_f16(accu1, b0, a1, 0);
             }
-            if (k > 1) {
+            if (Kr1) {
                 float16x8_t b1 = MlasLoadFloat16x8(PackedB + 8);
                 accu0 = vfmaq_lane_f16(accu0, b1, a0, 1);
                 if constexpr (CountM == 2) {
                     accu1 = vfmaq_lane_f16(accu1, b1, a1, 1);
                 }
             }
-            if (k > 2) {
+            if (Kr2) {
                 float16x8_t b2 = MlasLoadFloat16x8(PackedB + 16);
                 accu0 = vfmaq_lane_f16(accu0, b2, a0, 2);
                 if constexpr (CountM == 2) {
