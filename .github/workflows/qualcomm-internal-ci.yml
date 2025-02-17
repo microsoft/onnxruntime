@@ -20,11 +20,12 @@ jobs:
         run: |
           if (Test-Path D:\b) { Remove-Item -Recurse -Force D:\b }
 
-      - name: Visual 2022 Setup
-        run: "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat" amd64
-
       - name: Qualcomm Internal Build Script
-        run: .\build.bat --config RelWithDebInfo --build_shared_lib --parallel --compile_no_warning_as_error --cmake_generator "Visual Studio 17 2022"
+        shell: cmd
+        run: |
+          "C:\Program Files\Microsoft Visual Studio\2022\Professional\VC\Auxiliary\Build\vcvarsall.bat" amd64 && ^
+          .\build.bat --config RelWithDebInfo --build_shared_lib --parallel --compile_no_warning_as_error --cmake_generator "Visual Studio 17 2022" ^
+          --use_qnn --qnn_home "C:\Users\hungjuiw\workspace\qairt\2.31.0.250130"
 
       # The build machine doesn't have a GPU. So the value of CMAKE_CUDA_ARCHITECTURES doesn't matter.
       # - name: Build code
@@ -49,3 +50,5 @@ jobs:
 
 # - name: Download cuda
 #   run: azcopy.exe cp --recursive "https://lotusscus.blob.core.windows.net/models/cuda_sdk/v12.2" cuda_sdk
+
+# .\build.bat --config RelWithDebInfo --build_shared_lib --parallel --compile_no_warning_as_error --cmake_generator "Visual Studio 17 2022"
