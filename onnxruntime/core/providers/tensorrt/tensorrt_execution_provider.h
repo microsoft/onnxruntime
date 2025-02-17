@@ -331,7 +331,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::string cache_prefix_;
   bool engine_hw_compatible_ = false;
   std::string op_types_to_exclude_;
-  std::vector<std::unique_ptr<Model>> trt_ep_context_models;
 
   // The format is as for TENSORRT_VERSION: (MAJOR * 100 + MINOR) * 100 + PATCH
   int32_t trt_version_;
@@ -348,9 +347,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::string ctx_model_path_;
   std::string ep_cache_context_attr_;
   std::string engine_cache_relative_path_to_context_model_dir;
-  std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_ = ONNX_NAMESPACE::ModelProto::Create();
-  bool is_single_node_epcontext_graph = false;
-  
+  // std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_ = ONNX_NAMESPACE::ModelProto::Create();
+  std::vector<std::unique_ptr<Model>> trt_ep_context_models;
+  // bool is_single_node_epcontext_graph = false;
+  bool is_subgraph = false;
+
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
   mutable std::unordered_map<std::string, std::unique_ptr<SubGraphContext>> subgraph_context_map_;
 
