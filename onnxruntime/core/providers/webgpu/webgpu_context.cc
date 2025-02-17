@@ -738,7 +738,7 @@ WebGpuContext& WebGpuContextFactory::CreateContext(const WebGpuContextConfig& co
       // Step.2 - Create wgpu::Instance
 #if !defined(__wasm__)
       wgpu::InstanceDescriptor instance_desc{};
-      instance_desc.features.timedWaitAnyEnable = true;
+      instance_desc.capabilities.timedWaitAnyEnable = true;
       default_instance_ = wgpu::CreateInstance(&instance_desc);
 #else
       default_instance_ = wgpu::CreateInstance(nullptr);
