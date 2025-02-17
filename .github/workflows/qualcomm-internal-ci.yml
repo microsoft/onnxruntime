@@ -5,6 +5,8 @@ on:
       - main
       - rel-*
   pull_request:
+    branches:
+      - main
 
 jobs:
   Windows-CUDA-12:
