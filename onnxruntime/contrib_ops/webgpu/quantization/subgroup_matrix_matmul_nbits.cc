@@ -23,7 +23,6 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
 
         var<workgroup> tile_A: array<f16, tile_rows * tile_k>;       // 32 x 32 - RxC
         var<workgroup> tile_B: array<f16, tile_cols * tile_k>;       // 64 x 32 - RxC
-        var<workgroup> scratch: array<array<f16, 64>, 4>;            // 64 * 4
 
         fn loadSHMA(tile_base: u32, k_idx: u32, row: u32, c_idx:u32) {
             let a_global = tile_base + row;
@@ -66,112 +65,83 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
                 tile_B[tile_b_base + 7] = b_value_upper[3];
             }
         }
-
-        fn safeMatrixStore(offset: u32, mat: ptr<function, subgroup_matrix_result<f16, 8, 8>>, rows:u32, subtile_id:u32, subtile_thread_id:u32)
-        {
-            subgroupMatrixStore(&scratch[subtile_id], 0, *mat, false, 8);
-            // There are 32 subtile_thread_id and we have 64 values.
-            let row = u32(subtile_thread_id / 4);
-            var col = u32(subtile_thread_id % 4) * 2;
-            if (row < rows)
-            {
-                output[offset + row * uniforms.N + col] = scratch[subtile_id][row * 8 + col];
-                col++;
-                output[offset + row * uniforms.N + col] = scratch[subtile_id][row * 8 + col];
-            }
-        }
     )ADDNL_FN";
 
     shader.MainFunctionBody() << R"MAIN_FN(
-    let a_global_base = workgroup_id.y * tile_rows;
-    let b_global_base = workgroup_id.x * tile_cols;
+        let a_global_base = workgroup_id.y * tile_rows;
+        let b_global_base = workgroup_id.x * tile_cols;
 
-    let subtile_id =  u32(local_idx / sg_size);
-    let subtile_idx = u32(subtile_id / 2);
-    let subtile_idy = subtile_id % 2;
-    let base_A = subtile_idy * subtile_rows;
-    let base_B = subtile_idx * subtile_cols;
+        let subtile_id =  u32(local_idx / sg_size);
+        let subtile_idx = u32(subtile_id / 2);
+        let subtile_idy = subtile_id % 2;
+        let base_A = subtile_idy * subtile_rows;
+        let base_B = subtile_idx * subtile_cols;
 
-    var matC00: subgroup_matrix_result<f16, 8, 8>;
-    var matC01: subgroup_matrix_result<f16, 8, 8>;
-    var matC02: subgroup_matrix_result<f16, 8, 8>;
-    var matC03: subgroup_matrix_result<f16, 8, 8>;
-    var matC10: subgroup_matrix_result<f16, 8, 8>;
-    var matC11: subgroup_matrix_result<f16, 8, 8>;
-    var matC12: subgroup_matrix_result<f16, 8, 8>;
-    var matC13: subgroup_matrix_result<f16, 8, 8>;
-    for (var kidx: u32 = 0; kidx < uniforms.K; kidx += tile_k) {
-        // Load Phase
-        loadSHMA(a_global_base, kidx, local_idx/4, local_idx%4);
-        loadSHMB(b_global_base, kidx, local_idx/2, local_idx%2);
-        workgroupBarrier();
+        var matC00: subgroup_matrix_result<f16, 8, 8>;
+        var matC01: subgroup_matrix_result<f16, 8, 8>;
+        var matC02: subgroup_matrix_result<f16, 8, 8>;
+        var matC03: subgroup_matrix_result<f16, 8, 8>;
+        var matC10: subgroup_matrix_result<f16, 8, 8>;
+        var matC11: subgroup_matrix_result<f16, 8, 8>;
+        var matC12: subgroup_matrix_result<f16, 8, 8>;
+        var matC13: subgroup_matrix_result<f16, 8, 8>;
+        for (var kidx: u32 = 0; kidx < uniforms.K; kidx += tile_k) {
+            // Load Phase
+            loadSHMA(a_global_base, kidx, local_idx/4, local_idx%4);
+            loadSHMB(b_global_base, kidx, local_idx/2, local_idx%2);
+            workgroupBarrier();
 
-        for (var step: u32 = 0; step < tile_k; step+=8)
-        {
-            // Load to local memory phase
-            let matrix_a_offset = subtile_idy * subtile_rows * tile_k + step;
-            // Syntax: subgroupMatrixLoad src_ptr,src_offset,is_col_major,src_stride
-            var matA0: subgroup_matrix_left<f16, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>>(&tile_A, matrix_a_offset, false, tile_k);
-            var matA1: subgroup_matrix_left<f16, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>>(&tile_A, matrix_a_offset + 8 * tile_k, false, tile_k);
+            for (var step: u32 = 0; step < tile_k; step+=8)
+            {
+                // Load to local memory phase
+                let matrix_a_offset = subtile_idy * subtile_rows * tile_k + step;
+                // Syntax: subgroupMatrixLoad src_ptr,src_offset,is_col_major,src_stride
+                var matA0: subgroup_matrix_left<f16, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>>(&tile_A, matrix_a_offset, false, tile_k);
+                var matA1: subgroup_matrix_left<f16, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>>(&tile_A, matrix_a_offset + 8 * tile_k, false, tile_k);
 
-            // tile_B is stored as column major.
-            // [col0-0:32][col1-0:32][col2-0:32]..[col63-0:32]
-            var matrix_b_offset = subtile_idx * subtile_cols * tile_k + step;
-            var matB0: subgroup_matrix_right<f16, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>>(&tile_B, matrix_b_offset, true, tile_k);
-            var matB1: subgroup_matrix_right<f16, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>>(&tile_B, matrix_b_offset +  8 * tile_k, true, tile_k);
-            var matB2: subgroup_matrix_right<f16, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>>(&tile_B, matrix_b_offset + 16 * tile_k, true, tile_k);
-            var matB3: subgroup_matrix_right<f16, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>>(&tile_B, matrix_b_offset + 24 * tile_k, true, tile_k);
+                // tile_B is stored as column major.
+                // [col0-0:32][col1-0:32][col2-0:32]..[col63-0:32]
+                var matrix_b_offset = subtile_idx * subtile_cols * tile_k + step;
+                var matB0: subgroup_matrix_right<f16, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>>(&tile_B, matrix_b_offset, true, tile_k);
+                var matB1: subgroup_matrix_right<f16, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>>(&tile_B, matrix_b_offset +  8 * tile_k, true, tile_k);
+                var matB2: subgroup_matrix_right<f16, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>>(&tile_B, matrix_b_offset + 16 * tile_k, true, tile_k);
+                var matB3: subgroup_matrix_right<f16, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>>(&tile_B, matrix_b_offset + 24 * tile_k, true, tile_k);
 
-            // Compute Phase
-            // Syntax: subgroupMatrixMultiplyAccumulate left, right, accumulate -> accumulate
-            matC00 = subgroupMatrixMultiplyAccumulate(matA0, matB0, matC00);
-            matC01 = subgroupMatrixMultiplyAccumulate(matA0, matB1, matC01);
-            matC02 = subgroupMatrixMultiplyAccumulate(matA0, matB2, matC02);
-            matC03 = subgroupMatrixMultiplyAccumulate(matA0, matB3, matC03);
+                // Compute Phase
+                // Syntax: subgroupMatrixMultiplyAccumulate left, right, accumulate -> accumulate
+                matC00 = subgroupMatrixMultiplyAccumulate(matA0, matB0, matC00);
+                matC01 = subgroupMatrixMultiplyAccumulate(matA0, matB1, matC01);
+                matC02 = subgroupMatrixMultiplyAccumulate(matA0, matB2, matC02);
+                matC03 = subgroupMatrixMultiplyAccumulate(matA0, matB3, matC03);
 
-            matC10 = subgroupMatrixMultiplyAccumulate(matA1, matB0, matC10);
-            matC11 = subgroupMatrixMultiplyAccumulate(matA1, matB1, matC11);
-            matC12 = subgroupMatrixMultiplyAccumulate(matA1, matB2, matC12);
-            matC13 = subgroupMatrixMultiplyAccumulate(matA1, matB3, matC13);
+                matC10 = subgroupMatrixMultiplyAccumulate(matA1, matB0, matC10);
+                matC11 = subgroupMatrixMultiplyAccumulate(matA1, matB1, matC11);
+                matC12 = subgroupMatrixMultiplyAccumulate(matA1, matB2, matC12);
+                matC13 = subgroupMatrixMultiplyAccumulate(matA1, matB3, matC13);
+            }
+
+            workgroupBarrier();
         }
 
-        workgroupBarrier();
-    }
+        let subtile_thread_id = sg_id;
+        var matrix_c_offset = (a_global_base+base_A) * uniforms.N + b_global_base + base_B;
+        if (a_global_base + base_A < uniforms.M)
+        {
+            // Syntax: subgroupMatrixStore destination, dest_offset, matrix, is_col_major, dest_stride
+            subgroupMatrixStore(&output, matrix_c_offset,      matC00, false, uniforms.N);
+            subgroupMatrixStore(&output, matrix_c_offset + 8,  matC01, false, uniforms.N);
+            subgroupMatrixStore(&output, matrix_c_offset + 16, matC02, false, uniforms.N);
+            subgroupMatrixStore(&output, matrix_c_offset + 24, matC03, false, uniforms.N);
+        }
 
-    let subtile_thread_id = sg_id;
-    var matrix_c_offset = (a_global_base+base_A) * uniforms.N + b_global_base + base_B;
-    if (a_global_base + base_A + 8 < uniforms.M)
-    {
-        // Syntax: subgroupMatrixStore destination, dest_offset, matrix, is_col_major, dest_stride
-        subgroupMatrixStore(&output, matrix_c_offset,      matC00, false, uniforms.N);
-        subgroupMatrixStore(&output, matrix_c_offset + 8,  matC01, false, uniforms.N);
-        subgroupMatrixStore(&output, matrix_c_offset + 16, matC02, false, uniforms.N);
-        subgroupMatrixStore(&output, matrix_c_offset + 24, matC03, false, uniforms.N);
-    }
-    else if (a_global_base + base_A < uniforms.M)
-    {
-        let rows = uniforms.M - (a_global_base + base_A);
-        safeMatrixStore(matrix_c_offset, &matC00, rows, subtile_id, subtile_thread_id);
-        safeMatrixStore(matrix_c_offset + 8,  &matC01, rows, subtile_id, subtile_thread_id);
-        safeMatrixStore(matrix_c_offset + 16, &matC02, rows, subtile_id, subtile_thread_id);
-        safeMatrixStore(matrix_c_offset + 24, &matC03, rows, subtile_id, subtile_thread_id);
-    }
-    matrix_c_offset = matrix_c_offset + 8 * uniforms.N;
-    if (a_global_base + base_A + 16 < uniforms.M)
-    {
-        subgroupMatrixStore(&output, matrix_c_offset,      matC10, false, uniforms.N);
-        subgroupMatrixStore(&output, matrix_c_offset + 8,  matC11, false, uniforms.N);
-        subgroupMatrixStore(&output, matrix_c_offset + 16, matC12, false, uniforms.N);
-        subgroupMatrixStore(&output, matrix_c_offset + 24, matC13, false, uniforms.N);
-    }
-    else if (a_global_base + base_A + 8 < uniforms.M)
-    {
-        let rows = uniforms.M - (a_global_base + base_A + 8);
-        safeMatrixStore(matrix_c_offset, &matC10, rows, subtile_id, subtile_thread_id);
-        safeMatrixStore(matrix_c_offset + 8,  &matC11, rows, subtile_id, subtile_thread_id);
-        safeMatrixStore(matrix_c_offset + 16, &matC12, rows, subtile_id, subtile_thread_id);
-        safeMatrixStore(matrix_c_offset + 24, &matC13, rows, subtile_id, subtile_thread_id);
-    }
+        matrix_c_offset = matrix_c_offset + 8 * uniforms.N;
+        if (a_global_base + base_A + 8 < uniforms.M)
+        {
+            subgroupMatrixStore(&output, matrix_c_offset,      matC10, false, uniforms.N);
+            subgroupMatrixStore(&output, matrix_c_offset + 8,  matC11, false, uniforms.N);
+            subgroupMatrixStore(&output, matrix_c_offset + 16, matC12, false, uniforms.N);
+            subgroupMatrixStore(&output, matrix_c_offset + 24, matC13, false, uniforms.N);
+        }
     )MAIN_FN";
 
     return Status::OK();
