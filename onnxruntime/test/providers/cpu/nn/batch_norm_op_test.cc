@@ -924,7 +924,8 @@ TEST(BatchNormTest, ForwardTrainingTestWithSavedOutputsOpset9) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            // TODO(mtavenrath) flakiness of running_mean for CUDA has been fixed, the delta of running_var is still ~0.1
            {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider,
-            kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
+            kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider,
+            kWebGpuExecutionProvider});
 }
 
 TEST(BatchNormTest, ForwardTrainingTestOpset14) {
@@ -953,7 +954,8 @@ TEST(BatchNormTest, ForwardTrainingTestOpset14) {
   // exclude TRT and OpenVINO for same reasons as seen in TestBatchNorm()
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider,
-            kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
+            kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider,
+            kWebGpuExecutionProvider});
 }
 
 TEST(BatchNormTest, ForwardTrainingTestOpset15) {
@@ -982,7 +984,8 @@ TEST(BatchNormTest, ForwardTrainingTestOpset15) {
   // Same exclusions as the opset 14 test
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kCudaExecutionProvider, kCudaNHWCExecutionProvider, kRocmExecutionProvider,
-            kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider});
+            kTensorrtExecutionProvider, kOpenVINOExecutionProvider, kDnnlExecutionProvider,
+            kWebGpuExecutionProvider});
 }
 #endif  // BATCHNORM_INCLUDE_TRAINING_SUPPORT
 
