@@ -170,7 +170,7 @@ Status DepthToSpace::Compute(OpKernelContext* context) const {
   int64_t output_height = -1;
   int64_t output_width = -1;
 
-  if (is_bhwc_) {
+  if (is_nhwc_) {
     ORT_RETURN_IF_ERROR(InputValidationsAndOutputDimsCalc<true>(input,
                                                           batch,
                                                           input_depth, input_height, input_width,

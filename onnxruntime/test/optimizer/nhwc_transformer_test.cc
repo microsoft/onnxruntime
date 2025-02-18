@@ -8,6 +8,7 @@
 #include "graph_transform_test_builder.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/graph/graph.h"
+#include "core/graph/node_attr_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -514,6 +515,36 @@ TEST(NhwcTransformerTests, ConvMixTensorRanks) {
                     check_nhwc_graph,
                     TransformerLevel::Level2,
                     TransformerLevel::Level3);
+}
+
+TEST(NhwcTransformerTests, DepthToSpace) {
+  auto test_case = [&](const std::vector<int64_t>& input_shape, const int64_t blocksize, const std::string mode) {
+    auto build_test_case = [&](ModelTestBuilder& builder) {
+      auto* input_arg = builder.MakeInput<uint8_t>(input_shape, 0, 255);
+      auto* output_arg = builder.MakeOutput();
+      NodeAttributes attrs;
+      utils::SetNodeAttribute(utils::MakeAttribute("blocksize", blocksize), attrs);
+      utils::SetNodeAttribute(utils::MakeAttribute("mode", mode), attrs);
+
+      builder.AddNode("DepthToSpace", {input_arg}, {output_arg}, "", &attrs);
+    };
+
+    auto check_nhwc_graph = [&](InferenceSessionWrapper& session) {
+      auto op_to_count = CountOpsInGraph(session.GetGraph());
+      EXPECT_EQ(op_to_count["com.microsoft.DepthToSpace"], 1);
+      EXPECT_EQ(op_to_count["Transpose"], 2);
+    };
+
+    TransformerTester(build_test_case,
+                      check_nhwc_graph,
+                      TransformerLevel::Level2,
+                      TransformerLevel::Level3);
+  };
+
+  test_case({2, 12, 3, 2}, 2, "DCR");
+  test_case({1, 1024, 48, 48}, 4, "DCR");
+  test_case({2, 12, 3, 2}, 2, "CRD");
+  test_case({1, 1024, 48, 48}, 4, "CRD");
 }
 
 #ifdef MLAS_F16VEC_INTRINSICS_SUPPORTED

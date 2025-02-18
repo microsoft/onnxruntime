@@ -3698,7 +3698,9 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
       });
 
   static const char* DepthToSpace_ver1_doc = R"DOC(
-TODO
+It is similar to DepthToSpace (https://github.com/onnx/onnx/blob/main/docs/Operators.md#DepthToSpace) with differences:
+  1. It has additional attribute channels_last.
+  2. Input and output data type is uint8.
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(DepthToSpace)
@@ -3706,7 +3708,11 @@ TODO
       .SinceVersion(1)
       .SetDoc(DepthToSpace_ver1_doc)
       .Attr("blocksize", "Blocks of [blocksize, blocksize] are moved.", AttributeProto::INT)
-      .Attr("channels_last", "", AttributeProto::INT, static_cast<int64_t>(0))
+      .Attr(
+          "channels_last",
+          "1 if the input and output are in the NHWC layout, 0 if it is in the NCHW layout. Defaults to 0.",
+          AttributeProto::INT,
+          static_cast<int64_t>(0))
       .Attr(
           "mode",
           "DCR (default) for depth-column-row order re-arrangement. Use CRD for column-row-depth order.",
@@ -3715,8 +3721,8 @@ TODO
       .Input(
           0,
           "input",
-          "Input tensor of [N,H,W,C], where N is the batch axis, C is the channel or depth"
-          ", H is the height and W is the width.",
+          "Input data tensor. Dimensions are [N,H,W,C] when channels_last is 1 or [N,C,H,W] otherwise, where N is the"
+          "batch axis, C is the channel or depth, H is the height and W is the width.",
           "T",
           OpSchema::Single,
           true,
@@ -3725,7 +3731,8 @@ TODO
       .Output(
           0,
           "output",
-          "Output tensor of [N, H * blocksize, W * blocksize, C/(blocksize * blocksize)].",
+          "Output data tensor. Dimensions are [N, H * blocksize, W * blocksize, C/(blocksize * blocksize)] when"
+          "channels_last is 1 or [N, C/(blocksize * blocksize), H * blocksize, W * blocksize] otherwise.",
           "T",
           OpSchema::Single,
           true,
