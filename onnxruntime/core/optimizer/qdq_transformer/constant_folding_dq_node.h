@@ -28,7 +28,7 @@ class ConstantFoldingDQ : public ConstantFolding {
                     const InlinedHashSet<std::string_view>& compatible_execution_providers = {},
                     const InlinedHashSet<std::string>& excluded_initializers = {}) noexcept;
 
-  bool AllowConstantFolding(const Node& node) const;
+  bool AllowConstantFolding(const Node& node) const override;
 
  private:
   InlinedHashSet<NodeIndex> node_index_set_;

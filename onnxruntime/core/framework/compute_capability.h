@@ -32,7 +32,7 @@ struct ComputeCapability {
   // Optional key/value strings to configure an optimizer
   std::unordered_map<std::string, std::string> optimization_configs;
 
-  // optional ComputeCapability instances for sets of nodes within this ComputeCapability that should be optimized.
+  // Optional ComputeCapability instances for sets of nodes within this ComputeCapability that should be optimized.
   // when an optimization is applied, ORT will update this ComputeCapability to reflect the changes made.
   // IndexedSubGraph.nodes:
   //  - update based on RemovedNode/AddNode calls

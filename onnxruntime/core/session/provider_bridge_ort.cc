@@ -36,6 +36,7 @@
 #include "core/graph/graph_proto_serializer.h"
 #include "core/framework/murmurhash3.h"
 #include "core/framework/model_metadef_id_generator.h"
+#include "core/optimizer/graph_optimizer_registry.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/qdq_selectors.h"
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 
@@ -214,11 +215,12 @@ struct ProviderHostImpl : ProviderHost {
   const OrtApiBase* OrtGetApiBase() override { return ::OrtGetApiBase(); }
 
   Status GetOptimizerByName(const std::string& name,
-                            std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)>& selection_func) override {
+                            SelectionFunc& selection_func,
+                            KeyValueConfig& key_value_config) override {
     std::string optimizer_name(name);
 
     auto optimizer_registry = onnxruntime::GraphOptimizerRegistry::Get();
-    auto func = optimizer_registry->GetSelectionFunc(optimizer_name);
+    auto func = optimizer_registry->GetSelectionFunc(optimizer_name, key_value_config);
 
     if (func.has_value()) {
       selection_func = func.value();

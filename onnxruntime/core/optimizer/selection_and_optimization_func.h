@@ -7,12 +7,12 @@
 #include "core/graph/graph_viewer.h"
 
 namespace onnxruntime {
-static const std::string kCONSTANT_FOLDING_DQ = "ConstantFoldingDQ";
+static const std::string kConstantFoldingDQ = "ConstantFoldingDQ";
 
-// ConstantFoldingDQ selection function
-std::vector<std::unique_ptr<ComputeCapability>> ConstantFoldingDQ_selection(const GraphViewer& graph_viewer);
+struct ConstantFoldingDQFuncs {
+  static std::vector<std::unique_ptr<ComputeCapability>> Select(const GraphViewer& graph_viewer);
+  static Status Optimize(Graph& graph, const ComputeCapability& optimization_cc, ComputeCapability& cc_to_update);
+};
 
-// ConstantFoldingDQ optimization function
-Status ConstantFoldingDQ_optimization(Graph& graph, const ComputeCapability& optimization_cc, ComputeCapability& cc_to_update);
 
 }  // namespace onnxruntime

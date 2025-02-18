@@ -21,11 +21,7 @@ ConstantFolding::ConstantFolding(const IExecutionProvider& execution_provider,
                                  const ConfigOptions& config_options,
                                  const InlinedHashSet<std::string_view>& compatible_execution_providers,
                                  const InlinedHashSet<std::string>& excluded_initializers) noexcept
-    : GraphTransformer("ConstantFolding", compatible_execution_providers),
-      skip_dequantize_linear_(skip_dequantize_linear),
-      config_options_(config_options),
-      excluded_initializers_(excluded_initializers),
-      execution_provider_(execution_provider) {
+    : ConstantFolding("ConstantFolding", execution_provider, skip_dequantize_linear, config_options, compatible_execution_providers, excluded_initializers) {
 }
 
 ConstantFolding::ConstantFolding(const std::string& name,

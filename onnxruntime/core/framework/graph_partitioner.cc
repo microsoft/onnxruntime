@@ -265,9 +265,57 @@ static Status GetCapabilityForEPForAotInlining(const GraphViewer& graph_viewer,
   return Status::OK();
 }
 
+/** 
+ * Check whether the given IndexedSubGraph is available for assigning to a specific provider.
+ * 
+ */ 
+static bool IsIndexedSubGraphAvailableForAssignment(Graph& graph,
+                                                    const IndexedSubGraph& capability,
+                                                    GraphPartitioner::Mode mode,
+                                                    const std::string& provider_type) {
+  // The provider can run a single node in the <graph> if not using meta-defs.
+  if (capability.GetMetaDef() == nullptr && capability.nodes.size() == 1) {
+    auto* node = graph.GetNode(capability.nodes[0]);
+    if (nullptr != node && node->GetExecutionProviderType().empty()) {
+      // The node was not fused or assigned.
+      return true;
+    }
+    return false;
+  }
+
+  // if mode is kAssignOnly we want all nodes that can _potentially_ be taken by compiling EPs to be assigned,
+  // so that we aggregate the nodes covered and ensure the original nodes remain in the ORT format model by
+  // preventing level 2 and 3 optimizers from changing them. optimizers check the EP the node is assigned to
+  // and only make changes if the EP is on the optimizer's list of supported EPs. an EP that compiles nodes
+  // should never be on those lists.
+  //
+  // when the ORT format model is loaded we will process it normally with EP priority being applied for
+  // whichever EPs are enabled at the time.
+  //
+  // e.g. an Android NNAPI EP may take different/overlapping nodes to a iOS CoreML EP.
+  // We want the ORT format model to be able to be run as efficiently as possible on either platform,
+  // so we want all the nodes that either may take to be preserved. If we did not do this we would
+  // need to create one ORT format model for Android and one for iOS.
+  if (mode == GraphPartitioner::Mode::kAssignOnly) {
+    return true;
+  }
+    
+  for (auto node_index : capability.nodes) {
+    const auto* node = graph.GetNode(node_index);
+    if ((nullptr == node) ||
+        (!node->GetExecutionProviderType().empty() && node->GetExecutionProviderType() != provider_type)) {
+      // The node was fused or assigned, so that the whole sub-graph will not be assigned to this <provider>
+      // The assumption is that this <provider> can only run the sub-graph as a whole unit.
+      return false;
+    }
+  }
+
+  return true;
+}
+
 /**
- * Check if a node can be placed on a specific provider.
- * Do nothing if the node is already assigned
+ * Return a fused node or assign the nodes in the indexed subgraph to the current EP.
+ * 
  * \param graph
  * \param capability
  * \param kernel_registry_mgr
@@ -280,47 +328,12 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
                        IExecutionProvider::FusionStyle fusion_style,
                        const std::string& provider_type,
                        GraphPartitioner::Mode mode,
-                       int& fused_node_unique_id,
-                       bool* subgraph_assigned_to_ep) {
+                       int& fused_node_unique_id) {
   Node* result = nullptr;
-  *subgraph_assigned_to_ep = false;
 
   if (nullptr == capability.GetMetaDef()) {
     TryAssignSingleNode(graph, capability, provider_type);
-    *subgraph_assigned_to_ep = true;
   } else {
-    // The <provider> can run a fused <sub_graph> in the <graph>.
-
-    // Check whether any node in the <sub_graph> was already assigned. If so it cannot be stolen as assignment is done
-    // in order of EP priority
-    bool sub_graph_available_for_assignment = true;
-    if (mode != GraphPartitioner::Mode::kAssignOnly) {
-      // if mode is kAssignOnly we want all nodes that can _potentially_ be taken by compiling EPs to be assigned,
-      // so that we aggregate the nodes covered and ensure the original nodes remain in the ORT format model by
-      // preventing level 2 and 3 optimizers from changing them. optimizers check the EP the node is assigned to
-      // and only make changes if the EP is on the optimizer's list of supported EPs. an EP that compiles nodes
-      // should never be on those lists.
-      //
-      // when the ORT format model is loaded we will process it normally with EP priority being applied for
-      // whichever EPs are enabled at the time.
-      //
-      // e.g. an Android NNAPI EP may take different/overlapping nodes to a iOS CoreML EP.
-      // We want the ORT format model to be able to be run as efficiently as possible on either platform,
-      // so we want all the nodes that either may take to be preserved. If we did not do this we would
-      // need to create one ORT format model for Android and one for iOS.
-      for (auto node_index : capability.nodes) {
-        const auto* node = graph.GetNode(node_index);
-        if ((nullptr == node) ||
-            (!node->GetExecutionProviderType().empty() && node->GetExecutionProviderType() != provider_type)) {
-          // The node was fused or assigned, so that the whole sub-graph will not be assigned to this <provider>
-          // The assumption is that this <provider> can only run the sub-graph as a whole unit.
-          sub_graph_available_for_assignment = false;
-          break;
-        }
-      }
-    }
-
-    if (sub_graph_available_for_assignment) {
       if (mode == GraphPartitioner::Mode::kNormal) {
         std::ostringstream oss;
         oss << provider_type << "_" << capability.GetMetaDef()->name << "_" << fused_node_unique_id++;
@@ -350,8 +363,6 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
           }
         }
       }
-      *subgraph_assigned_to_ep = true;
-    }
   }
 
   return result;
@@ -430,18 +441,28 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                                          entry->sub_graph->GetMetaDef() != nullptr;
                                                 }));
   for (auto& capability : capabilities) {
-    bool subgraph_assigned_to_ep = false;
-    Node* n = PlaceNode(graph, *capability->sub_graph, fusion_style, type, mode, fused_node_unique_id, &subgraph_assigned_to_ep);
+    // The <provider> can run a fused <sub_graph> in the <graph>.
+    // Check whether any node in the <sub_graph> was already assigned. If so it cannot be stolen as assignment is done
+    // in order of EP priority
+    bool sub_graph_available_for_assignment = IsIndexedSubGraphAvailableForAssignment(graph, *capability->sub_graph, mode, type);
 
-    // If the subgraph is assigned to the EP and the ComputeCapability has nodes_to_optimize,
+    // If the <sub_graph> is avaiable to be assigned to the EP and the ComputeCapability has nodes_to_optimize,
     // run EP related optimizations and update ComputeCapability.
-    if (subgraph_assigned_to_ep && !capability->nodes_to_optimize.empty()) {
+    if (sub_graph_available_for_assignment && !capability->nodes_to_optimize.empty()) {
       for (auto& optimization_cc : capability->nodes_to_optimize) {
         if (optimization_cc->optimization_func) {
-          optimization_cc->optimization_func(graph, *optimization_cc, *capability);
+          auto status = optimization_cc->optimization_func(graph, *optimization_cc, *capability);
+          if (status != Status::OK()) {
+            return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, type, "The optimization function failed to finish.");
+          }
           // #TODO: Handle nested optimization ComputeCapability
         }
       }
+    }
+
+    Node* n = nullptr;
+    if (sub_graph_available_for_assignment) {
+      n = PlaceNode(graph, *capability->sub_graph, fusion_style, type, mode, fused_node_unique_id);
     }
 
     if (n != nullptr) {

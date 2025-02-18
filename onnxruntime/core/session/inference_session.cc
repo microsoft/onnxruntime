@@ -1845,20 +1845,9 @@ common::Status InferenceSession::Initialize() {
                                                                record_runtime_optimization_produced_op_schema,
                                                                *session_logger_));
 
-      // Register predefined optimizer names for EPs.
-      // It won't create optimizer instance until EP later requests it by calling GetOptimizerByName in provider bridge
-      std::vector<std::string> predefined_optimizer_names_for_ep;
-      predefined_optimizer_names_for_ep.push_back("ConstantFoldingDQ");
+      // Create predefined graph optimizers and selection functions for EPs to lookup.
       auto graph_optimizer_registry = onnxruntime::GraphOptimizerRegistry::Get();
-      graph_optimizer_registry->AddPredefinedOptimizerNames(predefined_optimizer_names_for_ep);
-      graph_optimizer_registry->AddCpuEpReference(execution_providers_.Get(onnxruntime::kCpuExecutionProvider));
-
-      // Don't create optimizer instances upfront.
-      /*
-      graph_optimizer_registry->AddPredefinedOptimizers(session_options_,
-                                                        *execution_providers_. Get(onnxruntime::kCpuExecutionProvider),
-                                                        *session_logger_);
-      */
+      graph_optimizer_registry->Create(&session_options_, execution_providers_.Get(onnxruntime::kCpuExecutionProvider), session_logger_);
 
 #ifdef USE_DML
       const IExecutionProvider* dmlExecutionProvider = execution_providers_.Get(kDmlExecutionProvider);

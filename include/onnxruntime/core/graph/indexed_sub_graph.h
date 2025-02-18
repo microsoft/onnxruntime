@@ -72,7 +72,7 @@ struct IndexedSubGraph {
 
   /** Gets the mutable meta definition needed to represent this subgraph as a FunctionProto.
   @returns MetaDef instance if it has been set. nullptr if not. */
-  MetaDef* GetMutableMetaDef() const {
+  MetaDef* GetMutableMetaDef() {
     return meta_def_.get();
   }
 

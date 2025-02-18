@@ -2663,7 +2663,6 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
           - ComputeCapability.optimize_func would be set by the optimizer to the function that does the optimization
    *
    *
-   *
    * Current available optimizations:
    *   - (ConstantFoldingDQ) constant folding on DQ nodes, i.e. dequantize INT32, UINT16, INT16 constant to FP32.
    */
@@ -2671,7 +2670,8 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)> selection_func;
   std::vector<std::unique_ptr<ComputeCapability>> selection_cc;
   std::string optimizer_name = "ConstantFoldingDQ";
-  auto status = g_host->GetOptimizerByName(optimizer_name, selection_func);
+  std::unordered_map<std::string, std::string> key_value_config;
+  auto status = g_host->GetOptimizerByName(optimizer_name, selection_func, key_value_config);
   if (status == Status::OK()) {
     if (selection_func) {
       selection_cc = selection_func(graph);

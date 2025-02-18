@@ -9,7 +9,7 @@
 
 namespace onnxruntime {
 
-std::vector<std::unique_ptr<ComputeCapability>> ConstantFoldingDQ_selection(const GraphViewer& graph_viewer) {
+std::vector<std::unique_ptr<ComputeCapability>> ConstantFoldingDQFuncs::Select(const GraphViewer& graph_viewer) {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
   const std::vector<NodeIndex>& node_index = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED /*priority-based topological sort*/);
@@ -29,12 +29,12 @@ std::vector<std::unique_ptr<ComputeCapability>> ConstantFoldingDQ_selection(cons
   }
 
   result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph)));
-  result.back()->optimization_func = ConstantFoldingDQ_optimization;
+  result.back()->optimization_func = ConstantFoldingDQFuncs::Optimize;
   return result;
 }
 
-Status ConstantFoldingDQ_optimization(Graph& graph, const ComputeCapability& optimization_cc, ComputeCapability& cc_to_update) {
-  std::string optimizer_name = kCONSTANT_FOLDING_DQ;
+Status ConstantFoldingDQFuncs::Optimize(Graph& graph, const ComputeCapability& optimization_cc, ComputeCapability& cc_to_update) {
+  std::string optimizer_name = kConstantFoldingDQ;
   auto logger = const_cast<logging::Logger*>(&logging::LoggingManager::DefaultLogger());
   std::unordered_set<std::string> original_initializers_to_remove;
   std::unordered_set<std::string> new_initializers_to_add;
@@ -57,24 +57,13 @@ Status ConstantFoldingDQ_optimization(Graph& graph, const ComputeCapability& opt
   }
 
   auto optimizer_registry = onnxruntime::GraphOptimizerRegistry::Get();
+  static auto transformer = std::make_unique<ConstantFoldingDQ>(*optimizer_registry->GetCpuEpReference(),
+                                                                false /*skip_dequantize_linear*/,
+                                                                optimizer_registry->GetSessionOptionsReference()->config_options,
+                                                                dq_node_index_set);
 
-  // ConstantFoldingDQ optimizer doesn't need the key/value strings.
-  std::unordered_map<std::string, std::string> key_value_configs = optimization_cc.optimization_configs;
-
-  // Don't use CreateOptimizer as ConstantFoldingDQ needs dq_node_index_set for instantiation.
-  // optimizer_registry->CreateOptimizer(optimizer_name, key_value_configs);
-
-  // Create ConstantFoldingDQ optimizer if it's not existed.
-  if (!optimizer_registry->GetTransformerByName(optimizer_name)) {
-    auto transformer = std::make_unique<ConstantFoldingDQ>(*optimizer_registry->GetCpuEpReference(),
-                                                           false /*skip_dequantize_linear*/,
-                                                           optimizer_registry->GetSessionOptionsReference()->config_options,
-                                                           dq_node_index_set);
-    optimizer_registry->Register(std::move(transformer));
-  }
-
-  // apply constant folding on DQ nodes
-  optimizer_registry->ApplyTransformer(graph, optimizer_name, *logger);
+  bool modified = false;
+  ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, *logger));
 
   // update the overall ComputeCapability
   std::vector<onnxruntime::NodeIndex> updated_nodes;

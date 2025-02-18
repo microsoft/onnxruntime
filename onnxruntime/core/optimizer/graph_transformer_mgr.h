@@ -29,13 +29,6 @@ class GraphTransformerManager {
   // Apply all transformers registered for the given level on the given graph
   common::Status ApplyTransformers(Graph& graph, TransformerLevel level, const logging::Logger& logger) const;
 
-  // Apply one transformer registered by name on the given graph
-  common::Status GraphTransformerManager::ApplyTransformer(Graph& graph, std::string& name,
-                                                           const logging::Logger& logger) const;
-
-  // Get transformer by name. Return nullptr if not found.
-  GraphTransformer* GetTransformerByName(std::string& name) const;
-
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(GraphTransformerManager);
 
