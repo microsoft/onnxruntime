@@ -41,7 +41,10 @@ class ConstantFolding : public GraphTransformer {
   /**
    * Derived class can implement this virtual function to limit the nodes that can be constant folded.
    */
-  virtual bool AllowConstantFolding(const Node& node) const { return true; }
+  virtual bool AllowConstantFolding(const Node& node) const { 
+    ORT_UNUSED_PARAMETER(node);
+    return true; 
+  }
 
  private:
   Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
