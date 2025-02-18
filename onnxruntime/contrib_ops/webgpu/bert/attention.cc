@@ -306,7 +306,7 @@ Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tenso
 }
 
 Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("probs", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
+  shader.AddInput("probs", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddInput("v", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   if (feed_past_value_) {
     shader.AddInput("past_value", ShaderUsage::UseUniform);
@@ -319,7 +319,8 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.AddOutput("present_value", ShaderUsage::UseUniform);
   }
 
-  shader.AdditionalImplementation() << "var<workgroup> tileQ: array<probs_value_t, " << tile_size_ * tile_size_ << ">;\n"
+  shader.AdditionalImplementation() << "const min_value = probs_element_t(-65504.0);\n"
+                                    << "var<workgroup> tileQ: array<array<probs_value_t, " << tile_size_ << ">, " << tile_size_ << ">;\n"
                                     << "var<workgroup> tileK: array<v_value_t, " << tile_size_ * tile_size_ << ">;\n";
   shader.MainFunctionBody() << "let head_idx = workgroup_id.z % uniforms.num_heads;\n"
                             << "let batch_idx = workgroup_id.z / uniforms.num_heads;\n"
@@ -327,7 +328,9 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let n = global_id.x;\n"
                             << "let offsetA = workgroup_id.z * (uniforms.M * uniforms.K) + m * uniforms.K;\n"
                             << "let sequence_length = uniforms.M;\n"
-                            << "var total_sequence_length = uniforms.K;\n";
+                            << "var total_sequence_length = uniforms.K;\n"
+                               "var previous_max = min_value;\n"
+                               "var previous_denom = probs_value_t(0);";
   std::ostringstream oss;
   InitVarStub(oss, seqlen_k_);
   shader.MainFunctionBody() << oss.str();
@@ -339,7 +342,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.MainFunctionBody() << "var value = output_value_t(0);\n"
                             << "for (var w: u32 = 0u; w < uniforms.K; w += TILE_SIZE) {\n"
                             << "  if (m < uniforms.M && w + local_id.x < uniforms.K) {\n"
-                            << "    tileQ[TILE_SIZE * local_id.y + local_id.x] = probs[offsetA + w + local_id.x];\n"
+                            << "    tileQ[local_id.y][local_id.x] = probs[offsetA + w + local_id.x];\n"
                             << "  }\n"
                             << "  if (n < uniforms.N && w + local_id.y < uniforms.K) {\n"
                             << "    var idx = TILE_SIZE * local_id.y + local_id.x;\n";
@@ -369,9 +372,30 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   shader.MainFunctionBody() << "  }\n"
                             << "  workgroupBarrier();\n"
+                               "  var local_max = min_value;\n"
+                               "  for (var i = 0u; i < TILE_SIZE && w + i < uniforms.K; i++) {\n"
+                               "    local_max = max(local_max, tileQ[local_id.y][i]);\n"
+                               "  }\n"
+                            << "  let new_max = max(previous_max, local_max);\n"
+                               "  tileQ[local_id.y][local_id.x] = probs_value_t(exp(f32(tileQ[local_id.y][local_id.x]) - f32(new_max)));\n"
+                               "  workgroupBarrier();\n"
+                               "  var sum = probs_value_t(0);\n"
+                               "  for (var i = 0u; i < TILE_SIZE && w + i < uniforms.K; i++) {\n"
+                               "    sum += tileQ[local_id.y][i];\n"
+                               "  }\n"
+                               "  let dleft = previous_denom * exp(previous_max-new_max);\n"
+                               "  var d = dleft + sum;\n"
+                               "  d = select(d,probs_element_t(0.0000001),d==0);"
+                               "  tileQ[local_id.y][local_id.x] = tileQ[local_id.y][local_id.x] / d;\n"
+                               "  workgroupBarrier();\n"
+                               "  previous_max = new_max;\n"
+                               "  previous_denom = d;\n"
+                               "  let o_ratio = dleft / d;\n"
+                               "  var sub_value = output_value_t(0);\n"
                             << "  for (var k: u32 = 0u; k < TILE_SIZE && w+k < total_sequence_length; k++) {\n"
-                            << "    value += tileQ[TILE_SIZE * local_id.y + k] * tileK[TILE_SIZE * k + local_id.x];\n"
+                            << "    sub_value += tileQ[local_id.y][k] * tileK[TILE_SIZE * k + local_id.x];\n"
                             << "  }\n"
+                               "  value = value * o_ratio + sub_value;\n"
                             << "  workgroupBarrier();\n"
                             << "}\n";
 
@@ -449,8 +473,8 @@ Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const T
   ORT_RETURN_IF_ERROR(ComputeAttentionProbs(context, output_count, Q, K, past_key, attention_bias, &probs, present_key,
                                             parameters, past_sequence_length, total_sequence_length, seqlen_k));
 
-  ORT_RETURN_IF_ERROR(ComputeInPlaceSoftmax(context, &probs,
-                                            parameters.batch_size_, parameters.num_heads_, parameters.past_sequence_length_, parameters.sequence_length_, total_sequence_length, seqlen_k, parameters.is_first_prompt_));
+//  ORT_RETURN_IF_ERROR(ComputeInPlaceSoftmax(context, &probs,
+ //                                           parameters.batch_size_, parameters.num_heads_, parameters.past_sequence_length_, parameters.sequence_length_, total_sequence_length, seqlen_k, parameters.is_first_prompt_));
 
   ORT_RETURN_IF_ERROR(ComputeVxAttentionScore(context, output_count, &probs, V, past_value, output, present_value,
                                               parameters, past_sequence_length, total_sequence_length, seqlen_k));
