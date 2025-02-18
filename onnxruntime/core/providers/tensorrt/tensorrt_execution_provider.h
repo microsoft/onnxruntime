@@ -616,9 +616,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    * This function helps add back the DQ nodes that are filtered out by TRT parser.
    * The reason is the DQ nodes can be optimized and dequantized by applying ConstantFoldingDQ optimizer by ORT L2+ optimization.
    */
-  void TensorrtExecutionProvider::UpdateSupportedNodeVectorForDQ(const GraphViewer& graph,
-                                                                 SubGraph_t& supported_node_vector,
-                                                                 SubGraphCollection_t& supported_nodes_vector,
-                                                                 std::unordered_map<NodeIndex, NodeIndex> consumer_to_dq) const;
+  void UpdateSupportedNodeVectorForDQ(const GraphViewer& graph,
+                                      SubGraph_t& supported_node_vector,
+                                      SubGraphCollection_t& supported_nodes_vector,
+                                      std::unordered_map<NodeIndex, NodeIndex> consumer_to_dq) const;
 };
 }  // namespace onnxruntime
