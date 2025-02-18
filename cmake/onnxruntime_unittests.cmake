@@ -773,16 +773,13 @@ endif()
 if (onnxruntime_USE_ROCM)
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
 endif()
-onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework onnxruntime_session GTest::gtest GTest::gmock onnx onnx_proto flatbuffers::flatbuffers nlohmann_json::nlohmann_json Boost::mp11 safeint_interface)
-
-
-
+onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework onnxruntime_session GTest::gtest GTest::gmock onnx onnx_proto flatbuffers::flatbuffers nlohmann_json::nlohmann_json Boost::mp11 safeint_interface Eigen3::Eigen)
 if (onnxruntime_USE_DML)
   target_add_dml(onnxruntime_test_utils)
 endif()
 add_dependencies(onnxruntime_test_utils ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/include" PRIVATE
-        ${eigen_INCLUDE_DIRS} ${ONNXRUNTIME_ROOT})
+        ${ONNXRUNTIME_ROOT})
 set_target_properties(onnxruntime_test_utils PROPERTIES FOLDER "ONNXRuntimeTest")
 source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_test_utils_src})
 
@@ -806,11 +803,10 @@ if(NOT IOS)
       target_compile_options(onnx_test_runner_common PRIVATE "/wd4244")
     endif()
     onnxruntime_add_include_to_target(onnx_test_runner_common onnxruntime_common onnxruntime_framework
-            onnxruntime_test_utils onnx onnx_proto re2::re2 flatbuffers::flatbuffers Boost::mp11 safeint_interface)
+            onnxruntime_test_utils onnx onnx_proto re2::re2 flatbuffers::flatbuffers Boost::mp11 safeint_interface Eigen3::Eigen)
 
     add_dependencies(onnx_test_runner_common onnx_test_data_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
-    target_include_directories(onnx_test_runner_common PRIVATE ${eigen_INCLUDE_DIRS}
-            ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
+    target_include_directories(onnx_test_runner_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
 
     set_target_properties(onnx_test_runner_common PROPERTIES FOLDER "ONNXRuntimeTest")
     set(onnx_test_runner_common_lib onnx_test_runner_common)
@@ -1241,7 +1237,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     endif()
     target_include_directories(onnxruntime_perf_test PRIVATE   ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
-          ${eigen_INCLUDE_DIRS} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
+          ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
           ${CMAKE_CURRENT_BINARY_DIR})
     if (onnxruntime_USE_ROCM)
       target_include_directories(onnxruntime_perf_test PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
@@ -1296,7 +1292,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       )
     onnxruntime_add_executable(onnxruntime_qnn_ctx_gen ${onnxruntime_qnn_ctx_gen_src})
     target_include_directories(onnxruntime_qnn_ctx_gen PRIVATE   ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
-          ${eigen_INCLUDE_DIRS} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
+          ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
           ${CMAKE_CURRENT_BINARY_DIR})
     if (WIN32)
       target_compile_options(onnxruntime_qnn_ctx_gen PRIVATE ${disabled_warnings})
@@ -1517,7 +1513,6 @@ endif()
       ${CMAKE_CURRENT_BINARY_DIR}
       ${ONNXRUNTIME_ROOT}
       ${ORTTRAINING_ROOT}
-      ${eigen_INCLUDE_DIRS}
       ${CXXOPTS}
       ${extra_includes}
       ${onnxruntime_graph_header}

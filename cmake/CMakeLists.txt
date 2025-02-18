@@ -734,7 +734,10 @@ if (WIN32)
     endif()
 
 else()
+  # Check for compiler flags
   check_cxx_compiler_flag(-Wambiguous-reversed-operator HAS_AMBIGUOUS_REVERSED_OPERATOR)
+  # -Winterference-size was added in GCC 13
+  check_cxx_compiler_flag(-Winterference-size HAS_INTERFERENCE_SIZE)
   check_cxx_compiler_flag(-Wbitwise-instead-of-logical HAS_BITWISE_INSTEAD_OF_LOGICAL)
   check_cxx_compiler_flag(-Wcast-function-type HAS_CAST_FUNCTION_TYPE)
   check_cxx_compiler_flag(-Wcatch-value HAS_CATCH_VALUE)
@@ -816,6 +819,12 @@ else()
     endif()
   endif()
 
+  if(HAS_INTERFERENCE_SIZE)
+    # The warning was from Eigen. Since we do not use Eigen in the public API, we can ignore it.
+    # However, it also means that part of our code was compiled based on the build machine's hardware spec.
+    # Specifically, the code was tuned based on the build machine's CPU cache line size, which can vary a lot.
+    list(APPEND ORT_WARNING_FLAGS -Wno-interference-size)
+  endif()
   # enable warning(s) that may not be on by default
   if (HAS_SHORTEN_64_TO_32)
     list(APPEND ORT_WARNING_FLAGS -Wshorten-64-to-32)

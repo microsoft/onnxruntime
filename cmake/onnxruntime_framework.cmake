@@ -69,9 +69,9 @@ endif()
 if(onnxruntime_USE_TENSORRT OR onnxruntime_USE_NCCL)
 # TODO: for now, core framework depends on CUDA. It should be moved to TensorRT EP
 # TODO: provider_bridge_ort.cc should not include nccl.h
-target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC ${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
 else()
-target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS} PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
+target_include_directories(onnxruntime_framework PRIVATE ${ONNXRUNTIME_ROOT} PUBLIC ${CMAKE_CURRENT_BINARY_DIR})
 endif()
 # Needed for the provider interface, as it includes training headers when training is enabled
 if (onnxruntime_ENABLE_TRAINING_OPS)
@@ -87,7 +87,7 @@ endif()
 if (onnxruntime_ENABLE_ATEN)
   onnxruntime_add_include_to_target(onnxruntime_framework dlpack::dlpack)
 endif()
-onnxruntime_add_include_to_target(onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11 nlohmann_json::nlohmann_json)
+onnxruntime_add_include_to_target(onnxruntime_framework onnxruntime_common onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers safeint_interface Boost::mp11 nlohmann_json::nlohmann_json Eigen3::Eigen)
 
 if (onnxruntime_USE_MIMALLOC)
     onnxruntime_add_include_to_target(onnxruntime_framework mimalloc-static)
