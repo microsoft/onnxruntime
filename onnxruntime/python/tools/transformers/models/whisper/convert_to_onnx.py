@@ -340,9 +340,7 @@ def export_onnx_models(
 ):
     device = torch.device("cuda:0" if use_gpu else "cpu")
 
-    models = WhisperHelper.load_model(
-        model_name_or_path, model_impl, cache_dir, device, merge_encoder_and_decoder_init
-    )
+    models = WhisperHelper.load_model(model_name_or_path, model_impl, cache_dir, device, merge_encoder_and_decoder_init)
     config = models["decoder"].config
 
     if (not use_external_data_format) and (config.num_hidden_layers > 24):
