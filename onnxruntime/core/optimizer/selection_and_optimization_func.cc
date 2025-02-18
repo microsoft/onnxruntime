@@ -2,14 +2,14 @@
 // Licensed under the MIT License.
 
 #include "selection_and_optimization_func.h"
-#include "core/optimizer/graph_optimizer_registry.h"
 #include "core/graph/graph_utils.h"
 #include "core/framework/compute_capability.h"
 #include "core/optimizer/qdq_transformer/constant_folding_dq_node.h"
 
 namespace onnxruntime {
 
-std::vector<std::unique_ptr<ComputeCapability>> ConstantFoldingDQFuncs::Select(const GraphViewer& graph_viewer) {
+std::vector<std::unique_ptr<ComputeCapability>> ConstantFoldingDQFuncs::Select(const GraphViewer& graph_viewer, const KeyValueConfig& config) {
+  ORT_UNUSED_PARAMETER(config);
   std::vector<std::unique_ptr<ComputeCapability>> result;
   std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
   const std::vector<NodeIndex>& node_index = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::PRIORITY_BASED /*priority-based topological sort*/);

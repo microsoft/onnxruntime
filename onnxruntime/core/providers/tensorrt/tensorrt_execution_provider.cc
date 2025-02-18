@@ -2667,14 +2667,14 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
    *   - (ConstantFoldingDQ) constant folding on DQ nodes, i.e. dequantize INT32, UINT16, INT16 constant to FP32.
    */
 
-  std::function<std::vector<std::unique_ptr<ComputeCapability>>(const GraphViewer&)> selection_func;
+  SelectionFunc selection_func;
   std::vector<std::unique_ptr<ComputeCapability>> selection_cc;
   std::string optimizer_name = "ConstantFoldingDQ";
-  std::unordered_map<std::string, std::string> key_value_config;
-  auto status = g_host->GetOptimizerByName(optimizer_name, selection_func, key_value_config);
+  const std::unordered_map<std::string, std::string> key_value_config;
+  auto status = g_host->GetOptimizerByName(optimizer_name, selection_func);
   if (status == Status::OK()) {
     if (selection_func) {
-      selection_cc = selection_func(graph);
+      selection_cc = selection_func(graph, key_value_config);
     }
   } else {
     LOGS_DEFAULT(WARNING) << "[TensorRT EP] Can't get optimizer " << optimizer_name;

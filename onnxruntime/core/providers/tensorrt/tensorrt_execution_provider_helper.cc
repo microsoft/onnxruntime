@@ -380,8 +380,8 @@ void TensorrtExecutionProvider::UpdateSupportedNodeVectorForDQ(const GraphViewer
     auto it = std::find(node_index.begin(), node_index.end(), dq_node_index);
     if (it != node_index.end()) {
       // Calculate the index
-      int idx = std::distance(node_index.begin(), it);
-      supported_node_vector.first.push_back(static_cast<NodeIndex>(idx));
+      size_t idx = std::distance(node_index.begin(), it);
+      supported_node_vector.first.push_back(idx);
       auto node = graph.GetNode(dq_node_index);
       LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << node->Name() << " is included which is filtered out by TRT parser.";
     }

@@ -13,7 +13,7 @@ namespace onnxruntime {
 
 GraphOptimizerRegistry::GraphOptimizerRegistry() {}
 
-std::optional<SelectionFunc> GraphOptimizerRegistry::GetSelectionFunc(std::string& name, KeyValueConfig& key_value_config) const {
+std::optional<SelectionFunc> GraphOptimizerRegistry::GetSelectionFunc(std::string& name) const {
   auto lookup = transformer_name_to_selection_func_.find(name);
   if (lookup != transformer_name_to_selection_func_.end()) {
     return transformer_name_to_selection_func_.at(name);
