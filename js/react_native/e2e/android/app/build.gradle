@@ -85,7 +85,6 @@ android {
 	    excludes = [
 	      "META-INF",
 	      "META-INF/**",
-	      "**/libjsi.so",
 	    ]
 		}
     defaultConfig {
