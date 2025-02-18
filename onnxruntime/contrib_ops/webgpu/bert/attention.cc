@@ -319,7 +319,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
     shader.AddOutput("present_value", ShaderUsage::UseUniform);
   }
 
-  shader.AdditionalImplementation() << "const min_value = probs_element_t(-65504.0);\n"
+  shader.AdditionalImplementation() << "const min_value = f32(-3.402823e+38f);\n"
                                     << "var<workgroup> tileQ: array<array<probs_value_t, " << tile_size_ << ">, " << tile_size_ << ">;\n"
                                     << "var<workgroup> tileK: array<v_value_t, " << tile_size_ * tile_size_ << ">;\n";
   shader.MainFunctionBody() << "let head_idx = workgroup_id.z % uniforms.num_heads;\n"
@@ -330,7 +330,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let sequence_length = uniforms.M;\n"
                             << "var total_sequence_length = uniforms.K;\n"
                                "var previous_max = min_value;\n"
-                               "var previous_denom = probs_value_t(0);";
+                               "var previous_denom = f32(0);";
   std::ostringstream oss;
   InitVarStub(oss, seqlen_k_);
   shader.MainFunctionBody() << oss.str();
@@ -374,19 +374,19 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  workgroupBarrier();\n"
                                "  var local_max = min_value;\n"
                                "  for (var i = 0u; i < TILE_SIZE && w + i < uniforms.K; i++) {\n"
-                               "    local_max = max(local_max, tileQ[local_id.y][i]);\n"
+                               "    local_max = max(local_max, f32(tileQ[local_id.y][i]));\n"
                                "  }\n"
                             << "  let new_max = max(previous_max, local_max);\n"
-                               "  tileQ[local_id.y][local_id.x] = probs_value_t(exp(f32(tileQ[local_id.y][local_id.x]) - f32(new_max)));\n"
+                               "  tileQ[local_id.y][local_id.x] = probs_value_t(exp(f32(tileQ[local_id.y][local_id.x]) - new_max));\n"
                                "  workgroupBarrier();\n"
-                               "  var sum = probs_value_t(0);\n"
+                               "  var sum = f32(0);\n"
                                "  for (var i = 0u; i < TILE_SIZE && w + i < uniforms.K; i++) {\n"
-                               "    sum += tileQ[local_id.y][i];\n"
+                               "    sum += f32(tileQ[local_id.y][i]);\n"
                                "  }\n"
                                "  let dleft = previous_denom * exp(previous_max-new_max);\n"
                                "  var d = dleft + sum;\n"
-                               "  d = select(d,probs_element_t(0.0000001),d==0);"
-                               "  tileQ[local_id.y][local_id.x] = tileQ[local_id.y][local_id.x] / d;\n"
+                               "  d = select(d,f32(0.0000001),d==0);"
+                               "  tileQ[local_id.y][local_id.x] = probs_value_t(f32(tileQ[local_id.y][local_id.x]) / d);\n"
                                "  workgroupBarrier();\n"
                                "  previous_max = new_max;\n"
                                "  previous_denom = d;\n"
@@ -395,7 +395,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  for (var k: u32 = 0u; k < TILE_SIZE && w+k < total_sequence_length; k++) {\n"
                             << "    sub_value += tileQ[local_id.y][k] * tileK[TILE_SIZE * k + local_id.x];\n"
                             << "  }\n"
-                               "  value = value * o_ratio + sub_value;\n"
+                               "  value = value * probs_value_t(o_ratio) + sub_value;\n"
                             << "  workgroupBarrier();\n"
                             << "}\n";
 
