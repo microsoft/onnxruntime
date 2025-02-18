@@ -66,28 +66,6 @@ class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
   bool is_first_prompt_;
 };
 
-class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
- public:
-  InPlaceSoftmaxProgram(const std::string& kernel_name, int work_group_size, int components, const Tensor* seqlen_k = nullptr)
-      : Program{kernel_name}, work_group_size_(work_group_size), components_(components), seqlen_k_(seqlen_k) {
-  }
-
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"batch_size", ProgramUniformVariableDataType::Uint32},
-                                          {"num_heads", ProgramUniformVariableDataType::Uint32},
-                                          {"past_sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"sequence_length", ProgramUniformVariableDataType::Uint32},
-                                          {"total_sequence_length_comp", ProgramUniformVariableDataType::Uint32},
-                                          {"elements_per_thread", ProgramUniformVariableDataType::Uint32},
-                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32});
-
- private:
-  int work_group_size_;
-  int components_;
-  const Tensor* seqlen_k_;
-};
-
 class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
  public:
   VxAttentionScoreProgram(const std::string& kernel_name, bool feed_past_value, bool has_present_value, int tile_size, bool is_first_prompt, int n_reps = 1, const Tensor* seqlen_k = nullptr, bool past_present_share_buffer = false)
