@@ -307,6 +307,7 @@ void RunWithOneSessionSingleThreadInference(PathString model_name, std::string s
   auto status = session_object.Load(model_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object.Initialize();
+  std::cout << status.ErrorMessage() << std::endl;
   ASSERT_TRUE(status.IsOK());
 
   // run inference
@@ -561,6 +562,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   status = session_object2.Load(ctx_model_name);
   ASSERT_TRUE(status.IsOK());
   status = session_object2.Initialize();
+  std::cout << status.ErrorMessage() << std::endl;
   ASSERT_TRUE(status.IsOK());
   // run inference
   // TRT engine will be created and cached
@@ -829,6 +831,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNodeMulti) {
   EXPECT_TRUE(session_object2.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
   status = session_object2.Load(ctx_model_name);
   ASSERT_TRUE(status.IsOK());
+  std::cout << status.ErrorMessage() << std::endl;
   status = session_object2.Initialize();
   ASSERT_TRUE(status.IsOK());
   // run inference
