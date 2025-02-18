@@ -305,6 +305,12 @@ MlasQNBitGemmScalesPacked(
       const auto UseTiled = GetMlasPlatform().QNBitGemmDispatch->UseTiled_CompInt8;
       return UseTiled && UseTiled(K, BlkLen, has_zp_input);
     }
+#else
+    MLAS_UNREFERENCED_PARAMETER(K);
+    MLAS_UNREFERENCED_PARAMETER(BlkBitWidth);
+    MLAS_UNREFERENCED_PARAMETER(BlkLen);
+    MLAS_UNREFERENCED_PARAMETER(ComputeType);
+    MLAS_UNREFERENCED_PARAMETER(has_zp_input);
 #endif  // MLAS_TARGET_ARM64
     return false;
 }
