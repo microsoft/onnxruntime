@@ -206,9 +206,9 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
 
     // Change shape to HWCN, it could be initializer or normal input
     if (conv_type == OnnxConvType::kConv) {
-      ORT_RETURN_IF_ERROR(NchwShapeToHwcn<uint32_t>(input_info.shape, actual_shape));
+      ORT_RETURN_IF_ERROR(utils::NchwShapeToHwcn<uint32_t>(input_info.shape, actual_shape));
     } else if (conv_type == OnnxConvType::kConvTranspose) {
-      ORT_RETURN_IF_ERROR(CnhwShapeToHwcn<uint32_t>(input_info.shape, actual_shape));
+      ORT_RETURN_IF_ERROR(utils::CnhwShapeToHwcn<uint32_t>(input_info.shape, actual_shape));
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unexpected convolution op type: ", node_unit.OpType().c_str());
     }
@@ -219,9 +219,9 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
     if (input_info.is_initializer) {
       // Get transposed initializer bytes.
       if (conv_type == OnnxConvType::kConv) {
-        ORT_RETURN_IF_ERROR(TransposeFromNchwToHwcn(qnn_model_wrapper, *input_info.initializer_tensor, unpacked_tensor, is_3d));
+        ORT_RETURN_IF_ERROR(utils::TransposeFromNchwToHwcn(qnn_model_wrapper, *input_info.initializer_tensor, unpacked_tensor, is_3d));
       } else if (conv_type == OnnxConvType::kConvTranspose) {
-        ORT_RETURN_IF_ERROR(TransposeFromCnhwToHwcn(qnn_model_wrapper, *input_info.initializer_tensor, unpacked_tensor, is_3d));
+        ORT_RETURN_IF_ERROR(utils::TransposeFromCnhwToHwcn(qnn_model_wrapper, *input_info.initializer_tensor, unpacked_tensor, is_3d));
       } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unexpected convolution op type: ", node_unit.OpType().c_str());
       }
@@ -408,9 +408,9 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
 
     // Create the final shape after the weights are transposed to HWCN.
     if (conv_type == OnnxConvType::kConv) {
-      ORT_RETURN_IF_ERROR(NchwShapeToHwcn<uint32_t>(shape_2d, final_shape));
+      ORT_RETURN_IF_ERROR(utils::NchwShapeToHwcn<uint32_t>(shape_2d, final_shape));
     } else if (conv_type == OnnxConvType::kConvTranspose) {
-      ORT_RETURN_IF_ERROR(CnhwShapeToHwcn<uint32_t>(shape_2d, final_shape));
+      ORT_RETURN_IF_ERROR(utils::CnhwShapeToHwcn<uint32_t>(shape_2d, final_shape));
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unexpected convolution op type: ", node_unit.OpType().c_str());
     }
@@ -447,11 +447,11 @@ Status ConvOpBuilder::ProcessConv1DInputs(QnnModelWrapper& qnn_model_wrapper,
                     input1_name.c_str());
 
       if (conv_type == OnnxConvType::kConv) {
-        ORT_RETURN_IF_ERROR(TransposeFromNchwToHwcn(std::move(shape_2d_int64), elem_byte_size, original_tensor_bytes,
-                                                    unpacked_tensor, /*is_3d*/ false));
+        ORT_RETURN_IF_ERROR(utils::TransposeFromNchwToHwcn(std::move(shape_2d_int64), elem_byte_size, original_tensor_bytes,
+                                                           unpacked_tensor, /*is_3d*/ false));
       } else if (conv_type == OnnxConvType::kConvTranspose) {
-        ORT_RETURN_IF_ERROR(TransposeFromCnhwToHwcn(std::move(shape_2d_int64), elem_byte_size, original_tensor_bytes,
-                                                    unpacked_tensor, /*is_3d*/ false));
+        ORT_RETURN_IF_ERROR(utils::TransposeFromCnhwToHwcn(std::move(shape_2d_int64), elem_byte_size, original_tensor_bytes,
+                                                           unpacked_tensor, /*is_3d*/ false));
       } else {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN EP: Unexpected convolution op type: ", node_unit.OpType().c_str());
       }

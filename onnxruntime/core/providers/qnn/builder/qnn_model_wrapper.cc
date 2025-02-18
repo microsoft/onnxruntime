@@ -506,9 +506,9 @@ Status QnnModelWrapper::GetTensorInfo(const NodeUnitIODef& input, TensorInfo& te
   ORT_RETURN_IF_NOT(GetOnnxShape(input.node_arg, tensor_info.shape), "Cannot get shape");
 
   // Fill in initializer info.
-  tensor_info.is_initializer = IsInitializerInput(name);
+  tensor_info.is_initializer = IsConstantInput(name);
   if (tensor_info.is_initializer) {
-    tensor_info.initializer_tensor = GetInitializerTensors().at(name);
+    tensor_info.initializer_tensor = GetConstantTensor(name);
   }
 
   return Status::OK();
