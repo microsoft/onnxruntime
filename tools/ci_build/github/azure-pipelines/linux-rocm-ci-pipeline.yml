@@ -61,7 +61,7 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/rocm-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion) --build-arg BUILD_UID=1004"
       Repository: onnxruntimerocm-cibuild-rocm$(RocmVersion)
 
   - task: Cache@2
@@ -161,7 +161,7 @@ jobs:
     parameters:
       Dockerfile: tools/ci_build/github/linux/docker/rocm-ci-pipeline-env.Dockerfile
       Context: tools/ci_build/github/linux/docker
-      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion)"
+      DockerBuildArgs: "--build-arg ROCM_VERSION=$(RocmVersion) --build-arg BUILD_UID=1004"
       Repository: onnxruntimerocm-cibuild-rocm$(RocmVersion)
 
   - task: CmdLine@2
@@ -228,7 +228,7 @@ jobs:
           onnxruntimerocm-cibuild-rocm$(RocmVersion) \
           /bin/bash -c "
             set -ex; \
-            python --version; \
+            python --version; id ; ls -lha /home ; \
             ls /opt/miniconda/envs/rocm-ci/lib/; \
             pytest /onnxruntime_src/onnxruntime/python/tools/kernel_explorer/ -n 4 --reruns 1 --durations=100"
       workingDirectory: $(Build.SourcesDirectory)
