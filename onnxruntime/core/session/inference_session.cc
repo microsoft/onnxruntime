@@ -1847,7 +1847,7 @@ common::Status InferenceSession::Initialize() {
 
       // Create predefined graph optimizers and selection functions for EPs to lookup.
       auto graph_optimizer_registry = onnxruntime::GraphOptimizerRegistry::Get();
-      graph_optimizer_registry->Create(&session_options_, execution_providers_.Get(onnxruntime::kCpuExecutionProvider), session_logger_);
+      ORT_RETURN_IF_ERROR_SESSIONID_(graph_optimizer_registry->Create(&session_options_, execution_providers_.Get(onnxruntime::kCpuExecutionProvider), session_logger_));
 
 #ifdef USE_DML
       const IExecutionProvider* dmlExecutionProvider = execution_providers_.Get(kDmlExecutionProvider);
