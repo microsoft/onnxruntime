@@ -170,16 +170,17 @@ def print_debug_info():
     print("platform:", platform.platform())
 
     print("\nPython package, version and location:")
-    ort_package_count = 0
+    ort_packages = []
     for dist in distributions():
         package = dist.metadata["Name"]
         if package == "onnxruntime" or package.startswith(("onnxruntime-", "ort-")):
             location = _get_package_root(package, "onnxruntime")
             if location:
-                ort_package_count += 1
-                print(f"{package}=={dist.version} at {location}")
+                if package not in ort_packages:
+                    ort_packages.append(package)
+                    print(f"{package}=={dist.version} at {location}")
 
-    if ort_package_count > 1:
+    if len(ort_packages) > 1:
         print(
             "\033[33mWARNING: multiple onnxruntime packages are installed to the same location. "
             "Please 'pip uninstall` all above packages, then `pip install` only one of them.\033[0m"
