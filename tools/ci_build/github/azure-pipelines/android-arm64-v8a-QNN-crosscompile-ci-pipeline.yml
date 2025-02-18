@@ -42,11 +42,6 @@ jobs:
     clean: all
 
   steps:
-  - task: UsePythonVersion@0
-    displayName: Use Python $(pythonVersion)
-    inputs:
-      versionSpec: $(pythonVersion)
-
   - script: |
       env | grep ANDROID
     displayName: View Android ENVs
