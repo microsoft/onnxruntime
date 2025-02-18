@@ -196,6 +196,7 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
 }
 
 bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
+    uint64_t accuracy_level,
     uint32_t block_size,
     uint32_t batch_count,
     uint32_t N,
@@ -203,8 +204,13 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
     bool has_zero_points)
 {
     const bool has_subgroup_matrix = context.Device().HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix);
+    // For now SubgroupMatrixMatMulNBits is only supported for accuracy level 4, because with Fp16 there are
+    // some precision issues with subgroupMatrixMultiplyAccumulate. It is possible to support higher accuracy
+    // by setting compute_precision to Fp32, but that will be slower. For 1K token prefill FP16 Phi 3.5 is around 5s,
+    // FP322 is around 7s.
     return context.AdapterInfo().backendType == wgpu::BackendType::Metal &&
         has_subgroup_matrix &&
+        accuracy_level == 4 &&
         block_size == 32 &&
         batch_count == 1 &&
         K % 32 == 0 &&
