@@ -71,6 +71,11 @@
       endif()
     endif()
     set(${out_var} ${version_ok} PARENT_SCOPE)
+    if(version_ok)
+      message(STATUS "TensorRT ${NV_TENSORRT_MAJOR_INT}.${NV_TENSORRT_MINOR_INT}.${NV_TENSORRT_PATCH_INT} >= ${req_major}.${req_minor}.${req_patch}.")
+    else()
+      message(STATUS "TensorRT ${NV_TENSORRT_MAJOR_INT}.${NV_TENSORRT_MINOR_INT}.${NV_TENSORRT_PATCH_INT} < ${req_major}.${req_minor}.${req_patch}.")
+  endif()
   endfunction()
   
   # TensorRT Python Headers, needed by oss parser since 10.6
