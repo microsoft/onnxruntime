@@ -769,7 +769,7 @@ bool DataOps::node_is_supported(const NodeIndex node_idx, bool& has_external_wei
             if (!npu_qdq_optimizer_enabled_) {
 #ifndef NDEBUG
               if (openvino_ep::backend_utils::IsDebugEnabled()) {
-                // Pad Op with DQ inputs gets optimized in the downstream, 
+                // Pad Op with DQ inputs gets optimized in the downstream,
                 // so mark those no dim quantized Pad ops supported here
                 std::cout << "QDQ optimizer disabled; quantized Pad op detected (DequantizeLinear present), so marking those no dim quantized Pad ops as supported" << std::endl;
               }

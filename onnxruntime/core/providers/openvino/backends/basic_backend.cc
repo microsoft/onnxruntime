@@ -65,8 +65,8 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
     remote_context_ = new ov::intel_gpu::ocl::ClContext(OVCore::Get()->core, ctx);
     if (subgraph_context_.is_ep_ctx_graph) {
       exe_network_ = OVCore::Get()->ImportModel(*model_stream,
-                                         remote_context_,
-                                         subgraph_context_.subgraph_name);
+                                                remote_context_,
+                                                subgraph_context_.subgraph_name);
       model_stream.reset();  // Delete stream after it is no longer needed
     } else {
       std::shared_ptr<const OVNetwork> ov_model;
@@ -89,9 +89,9 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
       // If the blob is held in an EPContext node, then skip FE+Compile
       // and directly move on to creating a backend with the executable blob
       exe_network_ = OVCore::Get()->ImportModel(*model_stream,
-                                         hw_target,
-                                         device_config,
-                                         subgraph_context_.subgraph_name);
+                                                hw_target,
+                                                device_config,
+                                                subgraph_context_.subgraph_name);
       model_stream.reset();  // Delete stream after it is no longer needed
     } else if (!session_context_.has_external_weights &&
                !subgraph_context_.has_dynamic_input_shape &&
@@ -103,9 +103,9 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
       // Not enabled for models with external weights and when ep context is set.
       const std::string model = model_proto->SerializeAsString();
       exe_network_ = OVCore::Get()->CompileModel(model,
-                                          hw_target,
-                                          device_config,
-                                          subgraph_context_.subgraph_name);
+                                                 hw_target,
+                                                 device_config,
+                                                 subgraph_context_.subgraph_name);
     } else {  // For all other types use ov::ov_core read_model() to generate OV IR
               // followed by ov::ov_core compile_model()
       std::shared_ptr<const OVNetwork> ov_model;
@@ -292,7 +292,7 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
     } else {
       if (target_config.count(session_context_.device_type)) {
         auto supported_properties = OVCore::Get()->core.get_property(session_context_.device_type,
-                                                               ov::supported_properties);
+                                                                     ov::supported_properties);
         set_target_properties(session_context_.device_type,
                               target_config.at(session_context_.device_type), supported_properties);
       }
