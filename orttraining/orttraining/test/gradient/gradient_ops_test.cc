@@ -3403,6 +3403,80 @@ TEST(GradientCheckerTest, ReduceMaxGrad) {
   RunReductionTests(op_def_20, true, true);
 }
 
+void TestBroadcastableSumMeanOpGrad(const std::string& op_type, int op_version) {
+  float max_error;
+  GradientChecker<float, float, float> gradient_checker;
+  OpDef op_def{op_type, kOnnxDomain, op_version};
+
+  // Test 1: Single input.
+  {
+    TensorInfo x_info({2, 3}, true);
+    TensorInfo y_info({2, 3}, true);
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x_info}, {y_info}, &max_error));
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // Test 2: Two inputs without broadcasting (both of shape {2, 3}).
+  {
+    std::function<float(float)> transformer1 = [](float x) { return (int)(x * 100) / 100.f; };
+    std::function<float(float)> transformer2 = [](float x) { return (int)(x * 100) / 100.f + 0.002f; };
+    TensorInfo x1_info({2, 3}, true, &transformer1);
+    TensorInfo x2_info({2, 3}, true, &transformer2);
+    TensorInfo y_info({2, 3}, true);
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x1_info, x2_info}, {y_info}, &max_error));
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // Test 3: Two inputs with broadcasting.
+  // First input: shape {2, 3} and second input: shape {3} (broadcast along the first dimension)
+  {
+    std::function<float(float)> transformer1 = [](float x) { return (int)(x * 100) / 100.f; };
+    std::function<float(float)> transformer2 = [](float x) { return (int)(x * 100) / 100.f + 0.002f; };
+    TensorInfo x1_info({2, 3}, true, &transformer1);
+    TensorInfo x2_info({3}, true, &transformer2);
+    TensorInfo y_info({2, 3}, true);
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x1_info, x2_info}, {y_info}, &max_error));
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // Test 4: Three inputs with multidirectional broadcasting.
+  // First input: {2, 3}
+  // Second input: {1, 3} (broadcast along dimension 0)
+  // Third input: {2, 1} (broadcast along dimension 1)
+  {
+    std::function<float(float)> transformer1 = [](float x) { return (int)(x * 100) / 100.f; };
+    std::function<float(float)> transformer2 = [](float x) { return (int)(x * 100) / 100.f + 0.002f; };
+    std::function<float(float)> transformer3 = [](float x) { return (int)(x * 100) / 100.f + 0.004f; };
+    TensorInfo x1_info({2, 3}, true, &transformer1);
+    TensorInfo x2_info({1, 3}, true, &transformer2);
+    TensorInfo x3_info({2, 1}, true, &transformer3);
+    TensorInfo y_info({2, 3}, true);
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x1_info, x2_info, x3_info}, {y_info}, &max_error));
+    EXPECT_IS_TINY(max_error);
+  }
+
+  // Test 5: Four inputs with mixed broadcasting.
+  // First input: {2, 3}
+  // Second input: {1, 3} (broadcast along dimension 0)
+  // Third input: {2, 1} (broadcast along dimension 1)
+  // Fourth input: scalar {} (broadcast to all dimensions)
+  {
+    std::function<float(float)> transformer1 = [](float x) { return (int)(x * 100) / 100.f; };
+    std::function<float(float)> transformer2 = [](float x) { return (int)(x * 100) / 100.f + 0.002f; };
+    std::function<float(float)> transformer3 = [](float x) { return (int)(x * 100) / 100.f + 0.004f; };
+    std::function<float(float)> transformer4 = [](float x) { return (int)(x * 100) / 100.f + 0.006f; };
+    TensorInfo x1_info({2, 3}, true, &transformer1);
+    TensorInfo x2_info({1, 3}, true, &transformer2);
+    TensorInfo x3_info({2, 1}, true, &transformer3);
+    TensorInfo x4_info({}, true, &transformer4);  // Scalar input
+    TensorInfo y_info({2, 3}, true);
+    ASSERT_STATUS_OK(gradient_checker.ComputeGradientError(op_def, {x1_info, x2_info, x3_info, x4_info}, {y_info}, &max_error));
+    EXPECT_IS_TINY(max_error);
+  }
+}
+
+TEST(GradientCheckerTest, SumGrad) { TestBroadcastableSumMeanOpGrad("Sum", 11); }
+
 }  // namespace test
 }  // namespace onnxruntime
 
