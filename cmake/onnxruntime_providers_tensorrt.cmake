@@ -84,6 +84,7 @@
     find_path(TENSORRT_PYTHON_INCLUDE_DIR plugin.h
       HINTS ${TENSORRT_ROOT}
       PATH_SUFFIXES python/include/impl)
+    include_directories(${TENSORRT_PYTHON_INCLUDE_DIR})
   endif()
 
   # TensorRT 10 GA onwards, the TensorRT libraries will have major version appended to the end on Windows,
@@ -175,7 +176,6 @@
   endif()
 
   include_directories(${TENSORRT_INCLUDE_DIR})
-  include_directories(${TENSORRT_PYTHON_INCLUDE_DIR})
   # ${TENSORRT_LIBRARY} is empty if we link nvonnxparser_static.
   # nvonnxparser_static is linked against tensorrt libraries in onnx-tensorrt
   # See https://github.com/onnx/onnx-tensorrt/blob/8af13d1b106f58df1e98945a5e7c851ddb5f0791/CMakeLists.txt#L121
