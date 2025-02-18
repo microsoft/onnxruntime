@@ -13,7 +13,7 @@ struct OrtApi;
 
 namespace vaip_core {
 
-#define VAIP_ORT_API_MAJOR (14u)
+#define VAIP_ORT_API_MAJOR (15u)
 #define VAIP_ORT_API_MINOR (0u)
 #define VAIP_ORT_API_PATCH (0u)
 struct OrtApiForVaip {
@@ -249,7 +249,8 @@ struct OrtApiForVaip {
       const std::function<bool(const Node*)>& leave,
       const std::function<bool(const Node*, const Node*)>& comp,
       const std::function<bool(const Node* from, const Node* to)>&
-          stop);  // [103]
+          stop);                                           // [103]
+  void (*graph_set_name)(Graph& graph, const char* name);  // [104]
 };
 
 #ifndef USE_VITISAI
