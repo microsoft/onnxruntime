@@ -21,8 +21,8 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
         const subtile_rows = 16;
         const quantization_block_size = 32;
 
-        var<workgroup> tile_A: array<f16, tile_rows * tile_k>;       // 32 x 32 - RxC
-        var<workgroup> tile_B: array<f16, tile_cols * tile_k>;       // 64 x 32 - RxC
+        var<workgroup> tile_A: array<output_element_t, tile_rows * tile_k>;       // 32 x 32 - RxC
+        var<workgroup> tile_B: array<output_element_t, tile_cols * tile_k>;       // 64 x 32 - RxC
 
         fn loadSHMA(tile_base: u32, k_idx: u32, row: u32, c_idx:u32) {
             let a_global = tile_base + row;
@@ -52,8 +52,8 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
             for (var step:u32 = 0; step < 2; step++)
             {
                 var b_value = input_b[b_idx+step];
-                var b_value_lower = (vec4<f16>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<f16>(8)) * scale;
-                var b_value_upper = (vec4<f16>(unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu)) - vec4<f16>(8)) * scale;
+                var b_value_lower = (vec4<output_element_t>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<output_element_t>(8)) * scale;
+                var b_value_upper = (vec4<output_element_t>(unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu)) - vec4<output_element_t>(8)) * scale;
                 let tile_b_base = row * tile_k + col + step * 8;
                 tile_B[tile_b_base]     = b_value_lower[0];
                 tile_B[tile_b_base + 1] = b_value_upper[0];
@@ -77,14 +77,14 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
         let base_A = subtile_idy * subtile_rows;
         let base_B = subtile_idx * subtile_cols;
 
-        var matC00: subgroup_matrix_result<f16, 8, 8>;
-        var matC01: subgroup_matrix_result<f16, 8, 8>;
-        var matC02: subgroup_matrix_result<f16, 8, 8>;
-        var matC03: subgroup_matrix_result<f16, 8, 8>;
-        var matC10: subgroup_matrix_result<f16, 8, 8>;
-        var matC11: subgroup_matrix_result<f16, 8, 8>;
-        var matC12: subgroup_matrix_result<f16, 8, 8>;
-        var matC13: subgroup_matrix_result<f16, 8, 8>;
+        var matC00: subgroup_matrix_result<output_element_t, 8, 8>;
+        var matC01: subgroup_matrix_result<output_element_t, 8, 8>;
+        var matC02: subgroup_matrix_result<output_element_t, 8, 8>;
+        var matC03: subgroup_matrix_result<output_element_t, 8, 8>;
+        var matC10: subgroup_matrix_result<output_element_t, 8, 8>;
+        var matC11: subgroup_matrix_result<output_element_t, 8, 8>;
+        var matC12: subgroup_matrix_result<output_element_t, 8, 8>;
+        var matC13: subgroup_matrix_result<output_element_t, 8, 8>;
         for (var kidx: u32 = 0; kidx < uniforms.K; kidx += tile_k) {
             // Load Phase
             loadSHMA(a_global_base, kidx, local_idx/4, local_idx%4);
@@ -96,16 +96,16 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
                 // Load to local memory phase
                 let matrix_a_offset = subtile_idy * subtile_rows * tile_k + step;
                 // Syntax: subgroupMatrixLoad src_ptr,src_offset,is_col_major,src_stride
-                var matA0: subgroup_matrix_left<f16, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>>(&tile_A, matrix_a_offset, false, tile_k);
-                var matA1: subgroup_matrix_left<f16, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<f16, 8, 8>>(&tile_A, matrix_a_offset + 8 * tile_k, false, tile_k);
+                var matA0: subgroup_matrix_left<output_element_t, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<output_element_t, 8, 8>>(&tile_A, matrix_a_offset, false, tile_k);
+                var matA1: subgroup_matrix_left<output_element_t, 8, 8> = subgroupMatrixLoad<subgroup_matrix_left<output_element_t, 8, 8>>(&tile_A, matrix_a_offset + 8 * tile_k, false, tile_k);
 
                 // tile_B is stored as column major.
                 // [col0-0:32][col1-0:32][col2-0:32]..[col63-0:32]
                 var matrix_b_offset = subtile_idx * subtile_cols * tile_k + step;
-                var matB0: subgroup_matrix_right<f16, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>>(&tile_B, matrix_b_offset, true, tile_k);
-                var matB1: subgroup_matrix_right<f16, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>>(&tile_B, matrix_b_offset +  8 * tile_k, true, tile_k);
-                var matB2: subgroup_matrix_right<f16, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>>(&tile_B, matrix_b_offset + 16 * tile_k, true, tile_k);
-                var matB3: subgroup_matrix_right<f16, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<f16, 8, 8>>(&tile_B, matrix_b_offset + 24 * tile_k, true, tile_k);
+                var matB0: subgroup_matrix_right<output_element_t, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<output_element_t, 8, 8>>(&tile_B, matrix_b_offset, true, tile_k);
+                var matB1: subgroup_matrix_right<output_element_t, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<output_element_t, 8, 8>>(&tile_B, matrix_b_offset +  8 * tile_k, true, tile_k);
+                var matB2: subgroup_matrix_right<output_element_t, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<output_element_t, 8, 8>>(&tile_B, matrix_b_offset + 16 * tile_k, true, tile_k);
+                var matB3: subgroup_matrix_right<output_element_t, 8, 8> = subgroupMatrixLoad<subgroup_matrix_right<output_element_t, 8, 8>>(&tile_B, matrix_b_offset + 24 * tile_k, true, tile_k);
 
                 // Compute Phase
                 // Syntax: subgroupMatrixMultiplyAccumulate left, right, accumulate -> accumulate
