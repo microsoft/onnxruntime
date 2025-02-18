@@ -29,9 +29,6 @@ struct ComputeCapability {
   // Optimization: std::function<Status(const Graph& graph, const ComputeCapability& this_optimization, ComputeCapability& cc_to_update)>
   std::function<Status(Graph&, const ComputeCapability&, ComputeCapability&)> optimization_func;
 
-  // Optional key/value strings to configure an optimizer
-  std::unordered_map<std::string, std::string> optimization_configs;
-
   // Optional ComputeCapability instances for sets of nodes within this ComputeCapability that should be optimized.
   // when an optimization is applied, ORT will update this ComputeCapability to reflect the changes made.
   // IndexedSubGraph.nodes:

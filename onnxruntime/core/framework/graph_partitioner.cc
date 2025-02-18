@@ -446,7 +446,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     // in order of EP priority
     bool sub_graph_available_for_assignment = IsIndexedSubGraphAvailableForAssignment(graph, *capability->sub_graph, mode, type);
 
-    // If the <sub_graph> is avaiable to be assigned to the EP and the ComputeCapability has nodes_to_optimize,
+    // If the <sub_graph> is available to be assigned to the EP and the ComputeCapability has nodes_to_optimize,
     // run EP related optimizations and update ComputeCapability.
     if (sub_graph_available_for_assignment && !capability->nodes_to_optimize.empty()) {
       for (auto& optimization_cc : capability->nodes_to_optimize) {
