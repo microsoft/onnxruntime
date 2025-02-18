@@ -26,8 +26,7 @@ RUN if [ -n "$TRT_VERSION" ]; then  \
     libnvinfer-vc-plugin-devel-${TRT_VERSION}  \
     libnvinfer-lean-devel-${TRT_VERSION}  \
     libnvinfer-dispatch-devel-${TRT_VERSION}  \
-    libnvinfer-headers-plugin-devel-${TRT_VERSION} \
-    python3-libnvinfer-dev-${TRT_VERSION} && \
+    libnvinfer-headers-plugin-devel-${TRT_VERSION} && \
     dnf clean dbcache ; \
 else \
     echo "TRT_VERSION is none skipping Tensor RT Installation" ; \
