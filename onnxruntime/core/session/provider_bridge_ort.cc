@@ -2389,7 +2389,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
     std::string context_cache_path = "";
     std::string embed_mode = "";
     if (options) {
-      LOGS_DEFAULT(WARNING) << "Propagating EP context options from session option since tensorrt options are empty";
+      LOGS_DEFAULT(WARNING) << "Propagating EP context options from session option when EP context provider options are empty";
       context_cache_enabled = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
       new_tensorrt_options.trt_dump_ep_context_model = context_cache_enabled;
       LOGS_DEFAULT(VERBOSE) << "Context cache enable: " << context_cache_enabled;

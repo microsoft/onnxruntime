@@ -20,7 +20,7 @@ extern TensorrtLogger& GetTensorrtLogger(bool verbose_log);
  *  Note: Please see more details about "EPContext" contrib op in contrib_defs.cc
  */
 bool GraphHasCtxNode(const GraphViewer& graph_viewer) {
-  for (auto node_index: graph_viewer.GetNodesInTopologicalOrder()) {
+  for (auto node_index : graph_viewer.GetNodesInTopologicalOrder()) {
     auto node = graph_viewer.GetNode(node_index);
     if (node != nullptr && node->OpType() == EPCONTEXT_OP) {
       return true;
@@ -374,7 +374,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
  */
 bool TensorRTCacheModelHandler::ValidateEPCtxNode(const GraphViewer& graph_viewer) {
   const auto& subgraph_node_list = graph_viewer.GetNodesInTopologicalOrder();
-  assert(subgraph_node_list.size() == 1); // There should only be 1 node in filtered graph
+  assert(subgraph_node_list.size() == 1);  // There should only be 1 node in filtered graph
   const auto node = graph_viewer.GetNode(subgraph_node_list[0]);
   assert(node->OpType() == EPCONTEXT_OP);
   auto& attrs = node->GetAttributes();
