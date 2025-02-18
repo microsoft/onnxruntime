@@ -265,10 +265,10 @@ static Status GetCapabilityForEPForAotInlining(const GraphViewer& graph_viewer,
   return Status::OK();
 }
 
-/** 
+/**
  * Check whether the given IndexedSubGraph is available for assigning to a specific provider.
- * 
- */ 
+ *
+ */
 static bool IsIndexedSubGraphAvailableForAssignment(Graph& graph,
                                                     const IndexedSubGraph& capability,
                                                     GraphPartitioner::Mode mode,
@@ -299,7 +299,7 @@ static bool IsIndexedSubGraphAvailableForAssignment(Graph& graph,
   if (mode == GraphPartitioner::Mode::kAssignOnly) {
     return true;
   }
-    
+
   for (auto node_index : capability.nodes) {
     const auto* node = graph.GetNode(node_index);
     if ((nullptr == node) ||
@@ -315,7 +315,7 @@ static bool IsIndexedSubGraphAvailableForAssignment(Graph& graph,
 
 /**
  * Return a fused node or assign the nodes in the indexed subgraph to the current EP.
- * 
+ *
  * \param graph
  * \param capability
  * \param kernel_registry_mgr
@@ -334,35 +334,35 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
   if (nullptr == capability.GetMetaDef()) {
     TryAssignSingleNode(graph, capability, provider_type);
   } else {
-      if (mode == GraphPartitioner::Mode::kNormal) {
-        std::ostringstream oss;
-        oss << provider_type << "_" << capability.GetMetaDef()->name << "_" << fused_node_unique_id++;
-        std::string node_name = oss.str();
+    if (mode == GraphPartitioner::Mode::kNormal) {
+      std::ostringstream oss;
+      oss << provider_type << "_" << capability.GetMetaDef()->name << "_" << fused_node_unique_id++;
+      std::string node_name = oss.str();
 
-        Node* fused_node = nullptr;
-        if (fusion_style == IExecutionProvider::FusionStyle::Function) {
-          fused_node = &graph.FuseSubGraph(capability, node_name);
-        } else {
-          // create a fused node without copying everything to a Function body. The IndexedSubGraph will be passed
-          // through to Compile via a filtered GraphViewer.
-          fused_node = &graph.BeginFuseSubGraph(capability, node_name);
-        }
-
-        fused_node->SetExecutionProviderType(provider_type);
-
-        result = fused_node;
+      Node* fused_node = nullptr;
+      if (fusion_style == IExecutionProvider::FusionStyle::Function) {
+        fused_node = &graph.FuseSubGraph(capability, node_name);
       } else {
-        // assign the nodes in the indexed subgraph to the current EP so that level 2+ optimizers will not change them.
-        // This is used when exporting an ORT format model to maintain the original nodes and re-do the fusion
-        // at runtime. The original nodes provide a fallback if fewer nodes can be fused at runtime due to device
-        // capabilities.
-        for (auto node_index : capability.nodes) {
-          auto* node = graph.GetNode(node_index);
-          if (node != nullptr) {
-            node->SetExecutionProviderType(provider_type);
-          }
+        // create a fused node without copying everything to a Function body. The IndexedSubGraph will be passed
+        // through to Compile via a filtered GraphViewer.
+        fused_node = &graph.BeginFuseSubGraph(capability, node_name);
+      }
+
+      fused_node->SetExecutionProviderType(provider_type);
+
+      result = fused_node;
+    } else {
+      // assign the nodes in the indexed subgraph to the current EP so that level 2+ optimizers will not change them.
+      // This is used when exporting an ORT format model to maintain the original nodes and re-do the fusion
+      // at runtime. The original nodes provide a fallback if fewer nodes can be fused at runtime due to device
+      // capabilities.
+      for (auto node_index : capability.nodes) {
+        auto* node = graph.GetNode(node_index);
+        if (node != nullptr) {
+          node->SetExecutionProviderType(provider_type);
         }
       }
+    }
   }
 
   return result;

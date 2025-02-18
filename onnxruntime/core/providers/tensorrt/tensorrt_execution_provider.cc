@@ -2690,12 +2690,11 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
   int number_of_trt_nodes = 0, subgraph_index = 0;
   for (auto& group : supported_nodes_vector) {
     if (!group.first.empty()) {
-      
       if (!selection_cc.empty()) {
         // Include DQ nodes that are filtered out by TRT parser
         UpdateSupportedNodeVectorForDQ(graph, group, supported_nodes_vector, consumer_to_dq);
       }
-      
+
       std::unique_ptr<IndexedSubGraph> sub_graph = GetSubGraph(group, graph, model_hash, subgraph_index);
       auto compute_capability = ComputeCapability::Create(std::move(sub_graph));
 

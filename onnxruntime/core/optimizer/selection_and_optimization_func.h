@@ -13,6 +13,4 @@ struct ConstantFoldingDQFuncs {
   static std::vector<std::unique_ptr<ComputeCapability>> Select(const GraphViewer& graph_viewer);
   static Status Optimize(Graph& graph, const ComputeCapability& optimization_cc, ComputeCapability& cc_to_update);
 };
-
-
 }  // namespace onnxruntime

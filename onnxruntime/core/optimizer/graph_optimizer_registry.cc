@@ -29,7 +29,7 @@ common::Status GraphOptimizerRegistry::Create(
   session_options_ = sess_options;
   cpu_ep_ = cpu_ep;
   logger_ = logger;
-  
+
   // Add predefined transformer names and their selection functions
   transformer_name_to_selection_func_[kConstantFoldingDQ] = ConstantFoldingDQFuncs::Select;
 
