@@ -241,8 +241,8 @@ def print_debug_info():
 def preload_dlls(cuda: bool = True, cudnn: bool = True, msvc: bool = True, directory=None):
     """Preload CUDA 12.x and cuDNN 9.x DLLs in Windows or Linux, and MSVC runtime DLLs in Windows.
 
-       When you installed PyTorch that is compatible with CUDA 12.x, set `torch_safe` to True is recommended.
-       Note that there is no need to call this function if `import torch` is done before `import onnxruntime`.
+       When the installed PyTorch is compatible (using same major version of CUDA and cuDNN),
+       there is no need to call this function if `import torch` is done before `import onnxruntime`.
 
     Args:
         cuda (bool, optional): enable loading CUDA DLLs. Defaults to True.
@@ -250,10 +250,10 @@ def preload_dlls(cuda: bool = True, cudnn: bool = True, msvc: bool = True, direc
         msvc (bool, optional): enable loading MSVC DLLs in Windows. Defaults to True.
         directory(str, optional): a directory contains CUDA or cuDNN DLLs. It can be an absolute path,
            or a path relative to the directory of this file.
-           If directory is None (default value), the search order: the lib directory of PyTorch for cuda 12.x in Windows,
-           then nvidia site packages, finally default DLL loading paths.
-           If directory is empty string (""), the search order: nvidia site packages, finally default DLL loading paths.
-           If directory is a path, the search order: the directory, then default DLL loading paths.
+           If directory is None (default value), the search order: the lib directory of compatible PyTorch in Windows,
+            nvidia site packages, default DLL loading paths.
+           If directory is empty string (""), the search order: nvidia site packages, default DLL loading paths.
+           If directory is a path, the search order: the directory, default DLL loading paths.
     """
     import ctypes
     import os
