@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 package com.reactnativeonnxruntimemodule;
-import com.reactnativeonnxruntimemodule.MainApplication;
 
 import static java.util.stream.Collectors.joining;
 
