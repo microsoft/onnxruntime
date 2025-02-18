@@ -11,6 +11,6 @@ static const std::string kConstantFoldingDQ = "ConstantFoldingDQ";
 
 struct ConstantFoldingDQFuncs {
   static std::vector<std::unique_ptr<ComputeCapability>> Select(const GraphViewer& graph_viewer);
-  static Status Optimize(Graph& graph, const ComputeCapability& optimization_cc, ComputeCapability& cc_to_update);
+  static Status Optimize(Graph& graph, const ComputeCapability& optimization_cc, ComputeCapability& cc_to_update, const logging::Logger& logger);
 };
 }  // namespace onnxruntime

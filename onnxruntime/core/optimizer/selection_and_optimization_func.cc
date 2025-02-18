@@ -33,9 +33,8 @@ std::vector<std::unique_ptr<ComputeCapability>> ConstantFoldingDQFuncs::Select(c
   return result;
 }
 
-Status ConstantFoldingDQFuncs::Optimize(Graph& graph, const ComputeCapability& optimization_cc, ComputeCapability& cc_to_update) {
+Status ConstantFoldingDQFuncs::Optimize(Graph& graph, const ComputeCapability& optimization_cc, ComputeCapability& cc_to_update, const logging::Logger& logger) {
   std::string optimizer_name = kConstantFoldingDQ;
-  auto logger = const_cast<logging::Logger*>(&logging::LoggingManager::DefaultLogger());
   std::unordered_set<std::string> original_initializers_to_remove;
   std::unordered_set<std::string> new_initializers_to_add;
   InlinedHashSet<NodeIndex> dq_node_index_set;
@@ -63,7 +62,7 @@ Status ConstantFoldingDQFuncs::Optimize(Graph& graph, const ComputeCapability& o
                                                                 dq_node_index_set);
 
   bool modified = false;
-  ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, *logger));
+  ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, logger));
 
   // update the overall ComputeCapability
   std::vector<onnxruntime::NodeIndex> updated_nodes;

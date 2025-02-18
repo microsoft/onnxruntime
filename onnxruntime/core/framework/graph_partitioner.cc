@@ -451,7 +451,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     if (sub_graph_available_for_assignment && !capability->nodes_to_optimize.empty()) {
       for (auto& optimization_cc : capability->nodes_to_optimize) {
         if (optimization_cc->optimization_func) {
-          auto status = optimization_cc->optimization_func(graph, *optimization_cc, *capability);
+          auto status = optimization_cc->optimization_func(graph, *optimization_cc, *capability, logger);
           if (status != Status::OK()) {
             return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, type, "The optimization function failed to finish.");
           }
