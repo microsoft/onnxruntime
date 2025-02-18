@@ -8,12 +8,12 @@ namespace contrib {
 namespace webgpu {
 
 Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
-    shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
-    shader.AddInput("input_b", ShaderUsage::UseUniform);
-    shader.AddInput("scales_b", ShaderUsage::UseUniform);
-    shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+  shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+  shader.AddInput("input_b", ShaderUsage::UseUniform);
+  shader.AddInput("scales_b", ShaderUsage::UseUniform);
+  shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
-    shader.AdditionalImplementation() << R"ADDNL_FN(
+  shader.AdditionalImplementation() << R"ADDNL_FN(
         const tile_cols = 64;
         const tile_rows = 32;
         const tile_k = 32;
@@ -84,7 +84,7 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
         }
     )ADDNL_FN";
 
-    shader.MainFunctionBody() << R"MAIN_FN(
+  shader.MainFunctionBody() << R"MAIN_FN(
         let a_global_base = workgroup_id.y * tile_rows;
         let b_global_base = workgroup_id.x * tile_cols;
 
@@ -165,58 +165,55 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
         storeOutput(matrix_c_offset, row, col, subtile_id, row_limit);
     )MAIN_FN";
 
-    return Status::OK();
+  return Status::OK();
 }
 
-
 Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
-    uint32_t M,
-    uint32_t N,
-    uint32_t K,
-    onnxruntime::webgpu::ComputeContext& context,
-    Tensor* y)
-{
-    constexpr uint32_t kTileSizeA = 32;
-    constexpr uint32_t kTileSizeB = 64;
-    constexpr uint32_t kU32Components = 4;
-    TensorShape y_shape{1, M, N};
-    SubgroupMatrixMatMulNBitsProgram mul_program;
-    mul_program.SetWorkgroupSize(128);
-    mul_program.SetDispatchGroupSize(
-        (N + kTileSizeB - 1) / kTileSizeB,
-        (M + kTileSizeA - 1) / kTileSizeA, 1);
-    mul_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)},
-                           {b, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kU32Components)},
-                           {scales, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)}})
-        .AddUniformVariables({{static_cast<uint32_t>(M)},
+                                      uint32_t M,
+                                      uint32_t N,
+                                      uint32_t K,
+                                      onnxruntime::webgpu::ComputeContext& context,
+                                      Tensor* y) {
+  constexpr uint32_t kTileSizeA = 32;
+  constexpr uint32_t kTileSizeB = 64;
+  constexpr uint32_t kU32Components = 4;
+  TensorShape y_shape{1, M, N};
+  SubgroupMatrixMatMulNBitsProgram mul_program;
+  mul_program.SetWorkgroupSize(128);
+  mul_program.SetDispatchGroupSize(
+      (N + kTileSizeB - 1) / kTileSizeB,
+      (M + kTileSizeA - 1) / kTileSizeA, 1);
+  mul_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)},
+                         {b, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(kU32Components)},
+                         {scales, ProgramTensorMetadataDependency::TypeAndRank, gsl::narrow<int>(1)}})
+      .AddUniformVariables({{static_cast<uint32_t>(M)},
                             {static_cast<uint32_t>(N)},
                             {static_cast<uint32_t>(K)}})
-        .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, y_shape, gsl::narrow<int>(1)});
-    return context.RunProgram(mul_program);
+      .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, y_shape, gsl::narrow<int>(1)});
+  return context.RunProgram(mul_program);
 }
 
 bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
-    uint64_t accuracy_level,
-    uint32_t block_size,
-    uint32_t batch_count,
-    uint32_t N,
-    uint32_t K,
-    bool has_zero_points)
-{
-    const bool has_subgroup_matrix = context.Device().HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix);
-    // For now SubgroupMatrixMatMulNBits is only supported for accuracy level 4, because with Fp16 there are
-    // some precision issues with subgroupMatrixMultiplyAccumulate. It is possible to support higher accuracy
-    // by setting compute_precision to Fp32, but that will be slower. For 1K token prefill FP16 Phi 3.5 is around 5s,
-    // FP322 is around 7s.
-    return context.AdapterInfo().backendType == wgpu::BackendType::Metal &&
-        has_subgroup_matrix &&
-        accuracy_level == 4 &&
-        block_size == 32 &&
-        batch_count == 1 &&
-        K % 32 == 0 &&
-        N % 64 == 0 &&
-        !has_zero_points;
+                                       uint64_t accuracy_level,
+                                       uint32_t block_size,
+                                       uint32_t batch_count,
+                                       uint32_t N,
+                                       uint32_t K,
+                                       bool has_zero_points) {
+  const bool has_subgroup_matrix = context.Device().HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix);
+  // For now SubgroupMatrixMatMulNBits is only supported for accuracy level 4, because with Fp16 there are
+  // some precision issues with subgroupMatrixMultiplyAccumulate. It is possible to support higher accuracy
+  // by setting compute_precision to Fp32, but that will be slower. For 1K token prefill FP16 Phi 3.5 is around 5s,
+  // FP322 is around 7s.
+  return context.AdapterInfo().backendType == wgpu::BackendType::Metal &&
+         has_subgroup_matrix &&
+         accuracy_level == 4 &&
+         block_size == 32 &&
+         batch_count == 1 &&
+         K % 32 == 0 &&
+         N % 64 == 0 &&
+         !has_zero_points;
 }
-} // namespace webgpu
-} // namespace contrib
-} // namespace onnxruntime
+}  // namespace webgpu
+}  // namespace contrib
+}  // namespace onnxruntime
