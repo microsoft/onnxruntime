@@ -40,7 +40,6 @@ class QnnModelWrapper {
                   const Qnn_BackendHandle_t& backend_handle,
                   const std::unordered_map<std::string, size_t>& input_index_map,
                   const std::unordered_map<std::string, size_t>& output_index_map,
-                  const std::unordered_set<std::string>& initializer_lookup,
                   QnnBackendType qnn_backend_type,
                   const ModelSettings& model_settings)
       : graph_viewer_(graph_viewer),
@@ -49,7 +48,6 @@ class QnnModelWrapper {
         backend_handle_(backend_handle),
         input_index_map_(input_index_map),
         output_index_map_(output_index_map),
-        initializer_lookup_(initializer_lookup),
         qnn_backend_type_(qnn_backend_type),
         model_settings_(model_settings) {
   }
@@ -115,8 +113,12 @@ class QnnModelWrapper {
 
   const InitializedTensorSet& GetInitializerTensors() const { return graph_viewer_.GetAllInitializedTensors(); }
 
-  bool IsInitializerInput(std::string input_name) const {
-    return initializer_lookup_.find(input_name) != initializer_lookup_.end();
+  const ONNX_NAMESPACE::TensorProto* GetConstantTensor(const std::string& tensor_name) const {
+    return graph_viewer_.GetConstantInitializer(tensor_name);
+  }
+
+  bool IsConstantInput(std::string input_name) const {
+    return graph_viewer_.IsConstantInitializer(input_name, true);
   }
 
   static bool GetOnnxShape(const NodeArg& node_arg, std::vector<uint32_t>& shape);
@@ -136,7 +138,7 @@ class QnnModelWrapper {
   }
 
   Qnn_TensorType_t GetTensorType(const std::string& tensor_name) const {
-    if (IsInitializerInput(tensor_name)) {
+    if (IsConstantInput(tensor_name)) {
       return QNN_TENSOR_TYPE_STATIC;
     } else if (IsGraphInput(tensor_name)) {
       return QNN_TENSOR_TYPE_APP_WRITE;
@@ -324,7 +326,6 @@ class QnnModelWrapper {
   std::unordered_map<std::string, bool> tensor_created_map_;
   const std::unordered_map<std::string, size_t>& input_index_map_;
   const std::unordered_map<std::string, size_t>& output_index_map_;
-  const std::unordered_set<std::string>& initializer_lookup_;
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   ModelSettings model_settings_ = {};
   utils::QnnJSONGraph json_qnn_graph_;
