@@ -125,7 +125,7 @@ stages:
                 --cmake_generator "$(VSGenerator)"
                 --enable_pybind
                 --enable_onnx_tests
-                --parallel 8 --use_vcpkg --use_binskim_compliant_compile_flags --update --build --msvc_toolset 14.40
+                --parallel 8 --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --update --build --msvc_toolset 14.40
                 $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }} ${{ variables.trt_build_flag }}
               workingDirectory: '$(Build.BinariesDirectory)'
 

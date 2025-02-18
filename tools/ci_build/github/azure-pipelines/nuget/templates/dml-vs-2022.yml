@@ -98,7 +98,7 @@ stages:
 
       - ${{ else }}:
         - powershell: |
-            python tools\ci_build\build.py ${{ parameters.BuildCommand }} --use_binskim_compliant_compile_flags --parallel --use_vcpkg --build_csharp --build --update --config $(BuildConfig) --build_nuget --msbuild_extra_options IncludeMobileTargets=false ${{ variables.build_py_lto_flag }}
+            python tools\ci_build\build.py ${{ parameters.BuildCommand }} --use_binskim_compliant_compile_flags --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build_csharp --build --update --config $(BuildConfig) --build_nuget --msbuild_extra_options IncludeMobileTargets=false ${{ variables.build_py_lto_flag }}
 
       - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
         # Use cross-compiled protoc

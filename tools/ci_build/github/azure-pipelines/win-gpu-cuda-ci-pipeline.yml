@@ -53,7 +53,7 @@ stages:
         additionalBuildFlags: >-
           --build_wheel --build_java --build_nodejs --use_cuda --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}"
           --enable_cuda_profiling --enable_transformers_tool_test
-          --use_vcpkg --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
+          --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
           --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON
           --cmake_extra_defines onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON
         msbuildPlatform: x64
