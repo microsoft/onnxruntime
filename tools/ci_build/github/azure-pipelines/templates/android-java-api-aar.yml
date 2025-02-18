@@ -111,7 +111,7 @@ jobs:
           QNN_VOLUME=""
           USE_QNN="0"
         fi
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $ANDROID_HOME:/android_home \

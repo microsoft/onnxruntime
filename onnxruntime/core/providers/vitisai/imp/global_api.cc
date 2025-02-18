@@ -503,6 +503,7 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   the_global_api.graph_remove_initialized_tensor = [](Graph& graph, const std::string& tensor_name) {
     graph.RemoveInitializedTensor(tensor_name);
   };
+  the_global_api.graph_reverse_dfs_from_preemp = vaip::graph_reverse_dfs_from;
   if (!s_library_vitisaiep.vaip_get_version) {
     return reinterpret_cast<vaip_core::OrtApiForVaip*>(&(the_global_api.host_));
   } else {
