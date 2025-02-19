@@ -77,16 +77,7 @@
       message(STATUS "TensorRT ${NV_TENSORRT_MAJOR_INT}.${NV_TENSORRT_MINOR_INT}.${NV_TENSORRT_PATCH_INT} < ${req_major}.${req_minor}.${req_patch}.")
   endif()
   endfunction()
-  
-  # TensorRT Python Headers, needed by oss parser since 10.6
-  check_trt_version(10 6 0 TRT_VERSION_OK_10_6_0)
-  if (TRT_VERSION_OK_10_6_0 AND NOT onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
-    find_path(TENSORRT_PYTHON_INCLUDE_DIR plugin.h
-      HINTS ${TENSORRT_ROOT}
-      PATH_SUFFIXES python/include/impl)
-    include_directories(${TENSORRT_PYTHON_INCLUDE_DIR})
-  endif()
-
+ 
   # TensorRT 10 GA onwards, the TensorRT libraries will have major version appended to the end on Windows,
   # for example, nvinfer_10.dll, nvinfer_plugin_10.dll, nvonnxparser_10.dll ...
   check_trt_version(10 0 1 TRT_VERSION_OK_10_0_1)
