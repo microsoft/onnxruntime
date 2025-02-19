@@ -13,6 +13,8 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
   shader.AddInput("scales_b", ShaderUsage::UseUniform);
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
+  // tile/subtile sizes and work distribution are inspired from metal shaders in llama.cpp (kernel_mul_mm)
+  // https://github.com/ggml-org/llama.cpp/blob/d04e7163c85a847bc61d58c22f2c503596db7aa8/ggml/src/ggml-metal/ggml-metal.metal#L6066
   shader.AdditionalImplementation() << R"ADDNL_FN(
         const tile_cols = 64;
         const tile_rows = 32;
