@@ -238,6 +238,35 @@ def test_nested_optional_greater_or_equal(use_trt: bool = False) -> None:
     return
 
 
+def test_nested_optional_greater_or_equal_with_ep_context() -> None:
+    m = make_opt_nested_greater_or_equal()
+
+    # Create session options and add config entries
+    so = ort.SessionOptions()
+    so.add_session_config_entry("ep.context_enable", "1")
+    so.add_session_config_entry("ep.context_file_path", "EP_Context_model.onnx")
+    so.add_session_config_entry("ep.context_embed_mode", "0")
+
+    providers = ["TensorrtExecutionProvider"]
+    session = ort.InferenceSession(
+        m.SerializeToString(),
+        sess_options=so,
+        providers=providers,
+    )
+
+    x1_name, x2_name, x3_name = (i.name for i in m.graph.input)
+    session.run(
+        [m.graph.output[0].name],
+        {
+            x1_name: None,
+            x2_name: np.ones((1, 2), dtype=np.float32),
+            x3_name: np.array([-1], dtype=np.float32),
+        },
+    )
+
+    return
+
+
 # ORT has a similar unit test Test3LayerNestedSubgraph where this 3-layer nested graph consumes the same initializer in different subgraphs.
 # However, this unit test is slightly different. This is also a 3-layer nested graph but consumes the outer scope values (which are the inputs
 # of the top-level graph) in different subgraphs.
@@ -253,6 +282,7 @@ class TestNestedControlFlowOpsGraph(unittest.TestCase):
             test_nested_optional_greater_or_equal(use_trt=False)
         if "TensorrtExecutionProvider" in ort.get_available_providers():
             test_nested_optional_greater_or_equal(use_trt=True)
+            test_nested_optional_greater_or_equal_with_ep_context()
 
 
 if __name__ == "__main__":
