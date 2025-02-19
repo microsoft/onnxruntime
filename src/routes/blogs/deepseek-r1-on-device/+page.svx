@@ -21,7 +21,7 @@ The DeepSeek ONNX models enables you to run DeepSeek on any GPU or CPU, achievin
 				<iframe
 					class="pb-2 w-full"
                     height="600px"
-					src="https://www.youtube.com/embed/XW-AYw-4oTQ"
+					src="https://www.youtube.com/embed/s63vSd8ZI5g"
 					title="YouTube video player"
 					frameborder="0"
 					allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
