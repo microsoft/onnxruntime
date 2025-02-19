@@ -593,13 +593,5 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    * This function only creates the instance at the first time it's being called."
    */
   nvinfer1::IBuilder* GetBuilder(TensorrtLogger& trt_logger) const;
-
-  /**
-   * Check if DDS op is in the ComputeCapability/subgraph.
-   */
-  void CheckDDSOpInSubGraph(const GraphViewer& graph,
-                            std::vector<std::unique_ptr<ComputeCapability>>& compute_capabilities,
-                            const std::unordered_set<std::string>& dds_op_set,
-                            int32_t trt_version) const;
 };
 }  // namespace onnxruntime

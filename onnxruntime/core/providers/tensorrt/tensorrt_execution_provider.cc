@@ -2657,8 +2657,6 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
       }
       LOGS_DEFAULT(INFO) << "[TensorRT EP] Whole graph will run on TensorRT execution provider";
 
-      CheckDDSOpInSubGraph(graph, result, dds_op_set_, trt_version_);
-
       // The context map is only used during EP compile time, release it to save memory space.
       subgraph_context_map_.clear();
       return result;
@@ -2674,8 +2672,6 @@ TensorrtExecutionProvider::GetCapability(const GraphViewer& graph,
       subgraph_index++;
     }
   }
-
-  CheckDDSOpInSubGraph(graph, result, dds_op_set_, trt_version_);
 
   const size_t number_of_subgraphs = supported_nodes_vector.size();
   if (number_of_trt_nodes == 0) {
