@@ -103,7 +103,7 @@ stages:
                 --enable_onnx_tests --use_cuda --cuda_version=11.8 --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8 \
                 --enable_cuda_profiling \
                 --enable_pybind --build_java \
-                --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75;80" '
+                --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75;86" '
 
         workingDirectory: $(Build.SourcesDirectory)
 
@@ -143,7 +143,7 @@ stages:
       hitAnother: 'False'
     workspace:
       clean: all
-    pool: Onnxruntime-Linux-GPU-A100-WUS3
+    pool: onnxruntime-Linux-GPU-A10-12G
     steps:
     - checkout: self
       clean: true
@@ -390,7 +390,7 @@ stages:
       skipComponentGovernanceDetection: true
     workspace:
       clean: all
-    pool: Onnxruntime-Linux-GPU-A100-WUS3
+    pool: Onnxruntime-Linux-A10-24G
     steps:
 
     - checkout: self
