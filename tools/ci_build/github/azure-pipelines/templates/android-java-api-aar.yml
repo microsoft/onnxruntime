@@ -136,7 +136,7 @@ jobs:
       parameters:
         JarFileDirectory: '$(artifacts_directory)'
 
-  - task: PublishBuildArtifacts@1
+  - task: 1ES.PublishPipelineArtifacts@1
     inputs:
-      pathtoPublish: '$(artifacts_directory)'
+      targetPath: '$(artifacts_directory)'
       artifactName: '${{parameters.artifactName}}'
