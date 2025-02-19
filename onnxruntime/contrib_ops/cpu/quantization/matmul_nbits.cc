@@ -247,6 +247,16 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
     return Status::OK();
   }
   if (input_idx == InputIndex::B) {
+    const Tensor* scales = nullptr;
+    OpKernel::Info().TryGetConstantInput(InputIndex::scales, &scales);
+    if (scales && MlasQNBitGemmScalesPacked(K_, nbits_, block_size_, compute_type_, has_zp_input_)) {
+      auto sptr = scales->Data<MLFloat16>();
+      auto tensor_size = static_cast<size_t>(tensor.Shape().Size());
+      auto ptr = IAllocator::MakeUniquePtr<float>(alloc, tensor_size, true);
+      MlasConvertHalfToFloatBuffer(sptr, ptr.get(), tensor_size);
+      scales_fp32_ = std::move(ptr);
+    }
+
     packed_b_size_ = MlasQNBitGemmPackQuantBDataSize(N_, K_, nbits_, block_size_, has_zp_input_, compute_type_);
     if (packed_b_size_ == 0) {
       return Status::OK();
@@ -254,7 +264,7 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, /*ou
     auto qptr = tensor.DataRaw();
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
     MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(),
-                                nullptr, has_zp_input_, nullptr, nullptr);
+                                scales_fp32_.get(), has_zp_input_, nullptr, nullptr);
     is_packed = true;
   } else if (compute_type_ == SQNBIT_CompInt8) {
 #ifdef MLAS_TARGET_AMD64_IX86
