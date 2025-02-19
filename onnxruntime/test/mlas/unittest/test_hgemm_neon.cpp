@@ -435,8 +435,8 @@ class MlasNeonHGemmPackedBTest : public MlasTestBase {
 
   template <size_t M, size_t K, size_t N>
   MLAS_FORCEINLINE void HGemm(
-    const MLAS_FP16* A, const MLAS_FP16* B, MLAS_FP16* C, MLAS_FP16 alpha, MLAS_FP16 beta,
-    size_t lda, size_t ldc) {
+      const MLAS_FP16* A, const MLAS_FP16* B, MLAS_FP16* C, MLAS_FP16 alpha, MLAS_FP16 beta,
+      size_t lda, size_t ldc) {
     float alphaf = alpha.ToFloat();
     float betaf = beta.ToFloat();
     size_t n = 0;
