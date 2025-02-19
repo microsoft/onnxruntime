@@ -12,10 +12,25 @@ jobs:
   Windows-CUDA-12:
     runs-on: ["self-hosted", "Windows", "X64"]
     steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          submodules: recursive
+      - name: Clean Up
+        shell: cmd
+        run: |
+          echo ${{ github.workspace }}
+          if exist onnxruntime-qnn-ep (rmdir /S /Q onnxruntime-qnn-ep)
+          if exist onnxruntime (rmdir /S /Q onnxruntime)
+
+        working-directory: ${{ github.workspace }}
+
+      - name: Fetch Code
+        shell: cmd
+        run: |
+          git clone --depth=1 --recursive https://github.com/microsoft/onnxruntime
+          cd onnxruntime
+          git remote add mlg-github git@github.qualcomm.com:MLG/onnxruntime-qnn-ep.git
+          git fetch mlg-github
+          git checkout ${{ github.head_ref }}
+
+        working-directory: ${{ github.workspace }}
 
       - name: Qualcomm Internal Build Script
         shell: cmd
@@ -24,10 +39,16 @@ jobs:
           .\build.bat --config RelWithDebInfo --build_shared_lib --parallel --compile_no_warning_as_error --cmake_generator "Visual Studio 17 2022" ^
           --use_qnn --qnn_home "C:\Users\hungjuiw\workspace\qairt\2.31.0.250130"
 
+        working-directory: ${{ github.workspace }}\onnxruntime
 
       # The build machine doesn't have a GPU. So the value of CMAKE_CUDA_ARCHITECTURES doesn't matter.
       # - name: Build code
       #   run: python tools\ci_build\build.py --windows_sdk_version 10.0.22621.0 --enable_training --build_java --config Debug --build_dir D:\b --skip_submodule_sync --build_csharp --update --build --parallel --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_pybind --use_cuda --cuda_home=${{ github.workspace }}\cuda_sdk\v12.2 --enable_cuda_profiling  --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=75
+
+# - uses: actions/checkout@v4
+#   with:
+#     fetch-depth: 0
+#     submodules: recursive
 
 # - uses: actions/setup-python@v5
 #   with:
