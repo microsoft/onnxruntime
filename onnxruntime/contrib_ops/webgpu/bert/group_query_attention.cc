@@ -69,14 +69,18 @@ Status SplitPackedQKV(onnxruntime::webgpu::ComputeContext& context, const Webgpu
 Status GeneratePositionIDsProgram::GenerateShaderCode(ShaderHelper& sh) const {
   const auto& output = sh.AddOutput("output", ShaderUsage::UseUniform);
   const auto& seqlens = sh.AddInput("seqlens", ShaderUsage::UseUniform);
-  sh.MainFunctionBody() << "  let batch_idx = global_idx / uniforms.sequence_length;\n"
+  sh.MainFunctionBody() << "var pos_id: i32 = 0;\n"
+                        << "if (uniforms.is_first_prompt == 0) {\n"
+                        << "  let batch_idx = global_idx / uniforms.sequence_length;\n"
                         << "  let sequence_idx = i32(global_idx % uniforms.sequence_length);\n"
-                        << "  var pos_id: u32 = 1u;\n"
                         << "  let total_seqlen = " << seqlens.GetByOffset("batch_idx") << " + 1;\n"
                         << "  let past_seqlen = total_seqlen - i32(uniforms.sequence_length);\n"
                         << "  if (past_seqlen + sequence_idx < total_seqlen) {\n"
-                        << "    pos_id = u32(past_seqlen + sequence_idx);\n"
-                        << "  }\n";
+                        << "    pos_id = past_seqlen + sequence_idx;\n"
+                        << "  } else {\n"
+                        << "    pos_id = 1;\n"
+                        << "  }\n"
+                        << "}\n";
   sh.MainFunctionBody() << "  " << output.SetByOffset("global_idx", "pos_id");
   return Status::OK();
 }
@@ -84,19 +88,18 @@ Status GeneratePositionIDsProgram::GenerateShaderCode(ShaderHelper& sh) const {
 Status GeneratePositionIDs(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params, const Tensor* seqlens, Tensor* output_tensor) {
   GeneratePositionIDsProgram program;
   auto output_size = params.batch_size_ * params.sequence_length_;
-  program.CacheHint(params.batch_size_, params.sequence_length_)
-      .AddInput({seqlens, ProgramTensorMetadataDependency::Rank})
+  program.AddInput({seqlens, ProgramTensorMetadataDependency::Rank})
       .AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank})
-      .AddUniformVariables({{static_cast<uint32_t>(params.sequence_length_)}})
+      .AddUniformVariables({{static_cast<uint32_t>(params.sequence_length_)}, {static_cast<uint32_t>(params.is_first_prompt_ ? 1 : 0)}})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
   return context.RunProgram(program);
 }
 
 Status RunRotaryEmbedding(onnxruntime::webgpu::ComputeContext& context, const WebgpuAttentionParameters& params, const Tensor* input, const Tensor* pos_ids, const Tensor* cos_cache, const Tensor* sin_cache, Tensor* output, bool is_query_input) {
   const auto half_rotary_embedding_dim = gsl::narrow<uint32_t>(cos_cache->Shape()[1]);
-  const auto head_size = params.rotary_dim_ == 0 ? half_rotary_embedding_dim * 2 : params.head_size_;
+  const auto head_size = params.head_size_;
   const auto hidden_size = is_query_input ? params.hidden_size_ : params.kv_hidden_size_;
-  const TensorShape global_shape({params.batch_size_, params.sequence_length_, hidden_size / head_size, static_cast<int64_t>(head_size) - static_cast<int64_t>(half_rotary_embedding_dim)});
+  const TensorShape global_shape({params.batch_size_, params.sequence_length_, hidden_size / head_size, static_cast<int64_t>(head_size - half_rotary_embedding_dim)});
   const auto rank = global_shape.NumDimensions();
   std::vector<uint32_t> global_dims(rank);
   std::vector<uint32_t> global_strides(rank);
@@ -188,11 +191,8 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
     kRotary = context.CreateGPUTensor(key->DataType(), key->Shape());
     auto pos_ids_shape = TensorShape({parameters.batch_size_, parameters.sequence_length_});
     Tensor pos_ids = context.CreateGPUTensor(DataTypeImpl::GetType<int64_t>(), pos_ids_shape);
-    if (!parameters.is_first_prompt_) {
-      ORT_RETURN_IF_ERROR(GeneratePositionIDs(context, parameters, seqlens_k, &pos_ids));
-    }
+    ORT_RETURN_IF_ERROR(GeneratePositionIDs(context, parameters, seqlens_k, &pos_ids));
     ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters, query, &pos_ids, cos_cache, sin_cache, &qRotary, /* is_query_input = */ true));
-
     ORT_RETURN_IF_ERROR(RunRotaryEmbedding(context, parameters, key, &pos_ids, cos_cache, sin_cache, &kRotary, /* is_query_input = */ false));
     query = &qRotary;
     key = &kRotary;

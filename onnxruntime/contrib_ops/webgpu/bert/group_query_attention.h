@@ -22,7 +22,7 @@ class GeneratePositionIDsProgram final : public Program<GeneratePositionIDsProgr
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"sequence_length", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"sequence_length", ProgramUniformVariableDataType::Uint32}, {"is_first_prompt", ProgramUniformVariableDataType::Uint32});
 };
 
 class SplitPackedQKVProgram final : public Program<SplitPackedQKVProgram> {
