@@ -16,8 +16,6 @@ Abstract:
 
 #include "rotary_embedding.h"
 
-namespace {
-
 template <typename T>
 void
 MLASCALL
@@ -54,9 +52,6 @@ MlasRotaryEmbedOneRow_FallBack(
         output_data[i] = static_cast<T>(output_data_i);
     }
 }
-
-}  // namespace
-
 
 template <>
 void
@@ -99,3 +94,14 @@ MlasRotaryEmbedOneRow<MLAS_FP16>(
 
     dispatch->HRope(input, sin, cos, dim, interleaved, output);
 }
+
+template <>
+void MLASCALL
+MlasRotaryEmbedOneRow<float>(
+    const float* input,
+    const float* sin,
+    const float* cos,
+    size_t dim,
+    bool interleaved,
+    float* output
+);

@@ -63,7 +63,7 @@ RopeKernel_Avx2_Impl<false>(
         static const int32_t mask_buffer[16] = {-1, -1, -1, -1, -1, -1, -1, -1, 0, 0, 0, 0, 0, 0, 0, 0};
         const __m256i mask = _mm256_loadu_si256((const __m256i*)(mask_buffer + 8 - rem));
         //Use a mask to load the remaining input values
-        float32x8_t real = _mm256_maskload_ps(input, mask);
+        float32x8_t real = _mm256_maskload_ps(input + i, mask);
         float32x8_t imag = _mm256_maskload_ps(input + j, mask);
         float32x8_t sin_val = _mm256_maskload_ps(sin + i, mask);
         float32x8_t cos_val = _mm256_maskload_ps(cos + i, mask);
