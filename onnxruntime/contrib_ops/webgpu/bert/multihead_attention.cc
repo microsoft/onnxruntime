@@ -75,10 +75,10 @@ Status MultiHeadAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext& 
   Tensor* present_key = context.Output(1, present_shape);
   Tensor* present_value = context.Output(2, present_shape);
 
-//  if (CanApplyFlashAttention(bias, present_key, present_value, parameters, context)) {
-//    return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
-//                               present_value, parameters, context);
-//  }
+  if (CanApplyFlashAttention(bias, present_key, present_value, parameters, context)) {
+    return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
+                               present_value, parameters, context);
+  }
 
   TensorShapeVector q_new_dims({parameters.batch_size_, parameters.num_heads_,
                                 parameters.sequence_length_, parameters.head_size_});
