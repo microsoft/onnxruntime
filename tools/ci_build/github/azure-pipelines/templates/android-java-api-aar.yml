@@ -51,7 +51,7 @@ parameters:
 - name: QnnSDKVersion
   displayName: QNN SDK Version
   type: string
-  default: '2.30.0.250109'
+  default: '2.31.0.250130'
 
 jobs:
 - job: Android_Java_API_AAR_Packaging_${{ parameters.job_name_suffix }}
@@ -111,7 +111,7 @@ jobs:
           QNN_VOLUME=""
           USE_QNN="0"
         fi
-        docker run --rm \
+        docker run -e SYSTEM_COLLECTIONURI --rm \
           --volume $(Build.SourcesDirectory):/onnxruntime_src \
           --volume $(Build.BinariesDirectory):/build \
           --volume $ANDROID_HOME:/android_home \

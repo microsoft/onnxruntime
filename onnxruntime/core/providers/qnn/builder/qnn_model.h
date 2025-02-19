@@ -35,7 +35,8 @@ class QnnModel {
                       const onnxruntime::Node& fused_node,
                       const qnn::ModelSettings& model_settings,
                       const logging::Logger& logger,
-                      const QnnGraph_Config_t** graph_configs = nullptr);
+                      const QnnGraph_Config_t** graph_configs = nullptr,
+                      const std::string& json_qnn_graph_path = "");
 
   Status FinalizeGraphs(const logging::Logger& logger);
 
@@ -56,17 +57,13 @@ class QnnModel {
   Status SetGraphInputOutputInfo(const GraphViewer& graph_viewer,
                                  const onnxruntime::Node& fused_node,
                                  const logging::Logger& logger);
-  Status ParseGraphInputOrOutput(ConstPointerContainer<std::vector<NodeArg*>>& input_output_defs,
+  Status ParseGraphInputOrOutput(const GraphViewer& graph_viewer,
+                                 ConstPointerContainer<std::vector<NodeArg*>>& input_output_defs,
                                  std::vector<std::string>& input_output_names,
                                  std::unordered_map<std::string, OnnxTensorInfo>& input_output_info_table,
                                  std::unordered_map<std::string, size_t>& input_output_index,
                                  const logging::Logger& logger,
                                  bool is_input = false);
-
-  const std::unordered_set<std::string>& GetInitializerInputs() const { return initializer_inputs_; }
-  bool IsGraphInitializerInput(const std::string input_name) {
-    return initializer_inputs_.find(input_name) != initializer_inputs_.end();
-  }
 
   // Return the input index within Ort graph which has initializers included
   size_t GetOrtInputIndex(const std::string& name) const {
@@ -127,8 +124,6 @@ class QnnModel {
   // <input_name, input_index>, initializer inputs are excluded, keep the input index here
   std::unordered_map<std::string, size_t> model_input_index_map_;
   std::unordered_map<std::string, size_t> model_output_index_map_;
-  // TODO: remove initializer_inputs_, use QnnModelWrapper
-  std::unordered_set<std::string> initializer_inputs_;
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
   std::unordered_map<std::string, OnnxTensorInfo> inputs_info_;
