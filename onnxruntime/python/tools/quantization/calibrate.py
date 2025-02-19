@@ -233,11 +233,10 @@ class CalibraterBase:
         sess_options = onnxruntime.SessionOptions()
         sess_options.graph_optimization_level = onnxruntime.GraphOptimizationLevel.ORT_DISABLE_ALL
         print(f"Execution providers: {self.execution_providers}")
-        # import onnx
 
+        # import onnx
         # model_proto = onnx.load(self.augmented_model_path)
-        # onnx.save(model_proto, "models/augmented_model.onnx", save_as_external_data=True)
-        # sdvfd
+        # onnx.save(model_proto, "models/augmented/model.onnx", save_as_external_data=True)
 
         self.infer_session = onnxruntime.InferenceSession(
             self.augmented_model_path,
@@ -421,15 +420,24 @@ class MinMaxCalibrater(CalibraterBase):
 
     def collect_data(self, data_reader: CalibrationDataReader):
         count = 0
+        # output_names = [i.name for i in self.infer_session.get_outputs()]
         while True:
             inputs = data_reader.get_next()
             if not inputs:
                 break
-            print(count, flush=True)
+            # print(count, flush=True)
             count += 1
             # for k, v in inputs.items():
             #     print(k, v.shape)
             self.intermediate_outputs.append(self.infer_session.run(None, inputs))
+            # for o_idx, o in enumerate(self.intermediate_outputs[-1]):
+            #     if np.isnan(o).any():
+            #         print(count, flush=True)
+            #         print(o_idx, o, flush=True)
+            #         print(inputs, flush=True)
+            #         print(output_names[o_idx], flush=True)
+            #         # raise ValueError(f"NaN found in output {o_idx} of intermediate output.")
+            #         assert False, f"NaN found in output {o_idx} of intermediate output."
             # print(len(self.intermediate_outputs[-1]))
             if (
                 self.max_intermediate_outputs is not None
@@ -509,14 +517,14 @@ class MinMaxCalibrater(CalibraterBase):
         pairs = []
         for i in range(0, len(added_output_names), 2):
             if self.moving_average:
-                min_value_array = np.mean(merged_added_output_dict[added_output_names[i]], axis=0)
-                max_value_array = np.mean(merged_added_output_dict[added_output_names[i + 1]], axis=0)
+                min_value_array = np.nanmean(merged_added_output_dict[added_output_names[i]], axis=0)
+                max_value_array = np.nanmean(merged_added_output_dict[added_output_names[i + 1]], axis=0)
             else:
-                min_value_array = np.min(merged_added_output_dict[added_output_names[i]], axis=0)
-                max_value_array = np.max(merged_added_output_dict[added_output_names[i + 1]], axis=0)
+                min_value_array = np.nanmin(merged_added_output_dict[added_output_names[i]], axis=0)
+                max_value_array = np.nanmax(merged_added_output_dict[added_output_names[i + 1]], axis=0)
 
             if self.symmetric:
-                max_absolute_value = np.max([np.abs(min_value_array), np.abs(max_value_array)], axis=0)
+                max_absolute_value = np.nanmax([np.abs(min_value_array), np.abs(max_value_array)], axis=0)
                 pairs.append((-max_absolute_value, max_absolute_value))
             else:
                 pairs.append((min_value_array, max_value_array))
@@ -850,8 +858,8 @@ class HistogramCollector(CalibrationDataCollector):
                 data_arr_np = data_arr
             data_arr_np = data_arr_np.flatten()
             if data_arr_np.size > 0:
-                min_value = np.min(data_arr_np)
-                max_value = np.max(data_arr_np)
+                min_value = np.nanmin(data_arr_np)
+                max_value = np.nanmax(data_arr_np)
             else:
                 min_value = np.array(0, dtype=data_arr_np.dtype)
                 max_value = np.array(0, dtype=data_arr_np.dtype)
@@ -874,7 +882,7 @@ class HistogramCollector(CalibrationDataCollector):
                 assert hasattr(old_max, "dtype"), f"old_min should be a numpy array but is {type(old_max)}"
                 old_hist = old_histogram[0]
                 old_hist_edges = old_histogram[1]
-                temp_amax = np.max(data_arr_np)
+                temp_amax = np.nanmax(data_arr_np)
                 if temp_amax > old_hist_edges[-1]:
                     # increase the number of bins
                     width = old_hist_edges[1] - old_hist_edges[0]
@@ -898,8 +906,8 @@ class HistogramCollector(CalibrationDataCollector):
             data_arr = data_arr.flatten()  # noqa: PLW2901
 
             if data_arr.size > 0:
-                min_value = np.min(data_arr)
-                max_value = np.max(data_arr)
+                min_value = np.nanmin(data_arr)
+                max_value = np.nanmax(data_arr)
             else:
                 min_value = np.array(0, dtype=data_arr.dtype)
                 max_value = np.array(0, dtype=data_arr.dtype)

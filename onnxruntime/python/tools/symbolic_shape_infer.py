@@ -144,6 +144,7 @@ class SymbolicShapeInference:
             "Equal": self._infer_symbolic_compute_ops,
             "Floor": self._infer_symbolic_compute_ops,
             "Gather": self._infer_Gather,
+            "GatherBlockQuantized": self._infer_Gather,
             "GatherElements": self._infer_GatherElements,
             "GatherND": self._infer_GatherND,
             "Identity": self._pass_on_shape_and_type,

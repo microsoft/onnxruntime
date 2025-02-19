@@ -233,7 +233,6 @@ def quantize_nparray(qType, arr, scale, zero_point, low=None, high=None):
         ref = ReferenceEvaluator(onnx_model)
         return _check_type(ref.run(None, {"X": arr, "scale": scale})[0])
     else:
-        arr = numpy.clip(arr, -3e38, None)
         # Quantizes data for all integer types.
         #
         # For int4 types, the quantized data is returned as either np.int8 or np.uint8,
@@ -291,6 +290,8 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_real_range=Non
     dr = numpy.array(rmax - rmin, dtype=numpy.float64)
     dq = numpy.array(qmax, dtype=numpy.float64) - numpy.array(qmin, dtype=numpy.float64)
     scale = numpy.array(dr / dq)
+    if not (scale >= 0):
+        print(scale, rmin, rmax, qmin, qmax, dr, dq, flush=True)
     assert scale >= 0, "scale isse"
     if scale < numpy.finfo(rmax.dtype).tiny:
         scale = numpy.array(1.0, dtype=rmax.dtype)
@@ -439,7 +440,6 @@ def quantize_data(
     - *S*: scale
     - *z*: zero point
     """
-    data = numpy.clip(data, -3e38, None)
     zero_point, scale = compute_data_quant_params(
         data,
         qType,
