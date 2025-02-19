@@ -3,6 +3,8 @@
 #pragma once
 #include "./node.h"
 #include "vaip/my_ort.h"
+#include <gsl/gsl>
+#include <functional>
 namespace vaip {
 using namespace onnxruntime;
 
@@ -16,4 +18,12 @@ Node& graph_fuse(Graph& graph, const std::string& name, const std::string& op_ty
                  const std::vector<std::string>& inputs, const std::vector<std::string>& outputs,
                  const std::vector<std::string>& constant_initializers);
 Model* model_clone(const Model& original_model, int64_t external_data_threshold);
+
+void graph_reverse_dfs_from(
+    const Graph& graph, gsl::span<const Node* const> from,
+    const std::function<bool(const Node*)>& enter,
+    const std::function<bool(const Node*)>& leave,
+    const std::function<bool(const Node*, const Node*)>& comp,
+    const std::function<bool(const Node* from, const Node* to)>&
+        stop);
 }  // namespace vaip
