@@ -69,10 +69,16 @@ using ResourceAccountantMap = InlinedHashMap<std::string, std::unique_ptr<IResou
 
 // This struct keeps accounting of the memory allocation stats
 // for a kernel during runtime if enabled.
+// Each metric describes max value seen as a result of inference run(s)
 struct NodeAllocationStats {
+  // Total input sizes for the node
   size_t input_sizes = 0;
+  // consumed initializer sizes
   size_t initializers_sizes = 0;
+  // dynamically allocated outputs that actually occurred
+  // at inference time. (usually not fixed size and not pre-allocated)
   size_t total_dynamic_sizes = 0;
+  // Temporary allocations that took place at this execution.
   size_t total_temp_allocations = 0;
 
   NodeAllocationStats& operator+=(const NodeAllocationStats& other) {

@@ -213,6 +213,10 @@ std::string IResourceAccountant::MakeUniqueNodeName(const Node& node) {
     hash_str(def->Name());
   }
 
+  for (const auto& def : node.OutputDefs()) {
+    hash_str(def->Name());
+  }
+
   HashValue node_hash = hash[0] | (uint64_t(hash[1]) << 32);
   result.reserve(node_name.size() + 1 + 16);
   result.append(node_name).append("_").append(std::to_string(node_hash));
