@@ -261,7 +261,7 @@ Status VxAttentionScoreProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  if (m < uniforms.M && w + local_id.x < seq_causal_length) {\n"
                             << "    tileQ[local_id.y][local_id.x] = probs[offsetA + w + local_id.x];\n"
                             << "  }\n"
-                            << "  if (n < uniforms.N && w + local_id.y < total_sequence_length) {\n"
+                            << "  if (n < uniforms.N && w + local_id.y < seq_causal_length) {\n"
                             << "    var idx = TILE_SIZE * local_id.y + local_id.x;\n";
 
   if ((feed_past_value_ && has_present_value_) || (past_present_share_buffer_ && !is_first_prompt_)) {
