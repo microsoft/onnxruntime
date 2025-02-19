@@ -102,7 +102,6 @@ def _get_package_root(package_name, directory_name=None):
         dist = distribution(package_name)
         files = dist.files or []
 
-        # Find the first file that matches the package name and ends with '__init__.py'
         for file in files:
             if file.name.endswith("__init__.py") and root_directory_name in file.parts:
                 return file.locate().parent
@@ -228,13 +227,14 @@ def print_debug_info():
             if is_target_dll(lib.path.lower()):
                 print(lib.path)
 
-        if importlib.util.find_spec("cpuinfo") and importlib.util.find_spec("py3nvml"):
-            from .transformers.machine_info import get_device_info
+        if cuda_version:
+            if importlib.util.find_spec("cpuinfo") and importlib.util.find_spec("py3nvml"):
+                from .transformers.machine_info import get_device_info
 
-            print("\nDevice information:")
-            print(get_device_info())
-        else:
-            print("please `pip install py-cpuinfo py3nvml` to show device information.")
+                print("\nDevice information:")
+                print(get_device_info())
+            else:
+                print("please `pip install py-cpuinfo py3nvml` to show device information.")
     else:
         print("please `pip install psutil` to show loaded DLLs.")
 
@@ -308,7 +308,7 @@ def preload_dlls(cuda: bool = True, cudnn: bool = True, msvc: bool = True, direc
         base_directory = os.path.join(os.path.dirname(__file__), base_directory)
     base_directory = os.path.normpath(base_directory)
     if not os.path.isdir(base_directory):
-        raise RuntimeError(f"Invalid paramter of directory={directory}. The directory does not exist!")
+        raise RuntimeError(f"Invalid parameter of directory={directory}. The directory does not exist!")
 
     if is_cuda_cudnn_imported_by_torch:
         # In Windows, PyTorch has loaded CUDA and cuDNN DLLs during `import torch`, no need to load them again.
