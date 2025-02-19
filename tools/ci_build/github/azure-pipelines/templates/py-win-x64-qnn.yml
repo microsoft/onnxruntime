@@ -34,6 +34,8 @@ jobs:
         PythonVersion: '3.11'
       Python312_x64:
         PythonVersion: '3.12'
+      Python313_x64:
+        PythonVersion: '3.13'
   variables:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
