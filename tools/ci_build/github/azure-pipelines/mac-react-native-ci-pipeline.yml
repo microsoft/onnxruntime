@@ -27,6 +27,12 @@ pr:
     - 'js/web'
     - 'onnxruntime/core/providers/js'
 #### end trigger ####
+resources:
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
 
 parameters:
 - name: NpmPublish
@@ -50,10 +56,20 @@ variables:
   ${{ if eq(parameters.NpmPublish, 'custom') }}:
     NpmPackagingMode: '$(VersionSuffix)'
 
-stages:
-- template: templates/react-native-ci.yml
+exstends:
+  # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
+  # For non-production pipelines, use "Unofficial" as defined below.
+  # For productions pipelines, use "Official".
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
   parameters:
-    NpmPackagingMode: ${{ variables.NpmPackagingMode }}
-    BuildConfig: 'Release'
-    PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
-    enable_code_sign: false
+    sdl:
+      sourceAnalysisPool:
+        name: onnxruntime-Win-CPU-2022
+        os: windows
+  stages:
+  - template: templates/react-native-ci.yml
+    parameters:
+      NpmPackagingMode: ${{ variables.NpmPackagingMode }}
+      BuildConfig: 'Release'
+      PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
+      enable_code_sign: false
