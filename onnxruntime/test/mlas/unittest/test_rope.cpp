@@ -112,12 +112,12 @@ class RoPEShortExecuteTest : public MlasTestFixture<MlasRoPETest> {
   bool interleaved_;
 };
 
+// only test float RoPE with avx2 where RopeDispatch is assigned at this moment.
+#ifdef MLAS_TARGET_AMD64
 static size_t RoPERegisterAllShortExecuteTests() {
   return RoPEShortExecuteTest::RegisterShortExecuteTests();
 }
 
-// only test float RoPE with avx2 where RopeDispatch is assigned at this moment.
-#ifdef MLAS_TARGET_AMD64
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister(
     [](bool is_short_execute) -> size_t {
       if (is_short_execute) {
