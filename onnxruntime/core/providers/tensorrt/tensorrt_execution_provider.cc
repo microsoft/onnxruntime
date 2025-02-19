@@ -3839,14 +3839,15 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
       // Give a warning that ep context need to be regenerated
       if (dump_ep_context_model_ && ep_context_embed_mode_) {
-        if (!is_subgraph) {
+        if (!is_subgraph) {  // The entire graph/model is unpartitioned and running on tensorrt -> it's going to be cached as 1 ep context node
+          std::cout << "Updating model during inference due to dynamic input changed change." << std::endl;
           assert(trt_ep_context_models.size() == 1);
           auto model_ptr = std::move(trt_ep_context_models[0]);
           auto model_proto_ptr = model_ptr->ToProto().release();
           UpdateCtxNodeModelEngineContext(model_proto_ptr, reinterpret_cast<char*>(serialized_engine->data()), serialized_engine->size());
           DumpCtxModel(model_proto_ptr, ctx_model_path_);
         } else {
-          LOGS_DEFAULT(WARNING) << "Engine was updated during inference due to dynamic input changed. Please regenerate EP context model.";
+          LOGS_DEFAULT(WARNING) << ctx_model_path_ << " is outdate due to engine updated during inference from dynamic input shape change. Please do not use " << ctx_model_path_ << ".\n We do not support changing input shape for embed_mode=1. You can use embed_mode=0.";
         }
       }
       context_update = true;
