@@ -15,7 +15,8 @@ Abstract:
 --*/
 
 #include "test_util.h"
-#include "mlas_attention.h"
+#include "mlas.h"
+#include "core/mlas/lib/rotary_embedding.h"
 
 class MlasRoPETest : public MlasTestBase {
   const float Pi = 2 * std::acos(0.0f);
