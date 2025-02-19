@@ -333,6 +333,7 @@ TEST(NonMaxSuppressionOpTest, InvalidIOUThreshold) {
   test.AddInput<float>("iou_threshold", {}, {1.2f});
   test.AddInput<float>("score_threshold", {}, {0.0f});
   test.AddOutput<int64_t>("selected_indices", {0, 3}, {});
+  // TRT is missing a runtime check validating IouThreshold value. Once the bug is fixed, we will add back this unit test for TRT.
   test.Run(OpTester::ExpectResult::kExpectFailure, "iou_threshold must be in range [0, 1]", {kTensorrtExecutionProvider});
 }
 
