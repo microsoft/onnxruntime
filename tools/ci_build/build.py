@@ -33,7 +33,17 @@ sys.path.insert(0, os.path.join(REPO_DIR, "tools", "python"))
 
 
 import util.android as android  # noqa: E402
-from util import get_logger, is_linux, is_macOS, is_windows, run  # noqa: E402
+from util import (  # noqa: E402
+    generate_android_triplets,
+    generate_posix_triplets,
+    generate_vcpkg_triplets_for_emscripten,
+    generate_windows_triplets,
+    get_logger,
+    is_linux,
+    is_macOS,
+    is_windows,
+    run,
+)
 
 log = get_logger("build")
 
@@ -488,7 +498,7 @@ def parse_arguments():
     # WebAssembly build
     parser.add_argument("--build_wasm", action="store_true", help="Build for WebAssembly")
     parser.add_argument("--build_wasm_static_lib", action="store_true", help="Build for WebAssembly static library")
-    parser.add_argument("--emsdk_version", default="3.1.59", help="Specify version of emsdk")
+    parser.add_argument("--emsdk_version", default="4.0.3", help="Specify version of emsdk")
 
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threads support")
@@ -613,6 +623,7 @@ def parse_arguments():
     parser.add_argument("--use_migraphx", action="store_true", help="Build with MIGraphX")
     parser.add_argument("--migraphx_home", help="Path to MIGraphX installation dir")
     parser.add_argument("--use_full_protobuf", action="store_true", help="Use the full protobuf library")
+    parser.add_argument("--enable_pix_capture", action="store_true", help="Enable Pix Support.")
 
     parser.add_argument(
         "--skip_onnx_tests",
@@ -886,7 +897,6 @@ def run_subprocess(
             my_env["PYTHONPATH"] = python_path
 
     my_env.update(env)
-
     log.info(" ".join(args))
     return run(*args, cwd=cwd, capture_stdout=capture_stdout, shell=shell, env=my_env)
 
@@ -985,6 +995,102 @@ def number_of_nvcc_threads(args):
     return nvcc_threads
 
 
+# See https://learn.microsoft.com/en-us/vcpkg/commands/install
+def generate_vcpkg_install_options(build_dir, args):
+    # NOTE: each option string should not contain any whitespace.
+    vcpkg_install_options = ["--x-feature=tests"]
+    if args.use_acl:
+        vcpkg_install_options.append("--x-feature=acl-ep")
+    if args.use_armnn:
+        vcpkg_install_options.append("--x-feature=armnn-ep")
+    if args.use_azure:
+        vcpkg_install_options.append("--x-feature=azure-ep")
+    if args.use_cann:
+        vcpkg_install_options.append("--x-feature=cann-ep")
+    if args.use_coreml:
+        vcpkg_install_options.append("--x-feature=coreml-ep")
+    if args.use_cuda:
+        vcpkg_install_options.append("--x-feature=cuda-ep")
+    if args.use_dml:
+        vcpkg_install_options.append("--x-feature=dml-ep")
+    if args.use_dnnl:
+        vcpkg_install_options.append("--x-feature=dnnl-ep")
+    if args.use_jsep:
+        vcpkg_install_options.append("--x-feature=js-ep")
+    if args.use_migraphx:
+        vcpkg_install_options.append("--x-feature=migraphx-ep")
+    if args.use_nnapi:
+        vcpkg_install_options.append("--x-feature=nnapi-ep")
+    if args.use_openvino:
+        vcpkg_install_options.append("--x-feature=openvino-ep")
+    if args.use_qnn:
+        vcpkg_install_options.append("--x-feature=qnn-ep")
+    if args.use_rknpu:
+        vcpkg_install_options.append("--x-feature=rknpu-ep")
+    if args.use_rocm:
+        vcpkg_install_options.append("--x-feature=rocm-ep")
+    if args.use_tensorrt:
+        vcpkg_install_options.append("--x-feature=tensorrt-ep")
+    if args.use_vitisai:
+        vcpkg_install_options.append("--x-feature=vitisai-ep")
+    if args.use_vsinpu:
+        vcpkg_install_options.append("--x-feature=vsinpu-ep")
+    if args.use_webgpu:
+        vcpkg_install_options.append("--x-feature=webgpu-ep")
+    if args.use_webnn:
+        vcpkg_install_options.append("--x-feature=webnn-ep")
+    if args.use_xnnpack:
+        vcpkg_install_options.append("--x-feature=xnnpack-ep")
+
+    overlay_triplets_dir = None
+
+    folder_name_parts = []
+    if args.enable_address_sanitizer:
+        folder_name_parts.append("asan")
+    if args.use_binskim_compliant_compile_flags and not args.android:
+        folder_name_parts.append("binskim")
+    if args.disable_rtti:
+        folder_name_parts.append("nortti")
+    if args.disable_exceptions:
+        folder_name_parts.append("noexception")
+    if len(folder_name_parts) == 0:
+        folder_name = "default"
+    else:
+        folder_name = "_".join(folder_name_parts)
+    overlay_triplets_dir = (Path(build_dir) / folder_name).absolute()
+
+    vcpkg_install_options.append(f"--overlay-triplets={overlay_triplets_dir}")
+    if "AGENT_TEMPDIRECTORY" in os.environ:
+        temp_dir = os.environ["AGENT_TEMPDIRECTORY"]
+        vcpkg_install_options.append(f"--x-buildtrees-root={temp_dir}")
+
+    SYSTEM_COLLECTIONURI = os.getenv("SYSTEM_COLLECTIONURI")  # noqa: N806
+
+    # Config asset cache
+    terrapin_cmd_path = shutil.which("TerrapinRetrievalTool")
+    if terrapin_cmd_path is None:
+        terrapin_cmd_path = "C:\\local\\Terrapin\\TerrapinRetrievalTool.exe"
+        if not os.path.exists(terrapin_cmd_path):
+            terrapin_cmd_path = None
+    if terrapin_cmd_path is not None:
+        vcpkg_install_options.append(
+            "--x-asset-sources=x-script,"
+            + terrapin_cmd_path
+            + " -b https://vcpkg.storage.devpackages.microsoft.io/artifacts/ -a true -u Environment -p {url} -s {sha512} -d {dst}\\;x-block-origin"
+        )
+    else:
+        if (
+            SYSTEM_COLLECTIONURI == "https://dev.azure.com/onnxruntime/"
+            or SYSTEM_COLLECTIONURI == "https://dev.azure.com/aiinfra/"
+            or SYSTEM_COLLECTIONURI == "https://aiinfra.visualstudio.com/"
+        ):
+            vcpkg_install_options.append(
+                "--x-asset-sources=x-azurl,https://vcpkg.storage.devpackages.microsoft.io/artifacts/\\;x-block-origin"
+            )
+
+    return vcpkg_install_options
+
+
 def generate_build_tree(
     cmake_path,
     source_dir,
@@ -1010,6 +1116,7 @@ def generate_build_tree(
     cmake_extra_args,
 ):
     log.info("Generating CMake build tree")
+
     cmake_dir = os.path.join(source_dir, "cmake")
     cmake_args = [cmake_path, cmake_dir]
     if not use_dev_mode(args):
@@ -1024,12 +1131,7 @@ def generate_build_tree(
     cmake_args += [
         "-Donnxruntime_RUN_ONNX_TESTS=" + ("ON" if args.enable_onnx_tests else "OFF"),
         "-Donnxruntime_GENERATE_TEST_REPORTS=ON",
-        # There are two ways of locating python C API header file. "find_package(PythonLibs 3.5 REQUIRED)"
-        # and "find_package(Python 3.5 COMPONENTS Development.Module)". The first one is deprecated and it
-        # depends on the "PYTHON_EXECUTABLE" variable. The second needs "Python_EXECUTABLE". Here we set both
-        # of them to get the best compatibility.
         "-DPython_EXECUTABLE=" + sys.executable,
-        "-DPYTHON_EXECUTABLE=" + sys.executable,
         "-Donnxruntime_USE_VCPKG=" + ("ON" if args.use_vcpkg else "OFF"),
         "-Donnxruntime_USE_MIMALLOC=" + ("ON" if args.use_mimalloc else "OFF"),
         "-Donnxruntime_ENABLE_PYTHON=" + ("ON" if args.enable_pybind else "OFF"),
@@ -1083,6 +1185,7 @@ def generate_build_tree(
         "-Donnxruntime_ARMNN_BN_USE_CPU=" + ("OFF" if args.armnn_bn else "ON"),
         "-Donnxruntime_USE_JSEP=" + ("ON" if args.use_jsep else "OFF"),
         "-Donnxruntime_USE_WEBGPU=" + ("ON" if args.use_webgpu else "OFF"),
+        "-Donnxruntime_ENABLE_PIX_FOR_WEBGPU_EP=" + ("ON" if args.enable_pix_capture else "OFF"),
         "-Donnxruntime_USE_EXTERNAL_DAWN=" + ("ON" if args.use_external_dawn else "OFF"),
         # Training related flags
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + ("ON" if args.enable_nvtx_profile else "OFF"),
@@ -1138,41 +1241,130 @@ def generate_build_tree(
             "-DRISCV_QEMU_PATH:PATH=" + args.riscv_qemu_path,
             "-DCMAKE_TOOLCHAIN_FILE=" + os.path.join(source_dir, "cmake", "riscv64.toolchain.cmake"),
         ]
+    emscripten_cmake_toolchain_file = None
+    emsdk_dir = None
+    if args.build_wasm:
+        emsdk_dir = os.path.join(cmake_dir, "external", "emsdk")
+        emscripten_cmake_toolchain_file = os.path.join(
+            emsdk_dir, "upstream", "emscripten", "cmake", "Modules", "Platform", "Emscripten.cmake"
+        )
+
     if args.use_vcpkg:
         # TODO: set VCPKG_PLATFORM_TOOLSET_VERSION
         # Setup CMake flags for vcpkg
-        vcpkg_install_options = ["--x-feature=tests"]
+
+        # Find VCPKG's toolchain cmake file
+        vcpkg_cmd_path = shutil.which("vcpkg")
+        vcpkg_toolchain_path = None
+        if vcpkg_cmd_path is not None:
+            vcpkg_toolchain_path = Path(vcpkg_cmd_path).parent / "scripts" / "buildsystems" / "vcpkg.cmake"
+            if not vcpkg_toolchain_path.exists():
+                if is_windows():
+                    raise BuildError(
+                        "Cannot find VCPKG's toolchain cmake file. Please check if your vcpkg command was provided by Visual Studio"
+                    )
+                # Fallback to the next
+                vcpkg_toolchain_path = None
+        # Fallback to use the "VCPKG_INSTALLATION_ROOT" env var
         vcpkg_installation_root = os.environ.get("VCPKG_INSTALLATION_ROOT")
         if vcpkg_installation_root is None:
+            # Fallback to checkout vcpkg from github
             vcpkg_installation_root = os.path.join(os.path.abspath(build_dir), "vcpkg")
             if not os.path.exists(vcpkg_installation_root):
                 run_subprocess(["git", "clone", "https://github.com/microsoft/vcpkg.git", "--recursive"], cwd=build_dir)
-        vcpkg_toolchain_path = os.path.join(vcpkg_installation_root, "scripts", "buildsystems", "vcpkg.cmake")
-        add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", vcpkg_toolchain_path)
-        overlay_triplets_dir = None
-        # The enable_address_sanitizer and use_binskim_compliant_compile_flags flags cannot be both enabled
-        if args.enable_address_sanitizer:
-            overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg_triplets", "asan")
-            if args.disable_rtti:
-                overlay_triplets_dir += "_nortti"
-        elif args.use_binskim_compliant_compile_flags:
-            overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg_triplets", "binskim")
-            if args.disable_rtti:
-                overlay_triplets_dir += "_nortti"
-        elif args.disable_rtti:
-            overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg_triplets", "nortti")
-        if overlay_triplets_dir is None:
-            overlay_triplets_dir = os.path.join(source_dir, "cmake", "vcpkg_triplets", "default")
-        vcpkg_install_options.append(f"--overlay-triplets={overlay_triplets_dir}")
+        vcpkg_toolchain_path = Path(vcpkg_installation_root) / "scripts" / "buildsystems" / "vcpkg.cmake"
 
+        if args.build_wasm:
+            # While vcpkg has a toolchain cmake file for most build platforms(win/linux/mac/android/...), it doesn't have one to wasm. Therefore we need to do some tricks here.
+            # Here we will generate two toolchain cmake files. One for building the ports, one for building onnxruntime itself.
+            # The following one is for building onnxruntime itself
+            new_toolchain_file = Path(build_dir) / "toolchain.cmake"
+            old_toolchain_lines = []
+            # First, we read the official toolchain cmake file provided by emscripten into memory
+            emscripten_root_path = os.path.join(emsdk_dir, "upstream", "emscripten")
+            with open(emscripten_cmake_toolchain_file, encoding="utf-8") as f:
+                old_toolchain_lines = f.readlines()
+            emscripten_root_path_cmake_path = emscripten_root_path.replace("\\", "/")
+            # This file won't be used by vcpkg-tools when invoking 0.vcpkg_dep_info.cmake or vcpkg/scripts/ports.cmake
+            with open(new_toolchain_file, "w", encoding="utf-8") as f:
+                f.write(f'set(EMSCRIPTEN_ROOT_PATH "{emscripten_root_path_cmake_path}")\n')
+
+                # Copy emscripten's toolchain cmake file to ours.
+                for line in old_toolchain_lines:
+                    f.write(line)
+                vcpkg_toolchain_path_cmake_path = str(vcpkg_toolchain_path).replace("\\", "/")
+                # Add an extra line at the bottom of the file to include vcpkg's toolchain file.
+                f.write(f"include({vcpkg_toolchain_path_cmake_path})")
+                # Then tell cmake to use this toolchain file.
+                vcpkg_toolchain_path = new_toolchain_file.absolute()
+
+            # This file is for building the vcpkg ports.
+            empty_toolchain_file = Path(build_dir) / "emsdk_vcpkg_toolchain.cmake"
+            with open(empty_toolchain_file, "w", encoding="utf-8") as f:
+                f.write(f'set(EMSCRIPTEN_ROOT_PATH "{emscripten_root_path_cmake_path}")\n')
+                # The variable VCPKG_MANIFEST_INSTALL is OFF while building the ports
+                f.write("if(NOT VCPKG_MANIFEST_INSTALL)\n")
+                flags_to_pass = [
+                    "CXX_FLAGS",
+                    "CXX_FLAGS_DEBUG",
+                    "CXX_FLAGS_RELEASE",
+                    "C_FLAGS",
+                    "C_FLAGS_DEBUG",
+                    "C_FLAGS_RELEASE",
+                    "LINKER_FLAGS",
+                    "LINKER_FLAGS_DEBUG",
+                    "LINKER_FLAGS_RELEASE",
+                ]
+                # Overriding the cmake flags
+                for flag in flags_to_pass:
+                    f.write("SET(CMAKE_" + flag + ' "${VCPKG_' + flag + '}")\n')
+                # Copy emscripten's toolchain cmake file to ours.
+                for line in old_toolchain_lines:
+                    f.write(line)
+                f.write("endif()")
+            # We must define the VCPKG_CHAINLOAD_TOOLCHAIN_FILE cmake variable, otherwise vcpkg won't let us go.
+            add_default_definition(
+                cmake_extra_defines, "VCPKG_CHAINLOAD_TOOLCHAIN_FILE", str(empty_toolchain_file.absolute())
+            )
+            generate_vcpkg_triplets_for_emscripten(build_dir, emscripten_root_path)
+        elif args.android:
+            generate_android_triplets(build_dir, args.android_cpp_shared, args.android_api)
+        elif is_windows():
+            generate_windows_triplets(build_dir)
+        else:
+            generate_posix_triplets(build_dir)
+        add_default_definition(cmake_extra_defines, "CMAKE_TOOLCHAIN_FILE", str(vcpkg_toolchain_path))
+
+        vcpkg_install_options = generate_vcpkg_install_options(build_dir, args)
         # VCPKG_INSTALL_OPTIONS is a CMake list. It must be joined by semicolons
+        # Therefore, if any of the option string contains a semicolon, it must be escaped
         add_default_definition(cmake_extra_defines, "VCPKG_INSTALL_OPTIONS", ";".join(vcpkg_install_options))
         # Choose the cmake triplet
         triplet = None
         if args.build_wasm:
-            triplet = "wasm32-emscripten"
+            # The support for wasm64 is still in development.
+            if args.enable_wasm_memory64:
+                # The triplet wasm64-emscripten doesn't exist in vcpkg's official repo.
+                triplet = "wasm64-emscripten"
+            else:
+                triplet = "wasm32-emscripten"
+        elif args.android:
+            if args.android_abi == "armeabi-v7a":
+                triplet = "arm-neon-android"
+            elif args.android_abi == "arm64-v8a":
+                triplet = "arm64-android"
+            elif args.android_abi == "x86_64":
+                triplet = "x64-android"
+            elif args.android_abi == "x86":
+                triplet = "x86-android"
+            else:
+                raise BuildError("Unknown android_abi")
         elif is_windows():
             target_arch = platform.machine()
+            if args.arm64:
+                target_arch = "ARM64"
+            elif args.arm64:
+                target_arch = "ARM64EC"
             cpu_arch = platform.architecture()[0]
             if target_arch == "AMD64":
                 if cpu_arch == "32bit" or args.x86:
@@ -1181,14 +1373,25 @@ def generate_build_tree(
                     triplet = "x64-windows-static" if args.enable_msvc_static_runtime else "x64-windows-static-md"
             elif target_arch == "ARM64":
                 triplet = "arm64-windows-static" if args.enable_msvc_static_runtime else "arm64-windows-static-md"
+            elif target_arch == "ARM64EC":
+                triplet = "arm64ec-windows-static" if args.enable_msvc_static_runtime else "arm64ec-windows-static-md"
             else:
                 raise BuildError("unknown python arch")
+        elif is_macOS():
+            for kvp in cmake_extra_defines:
+                parts = kvp.split("=")
+                if len(parts) != 2:
+                    continue
+                key = parts[0]
+                value = parts[1]
+                if key == "CMAKE_OSX_ARCHITECTURES" and len(value.split(";")) == 2:
+                    triplet = "universal2-osx"
         if triplet:
+            log.info(f"setting target triplet to {triplet}")
             add_default_definition(cmake_extra_defines, "VCPKG_TARGET_TRIPLET", triplet)
 
     # By default on Windows we currently support only cross compiling for ARM/ARM64
-    # (no native compilation supported through this script).
-    if args.arm64 or args.arm64ec or args.arm:
+    if (args.arm64 or args.arm64ec or args.arm) and platform.architecture()[0] != "AMD64":
         add_default_definition(cmake_extra_defines, "onnxruntime_CROSS_COMPILING", "ON")
         if args.use_extensions:
             add_default_definition(cmake_extra_defines, "OPENCV_SKIP_SYSTEM_PROCESSOR_DETECTION", "ON")
@@ -1201,10 +1404,6 @@ def generate_build_tree(
                 cmake_args.append("-DCMAKE_CUDA_COMPILER_LAUNCHER=ccache")
             if args.use_rocm:
                 cmake_args.append("-DCMAKE_HIP_COMPILER_LAUNCHER=ccache")
-    # By default cmake does not check TLS/SSL certificates. Here we turn it on.
-    # But, in some cases you may also need to supply a CA file.
-    add_default_definition(cmake_extra_defines, "CMAKE_TLS_VERIFY", "ON")
-    add_default_definition(cmake_extra_defines, "FETCHCONTENT_QUIET", "OFF")
     if args.external_graph_transformer_path:
         cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
     if args.use_winml:
@@ -1218,16 +1417,6 @@ def generate_build_tree(
         cmake_args.append("-Donnxruntime_ENABLE_WEBASSEMBLY_SIMD=" + ("ON" if args.enable_wasm_simd else "OFF"))
     if args.use_migraphx:
         cmake_args.append("-Donnxruntime_MIGRAPHX_HOME=" + migraphx_home)
-    if args.use_cuda:
-        nvcc_threads = number_of_nvcc_threads(args)
-        cmake_args.append("-Donnxruntime_NVCC_THREADS=" + str(nvcc_threads))
-        if not disable_float8_types and args.cuda_version:
-            if version_to_tuple(args.cuda_version) < (11, 8):
-                raise BuildError(
-                    f"Float 8 types require CUDA>=11.8. They must be disabled on CUDA=={args.cuda_version}. "
-                    f"Add '--disable_types float8' to your command line. See option disable_types."
-                )
-        cmake_args.append(f"-DCMAKE_CUDA_COMPILER={cuda_home}/bin/nvcc")
     if args.use_rocm:
         cmake_args.append("-Donnxruntime_ROCM_HOME=" + rocm_home)
         cmake_args.append("-Donnxruntime_ROCM_VERSION=" + args.rocm_version)
@@ -1235,6 +1424,9 @@ def generate_build_tree(
         cmake_args.append("-Donnxruntime_TENSORRT_HOME=" + tensorrt_home)
 
     if args.use_cuda:
+        nvcc_threads = number_of_nvcc_threads(args)
+        cmake_args.append("-Donnxruntime_NVCC_THREADS=" + str(nvcc_threads))
+        cmake_args.append(f"-DCMAKE_CUDA_COMPILER={cuda_home}/bin/nvcc")
         add_default_definition(cmake_extra_defines, "onnxruntime_USE_CUDA", "ON")
         if args.cuda_version:
             add_default_definition(cmake_extra_defines, "onnxruntime_CUDA_VERSION", args.cuda_version)
@@ -1344,6 +1536,7 @@ def generate_build_tree(
             cmake_args.append("-DCMAKE_TOOLCHAIN_FILE=" + android_toolchain_cmake_path)
         else:
             cmake_args.append("-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=" + android_toolchain_cmake_path)
+
         if args.android_cpp_shared:
             cmake_args += ["-DANDROID_STL=c++_shared"]
 
@@ -1371,7 +1564,7 @@ def generate_build_tree(
             raise BuildError("You must set dml_path or dml_external_project when building with the GDK.")
 
     if is_macOS() and not args.android:
-        cmake_args += ["-DCMAKE_OSX_ARCHITECTURES=" + args.osx_arch]
+        add_default_definition(cmake_extra_defines, "CMAKE_OSX_ARCHITECTURES", args.osx_arch)
         if args.apple_deploy_target:
             cmake_args += ["-DCMAKE_OSX_DEPLOYMENT_TARGET=" + args.apple_deploy_target]
         # Code sign the binaries, if the code signing development identity and/or team id are provided
@@ -1405,6 +1598,11 @@ def generate_build_tree(
 
     if args.use_external_dawn and not args.use_webgpu:
         raise BuildError("External Dawn (--use_external_dawn) must be enabled with WebGPU (--use_webgpu).")
+
+    if args.enable_pix_capture and (not args.use_webgpu or not is_windows()):
+        raise BuildError(
+            "Enable PIX Capture (--enable_pix_capture) must be enabled with WebGPU (--use_webgpu) on Windows"
+        )
 
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
@@ -1476,13 +1674,7 @@ def generate_build_tree(
             ]
 
     if args.build_wasm:
-        emsdk_dir = os.path.join(cmake_dir, "external", "emsdk")
-        emscripten_cmake_toolchain_file = os.path.join(
-            emsdk_dir, "upstream", "emscripten", "cmake", "Modules", "Platform", "Emscripten.cmake"
-        )
-        if args.use_vcpkg:
-            cmake_args.append("-DVCPKG_CHAINLOAD_TOOLCHAIN_FILE=" + emscripten_cmake_toolchain_file)
-        else:
+        if not args.use_vcpkg:
             cmake_args.append("-DCMAKE_TOOLCHAIN_FILE=" + emscripten_cmake_toolchain_file)
         if args.disable_wasm_exception_catching:
             # WebAssembly unittest requires exception catching to work. If this feature is disabled, we do not build
@@ -1647,9 +1839,8 @@ def generate_build_tree(
             (args.use_binskim_compliant_compile_flags or args.enable_address_sanitizer)
             and not args.ios
             and not args.android
-            and not args.build_wasm
         ):
-            if is_windows():
+            if is_windows() and not args.build_wasm:
                 cflags += ["/guard:cf", "/DWIN32", "/D_WINDOWS"]
                 if not args.use_gdk:
                     # Target Windows 10
@@ -1676,6 +1867,8 @@ def generate_build_tree(
                 if args.enable_address_sanitizer:
                     cflags += ["/fsanitize=address"]
                 cxxflags = cflags.copy()
+                if not args.disable_exceptions:
+                    cxxflags.append("/EHsc")
                 if args.use_cuda:
                     # On Windows, nvcc passes /EHsc to the host compiler by default.
                     cuda_compile_flags_str = ""
@@ -1686,8 +1879,8 @@ def generate_build_tree(
                             cuda_compile_flags_str = cuda_compile_flags_str + " " + compile_flag
                     if len(cuda_compile_flags_str) != 0:
                         cudaflags.append(f'-Xcompiler="{cuda_compile_flags_str}"')
-            elif is_linux() or is_macOS():
-                if is_linux():
+            elif is_linux() or is_macOS() or args.build_wasm:
+                if is_linux() and not args.build_wasm:
                     ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now", "-Wl,-z,noexecstack"]
                 else:
                     ldflags = []
@@ -1700,7 +1893,7 @@ def generate_build_tree(
                         "-O3",
                         "-pipe",
                     ]
-                    if is_linux():
+                    if is_linux() and not args.build_wasm:
                         ldflags += ["-Wl,--strip-all"]
                 elif config == "RelWithDebInfo":
                     cflags = [
@@ -1710,10 +1903,10 @@ def generate_build_tree(
                         "-fstack-protector-strong",
                         "-O3",
                         "-pipe",
-                        "-ggdb3",
+                        "-g",
                     ]
                 elif config == "Debug":
-                    cflags = ["-ggdb3", "-O0"]
+                    cflags = ["-g", "-O0"]
                     if args.enable_address_sanitizer:
                         cflags += ["-fsanitize=address"]
                         ldflags += ["-fsanitize=address"]
@@ -1725,9 +1918,9 @@ def generate_build_tree(
                         "-fstack-protector-strong",
                         "-Os",
                         "-pipe",
-                        "-ggdb3",
+                        "-g",
                     ]
-                if is_linux() and platform.machine() == "x86_64":
+                if is_linux() and platform.machine() == "x86_64" and not args.build_wasm:
                     # The following flags needs GCC 8 and newer
                     cflags += ["-fstack-clash-protection"]
                     if not args.rv64:
@@ -1739,7 +1932,6 @@ def generate_build_tree(
             cxxflags = cflags.copy()
         config_build_dir = get_config_build_dir(build_dir, config)
         os.makedirs(config_build_dir, exist_ok=True)
-        preinstalled_dir = Path(build_dir) / config
         temp_cmake_args = cmake_args.copy()
         if cflags is not None and cxxflags is not None and len(cflags) != 0 and len(cxxflags) != 0:
             temp_cmake_args += [
@@ -1754,18 +1946,17 @@ def generate_build_tree(
                 "-DCMAKE_MODULE_LINKER_FLAGS_INIT={}".format(" ".join(ldflags)),
                 "-DCMAKE_SHARED_LINKER_FLAGS_INIT={}".format(" ".join(ldflags)),
             ]
+        env = {}
+        if args.use_vcpkg:
+            env["VCPKG_KEEP_ENV_VARS"] = "TRT_UPLOAD_AUTH_TOKEN"
+            if args.build_wasm:
+                env["EMSDK"] = emsdk_dir
+
         run_subprocess(
-            [
-                *temp_cmake_args,
-                f"-DCMAKE_BUILD_TYPE={config}",
-                (
-                    f"-DCMAKE_PREFIX_PATH={build_dir}/{config}/installed"
-                    if preinstalled_dir.exists() and not (args.arm64 or args.arm64ec or args.arm or args.use_vcpkg)
-                    else ""
-                ),
-            ],
+            [*temp_cmake_args, f"-DCMAKE_BUILD_TYPE={config}"],
             cwd=config_build_dir,
             cuda_home=cuda_home,
+            env=env,
         )
 
 
@@ -1994,7 +2185,12 @@ def run_android_tests(args, source_dir, build_dir, config, cwd):
             context_stack.callback(android.stop_emulator, emulator_proc)
 
         adb_push("testdata", device_dir, cwd=cwd)
-        adb_push(os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test"), device_dir, cwd=cwd)
+        if is_linux() and os.path.exists("/data/onnx"):
+            adb_push("/data/onnx", device_dir + "/test", cwd=cwd)
+        else:
+            test_data_dir = os.path.join(source_dir, "cmake", "external", "onnx", "onnx", "backend", "test")
+            if os.path.exists(test_data_dir):
+                adb_push(test_data_dir, device_dir + "/test", cwd=cwd)
         adb_push("onnxruntime_test_all", device_dir, cwd=cwd)
         adb_shell(f"chmod +x {device_dir}/onnxruntime_test_all")
         adb_push("onnx_test_runner", device_dir, cwd=cwd)
@@ -2308,11 +2504,32 @@ def run_nodejs_tests(nodejs_binding_dir):
     run_subprocess(args, cwd=nodejs_binding_dir)
 
 
+def parse_cuda_version_from_json(cuda_home):
+    version_file_path = os.path.join(cuda_home, "version.json")
+    if not os.path.exists(version_file_path):
+        print(f"version.json not found in {cuda_home}.")
+    else:
+        try:
+            with open(version_file_path) as version_file:
+                version_data = json.load(version_file)
+                cudart_info = version_data.get("cuda")
+                if cudart_info and "version" in cudart_info:
+                    parts = cudart_info["version"].split(".")
+                    return ".".join(parts[:2])
+        except FileNotFoundError:
+            print(f"version.json not found in {cuda_home}.")
+        except json.JSONDecodeError:
+            print(f"Error decoding JSON from version.json in {cuda_home}.")
+
+    return ""
+
+
 def build_python_wheel(
     source_dir,
     build_dir,
     configs,
     use_cuda,
+    cuda_home,
     cuda_version,
     use_rocm,
     use_migraphx,
@@ -2360,6 +2577,7 @@ def build_python_wheel(
         if use_cuda:
             # The following line assumes no other EP is enabled
             args.append("--wheel_name_suffix=gpu")
+            cuda_version = cuda_version or parse_cuda_version_from_json(cuda_home)
             if cuda_version:
                 args.append(f"--cuda_version={cuda_version}")
         elif use_rocm:
@@ -2473,26 +2691,26 @@ def build_nuget_package(
     # we have to use msbuild directly if including Xamarin targets as dotnet only supports MAUI (.net6)
     use_dotnet = sln != "OnnxRuntime.CSharp.sln"
 
-    if use_dotnet:
-        cmd_args = ["dotnet", "restore", sln, "--configfile", "NuGet.CSharp.config", *extra_options]
-    else:
-        cmd_args = ["msbuild", sln, "/t:restore", "/p:RestoreConfigFile=NuGet.CSharp.config", *extra_options]
-
-    # set build directory based on build_dir arg
-    native_dir = os.path.normpath(os.path.join(source_dir, build_dir))
-    ort_build_dir = "/p:OnnxRuntimeBuildDirectory=" + native_dir
-
-    run_subprocess(cmd_args, cwd=csharp_build_dir)
-
     # build csharp bindings and create nuget package for each config
     for config in configs:
         configuration = "/p:Configuration=" + config
+        extra_options += [configuration, "/p:Platform=Any CPU"]
+        if use_dotnet:
+            cmd_args = ["dotnet", "restore", sln, "--configfile", "NuGet.CSharp.config", *extra_options]
+        else:
+            cmd_args = ["msbuild", sln, "/t:restore", "/p:RestoreConfigFile=NuGet.CSharp.config", *extra_options]
+
+        # set build directory based on build_dir arg
+        native_dir = os.path.normpath(os.path.join(source_dir, build_dir))
+        ort_build_dir = "/p:OnnxRuntimeBuildDirectory=" + native_dir
+
+        run_subprocess(cmd_args, cwd=csharp_build_dir)
+
         if not use_winml:
             cmd_args = ["dotnet"] if use_dotnet else []
             cmd_args += [
                 "msbuild",
                 sln,
-                configuration,
                 package_name,
                 ort_build_dir,
                 enable_training_tests,
@@ -2534,7 +2752,6 @@ def build_nuget_package(
             "OnnxRuntime.CSharp.proj",
             target_name,
             package_name,
-            configuration,
             execution_provider,
             ort_build_dir,
             nuget_exe_arg,
@@ -2546,7 +2763,17 @@ def build_nuget_package(
         log.info(f"nuget package was created in the {config} build output directory.")
 
 
-def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt, use_dnnl, enable_training_apis):
+def run_csharp_tests(
+    source_dir,
+    build_dir,
+    use_cuda,
+    use_openvino,
+    use_tensorrt,
+    use_dnnl,
+    enable_training_apis,
+    configs,
+    msbuild_extra_options,
+):
     # Currently only running tests on windows.
     if not is_windows():
         return
@@ -2572,19 +2799,23 @@ def run_csharp_tests(source_dir, build_dir, use_cuda, use_openvino, use_tensorrt
     # set build directory based on build_dir arg
     native_build_dir = os.path.normpath(os.path.join(source_dir, build_dir))
     ort_build_dir = '/p:OnnxRuntimeBuildDirectory="' + native_build_dir + '"'
-
-    # Skip pretrained models test. Only run unit tests as part of the build
-    # add "--verbosity", "detailed" to this command if required
-    cmd_args = [
-        "dotnet",
-        "test",
-        "test\\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp.csproj",
-        "--filter",
-        "FullyQualifiedName!=Microsoft.ML.OnnxRuntime.Tests.InferenceTest.TestPreTrainedModels",
-        define_constants,
-        ort_build_dir,
-    ]
-    run_subprocess(cmd_args, cwd=csharp_source_dir)
+    # expand extra_options to add prefix
+    extra_options = ["/p:" + option for option in msbuild_extra_options]
+    for config in configs:
+        extra_options.append("/p:Configuration=" + config)
+        # Skip pretrained models test. Only run unit tests as part of the build
+        # add "--verbosity", "detailed" to this command if required
+        cmd_args = [
+            "dotnet",
+            "test",
+            "test\\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp\\Microsoft.ML.OnnxRuntime.Tests.NetCoreApp.csproj",
+            "--filter",
+            "FullyQualifiedName!=Microsoft.ML.OnnxRuntime.Tests.InferenceTest.TestPreTrainedModels",
+            define_constants,
+            ort_build_dir,
+        ]
+        cmd_args += extra_options
+        run_subprocess(cmd_args, cwd=csharp_source_dir)
 
 
 def generate_documentation(source_dir, build_dir, configs, validate):
@@ -2659,6 +2890,10 @@ def main():
     if os.getenv("ORT_BUILD_WITH_CACHE") == "1":
         args.use_cache = True
 
+    # VCPKG's scripts/toolchains/android.cmake has logic for autodetecting NDK home when the ANDROID_NDK_HOME env is not set, but it is only implemented for Windows
+    if args.android and args.use_vcpkg and args.android_ndk_path is not None and os.path.exists(args.android_ndk_path):
+        os.environ["ANDROID_NDK_HOME"] = args.android_ndk_path
+
     if not is_windows():
         if not args.allow_running_as_root:
             is_root_user = os.geteuid() == 0
@@ -2708,9 +2943,6 @@ def main():
         # If training is enabled, we don't embed the shared lib in the python package since training requires
         # torch interop.
         args.build_shared_lib = True
-
-    if args.build_nuget and cross_compiling:
-        raise BuildError("Currently nuget package creation is not supported while cross-compiling")
 
     if args.enable_pybind:
         if args.disable_rtti:
@@ -3003,6 +3235,7 @@ def main():
                 build_dir,
                 configs,
                 args.use_cuda,
+                cuda_home,
                 args.cuda_version,
                 args.use_rocm,
                 args.use_migraphx,
@@ -3052,6 +3285,8 @@ def main():
             args.use_tensorrt,
             args.use_dnnl,
             args.enable_training_apis,
+            configs,
+            normalize_arg_list(args.msbuild_extra_options),
         )
 
     if args.gen_doc:
