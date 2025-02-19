@@ -66,10 +66,10 @@ extends:
       sourceAnalysisPool:
         name: onnxruntime-Win-CPU-2022
         os: windows
-  stages:
-  - template: templates/react-native-ci.yml
-    parameters:
-      NpmPackagingMode: ${{ variables.NpmPackagingMode }}
-      BuildConfig: 'Release'
-      PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
-      enable_code_sign: false
+    stages:
+    - template: templates/react-native-ci.yml
+      parameters:
+        NpmPackagingMode: ${{ variables.NpmPackagingMode }}
+        BuildConfig: 'Release'
+        PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
+        enable_code_sign: false
