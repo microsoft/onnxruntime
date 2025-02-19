@@ -94,3 +94,15 @@ MlasRotaryEmbedOneRow<MLAS_FP16>(
 
     dispatch->HRope(input, sin, cos, dim, interleaved, output);
 }
+
+template
+void
+MLASCALL
+MlasRotaryEmbedOneRow_FallBack<float>(
+    const float* input_data,
+    const float* sin_data,
+    const float* cos_data,
+    size_t rotary_emb_dim,
+    bool interleaved,
+    float* output_data
+);
