@@ -187,7 +187,7 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         shape_initializer_proto.set_name(graph.GenerateNodeName(name + "_shape"));
         shape_initializer_proto.add_dims(static_cast<int64_t>(shape.size()));
         shape_initializer_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
-        shape_initializer_proto.set_raw_data(shape.data(), shape.size() * sizeof(int64_t));
+        utils::SetRawDataInTensorProto(shape_initializer_proto,shape.data(), shape.size() * sizeof(int64_t));
         NodeArg* shape_arg = &graph_utils::AddInitializer(graph, shape_initializer_proto);
         ONNX_NAMESPACE::TypeProto new_arg_type;
         const ONNX_NAMESPACE::TensorProto_DataType element_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(
