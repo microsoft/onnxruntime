@@ -116,7 +116,8 @@ static size_t RoPERegisterAllShortExecuteTests() {
   return RoPEShortExecuteTest::RegisterShortExecuteTests();
 }
 
-#ifdef MLAS_TARGET_AMD64 // only test float RoPE with avx2 where RopeDispatch is assigned at this moment.
+// only test float RoPE with avx2 where RopeDispatch is assigned at this moment.
+#ifdef MLAS_TARGET_AMD64
 static UNUSED_VARIABLE bool added_to_main = AddTestRegister(
     [](bool is_short_execute) -> size_t {
       if (is_short_execute) {
