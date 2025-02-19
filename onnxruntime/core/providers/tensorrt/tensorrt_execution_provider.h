@@ -352,8 +352,6 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
   mutable std::unordered_map<std::string, std::unique_ptr<SubGraphContext>> subgraph_context_map_;
 
-  const std::unordered_set<std::string> dds_op_set_ = {"NonMaxSuppression", "NonZero", "RoiAlign"};
-
   mutable std::unique_ptr<nvinfer1::IBuilder> builder_;
 
   // Following maps that hold TRT objects will be accessible by different threads if ORT is using multithreading.
