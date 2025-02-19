@@ -761,6 +761,11 @@ struct ProviderHostImpl : ProviderHost {
     auto schema = CreateSchema(domain, {op});
     ONNX_NAMESPACE::RegisterSchema(schema, ORT_API_VERSION);
   }
+
+  void DeregisterSchema(const std::string& domain, const std::string& op_type, int version) override {
+    ONNX_NAMESPACE::DeregisterSchema(op_type, version, domain);
+  }
+
   const ONNX_NAMESPACE::OpSchema* GetSchema(const std::string& name, const int maxInclusiveVersion, const std::string& domain) override {
     return ONNX_NAMESPACE::OpSchemaRegistry::Instance()->GetSchema(name, maxInclusiveVersion, domain);
   }
