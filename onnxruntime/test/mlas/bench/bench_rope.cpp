@@ -44,7 +44,7 @@ static void RoPEArgs(benchmark::internal::Benchmark* b) {
   b->ArgNames({"rotary_emb_dim", "interleaved"});
 
   b->ArgsProduct({
-      {128, 256, 512, 1024},  // rotary_emb_dim
+      {128, 256, 512, 1024},            // rotary_emb_dim
       {int64_t{false}, int64_t{true}},  // interleaved
   });
 }
